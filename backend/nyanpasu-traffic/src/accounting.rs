@@ -34,10 +34,23 @@ pub struct FlushBatch {
     pub meta: SessionMeta,
     pub active: Vec<ActiveConnection>,
     /// Deltas since the previous batch.
-    pub totals: Vec<(GroupBy, String, Bytes)>,
+    pub totals: Vec<(Dimension, String, Bytes)>,
     pub topology: Vec<(TopologyKey, Bytes)>,
     pub closed: Vec<ClosedConnection>,
 }
+
+/// The dimensions the v1 store keeps totals for.
+// FIXME(actor-migration): legacy behavior kept temporarily for the v1 totals table.
+// New code must use `Dimension::ALL`. Remove with `pending_totals` once the store records buckets.
+const STORED: [Dimension; 7] = [
+    Dimension::Process,
+    Dimension::Source,
+    Dimension::Target,
+    Dimension::Protocol,
+    Dimension::Rule,
+    Dimension::Exit,
+    Dimension::Chain,
+];
 
 pub struct Session {
     meta: SessionMeta,
@@ -46,7 +59,7 @@ pub struct Session {
     rates: HashMap<String, Rate>,
     current_rate: Option<Rate>,
     last_mono: Option<Duration>,
-    pending_totals: HashMap<GroupBy, HashMap<String, Bytes>>,
+    pending_totals: HashMap<Dimension, HashMap<String, Bytes>>,
     pending_topology: HashMap<TopologyKey, Bytes>,
     closed: Vec<ClosedConnection>,
     /// The store still holds another session until a batch with `reset` lands.
@@ -225,7 +238,7 @@ impl Session {
         }
     }
 
-    pub fn pending_totals(&self, g: GroupBy) -> impl Iterator<Item = (&str, Bytes)> {
+    pub fn pending_totals(&self, g: Dimension) -> impl Iterator<Item = (&str, Bytes)> {
         self.pending_totals
             .get(&g)
             .into_iter()
@@ -233,7 +246,7 @@ impl Session {
             .map(|(key, bytes)| (key.as_str(), *bytes))
     }
 
-    pub fn pending_total(&self, g: GroupBy, key: &str) -> Option<Bytes> {
+    pub fn pending_total(&self, g: Dimension, key: &str) -> Option<Bytes> {
         self.pending_totals.get(&g)?.get(key).copied()
     }
 
@@ -244,7 +257,7 @@ impl Session {
     }
 
     /// Sum of the per-connection rates of each group; empty while no rate is known.
-    pub fn current_rate_by(&self, g: GroupBy) -> HashMap<String, Rate> {
+    pub fn current_rate_by(&self, g: Dimension) -> HashMap<String, Rate> {
         let mut out: HashMap<String, Rate> = HashMap::new();
         for conn in self.active.values() {
             if let Some(rate) = self.rates.get(&conn.id) {
@@ -257,7 +270,7 @@ impl Session {
     }
 
     fn record(&mut self, dimensions: &Dimensions, increment: Bytes) {
-        for g in GroupBy::ALL {
+        for g in STORED {
             let slot = self
                 .pending_totals
                 .entry(g)
@@ -324,6 +337,7 @@ mod tests {
         Dimensions {
             process: process.into(),
             source: "192.168.1.2".into(),
+            inbound: "mixed".into(),
             target: "example.com".into(),
             protocol: "tcp".into(),
             rule: RuleKey {
@@ -331,6 +345,9 @@ mod tests {
                 payload: String::new(),
             },
             chains: vec!["Node-A".into(), "Proxy".into()],
+            profile: None,
+            source_region: "unknown".into(),
+            destination_region: "unknown".into(),
         }
     }
 
@@ -359,7 +376,7 @@ mod tests {
         }
     }
 
-    fn pending(session: &Session, g: GroupBy, key: &str) -> Option<Bytes> {
+    fn pending(session: &Session, g: Dimension, key: &str) -> Option<Bytes> {
         session.pending_total(g, key)
     }
 
@@ -379,11 +396,11 @@ mod tests {
         assert_eq!(session.meta().instance_id.as_deref(), Some(INSTANCE));
         assert_eq!(session.meta().last_sample_at, Some(2_000));
         assert_eq!(
-            pending(&session, GroupBy::Process, "curl"),
+            pending(&session, Dimension::Process, "curl"),
             Some(bytes(100, 400))
         );
         assert_eq!(
-            pending(&session, GroupBy::Exit, "Node-A"),
+            pending(&session, Dimension::Exit, "Node-A"),
             Some(bytes(100, 400))
         );
         assert_eq!(session.pending_topology().count(), 1);
@@ -416,7 +433,7 @@ mod tests {
 
         assert_eq!(session.meta().core_bytes, bytes(150, 260));
         assert_eq!(
-            pending(&session, GroupBy::Process, "curl"),
+            pending(&session, Dimension::Process, "curl"),
             Some(bytes(30, 90))
         );
         let batch = session.take_batch();
@@ -470,7 +487,7 @@ mod tests {
 
         assert_eq!(session.meta().core_bytes, bytes(1_040, 1_200));
         assert_eq!(
-            pending(&session, GroupBy::Process, "curl"),
+            pending(&session, Dimension::Process, "curl"),
             Some(bytes(100, 20))
         );
     }
@@ -552,7 +569,7 @@ mod tests {
         assert_eq!(session.meta().instance_id.as_deref(), Some("core-2"));
         assert_eq!(session.meta().core_bytes, bytes(107, 107));
         assert_eq!(
-            pending(&session, GroupBy::Process, "curl"),
+            pending(&session, Dimension::Process, "curl"),
             Some(bytes(5, 5))
         );
         assert_eq!(session.summary(0).current_rate, None);
@@ -583,7 +600,7 @@ mod tests {
         assert_eq!(session.meta().core_bytes, Bytes::default());
         assert_eq!(session.meta().instance_id.as_deref(), Some(INSTANCE));
         assert_eq!(session.meta().global_counters, Some(bytes(100, 100)));
-        assert_eq!(session.pending_totals(GroupBy::Process).count(), 0);
+        assert_eq!(session.pending_totals(Dimension::Process).count(), 0);
         assert_eq!(session.pending_topology().count(), 0);
         let switch = session.take_batch();
         assert!(switch.reset);
@@ -602,7 +619,7 @@ mod tests {
 
         assert_eq!(session.meta().core_bytes, bytes(30, 70));
         assert_eq!(
-            pending(&session, GroupBy::Process, "curl"),
+            pending(&session, Dimension::Process, "curl"),
             Some(bytes(20, 50))
         );
         let batch = session.take_batch();
@@ -621,7 +638,7 @@ mod tests {
             vec![sample("a", 100, 100)],
         ));
         assert_eq!(session.summary(0).current_rate, None);
-        assert!(session.current_rate_by(GroupBy::Process).is_empty());
+        assert!(session.current_rate_by(Dimension::Process).is_empty());
 
         session.observe(&frame(
             INSTANCE,
@@ -639,7 +656,7 @@ mod tests {
         );
         // "b" is new in this frame, so only "a" contributes.
         assert_eq!(
-            session.current_rate_by(GroupBy::Process).get("curl"),
+            session.current_rate_by(Dimension::Process).get("curl"),
             Some(&Rate {
                 upload: 50,
                 download: 100
@@ -655,7 +672,7 @@ mod tests {
             vec![sample("a", 200, 300)],
         ));
         assert_eq!(session.summary(0).current_rate, None);
-        assert!(session.current_rate_by(GroupBy::Process).is_empty());
+        assert!(session.current_rate_by(Dimension::Process).is_empty());
     }
 
     #[test]
@@ -680,10 +697,13 @@ mod tests {
             vec![sample("a", 10, 0), sample("b", 20, 0), other("c", 30, 0)],
         ));
 
-        let by_process = session.current_rate_by(GroupBy::Process);
+        let by_process = session.current_rate_by(Dimension::Process);
         assert_eq!(by_process["curl"].upload, 30);
         assert_eq!(by_process["firefox"].upload, 30);
-        assert_eq!(session.current_rate_by(GroupBy::Exit)["Node-A"].upload, 60);
+        assert_eq!(
+            session.current_rate_by(Dimension::Exit)["Node-A"].upload,
+            60
+        );
     }
 
     #[test]
@@ -711,7 +731,7 @@ mod tests {
         };
         assert_eq!(session.summary(0).current_rate, Some(expected));
         assert_eq!(
-            session.current_rate_by(GroupBy::Process).get("curl"),
+            session.current_rate_by(Dimension::Process).get("curl"),
             Some(&expected)
         );
     }
@@ -738,7 +758,7 @@ mod tests {
 
         assert_eq!(session.summary(0).current_rate.unwrap().upload, u64::MAX);
         assert_eq!(
-            session.current_rate_by(GroupBy::Process)["curl"],
+            session.current_rate_by(Dimension::Process)["curl"],
             Rate {
                 upload: u64::MAX,
                 download: 0
@@ -767,7 +787,7 @@ mod tests {
 
         session.disconnect();
         assert_eq!(session.summary(0).current_rate, None);
-        assert!(session.current_rate_by(GroupBy::Process).is_empty());
+        assert!(session.current_rate_by(Dimension::Process).is_empty());
         assert_eq!(session.summary(0).active_connections, 1);
 
         session.take_batch();
@@ -780,7 +800,7 @@ mod tests {
         ));
         // Baselines survived: only the delta is counted, and no rate is known yet.
         assert_eq!(
-            pending(&session, GroupBy::Process, "curl"),
+            pending(&session, Dimension::Process, "curl"),
             Some(bytes(10, 10))
         );
         assert_eq!(session.summary(0).current_rate, None);
@@ -809,7 +829,7 @@ mod tests {
 
         assert_eq!(restored.meta().core_bytes, bytes(120, 140));
         assert_eq!(
-            pending(&restored, GroupBy::Process, "curl"),
+            pending(&restored, Dimension::Process, "curl"),
             Some(bytes(20, 40))
         );
         assert_eq!(restored.summary(0).current_rate, None);
@@ -854,7 +874,7 @@ mod tests {
 
         let batch = session.take_batch();
         assert_eq!(batch.meta.profile.as_deref(), Some("p1"));
-        assert_eq!(batch.totals.len(), GroupBy::ALL.len());
+        assert_eq!(batch.totals.len(), STORED.len());
         assert_eq!(batch.topology.len(), 1);
 
         let again = session.take_batch();

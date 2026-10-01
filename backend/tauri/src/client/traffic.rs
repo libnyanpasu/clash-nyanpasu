@@ -1,7 +1,7 @@
 use nyanpasu_config::profile::Profiles;
 use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage, UsageCursor, UsageGroup,
+    ClosedCursor, ClosedPage, Dimension, Topology, TrafficSummary, Usage, UsageCursor, UsageGroup,
 };
 
 use super::{ClientError, NyanpasuClient, Result};
@@ -40,7 +40,7 @@ impl NyanpasuClient {
     }
     pub async fn query_traffic_usage(
         &self,
-        group_by: GroupBy,
+        group_by: Dimension,
         after: Option<UsageCursor>,
         limit: usize,
     ) -> Result<Usage> {
@@ -48,7 +48,7 @@ impl NyanpasuClient {
     }
     pub async fn query_traffic_usage_by_keys(
         &self,
-        group_by: GroupBy,
+        group_by: Dimension,
         keys: Vec<String>,
     ) -> Result<Vec<UsageGroup>> {
         Ok(self.traffic()?.usage_by_keys(group_by, keys).await?)
@@ -69,7 +69,7 @@ impl NyanpasuClient {
 mod tests {
     use std::sync::Arc;
 
-    use nyanpasu_traffic::{GroupBy, RedbTrafficStore};
+    use nyanpasu_traffic::{Dimension, RedbTrafficStore};
     use tempfile::tempdir;
 
     use super::super::{
@@ -93,7 +93,7 @@ mod tests {
             );
             assert_eq!(
                 client
-                    .query_traffic_usage(GroupBy::Process, None, 10)
+                    .query_traffic_usage(Dimension::Process, None, 10)
                     .await
                     .unwrap_err()
                     .to_string(),
@@ -101,7 +101,7 @@ mod tests {
             );
             assert_eq!(
                 client
-                    .query_traffic_usage_by_keys(GroupBy::Process, vec!["curl".into()])
+                    .query_traffic_usage_by_keys(Dimension::Process, vec!["curl".into()])
                     .await
                     .unwrap_err()
                     .to_string(),

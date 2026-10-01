@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, type GroupBy } from './rpc-bindings'
+import { commands, type Dimension } from './rpc-bindings'
 
 /**
  * A short digest of `keys`, in order: 53 bits of cyrb53 over every key, with
@@ -38,16 +38,16 @@ export function digestKeys(keys: readonly string[]): string {
  * Session traffic of the given groups, in request order; groups without
  * traffic are left out.
  */
-export function useTrafficUsageByKeys(groupBy: GroupBy, keys: string[]) {
+export function useTrafficUsageByKeys(dimension: Dimension, keys: string[]) {
   // React Query hashes the whole query key on every render, serializing every
   // key each time: thousands of rule labels for every connection sample. The
   // query key holds a digest computed once per array instead.
   const digest = useMemo(() => digestKeys(keys), [keys])
 
   return useQuery({
-    queryKey: ['traffic-usage-by-keys', groupBy, digest],
+    queryKey: ['traffic-usage-by-keys', dimension, digest],
     queryFn: async () =>
-      unwrapResult(await commands.queryTrafficUsageByKeys(groupBy, keys)),
+      unwrapResult(await commands.queryTrafficUsageByKeys(dimension, keys)),
     enabled: keys.length > 0,
     // New keys (another filter or config) keep showing the previous answer
     // until theirs arrives.

@@ -66,6 +66,12 @@ fn dimensions(connection: &Connection) -> Dimensions {
             payload: connection.rule_payload.clone(),
         },
         chains: connection.chains.clone(),
+        // TODO(actor-migration): the usage rewrite maps these from the connection metadata and
+        // the current profile; until then they stay unknown.
+        inbound: UNKNOWN.to_owned(),
+        profile: None,
+        source_region: UNKNOWN.to_owned(),
+        destination_region: UNKNOWN.to_owned(),
     }
 }
 

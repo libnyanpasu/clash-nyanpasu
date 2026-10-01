@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage, UsageCursor, UsageGroup,
+    ClosedCursor, ClosedPage, Dimension, Topology, TrafficSummary, Usage, UsageCursor, UsageGroup,
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -58,7 +58,7 @@ impl TrafficClient {
     /// what is not flushed yet.
     pub async fn usage(
         &self,
-        group: GroupBy,
+        group: Dimension,
         after: Option<UsageCursor>,
         limit: usize,
     ) -> Result<Usage> {
@@ -71,7 +71,7 @@ impl TrafficClient {
     /// flushed yet.
     pub async fn usage_by_keys(
         &self,
-        group: GroupBy,
+        group: Dimension,
         keys: Vec<String>,
     ) -> Result<Vec<UsageGroup>> {
         Ok(self

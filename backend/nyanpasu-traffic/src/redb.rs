@@ -203,7 +203,7 @@ impl TrafficStore for RedbTrafficStore {
         table.len().map_err(storage)
     }
 
-    fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>> {
+    fn totals(&self, group: Dimension) -> TrafficResult<Vec<(String, Bytes)>> {
         let txn = self.db.begin_read().map_err(storage)?;
         let table = txn.open_table(TOTALS).map_err(storage)?;
         let name = group.name();
@@ -220,7 +220,7 @@ impl TrafficStore for RedbTrafficStore {
         Ok(out)
     }
 
-    fn totals_of(&self, group: GroupBy, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>> {
+    fn totals_of(&self, group: Dimension, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>> {
         let txn = self.db.begin_read().map_err(storage)?;
         let table = txn.open_table(TOTALS).map_err(storage)?;
         let name = group.name();
@@ -291,6 +291,7 @@ mod tests {
         Dimensions {
             process: process.into(),
             source: "192.168.1.2".into(),
+            inbound: "mixed".into(),
             target: "example.com".into(),
             protocol: "tcp".into(),
             rule: RuleKey {
@@ -298,6 +299,9 @@ mod tests {
                 payload: String::new(),
             },
             chains: vec!["Node-A".into(), "Proxy".into()],
+            profile: None,
+            source_region: "unknown".into(),
+            destination_region: "unknown".into(),
         }
     }
 
@@ -351,8 +355,8 @@ mod tests {
             meta: meta(profile),
             active: vec![active("a")],
             totals: vec![
-                (GroupBy::Process, "curl".into(), bytes(10, 20)),
-                (GroupBy::Target, "example.com".into(), bytes(10, 20)),
+                (Dimension::Process, "curl".into(), bytes(10, 20)),
+                (Dimension::Target, "example.com".into(), bytes(10, 20)),
             ],
             topology: vec![(topology_key("Node-A"), bytes(10, 20))],
             closed: Vec::new(),
@@ -410,8 +414,8 @@ mod tests {
         store
             .flush(&FlushBatch {
                 totals: vec![
-                    (GroupBy::Process, "curl".into(), bytes(1, 2)),
-                    (GroupBy::Process, "firefox".into(), bytes(7, 8)),
+                    (Dimension::Process, "curl".into(), bytes(1, 2)),
+                    (Dimension::Process, "firefox".into(), bytes(7, 8)),
                 ],
                 topology: vec![
                     (topology_key("Node-A"), bytes(1, 2)),
@@ -421,7 +425,7 @@ mod tests {
             })
             .unwrap();
 
-        let mut process = store.totals(GroupBy::Process).unwrap();
+        let mut process = store.totals(Dimension::Process).unwrap();
         process.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(
             process,
@@ -432,10 +436,10 @@ mod tests {
         );
         // Other groups are untouched and not mixed in.
         assert_eq!(
-            store.totals(GroupBy::Target).unwrap(),
+            store.totals(Dimension::Target).unwrap(),
             [("example.com".to_owned(), bytes(10, 20))]
         );
-        assert_eq!(store.totals(GroupBy::Exit).unwrap(), []);
+        assert_eq!(store.totals(Dimension::Exit).unwrap(), []);
 
         let mut topology = store.topology().unwrap();
         topology.sort_by(|a, b| a.0.exit.cmp(&b.0.exit));
@@ -455,9 +459,9 @@ mod tests {
         store
             .flush(&FlushBatch {
                 totals: vec![
-                    (GroupBy::Process, "curl".into(), bytes(1, 2)),
-                    (GroupBy::Process, "firefox".into(), bytes(7, 8)),
-                    (GroupBy::Target, "wget".into(), bytes(3, 4)),
+                    (Dimension::Process, "curl".into(), bytes(1, 2)),
+                    (Dimension::Process, "firefox".into(), bytes(7, 8)),
+                    (Dimension::Target, "wget".into(), bytes(3, 4)),
                 ],
                 ..batch("p1")
             })
@@ -467,13 +471,13 @@ mod tests {
         assert_eq!(
             store
                 .totals_of(
-                    GroupBy::Process,
+                    Dimension::Process,
                     &["firefox".into(), "missing".into(), "wget".into()]
                 )
                 .unwrap(),
             [("firefox".to_owned(), bytes(7, 8))]
         );
-        assert_eq!(store.totals_of(GroupBy::Process, &[]).unwrap(), []);
+        assert_eq!(store.totals_of(Dimension::Process, &[]).unwrap(), []);
     }
 
     #[test]
@@ -481,14 +485,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = open(&dir);
         let huge = FlushBatch {
-            totals: vec![(GroupBy::Process, "curl".into(), bytes(u64::MAX, 0))],
+            totals: vec![(Dimension::Process, "curl".into(), bytes(u64::MAX, 0))],
             ..batch("p1")
         };
         store.flush(&huge).unwrap();
         store.flush(&huge).unwrap();
 
         assert_eq!(
-            store.totals(GroupBy::Process).unwrap(),
+            store.totals(Dimension::Process).unwrap(),
             [("curl".to_owned(), bytes(u64::MAX, 0))]
         );
     }
@@ -649,7 +653,7 @@ mod tests {
             reset: true,
             meta: meta("p2"),
             active: vec![active("survivor")],
-            totals: vec![(GroupBy::Process, "firefox".into(), bytes(7, 8))],
+            totals: vec![(Dimension::Process, "firefox".into(), bytes(7, 8))],
             topology: vec![(topology_key("Node-B"), bytes(7, 8))],
             closed: vec![closed("new", 20)],
         };
@@ -664,10 +668,10 @@ mod tests {
             let closed = store.closed_connections(None, 10).unwrap();
             assert_eq!(closed.connections, next.closed);
             assert_eq!(
-                store.totals(GroupBy::Process).unwrap(),
+                store.totals(Dimension::Process).unwrap(),
                 [("firefox".to_owned(), bytes(7, 8))]
             );
-            assert!(store.totals(GroupBy::Target).unwrap().is_empty());
+            assert!(store.totals(Dimension::Target).unwrap().is_empty());
             assert_eq!(
                 store.topology().unwrap(),
                 [(topology_key("Node-B"), bytes(7, 8))]
@@ -698,7 +702,7 @@ mod tests {
 
         let store = open(&dir);
         assert_eq!(store.load().unwrap(), None);
-        assert!(store.totals(GroupBy::Process).unwrap().is_empty());
+        assert!(store.totals(Dimension::Process).unwrap().is_empty());
         // The fresh database is usable.
         store.flush(&batch("p2")).unwrap();
         assert_eq!(

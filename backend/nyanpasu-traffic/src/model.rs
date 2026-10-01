@@ -53,74 +53,176 @@ pub struct Dimensions {
     /// Process path or name.
     pub process: String,
     pub source: String,
+    /// `inbound_user`, else `inbound_name`.
+    #[serde(default = "unknown")]
+    pub inbound: String,
     /// Host, else destination IP.
     pub target: String,
     pub protocol: String,
     pub rule: RuleKey,
     /// Clash wire order: exit first, outermost group last.
     pub chains: Vec<String>,
+    /// The profile that was current when the connection first appeared; never rewritten.
+    #[serde(default)]
+    pub profile: Option<String>,
+    /// Normalized GeoIP region, see `normalize_region`.
+    #[serde(default = "unknown")]
+    pub source_region: String,
+    #[serde(default = "unknown")]
+    pub destination_region: String,
+}
+
+fn unknown() -> String {
+    UNKNOWN.to_owned()
 }
 
 impl Dimensions {
     pub fn exit(&self) -> &str {
         self.chains.first().map_or(UNKNOWN, String::as_str)
     }
+
+    /// The process when it is known, else the source IP.
+    pub fn origin(&self) -> &str {
+        if self.process == UNKNOWN {
+            &self.source
+        } else {
+            &self.process
+        }
+    }
+
+    /// Strategy groups outermost first, exit excluded.
+    pub fn groups(&self) -> impl Iterator<Item = &str> {
+        self.chains.iter().skip(1).rev().map(String::as_str)
+    }
 }
 
+/// A way to slice usage: ranking, filtering and topology layers all name dimensions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-pub enum GroupBy {
+pub enum Dimension {
+    /// Derived: the process when known, else the source.
+    Origin,
     Process,
     Source,
+    Inbound,
     Target,
     Protocol,
     Rule,
-    Exit,
+    /// The strategy groups without the exit, outermost first; empty without groups.
     Chain,
+    Exit,
+    Profile,
+    SourceRegion,
+    DestinationRegion,
 }
 
-impl GroupBy {
-    pub const ALL: [GroupBy; 7] = [
-        GroupBy::Process,
-        GroupBy::Source,
-        GroupBy::Target,
-        GroupBy::Protocol,
-        GroupBy::Rule,
-        GroupBy::Exit,
-        GroupBy::Chain,
+impl Dimension {
+    pub const ALL: [Dimension; 12] = [
+        Dimension::Origin,
+        Dimension::Process,
+        Dimension::Source,
+        Dimension::Inbound,
+        Dimension::Target,
+        Dimension::Protocol,
+        Dimension::Rule,
+        Dimension::Chain,
+        Dimension::Exit,
+        Dimension::Profile,
+        Dimension::SourceRegion,
+        Dimension::DestinationRegion,
     ];
 
     pub fn name(self) -> &'static str {
         match self {
-            GroupBy::Process => "process",
-            GroupBy::Source => "source",
-            GroupBy::Target => "target",
-            GroupBy::Protocol => "protocol",
-            GroupBy::Rule => "rule",
-            GroupBy::Exit => "exit",
-            GroupBy::Chain => "chain",
+            Dimension::Origin => "origin",
+            Dimension::Process => "process",
+            Dimension::Source => "source",
+            Dimension::Inbound => "inbound",
+            Dimension::Target => "target",
+            Dimension::Protocol => "protocol",
+            Dimension::Rule => "rule",
+            Dimension::Chain => "chain",
+            Dimension::Exit => "exit",
+            Dimension::Profile => "profile",
+            Dimension::SourceRegion => "source_region",
+            Dimension::DestinationRegion => "destination_region",
         }
     }
 }
 
-pub fn group_key(d: &Dimensions, g: GroupBy) -> String {
+pub fn group_key(d: &Dimensions, g: Dimension) -> String {
     match g {
-        GroupBy::Process => d.process.clone(),
-        GroupBy::Source => d.source.clone(),
-        GroupBy::Target => d.target.clone(),
-        GroupBy::Protocol => d.protocol.clone(),
-        GroupBy::Rule => d.rule.label(),
-        GroupBy::Exit => d.exit().to_owned(),
-        GroupBy::Chain if d.chains.is_empty() => UNKNOWN.to_owned(),
-        GroupBy::Chain => d
-            .chains
-            .iter()
-            .rev()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(" → "),
+        Dimension::Origin => d.origin().to_owned(),
+        Dimension::Process => d.process.clone(),
+        Dimension::Source => d.source.clone(),
+        Dimension::Inbound => d.inbound.clone(),
+        Dimension::Target => d.target.clone(),
+        Dimension::Protocol => d.protocol.clone(),
+        Dimension::Rule => d.rule.label(),
+        Dimension::Chain => d.groups().collect::<Vec<_>>().join(" → "),
+        Dimension::Exit => d.exit().to_owned(),
+        Dimension::Profile => d.profile.clone().unwrap_or_default(),
+        Dimension::SourceRegion => d.source_region.clone(),
+        Dimension::DestinationRegion => d.destination_region.clone(),
     }
+}
+
+/// Granularity of the usage tables.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub enum Tier {
+    Minute,
+    Hour,
+}
+
+/// How far back a query looks; always ends now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub enum TrafficRange {
+    LastHour,
+    Last6Hours,
+    Last24Hours,
+    Last7Days,
+    Last30Days,
+    All,
+}
+
+/// Which connections a query counts: `All` is `Active` plus `Closed`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub enum TrafficScope {
+    All,
+    Active,
+    Closed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct Filter {
+    pub dimension: Dimension,
+    pub value: String,
+}
+
+/// Filters on different dimensions combine with AND; a dimension holds at most one value.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct TrafficQuery {
+    pub range: TrafficRange,
+    pub scope: TrafficScope,
+    pub filters: Vec<Filter>,
+}
+
+/// What a topology orders and merges its nodes by.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub enum Metric {
+    Bytes,
+    Connections,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -137,13 +239,9 @@ pub struct TopologyKey {
 impl TopologyKey {
     pub fn from_dimensions(d: &Dimensions) -> Self {
         Self {
-            source: if d.process == UNKNOWN {
-                d.source.clone()
-            } else {
-                d.process.clone()
-            },
+            source: d.origin().to_owned(),
             rule: d.rule.clone(),
-            groups: d.chains.iter().skip(1).rev().cloned().collect(),
+            groups: d.groups().map(str::to_owned).collect(),
             exit: d.exit().to_owned(),
         }
     }
@@ -350,6 +448,7 @@ mod tests {
         Dimensions {
             process: "/usr/bin/curl".into(),
             source: "192.168.1.2".into(),
+            inbound: "mixed".into(),
             target: "example.com".into(),
             protocol: "tcp".into(),
             rule: RuleKey {
@@ -357,31 +456,70 @@ mod tests {
                 payload: "example.com".into(),
             },
             chains: chains.iter().map(|c| (*c).to_owned()).collect(),
+            profile: Some("p1".into()),
+            source_region: "CN".into(),
+            destination_region: "US".into(),
         }
     }
 
     #[test]
     fn group_keys() {
         let d = dims(&["Node-A", "Auto", "Proxy"]);
-        assert_eq!(group_key(&d, GroupBy::Process), "/usr/bin/curl");
-        assert_eq!(group_key(&d, GroupBy::Source), "192.168.1.2");
-        assert_eq!(group_key(&d, GroupBy::Target), "example.com");
-        assert_eq!(group_key(&d, GroupBy::Protocol), "tcp");
-        assert_eq!(group_key(&d, GroupBy::Rule), "DomainSuffix,example.com");
-        assert_eq!(group_key(&d, GroupBy::Exit), "Node-A");
-        assert_eq!(group_key(&d, GroupBy::Chain), "Proxy → Auto → Node-A");
+        let key = |g| group_key(&d, g);
+        assert_eq!(key(Dimension::Origin), "/usr/bin/curl");
+        assert_eq!(key(Dimension::Process), "/usr/bin/curl");
+        assert_eq!(key(Dimension::Source), "192.168.1.2");
+        assert_eq!(key(Dimension::Inbound), "mixed");
+        assert_eq!(key(Dimension::Target), "example.com");
+        assert_eq!(key(Dimension::Protocol), "tcp");
+        assert_eq!(key(Dimension::Rule), "DomainSuffix,example.com");
+        assert_eq!(key(Dimension::Chain), "Proxy → Auto");
+        assert_eq!(key(Dimension::Exit), "Node-A");
+        assert_eq!(key(Dimension::Profile), "p1");
+        assert_eq!(key(Dimension::SourceRegion), "CN");
+        assert_eq!(key(Dimension::DestinationRegion), "US");
     }
 
     #[test]
     fn group_keys_with_empty_parts() {
         let mut d = dims(&["DIRECT"]);
         d.rule.payload.clear();
-        assert_eq!(group_key(&d, GroupBy::Rule), "DomainSuffix");
-        assert_eq!(group_key(&d, GroupBy::Chain), "DIRECT");
+        d.profile = None;
+        assert_eq!(group_key(&d, Dimension::Rule), "DomainSuffix");
+        assert_eq!(group_key(&d, Dimension::Chain), "");
+        assert_eq!(group_key(&d, Dimension::Exit), "DIRECT");
+        assert_eq!(group_key(&d, Dimension::Profile), "");
 
         d.chains.clear();
-        assert_eq!(group_key(&d, GroupBy::Exit), "unknown");
-        assert_eq!(group_key(&d, GroupBy::Chain), "unknown");
+        assert_eq!(group_key(&d, Dimension::Exit), "unknown");
+        assert_eq!(group_key(&d, Dimension::Chain), "");
+    }
+
+    #[test]
+    fn origin_falls_back_to_the_source() {
+        let mut d = dims(&["Node-A"]);
+        d.process = "unknown".into();
+        assert_eq!(group_key(&d, Dimension::Origin), "192.168.1.2");
+        assert_eq!(group_key(&d, Dimension::Process), "unknown");
+    }
+
+    #[test]
+    fn every_dimension_has_a_distinct_name() {
+        let names: std::collections::HashSet<_> = Dimension::ALL.iter().map(|d| d.name()).collect();
+        assert_eq!(names.len(), Dimension::ALL.len());
+    }
+
+    #[test]
+    fn dimensions_stored_before_the_new_fields_still_load() {
+        let d: Dimensions = serde_json::from_str(
+            r#"{"process":"curl","source":"1.1.1.1","target":"example.com","protocol":"tcp",
+                "rule":{"kind":"Match","payload":""},"chains":["DIRECT"]}"#,
+        )
+        .unwrap();
+        assert_eq!(d.inbound, "unknown");
+        assert_eq!(d.profile, None);
+        assert_eq!(d.source_region, "unknown");
+        assert_eq!(d.destination_region, "unknown");
     }
 
     #[test]

@@ -7,7 +7,7 @@ use std::{
 };
 
 use nyanpasu_traffic::{
-    ActiveConnection, Bytes, ClosedCursor, ClosedPage, Dimensions, FlushBatch, Frame, GroupBy,
+    ActiveConnection, Bytes, ClosedCursor, ClosedPage, Dimension, Dimensions, FlushBatch, Frame,
     Rate, RedbTrafficStore, RuleKey, Sample, SessionMeta, TopologyKey, TrafficError, TrafficResult,
     TrafficStore, TrafficSummary, UsageGroup,
 };
@@ -72,11 +72,11 @@ impl TrafficStore for FlakyStore {
         self.inner.closed_count()
     }
 
-    fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>> {
+    fn totals(&self, group: Dimension) -> TrafficResult<Vec<(String, Bytes)>> {
         self.inner.totals(group)
     }
 
-    fn totals_of(&self, group: GroupBy, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>> {
+    fn totals_of(&self, group: Dimension, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>> {
         self.inner.totals_of(group, keys)
     }
 
@@ -167,6 +167,7 @@ fn dims(process: &str) -> Dimensions {
     Dimensions {
         process: process.into(),
         source: "192.168.1.2".into(),
+        inbound: "mixed".into(),
         target: "example.com".into(),
         protocol: "tcp".into(),
         rule: RuleKey {
@@ -174,6 +175,9 @@ fn dims(process: &str) -> Dimensions {
             payload: String::new(),
         },
         chains: vec!["Node-A".into(), "Proxy".into()],
+        profile: None,
+        source_region: "unknown".into(),
+        destination_region: "unknown".into(),
     }
 }
 
@@ -276,8 +280,8 @@ async fn summary_and_usage_include_unflushed_deltas() {
     );
 
     // Nothing is flushed yet, so what the query sees is all pending.
-    assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
+    assert!(h.store.totals(Dimension::Process).unwrap().is_empty());
+    let usage = h.client.usage(Dimension::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(150, 260));
     assert_eq!(usage.other, Bytes::default());
     assert_eq!(usage.groups.len(), 1);
@@ -294,11 +298,11 @@ async fn summary_and_usage_include_unflushed_deltas() {
     // Flushing moves the deltas to the store without changing the answer.
     h.client.flush().await.unwrap();
     assert_eq!(
-        h.store.totals(GroupBy::Process).unwrap(),
+        h.store.totals(Dimension::Process).unwrap(),
         [("curl".to_owned(), bytes(150, 260))]
     );
     assert_eq!(
-        h.client.usage(GroupBy::Process, None, 10).await.unwrap(),
+        h.client.usage(Dimension::Process, None, 10).await.unwrap(),
         usage
     );
 }
@@ -320,7 +324,7 @@ async fn usage_and_topology_keep_the_top_entries() {
         .await
         .unwrap();
 
-    let usage = h.client.usage(GroupBy::Process, None, 2).await.unwrap();
+    let usage = h.client.usage(Dimension::Process, None, 2).await.unwrap();
     assert_eq!(usage.total, bytes(60, 0));
     assert_eq!(
         usage
@@ -362,14 +366,14 @@ async fn usage_pages_continue_after_the_cursor() {
         .await
         .unwrap();
 
-    let first = h.client.usage(GroupBy::Process, None, 2).await.unwrap();
+    let first = h.client.usage(Dimension::Process, None, 2).await.unwrap();
     assert_eq!(keys(&first.groups), ["large", "medium"]);
     assert_eq!(first.other, bytes(20, 0));
 
     // Equal traffic ranks by key; a page that reaches the end has no cursor.
     let last = h
         .client
-        .usage(GroupBy::Process, first.next, 2)
+        .usage(Dimension::Process, first.next, 2)
         .await
         .unwrap();
     assert_eq!(last.total, bytes(70, 0));
@@ -378,11 +382,11 @@ async fn usage_pages_continue_after_the_cursor() {
     assert_eq!(last.next, None);
 
     // A cursor on a tie continues with the next key of the same traffic.
-    let first = h.client.usage(GroupBy::Process, None, 3).await.unwrap();
+    let first = h.client.usage(Dimension::Process, None, 3).await.unwrap();
     assert_eq!(keys(&first.groups), ["large", "medium", "small"]);
     let last = h
         .client
-        .usage(GroupBy::Process, first.next, 3)
+        .usage(Dimension::Process, first.next, 3)
         .await
         .unwrap();
     assert_eq!(keys(&last.groups), ["tie"]);
@@ -399,7 +403,7 @@ async fn usage_by_keys_merges_stored_and_pending_traffic() {
     let usage = h
         .client
         .usage_by_keys(
-            GroupBy::Process,
+            Dimension::Process,
             vec!["missing".into(), "curl".into(), "curl".into()],
         )
         .await
@@ -418,7 +422,7 @@ async fn usage_by_keys_merges_stored_and_pending_traffic() {
 
     let rules = h
         .client
-        .usage_by_keys(GroupBy::Rule, vec!["Match".into()])
+        .usage_by_keys(Dimension::Rule, vec!["Match".into()])
         .await
         .unwrap();
     assert_eq!(keys(&rules), ["Match"]);
@@ -430,13 +434,13 @@ async fn profile_switch_wipes_stored_totals_but_keeps_baselines() {
     let h = Harness::new("p1").await;
     h.client.observe(Some(a_first())).await.unwrap();
     h.client.flush().await.unwrap();
-    assert!(!h.store.totals(GroupBy::Process).unwrap().is_empty());
+    assert!(!h.store.totals(Dimension::Process).unwrap().is_empty());
 
     h.profiles.select("p2");
     h.client.observe(Some(a_second())).await.unwrap();
 
     // The wipe is immediate; the switch does not wait for the next flush.
-    assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
+    assert!(h.store.totals(Dimension::Process).unwrap().is_empty());
     let (meta, _) = h.store.load().unwrap().unwrap();
     assert_eq!(meta.profile.as_deref(), Some("p2"));
 
@@ -445,12 +449,12 @@ async fn profile_switch_wipes_stored_totals_but_keeps_baselines() {
     assert_eq!(summary.profile.as_deref(), Some("p2"));
     assert_eq!(summary.started_at, 2_000);
     assert_eq!(summary.core_bytes, bytes(50, 60));
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
+    let usage = h.client.usage(Dimension::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(50, 60));
 
     h.client.flush().await.unwrap();
     assert_eq!(
-        h.store.totals(GroupBy::Process).unwrap(),
+        h.store.totals(Dimension::Process).unwrap(),
         [("curl".to_owned(), bytes(50, 60))]
     );
 }
@@ -472,7 +476,7 @@ async fn a_crash_after_a_profile_switch_does_not_recount_surviving_connections()
     assert_eq!(active[0].id, A);
     assert_eq!(active[0].counters, bytes(100, 200));
     assert_eq!(active[0].bytes, Bytes::default());
-    assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
+    assert!(h.store.totals(Dimension::Process).unwrap().is_empty());
 
     // The app dies before the next flush: the stop cannot persist anything further.
     h.store.fail_flush(true);
@@ -483,7 +487,7 @@ async fn a_crash_after_a_profile_switch_does_not_recount_surviving_connections()
     let summary = h.client.summary().await.unwrap();
     assert_eq!(summary.profile.as_deref(), Some("p2"));
     assert_eq!(summary.core_bytes, bytes(50, 60));
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
+    let usage = h.client.usage(Dimension::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(50, 60));
 }
 
@@ -509,7 +513,7 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
         .await
         .unwrap();
     h.client.flush().await.unwrap();
-    assert_eq!(h.store.totals(GroupBy::Process).unwrap().len(), 2);
+    assert_eq!(h.store.totals(Dimension::Process).unwrap().len(), 2);
     assert_eq!(
         h.store
             .closed_connections(None, 10)
@@ -532,7 +536,7 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
         .unwrap();
 
     // The wipe did not land, so the store still holds p1 ...
-    assert_eq!(h.store.totals(GroupBy::Process).unwrap().len(), 2);
+    assert_eq!(h.store.totals(Dimension::Process).unwrap().len(), 2);
     assert_eq!(
         h.store
             .closed_connections(None, 10)
@@ -542,7 +546,7 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
         1
     );
     // ... and none of it leaks into the p2 session.
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
+    let usage = h.client.usage(Dimension::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(3, 4));
     assert_eq!(usage.groups.len(), 1);
     assert_eq!(usage.groups[0].key, "wget");
@@ -562,7 +566,7 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
     h.store.fail_flush(false);
     h.client.flush().await.unwrap();
     assert_eq!(
-        h.store.totals(GroupBy::Process).unwrap(),
+        h.store.totals(Dimension::Process).unwrap(),
         [("wget".to_owned(), bytes(3, 4))]
     );
     assert!(
@@ -574,7 +578,7 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
     );
     let (meta, _) = h.store.load().unwrap().unwrap();
     assert_eq!(meta.profile.as_deref(), Some("p2"));
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
+    let usage = h.client.usage(Dimension::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(3, 4));
 }
 
@@ -594,7 +598,7 @@ async fn restart_with_the_same_profile_and_instance_does_not_recount() {
         h.client.summary().await.unwrap().core_bytes,
         bytes(150, 260)
     );
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
+    let usage = h.client.usage(Dimension::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(150, 260));
 }
 
@@ -603,7 +607,7 @@ async fn restart_with_another_profile_wipes_the_store() {
     let mut h = Harness::new("p1").await;
     h.client.observe(Some(a_first())).await.unwrap();
     h.client.flush().await.unwrap();
-    assert!(!h.store.totals(GroupBy::Process).unwrap().is_empty());
+    assert!(!h.store.totals(Dimension::Process).unwrap().is_empty());
 
     h.profiles.select("p2");
     h.restart().await;
@@ -612,7 +616,7 @@ async fn restart_with_another_profile_wipes_the_store() {
     assert_eq!(summary.profile.as_deref(), Some("p2"));
     assert_eq!(summary.core_bytes, Bytes::default());
     assert_eq!(summary.active_connections, 0);
-    assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
+    assert!(h.store.totals(Dimension::Process).unwrap().is_empty());
     let (meta, active) = h.store.load().unwrap().unwrap();
     assert_eq!(meta.profile.as_deref(), Some("p2"));
     assert!(active.is_empty());
@@ -698,7 +702,7 @@ async fn pump_delivers_frames_and_lost_feeds() {
         vec![connection(A, 150, 260, json!(null))],
     )));
     until(&h.client, |s| s.current_rate.is_some()).await;
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
+    let usage = h.client.usage(Dimension::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(150, 260));
 
     h.frames.send_replace(None);
@@ -760,6 +764,7 @@ fn frame_from_snapshot_extracts_dimensions() {
         Dimensions {
             process: "C:/Tools/curl.exe".into(),
             source: "192.168.1.2".into(),
+            inbound: "unknown".into(),
             target: "example.com".into(),
             protocol: "tcp".into(),
             rule: RuleKey {
@@ -767,6 +772,9 @@ fn frame_from_snapshot_extracts_dimensions() {
                 payload: "example.com".into(),
             },
             chains: vec!["Node-A".into(), "Proxy".into()],
+            profile: None,
+            source_region: "unknown".into(),
+            destination_region: "unknown".into(),
         }
     );
 

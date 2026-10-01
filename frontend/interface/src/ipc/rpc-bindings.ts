@@ -185,7 +185,7 @@ export const commands = {
   getTrafficSummary: () =>
     typedError<TrafficSummary, IpcError>(__RPC_INVOKE('get_traffic_summary')),
   queryTrafficUsage: (
-    groupBy: GroupBy,
+    groupBy: Dimension,
     after: {
       bytes: Bytes
       key: string
@@ -195,7 +195,7 @@ export const commands = {
     typedError<Usage, IpcError>(
       __RPC_INVOKE('query_traffic_usage', { groupBy, after, limit }),
     ),
-  queryTrafficUsageByKeys: (groupBy: GroupBy, keys: string[]) =>
+  queryTrafficUsageByKeys: (groupBy: Dimension, keys: string[]) =>
     typedError<UsageGroup[], IpcError>(
       __RPC_INVOKE('query_traffic_usage_by_keys', { groupBy, keys }),
     ),
@@ -1299,16 +1299,40 @@ export type DeviceInfo = {
   memory: string
 }
 
+/**  A way to slice usage: ranking, filtering and topology layers all name dimensions. */
+export type Dimension =
+  /**  Derived: the process when known, else the source. */
+  | 'origin'
+  | 'process'
+  | 'source'
+  | 'inbound'
+  | 'target'
+  | 'protocol'
+  | 'rule'
+  /**  The strategy groups without the exit, outermost first; empty without groups. */
+  | 'chain'
+  | 'exit'
+  | 'profile'
+  | 'source_region'
+  | 'destination_region'
+
 export type Dimensions = {
   /**  Process path or name. */
   process: string
   source: string
+  /**  `inbound_user`, else `inbound_name`. */
+  inbound?: string
   /**  Host, else destination IP. */
   target: string
   protocol: string
   rule: RuleKey
   /**  Clash wire order: exit first, outermost group last. */
   chains: string[]
+  /**  The profile that was current when the connection first appeared; never rewritten. */
+  profile?: string | null
+  /**  Normalized GeoIP region, see `normalize_region`. */
+  source_region?: string
+  destination_region?: string
 }
 
 export type Direction = 'latest' | 'before' | 'after'
@@ -1530,9 +1554,6 @@ export type GetSysProxyResponse = {
   bypass: string
   server: string
 }
-
-export type GroupBy =
-  'process' | 'source' | 'target' | 'protocol' | 'rule' | 'exit' | 'chain'
 
 /**
  *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so

@@ -1325,7 +1325,7 @@ pub async fn get_traffic_summary(
 #[specta::specta]
 pub async fn query_traffic_usage(
     client: tauri::State<'_, NyanpasuClient>,
-    group_by: nyanpasu_traffic::GroupBy,
+    group_by: nyanpasu_traffic::Dimension,
     after: Option<nyanpasu_traffic::UsageCursor>,
     limit: usize,
 ) -> Result<nyanpasu_traffic::Usage> {
@@ -1337,7 +1337,7 @@ pub async fn query_traffic_usage(
 #[specta::specta]
 pub async fn query_traffic_usage_by_keys(
     client: tauri::State<'_, NyanpasuClient>,
-    group_by: nyanpasu_traffic::GroupBy,
+    group_by: nyanpasu_traffic::Dimension,
     keys: Vec<String>,
 ) -> Result<Vec<nyanpasu_traffic::UsageGroup>> {
     Ok(client.query_traffic_usage_by_keys(group_by, keys).await?)

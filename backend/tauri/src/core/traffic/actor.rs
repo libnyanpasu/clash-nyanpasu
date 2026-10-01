@@ -10,7 +10,7 @@ use std::{
 };
 
 use nyanpasu_traffic::{
-    Bytes, ClosedCursor, ClosedPage, FlushBatch, Frame, GroupBy, Rate, Session, Topology,
+    Bytes, ClosedCursor, ClosedPage, Dimension, FlushBatch, Frame, Rate, Session, Topology,
     TopologyKey, TopologyPath, TrafficError, TrafficResult, TrafficStore, TrafficSummary, Usage,
     UsageCursor, UsageGroup, merge_closed_page, topology,
 };
@@ -29,13 +29,13 @@ pub(super) enum Message {
     Flush(RpcReplyPort<()>),
     Summary(RpcReplyPort<TrafficResult<TrafficSummary>>),
     Usage(
-        GroupBy,
+        Dimension,
         Option<UsageCursor>,
         usize,
         RpcReplyPort<TrafficResult<Usage>>,
     ),
     UsageByKeys(
-        GroupBy,
+        Dimension,
         Vec<String>,
         RpcReplyPort<TrafficResult<Vec<UsageGroup>>>,
     ),
@@ -184,7 +184,7 @@ impl State {
 
     async fn usage(
         &self,
-        group: GroupBy,
+        group: Dimension,
         after: Option<UsageCursor>,
         limit: usize,
     ) -> TrafficResult<Usage> {
@@ -208,7 +208,7 @@ impl State {
     /// In request order; keys without traffic are left out.
     async fn usage_by_keys(
         &self,
-        group: GroupBy,
+        group: Dimension,
         mut keys: Vec<String>,
     ) -> TrafficResult<Vec<UsageGroup>> {
         let mut seen = HashSet::new();
@@ -365,7 +365,7 @@ fn rank_topology(paths: HashMap<TopologyKey, Bytes>, limit: usize) -> Topology {
             .then_with(|| identity(&a.key).cmp(&identity(&b.key)))
     });
     let rest = ranked.split_off(limit.clamp(1, MAX_LIMIT).min(ranked.len()));
-    let (nodes, edges) = topology::project(&ranked);
+    let (nodes, edges) = topology::legacy::project(&ranked);
     Topology {
         paths: ranked,
         nodes,

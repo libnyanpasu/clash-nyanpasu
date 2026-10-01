@@ -96,7 +96,7 @@ rust-i18n = '4'
 
 # Networking Libraries
 axum = { version = '0.8', features = ['ws'] }
-tokio-tungstenite = '0.29'
+tokio-tungstenite = '0.30'
 url = '2'
 mime = '0.3'
 reqwest = { workspace = true }

@@ -40,6 +40,8 @@
 
 ## Development
 
+Before making changes, read the [development standards](docs/development/README.md) for architecture, unified RPC, Rust and TypeScript code style, testing, worktree setup, and commit rules. These requirements apply to all contributors and are also reflected in [AGENTS.md](AGENTS.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution setup.
+
 ### Configure your development environment
 
 You should install Rust and Node.js, see [here](https://v2.tauri.app/start/prerequisites/) for more details.

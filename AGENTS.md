@@ -2,6 +2,12 @@
 
 This repository is migrating away from `::global()` singletons and Tauri-coupled services toward explicit dependency injection, actor-owned state, and pure domain services.
 
+## Mandatory Reading: Development Standards
+
+Before starting any repository work, agents MUST read [docs/development/README.md](docs/development/README.md) and all standards guides: [architecture](docs/development/architecture.md), [unified RPC](docs/development/rpc.md), [testing and review](docs/development/testing.md), [workflow](docs/development/workflow.md), [Rust code style](docs/development/rust.md), and [TypeScript and React code style](docs/development/typescript.md).
+
+Agents MUST strictly follow these development standards together with the instructions below. Reading this file alone is insufficient. The guides are mandatory project requirements, not optional background or suggestions. If a guide is unavailable or the current requirements conflict, report the issue and resolve it before proceeding with affected work.
+
 Behavioral guidelines reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
@@ -9,6 +15,8 @@ Behavioral guidelines reduce common LLM coding mistakes. Merge with project-spec
 ## 0. Synchronization Policy
 
 Keep `CLAUDE.md` and `AGENTS.md` synchronized as much as possible.
+
+Update the corresponding `docs/development/` guide in the same change whenever a shared development rule changes. These guides and `AGENTS.md` must describe the same requirements; historical plans do not override current rules. `CLAUDE.md` currently imports `AGENTS.md`.
 
 - When changing an architectural rule in one file, mirror it in the other file.
 - Differences should be limited to tool-specific wording, if any.
@@ -467,6 +475,18 @@ pub trait ConfigStore: Send + Sync + 'static {
 ```
 
 ## 14. Naming Guidelines
+
+### Language code style
+
+- Rust follows the existing nightly Rustfmt configuration and Clippy checks; see [Rust code style](docs/development/rust.md). Do not introduce a stricter Rust lint profile as incidental cleanup.
+- TS/TSX follows Prettier, Oxlint, and package TypeScript checks; see [TypeScript and React code style](docs/development/typescript.md).
+- Prefer descriptive, stable `data-slot` names on React component DOM roots and meaningful parts for readability and custom CSS. Preserve existing slots and forward data attributes; do not add DOM wrappers solely for a slot.
+- Before adding constants or environment predicates, search for existing definitions. Reuse equivalent ones or promote genuinely shared local definitions to the smallest common scope; keep one-use details local and distinguish Tauri execution, OS identity, and viewport size.
+- Separate different responsibilities with one blank line, especially query-client access, queries, mutations, derived values, handlers, and the final return. Keep related statements together.
+- Prefer `frontend/nyanpasu/src/components/ui/` components. For missing controls, check Radix primitives and add styled, accessible wrappers there before using them in features. Follow Material You and existing project tokens and interaction states. Oxlint restricts direct Radix imports to that UI layer.
+- Semantic naming, reuse, grouping, and visual consistency remain mandatory review requirements even when formatting and lint pass.
+
+### Role names
 
 Use names that reveal the role:
 

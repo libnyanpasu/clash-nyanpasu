@@ -86,10 +86,16 @@ export function useKvStorage<T>(
     return migrateRef.current ? migrateRef.current(raw) : (raw as T)
   }, [])
 
+  // The initial state already holds this key's cache.
+  const cachedKeyRef = useRef(key)
+
   // When key changes: reset to local cache and re-fetch from backend
   useEffect(() => {
-    setValueState(getLocalCache(key, defaultValueRef.current))
-    setIsLoading(true)
+    if (cachedKeyRef.current !== key) {
+      cachedKeyRef.current = key
+      setValueState(getLocalCache(key, defaultValueRef.current))
+      setIsLoading(true)
+    }
 
     let disposed = false
     const refresh = async () => {
@@ -102,8 +108,12 @@ export function useKvStorage<T>(
           removeLocalCache(key)
         } else {
           const migrated = applyMigrate(JSON.parse(result.data))
-          setValueState(migrated)
-          setLocalCache(key, migrated)
+          // Usually the backend confirms the cached value; keeping the state
+          // object then spares every reader a render.
+          if (JSON.stringify(migrated) !== JSON.stringify(valueRef.current)) {
+            setValueState(migrated)
+            setLocalCache(key, migrated)
+          }
         }
       } catch (error) {
         console.error('[useKvStorage] read failed:', error)

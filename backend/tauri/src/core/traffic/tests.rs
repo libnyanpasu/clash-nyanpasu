@@ -9,7 +9,7 @@ use std::{
 use nyanpasu_traffic::{
     ActiveConnection, Bytes, ClosedCursor, ClosedPage, Dimensions, FlushBatch, Frame, GroupBy,
     Rate, RedbTrafficStore, RuleKey, Sample, SessionMeta, TopologyKey, TrafficError, TrafficResult,
-    TrafficStore, TrafficSummary,
+    TrafficStore, TrafficSummary, UsageGroup,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -74,6 +74,10 @@ impl TrafficStore for FlakyStore {
 
     fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>> {
         self.inner.totals(group)
+    }
+
+    fn totals_of(&self, group: GroupBy, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>> {
+        self.inner.totals_of(group, keys)
     }
 
     fn topology(&self) -> TrafficResult<Vec<(TopologyKey, Bytes)>> {
@@ -273,7 +277,7 @@ async fn summary_and_usage_include_unflushed_deltas() {
 
     // Nothing is flushed yet, so what the query sees is all pending.
     assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
-    let usage = h.client.usage(GroupBy::Process, 10).await.unwrap();
+    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(150, 260));
     assert_eq!(usage.other, Bytes::default());
     assert_eq!(usage.groups.len(), 1);
@@ -293,7 +297,10 @@ async fn summary_and_usage_include_unflushed_deltas() {
         h.store.totals(GroupBy::Process).unwrap(),
         [("curl".to_owned(), bytes(150, 260))]
     );
-    assert_eq!(h.client.usage(GroupBy::Process, 10).await.unwrap(), usage);
+    assert_eq!(
+        h.client.usage(GroupBy::Process, None, 10).await.unwrap(),
+        usage
+    );
 }
 
 #[tokio::test]
@@ -313,7 +320,7 @@ async fn usage_and_topology_keep_the_top_entries() {
         .await
         .unwrap();
 
-    let usage = h.client.usage(GroupBy::Process, 2).await.unwrap();
+    let usage = h.client.usage(GroupBy::Process, None, 2).await.unwrap();
     assert_eq!(usage.total, bytes(60, 0));
     assert_eq!(
         usage
@@ -331,6 +338,91 @@ async fn usage_and_topology_keep_the_top_entries() {
     assert_eq!(topology.paths[0].bytes, bytes(30, 0));
     assert_eq!(topology.other, bytes(30, 0));
     assert!(!topology.nodes.is_empty() && !topology.edges.is_empty());
+}
+
+fn keys(groups: &[UsageGroup]) -> Vec<&str> {
+    groups.iter().map(|g| g.key.as_str()).collect()
+}
+
+#[tokio::test]
+async fn usage_pages_continue_after_the_cursor() {
+    let h = Harness::new("p1").await;
+    h.client
+        .observe(Some(frame(
+            1_000,
+            0,
+            bytes(70, 0),
+            vec![
+                sample("a", "small", 10, 0),
+                sample("b", "large", 30, 0),
+                sample("c", "medium", 20, 0),
+                sample("d", "tie", 10, 0),
+            ],
+        )))
+        .await
+        .unwrap();
+
+    let first = h.client.usage(GroupBy::Process, None, 2).await.unwrap();
+    assert_eq!(keys(&first.groups), ["large", "medium"]);
+    assert_eq!(first.other, bytes(20, 0));
+
+    // Equal traffic ranks by key; a page that reaches the end has no cursor.
+    let last = h
+        .client
+        .usage(GroupBy::Process, first.next, 2)
+        .await
+        .unwrap();
+    assert_eq!(last.total, bytes(70, 0));
+    assert_eq!(keys(&last.groups), ["small", "tie"]);
+    assert_eq!(last.other, Bytes::default());
+    assert_eq!(last.next, None);
+
+    // A cursor on a tie continues with the next key of the same traffic.
+    let first = h.client.usage(GroupBy::Process, None, 3).await.unwrap();
+    assert_eq!(keys(&first.groups), ["large", "medium", "small"]);
+    let last = h
+        .client
+        .usage(GroupBy::Process, first.next, 3)
+        .await
+        .unwrap();
+    assert_eq!(keys(&last.groups), ["tie"]);
+}
+
+#[tokio::test]
+async fn usage_by_keys_merges_stored_and_pending_traffic() {
+    let h = Harness::new("p1").await;
+    h.client.observe(Some(a_first())).await.unwrap();
+    h.client.flush().await.unwrap();
+    h.client.observe(Some(a_second())).await.unwrap();
+
+    // `curl` has 100/200 stored and 50/60 pending; missing and repeated keys are not listed.
+    let usage = h
+        .client
+        .usage_by_keys(
+            GroupBy::Process,
+            vec!["missing".into(), "curl".into(), "curl".into()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        usage,
+        [UsageGroup {
+            key: "curl".into(),
+            bytes: bytes(150, 260),
+            current_rate: Some(Rate {
+                upload: 50,
+                download: 60
+            }),
+        }]
+    );
+
+    let rules = h
+        .client
+        .usage_by_keys(GroupBy::Rule, vec!["Match".into()])
+        .await
+        .unwrap();
+    assert_eq!(keys(&rules), ["Match"]);
+    assert_eq!(rules[0].bytes, bytes(150, 260));
 }
 
 #[tokio::test]
@@ -353,7 +445,7 @@ async fn profile_switch_wipes_stored_totals_but_keeps_baselines() {
     assert_eq!(summary.profile.as_deref(), Some("p2"));
     assert_eq!(summary.started_at, 2_000);
     assert_eq!(summary.core_bytes, bytes(50, 60));
-    let usage = h.client.usage(GroupBy::Process, 10).await.unwrap();
+    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(50, 60));
 
     h.client.flush().await.unwrap();
@@ -391,7 +483,7 @@ async fn a_crash_after_a_profile_switch_does_not_recount_surviving_connections()
     let summary = h.client.summary().await.unwrap();
     assert_eq!(summary.profile.as_deref(), Some("p2"));
     assert_eq!(summary.core_bytes, bytes(50, 60));
-    let usage = h.client.usage(GroupBy::Process, 10).await.unwrap();
+    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(50, 60));
 }
 
@@ -450,7 +542,7 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
         1
     );
     // ... and none of it leaks into the p2 session.
-    let usage = h.client.usage(GroupBy::Process, 10).await.unwrap();
+    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(3, 4));
     assert_eq!(usage.groups.len(), 1);
     assert_eq!(usage.groups[0].key, "wget");
@@ -482,7 +574,7 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
     );
     let (meta, _) = h.store.load().unwrap().unwrap();
     assert_eq!(meta.profile.as_deref(), Some("p2"));
-    let usage = h.client.usage(GroupBy::Process, 10).await.unwrap();
+    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(3, 4));
 }
 
@@ -502,7 +594,7 @@ async fn restart_with_the_same_profile_and_instance_does_not_recount() {
         h.client.summary().await.unwrap().core_bytes,
         bytes(150, 260)
     );
-    let usage = h.client.usage(GroupBy::Process, 10).await.unwrap();
+    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(150, 260));
 }
 
@@ -606,7 +698,7 @@ async fn pump_delivers_frames_and_lost_feeds() {
         vec![connection(A, 150, 260, json!(null))],
     )));
     until(&h.client, |s| s.current_rate.is_some()).await;
-    let usage = h.client.usage(GroupBy::Process, 10).await.unwrap();
+    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
     assert_eq!(usage.total, bytes(150, 260));
 
     h.frames.send_replace(None);

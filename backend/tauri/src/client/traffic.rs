@@ -1,6 +1,8 @@
 use nyanpasu_config::profile::Profiles;
 use nyanpasu_core::state::StateSnapshot;
-use nyanpasu_traffic::{ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage};
+use nyanpasu_traffic::{
+    ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage, UsageCursor, UsageGroup,
+};
 
 use super::{ClientError, NyanpasuClient, Result};
 use crate::core::traffic::{ProfileSelection, TrafficClient};
@@ -36,8 +38,20 @@ impl NyanpasuClient {
     pub async fn traffic_summary(&self) -> Result<TrafficSummary> {
         Ok(self.traffic()?.summary().await?)
     }
-    pub async fn query_traffic_usage(&self, group_by: GroupBy, limit: usize) -> Result<Usage> {
-        Ok(self.traffic()?.usage(group_by, limit).await?)
+    pub async fn query_traffic_usage(
+        &self,
+        group_by: GroupBy,
+        after: Option<UsageCursor>,
+        limit: usize,
+    ) -> Result<Usage> {
+        Ok(self.traffic()?.usage(group_by, after, limit).await?)
+    }
+    pub async fn query_traffic_usage_by_keys(
+        &self,
+        group_by: GroupBy,
+        keys: Vec<String>,
+    ) -> Result<Vec<UsageGroup>> {
+        Ok(self.traffic()?.usage_by_keys(group_by, keys).await?)
     }
     pub async fn query_traffic_topology(&self, limit: usize) -> Result<Topology> {
         Ok(self.traffic()?.topology(limit).await?)
@@ -79,7 +93,15 @@ mod tests {
             );
             assert_eq!(
                 client
-                    .query_traffic_usage(GroupBy::Process, 10)
+                    .query_traffic_usage(GroupBy::Process, None, 10)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                unavailable
+            );
+            assert_eq!(
+                client
+                    .query_traffic_usage_by_keys(GroupBy::Process, vec!["curl".into()])
                     .await
                     .unwrap_err()
                     .to_string(),

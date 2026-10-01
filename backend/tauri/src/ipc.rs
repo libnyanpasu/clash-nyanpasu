@@ -1326,9 +1326,21 @@ pub async fn get_traffic_summary(
 pub async fn query_traffic_usage(
     client: tauri::State<'_, NyanpasuClient>,
     group_by: nyanpasu_traffic::GroupBy,
+    after: Option<nyanpasu_traffic::UsageCursor>,
     limit: usize,
 ) -> Result<nyanpasu_traffic::Usage> {
-    Ok(client.query_traffic_usage(group_by, limit).await?)
+    Ok(client.query_traffic_usage(group_by, after, limit).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_usage_by_keys(
+    client: tauri::State<'_, NyanpasuClient>,
+    group_by: nyanpasu_traffic::GroupBy,
+    keys: Vec<String>,
+) -> Result<Vec<nyanpasu_traffic::UsageGroup>> {
+    Ok(client.query_traffic_usage_by_keys(group_by, keys).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]

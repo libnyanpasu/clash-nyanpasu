@@ -1,159 +1,167 @@
 import { useMemo, useState } from 'react'
-import HighlightText from '@/components/ui/highlight-text'
 import { ScrollArea, useScrollAreaViewport } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
-import { useClashRules } from '@nyanpasu/interface'
+import {
+  useClashProxies,
+  useClashRules,
+  type Bytes,
+  type ClashRule,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  columnVisibilityFeature,
-  createSortedRowModel,
-  flexRender,
-  rowSortingFeature,
-  tableFeatures,
-  useTable,
-} from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import {
+  RULE_ROW_HEIGHT,
+  RuleRow,
+  RulesHeader,
+  type RuleSort,
+} from './_modules/rule-row'
+import {
+  ruleLabel,
+  useRuleStats,
+  type RuleLiveStats,
+} from './_modules/use-rule-stats'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/rules/')({
   component: RouteComponent,
 })
 
-const features = tableFeatures({
-  rowSortingFeature,
-  columnVisibilityFeature,
-  sortedRowModel: createSortedRowModel(),
-})
+const EMPTY_RULES: ClashRule[] = []
 
-const Viewer = ({ search }: { search: string }) => {
+type RuleEntry = {
+  /** 1-based position in the rule list. */
+  index: number
+  rule: ClashRule
+  label: string
+  /**
+   * Only the first of the rules sharing a type and payload can match, so the
+   * stats keyed by them are its alone.
+   */
+  first: boolean
+}
+
+type RuleItem = RuleEntry & {
+  live?: RuleLiveStats
+  total?: Bytes
+}
+
+const sortValue: Record<
+  Exclude<RuleSort, 'index'>,
+  (item: RuleItem) => number
+> = {
+  connections: (item) => item.live?.connections ?? 0,
+  speed: (item) =>
+    item.live ? item.live.downloadSpeed + item.live.uploadSpeed : 0,
+  total: (item) => (item.total ? item.total.download + item.total.upload : 0),
+}
+
+const Viewer = ({ search, sort }: { search: string; sort: RuleSort }) => {
   const { data } = useClashRules()
+
+  const rules = data?.rules ?? EMPTY_RULES
 
   const { proxy } = IndexRoute.useSearch()
 
   const { viewportRef } = useScrollAreaViewport()
 
-  const filteredRules = useMemo(() => {
-    const rules = data?.rules ?? []
+  const {
+    proxies: { data: proxies },
+  } = useClashProxies()
 
-    const proxyFilteredRules = proxy
-      ? rules.filter((rule) => rule.proxy === proxy)
-      : rules
+  const groupIcons = useMemo(
+    () => new Map(proxies?.groups.map((group) => [group.name, group.icon])),
+    [proxies],
+  )
+
+  // Every rule is queried, whatever the filter, so sorting sees them all.
+  const { live, totals } = useRuleStats(rules)
+
+  const entries = useMemo(() => {
+    const seen = new Set<string>()
+
+    const all = rules.map<RuleEntry>((rule, index) => {
+      const label = ruleLabel(rule.type, rule.payload)
+      const first = !seen.has(label)
+
+      seen.add(label)
+
+      return { index: index + 1, rule, label, first }
+    })
+
+    const proxyFiltered = proxy
+      ? all.filter(({ rule }) => rule.proxy === proxy)
+      : all
 
     if (!search.trim()) {
-      return proxyFilteredRules
+      return proxyFiltered
     }
 
     const searchLower = search.toLowerCase()
 
-    return proxyFilteredRules.filter((rule) => {
+    return proxyFiltered.filter(({ rule }) => {
       return (
         rule.type?.toLowerCase().includes(searchLower) ||
         rule.payload?.toLowerCase().includes(searchLower) ||
         rule.proxy?.toLowerCase().includes(searchLower)
       )
     })
-  }, [data?.rules, proxy, search])
+  }, [rules, proxy, search])
+
+  const items = useMemo(() => {
+    const withStats = entries.map<RuleItem>((entry) =>
+      entry.first
+        ? {
+            ...entry,
+            live: live.get(entry.label),
+            total: totals?.get(entry.label),
+          }
+        : entry,
+    )
+
+    if (sort === 'index') {
+      return withStats
+    }
+
+    const value = sortValue[sort]
+
+    return withStats.sort((a, b) => value(b) - value(a) || a.index - b.index)
+  }, [entries, live, totals, sort])
 
   const rowVirtualizer = useVirtualizer({
-    count: filteredRules.length,
+    count: items.length,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => 48,
+    estimateSize: () => RULE_ROW_HEIGHT,
+    getItemKey: (index) => items[index].index,
     overscan: 10,
-    measureElement: (element) => element?.getBoundingClientRect().height,
   })
-
-  const virtualItems = rowVirtualizer.getVirtualItems()
-
-  const table = useTable({
-    features,
-    data: filteredRules,
-    columns: [
-      {
-        accessorKey: 'Index',
-        header: 'Index',
-        cell: (info) => info.row.index + 1,
-      },
-      {
-        accessorKey: 'type',
-        header: 'Type',
-        cell: (info) => (
-          <HighlightText searchText={search}>
-            {info.row.original.type || ''}
-          </HighlightText>
-        ),
-      },
-      {
-        accessorKey: 'payload',
-        header: 'Payload',
-        cell: (info) => (
-          <HighlightText searchText={search}>
-            {info.row.original.payload || ''}
-          </HighlightText>
-        ),
-      },
-      {
-        accessorKey: 'proxy',
-        header: 'Proxy',
-        cell: (info) => (
-          <HighlightText searchText={search}>
-            {info.row.original.proxy || ''}
-          </HighlightText>
-        ),
-      },
-    ],
-    // state: {
-    //   sorting,
-    // },
-    // onSortingChange: setSorting,
-    debugTable: true,
-  })
-
-  const { rows } = table.getRowModel()
 
   return (
     <div
-      className="mx-auto max-w-7xl px-8"
+      className="relative mx-auto max-w-7xl"
       data-slot="rules-virtual-container"
       style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
     >
-      <table
-        className="w-full min-w-208 table-fixed"
-        data-slot="rules-virtual-table"
-      >
-        <colgroup>
-          <col className="w-20" />
-          <col className="w-40" />
-          <col />
-          <col className="w-40" />
-        </colgroup>
+      {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+        const item = items[virtualRow.index]
 
-        <tbody className="select-text" data-slot="rules-virtual-tbody">
-          {virtualItems.map((virtualRow, index) => {
-            const row = rows[virtualRow.index]
-
-            const offset = virtualRow.start - index * virtualRow.size
-
-            return (
-              <tr
-                key={row.id}
-                data-index={virtualRow.index}
-                data-slot="rules-virtual-tr"
-                style={{
-                  height: `${virtualRow.size}px`,
-                  transform: `translateY(${offset}px)`,
-                }}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} data-slot="rules-virtual-td">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+        return (
+          <div
+            key={virtualRow.key}
+            className="absolute inset-x-0 top-0 select-text"
+            style={{ transform: `translateY(${virtualRow.start}px)` }}
+          >
+            <RuleRow
+              index={item.index}
+              rule={item.rule}
+              live={item.live}
+              total={item.total}
+              icon={groupIcons.get(item.rule.proxy)}
+              search={search}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -161,10 +169,18 @@ const Viewer = ({ search }: { search: string }) => {
 function RouteComponent() {
   const [search, setSearch] = useState('')
 
+  const [sort, setSort] = useState<RuleSort>('index')
+
   return (
     <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
-      <ScrollArea className="min-h-0 flex-1" scrollbars="both" type="hover">
-        <Viewer search={search} />
+      <div className="bg-mixed-background shrink-0">
+        <div className="mx-auto max-w-7xl">
+          <RulesHeader sort={sort} onSortChange={setSort} />
+        </div>
+      </div>
+
+      <ScrollArea className="min-h-0 flex-1" type="hover">
+        <Viewer search={search} sort={sort} />
       </ScrollArea>
 
       <div

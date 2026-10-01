@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from 'react'
+import { memo, useDeferredValue, useMemo, useState } from 'react'
 import { ScrollArea, useScrollAreaViewport } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import {
@@ -56,7 +56,15 @@ const sortValue: Record<
   total: (item) => (item.total ? item.total.download + item.total.upload : 0),
 }
 
-const Viewer = ({ search, sort }: { search: string; sort: RuleSort }) => {
+// Memoized so a keystroke's urgent render skips the list; it re-renders with
+// the deferred search term, or on its own stream and prop updates.
+const Viewer = memo(function Viewer({
+  search,
+  sort,
+}: {
+  search: string
+  sort: RuleSort
+}) {
   const { data } = useClashRules()
 
   const rules = data?.rules ?? EMPTY_RULES
@@ -164,10 +172,14 @@ const Viewer = ({ search, sort }: { search: string; sort: RuleSort }) => {
       })}
     </div>
   )
-}
+})
 
 function RouteComponent() {
   const [search, setSearch] = useState('')
+
+  // Filtering and highlighting every rule is heavy; typing stays responsive
+  // while the list catches up with the latest term.
+  const deferredSearch = useDeferredValue(search)
 
   const [sort, setSort] = useState<RuleSort>('index')
 
@@ -186,7 +198,7 @@ function RouteComponent() {
       </div>
 
       <ScrollArea className="min-h-0 flex-1" type="hover">
-        {showRules && <Viewer search={search} sort={sort} />}
+        {showRules && <Viewer search={deferredSearch} sort={sort} />}
       </ScrollArea>
 
       <div

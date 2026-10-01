@@ -1,3 +1,4 @@
+import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import FilterListRounded from '~icons/material-symbols/filter-list-rounded'
 import {
   lazy,
@@ -11,6 +12,12 @@ import {
   useState,
 } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
   Modal,
@@ -24,13 +31,6 @@ import {
   useScrollArea,
   useScrollAreaViewport,
 } from '@/components/ui/scroll-area'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { m } from '@/paraglide/messages'
 import {
   useFileLogs,
@@ -40,6 +40,7 @@ import {
   type LogRow,
   type LogSource,
 } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/utils'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Route } from '../route'
 import {
@@ -126,44 +127,63 @@ export default function FileLogs({ source }: { source: LogSource }) {
   useEffect(() => setFollowing(true), [file, filter])
   const logs = useFileLogs(source, file, filter)
   const filterCount = [target, from, to].filter(Boolean).length
+  const fileName = file
+    ? (logs.files.find((entry) => entry.id === file)?.name ?? file)
+    : m.logs_current_file()
+  const selectFile = (value: string | null) => {
+    setFollowing(true)
+    setFile(value)
+  }
   return (
     <LogsLayout
       source={source}
+      search={
+        <LogSearch
+          value={search}
+          onChange={(value) => {
+            setSearch(value)
+            setFollowing(true)
+          }}
+          placeholder={m.logs_filter_placeholder()}
+        />
+      }
       actions={
         <>
-          <div className="max-w-72 min-w-0 flex-1">
-            <Select
-              variant="outlined"
-              value={file ?? 'current'}
-              onValueChange={(value) => {
-                setFollowing(true)
-                setFile(value === 'current' ? null : value)
-              }}
-            >
-              <SelectTrigger
-                className="h-10 min-w-0 py-2"
-                aria-label={m.logs_file_label()}
+          <DropdownMenu align="end">
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label={`${m.logs_file_label()}: ${fileName}`}
+                title={fileName}
+                className={cn(
+                  'bg-surface-variant dark:bg-surface-variant/30',
+                  'text-on-surface dark:text-on-surface',
+                  'flex w-40 min-w-28 shrink items-center gap-2 rounded-full pr-2 pl-4 lg:w-56',
+                )}
               >
-                <SelectValue
-                  className="truncate pr-4 text-sm"
-                  placeholder={m.logs_file_label()}
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {fileName}
+                </span>
+                <ArrowDropDownRounded aria-hidden className="size-5 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuCheckboxItem
+                checked={file === null}
+                onSelect={() => selectFile(null)}
+              >
+                {m.logs_current_file()}
+              </DropdownMenuCheckboxItem>
+              {logs.files.map((entry) => (
+                <DropdownMenuCheckboxItem
+                  key={entry.id}
+                  checked={file === entry.id}
+                  onSelect={() => selectFile(entry.id)}
                 >
-                  {file
-                    ? (logs.files.find((entry) => entry.id === file)?.name ??
-                      file)
-                    : m.logs_current_file()}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current">{m.logs_current_file()}</SelectItem>
-                {logs.files.map((entry) => (
-                  <SelectItem key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+                  {entry.name}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Modal
             open={filterOpen}
             onOpenChange={(open) => {
@@ -269,77 +289,62 @@ export default function FileLogs({ source }: { source: LogSource }) {
         </>
       }
     >
-      <div
-        className="flex min-h-0 min-w-0 flex-1 flex-col"
-        data-slot="file-logs"
-      >
-        <LogSearch
-          value={search}
-          onChange={(value) => {
-            setSearch(value)
-            setFollowing(true)
-          }}
-          placeholder={m.logs_filter_placeholder()}
-        />
-        <div className={logPanelClass}>
-          {(logs.loading ||
-            logs.loadingOlder ||
-            logs.error ||
-            logs.page?.partial ||
-            (logs.page &&
-              (logs.page.malformed !== '0' ||
-                logs.page.truncated !== '0'))) && (
-            <div
-              className="text-on-surface-variant flex flex-wrap items-center gap-2 px-4 py-2 text-xs"
-              role="status"
-            >
-              {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
-              {logs.loading && (
+      <div className={logPanelClass} data-slot="file-logs">
+        {(logs.loading ||
+          logs.loadingOlder ||
+          logs.error ||
+          logs.page?.partial ||
+          (logs.page &&
+            (logs.page.malformed !== '0' || logs.page.truncated !== '0'))) && (
+          <div
+            className="text-on-surface-variant flex flex-wrap items-center gap-2 px-4 py-2 text-xs"
+            role="status"
+          >
+            {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
+            {logs.loading && (
+              <span>
+                {m.logs_loading()}
+                {logs.page &&
+                  ` ${(Number(logs.page.indexed_bytes) / 1048576).toFixed(1)} / ${(Number(logs.page.file_bytes) / 1048576).toFixed(1)} MiB`}
+              </span>
+            )}
+            {logs.error && (
+              <>
+                <span className="text-error">{errorMessage(logs.error)}</span>
+                <Button onClick={() => logs.retry()}>{m.logs_retry()}</Button>
+              </>
+            )}
+            {logs.page?.partial && <span>{m.logs_partial_coverage()}</span>}
+            {logs.page &&
+              (logs.page.malformed !== '0' || logs.page.truncated !== '0') && (
                 <span>
-                  {m.logs_loading()}
-                  {logs.page &&
-                    ` ${(Number(logs.page.indexed_bytes) / 1048576).toFixed(1)} / ${(Number(logs.page.file_bytes) / 1048576).toFixed(1)} MiB`}
+                  {m.logs_parse_diagnostics({
+                    malformed: logs.page.malformed,
+                    truncated: logs.page.truncated,
+                  })}
                 </span>
               )}
-              {logs.error && (
-                <>
-                  <span className="text-error">{errorMessage(logs.error)}</span>
-                  <Button onClick={() => logs.retry()}>{m.logs_retry()}</Button>
-                </>
-              )}
-              {logs.page?.partial && <span>{m.logs_partial_coverage()}</span>}
-              {logs.page &&
-                (logs.page.malformed !== '0' ||
-                  logs.page.truncated !== '0') && (
-                  <span>
-                    {m.logs_parse_diagnostics({
-                      malformed: logs.page.malformed,
-                      truncated: logs.page.truncated,
-                    })}
-                  </span>
-                )}
-            </div>
-          )}
-          <ScrollArea className="min-h-0 flex-1">
-            <FileRows
-              key={`${file}:${JSON.stringify(filter)}`}
-              logs={logs}
-              search={debounced}
-              following={following}
-              setFollowing={setFollowing}
-              setUnseen={setUnseen}
-            />
-          </ScrollArea>
-          {!following && (
-            <LogFollowButton
-              unseen={unseen}
-              onClick={() => {
-                setFollowing(true)
-                logs.latest()
-              }}
-            />
-          )}
-        </div>
+          </div>
+        )}
+        <ScrollArea className="min-h-0 flex-1">
+          <FileRows
+            key={`${file}:${JSON.stringify(filter)}`}
+            logs={logs}
+            search={debounced}
+            following={following}
+            setFollowing={setFollowing}
+            setUnseen={setUnseen}
+          />
+        </ScrollArea>
+        {!following && (
+          <LogFollowButton
+            unseen={unseen}
+            onClick={() => {
+              setFollowing(true)
+              logs.latest()
+            }}
+          />
+        )}
       </div>
     </LogsLayout>
   )

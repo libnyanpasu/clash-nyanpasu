@@ -25,6 +25,8 @@ import { useBlockTask } from './block-task-provider'
 
 const NyanpasuUpdateContext = createContext<{
   releaseChannel: ReleaseChannel | undefined
+  /** A nightly build cannot leave the Nightly channel. */
+  isChannelLocked: boolean
   setReleaseChannel: (channel: ReleaseChannel) => Promise<void>
   isChangingChannel: boolean
   currentVersion: string
@@ -61,7 +63,7 @@ export default function NyanpasuUpdateProvider({
   const { value: updateSources } = useSetting('update_sources')
 
   const { query: channelQuery, mutation: channelMutation } = useReleaseChannel()
-  const releaseChannel = channelQuery.data
+  const releaseChannel = channelQuery.data?.current
   const channelRef = useRef(releaseChannel)
   channelRef.current = releaseChannel
   const configKey = JSON.stringify([releaseChannel, updateSources])
@@ -187,6 +189,7 @@ export default function NyanpasuUpdateProvider({
     <NyanpasuUpdateContext.Provider
       value={{
         releaseChannel,
+        isChannelLocked: channelQuery.data?.installed === 'nightly',
         setReleaseChannel,
         isChangingChannel: channelMutation.isPending,
         currentVersion: packageJson.version,

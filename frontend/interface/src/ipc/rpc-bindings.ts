@@ -232,7 +232,9 @@ export const commands = {
       IpcError
     >(__RPC_INVOKE('check_update')),
   getReleaseChannel: () =>
-    typedError<ReleaseChannel, IpcError>(__RPC_INVOKE('get_release_channel')),
+    typedError<ReleaseChannelInfo, IpcError>(
+      __RPC_INVOKE('get_release_channel'),
+    ),
   getSystemAccentColor: () =>
     typedError<string | null, IpcError>(
       __RPC_INVOKE('get_system_accent_color'),
@@ -3153,6 +3155,13 @@ export type Rate = {
 }
 
 export type ReleaseChannel = 'stable' | 'beta' | 'nightly'
+
+export type ReleaseChannelInfo = {
+  /**  The feed update checks follow. */
+  current: ReleaseChannel
+  /**  The channel of the installed build; a nightly build cannot leave Nightly. */
+  installed: ReleaseChannel
+}
 
 export type RemoteProfileOptionsPatch =
   RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize

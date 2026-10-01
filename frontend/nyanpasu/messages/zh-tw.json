@@ -734,7 +734,7 @@
   "release_channel_stable": "穩定版",
   "release_channel_beta": "測試版",
   "release_channel_nightly": "每夜版",
-  "release_channel_nightly_notice": "切換到每夜版後，將無法切回穩定版或測試版。",
+  "release_channel_nightly_notice": "每夜版建置無法切回穩定版或測試版。",
   "release_channel_stable_notice": "切換到穩定版後，將保留目前版本，直到有版本號更高的穩定版可用。",
   "configuration_status": "設定狀態",
   "configuration_healthy": "已同步",

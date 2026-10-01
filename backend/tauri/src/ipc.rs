@@ -1521,13 +1521,22 @@ pub struct UpdateWrapper {
     raw_json: serde_json::Value,
 }
 
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub struct ReleaseChannelInfo {
+    /// The feed update checks follow.
+    current: crate::bundle::Channel,
+    /// The channel of the installed build; a nightly build cannot leave Nightly.
+    installed: crate::bundle::Channel,
+}
+
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_release_channel(
-    client: State<'_, NyanpasuClient>,
-) -> Result<crate::bundle::Channel> {
-    Ok(client.release_channel().await?)
+pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<ReleaseChannelInfo> {
+    Ok(ReleaseChannelInfo {
+        current: client.release_channel().await?,
+        installed: client.installed_release_channel(),
+    })
 }
 
 #[nyanpasu_macro::rpc]

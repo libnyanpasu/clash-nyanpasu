@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { rpc } from './rpc'
-import { type ReleaseChannel } from './rpc-bindings'
+import { type ReleaseChannel, type ReleaseChannelInfo } from './rpc-bindings'
 
 const queryKey = ['getReleaseChannel'] as const
 
@@ -18,7 +18,10 @@ export const useReleaseChannel = () => {
     mutationFn: async (channel: ReleaseChannel) =>
       unwrapResult(await rpc.setReleaseChannel(channel)),
     onSuccess: (_, channel) => {
-      queryClient.setQueryData(queryKey, channel)
+      queryClient.setQueryData<ReleaseChannelInfo>(
+        queryKey,
+        (info) => info && { ...info, current: channel },
+      )
     },
   })
 

@@ -3418,6 +3418,7 @@ async fn a_gui_save_never_reaches_the_runtime() {
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
+        crate::bundle::Channel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )
@@ -3466,6 +3467,7 @@ async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
+        crate::bundle::Channel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )
@@ -3872,6 +3874,7 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
+        crate::bundle::Channel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )
@@ -3904,6 +3907,7 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
+        crate::bundle::Channel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )
@@ -3938,6 +3942,7 @@ async fn domain_actor_refuses_writes_before_composition_is_ready() {
     let application = crate::client::application::ApplicationClient::from_manager(
         crate::state::mutation::MutationCoordinator::pending(),
         manager,
+        crate::bundle::Channel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )

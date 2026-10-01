@@ -1,12 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { invokeMutation, invokeQuery } from './query-options'
 import { rpc } from './rpc'
 import { type RuleProviderItem } from './rpc-bindings'
 
-export interface ClashRulesProviderQueryItem extends RuleProviderItem {
-  mutate: () => Promise<void>
-}
+export type ClashRulesProviderQueryItem = RuleProviderItem
 
 export type ClashRulesProviderQuery = Record<
   string,
@@ -15,32 +13,23 @@ export type ClashRulesProviderQuery = Record<
 
 export const useClashRulesProvider = () => {
   const providersQuery = rpc.queries.clashApiGetProvidersRules()
-  const updateProvidersRules = rpc.mutations.clashApiUpdateProvidersRules
-  const query = useQuery({
+  return useQuery({
     queryKey: providersQuery.queryKey,
-    queryFn: async () => {
-      const result = unwrapResult(await invokeQuery(providersQuery))
-
-      if (!result) return {}
-
-      const { providers } = result
-
-      return Object.fromEntries(
-        Object.entries(providers).map(([key, value]) => [
-          key,
-          {
-            ...value,
-            mutate: async () => {
-              unwrapResult(await invokeMutation(updateProvidersRules, [key]))
-              await query.refetch()
-            },
-          },
-        ]),
-      ) satisfies ClashRulesProviderQuery
-    },
+    queryFn: async (): Promise<ClashRulesProviderQuery> =>
+      unwrapResult(await invokeQuery(providersQuery))?.providers ?? {},
   })
+}
 
-  return {
-    ...query,
-  }
+export const useUpdateClashRulesProvider = () => {
+  const queryClient = useQueryClient()
+  const updateProvidersRules = rpc.mutations.clashApiUpdateProvidersRules
+  return useMutation({
+    mutationKey: updateProvidersRules.mutationKey,
+    mutationFn: async (name: string) =>
+      unwrapResult(await invokeMutation(updateProvidersRules, [name])),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: rpc.queries.clashApiGetProvidersRules().queryKey,
+      }),
+  })
 }

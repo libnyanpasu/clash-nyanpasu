@@ -45,10 +45,14 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
 
   const queryClient = useQueryClient()
 
+  // Invalidation refetches only mounted queries and marks the rest stale for
+  // their next mount. Refetching unmounted ones too (the `proxies` event fires
+  // every few seconds while delays change) kept every query ever visited
+  // fetching in the background and never let it be garbage collected.
   const refetchQueries = (keys: readonly QueryKey[]) => {
     Promise.all(
       keys.map((queryKey) =>
-        queryClient.refetchQueries({
+        queryClient.invalidateQueries({
           queryKey,
         }),
       ),

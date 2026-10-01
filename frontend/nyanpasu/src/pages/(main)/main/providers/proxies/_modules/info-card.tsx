@@ -22,7 +22,7 @@ export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
         <div className="flex items-center justify-between px-1">
           <div className="text-secondary text-sm">
             {m.providers_proxies_proxy_count_label({
-              count: data.proxies.length,
+              count: data.proxyCount,
             })}
           </div>
 

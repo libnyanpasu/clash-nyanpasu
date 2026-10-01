@@ -1,3 +1,8 @@
+// Configures MonacoEnvironment and the @monaco-editor/react loader. Imported
+// here rather than from the editor route file: route files are loaded eagerly
+// by the route tree, so a side-effect import there pulls Monaco into the main
+// window. Every editor component imports this module before mounting Monaco.
+import '@/services/monaco'
 import nyanpasuMergeSchema from 'meta-json-schema/schemas/clash-nyanpasu-merge-json-schema.json'
 import clashMetaSchema from 'meta-json-schema/schemas/meta-json-schema.json'
 import * as monaco from 'monaco-editor'

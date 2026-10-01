@@ -1,4 +1,5 @@
 pub mod actor_v2;
+pub mod backup;
 pub mod clash;
 pub mod download;
 pub mod manager;

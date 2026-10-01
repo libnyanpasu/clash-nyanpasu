@@ -90,6 +90,39 @@ impl Storage {
             inner: Arc::new(inner),
         })
     }
+
+    /// Writes a consistent snapshot of the store into a new database at `dest`.
+    ///
+    /// Everything is read in one read transaction, so the snapshot is
+    /// consistent even while writers are active, and it does not copy the
+    /// file, which redb keeps locked on Windows.
+    pub fn export_to(&self, dest: &std::path::Path) -> Result<()> {
+        let read_txn = self
+            .inner
+            .instance
+            .begin_read()
+            .context(BeginTransactionSnafu)?;
+        let source = read_txn
+            .open_table(NYANPASU_TABLE)
+            .context(OpenTableSnafu)?;
+
+        let snapshot = StorageInner::create_and_init_database(dest)?;
+        let write_txn = snapshot.begin_write().context(BeginTransactionSnafu)?;
+        {
+            let mut table = write_txn
+                .open_table(NYANPASU_TABLE)
+                .context(OpenTableSnafu)?;
+            for entry in source.iter().context(ListItemsSnafu)? {
+                let (key, value) = entry.context(ListItemsSnafu)?;
+                table
+                    .insert(key.value(), value.value())
+                    .context(WriteItemSnafu {
+                        key: String::from_utf8_lossy(key.value()),
+                    })?;
+            }
+        }
+        write_txn.commit().context(CommitTransactionSnafu)
+    }
 }
 
 impl Deref for Storage {

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useDeferredValue, useMemo } from 'react'
 import {
   useClashConnectionDetails,
   useTrafficUsageByKeys,
@@ -24,7 +24,11 @@ export type RuleLiveStats = {
  * `ruleLabel`. `totals` is undefined while traffic recording is unavailable.
  */
 export function useRuleStats(rules: readonly ClashRule[]) {
-  const { data: details } = useClashConnectionDetails()
+  const { data: latest } = useClashConnectionDetails()
+
+  // Every sample re-sorts the rules by their live stats; a deferred sample
+  // renders in the background, where input and scrolling interrupt it.
+  const details = useDeferredValue(latest)
 
   const labels = useMemo(
     () => [...new Set(rules.map((rule) => ruleLabel(rule.type, rule.payload)))],

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { ScrollArea, useScrollAreaViewport } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import {
@@ -171,6 +171,12 @@ function RouteComponent() {
 
   const [sort, setSort] = useState<RuleSort>('index')
 
+  // Building the rule list and mounting its rows is the bulk of opening the
+  // page. Router updates render synchronously, so the list mounts in a
+  // deferred render instead: the page commits at once and the rows render
+  // right after, into the scroll area's viewport already attached.
+  const showRules = useDeferredValue(true, false)
+
   return (
     <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
       <div className="bg-mixed-background shrink-0">
@@ -180,7 +186,7 @@ function RouteComponent() {
       </div>
 
       <ScrollArea className="min-h-0 flex-1" type="hover">
-        <Viewer search={search} sort={sort} />
+        {showRules && <Viewer search={search} sort={sort} />}
       </ScrollArea>
 
       <div

@@ -39,6 +39,7 @@ nyanpasu-config = { path = '../nyanpasu-config' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
 nyanpasu-egui = { path = '../nyanpasu-egui' }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
+nyanpasu-panics = { path = '../nyanpasu-panics' }
 
 # Common Utilities
 tokio = { workspace = true, features = ['test-util'] }

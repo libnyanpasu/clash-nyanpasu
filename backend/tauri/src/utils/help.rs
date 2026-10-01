@@ -15,12 +15,8 @@ use std::{
     str::FromStr,
 };
 use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::ShellExt;
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
-
-use crate::trace_err;
-use tauri_plugin_opener::OpenerExt;
 
 /// read data from yaml as struct T
 pub fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
@@ -80,9 +76,42 @@ pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
     })
 }
 
-/// open file
-/// use vscode by default
-pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
+type Opener = fn(&Path) -> std::io::Result<()>;
+
+/// How [`open_file`] tries to show a file, in order.
+const FILE_OPENERS: &[(&str, Opener)] = &[
+    ("VS Code", open_with_vscode),
+    ("default app", open_with_default_app),
+    #[cfg(windows)]
+    ("Notepad", open_with_notepad),
+    ("file manager", reveal_in_file_manager),
+];
+
+/// Opens a file for the user: VS Code when installed, otherwise the default
+/// app, then (Windows) Notepad, then the file manager with the file selected.
+///
+/// Each attempt runs under [`nyanpasu_panics::catch_recoverable`], so a
+/// launcher that panics fails over to the next one instead of ending the
+/// process. Errors only when every attempt fails.
+pub fn open_file(path: &Path) -> Result<()> {
+    let mut failures = Vec::new();
+    for (name, open) in FILE_OPENERS {
+        let failure = match nyanpasu_panics::catch_recoverable(|| open(path)) {
+            Ok(Ok(())) => return Ok(()),
+            Ok(Err(err)) => err.to_string(),
+            Err(panic) => panic.to_string(),
+        };
+        warn!(path = %path.display(), opener = name, "failed to open file: {failure}");
+        failures.push(format!("{name}: {failure}"));
+    }
+    bail!(
+        "failed to open \"{}\" ({})",
+        path.display(),
+        failures.join("; ")
+    )
+}
+
+fn open_with_vscode(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "macos")]
     let code = "Visual Studio Code";
     #[cfg(windows)]
@@ -90,39 +119,38 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
     #[cfg(all(not(windows), not(target_os = "macos")))]
     let code = "code";
 
-    let _shell = app.shell();
+    let code_path = which::which(code).map_err(std::io::Error::other)?;
+    log::debug!(target: "app", "find VScode `{}`", code_path.display());
+    #[cfg(not(windows))]
+    {
+        crate::utils::open::with(path, code)
+    }
+    #[cfg(windows)]
+    {
+        use std::ffi::OsString;
+        let mut buf = OsString::with_capacity(path.as_os_str().len() + 2);
+        buf.push("\"");
+        buf.push(path.as_os_str());
+        buf.push("\"");
 
-    trace_err!(
-        match which::which(code) {
-            Ok(code_path) => {
-                log::debug!(target: "app", "find VScode `{}`", code_path.display());
-                #[cfg(not(windows))]
-                {
-                    crate::utils::open::with(path, code)
-                }
-                #[cfg(windows)]
-                {
-                    use std::ffi::OsString;
-                    let mut buf = OsString::with_capacity(path.as_os_str().len() + 2);
-                    buf.push("\"");
-                    buf.push(path.as_os_str());
-                    buf.push("\"");
+        open::with_detached(buf, code)
+    }
+}
 
-                    open::with_detached(buf, code)
-                }
-            }
-            Err(err) => {
-                log::error!(target: "app", "Can't find VScode `{err:?}`");
-                // default open
-                app.opener()
-                    .open_url(path.to_string_lossy().to_string(), None::<String>)
-                    .map_err(std::io::Error::other)
-            }
-        },
-        "Can't open file"
-    );
+fn open_with_default_app(path: &Path) -> std::io::Result<()> {
+    tauri_plugin_opener::open_path(path, None::<&str>).map_err(std::io::Error::other)
+}
 
-    Ok(())
+#[cfg(windows)]
+fn open_with_notepad(path: &Path) -> std::io::Result<()> {
+    std::process::Command::new("notepad.exe")
+        .arg(path)
+        .spawn()
+        .map(drop)
+}
+
+fn reveal_in_file_manager(path: &Path) -> std::io::Result<()> {
+    tauri_plugin_opener::reveal_item_in_dir(path).map_err(std::io::Error::other)
 }
 
 /// Resolve the UI language from the OS locale, as the canonical i18n key.

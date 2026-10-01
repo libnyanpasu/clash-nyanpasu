@@ -61,37 +61,15 @@ fn deadlock_detection() {
 /// Shows a panic dialog and saves logs, then exits: through the app when a
 /// handle exists, so the shutdown still runs, or the process otherwise.
 fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
-    std::panic::set_hook(Box::new(move |panic_info| {
-        use std::backtrace::{Backtrace, BacktraceStatus};
-        let payload = panic_info.payload();
-
-        #[allow(clippy::manual_map)]
-        let payload = if let Some(s) = payload.downcast_ref::<&str>() {
-            Some(&**s)
-        } else if let Some(s) = payload.downcast_ref::<String>() {
-            Some(s.as_str())
-        } else {
-            None
-        };
-
-        let location = panic_info.location().map(|l| l.to_string());
-        let (backtrace, note) = {
-            let backtrace = Backtrace::force_capture();
-            let note = (backtrace.status() == BacktraceStatus::Disabled)
-                .then_some("run with RUST_BACKTRACE=1 environment variable to display a backtrace");
-            (Some(backtrace), note)
-        };
-
-        tracing::error!(
-            panic.payload = payload,
-            panic.location = location,
-            panic.backtrace = backtrace.as_ref().map(tracing::field::display),
-            panic.note = note,
-            "A panic occurred",
-        );
+    nyanpasu_panics::setup_panic_hook(move |report| {
+        let nyanpasu_panics::PanicReport {
+            payload,
+            location,
+            backtrace,
+        } = report;
 
         // This is a workaround for the upstream issue: https://github.com/tauri-apps/tauri/issues/10546
-        if let Some(s) = payload.as_ref()
+        if let Some(s) = payload
             && s.contains("PostMessage failed ; is the messages queue full?")
         {
             return;
@@ -99,7 +77,13 @@ fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
 
         // FIXME: maybe move this logic to a util function?
         let msg = format!(
-            "Oops, we encountered some issues and program will exit immediately.\n\npayload: {payload:#?}\nlocation: {location:?}\nbacktrace: {backtrace:#?}\n\n",
+            "Oops, we encountered some issues and program will exit immediately.
+
+payload: {payload:#?}
+location: {location:?}
+backtrace: {backtrace:#?}
+
+",
         );
         let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
             .arg("panic-dialog")
@@ -114,7 +98,7 @@ fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
             Some(app_handle) => app_handle.exit(1),
             None => std::process::exit(1),
         }
-    }));
+    });
 }
 
 /// Queues a deep link for the frontend, then pokes any listening frontend to

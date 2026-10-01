@@ -414,16 +414,12 @@ pub async fn replace_profile_definition(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn view_profile(
-    app_handle: tauri::AppHandle,
-    client: State<'_, NyanpasuClient>,
-    uid: ProfileId,
-) -> Result {
+pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> Result {
     let path = client.get_profile_materialized_path(uid.clone()).await?;
     if !path.exists() {
         return Err(ProfileFileMissingSnafu { uid, path: &path }.build().into());
     }
-    help::open_file(app_handle, path)?;
+    help::open_file(&path)?;
     Ok(())
 }
 

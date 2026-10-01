@@ -3,7 +3,7 @@ import CloseRounded from '~icons/material-symbols/close-rounded'
 import { sentenceCase } from 'change-case'
 import dayjs from 'dayjs'
 import { filesize } from 'filesize'
-import { ComponentProps } from 'react'
+import { ComponentProps, memo } from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -28,6 +28,7 @@ import {
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import type { ConnectionRow } from './active-viewer'
+import { RelativeTimeCell } from './cells'
 
 // Keys added by ConnectionRow, plus the two wrapper fields, that should not
 // be rendered as their own dialog row: `metadata` and `_extra` get their own
@@ -120,9 +121,7 @@ function formatValue(key: string, value: any): React.ReactNode {
   const date = dayjs(value)
 
   if (date.isValid() && typeof value === 'string' && value.includes('T')) {
-    return (
-      <span title={date.format('YYYY-MM-DD HH:mm:ss')}>{date.fromNow()}</span>
-    )
+    return <RelativeTimeCell ms={date.valueOf()} />
   }
 
   // An unknown (`_extra`) field's value can itself be a nested JSON object.
@@ -133,8 +132,16 @@ function formatValue(key: string, value: any): React.ReactNode {
   return <span>{String(value)}</span>
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function RowRender({ label, value }: { label: string; value: any }) {
+// Memoized: a new sample re-renders only the fields whose values changed,
+// while relative times follow the tick on their own.
+const RowRender = memo(function RowRender({
+  label,
+  value,
+}: {
+  label: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value: any
+}) {
   const key = label.toLowerCase()
 
   return (
@@ -155,7 +162,7 @@ function RowRender({ label, value }: { label: string; value: any }) {
       </div>
     </>
   )
-}
+})
 
 // A connection's fields as dialog rows, keyed for `RowRender`'s labels.
 type DetailFields = Array<[key: string, value: unknown]>
@@ -225,8 +232,9 @@ export function closedConnectionDetail(
 
 // One dialog for the whole table, selected by connection id: a dialog owned by
 // a virtualized row would follow the row's position, and every row would build
-// its hidden dialog content on each sample.
-export function ConnectionDetailModal({
+// its hidden dialog content on each sample. Memoized, so a sample re-renders it
+// only while it shows that connection.
+export const ConnectionDetailModal = memo(function ConnectionDetailModal({
   detail,
   onClose,
   onCloseConnection,
@@ -300,7 +308,7 @@ export function ConnectionDetailModal({
       </ModalContent>
     </Modal>
   )
-}
+})
 
 export default function TableRow({
   onDoubleClick,

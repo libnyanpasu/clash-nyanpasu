@@ -34,7 +34,7 @@ export function ModalTrigger({
   asChild,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Trigger>) {
-  const { layoutId } = useModalContext()
+  const { open, layoutId } = useModalContext()
 
   const Comp = asChild ? Slot.Root : 'button'
 
@@ -59,6 +59,9 @@ export function ModalTrigger({
               maxHeight: 'min(100%, calc(4 * 100cqw))',
             }}
             data-slot="modal-trigger-placeholder"
+            // Measure only when the shared layout changes hands; without a
+            // dependency, motion measures layout on every owner re-render.
+            layoutDependency={open}
             layout
             layoutId={layoutId}
           />
@@ -130,6 +133,11 @@ export function ModalContent({
               asChild
             >
               <motion.div
+                // A constant keeps the open dialog from being re-measured each
+                // time its content re-renders. It must differ from the
+                // placeholder's dependency: motion hands a shared layout over
+                // only between members whose dependencies differ.
+                layoutDependency="modal-content"
                 layout
                 layoutId={layoutId}
                 initial={{

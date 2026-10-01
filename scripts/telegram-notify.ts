@@ -105,11 +105,12 @@ interface GitHubRelease {
   assets: GitHubAsset[];
 }
 
-async function fetchRelease(): Promise<GitHubRelease> {
+async function fetchRelease(version: string): Promise<GitHubRelease> {
   const { owner, repo } = repoInfo;
-  const url = nightlyBuild
-    ? `https://api.github.com/repos/${owner}/${repo}/releases/tags/pre-release`
-    : `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
+  // `releases/latest` never returns a prerelease, so look releases up by tag.
+  const tag = nightlyBuild ? "pre-release" : `v${version}`;
+  const url =
+    `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`;
 
   const resp = await fetch(url, {
     headers: {
@@ -192,7 +193,7 @@ async function main() {
     uploadResults = await readLocalUploadResults(UPLOAD_RESULTS_DIR);
     consola.success(`Loaded ${uploadResults.length} total upload results`);
   } else {
-    const release = await fetchRelease();
+    const release = await fetchRelease(version);
     const resourceMapping: string[] = [];
     const downloadTasks: Promise<void>[] = [];
 

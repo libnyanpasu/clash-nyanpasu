@@ -641,6 +641,7 @@
   "inspect_old_line": "Old line",
   "inspect_new_line": "New line",
   "inspect_change": "Change",
+  "inspect_diff_show_more": "Show {count} more lines",
   "settings_clash_control_channel_label": "Control Channel",
   "settings_clash_control_channel_prefer_ipc": "Prefer IPC (HTTP fallback)",
   "settings_clash_control_channel_http_only": "HTTP only",

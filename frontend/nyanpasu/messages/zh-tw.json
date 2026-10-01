@@ -641,6 +641,7 @@
   "inspect_old_line": "原行號",
   "inspect_new_line": "新行號",
   "inspect_change": "變更",
+  "inspect_diff_show_more": "顯示其餘 {count} 行",
   "settings_clash_control_channel_label": "控制管道",
   "settings_clash_control_channel_prefer_ipc": "IPC 優先 (不可用時退回 HTTP)",
   "settings_clash_control_channel_http_only": "僅 HTTP",

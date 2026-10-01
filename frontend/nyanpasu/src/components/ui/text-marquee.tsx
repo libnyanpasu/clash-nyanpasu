@@ -1,4 +1,3 @@
-import { motion, useAnimationControls } from 'motion/react'
 import {
   useCallback,
   useEffect,
@@ -6,7 +5,6 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import { sleep } from '@/utils'
 import { cn } from '@nyanpasu/utils'
 
 export default function TextMarquee({
@@ -36,9 +34,7 @@ export default function TextMarquee({
 
   const [textWidth, setTextWidth] = useState(0)
 
-  const controls = useAnimationControls()
-
-  const isHoveredRef = useRef(false)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   // Check if text overflows container
   const checkOverflow = useCallback(() => {
@@ -58,8 +54,6 @@ export default function TextMarquee({
 
   // Observe container size changes
   useEffect(() => {
-    checkOverflow()
-
     const resizeObserver = new ResizeObserver(() => {
       checkOverflow()
     })
@@ -71,67 +65,65 @@ export default function TextMarquee({
     return () => {
       resizeObserver.disconnect()
     }
-  }, [checkOverflow, children])
+  }, [checkOverflow])
 
-  // Animate when shouldAnimate changes
+  // Re-measure when the text changes. `children` is a new element on every
+  // parent render, so comparing the rendered text avoids a layout read per
+  // render.
+  const measuredTextRef = useRef<string | null>(null)
+
   useEffect(() => {
-    if (!shouldAnimate) {
-      controls.set({ x: 0 })
+    const text = textRef.current?.textContent ?? null
+
+    if (text !== measuredTextRef.current) {
+      measuredTextRef.current = text
+      checkOverflow()
+    }
+  })
+
+  // Pause at the start, scroll one copy's width, then jump back, forever.
+  // A Web Animation on transform runs on the compositor; motion would drive
+  // `x` from the JS frame loop.
+  useEffect(() => {
+    const container = containerRef.current
+    const content = contentRef.current
+
+    if (!shouldAnimate || !container || !content) {
       return
     }
 
+    const pause = pauseDuration * 1000
     const totalDistance = textWidth + gap
-    const animDuration = totalDistance / speed
+    const duration = pause + (totalDistance / speed) * 1000
 
-    const cancelledRef = { current: false }
+    const animation = content.animate(
+      [
+        { transform: 'translateX(0)' },
+        { transform: 'translateX(0)', offset: pause / duration },
+        { transform: `translateX(${-totalDistance}px)` },
+      ],
+      { duration, iterations: Infinity, easing: 'linear' },
+    )
 
-    const runAnimationLoop = async () => {
-      // Wait at start position
-      await sleep(pauseDuration * 1000)
-
-      if (cancelledRef.current) {
-        return
+    // Off-screen marquees (scrolled-away list rows) need not keep ticking.
+    // Observe the container: the content scrolls out of its own clip, so
+    // watching it would pause the animation mid-scroll for good.
+    // Several changes can arrive in one callback; the last one is current.
+    const visibility = new IntersectionObserver((entries) => {
+      if (entries.at(-1)?.isIntersecting) {
+        animation.play()
+      } else {
+        animation.pause()
       }
+    })
 
-      // Check if hovered, wait and retry
-      if (isHoveredRef.current) {
-        await sleep(100)
-
-        if (!cancelledRef.current) {
-          runAnimationLoop()
-        }
-
-        return
-      }
-
-      // Animate to end
-      await controls.start({
-        x: -totalDistance,
-        transition: {
-          duration: animDuration,
-          ease: 'linear',
-        },
-      })
-
-      if (cancelledRef.current) {
-        return
-      }
-
-      // Reset to start position instantly and loop
-      controls.set({ x: 0 })
-
-      if (!cancelledRef.current) {
-        runAnimationLoop()
-      }
-    }
-
-    runAnimationLoop()
+    visibility.observe(container)
 
     return () => {
-      cancelledRef.current = true
-      controls.stop()
+      visibility.disconnect()
+      animation.cancel()
     }
-  }, [shouldAnimate, textWidth, gap, speed, pauseDuration, controls])
+  }, [shouldAnimate, textWidth, gap, speed, pauseDuration])
 
   // const handleMouseEnter = () => {
   //   if (!pauseOnHover) {
@@ -199,9 +191,9 @@ export default function TextMarquee({
       }
     >
       {shouldAnimate ? (
-        <motion.div
+        <div
+          ref={contentRef}
           className="flex whitespace-nowrap"
-          animate={controls}
           data-slot="text-marquee-content"
         >
           <span
@@ -221,7 +213,7 @@ export default function TextMarquee({
           >
             {children}
           </span>
-        </motion.div>
+        </div>
       ) : (
         <div
           ref={textRef}

@@ -1,0 +1,200 @@
+# nyanpasu-geodata design
+
+## Goal
+
+Answer "where is this address / what is this host" from the databases the
+mihomo core uses, with low resident memory and sub-microsecond lookups. The
+crate is a pure service: bytes in, immutable index out. Discovering the core's
+home directory, reloading after a geo update and caching per connection belong
+to the caller.
+
+## Why compile instead of reading the files in place
+
+- **No mmap of the core's files.** mihomo rewrites `Country.mmdb` in place
+  (`os.WriteFile` after closing its own mapping, `component/updater/update_geo.go`).
+  A mapping held by this process would make that write fail on Windows and could
+  read torn data or raise `SIGBUS` on Unix.
+- **Smaller and faster than keeping the file.** An MMDB search tree spends
+  6–7 bytes per node; flattening it into sorted address ranges and merging
+  neighbours with the same record roughly halves country databases and keeps a
+  city database at country size (see benchmarks).
+- **One lookup structure for every IP source.** MMDB country, MMDB ASN and
+  `GeoIP.dat` all compile into the same range table.
+
+## Memory: the build leaves nothing behind
+
+The system allocators keep freed heap pages for the process's later
+allocations instead of returning them to the OS. Measured on macOS:
+- freeing a 121 MiB `Vec` leaves `phys_footprint` unchanged, even after
+  `malloc_zone_pressure_relief`;
+- mimalloc retains as much or more.
+
+A build that ran on the heap would therefore leave its peak, file bytes
+included, as the process footprint: 136 MiB for a 121 MiB city database whose
+index is 5 MiB. Anonymous mappings, by contrast, go back to the OS when they are
+unmapped, whatever the allocator. Hence:
+
+- `read_source` copies a file into anonymous memory. Being a copy, it never
+  maps the core's file.
+- Build buffers that scale with the input live in anonymous memory too
+  (`scratch.rs`): range-table step lists, MMDB record caches and the tree check,
+  `GeoIP.dat` sweep events, GeoSite keys, postings and FST output.
+  `ScratchVec` grows by remapping, so the old mapping is returned at once, and
+  `ScratchMap` is an open-addressing table on top of it. Only exact-size final
+  arrays are copied onto the heap.
+- ASN records are keyed by data offset in a `ScratchMap` rather than
+  deduplicated by content in heap hash maps.
+
+What remains on the heap during a build is small and bounded (tag and list
+interners, regex compilation), with one exception: the `fst` builder's node
+registry allocates many small blocks. The registry itself is bounded, but its
+freed blocks fragment the heap, so a GeoSite build still leaves about 7–9 MiB
+behind (see benchmarks). `tests/build_heap.rs` guards against large build
+buffers returning to the heap; it measures heap peaks, so it cannot see this
+kind of fragmentation.
+
+## IP range table (`table.rs`)
+
+Sorted step lists: `starts[i]` is the first address mapped to `ids[i]`, so a
+lookup is one `partition_point`.
+
+- IPv4: `u32` starts.
+- IPv6: `u64` starts over /64 blocks. A block containing any boundary finer
+  than /64 is marked `FINE` and continues in a small `u128` table. Real
+  databases have no such boundary except `::1/128`-style entries.
+- Addresses under `::/96` are looked up in the IPv4 table, the way an MMDB tree
+  nests its IPv4 subtree; IPv4-mapped addresses are canonicalised first.
+- Ids are `u16` (tag sets) or `u32` (ASN records); the two largest values mark
+  gaps and fine blocks.
+
+## Sources
+
+**MMDB (`mmdb.rs`, `ip.rs`, `asn.rs`).** `maxminddb` walks the networks, and
+a fixed 64 Ki-slot cache keyed by data offset decodes each record about once.
+A city database with millions of records costs at most 768 KiB of anonymous memory.
+IP tag sets are interned by content, so a cache eviction only repeats a decode.
+ASN records are kept exactly once per data offset.
+Before walking, `check_tree` rejects search trees in which a node other than the
+IPv4 start has two parents: a crafted DAG would make the walk exponential, and
+neither the iterator nor `Reader::verify` bounds it. Cycles need no check; the
+iterator fails on the first path deeper than the address width. Every real
+database tested has single-parent nodes plus the three standard aliases.
+
+**`GeoIP.dat` (`geoip_dat.rs`).** Per-code CIDR lists are inverted with a sweep
+over open/close events, one address family at a time in a buffer sized by a
+counting pass. Each range carries every code containing it, in file order.
+
+**`GeoSite.dat` (`site.rs`).**
+
+- `Domain` and `Full` values are stored reversed in an FST. A lookup walks the
+  host backwards once and collects postings at label boundaries.
+- `Plain` keywords go through Aho-Corasick.
+- `Regex` rules go through a `RegexSet`. Patterns the `regex` crate rejects
+  (look-around, for instance) are skipped and counted.
+- Postings are `u32`: `FULL | list << 16 | attribute set`.
+- `keep` limits the lists indexed.
+
+## Parity with the core
+
+- **Country codes.** Codes follow `mmdb.IPReader.LookupCode`:
+  - MaxMind layout (`country.iso_code`) for any unrecognised `database_type`;
+  - a bare string for `sing-geoip`;
+  - a string or a list for `Meta-geoip0`.
+
+  Codes are lowercased and repeats dropped. Records of an unexpected shape
+  yield nothing, like the core's ignored decode errors.
+- **ASN records.** Supported types are `GeoLite2-ASN`,
+  `DBIP-ASN-Lite (compat=GeoLite2-ASN)` and `ipinfo generic_asn_free.mmdb`.
+  Any other type is an error. `Asn::mihomo_label` reproduces `"<number> <org>"`.
+- **`Tags::country`** returns a tag only when exactly one tag is a two-letter
+  code, because databases mix in categories (`google`, `private`, `telegram`)
+  and some MaxMind-typed files even put `GOOGLE` in `iso_code`.
+- **GeoSite matching.** Matching follows the core's matchers: `Domain` matches
+  the value and its subdomains, `Full` the value only, `Plain` is a substring
+  match and `Regex` an unanchored search. Hosts are lowercased and lose a
+  trailing dot. Attribute keys are compared case-insensitively.
+- **`GeoIP.dat` entries.** `reverse_match` is ignored, as the core does.
+- **Known deviations.**
+  - The MMDB 6to4 (`2002::/16`) and Teredo (`2001::/32`) aliases are not
+    mirrored, so those IPv6 addresses find nothing.
+  - Entries of `GeoIP.dat` that repeat a code are merged. The core uses only
+    the first such entry.
+  - Unknown GeoSite rule types are skipped rather than failing the list.
+
+## Robustness
+
+Input files can come from any URL a subscription sets as `geox-url`, so they
+are treated as untrusted:
+- the protobuf reader is bounds-checked and allocation-free;
+- every malformed input returns `GeoError`;
+- tests cut fixtures at every length and feed random bytes, and none of them
+  may panic.
+
+Sizes are bounded where crafted input could otherwise blow up:
+- one address carries at most 255 tags and one GeoSite rule at most 255
+  attributes, since staggered overlaps would otherwise intern sets of
+  quadratic total size;
+- ids are capped by their width;
+- the MMDB walk is bounded by `check_tree`.
+
+What remains linear in the file size is the CPU spent compiling a GeoSite file
+with very many large regexes. Each pattern is still bounded by the `regex`
+crate's size limit.
+
+## Tests
+
+- **Unit tests.** `table.rs` and `files.rs` carry their own unit tests.
+- **Integration tests.** Fixtures are built in-process: a minimal MMDB writer
+  and protobuf encoders live in `tests/support`.
+- **Differential checks.** `tests/real_databases.rs` (ignored by default) runs
+  over any directory of real files:
+  - MMDB indexes against `maxminddb` lookups with the core's decoding, on
+    200 000 addresses per file;
+  - `GeoIP.dat` against per-code range membership;
+  - `GeoSite.dat` against a linear scan of every rule.
+
+  All 25 files tested agree completely, including both city databases.
+
+## Benchmarks
+
+`examples/bench.rs` reports the process memory growth over a baseline, stage
+by stage:
+- macOS: `phys_footprint` / RSS;
+- Windows: private bytes / working set;
+- Linux: `RssAnon` / `VmRSS`.
+
+It also reports the live heap (from a counting allocator), the build time,
+single-thread latency and multi-thread throughput. Each file runs in its own
+process (`bench dir <dir>` spawns them), followed by 1 M random lookups (200 k
+hosts for GeoSite). `--heap-read` reads the file with `std::fs::read` for
+comparison.
+
+Setup: release profile as shipped (`opt-level = 's'`, LTO), Apple M3
+(4P + 4E), 2026-10-02.
+
+| File                                   | Size     | Build  | Index heap | Loaded¹    | Lookup | Raw MMDB² | 8 threads  |
+| -------------------------------------- | -------- | ------ | ---------- | ---------- | ------ | --------- | ---------- |
+| `Country.mmdb` (bundled, GeoLite2)     | 7.9 MiB  | 70 ms  | 4.71 MiB   | 4.91 MiB   | 30 ns  | 112 ns    | 135 M/s    |
+| `geoip.metadb` (Meta-geoip0, default)  | 8.0 MiB  | 75 ms  | 5.21 MiB   | 5.59 MiB   | 28 ns  | 60 ns     | 138 M/s    |
+| `geoip.db` (sing-geoip)                | 7.8 MiB  | 72 ms  | 5.12 MiB   | 5.31 MiB   | 28 ns  | 58 ns     | 126 M/s    |
+| `dbip-country-lite.mmdb`               | 8.0 MiB  | 84 ms  | 5.42 MiB   | 5.62 MiB   | 29 ns  | 156 ns    | 128 M/s    |
+| `GeoLite2-City.mmdb` (stress)          | 61.0 MiB | 381 ms | 5.18 MiB   | 5.41 MiB   | 33 ns  | 151 ns    | 123 M/s    |
+| `dbip-city-lite.mmdb` (largest)        | 121 MiB  | 808 ms | 5.28 MiB   | 5.52 MiB   | 30 ns  | 228 ns    | 129 M/s    |
+| `GeoLite2-ASN.mmdb` (default)          | 11.5 MiB | 98 ms  | 8.36 MiB   | 8.47 MiB   | 41 ns  | 69 ns     | 95 M/s     |
+| `dbip-asn-lite.mmdb`                   | 9.1 MiB  | 69 ms  | 7.72 MiB   | 7.84 MiB   | 40 ns  | 87 ns     | 63 M/s     |
+| `geoip.dat` (bundled, largest)         | 17.6 MiB | 218 ms | 5.24 MiB   | 5.58 MiB   | 29 ns  | –         | 118 M/s    |
+| `geoip.dat` (Loyalsoldier)             | 15.8 MiB | 201 ms | 5.21 MiB   | 5.56 MiB   | 30 ns  | –         | 117 M/s    |
+| `geosite.dat` (MetaCubeX default)      | 4.1 MiB  | 115 ms | 3.56 MiB   | 10.63 MiB  | 361 ns | –         | 10.0 M/s³  |
+| `geosite.dat` (Loyalsoldier, largest)  | 10.5 MiB | 244 ms | 7.95 MiB   | 16.98 MiB  | 370 ns | –         | 10.3 M/s³  |
+
+¹ The growth in `phys_footprint` once the file is dropped, i.e. what loading
+costs the process. With `--heap-read`, the file stays in it: 12.8 MiB for the
+bundled `Country.mmdb` and 126.7 MiB for `dbip-city-lite`.
+² Lookup and decode against the whole file kept in memory, which is the
+resident alternative to this crate.
+³ The regex pool keeps one lazy-DFA cache per thread that has looked up a
+host, about 0.8 MiB per thread (6.5 MiB after 8 threads).
+
+IP lookups do not allocate and scale with cores. GeoSite lookups allocate
+their result and reach 10 M/s on 8 threads. Windows and Linux figures are not
+measured yet.

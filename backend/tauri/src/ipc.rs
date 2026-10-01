@@ -1323,13 +1323,26 @@ pub async fn get_traffic_summary(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
+pub async fn query_traffic_report(
+    client: tauri::State<'_, NyanpasuClient>,
+    request: nyanpasu_traffic::ReportRequest,
+) -> Result<nyanpasu_traffic::TrafficReport> {
+    Ok(client.query_traffic_report(request).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
 pub async fn query_traffic_usage(
     client: tauri::State<'_, NyanpasuClient>,
-    group_by: nyanpasu_traffic::GroupBy,
+    query: nyanpasu_traffic::TrafficQuery,
+    group_by: nyanpasu_traffic::Dimension,
     after: Option<nyanpasu_traffic::UsageCursor>,
     limit: usize,
-) -> Result<nyanpasu_traffic::Usage> {
-    Ok(client.query_traffic_usage(group_by, after, limit).await?)
+) -> Result<nyanpasu_traffic::UsagePage> {
+    Ok(client
+        .query_traffic_usage(query, group_by, after, limit)
+        .await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1337,20 +1350,13 @@ pub async fn query_traffic_usage(
 #[specta::specta]
 pub async fn query_traffic_usage_by_keys(
     client: tauri::State<'_, NyanpasuClient>,
-    group_by: nyanpasu_traffic::GroupBy,
+    query: nyanpasu_traffic::TrafficQuery,
+    group_by: nyanpasu_traffic::Dimension,
     keys: Vec<String>,
 ) -> Result<Vec<nyanpasu_traffic::UsageGroup>> {
-    Ok(client.query_traffic_usage_by_keys(group_by, keys).await?)
-}
-
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn query_traffic_topology(
-    client: tauri::State<'_, NyanpasuClient>,
-    limit: usize,
-) -> Result<nyanpasu_traffic::Topology> {
-    Ok(client.query_traffic_topology(limit).await?)
+    Ok(client
+        .query_traffic_usage_by_keys(query, group_by, keys)
+        .await?)
 }
 
 #[nyanpasu_macro::rpc(http)]

@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, GroupBy, Topology, TrafficSummary, Usage, UsageCursor, UsageGroup,
+    ClosedCursor, ClosedPage, Dimension, ReportRequest, TrafficQuery, TrafficReport,
+    TrafficSummary, UsageCursor, UsageGroup, UsagePage,
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -54,34 +55,37 @@ impl TrafficClient {
         Ok(self.call(Message::Summary).await??)
     }
 
-    /// `limit` groups of the session so far, heaviest first, strictly after `after`, including
+    /// Rankings, total and topology of what `request.query` selects, including what is not
+    /// flushed yet.
+    pub async fn report(&self, request: ReportRequest) -> Result<TrafficReport> {
+        Ok(self.call(|reply| Message::Report(request, reply)).await??)
+    }
+
+    /// `limit` groups of what `query` selects, heaviest first, strictly after `after`, including
     /// what is not flushed yet.
     pub async fn usage(
         &self,
-        group: GroupBy,
+        query: TrafficQuery,
+        dimension: Dimension,
         after: Option<UsageCursor>,
         limit: usize,
-    ) -> Result<Usage> {
+    ) -> Result<UsagePage> {
         Ok(self
-            .call(|reply| Message::Usage(group, after, limit, reply))
+            .call(|reply| Message::Usage(query, dimension, after, limit, reply))
             .await??)
     }
 
-    /// The session so far of `keys` that have traffic, in request order, including what is not
+    /// What `query` selects of `keys` that have traffic, in request order, including what is not
     /// flushed yet.
     pub async fn usage_by_keys(
         &self,
-        group: GroupBy,
+        query: TrafficQuery,
+        dimension: Dimension,
         keys: Vec<String>,
     ) -> Result<Vec<UsageGroup>> {
         Ok(self
-            .call(|reply| Message::UsageByKeys(group, keys, reply))
+            .call(|reply| Message::UsageByKeys(query, dimension, keys, reply))
             .await??)
-    }
-
-    /// Top `limit` paths of the session so far, including what is not flushed yet.
-    pub async fn topology(&self, limit: usize) -> Result<Topology> {
-        Ok(self.call(|reply| Message::Topology(limit, reply)).await??)
     }
 
     /// Newest first, strictly before `before`, including what is not flushed yet.

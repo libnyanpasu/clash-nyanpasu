@@ -7,11 +7,13 @@ use url::Url;
 mod clash_core;
 mod i18n;
 mod logging;
+mod traffic;
 mod update;
 mod widget;
 pub use clash_core::*;
 pub use i18n::*;
 pub use logging::*;
+pub use traffic::*;
 pub use update::*;
 pub use widget::*;
 
@@ -189,6 +191,10 @@ pub struct NyanpasuAppConfig {
     /// 是否启用网络统计信息浮窗
     pub network_statistic_widget: NetworkStatisticWidgetConfig,
 
+    /// How long recorded traffic is kept
+    #[serde(default)]
+    pub traffic_retention: TrafficRetention,
+
     /// PAC URL for automatic proxy configuration
     /// This field is used to set PAC proxy without exposing it to the frontend UI
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -257,6 +263,7 @@ impl Default for NyanpasuAppConfig {
             tray_menu_mode: TrayMenuMode::default(),
             tray_menu_close_behavior: TrayMenuCloseBehavior::default(),
             network_statistic_widget: NetworkStatisticWidgetConfig::default(),
+            traffic_retention: TrafficRetention::default(),
             pac_url: None,
             enable_tray_text: false,
             enable_tray_traffic: false,
@@ -307,6 +314,54 @@ mod patch_tests {
         value.as_object_mut().unwrap().remove("max_log_file_size");
         let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
         assert_eq!(config.max_log_file_size, 10);
+    }
+
+    #[test]
+    fn traffic_retention_defaults_for_existing_configurations() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("traffic_retention");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.traffic_retention, TrafficRetention::SevenDays);
+    }
+
+    #[test]
+    fn traffic_retention_wire_format_and_patch() {
+        for (text, retention) in [
+            ("1d", TrafficRetention::OneDay),
+            ("7d", TrafficRetention::SevenDays),
+            ("30d", TrafficRetention::ThirtyDays),
+            ("90d", TrafficRetention::NinetyDays),
+            ("forever", TrafficRetention::Forever),
+        ] {
+            assert_eq!(
+                serde_json::to_string(&retention).unwrap(),
+                format!("\"{text}\"")
+            );
+            let patch: NyanpasuAppConfigPatch =
+                serde_json::from_str(&format!(r#"{{"traffic_retention":"{text}"}}"#)).unwrap();
+            assert_eq!(patch.traffic_retention, Some(retention));
+        }
+        assert!(
+            serde_json::from_str::<NyanpasuAppConfigPatch>(r#"{"traffic_retention":"2d"}"#)
+                .is_err()
+        );
+
+        let mut config = NyanpasuAppConfig::default();
+        config.apply(NyanpasuAppConfigPatch {
+            traffic_retention: Some(TrafficRetention::Forever),
+            ..NyanpasuAppConfig::new_empty_patch()
+        });
+        assert_eq!(config.traffic_retention, TrafficRetention::Forever);
+    }
+
+    #[test]
+    fn traffic_retention_durations() {
+        let day = std::time::Duration::from_secs(24 * 60 * 60);
+        assert_eq!(TrafficRetention::OneDay.duration(), Some(day));
+        assert_eq!(TrafficRetention::SevenDays.duration(), Some(7 * day));
+        assert_eq!(TrafficRetention::ThirtyDays.duration(), Some(30 * day));
+        assert_eq!(TrafficRetention::NinetyDays.duration(), Some(90 * day));
+        assert_eq!(TrafficRetention::Forever.duration(), None);
     }
 
     /// The legacy field aliases carried over from the former derive-builder

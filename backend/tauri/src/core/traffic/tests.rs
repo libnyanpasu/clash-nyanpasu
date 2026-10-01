@@ -1,26 +1,34 @@
 use std::{
+    ops::Deref,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering},
     },
     time::Duration,
 };
 
 use nyanpasu_traffic::{
-    ActiveConnection, Bytes, ClosedCursor, ClosedPage, Dimensions, FlushBatch, Frame, GroupBy,
-    Rate, RedbTrafficStore, RuleKey, Sample, SessionMeta, TopologyKey, TrafficError, TrafficResult,
-    TrafficStore, TrafficSummary, UsageGroup,
+    ActiveConnection, Bytes, ClosedCursor, ClosedPage, Dimension, Dimensions, FlushBatch, Flushed,
+    Frame, Metric, Rate, RedbTrafficStore, ReportRequest, RuleKey, Sample, SessionMeta, Tier,
+    TopologyRequest, TrafficError, TrafficFilter, TrafficQuery, TrafficRange, TrafficResult,
+    TrafficScope, TrafficStore, TrafficSummary, Usage, UsageGroup,
 };
 use serde_json::json;
 use tempfile::TempDir;
 use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{ProfileSelection, TrafficArgs, TrafficClient, source::frame_from_snapshot};
+use super::{
+    Clock, ProfileSelection, RetentionPolicy, TrafficArgs, TrafficClient,
+    source::frame_from_snapshot,
+};
 use crate::core::clash::ws::ClashConnectionsFrame;
 
 const CORE: &str = "core-1";
 const A: &str = "11111111-1111-1111-1111-111111111111";
+const MINUTE: i64 = 60_000;
+const HOUR: i64 = 60 * MINUTE;
+const DAY: i64 = 24 * HOUR;
 
 struct FakeProfiles(Mutex<Option<String>>);
 
@@ -36,24 +44,88 @@ impl ProfileSelection for FakeProfiles {
     }
 }
 
-/// A real store whose flushes can be made to fail, as a full disk or a dying app would.
+struct FakeRetention(Mutex<Option<Duration>>);
+
+impl FakeRetention {
+    fn keep(&self, retention: Option<Duration>) {
+        *self.0.lock().unwrap() = retention;
+    }
+
+    fn keep_days(&self, days: i64) {
+        self.keep(Some(Duration::from_millis((days * DAY) as u64)));
+    }
+}
+
+impl RetentionPolicy for FakeRetention {
+    fn retention(&self) -> Option<Duration> {
+        *self.0.lock().unwrap()
+    }
+}
+
+struct FakeClock(AtomicI64);
+
+impl FakeClock {
+    fn set(&self, now_ms: i64) {
+        self.0.store(now_ms, Ordering::SeqCst);
+    }
+}
+
+impl Clock for FakeClock {
+    fn now_ms(&self) -> i64 {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+/// A real store whose loads and flushes can be made to fail, as a full disk or a dying app would.
 struct FlakyStore {
     inner: RedbTrafficStore,
+    fail_load: AtomicBool,
     fail_flush: AtomicBool,
+    fail_collect: AtomicBool,
+    flushes: AtomicUsize,
+    collections: AtomicUsize,
+    collected: AtomicU64,
 }
 
 impl FlakyStore {
+    fn fail_load(&self, fail: bool) {
+        self.fail_load.store(fail, Ordering::SeqCst);
+    }
+
     fn fail_flush(&self, fail: bool) {
         self.fail_flush.store(fail, Ordering::SeqCst);
+    }
+
+    fn fail_collect(&self, fail: bool) {
+        self.fail_collect.store(fail, Ordering::SeqCst);
+    }
+
+    /// Flushes attempted, failed ones included.
+    fn flushes(&self) -> usize {
+        self.flushes.load(Ordering::SeqCst)
+    }
+
+    /// Collections attempted, failed ones included.
+    fn collections(&self) -> usize {
+        self.collections.load(Ordering::SeqCst)
+    }
+
+    /// Dimension combinations the collections deleted, in total.
+    fn collected(&self) -> u64 {
+        self.collected.load(Ordering::SeqCst)
     }
 }
 
 impl TrafficStore for FlakyStore {
     fn load(&self) -> TrafficResult<Option<(SessionMeta, Vec<ActiveConnection>)>> {
+        if self.fail_load.load(Ordering::SeqCst) {
+            return Err(TrafficError::Storage("load failed on demand".into()));
+        }
         self.inner.load()
     }
 
-    fn flush(&self, batch: &FlushBatch) -> TrafficResult<()> {
+    fn flush(&self, batch: &FlushBatch) -> TrafficResult<Flushed> {
+        self.flushes.fetch_add(1, Ordering::SeqCst);
         if self.fail_flush.load(Ordering::SeqCst) {
             return Err(TrafficError::Storage("flush failed on demand".into()));
         }
@@ -72,48 +144,99 @@ impl TrafficStore for FlakyStore {
         self.inner.closed_count()
     }
 
-    fn totals(&self, group: GroupBy) -> TrafficResult<Vec<(String, Bytes)>> {
-        self.inner.totals(group)
+    fn usage(&self, tier: Tier, from: Option<u32>) -> TrafficResult<Vec<(Arc<Dimensions>, Usage)>> {
+        self.inner.usage(tier, from)
     }
 
-    fn totals_of(&self, group: GroupBy, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>> {
-        self.inner.totals_of(group, keys)
+    fn collect_tuples(&self, keep: &[Arc<Dimensions>]) -> TrafficResult<u64> {
+        self.collections.fetch_add(1, Ordering::SeqCst);
+        if self.fail_collect.load(Ordering::SeqCst) {
+            return Err(TrafficError::Storage("collect failed on demand".into()));
+        }
+        let collected = self.inner.collect_tuples(keep)?;
+        self.collected.fetch_add(collected, Ordering::SeqCst);
+        Ok(collected)
+    }
+}
+
+/// Everything the actor is injected with, except the frames' consumer.
+struct Env {
+    _dir: TempDir,
+    store: Arc<FlakyStore>,
+    profiles: Arc<FakeProfiles>,
+    retention: Arc<FakeRetention>,
+    clock: Arc<FakeClock>,
+    frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
+}
+
+impl Env {
+    async fn spawn(&self, shutdown: &CancellationToken, tasks: &TaskTracker) -> TrafficClient {
+        self.try_spawn(shutdown, tasks).await.unwrap()
     }
 
-    fn topology(&self) -> TrafficResult<Vec<(TopologyKey, Bytes)>> {
-        self.inner.topology()
+    async fn try_spawn(
+        &self,
+        shutdown: &CancellationToken,
+        tasks: &TaskTracker,
+    ) -> anyhow::Result<TrafficClient> {
+        TrafficClient::spawn(
+            TrafficArgs {
+                store: self.store.clone(),
+                profiles: self.profiles.clone(),
+                retention: self.retention.clone(),
+                clock: self.clock.clone(),
+                frames: self.frames.subscribe(),
+            },
+            shutdown.clone(),
+            tasks,
+        )
+        .await
     }
 }
 
 /// A real actor over a real store. The frames watch never changes unless a test
 /// sends on it, so the pump idles and tests drive the actor through the client.
+/// The clock starts at 2 000 ms and the retention at seven days.
 struct Harness {
-    _dir: TempDir,
-    store: Arc<FlakyStore>,
-    profiles: Arc<FakeProfiles>,
-    frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
+    env: Env,
     shutdown: CancellationToken,
     tasks: TaskTracker,
     client: TrafficClient,
 }
 
+impl Deref for Harness {
+    type Target = Env;
+
+    fn deref(&self) -> &Env {
+        &self.env
+    }
+}
+
 impl Harness {
     async fn new(profile: &str) -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(FlakyStore {
-            inner: RedbTrafficStore::open(&dir.path().join("traffic.redb")).unwrap(),
-            fail_flush: AtomicBool::new(false),
-        });
-        let profiles = Arc::new(FakeProfiles(Mutex::new(Some(profile.to_owned()))));
-        let frames = watch::channel(None).0;
+        let env = Env {
+            store: Arc::new(FlakyStore {
+                inner: RedbTrafficStore::open(&dir.path().join("traffic.redb")).unwrap(),
+                fail_load: AtomicBool::new(false),
+                fail_flush: AtomicBool::new(false),
+                fail_collect: AtomicBool::new(false),
+                flushes: AtomicUsize::new(0),
+                collections: AtomicUsize::new(0),
+                collected: AtomicU64::new(0),
+            }),
+            _dir: dir,
+            profiles: Arc::new(FakeProfiles(Mutex::new(Some(profile.to_owned())))),
+            retention: Arc::new(FakeRetention(Mutex::new(None))),
+            clock: Arc::new(FakeClock(AtomicI64::new(2_000))),
+            frames: watch::channel(None).0,
+        };
+        env.retention.keep_days(7);
         let shutdown = CancellationToken::new();
         let tasks = TaskTracker::new();
-        let client = spawn(&store, &profiles, &frames, &shutdown, &tasks).await;
+        let client = env.spawn(&shutdown, &tasks).await;
         Self {
-            _dir: dir,
-            store,
-            profiles,
-            frames,
+            env,
             shutdown,
             tasks,
             client,
@@ -128,45 +251,63 @@ impl Harness {
         self.tasks.wait().await;
         self.shutdown = CancellationToken::new();
         self.tasks = TaskTracker::new();
-        self.client = spawn(
-            &self.store,
-            &self.profiles,
-            &self.frames,
-            &self.shutdown,
-            &self.tasks,
-        )
+        self.client = self.env.spawn(&self.shutdown, &self.tasks).await;
+    }
+
+    async fn observe(&self, frame: Frame) {
+        self.client.observe(Some(frame)).await.unwrap();
+    }
+
+    /// A connection that opens at the start of `hour` and closes a minute later.
+    async fn close_in_hour(&self, hour: i64) {
+        self.close_in_hour_by(hour, "curl").await;
+    }
+
+    async fn close_in_hour_by(&self, hour: i64, process: &str) {
+        let wall = hour * HOUR;
+        let id = format!("c{hour}");
+        self.observe(frame(
+            wall,
+            wall as u64,
+            bytes(10, 10),
+            vec![sample(&id, process, 10, 10)],
+        ))
+        .await;
+        self.observe(frame(
+            wall + MINUTE,
+            (wall + MINUTE) as u64,
+            bytes(10, 10),
+            Vec::new(),
+        ))
         .await;
     }
-}
 
-async fn spawn(
-    store: &Arc<FlakyStore>,
-    profiles: &Arc<FakeProfiles>,
-    frames: &watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
-    shutdown: &CancellationToken,
-    tasks: &TaskTracker,
-) -> TrafficClient {
-    TrafficClient::spawn(
-        TrafficArgs {
-            store: store.clone(),
-            profiles: profiles.clone(),
-            frames: frames.subscribe(),
-        },
-        shutdown.clone(),
-        tasks,
-    )
-    .await
-    .unwrap()
+    async fn report(&self, request: ReportRequest) -> nyanpasu_traffic::TrafficReport {
+        self.client.report(request).await.unwrap()
+    }
+
+    /// What `query` selects, in total.
+    async fn total(&self, query: TrafficQuery) -> Usage {
+        self.report(request(query, &[])).await.total
+    }
 }
 
 fn bytes(upload: u64, download: u64) -> Bytes {
     Bytes { upload, download }
 }
 
+fn usage(upload: u64, download: u64, connections: u64) -> Usage {
+    Usage {
+        bytes: bytes(upload, download),
+        connections,
+    }
+}
+
 fn dims(process: &str) -> Dimensions {
     Dimensions {
         process: process.into(),
         source: "192.168.1.2".into(),
+        inbound: "mixed".into(),
         target: "example.com".into(),
         protocol: "tcp".into(),
         rule: RuleKey {
@@ -174,6 +315,9 @@ fn dims(process: &str) -> Dimensions {
             payload: String::new(),
         },
         chains: vec!["Node-A".into(), "Proxy".into()],
+        profile: None,
+        source_region: "unknown".into(),
+        destination_region: "unknown".into(),
     }
 }
 
@@ -209,6 +353,33 @@ fn a_second() -> Frame {
         bytes(150, 260),
         vec![sample(A, "curl", 150, 260)],
     )
+}
+
+fn query(range: TrafficRange, scope: TrafficScope, filters: &[(Dimension, &str)]) -> TrafficQuery {
+    TrafficQuery {
+        range,
+        scope,
+        filters: filters
+            .iter()
+            .map(|(dimension, value)| TrafficFilter {
+                dimension: *dimension,
+                value: (*value).into(),
+            })
+            .collect(),
+    }
+}
+
+fn everything() -> TrafficQuery {
+    query(TrafficRange::All, TrafficScope::All, &[])
+}
+
+fn request(query: TrafficQuery, rankings: &[Dimension]) -> ReportRequest {
+    ReportRequest {
+        query,
+        rankings: rankings.to_vec(),
+        ranking_limit: 10,
+        topology: None,
+    }
 }
 
 fn connection(
@@ -256,315 +427,293 @@ async fn until(client: &TrafficClient, done: impl Fn(&TrafficSummary) -> bool) {
     .unwrap();
 }
 
-#[tokio::test]
-async fn summary_and_usage_include_unflushed_deltas() {
-    let h = Harness::new("p1").await;
-    h.client.observe(Some(a_first())).await.unwrap();
-    h.client.observe(Some(a_second())).await.unwrap();
-
-    let summary = h.client.summary().await.unwrap();
-    assert_eq!(summary.profile.as_deref(), Some("p1"));
-    assert_eq!(summary.last_sample_at, Some(2_000));
-    assert_eq!(summary.core_bytes, bytes(150, 260));
-    assert_eq!(summary.active_connections, 1);
-    assert_eq!(
-        summary.current_rate,
-        Some(Rate {
-            upload: 50,
-            download: 60
-        })
-    );
-
-    // Nothing is flushed yet, so what the query sees is all pending.
-    assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
-    assert_eq!(usage.total, bytes(150, 260));
-    assert_eq!(usage.other, Bytes::default());
-    assert_eq!(usage.groups.len(), 1);
-    assert_eq!(usage.groups[0].key, "curl");
-    assert_eq!(usage.groups[0].bytes, bytes(150, 260));
-    assert_eq!(
-        usage.groups[0].current_rate,
-        Some(Rate {
-            upload: 50,
-            download: 60
-        })
-    );
-
-    // Flushing moves the deltas to the store without changing the answer.
-    h.client.flush().await.unwrap();
-    assert_eq!(
-        h.store.totals(GroupBy::Process).unwrap(),
-        [("curl".to_owned(), bytes(150, 260))]
-    );
-    assert_eq!(
-        h.client.usage(GroupBy::Process, None, 10).await.unwrap(),
-        usage
-    );
-}
-
-#[tokio::test]
-async fn usage_and_topology_keep_the_top_entries() {
-    let h = Harness::new("p1").await;
-    h.client
-        .observe(Some(frame(
-            1_000,
-            0,
-            bytes(60, 0),
-            vec![
-                sample("a", "small", 10, 0),
-                sample("b", "large", 30, 0),
-                sample("c", "medium", 20, 0),
-            ],
-        )))
-        .await
-        .unwrap();
-
-    let usage = h.client.usage(GroupBy::Process, None, 2).await.unwrap();
-    assert_eq!(usage.total, bytes(60, 0));
-    assert_eq!(
-        usage
-            .groups
-            .iter()
-            .map(|g| g.key.as_str())
-            .collect::<Vec<_>>(),
-        ["large", "medium"]
-    );
-    assert_eq!(usage.other, bytes(10, 0));
-
-    let topology = h.client.topology(1).await.unwrap();
-    assert_eq!(topology.paths.len(), 1);
-    assert_eq!(topology.paths[0].key.source, "large");
-    assert_eq!(topology.paths[0].bytes, bytes(30, 0));
-    assert_eq!(topology.other, bytes(30, 0));
-    assert!(!topology.nodes.is_empty() && !topology.edges.is_empty());
-}
-
 fn keys(groups: &[UsageGroup]) -> Vec<&str> {
     groups.iter().map(|g| g.key.as_str()).collect()
+}
+
+/// The one dimension combination a usage listing holds.
+fn only(rows: Vec<(Arc<Dimensions>, Usage)>) -> Usage {
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    rows[0].1
+}
+
+#[tokio::test]
+async fn summary_and_report_include_unflushed_deltas() {
+    let h = Harness::new("p1").await;
+    h.observe(a_first()).await;
+    h.observe(a_second()).await;
+
+    let rate = Rate {
+        upload: 50,
+        download: 60,
+    };
+    let summary = h.client.summary().await.unwrap();
+    assert_eq!(summary.last_sample_at, Some(2_000));
+    assert_eq!(summary.active_connections, 1);
+    assert_eq!(summary.closed_connections, 0);
+    assert_eq!(summary.current_rate, Some(rate));
+
+    // A live connection reaches the usage tables only when it closes, so the answer comes from
+    // memory both before and after a flush.
+    let report = h.report(request(everything(), &[Dimension::Process])).await;
+    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
+    assert_eq!(report.total, usage(150, 260, 1));
+    assert_eq!(report.current_rate, Some(rate));
+    assert_eq!(report.rankings[0].groups.len(), 1);
+    assert_eq!(report.rankings[0].groups[0].key, "curl");
+    assert_eq!(report.rankings[0].groups[0].usage, usage(150, 260, 1));
+    assert_eq!(report.rankings[0].groups[0].current_rate, Some(rate));
+
+    h.client.flush().await.unwrap();
+    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
+    let (_, active) = h.store.load().unwrap().unwrap();
+    assert_eq!(active[0].bytes(), bytes(150, 260));
+    assert_eq!(
+        h.report(request(everything(), &[Dimension::Process])).await,
+        report
+    );
+}
+
+#[tokio::test]
+async fn reports_keep_the_top_rankings_and_merge_the_topology() {
+    let h = Harness::new("p1").await;
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(60, 0),
+        vec![
+            sample("a", "small", 10, 0),
+            sample("b", "large", 30, 0),
+            sample("c", "medium", 20, 0),
+        ],
+    ))
+    .await;
+
+    let mut asked = request(everything(), &[Dimension::Process]);
+    asked.ranking_limit = 2;
+    asked.topology = Some(TopologyRequest {
+        layers: vec![Dimension::Process, Dimension::Exit],
+        metric: Metric::Bytes,
+        limit_per_layer: Some(1),
+    });
+    let report = h.report(asked).await;
+    assert_eq!(report.total, usage(60, 0, 3));
+    let ranking = &report.rankings[0];
+    assert_eq!(keys(&ranking.groups), ["large", "medium"]);
+    assert_eq!(ranking.distinct, 3);
+    assert_eq!(ranking.other, usage(10, 0, 1));
+
+    // "large", the merged rest and the one exit.
+    let topology = report.topology.unwrap();
+    assert_eq!(topology.nodes.len(), 3);
+    assert_eq!(topology.edges.len(), 2);
+}
+
+#[tokio::test]
+async fn an_invalid_topology_is_refused() {
+    let h = Harness::new("p1").await;
+    let mut asked = request(everything(), &[]);
+    asked.topology = Some(TopologyRequest {
+        layers: vec![Dimension::Process],
+        metric: Metric::Bytes,
+        limit_per_layer: None,
+    });
+    let error = h.client.report(asked).await.unwrap_err().to_string();
+    assert!(error.starts_with("invalid traffic request"), "{error}");
+}
+
+#[tokio::test]
+async fn a_query_repeating_a_filter_dimension_is_refused_everywhere() {
+    let h = Harness::new("p1").await;
+    let repeated = || {
+        query(
+            TrafficRange::All,
+            TrafficScope::All,
+            &[(Dimension::Process, "curl"), (Dimension::Process, "wget")],
+        )
+    };
+    let refused = |error: anyhow::Error| {
+        let error = error.to_string();
+        assert!(error.starts_with("invalid traffic request"), "{error}");
+    };
+    refused(h.client.report(request(repeated(), &[])).await.unwrap_err());
+    refused(
+        h.client
+            .usage(repeated(), Dimension::Process, None, 10)
+            .await
+            .unwrap_err(),
+    );
+    refused(
+        h.client
+            .usage_by_keys(repeated(), Dimension::Process, vec!["curl".into()])
+            .await
+            .unwrap_err(),
+    );
 }
 
 #[tokio::test]
 async fn usage_pages_continue_after_the_cursor() {
     let h = Harness::new("p1").await;
-    h.client
-        .observe(Some(frame(
-            1_000,
-            0,
-            bytes(70, 0),
-            vec![
-                sample("a", "small", 10, 0),
-                sample("b", "large", 30, 0),
-                sample("c", "medium", 20, 0),
-                sample("d", "tie", 10, 0),
-            ],
-        )))
-        .await
-        .unwrap();
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(70, 0),
+        vec![
+            sample("a", "small", 10, 0),
+            sample("b", "large", 30, 0),
+            sample("c", "medium", 20, 0),
+            sample("d", "tie", 10, 0),
+        ],
+    ))
+    .await;
+    let h = &h;
+    let page = |after, limit| async move {
+        h.client
+            .usage(everything(), Dimension::Process, after, limit)
+            .await
+            .unwrap()
+    };
 
-    let first = h.client.usage(GroupBy::Process, None, 2).await.unwrap();
+    let first = page(None, 2).await;
     assert_eq!(keys(&first.groups), ["large", "medium"]);
-    assert_eq!(first.other, bytes(20, 0));
+    assert_eq!(first.other.bytes, bytes(20, 0));
 
     // Equal traffic ranks by key; a page that reaches the end has no cursor.
-    let last = h
-        .client
-        .usage(GroupBy::Process, first.next, 2)
-        .await
-        .unwrap();
-    assert_eq!(last.total, bytes(70, 0));
+    let last = page(first.next, 2).await;
+    assert_eq!(last.total.bytes, bytes(70, 0));
     assert_eq!(keys(&last.groups), ["small", "tie"]);
-    assert_eq!(last.other, Bytes::default());
+    assert_eq!(last.other, Usage::default());
     assert_eq!(last.next, None);
 
     // A cursor on a tie continues with the next key of the same traffic.
-    let first = h.client.usage(GroupBy::Process, None, 3).await.unwrap();
+    let first = page(None, 3).await;
     assert_eq!(keys(&first.groups), ["large", "medium", "small"]);
-    let last = h
-        .client
-        .usage(GroupBy::Process, first.next, 3)
-        .await
-        .unwrap();
-    assert_eq!(keys(&last.groups), ["tie"]);
+    assert_eq!(keys(&page(first.next, 3).await.groups), ["tie"]);
 }
 
 #[tokio::test]
-async fn usage_by_keys_merges_stored_and_pending_traffic() {
+async fn usage_by_keys_merges_stored_pending_and_live_traffic() {
     let h = Harness::new("p1").await;
-    h.client.observe(Some(a_first())).await.unwrap();
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(15, 25),
+        vec![sample("a", "curl", 10, 20), sample("b", "curl", 5, 5)],
+    ))
+    .await;
+    // "a" closes and is stored; "b" closes and stays pending; "c" is live.
+    h.observe(frame(
+        2_000,
+        1_000,
+        bytes(18, 29),
+        vec![sample("b", "curl", 8, 9)],
+    ))
+    .await;
     h.client.flush().await.unwrap();
-    h.client.observe(Some(a_second())).await.unwrap();
+    h.observe(frame(
+        3_000,
+        2_000,
+        bytes(19, 30),
+        vec![sample("c", "curl", 1, 1)],
+    ))
+    .await;
+    assert_eq!(h.store.usage(Tier::Hour, None).unwrap().len(), 1);
 
-    // `curl` has 100/200 stored and 50/60 pending; missing and repeated keys are not listed.
-    let usage = h
-        .client
-        .usage_by_keys(
-            GroupBy::Process,
-            vec!["missing".into(), "curl".into(), "curl".into()],
-        )
-        .await
-        .unwrap();
+    let h = &h;
+    let by_keys = |scope| async move {
+        h.client
+            .usage_by_keys(
+                query(TrafficRange::All, scope, &[]),
+                Dimension::Process,
+                vec!["missing".into(), "curl".into(), "curl".into()],
+            )
+            .await
+            .unwrap()
+    };
+    // Missing and repeated keys are not listed.
+    let all = by_keys(TrafficScope::All).await;
+    assert_eq!(keys(&all), ["curl"]);
+    assert_eq!(all[0].usage, usage(19, 30, 3));
     assert_eq!(
-        usage,
-        [UsageGroup {
-            key: "curl".into(),
-            bytes: bytes(150, 260),
-            current_rate: Some(Rate {
-                upload: 50,
-                download: 60
-            }),
-        }]
+        by_keys(TrafficScope::Closed).await[0].usage,
+        usage(18, 29, 2)
     );
+    assert_eq!(by_keys(TrafficScope::Active).await[0].usage, usage(1, 1, 1));
 
     let rules = h
         .client
-        .usage_by_keys(GroupBy::Rule, vec!["Match".into()])
+        .usage_by_keys(everything(), Dimension::Rule, vec!["Match".into()])
         .await
         .unwrap();
     assert_eq!(keys(&rules), ["Match"]);
-    assert_eq!(rules[0].bytes, bytes(150, 260));
+    assert_eq!(rules[0].usage, usage(19, 30, 3));
 }
 
 #[tokio::test]
-async fn profile_switch_wipes_stored_totals_but_keeps_baselines() {
-    let h = Harness::new("p1").await;
-    h.client.observe(Some(a_first())).await.unwrap();
-    h.client.flush().await.unwrap();
-    assert!(!h.store.totals(GroupBy::Process).unwrap().is_empty());
+async fn a_profile_switch_keeps_the_data_and_the_filter_tells_the_profiles_apart() {
+    async fn by_profile(h: &Harness, profile: &str) -> Usage {
+        h.total(query(
+            TrafficRange::All,
+            TrafficScope::All,
+            &[(Dimension::Profile, profile)],
+        ))
+        .await
+    }
 
-    h.profiles.select("p2");
-    h.client.observe(Some(a_second())).await.unwrap();
-
-    // The wipe is immediate; the switch does not wait for the next flush.
-    assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
-    let (meta, _) = h.store.load().unwrap().unwrap();
-    assert_eq!(meta.profile.as_deref(), Some("p2"));
-
-    // The surviving connection only counts what it transferred after the switch.
-    let summary = h.client.summary().await.unwrap();
-    assert_eq!(summary.profile.as_deref(), Some("p2"));
-    assert_eq!(summary.started_at, 2_000);
-    assert_eq!(summary.core_bytes, bytes(50, 60));
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
-    assert_eq!(usage.total, bytes(50, 60));
-
-    h.client.flush().await.unwrap();
-    assert_eq!(
-        h.store.totals(GroupBy::Process).unwrap(),
-        [("curl".to_owned(), bytes(50, 60))]
-    );
-}
-
-#[tokio::test]
-async fn a_crash_after_a_profile_switch_does_not_recount_surviving_connections() {
     let mut h = Harness::new("p1").await;
-    h.client.observe(Some(a_first())).await.unwrap();
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(10, 0),
+        vec![sample("a", "curl", 10, 0)],
+    ))
+    .await;
     h.client.flush().await.unwrap();
 
     h.profiles.select("p2");
-    h.client.observe(Some(a_second())).await.unwrap();
+    // "a" keeps growing and "b" appears, now under p2.
+    h.observe(frame(
+        2_000,
+        1_000,
+        bytes(45, 0),
+        vec![sample("a", "curl", 25, 0), sample("b", "wget", 20, 0)],
+    ))
+    .await;
 
-    // No flush since the switch, yet the store already holds the new session and the
-    // baseline the surviving connection is measured against.
-    let (meta, active) = h.store.load().unwrap().unwrap();
-    assert_eq!(meta.profile.as_deref(), Some("p2"));
-    assert_eq!(active.len(), 1);
-    assert_eq!(active[0].id, A);
-    assert_eq!(active[0].counters, bytes(100, 200));
-    assert_eq!(active[0].bytes, Bytes::default());
-    assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
+    assert_eq!(h.total(everything()).await, usage(45, 0, 2));
+    assert_eq!(by_profile(&h, "p1").await, usage(25, 0, 1));
+    assert_eq!(by_profile(&h, "p2").await, usage(20, 0, 1));
 
-    // The app dies before the next flush: the stop cannot persist anything further.
-    h.store.fail_flush(true);
+    // The data is still there after a restart.
     h.restart().await;
-    h.store.fail_flush(false);
-
-    h.client.observe(Some(a_second())).await.unwrap();
-    let summary = h.client.summary().await.unwrap();
-    assert_eq!(summary.profile.as_deref(), Some("p2"));
-    assert_eq!(summary.core_bytes, bytes(50, 60));
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
-    assert_eq!(usage.total, bytes(50, 60));
+    assert_eq!(h.total(everything()).await, usage(45, 0, 2));
+    assert_eq!(by_profile(&h, "p1").await, usage(25, 0, 1));
+    assert_eq!(h.client.summary().await.unwrap().active_connections, 2);
 }
 
 #[tokio::test]
-async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
+async fn a_failed_flush_is_retried_and_written_exactly_once() {
     let h = Harness::new("p1").await;
-    h.client
-        .observe(Some(frame(
-            1_000,
-            0,
-            bytes(11, 22),
-            vec![sample("a", "curl", 10, 20), sample("b", "wget", 1, 2)],
-        )))
-        .await
-        .unwrap();
-    h.client
-        .observe(Some(frame(
-            2_000,
-            1_000,
-            bytes(11, 22),
-            vec![sample("b", "wget", 1, 2)],
-        )))
-        .await
-        .unwrap();
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.totals(GroupBy::Process).unwrap().len(), 2);
-    assert_eq!(
-        h.store
-            .closed_connections(None, 10)
-            .unwrap()
-            .connections
-            .len(),
-        1
-    );
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(11, 22),
+        vec![sample("a", "curl", 10, 20), sample("b", "wget", 1, 2)],
+    ))
+    .await;
+    // "a" is gone from the second frame: it closed.
+    h.observe(frame(
+        2_000,
+        1_000,
+        bytes(11, 22),
+        vec![sample("b", "wget", 1, 2)],
+    ))
+    .await;
 
     h.store.fail_flush(true);
-    h.profiles.select("p2");
-    h.client
-        .observe(Some(frame(
-            3_000,
-            2_000,
-            bytes(14, 26),
-            vec![sample("b", "wget", 4, 6)],
-        )))
-        .await
-        .unwrap();
-
-    // The wipe did not land, so the store still holds p1 ...
-    assert_eq!(h.store.totals(GroupBy::Process).unwrap().len(), 2);
-    assert_eq!(
-        h.store
-            .closed_connections(None, 10)
-            .unwrap()
-            .connections
-            .len(),
-        1
-    );
-    // ... and none of it leaks into the p2 session.
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
-    assert_eq!(usage.total, bytes(3, 4));
-    assert_eq!(usage.groups.len(), 1);
-    assert_eq!(usage.groups[0].key, "wget");
-    let topology = h.client.topology(10).await.unwrap();
-    assert_eq!(topology.paths.len(), 1);
-    assert_eq!(topology.paths[0].bytes, bytes(3, 4));
-    assert_eq!(
-        h.client.closed_connections(None, 10).await.unwrap(),
-        ClosedPage {
-            connections: Vec::new(),
-            next: None
-        }
-    );
-    assert_eq!(h.client.summary().await.unwrap().closed_connections, 0);
-
-    // The next flush carries the wipe again.
-    h.store.fail_flush(false);
     h.client.flush().await.unwrap();
-    assert_eq!(
-        h.store.totals(GroupBy::Process).unwrap(),
-        [("wget".to_owned(), bytes(3, 4))]
-    );
+    assert!(h.store.load().unwrap().is_none());
+    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
     assert!(
         h.store
             .closed_connections(None, 10)
@@ -572,74 +721,533 @@ async fn a_failed_reset_flush_hides_the_previous_session_until_it_is_retried() {
             .connections
             .is_empty()
     );
-    let (meta, _) = h.store.load().unwrap().unwrap();
-    assert_eq!(meta.profile.as_deref(), Some("p2"));
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
-    assert_eq!(usage.total, bytes(3, 4));
+    // Nothing is lost for the queries meanwhile.
+    assert_eq!(h.total(everything()).await, usage(11, 22, 2));
+    assert_eq!(h.client.summary().await.unwrap().closed_connections, 1);
+
+    h.store.fail_flush(false);
+    h.client.flush().await.unwrap();
+    assert_eq!(
+        only(h.store.usage(Tier::Hour, None).unwrap()),
+        usage(10, 20, 1)
+    );
+    assert_eq!(
+        h.store
+            .closed_connections(None, 10)
+            .unwrap()
+            .connections
+            .len(),
+        1
+    );
+    let (_, active) = h.store.load().unwrap().unwrap();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].id, "b");
+
+    // Another flush has nothing left to write again.
+    h.client.flush().await.unwrap();
+    assert_eq!(
+        only(h.store.usage(Tier::Hour, None).unwrap()),
+        usage(10, 20, 1)
+    );
+    assert_eq!(h.total(everything()).await, usage(11, 22, 2));
+    assert_eq!(h.client.summary().await.unwrap().closed_connections, 1);
 }
 
 #[tokio::test]
-async fn restart_with_the_same_profile_and_instance_does_not_recount() {
+async fn traffic_is_split_over_the_minute_and_hour_buckets_it_happened_in() {
+    let h = Harness::new("p1").await;
+    // 100 bytes at 00:59, 60 more at 01:01, closed at 01:02.
+    h.observe(frame(
+        59 * MINUTE,
+        0,
+        bytes(100, 0),
+        vec![sample(A, "curl", 100, 0)],
+    ))
+    .await;
+    h.observe(frame(
+        61 * MINUTE,
+        2 * MINUTE as u64,
+        bytes(160, 0),
+        vec![sample(A, "curl", 160, 0)],
+    ))
+    .await;
+    h.observe(frame(
+        62 * MINUTE,
+        3 * MINUTE as u64,
+        bytes(160, 0),
+        Vec::new(),
+    ))
+    .await;
+    h.clock.set(62 * MINUTE);
+    h.client.flush().await.unwrap();
+
+    let stored = |tier, from| only(h.store.usage(tier, Some(from)).unwrap());
+    assert_eq!(stored(Tier::Hour, 0), usage(160, 0, 1));
+    // The close is counted in the hour it happened in, with the traffic of that hour.
+    assert_eq!(stored(Tier::Hour, 1), usage(60, 0, 1));
+    assert!(h.store.usage(Tier::Hour, Some(2)).unwrap().is_empty());
+    assert_eq!(stored(Tier::Minute, 59), usage(160, 0, 1));
+    assert_eq!(stored(Tier::Minute, 60), usage(60, 0, 1));
+    assert_eq!(stored(Tier::Minute, 62), usage(0, 0, 1));
+    assert!(h.store.usage(Tier::Minute, Some(63)).unwrap().is_empty());
+
+    // Two hours later the last hour no longer reaches it, the last six do.
+    h.clock.set(62 * MINUTE + 2 * HOUR);
+    let closed = |range| query(range, TrafficScope::Closed, &[]);
+    assert_eq!(
+        h.total(closed(TrafficRange::LastHour)).await,
+        Usage::default()
+    );
+    assert_eq!(
+        h.total(closed(TrafficRange::Last6Hours)).await,
+        usage(160, 0, 1)
+    );
+    assert_eq!(
+        h.total(closed(TrafficRange::Last24Hours)).await,
+        usage(160, 0, 1)
+    );
+}
+
+#[tokio::test]
+async fn shortening_the_retention_deletes_what_it_no_longer_covers() {
+    let h = Harness::new("p1").await;
+    h.clock.set(2 * HOUR);
+    h.observe(frame(
+        HOUR,
+        0,
+        bytes(10, 10),
+        vec![sample("a", "curl", 10, 10)],
+    ))
+    .await;
+    h.observe(frame(
+        HOUR + MINUTE,
+        MINUTE as u64,
+        bytes(10, 10),
+        Vec::new(),
+    ))
+    .await;
+    h.client.flush().await.unwrap();
+    assert_eq!(
+        only(h.store.usage(Tier::Hour, None).unwrap()),
+        usage(10, 10, 1)
+    );
+
+    // Three days on, seven days still cover it ...
+    h.clock.set(3 * DAY);
+    h.client.flush().await.unwrap();
+    assert_eq!(
+        only(h.store.usage(Tier::Hour, None).unwrap()),
+        usage(10, 10, 1)
+    );
+    assert_eq!(h.client.summary().await.unwrap().closed_connections, 1);
+
+    // ... one day does not, and the next flush notices.
+    h.retention.keep_days(1);
+    h.client.flush().await.unwrap();
+    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
+    assert!(
+        h.store
+            .closed_connections(None, 10)
+            .unwrap()
+            .connections
+            .is_empty()
+    );
+    assert_eq!(h.client.summary().await.unwrap().closed_connections, 0);
+    assert_eq!(h.total(everything()).await, Usage::default());
+}
+
+#[tokio::test]
+async fn keeping_everything_deletes_nothing() {
+    let h = Harness::new("p1").await;
+    h.retention.keep(None);
+    h.clock.set(2 * HOUR);
+    h.observe(frame(
+        HOUR,
+        0,
+        bytes(10, 10),
+        vec![sample("a", "curl", 10, 10)],
+    ))
+    .await;
+    h.observe(frame(
+        HOUR + MINUTE,
+        MINUTE as u64,
+        bytes(10, 10),
+        Vec::new(),
+    ))
+    .await;
+
+    h.clock.set(400 * DAY);
+    h.client.flush().await.unwrap();
+    assert_eq!(
+        only(h.store.usage(Tier::Hour, None).unwrap()),
+        usage(10, 10, 1)
+    );
+    assert_eq!(
+        h.store
+            .closed_connections(None, 10)
+            .unwrap()
+            .connections
+            .len(),
+        1
+    );
+    assert_eq!(h.total(everything()).await, usage(10, 10, 1));
+}
+
+#[tokio::test]
+async fn unreferenced_dimensions_are_collected_after_hour_rows_expire_at_most_hourly() {
+    let h = Harness::new("p1").await;
+    // One closed connection each in hours 1, 24 and 25; a connection's hour rows reach the hour
+    // tier when it closes. All are stored while the seven days still cover them.
+    for hour in [1, 24, 25] {
+        h.close_in_hour(hour).await;
+    }
+    // The first flush after a start reconciles once, whatever the previous run left behind.
+    h.clock.set(2 * HOUR);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 1);
+
+    // Hour 1 expires.
+    h.clock.set(8 * DAY + 30 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 2);
+
+    // Hour 24 expires, but the last collection is less than an hour old.
+    h.clock.set(8 * DAY + 61 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 2);
+
+    // Nothing expires.
+    h.clock.set(8 * DAY + 62 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 2);
+
+    // Hour 25 expires, and the last collection is old enough.
+    h.clock.set(8 * DAY + 2 * HOUR);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 3);
+
+    // Keeping everything expires nothing.
+    h.retention.keep(None);
+    h.clock.set(40 * DAY);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 3);
+}
+
+#[tokio::test]
+async fn a_collection_still_due_runs_once_the_cooldown_passes() {
+    let h = Harness::new("p1").await;
+    for hour in [1, 24] {
+        h.close_in_hour(hour).await;
+    }
+    h.clock.set(2 * HOUR);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 1);
+
+    // Hour 1 expires.
+    h.clock.set(8 * DAY + 30 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 2);
+
+    // Hour 24 expires within the cooldown: its collection waits.
+    h.clock.set(8 * DAY + 61 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 2);
+
+    // Nothing expires any more, but the cooldown is over.
+    h.clock.set(8 * DAY + 90 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 3);
+
+    // And once it ran, nothing is due.
+    h.clock.set(8 * DAY + 3 * HOUR);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 3);
+}
+
+#[tokio::test]
+async fn a_failed_collection_is_retried_by_a_later_flush() {
+    let h = Harness::new("p1").await;
+    h.close_in_hour(1).await;
+    h.clock.set(2 * HOUR);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 1);
+
+    h.store.fail_collect(true);
+    h.clock.set(8 * DAY + 30 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 2);
+
+    // No hour row expires now, and the failure started no cooldown.
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 3);
+
+    h.store.fail_collect(false);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 4);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 4);
+}
+
+#[tokio::test]
+async fn a_restart_collects_what_expired_while_the_cooldown_still_ran() {
     let mut h = Harness::new("p1").await;
-    h.client.observe(Some(a_first())).await.unwrap();
+    // Distinct processes: each expired hour orphans a dimension combination of its own.
+    h.close_in_hour_by(1, "curl").await;
+    h.close_in_hour_by(24, "wget").await;
+    h.clock.set(2 * HOUR);
+    h.client.flush().await.unwrap();
+
+    // Hour 1 expires and its combination is collected.
+    h.clock.set(8 * DAY + 30 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collected(), 1);
+
+    // Hour 24 expires within the cooldown: the app ends before its collection may run.
+    h.clock.set(8 * DAY + 61 * MINUTE);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collected(), 1);
+
+    // No hour row expires after the restart, yet the orphan is collected.
+    h.restart().await;
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collected(), 2);
+}
+
+#[tokio::test]
+async fn a_restart_while_writes_fail_reconciles_once_they_succeed() {
+    let mut h = Harness::new("p1").await;
+    h.store.fail_flush(true);
+    h.restart().await;
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 0);
+
+    h.store.fail_flush(false);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 1);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.collections(), 1);
+}
+
+#[tokio::test]
+async fn a_store_that_keeps_refusing_neither_grows_the_session_nor_loses_what_it_held() {
+    let mut h = Harness::new("p1").await;
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(11, 22),
+        vec![sample("a", "curl", 10, 20), sample("b", "wget", 1, 2)],
+    ))
+    .await;
+    // "a" is gone from the second frame: it closed.
+    h.observe(frame(
+        2_000,
+        1_000,
+        bytes(11, 22),
+        vec![sample("b", "wget", 1, 2)],
+    ))
+    .await;
+    assert!(h.client.summary().await.unwrap().current_rate.is_some());
+
+    h.store.fail_flush(true);
+    h.client.flush().await.unwrap();
+    // The stale rate is gone, and so is every frame that comes now.
+    assert_eq!(h.client.summary().await.unwrap().current_rate, None);
+    let held = |summary: TrafficSummary| {
+        (
+            summary.active_connections,
+            summary.closed_connections,
+            summary.last_sample_at,
+            summary.current_rate,
+        )
+    };
+    let before = held(h.client.summary().await.unwrap());
+    assert_eq!(before, (1, 1, Some(2_000), None));
+    h.observe(frame(
+        3_000,
+        2_000,
+        bytes(30, 30),
+        vec![sample("b", "wget", 5, 5), sample("c", "curl", 7, 7)],
+    ))
+    .await;
+    h.observe(frame(
+        4_000,
+        3_000,
+        bytes(30, 30),
+        vec![sample("b", "wget", 9, 9)],
+    ))
+    .await;
+    for _ in 0..3 {
+        h.client.flush().await.unwrap();
+        assert_eq!(held(h.client.summary().await.unwrap()), before);
+        assert_eq!(h.total(everything()).await, usage(11, 22, 2));
+    }
+    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
+
+    // The store accepts again: what was held is written, once.
+    h.store.fail_flush(false);
+    h.client.flush().await.unwrap();
+    assert_eq!(
+        only(h.store.usage(Tier::Hour, None).unwrap()),
+        usage(10, 20, 1)
+    );
+    let (_, active) = h.store.load().unwrap().unwrap();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].bytes(), bytes(1, 2));
+    h.client.flush().await.unwrap();
+    assert_eq!(
+        only(h.store.usage(Tier::Hour, None).unwrap()),
+        usage(10, 20, 1)
+    );
+
+    // Observing resumes: "b" brings what it grew since the last accepted frame, "c" is lost.
+    h.observe(frame(
+        5_000,
+        4_000,
+        bytes(30, 30),
+        vec![sample("b", "wget", 9, 9)],
+    ))
+    .await;
+    assert_eq!(h.total(everything()).await, usage(19, 29, 2));
+    assert_eq!(
+        h.client.summary().await.unwrap().last_sample_at,
+        Some(5_000)
+    );
+    h.client.flush().await.unwrap();
+
+    // Nothing is counted twice across a restart, All is still Active plus Closed.
+    h.restart().await;
+    assert_eq!(h.total(everything()).await, usage(19, 29, 2));
+    let scoped = |scope| query(TrafficRange::All, scope, &[]);
+    let active = h.total(scoped(TrafficScope::Active)).await;
+    let closed = h.total(scoped(TrafficScope::Closed)).await;
+    assert_eq!(active, usage(9, 9, 1));
+    assert_eq!(closed, usage(10, 20, 1));
+    assert_eq!(h.client.summary().await.unwrap().active_connections, 1);
+}
+
+#[tokio::test]
+async fn an_unreadable_store_disables_recording_and_is_never_written() {
+    let h = Harness::new("p1").await;
+    h.observe(a_first()).await;
+    h.shutdown.cancel();
+    h.tasks.close();
+    h.tasks.wait().await;
+    let flushes = h.store.flushes();
+
+    h.store.fail_load(true);
+    let shutdown = CancellationToken::new();
+    let tasks = TaskTracker::new();
+    assert!(h.try_spawn(&shutdown, &tasks).await.is_err());
+    // Nothing is left running: no registered drain, no pump on the feed.
+    assert!(tasks.is_empty());
+    assert_eq!(h.frames.receiver_count(), 0);
+    shutdown.cancel();
+    tasks.close();
+    tasks.wait().await;
+    assert_eq!(h.store.flushes(), flushes);
+
+    // What the store holds is untouched, for the next start to read.
+    h.store.fail_load(false);
+    let (_, active) = h.store.load().unwrap().unwrap();
+    assert_eq!(active.len(), 1);
+}
+
+#[tokio::test]
+async fn the_active_rate_sums_the_connection_rates_and_a_closed_view_has_none() {
+    let h = Harness::new("p1").await;
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(110, 0),
+        vec![sample("a", "curl", 100, 0), sample("b", "wget", 10, 0)],
+    ))
+    .await;
+    h.observe(frame(
+        2_000,
+        1_000,
+        bytes(180, 0),
+        vec![sample("a", "curl", 150, 0), sample("b", "wget", 30, 0)],
+    ))
+    .await;
+
+    let rated = |scope| {
+        request(
+            query(TrafficRange::All, scope, &[]),
+            &[Dimension::Process, Dimension::Source],
+        )
+    };
+    let rate = |upload| {
+        Some(Rate {
+            upload,
+            download: 0,
+        })
+    };
+    let report = h.report(rated(TrafficScope::Active)).await;
+    assert_eq!(report.current_rate, rate(70));
+    assert_eq!(report.rankings[0].groups[0].current_rate, rate(50));
+    assert_eq!(report.rankings[0].groups[1].current_rate, rate(20));
+    // Both connections share their source.
+    assert_eq!(report.rankings[1].groups[0].current_rate, rate(70));
+
+    // "b" closes and "a" slows down.
+    h.observe(frame(
+        3_000,
+        2_000,
+        bytes(190, 0),
+        vec![sample("a", "curl", 160, 0)],
+    ))
+    .await;
+    let closed = h.report(rated(TrafficScope::Closed)).await;
+    assert_eq!(closed.current_rate, None);
+    assert_eq!(keys(&closed.rankings[0].groups), ["wget"]);
+    assert_eq!(closed.rankings[0].groups[0].current_rate, None);
+
+    let all = h.report(rated(TrafficScope::All)).await;
+    assert_eq!(all.current_rate, rate(10));
+    let groups = &all.rankings[0].groups;
+    assert_eq!(
+        (groups[0].key.as_str(), groups[0].current_rate),
+        ("curl", rate(10))
+    );
+    assert_eq!(
+        (groups[1].key.as_str(), groups[1].current_rate),
+        ("wget", None)
+    );
+}
+
+#[tokio::test]
+async fn restart_with_the_same_instance_does_not_recount() {
+    let mut h = Harness::new("p1").await;
+    h.observe(a_first()).await;
     // The stop flushes what the interval has not, and the new actor restores it.
     h.restart().await;
 
     let summary = h.client.summary().await.unwrap();
-    assert_eq!(summary.core_bytes, bytes(100, 200));
     assert_eq!(summary.active_connections, 1);
+    assert_eq!(h.total(everything()).await, usage(100, 200, 1));
 
-    h.client.observe(Some(a_second())).await.unwrap();
-    assert_eq!(
-        h.client.summary().await.unwrap().core_bytes,
-        bytes(150, 260)
-    );
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
-    assert_eq!(usage.total, bytes(150, 260));
-}
-
-#[tokio::test]
-async fn restart_with_another_profile_wipes_the_store() {
-    let mut h = Harness::new("p1").await;
-    h.client.observe(Some(a_first())).await.unwrap();
-    h.client.flush().await.unwrap();
-    assert!(!h.store.totals(GroupBy::Process).unwrap().is_empty());
-
-    h.profiles.select("p2");
-    h.restart().await;
-
-    let summary = h.client.summary().await.unwrap();
-    assert_eq!(summary.profile.as_deref(), Some("p2"));
-    assert_eq!(summary.core_bytes, Bytes::default());
-    assert_eq!(summary.active_connections, 0);
-    assert!(h.store.totals(GroupBy::Process).unwrap().is_empty());
-    let (meta, active) = h.store.load().unwrap().unwrap();
-    assert_eq!(meta.profile.as_deref(), Some("p2"));
-    assert!(active.is_empty());
+    h.observe(a_second()).await;
+    assert_eq!(h.total(everything()).await, usage(150, 260, 1));
 }
 
 #[tokio::test]
 async fn closed_connections_appear_before_and_after_flush() {
     let h = Harness::new("p1").await;
-    h.client
-        .observe(Some(frame(
-            1_000,
-            0,
-            bytes(11, 22),
-            vec![sample("a", "curl", 10, 20), sample("b", "wget", 1, 2)],
-        )))
-        .await
-        .unwrap();
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(11, 22),
+        vec![sample("a", "curl", 10, 20), sample("b", "wget", 1, 2)],
+    ))
+    .await;
     // "a" is gone from the second frame: it closed.
-    h.client
-        .observe(Some(frame(
-            2_000,
-            1_000,
-            bytes(11, 22),
-            vec![sample("b", "wget", 1, 2)],
-        )))
-        .await
-        .unwrap();
+    h.observe(frame(
+        2_000,
+        1_000,
+        bytes(11, 22),
+        vec![sample("b", "wget", 1, 2)],
+    ))
+    .await;
 
     // Not stored yet, but already listed ...
     let pending = h.client.closed_connections(None, 10).await.unwrap();
@@ -664,14 +1272,20 @@ async fn closed_connections_appear_before_and_after_flush() {
     assert_eq!(closed.id, "a");
     assert_eq!(closed.closed_at, 2_000);
     assert_eq!(closed.bytes, bytes(10, 20));
-    assert_eq!(closed.dimensions, dims("curl"));
+    assert_eq!(
+        closed.dimensions,
+        Dimensions {
+            profile: Some("p1".into()),
+            ..dims("curl")
+        }
+    );
 }
 
 #[tokio::test]
 async fn lost_feed_clears_the_current_rate() {
     let h = Harness::new("p1").await;
-    h.client.observe(Some(a_first())).await.unwrap();
-    h.client.observe(Some(a_second())).await.unwrap();
+    h.observe(a_first()).await;
+    h.observe(a_second()).await;
     assert!(h.client.summary().await.unwrap().current_rate.is_some());
 
     h.client.observe(None).await.unwrap();
@@ -679,7 +1293,7 @@ async fn lost_feed_clears_the_current_rate() {
     assert_eq!(summary.current_rate, None);
     // Baselines survive, so the connection is still active and not recounted.
     assert_eq!(summary.active_connections, 1);
-    assert_eq!(summary.core_bytes, bytes(150, 260));
+    assert_eq!(h.total(everything()).await, usage(150, 260, 1));
 }
 
 #[tokio::test]
@@ -691,6 +1305,11 @@ async fn pump_delivers_frames_and_lost_feeds() {
         vec![connection(A, 100, 200, json!(null))],
     )));
     until(&h.client, |s| s.last_sample_at.is_some()).await;
+    // The frame is stamped by the injected clock.
+    assert_eq!(
+        h.client.summary().await.unwrap().last_sample_at,
+        Some(2_000)
+    );
 
     h.frames.send_replace(Some(raw_frame(
         150,
@@ -698,8 +1317,7 @@ async fn pump_delivers_frames_and_lost_feeds() {
         vec![connection(A, 150, 260, json!(null))],
     )));
     until(&h.client, |s| s.current_rate.is_some()).await;
-    let usage = h.client.usage(GroupBy::Process, None, 10).await.unwrap();
-    assert_eq!(usage.total, bytes(150, 260));
+    assert_eq!(h.total(everything()).await, usage(150, 260, 1));
 
     h.frames.send_replace(None);
     until(&h.client, |s| s.current_rate.is_none()).await;
@@ -760,6 +1378,7 @@ fn frame_from_snapshot_extracts_dimensions() {
         Dimensions {
             process: "C:/Tools/curl.exe".into(),
             source: "192.168.1.2".into(),
+            inbound: "unknown".into(),
             target: "example.com".into(),
             protocol: "tcp".into(),
             rule: RuleKey {
@@ -767,6 +1386,9 @@ fn frame_from_snapshot_extracts_dimensions() {
                 payload: "example.com".into(),
             },
             chains: vec!["Node-A".into(), "Proxy".into()],
+            profile: None,
+            source_region: "unknown".into(),
+            destination_region: "unknown".into(),
         }
     );
 
@@ -784,4 +1406,41 @@ fn frame_from_snapshot_extracts_dimensions() {
     assert_eq!(bare.dimensions.protocol, "unknown");
 
     assert_eq!(frame.connections[3].dimensions.protocol, "icmp");
+}
+
+#[test]
+fn frame_from_snapshot_maps_the_inbound_and_the_regions() {
+    let with = |metadata| connection(A, 0, 0, metadata);
+    let raw = raw_frame(
+        0,
+        0,
+        vec![
+            // The user wins over the listener, and codes are normalized.
+            with(json!({
+                "inboundName": "mixed",
+                "inboundUser": "alice",
+                "sourceGeoIP": ["cn"],
+                "destinationGeoIP": ["us", "US"],
+            })),
+            with(json!({
+                "inboundName": "mixed",
+                "inboundUser": "",
+                "destinationGeoIP": ["us", "jp"],
+            })),
+            with(json!({ "sourceGeoIP": [], "destinationGeoIP": null })),
+        ],
+    );
+    let frame = frame_from_snapshot(&raw, 0, Duration::ZERO);
+    let regions = |i: usize| {
+        let d = &frame.connections[i].dimensions;
+        (
+            d.inbound.as_str(),
+            d.source_region.as_str(),
+            d.destination_region.as_str(),
+        )
+    };
+    assert_eq!(regions(0), ("alice", "CN", "US"));
+    // Two distinct codes are ambiguous.
+    assert_eq!(regions(1), ("mixed", "unknown", "unknown"));
+    assert_eq!(regions(2), ("unknown", "unknown", "unknown"));
 }

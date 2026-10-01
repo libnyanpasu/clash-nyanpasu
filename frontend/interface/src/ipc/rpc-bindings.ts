@@ -184,24 +184,29 @@ export const commands = {
     ),
   getTrafficSummary: () =>
     typedError<TrafficSummary, IpcError>(__RPC_INVOKE('get_traffic_summary')),
+  queryTrafficReport: (request: ReportRequest) =>
+    typedError<TrafficReport, IpcError>(
+      __RPC_INVOKE('query_traffic_report', { request }),
+    ),
   queryTrafficUsage: (
-    groupBy: GroupBy,
+    query: TrafficQuery,
+    groupBy: Dimension,
     after: {
       bytes: Bytes
       key: string
     } | null,
     limit: number,
   ) =>
-    typedError<Usage, IpcError>(
-      __RPC_INVOKE('query_traffic_usage', { groupBy, after, limit }),
+    typedError<UsagePage, IpcError>(
+      __RPC_INVOKE('query_traffic_usage', { query, groupBy, after, limit }),
     ),
-  queryTrafficUsageByKeys: (groupBy: GroupBy, keys: string[]) =>
+  queryTrafficUsageByKeys: (
+    query: TrafficQuery,
+    groupBy: Dimension,
+    keys: string[],
+  ) =>
     typedError<UsageGroup[], IpcError>(
-      __RPC_INVOKE('query_traffic_usage_by_keys', { groupBy, keys }),
-    ),
-  queryTrafficTopology: (limit: number) =>
-    typedError<Topology, IpcError>(
-      __RPC_INVOKE('query_traffic_topology', { limit }),
+      __RPC_INVOKE('query_traffic_usage_by_keys', { query, groupBy, keys }),
     ),
   queryTrafficClosedConnections: (
     before: {
@@ -1299,16 +1304,40 @@ export type DeviceInfo = {
   memory: string
 }
 
+/**  A way to slice usage: ranking, filtering and topology layers all name dimensions. */
+export type Dimension =
+  /**  Derived: the process when known, else the source. */
+  | 'origin'
+  | 'process'
+  | 'source'
+  | 'inbound'
+  | 'target'
+  | 'protocol'
+  | 'rule'
+  /**  The strategy groups without the exit, outermost first; empty without groups. */
+  | 'chain'
+  | 'exit'
+  | 'profile'
+  | 'source_region'
+  | 'destination_region'
+
 export type Dimensions = {
   /**  Process path or name. */
   process: string
   source: string
+  /**  `inbound_user`, else `inbound_name`. */
+  inbound?: string
   /**  Host, else destination IP. */
   target: string
   protocol: string
   rule: RuleKey
   /**  Clash wire order: exit first, outermost group last. */
   chains: string[]
+  /**  The profile that was current when the connection first appeared; never rewritten. */
+  profile?: string | null
+  /**  Normalized GeoIP region, see `normalize_region`. */
+  source_region?: string
+  destination_region?: string
 }
 
 export type Direction = 'latest' | 'before' | 'after'
@@ -1530,9 +1559,6 @@ export type GetSysProxyResponse = {
   bypass: string
   server: string
 }
-
-export type GroupBy =
-  'process' | 'source' | 'target' | 'protocol' | 'rule' | 'exit' | 'chain'
 
 /**
  *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
@@ -1884,6 +1910,9 @@ export type MaterializedFile_Serialize = {
   updated_at?: number | null
 }
 
+/**  What a topology orders and merges its nodes by. */
+export type Metric = 'bytes' | 'connections'
+
 export type Mode = 'rule' | 'global' | 'direct' | 'script'
 
 export type MutationOutcome<T> =
@@ -1955,6 +1984,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       tray_menu_mode?: TrayMenuMode | null
       tray_menu_close_behavior?: TrayMenuCloseBehavior | null
       network_statistic_widget?: NetworkStatisticWidgetConfig | null
+      traffic_retention?: TrafficRetention | null
       pac_url?: string | null
       enable_tray_text?: boolean | null
       enable_tray_traffic?: boolean | null
@@ -2007,6 +2037,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   tray_menu_mode?: TrayMenuMode | null
   tray_menu_close_behavior?: TrayMenuCloseBehavior | null
   network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  traffic_retention?: TrafficRetention | null
   pac_url?: string | null
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
@@ -2083,6 +2114,8 @@ export type NyanpasuAppConfig_Deserialize = {
   tray_menu_close_behavior: TrayMenuCloseBehavior
   /**  是否启用网络统计信息浮窗 */
   network_statistic_widget: NetworkStatisticWidgetConfig
+  /**  How long recorded traffic is kept */
+  traffic_retention?: TrafficRetention
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
@@ -2176,6 +2209,8 @@ export type NyanpasuAppConfig_Serialize = {
   tray_menu_close_behavior: TrayMenuCloseBehavior
   /**  是否启用网络统计信息浮窗 */
   network_statistic_widget: NetworkStatisticWidgetConfig
+  /**  How long recorded traffic is kept */
+  traffic_retention: TrafficRetention
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
@@ -3090,6 +3125,16 @@ export type QueryLogs = {
   limit: number
 }
 
+export type Ranking = {
+  dimension: Dimension
+  /**  Distinct values of the dimension among the filtered rows. */
+  distinct: number
+  /**  Heaviest first. */
+  groups: UsageGroup[]
+  /**  The groups ranked after `groups`. */
+  other: Usage
+}
+
 /**  Whole bytes per second, rounded down. */
 export type Rate = {
   upload: number
@@ -3113,6 +3158,15 @@ export type RemoteProfileOptionsPatch_Serialize = {
   with_proxy?: boolean | null
   self_proxy?: boolean | null
   update_interval_minutes?: number | null
+}
+
+export type ReportRequest = {
+  query: TrafficQuery
+  /**  One ranking per dimension. */
+  rankings: Dimension[]
+  /**  Groups per ranking, capped at `MAX_LIMIT`. */
+  ranking_limit: number
+  topology: TopologyRequest | null
 }
 
 /**  Why the runtime baseline could not be put back. */
@@ -3749,51 +3803,78 @@ export type SystemDnsError =
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 export type Topology = {
-  paths: TopologyPath[]
+  /**  By layer, heaviest first, the merged node last. */
   nodes: TopologyNode[]
   edges: TopologyEdge[]
-  other: Bytes
 }
 
 export type TopologyEdge = {
   source: string
   target: string
-  bytes: Bytes
-}
-
-export type TopologyKey = {
-  /**  Process, or the source IP when the process is unknown. */
-  source: string
-  rule: RuleKey
-  /**  Outermost group first, exit excluded. */
-  groups: string[]
-  exit: string
+  usage: Usage
 }
 
 export type TopologyNode = {
+  /**  Unique over layer and key, see `node_id`. */
   id: string
+  /**  Index into the requested layers. */
   layer: number
-  label: string
-  bytes: Bytes
+  /**  The dimension value; `None` for the node that merges the layer's remaining nodes. */
+  key: string | null
+  usage: Usage
 }
 
-export type TopologyPath = {
-  key: TopologyKey
-  bytes: Bytes
+export type TopologyRequest = {
+  /**  Two to five distinct dimensions, from the first column to the last. */
+  layers: Dimension[]
+  metric: Metric
+  /**  Nodes beyond this many per layer merge into one "other" node; `None` keeps them all. */
+  limit_per_layer: number | null
 }
+
+export type TrafficFilter = {
+  dimension: Dimension
+  value: string
+}
+
+/**  Filters on different dimensions combine with AND; a dimension holds at most one value. */
+export type TrafficQuery = {
+  range: TrafficRange
+  scope: TrafficScope
+  filters: TrafficFilter[]
+}
+
+/**  How far back a query looks; always ends now. */
+export type TrafficRange =
+  | 'last_hour'
+  | 'last6_hours'
+  | 'last24_hours'
+  | 'last7_days'
+  | 'last30_days'
+  | 'all'
 
 export type TrafficRate = {
   download: number
   upload: number
 }
 
+export type TrafficReport = {
+  total: Usage
+  current_rate: Rate | null
+  rankings: Ranking[]
+  topology: Topology | null
+}
+
+/**  How long recorded traffic is kept. */
+export type TrafficRetention = '1d' | '7d' | '30d' | '90d' | 'forever'
+
+/**  Which connections a query counts: `All` is `Active` plus `Closed`. */
+export type TrafficScope = 'all' | 'active' | 'closed'
+
 export type TrafficSummary = {
-  profile: string | null
-  started_at: number
   last_sample_at: number | null
-  core_bytes: Bytes
   active_connections: number
-  /**  Closed in this session, including those not flushed yet. */
+  /**  Closed connections within the retention, including those not flushed yet. */
   closed_connections: number
   current_rate: Rate | null
 }
@@ -3878,11 +3959,8 @@ export type UpdaterSummary = {
 }
 
 export type Usage = {
-  total: Bytes
-  groups: UsageGroup[]
-  /**  Groups ranked after this page. */
-  other: Bytes
-  next: UsageCursor | null
+  bytes: Bytes
+  connections: number
 }
 
 /**  Exclusive position for heaviest-first paging of grouped usage: the last group of a page. */
@@ -3893,8 +3971,16 @@ export type UsageCursor = {
 
 export type UsageGroup = {
   key: string
-  bytes: Bytes
+  usage: Usage
   current_rate: Rate | null
+}
+
+export type UsagePage = {
+  total: Usage
+  groups: UsageGroup[]
+  /**  Groups ranked after this page. */
+  other: Usage
+  next: UsageCursor | null
 }
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
@@ -4230,6 +4316,13 @@ export const queries = {
       queryKey: ['getTrafficSummary', ...args],
       queryFn: () => commands.getTrafficSummary(...args),
     }),
+  queryTrafficReport: (
+    ...args: Parameters<typeof commands.queryTrafficReport>
+  ) =>
+    queryOptions({
+      queryKey: ['queryTrafficReport', ...args],
+      queryFn: () => commands.queryTrafficReport(...args),
+    }),
   queryTrafficUsage: (...args: Parameters<typeof commands.queryTrafficUsage>) =>
     queryOptions({
       queryKey: ['queryTrafficUsage', ...args],
@@ -4241,13 +4334,6 @@ export const queries = {
     queryOptions({
       queryKey: ['queryTrafficUsageByKeys', ...args],
       queryFn: () => commands.queryTrafficUsageByKeys(...args),
-    }),
-  queryTrafficTopology: (
-    ...args: Parameters<typeof commands.queryTrafficTopology>
-  ) =>
-    queryOptions({
-      queryKey: ['queryTrafficTopology', ...args],
-      queryFn: () => commands.queryTrafficTopology(...args),
     }),
   queryTrafficClosedConnections: (
     ...args: Parameters<typeof commands.queryTrafficClosedConnections>

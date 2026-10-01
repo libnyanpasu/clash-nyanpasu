@@ -75,7 +75,7 @@ export function StatusTabs({
 }
 
 // Reads the counts on its own, so each sample re-renders the tabs alone and
-// not the page around them. Counts are the session's totals, whatever the
+// not the page around them. Counts cover everything kept, whatever the
 // search or proxy filter shows.
 export default function ConnectionsStatusTabs(
   props: Omit<Parameters<typeof StatusTabs>[0], 'activeCount' | 'closedCount'>,

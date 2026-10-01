@@ -22,7 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import {
-  useDeleteClashConnections,
+  type ClosedConnection,
   type Connection_Serialize,
   type ConnectionMetadataFields_Serialize,
 } from '@nyanpasu/interface'
@@ -78,11 +78,23 @@ const FIELD_LABELS = {
   >
 >
 
+// Fields only a closed record has
+const CLOSED_FIELD_LABELS = {
+  source: m.connections_column_source,
+  closed: m.connections_column_closed_time,
+}
+
 // Fields the core adds later have no message yet, so show the key itself
 function fieldLabel(key: string) {
-  return Object.hasOwn(FIELD_LABELS, key)
-    ? FIELD_LABELS[key as keyof typeof FIELD_LABELS]()
-    : sentenceCase(key)
+  if (Object.hasOwn(FIELD_LABELS, key)) {
+    return FIELD_LABELS[key as keyof typeof FIELD_LABELS]()
+  }
+
+  if (Object.hasOwn(CLOSED_FIELD_LABELS, key)) {
+    return CLOSED_FIELD_LABELS[key as keyof typeof CLOSED_FIELD_LABELS]()
+  }
+
+  return sentenceCase(key)
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,32 +157,94 @@ function RowRender({ label, value }: { label: string; value: any }) {
   )
 }
 
+// A connection's fields as dialog rows, keyed for `RowRender`'s labels.
+type DetailFields = Array<[key: string, value: unknown]>
+
+export type ConnectionDetail = {
+  fields: DetailFields
+  metadata?: DetailFields
+  // The connection is gone: a closed record, or a live connection's last
+  // sample kept after it closed.
+  closed: boolean
+}
+
+const isShown = (value: unknown) =>
+  value !== undefined && value !== null && value !== ''
+
+export function activeConnectionDetail(
+  row: ConnectionRow,
+  closed: boolean,
+): ConnectionDetail {
+  return {
+    fields: [
+      ...Object.entries(row).filter(
+        ([key, value]) => !INTERNAL_KEYS.has(key) && isShown(value),
+      ),
+      ...Object.entries(row._extra).filter(
+        ([, value]) => value !== undefined && value !== null,
+      ),
+    ],
+    metadata: [
+      ...Object.entries(row.metadata ?? {}).filter(
+        ([key, value]) => key !== '_extra' && isShown(value),
+      ),
+      ...Object.entries(row.metadata?._extra ?? {}).filter(
+        ([, value]) => value !== undefined && value !== null,
+      ),
+    ],
+    closed,
+  }
+}
+
+export function closedConnectionDetail(
+  row: ClosedConnection,
+): ConnectionDetail {
+  const { dimensions } = row
+
+  return {
+    fields: (
+      [
+        ['id', row.id],
+        ['host', dimensions.target],
+        ['chains', dimensions.chains],
+        ['rule', dimensions.rule.kind],
+        ['rulePayload', dimensions.rule.payload],
+        ['type', dimensions.protocol],
+        ['source', dimensions.source],
+        ['process', dimensions.process],
+        ['upload', row.bytes.upload],
+        ['download', row.bytes.download],
+        // ISO strings, so `formatValue` shows them as times
+        ['start', new Date(row.started_at).toISOString()],
+        ['closed', new Date(row.closed_at).toISOString()],
+      ] satisfies DetailFields
+    ).filter(([, value]) => isShown(value)),
+    closed: true,
+  }
+}
+
 // One dialog for the whole table, selected by connection id: a dialog owned by
 // a virtualized row would follow the row's position, and every row would build
 // its hidden dialog content on each sample.
 export function ConnectionDetailModal({
-  data,
+  detail,
   onClose,
+  onCloseConnection,
 }: {
-  data?: ConnectionRow
+  detail?: ConnectionDetail
   onClose: () => void
+  onCloseConnection?: () => Promise<unknown>
 }) {
-  const deleteConnections = useDeleteClashConnections()
-
   const handleCloseConnection = useLockFn(async () => {
-    if (!data) {
-      return
-    }
-
     // frist close the dialog to avoid showing stale data when the deletion is slow
     onClose()
 
-    await deleteConnections.mutateAsync(data.id)
+    await onCloseConnection?.()
   })
 
   return (
     <Modal
-      open={data !== undefined}
+      open={detail !== undefined}
       onOpenChange={(open) => {
         if (!open) {
           onClose()
@@ -178,58 +252,36 @@ export function ConnectionDetailModal({
       }}
     >
       <ModalContent>
-        {data && (
+        {detail && (
           <Card divider className="flex max-w-[80vw] min-w-96 flex-col">
-            <CardHeader>
+            <CardHeader className="flex-row items-center gap-2">
               <ModalTitle>{m.connections_view_details()}</ModalTitle>
+
+              {detail.closed && (
+                <span className="bg-surface-variant text-on-surface-variant rounded-full px-2 py-0.5 text-xs">
+                  {m.connections_tab_closed()}
+                </span>
+              )}
             </CardHeader>
 
             <CardContent asChild className="p-0">
               <ScrollArea className="max-h-[70vh] select-text">
                 <div className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 p-4">
-                  {Object.entries(data)
-                    .filter(
-                      ([key, value]) =>
-                        !INTERNAL_KEYS.has(key) &&
-                        value !== undefined &&
-                        value !== null &&
-                        value !== '',
-                    )
-                    .map(([key, value]) => (
-                      <RowRender key={key} label={key} value={value} />
-                    ))}
+                  {detail.fields.map(([key, value]) => (
+                    <RowRender key={key} label={key} value={value} />
+                  ))}
 
-                  {Object.entries(data._extra)
-                    .filter(
-                      ([, value]) => value !== undefined && value !== null,
-                    )
-                    .map(([key, value]) => (
-                      <RowRender key={key} label={key} value={value} />
-                    ))}
+                  {detail.metadata && (
+                    <>
+                      <h3 className="col-span-2 pt-4 pb-1 text-base font-semibold">
+                        {m.connections_field_metadata()}
+                      </h3>
 
-                  <h3 className="col-span-2 pt-4 pb-1 text-base font-semibold">
-                    {m.connections_field_metadata()}
-                  </h3>
-
-                  {Object.entries(data.metadata ?? {})
-                    .filter(
-                      ([key, value]) =>
-                        key !== '_extra' &&
-                        value !== undefined &&
-                        value !== null &&
-                        value !== '',
-                    )
-                    .map(([key, value]) => (
-                      <RowRender key={key} label={key} value={value} />
-                    ))}
-
-                  {Object.entries(data.metadata?._extra ?? {})
-                    .filter(
-                      ([, value]) => value !== undefined && value !== null,
-                    )
-                    .map(([key, value]) => (
-                      <RowRender key={key} label={key} value={value} />
-                    ))}
+                      {detail.metadata.map(([key, value]) => (
+                        <RowRender key={key} label={key} value={value} />
+                      ))}
+                    </>
+                  )}
                 </div>
               </ScrollArea>
             </CardContent>
@@ -237,9 +289,11 @@ export function ConnectionDetailModal({
             <CardFooter className="gap-2">
               <ModalClose variant="flat">{m.common_close()}</ModalClose>
 
-              <Button onClick={handleCloseConnection}>
-                {m.connections_close_connection()}
-              </Button>
+              {!detail.closed && onCloseConnection && (
+                <Button onClick={handleCloseConnection}>
+                  {m.connections_close_connection()}
+                </Button>
+              )}
             </CardFooter>
           </Card>
         )}
@@ -249,42 +303,39 @@ export function ConnectionDetailModal({
 }
 
 export default function TableRow({
-  data,
   onDoubleClick,
   onViewDetails,
+  onCloseConnection,
   ...props
 }: ComponentProps<'tr'> & {
-  data: ConnectionRow
-  onViewDetails: (id: string) => void
+  onViewDetails: () => void
+  // Absent for a connection that is already closed
+  onCloseConnection?: () => void
 }) {
-  const deleteConnections = useDeleteClashConnections()
-
-  const handleCloseConnection = useLockFn(async () => {
-    await deleteConnections.mutateAsync(data.id)
-  })
-
   return (
     <RegisterContextMenu>
       <RegisterContextMenuTrigger asChild>
         <tr
           onDoubleClick={(e) => {
             onDoubleClick?.(e)
-            onViewDetails(data.id)
+            onViewDetails()
           }}
           {...props}
         />
       </RegisterContextMenuTrigger>
 
       <RegisterContextMenuContent>
-        <ContextMenuItem onSelect={() => onViewDetails(data.id)}>
+        <ContextMenuItem onSelect={onViewDetails}>
           <ChatInfoRounded className="size-4" />
           <span>{m.connections_view_details()}</span>
         </ContextMenuItem>
 
-        <ContextMenuItem onSelect={() => handleCloseConnection()}>
-          <CloseRounded className="size-4" />
-          <span>{m.connections_close_connection()}</span>
-        </ContextMenuItem>
+        {onCloseConnection && (
+          <ContextMenuItem onSelect={onCloseConnection}>
+            <CloseRounded className="size-4" />
+            <span>{m.connections_close_connection()}</span>
+          </ContextMenuItem>
+        )}
       </RegisterContextMenuContent>
     </RegisterContextMenu>
   )

@@ -1,7 +1,14 @@
 export default {
   'scripts/**/*.{ts,tsx}': [
-    'deno fmt --config scripts/deno.jsonc',
-    'deno check --config scripts/deno.jsonc',
+    (filenames) => {
+      const files = filenames
+        .map((file) => `'${file.replaceAll("'", "'\\''")}'`)
+        .join(' ')
+      return [
+        `deno task fmt:scripts-files ${files}`,
+        `deno task check:scripts-files ${files}`,
+      ]
+    },
   ],
   '*.{js,cjs,.mjs,jsx}': (filenames) => {
     const configFiles = [

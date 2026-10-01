@@ -17,7 +17,7 @@ use windows_sys::Win32::{
 };
 
 // The two statics here are an allowlisted exception to AGENTS.md §7 (see
-// `STATIC_ALLOWLIST` in `scripts/architecture-ledger.ts`). The window procedure
+// `STATIC_ALLOWLIST` in `scripts/src/architecture-ledger/policy.ts`). The window procedure
 // is a bare `extern "system"` callback that Win32 calls with only the window
 // and the message, so it reads the sender and the phase from here.
 // `SHUTDOWN_STATE` is also written by `set_ready_for_shutdown`, which the exit

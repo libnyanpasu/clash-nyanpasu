@@ -4,7 +4,7 @@ This repository is migrating away from `::global()` singletons and Tauri-coupled
 
 ## Mandatory Reading: Development Standards
 
-Before starting any repository work, agents MUST read [docs/development/README.md](docs/development/README.md) and all standards guides: [architecture](docs/development/architecture.md), [unified RPC](docs/development/rpc.md), [testing and review](docs/development/testing.md), [workflow](docs/development/workflow.md), [Rust code style](docs/development/rust.md), and [TypeScript and React code style](docs/development/typescript.md).
+Before starting any repository work, agents MUST read [docs/development/README.md](docs/development/README.md) and all standards guides: [architecture](docs/development/architecture.md), [unified RPC](docs/development/rpc.md), [testing and review](docs/development/testing.md), [workflow](docs/development/workflow.md), [Rust code style](docs/development/rust.md), [TypeScript and React code style](docs/development/typescript.md), and [repository scripts](docs/development/scripts.md).
 
 Agents MUST strictly follow these development standards together with the instructions below. Reading this file alone is insufficient. The guides are mandatory project requirements, not optional background or suggestions. If a guide is unavailable or the current requirements conflict, report the issue and resolve it before proceeding with affected work.
 
@@ -486,6 +486,17 @@ pub trait ConfigStore: Send + Sync + 'static {
 - Prefer `frontend/nyanpasu/src/components/ui/` components. For missing controls, check Radix primitives and add styled, accessible wrappers there before using them in features. Follow Material You and existing project tokens and interaction states. Oxlint restricts direct Radix imports to that UI layer.
 - Semantic naming, reuse, grouping, and visual consistency remain mandatory review requirements even when formatting and lint pass.
 
+### Repository scripts
+
+- Repository automation uses Deno TypeScript, with source grouped by responsibility under `scripts/src/` and co-located `*_test.ts` files. Keep configuration, lockfile, documentation and editor settings at `scripts/`; put non-source fixtures in `scripts/fixtures/`. The upstream runtime submodule owns its own tooling.
+- The root `deno.jsonc` is the only task catalog; `scripts/deno.jsonc` and `scripts/deno.lock` own runtime configuration and locked dependencies separately from pnpm. Every public CLI has a named task and description. Reuse the package scripts' colon-separated operation names.
+- External callers (CI, package scripts, hooks, current docs and application tests) use `deno task <name>`. Existing pnpm commands may delegate to tasks. Do not add direct `deno run`, `node`, `tsx` or script-file calls outside the task catalog. External tool invocations inside scripts and fixture-only subprocesses in script unit tests are implementation details; historical reports retain their original commands.
+- Split CLI orchestration, pure computation and infrastructure by concrete responsibility. Imported library modules must not run a CLI, download files or launch processes. Avoid broad `utils/` buckets, generic frameworks and old-path compatibility wrappers or exports.
+- Tasks run at the repository root, with arguments forwarded without an extra `--`. Use `shared/repo-paths.ts` for repository paths and explicit parameters for alternate workspaces. Preserve parameters, environment variables, permissions and exit status; never store credentials in tasks.
+- Use Deno-compatible `jsr:`, `npm:` or supported `node:` imports, pin new npm imports/types and update the Deno lockfile. Playwright scripts run through Deno but still require Chromium; the external Tauri signing CLI may use Node.
+- Run `deno task lint:deno`, `deno task test:scripts` and the architecture gate as relevant; compare behavior before/after reorganizing, check arguments and paths, and verify migrated generator/browser behavior. Do not publish, upload or send notifications merely to verify a refactor. Document checks that require unavailable platforms or environments.
+- Follow [Repository scripts](docs/development/scripts.md) for the category layout and verification commands; update that guide alongside shared rule changes.
+
 ### GitHub workflow names
 
 - Use `[Category] Action Object` for workflow display names, with the categories `CI`, `Release`, `Maintenance`, and `Reusable`.
@@ -554,13 +565,13 @@ When the user chooses a worktree, its location is the developer's choice (any pa
 
 ### Reuse policy
 
-| Path (repo-relative)       | Approx size  | Policy                          | Reason                                                                                                                                    |
-| -------------------------- | ------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/tauri/sidecar/`   | ~213M        | **Symlink → main**              | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `pnpm prepare:check` is slow |
-| `backend/tauri/resources/` | ~21M         | **Symlink → main**              | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                     |
-| `node_modules/`            | ~1.5G        | **Independent `pnpm install`**  | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                       |
-| `backend/target/`          | ~50G         | **Independent — never symlink** | sharing causes Cargo incremental-fingerprint churn + concurrent build-lock waits across diverged source trees                             |
-| `backend/tauri/tmp/dist/`  | build output | **Independent — never symlink** | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                |
+| Path (repo-relative)       | Approx size  | Policy                          | Reason                                                                                                                                         |
+| -------------------------- | ------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tauri/sidecar/`   | ~213M        | **Symlink → main**              | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `deno task prepare:check` is slow |
+| `backend/tauri/resources/` | ~21M         | **Symlink → main**              | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                          |
+| `node_modules/`            | ~1.5G        | **Independent `pnpm install`**  | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                            |
+| `backend/target/`          | ~50G         | **Independent — never symlink** | sharing causes Cargo incremental-fingerprint churn + concurrent build-lock waits across diverged source trees                                  |
+| `backend/tauri/tmp/dist/`  | build output | **Independent — never symlink** | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                     |
 
 Only `sidecar/` and `resources/` are symlink candidates.
 
@@ -571,7 +582,7 @@ Only `sidecar/` and `resources/` are symlink candidates.
   - Rust-only worktree → drop a placeholder (cheapest, no vite build).
   - Runnable UI → `pnpm web:build` (build `interface` first; it clears and refills `tmp/dist`).
 
-`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `pnpm generate:git-info` only if accurate commit metadata must be baked in.
+`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `deno task generate:git-info` only if accurate commit metadata must be baked in.
 
 ### Create a worktree
 

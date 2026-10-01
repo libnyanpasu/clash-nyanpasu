@@ -15,3 +15,6 @@ backend/tauri/gen/schemas/
 backend/tauri/tmp/
 # upstream submodule — formatting is owned by libnyanpasu/nyanpasu-runtime
 backend/nyanpasu-runtime/
+
+# Deno task catalog uses the same formatter as repository scripts.
+deno.jsonc

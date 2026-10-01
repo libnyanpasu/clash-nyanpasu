@@ -40,11 +40,11 @@
 
 ## Development
 
-Before making changes, read the [development standards](docs/development/README.md) for architecture, unified RPC, Rust and TypeScript code style, testing, worktree setup, and commit rules. These requirements apply to all contributors and are also reflected in [AGENTS.md](AGENTS.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution setup.
+Before making changes, read the [development standards](docs/development/README.md) for architecture, unified RPC, Rust and TypeScript code style, repository scripts, testing, worktree setup, and commit rules. These requirements apply to all contributors and are also reflected in [AGENTS.md](AGENTS.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution setup.
 
 ### Configure your development environment
 
-You should install Rust and Node.js, see [here](https://v2.tauri.app/start/prerequisites/) for more details.
+You should install Rust, Node.js and Deno 2 (for repository automation), see [here](https://v2.tauri.app/start/prerequisites/) for more details.
 
 Clash Nyanpasu uses the pnpm package manager. See [here](https://pnpm.io/installation) for installation instructions. Then, install Node.js packages.
 
@@ -56,9 +56,9 @@ pnpm i
 
 ```shell
 # force update to latest version
-# pnpm prepare:check --force
+# deno task prepare:check --force
 
-pnpm prepare:check
+deno task prepare:check
 ```
 
 ### Run dev

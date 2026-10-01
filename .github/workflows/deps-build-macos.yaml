@@ -151,7 +151,7 @@ jobs:
 
       - name: Rename updater files
         run: |
-          deno run -A scripts/upload-macos-updater.ts
+          deno task upload-macos-updater
         env:
           TARGET_ARCH: ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
 
@@ -176,7 +176,7 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          deno run -A scripts/upload-build-artifacts.ts \
+          deno task upload-build-artifacts \
             "backend/target/**/*.dmg"
         env:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}

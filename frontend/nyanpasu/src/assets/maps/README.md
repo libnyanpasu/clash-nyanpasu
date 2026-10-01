@@ -11,7 +11,7 @@ The outline is intentionally low resolution. Label points represent countries
 and regions, not server coordinates. Small regions such as HK and SG still have
 label points even when absent from the low resolution outline.
 
-Regenerate from the repository root with `node scripts/generate-topology-map.mjs`.
+Regenerate from the repository root with `deno task generate:topology-map`.
 This development command downloads the pinned source data and uses the existing
 D3 dependency to project it to a 960 × 460 SVG canvas. The generated data is bundled;
 the application performs no map, geolocation, or tile network requests.

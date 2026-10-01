@@ -302,7 +302,7 @@ mod tests {
 
     /// Reads the `version` key out of the `[package]` table of a Cargo manifest
     /// without pulling in a `toml` dependency, mirroring the line-scan approach
-    /// `scripts/check.ts` uses to read the same manifest.
+    /// `scripts/src/prepare/check.ts` uses to read the same manifest.
     fn parse_package_version(manifest: &str) -> semver::Version {
         let raw = manifest
             .lines()

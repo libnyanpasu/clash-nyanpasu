@@ -67,7 +67,7 @@ To ensure the project runs correctly locally, the following dependencies are req
 
 ## 3. Pre-Development Setup
 
-Before starting development, initialize the environment and download required resources.
+Before starting development, install Deno 2 for repository automation, initialize the environment and download required resources.
 
 ### 1. Install Frontend Dependencies
 
@@ -80,7 +80,7 @@ pnpm i
 ### 2. Download Core & Resource Files
 
 ```
-pnpm prepare:check
+deno task prepare:check
 ```
 
 > This command downloads binaries like `sidecar` and `resource` to ensure the project runs properly
@@ -88,7 +88,7 @@ pnpm prepare:check
 If files are missing or you want to force update:
 
 ```
-pnpm prepare:check --force
+deno task prepare:check --force
 ```
 
 💡 **Tip**: Configure terminal proxy if network issues occur

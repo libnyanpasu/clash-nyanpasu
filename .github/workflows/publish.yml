@@ -72,7 +72,7 @@ jobs:
           deno-version: v2.x
 
       - name: Test release versioning
-        run: deno test --config scripts/deno.jsonc -A scripts/publish_test.ts scripts/prepare-release_test.ts scripts/finalize-linux-release_test.ts scripts/release-channel_test.ts
+        run: deno task test:release
 
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff

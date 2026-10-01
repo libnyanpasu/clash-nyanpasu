@@ -811,12 +811,12 @@ mod tests {
                 .unwrap()
                 .url
                 .unwrap();
-            let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../scripts/test-http-ui.mjs");
+            let repository = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
             let output = tokio::time::timeout(
                 std::time::Duration::from_secs(60),
-                tokio::process::Command::new("node")
-                    .arg(script)
+                tokio::process::Command::new("deno")
+                    .args(["task", "test:http-ui"])
+                    .current_dir(repository)
                     .arg(&url)
                     .kill_on_drop(true)
                     .output(),

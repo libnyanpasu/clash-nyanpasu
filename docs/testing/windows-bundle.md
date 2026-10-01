@@ -57,7 +57,8 @@ custom target. This change does not publish new updates to those old fixed feeds
 ## Automated checks
 
 ```sh
-deno test --config scripts/deno.jsonc -A scripts/windows-bundle_test.ts scripts/updater-platforms_test.ts
+deno task test:windows-bundle
+deno task test:updater
 cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib startup:: --locked
 ```
 

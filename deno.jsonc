@@ -1,0 +1,137 @@
+{
+  "lock": false,
+  "tasks": {
+    "lint:deno": {
+      "description": "Check formatting and types for repository Deno scripts",
+      "command": "deno fmt --check --config scripts/deno.jsonc scripts deno.jsonc && deno task check:scripts"
+    },
+    "fmt:scripts": {
+      "description": "Format repository Deno scripts and task configuration",
+      "command": "deno fmt --config scripts/deno.jsonc scripts deno.jsonc"
+    },
+    "check:scripts": {
+      "description": "Type-check every repository Deno script",
+      "command": "deno check --config scripts/deno.jsonc scripts/src/**/*.ts"
+    },
+    "fmt:scripts-files": {
+      "description": "Format the supplied Deno script files",
+      "command": "deno fmt --config scripts/deno.jsonc"
+    },
+    "check:scripts-files": {
+      "description": "Type-check the supplied Deno script files",
+      "command": "deno check --config scripts/deno.jsonc"
+    },
+    "test:scripts": {
+      "description": "Run all Deno script tests",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src"
+    },
+    "test:release": {
+      "description": "Test release preparation, publishing, finalization, and channel selection",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/publish_test.ts scripts/src/release/prepare-release_test.ts scripts/src/release/finalize-linux-release_test.ts scripts/src/updater/release-channel_test.ts"
+    },
+    "test:updater": {
+      "description": "Test updater platform manifests, release channels, and signing",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/updater/updater-platforms_test.ts scripts/src/updater/release-channel_test.ts scripts/src/release/sign-nightly-updater_test.ts"
+    },
+    "test:windows-bundle": {
+      "description": "Test Windows portable bundle generation",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/windows-bundle_test.ts"
+    },
+    "test:linux-release": {
+      "description": "Test Linux release package finalization",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/finalize-linux-release_test.ts"
+    },
+    "test:architecture-ledger": {
+      "description": "Test architecture ledger analysis and reporting",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/architecture-ledger/architecture-ledger_test.ts"
+    },
+    "architecture-ledger": {
+      "description": "Print the architecture migration report",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/architecture-ledger/main.ts --mode=report"
+    },
+    "lint:architecture-ledger": {
+      "description": "Check the architecture migration gate against its snapshot",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/architecture-ledger/main.ts --mode=gate"
+    },
+    "upload-macos-updater": {
+      "description": "Upload the macOS updater to GitHub Releases",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/upload-macos-updater.ts"
+    },
+    "telegram-notify": {
+      "description": "Send a Telegram notification for releases or nightly builds",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/notifications/telegram-notify.ts"
+    },
+    "build-cache": {
+      "description": "Save or restore the build cache through the file server",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/build-cache.ts"
+    },
+    "upload-build-artifacts": {
+      "description": "Upload build artifacts to the file server",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/upload-build-artifacts.ts"
+    },
+    "generate:manifest:latest-version": {
+      "description": "Resolve and write the latest core versions to the manifest",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/manifest/generate-latest-version.ts"
+    },
+    "generate:manifest": {
+      "description": "Generate the core version manifest",
+      "command": "deno task generate:manifest:latest-version"
+    },
+    "generate:git-info": {
+      "description": "Generate Git summary information for the Tauri build",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/generate-git-info.ts"
+    },
+    "generate:data-slots": {
+      "description": "Generate the frontend data-slot registry",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/extract-data-slots.ts"
+    },
+    "generate:topology-map": {
+      "description": "Generate the frontend topology map data",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/generate-topology-map.ts"
+    },
+    "publish": {
+      "description": "Bump monorepo versions for a release",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/publish.ts"
+    },
+    "updater": {
+      "description": "Generate and upload stable or beta updater metadata",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/updater/updater.ts"
+    },
+    "updater:nightly": {
+      "description": "Generate and upload nightly updater metadata",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/updater/updater-nightly.ts"
+    },
+    "prepare:nightly": {
+      "description": "Prepare the Tauri configuration for a nightly build",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/prepare-nightly.ts"
+    },
+    "prepare:release": {
+      "description": "Prepare the Tauri configuration for a release build",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/prepare-release.ts"
+    },
+    "prepare:preview": {
+      "description": "Prepare the Tauri configuration for a preview build",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/prepare-preview.ts"
+    },
+    "prepare:check": {
+      "description": "Check and download required sidecar binaries and resources",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/prepare/check.ts"
+    },
+    "portable": {
+      "description": "Create a Windows portable ZIP and upload it to the release",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/portable.ts"
+    },
+    "sign-nightly-updater": {
+      "description": "Sign updater artifacts for a nightly build",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/sign-nightly-updater.ts"
+    },
+    "finalize-linux-release": {
+      "description": "Finalize Linux release package metadata",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/finalize-linux-release.ts"
+    },
+    "test:http-ui": {
+      "description": "Run the browser HTTP UI integration test",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/testing/test-http-ui.ts"
+    }
+  }
+}

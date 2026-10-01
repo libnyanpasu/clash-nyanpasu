@@ -31,16 +31,18 @@ pub trait ConfigStore: Send + Sync + 'static {
 
 ## Run the relevant checks
 
-Use the scripts in the root `package.json`:
+Use named Deno tasks for repository tooling; the root `package.json` delegates
+its existing script commands to these tasks:
 
-| Check                       | Command                         |
-| --------------------------- | ------------------------------- |
-| Frontend tests              | `pnpm test:frontend`            |
-| Backend tests               | `pnpm test:backend`             |
-| Architecture ledger tests   | `pnpm test:architecture-ledger` |
-| Architecture migration gate | `pnpm lint:architecture-ledger` |
-| Frontend types              | `pnpm typecheck`                |
-| Project lint                | `pnpm lint`                     |
+| Check                       | Command                              |
+| --------------------------- | ------------------------------------ |
+| Frontend tests              | `pnpm test:frontend`                 |
+| Backend tests               | `pnpm test:backend`                  |
+| Repository script tests     | `deno task test:scripts`             |
+| Architecture ledger tests   | `deno task test:architecture-ledger` |
+| Architecture migration gate | `deno task lint:architecture-ledger` |
+| Frontend types              | `pnpm typecheck`                     |
+| Project lint                | `pnpm lint`                          |
 
 Choose tests that exercise the changed behavior and complete required checks. Rust
 checks need the build prerequisites described in [workflow](workflow.md). See the

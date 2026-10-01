@@ -1,6 +1,6 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
 import EditRounded from '~icons/material-symbols/edit-rounded'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -13,7 +13,6 @@ import {
   DndGridRoot,
   useDndGridRoot,
   type DndGridItemType,
-  type GridItemConstraints,
   type GridSize,
 } from '@/components/ui/dnd-grid'
 import { hasOverlap } from '@/components/ui/dnd-grid/utils'
@@ -49,6 +48,26 @@ function normalizeItems(items: DndGridItemType<string>[]): DashboardItem[] {
     ...item,
     type: (item as DashboardItem).type ?? (item.id as WidgetId),
   }))
+}
+
+// Widgets declare these minimum sizes; they are known before any widget has
+// rendered.
+const constraintsFor = (items: DashboardItem[]) =>
+  Object.fromEntries(
+    items.map((item) => [item.id, WIDGET_MIN_SIZE_MAP[item.type]]),
+  )
+
+function layoutForSize(storage: LayoutStorage, size: GridSize) {
+  const bestLayout = findBestLayout(storage, size)
+  if (bestLayout) {
+    return normalizeItems(bestLayout)
+  }
+
+  const base = normalizeItems(
+    findClosestStoredLayout(storage, size) ?? DEFAULT_ITEMS,
+  )
+
+  return adaptLayout(base, size, constraintsFor(base))
 }
 
 function DashboardDragOverlay({
@@ -119,8 +138,14 @@ const WidgetRender = () => {
     DEFAULT_LAYOUTS,
   )
 
-  const [displayItems, setDisplayItems] =
-    useState<DashboardItem[]>(DEFAULT_ITEMS)
+  const [gridSize, setGridSize] = useState<GridSize | null>(null)
+
+  // The layout saved for this grid size, or one adapted to it. The grid
+  // renders no items until it has measured its size.
+  const displayItems = useMemo(
+    () => (gridSize ? layoutForSize(layoutStorage, gridSize) : []),
+    [layoutStorage, gridSize],
+  )
 
   const layoutStorageRef = useRef(layoutStorage)
   layoutStorageRef.current = layoutStorage
@@ -130,39 +155,15 @@ const WidgetRender = () => {
 
   const gridSizeRef = useRef<GridSize>({ cols: 1, rows: 1 })
 
-  const handleSizeChange = useCallback(
-    (
-      newSize: GridSize,
-      constraintsMap: Record<string, GridItemConstraints>,
-    ) => {
-      gridSizeRef.current = newSize
-
-      const bestLayout = findBestLayout(layoutStorageRef.current, newSize)
-      if (bestLayout) {
-        const normalized = normalizeItems(bestLayout)
-        displayItemsRef.current = normalized
-        setDisplayItems(normalized)
-        return
-      }
-
-      const base =
-        findClosestStoredLayout(layoutStorageRef.current, newSize) ??
-        DEFAULT_ITEMS
-
-      const nextItems = normalizeItems(
-        adaptLayout(base, newSize, constraintsMap),
-      )
-      displayItemsRef.current = nextItems
-      setDisplayItems(nextItems)
-    },
-    [],
-  )
+  const handleSizeChange = useCallback((newSize: GridSize) => {
+    gridSizeRef.current = newSize
+    setGridSize(newSize)
+  }, [])
 
   const handleLayoutChange = useCallback(
     (newItems: DashboardItem[]) => {
       const key = sizeKey(gridSizeRef.current)
       displayItemsRef.current = newItems
-      setDisplayItems(newItems)
 
       layoutStorageRef.current = {
         ...layoutStorageRef.current,
@@ -171,6 +172,27 @@ const WidgetRender = () => {
       setLayoutStorage(layoutStorageRef.current)
     },
     [setLayoutStorage],
+  )
+
+  const handleCloseClick = useCallback(
+    (id: string) =>
+      handleLayoutChange(displayItemsRef.current.filter((i) => i.id !== id)),
+    [handleLayoutChange],
+  )
+
+  const handleGridLayoutChange = useCallback(
+    (newItems: DndGridItemType<string>[]) =>
+      handleLayoutChange(normalizeItems(newItems)),
+    [handleLayoutChange],
+  )
+
+  const renderWidget = useCallback(
+    (item: DndGridItemType<string>) => {
+      const WidgetComponent = RENDER_MAP[(item as DashboardItem).type]
+
+      return <WidgetComponent id={item.id} onCloseClick={handleCloseClick} />
+    },
+    [handleCloseClick],
   )
 
   const addWidgetFromSheet = useCallback(
@@ -222,32 +244,17 @@ const WidgetRender = () => {
           gridId="main"
           className="min-h-0 flex-1"
           items={displayItems}
-          onLayoutChange={(newItems) =>
-            handleLayoutChange(normalizeItems(newItems))
-          }
+          onLayoutChange={handleGridLayoutChange}
           minCellSize={64}
           onSizeChange={handleSizeChange}
           gap={16}
           disabled={!isEditing}
         >
-          {(item) => {
-            const WidgetComponent = RENDER_MAP[(item as DashboardItem).type]
-
-            return (
-              <WidgetComponent
-                id={item.id}
-                onCloseClick={() =>
-                  handleLayoutChange(
-                    displayItemsRef.current.filter((i) => i.id !== item.id),
-                  )
-                }
-              />
-            )
-          }}
+          {renderWidget}
         </DndGrid>
       </div>
 
-      <DashboardDragOverlay displayItems={displayItemsRef.current} />
+      <DashboardDragOverlay displayItems={displayItems} />
 
       <WidgetSheet
         onSourceDrop={(id) => addWidgetFromSheet(id)}

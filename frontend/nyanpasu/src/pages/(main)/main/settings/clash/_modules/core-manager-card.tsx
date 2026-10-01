@@ -38,7 +38,7 @@ function useCoreUpdateTask(
   core?: ClashCore | null,
   item?: ClashCoresDetail | null,
 ) {
-  const { query, updateCore, inspectUpdater } = useClashCores()
+  const { updateCore, inspectUpdater, refetchVersions } = useClashCores()
 
   const [updater, setUpdater] = useState<UpdaterSummary>()
 
@@ -79,7 +79,7 @@ function useCoreUpdateTask(
         poll()
       })
 
-      await query.refetch()
+      await refetchVersions()
 
       message(
         `Successfully updated the core ${item?.name} to ${item?.latestVersion}`,

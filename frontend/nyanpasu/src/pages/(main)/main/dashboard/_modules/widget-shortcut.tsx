@@ -10,8 +10,9 @@ import TextMarquee from '@/components/ui/text-marquee'
 import useCoreIcon from '@/hooks/use-core-icon'
 import { m } from '@/paraglide/messages'
 import {
+  ClashCores,
   useClashConfig,
-  useClashCores,
+  useClashCoreVersion,
   useClashSetting,
   useCoreStatus,
   useSetting,
@@ -205,13 +206,13 @@ const CoreStatusBadge = () => {
 }
 
 const CurrentCoreCard = () => {
-  const { query: clashCores } = useClashCores()
-
   const { value: currentCoreKey } = useSetting('core')
+
+  const { data: currentVersion } = useClashCoreVersion(currentCoreKey)
 
   const currentCoreIcon = useCoreIcon(currentCoreKey)
 
-  const currentCore = currentCoreKey && clashCores.data?.[currentCoreKey]
+  const currentCoreName = currentCoreKey && ClashCores[currentCoreKey]
 
   const { data: coreStatus } = useCoreStatus()
 
@@ -251,17 +252,17 @@ const CurrentCoreCard = () => {
           <div className="min-w-0 flex-1" data-slot="core-info">
             <div
               className="truncate text-base leading-5 font-semibold"
-              title={currentCore?.name}
+              title={currentCoreName || undefined}
               data-slot="core-name"
             >
-              {currentCore?.name ?? '—'}
+              {currentCoreName || '—'}
             </div>
             <div
               className="text-on-surface-variant truncate text-xs leading-4 font-normal"
-              title={currentCore?.currentVersion}
+              title={currentVersion}
               data-slot="core-version"
             >
-              {currentCore?.currentVersion ?? '—'}
+              {currentVersion ?? '—'}
             </div>
           </div>
 

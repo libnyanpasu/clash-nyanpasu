@@ -1,4 +1,4 @@
-import { isEqual, kebabCase } from 'es-toolkit'
+import { kebabCase } from 'es-toolkit'
 import {
   createContext,
   PropsWithChildren,
@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { insertStyle } from '@/utils/styled'
@@ -19,7 +20,6 @@ import { useSetting } from '@nyanpasu/interface'
 import { alpha, darken, lighten } from '@nyanpasu/utils'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { useLocalStorage } from '@uidotdev/usehooks'
 
 const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
@@ -65,6 +65,34 @@ const generateThemeCssVars = ({ schemes }: Theme) => {
   darkCssVars += '}'
 
   return lightCssVars + darkCssVars
+}
+
+// Context readers get the plain JSON shape the cache has always held.
+const createTheme = (color: string) => {
+  const theme = themeFromSourceColor(argbFromHex(color || DEFAULT_COLOR))
+
+  return {
+    palette: JSON.parse(JSON.stringify(theme)) as Theme,
+    cssVars: generateThemeCssVars(theme),
+  }
+}
+
+const readCachedTheme = () => {
+  try {
+    const palette = localStorage.getItem(THEME_PALETTE_KEY)
+    const cssVars = localStorage.getItem(THEME_CSS_VARS_KEY)
+
+    if (palette !== null && cssVars !== null) {
+      return {
+        palette: JSON.parse(palette) as Theme,
+        cssVars: JSON.parse(cssVars) as string,
+      }
+    }
+  } catch {
+    // fall through to the default theme
+  }
+
+  return createTheme(DEFAULT_COLOR)
 }
 
 const changeHtmlThemeMode = (mode: Omit<ThemeMode, 'system'>) => {
@@ -153,76 +181,49 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   const [resolvedThemeMode, setResolvedThemeMode] =
     useState<ResolvedThemeMode>(getSystemThemeMode())
 
-  const [cachedThemePalette, setCachedThemePalette] = useLocalStorage<Theme>(
-    THEME_PALETTE_KEY,
-    themeFromSourceColor(
-      // use default color if theme color is not set
-      argbFromHex(themeColor.value || DEFAULT_COLOR),
-    ),
-  )
+  // The theme of the last session paints the window until the settings have
+  // loaded; `theme_color` is always present once they have.
+  const [cachedTheme] = useState(readCachedTheme)
 
-  const [cachedThemeCssVars, setCachedThemeCssVars] = useLocalStorage<string>(
-    THEME_CSS_VARS_KEY,
-    // initialize theme css vars from cached theme palette
-    generateThemeCssVars(cachedThemePalette),
+  const theme = useMemo(
+    () =>
+      themeColor.value === undefined
+        ? cachedTheme
+        : createTheme(themeColor.value),
+    [themeColor.value, cachedTheme],
   )
 
   // automatically insert custom theme css vars into document head
   useEffect(() => {
-    insertStyle(CUSTOM_THEME_KEY, cachedThemeCssVars)
-  }, [cachedThemeCssVars])
+    insertStyle(CUSTOM_THEME_KEY, theme.cssVars)
+  }, [theme.cssVars])
 
   useEffect(() => {
-    const nextThemePalette = themeFromSourceColor(
-      argbFromHex(themeColor.value || DEFAULT_COLOR),
-    )
-
-    if (!isEqual(nextThemePalette, cachedThemePalette)) {
-      setCachedThemePalette(nextThemePalette)
+    if (theme === cachedTheme) {
+      return
     }
 
-    const nextThemeCssVars = generateThemeCssVars(nextThemePalette)
-
-    if (nextThemeCssVars !== cachedThemeCssVars) {
-      setCachedThemeCssVars(nextThemeCssVars)
+    try {
+      localStorage.setItem(THEME_PALETTE_KEY, JSON.stringify(theme.palette))
+      localStorage.setItem(THEME_CSS_VARS_KEY, JSON.stringify(theme.cssVars))
+    } catch {
+      // ignore quota / security errors
     }
-  }, [
-    themeColor.value,
-    cachedThemePalette,
-    cachedThemeCssVars,
-    setCachedThemeCssVars,
-    setCachedThemePalette,
-  ])
+  }, [theme, cachedTheme])
 
-  const setThemeColor = useCallback(
-    async (color: string) => {
-      if (color === themeColor.value) {
-        return
-      } else {
-        await themeColor.upsert(color)
-      }
+  // The setting hooks return new objects every render; the setters read
+  // them through refs so the context value stays stable.
+  const themeColorRef = useRef(themeColor)
+  themeColorRef.current = themeColor
 
-      const materialColor = themeFromSourceColor(
-        // use default color if theme color is not set
-        argbFromHex(color || DEFAULT_COLOR),
-      )
+  const themeModeRef = useRef(themeMode)
+  themeModeRef.current = themeMode
 
-      if (isEqual(materialColor, cachedThemePalette)) {
-        return
-      } else {
-        setCachedThemePalette(materialColor)
-      }
-
-      const themeCssVars = generateThemeCssVars(materialColor)
-      setCachedThemeCssVars(themeCssVars)
-    },
-    [
-      themeColor,
-      cachedThemePalette,
-      setCachedThemeCssVars,
-      setCachedThemePalette,
-    ],
-  )
+  const setThemeColor = useCallback(async (color: string) => {
+    if (color !== themeColorRef.current.value) {
+      await themeColorRef.current.upsert(color)
+    }
+  }, [])
 
   const applyThemeMode = useCallback((mode: ResolvedThemeMode) => {
     changeHtmlThemeMode(mode)
@@ -285,11 +286,11 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
         applyThemeMode(mode)
       }
 
-      if (mode !== themeMode.value) {
-        await themeMode.upsert(mode)
+      if (mode !== themeModeRef.current.value) {
+        await themeModeRef.current.upsert(mode)
       }
     },
-    [applyThemeMode, themeMode],
+    [applyThemeMode],
   )
 
   const currentThemeMode = useMemo<ResolvedThemeMode>(() => {
@@ -305,22 +306,30 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   }, [resolvedThemeMode, themeMode.value])
 
   useEffect(() => {
-    applyRootStyleVar(currentThemeMode, cachedThemePalette)
-  }, [cachedThemePalette, currentThemeMode])
+    applyRootStyleVar(currentThemeMode, theme.palette)
+  }, [theme.palette, currentThemeMode])
 
-  return (
-    <ThemeContext.Provider
-      value={{
-        themePalette: cachedThemePalette,
-        themeCssVars: cachedThemeCssVars,
-        themeColor: themeColor.value || DEFAULT_COLOR,
-        setThemeColor,
-        themeMode: themeMode.value as ThemeMode,
-        currentThemeMode,
-        setThemeMode,
-      }}
-    >
-      {children}
-    </ThemeContext.Provider>
+  const color = themeColor.value || DEFAULT_COLOR
+
+  const value = useMemo(
+    () => ({
+      themePalette: theme.palette,
+      themeCssVars: theme.cssVars,
+      themeColor: color,
+      setThemeColor,
+      themeMode: themeMode.value as ThemeMode,
+      currentThemeMode,
+      setThemeMode,
+    }),
+    [
+      theme,
+      color,
+      setThemeColor,
+      themeMode.value,
+      currentThemeMode,
+      setThemeMode,
+    ],
   )
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }

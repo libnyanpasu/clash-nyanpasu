@@ -1,9 +1,10 @@
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import dayjs from 'dayjs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { getLocale } from '@/paraglide/runtime'
+import { formatRelativeTime } from '@/utils/date'
 import { ClashProxiesProviderQueryItem } from '@nyanpasu/interface'
 import { useProxiesProviderUpdate } from '../../_modules/use-proxies-provider-update'
 
@@ -46,7 +47,11 @@ export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
 
         <div className="hover:bg-surface-variant text-secondary rounded-full px-3 py-2 text-xs font-semibold">
           {m.profile_subscription_updated_at({
-            updated: dayjs(data.updatedAt).fromNow(),
+            updated: formatRelativeTime(
+              data.updatedAt,
+              Date.now(),
+              getLocale(),
+            ),
           })}
         </div>
       </CardFooter>

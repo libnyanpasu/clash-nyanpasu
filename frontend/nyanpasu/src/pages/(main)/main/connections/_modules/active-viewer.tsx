@@ -1,4 +1,3 @@
-import dayjs from 'dayjs'
 import {
   memo,
   useCallback,
@@ -9,6 +8,8 @@ import {
 } from 'react'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
+import { getLocale } from '@/paraglide/runtime'
+import { formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
 import { searchableText } from '@/utils/searchable-text'
 import {
@@ -271,7 +272,8 @@ const ActiveViewer = memo(function ActiveViewer({
         {
           id: 'Time',
           header: () => m.connections_column_time(),
-          accessorFn: ({ start }) => dayjs(start).fromNow(),
+          accessorFn: ({ start }) =>
+            formatRelativeTime(start, Date.now(), getLocale()),
           sortFn: (rowA, rowB) => rowA.original.startMs - rowB.original.startMs,
           size: 110,
           cell: (info) => <RelativeTimeCell ms={info.row.original.startMs} />,

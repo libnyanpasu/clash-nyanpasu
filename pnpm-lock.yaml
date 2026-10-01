@@ -378,9 +378,9 @@ importers:
       d3:
         specifier: 7.9.0
         version: 7.9.0
-      dayjs:
-        specifier: 1.11.23
-        version: 1.11.23
+      date-fns:
+        specifier: 4.4.0
+        version: 4.4.0
       es-toolkit:
         specifier: 1.52.0
         version: 1.52.0
@@ -5082,6 +5082,9 @@ packages:
 
   dagre-d3-es@7.0.14:
     resolution: {integrity: sha512-P4rFMVq9ESWqmOgK+dlXvOtLwYg0i7u0HBGJER0LZDJT2VHIPAMZ/riPxqJceWMStH5+E61QxFra9kIS3AqdMg==}
+
+  date-fns@4.4.0:
+    resolution: {integrity: sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==}
 
   dayjs@1.11.23:
     resolution: {integrity: sha512-QDTCU0M0MxR3hQfnlDJfwekQiaanm1ubOD231u73WBckQ/fsamwRLiE2GBz6D3a/xF1NgfiDLJjXBa1hYOYTtQ==}
@@ -12037,6 +12040,8 @@ snapshots:
     dependencies:
       d3: 7.9.0
       lodash-es: 4.18.1
+
+  date-fns@4.4.0: {}
 
   dayjs@1.11.23: {}
 

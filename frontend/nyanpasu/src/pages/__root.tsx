@@ -1,19 +1,3 @@
-import dayjs from 'dayjs'
-import { cn } from '@nyanpasu/utils'
-import {
-  createRootRoute,
-  ErrorComponentProps,
-  Outlet,
-  redirect,
-} from '@tanstack/react-router'
-import { isTauri } from '@tauri-apps/api/core'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import 'dayjs/locale/ko'
-import 'dayjs/locale/ru'
-import 'dayjs/locale/zh-cn'
-import 'dayjs/locale/zh-tw'
-import customParseFormat from 'dayjs/plugin/customParseFormat'
-import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy, useEffect, useRef } from 'react'
 import { useProfileLookup } from '@/components/profile-label'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
@@ -35,9 +19,15 @@ import {
   type Degradation,
   type DegradationPhase,
 } from '@nyanpasu/interface'
-
-dayjs.extend(relativeTime)
-dayjs.extend(customParseFormat)
+import { cn } from '@nyanpasu/utils'
+import {
+  createRootRoute,
+  ErrorComponentProps,
+  Outlet,
+  redirect,
+} from '@tanstack/react-router'
+import { isTauri } from '@tauri-apps/api/core'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 

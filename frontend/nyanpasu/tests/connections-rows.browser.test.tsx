@@ -1,5 +1,3 @@
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
 import { useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
@@ -40,8 +38,6 @@ vi.mock('@nyanpasu/interface', async (importOriginal) => ({
     return { data, isLoading: data === null }
   },
 }))
-
-dayjs.extend(relativeTime)
 
 function renderActiveViewer(onTestFinished: (fn: () => void) => void) {
   const queries = new QueryClient()
@@ -120,7 +116,7 @@ test('a row whose traffic did not change still moves its relative time on', asyn
 
   await expect
     .poll(() => rowText(container))
-    .toContain(dayjs(now - 10_000).fromNow())
+    .toContain('less than a minute ago')
 
   vi.setSystemTime(now + 5 * 60_000)
   stream.publish(sample(started))

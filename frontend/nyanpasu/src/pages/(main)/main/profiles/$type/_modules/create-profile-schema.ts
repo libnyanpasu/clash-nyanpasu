@@ -1,6 +1,6 @@
-import dayjs from 'dayjs'
 import z from 'zod'
 import { m } from '@/paraglide/messages'
+import { formatDate } from '@/utils/date'
 import {
   ProfileTemplate,
   type ProfileDefinition_Deserialize,
@@ -172,6 +172,6 @@ export const fallbackName = (values: FormValues) => {
   return (
     values.name.trim() ||
     (picked && baseName(picked)) ||
-    `${KIND_LABELS[values.kind]()} - ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`
+    `${KIND_LABELS[values.kind]()} - ${formatDate(new Date())}`
   )
 }

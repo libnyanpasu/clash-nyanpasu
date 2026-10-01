@@ -1,5 +1,3 @@
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
 import { Profiler, useState, type Context, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
@@ -103,8 +101,6 @@ vi.mock('@nyanpasu/interface', async (importOriginal) => {
     },
   }
 })
-
-dayjs.extend(relativeTime)
 
 // Holds the latest frame in state like the real provider, so a frame is an
 // update outside any event, as the IPC channel's callback makes it.

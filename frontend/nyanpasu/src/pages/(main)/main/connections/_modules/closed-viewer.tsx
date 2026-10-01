@@ -1,7 +1,8 @@
-import dayjs from 'dayjs'
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
+import { getLocale } from '@/paraglide/runtime'
+import { formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
 import { searchableText } from '@/utils/searchable-text'
 import {
@@ -201,7 +202,8 @@ const ClosedViewer = memo(function ClosedViewer({
         {
           id: 'Time',
           header: () => m.connections_field_start(),
-          accessorFn: ({ started_at }) => dayjs(started_at).fromNow(),
+          accessorFn: ({ started_at }) =>
+            formatRelativeTime(started_at, Date.now(), getLocale()),
           sortFn: (rowA, rowB) =>
             rowA.original.started_at - rowB.original.started_at,
           size: 110,
@@ -212,7 +214,8 @@ const ClosedViewer = memo(function ClosedViewer({
         {
           id: 'Closed',
           header: () => m.connections_column_closed_time(),
-          accessorFn: ({ closed_at }) => dayjs(closed_at).fromNow(),
+          accessorFn: ({ closed_at }) =>
+            formatRelativeTime(closed_at, Date.now(), getLocale()),
           sortFn: (rowA, rowB) =>
             rowA.original.closed_at - rowB.original.closed_at,
           size: 110,

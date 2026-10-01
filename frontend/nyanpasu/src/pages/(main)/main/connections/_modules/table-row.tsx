@@ -1,7 +1,7 @@
 import ChatInfoRounded from '~icons/material-symbols/chat-info-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import { sentenceCase } from 'change-case'
-import dayjs from 'dayjs'
+import { isValid, parseISO } from 'date-fns'
 import { filesize } from 'filesize'
 import { ComponentProps, memo } from 'react'
 import {
@@ -118,10 +118,11 @@ function formatValue(key: string, value: any): React.ReactNode {
     return <span>{value}</span>
   }
 
-  const date = dayjs(value)
-
-  if (date.isValid() && typeof value === 'string' && value.includes('T')) {
-    return <RelativeTimeCell ms={date.valueOf()} />
+  if (typeof value === 'string' && value.includes('T')) {
+    const date = parseISO(value)
+    if (isValid(date)) {
+      return <RelativeTimeCell ms={date.getTime()} />
+    }
   }
 
   // An unknown (`_extra`) field's value can itself be a nested JSON object.

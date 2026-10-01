@@ -298,7 +298,7 @@ fn needs_language_case_migration(config: &Mapping) -> bool {
 /// value is already canonical (or is not a language this build knows).
 ///
 /// Older builds wrote mixed-case tags such as `zh-CN`, which no longer match the
-/// lowercase keys used by `rust_i18n`, the paraglide runtime, and dayjs.
+/// lowercase keys used by `rust_i18n`, the paraglide runtime, and date-fns locale mapping.
 fn canonical_language(value: &Value) -> Option<&'static str> {
     let raw = value.as_str()?;
     let canonical = match raw.to_ascii_lowercase().as_str() {

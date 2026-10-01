@@ -1,4 +1,3 @@
-import { locale } from 'dayjs'
 import {
   createContext,
   PropsWithChildren,
@@ -78,15 +77,6 @@ export const LanguageProvider = ({ children }: PropsWithChildren) => {
     await upsert.mutateAsync({ language: value })
     setLocale(value)
   })
-
-  // sync dayjs locale
-  useEffect(() => {
-    if (!applied) {
-      return
-    }
-
-    locale(persisted ?? getLocale())
-  }, [applied, persisted])
 
   if (!applied) {
     return null

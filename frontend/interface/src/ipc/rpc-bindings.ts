@@ -1620,8 +1620,8 @@ export type HotkeyParseError =
  *
  *  The serialized form is the canonical i18n key shared by every layer that
  *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
- *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
- *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the date-fns
+ *  locale mapping. All of those use lowercase keys, so this enum does too. Legacy
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage = I18nLanguage_Serialize | I18nLanguage_Deserialize
@@ -1631,8 +1631,8 @@ export type I18nLanguage = I18nLanguage_Serialize | I18nLanguage_Deserialize
  *
  *  The serialized form is the canonical i18n key shared by every layer that
  *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
- *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
- *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the date-fns
+ *  locale mapping. All of those use lowercase keys, so this enum does too. Legacy
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Deserialize =
@@ -1643,8 +1643,8 @@ export type I18nLanguage_Deserialize =
  *
  *  The serialized form is the canonical i18n key shared by every layer that
  *  names a language: the `rust_i18n` bundles under `backend/tauri/locales`, the
- *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the dayjs
- *  locale imports. All of those are lowercase, so this enum is too. Legacy
+ *  paraglide runtime under `frontend/nyanpasu/src/paraglide`, and the date-fns
+ *  locale mapping. All of those use lowercase keys, so this enum does too. Legacy
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'

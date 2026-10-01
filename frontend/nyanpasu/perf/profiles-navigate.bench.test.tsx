@@ -1,5 +1,3 @@
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
 import { Profiler } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
@@ -28,9 +26,6 @@ import { measureFrames, onProfilerRender, summarize } from './measure'
 // render time each action causes, and the WebGL draws of the idle list. The
 // pages run on the real React Query hooks against mocked IPC, so query caching
 // is part of what is measured. See `perf/README.md`.
-
-// The app shell extends dayjs; the subscription card needs `fromNow`.
-dayjs.extend(relativeTime)
 
 const env = import.meta.env
 const PROFILES = Number(env.VITE_PERF_PROFILES ?? 30)

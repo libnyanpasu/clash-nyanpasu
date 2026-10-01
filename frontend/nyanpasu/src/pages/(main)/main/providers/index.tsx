@@ -1,6 +1,5 @@
 import AllInboxRounded from '~icons/material-symbols/all-inbox-outline-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import dayjs from 'dayjs'
 import { filesize } from 'filesize'
 import { ComponentProps, PropsWithChildren } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
@@ -10,7 +9,9 @@ import { LinearProgress } from '@/components/ui/progress'
 import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { getLocale } from '@/paraglide/runtime'
 import { formatError } from '@/utils'
+import { formatRelativeTime } from '@/utils/date'
 import { message } from '@/utils/notification'
 import {
   ClashProxiesProviderQueryItem,
@@ -117,7 +118,7 @@ const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
           <TextMarquee className="text-sm font-medium">{data.name}</TextMarquee>
 
           <div className="text-xs text-nowrap text-zinc-700 dark:text-zinc-300">
-            {dayjs(data.updatedAt).fromNow()}
+            {formatRelativeTime(data.updatedAt, Date.now(), getLocale())}
           </div>
         </div>
 
@@ -186,7 +187,7 @@ const Rules = ({ data }: { data: ClashRulesProviderQueryItem }) => {
           <TextMarquee className="text-sm font-medium">{data.name}</TextMarquee>
 
           <div className="text-xs text-nowrap text-zinc-700 dark:text-zinc-300">
-            {dayjs(data.updatedAt).fromNow()}
+            {formatRelativeTime(data.updatedAt, Date.now(), getLocale())}
           </div>
         </div>
 

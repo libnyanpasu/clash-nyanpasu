@@ -1,5 +1,3 @@
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
@@ -14,8 +12,6 @@ import ClosedViewer from '../src/pages/(main)/main/connections/_modules/closed-v
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
 }))
-
-dayjs.extend(relativeTime)
 
 const closed = (
   id: string,

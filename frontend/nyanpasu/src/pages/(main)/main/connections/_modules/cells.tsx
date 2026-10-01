@@ -1,6 +1,7 @@
-import dayjs from 'dayjs'
 import { createContext, Fragment, useContext } from 'react'
 import HighlightText from '@/components/ui/highlight-text'
+import { getLocale } from '@/paraglide/runtime'
+import { formatDate, formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
 import { cn } from '@nyanpasu/utils'
 
@@ -114,9 +115,9 @@ export const RowsTickContext = createContext<unknown>(null)
 export function RelativeTimeCell({ ms }: { ms: number }) {
   useContext(RowsTickContext)
 
-  const time = dayjs(ms)
-
   return (
-    <span title={time.format('YYYY-MM-DD HH:mm:ss')}>{time.fromNow()}</span>
+    <span title={formatDate(ms)}>
+      {formatRelativeTime(ms, Date.now(), getLocale())}
+    </span>
   )
 }

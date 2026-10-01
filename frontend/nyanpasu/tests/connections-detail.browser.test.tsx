@@ -1,5 +1,3 @@
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
@@ -45,8 +43,6 @@ vi.mock('@nyanpasu/interface', async (importOriginal) => ({
     return { data, isLoading: data === null }
   },
 }))
-
-dayjs.extend(relativeTime)
 
 function render(
   node: ReactNode,

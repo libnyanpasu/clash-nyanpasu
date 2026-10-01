@@ -1,6 +1,5 @@
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import RuleSettingsRounded from '~icons/material-symbols/rule-settings-rounded'
-import dayjs from 'dayjs'
 import { filesize } from 'filesize'
 import { useMemo } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
@@ -14,7 +13,9 @@ import {
 } from '@/components/ui/tooltip'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { getLocale } from '@/paraglide/runtime'
 import { formatError } from '@/utils'
+import { formatDate, formatRelativeTime } from '@/utils/date'
 import { message } from '@/utils/notification'
 import {
   getRemoteSource,
@@ -106,16 +107,20 @@ export const SubscriptionCard = ({
           <Tooltip>
             <TooltipTrigger>
               {m.profile_subscription_updated_at({
-                updated: updatedAt ? dayjs(updatedAt * 1000).fromNow() : '-',
+                updated: updatedAt
+                  ? formatRelativeTime(
+                      updatedAt * 1000,
+                      Date.now(),
+                      getLocale(),
+                    )
+                  : '-',
               })}
             </TooltipTrigger>
 
             {syncStatus.data?.next_run_at ? (
               <TooltipContent side="bottom">
                 {m.profile_subscription_next_update_at({
-                  next: dayjs(syncStatus.data.next_run_at).format(
-                    'YYYY-MM-DD HH:mm:ss',
-                  ),
+                  next: formatDate(syncStatus.data.next_run_at),
                 })}
               </TooltipContent>
             ) : null}
@@ -124,7 +129,11 @@ export const SubscriptionCard = ({
           {expire ? (
             <span>
               {m.profile_subscription_expires_in({
-                expires: dayjs(expire * 1000).fromNow(),
+                expires: formatRelativeTime(
+                  expire * 1000,
+                  Date.now(),
+                  getLocale(),
+                ),
               })}
             </span>
           ) : null}

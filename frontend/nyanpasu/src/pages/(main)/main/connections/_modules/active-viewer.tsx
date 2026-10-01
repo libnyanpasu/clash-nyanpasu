@@ -9,8 +9,8 @@ import {
 } from 'react'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
-import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
+import { searchableText } from '@/utils/searchable-text'
 import {
   ClashConnection_Serialize,
   useClashConnectionDetails,
@@ -82,13 +82,33 @@ const ActiveViewer = memo(function ActiveViewer({
     [details, mockNow],
   )
 
-  const data = useMemo(
-    () =>
-      connections
-        .filter((conn) => (proxy ? conn.chains?.includes(proxy) : true))
-        .filter((c) => (search ? containsSearchTerm(c, search) : true)),
-    [connections, search, proxy],
-  )
+  // A connection's strings stay the same while it is open, so its searchable
+  // text is built once and kept, by id, until it leaves the stream.
+  const searchTexts = useRef(new Map<string, string>())
+
+  const data = useMemo(() => {
+    const byProxy = connections.filter((conn) =>
+      proxy ? conn.chains?.includes(proxy) : true,
+    )
+
+    if (!search) {
+      return byProxy
+    }
+
+    const term = search.toLowerCase()
+    const previous = searchTexts.current
+    const texts = new Map<string, string>()
+
+    const matched = byProxy.filter((conn) => {
+      const text = previous.get(conn.id) ?? searchableText(conn)
+      texts.set(conn.id, text)
+      return text.includes(term)
+    })
+
+    searchTexts.current = texts
+
+    return matched
+  }, [connections, search, proxy])
 
   const deleteConnections = useDeleteClashConnections()
 

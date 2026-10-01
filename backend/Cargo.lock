@@ -1999,6 +1999,7 @@ dependencies = [
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
+ "nyanpasu-panics",
  "nyanpasu-traffic",
  "nyanpasu-utils",
  "objc2 0.6.4",
@@ -6737,6 +6738,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "nyanpasu-panics"
+version = "0.1.0"
+dependencies = [
+ "scopeguard",
+ "tracing",
 ]
 
 [[package]]

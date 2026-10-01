@@ -8,21 +8,17 @@ interface ScrollAreaContextValue {
   isTop: boolean
   isBottom: boolean
   scrollDirection: 'up' | 'down' | 'left' | 'right' | 'none'
-  offset: {
-    top: number
-    bottom: number
-    left: number
-    right: number
-  }
+  // Scrolled far enough that a page header's title has left the view.
+  isPastHeader: boolean
 }
 
 interface ScrollAreaViewportContextValue {
   viewportRef: React.RefObject<HTMLDivElement | null>
 }
 
-// Scroll state changes on every scroll event, while the viewport ref never
-// changes. Separate contexts keep consumers that only need the ref (virtual
-// lists) from re-rendering on every scroll frame.
+// Scroll state holds only flags, so it changes a few times per scroll gesture,
+// while the viewport ref never changes. Separate contexts keep consumers that
+// only need the ref (virtual lists) from re-rendering at all.
 const ScrollAreaContext = createContext<ScrollAreaContextValue | null>(null)
 
 const ScrollAreaViewportContext =
@@ -58,12 +54,7 @@ function useScrollTracking(threshold = 50) {
     'up' | 'down' | 'left' | 'right' | 'none'
   >('none')
 
-  const [offset, setOffset] = useState({
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  })
+  const [isPastHeader, setIsPastHeader] = useState(false)
 
   const lastScrollTop = useRef(0)
   const lastScrollLeft = useRef(0)
@@ -72,14 +63,7 @@ function useScrollTracking(threshold = 50) {
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget as HTMLElement
-    const {
-      scrollTop,
-      scrollLeft,
-      scrollWidth,
-      clientWidth,
-      scrollHeight,
-      clientHeight,
-    } = target
+    const { scrollTop, scrollLeft, scrollHeight, clientHeight } = target
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -89,12 +73,7 @@ function useScrollTracking(threshold = 50) {
 
     setIsTop(scrollTop === 0)
 
-    setOffset({
-      top: scrollTop,
-      left: scrollLeft,
-      right: scrollWidth - clientWidth,
-      bottom: scrollHeight - clientHeight,
-    })
+    setIsPastHeader(scrollTop > 40)
 
     // check if is at bottom, allow a small threshold
     const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold
@@ -136,7 +115,7 @@ function useScrollTracking(threshold = 50) {
     scrollDirection,
     handleScroll,
     isScrolling,
-    offset,
+    isPastHeader,
   }
 }
 
@@ -183,20 +162,17 @@ export function ScrollArea({
     scrollDirection,
     handleScroll,
     isScrolling,
-    offset,
+    isPastHeader,
   } = useScrollTracking()
+
+  const scrollState = useMemo(
+    () => ({ isScrolling, isTop, isBottom, scrollDirection, isPastHeader }),
+    [isScrolling, isTop, isBottom, scrollDirection, isPastHeader],
+  )
 
   return (
     <ScrollAreaViewportContext.Provider value={viewport}>
-      <ScrollAreaContext.Provider
-        value={{
-          isScrolling,
-          isTop,
-          isBottom,
-          scrollDirection,
-          offset,
-        }}
-      >
+      <ScrollAreaContext.Provider value={scrollState}>
         <Root
           data-slot="scroll-area"
           type="scroll"
@@ -270,20 +246,17 @@ export function AppContentScrollArea({
     scrollDirection,
     handleScroll,
     isScrolling,
-    offset,
+    isPastHeader,
   } = useScrollTracking()
+
+  const scrollState = useMemo(
+    () => ({ isScrolling, isTop, isBottom, scrollDirection, isPastHeader }),
+    [isScrolling, isTop, isBottom, scrollDirection, isPastHeader],
+  )
 
   return (
     <ScrollAreaViewportContext.Provider value={viewport}>
-      <ScrollAreaContext.Provider
-        value={{
-          isScrolling,
-          isTop,
-          isBottom,
-          scrollDirection,
-          offset,
-        }}
-      >
+      <ScrollAreaContext.Provider value={scrollState}>
         <Root
           className={cn(
             'relative',

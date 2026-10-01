@@ -10,6 +10,7 @@ import {
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { rankByValue } from './_modules/rank-by-value'
 import {
   RULE_ROW_HEIGHT,
   RuleRow,
@@ -41,20 +42,15 @@ type RuleEntry = {
   first: boolean
 }
 
-type RuleItem = RuleEntry & {
-  live?: RuleLiveStats
-  total?: Bytes
+const liveValue: Record<
+  'connections' | 'speed',
+  (live: RuleLiveStats) => number
+> = {
+  connections: (live) => live.connections,
+  speed: (live) => live.downloadSpeed + live.uploadSpeed,
 }
 
-const sortValue: Record<
-  Exclude<RuleSort, 'index'>,
-  (item: RuleItem) => number
-> = {
-  connections: (item) => item.live?.connections ?? 0,
-  speed: (item) =>
-    item.live ? item.live.downloadSpeed + item.live.uploadSpeed : 0,
-  total: (item) => (item.total ? item.total.download + item.total.upload : 0),
-}
+const totalValue = (total: Bytes) => total.download + total.upload
 
 // Memoized so a keystroke's urgent render skips the list; it re-renders with
 // the deferred search term, or on its own stream and prop updates.
@@ -116,25 +112,34 @@ const Viewer = memo(function Viewer({
     })
   }, [rules, proxy, search])
 
-  const items = useMemo(() => {
-    const withStats = entries.map<RuleItem>((entry) =>
-      entry.first
-        ? {
-            ...entry,
-            live: live.get(entry.label),
-            total: totals?.get(entry.label),
-          }
-        : entry,
-    )
-
-    if (sort === 'index') {
-      return withStats
+  // Live stats change with every sample and totals with every poll, so each
+  // sort depends only on the stats it ranks by.
+  const byLive = useMemo(() => {
+    if (sort !== 'connections' && sort !== 'speed') {
+      return undefined
     }
 
-    const value = sortValue[sort]
+    const value = liveValue[sort]
 
-    return withStats.sort((a, b) => value(b) - value(a) || a.index - b.index)
-  }, [entries, live, totals, sort])
+    // Most rules have no live stats, so only the few that do are sorted.
+    return rankByValue(entries, (entry) => {
+      const stats = entry.first ? live.get(entry.label) : undefined
+      return stats ? value(stats) : 0
+    })
+  }, [entries, live, sort])
+
+  const byTotal = useMemo(() => {
+    if (sort !== 'total') {
+      return undefined
+    }
+
+    return rankByValue(entries, (entry) => {
+      const total = entry.first ? totals?.get(entry.label) : undefined
+      return total ? totalValue(total) : 0
+    })
+  }, [entries, totals, sort])
+
+  const items = byLive ?? byTotal ?? entries
 
   const rowVirtualizer = useVirtualizer({
     count: items.length,
@@ -162,8 +167,8 @@ const Viewer = memo(function Viewer({
             <RuleRow
               index={item.index}
               rule={item.rule}
-              live={item.live}
-              total={item.total}
+              live={item.first ? live.get(item.label) : undefined}
+              total={item.first ? totals?.get(item.label) : undefined}
               icon={groupIcons.get(item.rule.proxy)}
               search={search}
             />

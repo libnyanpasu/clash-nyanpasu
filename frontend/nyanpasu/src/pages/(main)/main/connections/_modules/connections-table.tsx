@@ -55,9 +55,12 @@ export type ConnectionColumn<TRow extends RowData> = ColumnDef<
   header: () => string
 }
 
-type RowProps = ComponentProps<'tr'> & { 'data-index': number }
+type RowProps = ComponentProps<'tr'>
 
 const COLUMN_SIZING_STORAGE_KEY = 'connections-column-sizing-v2'
+
+// Rows have a fixed height (the cells' h-9), so the virtualizer measures nothing.
+const ROW_HEIGHT = 36
 
 // Rows closer than this to the end load the next page.
 const END_REACHED_THRESHOLD = 20
@@ -127,9 +130,8 @@ export default function ConnectionsTable<TRow extends RowData>({
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => 36,
+    estimateSize: () => ROW_HEIGHT,
     overscan: 10,
-    measureElement: (element) => element?.getBoundingClientRect().height,
   })
 
   const virtualItems = rowVirtualizer.getVirtualItems()
@@ -313,8 +315,6 @@ export default function ConnectionsTable<TRow extends RowData>({
               return (
                 <Fragment key={row.id}>
                   {renderRow(row.original, {
-                    'data-index': virtualRow.index,
-                    ref: (node) => rowVirtualizer.measureElement(node),
                     className: cn(
                       'transition-colors',
                       'hover:bg-primary/5 active:bg-primary/10',

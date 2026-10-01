@@ -144,6 +144,12 @@ export function AnimatedTabsItem({
 
   const isActive = isActiveProp ?? activeTab === value
 
+  // Unique per item and constant, so the indicator is measured only when it
+  // moves to another item rather than on every re-render. Motion hands a
+  // shared layout over only between members whose dependencies differ, and
+  // items selected through `isActive` share neither `value` nor `activeTab`.
+  const indicatorDependency = useId()
+
   const Comp = asChild ? Slot.Root : 'button'
 
   const { id, onClick, onKeyDown: onKeyDownProp, type, ...restProps } = props
@@ -218,6 +224,7 @@ export function AnimatedTabsItem({
           className={activeIndicatorVariants({
             variant,
           })}
+          layoutDependency={indicatorDependency}
           layout
           layoutId={layoutId}
           transition={shouldReduceMotion ? { duration: 0 } : SPRING}

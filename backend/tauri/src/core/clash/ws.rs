@@ -2,6 +2,7 @@
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
+use clash_api::{LogLevel, LogQuery};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -256,6 +257,7 @@ enum Message {
 }
 struct Args {
     core: CoreClient,
+    shutdown: CancellationToken,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
     details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
@@ -556,7 +558,8 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, k
         }
         match kind {
             ClashWsKind::Connections => consume!(api.connections_ws(), Connections),
-            ClashWsKind::Logs => consume!(api.logs_ws(), Log),
+            // Subscribe at the widest standard level; Nyanpasu filters the captured history.
+            ClashWsKind::Logs => consume!(api.logs_ws(LogQuery::new(LogLevel::Debug)), Log),
             ClashWsKind::Traffic => consume!(api.traffic_ws(), Traffic),
             ClashWsKind::Memory => consume!(api.memory_ws(), Memory),
         }
@@ -610,7 +613,7 @@ impl Actor for StreamsActor {
         }
         match message {
             Message::Start(reply) => {
-                if state.task.is_none() {
+                if !state.args.shutdown.is_cancelled() && state.task.is_none() {
                     state.generation += 1;
                     state.task = Some(tokio::spawn(run(
                         actor,
@@ -634,7 +637,9 @@ impl Actor for StreamsActor {
                 let _ = reply.send(());
             }
             Message::Deliver(generation, delivery, reply) => {
-                let mut accepted = state.task.is_some() && generation == state.generation;
+                let mut accepted = !state.args.shutdown.is_cancelled()
+                    && state.task.is_some()
+                    && generation == state.generation;
                 if accepted {
                     match *delivery {
                         Delivery::Bind(api) => {
@@ -710,6 +715,7 @@ impl StreamsClient {
             StreamsActor,
             Args {
                 core,
+                shutdown: shutdown.clone(),
                 connections: connections.clone(),
                 events: events.clone(),
                 details: details.clone(),
@@ -783,456 +789,4 @@ impl StreamsClient {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::actor_v2::api::tests::{endpoint, server};
-    use axum::{Router, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
-
-    async fn idle(ws: WebSocketUpgrade) -> impl IntoResponse {
-        ws.on_upgrade(|mut socket| async move { while socket.recv().await.is_some() {} })
-    }
-    async fn connected(events: &mut broadcast::Receiver<ClashWsEvent>) {
-        tokio::time::timeout(Duration::from_secs(3), async {
-            loop {
-                if matches!(
-                    events.recv().await.unwrap().update,
-                    ClashWsUpdate::StateChanged(ClashConnectionsConnectorState::Connected)
-                ) {
-                    break;
-                }
-            }
-        })
-        .await
-        .unwrap();
-    }
-    fn sample(total: i64) -> Sample {
-        Sample::Connections(clash_api::ConnectionsSnapshot {
-            download_total: total,
-            upload_total: total,
-            connections: None,
-            memory: None,
-        })
-    }
-
-    #[tokio::test]
-    async fn replacement_rejects_old_capability_and_clears_all_histories() {
-        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let endpoint = endpoint(url);
-        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
-        let mut events = client.subscribe_ws();
-        client.start().await.unwrap();
-        connected(&mut events).await;
-        let old = core.api_client().await.unwrap();
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(old.clone(), sample(100))
-            )
-            .await
-        );
-        endpoint
-            .binding
-            .send_modify(|binding| binding.as_mut().unwrap().instance_id = "replacement".into());
-        let new = core.api_client().await.unwrap();
-        assert!(!old.same_instance(&new));
-        assert!(!deliver(&client.0.actor, 1, Delivery::Sample(old, sample(200))).await);
-        connected(&mut events).await;
-        assert!(client.snapshot().await.unwrap().connections.is_empty());
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(new, sample(300))).await);
-        assert_eq!(
-            client.snapshot().await.unwrap().connections[0].download_speed,
-            0
-        );
-        server.abort();
-    }
-
-    #[tokio::test]
-    async fn recording_clear_and_history_limits_are_serialized_with_samples() {
-        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
-        let mut events = client.subscribe_ws();
-        client.start().await.unwrap();
-        connected(&mut events).await;
-        let api = core.api_client().await.unwrap();
-        for total in 0..40 {
-            assert!(
-                deliver(
-                    &client.0.actor,
-                    1,
-                    Delivery::Sample(api.clone(), sample(total))
-                )
-                .await
-            );
-        }
-        let snapshot = client.snapshot().await.unwrap();
-        assert_eq!(snapshot.connections.len(), MAX_CONNECTIONS_HISTORY);
-        assert_eq!(snapshot.connections[0].download_total, 8);
-        client
-            .set_recording(ClashWsKind::Connections, false)
-            .await
-            .unwrap();
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(50))
-            )
-            .await
-        );
-        assert_eq!(
-            client
-                .snapshot()
-                .await
-                .unwrap()
-                .connections
-                .last()
-                .unwrap()
-                .download_total,
-            39
-        );
-        client
-            .clear_history(ClashWsKind::Connections)
-            .await
-            .unwrap();
-        assert!(client.snapshot().await.unwrap().connections.is_empty());
-        client
-            .set_recording(ClashWsKind::Connections, true)
-            .await
-            .unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(60))).await);
-        let new = client.snapshot().await.unwrap();
-        assert!(new.sequence > snapshot.sequence);
-        assert_eq!(new.connections.len(), 1);
-        server.abort();
-    }
-
-    #[tokio::test]
-    async fn all_typed_workers_publish_and_actor_drop_releases_every_socket() {
-        use axum::extract::{Path, State as AxumState, ws::Message as Frame};
-        use tokio::sync::mpsc;
-        async fn stream(
-            Path(kind): Path<String>,
-            AxumState(closed): AxumState<mpsc::UnboundedSender<String>>,
-            ws: WebSocketUpgrade,
-        ) -> impl IntoResponse {
-            ws.on_upgrade(move |mut socket| async move {
-                let json = match kind.as_str() {
-                    "connections" => {
-                        r#"{"downloadTotal":100,"uploadTotal":200,"connections":null}"#
-                    }
-                    "logs" => r#"{"type":"trace","payload":"test log"}"#,
-                    "traffic" => r#"{"up":3,"down":4}"#,
-                    "memory" => r#"{"inuse":12}"#,
-                    _ => unreachable!(),
-                };
-                socket.send(Frame::Text(json.into())).await.unwrap();
-                while socket.recv().await.is_some() {}
-                let _ = closed.send(kind);
-            })
-        }
-        let (closed, mut rx) = mpsc::unbounded_channel();
-        let (url, server) = server(
-            Router::new()
-                .route("/{kind}", get(stream))
-                .with_state(closed),
-        )
-        .await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client = StreamsClient::spawn(core, CancellationToken::new(), &TaskTracker::new())
-            .await
-            .unwrap();
-        let mut events = client.subscribe_ws();
-        client.start().await.unwrap();
-        tokio::time::timeout(Duration::from_secs(3), async {
-            let mut seen = [false; 4];
-            while !seen.iter().all(|seen| *seen) {
-                match events.recv().await.unwrap().update {
-                    ClashWsUpdate::ConnectionsUpdated(_) => seen[0] = true,
-                    ClashWsUpdate::LogAppended(_) => seen[1] = true,
-                    ClashWsUpdate::TrafficUpdated(_) => seen[2] = true,
-                    ClashWsUpdate::MemoryUpdated(_) => seen[3] = true,
-                    _ => {}
-                }
-            }
-        })
-        .await
-        .unwrap();
-        let snapshot = client.snapshot().await.unwrap();
-        assert_eq!(snapshot.connections[0].download_total, 100);
-        assert_eq!(snapshot.logs[0].log_type, "trace");
-        assert_eq!(snapshot.traffic[0].down, 4);
-        assert_eq!(snapshot.memory[0].oslimit, 0);
-        drop(client);
-        tokio::time::timeout(Duration::from_secs(3), async {
-            for _ in 0..4 {
-                rx.recv().await.unwrap();
-            }
-        })
-        .await
-        .unwrap();
-        server.abort();
-    }
-
-    #[test]
-    fn normalize_memory_clamps_obvious_unit_mismatch() {
-        let memory = normalize_memory(clash_api::Memory {
-            in_use: 8000,
-            os_limit: 1000,
-        })
-        .unwrap();
-        assert_eq!(memory.inuse, 1000);
-        assert_eq!(memory.oslimit, 1000);
-    }
-
-    #[tokio::test]
-    async fn details_watch_stays_none_without_a_subscriber() {
-        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
-        let mut events = client.subscribe_ws();
-        client.start().await.unwrap();
-        connected(&mut events).await;
-        let api = core.api_client().await.unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
-
-        // Subscribing only now must still observe the untouched initial
-        // value: nothing was ever published while no receiver existed (G2).
-        let details = client.subscribe_connection_details();
-        assert!(details.borrow().is_none());
-        server.abort();
-    }
-
-    #[tokio::test]
-    async fn details_frame_matches_the_connections_updated_sequence() {
-        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
-        let mut events = client.subscribe_ws();
-        let mut details = client.subscribe_connection_details();
-        client.start().await.unwrap();
-        connected(&mut events).await;
-        let api = core.api_client().await.unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
-
-        let event = tokio::time::timeout(Duration::from_secs(3), async {
-            loop {
-                let event = events.recv().await.unwrap();
-                if matches!(event.update, ClashWsUpdate::ConnectionsUpdated(_)) {
-                    return event;
-                }
-            }
-        })
-        .await
-        .unwrap();
-        tokio::time::timeout(Duration::from_secs(3), details.changed())
-            .await
-            .unwrap()
-            .unwrap();
-        let frame = details.borrow_and_update().clone().unwrap();
-        assert_eq!(frame.sequence, event.sequence);
-        server.abort();
-    }
-
-    #[tokio::test]
-    async fn reset_clears_the_details_watch() {
-        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
-        let mut events = client.subscribe_ws();
-        let mut details = client.subscribe_connection_details();
-        client.start().await.unwrap();
-        connected(&mut events).await;
-        let api = core.api_client().await.unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
-        tokio::time::timeout(Duration::from_secs(3), details.changed())
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(details.borrow().is_some());
-
-        assert!(deliver(&client.0.actor, 1, Delivery::Invalidated).await);
-        tokio::time::timeout(Duration::from_secs(3), details.changed())
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(details.borrow().is_none());
-        server.abort();
-    }
-
-    #[tokio::test]
-    async fn connection_frames_carry_the_instance_id_and_reset_clears_them() {
-        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
-        let mut events = client.subscribe_ws();
-        let mut frames = client.subscribe_connection_frames();
-        client.start().await.unwrap();
-        connected(&mut events).await;
-        client
-            .set_recording(ClashWsKind::Connections, false)
-            .await
-            .unwrap();
-        let api = core.api_client().await.unwrap();
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(100))
-            )
-            .await
-        );
-        tokio::time::timeout(Duration::from_secs(3), frames.changed())
-            .await
-            .unwrap()
-            .unwrap();
-        let frame = frames.borrow_and_update().clone().unwrap();
-        assert_eq!(frame.instance_id, "first-process");
-        assert_eq!(frame.snapshot.download_total, 100);
-
-        // A sample the live derivation drops is still a real core frame.
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(-1))
-            )
-            .await
-        );
-        tokio::time::timeout(Duration::from_secs(3), frames.changed())
-            .await
-            .unwrap()
-            .unwrap();
-        let frame = frames.borrow_and_update().clone().unwrap();
-        assert_eq!(frame.snapshot.download_total, -1);
-
-        // A dropped socket clears the frame without a full reset.
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::State(api.clone(), ClashConnectionsConnectorState::Disconnected)
-            )
-            .await
-        );
-        tokio::time::timeout(Duration::from_secs(3), frames.changed())
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(frames.borrow_and_update().is_none());
-
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(200))).await);
-        tokio::time::timeout(Duration::from_secs(3), frames.changed())
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(frames.borrow_and_update().is_some());
-
-        assert!(deliver(&client.0.actor, 1, Delivery::Invalidated).await);
-        tokio::time::timeout(Duration::from_secs(3), frames.changed())
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(frames.borrow().is_none());
-        server.abort();
-    }
-
-    /// `count` connections, all sharing one `chain` member, so `member_rates`
-    /// always has exactly one entry regardless of `count` (G1/G4).
-    fn connections_sample(count: usize, chain: &str) -> clash_api::ConnectionsSnapshot {
-        let connections: Vec<clash_api::Connection> = (0..count)
-            .map(|i| {
-                serde_json::from_value(serde_json::json!({
-                    "id": uuid::Uuid::from_u128(i as u128 + 1),
-                    "metadata": null,
-                    "upload": 1,
-                    "download": 1,
-                    "start": "2024-01-01T00:00:00Z",
-                    "chains": [chain],
-                    "rule": "MATCH",
-                    "rulePayload": "",
-                }))
-                .unwrap()
-            })
-            .collect();
-        clash_api::ConnectionsSnapshot {
-            // Fixed, N-independent totals: only `connectionCount`'s own
-            // digit width should differ between the two sample sizes below.
-            download_total: 12345,
-            upload_total: 12345,
-            connections: Some(connections),
-            memory: None,
-        }
-    }
-
-    #[test]
-    fn connections_updated_event_size_is_independent_of_connection_count() {
-        let now = tokio::time::Instant::now();
-        // A first-ever sample (no `previous`) keeps every rate at zero
-        // regardless of N, and same-digit-width counts (100 / 999) keep
-        // `connectionCount` itself from perturbing the byte count (G1).
-        let small = ConnectionRates::derive(None, &connections_sample(100, "Proxy"), now, false)
-            .unwrap()
-            .summary;
-        let large = ConnectionRates::derive(None, &connections_sample(999, "Proxy"), now, false)
-            .unwrap()
-            .summary;
-        let small_len = serde_json::to_vec(&ClashWsUpdate::ConnectionsUpdated(small))
-            .unwrap()
-            .len();
-        let large_len = serde_json::to_vec(&ClashWsUpdate::ConnectionsUpdated(large))
-            .unwrap()
-            .len();
-        assert_eq!(small_len, large_len);
-    }
-
-    #[test]
-    fn snapshot_size_is_independent_of_connection_count() {
-        let now = tokio::time::Instant::now();
-        let small = ConnectionRates::derive(None, &connections_sample(100, "Proxy"), now, false)
-            .unwrap()
-            .summary;
-        let large = ConnectionRates::derive(None, &connections_sample(999, "Proxy"), now, false)
-            .unwrap()
-            .summary;
-
-        let mut small_history = ClashWsHistory::default();
-        small_history.connections.push_back(small);
-        let mut large_history = ClashWsHistory::default();
-        large_history.connections.push_back(large);
-
-        let recording = ClashWsRecording::default();
-        let small_snapshot = small_history.snapshot(
-            ClashConnectionsConnectorState::Connected,
-            recording.clone(),
-            1,
-        );
-        let large_snapshot =
-            large_history.snapshot(ClashConnectionsConnectorState::Connected, recording, 1);
-
-        assert_eq!(
-            serde_json::to_vec(&small_snapshot).unwrap().len(),
-            serde_json::to_vec(&large_snapshot).unwrap().len(),
-        );
-    }
-}
+mod tests;

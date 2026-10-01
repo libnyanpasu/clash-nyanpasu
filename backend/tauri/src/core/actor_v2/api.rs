@@ -129,10 +129,11 @@ impl ApiClient {
         Ok(ApiStream::new(self.clone(), stream))
     }
 
-    pub async fn logs_ws(&self) -> Result<ApiStream<clash_api::LogEntry>, ApiError> {
-        let stream = self
-            .execute(self.client.logs_ws(Default::default()))
-            .await?;
+    pub async fn logs_ws(
+        &self,
+        query: clash_api::LogQuery,
+    ) -> Result<ApiStream<clash_api::LogEntry>, ApiError> {
+        let stream = self.execute(self.client.logs_ws(query)).await?;
         Ok(ApiStream::new(self.clone(), stream))
     }
 
@@ -376,6 +377,7 @@ pub(crate) mod tests {
     pub(crate) struct Endpoint {
         pub(super) host: ExecutionHost,
         pub(crate) binding: watch::Sender<Option<CoreApiConnection>>,
+        pub(crate) revision: watch::Sender<Option<nyanpasu_ipc::api::status::RevisionIdInfo>>,
     }
 
     #[async_trait::async_trait]
@@ -407,7 +409,7 @@ pub(crate) mod tests {
                     CoreStateDetail::Stopped { reason: None }
                 }),
                 state_changed_at: 0,
-                revision: None,
+                revision: self.revision.borrow().clone(),
                 source_hash: None,
                 healthy: Some(true),
                 applied_kind: None,
@@ -448,6 +450,7 @@ pub(crate) mod tests {
         Arc::new(Endpoint {
             binding,
             host: ExecutionHost::Local,
+            revision: watch::channel(None).0,
         })
     }
 
@@ -674,6 +677,7 @@ pub(crate) mod tests {
         let target = Arc::new(Endpoint {
             binding,
             host: ExecutionHost::Service,
+            revision: watch::channel(None).0,
         });
         let core = CoreClient::spawn(source).await.unwrap();
         let old = core.api_client().await.unwrap();

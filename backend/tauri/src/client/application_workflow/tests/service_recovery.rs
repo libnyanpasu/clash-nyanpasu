@@ -355,12 +355,13 @@ async fn a_rejected_uninstall_leaves_recovery_armed() {
 }
 
 /// The router refuses to claim a runtime it cannot prove stopped, so a Local
-/// handoff during an outage leaves the application on the degraded Service
-/// host. Suppressing recovery there would strand it permanently.
+/// handoff during an outage of a daemon that still runs leaves the
+/// application on the degraded Service host. Suppressing recovery there would
+/// strand it permanently.
 #[tokio::test]
 async fn a_failed_local_handoff_leaves_recovery_armed_on_the_service_host() {
     let graph = RecoveryGraph::new(true).await;
-    graph.outage(true).await;
+    graph.outage(false).await;
     assert_eq!(
         graph
             .client
@@ -372,12 +373,30 @@ async fn a_failed_local_handoff_leaves_recovery_armed_on_the_service_host() {
     );
     assert_eq!(graph.client.core_status().host, ExecutionHost::Service);
     graph.attempt().await;
-    assert_eq!(graph.starts(), 1);
+    assert_eq!(graph.starts(), 0);
     assert_eq!(
         graph.client.core_status().connectivity,
         EndpointConnectivity::Connected
     );
-    assert_eq!(graph.daemon.endpoint.delegate.submissions(), 1);
+}
+
+/// A daemon the OS reports not running holds no core, so the unreachable
+/// Service owner is released and the core can move to Local (#5443).
+#[tokio::test]
+async fn a_local_handoff_is_released_by_a_daemon_the_os_reports_stopped() {
+    let graph = RecoveryGraph::new(true).await;
+    graph.outage(true).await;
+    graph
+        .client
+        .change_host(ExecutionHost::Local)
+        .await
+        .unwrap();
+    assert_eq!(graph.client.core_status().host, ExecutionHost::Local);
+    assert_eq!(
+        graph.client.core_status().connectivity,
+        EndpointConnectivity::Connected
+    );
+    assert_eq!(graph.starts(), 0);
 }
 
 /// A stop the user asked for is not a snapshot: the projection can still say
@@ -495,7 +514,7 @@ async fn a_successful_reconcile_discharges_a_user_stop() {
 async fn a_failed_local_handoff_preserves_an_explicit_suppression() {
     let graph = RecoveryGraph::new(true).await;
     graph.client.stop_service().await.unwrap();
-    graph.outage(true).await;
+    graph.outage(false).await;
     assert_eq!(
         graph
             .client

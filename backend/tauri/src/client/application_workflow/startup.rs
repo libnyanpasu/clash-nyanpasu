@@ -6,8 +6,9 @@
 //! it with a pure table, S3 honours a stop intent and retires any running
 //! instance this session holds no receipt for, and S4 applies the committed
 //! desired value from a stopped baseline. It never installs or starts the
-//! daemon, never falls back from Service to Local, and starts nothing while a
-//! second instance cannot be ruled out.
+//! daemon, and starts nothing while a second instance cannot be ruled out.
+//! Service mode is a preference: a service that is not `Ready` resolves to the
+//! Local host (`effective_host`), so the core still starts (#5443).
 //!
 //! The target it works for is carried by the live attempt from the first
 //! read to the last, so an interruption anywhere leaves it where recovery
@@ -36,13 +37,13 @@ use super::{
 use crate::{
     client::{
         convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
-        core_lifecycle::{Ownership, desired_host},
+        core_lifecycle::{Ownership, effective_host},
         runtime::ConfirmedRuntime,
         runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
     core::actor_v2::{
-        CoreStatusProjection,
+        CoreStatusProjection, EndpointConnectivity,
         endpoint::ExecutionHost,
         facade::{HostChangeFailure, PendingAction, ReconcileReport},
         service_actor::{ServiceHostStatus, ServicePhase},
@@ -456,7 +457,8 @@ impl ApplicationWorkflow {
     /// S1–S4 for the reestablish target the live attempt carries. Only an
     /// automatic retry spends its budget.
     async fn reestablish(&mut self, automatic: bool) -> (StartupObservation, Reestablished) {
-        let desired = desired_host(&self.lifecycle.application.load().state);
+        // Before S1 probes, the phase last published is all there is.
+        let desired = self.lifecycle.effective_host();
         // A spent budget refuses an automatic retry before it adopts, hands
         // off or retires anything.
         if automatic && self.committed_target().attempts_remaining == 0 {
@@ -488,22 +490,111 @@ impl ApplicationWorkflow {
             );
             return (observation, waiting);
         }
-        let service = ServiceEvidence::from_probe(
-            &self.lifecycle.core.probe_service_host().await,
-            &self.lifecycle.instance_config_dir,
+        let probe = self.lifecycle.core.probe_service_host().await;
+        // The generation this attempt is about: a daemon that becomes ready
+        // again while it runs is a newer one, and its failure is not this.
+        let generation = probe.as_ref().map_or_else(
+            |_| self.lifecycle.core.service_status().ready_generation,
+            |status| status.ready_generation,
         );
+        let service = ServiceEvidence::from_probe(&probe, &self.lifecycle.instance_config_dir);
         let runtime = self.lifecycle.core.refresh_status().await.ok();
         let owner = runtime.as_ref().map_or_else(
             || self.lifecycle.core.core_status().host,
             |status| status.host,
         );
+        // The host is resolved from the probe just taken, not a stale phase.
+        let desired = effective_host(
+            &self.lifecycle.application.load().state,
+            self.lifecycle.service_usable(service.phase(), generation),
+            owner,
+        );
+        let mut reestablished = self.establish(desired, owner, &service, automatic).await;
+        let mut desired = desired;
+        // Service mode is a preference: a ready service that still failed to
+        // run the core gives way to the local host until its readiness
+        // changes. Only a core the service host owns and failed to run counts:
+        // the handoff back proves that core stopped. A daemon that could not
+        // even be adopted proves nothing about what it holds, and an
+        // unresolved or unconfirmed outcome stays where it is.
+        if desired == ExecutionHost::Service
+            && self.lifecycle.core.core_status().host == ExecutionHost::Service
+            && let Reestablished::Degraded { reason, .. } = &reestablished
+        {
+            tracing::warn!(%reason, "the service host failed to run the core; running it locally");
+            self.lifecycle.service_failed = Some(generation);
+            desired = ExecutionHost::Local;
+            let owner = self.lifecycle.core.core_status().host;
+            reestablished = self.establish(desired, owner, &service, automatic).await;
+        }
         let observation = StartupObservation {
             desired,
-            service: Some(service.clone()),
+            service: Some(service),
             runtime,
         };
-        let reestablished = self.establish(desired, owner, &service, automatic).await;
         (observation, reestablished)
+    }
+
+    /// After a command: a core the service host should run and is not running
+    /// marks this ready generation as one that failed to run it, whichever
+    /// command left it stopped (#5443). It is a fact for the host rule, which
+    /// then moves the core to Local; nothing else is decided here. A core the
+    /// user stopped, an unreachable owner and an unresolved attempt prove
+    /// nothing about the service.
+    pub(super) async fn note_service_core_stopped(&mut self) {
+        let status = self.lifecycle.core.core_status();
+        let service = self.lifecycle.core.service_status();
+        if self.startup.is_none()
+            || self.live.is_some()
+            || !self.lifecycle.application.load().state.enable_service_mode
+            || self.lifecycle.stop_requested()
+            || status.host != ExecutionHost::Service
+            || status.connectivity != EndpointConnectivity::Connected
+            || !self
+                .lifecycle
+                .service_usable(service.phase, service.ready_generation)
+                .unwrap_or(false)
+        {
+            return;
+        }
+        let Ok(observed) = self.lifecycle.core.refresh_status().await else {
+            return;
+        };
+        if matches!(
+            observed.snapshot.and_then(|snapshot| snapshot.state),
+            Some(CoreStateDetail::Stopped { .. })
+        ) {
+            tracing::warn!("the service host is not running the core; running it locally");
+            self.lifecycle.service_failed = Some(service.ready_generation);
+        }
+    }
+
+    /// Whether the core sits on another host than the one the service's
+    /// readiness now resolves to. A core the user stopped stays where it is,
+    /// and nothing moves before StartupReconcile has proven an owner.
+    pub(super) fn service_host_change_due(&self) -> bool {
+        self.startup.is_some()
+            && self.live.is_none()
+            && self.lifecycle.application.load().state.enable_service_mode
+            && !self.lifecycle.stop_requested()
+            && self.lifecycle.effective_host() != self.lifecycle.core.core_status().host
+    }
+
+    /// Moves the core to the host the service's readiness resolves to, once
+    /// the daemon became ready or stopped being ready (#5443). It is the
+    /// reestablish routine, so the old owner is proven stopped before the
+    /// new one starts, and a daemon is never installed or started here.
+    pub(super) async fn follow_service(&mut self, operation_id: OperationId) {
+        if !self.service_host_change_due() {
+            return;
+        }
+        let target = self.open_reestablish_target(operation_id, ReestablishCause::ServiceReadiness);
+        self.live = Some(LiveAttempt::committed_target(operation_id, target));
+        let (_, reestablished) = self.reestablish(false).await;
+        let concluded = self.conclude_reestablish(&reestablished).is_ok();
+        if concluded && matches!(reestablished, Reestablished::Applied(_)) {
+            self.notify_bound(true);
+        }
     }
 
     /// S2–S4.
@@ -541,7 +632,7 @@ impl ApplicationWorkflow {
             OwnerPlan::HandBackToLocal => {
                 if let Err(failure) = self
                     .lifecycle
-                    .move_execution_host(ExecutionHost::Local)
+                    .move_execution_host(ExecutionHost::Local, false)
                     .await
                 {
                     return self.failed_handoff(failure);
@@ -553,7 +644,7 @@ impl ApplicationWorkflow {
                 }
                 if let Err(failure) = self
                     .lifecycle
-                    .move_execution_host(ExecutionHost::Local)
+                    .move_execution_host(ExecutionHost::Local, false)
                     .await
                 {
                     return self.failed_handoff(failure);
@@ -1004,6 +1095,8 @@ mod tests {
             phase,
             compat: ServiceCompat::Unknown,
             restart_attempts: 0,
+            settled_ready: false,
+            ready_generation: 0,
         })
     }
 

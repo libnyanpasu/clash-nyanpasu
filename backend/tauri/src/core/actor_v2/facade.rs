@@ -11,8 +11,8 @@ use nyanpasu_ipc::api::core::v2::{
 };
 
 use super::{
-    ControllerGeneration, CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport,
-    SubmitFailure,
+    ControllerGeneration, CoreClient, CoreStatusProjection, EndpointConnectivity, HandoffReport,
+    ShutdownReport, SubmitFailure,
     endpoint::{CoreSubmission, EndpointHandle, ExecutionHost},
     intent::RuntimeIntent,
     service_actor::{ServiceClient, ServiceCommandKind, ServiceHostStatus},
@@ -357,6 +357,7 @@ impl CoreFacade {
     async fn handoff(
         &mut self,
         target: EndpointHandle,
+        source_released: bool,
     ) -> Result<HandoffReport, HostChangeFailure> {
         self.begin(PendingAction::Handoff {
             target: target.host(),
@@ -366,7 +367,7 @@ impl CoreFacade {
             error,
             handoff_started: false,
         })?;
-        let result = self.core.change_host(target).await;
+        let result = self.core.change_host_from(target, source_released).await;
         if !matches!(&result, Err(error) if error.kind == Some(CoreErrorKind::Internal)) {
             self.finish();
         }
@@ -607,6 +608,17 @@ impl CoreFacade {
         &mut self,
         host: ExecutionHost,
     ) -> Result<HandoffReport, HostChangeFailure> {
+        // An unreachable Service owner is released only by the OS reporting
+        // its daemon not running: a daemon that is not running holds no core.
+        let source_released = host == ExecutionHost::Local
+            && matches!(
+                self.core.status().connectivity,
+                EndpointConnectivity::Degraded {
+                    desired: ExecutionHost::Service,
+                    ..
+                }
+            )
+            && self.service.daemon_not_running().await.unwrap_or(false);
         let target = match host {
             ExecutionHost::Local => self.core.initial_endpoint(),
             ExecutionHost::Service => {
@@ -623,7 +635,7 @@ impl CoreFacade {
                 })?
             }
         };
-        self.handoff(target).await
+        self.handoff(target, source_released).await
     }
 
     /// Move to the Service host only if the daemon is already `Ready`, never
@@ -638,7 +650,7 @@ impl CoreFacade {
                 error,
                 handoff_started: false,
             })?;
-        self.handoff(target).await
+        self.handoff(target, false).await
     }
 
     /// Re-adopt the same Service owner after a transport failure. Ordinary
@@ -660,7 +672,7 @@ impl CoreFacade {
                 false,
             ));
         }
-        self.handoff(endpoint)
+        self.handoff(endpoint, false)
             .await
             .map_err(|failure| failure.error)
     }
@@ -679,6 +691,11 @@ impl CoreFacade {
 
     pub fn service_status(&self) -> ServiceHostStatus {
         self.service.status()
+    }
+
+    /// Turns the ServiceActor's periodic health check on or off.
+    pub fn set_service_health_check(&self, enabled: bool) {
+        self.service.set_health_check(enabled);
     }
 
     pub async fn probe_service_host(&self) -> Result<ServiceHostStatus, CoreError> {

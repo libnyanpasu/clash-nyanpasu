@@ -835,6 +835,20 @@ async fn ownership(client: &ApplicationWorkflowClient) -> Ownership {
     }
 }
 
+/// How many readiness notifications the workflow has handled.
+async fn readiness_seen(client: &ApplicationWorkflowClient) -> u64 {
+    match client
+        .0
+        .actor
+        .call(Message::ReadinessSeen, Some(Duration::from_secs(5)))
+        .await
+        .unwrap()
+    {
+        CallResult::Success(seen) => seen,
+        other => panic!("the idle workflow should answer: {other:?}"),
+    }
+}
+
 async fn barrier(client: &ApplicationWorkflowClient) {
     assert!(matches!(
         client

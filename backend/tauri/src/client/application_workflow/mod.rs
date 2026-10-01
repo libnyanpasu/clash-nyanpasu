@@ -68,6 +68,9 @@ pub(super) enum Command {
     RetryRuntime {
         explicit: bool,
     },
+    /// The daemon's readiness changed: move the core to the host it now
+    /// resolves to, if it sits on the other one.
+    FollowService,
 }
 
 /// Settles a command that was refused before it ran. An installation owes
@@ -104,6 +107,9 @@ enum Message {
     /// refusal at entry refuses the whole mutation.
     BeginMutation(Box<MutationRequest>),
     RecoveryTick,
+    /// The daemon became ready, a new daemon became ready, or it stopped
+    /// being ready. The handler reads the current status itself.
+    ServiceReadiness,
     /// The deferred target's next attempt may be due.
     ConvergenceTick,
     ScheduledConvergenceTick(tokio::time::Instant),
@@ -114,6 +120,9 @@ enum Message {
     /// Which owner the workflow holds proven.
     #[cfg(test)]
     Ownership(RpcReplyPort<Ownership>),
+    /// How many readiness notifications were handled.
+    #[cfg(test)]
+    ReadinessSeen(RpcReplyPort<u64>),
 }
 
 struct ApplicationWorkflowActor;
@@ -127,6 +136,11 @@ struct ApplicationWorkflowState {
     /// instant it was armed for.
     convergence_timer: Option<(tokio::time::Instant, WakeUp)>,
     schedule_ticks: bool,
+    /// Whether the ServiceActor's health check was last turned on.
+    health_check: bool,
+    /// How many readiness notifications were handled, for a test to wait on.
+    #[cfg(test)]
+    readiness_seen: u64,
     /// A child of the root shutdown token. Once cancelled, every command is
     /// refused at entry; the running one finishes first either way.
     closing_token: CancellationToken,
@@ -303,6 +317,43 @@ impl ApplicationWorkflowState {
         self.publish_journal(receipt);
     }
 
+    /// Moves the core to the host the rule resolves to now, if it sits on
+    /// the other one. It runs after every command and every service status
+    /// change, and reads only current facts, so a change it missed is seen
+    /// the next time and a repeated run changes nothing (#5443).
+    async fn follow_service(&mut self) {
+        if !self.automatic_work_allowed() {
+            return;
+        }
+        self.workflow.note_service_core_stopped().await;
+        if self.workflow.service_host_change_due() {
+            self.run(Command::FollowService, Response::background())
+                .await;
+        }
+    }
+
+    /// Keeps the ServiceActor's health check on exactly while service mode
+    /// is preferred. Every message checks, so a commit that changed the
+    /// preference is followed by the next one at the latest -- the recovery
+    /// tick bounds that. Tests that drive ticks by hand leave it off.
+    fn sync_health_check(&mut self) {
+        let wanted = self.schedule_ticks
+            && self
+                .workflow
+                .lifecycle
+                .application
+                .load()
+                .state
+                .enable_service_mode;
+        if self.health_check != wanted {
+            self.health_check = wanted;
+            self.workflow
+                .lifecycle
+                .core
+                .set_service_health_check(wanted);
+        }
+    }
+
     /// Arms the one wake-up for the deferred target's next attempt. Only a
     /// command moves `next_attempt`, and this runs after every message, so
     /// the wake-up follows each write.
@@ -388,6 +439,9 @@ impl Actor for ApplicationWorkflowActor {
                 .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick)),
             convergence_timer: None,
             schedule_ticks: args.schedule_ticks,
+            health_check: false,
+            #[cfg(test)]
+            readiness_seen: 0,
             status: args.status,
             journal: args.journal,
             published: PublishedView::default(),
@@ -413,15 +467,29 @@ impl Actor for ApplicationWorkflowActor {
             }
             message => message,
         };
+        state.sync_health_check();
         match message {
             Message::ScheduledConvergenceTick(_) => unreachable!(),
-            Message::Request(request) => state.request(request).await,
-            Message::BeginMutation(request) => state.begin_mutation(*request).await,
+            Message::Request(request) => {
+                state.request(request).await;
+                state.follow_service().await;
+            }
+            Message::BeginMutation(request) => {
+                state.begin_mutation(*request).await;
+                state.follow_service().await;
+            }
             Message::RecoveryTick => {
                 if state.automatic_work_allowed() && state.workflow.lifecycle.recovery_due() {
                     let command = Command::Core(CoreCommand::RecoverServiceEndpoint);
                     state.run(command, Response::background()).await;
                 }
+            }
+            Message::ServiceReadiness => {
+                #[cfg(test)]
+                {
+                    state.readiness_seen += 1;
+                }
+                state.follow_service().await;
             }
             Message::ConvergenceTick => {
                 // Whichever wake-up this was, it has fired: the target is read
@@ -458,6 +526,10 @@ impl Actor for ApplicationWorkflowActor {
             Message::Ownership(reply) => {
                 let _ = reply.send(state.workflow.lifecycle.ownership);
             }
+            #[cfg(test)]
+            Message::ReadinessSeen(reply) => {
+                let _ = reply.send(state.readiness_seen);
+            }
         }
         state.arm_convergence(&myself);
         Ok(())
@@ -475,6 +547,14 @@ impl Actor for ApplicationWorkflowActor {
         }
         if let Some(timer) = state.recovery_timer.take() {
             timer.abort();
+        }
+        // The check exists for this workflow to follow; nothing follows it now.
+        if state.health_check {
+            state
+                .workflow
+                .lifecycle
+                .core
+                .set_service_health_check(false);
         }
         if let Err(error) = state.workflow.lifecycle.core.shutdown().await.stop {
             tracing::warn!(%error, "the core was not proven stopped");
@@ -557,6 +637,7 @@ impl ApplicationWorkflowClient {
                 closing: args.shutdown.clone(),
                 ownership: args.ownership,
                 instance_config_dir: args.instance_config_dir,
+                service_failed: None,
             },
         };
         let (actor, _) = Actor::spawn(
@@ -570,6 +651,26 @@ impl ApplicationWorkflowClient {
             },
         )
         .await?;
+        // The daemon's readiness, for the core to follow (#5443). Every
+        // published change is passed on and the handler reads the status
+        // afresh: the watch may coalesce several changes into the last one, so
+        // only the latest value is a fact, and it always arrives. The
+        // ServiceActor publishes on change only, and settles readiness itself.
+        let mut readiness = service_status.clone();
+        let forward = actor.clone();
+        let shutdown = args.shutdown.clone();
+        args.tasks.spawn(async move {
+            loop {
+                tokio::select! {
+                    () = shutdown.cancelled() => break,
+                    changed = readiness.changed() => if changed.is_err() { break },
+                }
+                readiness.mark_unchanged();
+                if forward.cast(Message::ServiceReadiness).is_err() {
+                    break;
+                }
+            }
+        });
         crate::client::drain_on_shutdown(&args.tasks, args.shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner {
             actor,

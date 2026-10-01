@@ -1,3 +1,4 @@
+import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
 import { Switch } from '@/components/ui/switch'
 import {
   Tooltip,
@@ -30,14 +31,15 @@ export default function SystemServiceSwitch() {
   const compatBlocked =
     compatKind === 'incompatible' || compatKind === 'unparsable'
 
-  // 不兼容时只拦「打开」，已开启的仍可关闭——否则用户会被锁死在一个无效的 ON 状态。
-  const disabled = notInstalled || (compatBlocked && !serviceMode.value)
+  // 未安装或不兼容时只拦「打开」，已开启的仍可关闭；开启期间内核回退到本地运行，
+  // 原因由开关旁的警告图标说明。
+  const disabled = !serviceMode.value && (notInstalled || compatBlocked)
 
-  const hint = compatBlocked
-    ? m.settings_system_proxy_service_mode_incompatible_tooltip()
-    : notInstalled
-      ? m.settings_system_proxy_service_mode_disabled_tooltip()
-      : null
+  const hint = !disabled
+    ? null
+    : compatBlocked
+      ? m.settings_system_proxy_service_mode_incompatible_tooltip()
+      : m.settings_system_proxy_service_mode_disabled_tooltip()
 
   const handleServiceMode = useLockFn(async () => {
     try {
@@ -66,24 +68,31 @@ export default function SystemServiceSwitch() {
         </ItemLabelDescription>
       </ItemLabel>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div data-slot="system-service-switch-trigger-wrapper">
-            <Switch
-              checked={Boolean(serviceMode.value)}
-              onCheckedChange={handleServiceMode}
-              loading={serviceMode.isPending}
-              disabled={disabled}
-            />
-          </div>
-        </TooltipTrigger>
+      <div
+        className="flex shrink-0 items-center gap-2"
+        data-slot="system-service-switch-control"
+      >
+        <ServiceFallbackWarning />
 
-        {hint && (
-          <TooltipContent>
-            <span>{hint}</span>
-          </TooltipContent>
-        )}
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div data-slot="system-service-switch-trigger-wrapper">
+              <Switch
+                checked={Boolean(serviceMode.value)}
+                onCheckedChange={handleServiceMode}
+                loading={serviceMode.isPending}
+                disabled={disabled}
+              />
+            </div>
+          </TooltipTrigger>
+
+          {hint && (
+            <TooltipContent>
+              <span>{hint}</span>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </div>
     </ItemContainer>
   )
 }

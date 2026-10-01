@@ -62,6 +62,7 @@
 ## 改变行为的 leader 裁定
 
 - **R8**：期望 service 模式、启动时 daemon 却未就绪时，不启动 core。状态报 WaitingDependency 并自动重探，不静默回退到 Local。依据是 TCC 计划 §2.3、§11.2 和 V37：不启动所有权未证实的实例。代价：daemon 损坏的用户在修好 daemon 或关闭 service 模式之前没有代理。
+  - **已被 #5443 取代**：service 模式改为偏好。daemon 未 `Ready`（未安装、已停止、不兼容）时解析为 Local 并在本地启动 core（`core_lifecycle::effective_host`），启动、保存和重试都不安装也不启动 daemon；只有显式打开 service 模式仍会 `ensure_ready`。probe 不可读时仍按 Unproven 不启动 core。
 - **R20**：用户 stop 之后的显式启动，只在必须重建所有权时撤回 stop 意图。所有权已建立时，显式启动保留原有的 reconcile 意图语义。两条路径成功时都必须启动 core，两条路径都有测试。
 - **R21**：StartupReconcile 中途 panic，仍然恰好执行一次 `publish_full`（设计 S13）。托盘、热键、locale、logger、widget 不依赖启动成功。
 - **R22**：定时 tick 并入在途刷新时不写回执，结果由在途尝试写入。否则 Superseded（Healthy）会覆盖 Failed / Rejected，隐藏失败（V33）。

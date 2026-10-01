@@ -26,6 +26,7 @@ use crate::core::actor_v2::{
         CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
         StopReport, UncertainReconcile,
     },
+    service_actor::ServicePhase,
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -48,6 +49,11 @@ pub(in crate::client) struct CoreLifecycleWorkflow {
     /// The config dir this instance installs the daemon with. A daemon that
     /// reports another one serves another instance of the app.
     pub instance_config_dir: std::path::PathBuf,
+    /// The ready generation of a daemon that failed to run the core. That
+    /// daemon is not used again; one that became `Ready` since is a new
+    /// daemon and gets a try. Retrying the same one on every save or tick
+    /// would bounce the core between the hosts.
+    pub service_failed: Option<u64>,
 }
 
 /// Whether the application has proven which host owns the runtime.
@@ -59,12 +65,28 @@ pub(crate) enum Ownership {
     Established { host: ExecutionHost },
 }
 
-/// The host `enable_service_mode` asks for.
-pub(in crate::client) fn desired_host(application: &NyanpasuAppConfig) -> ExecutionHost {
-    if application.enable_service_mode {
-        ExecutionHost::Service
-    } else {
-        ExecutionHost::Local
+/// The host the core should run on. `enable_service_mode` is a preference:
+/// the core runs on the service host while the service is usable — the
+/// daemon is `Ready` (installed, running and through the version gate) and has
+/// not failed to run the core since — and locally once it is known not to
+/// be, so an unusable service never leaves the user without a core (#5443).
+/// While that cannot be told (`service` is `None`: a transition, or a probe
+/// that failed) the core stays on `current`.
+///
+/// Every path that decides a host resolves it here: startup and explicit
+/// starts from the phase their own probe just published, saves and retries
+/// from the phase last published. None of them installs or starts the daemon
+/// to make Service usable; only an explicit service action or switching
+/// service mode on does.
+pub(in crate::client) fn effective_host(
+    application: &NyanpasuAppConfig,
+    service: Option<bool>,
+    current: ExecutionHost,
+) -> ExecutionHost {
+    match (application.enable_service_mode, service) {
+        (true, Some(true)) => ExecutionHost::Service,
+        (true, None) => current,
+        _ => ExecutionHost::Local,
     }
 }
 
@@ -169,7 +191,7 @@ impl CoreLifecycleWorkflow {
             Command::Reconcile => Ok(Output::Reconcile(self.reconcile(preparation).await?)),
             #[cfg(test)]
             Command::ChangeHost(host) => Ok(Output::Handoff(
-                self.move_execution_host(host)
+                self.move_execution_host(host, true)
                     .await
                     .map_err(|failure| failure.error)
                     .context(ApplyRuntimeSnafu)?,
@@ -319,11 +341,36 @@ impl CoreLifecycleWorkflow {
         }
     }
 
+    /// Whether the service host can run the core, given the daemon's `phase`
+    /// and the ready generation read with it: `None` while that cannot be
+    /// told.
+    pub fn service_usable(&self, phase: ServicePhase, generation: u64) -> Option<bool> {
+        phase
+            .readiness()
+            .map(|ready| ready && self.service_failed != Some(generation))
+    }
+
+    /// [`Self::service_usable`] for the status last published.
+    pub fn service_usable_now(&self) -> Option<bool> {
+        let status = self.core.service_status();
+        self.service_usable(status.phase, status.ready_generation)
+    }
+
+    /// [`effective_host`] for the committed application config and the
+    /// service phase last published.
+    pub fn effective_host(&self) -> ExecutionHost {
+        effective_host(
+            &self.application.load().state,
+            self.service_usable_now(),
+            self.core.core_status().host,
+        )
+    }
+
     /// Whether a path that starts the core may do so (T10 §1.7): the proven
     /// owner is both the host the router drives and the host the user asked
     /// for.
     pub fn start_permitted(&self) -> bool {
-        let desired = desired_host(&self.application.load().state);
+        let desired = self.effective_host();
         self.ownership == Ownership::Established { host: desired }
             && self.core.core_status().host == desired
     }
@@ -445,11 +492,19 @@ impl CoreLifecycleWorkflow {
     /// configuration itself: a Try has a candidate that is not committed yet,
     /// and a Cancel has a receipt rather than a configuration to rebuild
     /// (v2 §5.3).
+    /// Moves the runtime to `host`. Only `converge` may install or start the
+    /// daemon to get there; without it, Service is adopted only if it is
+    /// already `Ready`.
     pub(in crate::client) async fn move_execution_host(
         &mut self,
         host: ExecutionHost,
+        converge: bool,
     ) -> Result<HandoffReport, crate::core::actor_v2::facade::HostChangeFailure> {
-        let report = self.core.change_execution_host(host).await?;
+        let report = if host == ExecutionHost::Service && !converge {
+            self.core.adopt_service_host().await?
+        } else {
+            self.core.change_execution_host(host).await?
+        };
         // A completed handoff proved the source stopped before the target
         // was adopted, which is the ownership proof itself.
         if report.completed() {

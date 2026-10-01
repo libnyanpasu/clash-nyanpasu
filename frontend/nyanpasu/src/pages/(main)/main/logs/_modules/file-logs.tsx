@@ -420,6 +420,7 @@ function FileRows({
               key={row.id}
               ref={virtualizer.measureElement}
               data-index={item.index}
+              data-slot="logs-virtual-item"
               className="absolute top-0 left-0 w-full select-text"
               style={{
                 transform: `translateY(${item.start}px)`,

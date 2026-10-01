@@ -7,11 +7,15 @@ import parseTraffic from '@/utils/parse-traffic'
 import {
   ClashConnection_Serialize,
   useClashConnectionDetails,
+  useDeleteClashConnections,
 } from '@nyanpasu/interface'
 import { ChainCell, RuleCell, TextCell, TrafficCell } from './cells'
 import ConnectionsTable, { type ConnectionColumn } from './connections-table'
 import { mockActiveConnections } from './mock-connections'
-import TableRow, { ConnectionDetailModal } from './table-row'
+import TableRow, {
+  activeConnectionDetail,
+  ConnectionDetailModal,
+} from './table-row'
 
 export type ConnectionRow = ClashConnection_Serialize & {
   // Parsed once per sample: sorting by time compares numbers instead of
@@ -36,27 +40,53 @@ const ActiveViewer = memo(function ActiveViewer({
 
   const mockNow = useMockConnectionsNow()
 
-  const data = useMemo<ConnectionRow[]>(() => {
-    const connections =
-      mockNow === null
+  const connections = useMemo<ConnectionRow[]>(
+    () =>
+      (mockNow === null
         ? (details?.connections ?? [])
         : mockActiveConnections(mockNow)
-
-    return connections
-      .filter((conn) => (proxy ? conn.chains?.includes(proxy) : true))
-      .map((conn) => ({
+      ).map((conn) => ({
         ...conn,
         startMs: Date.parse(conn.start),
-      }))
-      .filter((c) => (search ? containsSearchTerm(c, search) : true))
-  }, [details, mockNow, search, proxy])
+      })),
+    [details, mockNow],
+  )
+
+  const data = useMemo(
+    () =>
+      connections
+        .filter((conn) => (proxy ? conn.chains?.includes(proxy) : true))
+        .filter((c) => (search ? containsSearchTerm(c, search) : true)),
+    [connections, search, proxy],
+  )
+
+  const deleteConnections = useDeleteClashConnections()
 
   const [detailId, setDetailId] = useState<string | null>(null)
 
-  const detailRow = useMemo(
+  // Looked up unfiltered: a search or proxy filter hiding the row does not
+  // close the connection.
+  const liveRow = useMemo(
     () =>
-      detailId === null ? undefined : data.find((row) => row.id === detailId),
-    [data, detailId],
+      detailId === null
+        ? undefined
+        : connections.find((row) => row.id === detailId),
+    [connections, detailId],
+  )
+
+  // The last sample of the open connection, kept so the dialog stays on it
+  // after the connection closes and leaves the stream.
+  const [lastRow, setLastRow] = useState<ConnectionRow>()
+
+  if (liveRow && liveRow !== lastRow) {
+    setLastRow(liveRow)
+  }
+
+  const detailRow = liveRow ?? (lastRow?.id === detailId ? lastRow : undefined)
+
+  const detail = useMemo(
+    () => detailRow && activeConnectionDetail(detailRow, detailRow !== liveRow),
+    [detailRow, liveRow],
   )
 
   const columns = useMemo(
@@ -228,7 +258,11 @@ const ActiveViewer = memo(function ActiveViewer({
         data={data}
         getRowId={(row) => row.id}
         renderRow={(row, props) => (
-          <TableRow {...props} data={row} onViewDetails={setDetailId} />
+          <TableRow
+            {...props}
+            onViewDetails={() => setDetailId(row.id)}
+            onCloseConnection={() => deleteConnections.mutateAsync(row.id)}
+          />
         )}
         emptyMessage={m.connections_empty_message()}
         settingsOpen={settingsOpen}
@@ -236,8 +270,13 @@ const ActiveViewer = memo(function ActiveViewer({
       />
 
       <ConnectionDetailModal
-        data={detailRow}
+        detail={detail}
         onClose={() => setDetailId(null)}
+        onCloseConnection={
+          detailId === null
+            ? undefined
+            : () => deleteConnections.mutateAsync(detailId)
+        }
       />
     </>
   )

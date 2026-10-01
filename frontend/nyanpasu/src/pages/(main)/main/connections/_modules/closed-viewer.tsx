@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
@@ -11,6 +11,10 @@ import {
 import { ChainCell, RuleCell, TextCell, TrafficCell } from './cells'
 import ConnectionsTable, { type ConnectionColumn } from './connections-table'
 import { mockClosedConnections } from './mock-connections'
+import TableRow, {
+  closedConnectionDetail,
+  ConnectionDetailModal,
+} from './table-row'
 
 // The traffic history keeps the process path; the table shows its name.
 const processName = (process: string) => process.split('/').pop() || process
@@ -52,6 +56,14 @@ const ClosedViewer = memo(function ClosedViewer({
         )
         .filter((conn) => (search ? containsSearchTerm(conn, search) : true)),
     [history, mockNow, search, proxy],
+  )
+
+  // A closed record never changes, so the dialog keeps the row itself.
+  const [detailRow, setDetailRow] = useState<ClosedConnection | null>(null)
+
+  const detail = useMemo(
+    () => (detailRow === null ? undefined : closedConnectionDetail(detailRow)),
+    [detailRow],
   )
 
   const handleEndReached = useCallback(() => {
@@ -198,23 +210,33 @@ const ClosedViewer = memo(function ClosedViewer({
   )
 
   return (
-    <ConnectionsTable
-      settingsKey="connections-columns-closed"
-      columns={columns}
-      data={data}
-      // The store keys closed connections by both: a new core reuses ids.
-      getRowId={(row) => `${row.closed_at}:${row.id}`}
-      emptyMessage={
-        error
-          ? m.connections_closed_unavailable()
-          : hasNextPage
-            ? m.connections_closed_loading()
-            : m.connections_empty_message()
-      }
-      onEndReached={handleEndReached}
-      settingsOpen={settingsOpen}
-      onSettingsOpenChange={onSettingsOpenChange}
-    />
+    <>
+      <ConnectionsTable
+        settingsKey="connections-columns-closed"
+        columns={columns}
+        data={data}
+        // The store keys closed connections by both: a new core reuses ids.
+        getRowId={(row) => `${row.closed_at}:${row.id}`}
+        renderRow={(row, props) => (
+          <TableRow {...props} onViewDetails={() => setDetailRow(row)} />
+        )}
+        emptyMessage={
+          error
+            ? m.connections_closed_unavailable()
+            : hasNextPage
+              ? m.connections_closed_loading()
+              : m.connections_empty_message()
+        }
+        onEndReached={handleEndReached}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={onSettingsOpenChange}
+      />
+
+      <ConnectionDetailModal
+        detail={detail}
+        onClose={() => setDetailRow(null)}
+      />
+    </>
   )
 })
 

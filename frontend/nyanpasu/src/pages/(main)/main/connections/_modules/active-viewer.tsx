@@ -1,5 +1,12 @@
 import dayjs from 'dayjs'
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
@@ -40,6 +47,8 @@ const sameTraffic = (a: ConnectionRow, b: ConnectionRow) =>
   a.downloadSpeed === b.downloadSpeed &&
   a.uploadSpeed === b.uploadSpeed
 
+const connectionId = (row: ConnectionRow) => row.id
+
 // Memoized so a keystroke's urgent render skips the table; it re-renders
 // with the deferred search term, or on its own stream and prop updates.
 const ActiveViewer = memo(function ActiveViewer({
@@ -53,7 +62,11 @@ const ActiveViewer = memo(function ActiveViewer({
   settingsOpen: boolean
   onSettingsOpenChange: (open: boolean) => void
 }) {
-  const { data: details } = useClashConnectionDetails()
+  const { data: latest } = useClashConnectionDetails()
+
+  // Rebuilding the table from a sample is the bulk of every frame. A deferred
+  // sample renders in the background, where input and scrolling interrupt it.
+  const details = useDeferredValue(latest)
 
   const mockNow = useMockConnectionsNow()
 
@@ -281,7 +294,7 @@ const ActiveViewer = memo(function ActiveViewer({
         settingsKey="connections-columns-active"
         columns={columns}
         data={data}
-        getRowId={(row) => row.id}
+        getRowId={connectionId}
         renderRow={renderRow}
         isRowEqual={sameTraffic}
         emptyMessage={m.connections_empty_message()}

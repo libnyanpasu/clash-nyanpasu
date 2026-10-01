@@ -130,7 +130,7 @@ const BodyRow = memo(
     next.isRowEqual(prev.row.original, next.row.original),
 ) as <TRow extends RowData>(props: BodyRowProps<TRow>) => ReactNode
 
-export default function ConnectionsTable<TRow extends RowData>({
+function ConnectionsTable<TRow extends RowData>({
   settingsKey,
   columns,
   data,
@@ -404,3 +404,7 @@ export default function ConnectionsTable<TRow extends RowData>({
     </>
   )
 }
+
+// A deferred sample first renders with the previous one; memoized, the table
+// skips that render, as its props stay the same.
+export default memo(ConnectionsTable) as typeof ConnectionsTable

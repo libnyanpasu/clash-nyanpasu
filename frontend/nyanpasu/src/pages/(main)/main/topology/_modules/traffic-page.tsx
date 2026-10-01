@@ -7,22 +7,28 @@ import { useCallback, useMemo, useState } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import {
-  useClashConnectionDetails,
-  useClashWSStatus,
   useProfile,
   useSetting,
   useTrafficReport,
   type Dimension,
   type ReportRequest,
 } from '@nyanpasu/interface'
+import Notice from './notice'
 import RankingCard from './ranking-card'
-import { pollInterval, toQuery, type TrafficSearch } from './search'
+import {
+  DEFAULT_TEMPLATE,
+  pollInterval,
+  toggleFilter,
+  toQuery,
+  toTopologyRequest,
+  type TrafficSearch,
+} from './search'
 import StatCards from './stat-cards'
 import TopologyView from './topology-view'
 import TrafficToolbar from './traffic-toolbar'
 import { usageLabel } from './usage-label'
 
-// One report serves the stat cards and every ranking card.
+// One report serves the stat cards, every ranking card and the topology.
 const RANKINGS = [
   { dimension: 'source', icon: DevicesRounded, title: m.traffic_rank_source },
   { dimension: 'inbound', icon: LoginRounded, title: m.traffic_rank_inbound },
@@ -37,20 +43,6 @@ const RANKINGS = [
 
 const RANKING_LIMIT = 5
 
-const Notice = ({ error, children }: { error?: boolean; children: string }) =>
-  error ? (
-    <p
-      role="status"
-      className="bg-error-container text-on-error-container rounded-2xl p-4 text-sm"
-    >
-      {children}
-    </p>
-  ) : (
-    <p className="text-on-surface-variant py-6 text-center text-sm">
-      {children}
-    </p>
-  )
-
 export default function TrafficPage({
   search,
   onSearchChange,
@@ -58,7 +50,7 @@ export default function TrafficPage({
   search: TrafficSearch
   onSearchChange: (update: Partial<TrafficSearch>) => void
 }) {
-  const { range, scope, filters, view, metric } = search
+  const { range, scope, filters, view, layers, metric, limit } = search
 
   const [paused, setPaused] = useState(false)
 
@@ -85,23 +77,21 @@ export default function TrafficPage({
     [range, scope, filters],
   )
 
+  // Only one of the flow and the map is on screen, so the report carries the
+  // topology of that one.
   const request = useMemo<ReportRequest>(
     () => ({
       query,
       rankings: RANKINGS.map(({ dimension }) => dimension),
       ranking_limit: RANKING_LIMIT,
-      topology: null,
+      topology: toTopologyRequest({ view, layers, metric, limit }),
     }),
-    [query],
+    [query, view, layers, metric, limit],
   )
 
   const { data: report, isError } = useTrafficReport(request, {
     refetchInterval: paused ? false : pollInterval(range),
   })
-
-  const { data: connections, isLoading } = useClashConnectionDetails()
-
-  const { error } = useClashWSStatus()
 
   const empty =
     !!report &&
@@ -119,14 +109,20 @@ export default function TrafficPage({
           )}
 
           <TopologyView
-            connections={connections?.connections ?? []}
-            isLoading={isLoading}
-            error={error}
-            paused={paused}
+            topology={report?.topology}
             view={view}
             onViewChange={(next) => onSearchChange({ view: next })}
             metric={metric}
             onMetricChange={(next) => onSearchChange({ metric: next })}
+            template={layers ?? DEFAULT_TEMPLATE}
+            onTemplateChange={(next) => onSearchChange({ layers: next })}
+            limit={limit}
+            onLimitChange={(next) => onSearchChange({ limit: next })}
+            filters={filters}
+            labelOf={labelOf}
+            onSelect={(dimension, key) =>
+              onSearchChange({ filters: toggleFilter(filters, dimension, key) })
+            }
           />
 
           {report &&

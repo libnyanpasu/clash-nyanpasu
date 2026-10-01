@@ -5,6 +5,7 @@ import {
   setFilter,
   toggleFilter,
   toQuery,
+  toTopologyRequest,
   trafficSearchSchema,
 } from '../src/pages/(main)/main/topology/_modules/search'
 
@@ -17,6 +18,7 @@ test('an empty search is the last hour of everything', () => {
     filters: [],
     view: 'flow',
     metric: 'bytes',
+    limit: 7,
   })
   expect(toQuery(search)).toEqual({
     range: 'last_hour',
@@ -90,4 +92,42 @@ test('a range is beyond the retention when it reaches back further', () => {
   // Everything kept, whatever that is, and nothing is known before it loads.
   expect(beyondRetention('all', '1d')).toBe(false)
   expect(beyondRetention('last30_days', undefined)).toBe(false)
+})
+
+test('the flow asks for the template layers, the map for every region', () => {
+  expect(toTopologyRequest(trafficSearchSchema.parse({}))).toEqual({
+    layers: ['origin', 'rule', 'chain', 'exit'],
+    metric: 'bytes',
+    limit_per_layer: 7,
+  })
+  expect(
+    toTopologyRequest(trafficSearchSchema.parse({ layers: 'source' })).layers,
+  ).toEqual(['source', 'target', 'exit'])
+  expect(
+    toTopologyRequest(
+      trafficSearchSchema.parse({ view: 'map', metric: 'connections' }),
+    ),
+  ).toEqual({
+    layers: ['source_region', 'destination_region'],
+    metric: 'connections',
+    limit_per_layer: null,
+  })
+  expect(trafficSearchSchema.safeParse({ layers: 'nope' }).success).toBe(false)
+})
+
+test('the limit is a count or all, and all asks for no limit', () => {
+  const request = (limit: unknown) =>
+    toTopologyRequest(trafficSearchSchema.parse({ limit }))
+
+  expect(request(undefined).limit_per_layer).toBe(7)
+  expect(request(5).limit_per_layer).toBe(5)
+  expect(request(20).limit_per_layer).toBe(20)
+  expect(request('all').limit_per_layer).toBeNull()
+  // The map places every region whatever the limit.
+  expect(
+    toTopologyRequest(trafficSearchSchema.parse({ view: 'map', limit: 5 }))
+      .limit_per_layer,
+  ).toBeNull()
+  expect(trafficSearchSchema.safeParse({ limit: 6 }).success).toBe(false)
+  expect(trafficSearchSchema.safeParse({ limit: '7' }).success).toBe(false)
 })

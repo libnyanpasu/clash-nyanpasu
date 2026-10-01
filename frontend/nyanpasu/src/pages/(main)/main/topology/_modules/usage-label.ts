@@ -1,11 +1,42 @@
 import { m } from '@/paraglide/messages'
-import type { Dimension } from '@nyanpasu/interface'
+import { getLocale } from '@/paraglide/runtime'
+import parseTraffic from '@/utils/parse-traffic'
+import type { Dimension, Metric, Usage } from '@nyanpasu/interface'
 
 export type UsageLabel = {
   text: string
   /** The full value, for when the text is cut short. */
   title: string
   mono: boolean
+}
+
+let regionNames: { locale: string; names: Intl.DisplayNames } | undefined
+
+/** The localized name of a region code, `unknown` or whatever else a key is. */
+export function regionName(code: string) {
+  if (code === 'unknown') {
+    return m.topology_unknown()
+  }
+
+  // `DisplayNames.of` throws for anything but a well-formed region code.
+  if (!/^(?:[a-z]{2}|\d{3})$/i.test(code)) {
+    return code
+  }
+
+  const locale = getLocale()
+
+  if (regionNames?.locale !== locale) {
+    regionNames = {
+      locale,
+      names: new Intl.DisplayNames([locale], { type: 'region' }),
+    }
+  }
+
+  try {
+    return regionNames.names.of(code) ?? code
+  } catch {
+    return code
+  }
 }
 
 const isIp = (value: string) =>
@@ -47,6 +78,9 @@ export function usageLabel(
           (profiles ? m.traffic_profile_deleted({ uid: key }) : key),
         key,
       )
+    case 'source_region':
+    case 'destination_region':
+      return plain(regionName(key), key)
     case 'origin':
     case 'source':
     case 'target':
@@ -71,3 +105,26 @@ export const dimensionName = (dimension: Dimension) =>
     source_region: m.traffic_dimension_source_region,
     destination_region: m.traffic_dimension_destination_region,
   })[dimension]()
+
+/** What the metric weighs a usage by. */
+export const usageValue = ({ bytes, connections }: Usage, metric: Metric) =>
+  metric === 'bytes' ? bytes.upload + bytes.download : connections
+
+export const usageAmount = (usage: Usage, metric: Metric) =>
+  metric === 'bytes'
+    ? parseTraffic(usageValue(usage, metric)).join(' ')
+    : m.topology_connection_count({ count: usage.connections })
+
+/**
+ * The largest of the values, or `floor` when none is larger. A loop: spreading
+ * a whole graph into `Math.max` overflows the arguments of the call.
+ */
+export function largest(values: Iterable<number>, floor: number) {
+  let result = floor
+
+  for (const value of values) {
+    if (value > result) result = value
+  }
+
+  return result
+}

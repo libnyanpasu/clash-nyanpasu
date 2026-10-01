@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type {
   Dimension,
+  TopologyRequest,
   TrafficQuery,
   TrafficRange,
   TrafficRetention,
@@ -30,6 +31,27 @@ const DIMENSIONS = [
   'destination_region',
 ] as const satisfies readonly Dimension[]
 
+export const TEMPLATES = ['origin', 'source', 'inbound', 'process'] as const
+
+export type LayerTemplate = (typeof TEMPLATES)[number]
+
+export const DEFAULT_TEMPLATE: LayerTemplate = 'origin'
+
+/** How many nodes a flow column shows before the rest merge into "other". */
+export const LIMITS = [5, 7, 10, 20, 'all'] as const
+
+export type Limit = (typeof LIMITS)[number]
+
+export const DEFAULT_LIMIT: Limit = 7
+
+/** The column layouts of the flow view, from the first column to the last. */
+export const LAYER_TEMPLATES: Record<LayerTemplate, readonly Dimension[]> = {
+  origin: ['origin', 'rule', 'chain', 'exit'],
+  source: ['source', 'target', 'exit'],
+  inbound: ['inbound', 'rule', 'exit'],
+  process: ['process', 'target', 'exit'],
+}
+
 // The page state lives in the URL, so a view can be reloaded and shared.
 export const trafficSearchSchema = z.object({
   range: z.enum(RANGES).default('last_hour'),
@@ -38,9 +60,10 @@ export const trafficSearchSchema = z.object({
     .array(z.object({ d: z.enum(DIMENSIONS), v: z.string() }))
     .default([]),
   view: z.enum(['flow', 'map']).default('flow'),
-  // Name of a topology layer template.
-  layers: z.string().optional(),
+  // Name of a topology layer template; the first one when absent.
+  layers: z.enum(TEMPLATES).optional(),
   metric: z.enum(['bytes', 'connections']).default('bytes'),
+  limit: z.literal(LIMITS).default(DEFAULT_LIMIT),
 })
 
 export type TrafficSearch = z.infer<typeof trafficSearchSchema>
@@ -56,6 +79,29 @@ export const toQuery = ({
   scope,
   filters: filters.map(({ d, v }) => ({ dimension: d, value: v })),
 })
+
+/** The columns of the flow view are the template's; the map's are regions. */
+export const toTopologyRequest = ({
+  view,
+  layers,
+  metric,
+  limit,
+}: Pick<
+  TrafficSearch,
+  'view' | 'layers' | 'metric' | 'limit'
+>): TopologyRequest =>
+  view === 'map'
+    ? {
+        layers: ['source_region', 'destination_region'],
+        metric,
+        // The map places every region, so none merges into "other".
+        limit_per_layer: null,
+      }
+    : {
+        layers: [...LAYER_TEMPLATES[layers ?? DEFAULT_TEMPLATE]],
+        metric,
+        limit_per_layer: limit === 'all' ? null : limit,
+      }
 
 /** Adds a filter; another value of the same dimension is replaced. */
 export function setFilter(

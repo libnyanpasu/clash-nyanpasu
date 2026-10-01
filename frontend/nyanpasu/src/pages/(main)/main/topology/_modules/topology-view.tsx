@@ -1,7 +1,5 @@
-import PauseRounded from '~icons/material-symbols/pause-rounded'
-import PlayArrowRounded from '~icons/material-symbols/play-arrow-rounded'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMedia } from 'react-use'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -36,30 +34,37 @@ const GRAPH_WIDTH = COLUMN_STEP * 3 + NODE_WIDTH
 
 export default function TopologyView({
   connections,
-  filterKey,
   isLoading,
   error,
+  paused,
+  view: mode,
+  onViewChange,
+  metric,
+  onMetricChange,
 }: {
   connections: ClashConnection_Serialize[]
-  filterKey?: string
   isLoading: boolean
   error: unknown
+  /** Keeps showing the connections of the moment it became true. */
+  paused: boolean
+  view: 'flow' | 'map'
+  onViewChange: (view: 'flow' | 'map') => void
+  metric: TopologyMetric
+  onMetricChange: (metric: TopologyMetric) => void
 }) {
   const reducedMotion = useMedia('(prefers-reduced-motion: reduce)', false)
   const transition = {
     duration: reducedMotion ? 0 : 0.32,
     ease: [0.2, 0, 0, 1] as const,
   }
-  const [mode, setMode] = useState('flow')
   const [country, setCountry] = useState<string>()
-  const [metric, setMetric] = useState<TopologyMetric>('connections')
   const [frozen, setFrozen] = useState<ClashConnection_Serialize[]>()
   const [selection, setSelection] = useState<string>()
-  useEffect(() => {
+  if (paused && !frozen) {
+    setFrozen(connections)
+  } else if (!paused && frozen) {
     setFrozen(undefined)
-    setSelection(undefined)
-    setCountry(undefined)
-  }, [filterKey])
+  }
   const displayed = frozen ?? connections
   const graph = useMemo(
     () => buildTopology(displayed, metric),
@@ -90,13 +95,6 @@ export default function TopologyView({
       : displayed
   const sorted = [...matching].sort(
     (a, b) => b.upload + b.download - a.upload - a.download,
-  )
-  const totals = displayed.reduce(
-    (total, connection) => ({
-      upload: total.upload + Math.max(0, connection.upload),
-      download: total.download + Math.max(0, connection.download),
-    }),
-    { upload: 0, download: 0 },
   )
   const headings = [
     m.topology_source(),
@@ -139,35 +137,7 @@ export default function TopologyView({
     !selected || [...ids].some((id) => selected.connectionIds.has(id))
 
   return (
-    <section
-      className="text-on-surface space-y-5 p-4 md:p-6"
-      aria-label={m.topology_title()}
-    >
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <div className="text-primary text-xs font-medium tracking-widest uppercase">
-            {m.topology_eyebrow()}
-          </div>
-          <h1 className="text-2xl font-medium">{m.topology_title()}</h1>
-          <p className="text-on-surface-variant max-w-xl text-sm">
-            {m.topology_description()}
-          </p>
-        </div>
-        <Button
-          variant="stroked"
-          className="flex items-center gap-2"
-          aria-pressed={!!frozen}
-          onClick={() => setFrozen(frozen ? undefined : [...connections])}
-        >
-          {frozen ? (
-            <PlayArrowRounded className="size-5" />
-          ) : (
-            <PauseRounded className="size-5" />
-          )}
-          {frozen ? m.topology_resume() : m.topology_pause()}
-        </Button>
-      </header>
-
+    <section className="space-y-4" aria-label={m.topology_title()}>
       {error ? (
         <p
           role="status"
@@ -176,19 +146,6 @@ export default function TopologyView({
           {m.topology_unavailable()}
         </p>
       ) : null}
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {[
-          [m.topology_active(), displayed.length.toLocaleString()],
-          [m.topology_download(), traffic(totals.download)],
-          [m.topology_upload(), traffic(totals.upload)],
-        ].map(([title, value], index) => (
-          <div key={title} className={cn('rounded-3xl p-5', tones[index])}>
-            <p className="text-sm opacity-80">{title}</p>
-            <p className="mt-2 text-3xl font-medium tabular-nums">{value}</p>
-          </div>
-        ))}
-      </div>
 
       <Card variant="outline" className="p-4 md:p-5">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -204,8 +161,8 @@ export default function TopologyView({
           <SegmentedButton
             value={mode}
             onValueChange={(value) => {
-              if (!value) return
-              setMode(value)
+              if (value !== 'flow' && value !== 'map') return
+              onViewChange(value)
               setSelection(undefined)
               setCountry(undefined)
             }}
@@ -224,17 +181,18 @@ export default function TopologyView({
           <SegmentedButton
             value={metric}
             onValueChange={(value) => {
-              if (value === 'connections' || value === 'bytes') setMetric(value)
+              if (value === 'connections' || value === 'bytes')
+                onMetricChange(value)
             }}
             size="sm"
             className="w-52 max-w-full"
             aria-label={m.topology_weight()}
           >
-            <SegmentedButtonItem value="connections">
-              {m.topology_by_connections()}
-            </SegmentedButtonItem>
             <SegmentedButtonItem value="bytes">
               {m.topology_by_bytes()}
+            </SegmentedButtonItem>
+            <SegmentedButtonItem value="connections">
+              {m.topology_by_connections()}
             </SegmentedButtonItem>
           </SegmentedButton>
         </div>

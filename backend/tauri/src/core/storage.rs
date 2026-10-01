@@ -1,4 +1,4 @@
-use crate::{log_err, utils::dirs};
+use crate::log_err;
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use snafu::{ResultExt as _, Snafu};
@@ -344,14 +344,6 @@ pub fn register_web_storage_listener(app_handle: &tauri::AppHandle) {
             }
         });
     });
-}
-
-pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> anyhow::Result<()> {
-    let storage_path =
-        anyhow::Context::context(dirs::storage_path(), "failed to get storage path")?;
-    let storage = Storage::try_new(&storage_path)?;
-    app.manage(storage);
-    Ok(())
 }
 
 #[cfg(test)]

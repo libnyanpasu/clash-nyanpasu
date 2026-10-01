@@ -201,9 +201,6 @@ pub fn resolve_setup(app: &mut App) {
         log_err!(client.start_background_sources());
     }
 
-    log::trace!("init storage");
-    log_err!(crate::core::storage::setup(app));
-
     log::trace!("init clash connection connector");
     log_err!(crate::core::clash::setup(app));
 

@@ -11,7 +11,12 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "allowJs": true,
-    "types": ["node", "vite/client", "vitest/browser"],
+    "types": [
+      "node",
+      "vite/client",
+      "vitest/browser",
+      "./frontend/nyanpasu/node_modules/vite-plugin-svgr/client"
+    ],
     "paths": {
       "@/*": ["./frontend/nyanpasu/src/*"],
       "@root/*": ["./*"],

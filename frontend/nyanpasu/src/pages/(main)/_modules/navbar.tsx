@@ -8,7 +8,7 @@ import SchemaRounded from '~icons/material-symbols/schema-rounded'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import TerminalRounded from '~icons/material-symbols/terminal-rounded'
-import { ComponentProps, useMemo } from 'react'
+import { ComponentProps, ReactElement, useMemo } from 'react'
 import AnimatedTabs, { AnimatedTabsItem } from '@/components/ui/animated-tabs'
 import { Button } from '@/components/ui/button'
 import {
@@ -97,15 +97,42 @@ const MoblieNavbarContainer = ({
   )
 }
 
-export const DefaultNavbar = () => {
+// The proxies query changes with every delay result, so it is read here
+// rather than in the navbar: only this button renders on such a change, and
+// the memoized element skips even that unless the first group changes.
+// The explicit return type keeps the route tree, which imports this module,
+// from depending on the inferred type of the memoized element.
+const ProxiesNavbarButton = (): ReactElement => {
   const {
     proxies: { data: proxies },
   } = useClashProxies()
 
-  const fristGroup = useMemo(() => {
-    return proxies?.groups[0]?.name
-  }, [proxies])
+  const fristGroup = proxies?.groups[0]?.name
 
+  return useMemo(
+    () =>
+      fristGroup ? (
+        <NavbarButton
+          to="/main/proxies/group/$name"
+          params={{ name: fristGroup }}
+          section="/main/proxies"
+        >
+          <Public />
+
+          <NavbarLabel>{m.navbar_label_proxies()}</NavbarLabel>
+        </NavbarButton>
+      ) : (
+        <NavbarButton to="/main/proxies">
+          <Public />
+
+          <NavbarLabel>{m.navbar_label_proxies()}</NavbarLabel>
+        </NavbarButton>
+      ),
+    [fristGroup],
+  )
+}
+
+export const DefaultNavbar = () => {
   return (
     <AnimatedTabs
       className={cn(
@@ -123,23 +150,7 @@ export const DefaultNavbar = () => {
         <NavbarLabel>{m.navbar_label_dashboard()}</NavbarLabel>
       </NavbarButton>
 
-      {fristGroup ? (
-        <NavbarButton
-          to="/main/proxies/group/$name"
-          params={{ name: fristGroup }}
-          section="/main/proxies"
-        >
-          <Public />
-
-          <NavbarLabel>{m.navbar_label_proxies()}</NavbarLabel>
-        </NavbarButton>
-      ) : (
-        <NavbarButton to="/main/proxies">
-          <Public />
-
-          <NavbarLabel>{m.navbar_label_proxies()}</NavbarLabel>
-        </NavbarButton>
-      )}
+      <ProxiesNavbarButton />
 
       <NavbarButton
         to="/main/profiles/$type"

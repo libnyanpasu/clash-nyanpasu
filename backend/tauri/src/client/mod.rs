@@ -558,6 +558,10 @@ impl NyanpasuClient {
             .resolve(self.inner.application.snapshot().state.release_channel))
     }
 
+    pub fn installed_release_channel(&self) -> crate::bundle::Channel {
+        self.inner.bundle_metadata.release_channel
+    }
+
     pub(crate) fn update_download_urls(
         &self,
         announced: &url::Url,
@@ -2395,6 +2399,7 @@ pub(crate) mod tests {
         let application = ApplicationClient::from_manager(
             crate::state::mutation::MutationCoordinator::isolated(),
             manager,
+            crate::bundle::Channel::Stable,
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )

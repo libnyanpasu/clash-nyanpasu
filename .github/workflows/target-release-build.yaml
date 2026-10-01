@@ -19,11 +19,31 @@ jobs:
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 
+  windows_aarch64_build:
+    name: Windows aarch64 Build
+    uses: ./.github/workflows/deps-build-windows-nsis.yaml
+    with:
+      portable: true
+      nightly: false
+      bundle-type: 'both'
+      arch: 'aarch64'
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
   linux_build:
     name: Linux Build
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  linux_aarch64_build:
+    name: Linux aarch64 Build
+    uses: ./.github/workflows/deps-build-linux.yaml
+    with:
+      nightly: false
+      arch: 'aarch64'
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 
@@ -47,7 +67,15 @@ jobs:
 
   upload_release_assets:
     name: Upload Release Assets
-    needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
+    needs:
+      [
+        windows_build,
+        windows_aarch64_build,
+        linux_build,
+        linux_aarch64_build,
+        macos_amd64_build,
+        macos_aarch64_build,
+      ]
     uses: ./.github/workflows/deps-upload-release-assets.yaml
     with:
       tag: ${{ github.event.release.tag_name }}
@@ -58,6 +86,7 @@ jobs:
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: false
+    secrets: inherit
 
   telegram:
     name: Send Release Message to Telegram

@@ -67,7 +67,7 @@ impl ApplicationClient {
                 .context("failed to persist release channel")?;
         }
 
-        Self::from_manager(mutations, manager, shutdown, tasks).await
+        Self::from_manager(mutations, manager, build_channel, shutdown, tasks).await
     }
 
     /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
@@ -75,6 +75,7 @@ impl ApplicationClient {
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig>,
+        build_channel: crate::bundle::Channel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
@@ -89,6 +90,7 @@ impl ApplicationClient {
             ApplicationActorArgs {
                 manager,
                 mutations,
+                build_channel,
                 shutdown: shutdown.clone(),
             },
         )
@@ -285,7 +287,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn release_channel_persists_and_cannot_leave_nightly() {
+    async fn release_channel_persists_and_non_nightly_builds_can_leave_nightly() {
         use crate::bundle::Channel;
         let (client, dir) = test_client().await;
         for channel in [Channel::Beta, Channel::Stable, Channel::Nightly] {
@@ -297,10 +299,40 @@ mod tests {
             );
         }
         drop(client);
-        // Reload without relying on the original actor's memory.
-        let reloaded = ApplicationClient::new(
+        // A stable or beta build installed over a Nightly preference keeps it
+        // until the user leaves, and is allowed to leave.
+        for build in [Channel::Stable, Channel::Beta] {
+            let reloaded = ApplicationClient::new(
+                crate::state::mutation::MutationCoordinator::isolated(),
+                build,
+                temp_config_path(&dir),
+                tokio_util::sync::CancellationToken::new(),
+                &tokio_util::task::TaskTracker::new(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                reloaded.snapshot().state.release_channel,
+                Some(Channel::Nightly)
+            );
+            for channel in [build, Channel::Nightly] {
+                let mut patch = NyanpasuAppConfig::new_empty_patch();
+                patch.release_channel = Some(Some(channel));
+                assert_eq!(
+                    reloaded.patch(patch).await.unwrap().state.release_channel,
+                    Some(channel)
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn nightly_build_cannot_leave_nightly() {
+        use crate::bundle::Channel;
+        let dir = tempdir().unwrap();
+        let nightly = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            Channel::Stable,
+            Channel::Nightly,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -311,20 +343,20 @@ mod tests {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.release_channel = Some(Some(channel));
             assert!(matches!(
-                reloaded.patch(patch).await,
+                nightly.patch(patch).await,
                 Err(ConfigError::LeaveNightlyChannel { to }) if to == channel
             ));
             let mut replacement = NyanpasuAppConfig::default();
             replacement.release_channel = Some(channel);
             assert!(matches!(
-                reloaded.replace(replacement).await,
+                nightly.replace(replacement).await,
                 Err(ConfigError::LeaveNightlyChannel { to }) if to == channel
             ));
         }
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(None);
         assert_eq!(
-            reloaded.patch(patch).await.unwrap().state.release_channel,
+            nightly.patch(patch).await.unwrap().state.release_channel,
             Some(Channel::Nightly)
         );
     }

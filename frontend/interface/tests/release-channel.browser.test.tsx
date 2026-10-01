@@ -26,7 +26,7 @@ async function setup(onTestFinished: TestContext['onTestFinished']) {
       command === 'call_rpc' &&
       (args as { method: string }).method === 'get_release_channel'
     )
-      return 'stable'
+      return { current: 'stable', installed: 'stable' }
     throw new Error(`Unexpected command: ${command}`)
   })
   const hook = await renderHook(() => useReleaseChannel(), {
@@ -39,7 +39,9 @@ async function setup(onTestFinished: TestContext['onTestFinished']) {
     client.clear()
     ipc.invoke.mockReset()
   })
-  await expect.poll(() => hook.result.current.query.data).toBe('stable')
+  await expect
+    .poll(() => hook.result.current.query.data?.current)
+    .toBe('stable')
   return { hook, client }
 }
 
@@ -59,7 +61,7 @@ test('channel changes are displayed only after persistence succeeds', async ({
     pending = hook.result.current.mutation.mutateAsync('beta')
   })
   await expect.poll(() => hook.result.current.mutation.isPending).toBe(true)
-  expect(hook.result.current.query.data).toBe('stable')
+  expect(hook.result.current.query.data?.current).toBe('stable')
   await hook.act(async () => {
     commit({
       status: 'committed',
@@ -69,7 +71,12 @@ test('channel changes are displayed only after persistence succeeds', async ({
     })
     await pending
   })
-  await expect.poll(() => hook.result.current.query.data).toBe('beta')
+  await expect
+    .poll(() => hook.result.current.query.data)
+    .toEqual({
+      current: 'beta',
+      installed: 'stable',
+    })
   expect(ipc.invoke).toHaveBeenCalledWith('call_rpc', {
     method: 'set_release_channel',
     params: { channel: 'beta' },
@@ -81,7 +88,10 @@ test('backend rejection keeps the committed nightly channel visible', async ({
 }) => {
   const { hook, client } = await setup(onTestFinished)
   await hook.act(() => {
-    client.setQueryData(['getReleaseChannel'], 'nightly')
+    client.setQueryData(['getReleaseChannel'], {
+      current: 'nightly',
+      installed: 'nightly',
+    })
   })
   ipc.invoke.mockRejectedValue('cannot leave the nightly release channel')
   await hook.act(async () => {
@@ -89,5 +99,5 @@ test('backend rejection keeps the committed nightly channel visible', async ({
       hook.result.current.mutation.mutateAsync('stable'),
     ).rejects.toBeDefined()
   })
-  expect(hook.result.current.query.data).toBe('nightly')
+  expect(hook.result.current.query.data?.current).toBe('nightly')
 })

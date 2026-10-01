@@ -667,7 +667,7 @@
   "release_channel_stable": "Стабильный",
   "release_channel_beta": "Бета",
   "release_channel_nightly": "Ночной",
-  "release_channel_nightly_notice": "После перехода на ночной канал вернуться на стабильный или бета-канал нельзя.",
+  "release_channel_nightly_notice": "Ночные сборки не могут вернуться на стабильный или бета-канал.",
   "release_channel_stable_notice": "При переходе на стабильный канал текущая версия сохранится до выхода более новой стабильной версии.",
   "configuration_sources": "Источники профилей",
   "profile_group_config": "Конфигурации",

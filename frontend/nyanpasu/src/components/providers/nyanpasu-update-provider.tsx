@@ -6,14 +6,17 @@ import {
   useRef,
   useState,
 } from 'react'
+import { isLinux } from '@/consts'
 import {
   downloadUpdateWithFallback,
   type UpdateDownloadCandidate,
 } from '@/utils/update-download-fallback'
+import { isUpdaterSupported } from '@/utils/updater-support'
 import {
   rpc,
   unwrapResult,
   useIsAppImage,
+  useIsPortable,
   useReleaseChannel,
   useSetting,
   type ReleaseChannel,
@@ -25,6 +28,8 @@ import { useBlockTask } from './block-task-provider'
 
 const NyanpasuUpdateContext = createContext<{
   releaseChannel: ReleaseChannel | undefined
+  /** A nightly build cannot leave the Nightly channel. */
+  isChannelLocked: boolean
   setReleaseChannel: (channel: ReleaseChannel) => Promise<void>
   isChangingChannel: boolean
   currentVersion: string
@@ -61,7 +66,7 @@ export default function NyanpasuUpdateProvider({
   const { value: updateSources } = useSetting('update_sources')
 
   const { query: channelQuery, mutation: channelMutation } = useReleaseChannel()
-  const releaseChannel = channelQuery.data
+  const releaseChannel = channelQuery.data?.current
   const channelRef = useRef(releaseChannel)
   channelRef.current = releaseChannel
   const configKey = JSON.stringify([releaseChannel, updateSources])
@@ -74,9 +79,14 @@ export default function NyanpasuUpdateProvider({
   }
 
   const { data: isAppImage } = useIsAppImage()
+  const { data: isPortable } = useIsPortable()
 
-  // windows portable version does not support auto update
-  const isSupported = isTauri() && (!isAppImage || !WIN_PORTABLE)
+  const isSupported = isUpdaterSupported({
+    tauri: isTauri(),
+    linux: isLinux,
+    appImage: isAppImage,
+    portable: isPortable,
+  })
 
   const [downloads, setDownloads] = useState<{
     generation: number
@@ -187,6 +197,7 @@ export default function NyanpasuUpdateProvider({
     <NyanpasuUpdateContext.Provider
       value={{
         releaseChannel,
+        isChannelLocked: channelQuery.data?.installed === 'nightly',
         setReleaseChannel,
         isChangingChannel: channelMutation.isPending,
         currentVersion: packageJson.version,

@@ -1,4 +1,5 @@
 import * as path from "jsr:@std/path";
+import semver from "npm:semver";
 
 const cwd = Deno.cwd();
 const TAURI_APP_DIR = path.join(cwd, "backend/tauri");
@@ -11,35 +12,59 @@ const PACKAGE_JSON_PATH = path.join(cwd, "package.json");
 
 const MONO_REPO_PATHS = [
   path.join(cwd, "frontend/nyanpasu"),
-  path.join(cwd, "frontend/ui"),
+  path.join(cwd, "frontend/utils"),
   path.join(cwd, "frontend/interface"),
 ];
 
+export const RELEASE_TYPES = [
+  "major",
+  "minor",
+  "patch",
+  "premajor",
+  "preminor",
+  "prepatch",
+  "prerelease",
+] as const;
+export type ReleaseType = typeof RELEASE_TYPES[number];
+
+export const PRERELEASE_IDS = ["beta", "rc"] as const;
+export type PrereleaseId = typeof PRERELEASE_IDS[number];
+
+export function resolveNextVersions(
+  current: string,
+  releaseType: ReleaseType,
+  preid: PrereleaseId,
+) {
+  if (!RELEASE_TYPES.includes(releaseType)) {
+    throw new Error(`invalid release type "${releaseType}"`);
+  }
+  if (!PRERELEASE_IDS.includes(preid)) {
+    throw new Error(`invalid prerelease id "${preid}"`);
+  }
+  // Prerelease numbers start at 1 (2.1.0-beta.1); the beta updater channel
+  // takes every version with a prerelease component.
+  const version = semver.inc(current, releaseType, preid, "1");
+  if (!version) throw new Error(`invalid current version "${current}"`);
+  // e.g. `prerelease beta` from 2.0.0-rc.1 would go back to 2.0.0-beta.1.
+  if (!semver.gt(version, current)) {
+    throw new Error(`${releaseType} ${preid} does not advance ${current}`);
+  }
+  const { major, minor, patch } = semver.parse(version)!;
+  // Nightly builds sort after the release they follow, including its betas.
+  return { version, nightlyVersion: `${major}.${minor}.${patch + 1}` };
+}
+
 async function resolvePublish() {
-  const flag = Deno.args[0] ?? "patch";
+  const releaseType = (Deno.args[0] ?? "patch") as ReleaseType;
+  const preid = (Deno.args[1] ?? "beta") as PrereleaseId;
   const packageJson = JSON.parse(await Deno.readTextFile(PACKAGE_JSON_PATH));
   const tauriJson = JSON.parse(await Deno.readTextFile(TAURI_APP_CONF_PATH));
   const tauriNightlyJson = JSON.parse(
     await Deno.readTextFile(TAURI_NIGHTLY_APP_CONF_PATH),
   );
 
-  let [a, b, c] = packageJson.version.split(".").map(Number);
-
-  if (flag === "major") {
-    a += 1;
-    b = 0;
-    c = 0;
-  } else if (flag === "minor") {
-    b += 1;
-    c = 0;
-  } else if (flag === "patch") {
-    c += 1;
-  } else {
-    throw new Error(`invalid flag "${flag}"`);
-  }
-
-  const nextVersion = `${a}.${b}.${c}`;
-  const nextNightlyVersion = `${a}.${b}.${c + 1}`;
+  const { version: nextVersion, nightlyVersion: nextNightlyVersion } =
+    resolveNextVersions(packageJson.version, releaseType, preid);
 
   packageJson.version = nextVersion;
   tauriJson.version = nextVersion;
@@ -70,11 +95,13 @@ async function resolvePublish() {
         JSON.stringify(monoRepoPackageJson, null, 2),
       );
     } catch {
-      // package may not exist (e.g., frontend/ui)
+      // package may not exist
     }
   }
 
   console.log(nextVersion);
 }
 
-resolvePublish();
+if (import.meta.main) {
+  resolvePublish();
+}

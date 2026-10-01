@@ -64,6 +64,7 @@ const AutoCheckUpdate = () => {
 const ReleaseChannelSelector = () => {
   const {
     releaseChannel,
+    isChannelLocked,
     setReleaseChannel,
     isChangingChannel,
     isChecking,
@@ -96,8 +97,8 @@ const ReleaseChannelSelector = () => {
       <div className="flex min-w-0 flex-col gap-0.5">
         <p className="truncate">{m.release_channel_label()}</p>
 
-        {/* nightly locks the selector, so explain why inline */}
-        {releaseChannel === 'nightly' && (
+        {/* a nightly build locks the selector, so explain why inline */}
+        {isChannelLocked && (
           <p className="text-on-surface-variant text-xs">{notices.nightly}</p>
         )}
       </div>
@@ -108,7 +109,7 @@ const ReleaseChannelSelector = () => {
         onValueChange={(value) => handleChange(value as ReleaseChannel)}
         disabled={
           !releaseChannel ||
-          releaseChannel === 'nightly' ||
+          isChannelLocked ||
           isChecking ||
           isChangingChannel ||
           isInstalling

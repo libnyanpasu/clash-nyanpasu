@@ -50,6 +50,8 @@ impl ApplicationSnapshot {
 pub struct ApplicationActorArgs {
     pub(crate) mutations: MutationCoordinator,
     pub manager: PersistentStateManager<NyanpasuAppConfig>,
+    /// The channel of the installed build; only a nightly build is held to it.
+    pub build_channel: nyanpasu_config::application::ReleaseChannel,
     /// Once cancelled, every write is refused.
     pub shutdown: CancellationToken,
 }
@@ -57,6 +59,7 @@ pub struct ApplicationActorArgs {
 pub struct ApplicationActorState {
     mutations: MutationCoordinator,
     manager: PersistentStateManager<NyanpasuAppConfig>,
+    build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,
 }
 
@@ -106,9 +109,9 @@ impl ApplicationActor {
         use nyanpasu_config::application::ReleaseChannel as Channel;
         let current = state.manager.snapshot_handle().load();
         next.release_channel = next.release_channel.or(current.state.release_channel);
-        if let (Some(Channel::Nightly), Some(to)) =
-            (current.state.release_channel, next.release_channel)
-        {
+        // A Nightly preference saved by a nightly build does not bind a stable
+        // or beta build installed over it.
+        if let (Channel::Nightly, Some(to)) = (state.build_channel, next.release_channel) {
             ensure!(to == Channel::Nightly, LeaveNightlyChannelSnafu { to });
         }
         Ok(())
@@ -204,6 +207,7 @@ impl Actor for ApplicationActor {
         Ok(ApplicationActorState {
             mutations: args.mutations,
             manager: args.manager,
+            build_channel: args.build_channel,
             shutdown: args.shutdown,
         })
     }

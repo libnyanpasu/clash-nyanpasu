@@ -30,7 +30,7 @@
       "command": "deno run -A generate-git-info.ts"
     },
     "publish": {
-      "description": "Bump monorepo version (major|minor|patch)",
+      "description": "Bump monorepo version (major|minor|patch|premajor|preminor|prepatch|prerelease) [beta|rc]",
       "command": "deno run -A publish.ts"
     },
     "updater": {
@@ -46,7 +46,7 @@
       "command": "deno run -A prepare-nightly.ts"
     },
     "prepare-release": {
-      "description": "Prepare Tauri config for stable release build",
+      "description": "Prepare Tauri config for release build (--linux for RPM/DEB-safe versions)",
       "command": "deno run -A prepare-release.ts"
     },
     "prepare-preview": {

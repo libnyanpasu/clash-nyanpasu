@@ -125,50 +125,66 @@ const Viewer = ({
   )
 }
 
-function KernelLogs() {
-  const [following, setFollowing] = useState(true)
-  const [search, setSearch] = useState('')
+// The history changes with every core log event, so only the leaves that
+// show it subscribe; the layout, tabs and level sidebar stay put.
+function useClearLogs() {
   const { data: logs, clean } = useClashLogs()
-  const handleClearLogs = useLockFn(async () => {
+  const clear = useLockFn(async () => {
     await clean.mutateAsync()
   })
+  return { empty: !logs?.length, clear }
+}
+
+function ClearLogsButton() {
+  const { empty, clear } = useClearLogs()
+  return <LogClearButton disabled={empty} onClick={clear} />
+}
+
+function ClearLogsMenuItem() {
+  const { empty, clear } = useClearLogs()
   return (
-    <LogsLayout
-      source="core"
-      actions={
-        <LogClearButton disabled={!logs?.length} onClick={handleClearLogs} />
-      }
-    >
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <LogSearch
-          value={search}
-          onChange={setSearch}
-          placeholder={m.logs_search_placeholder()}
-        />
-        <div className={logPanelClass}>
-          <RegisterContextMenu>
-            <RegisterContextMenuTrigger asChild>
-              <ScrollArea className="min-h-0 flex-1">
-                <Viewer
-                  search={search}
-                  following={following}
-                  setFollowing={setFollowing}
-                />
-              </ScrollArea>
-            </RegisterContextMenuTrigger>
-            <RegisterContextMenuContent>
-              <ContextMenuItem
-                disabled={logs?.length === 0}
-                onClick={handleClearLogs}
-              >
-                <DeleteForeverOutlineRounded className="size-4" />
-                <span>{m.logs_action_clear_log()}</span>
-              </ContextMenuItem>
-            </RegisterContextMenuContent>
-          </RegisterContextMenu>
-          {!following && <LogFollowButton onClick={() => setFollowing(true)} />}
-        </div>
+    <ContextMenuItem disabled={empty} onClick={clear}>
+      <DeleteForeverOutlineRounded className="size-4" />
+      <span>{m.logs_action_clear_log()}</span>
+    </ContextMenuItem>
+  )
+}
+
+function KernelLogsPanel() {
+  const [following, setFollowing] = useState(true)
+  const [search, setSearch] = useState('')
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <LogSearch
+        value={search}
+        onChange={setSearch}
+        placeholder={m.logs_search_placeholder()}
+      />
+      <div className={logPanelClass}>
+        <RegisterContextMenu>
+          <RegisterContextMenuTrigger asChild>
+            <ScrollArea className="min-h-0 flex-1">
+              <Viewer
+                search={search}
+                following={following}
+                setFollowing={setFollowing}
+              />
+            </ScrollArea>
+          </RegisterContextMenuTrigger>
+          <RegisterContextMenuContent>
+            <ClearLogsMenuItem />
+          </RegisterContextMenuContent>
+        </RegisterContextMenu>
+        {!following && <LogFollowButton onClick={() => setFollowing(true)} />}
       </div>
+    </div>
+  )
+}
+
+function KernelLogs() {
+  return (
+    <LogsLayout source="core" actions={<ClearLogsButton />}>
+      <KernelLogsPanel />
     </LogsLayout>
   )
 }

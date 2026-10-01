@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     model::{
-        Bytes, Dimension, Dimensions, Filter, Metric, Rate, TrafficQuery, TrafficScope,
-        UsageCursor, group_key,
+        Bytes, Dimension, Dimensions, Metric, Rate, TrafficError, TrafficFilter, TrafficQuery,
+        TrafficResult, TrafficScope, UsageCursor, group_key,
     },
     topology::{self, Topology},
 };
@@ -50,6 +50,33 @@ pub struct ReportRequest {
     /// Groups per ranking, capped at `MAX_LIMIT`.
     pub ranking_limit: usize,
     pub topology: Option<TopologyRequest>,
+}
+
+impl ReportRequest {
+    /// Rejects a query that repeats a filter dimension and a topology that does not have two to
+    /// five distinct layers, and caps the group counts at `MAX_LIMIT`.
+    pub fn checked(mut self) -> TrafficResult<Self> {
+        self.query.check()?;
+        self.ranking_limit = self.ranking_limit.clamp(1, MAX_LIMIT);
+        if let Some(topology) = &mut self.topology {
+            let layers = &topology.layers;
+            if !(2..=5).contains(&layers.len()) {
+                return Err(TrafficError::InvalidRequest(format!(
+                    "a topology has 2 to 5 layers, not {}",
+                    layers.len()
+                )));
+            }
+            if let Some(i) = (1..layers.len()).find(|&i| layers[..i].contains(&layers[i])) {
+                return Err(TrafficError::InvalidRequest(format!(
+                    "the topology layer {} repeats {:?}",
+                    i + 1,
+                    layers[i]
+                )));
+            }
+            topology.limit_per_layer = topology.limit_per_layer.map(|n| n.clamp(1, MAX_LIMIT));
+        }
+        Ok(self)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -97,7 +124,7 @@ pub type Row<'a> = (&'a Dimensions, Usage, Option<Rate>);
 /// The rows that satisfy every filter.
 pub fn filter_rows<'a>(
     rows: impl IntoIterator<Item = Row<'a>>,
-    filters: &[Filter],
+    filters: &[TrafficFilter],
 ) -> impl Iterator<Item = Row<'a>> {
     rows.into_iter().filter(move |(dimensions, _, _)| {
         filters
@@ -282,7 +309,7 @@ mod tests {
             scope,
             filters: filters
                 .iter()
-                .map(|(dimension, value)| Filter {
+                .map(|(dimension, value)| TrafficFilter {
                     dimension: *dimension,
                     value: (*value).into(),
                 })
@@ -581,5 +608,72 @@ mod tests {
         let topology = report(f.rows(), &req).topology.unwrap();
         assert_eq!(topology.nodes.len(), 3);
         assert_eq!(topology.edges.len(), 2);
+    }
+
+    #[test]
+    fn a_query_filters_each_dimension_at_most_once() {
+        use Dimension::*;
+        let checked = |filters: &[(Dimension, &str)]| query(filters, TrafficScope::All).check();
+
+        assert!(checked(&[]).is_ok());
+        assert!(checked(&[(Process, "curl"), (Target, "a.com")]).is_ok());
+        for filters in [
+            &[(Process, "curl"), (Process, "wget")][..],
+            &[(Process, "curl"), (Target, "a.com"), (Process, "curl")],
+        ] {
+            assert!(matches!(
+                checked(filters),
+                Err(TrafficError::InvalidRequest(_))
+            ));
+            assert!(matches!(
+                request(query(filters, TrafficScope::All), &[], 10).checked(),
+                Err(TrafficError::InvalidRequest(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn a_checked_request_needs_two_to_five_distinct_layers() {
+        use Dimension::*;
+        let with_layers = |layers: &[Dimension], limit| {
+            let mut req = request(query(&[], TrafficScope::All), &[], usize::MAX);
+            req.topology = Some(TopologyRequest {
+                layers: layers.to_vec(),
+                metric: Metric::Bytes,
+                limit_per_layer: limit,
+            });
+            req.checked()
+        };
+
+        for layers in [&[Origin][..], &[Origin, Rule, Chain, Exit, Target, Inbound]] {
+            assert!(matches!(
+                with_layers(layers, None),
+                Err(TrafficError::InvalidRequest(_))
+            ));
+        }
+        assert!(matches!(
+            with_layers(&[Origin, Exit, Origin], None),
+            Err(TrafficError::InvalidRequest(_))
+        ));
+
+        let checked = with_layers(&[Origin, Rule, Chain, Exit, Target], Some(usize::MAX)).unwrap();
+        assert_eq!(checked.ranking_limit, MAX_LIMIT);
+        assert_eq!(checked.topology.unwrap().limit_per_layer, Some(MAX_LIMIT));
+        assert_eq!(
+            with_layers(&[Origin, Exit], Some(0))
+                .unwrap()
+                .topology
+                .unwrap()
+                .limit_per_layer,
+            Some(1)
+        );
+        assert!(
+            with_layers(&[Origin, Exit], None)
+                .unwrap()
+                .topology
+                .unwrap()
+                .limit_per_layer
+                .is_none()
+        );
     }
 }

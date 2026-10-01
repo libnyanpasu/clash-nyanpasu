@@ -4,6 +4,10 @@ use crate::model::{Tier, TrafficRange};
 const MINUTE_MS: i64 = 60_000;
 const HOUR_MS: i64 = 60 * MINUTE_MS;
 
+/// How many minute buckets before the current one the minute tier keeps: the span of the longest
+/// range it answers.
+const MINUTE_TIER_BUCKETS: u32 = 360;
+
 /// Wall clock times before the epoch fall into bucket 0.
 fn bucket(wall_ms: i64, size_ms: i64) -> u32 {
     u32::try_from(wall_ms.div_euclid(size_ms).max(0)).unwrap_or(u32::MAX)
@@ -15,6 +19,12 @@ pub fn minute_of(wall_ms: i64) -> u32 {
 
 pub fn hour_of(wall_ms: i64) -> u32 {
     bucket(wall_ms, HOUR_MS)
+}
+
+/// The oldest minute bucket worth keeping at `now_ms`; everything before it is out of the minute
+/// tier's reach.
+pub fn minute_cutoff(now_ms: i64) -> u32 {
+    minute_of(now_ms).saturating_sub(MINUTE_TIER_BUCKETS)
 }
 
 impl TrafficRange {
@@ -108,6 +118,16 @@ mod tests {
                 Tier::Hour
             ]
         );
+    }
+
+    #[test]
+    fn the_minute_cutoff_is_where_the_longest_minute_range_starts() {
+        let now = 1000 * HOUR_MS + 30 * MINUTE_MS + 17;
+        assert_eq!(
+            Some(minute_cutoff(now)),
+            TrafficRange::Last6Hours.start(now)
+        );
+        assert_eq!(minute_cutoff(0), 0);
     }
 
     #[test]

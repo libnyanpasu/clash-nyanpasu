@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use clash_api::{ConfigEnum, Connection, ConnectionNetwork};
-use nyanpasu_traffic::{Bytes, Dimensions, Frame, RuleKey, Sample};
+use nyanpasu_traffic::{Bytes, Dimensions, Frame, RuleKey, Sample, normalize_region};
 
 use crate::core::clash::ws::ClashConnectionsFrame;
 
@@ -48,6 +48,10 @@ fn dimensions(connection: &Connection) -> Dimensions {
     let target = known
         .and_then(|m| text(m.host.as_ref()))
         .or_else(|| known.and_then(|m| text(m.destination_ip.as_ref())));
+    let inbound = known
+        .and_then(|m| text(m.inbound_user.as_ref()))
+        .or_else(|| known.and_then(|m| text(m.inbound_name.as_ref())));
+    let region = |codes: Option<&Vec<String>>| normalize_region(codes.into_iter().flatten());
     Dimensions {
         process: process.unwrap_or(UNKNOWN).replace('\\', "/"),
         source: known
@@ -66,12 +70,11 @@ fn dimensions(connection: &Connection) -> Dimensions {
             payload: connection.rule_payload.clone(),
         },
         chains: connection.chains.clone(),
-        // TODO(actor-migration): the usage rewrite maps these from the connection metadata and
-        // the current profile; until then they stay unknown.
-        inbound: UNKNOWN.to_owned(),
+        inbound: inbound.unwrap_or(UNKNOWN).to_owned(),
+        // Labelled by the accounting session when it first sees the connection.
         profile: None,
-        source_region: UNKNOWN.to_owned(),
-        destination_region: UNKNOWN.to_owned(),
+        source_region: region(known.and_then(|m| m.source_geo_ip.as_ref())),
+        destination_region: region(known.and_then(|m| m.destination_geo_ip.as_ref())),
     }
 }
 

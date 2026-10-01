@@ -1,7 +1,18 @@
 import { useMemo } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+} from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, type Dimension } from './rpc-bindings'
+import {
+  commands,
+  type Dimension,
+  type TrafficQuery,
+  type UsageCursor,
+} from './rpc-bindings'
+
+const PAGE_SIZE = 50
 
 /**
  * A short digest of `keys`, in order: 53 bits of cyrb53 over every key, with
@@ -35,25 +46,58 @@ export function digestKeys(keys: readonly string[]): string {
 }
 
 /**
- * Session traffic of the given groups, in request order; groups without
+ * Traffic of the given groups within `query`, in request order; groups without
  * traffic are left out.
  */
-export function useTrafficUsageByKeys(dimension: Dimension, keys: string[]) {
+export function useTrafficUsageByKeys(
+  query: TrafficQuery,
+  dimension: Dimension,
+  keys: string[],
+  options?: { refetchInterval?: number | false },
+) {
   // React Query hashes the whole query key on every render, serializing every
   // key each time: thousands of rule labels for every connection sample. The
   // query key holds a digest computed once per array instead.
   const digest = useMemo(() => digestKeys(keys), [keys])
 
   return useQuery({
-    queryKey: ['traffic-usage-by-keys', dimension, digest],
+    queryKey: ['traffic-usage-by-keys', query, dimension, digest],
     queryFn: async () =>
-      unwrapResult(await commands.queryTrafficUsageByKeys(dimension, keys)),
+      unwrapResult(
+        await commands.queryTrafficUsageByKeys(query, dimension, keys),
+      ),
     enabled: keys.length > 0,
     // New keys (another filter or config) keep showing the previous answer
     // until theirs arrives.
     placeholderData: keepPreviousData,
-    refetchInterval: 2000,
+    refetchInterval: options?.refetchInterval ?? 2000,
     // Unavailable recording fails every time; the next poll retries anyway.
+    retry: false,
+  })
+}
+
+/**
+ * Every group of `dimension` within `query`, heaviest first, one page at a
+ * time. Not polled: a listing that moves under the reader would skip and
+ * repeat rows.
+ */
+export function useTrafficUsagePages(
+  query: TrafficQuery,
+  dimension: Dimension,
+) {
+  return useInfiniteQuery({
+    queryKey: ['traffic-usage-pages', query, dimension],
+    initialPageParam: null as UsageCursor | null,
+    queryFn: async ({ pageParam }) =>
+      unwrapResult(
+        await commands.queryTrafficUsage(
+          query,
+          dimension,
+          pageParam,
+          PAGE_SIZE,
+        ),
+      ),
+    getNextPageParam: (page) => page.next ?? undefined,
     retry: false,
   })
 }

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 const UNKNOWN: &str = "unknown";
@@ -47,7 +49,7 @@ impl RuleKey {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Dimensions {
     /// Process path or name.
@@ -202,7 +204,7 @@ pub enum TrafficScope {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct Filter {
+pub struct TrafficFilter {
     pub dimension: Dimension,
     pub value: String,
 }
@@ -213,7 +215,26 @@ pub struct Filter {
 pub struct TrafficQuery {
     pub range: TrafficRange,
     pub scope: TrafficScope,
-    pub filters: Vec<Filter>,
+    pub filters: Vec<TrafficFilter>,
+}
+
+impl TrafficQuery {
+    /// Rejects filters that name a dimension more than once.
+    pub fn check(&self) -> TrafficResult<()> {
+        let filters = &self.filters;
+        match (1..filters.len()).find(|&i| {
+            filters[..i]
+                .iter()
+                .any(|f| f.dimension == filters[i].dimension)
+        }) {
+            Some(i) => Err(TrafficError::InvalidRequest(format!(
+                "the filter {} repeats {:?}",
+                i + 1,
+                filters[i].dimension
+            ))),
+            None => Ok(()),
+        }
+    }
 }
 
 /// What a topology orders and merges its nodes by.
@@ -225,37 +246,11 @@ pub enum Metric {
     Connections,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct TopologyKey {
-    /// Process, or the source IP when the process is unknown.
-    pub source: String,
-    pub rule: RuleKey,
-    /// Outermost group first, exit excluded.
-    pub groups: Vec<String>,
-    pub exit: String,
-}
-
-impl TopologyKey {
-    pub fn from_dimensions(d: &Dimensions) -> Self {
-        Self {
-            source: d.origin().to_owned(),
-            rule: d.rule.clone(),
-            groups: d.groups().map(str::to_owned).collect(),
-            exit: d.exit().to_owned(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SessionMeta {
-    pub profile: Option<String>,
     /// Wall clock, milliseconds.
-    pub started_at: i64,
     pub last_sample_at: Option<i64>,
-    /// From the core's global counters.
-    pub core_bytes: Bytes,
     /// Scope of the counter baselines.
     pub instance_id: Option<String>,
     /// Last observed core global counters of `instance_id`.
@@ -270,9 +265,21 @@ pub struct ActiveConnection {
     pub first_seen_at: i64,
     /// Last observed cumulative counters.
     pub counters: Bytes,
-    /// Counted in this session.
-    pub bytes: Bytes,
     pub dimensions: Dimensions,
+    /// Traffic per minute bucket; buckets older than the minute tier's retention are dropped,
+    /// the hour buckets hold that traffic.
+    pub minutes: BTreeMap<u32, Bytes>,
+    /// Traffic per hour bucket.
+    pub hours: BTreeMap<u32, Bytes>,
+}
+
+impl ActiveConnection {
+    /// Everything counted for the connection.
+    pub fn bytes(&self) -> Bytes {
+        self.hours
+            .values()
+            .fold(Bytes::default(), |sum, bytes| sum.saturating_add(*bytes))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -360,14 +367,6 @@ pub fn merge_closed_page(
     ClosedPage { connections, next }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct UsageGroup {
-    pub key: String,
-    pub bytes: Bytes,
-    pub current_rate: Option<Rate>,
-}
-
 /// Exclusive position for heaviest-first paging of grouped usage: the last group of a page.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -378,56 +377,10 @@ pub struct UsageCursor {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct Usage {
-    pub total: Bytes,
-    pub groups: Vec<UsageGroup>,
-    /// Groups ranked after this page.
-    pub other: Bytes,
-    pub next: Option<UsageCursor>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct TopologyPath {
-    pub key: TopologyKey,
-    pub bytes: Bytes,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct TopologyNode {
-    pub id: String,
-    pub layer: u8,
-    pub label: String,
-    pub bytes: Bytes,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct TopologyEdge {
-    pub source: String,
-    pub target: String,
-    pub bytes: Bytes,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-pub struct Topology {
-    pub paths: Vec<TopologyPath>,
-    pub nodes: Vec<TopologyNode>,
-    pub edges: Vec<TopologyEdge>,
-    pub other: Bytes,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TrafficSummary {
-    pub profile: Option<String>,
-    pub started_at: i64,
     pub last_sample_at: Option<i64>,
-    pub core_bytes: Bytes,
     pub active_connections: u64,
-    /// Closed in this session, including those not flushed yet.
+    /// Closed connections within the retention, including those not flushed yet.
     pub closed_connections: u64,
     pub current_rate: Option<Rate>,
 }
@@ -436,6 +389,8 @@ pub struct TrafficSummary {
 pub enum TrafficError {
     #[error("traffic storage: {0}")]
     Storage(String),
+    #[error("invalid traffic request: {0}")]
+    InvalidRequest(String),
 }
 
 pub type TrafficResult<T> = Result<T, TrafficError>;
@@ -520,18 +475,6 @@ mod tests {
         assert_eq!(d.profile, None);
         assert_eq!(d.source_region, "unknown");
         assert_eq!(d.destination_region, "unknown");
-    }
-
-    #[test]
-    fn topology_key_falls_back_to_source_ip() {
-        let mut d = dims(&["Node-A", "Auto", "Proxy"]);
-        let key = TopologyKey::from_dimensions(&d);
-        assert_eq!(key.source, "/usr/bin/curl");
-        assert_eq!(key.groups, ["Proxy", "Auto"]);
-        assert_eq!(key.exit, "Node-A");
-
-        d.process = "unknown".into();
-        assert_eq!(TopologyKey::from_dimensions(&d).source, "192.168.1.2");
     }
 
     fn closed(id: &str, closed_at: i64) -> ClosedConnection {

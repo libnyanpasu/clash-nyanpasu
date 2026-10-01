@@ -1,45 +1,46 @@
 //! Owns the traffic session: consumes the raw connections feed and persists it
-//! in batches. A failed flush is logged and its batch dropped; this is
-//! statistics, not a ledger.
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+//! in batches. A batch the store refuses goes back to the session, which ignores
+//! frames until the next flush retries it.
+use std::{sync::Arc, time::Duration};
 
 use nyanpasu_traffic::{
-    Bytes, ClosedCursor, ClosedPage, Dimension, FlushBatch, Frame, Rate, Session, Topology,
-    TopologyKey, TopologyPath, TrafficError, TrafficResult, TrafficStore, TrafficSummary, Usage,
-    UsageCursor, UsageGroup, merge_closed_page, topology,
+    ClosedCursor, ClosedPage, Dimension, Frame, Prune, ReportRequest, Row, Session, Tier,
+    TrafficError, TrafficQuery, TrafficReport, TrafficResult, TrafficScope, TrafficStore,
+    TrafficSummary, UsageCursor, UsageGroup, UsagePage, filter_rows, merge_closed_page, report,
+    usage_by_keys, usage_page,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
 
-use super::{ports::ProfileSelection, source::frame_from_snapshot};
+use super::{
+    ports::{Clock, ProfileSelection, RetentionPolicy},
+    source::frame_from_snapshot,
+};
 use crate::core::clash::ws::ClashConnectionsFrame;
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(30);
-const MAX_LIMIT: usize = 200;
+/// Dimension combinations that no usage row refers to are collected at most this often.
+const COLLECT_INTERVAL_MS: i64 = 60 * 60 * 1000;
 
 pub(super) enum Message {
     Observe(Frame, RpcReplyPort<()>),
     Disconnected(RpcReplyPort<()>),
     Flush(RpcReplyPort<()>),
     Summary(RpcReplyPort<TrafficResult<TrafficSummary>>),
+    Report(ReportRequest, RpcReplyPort<TrafficResult<TrafficReport>>),
     Usage(
+        TrafficQuery,
         Dimension,
         Option<UsageCursor>,
         usize,
-        RpcReplyPort<TrafficResult<Usage>>,
+        RpcReplyPort<TrafficResult<UsagePage>>,
     ),
     UsageByKeys(
+        TrafficQuery,
         Dimension,
         Vec<String>,
         RpcReplyPort<TrafficResult<Vec<UsageGroup>>>,
     ),
-    Topology(usize, RpcReplyPort<TrafficResult<Topology>>),
     ClosedConnections(
         Option<ClosedCursor>,
         usize,
@@ -50,6 +51,8 @@ pub(super) enum Message {
 pub struct TrafficArgs {
     pub store: Arc<dyn TrafficStore>,
     pub profiles: Arc<dyn ProfileSelection>,
+    pub retention: Arc<dyn RetentionPolicy>,
+    pub clock: Arc<dyn Clock>,
     pub frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
 }
 
@@ -58,7 +61,14 @@ pub(super) struct TrafficActor;
 pub(super) struct State {
     store: Arc<dyn TrafficStore>,
     profiles: Arc<dyn ProfileSelection>,
+    retention: Arc<dyn RetentionPolicy>,
+    clock: Arc<dyn Clock>,
     session: Session,
+    /// When the unreferenced dimension combinations were last collected.
+    collected_at: Option<i64>,
+    /// Hour rows expired since the last successful collection. Starts due: the previous run may
+    /// have ended before a collection that was still waiting out its cooldown.
+    collection_due: bool,
     pump: JoinHandle<()>,
 }
 
@@ -75,29 +85,25 @@ impl Actor for TrafficActor {
         let TrafficArgs {
             store,
             profiles,
+            retention,
+            clock,
             frames,
         } = args;
-        let current = profiles.current();
-        let stored = blocking(&store, |store| store.load())
-            .await
-            .unwrap_or_else(|error| {
-                tracing::warn!("failed to load the traffic session: {error}");
-                None
-            });
-        let session = match stored {
-            Some((meta, active)) if meta.profile == current => Session::restore(meta, active),
-            // No data, another profile, or an unreadable store: the bootstrap wipe.
-            _ => {
-                let mut session = Session::new(current, wall_clock_ms());
-                flush_session(&store, &mut session).await;
-                session
-            }
+        // An unreadable store must not start an empty session: the stored live connections would
+        // be recorded again and the store diverge from what the session knows.
+        let session = match blocking(&store, |store| store.load()).await? {
+            Some((meta, active)) => Session::restore(meta, active),
+            None => Session::new(),
         };
         Ok(State {
             store,
             profiles,
+            retention,
             session,
-            pump: tokio::spawn(pump(myself, frames)),
+            collected_at: None,
+            collection_due: true,
+            pump: tokio::spawn(pump(myself, frames, clock.clone())),
+            clock,
         })
     }
 
@@ -109,7 +115,9 @@ impl Actor for TrafficActor {
     ) -> Result<(), ActorProcessingErr> {
         match message {
             Message::Observe(frame, reply) => {
-                state.observe(&frame).await;
+                state
+                    .session
+                    .observe(&frame, state.profiles.current().as_deref());
                 let _ = reply.send(());
             }
             Message::Disconnected(reply) => {
@@ -123,14 +131,14 @@ impl Actor for TrafficActor {
             Message::Summary(reply) => {
                 let _ = reply.send(state.summary().await);
             }
-            Message::Usage(group, after, limit, reply) => {
-                let _ = reply.send(state.usage(group, after, limit).await);
+            Message::Report(request, reply) => {
+                let _ = reply.send(state.report(request).await);
             }
-            Message::UsageByKeys(group, keys, reply) => {
-                let _ = reply.send(state.usage_by_keys(group, keys).await);
+            Message::Usage(query, dimension, after, limit, reply) => {
+                let _ = reply.send(state.usage(query, dimension, after, limit).await);
             }
-            Message::Topology(limit, reply) => {
-                let _ = reply.send(state.topology(limit).await);
+            Message::UsageByKeys(query, dimension, keys, reply) => {
+                let _ = reply.send(state.usage_by_keys(query, dimension, keys).await);
             }
             Message::ClosedConnections(cursor, limit, reply) => {
                 let _ = reply.send(state.closed_connections(cursor, limit).await);
@@ -156,102 +164,87 @@ impl Actor for TrafficActor {
 }
 
 impl State {
-    async fn observe(&mut self, frame: &Frame) {
-        let current = self.profiles.current();
-        if current != self.session.meta().profile {
-            self.session.switch_profile(current, frame.wall_ms);
-            // The wipe and the surviving baselines go out together, before the next frame moves
-            // them.
-            self.flush().await;
-        }
-        self.session.observe(frame);
-    }
-
+    /// Writes what is pending and deletes what the retention no longer covers. A batch the store
+    /// refuses goes back to the session, so the next flush carries it again.
     async fn flush(&mut self) {
-        flush_session(&self.store, &mut self.session).await;
+        let now = self.clock.now_ms();
+        let batch = self
+            .session
+            .take_batch(now, Prune::new(now, self.retention.retention()));
+        let flushed = blocking(&self.store, move |store| Ok((store.flush(&batch), batch))).await;
+        let hours_pruned = match flushed {
+            Ok((Ok(flushed), _)) => flushed.hours_pruned,
+            Ok((Err(error), batch)) => {
+                tracing::warn!("failed to flush traffic statistics, retrying next time: {error}");
+                self.session.requeue(batch);
+                return;
+            }
+            Err(error) => {
+                tracing::warn!("failed to flush traffic statistics: {error}");
+                return;
+            }
+        };
+        // Only expired hour rows can leave dimension combinations unreferenced. The collection
+        // stays due until one succeeds, however long the cooldown or a failure delays it.
+        self.collection_due |= hours_pruned;
+        if self.collection_due
+            && self
+                .collected_at
+                .is_none_or(|at| now.saturating_sub(at) >= COLLECT_INTERVAL_MS)
+        {
+            let keep = self.session.referenced_dimensions();
+            match blocking(&self.store, move |store| store.collect_tuples(&keep)).await {
+                Ok(_) => {
+                    self.collected_at = Some(now);
+                    self.collection_due = false;
+                }
+                Err(error) => tracing::warn!("failed to collect traffic dimensions: {error}"),
+            }
+        }
     }
 
-    // While the wipe is pending the store still holds the previous session, so the queries
-    // below answer from memory alone.
     async fn summary(&self) -> TrafficResult<TrafficSummary> {
-        let stored_closed = if self.session.reset_pending() {
-            0
-        } else {
-            blocking(&self.store, |store| store.closed_count()).await?
-        };
+        let stored_closed = blocking(&self.store, |store| store.closed_count()).await?;
         Ok(self.session.summary(stored_closed))
+    }
+
+    async fn report(&self, request: ReportRequest) -> TrafficResult<TrafficReport> {
+        let request = request.checked()?;
+        self.with_rows(&request.query, |rows| report(rows, &request))
+            .await
     }
 
     async fn usage(
         &self,
-        group: Dimension,
+        query: TrafficQuery,
+        dimension: Dimension,
         after: Option<UsageCursor>,
         limit: usize,
-    ) -> TrafficResult<Usage> {
-        let stored = if self.session.reset_pending() {
-            Vec::new()
-        } else {
-            blocking(&self.store, move |store| store.totals(group)).await?
-        };
-        let pending = self
-            .session
-            .pending_totals(group)
-            .map(|(key, bytes)| (key.to_owned(), bytes));
-        Ok(rank_usage(
-            merge(stored, pending),
-            self.session.current_rate_by(group),
-            after.as_ref(),
-            limit,
-        ))
+    ) -> TrafficResult<UsagePage> {
+        query.check()?;
+        self.with_rows(&query, |rows| {
+            usage_page(
+                filter_rows(rows, &query.filters),
+                dimension,
+                after.as_ref(),
+                limit,
+            )
+        })
+        .await
     }
 
     /// In request order; keys without traffic are left out.
     async fn usage_by_keys(
         &self,
-        group: Dimension,
-        mut keys: Vec<String>,
+        query: TrafficQuery,
+        dimension: Dimension,
+        keys: Vec<String>,
     ) -> TrafficResult<Vec<UsageGroup>> {
-        let mut seen = HashSet::new();
-        keys.retain(|key| seen.insert(key.clone()));
-        let (stored, keys) = if self.session.reset_pending() {
-            (Vec::new(), keys)
-        } else {
-            blocking(&self.store, move |store| {
-                store.totals_of(group, &keys).map(|stored| (stored, keys))
-            })
-            .await?
-        };
-        let pending = keys.iter().filter_map(|key| {
-            self.session
-                .pending_total(group, key)
-                .map(|bytes| (key.clone(), bytes))
-        });
-        let mut totals = merge(stored, pending);
-        let mut rates = self.session.current_rate_by(group);
-        Ok(keys
-            .into_iter()
-            .filter_map(|key| {
-                let bytes = totals.remove(&key)?;
-                Some(UsageGroup {
-                    current_rate: rates.remove(&key),
-                    key,
-                    bytes,
-                })
-            })
-            .collect())
-    }
-
-    async fn topology(&self, limit: usize) -> TrafficResult<Topology> {
-        let stored = if self.session.reset_pending() {
-            Vec::new()
-        } else {
-            blocking(&self.store, |store| store.topology()).await?
-        };
-        let pending = self
-            .session
-            .pending_topology()
-            .map(|(key, bytes)| (key.clone(), bytes));
-        Ok(rank_topology(merge(stored, pending), limit))
+        query.check()?;
+        self.with_rows(&query, |rows| {
+            usage_by_keys(filter_rows(rows, &query.filters), dimension, &keys)
+        })
+        .await
     }
 
     async fn closed_connections(
@@ -259,18 +252,11 @@ impl State {
         cursor: Option<ClosedCursor>,
         limit: usize,
     ) -> TrafficResult<ClosedPage> {
-        let stored = if self.session.reset_pending() {
-            ClosedPage {
-                connections: Vec::new(),
-                next: None,
-            }
-        } else {
-            let before = cursor.clone();
-            blocking(&self.store, move |store| {
-                store.closed_connections(before.as_ref(), limit)
-            })
-            .await?
-        };
+        let before = cursor.clone();
+        let stored = blocking(&self.store, move |store| {
+            store.closed_connections(before.as_ref(), limit)
+        })
+        .await?;
         Ok(merge_closed_page(
             stored,
             self.session.pending_closed(),
@@ -278,116 +264,33 @@ impl State {
             limit,
         ))
     }
-}
 
-fn merge<K: Eq + Hash>(
-    stored: Vec<(K, Bytes)>,
-    pending: impl IntoIterator<Item = (K, Bytes)>,
-) -> HashMap<K, Bytes> {
-    let mut merged: HashMap<K, Bytes> = HashMap::new();
-    for (key, bytes) in stored.into_iter().chain(pending) {
-        let slot = merged.entry(key).or_default();
-        *slot = slot.saturating_add(bytes);
-    }
-    merged
-}
-
-fn sum<'a>(bytes: impl IntoIterator<Item = &'a Bytes>) -> Bytes {
-    bytes
-        .into_iter()
-        .fold(Bytes::default(), |sum, bytes| sum.saturating_add(*bytes))
-}
-
-/// Heaviest first; equal traffic ranks by key.
-fn usage_rank((a_key, a): (&str, &Bytes), (b_key, b): (&str, &Bytes)) -> Ordering {
-    b.total().cmp(&a.total()).then_with(|| a_key.cmp(b_key))
-}
-
-/// The `limit` groups ranked after `after`, or the top ones; the rest after the page is folded
-/// into `other`.
-fn rank_usage(
-    totals: HashMap<String, Bytes>,
-    mut rates: HashMap<String, Rate>,
-    after: Option<&UsageCursor>,
-    limit: usize,
-) -> Usage {
-    let total = sum(totals.values());
-    let mut ranked: Vec<(String, Bytes)> = totals
-        .into_iter()
-        .filter(|(key, bytes)| {
-            after.is_none_or(|c| usage_rank((key, bytes), (&c.key, &c.bytes)) == Ordering::Greater)
-        })
-        .collect();
-    ranked.sort_by(|(a_key, a), (b_key, b)| usage_rank((a_key, a), (b_key, b)));
-    let rest = ranked.split_off(limit.clamp(1, MAX_LIMIT).min(ranked.len()));
-    let next = if rest.is_empty() {
-        None
-    } else {
-        ranked.last().map(|(key, bytes)| UsageCursor {
-            bytes: *bytes,
-            key: key.clone(),
-        })
-    };
-    Usage {
-        total,
-        groups: ranked
-            .into_iter()
-            .map(|(key, bytes)| UsageGroup {
-                current_rate: rates.remove(&key),
-                key,
-                bytes,
-            })
-            .collect(),
-        other: sum(rest.iter().map(|(_, bytes)| bytes)),
-        next,
-    }
-}
-
-/// Top `limit` paths by traffic; the rest is folded into `other`.
-fn rank_topology(paths: HashMap<TopologyKey, Bytes>, limit: usize) -> Topology {
-    let mut ranked: Vec<TopologyPath> = paths
-        .into_iter()
-        .map(|(key, bytes)| TopologyPath { key, bytes })
-        .collect();
-    let identity = |key: &TopologyKey| {
-        (
-            key.source.clone(),
-            key.rule.kind.clone(),
-            key.rule.payload.clone(),
-            key.groups.clone(),
-            key.exit.clone(),
-        )
-    };
-    ranked.sort_by(|a, b| {
-        b.bytes
-            .total()
-            .cmp(&a.bytes.total())
-            .then_with(|| identity(&a.key).cmp(&identity(&b.key)))
-    });
-    let rest = ranked.split_off(limit.clamp(1, MAX_LIMIT).min(ranked.len()));
-    let (nodes, edges) = topology::legacy::project(&ranked);
-    Topology {
-        paths: ranked,
-        nodes,
-        edges,
-        other: sum(rest.iter().map(|path| &path.bytes)),
-    }
-}
-
-/// A failed batch is dropped, except that a lost wipe is asked for again by the next one.
-async fn flush_session(store: &Arc<dyn TrafficStore>, session: &mut Session) {
-    let batch = session.take_batch();
-    let reset = batch.reset;
-    if let Err(error) = flush_store(store, batch).await {
-        tracing::warn!("failed to flush traffic statistics, dropping the batch: {error}");
-        if reset {
-            session.require_reset();
+    /// Hands `f` the usage rows `query` selects by range and scope. Closed connections are what
+    /// the store and the pending buffer hold, live ones what the session holds; the two never
+    /// overlap, so `All` is their union.
+    async fn with_rows<T>(
+        &self,
+        query: &TrafficQuery,
+        f: impl FnOnce(Vec<Row<'_>>) -> T,
+    ) -> TrafficResult<T> {
+        let tier: Tier = query.range.tier();
+        let from = query.range.start(self.clock.now_ms());
+        let stored = match query.scope {
+            TrafficScope::Active => Vec::new(),
+            TrafficScope::All | TrafficScope::Closed => {
+                blocking(&self.store, move |store| store.usage(tier, from)).await?
+            }
+        };
+        let mut rows: Vec<Row<'_>> = Vec::new();
+        if query.scope != TrafficScope::Active {
+            rows.extend(stored.iter().map(|(d, usage)| (&**d, *usage, None)));
+            rows.extend(self.session.pending_rows(tier, from));
         }
+        if query.scope != TrafficScope::Closed {
+            rows.extend(self.session.active_rows(tier, from));
+        }
+        Ok(f(rows))
     }
-}
-
-async fn flush_store(store: &Arc<dyn TrafficStore>, batch: FlushBatch) -> TrafficResult<()> {
-    blocking(store, move |store| store.flush(&batch)).await
 }
 
 /// Runs a synchronous store call off the runtime. A panic inside it is a bug
@@ -408,20 +311,13 @@ async fn blocking<T: Send + 'static>(
     }
 }
 
-fn wall_clock_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| {
-            i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX)
-        })
-}
-
 /// Feeds the actor from the frames watch and drives the periodic flush. It
 /// awaits every call, so at most one frame is in flight and the watch coalesces
 /// the rest. Ends when the feed closes or the actor is gone.
 async fn pump(
     actor: ActorRef<Message>,
     mut frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
+    clock: Arc<dyn Clock>,
 ) {
     let origin = tokio::time::Instant::now();
     let mut flush = tokio::time::interval_at(origin + FLUSH_INTERVAL, FLUSH_INTERVAL);
@@ -435,7 +331,7 @@ async fn pump(
                 let latest = frames.borrow_and_update().clone();
                 match latest {
                     Some(raw) => {
-                        let frame = frame_from_snapshot(&raw, wall_clock_ms(), origin.elapsed());
+                        let frame = frame_from_snapshot(&raw, clock.now_ms(), origin.elapsed());
                         call(&actor, |reply| Message::Observe(frame, reply)).await
                     }
                     None => call(&actor, Message::Disconnected).await,

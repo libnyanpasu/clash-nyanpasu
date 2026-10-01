@@ -1,11 +1,22 @@
-use crate::{accounting::FlushBatch, model::*};
+use std::sync::Arc;
+
+use crate::{accounting::FlushBatch, model::*, query::Usage};
+
+/// What a flush did beyond writing the batch.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Flushed {
+    /// Hour-tier rows were deleted, so dimension combinations may have become unreferenced.
+    pub hours_pruned: bool,
+}
 
 /// Synchronous storage port; async callers go through `spawn_blocking`.
 pub trait TrafficStore: Send + Sync + 'static {
     fn load(&self) -> TrafficResult<Option<(SessionMeta, Vec<ActiveConnection>)>>;
 
-    /// Applies `batch` in one transaction; see `FlushBatch::reset`.
-    fn flush(&self, batch: &FlushBatch) -> TrafficResult<()>;
+    /// Applies `batch` in one transaction: writes the meta, removes and upserts the active
+    /// connections, adds the usage of closed ones and their details, then deletes what
+    /// `batch.prune` names.
+    fn flush(&self, batch: &FlushBatch) -> TrafficResult<Flushed>;
 
     /// Newest first, strictly before `before`.
     fn closed_connections(
@@ -16,10 +27,11 @@ pub trait TrafficStore: Send + Sync + 'static {
 
     fn closed_count(&self) -> TrafficResult<u64>;
 
-    fn totals(&self, group: Dimension) -> TrafficResult<Vec<(String, Bytes)>>;
+    /// The usage of every dimension combination in the buckets of `tier` from `from` on (inclusive;
+    /// `None` is all of them), one row per combination.
+    fn usage(&self, tier: Tier, from: Option<u32>) -> TrafficResult<Vec<(Arc<Dimensions>, Usage)>>;
 
-    /// The stored totals of the distinct `keys`; keys without traffic are left out.
-    fn totals_of(&self, group: Dimension, keys: &[String]) -> TrafficResult<Vec<(String, Bytes)>>;
-
-    fn topology(&self) -> TrafficResult<Vec<(TopologyKey, Bytes)>>;
+    /// Deletes the dimension combinations that no usage row refers to and that are not in `keep`;
+    /// returns how many.
+    fn collect_tuples(&self, keep: &[Arc<Dimensions>]) -> TrafficResult<u64>;
 }

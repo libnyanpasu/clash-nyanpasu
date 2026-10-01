@@ -778,6 +778,14 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                field: "traffic_retention",
+                mutate: |app| {
+                    app.traffic_retention = nyanpasu_config::application::TrafficRetention::Forever
+                },
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "release_channel",
                 mutate: |app| app.release_channel = Some(crate::bundle::Channel::Beta),
                 impact: RuntimeImpact::None,

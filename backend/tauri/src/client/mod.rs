@@ -455,20 +455,32 @@ impl NyanpasuClient {
         )
         .await?;
         let traffic = match traffic_store {
-            Some(store) => Some(
-                crate::core::traffic::TrafficClient::spawn(
+            Some(store) => {
+                match crate::core::traffic::TrafficClient::spawn(
                     crate::core::traffic::TrafficArgs {
                         store,
                         profiles: Arc::new(traffic::SelectedProfile::new(
                             profiles.snapshot_handle(),
                         )),
+                        retention: Arc::new(traffic::SettingsRetention::new(
+                            application.snapshot_handle(),
+                        )),
+                        clock: Arc::new(traffic::SystemClock),
                         frames: streams.subscribe_connection_frames(),
                     },
                     shutdown.child_token(),
                     &tasks,
                 )
-                .await?,
-            ),
+                .await
+                {
+                    Ok(client) => Some(client),
+                    // Recording is a side feature: an unreadable store disables it, not the app.
+                    Err(error) => {
+                        tracing::warn!("traffic recording is disabled: {error:#}");
+                        None
+                    }
+                }
+            }
             None => None,
         };
         Ok(Self {

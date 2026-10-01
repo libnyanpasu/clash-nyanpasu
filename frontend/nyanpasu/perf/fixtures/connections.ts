@@ -29,7 +29,10 @@ export function createUsageFixture(keys: readonly string[]): UsageGroup[] {
     .filter((_, i) => i % 3 === 0)
     .map((key, i) => ({
       key,
-      bytes: { download: 1024 * (i + 1) * 997, upload: 1024 * (i + 1) * 13 },
+      usage: {
+        bytes: { download: 1024 * (i + 1) * 997, upload: 1024 * (i + 1) * 13 },
+        connections: i + 1,
+      },
       current_rate: null,
     }))
 }

@@ -10,7 +10,18 @@ import LogoSvg from '@/assets/image/logo.svg?react'
 
 const FAST_SPRING = [0.22, 1, 0.36, 1] as const // fast attack, soft landing
 const DRAMATIC_PRESENT = [0.2, 0.8, 0.2, 1] as const // dramatic entrance
-const GENTLE_SYMMETRIC_S_CURVE = [0.45, 0.05, 0.55, 0.95] as const // gentle symmetric S-curve
+const GENTLE_SYMMETRIC_S_CURVE = 'cubic-bezier(0.45, 0.05, 0.55, 0.95)' // gentle symmetric S-curve
+
+// Rotate and scale as one transform so the browser runs the endless sway on
+// the compositor; motion animates independent transforms on its JS frame
+// loop. The easing applies to each segment, as motion's `ease` does.
+const SWAY_KEYFRAMES: Keyframe[] = [
+  { transform: 'rotate(0deg) scale(1)' },
+  { transform: 'rotate(2deg) scale(1.02)' },
+  { transform: 'rotate(0deg) scale(1)' },
+  { transform: 'rotate(-2deg) scale(0.98)' },
+  { transform: 'rotate(0deg) scale(1)' },
+].map((keyframe) => ({ ...keyframe, easing: GENTLE_SYMMETRIC_S_CURVE }))
 
 export default function AnimatedLogo({
   indeterminate,
@@ -23,27 +34,32 @@ export default function AnimatedLogo({
   const directionRef = useRef(1)
   const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const indeterminateRef = useRef(false)
+  const swayTargetRef = useRef<HTMLDivElement>(null)
+  const swayRef = useRef<Animation | null>(null)
+
+  const stopSway = useCallback(() => {
+    swayRef.current?.cancel()
+    swayRef.current = null
+  }, [])
 
   useEffect(() => {
     return () => {
       if (resetTimeoutRef.current) {
         clearTimeout(resetTimeoutRef.current)
       }
+
+      stopSway()
     }
-  }, [])
+  }, [stopSway])
 
   const startSway = useCallback(() => {
-    logoControls.start({
-      rotate: [0, 2, 0, -2, 0],
-      scale: [1, 1.02, 1, 0.98, 1],
-      transition: {
-        duration: 2.4,
-        ease: GENTLE_SYMMETRIC_S_CURVE,
-        repeat: Infinity,
-        repeatType: 'loop',
-      },
-    })
-  }, [logoControls])
+    stopSway()
+    swayRef.current =
+      swayTargetRef.current?.animate(SWAY_KEYFRAMES, {
+        duration: 2400,
+        iterations: Infinity,
+      }) ?? null
+  }, [stopSway])
 
   // Indeterminate mode: init animation then continuous slow sway
   useEffect(() => {
@@ -84,6 +100,7 @@ export default function AnimatedLogo({
       }
     } else {
       // Reset to idle
+      stopSway()
       logoControls.stop()
       logoControls.start({
         rotate: 0,
@@ -93,7 +110,7 @@ export default function AnimatedLogo({
         transition: { duration: 0.4, ease: FAST_SPRING },
       })
     }
-  }, [indeterminate, logoControls, startSway])
+  }, [indeterminate, logoControls, startSway, stopSway])
 
   const scheduleReset = useCallback(() => {
     if (resetTimeoutRef.current) {
@@ -144,6 +161,7 @@ export default function AnimatedLogo({
     const scale = 1 + Math.min(0.75, Math.pow(nextIntensity, 1.3) * 0.03)
 
     // apply the animation to logo
+    stopSway()
     logoControls.start({
       rotate: [-amp * d, amp * d, -amp * 0.8 * d, amp * 0.8 * d, 0],
       scale,
@@ -158,7 +176,7 @@ export default function AnimatedLogo({
     })
 
     scheduleReset()
-  }, [logoControls, scheduleReset])
+  }, [logoControls, scheduleReset, stopSway])
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -182,10 +200,12 @@ export default function AnimatedLogo({
       aria-label="Animate logo"
       {...props}
     >
-      <LogoSvg
-        className="logo-colorized h-full w-full"
-        data-tauri-drag-region
-      />
+      <div ref={swayTargetRef} className="h-full w-full" data-tauri-drag-region>
+        <LogoSvg
+          className="logo-colorized h-full w-full"
+          data-tauri-drag-region
+        />
+      </div>
     </motion.div>
   )
 }

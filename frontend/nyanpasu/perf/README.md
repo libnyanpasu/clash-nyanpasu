@@ -37,7 +37,7 @@ least twice, and read changes smaller than a frame with suspicion.
 | `VITE_PERF_PROFILES`     | `30`          | Remote subscriptions in the profiles fixture                      |
 | `VITE_PERF_PAGE`         | `connections` | Page the connection stream feeds: `connections` or `rules`        |
 | `VITE_PERF_CONNECTIONS`  | `2000`        | Connections in each streamed frame; 1% are replaced per frame     |
-| `VITE_PERF_RULES`        | `3000`        | Rules in the rules fixture                                        |
+| `VITE_PERF_RULES`        | `3000`        | Rules in the rules fixture (`10000` in the inspector benchmark)   |
 | `VITE_PERF_FRAMES`       | `12`          | Measured connection frames, one a second, including 2 warm-ups    |
 | `VITE_PERF_SEARCH`       | unset         | A search term typed key by key, each keystroke measured           |
 | `VITE_PERF_SORT`         | unset         | A column header to sort by before the frames, e.g. `DL Speed`     |

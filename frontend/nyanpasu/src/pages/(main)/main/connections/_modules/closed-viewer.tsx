@@ -1,9 +1,9 @@
 import dayjs from 'dayjs'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
-import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
+import { searchableText } from '@/utils/searchable-text'
 import {
   useTrafficClosedConnections,
   type ClosedConnection,
@@ -24,6 +24,13 @@ import TableRow, {
   closedConnectionDetail,
   ConnectionDetailModal,
 } from './table-row'
+
+// The store keys closed connections by both: a new core reuses ids.
+const closedConnectionId = (row: ClosedConnection) =>
+  `${row.closed_at}:${row.id}`
+
+// A closed record never changes, so a row keyed by it always shows the same.
+const sameRecord = () => true
 
 // The traffic history keeps the process path; the table shows its name.
 const processName = (process: string) => process.split('/').pop() || process
@@ -52,18 +59,37 @@ const ClosedViewer = memo(function ClosedViewer({
 
   const mockNow = useMockConnectionsNow()
 
-  const data = useMemo(
-    () =>
-      (mockNow === null
+  // A closed record never changes, so its searchable text is built once and
+  // kept by row id: a poll that brings new records shifts the pages, which
+  // hands out the others as new objects.
+  const searchTexts = useRef(new Map<string, string>())
+
+  const data = useMemo(() => {
+    const byProxy = (
+      mockNow === null
         ? (history?.pages ?? []).flatMap((page) => page.connections)
         : mockClosedConnections(mockNow)
-      )
-        .filter((conn) =>
-          proxy ? conn.dimensions.chains.includes(proxy) : true,
-        )
-        .filter((conn) => (search ? containsSearchTerm(conn, search) : true)),
-    [history, mockNow, search, proxy],
-  )
+    ).filter((conn) => (proxy ? conn.dimensions.chains.includes(proxy) : true))
+
+    if (!search) {
+      return byProxy
+    }
+
+    const term = search.toLowerCase()
+    const previous = searchTexts.current
+    const texts = new Map<string, string>()
+
+    const matched = byProxy.filter((conn) => {
+      const id = closedConnectionId(conn)
+      const text = previous.get(id) ?? searchableText(conn)
+      texts.set(id, text)
+      return text.includes(term)
+    })
+
+    searchTexts.current = texts
+
+    return matched
+  }, [history, mockNow, search, proxy])
 
   // A closed record never changes, so the dialog keeps the row itself.
   const [detailRow, setDetailRow] = useState<ClosedConnection | null>(null)
@@ -223,9 +249,9 @@ const ClosedViewer = memo(function ClosedViewer({
         settingsKey="connections-columns-closed"
         columns={columns}
         data={data}
-        // The store keys closed connections by both: a new core reuses ids.
-        getRowId={(row) => `${row.closed_at}:${row.id}`}
+        getRowId={closedConnectionId}
         renderRow={renderRow}
+        isRowEqual={sameRecord}
         emptyMessage={
           error
             ? m.connections_closed_unavailable()

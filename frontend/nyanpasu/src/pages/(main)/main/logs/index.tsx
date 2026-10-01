@@ -1,5 +1,5 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
-import { useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -42,7 +42,11 @@ const Viewer = ({
   setFollowing: (value: boolean) => void
 }) => {
   const { level } = IndexRoute.useSearch()
-  const { data: logs } = useClashLogs()
+  const { data } = useClashLogs()
+  // Incoming logs and search keystrokes re-render every visible row; deferring
+  // them keeps the input and scrolling responsive while a burst renders.
+  const logs = useDeferredValue(data)
+  const deferredSearch = useDeferredValue(search)
   const filteredLogs = useMemo(() => {
     if (!logs) return []
     if (!level) return logs
@@ -63,6 +67,11 @@ const Viewer = ({
     useAnimationFrameWithResizeObserver: true,
   })
   const totalSize = rowVirtualizer.getTotalSize()
+  // Mounting and measuring the rows is the bulk of opening the page. Router
+  // updates render synchronously, so the rows mount in a deferred render
+  // instead: the page commits at once, and React renders and measures the
+  // rows right after.
+  const showRows = useDeferredValue(true, false)
   useEffect(() => {
     // ScrollArea attaches its viewport ref after this child's layout effects.
     rowVirtualizer.measure()
@@ -85,31 +94,32 @@ const Viewer = ({
         data-slot="logs-virtual-list"
         style={{ height: totalSize }}
       >
-        {rowVirtualizer.getVirtualItems().map((item) => {
-          const log = filteredLogs[item.index]
-          if (!log) return null
-          return (
-            <div
-              key={item.key}
-              ref={rowVirtualizer.measureElement}
-              data-index={item.index}
-              data-slot="logs-virtual-item"
-              className="absolute top-0 left-0 w-full select-text"
-              style={{
-                transform: `translateY(${item.start}px)`,
-              }}
-            >
-              <LogRecord
-                time={log.time || ''}
-                level={log.type}
-                message={log.payload || ''}
-                raw={JSON.stringify(log, null, 2)}
-                search={search}
-                onInspect={() => setFollowing(false)}
-              />
-            </div>
-          )
-        })}
+        {showRows &&
+          rowVirtualizer.getVirtualItems().map((item) => {
+            const log = filteredLogs[item.index]
+            if (!log) return null
+            return (
+              <div
+                key={item.key}
+                ref={rowVirtualizer.measureElement}
+                data-index={item.index}
+                data-slot="logs-virtual-item"
+                className="absolute top-0 left-0 w-full select-text"
+                style={{
+                  transform: `translateY(${item.start}px)`,
+                }}
+              >
+                <LogRecord
+                  time={log.time || ''}
+                  level={log.type}
+                  message={log.payload || ''}
+                  raw={JSON.stringify(log, null, 2)}
+                  search={deferredSearch}
+                  onInspect={() => setFollowing(false)}
+                />
+              </div>
+            )
+          })}
       </div>
     </div>
   )

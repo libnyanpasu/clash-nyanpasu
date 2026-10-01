@@ -1,5 +1,10 @@
-import { RefObject, useEffect, useMemo, useState } from 'react'
-import createBreakpoint from 'react-use/esm/factory/createBreakpoint'
+import {
+  RefObject,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
@@ -17,9 +22,45 @@ export const BREAKPOINT_VALUES: Record<Breakpoint, number> = {
 
 const breakpointsOrder: Breakpoint[] = ['xs', 'sm', 'md', 'lg', 'xl']
 
-export const useBreakpoint = createBreakpoint(
-  BREAKPOINT_VALUES,
-) as () => Breakpoint
+// One media query per breakpoint above `xs`, created on first use. A query
+// only reports crossing its threshold, so resizing within a breakpoint
+// re-renders nothing, unlike tracking `window.innerWidth`.
+let breakpointQueries: [Breakpoint, MediaQueryList][] | null = null
+
+const getBreakpointQueries = () =>
+  (breakpointQueries ??= breakpointsOrder
+    .slice(1)
+    .map((breakpoint) => [
+      breakpoint,
+      window.matchMedia(`(min-width: ${BREAKPOINT_VALUES[breakpoint]}px)`),
+    ]))
+
+const subscribeBreakpoint = (onChange: () => void) => {
+  const queries = getBreakpointQueries()
+
+  queries.forEach(([, query]) => query.addEventListener('change', onChange))
+
+  return () => {
+    queries.forEach(([, query]) =>
+      query.removeEventListener('change', onChange),
+    )
+  }
+}
+
+const getBreakpoint = (): Breakpoint => {
+  let current: Breakpoint = 'xs'
+
+  for (const [breakpoint, query] of getBreakpointQueries()) {
+    if (query.matches) {
+      current = breakpoint
+    }
+  }
+
+  return current
+}
+
+export const useBreakpoint = (): Breakpoint =>
+  useSyncExternalStore(subscribeBreakpoint, getBreakpoint)
 
 type BreakpointValues<T> = Partial<Record<Breakpoint, T>>
 

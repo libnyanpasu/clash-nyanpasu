@@ -11,8 +11,10 @@ import { useSetting } from './use-settings'
  * to obtain system proxy data via `rpc.getSysProxy()`. The result of the query
  * is processed with `unwrapResult` to extract the proxy information.
  *
- * @returns An object containing the query results and helper properties/methods
- *          (e.g., loading status, error, and refetch function) provided by `useQuery`.
+ * Polls while the window is visible: other applications can change it.
+ *
+ * @returns The system proxy as `data`. Only `data` is exposed so a poll that
+ *          finds nothing new does not re-render the caller.
  */
 export const useSystemProxy = () => {
   const query = useQuery({
@@ -21,7 +23,6 @@ export const useSystemProxy = () => {
       rpc.queries.getSysProxy().queryFn!,
     ),
     refetchInterval: 5000,
-    refetchIntervalInBackground: true,
   })
 
   const { value } = useSetting('enable_system_proxy')
@@ -30,7 +31,5 @@ export const useSystemProxy = () => {
     query.refetch()
   }, [value])
 
-  return {
-    ...query,
-  }
+  return { data: query.data }
 }

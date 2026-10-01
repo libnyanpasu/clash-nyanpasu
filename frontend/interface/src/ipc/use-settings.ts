@@ -1,4 +1,3 @@
-import { merge } from 'es-toolkit'
 import {
   useMutation,
   useQuery,
@@ -70,12 +69,13 @@ const useTypedConfigField = <
   K extends keyof TConfig & keyof TPatch,
   TClearable extends keyof TPatch = never,
 >(
-  {
-    query: { data, ...query },
-    upsert: update,
-  }: ReturnType<typeof useTypedConfig<TConfig, TPatch>>,
+  { query, upsert: update }: ReturnType<typeof useTypedConfig<TConfig, TPatch>>,
   key: K,
 ) => {
+  // Read only what is returned: React Query re-renders an observer for each
+  // result field it read, so enumerating the result (a rest spread) made every
+  // consumer re-render on each fetch start and end.
+  const data = query.data
   const value = data?.[key]
 
   /**
@@ -100,8 +100,9 @@ const useTypedConfigField = <
   return {
     value,
     upsert,
-    // merge hook status
-    ...merge(query, update),
+    /** Whether a patch is in flight. */
+    isPending: update.isPending,
+    refetch: query.refetch,
   }
 }
 

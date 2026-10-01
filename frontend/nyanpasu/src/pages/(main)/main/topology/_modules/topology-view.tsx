@@ -1,25 +1,42 @@
-import PauseRounded from '~icons/material-symbols/pause-rounded'
-import PlayArrowRounded from '~icons/material-symbols/play-arrow-rounded'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useMedia } from 'react-use'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@/components/ui/segmented-button'
-import { m } from '@/paraglide/messages'
-import parseTraffic from '@/utils/parse-traffic'
-import type { ClashConnection_Serialize } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/utils'
-import { connectionRegion } from './geography'
-import GeographyView, { geographicRegions, regionName } from './geography-view'
 import {
-  buildTopology,
-  type TopologyMetric,
-  type TopologyNode,
-} from './topology'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { m } from '@/paraglide/messages'
+import type {
+  Dimension,
+  Metric,
+  Topology,
+  TopologyNode,
+} from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/utils'
+import GeographyView from './geography-view'
+import {
+  LAYER_TEMPLATES,
+  LIMITS,
+  TEMPLATES,
+  type LayerTemplate,
+  type Limit,
+  type SearchFilter,
+} from './search'
+import {
+  dimensionName,
+  largest,
+  usageAmount,
+  usageValue,
+  type UsageLabel,
+} from './usage-label'
 
 const tones = [
   'bg-primary-container text-on-primary-container',
@@ -28,337 +45,398 @@ const tones = [
   'bg-primary-container text-on-primary-container',
 ]
 const colors = ['primary', 'secondary', 'tertiary', 'primary']
-const traffic = (bytes: number) => parseTraffic(bytes).join(' ')
 const NODE_WIDTH = 190
 const COLUMN_STEP = 270
 const ROW_STEP = 76
-const GRAPH_WIDTH = COLUMN_STEP * 3 + NODE_WIDTH
+// Above this many nodes or edges the drawing is static: animating and
+// re-rendering each of them on every hover would stutter.
+const LARGE_GRAPH = 200
+// A taller column than this packs every column from the top; centering the
+// short ones against it would push them far down the page.
+const CENTERED_ROWS = 16
+// The drawing scrolls inside this height instead of stretching the page.
+const MAX_GRAPH_HEIGHT = '40rem'
+
+const limitName = (limit: Limit) =>
+  limit === 'all'
+    ? m.traffic_limit_all()
+    : m.traffic_limit_top({ count: limit })
+
+const templateName = (template: LayerTemplate) =>
+  LAYER_TEMPLATES[template].map(dimensionName).join(' → ')
+
+/** Exit animations only matter while the drawing is animated at all. */
+function Presence({
+  large,
+  children,
+}: {
+  large: boolean
+  children: ReactNode
+}) {
+  return large ? (
+    children
+  ) : (
+    <AnimatePresence initial={false}>{children}</AnimatePresence>
+  )
+}
 
 export default function TopologyView({
-  connections,
-  filterKey,
-  isLoading,
-  error,
+  topology,
+  view: mode,
+  onViewChange,
+  metric,
+  onMetricChange,
+  template,
+  onTemplateChange,
+  limit,
+  onLimitChange,
+  filters,
+  labelOf,
+  onSelect,
 }: {
-  connections: ClashConnection_Serialize[]
-  filterKey?: string
-  isLoading: boolean
-  error: unknown
+  /** What the page's report returned for the request of the current view. */
+  topology: Topology | null | undefined
+  view: 'flow' | 'map'
+  onViewChange: (view: 'flow' | 'map') => void
+  metric: Metric
+  onMetricChange: (metric: Metric) => void
+  template: LayerTemplate
+  onTemplateChange: (template: LayerTemplate) => void
+  limit: Limit
+  onLimitChange: (limit: Limit) => void
+  filters: SearchFilter[]
+  labelOf: (dimension: Dimension, key: string) => UsageLabel
+  /** A node or region was picked: its dimension and value become a filter. */
+  onSelect: (dimension: Dimension, key: string) => void
 }) {
   const reducedMotion = useMedia('(prefers-reduced-motion: reduce)', false)
   const transition = {
     duration: reducedMotion ? 0 : 0.32,
     ease: [0.2, 0, 0, 1] as const,
   }
-  const [mode, setMode] = useState('flow')
-  const [country, setCountry] = useState<string>()
-  const [metric, setMetric] = useState<TopologyMetric>('connections')
-  const [frozen, setFrozen] = useState<ClashConnection_Serialize[]>()
-  const [selection, setSelection] = useState<string>()
-  useEffect(() => {
-    setFrozen(undefined)
-    setSelection(undefined)
-    setCountry(undefined)
-  }, [filterKey])
-  const displayed = frozen ?? connections
-  const graph = useMemo(
-    () => buildTopology(displayed, metric),
-    [displayed, metric],
+  const [hovered, setHovered] = useState<string>()
+  const layers = LAYER_TEMPLATES[template]
+  const graphWidth = COLUMN_STEP * (layers.length - 1) + NODE_WIDTH
+
+  const columns = useMemo(() => {
+    const result: TopologyNode[][] = layers.map(() => [])
+    for (const node of topology?.nodes ?? []) result[node.layer]?.push(node)
+    return result
+  }, [topology, layers])
+  const nodes = columns.flat()
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const edges = (topology?.edges ?? []).filter(
+    (edge) => nodeById.has(edge.source) && nodeById.has(edge.target),
   )
-  const nodes = graph.layers.flat()
-  const selected = nodes.find((node) => node.id === selection)
-  const selectedCountry =
-    mode === 'map' &&
-    country &&
-    displayed.some(
-      (connection) =>
-        connectionRegion(connection, 'destination', geographicRegions) ===
-        country,
-    )
-      ? country
-      : undefined
-  const matching = selectedCountry
-    ? displayed.filter(
-        (connection) =>
-          connectionRegion(connection, 'destination', geographicRegions) ===
-          selectedCountry,
-      )
-    : selected
-      ? displayed.filter((connection) =>
-          selected.connectionIds.has(connection.id),
-        )
-      : displayed
-  const sorted = [...matching].sort(
-    (a, b) => b.upload + b.download - a.upload - a.download,
+  const highlighting = hovered !== undefined && nodeById.has(hovered)
+  const large = nodes.length > LARGE_GRAPH || edges.length > LARGE_GRAPH
+
+  const rows = largest(
+    columns.map((column) => column.length),
+    3,
   )
-  const totals = displayed.reduce(
-    (total, connection) => ({
-      upload: total.upload + Math.max(0, connection.upload),
-      download: total.download + Math.max(0, connection.download),
-    }),
-    { upload: 0, download: 0 },
-  )
-  const headings = [
-    m.topology_source(),
-    m.topology_rule(),
-    m.topology_chain(),
-    m.topology_outbound(),
-  ]
-  const label = (node: TopologyNode) =>
-    node.other
-      ? m.topology_other()
-      : (node.label ??
-        (node.layer === 2 ? m.topology_no_group() : m.topology_unknown()))
-  const amount = (item: { count: number; bytes: number }) =>
-    metric === 'bytes'
-      ? traffic(item.bytes)
-      : m.topology_connection_count({ count: item.count })
-  const height =
-    Math.max(3, ...graph.layers.map((layer) => layer.length)) * ROW_STEP
+  const height = rows * ROW_STEP
+  const centered = !large && rows <= CENTERED_ROWS
   const positions = new Map(
-    graph.layers.flatMap((layer, column) =>
-      layer.map(
+    columns.flatMap((column, index) =>
+      column.map(
         (node, row) =>
           [
             node.id,
             {
-              x: column * COLUMN_STEP,
-              y: row * ROW_STEP + (height - layer.length * ROW_STEP) / 2,
+              x: index * COLUMN_STEP,
+              y:
+                row * ROW_STEP +
+                (centered ? (height - column.length * ROW_STEP) / 2 : 0),
             },
           ] as const,
       ),
     ),
   )
-  const maximum = Math.max(
+  const maximum = largest(
+    edges.map((edge) => usageValue(edge.usage, metric)),
     1,
-    ...graph.links.map((link) =>
-      metric === 'bytes' ? link.bytes : link.count,
-    ),
   )
-  const relevant = (ids: Set<string>) =>
-    !selected || [...ids].some((id) => selected.connectionIds.has(id))
+  const viewBox = `0 0 ${graphWidth} ${height}`
 
   return (
-    <section
-      className="text-on-surface space-y-5 p-4 md:p-6"
-      aria-label={m.topology_title()}
-    >
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <div className="text-primary text-xs font-medium tracking-widest uppercase">
-            {m.topology_eyebrow()}
-          </div>
-          <h1 className="text-2xl font-medium">{m.topology_title()}</h1>
-          <p className="text-on-surface-variant max-w-xl text-sm">
-            {m.topology_description()}
-          </p>
-        </div>
-        <Button
-          variant="stroked"
-          className="flex items-center gap-2"
-          aria-pressed={!!frozen}
-          onClick={() => setFrozen(frozen ? undefined : [...connections])}
-        >
-          {frozen ? (
-            <PlayArrowRounded className="size-5" />
-          ) : (
-            <PauseRounded className="size-5" />
-          )}
-          {frozen ? m.topology_resume() : m.topology_pause()}
-        </Button>
-      </header>
-
-      {error ? (
-        <p
-          role="status"
-          className="bg-error-container text-on-error-container rounded-2xl p-4 text-sm"
-        >
-          {m.topology_unavailable()}
-        </p>
-      ) : null}
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {[
-          [m.topology_active(), displayed.length.toLocaleString()],
-          [m.topology_download(), traffic(totals.download)],
-          [m.topology_upload(), traffic(totals.upload)],
-        ].map(([title, value], index) => (
-          <div key={title} className={cn('rounded-3xl p-5', tones[index])}>
-            <p className="text-sm opacity-80">{title}</p>
-            <p className="mt-2 text-3xl font-medium tabular-nums">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      <Card variant="outline" className="p-4 md:p-5">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span
-              className={cn(
-                'size-2 rounded-full',
-                frozen ? 'bg-outline' : 'bg-primary',
-              )}
-            />
-            {frozen ? m.topology_paused() : m.topology_live()}
-          </div>
+    <section className="space-y-4" aria-label={m.topology_title()}>
+      <Card className="p-4 md:p-5">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-4">
           <SegmentedButton
             value={mode}
             onValueChange={(value) => {
-              if (!value) return
-              setMode(value)
-              setSelection(undefined)
-              setCountry(undefined)
+              if (value !== 'flow' && value !== 'map') return
+              onViewChange(value)
             }}
             size="sm"
-            variant="tabs"
-            className="w-60 max-w-full"
+            className="w-auto shrink-0"
             aria-label={m.topology_view()}
           >
-            <SegmentedButtonItem value="flow">
+            <SegmentedButtonItem
+              value="flow"
+              className="flex-none whitespace-nowrap"
+            >
               {m.topology_flow()}
             </SegmentedButtonItem>
-            <SegmentedButtonItem value="map">
+            <SegmentedButtonItem
+              value="map"
+              className="flex-none whitespace-nowrap"
+            >
               {m.topology_geo_map()}
             </SegmentedButtonItem>
           </SegmentedButton>
-          <SegmentedButton
-            value={metric}
-            onValueChange={(value) => {
-              if (value === 'connections' || value === 'bytes') setMetric(value)
-            }}
-            size="sm"
-            className="w-52 max-w-full"
-            aria-label={m.topology_weight()}
-          >
-            <SegmentedButtonItem value="connections">
-              {m.topology_by_connections()}
-            </SegmentedButtonItem>
-            <SegmentedButtonItem value="bytes">
-              {m.topology_by_bytes()}
-            </SegmentedButtonItem>
-          </SegmentedButton>
+
+          <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-4">
+            <SegmentedButton
+              value={metric}
+              onValueChange={(value) => {
+                if (value === 'connections' || value === 'bytes')
+                  onMetricChange(value)
+              }}
+              size="sm"
+              className="w-auto shrink-0"
+              aria-label={m.topology_weight()}
+            >
+              <SegmentedButtonItem
+                value="bytes"
+                className="flex-none whitespace-nowrap"
+              >
+                {m.topology_by_bytes()}
+              </SegmentedButtonItem>
+              <SegmentedButtonItem
+                value="connections"
+                className="flex-none whitespace-nowrap"
+              >
+                {m.topology_by_connections()}
+              </SegmentedButtonItem>
+            </SegmentedButton>
+
+            {mode === 'flow' && (
+              <div className="w-full sm:w-64">
+                <Select
+                  variant="outlined"
+                  value={template}
+                  onValueChange={(next) =>
+                    onTemplateChange(next as LayerTemplate)
+                  }
+                >
+                  <SelectTrigger
+                    className="h-9 min-w-0 py-1"
+                    aria-label={m.traffic_layers_label()}
+                  >
+                    <SelectValue
+                      className="truncate pr-4 text-sm"
+                      placeholder={m.traffic_layers_label()}
+                    >
+                      {templateName(template)}
+                    </SelectValue>
+                  </SelectTrigger>
+
+                  <SelectContent className="min-w-64">
+                    {TEMPLATES.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {templateName(value)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {mode === 'flow' && (
+              <div className="w-full sm:w-36">
+                <Select
+                  variant="outlined"
+                  value={String(limit)}
+                  onValueChange={(next) => {
+                    const value = LIMITS.find((item) => String(item) === next)
+
+                    if (value !== undefined) onLimitChange(value)
+                  }}
+                >
+                  <SelectTrigger
+                    className="h-9 min-w-0 py-1"
+                    aria-label={m.traffic_limit_label()}
+                  >
+                    <SelectValue
+                      className="truncate pr-4 text-sm"
+                      placeholder={m.traffic_limit_label()}
+                    >
+                      {limitName(limit)}
+                    </SelectValue>
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {LIMITS.map((value) => (
+                      <SelectItem key={value} value={String(value)}>
+                        {limitName(value)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
         </div>
 
         {mode === 'map' ? (
           <GeographyView
-            connections={displayed}
+            topology={topology}
             metric={metric}
-            selection={selectedCountry}
-            onSelect={setCountry}
+            selection={
+              filters.find((filter) => filter.d === 'destination_region')?.v
+            }
+            onSelect={(code) => onSelect('destination_region', code)}
           />
-        ) : !displayed.length ? (
+        ) : !nodes.length ? (
           <div className="text-on-surface-variant grid min-h-64 place-content-center text-center">
-            <p className="text-lg">
-              {isLoading ? m.topology_loading() : m.connections_empty_message()}
-            </p>
-            <p className="mt-2 text-sm">{m.topology_empty_hint()}</p>
+            {topology && <p className="text-lg">{m.traffic_empty()}</p>}
           </div>
         ) : (
           <div
-            className="overflow-x-auto pb-2"
+            // The padding leaves room for the focus ring (2px + 2px offset) of the
+            // nodes at the edges, which the scroll container would clip.
+            className="overflow-auto p-2"
+            style={{ maxHeight: MAX_GRAPH_HEIGHT }}
             tabIndex={0}
             role="region"
             aria-label={m.topology_title()}
           >
-            <div className="min-w-[1000px]">
-              <div className="mb-3 flex justify-between text-xs font-medium tracking-wide">
-                {headings.map((heading, layer) => (
+            <div style={{ minWidth: graphWidth }}>
+              <div className="bg-surface sticky top-0 z-20 flex justify-between pb-3 text-xs font-medium tracking-wide">
+                {layers.map((dimension, index) => (
                   <div
-                    key={heading}
-                    style={{ width: `${(NODE_WIDTH / GRAPH_WIDTH) * 100}%` }}
+                    key={dimension}
+                    style={{ width: `${(NODE_WIDTH / graphWidth) * 100}%` }}
                     className="text-on-surface-variant flex gap-2 px-3"
                   >
-                    <span className="text-outline">0{layer + 1}</span>
-                    {heading}
+                    <span className="text-outline">0{index + 1}</span>
+                    {dimensionName(dimension)}
                   </div>
                 ))}
               </div>
               <motion.div
                 className="relative"
-                initial={false}
-                animate={{ height }}
-                transition={transition}
+                {...(large
+                  ? { style: { height } }
+                  : { initial: false, animate: { height }, transition })}
               >
                 <motion.svg
-                  initial={false}
-                  animate={{ viewBox: `0 0 ${GRAPH_WIDTH} ${height}` }}
-                  transition={transition}
+                  {...(large
+                    ? { viewBox }
+                    : {
+                        initial: false,
+                        animate: { viewBox },
+                        transition,
+                      })}
                   preserveAspectRatio="none"
                   className="pointer-events-none absolute inset-0 size-full"
                   aria-hidden="true"
                 >
-                  <AnimatePresence initial={false}>
-                    {graph.links.map((link) => {
-                      const start = positions.get(link.source)!
-                      const end = positions.get(link.target)!
+                  <Presence large={large}>
+                    {edges.map((edge) => {
+                      const start = positions.get(edge.source)!
+                      const end = positions.get(edge.target)!
                       const x = start.x + NODE_WIDTH
                       const y = start.y + 28
-                      const value = metric === 'bytes' ? link.bytes : link.count
+                      const value = usageValue(edge.usage, metric)
                       if (!value) return null
+                      const d = `M ${x} ${y} C ${x + 40} ${y}, ${end.x - 40} ${end.y + 28}, ${end.x} ${end.y + 28}`
+                      const strokeWidth = 1 + (value / maximum) * 13
+                      const opacity = !highlighting
+                        ? 0.25
+                        : edge.source === hovered || edge.target === hovered
+                          ? 0.65
+                          : 0.04
                       return (
                         <motion.path
-                          key={JSON.stringify([link.source, link.target])}
-                          d={`M ${x} ${y} C ${x + 40} ${y}, ${end.x - 40} ${end.y + 28}, ${end.x} ${end.y + 28}`}
+                          key={`${edge.source}->${edge.target}`}
                           fill="none"
-                          stroke={`var(--color-md-${colors[Math.round(start.x / COLUMN_STEP)]})`}
-                          initial={{ opacity: 0 }}
-                          animate={{
-                            d: `M ${x} ${y} C ${x + 40} ${y}, ${end.x - 40} ${end.y + 28}, ${end.x} ${end.y + 28}`,
-                            strokeWidth: 1 + (value / maximum) * 13,
-                            opacity: relevant(link.connectionIds)
-                              ? selected
-                                ? 0.65
-                                : 0.25
-                              : 0.04,
-                          }}
-                          exit={{ opacity: 0 }}
-                          transition={transition}
+                          stroke={`var(--color-md-${colors[Math.round(start.x / COLUMN_STEP) % colors.length]})`}
+                          {...(large
+                            ? { d, strokeWidth, opacity }
+                            : {
+                                d,
+                                initial: { opacity: 0 },
+                                animate: { d, strokeWidth, opacity },
+                                exit: { opacity: 0 },
+                                transition,
+                              })}
                         />
                       )
                     })}
-                  </AnimatePresence>
+                  </Presence>
                 </motion.svg>
-                <AnimatePresence initial={false}>
+                <Presence large={large}>
                   {nodes.map((node) => {
                     const position = positions.get(node.id)!
-                    const active = selected?.id === node.id
+                    const dimension = layers[node.layer]
+                    const { key } = node
+                    const merged = key === null
+                    // The node that merges the rest of the layer has no value.
+                    const info = key === null ? null : labelOf(dimension, key)
+                    const text = info?.text ?? m.topology_other()
+                    const amount = usageAmount(node.usage, metric)
+                    const active =
+                      !merged &&
+                      filters.some(
+                        (filter) => filter.d === dimension && filter.v === key,
+                      )
+                    const Node = merged ? motion.div : motion.button
                     return (
-                      <motion.button
+                      <Node
                         key={node.id}
-                        type="button"
-                        aria-pressed={active}
-                        aria-label={`${headings[node.layer]}: ${label(node)}, ${amount(node)}`}
-                        title={`${label(node)} · ${m.topology_connection_count({ count: node.count })} · ${traffic(node.bytes)}`}
-                        onClick={() =>
-                          setSelection(active ? undefined : node.id)
-                        }
+                        {...(merged
+                          ? {}
+                          : {
+                              type: 'button' as const,
+                              'aria-pressed': active,
+                              onClick: () => onSelect(dimension, key),
+                            })}
+                        aria-label={`${dimensionName(dimension)}: ${text}, ${amount}`}
+                        title={`${info?.title ?? text} · ${m.topology_connection_count({ count: node.usage.connections })} · ${usageAmount(node.usage, 'bytes')}`}
+                        onMouseEnter={() => setHovered(node.id)}
+                        onMouseLeave={() => setHovered(undefined)}
+                        onFocus={() => setHovered(node.id)}
+                        onBlur={() => setHovered(undefined)}
                         className={cn(
-                          'focus-visible:ring-primary ring-offset-surface absolute h-14 cursor-pointer rounded-2xl px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
-                          tones[node.layer],
+                          'absolute h-14 rounded-2xl px-3 text-left outline-none',
+                          merged
+                            ? 'cursor-default'
+                            : 'focus-visible:ring-primary ring-offset-surface cursor-pointer focus-visible:ring-2 focus-visible:ring-offset-2',
+                          tones[node.layer % tones.length],
                           active && 'ring-primary ring-2 ring-offset-2',
                         )}
-                        initial={{ opacity: 0, top: position.y }}
-                        animate={{
-                          top: position.y,
-                          opacity: relevant(node.connectionIds) ? 1 : 0.3,
-                        }}
-                        exit={{ opacity: 0 }}
-                        transition={transition}
+                        {...(large
+                          ? {}
+                          : {
+                              initial: { opacity: 0, top: position.y },
+                              animate: { top: position.y, opacity: 1 },
+                              exit: { opacity: 0 },
+                              transition,
+                            })}
                         style={{
-                          left: `${(position.x / GRAPH_WIDTH) * 100}%`,
-                          width: `${(NODE_WIDTH / GRAPH_WIDTH) * 100}%`,
+                          left: `${(position.x / graphWidth) * 100}%`,
+                          width: `${(NODE_WIDTH / graphWidth) * 100}%`,
+                          ...(large && { top: position.y }),
                         }}
                       >
-                        <span className="block truncate text-xs font-medium">
-                          {label(node)}
+                        <span
+                          className={cn(
+                            'block truncate text-xs font-medium',
+                            info?.mono && 'font-mono',
+                          )}
+                        >
+                          {text}
                         </span>
                         <span className="mt-0.5 block text-xs tabular-nums opacity-75">
-                          {amount(node)}
+                          {amount}
                         </span>
-                      </motion.button>
+                      </Node>
                     )
                   })}
-                </AnimatePresence>
+                </Presence>
               </motion.div>
             </div>
           </div>
@@ -368,68 +446,6 @@ export default function TopologyView({
             {m.topology_caption()}
           </p>
         )}
-      </Card>
-
-      <Card variant="outline" className="p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="truncate font-medium">
-              {selectedCountry
-                ? regionName(selectedCountry)
-                : selected
-                  ? label(selected)
-                  : m.topology_details()}
-            </h2>
-            <p className="text-on-surface-variant mt-1 text-xs">
-              {m.topology_detail_count({ count: matching.length })}
-            </p>
-          </div>
-          {(selected || selectedCountry) && (
-            <Button
-              variant="flat"
-              onClick={() => {
-                setSelection(undefined)
-                setCountry(undefined)
-              }}
-            >
-              {m.topology_clear()}
-            </Button>
-          )}
-        </div>
-        <div className="divide-outline-variant/50 divide-y">
-          {sorted.slice(0, 8).map((connection) => (
-            <div
-              key={connection.id}
-              className="flex items-center justify-between gap-4 py-3"
-            >
-              <div className="min-w-0">
-                <p
-                  className="truncate text-sm"
-                  title={
-                    connection.metadata?.host ||
-                    connection.metadata?.destinationIP ||
-                    undefined
-                  }
-                >
-                  {connection.metadata?.host ||
-                    connection.metadata?.destinationIP ||
-                    m.topology_unknown()}
-                </p>
-                <p className="text-on-surface-variant mt-1 truncate text-xs">
-                  {connection.metadata?.process ||
-                    connection.metadata?.sourceIP ||
-                    m.topology_unknown()}{' '}
-                  ·{' '}
-                  {connection.chains.slice().reverse().join(' → ') ||
-                    m.topology_unknown()}
-                </p>
-              </div>
-              <span className="shrink-0 text-sm tabular-nums">
-                {traffic(connection.upload + connection.download)}
-              </span>
-            </div>
-          ))}
-        </div>
       </Card>
     </section>
   )

@@ -3,63 +3,89 @@ import { useMemo } from 'react'
 import { useMedia } from 'react-use'
 import worldMap from '@/assets/maps/world-map.json'
 import { m } from '@/paraglide/messages'
-import { getLocale } from '@/paraglide/runtime'
-import parseTraffic from '@/utils/parse-traffic'
-import type { ClashConnection_Serialize } from '@nyanpasu/interface'
+import type { Metric, Topology, Usage } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
-import { buildGeography } from './geography'
-import type { TopologyMetric } from './topology'
+import { largest, regionName, usageAmount, usageValue } from './usage-label'
 
 const centers: Readonly<Record<string, number[]>> = worldMap.centers
-export const geographicRegions: ReadonlySet<string> = new Set(
-  Object.keys(centers),
-)
-
-export function regionName(code: string) {
-  return code === 'unknown'
-    ? m.topology_unknown()
-    : (new Intl.DisplayNames([getLocale()], { type: 'region' }).of(code) ??
-        code)
-}
+const geographicRegions: ReadonlySet<string> = new Set(Object.keys(centers))
 
 export default function GeographyView({
-  connections,
+  topology,
   metric,
   selection,
   onSelect,
 }: {
-  connections: ClashConnection_Serialize[]
-  metric: TopologyMetric
+  /** The report's source and destination regions, nothing merged. */
+  topology: Topology | null | undefined
+  metric: Metric
   selection?: string
-  onSelect: (code: string | undefined) => void
+  onSelect: (code: string) => void
 }) {
   const reducedMotion = useMedia('(prefers-reduced-motion: reduce)', false)
   const transition = {
     duration: reducedMotion ? 0 : 0.32,
     ease: [0.2, 0, 0, 1] as const,
   }
-  const geography = useMemo(
-    () => buildGeography(connections, geographicRegions),
-    [connections],
+  const { regions, routes, total, unknown } = useMemo(() => {
+    const nodes = topology?.nodes ?? []
+    const keyOf = new Map(nodes.map((node) => [node.id, node.key]))
+    // The destination totals are the second layer's nodes.
+    const regions = nodes
+      .filter((node) => node.layer === 1 && node.key !== null)
+      .map((node) => ({ code: node.key!, usage: node.usage }))
+      .sort(
+        (a, b) =>
+          usageValue(b.usage, metric) - usageValue(a.usage, metric) ||
+          a.code.localeCompare(b.code),
+      )
+    const routes = (topology?.edges ?? [])
+      .map((edge) => ({
+        source: keyOf.get(edge.source),
+        destination: keyOf.get(edge.target),
+        usage: edge.usage,
+      }))
+      .filter(
+        (
+          route,
+        ): route is typeof route & { source: string; destination: string } =>
+          !!route.source &&
+          !!route.destination &&
+          route.source !== route.destination &&
+          geographicRegions.has(route.source) &&
+          geographicRegions.has(route.destination),
+      )
+    const total = regions.reduce((sum, { usage }) => sum + usage.connections, 0)
+    const unknown = regions
+      .filter(({ code }) => !geographicRegions.has(code))
+      .reduce((sum, { usage }) => sum + usage.connections, 0)
+
+    return { regions, routes, total, unknown }
+  }, [topology, metric])
+  // No topology yet is a request in flight; a topology without regions is empty.
+  const hint =
+    topology && total === 0
+      ? m.traffic_empty()
+      : total > 0 && unknown === total
+        ? m.topology_geo_empty()
+        : undefined
+  const value = (usage: Usage) => usageValue(usage, metric)
+  const maximum = largest(
+    regions.map(({ usage }) => value(usage)),
+    1,
   )
-  const value = (item: { count: number; bytes: number }) =>
-    metric === 'bytes' ? item.bytes : item.count
-  const regions = [...geography.regions].sort(
-    (a, b) => value(b) - value(a) || a.code.localeCompare(b.code),
-  )
-  const maximum = Math.max(1, ...regions.map(value))
-  const unknown =
-    regions.find((region) => region.code === 'unknown')?.count ?? 0
-  const select = (code: string) =>
-    onSelect(code === selection ? undefined : code)
-  const amount = (item: { count: number; bytes: number }) =>
-    metric === 'bytes'
-      ? parseTraffic(item.bytes).join(' ')
-      : m.topology_connection_count({ count: item.count })
+  const select = (code: string) => onSelect(code)
+  const amount = (usage: Usage) => usageAmount(usage, metric)
   // Bound the number of animated arcs; every region remains in the list below.
-  const routes = geography.routes
+  const arcs = routes
     .filter((route) => !selection || route.destination === selection)
-    .sort((a, b) => value(b) - value(a) || a.code.localeCompare(b.code))
+    .sort(
+      (a, b) =>
+        value(b.usage) - value(a.usage) ||
+        `${a.source}:${a.destination}`.localeCompare(
+          `${b.source}:${b.destination}`,
+        ),
+    )
     .slice(0, 32)
 
   return (
@@ -68,8 +94,8 @@ export default function GeographyView({
         <h2 className="font-medium">{m.topology_geo_title()}</h2>
         <span className="text-on-surface-variant text-xs">
           {m.topology_geo_coverage({
-            known: connections.length - unknown,
-            total: connections.length,
+            known: total - unknown,
+            total,
           })}
         </span>
       </div>
@@ -95,14 +121,14 @@ export default function GeographyView({
             aria-hidden="true"
           />
           <AnimatePresence initial={false}>
-            {routes.map((route) => {
+            {arcs.map((route) => {
               const [x1, y1] = centers[route.source]
               const [x2, y2] = centers[route.destination]
               // A regional arc is schematic; it is not a measured network route.
               const d = `M ${x1} ${y1} Q ${(x1 + x2) / 2} ${Math.max(8, Math.min(y1, y2) - Math.min(100, Math.abs(x2 - x1) * 0.2))} ${x2} ${y2}`
               return (
                 <motion.path
-                  key={route.code}
+                  key={`${route.source}:${route.destination}`}
                   d={d}
                   fill="none"
                   className="stroke-tertiary"
@@ -110,7 +136,7 @@ export default function GeographyView({
                   initial={{ opacity: 0 }}
                   animate={{
                     opacity: 0.55,
-                    strokeWidth: 1 + (value(route) / maximum) * 3,
+                    strokeWidth: 1 + (value(route.usage) / maximum) * 3,
                   }}
                   exit={{ opacity: 0 }}
                   transition={transition}
@@ -120,7 +146,7 @@ export default function GeographyView({
           </AnimatePresence>
           <AnimatePresence initial={false}>
             {regions
-              .filter((region) => region.code !== 'unknown')
+              .filter((region) => geographicRegions.has(region.code))
               .map((region) => {
                 const [x, y] = centers[region.code]
                 const active = selection === region.code
@@ -129,7 +155,7 @@ export default function GeographyView({
                     key={region.code}
                     role="button"
                     tabIndex={0}
-                    aria-label={`${regionName(region.code)}: ${amount(region)}`}
+                    aria-label={`${regionName(region.code)}: ${amount(region.usage)}`}
                     aria-pressed={active}
                     onClick={() => select(region.code)}
                     onKeyDown={(event) => {
@@ -145,7 +171,7 @@ export default function GeographyView({
                     transition={transition}
                   >
                     <title>
-                      {regionName(region.code)} · {amount(region)}
+                      {regionName(region.code)} · {amount(region.usage)}
                     </title>
                     <circle
                       cx={x}
@@ -160,7 +186,7 @@ export default function GeographyView({
                       cy={y}
                       initial={false}
                       animate={{
-                        r: 4 + Math.sqrt(value(region) / maximum) * 7,
+                        r: 4 + Math.sqrt(value(region.usage) / maximum) * 7,
                       }}
                       transition={transition}
                       className={cn(
@@ -186,9 +212,9 @@ export default function GeographyView({
               })}
           </AnimatePresence>
         </svg>
-        {connections.length > 0 && unknown === connections.length && (
+        {hint && (
           <p className="bg-surface/90 text-on-surface-variant absolute inset-x-4 bottom-4 rounded-2xl p-3 text-center text-sm">
-            {m.topology_geo_empty()}
+            {hint}
           </p>
         )}
       </div>
@@ -211,7 +237,7 @@ export default function GeographyView({
           >
             {regionName(region.code)}{' '}
             <span className="ml-2 tabular-nums opacity-75">
-              {amount(region)}
+              {amount(region.usage)}
             </span>
           </button>
         ))}

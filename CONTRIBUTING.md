@@ -7,13 +7,15 @@ To ensure the quality and stability of the project, please read this guide caref
 
 ## 1. Development Guidelines
 
+Read the [development standards](docs/development/README.md) before making changes. They describe the shared architecture, unified RPC, testing, worktree, and commit requirements for human contributors and coding agents.
+
 Before submitting code, please follow these rules:
 
 ### 1. Code Style Checks
 
 | Language                | Tools                       |
 | ----------------------- | --------------------------- |
-| JavaScript / TypeScript | ESLint, Prettier, Stylelint |
+| JavaScript / TypeScript | Oxlint, Prettier, Stylelint |
 | Rust                    | Clippy, Rustfmt             |
 
 - ⚠️ **Ensure there are no style errors before committing**
@@ -140,7 +142,9 @@ git checkout -b feature/my-feature
 ### 4. Commit and Push
 
 ```
-git add .
+git status
+git add <related-file-paths>
+git diff --cached --stat
 git commit -m "feat: add my feature"
 git push origin feature/my-feature
 ```

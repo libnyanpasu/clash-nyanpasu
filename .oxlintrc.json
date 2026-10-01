@@ -34,6 +34,28 @@
   ],
   "overrides": [
     {
+      "files": ["frontend/nyanpasu/src/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["radix-ui", "radix-ui/*", "@radix-ui/*"],
+                "message": "Use components/ui wrappers. Add and style missing Radix primitives in components/ui first."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["frontend/nyanpasu/src/components/ui/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
       "files": ["**/*.{jsx,mjsx,tsx,mtsx}"],
       "rules": {
         "react/display-name": "error",

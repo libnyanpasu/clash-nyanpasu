@@ -12,6 +12,38 @@ and verify the fix. For refactors, verify behavior before and after. For multi-s
 work, pair each step with a check. Explain material tradeoffs and blockers rather
 than preserving an undocumented compatibility layer.
 
+## GitHub workflows
+
+- Use `[Category] Action Object` for workflow display names, with the categories `CI`, `Release`, `Maintenance`, and `Reusable`.
+- Use `Reusable` for workflows exposed through `workflow_call`, even when they also support manual dispatch. Other categories describe the entry workflow's purpose.
+- Name the actual operation and output: distinguish nightly publication, release package publication, draft release preparation, core version manifests, and app updater manifests. Avoid scope labels such as `Entire` and `Single`.
+- Preserve workflow file paths and CI job names during display-name cleanup; review callers, badges, documentation, and required checks before renaming those identifiers.
+- Remove workflows only after checking reusable callers and automatic/manual entry points; lack of recent runs alone does not prove a workflow is unused.
+- Separate adjacent workflow steps with one blank line, keeping each step's explanatory comments after the separator.
+
+The repository currently keeps all 14 workflows. Every reusable workflow has a
+caller. The manifest maintenance workflow updates both `main` and the still
+maintained v1 `dev` branch; a failure in one branch does not make the other job
+redundant. GitHub-generated Copilot workflows are managed by GitHub rather than
+these YAML files.
+
+| File under `.github/workflows/`   | Display name                                          | Purpose / entry point                                                                                                |
+| --------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`                          | `[CI] Lint, Build, and Test`                          | Lint, build, and test pushes and pull requests.                                                                      |
+| `daily.yml`                       | `[Maintenance] Update Core Version Manifests`         | Scheduled or manual refresh of core versions on main and v1/dev.                                                     |
+| `stale.yml`                       | `[Maintenance] Close Stale Issues and Pull Requests`  | Scheduled or manual stale issue and pull request maintenance.                                                        |
+| `publish.yml`                     | `[Release] Prepare Version and Draft Release`         | Manual version bump, tag, and draft release creation; publishing the draft starts package builds.                    |
+| `target-dev-build.yaml`           | `[Release] Build and Publish Nightly`                 | Scheduled or manual nightly builds and publication across six OS/architecture targets.                               |
+| `target-release-build.yaml`       | `[Release] Build and Publish Release Packages`        | Build and publish packages when a stable or prerelease release is published.                                         |
+| `deps-build-linux.yaml`           | `[Reusable] Build Linux Packages`                     | Linux artifacts; called by nightly and release workflows, or dispatched manually.                                    |
+| `deps-build-macos.yaml`           | `[Reusable] Build macOS Packages`                     | macOS artifacts; called by nightly and release workflows, or dispatched manually.                                    |
+| `deps-build-windows-nsis.yaml`    | `[Reusable] Build Windows NSIS and Portable Packages` | Windows installers and optional portable artifacts; called by nightly and release workflows, or dispatched manually. |
+| `deps-create-updater.yaml`        | `[Reusable] Publish Updater Manifests`                | App updater feeds on GitHub and Surge; called by nightly and release workflows, or dispatched manually.              |
+| `deps-delete-releases.yaml`       | `[Reusable] Clear Release Assets`                     | Clear assets on the existing nightly release; called by nightly workflow, or dispatched manually.                    |
+| `deps-message-telegram.yaml`      | `[Reusable] Notify Telegram of Releases`              | Release notifications; called by nightly and release workflows, or dispatched manually.                              |
+| `deps-update-tag.yaml`            | `[Reusable] Update Nightly Tag and Release`           | Move the nightly tag and update release metadata; called by nightly workflow, or dispatched manually.                |
+| `deps-upload-release-assets.yaml` | `[Reusable] Upload Release Assets`                    | Upload artifacts from the current caller run to its release; called by nightly and release workflows.                |
+
 ## Worktrees and resource reuse
 
 Feature/migration work runs in isolated git worktrees by default. Working in the current checkout is an option when the user chooses it after a cost assessment. Before implementation:

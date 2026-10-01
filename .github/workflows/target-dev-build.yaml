@@ -1,4 +1,4 @@
-name: '[Entire] Build Developer Version'
+name: '[Release] Build and Publish Nightly'
 
 on:
   workflow_dispatch:

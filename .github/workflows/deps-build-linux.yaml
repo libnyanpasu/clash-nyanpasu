@@ -1,4 +1,4 @@
-name: '[Single] Build Linux'
+name: '[Reusable] Build Linux Packages'
 
 on:
   workflow_dispatch:
@@ -169,6 +169,7 @@ jobs:
             gtk-update-icon-cache -f -t "$ICON_CACHE_DIR"
             echo "GTK icon cache updated"
           fi
+
       # ===========================
       - name: Tauri build (x86_64)
         if: ${{ inputs.arch == 'x86_64' }}

@@ -1,4 +1,4 @@
-name: '[Single] Build Windows NSIS'
+name: '[Reusable] Build Windows NSIS and Portable Packages'
 
 on:
   workflow_dispatch:

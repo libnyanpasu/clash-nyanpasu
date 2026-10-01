@@ -1,4 +1,4 @@
-name: Publish
+name: '[Release] Prepare Version and Draft Release'
 
 on:
   workflow_dispatch:
@@ -40,18 +40,22 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+
       - name: Prepare Node
         uses: actions/setup-node@v7
         with:
           node-version: latest
+
       - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
+
       - name: Get pnpm store directory
         shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
       - uses: actions/cache@v6
         name: Setup pnpm cache
         with:
@@ -59,15 +63,20 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
+
       - name: Install
         run: pnpm i
+
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+
       - name: Test release versioning
         run: deno test --config scripts/deno.jsonc -A scripts/publish_test.ts scripts/prepare-release_test.ts scripts/finalize-linux-release_test.ts scripts/release-channel_test.ts
+
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff
+
       - id: update-version
         shell: bash
         name: Bump version
@@ -86,6 +95,7 @@ jobs:
             echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
           git add .
+
       - name: Generate a changelog for the new version
         shell: bash
         id: build-changelog
@@ -117,6 +127,7 @@ jobs:
         env:
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
@@ -124,6 +135,7 @@ jobs:
           commit_user_name: 'github-actions[bot]'
           commit_user_email: '41898282+github-actions[bot]@users.noreply.github.com'
           tagging_message: 'v${{ steps.update-version.outputs.version }}'
+
       - name: Release
         uses: softprops/action-gh-release@v3
         with:

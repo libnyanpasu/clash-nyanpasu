@@ -1,4 +1,4 @@
-name: '[Single] Upload Release Assets'
+name: '[Reusable] Upload Release Assets'
 
 on:
   workflow_call:

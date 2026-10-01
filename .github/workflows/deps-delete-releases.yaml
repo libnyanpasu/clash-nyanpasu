@@ -1,4 +1,4 @@
-name: '[Single] Delete Current Releases'
+name: '[Reusable] Clear Release Assets'
 
 on:
   workflow_dispatch:

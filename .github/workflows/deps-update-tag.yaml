@@ -1,4 +1,4 @@
-name: '[Single] Update Tag'
+name: '[Reusable] Update Nightly Tag and Release'
 
 on:
   workflow_dispatch:

@@ -1,4 +1,4 @@
-name: '[Single] Create Updater'
+name: '[Reusable] Publish Updater Manifests'
 
 on:
   workflow_dispatch:
@@ -45,8 +45,10 @@ jobs:
         with:
           ref: ${{ github.ref }}
           # blocked by https://github.com/actions/checkout/issues/1467
+
       - name: Fetch git tags
         run: git fetch --tags
+
       - name: Install Node latest
         uses: actions/setup-node@v7
         with:
@@ -89,6 +91,7 @@ jobs:
           fileName: '*.json'
           token: ${{ secrets.GITHUB_TOKEN }}
           out-file-path: manifest/site/updater
+
       - name: Upload updater to surge.sh
         run: |
           pnpm i -g surge

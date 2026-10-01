@@ -486,6 +486,15 @@ pub trait ConfigStore: Send + Sync + 'static {
 - Prefer `frontend/nyanpasu/src/components/ui/` components. For missing controls, check Radix primitives and add styled, accessible wrappers there before using them in features. Follow Material You and existing project tokens and interaction states. Oxlint restricts direct Radix imports to that UI layer.
 - Semantic naming, reuse, grouping, and visual consistency remain mandatory review requirements even when formatting and lint pass.
 
+### GitHub workflow names
+
+- Use `[Category] Action Object` for workflow display names, with the categories `CI`, `Release`, `Maintenance`, and `Reusable`.
+- Use `Reusable` for workflows exposed through `workflow_call`, even when they also support manual dispatch. Other categories describe the entry workflow's purpose.
+- Name the actual operation and output: distinguish nightly publication, release package publication, draft release preparation, core version manifests, and app updater manifests. Avoid scope labels such as `Entire` and `Single`.
+- Preserve workflow file paths and CI job names during display-name cleanup; review callers, badges, documentation, and required checks before renaming those identifiers.
+- Remove workflows only after checking reusable callers and automatic/manual entry points; lack of recent runs alone does not prove a workflow is unused.
+- Separate adjacent workflow steps with one blank line, keeping each step's explanatory comments after the separator.
+
 ### Role names
 
 Use names that reveal the role:

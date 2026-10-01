@@ -1,4 +1,4 @@
-name: '[Single] Send Message to Telegram'
+name: '[Reusable] Notify Telegram of Releases'
 
 on:
   workflow_dispatch:

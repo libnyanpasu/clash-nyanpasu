@@ -1,4 +1,4 @@
-name: '[Single] Build macOS'
+name: '[Reusable] Build macOS Packages'
 
 on:
   workflow_dispatch:
@@ -62,6 +62,7 @@ jobs:
         if: ${{ inputs.aarch64 == false }}
         run: |
           rustup target add x86_64-apple-darwin
+
       - name: Install Rust aarch64 target
         if: ${{ inputs.aarch64 == true }}
         run: |
@@ -71,6 +72,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: latest
+
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -111,16 +113,20 @@ jobs:
       - name: Download Sidecars aarch64
         if: ${{ inputs.aarch64 == true }}
         run: pnpm prepare:check --arch arm64 --sidecar-host aarch64-apple-darwin
+
       - name: Download Sidecars x64
         if: ${{ inputs.aarch64 == false }}
         run: pnpm prepare:check --arch x64 --sidecar-host x86_64-apple-darwin
+
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |
           pnpm prepare:nightly
+
       - name: Build UI
         run: |
           pnpm -F ui build
+
       - name: Build Clash Nyanpasu (Stable)
         if: ${{ inputs.nightly == false }}
         run: |
@@ -131,6 +137,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
           NODE_OPTIONS: '--max_old_space_size=4096'
+
       - name: Build Clash Nyanpasu (Nightly)
         if: ${{ inputs.nightly == true }}
         run: |

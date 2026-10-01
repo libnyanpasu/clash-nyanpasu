@@ -44,11 +44,11 @@ export function ProvidersTitle({
   children,
   ...props
 }: ComponentProps<'div'>) {
-  const { offset } = useScrollArea()
+  const { isPastHeader } = useScrollArea()
 
   const id = useId()
 
-  const showTopTitle = offset.top > 40
+  const showTopTitle = isPastHeader
 
   return (
     <>

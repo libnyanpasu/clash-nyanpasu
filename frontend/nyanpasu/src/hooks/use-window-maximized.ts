@@ -9,7 +9,9 @@ const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 const IS_MAXIMIZED_QUERY_KEY = 'isMaximized'
 
 export default function useWindowMaximized() {
-  const query = useSuspenseQuery({
+  // Only `data` is read, so the tracked query re-renders callers when the
+  // state changes, not on every fetch.
+  const { data: isMaximized, refetch } = useSuspenseQuery({
     queryKey: [IS_MAXIMIZED_QUERY_KEY],
     queryFn: async () => {
       if (!appWindow) return false
@@ -24,20 +26,29 @@ export default function useWindowMaximized() {
 
   const handleToggleMaximize = useCallback(async () => {
     await appWindow?.toggleMaximize()
-    await query.refetch()
-  }, [query])
+    await refetch()
+  }, [refetch])
 
   useEffect(() => {
+    // Resizing fires an event every frame; ask over IPC once it settles, and
+    // share the request with the other callers of this hook.
+    let timer: ReturnType<typeof setTimeout> | undefined
+
     const onResize = () => {
-      query.refetch()
+      clearTimeout(timer)
+      timer = setTimeout(() => refetch({ cancelRefetch: false }), 100)
     }
+
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [query.refetch])
+
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [refetch])
 
   return {
-    isMaximized: query.data,
+    isMaximized,
     toggleMaximize: handleToggleMaximize,
-    ...query,
   }
 }

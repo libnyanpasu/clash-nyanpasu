@@ -6,14 +6,17 @@ import {
   useRef,
   useState,
 } from 'react'
+import { isLinux } from '@/consts'
 import {
   downloadUpdateWithFallback,
   type UpdateDownloadCandidate,
 } from '@/utils/update-download-fallback'
+import { isUpdaterSupported } from '@/utils/updater-support'
 import {
   rpc,
   unwrapResult,
   useIsAppImage,
+  useIsPortable,
   useReleaseChannel,
   useSetting,
   type ReleaseChannel,
@@ -76,9 +79,14 @@ export default function NyanpasuUpdateProvider({
   }
 
   const { data: isAppImage } = useIsAppImage()
+  const { data: isPortable } = useIsPortable()
 
-  // windows portable version does not support auto update
-  const isSupported = isTauri() && (!isAppImage || !WIN_PORTABLE)
+  const isSupported = isUpdaterSupported({
+    tauri: isTauri(),
+    linux: isLinux,
+    appImage: isAppImage,
+    portable: isPortable,
+  })
 
   const [downloads, setDownloads] = useState<{
     generation: number

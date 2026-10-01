@@ -11,3 +11,13 @@ export const useIsAppImage = () => {
     staleTime: Infinity,
   })
 }
+
+export const useIsPortable = () => {
+  return useQuery({
+    ...unwrapQueryOptions(
+      rpc.queries.isPortable(),
+      rpc.queries.isPortable().queryFn!,
+    ),
+    staleTime: Infinity,
+  })
+}

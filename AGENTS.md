@@ -383,9 +383,9 @@ or:
 // New code must use <new API>. Remove after <condition>.
 ```
 
-## 12. Tauri Command Rules
+## 12. Unified RPC and Command Rules
 
-Tauri commands should be thin adapters. They should:
+Application commands use the unified RPC framework, with Tauri IPC and HTTP as transport adapters. Commands should be thin adapters. They should:
 
 - parse request DTOs;
 - call `NyanpasuClient`;
@@ -397,7 +397,7 @@ Tauri commands should be thin adapters. They should:
 Allowed shape:
 
 ```rust
-#[tauri::command]
+#[nyanpasu_macro::rpc(http)]
 pub async fn patch_verge_config(
     client: tauri::State<'_, NyanpasuClient>,
     patch: NyanpasuAppConfigPatch,
@@ -418,6 +418,24 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
     Ok(())
 }
 ```
+
+### Use the unified RPC surface
+
+- Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
+- Keep command metadata in `backend/tauri/src/specta_export.rs`. Register read-only operations as queries and side-effecting operations as mutations, even if their names start with `get` or `query`. Regenerate TypeScript bindings through the existing export workflow; do not hand-edit generated bindings.
+- Frontend application calls use `frontend/interface/src/ipc/rpc.ts`, generated `rpc-bindings.ts`, and the shared query/mutation helpers. Transport selection belongs in `command-transport.ts`. Do not call raw Tauri `invoke`, import legacy transport `bindings.ts` for application commands, or add ad hoc HTTP fetches in pages/hooks.
+- Native Tauri plugin APIs and existing channel-based transport commands remain boundary-specific exceptions. Do not extend those exceptions to ordinary application operations; browser-accessible UI must guard native capabilities and provide an appropriate browser path or explicit unsupported state.
+
+### Declare capabilities and preserve transport semantics
+
+- HTTP access is explicit opt-in via `rpc(http)`, not inferred authorization from a compatible signature. Review the operation's effects before enabling it. Desktop OS operations, arbitrary outbound URL diagnostics, and desktop-only server controls stay desktop-only unless deliberately adapted and reviewed.
+- Shared operations receive explicit dependencies and call `NyanpasuClient`. Assemble `RpcDependencies`, routers, and server adapters in the composition root. The facade must not accept `axum::Router` or expose transport infrastructure; avoid strong reference cycles between the server/router and client.
+- Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
+- Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.
+- Keep HTTP RPC, SSE, and the development proxy behind the existing per-start access credential and Host/Origin checks. A session cookie identifies an owner; it does not by itself authenticate access. Keep the server disabled by default and bound to loopback.
+- Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. New shared events must be registered in the transport metadata and event bridge; do not create desktop-only listeners for shared state.
+- The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
+- Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.
 
 ## 13. Testing and Mocking
 
@@ -496,7 +514,14 @@ Before finishing a change, check:
 
 ## 17. Worktree Setup and Resource Reuse
 
-Feature/migration work runs in isolated git worktrees. The worktree location is the developer's choice (any path outside the repo tree); this section only fixes the reuse policy, not where worktrees live. Worktrees share the main `.git`. The rule: reuse expensive **branch-independent** assets from the main checkout via symlink, and regenerate everything **branch-dependent** per worktree.
+Feature/migration work runs in isolated git worktrees by default. Working in the current checkout is an option when the user chooses it after a cost assessment. Before implementation:
+
+- Consider the task's scope, expected duration, concurrent work, and existing uncommitted changes in the current checkout.
+- Weigh the isolation benefits against dependency installation, independent Cargo builds, disk usage, and preparation of gitignored build prerequisites. Reuse a suitable existing worktree when available.
+- Summarize the relevant costs and benefits, state a recommendation, then ask the user whether to work in a worktree or the current checkout. Wait for their choice before implementation; if they have already specified a choice for the task, follow it without asking again.
+- Keep isolated worktrees as the recommended default for feature/migration work. Small, isolated edits may be cheaper in the current checkout; broad changes or concurrent work strengthen the case for a worktree. The assessment adds a user-selectable alternative, not a replacement for the isolation and resource reuse policy.
+
+When the user chooses a worktree, its location is the developer's choice (any path outside the repo tree). Worktrees share the main `.git`. The rule: reuse expensive **branch-independent** assets from the main checkout via symlink, and regenerate everything **branch-dependent** per worktree.
 
 ### Reuse policy
 

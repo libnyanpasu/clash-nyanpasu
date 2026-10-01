@@ -65,6 +65,23 @@ fn get_file_appender(rotation: LogRotation) -> Result<(NonBlocking, FileAppender
     ))
 }
 
+/// Sets the app's own crates to `level` and everything else to warn.
+///
+/// The directives spell the level through [`filter::LevelFilter`], which
+/// `tracing` always parses back. The config spells `Silent` as `silent`, which
+/// `tracing` rejects, and a directive that does not parse panics the reload
+/// thread after the setting is already saved.
+fn app_filter(level: LoggingLevel) -> EnvFilter {
+    let level = filter::LevelFilter::from(level);
+    EnvFilter::builder()
+        .with_default_directive(
+            std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn).into(),
+        )
+        .from_env_lossy()
+        .add_directive(format!("nyanpasu={level}").parse().unwrap())
+        .add_directive(format!("clash_nyanpasu={level}").parse().unwrap())
+}
+
 /// initial instance global logger, returning the channel that reloads it
 pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
     let jobs = crate::client::jobs::capture();
@@ -80,15 +97,7 @@ pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
             max_file_size: 10,
         },
     );
-    let (filter, filter_handle) = reload::Layer::new(
-        EnvFilter::builder()
-            .with_default_directive(
-                std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn).into(),
-            )
-            .from_env_lossy()
-            .add_directive(format!("nyanpasu={log_level}").parse().unwrap())
-            .add_directive(format!("clash_nyanpasu={log_level}").parse().unwrap()),
-    );
+    let (filter, filter_handle) = reload::Layer::new(app_filter(log_level));
 
     // register the logger
     let (appender, _guard) = get_file_appender(log_rotation)?;
@@ -108,18 +117,7 @@ pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
         let mut current_rotation = log_rotation;
         while let Ok(signal) = receiver.recv() {
             if let Some(level) = signal.0 {
-                filter_handle
-                    .reload(
-                        EnvFilter::builder()
-                            .with_default_directive(
-                                std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn)
-                                    .into(),
-                            )
-                            .from_env_lossy()
-                            .add_directive(format!("nyanpasu={level}").parse().unwrap())
-                            .add_directive(format!("clash_nyanpasu={level}").parse().unwrap()),
-                    )
-                    .unwrap(); // panic if error
+                filter_handle.reload(app_filter(level)).unwrap(); // panic if error
             }
 
             // Rebuilding the writer opens a new file, so an unchanged rotation
@@ -176,6 +174,27 @@ mod tests {
     use super::*;
     use nyanpasu_logging::{FsLogFiles, LogFiles};
     use std::io::Write;
+
+    /// Every level the settings offer, `silent` included, sets both of the
+    /// app's own crates to the level `tracing` knows it by.
+    #[test]
+    fn app_filter_sets_the_app_crates_to_every_configured_level() {
+        for (level, spelled) in [
+            (LoggingLevel::Silent, "off"),
+            (LoggingLevel::Trace, "trace"),
+            (LoggingLevel::Debug, "debug"),
+            (LoggingLevel::Info, "info"),
+            (LoggingLevel::Warn, "warn"),
+            (LoggingLevel::Error, "error"),
+        ] {
+            let filter = app_filter(level).to_string();
+            let directives: Vec<_> = filter.split(',').collect();
+            for target in ["nyanpasu", "clash_nyanpasu"] {
+                let expected = format!("{target}={spelled}");
+                assert!(directives.contains(&expected.as_str()), "{filter}");
+            }
+        }
+    }
 
     /// The files the writer rotates into are the ones the log viewer lists,
     /// newest first, and no more of them than `max_files` are kept.

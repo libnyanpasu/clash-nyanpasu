@@ -3,15 +3,22 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Button } from '@/components/ui/button'
 import { DndGridItem, DndGridItemProps } from '@/components/ui/dnd-grid'
 import { useDndGridContext } from '@/components/ui/dnd-grid/context'
+import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 import { WidgetComponentProps } from './consts'
+import { WidgetId } from './widget-config'
+import WidgetConfigMenu from './widget-config-menu'
 
-export type WidgetItemProps = DndGridItemProps<string> & WidgetComponentProps
+export type WidgetItemProps = DndGridItemProps<string> &
+  WidgetComponentProps & {
+    widgetType: WidgetId
+  }
 
 export default function WidgetItem({
   children,
   className,
   onCloseClick,
+  widgetType,
   ...props
 }: WidgetItemProps) {
   const { disabled, sourceOnly } = useDndGridContext()
@@ -29,6 +36,8 @@ export default function WidgetItem({
               'border-outline/30 border',
             )}
             icon
+            aria-label={m.dashboard_widget_delete()}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onCloseClick?.(props.id)}
             asChild
           >
@@ -56,6 +65,10 @@ export default function WidgetItem({
           </Button>
         )}
       </AnimatePresence>
+
+      {!disabled && !sourceOnly && (
+        <WidgetConfigMenu id={props.id} type={widgetType} />
+      )}
     </DndGridItem>
   )
 }

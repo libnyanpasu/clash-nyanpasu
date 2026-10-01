@@ -158,6 +158,7 @@ export const Button = ({
         className,
       )}
       onClick={handleClick}
+      disabled={disabled ?? undefined}
       data-loading={String(Boolean(loading))}
       {...props}
     >

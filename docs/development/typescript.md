@@ -115,16 +115,33 @@ Oxlint enforces this boundary with `no-restricted-imports`: `radix-ui` and
 This prevents bypassing project styling; it cannot judge Material You fidelity or
 whether a new component should have reused an existing one.
 
+## Organize i18n messages by feature
+
+- Use the existing feature/component namespace for new message keys. Dashboard
+  widget text, including configuration controls, uses `dashboard_widget_*`
+  (for example, `dashboard_widget_proxy_shortcuts_config_orientation`). Do not create a parallel
+  prefix such as `dashboard_config_*` for the same component family.
+- Include the owning component's name for messages used only by that component.
+  For example, messages exclusive to `core_service` carry a `core_service` segment
+  under their feature namespace. Dashboard options exclusive to `ProxyShortcutsWidget`
+  or `CoreShortcutsWidget` use `dashboard_widget_proxy_shortcuts_*` or
+  `dashboard_widget_core_shortcuts_*`. Shared messages belong to the smallest
+  common scope, such as `dashboard_widget_config_*` for shared configuration UI.
+- Place new keys beside the related messages in every locale file, keeping the
+  same logical groups and order across locales. Do not append unrelated new keys
+  at the end of the file. Update locale sources and regenerate Paraglide output
+  through its existing workflow; do not hand-edit generated message modules.
+
 ## What is enforced
 
-| Requirement                                                                           | Enforcement                           |
-| ------------------------------------------------------------------------------------- | ------------------------------------- |
-| Mechanical formatting, imports, Tailwind class ordering                               | Prettier                              |
-| Existing correctness, hooks, props, and import rules                                  | Oxlint                                |
-| Radix boundary                                                                        | Oxlint error outside `components/ui/` |
-| Types                                                                                 | Package TypeScript checks             |
-| CSS declarations and selectors                                                        | Existing Stylelint configuration      |
-| Meaningful slots, reusable constants, logical blank lines, component reuse and design | Mandatory code review                 |
+| Requirement                                                                                          | Enforcement                           |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Mechanical formatting, imports, Tailwind class ordering                                              | Prettier                              |
+| Existing correctness, hooks, props, and import rules                                                 | Oxlint                                |
+| Radix boundary                                                                                       | Oxlint error outside `components/ui/` |
+| Types                                                                                                | Package TypeScript checks             |
+| CSS declarations and selectors                                                                       | Existing Stylelint configuration      |
+| Meaningful slots, reusable constants, logical blank lines, component reuse, design and i18n grouping | Mandatory code review                 |
 
 Run `pnpm lint:oxlint`, `pnpm lint:prettier`, and `pnpm typecheck` as appropriate.
 The [Oxlint import rule](https://oxc.rs/docs/guide/usage/linter/rules/eslint/no-restricted-imports)

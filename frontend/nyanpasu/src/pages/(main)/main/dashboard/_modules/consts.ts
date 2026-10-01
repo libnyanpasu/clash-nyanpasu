@@ -1,5 +1,6 @@
 import { memo, ReactNode } from 'react'
 import type { DndGridItemType } from '@/components/ui/dnd-grid'
+import { WidgetId } from './widget-config'
 import { CoreShortcutsWidget, ProxyShortcutsWidget } from './widget-shortcut'
 import {
   ConnectionsWidget,
@@ -8,14 +9,7 @@ import {
   TrafficUpWidget,
 } from './widget-sparkline'
 
-export enum WidgetId {
-  TrafficDown = 'traffic-down',
-  TrafficUp = 'traffic-up',
-  Connections = 'connections',
-  Memory = 'memory',
-  ProxyShortcuts = 'proxy-shortcuts',
-  CoreShortcuts = 'core-shortcuts',
-}
+export { WidgetId } from './widget-config'
 
 export type DashboardItem = DndGridItemType<string> & { type: WidgetId }
 

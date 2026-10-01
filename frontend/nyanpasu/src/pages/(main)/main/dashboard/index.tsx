@@ -101,7 +101,11 @@ function DashboardDragOverlay({
             >
               <DndGridProvider
                 value={{
-                  displayItems: [],
+                  displayItems: activeDrag.dragIdPrefix
+                    ? []
+                    : displayItems.filter(
+                        (item) => item.id === activeDrag.itemId,
+                      ),
                   getItemRect: () => ({
                     left: 0,
                     top: 0,
@@ -113,7 +117,7 @@ function DashboardDragOverlay({
                   resizingItemId: null,
                   disabled: true,
                   sourceOnly: true,
-                  dragIdPrefix: '',
+                  dragIdPrefix: activeDrag.dragIdPrefix,
                   isOverlay: true,
                   constraintsMapRef: { current: {} },
                   onResizeStart: () => {},
@@ -133,10 +137,8 @@ function DashboardDragOverlay({
 const WidgetRender = () => {
   const { isEditing, setOpenSheet } = useDashboardContext()
 
-  const [layoutStorage, setLayoutStorage] = useKvStorage<LayoutStorage>(
-    'dashboard-widgets',
-    DEFAULT_LAYOUTS,
-  )
+  const [layoutStorage, setLayoutStorage, { isLoading: layoutLoading }] =
+    useKvStorage<LayoutStorage>('dashboard-widgets', DEFAULT_LAYOUTS)
 
   const [gridSize, setGridSize] = useState<GridSize | null>(null)
 
@@ -248,7 +250,7 @@ const WidgetRender = () => {
           minCellSize={64}
           onSizeChange={handleSizeChange}
           gap={16}
-          disabled={!isEditing}
+          disabled={!isEditing || layoutLoading}
         >
           {renderWidget}
         </DndGrid>

@@ -6,7 +6,11 @@ const LOCAL_CACHE_PREFIX = 'nyanpasu-kv-:'
 /** Mirrors the `WEB_STORAGE_KEY_PREFIX` constant on the backend. */
 const WEB_KEY_PREFIX = 'web:'
 
-function getLocalCache<T>(key: string, defaultValue: T): T {
+function getLocalCache<T>(
+  key: string,
+  defaultValue: T,
+  migrate?: (value: unknown) => T,
+): T {
   try {
     const raw = localStorage.getItem(LOCAL_CACHE_PREFIX + btoa(key))
 
@@ -14,7 +18,8 @@ function getLocalCache<T>(key: string, defaultValue: T): T {
       return defaultValue
     }
 
-    return JSON.parse(raw) as T
+    const parsed: unknown = JSON.parse(raw)
+    return migrate ? migrate(parsed) : (parsed as T)
   } catch {
     return defaultValue
   }
@@ -34,7 +39,7 @@ function removeLocalCache(key: string): void {
 
 export interface UseKvStorageOptions<T> {
   /**
-   * Called with the raw parsed value when it is loaded from the backend.
+   * Called with the raw parsed value from the cache, backend, or events.
    * Use this to transform old data shapes into the current shape.
    */
   migrate?: (value: unknown) => T
@@ -46,11 +51,13 @@ export interface UseKvStorageOptions<T> {
  * - Reads the localStorage cache immediately so the UI has a value on first
  *   render without flickering.
  * - Fetches the authoritative value from the backend on mount; the backend
- *   always wins.
+ *   wins unless a newer write or event overtakes that read.
  * - Listens for `StorageValueChangedEvent` so all open windows stay in sync.
  * - Writing calls the generated `rpc.mutations.setStorageItem` binding and
  *   optimistically updates local
  *   state; the subsequent backend event confirms the change.
+ * - The setter returns whether the mutation was confirmed. Failed writes keep
+ *   the optimistic value available for a consumer to display and retry.
  */
 export function useKvStorage<T>(
   key: string,
@@ -58,15 +65,20 @@ export function useKvStorage<T>(
   options?: UseKvStorageOptions<T>,
 ): readonly [
   T,
-  (value: T | ((prev: T) => T)) => Promise<void>,
+  (value: T | ((prev: T) => T)) => Promise<boolean>,
   {
     isLoading: boolean
+    readError: unknown | null
+    refresh: () => Promise<void>
   },
 ] {
   const [value, setValueState] = useState<T>(() =>
-    getLocalCache(key, defaultValue),
+    getLocalCache(key, defaultValue, options?.migrate),
   )
   const [isLoading, setIsLoading] = useState(true)
+  const [readError, setReadError] = useState<unknown | null>(null)
+  const refreshRef = useRef<() => Promise<void>>(async () => {})
+  const refreshStorage = useCallback(() => refreshRef.current(), [])
 
   // Stable refs to avoid stale closures
   const defaultValueRef = useRef(defaultValue)
@@ -81,6 +93,8 @@ export function useKvStorage<T>(
   // redundant re-render. The set stores the serialized JSON of each in-flight
   // write; when the confirming event arrives we just discard it.
   const pendingWritesRef = useRef<Set<string>>(new Set())
+  const revisionRef = useRef(0)
+  const activeWritesRef = useRef(0)
 
   const applyMigrate = useCallback((raw: unknown): T => {
     return migrateRef.current ? migrateRef.current(raw) : (raw as T)
@@ -93,17 +107,40 @@ export function useKvStorage<T>(
   useEffect(() => {
     if (cachedKeyRef.current !== key) {
       cachedKeyRef.current = key
-      setValueState(getLocalCache(key, defaultValueRef.current))
+      const cached = getLocalCache(
+        key,
+        defaultValueRef.current,
+        migrateRef.current,
+      )
+      valueRef.current = cached
+      setValueState(cached)
       setIsLoading(true)
     }
 
     let disposed = false
     const refresh = async () => {
+      const revision = revisionRef.current
+      const readingDuringWrite = activeWritesRef.current > 0
+      setIsLoading(true)
       try {
         const result = await invokeQuery(rpc.queries.getStorageItem(key))
         if (disposed) return
-        if (result.status === 'error') throw result.error
+        // A read started before/during a write must not replace its preview or
+        // a newer event snapshot with an older backend response.
+        if (
+          readingDuringWrite ||
+          activeWritesRef.current > 0 ||
+          revision !== revisionRef.current
+        ) {
+          return
+        }
+
+        if (result.status === 'error') {
+          throw result.error
+        }
+
         if (result.data === null) {
+          valueRef.current = defaultValueRef.current
           setValueState(defaultValueRef.current)
           removeLocalCache(key)
         } else {
@@ -111,20 +148,29 @@ export function useKvStorage<T>(
           // Usually the backend confirms the cached value; keeping the state
           // object then spares every reader a render.
           if (JSON.stringify(migrated) !== JSON.stringify(valueRef.current)) {
+            valueRef.current = migrated
             setValueState(migrated)
             setLocalCache(key, migrated)
           }
         }
+        setReadError(null)
       } catch (error) {
+        if (disposed) return
+        setReadError(error)
         console.error('[useKvStorage] read failed:', error)
       } finally {
         if (!disposed) setIsLoading(false)
       }
     }
+
+    refreshRef.current = refresh
+
     const stopResync = rpc.listenResync(() => {
       refresh()
     })
+
     refresh()
+
     return () => {
       disposed = true
       stopResync()
@@ -141,7 +187,9 @@ export function useKvStorage<T>(
         }
 
         if (event.payload.value === null) {
+          revisionRef.current += 1
           pendingWritesRef.current.delete('null')
+          valueRef.current = defaultValueRef.current
           setValueState(defaultValueRef.current)
           removeLocalCache(key)
         } else {
@@ -168,6 +216,8 @@ export function useKvStorage<T>(
                 : firstParsed
             const migrated = applyMigrate(parsed)
 
+            revisionRef.current += 1
+            valueRef.current = migrated
             setValueState(migrated)
             setLocalCache(key, migrated)
           } catch {
@@ -190,6 +240,8 @@ export function useKvStorage<T>(
           : newValue
 
       const serialized = JSON.stringify(resolved)
+      revisionRef.current += 1
+      activeWritesRef.current += 1
 
       // Register this write so the confirming event can be suppressed.
       // The backend double-encodes the value in the event, so we store the
@@ -197,22 +249,37 @@ export function useKvStorage<T>(
       pendingWritesRef.current.add(JSON.stringify(serialized))
 
       // Optimistic update — the backend event will also arrive and confirm
+      valueRef.current = resolved
       setValueState(resolved)
       setLocalCache(key, resolved)
 
-      const result = await invokeMutation(rpc.mutations.setStorageItem, [
-        key,
-        serialized,
-      ])
+      try {
+        const result = await invokeMutation(rpc.mutations.setStorageItem, [
+          key,
+          serialized,
+        ])
+        if (result.status === 'error') {
+          throw result.error
+        }
 
-      if (result.status === 'error') {
-        console.error('[useKvStorage] setStorageItem failed:', result.error)
+        return true
+      } catch (error) {
+        pendingWritesRef.current.delete(JSON.stringify(serialized))
+        console.error('[useKvStorage] setStorageItem failed:', error)
+
+        return false
+      } finally {
+        activeWritesRef.current -= 1
       }
     },
     [key],
   )
 
-  return [value, setValue, { isLoading }] as const
+  return [
+    value,
+    setValue,
+    { isLoading, readError, refresh: refreshStorage },
+  ] as const
 }
 
 /**

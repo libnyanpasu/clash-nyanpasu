@@ -99,6 +99,7 @@ export function DndGridRoot({ children }: PropsWithChildren) {
 
     setActiveDrag({
       itemId: plainId,
+      dragIdPrefix: reg.dragIdPrefix,
       dims: {
         width: w * cellW + (w - 1) * gap,
         height: h * cellH + (h - 1) * gap,

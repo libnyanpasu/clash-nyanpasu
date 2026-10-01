@@ -16,6 +16,7 @@ export type GridRegistration = {
 
 export type ActiveDrag = {
   itemId: string
+  dragIdPrefix: string
   dims: { width: number; height: number }
 }
 

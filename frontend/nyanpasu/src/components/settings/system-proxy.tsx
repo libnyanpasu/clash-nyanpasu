@@ -11,6 +11,7 @@ const ProxyButton = ({
   className,
   isActive,
   loading,
+  disabled,
   children,
   ...props
 }: ButtonProps & {
@@ -26,7 +27,7 @@ const ProxyButton = ({
       )}
       data-active={String(Boolean(isActive))}
       data-loading={String(Boolean(loading))}
-      disabled={loading}
+      disabled={loading || disabled}
       variant="fab"
       {...props}
     >

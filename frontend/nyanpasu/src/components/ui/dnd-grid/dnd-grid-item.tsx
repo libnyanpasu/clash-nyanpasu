@@ -211,6 +211,12 @@ function DndGridItemDraggable<T extends string>({
       }}
       {...attributes}
       {...listeners}
+      onPointerDown={(event) => {
+        // Portaled controls bubble through React but are outside the drag surface.
+        if (event.currentTarget.contains(event.target as Node)) {
+          listeners?.onPointerDown?.(event)
+        }
+      }}
     >
       {children}
 

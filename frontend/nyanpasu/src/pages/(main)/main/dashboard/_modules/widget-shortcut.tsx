@@ -7,6 +7,7 @@ import {
 } from '@/components/settings/system-proxy'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { useDndGridContext } from '@/components/ui/dnd-grid/context'
 import TextMarquee from '@/components/ui/text-marquee'
 import useCoreIcon from '@/hooks/use-core-icon'
 import { m } from '@/paraglide/messages'
@@ -23,6 +24,12 @@ import {
 import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { WidgetComponentProps } from './consts'
+import { useWidgetConfig } from './provider'
+import {
+  PROXY_HORIZONTAL_MIN_WIDTH,
+  WidgetConfigs,
+  WidgetId,
+} from './widget-config'
 import WidgetItem from './widget-item'
 
 enum ProxyStatus {
@@ -105,15 +112,63 @@ export function ProxyShortcutsWidget({
   id,
   onCloseClick,
 }: WidgetComponentProps) {
+  const config = useWidgetConfig(id, WidgetId.ProxyShortcuts)
+  const { sourceOnly, displayItems } = useDndGridContext()
+  const horizontal = config.orientation === 'horizontal'
+  const tooNarrow =
+    horizontal &&
+    config.buttons === 'both' &&
+    (displayItems.find((item) => item.id === id)?.w ?? 0) <
+      PROXY_HORIZONTAL_MIN_WIDTH
+  const buttons =
+    config.order === 'system-first' ? ['system', 'tun'] : ['tun', 'system']
+
   return (
-    <WidgetItem id={id} minW={3} minH={2} onCloseClick={onCloseClick}>
+    <WidgetItem
+      id={id}
+      widgetType={WidgetId.ProxyShortcuts}
+      minW={
+        horizontal && config.buttons === 'both' ? PROXY_HORIZONTAL_MIN_WIDTH : 3
+      }
+      minH={2}
+      onCloseClick={onCloseClick}
+    >
       <Card className="flex size-full flex-col justify-between">
         <ProxyTitleRow />
 
-        <CardContent className="flex-1 gap-3">
-          <SystemProxyButton className="h-full rounded-3xl" />
-
-          <TunModeButton className="h-full rounded-3xl" />
+        <CardContent
+          className={cn('min-h-0 flex-1 gap-3', horizontal && 'flex-row')}
+          data-slot="proxy-shortcut-buttons"
+          data-orientation={config.orientation}
+        >
+          {tooNarrow ? (
+            <p className="text-on-surface-variant self-center text-sm">
+              {m.dashboard_widget_proxy_shortcuts_config_widen({
+                columns: PROXY_HORIZONTAL_MIN_WIDTH,
+              })}
+            </p>
+          ) : (
+            buttons
+              .filter(
+                (button) =>
+                  config.buttons === 'both' || config.buttons === button,
+              )
+              .map((button) =>
+                button === 'system' ? (
+                  <SystemProxyButton
+                    key={button}
+                    disabled={sourceOnly}
+                    className="h-full min-w-0 flex-1 rounded-3xl"
+                  />
+                ) : (
+                  <TunModeButton
+                    key={button}
+                    disabled={sourceOnly}
+                    className="h-full min-w-0 flex-1 rounded-3xl"
+                  />
+                ),
+              )
+          )}
         </CardContent>
       </Card>
     </WidgetItem>
@@ -206,7 +261,11 @@ const CoreStatusBadge = () => {
   )
 }
 
-const CurrentCoreCard = () => {
+const CurrentCoreCard = ({
+  config,
+}: {
+  config: WidgetConfigs[WidgetId.CoreShortcuts]
+}) => {
   const { value: currentCoreKey } = useSetting('core')
 
   const { data: currentVersion } = useClashCoreVersion(currentCoreKey)
@@ -231,7 +290,11 @@ const CurrentCoreCard = () => {
     <Button
       variant="raised"
       className={cn(
-        'group grid h-auto min-w-0 flex-1 grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)] rounded-[20px] px-2.5 py-0 text-left',
+        'group grid h-auto min-w-0 flex-1 rounded-[20px] px-2.5 py-0 text-left',
+        config.showChannel
+          ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
+          : 'grid-rows-1',
+        config.density === 'compact' && 'gap-1 px-2',
         'bg-surface-variant/30 text-on-surface hover:bg-surface-variant/50 shadow-none hover:shadow-none focus:shadow-none',
         'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
       )}
@@ -241,11 +304,19 @@ const CurrentCoreCard = () => {
     >
       <Link to="/main/settings/clash">
         <div className="flex w-full min-w-0 shrink-0 items-center gap-3">
-          <div className="bg-surface/60 grid size-10 shrink-0 place-items-center rounded-xl">
+          <div
+            className={cn(
+              'bg-surface/60 grid shrink-0 place-items-center rounded-xl',
+              config.density === 'compact' ? 'size-8' : 'size-10',
+            )}
+          >
             <img
               src={currentCoreIcon}
               alt=""
-              className="size-8 object-contain"
+              className={cn(
+                'object-contain',
+                config.density === 'compact' ? 'size-6' : 'size-8',
+              )}
               data-slot="core-icon"
             />
           </div>
@@ -258,13 +329,15 @@ const CurrentCoreCard = () => {
             >
               {currentCoreName || '—'}
             </div>
-            <div
-              className="text-on-surface-variant truncate text-xs leading-4 font-normal"
-              title={currentVersion}
-              data-slot="core-version"
-            >
-              {currentVersion ?? '—'}
-            </div>
+            {config.showVersion && (
+              <div
+                className="text-on-surface-variant truncate text-xs leading-4 font-normal"
+                title={currentVersion}
+                data-slot="core-version"
+              >
+                {currentVersion ?? '—'}
+              </div>
+            )}
           </div>
 
           {coreStatus && (
@@ -291,18 +364,23 @@ const CurrentCoreCard = () => {
           )}
         </div>
 
-        <div
-          className="border-outline-variant/40 text-on-surface-variant flex w-full min-w-0 items-center gap-2 border-t text-xs leading-4 font-normal"
-          data-slot="core-control-channel"
-        >
-          <span className="min-w-0 truncate">
-            {m.settings_clash_control_channel_label()}
-          </span>
-          <span className="text-on-surface ml-auto shrink-0 font-medium">
-            {channel}
-          </span>
-          <ChevronRightRounded className="size-4 shrink-0" aria-hidden="true" />
-        </div>
+        {config.showChannel && (
+          <div
+            className="border-outline-variant/40 text-on-surface-variant flex w-full min-w-0 items-center gap-2 border-t text-xs leading-4 font-normal"
+            data-slot="core-control-channel"
+          >
+            <span className="min-w-0 truncate">
+              {m.settings_clash_control_channel_label()}
+            </span>
+            <span className="text-on-surface ml-auto shrink-0 font-medium">
+              {channel}
+            </span>
+            <ChevronRightRounded
+              className="size-4 shrink-0"
+              aria-hidden="true"
+            />
+          </div>
+        )}
       </Link>
     </Button>
   )
@@ -312,8 +390,16 @@ export function CoreShortcutsWidget({
   id,
   onCloseClick,
 }: WidgetComponentProps) {
+  const config = useWidgetConfig(id, WidgetId.CoreShortcuts)
+
   return (
-    <WidgetItem id={id} minW={4} minH={2} onCloseClick={onCloseClick}>
+    <WidgetItem
+      id={id}
+      widgetType={WidgetId.CoreShortcuts}
+      minW={4}
+      minH={2}
+      onCloseClick={onCloseClick}
+    >
       <Card className="flex size-full flex-col justify-between">
         <CardHeader className="shrink-0 gap-3 pt-3">
           <span className="shrink-0 text-base font-medium">
@@ -326,7 +412,7 @@ export function CoreShortcutsWidget({
         </CardHeader>
 
         <CardContent className="min-h-0 flex-1 pt-2 pb-3">
-          <CurrentCoreCard />
+          <CurrentCoreCard config={config} />
         </CardContent>
       </Card>
     </WidgetItem>

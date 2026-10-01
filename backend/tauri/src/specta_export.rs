@@ -99,6 +99,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::flush_system_dns_cache,
             ipc::open_app_config_dir,
             ipc::open_app_data_dir,
+            ipc::open_backups_dir,
+            ipc::create_config_backup,
             ipc::open_logs_dir,
             ipc::open_web_url,
             ipc::open_core_dir,

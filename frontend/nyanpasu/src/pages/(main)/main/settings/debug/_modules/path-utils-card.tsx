@@ -2,7 +2,9 @@ import { Button, ButtonProps } from '@/components/ui/button'
 import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { rpc } from '@nyanpasu/interface'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
+import { rpc, unwrapResult } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 
 const PathButton = ({
@@ -41,6 +43,31 @@ export default function PathUtilsCard() {
     await rpc.openLogsDir()
   })
 
+  const handleOpenBackupDirectory = useLockFn(async () => {
+    await rpc.openBackupsDir()
+  })
+
+  const handleCreateBackup = useLockFn(async () => {
+    try {
+      const backup = unwrapResult(await rpc.createConfigBackup())
+
+      await message(
+        m.settings_debug_utils_create_backup_success({ name: backup.name }),
+        {
+          kind: 'info',
+        },
+      )
+    } catch (error) {
+      await message(
+        `${m.settings_debug_utils_create_backup_error()}: ${formatError(error)}`,
+        {
+          kind: 'error',
+          error,
+        },
+      )
+    }
+  })
+
   return (
     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
       <PathButton onClick={handleOpenConfigDirectory}>
@@ -57,6 +84,14 @@ export default function PathUtilsCard() {
 
       <PathButton onClick={handleOpenLogDirectory}>
         {m.settings_debug_utils_open_log_directory()}
+      </PathButton>
+
+      <PathButton onClick={handleOpenBackupDirectory}>
+        {m.settings_debug_utils_open_backup_directory()}
+      </PathButton>
+
+      <PathButton onClick={handleCreateBackup}>
+        {m.settings_debug_utils_create_backup()}
       </PathButton>
     </div>
   )

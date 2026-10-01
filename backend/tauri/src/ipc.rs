@@ -147,6 +147,7 @@ unknown_domain!(
     serde_json::Error,
     tauri::Error,
     anyhow::Error,
+    backup::BackupError,
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;
@@ -695,6 +696,31 @@ pub fn open_app_config_dir() -> Result<()> {
 pub fn open_app_data_dir() -> Result<()> {
     let data_dir = (dirs::app_data_dir())?;
     (crate::utils::open::that(data_dir))?;
+    Ok(())
+}
+
+#[derive(specta::Type, serde::Serialize)]
+pub struct ConfigBackupInfo {
+    pub name: String,
+    pub path: String,
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn create_config_backup(client: State<'_, NyanpasuClient>) -> Result<ConfigBackupInfo> {
+    let backup = client.create_config_backup().await?;
+    Ok(ConfigBackupInfo {
+        name: backup.name,
+        path: backup.path.to_string_lossy().into_owned(),
+    })
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub fn open_backups_dir(client: State<'_, NyanpasuClient>) -> Result<()> {
+    (crate::utils::open::that(client.backups_dir()?))?;
     Ok(())
 }
 

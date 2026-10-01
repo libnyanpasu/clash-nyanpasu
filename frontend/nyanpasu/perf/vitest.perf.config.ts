@@ -108,6 +108,19 @@ export default defineConfig({
     ],
     dedupe: ['react', 'react-dom'],
   },
+  // Dependencies only some benchmarks import. Vite otherwise discovers them
+  // mid-run and reloads the page, which breaks the module mocks of the
+  // benchmark that is running.
+  optimizeDeps: {
+    include: [
+      '@dnd-kit/helpers',
+      '@dnd-kit/react',
+      '@dnd-kit/react/sortable',
+      '@tanstack/react-table',
+      '@uidotdev/usehooks',
+      'change-case',
+    ],
+  },
   test: {
     include: ['perf/**/*.bench.test.tsx'],
     testTimeout: 300_000,

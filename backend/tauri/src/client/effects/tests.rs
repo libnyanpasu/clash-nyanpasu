@@ -473,11 +473,12 @@ fn no_op_and_session_saves_do_not_dispatch() {
 
 #[test]
 fn rejected_source_never_dispatches() {
-    use crate::bundle::Channel;
+    use crate::{bundle::Channel, client::ClientError, state::config_error::ConfigError};
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
     let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
     args.effects = port.clone();
+    args.bundle_metadata.release_channel = Channel::Nightly;
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         let mut nightly = NyanpasuAppConfig::new_empty_patch();
@@ -485,11 +486,16 @@ fn rejected_source_never_dispatches() {
         client.patch_app_config(nightly).await.unwrap();
         client.inner.effects.barrier().await;
         port.calls.lock().unwrap().clear();
-        // The application actor refuses to leave the nightly channel, so the
+        // The nightly build refuses to leave the nightly channel, so the
         // language change riding on the same patch is never committed.
         let mut rejected = language(I18nLanguage::Korean);
         rejected.release_channel = Some(Some(Channel::Stable));
-        assert!(client.patch_app_config(rejected).await.is_err());
+        assert!(matches!(
+            client.patch_app_config(rejected).await,
+            Err(ClientError::Config(ConfigError::LeaveNightlyChannel {
+                to: Channel::Stable
+            }))
+        ));
         client.inner.effects.barrier().await;
         assert!(port.calls.lock().unwrap().is_empty());
         assert_ne!(

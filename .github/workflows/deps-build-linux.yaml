@@ -189,7 +189,7 @@ jobs:
         run: |
           case "${{ inputs.arch }}" in
             "aarch64")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb" -c ''{"bundle":{"createUpdaterArtifacts":false}}''' }} ;;
           esac
 
       - name: Calc the archive signature

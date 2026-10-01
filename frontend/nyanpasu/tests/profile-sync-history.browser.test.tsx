@@ -109,3 +109,93 @@ test('live state replaces admission history and selecting a run loads its logs',
   expect(container.textContent).toContain('HTTP 403')
   expect(requested).toEqual(['active', 'failed'])
 })
+
+test('an idle profile stops polling and a finished run refreshes once', async ({
+  onTestFinished,
+}) => {
+  const finished: RunDto = {
+    id: 'done',
+    job: 'profiles/sync/p1',
+    definition_version: '1',
+    admission_sequence: '1',
+    trigger: 'manual',
+    scheduled_at: null,
+    admitted_at: '2026-09-30T00:00:00Z',
+    finished_at: '2026-09-30T00:00:01Z',
+    state: {
+      kind: 'finished',
+      completion: {
+        outcome: { kind: 'succeeded' },
+        output: { kind: 'none' },
+        journal: { kind: 'durable' },
+      },
+    },
+    last_log_sequence: '1',
+    dropped_log_count: '0',
+  } as RunDto
+  const running: RunDto = {
+    ...finished,
+    id: 'live',
+    admission_sequence: '2',
+    finished_at: null,
+    state: { kind: 'running' },
+  } as RunDto
+  let active = true
+  const calls = { status: 0, runs: 0, logs: 0 }
+  mockIPC((_wireCommand, args) => {
+    const { method: command } = args as { method: string }
+    switch (command) {
+      case 'get_profile_sync_status':
+        calls.status += 1
+        return {
+          scheduled: true,
+          next_run_at: '2999-01-01T00:00:00Z',
+          active: active ? [running] : [],
+          journal_degraded: false,
+          registration_error: null,
+          history_limit: 10,
+        }
+      case 'get_profile_sync_runs':
+        calls.runs += 1
+        return {
+          items: active
+            ? [finished]
+            : [{ ...running, state: finished.state }, finished],
+          next: null,
+        }
+      case 'get_profile_sync_logs':
+        calls.logs += 1
+        return { items: [], next: null }
+      default:
+        throw new Error(`Unexpected command: ${command}`)
+    }
+  })
+  const queries = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  onTestFinished(() => {
+    root.unmount()
+    container.remove()
+    queries.clear()
+    clearMocks()
+  })
+  root.render(
+    <QueryClientProvider client={queries}>
+      <SyncHistoryCard uid="p1" />
+    </QueryClientProvider>,
+  )
+  // A live run keeps the status and its logs polling.
+  await expect.poll(() => calls.logs, { timeout: 5000 }).toBeGreaterThan(1)
+  expect(calls.status).toBeGreaterThan(1)
+
+  active = false
+  // The run leaves the active set: the history and the logs refresh once.
+  await expect.poll(() => calls.runs, { timeout: 5000 }).toBe(2)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  const settled = { ...calls }
+  await new Promise((resolve) => setTimeout(resolve, 4500))
+  expect(calls).toEqual(settled)
+})

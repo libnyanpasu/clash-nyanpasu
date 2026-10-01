@@ -54,17 +54,6 @@ export const scopedTransformsOf = (
   return item.config.transforms ?? []
 }
 
-export interface ProfileHelperFn {
-  view: () => Promise<unknown>
-  update: (
-    option?: RemoteProfileOptionsPatch_Deserialize | null,
-  ) => Promise<MutationOutcome<null>>
-  drop: () => Promise<MutationOutcome<null>>
-}
-
-export type ProfileQueryResultItem = ProfileItem_Serialize &
-  Partial<ProfileHelperFn>
-
 export type ProfileQueryResult = NonNullable<
   ReturnType<typeof useProfile>['query']['data']
 >
@@ -86,46 +75,51 @@ export type CreateParams =
       data: { request: NewProfileRequest_Deserialize; fileData: string | null }
     }
 
-export const useProfile = (options?: { without_helper_fn?: boolean }) => {
-  const queryClient = useQueryClient()
+// Mutations and the `clash_config` state event refetch the profiles, but a
+// change that does not touch the runtime (a scheduled sync of an inactive
+// subscription) emits nothing. A finite stale time still picks that up on the
+// next mount or window focus, without refetching on every route switch.
+const PROFILES_STALE_TIME = 30_000
+
+const profilesQuery = () => {
   const profilesOptions = queries.getProfiles()
+  return {
+    queryKey: profilesOptions.queryKey,
+    queryFn: async () => {
+      const result = unwrapResult(await invokeQuery(profilesOptions))
+      if (!result) return undefined
+      return { ...result, items: result.items ?? [] }
+    },
+    staleTime: PROFILES_STALE_TIME,
+  }
+}
+
+export const useProfile = () => {
+  const query = useQuery(profilesQuery())
+
+  return { query, ...useProfileMutations() }
+}
+
+/** The active config's uid; re-renders only when the active profile changes. */
+export const useCurrentProfileUid = () =>
+  useQuery({ ...profilesQuery(), select: (data) => data?.current }).data
+
+/** The profile mutations, for components that do not read the profiles. */
+export const useProfileMutations = () => {
+  const queryClient = useQueryClient()
   const importProfile = mutations.importProfile
   const createProfile = mutations.createProfile
   const updateProfile = mutations.updateProfile
   const patchProfileMetadata = mutations.patchProfileMetadata
   const patchRemoteProfileOptions = mutations.patchRemoteProfileOptions
   const replaceProfileDefinition = mutations.replaceProfileDefinition
-  const viewProfile = mutations.viewProfile
   const activateProfile = mutations.activateProfile
   const setProfileValidFields = mutations.setProfileValidFields
   const setGlobalTransformsOptions = mutations.setGlobalTransforms
   const reorderProfilesByList = mutations.reorderProfilesByList
   const deleteProfile = mutations.deleteProfile
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: profilesOptions.queryKey })
-
-  const query = useQuery({
-    queryKey: profilesOptions.queryKey,
-    queryFn: async () => {
-      const result = unwrapResult(await invokeQuery(profilesOptions))
-      if (!result) return undefined
-      const items = result.items ?? []
-      if (options?.without_helper_fn) {
-        return { ...result, items }
-      }
-      return {
-        ...result,
-        items: items.map((item) => ({
-          ...item,
-          view: async () =>
-            unwrapResult(await invokeMutation(viewProfile, [item.uid])),
-          update: (option?: RemoteProfileOptionsPatch_Deserialize | null) =>
-            update.mutateAsync({ uid: item.uid, option: option ?? null }),
-          drop: () => drop.mutateAsync(item.uid),
-        })),
-      }
-    },
-  })
+    queryClient.invalidateQueries({ queryKey: queries.getProfiles().queryKey })
 
   // Profile mutations return the full MutationOutcome so MutationCache can
   // observe `committed_degraded`. Do not collapse to bare values or legacy
@@ -249,7 +243,6 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   })
 
   return {
-    query,
     create,
     update,
     patchMetadata,

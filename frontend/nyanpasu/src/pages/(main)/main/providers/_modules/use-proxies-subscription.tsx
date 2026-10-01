@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
-import { ClashProviderProxies } from '@nyanpasu/interface'
+import { ClashProxiesProviderQueryItem } from '@nyanpasu/interface'
 
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
 
-export const useProxiesSubscription = (data: ClashProviderProxies) => {
+export const useProxiesSubscription = (data: ClashProxiesProviderQueryItem) => {
   return useMemo(() => {
     let progress = 0
     let total = 0

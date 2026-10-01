@@ -5,7 +5,10 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useProfile, type ProfileItem_Serialize } from '@nyanpasu/interface'
+import {
+  useProfileMutations,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import { useNavigate } from '@tanstack/react-router'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { Route as IndexRoute } from '../$uid'
@@ -16,7 +19,7 @@ export const useDeleteProfile = (
     onSuccess?: () => void | Promise<void>
   },
 ) => {
-  const { drop } = useProfile()
+  const { drop } = useProfileMutations()
 
   const blockTask = useBlockTask(`delete-profile-${profile.uid}`, async () => {
     try {

@@ -17,7 +17,10 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useProfile, type ProfileItem_Serialize } from '@nyanpasu/interface'
+import {
+  useProfileMutations,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({
@@ -30,7 +33,7 @@ export default function ProfileNameEditor({
 }: ComponentProps<typeof ModalTrigger> & {
   profile: ProfileItem_Serialize
 }) {
-  const { patchMetadata } = useProfile()
+  const { patchMetadata } = useProfileMutations()
 
   const [open, setOpen] = useState(false)
 

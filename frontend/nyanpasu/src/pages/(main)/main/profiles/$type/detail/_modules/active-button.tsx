@@ -6,19 +6,17 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
+  useCurrentProfileUid,
   useDeleteClashConnections,
-  useProfile,
+  useProfileMutations,
   type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 
 export const useActiveProfile = (profile: ProfileItem_Serialize) => {
-  const {
-    query: { data },
-    activate,
-  } = useProfile()
+  const { activate } = useProfileMutations()
 
-  const isActive = data?.current === profile.uid
+  const isActive = useCurrentProfileUid() === profile.uid
 
   const deleteConnections = useDeleteClashConnections()
 

@@ -1,14 +1,19 @@
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { ClashRulesProviderQueryItem } from '@nyanpasu/interface'
+import {
+  ClashRulesProviderQueryItem,
+  useUpdateClashRulesProvider,
+} from '@nyanpasu/interface'
 
 export const useRulesProviderUpdate = (data: ClashRulesProviderQueryItem) => {
+  const update = useUpdateClashRulesProvider()
+
   const blockTask = useBlockTask(
     `update-rules-provider-${data.name}`,
     async () => {
       try {
-        await data.mutate()
+        await update.mutateAsync(data.name)
       } catch (error) {
         console.error('Failed to update rules provider', error)
         message(`Update provider failed: \n ${formatError(error)}`, {

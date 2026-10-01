@@ -1,11 +1,18 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { invokeMutation, invokeQuery } from './query-options'
 import { rpc } from './rpc'
 import { type ProxyProviderItem_Serialize } from './rpc-bindings'
 
-export interface ClashProxiesProviderQueryItem extends ProxyProviderItem_Serialize {
-  mutate: () => Promise<void>
+/**
+ * The fields the providers pages show. The full items carry every node with
+ * its delay history, which changes on every health check.
+ */
+export type ClashProxiesProviderQueryItem = Pick<
+  ProxyProviderItem_Serialize,
+  'name' | 'type' | 'vehicleType' | 'updatedAt' | 'subscriptionInfo'
+> & {
+  proxyCount: number
 }
 
 export type ClashProxiesProviderQuery = Record<
@@ -15,8 +22,7 @@ export type ClashProxiesProviderQuery = Record<
 
 export const useClashProxiesProvider = () => {
   const providersQuery = rpc.queries.clashApiGetProvidersProxies()
-  const updateProxyProvider = rpc.mutations.updateProxyProvider
-  const query = useQuery({
+  return useQuery({
     queryKey: providersQuery.queryKey,
     queryFn: async () => {
       const result = unwrapResult(await invokeQuery(providersQuery))
@@ -33,18 +39,29 @@ export const useClashProxiesProvider = () => {
           .map(([key, value]) => [
             key,
             {
-              ...value,
-              mutate: async () => {
-                unwrapResult(await invokeMutation(updateProxyProvider, [key]))
-                await query.refetch()
-              },
+              name: value.name,
+              type: value.type,
+              vehicleType: value.vehicleType,
+              updatedAt: value.updatedAt,
+              subscriptionInfo: value.subscriptionInfo,
+              proxyCount: value.proxies.length,
             },
           ]),
       ) as ClashProxiesProviderQuery
     },
   })
+}
 
-  return {
-    ...query,
-  }
+export const useUpdateClashProxiesProvider = () => {
+  const queryClient = useQueryClient()
+  const updateProxyProvider = rpc.mutations.updateProxyProvider
+  return useMutation({
+    mutationKey: updateProxyProvider.mutationKey,
+    mutationFn: async (name: string) =>
+      unwrapResult(await invokeMutation(updateProxyProvider, [name])),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: rpc.queries.clashApiGetProvidersProxies().queryKey,
+      }),
+  })
 }

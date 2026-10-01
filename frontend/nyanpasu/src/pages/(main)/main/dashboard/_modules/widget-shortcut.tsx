@@ -1,5 +1,6 @@
 import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
 import { useMemo } from 'react'
+import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
 import {
   SystemProxyButton,
   TunModeButton,
@@ -318,6 +319,8 @@ export function CoreShortcutsWidget({
           <span className="shrink-0 text-base font-medium">
             {m.dashboard_widget_core_status()}
           </span>
+
+          <ServiceFallbackWarning className="-ml-2" />
 
           <CoreStatusBadge />
         </CardHeader>

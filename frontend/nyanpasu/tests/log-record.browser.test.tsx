@@ -62,3 +62,33 @@ test('a text record copies its raw line unchanged', async ({
   await view.getByRole('button', { name: m.logs_copy() }).click()
   expect(writeText).toHaveBeenCalledWith('{"message":"disk full"}')
 })
+
+test('the copy button returns to copy after confirming', async ({
+  onTestFinished,
+}) => {
+  const writeText = vi
+    .spyOn(navigator.clipboard, 'writeText')
+    .mockResolvedValue(undefined)
+  onTestFinished(() => writeText.mockRestore())
+  const view = await render(
+    <LogRecord
+      time={log.time}
+      level={log.type}
+      message={log.payload}
+      raw={log}
+      search=""
+      onInspect={() => {}}
+    />,
+  )
+  onTestFinished(() => view.unmount())
+
+  await view.getByRole('button', { name: m.logs_copy() }).click()
+  await expect
+    .element(view.getByRole('button', { name: m.logs_copied() }))
+    .toBeVisible()
+  await expect
+    .element(view.getByRole('button', { name: m.logs_copy() }), {
+      timeout: 4000,
+    })
+    .toBeVisible()
+})

@@ -157,16 +157,21 @@ function ClearLogsMenuItem() {
   )
 }
 
-function KernelLogsPanel() {
+function KernelLogs() {
   const [following, setFollowing] = useState(true)
   const [search, setSearch] = useState('')
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <LogSearch
-        value={search}
-        onChange={setSearch}
-        placeholder={m.logs_search_placeholder()}
-      />
+    <LogsLayout
+      source="core"
+      search={
+        <LogSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={m.logs_search_placeholder()}
+        />
+      }
+      actions={<ClearLogsButton />}
+    >
       <div className={logPanelClass}>
         <RegisterContextMenu>
           <RegisterContextMenuTrigger asChild>
@@ -184,14 +189,6 @@ function KernelLogsPanel() {
         </RegisterContextMenu>
         {!following && <LogFollowButton onClick={() => setFollowing(true)} />}
       </div>
-    </div>
-  )
-}
-
-function KernelLogs() {
-  return (
-    <LogsLayout source="core" actions={<ClearLogsButton />}>
-      <KernelLogsPanel />
     </LogsLayout>
   )
 }

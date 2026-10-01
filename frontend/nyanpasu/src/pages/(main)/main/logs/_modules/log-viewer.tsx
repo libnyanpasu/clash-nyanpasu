@@ -3,9 +3,8 @@ import CheckRounded from '~icons/material-symbols/check-rounded'
 import ContentCopyRounded from '~icons/material-symbols/content-copy-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeleteSweepRounded from '~icons/material-symbols/delete-sweep-rounded'
-import SearchRounded from '~icons/material-symbols/search-rounded'
 import VerticalAlignBottomRounded from '~icons/material-symbols/vertical-align-bottom-rounded'
-import { memo, useId, useState, type ReactNode } from 'react'
+import { memo, useEffect, useId, useState, type ReactNode } from 'react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import HighlightText from '@/components/ui/highlight-text'
 import { m } from '@/paraglide/messages'
@@ -13,8 +12,7 @@ import { cn } from '@nyanpasu/utils'
 import LogJson from './log-json'
 import LogLevelBadge from './log-level-badge'
 
-export const logPanelClass =
-  'bg-surface text-on-surface relative mx-3 mb-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl'
+export const logPanelClass = 'relative flex min-h-0 min-w-0 flex-1 flex-col'
 
 export function LogSearch({
   value,
@@ -26,20 +24,19 @@ export function LogSearch({
   placeholder: string
 }) {
   return (
-    <div className="shrink-0 px-3 pb-2" data-slot="logs-search">
-      <label className="bg-surface-variant/40 text-on-surface-variant focus-within:ring-primary flex h-10 items-center gap-3 rounded-full px-4 focus-within:ring-2">
-        <SearchRounded aria-hidden className="size-5 shrink-0" />
-        <input
-          type="search"
-          className="text-on-surface placeholder:text-on-surface-variant min-w-0 flex-1 bg-transparent text-sm outline-none"
-          aria-label={placeholder}
-          placeholder={placeholder}
-          value={value}
-          maxLength={256}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </label>
-    </div>
+    <input
+      type="search"
+      className={cn(
+        'bg-surface-variant dark:bg-surface-variant/30',
+        'h-10 min-w-32 flex-1 rounded-full px-4 text-sm outline-none',
+      )}
+      data-slot="logs-search"
+      aria-label={placeholder}
+      placeholder={placeholder}
+      value={value}
+      maxLength={256}
+      onChange={(event) => onChange(event.target.value)}
+    />
   )
 }
 
@@ -143,6 +140,11 @@ export const LogRecord = memo(function LogRecord({
   const jsonId = useId()
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
   const rawText = () =>
     typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2)
   return (

@@ -5,13 +5,25 @@ on:
     inputs:
       versionType:
         type: choice
-        description: '<major|minor|patch>'
+        description: '<major|minor|patch|premajor|preminor|prepatch|prerelease>'
         required: true
         default: 'patch'
         options:
           - major
           - minor
           - patch
+          - premajor
+          - preminor
+          - prepatch
+          - prerelease
+      preid:
+        type: choice
+        description: 'Prerelease identifier, used by pre* version types'
+        required: true
+        default: 'beta'
+        options:
+          - beta
+          - rc
 
 jobs:
   publish:
@@ -49,6 +61,11 @@ jobs:
             ${{ runner.os }}-pnpm-store-
       - name: Install
         run: pnpm i
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Test release versioning
+        run: deno test --config scripts/deno.jsonc -A scripts/publish_test.ts scripts/prepare-release_test.ts scripts/finalize-linux-release_test.ts scripts/release-channel_test.ts
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff
       - id: update-version
@@ -56,17 +73,37 @@ jobs:
         name: Bump version
         # Use npm because yarn is for some reason not able to output only the version name
         run: |
-          echo "version=$(pnpm run publish ${{ inputs.versionType }} | tail -n1)" >> $GITHUB_OUTPUT
+          VERSION=$(pnpm run publish ${{ inputs.versionType }} ${{ inputs.preid }} | tail -n1)
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::Tag v$VERSION already exists"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Prereleases feed the beta updater channel and stay out of CHANGELOG.md.
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          fi
           git add .
       - name: Generate a changelog for the new version
         shell: bash
         id: build-changelog
         run: |
           touch /tmp/changelog.md
-          git-cliff --config  cliff.toml --verbose --strip header --unreleased --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog.md
+          # A stable release lists every change since the previous stable one,
+          # folding in the commits of the prereleases leading up to it.
+          CLIFF_ARGS=(--unreleased)
+          if [ '${{ steps.update-version.outputs.prerelease }}' = 'false' ]; then
+            LAST_STABLE=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)
+            CLIFF_ARGS=(--ignore-tags 'v.*-.*' "$LAST_STABLE..HEAD")
+          fi
+          git-cliff --config  cliff.toml --verbose --strip header "${CLIFF_ARGS[@]}" --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog.md
           if [ $? -eq 0 ]; then
             CONTENT=$(cat /tmp/changelog.md)
-            cat /tmp/changelog.md | cat - ./CHANGELOG.md > temp && mv temp ./CHANGELOG.md
+            if [ '${{ steps.update-version.outputs.prerelease }}' = 'false' ]; then
+              cat /tmp/changelog.md | cat - ./CHANGELOG.md > temp && mv temp ./CHANGELOG.md
+            fi
             {
               echo 'content<<EOF'
               echo "$CONTENT"
@@ -91,6 +128,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           draft: true
+          prerelease: ${{ steps.update-version.outputs.prerelease }}
           body: ${{steps.build-changelog.outputs.content}}
           name: Clash Nyanpasu v${{steps.update-version.outputs.version}}
           tag_name: 'v${{ steps.update-version.outputs.version }}'

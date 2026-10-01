@@ -31,6 +31,12 @@ jobs:
   updater:
     name: Update Updater
     runs-on: ubuntu-latest
+    # Runs replace the same assets on the shared `updater` release. Each run
+    # rebuilds its feeds from the current release list, so a newer pending run
+    # may supersede an older one of the same kind.
+    concurrency:
+      group: updater-manifests-${{ inputs.nightly }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:

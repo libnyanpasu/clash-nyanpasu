@@ -1,17 +1,22 @@
 import NetworkCheckRounded from '~icons/material-symbols/network-check-rounded'
+import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import { filesize } from 'filesize'
 import { memo, useDeferredValue, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { useClashConnectionDetails, useClashWSStatus } from '@nyanpasu/query'
 import type { ClashConnection_Serialize } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
 import { WidgetComponentProps } from './consts'
 import { useWidgetConfig } from './provider'
+import { useWidgetHeight } from './use-widget-height'
 import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
+
+const CONNECTION_ROW_HEIGHT = 44
 
 function connectionTarget(connection: ClashConnection_Serialize) {
   return (
@@ -59,12 +64,12 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
   id,
   onCloseClick,
   canAct,
-  expanded,
-}: WidgetComponentProps & { canAct: boolean; expanded: boolean }) {
+}: WidgetComponentProps & { canAct: boolean }) {
   const config = useWidgetConfig(id, WidgetId.ActiveConnections)
   const { data, status, connectorState, retry } = useClashConnectionDetails()
   const { isLoading: isClashStatusLoading } = useClashWSStatus()
   const details = useDeferredValue(data)
+  const { ref: listRef, height: listHeight } = useWidgetHeight<HTMLDivElement>()
 
   const connections = useMemo(() => {
     const direction = config.sort
@@ -84,8 +89,12 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
               : right.downloadSpeed
         return rightRate - leftRate || left.id.localeCompare(right.id)
       })
-      .slice(0, expanded ? config.topN : Math.min(config.topN, 3))
-  }, [config.sort, config.topN, details, expanded])
+      .slice(0, config.topN)
+  }, [config.sort, config.topN, details])
+  const visibleCount =
+    listHeight == null
+      ? 1
+      : Math.max(1, Math.floor((listHeight + 4) / CONNECTION_ROW_HEIGHT))
 
   const retryDisabled =
     !canAct || connectorState !== 'connected' || status === 'connecting'
@@ -107,17 +116,32 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
                 {m.dashboard_widget_active_connections_title()}
               </span>
             </div>
-            <Link
-              aria-disabled={!canAct}
-              tabIndex={canAct ? 0 : -1}
-              onClick={(event) => {
-                if (!canAct) event.preventDefault()
-              }}
-              className={`text-primary shrink-0 text-xs hover:underline ${!canAct ? 'pointer-events-none opacity-50' : ''}`}
-              to="/main/connections"
-            >
-              {m.dashboard_widget_active_connections_open()}
-            </Link>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="basic"
+                  className="size-7 shrink-0"
+                  icon
+                  aria-label={m.dashboard_widget_active_connections_open()}
+                  asChild
+                >
+                  <Link
+                    aria-disabled={!canAct}
+                    tabIndex={canAct ? 0 : -1}
+                    className={!canAct ? 'pointer-events-none opacity-50' : ''}
+                    onClick={(event) => {
+                      if (!canAct) event.preventDefault()
+                    }}
+                    to="/main/connections"
+                  >
+                    <OpenInNewRounded className="size-4" />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {m.dashboard_widget_active_connections_open()}
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           {connectorState !== 'connected' ? (
@@ -149,11 +173,12 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
             </p>
           ) : (
             <div
-              className="min-h-0 flex-1 overflow-auto"
+              ref={listRef}
+              className="min-h-0 flex-1"
               data-slot="widget-active-connections-list"
             >
               <ul className="flex flex-col gap-1">
-                {connections.map((connection) => {
+                {connections.slice(0, visibleCount).map((connection) => {
                   const process = config.showProcess
                     ? processBasename(connection.metadata?.process)
                     : null
@@ -163,7 +188,7 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
 
                   return (
                     <li
-                      className="hover:bg-surface-variant/40 flex min-w-0 items-center justify-between gap-3 rounded-xl px-2 py-1 text-xs"
+                      className="hover:bg-surface-variant/40 flex min-h-10 min-w-0 shrink-0 items-center justify-between gap-3 rounded-xl px-2 py-1 text-xs"
                       key={connection.id}
                     >
                       <div className="min-w-0">
@@ -206,15 +231,7 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
 })
 
 export function ActiveConnectionsWidget(props: WidgetComponentProps) {
-  const { disabled, displayItems, isOverlay, sourceOnly } = useDndGridContext()
+  const { disabled, isOverlay, sourceOnly } = useDndGridContext()
   if (sourceOnly || isOverlay) return <ActiveConnectionsPreview {...props} />
-  const item = displayItems.find((candidate) => candidate.id === props.id)
-  const expanded = (item?.w ?? 4) >= 6 && (item?.h ?? 3) >= 4
-  return (
-    <ActiveConnectionsLive
-      {...props}
-      canAct={disabled && !isOverlay}
-      expanded={expanded}
-    />
-  )
+  return <ActiveConnectionsLive {...props} canAct={disabled && !isOverlay} />
 }

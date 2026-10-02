@@ -1,9 +1,11 @@
 import CloudSyncRounded from '~icons/material-symbols/cloud-sync-rounded'
+import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatRelativeTime } from '@/utils/date'
@@ -18,8 +20,11 @@ import { useMutationState } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { WidgetComponentProps } from './consts'
 import { useWidgetConfig } from './provider'
+import { useWidgetHeight } from './use-widget-height'
 import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
+
+const PROVIDER_ROW_HEIGHT = 44
 
 type ProviderKind = 'proxy' | 'rule'
 type ProviderRow = {
@@ -62,8 +67,7 @@ function ProviderUpdatesLive({
   id,
   onCloseClick,
   canAct,
-  sizeLimit,
-}: WidgetComponentProps & { canAct: boolean; sizeLimit: 1 | 3 | 5 }) {
+}: WidgetComponentProps & { canAct: boolean }) {
   const config = useWidgetConfig(id, WidgetId.ProviderUpdates)
   const allowedKinds =
     config.kinds === 'both'
@@ -78,6 +82,7 @@ function ProviderUpdatesLive({
   const updateProxy = useUpdateClashProxiesProvider()
   const updateRule = useUpdateClashRulesProvider()
   const [feedback, setFeedback] = useState<OperationFeedback>({})
+  const { ref: listRef, height: listHeight } = useWidgetHeight<HTMLDivElement>()
   const clearFeedback = (key: string) =>
     setFeedback((previous) => {
       const next = { ...previous }
@@ -127,7 +132,7 @@ function ProviderUpdatesLive({
   const selectedRows = config.resources.length
     ? config.resources
         .filter((resource) => allowedKinds.includes(resource.kind))
-        .slice(0, Math.min(config.maxItems, sizeLimit))
+        .slice(0, config.maxItems)
         .map((resource) => ({
           kind: resource.kind,
           name: resource.name,
@@ -135,8 +140,12 @@ function ProviderUpdatesLive({
         }))
     : rows
         .filter((row) => allowedKinds.includes(row.kind))
-        .slice(0, Math.min(config.maxItems, sizeLimit))
+        .slice(0, config.maxItems)
         .map((row) => ({ kind: row.kind, name: row.name, row }))
+  const visibleCount =
+    listHeight == null
+      ? 1
+      : Math.max(1, Math.floor((listHeight + 4) / PROVIDER_ROW_HEIGHT))
 
   const proxyCount =
     allowedKinds.includes('proxy') && proxies.data !== undefined
@@ -202,17 +211,32 @@ function ProviderUpdatesLive({
                 {m.dashboard_widget_provider_updates_title()}
               </span>
             </div>
-            <Link
-              aria-disabled={!canAct}
-              tabIndex={canAct ? 0 : -1}
-              onClick={(event) => {
-                if (!canAct) event.preventDefault()
-              }}
-              className={`text-primary shrink-0 text-xs hover:underline ${!canAct ? 'pointer-events-none opacity-50' : ''}`}
-              to="/main/providers"
-            >
-              {m.dashboard_widget_provider_updates_details()}
-            </Link>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="basic"
+                  className="size-7 shrink-0"
+                  icon
+                  aria-label={m.dashboard_widget_provider_updates_details()}
+                  asChild
+                >
+                  <Link
+                    aria-disabled={!canAct}
+                    tabIndex={canAct ? 0 : -1}
+                    className={!canAct ? 'pointer-events-none opacity-50' : ''}
+                    onClick={(event) => {
+                      if (!canAct) event.preventDefault()
+                    }}
+                    to="/main/providers"
+                  >
+                    <OpenInNewRounded className="size-4" />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {m.dashboard_widget_provider_updates_details()}
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           <p className="text-on-surface-variant text-xs">
@@ -228,6 +252,24 @@ function ProviderUpdatesLive({
             </p>
           )}
 
+          {Object.entries(feedback).map(([key, state]) => {
+            const separator = key.indexOf(':')
+            const name = key.slice(separator + 1)
+            const message =
+              state === 'unconfirmed'
+                ? m.dashboard_widget_provider_updates_unconfirmed()
+                : m.dashboard_widget_provider_updates_failed()
+            return (
+              <p
+                className="text-error text-xs break-words"
+                key={key}
+                role="status"
+              >
+                {name}: {message}
+              </p>
+            )
+          })}
+
           {isLoading && rows.length === 0 ? (
             <p className="text-on-surface-variant text-sm" role="status">
               {m.dashboard_widget_provider_updates_loading()}
@@ -239,101 +281,102 @@ function ProviderUpdatesLive({
                 : m.dashboard_widget_provider_updates_empty()}
             </p>
           ) : (
-            <ul className="min-h-0 flex-1 space-y-1 overflow-auto">
-              {selectedRows.map(({ kind, name, row }) => {
-                const key = providerKey(kind, name)
-                const hasKindData =
-                  kind === 'proxy'
-                    ? proxies.data !== undefined
-                    : rules.data !== undefined
-                const missing = !row && hasKindData
-                const pending =
-                  kind === 'proxy'
-                    ? pendingProxyNames.includes(name)
-                    : pendingRuleNames.includes(name)
-                const kindHasError =
-                  kind === 'proxy' ? proxies.isError : rules.isError
-                const rowFeedback = feedback[key] ?? null
-                const to =
-                  kind === 'proxy'
-                    ? '/main/providers/proxies/$key'
-                    : '/main/providers/rules/$key'
+            <div
+              ref={listRef}
+              className="min-h-0 flex-1"
+              data-slot="widget-provider-updates-list"
+            >
+              <ul className="flex flex-col gap-1">
+                {selectedRows
+                  .slice(0, visibleCount)
+                  .map(({ kind, name, row }) => {
+                    const key = providerKey(kind, name)
+                    const hasKindData =
+                      kind === 'proxy'
+                        ? proxies.data !== undefined
+                        : rules.data !== undefined
+                    const missing = !row && hasKindData
+                    const pending =
+                      kind === 'proxy'
+                        ? pendingProxyNames.includes(name)
+                        : pendingRuleNames.includes(name)
+                    const kindHasError =
+                      kind === 'proxy' ? proxies.isError : rules.isError
+                    const rowFeedback = feedback[key] ?? null
+                    const to =
+                      kind === 'proxy'
+                        ? '/main/providers/proxies/$key'
+                        : '/main/providers/rules/$key'
 
-                return (
-                  <li
-                    className="hover:bg-surface-variant/40 flex min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-xs"
-                    key={key}
-                  >
-                    <div className="min-w-0 flex-1">
-                      {missing ? (
-                        <div className="truncate font-medium">{name}</div>
-                      ) : (
-                        <Link
-                          aria-disabled={!canAct}
-                          tabIndex={canAct ? 0 : -1}
-                          onClick={(event) => {
-                            if (!canAct) event.preventDefault()
-                          }}
-                          className={`block truncate font-medium hover:underline ${!canAct ? 'pointer-events-none opacity-50' : ''}`}
-                          to={to}
-                          params={{ key: name }}
-                        >
-                          {name}
-                        </Link>
-                      )}
-                      <div className="text-on-surface-variant truncate">
-                        {row
-                          ? `${row.vehicleType ?? '—'} · ${row.type ?? '—'} · ${row.count ?? '—'} · ${formatRelativeTime(row.updatedAt, Date.now(), getLocale())}`
-                          : missing
-                            ? m.dashboard_widget_provider_updates_missing()
-                            : isLoading
-                              ? m.dashboard_widget_provider_updates_loading()
-                              : m.dashboard_widget_provider_updates_read_failed()}
-                      </div>
-                      {rowFeedback && (
-                        <div className="text-error truncate" role="status">
-                          {rowFeedback === 'unconfirmed'
-                            ? m.dashboard_widget_provider_updates_unconfirmed()
-                            : m.dashboard_widget_provider_updates_failed()}
-                        </div>
-                      )}
-                    </div>
-                    {row && (
-                      <Button
-                        className="size-8 shrink-0"
-                        icon
-                        loading={pending}
-                        disabled={
-                          !canAct ||
-                          pending ||
-                          (rowFeedback === 'unconfirmed'
-                            ? kind === 'proxy'
-                              ? proxies.isFetching
-                              : rules.isFetching
-                            : kindHasError)
-                        }
-                        aria-label={
-                          rowFeedback === 'unconfirmed'
-                            ? m.dashboard_widget_provider_updates_check({
-                                name,
-                              })
-                            : m.dashboard_widget_provider_updates_refresh({
-                                name,
-                              })
-                        }
-                        onClick={() => {
-                          if (rowFeedback === 'unconfirmed')
-                            handleCheck(kind, name).catch(() => undefined)
-                          else handleUpdate(kind, name)
-                        }}
+                    return (
+                      <li
+                        className="hover:bg-surface-variant/40 flex min-h-10 min-w-0 shrink-0 items-center gap-2 rounded-xl px-2 py-1 text-xs"
+                        key={key}
                       >
-                        <RefreshRounded className="size-4" />
-                      </Button>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+                        <div className="min-w-0 flex-1">
+                          {missing ? (
+                            <div className="truncate font-medium">{name}</div>
+                          ) : (
+                            <Link
+                              aria-disabled={!canAct}
+                              tabIndex={canAct ? 0 : -1}
+                              onClick={(event) => {
+                                if (!canAct) event.preventDefault()
+                              }}
+                              className={`block truncate font-medium hover:underline ${!canAct ? 'pointer-events-none opacity-50' : ''}`}
+                              to={to}
+                              params={{ key: name }}
+                            >
+                              {name}
+                            </Link>
+                          )}
+                          <div className="text-on-surface-variant truncate">
+                            {row
+                              ? `${row.vehicleType ?? '—'} · ${row.type ?? '—'} · ${row.count ?? '—'} · ${formatRelativeTime(row.updatedAt, Date.now(), getLocale())}`
+                              : missing
+                                ? m.dashboard_widget_provider_updates_missing()
+                                : isLoading
+                                  ? m.dashboard_widget_provider_updates_loading()
+                                  : m.dashboard_widget_provider_updates_read_failed()}
+                          </div>
+                        </div>
+                        {row && (
+                          <Button
+                            className="size-8 shrink-0"
+                            icon
+                            loading={pending}
+                            disabled={
+                              !canAct ||
+                              pending ||
+                              (rowFeedback === 'unconfirmed'
+                                ? kind === 'proxy'
+                                  ? proxies.isFetching
+                                  : rules.isFetching
+                                : kindHasError)
+                            }
+                            aria-label={
+                              rowFeedback === 'unconfirmed'
+                                ? m.dashboard_widget_provider_updates_check({
+                                    name,
+                                  })
+                                : m.dashboard_widget_provider_updates_refresh({
+                                    name,
+                                  })
+                            }
+                            onClick={() => {
+                              if (rowFeedback === 'unconfirmed')
+                                handleCheck(kind, name).catch(() => undefined)
+                              else handleUpdate(kind, name)
+                            }}
+                          >
+                            <RefreshRounded className="size-4" />
+                          </Button>
+                        )}
+                      </li>
+                    )
+                  })}
+              </ul>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -342,20 +385,7 @@ function ProviderUpdatesLive({
 }
 
 export function ProviderUpdatesWidget(props: WidgetComponentProps) {
-  const { disabled, displayItems, isOverlay, sourceOnly } = useDndGridContext()
+  const { disabled, isOverlay, sourceOnly } = useDndGridContext()
   if (sourceOnly || isOverlay) return <ProviderUpdatesPreview {...props} />
-  const item = displayItems.find((candidate) => candidate.id === props.id)
-  const sizeLimit =
-    (item?.w ?? 3) >= 6 && (item?.h ?? 2) >= 4
-      ? 5
-      : (item?.w ?? 3) >= 4 && (item?.h ?? 2) >= 3
-        ? 3
-        : 1
-  return (
-    <ProviderUpdatesLive
-      {...props}
-      canAct={disabled && !isOverlay}
-      sizeLimit={sizeLimit}
-    />
-  )
+  return <ProviderUpdatesLive {...props} canAct={disabled && !isOverlay} />
 }

@@ -278,12 +278,15 @@ test('report navigation is enabled in normal view and unavailable while editing'
   })
   await expect.element(links.first()).toBeEnabled()
   expect(links.elements()).toHaveLength(2)
+  const originalLinks = links.elements()
 
-  const details = page.getByRole('button', {
-    name: m.dashboard_widget_traffic_report_details(),
-  })
-  expect(details.elements()).toHaveLength(2)
-  await expect.element(details.first()).toBeEnabled()
+  expect(
+    page
+      .getByRole('button', {
+        name: m.dashboard_widget_traffic_report_details(),
+      })
+      .elements(),
+  ).toHaveLength(0)
 
   controls.setEditing(true)
   await expect
@@ -293,9 +296,19 @@ test('report navigation is enabled in normal view and unavailable while editing'
           .length,
     )
     .toBe(2)
-  expect(links.elements()).toHaveLength(0)
-  expect(details.elements()).toHaveLength(2)
-  await expect.element(details.first()).toBeEnabled()
+  expect(links.elements()).toHaveLength(2)
+  expect(links.elements()).toEqual(originalLinks)
+  for (const link of links.elements()) {
+    expect(link.getAttribute('aria-disabled')).toBe('true')
+    expect(link.tabIndex).toBe(-1)
+  }
+  expect(
+    page
+      .getByRole('button', {
+        name: m.dashboard_widget_traffic_report_details(),
+      })
+      .elements(),
+  ).toHaveLength(0)
 })
 
 test('different widget ranges use separate reports without crossing values', async ({

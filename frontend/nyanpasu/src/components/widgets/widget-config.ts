@@ -9,7 +9,6 @@ export enum WidgetId {
   CoreShortcuts = 'core-shortcuts',
   SubscriptionQuota = 'subscription-quota',
   SubscriptionSchedule = 'subscription-schedule',
-  ProfileShortcuts = 'profile-shortcuts',
   ProxyMode = 'proxy-mode',
   RecentTraffic = 'recent-traffic',
   OriginTraffic = 'origin-traffic',
@@ -17,7 +16,6 @@ export enum WidgetId {
   TargetTraffic = 'target-traffic',
   RuleTraffic = 'rule-traffic',
   ActiveConnections = 'active-connections',
-  ConfigurationHealth = 'configuration-health',
   ProviderUpdates = 'provider-updates',
 }
 
@@ -29,7 +27,7 @@ type TrafficConfig = {
   unit: 'bytes' | 'bits'
 }
 
-type HistoryConfig = { showChart: boolean; samples: 8 | 16 | 32 }
+type HistoryConfig = { showChart: boolean; samples: number }
 
 export type SubscriptionTarget =
   { kind: 'current' } | { kind: 'fixed'; profileUid: string }
@@ -41,7 +39,7 @@ export type ReportWidgetConfig = {
 }
 
 type RankingConfig = ReportWidgetConfig & {
-  topN: 3 | 5
+  topN: number
   hideNames: boolean
 }
 
@@ -53,19 +51,15 @@ export type WidgetConfigs = {
     target: SubscriptionTarget
     showExpiry: boolean
     showProgress: boolean
-    expiryWarningDays: 7 | 14 | 30
-    quotaWarningPercent: 10 | 20 | 30
+    expiryWarningDays: number
+    quotaWarningPercent: number
   }
   [WidgetId.SubscriptionSchedule]: {
     type: WidgetId.SubscriptionSchedule
     target: SubscriptionTarget
     showRecentRuns: boolean
   }
-  [WidgetId.ProfileShortcuts]: {
-    type: WidgetId.ProfileShortcuts
-    profileUids: string[]
-  }
-  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode; showHelp: boolean }
+  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode }
   [WidgetId.RecentTraffic]: ReportWidgetConfig & {
     type: WidgetId.RecentTraffic
   }
@@ -76,20 +70,15 @@ export type WidgetConfigs = {
   [WidgetId.ActiveConnections]: {
     type: WidgetId.ActiveConnections
     sort: 'download' | 'upload' | 'total'
-    topN: 3 | 5
+    topN: number
     showProcess: boolean
     hideTargets: boolean
-  }
-  [WidgetId.ConfigurationHealth]: {
-    type: WidgetId.ConfigurationHealth
-    showSources: boolean
-    maxItems: 1 | 3 | 5
   }
   [WidgetId.ProviderUpdates]: {
     type: WidgetId.ProviderUpdates
     kinds: 'both' | 'proxy' | 'rule'
     resources: ProviderReference[]
-    maxItems: 3 | 5
+    maxItems: number
   }
   [WidgetId.TrafficDown]: TrafficConfig & { type: WidgetId.TrafficDown }
   [WidgetId.TrafficUp]: TrafficConfig & { type: WidgetId.TrafficUp }
@@ -136,11 +125,7 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
     target: { kind: 'current' },
     showRecentRuns: true,
   },
-  [WidgetId.ProfileShortcuts]: {
-    type: WidgetId.ProfileShortcuts,
-    profileUids: [],
-  },
-  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode, showHelp: true },
+  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode },
   [WidgetId.RecentTraffic]: { ...reportDefaults, type: WidgetId.RecentTraffic },
   [WidgetId.OriginTraffic]: {
     ...rankingDefaults,
@@ -158,11 +143,6 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
     topN: 3,
     showProcess: true,
     hideTargets: false,
-  },
-  [WidgetId.ConfigurationHealth]: {
-    type: WidgetId.ConfigurationHealth,
-    showSources: true,
-    maxItems: 3,
   },
   [WidgetId.ProviderUpdates]: {
     type: WidgetId.ProviderUpdates,
@@ -212,6 +192,14 @@ export const EMPTY_WIDGET_CONFIG_STORAGE: WidgetConfigStorage = {
   byInstance: {},
 }
 
+export const WIDGET_CONFIG_NUMBER_RANGES = {
+  expiryWarningDays: [1, 365],
+  quotaWarningPercent: [1, 100],
+  topN: [1, 20],
+  maxItems: [1, 20],
+  samples: [2, 32],
+} as const
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -253,12 +241,6 @@ export function normalizeWidgetConfigStorage(
       ) {
         Object.assign(config, { profileUid: candidate })
       } else if (
-        key === 'profileUids' &&
-        Array.isArray(candidate) &&
-        candidate.every(isReference)
-      ) {
-        Object.assign(config, { profileUids: [...new Set(candidate)] })
-      } else if (
         key === 'resources' &&
         Array.isArray(candidate) &&
         candidate.every(
@@ -276,35 +258,25 @@ export function normalizeWidgetConfigStorage(
         )
         Object.assign(config, { resources: [...unique.values()] })
       } else if (
-        (key === 'range' &&
-          typeof candidate === 'string' &&
-          [
-            'last_hour',
-            'last6_hours',
-            'last24_hours',
-            'last7_days',
-            'last30_days',
-            'all',
-          ].includes(candidate)) ||
-        (key === 'topN' && (candidate === 3 || candidate === 5)) ||
-        (key === 'maxItems' &&
-          (candidate === 3 ||
-            candidate === 5 ||
-            (config.type === WidgetId.ConfigurationHealth &&
-              candidate === 1))) ||
+        key === 'range' &&
+        typeof candidate === 'string' &&
+        [
+          'last_hour',
+          'last6_hours',
+          'last24_hours',
+          'last7_days',
+          'last30_days',
+          'all',
+        ].includes(candidate)
+      ) {
+        Object.assign(config, { [key]: candidate })
+      } else if (
         (key === 'sort' &&
           typeof candidate === 'string' &&
           ['download', 'upload', 'total'].includes(candidate)) ||
         (key === 'kinds' &&
           typeof candidate === 'string' &&
           ['both', 'proxy', 'rule'].includes(candidate)) ||
-        (key === 'expiryWarningDays' &&
-          [7, 14, 30].includes(candidate as number)) ||
-        (key === 'quotaWarningPercent' &&
-          [10, 20, 30].includes(candidate as number)) ||
-        (key === 'samples' &&
-          typeof candidate === 'number' &&
-          [8, 16, 32].includes(candidate)) ||
         (key === 'unit' && (candidate === 'bytes' || candidate === 'bits')) ||
         (key === 'orientation' &&
           (candidate === 'vertical' || candidate === 'horizontal')) ||
@@ -318,6 +290,18 @@ export function normalizeWidgetConfigStorage(
           (candidate === 'detailed' || candidate === 'compact'))
       ) {
         Object.assign(config, { [key]: candidate })
+      } else if (
+        key in WIDGET_CONFIG_NUMBER_RANGES &&
+        typeof candidate === 'number' &&
+        Number.isInteger(candidate)
+      ) {
+        const [min, max] =
+          WIDGET_CONFIG_NUMBER_RANGES[
+            key as keyof typeof WIDGET_CONFIG_NUMBER_RANGES
+          ]
+        Object.assign(config, {
+          [key]: Math.min(max, Math.max(min, candidate)),
+        })
       }
     }
     Object.defineProperty(byInstance, id, {

@@ -1,6 +1,8 @@
 import {
   AnimatePresence,
   motion,
+  useIsPresent,
+  useReducedMotion,
   useSpring,
   type Transition,
 } from 'motion/react'
@@ -40,6 +42,9 @@ function ResizeKnob({
   onMove: (x: number, y: number) => void
   onEnd: () => void
 }) {
+  const isPresent = useIsPresent()
+  const reducedMotion = useReducedMotion()
+
   return (
     <motion.div
       className={cn(
@@ -48,7 +53,13 @@ function ResizeKnob({
         'touch-none select-none',
       )}
       data-slot="resize-handle"
+      aria-hidden={!isPresent}
+      style={{ pointerEvents: isPresent ? 'auto' : 'none' }}
       onPointerDown={(e) => {
+        if (!isPresent) {
+          return
+        }
+
         e.preventDefault()
         e.stopPropagation()
         e.currentTarget.setPointerCapture(e.pointerId)
@@ -77,21 +88,15 @@ function ResizeKnob({
         e.currentTarget.releasePointerCapture(e.pointerId)
         onEnd()
       }}
-      initial={{
-        scale: 0.85,
-        opacity: 0,
-      }}
+      initial={reducedMotion ? false : { scale: 0.85, opacity: 0 }}
       animate={{
         scale: 1,
         opacity: 1,
       }}
-      exit={{
-        scale: 0.85,
-        opacity: 0,
-      }}
+      exit={reducedMotion ? { opacity: 0 } : { scale: 0.85, opacity: 0 }}
       transition={{
         type: 'tween',
-        duration: 0.1,
+        duration: reducedMotion ? 0 : 0.2,
         ease: 'easeOut',
       }}
     >

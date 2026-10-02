@@ -1,5 +1,4 @@
 import { useId } from 'react'
-import { Button } from '@nyanpasu/ui/button'
 import {
   Select,
   SelectContent,
@@ -143,77 +142,6 @@ export function ReportProfileField({
         {m.dashboard_widget_config_profile_attribution()}
       </p>
     </>
-  )
-}
-
-export function FavoriteProfilesField({
-  profileUids,
-  disabled,
-  onChange,
-}: {
-  profileUids: string[]
-  disabled: boolean
-  onChange: (uids: string[]) => void
-}) {
-  const { query } = useProfile()
-  const items = (query.data?.items ?? []).filter(isConfigItem)
-  const ids = [
-    ...profileUids,
-    ...items
-      .map((item) => item.uid)
-      .filter((uid) => !profileUids.includes(uid)),
-  ]
-  return (
-    <div className="space-y-2" data-slot="widget-profile-favorites-config">
-      <p className="text-on-surface-variant text-xs">
-        {m.dashboard_widget_config_favorites()}
-      </p>
-      {query.isError && (
-        <p className="text-error text-xs">
-          {m.dashboard_widget_config_references_failed()}
-        </p>
-      )}
-      {ids.map((uid) => {
-        const item = items.find((entry) => entry.uid === uid)
-        const index = profileUids.indexOf(uid)
-        return (
-          <div key={uid} className="flex items-center gap-2">
-            <Button
-              className={`h-auto min-w-0 flex-1 justify-start px-2 py-2 text-xs ${index >= 0 ? 'bg-primary-container text-on-primary-container' : ''}`}
-              aria-pressed={index >= 0}
-              disabled={disabled}
-              onClick={() =>
-                onChange(
-                  index < 0
-                    ? [...profileUids, uid]
-                    : profileUids.filter((entry) => entry !== uid),
-                )
-              }
-            >
-              {item?.name ??
-                m.dashboard_widget_config_missing_reference({ name: uid })}
-            </Button>
-            {index >= 0 && (
-              <Button
-                className="h-7 min-w-0 px-2 text-xs"
-                aria-label={m.dashboard_widget_config_move_up()}
-                disabled={disabled || index === 0}
-                onClick={() => {
-                  const next = [...profileUids]
-                  ;[next[index - 1], next[index]] = [
-                    next[index]!,
-                    next[index - 1]!,
-                  ]
-                  onChange(next)
-                }}
-              >
-                ↑
-              </Button>
-            )}
-          </div>
-        )
-      })}
-    </div>
   )
 }
 

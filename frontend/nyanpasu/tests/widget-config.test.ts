@@ -85,22 +85,14 @@ test('new references are validated and isolated while version 1 stays readable',
       quota: {
         type: WidgetId.SubscriptionQuota,
         target: { kind: 'fixed', profileUid: 'remote-a' },
-        expiryWarningDays: 14,
-        quotaWarningPercent: 30,
+        expiryWarningDays: 500,
+        quotaWarningPercent: 0,
       },
       broken: {
         type: WidgetId.SubscriptionQuota,
         target: { kind: 'fixed', profileUid: '' },
         expiryWarningDays: '14',
         showProgress: false,
-      },
-      favorites: {
-        type: WidgetId.ProfileShortcuts,
-        profileUids: ['a', 'b', 'a'],
-      },
-      badFavorites: {
-        type: WidgetId.ProfileShortcuts,
-        profileUids: ['a', null],
       },
       providers: {
         type: WidgetId.ProviderUpdates,
@@ -124,19 +116,14 @@ test('new references are validated and isolated while version 1 stays readable',
     getWidgetConfig(storage, 'quota', WidgetId.SubscriptionQuota).target,
   ).toEqual({ kind: 'fixed', profileUid: 'remote-a' })
   expect(
+    getWidgetConfig(storage, 'quota', WidgetId.SubscriptionQuota),
+  ).toMatchObject({ expiryWarningDays: 365, quotaWarningPercent: 1 })
+  expect(
     getWidgetConfig(storage, 'broken', WidgetId.SubscriptionQuota),
   ).toEqual({
     ...DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota],
     showProgress: false,
   })
-  expect(
-    getWidgetConfig(storage, 'favorites', WidgetId.ProfileShortcuts)
-      .profileUids,
-  ).toEqual(['a', 'b'])
-  expect(
-    getWidgetConfig(storage, 'badFavorites', WidgetId.ProfileShortcuts)
-      .profileUids,
-  ).toEqual([])
   expect(
     getWidgetConfig(storage, 'providers', WidgetId.ProviderUpdates).resources,
   ).toEqual([
@@ -156,7 +143,7 @@ test('new references are validated and isolated while version 1 stays readable',
   )
 })
 
-test('invalid finite options and reference shapes fall back per field', () => {
+test('numeric options clamp to their supported ranges and malformed values default per field', () => {
   const storage = normalizeWidgetConfigStorage({
     version: 1,
     byInstance: {
@@ -170,9 +157,10 @@ test('invalid finite options and reference shapes fall back per field', () => {
       resources: {
         type: WidgetId.ProviderUpdates,
         kinds: 'geo',
-        maxItems: 1,
+        maxItems: 0,
         resources: [{ kind: 'core', name: 'a' }],
       },
+      history: { type: WidgetId.Memory, samples: 120 },
       report: {
         type: WidgetId.RecentTraffic,
         range: 'today',
@@ -185,12 +173,17 @@ test('invalid finite options and reference shapes fall back per field', () => {
     getWidgetConfig(storage, 'active', WidgetId.ActiveConnections),
   ).toEqual({
     ...DEFAULT_WIDGET_CONFIGS[WidgetId.ActiveConnections],
+    topN: 20,
     showProcess: false,
     hideTargets: true,
   })
   expect(
     getWidgetConfig(storage, 'resources', WidgetId.ProviderUpdates),
-  ).toEqual(DEFAULT_WIDGET_CONFIGS[WidgetId.ProviderUpdates])
+  ).toEqual({
+    ...DEFAULT_WIDGET_CONFIGS[WidgetId.ProviderUpdates],
+    maxItems: 1,
+  })
+  expect(getWidgetConfig(storage, 'history', WidgetId.Memory).samples).toBe(32)
   expect(getWidgetConfig(storage, 'report', WidgetId.RecentTraffic)).toEqual({
     ...DEFAULT_WIDGET_CONFIGS[WidgetId.RecentTraffic],
     showDirections: false,

@@ -29,10 +29,11 @@ import {
 import { useDashboardContext } from '@/components/widgets/provider'
 import { WidgetDataCalibration } from '@/components/widgets/widget-data-calibration'
 import WidgetItem from '@/components/widgets/widget-item'
+import { normalizeDashboardItems } from '@/components/widgets/widget-layout'
 import { DashboardTrafficProvider } from '@/components/widgets/widget-traffic-provider'
 import { m } from '@/paraglide/messages'
 import { DragOverlay } from '@dnd-kit/core'
-import { ConfigurationStatusProvider, useKvStorage } from '@nyanpasu/query'
+import { useKvStorage } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import EditAction from './_modules/edit-action'
 import {
@@ -48,13 +49,6 @@ export const Route = createFileRoute('/(main)/main/dashboard/')({
   component: RouteComponent,
 })
 
-function normalizeItems(items: DndGridItemType<string>[]): DashboardItem[] {
-  return items.map((item) => ({
-    ...item,
-    type: (item as DashboardItem).type ?? (item.id as WidgetId),
-  }))
-}
-
 // Widgets declare these minimum sizes; they are known before any widget has
 // rendered.
 const constraintsFor = (items: DashboardItem[]) =>
@@ -65,10 +59,10 @@ const constraintsFor = (items: DashboardItem[]) =>
 function layoutForSize(storage: LayoutStorage, size: GridSize) {
   const bestLayout = findBestLayout(storage, size)
   if (bestLayout) {
-    return normalizeItems(bestLayout)
+    return normalizeDashboardItems(bestLayout)
   }
 
-  const base = normalizeItems(
+  const base = normalizeDashboardItems(
     findClosestStoredLayout(storage, size) ?? DEFAULT_ITEMS,
   )
 
@@ -190,7 +184,7 @@ const WidgetRender = () => {
 
   const handleGridLayoutChange = useCallback(
     (newItems: DndGridItemType<string>[]) =>
-      handleLayoutChange(normalizeItems(newItems)),
+      handleLayoutChange(normalizeDashboardItems(newItems)),
     [handleLayoutChange],
   )
 
@@ -254,32 +248,22 @@ const WidgetRender = () => {
         className="flex min-h-0 flex-1 flex-col p-4"
         data-slot="dashboard-widget-container"
       >
-        <ConfigurationStatusProvider
-          enabled={
-            !configLoading &&
-            !configReadError &&
-            displayItems.some(
-              (item) => item.type === WidgetId.ConfigurationHealth,
-            )
-          }
-        >
-          <DashboardTrafficProvider items={displayItems}>
-            <WidgetDataCalibration items={displayItems} />
+        <DashboardTrafficProvider items={displayItems}>
+          <WidgetDataCalibration items={displayItems} />
 
-            <DndGrid
-              gridId="main"
-              className="min-h-0 flex-1"
-              items={displayItems}
-              onLayoutChange={handleGridLayoutChange}
-              minCellSize={64}
-              onSizeChange={handleSizeChange}
-              gap={16}
-              disabled={!isEditing || layoutLoading}
-            >
-              {renderWidget}
-            </DndGrid>
-          </DashboardTrafficProvider>
-        </ConfigurationStatusProvider>
+          <DndGrid
+            gridId="main"
+            className="min-h-0 flex-1"
+            items={displayItems}
+            onLayoutChange={handleGridLayoutChange}
+            minCellSize={64}
+            onSizeChange={handleSizeChange}
+            gap={16}
+            disabled={!isEditing || layoutLoading}
+          >
+            {renderWidget}
+          </DndGrid>
+        </DashboardTrafficProvider>
       </div>
 
       <DashboardDragOverlay displayItems={displayItems} />

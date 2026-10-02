@@ -1,11 +1,14 @@
+import CodeRounded from '~icons/material-symbols/code-rounded'
+import NorthEastRounded from '~icons/material-symbols/north-east-rounded'
+import PublicRounded from '~icons/material-symbols/public-rounded'
+import RefreshRounded from '~icons/material-symbols/refresh-rounded'
+import RouteRounded from '~icons/material-symbols/route-rounded'
+import { motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
-import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@nyanpasu/ui/segmented-button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import {
   MutationUnconfirmedError,
@@ -13,12 +16,18 @@ import {
   useProxyMode,
   type ProxyMode,
 } from '@nyanpasu/query'
+import { cn } from '@nyanpasu/utils'
 import type { WidgetComponentProps } from './consts'
-import { useWidgetConfig } from './provider'
-import { WidgetId, type WidgetConfig } from './widget-config'
+import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
 
 const MODE_KEYS: ProxyMode[] = ['rule', 'global', 'direct', 'script']
+const MODE_ICONS = {
+  rule: RouteRounded,
+  global: PublicRounded,
+  direct: NorthEastRounded,
+  script: CodeRounded,
+}
 
 function modeLabel(mode: ProxyMode): string {
   switch (mode) {
@@ -33,15 +42,88 @@ function modeLabel(mode: ProxyMode): string {
   }
 }
 
+function ProxyModeOptions({
+  modes,
+  currentMode,
+  disabled,
+  onChange,
+}: {
+  modes: ProxyMode[]
+  currentMode: ProxyMode | null
+  disabled: boolean
+  onChange?: (mode: ProxyMode) => void
+}) {
+  const reducedMotion = useReducedMotion()
+  const selectedIndex = currentMode ? modes.indexOf(currentMode) : 0
+
+  return (
+    <div
+      className="relative isolate grid shrink-0 gap-1"
+      style={{
+        gridTemplateColumns: `repeat(${modes.length}, minmax(0, 1fr))`,
+      }}
+      role="group"
+      aria-label={m.dashboard_widget_proxy_mode_title()}
+      data-slot="proxy-mode-options"
+    >
+      <motion.span
+        aria-hidden
+        data-slot="proxy-mode-indicator"
+        className="bg-primary-container absolute inset-y-0 left-0 rounded-2xl"
+        style={{
+          width: `calc((100% - ${(modes.length - 1) * 4}px) / ${modes.length})`,
+        }}
+        initial={false}
+        animate={{
+          x: `calc(${selectedIndex * 100}% + ${selectedIndex * 4}px)`,
+          opacity: currentMode ? 1 : 0,
+        }}
+        transition={{
+          duration: reducedMotion ? 0 : 0.3,
+          ease: [0.22, 1, 0.36, 1],
+        }}
+      />
+      {modes.map((mode) => {
+        const Icon = MODE_ICONS[mode]
+        const selected = mode === currentMode
+
+        return (
+          <Button
+            key={mode}
+            variant="basic"
+            className={cn(
+              'relative z-10 flex aspect-square h-auto w-full min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-transparent px-1',
+              selected
+                ? 'text-on-primary-container'
+                : 'text-on-surface-variant',
+            )}
+            aria-pressed={selected}
+            disabled={disabled}
+            onClick={() => onChange?.(mode)}
+          >
+            <Icon className="size-5 shrink-0" />
+            <span className="text-xs">{modeLabel(mode)}</span>
+          </Button>
+        )
+      })}
+    </div>
+  )
+}
+
 function ProxyModePreview({ id }: { id: string }) {
   return (
     <WidgetItem id={id} widgetType={WidgetId.ProxyMode} minW={4} minH={2}>
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 text-base font-medium">
+        <CardHeader className="shrink-0 gap-2 pt-3 text-base font-medium">
+          <RouteRounded className="text-primary size-4 shrink-0" />
           {m.dashboard_widget_proxy_mode_title()}
         </CardHeader>
         <CardContent className="min-h-0 flex-1 justify-center">
-          <div className="bg-surface-variant h-9 w-full animate-pulse rounded-full" />
+          <ProxyModeOptions
+            modes={MODE_KEYS.slice(0, 3)}
+            currentMode="rule"
+            disabled
+          />
         </CardContent>
       </Card>
     </WidgetItem>
@@ -54,10 +136,8 @@ function ProxyModeLive({
   id,
   onCloseClick,
   disabled,
-  config,
 }: WidgetComponentProps & {
   disabled: boolean
-  config: Extract<WidgetConfig, { type: WidgetId.ProxyMode }>
 }) {
   const proxyMode = useProxyMode()
   const coreStatus = useCoreStatus()
@@ -95,7 +175,12 @@ function ProxyModeLive({
     coreStatus.data?.status === 'Running'
 
   const changeMode = async (mode: ProxyMode) => {
-    if (!actionable || proxyMode.isPending || !supportedModes.includes(mode))
+    if (
+      !actionable ||
+      proxyMode.isPending ||
+      mode === currentMode ||
+      !supportedModes.includes(mode)
+    )
       return
     setActionState('idle')
     setCheckedAfterUnconfirmed(false)
@@ -161,10 +246,34 @@ function ProxyModeLive({
       onCloseClick={onCloseClick}
     >
       <Card className="flex size-full flex-col" data-slot="proxy-mode-card">
-        <CardHeader className="shrink-0 gap-1 pt-3">
+        <CardHeader className="shrink-0 flex-wrap gap-x-2 gap-y-1 pt-3">
+          <RouteRounded className="text-primary size-4 shrink-0" />
           <span className="text-base font-medium">
             {m.dashboard_widget_proxy_mode_title()}
           </span>
+
+          {actionState === 'unconfirmed' && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="basic"
+                    icon
+                    className="ml-auto size-7 shrink-0"
+                    aria-label={m.dashboard_widget_operation_check()}
+                    disabled={disabled || checkingStatus}
+                    loading={checkingStatus}
+                    onClick={checkStatus}
+                  >
+                    <RefreshRounded className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {m.dashboard_widget_operation_check()}
+                </TooltipContent>
+              </Tooltip>
+            </>
+          )}
           {message && (
             <span
               className={
@@ -179,56 +288,13 @@ function ProxyModeLive({
           )}
         </CardHeader>
 
-        <CardContent className="min-h-0 flex-1 justify-start gap-2 overflow-y-auto py-2">
-          <SegmentedButton
-            value={currentMode ?? ''}
+        <CardContent className="min-h-0 flex-1 justify-center gap-1 px-3 py-2">
+          <ProxyModeOptions
+            modes={supportedModes}
+            currentMode={currentMode}
             disabled={!actionable || proxyMode.isPending}
-            aria-label={m.dashboard_widget_proxy_mode_title()}
-            onValueChange={async (value) => {
-              if (MODE_KEYS.includes(value as ProxyMode)) {
-                await changeMode(value as ProxyMode)
-              }
-            }}
-            data-slot="proxy-mode-options"
-          >
-            {supportedModes.map((mode) => (
-              <SegmentedButtonItem
-                key={mode}
-                value={mode}
-                disabled={
-                  !actionable || proxyMode.isPending || mode === currentMode
-                }
-                hideIndicator
-              >
-                {modeLabel(mode)}
-              </SegmentedButtonItem>
-            ))}
-          </SegmentedButton>
-
-          {config.showHelp && (
-            <p className="text-on-surface-variant text-center text-xs">
-              {m.dashboard_widget_proxy_mode_help()}
-            </p>
-          )}
-
-          {actionState === 'unconfirmed' && (
-            <>
-              <Button
-                variant="basic"
-                className="h-7 min-w-0 self-center px-2 text-xs"
-                disabled={disabled || checkingStatus}
-                loading={checkingStatus}
-                onClick={checkStatus}
-              >
-                {m.dashboard_widget_operation_check()}
-              </Button>
-              {checkFailed && (
-                <p className="text-error text-center text-xs" role="alert">
-                  {m.dashboard_widget_operation_check_failed()}
-                </p>
-              )}
-            </>
-          )}
+            onChange={changeMode}
+          />
 
           {actionState !== 'idle' && (
             <p
@@ -239,11 +305,13 @@ function ProxyModeLive({
               }
               role={actionState === 'failed' ? 'alert' : 'status'}
             >
-              {actionState === 'degraded'
-                ? m.dashboard_widget_proxy_mode_committed_degraded()
-                : actionState === 'unconfirmed'
-                  ? m.dashboard_widget_proxy_mode_unconfirmed()
-                  : m.dashboard_widget_proxy_mode_change_failed()}
+              {checkFailed
+                ? m.dashboard_widget_operation_check_failed()
+                : actionState === 'degraded'
+                  ? m.dashboard_widget_proxy_mode_committed_degraded()
+                  : actionState === 'unconfirmed'
+                    ? m.dashboard_widget_proxy_mode_unconfirmed()
+                    : m.dashboard_widget_proxy_mode_change_failed()}
             </p>
           )}
         </CardContent>
@@ -254,9 +322,8 @@ function ProxyModeLive({
 
 export function ProxyModeWidget(props: WidgetComponentProps) {
   const { sourceOnly, isOverlay, disabled } = useDndGridContext()
-  const config = useWidgetConfig(props.id, WidgetId.ProxyMode)
 
   if (sourceOnly || isOverlay) return <ProxyModePreview id={props.id} />
 
-  return <ProxyModeLive {...props} disabled={!disabled} config={config} />
+  return <ProxyModeLive {...props} disabled={!disabled} />
 }

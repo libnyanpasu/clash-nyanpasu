@@ -1,5 +1,12 @@
+import '@/assets/styles/tailwind.css'
+import '@nyanpasu/theme/styles/theme.css'
 import { filesize } from 'filesize'
-import { createElement, type ComponentProps, type ReactNode } from 'react'
+import {
+  createElement,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
@@ -8,7 +15,6 @@ import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import type { WidgetComponentProps } from '@/components/widgets/consts'
 import { DashboardProvider } from '@/components/widgets/provider'
 import { WidgetId } from '@/components/widgets/widget-config'
-import { ProfileShortcutsWidget } from '@/components/widgets/widget-profile-shortcuts'
 import { ProxyModeWidget } from '@/components/widgets/widget-proxy-mode'
 import { SubscriptionQuotaWidget } from '@/components/widgets/widget-subscription-quota'
 import { SubscriptionScheduleWidget } from '@/components/widgets/widget-subscription-schedule'
@@ -302,7 +308,6 @@ test('picker previews never mount profile, sync, or mode business hooks', async 
       SubscriptionScheduleWidget,
       m.dashboard_widget_subscription_schedule_title(),
     ],
-    [ProfileShortcutsWidget, m.dashboard_widget_profile_shortcuts_title()],
     [ProxyModeWidget, m.dashboard_widget_proxy_mode_title()],
   ] as const
 
@@ -394,83 +399,6 @@ test('schedule refresh starts one profile update', async ({
   expect(update).toHaveBeenCalledWith({ uid: 'remote', option: null })
 })
 
-test('profile switch uses favorites and is disabled while arranging widgets', async ({
-  onTestFinished,
-}) => {
-  cacheWidgetConfig({
-    type: WidgetId.ProfileShortcuts,
-    profileUids: ['favorite'],
-  })
-  const favorite = profile('favorite', 'Favorite')
-  hooks.useProfile.mockReturnValue({
-    query: {
-      ...profileQuery,
-      data: { current: 'remote', items: [remoteProfile, favorite] },
-    },
-    activate: { isPending: false, mutateAsync: vi.fn() },
-  })
-  const arrangeCleanup = mount(onTestFinished, ProfileShortcutsWidget, {
-    gridDisabled: false,
-  })
-  const select = page.getByRole('combobox')
-  await expect.element(select).toBeDisabled()
-  arrangeCleanup()
-})
-
-test('profile shortcut activates a selected favorite in normal viewing', async ({
-  onTestFinished,
-}) => {
-  cacheWidgetConfig({
-    type: WidgetId.ProfileShortcuts,
-    profileUids: ['favorite'],
-  })
-  const favorite = profile('favorite', 'Favorite')
-  const activate = vi.fn(async () => ({ status: 'committed' }))
-  hooks.useProfile.mockReturnValue({
-    query: {
-      ...profileQuery,
-      data: { current: 'remote', items: [remoteProfile, favorite] },
-    },
-    activate: { isPending: false, mutateAsync: activate },
-  })
-  mount(onTestFinished, ProfileShortcutsWidget)
-  const select = page.getByRole('combobox')
-  await expect.element(select).toBeEnabled()
-  await userEvent.click(select)
-  await userEvent.click(page.getByRole('option', { name: 'Favorite' }))
-  expect(activate).toHaveBeenCalledWith('favorite')
-})
-
-test('empty favorites can choose any config without persisting a favorite', async ({
-  onTestFinished,
-}) => {
-  const storedConfig = {
-    type: WidgetId.ProfileShortcuts,
-    profileUids: [],
-  }
-  cacheWidgetConfig(storedConfig)
-  const favorite = profile('favorite', 'Favorite')
-  hooks.useProfile.mockReturnValue({
-    query: {
-      ...profileQuery,
-      data: { current: 'remote', items: [remoteProfile, favorite] },
-    },
-    activate: { isPending: false, mutateAsync: vi.fn() },
-  })
-  mount(onTestFinished, ProfileShortcutsWidget, { gridDisabled: true })
-  await expect.element(page.getByRole('combobox')).toBeVisible()
-  await userEvent.click(page.getByRole('combobox'))
-  await expect
-    .element(page.getByRole('option', { name: 'Favorite' }))
-    .toBeVisible()
-  await expect
-    .element(page.getByRole('option', { name: 'Remote plan' }))
-    .toBeVisible()
-  expect(backend.value.get('dashboard-widget-configs')).toContain(
-    '"profileUids":[]',
-  )
-})
-
 test('proxy mode does not pretend an unknown runtime value is Rule', async ({
   onTestFinished,
 }) => {
@@ -495,9 +423,9 @@ test('proxy mode does not pretend an unknown runtime value is Rule', async ({
     .toBeVisible()
   await expect
     .element(
-      page.getByRole('radio', { name: m.dashboard_widget_proxy_mode_rule() }),
+      page.getByRole('button', { name: m.dashboard_widget_proxy_mode_rule() }),
     )
-    .not.toBeChecked()
+    .toHaveAttribute('aria-pressed', 'false')
 })
 
 test('proxy mode applies a selected runtime mode', async ({
@@ -520,7 +448,7 @@ test('proxy mode applies a selected runtime mode', async ({
     upsert,
   })
   mount(onTestFinished, ProxyModeWidget, { height: 2 })
-  const direct = page.getByRole('radio', {
+  const direct = page.getByRole('button', {
     name: m.dashboard_widget_proxy_mode_direct(),
   })
   await expect.element(direct).toBeEnabled()
@@ -556,7 +484,7 @@ test('an unconfirmed mode remains blocked until a successful explicit read', asy
     upsert,
   })
   mount(onTestFinished, ProxyModeWidget)
-  const direct = page.getByRole('radio', {
+  const direct = page.getByRole('button', {
     name: m.dashboard_widget_proxy_mode_direct(),
   })
   await userEvent.click(direct)
@@ -581,4 +509,53 @@ test('an unconfirmed mode remains blocked until a successful explicit read', asy
   await expect.element(direct).toBeEnabled()
   await userEvent.click(direct)
   expect(upsert).toHaveBeenCalledTimes(2)
+})
+
+test('proxy mode selection follows the confirmed runtime value and premium exposes Script', async ({
+  onTestFinished,
+}) => {
+  const upsert = vi.fn()
+  hooks.useProxyMode.mockImplementation(function useModeFixture() {
+    const [mode, setMode] = useState('rule')
+    upsert.mockImplementation(async (next: string) => {
+      setMode(next)
+      return { status: 'committed' }
+    })
+
+    return {
+      query: {
+        data: { mode },
+        isPending: false,
+        isError: false,
+        refetch: vi.fn(),
+      },
+      settingsQuery: {
+        data: { core: 'clash' },
+        isPending: false,
+        isError: false,
+      },
+      isPending: false,
+      upsert,
+    }
+  })
+  mount(onTestFinished, ProxyModeWidget, { height: 2 })
+  const rule = page.getByRole('button', {
+    name: m.dashboard_widget_proxy_mode_rule(),
+  })
+  const script = page.getByRole('button', {
+    name: m.dashboard_widget_proxy_mode_script(),
+  })
+
+  await expect.element(rule).toHaveAttribute('aria-pressed', 'true')
+  await expect.element(script).toBeEnabled()
+  await userEvent.click(script)
+  await expect.element(script).toHaveAttribute('aria-pressed', 'true')
+  await expect.element(rule).toHaveAttribute('aria-pressed', 'false')
+  expect(upsert).toHaveBeenCalledWith('script')
+  expect(
+    document.querySelectorAll('[data-slot="proxy-mode-indicator"]'),
+  ).toHaveLength(1)
+  expect(
+    document.querySelector('[data-slot="widget-config-trigger"]'),
+  ).toBeNull()
 })

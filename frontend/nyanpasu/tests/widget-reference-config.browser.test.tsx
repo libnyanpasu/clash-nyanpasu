@@ -216,15 +216,6 @@ const quotaItem: DashboardItem = {
   h: 3,
 }
 
-const favoriteItem: DashboardItem = {
-  id: 'favorite-instance',
-  type: WidgetId.ProfileShortcuts,
-  x: 0,
-  y: 0,
-  w: 4,
-  h: 2,
-}
-
 const providerItem: DashboardItem = {
   id: 'provider-instance',
   type: WidgetId.ProviderUpdates,
@@ -303,39 +294,6 @@ test('remote subscription target saves its UID and restores the selection after 
   expect(saved().byInstance['quota-instance']).toMatchObject({
     target: { kind: 'fixed', profileUid: 'remote-uid' },
   })
-})
-
-test('favorites can select config candidates in order and omit transforms', async ({
-  onTestFinished,
-}) => {
-  const fixture = mount(onTestFinished, [favoriteItem])
-  await waitForReady(fixture.controls)
-  fixture.controls.setEditing(true)
-  const dialog = await openMenu()
-
-  await expect
-    .element(dialog.getByRole('button', { name: 'Remote subscription' }))
-    .toBeVisible()
-  await expect
-    .element(dialog.getByRole('button', { name: 'Local config' }))
-    .toBeVisible()
-  expect(
-    dialog
-      .getByRole('button', { name: 'Remote transform', exact: true })
-      .elements(),
-  ).toHaveLength(0)
-
-  await dialog.getByRole('button', { name: 'Local config' }).click()
-  await dialog.getByRole('button', { name: 'Remote subscription' }).click()
-  await expect
-    .poll(() => saved().byInstance['favorite-instance'])
-    .toMatchObject({
-      profileUids: ['local-uid', 'remote-uid'],
-    })
-  expect(
-    (saved().byInstance['favorite-instance'] as { profileUids: string[] })
-      .profileUids,
-  ).not.toContain('transform-uid')
 })
 
 test('same-named proxy and rule provider references persist independently', async ({

@@ -1,8 +1,9 @@
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import { motion, useReducedMotion } from 'motion/react'
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { NumberStepper } from '@nyanpasu/ui/number-stepper'
 import { Popover, PopoverContent, PopoverTrigger } from '@nyanpasu/ui/popover'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import {
@@ -17,11 +18,11 @@ import {
   DEFAULT_WIDGET_CONFIGS,
   getWidgetConfig,
   PROXY_HORIZONTAL_MIN_WIDTH,
+  WIDGET_CONFIG_NUMBER_RANGES,
   WidgetConfig,
   WidgetId,
 } from './widget-config'
 import {
-  FavoriteProfilesField,
   ProviderReferencesField,
   ReportProfileField,
   SubscriptionTargetField,
@@ -145,57 +146,36 @@ function ConfigFields({
                   onChange({ ...config, showProgress })
                 }
               />
-              <Choice
+              <NumberStepper
                 label={m.dashboard_widget_config_expiry_threshold()}
-                value={String(config.expiryWarningDays)}
-                options={[7, 14, 30].map((value) => ({
-                  value: String(value),
-                  label: m.dashboard_widget_config_days({ days: value }),
-                }))}
+                value={config.expiryWarningDays}
+                min={WIDGET_CONFIG_NUMBER_RANGES.expiryWarningDays[0]}
+                max={WIDGET_CONFIG_NUMBER_RANGES.expiryWarningDays[1]}
+                decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_expiry_threshold()}`}
+                incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_expiry_threshold()}`}
                 disabled={disabled}
-                onChange={(value) =>
-                  onChange({
-                    ...config,
-                    expiryWarningDays: Number(value) as 7 | 14 | 30,
-                  })
+                onChange={(expiryWarningDays) =>
+                  onChange({ ...config, expiryWarningDays })
                 }
               />
-              <Choice
+              <NumberStepper
                 label={m.dashboard_widget_config_quota_threshold()}
-                value={String(config.quotaWarningPercent)}
-                options={[10, 20, 30].map((value) => ({
-                  value: String(value),
-                  label: `${value}%`,
-                }))}
+                value={config.quotaWarningPercent}
+                min={WIDGET_CONFIG_NUMBER_RANGES.quotaWarningPercent[0]}
+                max={WIDGET_CONFIG_NUMBER_RANGES.quotaWarningPercent[1]}
+                decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_quota_threshold()}`}
+                incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_quota_threshold()}`}
                 disabled={disabled}
-                onChange={(value) =>
-                  onChange({
-                    ...config,
-                    quotaWarningPercent: Number(value) as 10 | 20 | 30,
-                  })
+                onChange={(quotaWarningPercent) =>
+                  onChange({ ...config, quotaWarningPercent })
                 }
               />
             </>
           )}
         </>
       )
-    case WidgetId.ProfileShortcuts:
-      return (
-        <FavoriteProfilesField
-          profileUids={config.profileUids}
-          disabled={disabled}
-          onChange={(profileUids) => onChange({ ...config, profileUids })}
-        />
-      )
     case WidgetId.ProxyMode:
-      return (
-        <Toggle
-          label={m.dashboard_widget_config_help()}
-          checked={config.showHelp}
-          disabled={disabled}
-          onChange={(showHelp) => onChange({ ...config, showHelp })}
-        />
-      )
+      return null
     case WidgetId.RecentTraffic:
     case WidgetId.OriginTraffic:
     case WidgetId.ExitTraffic:
@@ -249,17 +229,15 @@ function ConfigFields({
           />
           {config.type !== WidgetId.RecentTraffic && (
             <>
-              <Choice
+              <NumberStepper
                 label={m.dashboard_widget_config_top()}
-                value={String(config.topN)}
-                options={[3, 5].map((value) => ({
-                  value: String(value),
-                  label: String(value),
-                }))}
+                value={config.topN}
+                min={WIDGET_CONFIG_NUMBER_RANGES.topN[0]}
+                max={WIDGET_CONFIG_NUMBER_RANGES.topN[1]}
+                decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_top()}`}
+                incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_top()}`}
                 disabled={disabled}
-                onChange={(value) =>
-                  onChange({ ...config, topN: Number(value) as 3 | 5 })
-                }
+                onChange={(topN) => onChange({ ...config, topN })}
               />
               {(config.type === WidgetId.OriginTraffic ||
                 config.type === WidgetId.TargetTraffic) && (
@@ -291,17 +269,15 @@ function ConfigFields({
             disabled={disabled}
             onChange={(sort) => onChange({ ...config, sort })}
           />
-          <Choice
+          <NumberStepper
             label={m.dashboard_widget_config_top()}
-            value={String(config.topN)}
-            options={[3, 5].map((value) => ({
-              value: String(value),
-              label: String(value),
-            }))}
+            value={config.topN}
+            min={WIDGET_CONFIG_NUMBER_RANGES.topN[0]}
+            max={WIDGET_CONFIG_NUMBER_RANGES.topN[1]}
+            decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_top()}`}
+            incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_top()}`}
             disabled={disabled}
-            onChange={(value) =>
-              onChange({ ...config, topN: Number(value) as 3 | 5 })
-            }
+            onChange={(topN) => onChange({ ...config, topN })}
           />
           <Toggle
             label={m.dashboard_widget_config_process()}
@@ -314,29 +290,6 @@ function ConfigFields({
             checked={config.hideTargets}
             disabled={disabled}
             onChange={(hideTargets) => onChange({ ...config, hideTargets })}
-          />
-        </>
-      )
-    case WidgetId.ConfigurationHealth:
-      return (
-        <>
-          <Toggle
-            label={m.dashboard_widget_config_sources()}
-            checked={config.showSources}
-            disabled={disabled}
-            onChange={(showSources) => onChange({ ...config, showSources })}
-          />
-          <Choice
-            label={m.dashboard_widget_config_items()}
-            value={String(config.maxItems)}
-            options={[1, 3, 5].map((value) => ({
-              value: String(value),
-              label: String(value),
-            }))}
-            disabled={disabled}
-            onChange={(value) =>
-              onChange({ ...config, maxItems: Number(value) as 1 | 3 | 5 })
-            }
           />
         </>
       )
@@ -363,17 +316,15 @@ function ConfigFields({
             disabled={disabled}
             onChange={(kinds) => onChange({ ...config, kinds })}
           />
-          <Choice
+          <NumberStepper
             label={m.dashboard_widget_config_items()}
-            value={String(config.maxItems)}
-            options={[3, 5].map((value) => ({
-              value: String(value),
-              label: String(value),
-            }))}
+            value={config.maxItems}
+            min={WIDGET_CONFIG_NUMBER_RANGES.maxItems[0]}
+            max={WIDGET_CONFIG_NUMBER_RANGES.maxItems[1]}
+            decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_items()}`}
+            incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_items()}`}
             disabled={disabled}
-            onChange={(value) =>
-              onChange({ ...config, maxItems: Number(value) as 3 | 5 })
-            }
+            onChange={(maxItems) => onChange({ ...config, maxItems })}
           />
           <ProviderReferencesField
             resources={config.resources}
@@ -486,18 +437,15 @@ function ConfigFields({
             disabled={disabled}
             onChange={(showChart) => onChange({ ...config, showChart })}
           />
-          <Choice
+          <NumberStepper
             label={m.dashboard_widget_sparkline_config_samples()}
-            value={String(config.samples)}
+            value={config.samples}
+            min={WIDGET_CONFIG_NUMBER_RANGES.samples[0]}
+            max={WIDGET_CONFIG_NUMBER_RANGES.samples[1]}
+            decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_sparkline_config_samples()}`}
+            incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_sparkline_config_samples()}`}
             disabled={disabled || !config.showChart}
-            options={[
-              { value: '8', label: '8' },
-              { value: '16', label: '16' },
-              { value: '32', label: '32' },
-            ]}
-            onChange={(samples) =>
-              onChange({ ...config, samples: Number(samples) as 8 | 16 | 32 })
-            }
+            onChange={(samples) => onChange({ ...config, samples })}
           />
         </>
       )
@@ -576,9 +524,11 @@ export function WidgetConfigSaveStatus() {
 export default function WidgetConfigMenu({
   id,
   type,
+  isActive = true,
 }: {
   id: string
   type: WidgetId
+  isActive?: boolean
 }) {
   const { configs, saveConfig, saveStatus, configLoading, configReadError } =
     useDashboardContext()
@@ -591,9 +541,18 @@ export default function WidgetConfigMenu({
     PROXY_HORIZONTAL_MIN_WIDTH
   const titleId = useId()
   const reducedMotion = useReducedMotion()
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!isActive) {
+      setOpen(false)
+    }
+  }, [isActive])
+
+  if (type === WidgetId.ProxyMode) return null
 
   return (
-    <Popover>
+    <Popover open={isActive && open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -601,7 +560,7 @@ export default function WidgetConfigMenu({
               type="button"
               aria-label={m.dashboard_widget_config_title()}
               data-slot="widget-config-trigger"
-              className="border-outline/30 bg-surface text-on-surface hover:bg-surface-variant data-[state=open]:bg-primary-container data-[state=open]:text-on-primary-container focus-visible:ring-primary absolute -bottom-1 left-1/2 z-20 grid h-6 w-9 -translate-x-1/2 cursor-pointer place-items-center rounded-full border shadow-sm outline-none focus-visible:ring-2"
+              className="border-outline/30 bg-surface text-on-surface hover:bg-surface-variant data-[state=open]:bg-primary-container data-[state=open]:text-on-primary-container focus-visible:ring-primary pointer-events-auto absolute -bottom-1 left-1/2 z-20 grid h-6 w-9 -translate-x-1/2 cursor-pointer place-items-center rounded-full border shadow-sm outline-none focus-visible:ring-2"
               onPointerDown={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}

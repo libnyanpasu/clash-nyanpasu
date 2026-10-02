@@ -1,3 +1,5 @@
+import '@/assets/styles/tailwind.css'
+import '@nyanpasu/theme/styles/theme.css'
 import { act, useState } from 'react'
 import { expect, test } from 'vitest'
 import { render } from 'vitest-browser-react'
@@ -7,14 +9,11 @@ import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import type { DashboardItem } from '@/components/widgets/consts'
 import { DashboardProvider } from '@/components/widgets/provider'
 import { WidgetId } from '@/components/widgets/widget-config'
-import { ConfigurationHealthWidget } from '@/components/widgets/widget-configuration-health'
 import { ProviderUpdatesWidget } from '@/components/widgets/widget-provider-updates'
 import { m } from '@/paraglide/messages'
 import type { routeTree } from '@/route-tree.gen'
 import { DndContext } from '@dnd-kit/core'
-import { ConfigurationStatusProvider } from '@nyanpasu/query/provider'
 import { createRpcClient, type RpcEventTransport } from '@nyanpasu/rpc'
-import type { ConfigurationStatus } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -34,14 +33,6 @@ declare module '@tanstack/react-router' {
 
 const items: DashboardItem[] = [
   {
-    id: 'health',
-    type: WidgetId.ConfigurationHealth,
-    x: 0,
-    y: 0,
-    w: 4,
-    h: 3,
-  },
-  {
     id: 'providers',
     type: WidgetId.ProviderUpdates,
     x: 4,
@@ -51,26 +42,8 @@ const items: DashboardItem[] = [
   },
 ]
 
-const runtimeNeedsRecovery = (): ConfigurationStatus => ({
-  event_seq: 1,
-  maintenance: null,
-  source_versions: { application: 1, clash: 1, session: 1, profiles: 1 },
-  runtime: {
-    health: 'recovery_required',
-    operation_id: 'operation-1',
-    attempts: 1,
-    automatic_remaining: 0,
-    message: 'Runtime recovery is required',
-  },
-  effects: [],
-  sources: [],
-  active: null,
-  recent_operations: [],
-})
-
 function createRpcHarness() {
   const calls: string[] = []
-  let failNextStatusRead = false
   let failNextProxyRead = false
   const invoke = async <T,>(method: string) => {
     calls.push(method)
@@ -79,14 +52,6 @@ function createRpcHarness() {
         return null as T
       case 'set_storage_item':
         return null as T
-      case 'get_configuration_status':
-        if (failNextStatusRead) {
-          failNextStatusRead = false
-          throw new Error('status read failed')
-        }
-        return runtimeNeedsRecovery() as T
-      case 'retry_configuration_runtime':
-        throw new Error('runtime retry reply lost')
       case 'clash_api_get_providers_proxies':
         if (failNextProxyRead) {
           failNextProxyRead = false
@@ -141,9 +106,6 @@ function createRpcHarness() {
       events,
     }),
     calls,
-    failStatusRead: () => {
-      failNextStatusRead = true
-    },
     failProxyRead: () => {
       failNextProxyRead = true
     },
@@ -184,12 +146,9 @@ function Scene({
             onResizeEnd: () => {},
           }}
         >
-          <ConfigurationStatusProvider>
-            <TooltipProvider>
-              <ConfigurationHealthWidget id="health" />
-              <ProviderUpdatesWidget id="providers" />
-            </TooltipProvider>
-          </ConfigurationStatusProvider>
+          <TooltipProvider>
+            <ProviderUpdatesWidget id="providers" />
+          </TooltipProvider>
         </DndGridProvider>
       </DndContext>
     </DashboardProvider>
@@ -258,9 +217,6 @@ test('status widget actions work in view mode and are disabled while editing', a
   onTestFinished,
 }) => {
   const { calls, controls } = await mount(onTestFinished)
-  const healthRetry = page.getByRole('button', {
-    name: m.configuration_retry(),
-  })
   const providerRefresh = page.getByRole('button', {
     name: m.dashboard_widget_provider_updates_refresh({ name: 'Proxy A' }),
   })
@@ -268,63 +224,26 @@ test('status widget actions work in view mode and are disabled while editing', a
   await expect
     .poll(() => calls.includes('clash_api_get_providers_proxies'))
     .toBe(true)
-  await expect.element(healthRetry).toBeEnabled()
   await expect.element(providerRefresh).toBeEnabled()
 
   act(() => controls.setEditing(true))
-  await expect.element(healthRetry).toBeDisabled()
   await expect.element(providerRefresh).toBeDisabled()
 })
 
-test('configuration retry checks status after a lost reply and stays blocked when that read fails', async ({
+test('provider rows fit the available height without an inner scrollbar', async ({
   onTestFinished,
 }) => {
-  const harness = await mount(onTestFinished)
-  const retry = page.getByRole('button', { name: m.configuration_retry() })
-  await expect.element(retry).toBeEnabled()
-  await userEvent.click(retry)
+  const { screen } = await mount(onTestFinished)
+  const card = screen.container.querySelector(
+    '[data-slot="widget-provider-updates-card"]',
+  )!
+  const list = card.querySelector('[data-slot="widget-provider-updates-list"]')!
 
-  await expect
-    .poll(
-      () =>
-        harness.calls.filter((call) => call === 'retry_configuration_runtime')
-          .length,
-    )
-    .toBe(1)
-  await expect
-    .poll(
-      () =>
-        harness.calls.filter((call) => call === 'get_configuration_status')
-          .length,
-    )
-    .toBeGreaterThan(1)
-  await expect.element(retry).toBeDisabled()
-
-  const statusReadCount = harness.calls.filter(
-    (call) => call === 'get_configuration_status',
-  ).length
-  harness.failStatusRead()
-  const check = page.getByRole('button', {
-    name: m.dashboard_widget_configuration_health_retry_read(),
-  })
-  await userEvent.click(check)
-  await expect
-    .poll(
-      () =>
-        harness.calls.filter((call) => call === 'get_configuration_status')
-          .length,
-    )
-    .toBe(statusReadCount + 1)
-  await expect.element(retry).toBeDisabled()
-  expect(
-    harness.calls.filter((call) => call === 'retry_configuration_runtime'),
-  ).toHaveLength(1)
-
-  await userEvent.click(check)
-  await expect.element(retry).toBeEnabled()
-  expect(
-    harness.calls.filter((call) => call === 'retry_configuration_runtime'),
-  ).toHaveLength(1)
+  await expect.poll(() => list.querySelectorAll('li').length).toBe(2)
+  expect(list.scrollHeight).toBeLessThanOrEqual(list.clientHeight)
+  expect(list.querySelector('ul')?.className).not.toMatch(
+    /overflow-(auto|y-auto)/,
+  )
 })
 
 test('provider refresh requires a successful read-only check before another update', async ({

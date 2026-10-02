@@ -15,7 +15,6 @@ import { createRpcClient } from '@nyanpasu/rpc'
 const types = [
   WidgetId.SubscriptionQuota,
   WidgetId.SubscriptionSchedule,
-  WidgetId.ProfileShortcuts,
   WidgetId.ProxyMode,
   WidgetId.RecentTraffic,
   WidgetId.OriginTraffic,
@@ -23,7 +22,6 @@ const types = [
   WidgetId.TargetTraffic,
   WidgetId.RuleTraffic,
   WidgetId.ActiveConnections,
-  WidgetId.ConfigurationHealth,
   WidgetId.ProviderUpdates,
 ]
 
@@ -114,7 +112,7 @@ test.each(['library', 'overlay'] as const)(
             node.textContent?.trim(),
           ).length,
       )
-      .toBe(12)
+      .toBe(types.length)
     expect(queried).not.toHaveBeenCalled()
     expect(
       container.querySelector('[data-slot="widget-config-trigger"]'),

@@ -2,8 +2,6 @@ import { memo, ReactNode } from 'react'
 import type { DndGridItemType } from '@nyanpasu/ui/dnd-grid'
 import { ActiveConnectionsWidget } from './widget-active-connections'
 import { WidgetId } from './widget-config'
-import { ConfigurationHealthWidget } from './widget-configuration-health'
-import { ProfileShortcutsWidget } from './widget-profile-shortcuts'
 import { ProviderUpdatesWidget } from './widget-provider-updates'
 import { ProxyModeWidget } from './widget-proxy-mode'
 import { CoreShortcutsWidget, ProxyShortcutsWidget } from './widget-shortcut'
@@ -45,7 +43,6 @@ export const RENDER_MAP: Record<
   [WidgetId.CoreShortcuts]: memo(CoreShortcutsWidget),
   [WidgetId.SubscriptionQuota]: memo(SubscriptionQuotaWidget),
   [WidgetId.SubscriptionSchedule]: memo(SubscriptionScheduleWidget),
-  [WidgetId.ProfileShortcuts]: memo(ProfileShortcutsWidget),
   [WidgetId.ProxyMode]: memo(ProxyModeWidget),
   [WidgetId.RecentTraffic]: memo(RecentTrafficWidget),
   [WidgetId.OriginTraffic]: memo(OriginTrafficWidget),
@@ -53,7 +50,6 @@ export const RENDER_MAP: Record<
   [WidgetId.TargetTraffic]: memo(TargetTrafficWidget),
   [WidgetId.RuleTraffic]: memo(RuleTrafficWidget),
   [WidgetId.ActiveConnections]: memo(ActiveConnectionsWidget),
-  [WidgetId.ConfigurationHealth]: memo(ConfigurationHealthWidget),
   [WidgetId.ProviderUpdates]: memo(ProviderUpdatesWidget),
 }
 
@@ -121,7 +117,6 @@ export const WIDGET_MIN_SIZE_MAP: Record<
   [WidgetId.CoreShortcuts]: { minW: 4, minH: 2 },
   [WidgetId.SubscriptionQuota]: { minW: 3, minH: 2 },
   [WidgetId.SubscriptionSchedule]: { minW: 3, minH: 2 },
-  [WidgetId.ProfileShortcuts]: { minW: 3, minH: 2 },
   [WidgetId.ProxyMode]: { minW: 4, minH: 2 },
   [WidgetId.RecentTraffic]: { minW: 3, minH: 2 },
   [WidgetId.OriginTraffic]: { minW: 3, minH: 3 },
@@ -129,7 +124,6 @@ export const WIDGET_MIN_SIZE_MAP: Record<
   [WidgetId.TargetTraffic]: { minW: 3, minH: 3 },
   [WidgetId.RuleTraffic]: { minW: 3, minH: 3 },
   [WidgetId.ActiveConnections]: { minW: 4, minH: 3 },
-  [WidgetId.ConfigurationHealth]: { minW: 3, minH: 2 },
   [WidgetId.ProviderUpdates]: { minW: 3, minH: 2 },
 }
 
@@ -138,7 +132,6 @@ export const WIDGET_RECOMMENDED_SIZE_MAP: Partial<
 > = {
   [WidgetId.SubscriptionQuota]: { w: 4, h: 3 },
   [WidgetId.SubscriptionSchedule]: { w: 4, h: 3 },
-  [WidgetId.ProfileShortcuts]: { w: 4, h: 2 },
   [WidgetId.ProxyMode]: { w: 4, h: 2 },
   [WidgetId.RecentTraffic]: { w: 4, h: 2 },
   [WidgetId.OriginTraffic]: { w: 4, h: 3 },
@@ -146,7 +139,6 @@ export const WIDGET_RECOMMENDED_SIZE_MAP: Partial<
   [WidgetId.TargetTraffic]: { w: 4, h: 3 },
   [WidgetId.RuleTraffic]: { w: 4, h: 3 },
   [WidgetId.ActiveConnections]: { w: 6, h: 3 },
-  [WidgetId.ConfigurationHealth]: { w: 4, h: 3 },
   [WidgetId.ProviderUpdates]: { w: 4, h: 3 },
 }
 

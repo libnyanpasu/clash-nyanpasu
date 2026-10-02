@@ -29,11 +29,9 @@ export function WidgetDataCalibration({ items }: { items: DashboardItem[] }) {
   const { configs, configLoading, configReadError } = useDashboardContext()
   if (configLoading || configReadError) return null
   const profiles = items.some((item) =>
-    [
-      WidgetId.SubscriptionQuota,
-      WidgetId.SubscriptionSchedule,
-      WidgetId.ProfileShortcuts,
-    ].includes(item.type),
+    [WidgetId.SubscriptionQuota, WidgetId.SubscriptionSchedule].includes(
+      item.type,
+    ),
   )
   const providers = items
     .filter((item) => item.type === WidgetId.ProviderUpdates)

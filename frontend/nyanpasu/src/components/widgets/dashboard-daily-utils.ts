@@ -16,9 +16,6 @@ export const isRemoteFileConfig = (item: ProfileItem_Serialize): boolean =>
   item.config.type === 'file' &&
   item.config.source.type === 'remote'
 
-export const isActivatableConfig = (item: ProfileItem_Serialize): boolean =>
-  item.type === 'config'
-
 export function getRemoteFileConfigs(
   items: ProfileItem_Serialize[],
   allowedUids?: string[],

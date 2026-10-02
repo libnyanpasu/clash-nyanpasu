@@ -1,5 +1,10 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
-import { AnimatePresence, motion } from 'motion/react'
+import {
+  AnimatePresence,
+  motion,
+  useIsPresent,
+  useReducedMotion,
+} from 'motion/react'
 import { Button } from '@nyanpasu/ui/button'
 import {
   DndGridItem,
@@ -17,6 +22,76 @@ export type WidgetItemProps = DndGridItemProps<string> &
     widgetType: WidgetId
   }
 
+function WidgetCloseControl({
+  onCloseClick,
+  id,
+}: {
+  onCloseClick?: (id: string) => void
+  id: string
+}) {
+  const isPresent = useIsPresent()
+  const reducedMotion = useReducedMotion()
+
+  return (
+    <Button
+      variant="raised"
+      className={cn(
+        'absolute -top-1 -right-1 z-10 size-8',
+        'border-outline/30 border',
+      )}
+      icon
+      disabled={!isPresent}
+      aria-label={m.dashboard_widget_delete()}
+      aria-hidden={!isPresent}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={() => onCloseClick?.(id)}
+      asChild
+    >
+      <motion.button
+        initial={reducedMotion ? { opacity: 1 } : { scale: 0.85, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={reducedMotion ? { opacity: 0 } : { scale: 0.85, opacity: 0 }}
+        transition={{
+          type: 'tween',
+          duration: reducedMotion ? 0 : 0.2,
+          ease: 'easeOut',
+        }}
+      >
+        <CloseRounded className="size-4" />
+      </motion.button>
+    </Button>
+  )
+}
+
+function AnimatedWidgetConfigMenu({
+  id,
+  type,
+}: {
+  id: string
+  type: WidgetId
+}) {
+  const isPresent = useIsPresent()
+  const reducedMotion = useReducedMotion()
+
+  return (
+    <motion.div
+      className="pointer-events-none absolute inset-0"
+      aria-hidden={!isPresent}
+      inert={!isPresent}
+      initial={reducedMotion ? false : { opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.92 }}
+      transition={{
+        type: 'tween',
+        duration: reducedMotion ? 0 : 0.2,
+        ease: 'easeOut',
+      }}
+    >
+      <WidgetConfigMenu id={id} type={type} isActive={isPresent} />
+    </motion.div>
+  )
+}
+
 export default function WidgetItem({
   children,
   className,
@@ -32,46 +107,23 @@ export default function WidgetItem({
 
       <AnimatePresence>
         {!disabled && !sourceOnly && !isOverlay && (
-          <Button
-            variant="raised"
-            className={cn(
-              'absolute -top-1 -right-1 z-10 size-8',
-              'border-outline/30 border',
-            )}
-            icon
-            aria-label={m.dashboard_widget_delete()}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onCloseClick?.(props.id)}
-            asChild
-          >
-            <motion.button
-              initial={{
-                scale: 0.85,
-                opacity: 0,
-              }}
-              animate={{
-                scale: 1,
-                opacity: 1,
-              }}
-              exit={{
-                scale: 0.85,
-                opacity: 0,
-              }}
-              transition={{
-                type: 'tween',
-                duration: 0.1,
-                ease: 'easeOut',
-              }}
-            >
-              <CloseRounded className="size-4" />
-            </motion.button>
-          </Button>
+          <WidgetCloseControl
+            key="close-control"
+            id={props.id}
+            onCloseClick={onCloseClick}
+          />
         )}
       </AnimatePresence>
 
-      {!disabled && !sourceOnly && !isOverlay && (
-        <WidgetConfigMenu id={props.id} type={widgetType} />
-      )}
+      <AnimatePresence>
+        {!disabled && !sourceOnly && !isOverlay && (
+          <AnimatedWidgetConfigMenu
+            key="config-control"
+            id={props.id}
+            type={widgetType}
+          />
+        )}
+      </AnimatePresence>
     </DndGridItem>
   )
 }

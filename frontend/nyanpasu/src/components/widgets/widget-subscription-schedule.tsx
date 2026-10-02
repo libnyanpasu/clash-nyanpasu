@@ -1,7 +1,10 @@
+import EventRepeatRounded from '~icons/material-symbols/event-repeat-rounded'
+import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
 import {
@@ -20,8 +23,11 @@ import {
   resolveProfileTarget,
 } from './dashboard-daily-utils'
 import { useDashboardContext, useWidgetConfig } from './provider'
+import { useWidgetHeight } from './use-widget-height'
 import { WidgetId, type WidgetConfig } from './widget-config'
 import WidgetItem from './widget-item'
+
+const RECENT_RUN_ROW_HEIGHT = 20
 
 function SubscriptionSchedulePreview({ id }: { id: string }) {
   return (
@@ -32,7 +38,8 @@ function SubscriptionSchedulePreview({ id }: { id: string }) {
       minH={2}
     >
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 text-base font-medium">
+        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
+          <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
           {m.dashboard_widget_subscription_schedule_title()}
         </CardHeader>
         <CardContent className="min-h-0 flex-1 justify-center gap-2">
@@ -90,18 +97,33 @@ function SubscriptionScheduleTarget({
   const status = useProfileSyncStatus(profileUid)
   const runs = useProfileSyncRuns(profileUid, { refetchInterval: 60_000 })
   const { update } = useProfileMutations()
-  const { displayItems } = useDndGridContext()
+  const { ref: contentRef, height: contentHeight } =
+    useWidgetHeight<HTMLDivElement>()
   const queryClient = useQueryClient()
   const [actionState, setActionState] = useState<ActionState>('idle')
   const [checkedAfterUnconfirmed, setCheckedAfterUnconfirmed] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
   const [checkFailed, setCheckFailed] = useState(false)
   const activeRun = status.data?.active[0]
-  const expanded = (displayItems.find((item) => item.id === id)?.h ?? 2) >= 3
   const completed = latestFinishedRuns(
     runs.data?.pages.flatMap((page) => page.items) ?? [],
-    expanded ? 3 : 1,
+    3,
   )
+  const unavailable = status.isError && !status.data
+  const hasCriticalState =
+    unavailable ||
+    Boolean(status.data?.registration_error) ||
+    status.data?.journal_degraded === true ||
+    activeRun != null ||
+    actionState !== 'idle' ||
+    checkFailed
+  const recentRunLimit =
+    contentHeight == null || hasCriticalState
+      ? 0
+      : Math.max(
+          0,
+          Math.min(3, Math.floor((contentHeight - 64) / RECENT_RUN_ROW_HEIGHT)),
+        )
 
   const refresh = async () => {
     if (
@@ -170,8 +192,6 @@ function SubscriptionScheduleTarget({
     }
   }
 
-  const unavailable = status.isError && !status.data
-
   return (
     <WidgetItem
       id={id}
@@ -185,154 +205,168 @@ function SubscriptionScheduleTarget({
         data-slot="subscription-schedule-card"
       >
         <CardHeader className="shrink-0 flex-row items-center justify-between gap-2 px-3 pt-2 pb-1">
-          <div className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
+            <span className="truncate text-sm font-medium">
               {m.dashboard_widget_subscription_schedule_title()}
             </span>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="raised"
+                className="size-7 shrink-0"
+                icon
+                aria-label={m.dashboard_widget_subscription_schedule_refresh()}
+                disabled={
+                  disabled ||
+                  update.isPending ||
+                  checkingStatus ||
+                  (actionState === 'unconfirmed' && !checkedAfterUnconfirmed)
+                }
+                loading={update.isPending}
+                onClick={refresh}
+              >
+                <RefreshRounded className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {m.dashboard_widget_subscription_schedule_refresh()}
+            </TooltipContent>
+          </Tooltip>
+        </CardHeader>
+
+        <CardContent className="min-h-0 flex-1 justify-start gap-0 px-3 py-1 text-xs">
+          <div
+            ref={contentRef}
+            className="flex min-h-0 flex-1 flex-col gap-1"
+            data-slot="subscription-schedule-content"
+          >
             <Link
               aria-disabled={disabled}
               tabIndex={disabled ? -1 : 0}
               onClick={(event) => {
                 if (disabled) event.preventDefault()
               }}
-              className={`text-on-surface-variant block truncate text-[10px] ${disabled ? 'pointer-events-none opacity-50' : ''}`}
+              className={`text-on-surface-variant truncate text-[10px] ${disabled ? 'pointer-events-none opacity-50' : ''}`}
               to="/main/profiles/$type/detail/$uid"
               params={{ type: 'profile', uid: profileUid }}
             >
               {profileName}
             </Link>
-          </div>
-          <Button
-            variant="raised"
-            className="h-8 min-w-0 shrink-0 px-2 text-xs"
-            disabled={
-              disabled ||
-              update.isPending ||
-              checkingStatus ||
-              (actionState === 'unconfirmed' && !checkedAfterUnconfirmed)
-            }
-            loading={update.isPending}
-            onClick={refresh}
-          >
-            {m.dashboard_widget_subscription_schedule_refresh()}
-          </Button>
-        </CardHeader>
-
-        <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-y-auto px-3 py-1 text-xs">
-          {status.isPending && (
-            <p role="status">
-              {m.dashboard_widget_subscription_schedule_loading()}
-            </p>
-          )}
-          {unavailable && (
-            <p role="alert" className="text-error">
-              {m.dashboard_widget_subscription_schedule_load_failed()}
-            </p>
-          )}
-          {status.data && (
-            <>
-              {activeRun ? (
-                <p role="status" className="font-medium">
-                  {m.dashboard_widget_subscription_schedule_active({
-                    state: runStateLabel(activeRun),
-                  })}
-                </p>
-              ) : status.data.scheduled && status.data.next_run_at ? (
-                <p>
-                  {m.dashboard_widget_subscription_schedule_next_run({
-                    time: formatDate(status.data.next_run_at),
-                  })}
-                </p>
-              ) : (
-                <p>{m.dashboard_widget_subscription_schedule_manual_only()}</p>
-              )}
-              {status.data.registration_error && (
-                <p className="text-error line-clamp-2" role="alert">
-                  {m.dashboard_widget_subscription_schedule_registration_error({
-                    error: status.data.registration_error,
-                  })}
-                </p>
-              )}
-              {status.data.journal_degraded && (
-                <p className="text-on-surface-variant" role="status">
-                  {m.dashboard_widget_subscription_schedule_journal_degraded()}
-                </p>
-              )}
-            </>
-          )}
-          {config.showRecentRuns && expanded && (
-            <div className="space-y-1 pt-1">
-              <p className="text-on-surface-variant text-xs">
-                {m.dashboard_widget_subscription_schedule_recent()}
+            {status.isPending && (
+              <p role="status">
+                {m.dashboard_widget_subscription_schedule_loading()}
               </p>
-              {runs.isPending ? (
-                <p className="text-on-surface-variant text-xs" role="status">
-                  {m.dashboard_widget_subscription_schedule_loading()}
-                </p>
-              ) : runs.isError && !runs.data ? (
-                <p className="text-error text-xs" role="alert">
-                  {m.dashboard_widget_subscription_schedule_history_unavailable()}
-                </p>
-              ) : completed.length > 0 ? (
-                completed.map((run) => (
-                  <p
-                    key={run.id}
-                    className="flex items-center justify-between gap-2 text-xs"
-                    data-slot="subscription-schedule-run"
-                  >
-                    <span className="truncate">{runStateLabel(run)}</span>
-                    <time className="text-on-surface-variant shrink-0 tabular-nums">
-                      {run.finished_at ? formatDate(run.finished_at) : '—'}
-                    </time>
+            )}
+            {unavailable && (
+              <p role="alert" className="text-error">
+                {m.dashboard_widget_subscription_schedule_load_failed()}
+              </p>
+            )}
+            {status.data && (
+              <>
+                {activeRun ? (
+                  <p role="status" className="font-medium">
+                    {m.dashboard_widget_subscription_schedule_active({
+                      state: runStateLabel(activeRun),
+                    })}
                   </p>
-                ))
-              ) : (
+                ) : status.data.scheduled && status.data.next_run_at ? (
+                  <p>
+                    {m.dashboard_widget_subscription_schedule_next_run({
+                      time: formatDate(status.data.next_run_at),
+                    })}
+                  </p>
+                ) : (
+                  <p>
+                    {m.dashboard_widget_subscription_schedule_manual_only()}
+                  </p>
+                )}
+                {status.data.registration_error && (
+                  <p className="text-error break-words" role="alert">
+                    {m.dashboard_widget_subscription_schedule_registration_error(
+                      {
+                        error: status.data.registration_error,
+                      },
+                    )}
+                  </p>
+                )}
+                {status.data.journal_degraded && (
+                  <p className="text-on-surface-variant" role="status">
+                    {m.dashboard_widget_subscription_schedule_journal_degraded()}
+                  </p>
+                )}
+              </>
+            )}
+            {config.showRecentRuns && recentRunLimit > 0 && (
+              <div className="space-y-1 pt-1">
                 <p className="text-on-surface-variant text-xs">
-                  {m.dashboard_widget_subscription_schedule_no_runs()}
+                  {m.dashboard_widget_subscription_schedule_recent()}
                 </p>
-              )}
-            </div>
-          )}
-          {config.showRecentRuns && !expanded && completed[0] && (
-            <p className="text-on-surface-variant truncate text-[10px]">
-              {m.dashboard_widget_subscription_schedule_recent()}:{' '}
-              {runStateLabel(completed[0])}
-            </p>
-          )}
-          {actionState !== 'idle' && (
-            <p
-              className={
-                actionState === 'failed'
-                  ? 'text-error text-xs'
-                  : 'text-on-surface-variant text-xs'
-              }
-              role={actionState === 'failed' ? 'alert' : 'status'}
-            >
-              {actionState === 'degraded'
-                ? m.dashboard_widget_subscription_schedule_committed_degraded()
-                : actionState === 'unconfirmed'
-                  ? m.dashboard_widget_subscription_schedule_unconfirmed()
-                  : m.dashboard_widget_subscription_schedule_refresh_failed()}
-            </p>
-          )}
-          {actionState === 'unconfirmed' && (
-            <>
-              <Button
-                variant="basic"
-                className="h-7 min-w-0 self-start px-2 text-xs"
-                disabled={disabled || checkingStatus}
-                loading={checkingStatus}
-                onClick={checkStatus}
+                {runs.isPending ? (
+                  <p className="text-on-surface-variant text-xs" role="status">
+                    {m.dashboard_widget_subscription_schedule_loading()}
+                  </p>
+                ) : runs.isError && !runs.data ? (
+                  <p className="text-error text-xs" role="alert">
+                    {m.dashboard_widget_subscription_schedule_history_unavailable()}
+                  </p>
+                ) : completed.length > 0 ? (
+                  completed.slice(0, recentRunLimit).map((run) => (
+                    <p
+                      key={run.id}
+                      className="flex items-center justify-between gap-2 text-xs"
+                      data-slot="subscription-schedule-run"
+                    >
+                      <span className="truncate">{runStateLabel(run)}</span>
+                      <time className="text-on-surface-variant shrink-0 tabular-nums">
+                        {run.finished_at ? formatDate(run.finished_at) : '—'}
+                      </time>
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-on-surface-variant text-xs">
+                    {m.dashboard_widget_subscription_schedule_no_runs()}
+                  </p>
+                )}
+              </div>
+            )}
+            {actionState !== 'idle' && (
+              <p
+                className={
+                  actionState === 'failed'
+                    ? 'text-error text-xs'
+                    : 'text-on-surface-variant text-xs'
+                }
+                role={actionState === 'failed' ? 'alert' : 'status'}
               >
-                {m.dashboard_widget_operation_check()}
-              </Button>
-              {checkFailed && (
-                <p className="text-error text-xs" role="alert">
-                  {m.dashboard_widget_operation_check_failed()}
-                </p>
-              )}
-            </>
-          )}
+                {actionState === 'degraded'
+                  ? m.dashboard_widget_subscription_schedule_committed_degraded()
+                  : actionState === 'unconfirmed'
+                    ? m.dashboard_widget_subscription_schedule_unconfirmed()
+                    : m.dashboard_widget_subscription_schedule_refresh_failed()}
+              </p>
+            )}
+            {actionState === 'unconfirmed' && (
+              <>
+                <Button
+                  variant="basic"
+                  className="h-7 min-w-0 self-start px-2 text-xs"
+                  disabled={disabled || checkingStatus}
+                  loading={checkingStatus}
+                  onClick={checkStatus}
+                >
+                  {m.dashboard_widget_operation_check()}
+                </Button>
+                {checkFailed && (
+                  <p className="text-error text-xs" role="alert">
+                    {m.dashboard_widget_operation_check_failed()}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
     </WidgetItem>
@@ -388,7 +422,8 @@ function SubscriptionScheduleLive({
       onCloseClick={onCloseClick}
     >
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 text-base font-medium">
+        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
+          <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
           {m.dashboard_widget_subscription_schedule_title()}
         </CardHeader>
         <CardContent className="min-h-0 flex-1 items-center justify-center gap-2 text-center text-sm">

@@ -1,7 +1,10 @@
+import '@/assets/styles/tailwind.css'
+import '@nyanpasu/theme/styles/theme.css'
 import type { PropsWithChildren } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { DashboardProvider } from '@/components/widgets/provider'
 import { ActiveConnectionsWidget } from '@/components/widgets/widget-active-connections'
 import { m } from '@/paraglide/messages'
@@ -87,7 +90,7 @@ function ConnectionDetailsBridge({ children }: PropsWithChildren) {
   )
 }
 
-test('renders the top three detail rows in stable speed order and hides configured targets', async ({
+test('fits configured detail rows to the available height and hides configured targets', async ({
   onTestFinished,
 }) => {
   FakeEventSource.instances = []
@@ -204,7 +207,9 @@ test('renders the top three detail rows in stable speed order and hides configur
       <QueryClientProvider client={queryClient}>
         <ClashWSProvider>
           <ConnectionDetailsBridge>
-            <RouterProvider router={router} />
+            <TooltipProvider>
+              <RouterProvider router={router} />
+            </TooltipProvider>
           </ConnectionDetailsBridge>
         </ClashWSProvider>
       </QueryClientProvider>
@@ -229,26 +234,29 @@ test('renders the top three detail rows in stable speed order and hides configur
     '[data-slot="widget-active-connections-card"]',
   )!
   await expect
-    .poll(
-      () =>
-        card.querySelectorAll('[data-slot="widget-active-connections-list"] li')
-          .length,
+    .poll(() =>
+      card.querySelector('[data-slot="widget-active-connections-list"]'),
     )
-    .toBe(3)
-  const rows = [
-    ...card.querySelectorAll('[data-slot="widget-active-connections-list"] li'),
-  ].map((row) => row.textContent ?? '')
+    .not.toBeNull()
+  const list = card.querySelector(
+    '[data-slot="widget-active-connections-list"]',
+  )!
+  await expect.poll(() => list.querySelectorAll('li').length).toBeGreaterThan(0)
+  expect(list.scrollHeight).toBeLessThanOrEqual(list.clientHeight)
+  const rows = [...list.querySelectorAll('li')].map(
+    (row) => row.textContent ?? '',
+  )
   expect(rows.map((row) => row.match(/worker-[a-z]\.exe/)?.[0])).toEqual([
     'worker-z.exe',
     'worker-a.exe',
     'worker-b.exe',
+    'worker-c.exe',
   ])
   expect(card.textContent).toContain(
     m.dashboard_widget_active_connections_hidden_target(),
   )
   expect(card.textContent).not.toContain('hidden-host-')
   expect(card.textContent).not.toContain('C:\\Applications\\Private App')
-  expect(card.textContent).not.toContain('worker-c.exe')
   expect(card.textContent).not.toContain('worker-x.exe')
 
   expect(

@@ -1,10 +1,13 @@
+import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
+import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
+import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { filesize } from 'filesize'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { LinearProgress } from '@nyanpasu/ui/progress'
-import TextMarquee from '@nyanpasu/ui/text-marquee'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatDate, formatRelativeTime } from '@/utils/date'
@@ -23,6 +26,7 @@ import {
   subscriptionExpiryTimestamp,
 } from './dashboard-daily-utils'
 import { useDashboardContext, useWidgetConfig } from './provider'
+import { useWidgetHeight } from './use-widget-height'
 import { WidgetId, type WidgetConfig } from './widget-config'
 import WidgetItem from './widget-item'
 
@@ -35,8 +39,14 @@ function SubscriptionQuotaPreview({ id }: { id: string }) {
       minH={2}
     >
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 text-base font-medium">
-          {m.dashboard_widget_subscription_quota_title()}
+        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
+          <DataUsageRounded className="text-on-surface-variant size-5 shrink-0" />
+          <span
+            className="min-w-0 flex-1 truncate"
+            title={m.dashboard_widget_subscription_quota_title()}
+          >
+            {m.dashboard_widget_subscription_quota_title()}
+          </span>
         </CardHeader>
         <CardContent className="min-h-0 flex-1 justify-center">
           <div className="bg-surface-variant h-5 w-2/3 animate-pulse rounded-full" />
@@ -61,12 +71,12 @@ function SubscriptionQuotaLive({
   const { query } = useProfile()
   const { update } = useProfileMutations()
   const { setIsEditing } = useDashboardContext()
-  const { displayItems } = useDndGridContext()
+  const { ref: contentRef, height: contentHeight } =
+    useWidgetHeight<HTMLDivElement>()
   const [actionState, setActionState] = useState<ActionState>('idle')
   const [checkedAfterUnconfirmed, setCheckedAfterUnconfirmed] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
   const [checkFailed, setCheckFailed] = useState(false)
-  const expanded = (displayItems.find((item) => item.id === id)?.h ?? 2) >= 3
   const profiles = query.data?.items ?? []
   const resolution = query.data
     ? resolveProfileTarget(profiles, query.data.current, config.target)
@@ -161,6 +171,14 @@ function SubscriptionQuotaLive({
   }
 
   const targetMessage = statusText()
+  const hasPriorityState =
+    isWarning ||
+    (query.isError && query.data != null) ||
+    actionState !== 'idle' ||
+    checkFailed
+  const showTotal = !hasPriorityState && (contentHeight ?? 0) >= 88
+  const showBreakdown = !hasPriorityState && (contentHeight ?? 0) >= 144
+  const showUpdatedAt = !hasPriorityState && (contentHeight ?? 0) >= 112
 
   return (
     <WidgetItem
@@ -174,198 +192,230 @@ function SubscriptionQuotaLive({
         className="flex size-full flex-col"
         data-slot="subscription-quota-card"
       >
-        <CardHeader className="min-w-0 shrink-0 gap-2 px-3 pt-2 pb-1 text-base font-medium">
-          <TextMarquee>
-            {m.dashboard_widget_subscription_quota_title()}
-          </TextMarquee>
-          {profile && (
-            <Link
-              aria-disabled={disabled}
-              tabIndex={disabled ? -1 : 0}
-              onClick={(event) => {
-                if (disabled) event.preventDefault()
-              }}
-              className={`text-on-surface-variant min-w-0 truncate text-xs ${disabled ? 'pointer-events-none opacity-50' : ''}`}
-              to="/main/profiles/$type/detail/$uid"
-              params={{ type: 'profile', uid: profile.uid }}
+        <CardHeader className="shrink-0 flex-row items-center justify-between gap-2 px-3 pt-2 pb-1 text-sm font-medium">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <DataUsageRounded className="text-on-surface-variant size-5 shrink-0" />
+            <span
+              className="min-w-0 flex-1 truncate"
+              title={m.dashboard_widget_subscription_quota_title()}
             >
-              {profile.name}
-            </Link>
+              {m.dashboard_widget_subscription_quota_title()}
+            </span>
+          </div>
+          {profile && (
+            <div className="flex shrink-0 items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="basic"
+                    className="size-7"
+                    icon
+                    aria-label={m.dashboard_widget_subscription_quota_details()}
+                    asChild
+                  >
+                    <Link
+                      aria-disabled={disabled}
+                      tabIndex={disabled ? -1 : 0}
+                      onClick={(event) => {
+                        if (disabled) event.preventDefault()
+                      }}
+                      to="/main/profiles/$type/detail/$uid"
+                      params={{ type: 'profile', uid: profile.uid }}
+                    >
+                      <OpenInNewRounded className="size-4" />
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {m.dashboard_widget_subscription_quota_details()}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="raised"
+                    className="size-7"
+                    icon
+                    aria-label={m.dashboard_widget_subscription_quota_refresh()}
+                    disabled={
+                      disabled ||
+                      update.isPending ||
+                      checkingStatus ||
+                      (actionState === 'unconfirmed' &&
+                        !checkedAfterUnconfirmed)
+                    }
+                    loading={update.isPending}
+                    onClick={refresh}
+                  >
+                    <RefreshRounded className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {m.dashboard_widget_subscription_quota_refresh()}
+                </TooltipContent>
+              </Tooltip>
+            </div>
           )}
         </CardHeader>
 
-        <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-y-auto px-3 py-1">
-          {targetMessage ? (
-            <div className="flex flex-col items-center gap-2 text-center text-sm">
-              <p role={query.isError ? 'alert' : 'status'}>{targetMessage}</p>
-              {(resolution?.kind === 'needs_selection' ||
-                resolution?.kind === 'missing' ||
-                resolution?.kind === 'unsupported') && (
-                <Button
-                  variant="raised"
-                  className="h-8 min-w-0 px-3 text-xs"
-                  onClick={() => setIsEditing(true)}
-                >
-                  {m.dashboard_widget_subscription_quota_configure()}
-                </Button>
-              )}
-            </div>
-          ) : profile ? (
-            <>
-              {isWarning && (
-                <p
-                  className="text-error text-xs"
-                  role="status"
-                  data-slot="subscription-quota-warning"
-                >
-                  {m.dashboard_widget_subscription_quota_warning()}
-                </p>
-              )}
-              {quota ? (
-                <>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-xl font-bold tabular-nums">
-                      <span data-slot="subscription-quota-remaining">
-                        {filesize(quota.remaining, { standard: 'iec' })}
-                      </span>
-                    </span>
-                    <span className="text-on-surface-variant text-[10px] tabular-nums">
-                      {m.dashboard_widget_subscription_quota_remaining_of({
-                        total: filesize(quota.total, { standard: 'iec' }),
-                      })}
-                    </span>
-                  </div>
-                  {config.showProgress && (
-                    <div data-slot="subscription-quota-progress">
-                      <LinearProgress value={quota.usedPercent} />
-                    </div>
-                  )}
-                  {quota.overage > 0 && (
-                    <p className="text-error text-xs">
-                      {m.dashboard_widget_subscription_quota_overage({
-                        value: filesize(quota.overage, { standard: 'iec' }),
-                      })}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <p className="text-on-surface-variant text-sm" role="status">
-                  {m.dashboard_widget_subscription_quota_unknown()}
-                </p>
-              )}
-              {config.showExpiry && (
-                <p className="text-on-surface-variant truncate text-[10px]">
-                  {expiry
-                    ? m.dashboard_widget_subscription_quota_expires({
-                        relative: formatRelativeTime(
-                          expiry,
-                          Date.now(),
-                          getLocale(),
-                        ),
-                        date: formatDate(expiry),
-                      })
-                    : m.dashboard_widget_subscription_quota_expiry_unknown()}
-                </p>
-              )}
-              {expanded && quota && (
-                <p className="text-on-surface-variant truncate text-xs">
-                  {m.dashboard_widget_subscription_quota_breakdown({
-                    upload: filesize(quota.upload, { standard: 'iec' }),
-                    download: filesize(quota.download, { standard: 'iec' }),
-                  })}
-                </p>
-              )}
-              <p className="text-on-surface-variant truncate text-[10px]">
-                {updatedAt
-                  ? m.dashboard_widget_subscription_quota_updated({
-                      time: formatRelativeTime(
-                        updatedAt * 1000,
-                        Date.now(),
-                        getLocale(),
-                      ),
-                    })
-                  : m.dashboard_widget_subscription_quota_updated_unknown()}
-              </p>
-              {query.isError && query.data && (
-                <p className="text-error text-xs" role="alert">
-                  {m.dashboard_widget_subscription_quota_stale_error()}
-                </p>
-              )}
-              {actionState !== 'idle' && (
-                <p
-                  className={
-                    actionState === 'failed'
-                      ? 'text-error text-xs'
-                      : 'text-on-surface-variant text-xs'
-                  }
-                  role={actionState === 'failed' ? 'alert' : 'status'}
-                >
-                  {actionState === 'degraded'
-                    ? m.dashboard_widget_subscription_quota_committed_degraded()
-                    : actionState === 'unconfirmed'
-                      ? m.dashboard_widget_subscription_quota_unconfirmed()
-                      : m.dashboard_widget_subscription_quota_refresh_failed()}
-                </p>
-              )}
-              {actionState === 'unconfirmed' && (
-                <>
+        <CardContent className="min-h-0 flex-1 justify-start gap-0 px-3 py-1">
+          <div
+            ref={contentRef}
+            className="flex min-h-0 flex-1 flex-col gap-1"
+            data-slot="subscription-quota-content"
+          >
+            {targetMessage ? (
+              <div className="flex flex-col items-center gap-2 text-center text-sm">
+                <p role={query.isError ? 'alert' : 'status'}>{targetMessage}</p>
+                {(resolution?.kind === 'needs_selection' ||
+                  resolution?.kind === 'missing' ||
+                  resolution?.kind === 'unsupported') && (
                   <Button
-                    variant="basic"
-                    className="h-7 min-w-0 px-2 text-xs"
-                    disabled={disabled || checkingStatus}
-                    loading={checkingStatus}
-                    onClick={checkStatus}
+                    variant="raised"
+                    className="h-8 min-w-0 px-3 text-xs"
+                    onClick={() => setIsEditing(true)}
                   >
-                    {m.dashboard_widget_operation_check()}
+                    {m.dashboard_widget_subscription_quota_configure()}
                   </Button>
-                  {checkFailed && (
-                    <p className="text-error text-xs" role="alert">
-                      {m.dashboard_widget_operation_check_failed()}
-                    </p>
-                  )}
-                </>
-              )}
-            </>
-          ) : null}
+                )}
+              </div>
+            ) : profile ? (
+              <>
+                {!hasPriorityState && (
+                  <Link
+                    aria-disabled={disabled}
+                    tabIndex={disabled ? -1 : 0}
+                    onClick={(event) => {
+                      if (disabled) event.preventDefault()
+                    }}
+                    className={`text-on-surface-variant truncate text-xs ${disabled ? 'pointer-events-none opacity-50' : ''}`}
+                    to="/main/profiles/$type/detail/$uid"
+                    params={{ type: 'profile', uid: profile.uid }}
+                  >
+                    {profile.name}
+                  </Link>
+                )}
+                {isWarning && (
+                  <p
+                    className="text-error text-xs"
+                    role="status"
+                    data-slot="subscription-quota-warning"
+                  >
+                    {m.dashboard_widget_subscription_quota_warning()}
+                  </p>
+                )}
+                {quota ? (
+                  <>
+                    <div className="flex flex-col gap-0">
+                      <span className="text-xl font-bold whitespace-nowrap tabular-nums">
+                        <span data-slot="subscription-quota-remaining">
+                          {filesize(quota.remaining, { standard: 'iec' })}
+                        </span>
+                      </span>
+                      {showTotal && (
+                        <span className="text-on-surface-variant text-[10px] tabular-nums">
+                          {m.dashboard_widget_subscription_quota_remaining_of({
+                            total: filesize(quota.total, { standard: 'iec' }),
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    {config.showProgress && (
+                      <div data-slot="subscription-quota-progress">
+                        <LinearProgress value={quota.usedPercent} />
+                      </div>
+                    )}
+                    {quota.overage > 0 && (
+                      <p className="text-error text-xs break-words">
+                        {m.dashboard_widget_subscription_quota_overage({
+                          value: filesize(quota.overage, { standard: 'iec' }),
+                        })}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-on-surface-variant text-sm" role="status">
+                    {m.dashboard_widget_subscription_quota_unknown()}
+                  </p>
+                )}
+                {config.showExpiry && (
+                  <p className="text-on-surface-variant text-[10px] break-words">
+                    {expiry
+                      ? m.dashboard_widget_subscription_quota_expires({
+                          relative: formatRelativeTime(
+                            expiry,
+                            Date.now(),
+                            getLocale(),
+                          ),
+                          date: formatDate(expiry),
+                        })
+                      : m.dashboard_widget_subscription_quota_expiry_unknown()}
+                  </p>
+                )}
+                {showBreakdown && quota && (
+                  <p className="text-on-surface-variant truncate text-xs">
+                    {m.dashboard_widget_subscription_quota_breakdown({
+                      upload: filesize(quota.upload, { standard: 'iec' }),
+                      download: filesize(quota.download, { standard: 'iec' }),
+                    })}
+                  </p>
+                )}
+                {showUpdatedAt && (
+                  <p className="text-on-surface-variant truncate text-[10px]">
+                    {updatedAt
+                      ? m.dashboard_widget_subscription_quota_updated({
+                          time: formatRelativeTime(
+                            updatedAt * 1000,
+                            Date.now(),
+                            getLocale(),
+                          ),
+                        })
+                      : m.dashboard_widget_subscription_quota_updated_unknown()}
+                  </p>
+                )}
+                {query.isError && query.data && (
+                  <p className="text-error text-xs" role="alert">
+                    {m.dashboard_widget_subscription_quota_stale_error()}
+                  </p>
+                )}
+                {actionState !== 'idle' && (
+                  <p
+                    className={
+                      actionState === 'failed'
+                        ? 'text-error text-xs'
+                        : 'text-on-surface-variant text-xs'
+                    }
+                    role={actionState === 'failed' ? 'alert' : 'status'}
+                  >
+                    {actionState === 'degraded'
+                      ? m.dashboard_widget_subscription_quota_committed_degraded()
+                      : actionState === 'unconfirmed'
+                        ? m.dashboard_widget_subscription_quota_unconfirmed()
+                        : m.dashboard_widget_subscription_quota_refresh_failed()}
+                  </p>
+                )}
+                {actionState === 'unconfirmed' && (
+                  <>
+                    <Button
+                      variant="basic"
+                      className="h-7 min-w-0 px-2 text-xs"
+                      disabled={disabled || checkingStatus}
+                      loading={checkingStatus}
+                      onClick={checkStatus}
+                    >
+                      {m.dashboard_widget_operation_check()}
+                    </Button>
+                    {checkFailed && (
+                      <p className="text-error text-xs" role="alert">
+                        {m.dashboard_widget_operation_check_failed()}
+                      </p>
+                    )}
+                  </>
+                )}
+              </>
+            ) : null}
+          </div>
         </CardContent>
-
-        {profile && expanded && (
-          <CardFooter className="shrink-0 justify-between gap-2 px-3">
-            <Button
-              variant="basic"
-              className="h-8 min-w-0 px-2 text-xs"
-              disabled={disabled}
-              asChild
-            >
-              <Link
-                aria-disabled={disabled}
-                tabIndex={disabled ? -1 : 0}
-                onClick={(event) => {
-                  if (disabled) event.preventDefault()
-                }}
-                className={disabled ? 'pointer-events-none opacity-50' : ''}
-                to="/main/profiles/$type/detail/$uid"
-                params={{ type: 'profile', uid: profile.uid }}
-              >
-                {m.dashboard_widget_subscription_quota_details()}
-              </Link>
-            </Button>
-            <Button
-              variant="raised"
-              className="h-8 min-w-0 px-3 text-xs"
-              disabled={
-                disabled ||
-                update.isPending ||
-                checkingStatus ||
-                (actionState === 'unconfirmed' && !checkedAfterUnconfirmed)
-              }
-              loading={update.isPending}
-              onClick={refresh}
-            >
-              {m.dashboard_widget_subscription_quota_refresh()}
-            </Button>
-          </CardFooter>
-        )}
       </Card>
     </WidgetItem>
   )

@@ -9,11 +9,12 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { useSetting } from '@nyanpasu/query'
 import { type UpdateSource } from '@nyanpasu/rpc/types'
 
-const SOURCES: UpdateSource[] = ['nyanpasu', 'github']
+const SOURCES: UpdateSource[] = ['nyanpasu', 'github', 'ghfast']
 
 const SOURCE_HOSTS: Record<UpdateSource, string> = {
   nyanpasu: 'nyanpasu-script.majokeiko.com',
   github: 'github.com',
+  ghfast: 'ghfast.top',
 }
 
 export default function UpdateSourceSelector() {
@@ -69,6 +70,7 @@ export default function UpdateSourceSelector() {
   const labels: Record<UpdateSource, string> = {
     nyanpasu: m.update_source_nyanpasu(),
     github: m.update_source_github(),
+    ghfast: m.update_source_ghfast(),
   }
 
   return (

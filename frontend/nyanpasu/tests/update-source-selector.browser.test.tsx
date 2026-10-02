@@ -17,6 +17,7 @@ vi.mock('@nyanpasu/query', () => ({
       isPending: false,
       upsert: async (sources: string[]) => {
         await backend.save(sources)
+        backend.sources = sources
         setValue(sources)
       },
       refetch: async () => {},
@@ -66,6 +67,50 @@ test('reorders download sources and preserves at least one enabled source', asyn
   expect(backend.save.mock.lastCall).toEqual([['github', 'nyanpasu']])
 })
 
+test('enables GHFast, saves its priority, and restores it when reopened', async ({
+  onTestFinished,
+}) => {
+  backend.sources = ['nyanpasu', 'github']
+  backend.installing = false
+  backend.save.mockResolvedValue(undefined)
+  let view = await render(<UpdateSourceSelector />)
+  onTestFinished(async () => {
+    await view.unmount()
+    vi.clearAllMocks()
+  })
+
+  const ghfast = view.getByRole('switch', { name: m.update_source_ghfast() })
+  await expect.element(ghfast).not.toBeChecked()
+  await ghfast.click()
+  await expect.element(ghfast).toBeChecked()
+  await expect
+    .poll(() => backend.save.mock.lastCall)
+    .toEqual([['nyanpasu', 'github', 'ghfast']])
+
+  await view
+    .getByRole('button', {
+      name: `${m.update_sources_move_up()} ${m.update_source_ghfast()}`,
+    })
+    .click()
+  await expect
+    .poll(() => backend.save.mock.lastCall)
+    .toEqual([['nyanpasu', 'ghfast', 'github']])
+
+  await view.unmount()
+  view = await render(<UpdateSourceSelector />)
+  await expect
+    .element(view.getByRole('switch', { name: m.update_source_ghfast() }))
+    .toBeChecked()
+  await view
+    .getByRole('button', {
+      name: `${m.update_sources_move_up()} ${m.update_source_ghfast()}`,
+    })
+    .click()
+  await expect
+    .poll(() => backend.save.mock.lastCall)
+    .toEqual([['ghfast', 'nyanpasu', 'github']])
+})
+
 test('locks source choices while an update is downloading or installing', async ({
   onTestFinished,
 }) => {
@@ -83,6 +128,9 @@ test('locks source choices while an update is downloading or installing', async 
         name: m.update_source_nyanpasu(),
       }),
     )
+    .toBeDisabled()
+  await expect
+    .element(view.getByRole('switch', { name: m.update_source_ghfast() }))
     .toBeDisabled()
   await expect
     .element(

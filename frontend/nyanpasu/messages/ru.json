@@ -274,6 +274,7 @@
   "update_sources_move_down": "Переместить источник вниз",
   "update_source_nyanpasu": "Зеркало Nyanpasu",
   "update_source_github": "Релизы GitHub",
+  "update_source_ghfast": "Зеркало GHFast",
   "profile_subscription_title": "Информация о подписке",
   "profile_subscription_updated_at": "Обновлено {updated}",
   "profile_subscription_next_update_at": "Следующее обновление: {next}",

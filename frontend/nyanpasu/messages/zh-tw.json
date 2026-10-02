@@ -300,6 +300,7 @@
   "update_sources_move_down": "下移來源",
   "update_source_nyanpasu": "Nyanpasu 鏡像",
   "update_source_github": "GitHub Releases",
+  "update_source_ghfast": "GHFast 鏡像",
   "profile_subscription_title": "遠端資訊",
   "profile_subscription_updated_at": "{updated}更新",
   "profile_subscription_next_update_at": "下次更新時間：{next}",

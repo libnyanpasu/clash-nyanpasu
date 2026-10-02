@@ -81,7 +81,8 @@
       "endpoints": [
         "https://nyanpasu-script.majokeiko.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-proxy.json",
         "https://nyanpasu.surge.sh/updater/update-proxy.json",
-        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update.json"
+        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update.json",
+        "https://ghfast.top/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update.json"
       ]
     }
   },

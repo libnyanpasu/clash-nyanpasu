@@ -4275,7 +4275,7 @@ export type UpdateDownload = {
   rid: number
 }
 
-export type UpdateSource = 'nyanpasu' | 'github'
+export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast'
 
 export type UpdateWrapper = {
   downloads: UpdateDownload[]

@@ -286,10 +286,14 @@ mod patch_tests {
         let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
         assert_eq!(config.update_sources, default_update_sources());
         let patch: NyanpasuAppConfigPatch =
-            serde_json::from_str(r#"{"update_sources":["github","nyanpasu"]}"#).unwrap();
+            serde_json::from_str(r#"{"update_sources":["ghfast","github","nyanpasu"]}"#).unwrap();
         assert_eq!(
             patch.update_sources,
-            Some(vec![UpdateSource::Github, UpdateSource::Nyanpasu])
+            Some(vec![
+                UpdateSource::Ghfast,
+                UpdateSource::Github,
+                UpdateSource::Nyanpasu
+            ])
         );
         assert!(
             serde_json::from_str::<NyanpasuAppConfigPatch>(r#"{"update_sources":["unknown"]}"#)

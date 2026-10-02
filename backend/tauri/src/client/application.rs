@@ -243,7 +243,11 @@ mod tests {
     async fn update_sources_preserve_order_and_reject_invalid_writes() {
         use nyanpasu_config::application::UpdateSource;
         let (client, dir) = test_client().await;
-        let selected = vec![UpdateSource::Github, UpdateSource::Nyanpasu];
+        let selected = vec![
+            UpdateSource::Ghfast,
+            UpdateSource::Github,
+            UpdateSource::Nyanpasu,
+        ];
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.update_sources = Some(selected.clone());
         assert_eq!(
@@ -251,7 +255,11 @@ mod tests {
             selected
         );
         let committed_version = client.snapshot().version;
-        for invalid in [vec![], vec![UpdateSource::Github, UpdateSource::Github]] {
+        for invalid in [
+            vec![],
+            vec![UpdateSource::Github, UpdateSource::Github],
+            vec![UpdateSource::Ghfast, UpdateSource::Ghfast],
+        ] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.update_sources = Some(invalid.clone());
             assert!(matches!(

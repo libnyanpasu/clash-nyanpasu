@@ -7,7 +7,8 @@
       "endpoints": [
         "https://nyanpasu-script.majokeiko.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
         "https://nyanpasu.surge.sh/updater/update-nightly-proxy.json",
-        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly.json"
+        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly.json",
+        "https://ghfast.top/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly.json"
       ]
     }
   }

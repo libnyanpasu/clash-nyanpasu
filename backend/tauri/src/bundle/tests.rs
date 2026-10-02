@@ -164,8 +164,19 @@ fn update_download_urls_keep_the_artifact_and_selected_priority() {
         for sources in [
             vec![UpdateSource::Github],
             vec![UpdateSource::Nyanpasu],
+            vec![UpdateSource::Ghfast],
             vec![UpdateSource::Github, UpdateSource::Nyanpasu],
             vec![UpdateSource::Nyanpasu, UpdateSource::Github],
+            vec![
+                UpdateSource::Ghfast,
+                UpdateSource::Nyanpasu,
+                UpdateSource::Github,
+            ],
+            vec![
+                UpdateSource::Github,
+                UpdateSource::Ghfast,
+                UpdateSource::Nyanpasu,
+            ],
         ] {
             let resolved = update_download_urls(&announced, &sources).unwrap();
             assert_eq!(
@@ -176,12 +187,18 @@ fn update_download_urls_keep_the_artifact_and_selected_priority() {
                 sources
             );
             for (source, url) in resolved {
-                assert_eq!(url.path(), path);
+                let expected_path = if source == UpdateSource::Ghfast {
+                    format!("/https://github.com{path}")
+                } else {
+                    path.to_owned()
+                };
+                assert_eq!(url.path(), expected_path);
                 assert_eq!(
                     url.host_str(),
                     Some(match source {
                         UpdateSource::Github => "github.com",
                         UpdateSource::Nyanpasu => "nyanpasu-script.majokeiko.com",
+                        UpdateSource::Ghfast => "ghfast.top",
                     })
                 );
             }
@@ -190,12 +207,31 @@ fn update_download_urls_keep_the_artifact_and_selected_priority() {
 }
 
 #[test]
+fn ghfast_download_keeps_escaped_paths_and_query_parameters() {
+    let path =
+        "/libnyanpasu/clash-nyanpasu/releases/download/v2.0.0%2Balpha.hash/Clash%20Nyanpasu.zip";
+    let announced = url::Url::parse(&format!(
+        "https://nyanpasu-script.majokeiko.com{path}?download=1"
+    ))
+    .unwrap();
+    let resolved = update_download_urls(&announced, &[UpdateSource::Ghfast]).unwrap();
+    assert_eq!(
+        resolved[0].1.as_str(),
+        format!("https://ghfast.top/https://github.com{path}?download=1")
+    );
+}
+
+#[test]
 fn update_download_urls_reject_invalid_sources_and_unrecognized_artifacts() {
     let valid = url::Url::parse(
         "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/v2.0.0/app.zip",
     )
     .unwrap();
-    for invalid in [vec![], vec![UpdateSource::Github, UpdateSource::Github]] {
+    for invalid in [
+        vec![],
+        vec![UpdateSource::Github, UpdateSource::Github],
+        vec![UpdateSource::Ghfast, UpdateSource::Ghfast],
+    ] {
         assert!(update_download_urls(&valid, &invalid).is_err());
     }
     for invalid in [
@@ -214,13 +250,14 @@ fn update_download_urls_reject_invalid_sources_and_unrecognized_artifacts() {
 fn release_channel_selects_feeds_without_changing_fixed_target() {
     for channel in [Channel::Stable, Channel::Beta, Channel::Nightly] {
         let endpoints = update_endpoints(channel);
-        assert_eq!(endpoints.len(), 3);
+        assert_eq!(endpoints.len(), 4);
         let suffix = match channel {
             Channel::Stable => "",
             Channel::Beta => "-beta",
             Channel::Nightly => "-nightly",
         };
         assert!(endpoints[2].ends_with(&format!("/update{suffix}.json")));
+        assert_eq!(endpoints[3], format!("https://ghfast.top/{}", endpoints[2]));
         for fixed in [false, true] {
             let metadata = BundleMetadata {
                 is_portable: false,

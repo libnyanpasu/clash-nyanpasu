@@ -587,6 +587,9 @@ importers:
       '@internationalized/date':
         specifier: 3.12.4
         version: 3.12.4
+      '@material/material-color-utilities':
+        specifier: 0.4.0
+        version: 0.4.0
       '@nyanpasu/hooks':
         specifier: workspace:^
         version: link:../hooks

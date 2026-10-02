@@ -17,22 +17,13 @@ import ConnectionsTable, {
   type ConnectionColumn,
   type RowProps,
 } from './connections-table'
-import TableRow, {
-  activeConnectionDetail,
-  ConnectionDetailModal,
-} from './table-row'
+import TableRow, { ConnectionDetailModal } from './table-row'
 import {
+  sameTraffic,
+  useActiveConnectionDetail,
   useActiveConnectionRows,
   type ConnectionRow,
 } from './use-connection-rows'
-
-// A connection's other fields are fixed for its life in the core, and its
-// relative time follows the table's tick, so only its traffic changes a row.
-const sameTraffic = (a: ConnectionRow, b: ConnectionRow) =>
-  a.download === b.download &&
-  a.upload === b.upload &&
-  a.downloadSpeed === b.downloadSpeed &&
-  a.uploadSpeed === b.uploadSpeed
 
 const connectionId = (row: ConnectionRow) => row.id
 
@@ -77,30 +68,7 @@ const ActiveViewer = memo(function ActiveViewer({
     [],
   )
 
-  // Looked up unfiltered: a search or proxy filter hiding the row does not
-  // close the connection.
-  const liveRow = useMemo(
-    () =>
-      detailId === null
-        ? undefined
-        : connections.find((row) => row.id === detailId),
-    [connections, detailId],
-  )
-
-  // The last sample of the open connection, kept so the dialog stays on it
-  // after the connection closes and leaves the stream.
-  const [lastRow, setLastRow] = useState<ConnectionRow>()
-
-  if (liveRow && liveRow !== lastRow) {
-    setLastRow(liveRow)
-  }
-
-  const detailRow = liveRow ?? (lastRow?.id === detailId ? lastRow : undefined)
-
-  const detail = useMemo(
-    () => detailRow && activeConnectionDetail(detailRow, detailRow !== liveRow),
-    [detailRow, liveRow],
-  )
+  const detail = useActiveConnectionDetail(connections, detailId)
 
   const closeDetail = useCallback(() => setDetailId(null), [])
 

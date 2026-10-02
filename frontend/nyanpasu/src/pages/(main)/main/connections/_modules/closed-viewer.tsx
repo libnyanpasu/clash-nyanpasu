@@ -22,15 +22,13 @@ import TableRow, {
 } from './table-row'
 import {
   closedConnectionId,
+  processName,
   useClosedConnectionRows,
   type ConnectionsSelection,
 } from './use-connection-rows'
 
 // A closed record never changes, so a row keyed by it always shows the same.
 const sameRecord = () => true
-
-// The traffic history keeps the process path; the table shows its name.
-const processName = (process: string) => process.split('/').pop() || process
 
 // Closed connections of the selection. Memoized like the active view, so a
 // keystroke's urgent render skips the table.

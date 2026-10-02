@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useMemo, useRef } from 'react'
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { searchableText } from '@/utils/searchable-text'
 import { RANGE_HOURS } from '@/utils/traffic-retention'
@@ -23,12 +23,25 @@ import {
   mockActiveDimensions,
   mockClosedConnections,
 } from './mock-connections'
+import { activeConnectionDetail } from './table-row'
 
 export type ConnectionRow = ClashConnection_Serialize & {
   // Parsed once per sample: sorting by time compares numbers instead of
   // parsing both dates in every comparison.
   startMs: number
 }
+
+// A connection's other fields are fixed for its life in the core, and its
+// relative time follows the table's tick, so only its traffic changes a row.
+export const sameTraffic = (a: ConnectionRow, b: ConnectionRow) =>
+  a.download === b.download &&
+  a.upload === b.upload &&
+  a.downloadSpeed === b.downloadSpeed &&
+  a.uploadSpeed === b.uploadSpeed
+
+// The traffic history keeps the process path; the table shows its name.
+export const processName = (process: string) =>
+  process.split('/').pop() || process
 
 /** The traffic page's selection, as a jump to the connections page brings it. */
 export type ConnectionsSelection = {
@@ -226,4 +239,34 @@ export function useClosedConnectionRows({
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage])
 
   return { rows, error, hasNextPage, onEndReached }
+}
+
+/**
+ * The details of the live connection `id`, following its samples. The last
+ * sample is kept, so the dialog stays on it after the connection closes and
+ * leaves the stream.
+ */
+export function useActiveConnectionDetail(
+  connections: ConnectionRow[],
+  id: string | null,
+) {
+  // Looked up unfiltered: a search or proxy filter hiding the row does not
+  // close the connection.
+  const liveRow = useMemo(
+    () => (id === null ? undefined : connections.find((row) => row.id === id)),
+    [connections, id],
+  )
+
+  const [lastRow, setLastRow] = useState<ConnectionRow>()
+
+  if (liveRow && liveRow !== lastRow) {
+    setLastRow(liveRow)
+  }
+
+  const detailRow = liveRow ?? (lastRow?.id === id ? lastRow : undefined)
+
+  return useMemo(
+    () => detailRow && activeConnectionDetail(detailRow, detailRow !== liveRow),
+    [detailRow, liveRow],
+  )
 }

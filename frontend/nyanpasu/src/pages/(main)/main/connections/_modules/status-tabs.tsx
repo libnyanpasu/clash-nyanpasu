@@ -10,6 +10,7 @@ import {
   useTrafficReport,
   useTrafficSummary,
 } from '@nyanpasu/query'
+import type { TrafficScope } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { toTrafficFilters } from '../../_modules/traffic-filters'
 import {
@@ -19,7 +20,7 @@ import {
   type ConnectionsSelection,
 } from './use-connection-rows'
 
-export type ConnectionsScope = 'active' | 'closed'
+export type ConnectionsScope = TrafficScope
 
 function CountBadge({ count }: { count?: number }) {
   if (count === undefined) {
@@ -58,11 +59,15 @@ export function StatusTabs({
       value={value}
       onValueChange={(next) => {
         // Selecting the selected segment again clears a toggle group.
-        if (next === 'active' || next === 'closed') {
+        if (next === 'all' || next === 'active' || next === 'closed') {
           onValueChange(next)
         }
       }}
     >
+      <SegmentedButtonItem value="all" className="flex-none whitespace-nowrap">
+        {m.connections_tab_all()}
+      </SegmentedButtonItem>
+
       <SegmentedButtonItem
         value="active"
         className="flex-none whitespace-nowrap"

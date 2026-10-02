@@ -1,10 +1,7 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
-import ViewColumnRounded from '~icons/material-symbols/view-column-rounded'
 import { useCallback, useDeferredValue, useMemo, useState } from 'react'
-import { Button } from '@nyanpasu/ui/button'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -20,13 +17,11 @@ import { createFileRoute } from '@tanstack/react-router'
 import type { SearchFilter } from '../_modules/traffic-filters'
 import { useSearchTerm } from '../_modules/use-search-term'
 import ActiveViewer from './_modules/active-viewer'
+import AllViewer from './_modules/all-viewer'
 import ClosedViewer from './_modules/closed-viewer'
-import ConnectionsFilters from './_modules/connections-filters'
+import ConnectionsToolbar from './_modules/connections-toolbar'
 import ConnectionsStatusTabs from './_modules/status-tabs'
-import {
-  isFiltered,
-  type ConnectionsSelection,
-} from './_modules/use-connection-rows'
+import { type ConnectionsSelection } from './_modules/use-connection-rows'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/connections/')({
@@ -51,8 +46,6 @@ function RouteComponent() {
     () => ({ range, filters }),
     [range, filters],
   )
-
-  const filtered = isFiltered(selection)
 
   const handleSelectionChange = (next: ConnectionsSelection) =>
     navigate({
@@ -110,7 +103,15 @@ function RouteComponent() {
       type="hover"
     >
       {showTable &&
-        (scope === 'closed' ? (
+        (scope === 'all' ? (
+          <AllViewer
+            search={deferredSearch}
+            proxy={proxy}
+            selection={selection}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+          />
+        ) : scope === 'closed' ? (
           <ClosedViewer
             search={deferredSearch}
             proxy={proxy}
@@ -149,15 +150,9 @@ function RouteComponent() {
         </RegisterContextMenu>
       )}
 
-      {/* Chips share the row while it is wide enough; narrower, they take a
-          row of their own under the controls, as on the traffic page. */}
-      <div
-        className="bg-mixed-background @container shrink-0"
-        data-slot="connections-toolbar"
-      >
-        <div className="flex min-h-16 flex-wrap items-center gap-3 px-4 py-3 @3xl:flex-nowrap @3xl:py-0">
-          <ReturnButton />
-
+      <ConnectionsToolbar
+        start={<ReturnButton />}
+        tabs={
           <ConnectionsStatusTabs
             value={scope}
             onValueChange={(next) =>
@@ -168,52 +163,14 @@ function RouteComponent() {
             }
             selection={selection}
           />
-
-          {filtered && (
-            <ConnectionsFilters
-              className="order-last basis-full @3xl:order-none @3xl:flex-1 @3xl:basis-0"
-              selection={selection}
-              onSelectionChange={handleSelectionChange}
-            />
-          )}
-
-          <input
-            type="text"
-            className={cn(
-              'bg-surface-variant dark:bg-surface-variant/30',
-              'h-10 min-w-0 flex-1 rounded-full px-4 text-sm outline-none',
-              filtered && '@3xl:w-56 @3xl:flex-none @4xl:w-72',
-            )}
-            placeholder={m.connections_search_placeholder()}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={() => setSettingsOpen(true)} icon>
-                <ViewColumnRounded />
-              </Button>
-            </TooltipTrigger>
-
-            <TooltipContent>{m.connections_column_settings()}</TooltipContent>
-          </Tooltip>
-
-          {scope === 'active' && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button onClick={handleCloseAllConnections} icon>
-                  <CloseRounded />
-                </Button>
-              </TooltipTrigger>
-
-              <TooltipContent>
-                {m.connections_close_all_connections()}
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </div>
+        }
+        selection={selection}
+        onSelectionChange={handleSelectionChange}
+        search={search}
+        onSearchChange={setSearch}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onCloseAll={scope === 'closed' ? undefined : handleCloseAllConnections}
+      />
     </div>
   )
 }

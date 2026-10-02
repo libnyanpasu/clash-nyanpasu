@@ -24,7 +24,7 @@ export const Route = createFileRoute('/(main)/main/connections')({
   component: RouteComponent,
   validateSearch: z.object({
     proxy: z.string().optional().nullable(),
-    scope: z.enum(['active', 'closed']).optional(),
+    scope: z.enum(['all', 'active', 'closed']).optional(),
     range: z.enum(RANGES).optional(),
     filters: z.array(searchFilterSchema).optional(),
     q: z.string().optional(),

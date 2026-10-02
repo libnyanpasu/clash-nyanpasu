@@ -758,6 +758,12 @@ impl ApplicationWorkflowClient {
     /// StartupReconcile (T10 §1.2): once per session, and its report on every
     /// later call. The call waits for the report itself, so `Unsettled` here
     /// means the workflow refused the command or is gone, never a guess.
+    /// Ends the workflow the way a panic does: without its `post_stop`.
+    #[cfg(test)]
+    pub(crate) async fn kill(&self) {
+        let _ = self.0.actor.kill_and_wait(None).await;
+    }
+
     pub async fn startup_reconcile(&self) -> startup::StartupReport {
         let operation_id = OperationId::generate();
         match self.call_as(operation_id, Command::StartupReconcile).await {

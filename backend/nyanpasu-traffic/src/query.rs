@@ -290,6 +290,7 @@ mod tests {
             profile: Some(profile.into()),
             source_region: "CN".into(),
             destination_region: "US".into(),
+            destination_basis: None,
         }
     }
 

@@ -50,6 +50,7 @@
   "traffic_dimension_profile": "配置",
   "traffic_dimension_source_region": "来源地区",
   "traffic_dimension_destination_region": "目标地区",
+  "traffic_dimension_destination_basis": "定位依据",
   "traffic_stat_total": "总流量",
   "traffic_stat_connections": "连接",
   "traffic_stat_connections_hint": "统计值，不是精确计费。连接计入其关闭时所在的范围，即使它的流量发生在范围开始之前。",

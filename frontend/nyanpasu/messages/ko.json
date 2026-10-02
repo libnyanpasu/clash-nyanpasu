@@ -32,6 +32,7 @@
   "traffic_dimension_profile": "프로필",
   "traffic_dimension_source_region": "출발 지역",
   "traffic_dimension_destination_region": "대상 지역",
+  "traffic_dimension_destination_basis": "위치 판단 근거",
   "traffic_stat_total": "총 트래픽",
   "traffic_stat_connections": "연결",
   "traffic_stat_connections_hint": "통계 수치이며 정확한 과금 기준이 아닙니다. 연결은 종료된 기간에 집계되며, 트래픽이 기간 시작 전에 발생했더라도 마찬가지입니다.",

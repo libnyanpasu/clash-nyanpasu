@@ -1720,6 +1720,8 @@ export type Dimension =
   | 'profile'
   | 'source_region'
   | 'destination_region'
+  /**  How the destination region was located; empty while it is unknown. */
+  | 'destination_basis'
 
 export type Dimensions = {
   /**  Process path or name. */
@@ -1735,9 +1737,11 @@ export type Dimensions = {
   chains: string[]
   /**  The profile that was current when the connection first appeared; never rewritten. */
   profile?: string | null
-  /**  Normalized GeoIP region, see `normalize_region`. */
+  /**  An upper-case country code, or `unknown`. */
   source_region?: string
   destination_region?: string
+  /**  How `destination_region` was located; `None` while it is unknown. */
+  destination_basis?: GeoBasis | null
 }
 
 export type DirectEgress =
@@ -1965,6 +1969,13 @@ export type Filter = {
   to_ms: number | null
   text: string | null
 }
+
+/**  What the address a destination was located by is to the outbound. */
+export type GeoBasis =
+  /**  The outbound dialed this address. */
+  | 'dialed'
+  /**  The outbound was handed the host; the core resolved this address only for its rules. */
+  | 'resolved'
 
 export type GetSysProxyResponse = {
   enable: boolean

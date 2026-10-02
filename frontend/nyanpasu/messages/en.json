@@ -50,6 +50,7 @@
   "traffic_dimension_profile": "Profile",
   "traffic_dimension_source_region": "Source region",
   "traffic_dimension_destination_region": "Destination region",
+  "traffic_dimension_destination_basis": "Location basis",
   "traffic_stat_total": "Total traffic",
   "traffic_stat_connections": "Connections",
   "traffic_stat_connections_hint": "Figures are statistics, not exact billing. A connection counts in the range it closed in, even when its traffic came before the range started.",

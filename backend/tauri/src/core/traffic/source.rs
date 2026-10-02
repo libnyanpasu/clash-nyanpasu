@@ -58,6 +58,10 @@ fn dimensions(connection: &Connection, index: Option<&dyn CountryLookup>) -> Dim
     let inbound = known
         .and_then(|m| text(m.inbound_user.as_ref()))
         .or_else(|| known.and_then(|m| text(m.inbound_name.as_ref())));
+    let (destination_region, destination_basis) = known.map_or_else(
+        || (UNKNOWN.to_owned(), None),
+        |m| locate_destination(m, connection.chains.first().map(String::as_str), index),
+    );
     Dimensions {
         process: process.unwrap_or(UNKNOWN).replace('\\', "/"),
         source: known
@@ -84,8 +88,8 @@ fn dimensions(connection: &Connection, index: Option<&dyn CountryLookup>) -> Dim
         // and leave it unknown on `TunEnabled` or no address. Wiring it waits
         // on when to probe again: the app has no network-change signal yet.
         source_region: known.map_or_else(|| UNKNOWN.to_owned(), |m| locate_source(m, index)),
-        destination_region: known
-            .map_or_else(|| UNKNOWN.to_owned(), |m| locate_destination(m, index)),
+        destination_region,
+        destination_basis,
     }
 }
 

@@ -29,6 +29,7 @@ const DIMENSIONS = [
   'profile',
   'source_region',
   'destination_region',
+  'destination_basis',
 ] as const satisfies readonly Dimension[]
 
 export const TEMPLATES = ['origin', 'source', 'inbound', 'process'] as const

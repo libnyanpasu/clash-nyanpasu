@@ -14,6 +14,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         // in the schema builder below and dispatch through call_rpc.
         .commands(collect_commands![unified_rpc::call_rpc])
         .events(collect_events![
+            core::logs::CoreLogsChanged,
             core::clash::ws::ClashWsEvent,
             window::WindowMessageEvent,
             window::WindowReadyEvent,
@@ -31,6 +32,9 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         collect_commands![
             ipc::get_debug_http_status,
             // Read-only commands
+            ipc::query_core_logs,
+            ipc::get_core_log,
+            ipc::get_core_log_status,
             ipc::list_log_files,
             ipc::get_sys_proxy,
             ipc::get_clash_info,
@@ -95,6 +99,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::subscribe_clash_connection_details,
             ipc::unsubscribe_clash_connection_details,
             // Side-effecting commands
+            ipc::clear_core_logs,
             ipc::open_log_session,
             ipc::query_logs,
             ipc::close_log_session,
@@ -160,6 +165,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ],
     )
     .events(collect_events![
+        core::logs::CoreLogsChanged,
         core::clash::ws::ClashWsEvent,
         window::WindowMessageEvent,
         window::WindowReadyEvent,

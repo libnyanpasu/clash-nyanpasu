@@ -6790,6 +6790,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-attributes",
+ "tungstenite 0.28.0",
  "windows 0.62.2",
 ]
 

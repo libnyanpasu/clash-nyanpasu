@@ -18,6 +18,18 @@ export const commands = {
     typedError<DebugHttpStatus, IpcError>(
       __RPC_INVOKE('get_debug_http_status'),
     ),
+  queryCoreLogs: (query: CoreLogQuery) =>
+    typedError<CoreLogPage, CoreLogError>(
+      __RPC_INVOKE('query_core_logs', { query }),
+    ),
+  getCoreLog: (cursor: CoreLogCursor) =>
+    typedError<CoreLogRecord, CoreLogError>(
+      __RPC_INVOKE('get_core_log', { cursor }),
+    ),
+  getCoreLogStatus: () =>
+    typedError<CoreLogStatus, CoreLogError>(
+      __RPC_INVOKE('get_core_log_status'),
+    ),
   listLogFiles: (source: LogSource) =>
     typedError<LogFileInfo[], LogError>(
       __RPC_INVOKE('list_log_files', { source }),
@@ -266,6 +278,8 @@ export const commands = {
     typedError<null, IpcError>(
       __RPC_INVOKE('unsubscribe_clash_connection_details', { id }),
     ),
+  clearCoreLogs: () =>
+    typedError<null, CoreLogError>(__RPC_INVOKE('clear_core_logs')),
   openLogSession: (source: LogSource, request: OpenLogs) =>
     typedError<LogSession, LogError>(
       __RPC_INVOKE('open_log_session', { source, request }),
@@ -502,6 +516,7 @@ export const events = {
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
   ),
+  coreLogsChanged: makeEvent<CoreLogsChanged>('core-logs-changed'),
   coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
     'core-status-changed-event',
   ),
@@ -812,12 +827,6 @@ export type ClashWsEvent = {
 
 export type ClashWsKind = 'connections' | 'logs' | 'traffic' | 'memory'
 
-export type ClashWsLog = {
-  type: string
-  time: string | null
-  payload: string
-}
-
 export type ClashWsMemory = {
   inuse: number
   oslimit: number
@@ -835,7 +844,6 @@ export type ClashWsSnapshot = {
   state: ClashConnectionsConnectorState
   recording: ClashWsRecording
   connections: ClashConnectionsSummary[]
-  logs: ClashWsLog[]
   traffic: ClashWsTraffic[]
   memory: ClashWsMemory[]
 }
@@ -849,7 +857,6 @@ export type ClashWsUpdate =
   | { kind: 'reset'; data: ClashWsSnapshot }
   | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
   | { kind: 'connections_updated'; data: ClashConnectionsSummary }
-  | { kind: 'log_appended'; data: ClashWsLog }
   | { kind: 'traffic_updated'; data: ClashWsTraffic }
   | { kind: 'memory_updated'; data: ClashWsMemory }
   | { kind: 'recording_changed'; data: ClashWsRecording }
@@ -1402,6 +1409,75 @@ export type CoreInfos_Serialize = {
   health?: CoreHealthInfo | null
   revision?: ConfigRevisionInfo | null
   detail?: CoreStateDetail | null
+}
+
+export type CoreLogCursor = {
+  generation: string
+  segment: number
+  sequence: number
+}
+
+export type CoreLogDirection = 'latest' | 'before' | 'after'
+
+export type CoreLogError =
+  | { kind: 'invalid_request' }
+  | { kind: 'cursor_expired' }
+  | { kind: 'record_gone' }
+  | { kind: 'too_large' }
+  | { kind: 'unavailable'; message: string }
+
+export type CoreLogPage = {
+  rows: CoreLogRow[]
+  /**
+   *  Last consumed candidate, including nonmatches. A row excluded by the response
+   *  budget is not consumed and must appear in the next request.
+   */
+  cursor: CoreLogCursor | null
+  more: boolean
+  status: CoreLogStatus
+}
+
+export type CoreLogQuery = {
+  direction: CoreLogDirection
+  cursor: CoreLogCursor | null
+  level: string | null
+  keyword: string
+  limit: number
+}
+
+export type CoreLogRecord = {
+  source: CoreLogSource
+  received_at: number
+  time: string | null
+  type: string
+  payload: string
+}
+
+export type CoreLogRow = {
+  id: CoreLogCursor
+  record: CoreLogRecord
+  truncated: boolean
+}
+
+export type CoreLogSource = {
+  capture: string
+  instance_id: string
+  core_kind: string | null
+}
+
+export type CoreLogStatus = {
+  generation: string
+  version: number
+  first: CoreLogCursor | null
+  head: CoreLogCursor | null
+  bytes: number
+  budget: number
+  error: string | null
+  discarded: number
+}
+
+export type CoreLogsChanged = {
+  status: CoreLogStatus
 }
 
 /**  A failure of locating the binary a core is started from. */
@@ -4360,6 +4436,21 @@ export const queries = {
       queryKey: ['getDebugHttpStatus', ...args],
       queryFn: () => commands.getDebugHttpStatus(...args),
     }),
+  queryCoreLogs: (...args: Parameters<typeof commands.queryCoreLogs>) =>
+    queryOptions({
+      queryKey: ['queryCoreLogs', ...args],
+      queryFn: () => commands.queryCoreLogs(...args),
+    }),
+  getCoreLog: (...args: Parameters<typeof commands.getCoreLog>) =>
+    queryOptions({
+      queryKey: ['getCoreLog', ...args],
+      queryFn: () => commands.getCoreLog(...args),
+    }),
+  getCoreLogStatus: (...args: Parameters<typeof commands.getCoreLogStatus>) =>
+    queryOptions({
+      queryKey: ['getCoreLogStatus', ...args],
+      queryFn: () => commands.getCoreLogStatus(...args),
+    }),
   listLogFiles: (...args: Parameters<typeof commands.listLogFiles>) =>
     queryOptions({
       queryKey: ['listLogFiles', ...args],
@@ -4706,6 +4797,11 @@ export const mutations = {
     mutationFn: (
       input: Parameters<typeof commands.unsubscribeClashConnectionDetails>,
     ) => commands.unsubscribeClashConnectionDetails(...input),
+  }),
+  clearCoreLogs: mutationOptions({
+    mutationKey: ['clearCoreLogs'],
+    mutationFn: (input: Parameters<typeof commands.clearCoreLogs>) =>
+      commands.clearCoreLogs(...input),
   }),
   openLogSession: mutationOptions({
     mutationKey: ['openLogSession'],

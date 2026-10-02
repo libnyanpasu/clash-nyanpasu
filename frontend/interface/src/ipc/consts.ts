@@ -24,8 +24,3 @@ export { MAX_MEMORY_HISTORY } from '../provider/clash-ws-state'
  * Maximum traffic history length, used by clash ws provider to limit traffic history length
  */
 export { MAX_TRAFFIC_HISTORY } from '../provider/clash-ws-state'
-
-/**
- * Maximum logs history length, used by clash ws provider to limit logs history length
- */
-export { MAX_LOGS_HISTORY } from '../provider/clash-ws-state'

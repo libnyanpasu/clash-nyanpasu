@@ -61,9 +61,11 @@ export function LogEmptyState({
 export function LogClearButton({
   disabled,
   onClick,
+  label = m.logs_clear_display(),
 }: {
   disabled: boolean
   onClick: () => void
+  label?: string
 }) {
   return (
     <Button
@@ -71,8 +73,8 @@ export function LogClearButton({
       disabled={disabled}
       aria-disabled={disabled}
       onClick={onClick}
-      aria-label={m.logs_clear_display()}
-      title={m.logs_clear_display()}
+      aria-label={label}
+      title={label}
       className="focus-visible:ring-primary shrink-0 focus-visible:ring-2"
     >
       <DeleteSweepRounded aria-hidden className="size-5" />
@@ -123,6 +125,9 @@ export const LogRecord = memo(function LogRecord({
   raw,
   search,
   incomplete,
+  incompleteTitle,
+  loadRaw,
+  expanded,
   onInspect,
 }: {
   time: string
@@ -134,9 +139,49 @@ export const LogRecord = memo(function LogRecord({
   raw: unknown
   search: string
   incomplete?: boolean
+  incompleteTitle?: string
+  loadRaw?: () => Promise<unknown>
+  expanded?: boolean
   onInspect: () => void
 }) {
   const [showJson, setShowJson] = useState(false)
+  const showing = expanded ?? showJson
+  const [loadedRaw, setLoadedRaw] = useState<string | null>(null)
+  const [loadingRaw, setLoadingRaw] = useState(false)
+  const [detailError, setDetailError] = useState(false)
+  const [copying, setCopying] = useState(false)
+  useEffect(() => {
+    if (!showing || !loadRaw) {
+      setLoadedRaw(null)
+      setDetailError(false)
+      setLoadingRaw(false)
+      return
+    }
+    let disposed = false
+    setLoadingRaw(true)
+    setLoadedRaw(null)
+    setDetailError(false)
+    loadRaw()
+      .then(
+        (value) => {
+          if (!disposed)
+            setLoadedRaw(
+              typeof value === 'string'
+                ? value
+                : JSON.stringify(value, null, 2),
+            )
+        },
+        () => {
+          if (!disposed) setDetailError(true)
+        },
+      )
+      .finally(() => {
+        if (!disposed) setLoadingRaw(false)
+      })
+    return () => {
+      disposed = true
+    }
+  }, [showing, loadRaw])
   const jsonId = useId()
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
@@ -146,7 +191,7 @@ export const LogRecord = memo(function LogRecord({
     return () => clearTimeout(timer)
   }, [copied])
   const rawText = () =>
-    typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2)
+    loadedRaw ?? (typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2))
   return (
     <article className="group/log-record border-outline-variant/50 hover:bg-on-surface/4 focus-within:bg-on-surface/4 border-b px-3 py-2 text-sm transition-colors sm:px-4">
       <div className="text-on-surface-variant flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1">
@@ -165,15 +210,27 @@ export const LogRecord = memo(function LogRecord({
             className={rowActionClass}
             aria-label={copied ? m.logs_copied() : m.logs_copy()}
             title={copied ? m.logs_copied() : m.logs_copy()}
-            onClick={() =>
-              navigator.clipboard.writeText(rawText()).then(
-                () => {
-                  setCopied(true)
-                  setCopyError(false)
-                },
-                () => setCopyError(true),
-              )
-            }
+            disabled={copying || loadingRaw}
+            onClick={async () => {
+              if (copying) return
+              setCopying(true)
+              try {
+                const value = loadRaw && !loadedRaw ? await loadRaw() : null
+                const text =
+                  value === null
+                    ? rawText()
+                    : typeof value === 'string'
+                      ? value
+                      : JSON.stringify(value, null, 2)
+                await navigator.clipboard.writeText(text)
+                setCopied(true)
+                setCopyError(false)
+              } catch {
+                setCopyError(true)
+              } finally {
+                setCopying(false)
+              }
+            }}
           >
             {copied ? (
               <CheckRounded aria-hidden className="size-4" />
@@ -185,12 +242,12 @@ export const LogRecord = memo(function LogRecord({
             type="button"
             aria-label={m.logs_view_json()}
             title={m.logs_view_json()}
-            aria-expanded={showJson}
+            aria-expanded={showing}
             aria-controls={jsonId}
             className={rowActionClass}
             onClick={() => {
-              if (!showJson) onInspect()
-              setShowJson(!showJson)
+              if (expanded !== undefined || !showing) onInspect()
+              if (expanded === undefined) setShowJson(!showJson)
             }}
           >
             <DataObjectRounded aria-hidden className="size-4" />
@@ -203,14 +260,22 @@ export const LogRecord = memo(function LogRecord({
       {incomplete && (
         <span
           className="text-on-surface-variant text-xs"
-          title={m.logs_raw_record()}
+          title={incompleteTitle ?? m.logs_raw_record()}
         >
           ⚠
         </span>
       )}
-      {showJson && (
+      {showing && (
         <div id={jsonId} role="region" aria-label={m.logs_view_json()}>
-          <LogJson raw={rawText()} />
+          {loadingRaw ? (
+            <span>{m.logs_loading()}</span>
+          ) : detailError ? (
+            <p role="alert" className="text-error">
+              {m.logs_core_detail_unavailable()}
+            </p>
+          ) : (
+            <LogJson raw={rawText()} />
+          )}
         </div>
       )}
       {copyError && (

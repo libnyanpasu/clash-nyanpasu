@@ -10,7 +10,8 @@ const url = new URL(entry).origin;
 assert.ok(url, "Pass the running debug HTTP server URL");
 const browser = await chromium.launch({ headless: true });
 try {
-  const page = await browser.newPage();
+  const context = await browser.newContext();
+  const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   for (
@@ -20,7 +21,9 @@ try {
       "/bridge/connection-details",
     ]
   ) {
-    assert.equal((await page.request.get(`${url}${path}`)).status(), 401);
+    const response = await fetch(`${url}${path}`);
+    assert.equal(response.status, 401);
+    await response.body?.cancel();
   }
   await page.goto(entry, { waitUntil: "domcontentloaded" });
   await page.waitForURL(`${url}/main/dashboard`, { timeout: 30000 });
@@ -74,6 +77,58 @@ try {
   assert.equal(result.error.data.domain_error, "unsupported");
   assert.equal(result.domainError.data.domain_error.kind.domain, "profiles");
   assert.equal(typeof result.domainError.data.domain_error.detail, "string");
+  if (Deno.env.get("NYANPASU_HTTP_CORE_LOG_FIXTURE") === "1") {
+    const call = async (
+      method: string,
+      params: Record<string, unknown> = {},
+    ) => {
+      const response = await page.evaluate(async ({ method, params }) => {
+        const response = await fetch("/bridge/rpc", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ method, params }),
+        });
+        return { status: response.status, data: await response.json() };
+      }, { method, params });
+      assert.equal(response.status, 200);
+      return response.data;
+    };
+    const initial = await call("get_core_log_status");
+    const query = {
+      direction: "latest",
+      cursor: null,
+      level: "debug",
+      keyword: "core-http-fixture",
+      limit: 200,
+    };
+    const preview = await call("query_core_logs", { query });
+    assert.equal(preview.rows.length, 200);
+    const last = preview.rows.at(-1);
+    assert.equal(last.truncated, true);
+    const detail = await call("get_core_log", { cursor: last.id });
+    assert.ok(detail.payload.endsWith("complete-tail"));
+    await page.goto(`${url}/main/logs`, { waitUntil: "domcontentloaded" });
+    const viewer = page.locator('[data-slot="core-logs-viewer"]');
+    await viewer.getByText(/core-http-fixture/).first().waitFor();
+    await viewer.getByRole("button", { name: "View JSON", exact: true }).last()
+      .click();
+    await page.getByRole("region").filter({ hasText: "complete-tail" })
+      .waitFor();
+    const other = await context.newPage();
+    await other.goto(`${url}/main/logs`, { waitUntil: "domcontentloaded" });
+    await other.locator('[data-slot="core-logs-viewer"]').getByText(
+      /core-http-fixture/,
+    ).first().waitFor();
+    await page.getByRole("button", {
+      name: "Clear saved Core log history",
+      exact: true,
+    }).click();
+    await other.getByText("No logs recorded", { exact: true }).waitFor();
+    const cleared = await call("get_core_log_status");
+    assert.notEqual(cleared.generation, initial.generation);
+    assert.equal(cleared.head, null);
+    await other.close();
+  }
   assert.deepEqual(
     errors,
     [],

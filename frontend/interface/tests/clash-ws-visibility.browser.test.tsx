@@ -18,7 +18,6 @@ const snapshot: ClashWsSnapshot = {
   state: 'connected',
   recording: { connections: true, logs: true, traffic: true, memory: true },
   connections: [],
-  logs: [],
   traffic: [],
   memory: [],
 }

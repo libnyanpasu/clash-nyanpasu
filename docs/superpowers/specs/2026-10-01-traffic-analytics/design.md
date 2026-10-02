@@ -75,17 +75,17 @@
 
 `Dimensions` 是一条连接的全部维度，在连接首次出现时生成，此后每帧更新（`profile` 除外）：
 
-| 字段                                   | 来源                                                                               | 未知时    |
-| -------------------------------------- | ---------------------------------------------------------------------------------- | --------- |
-| `process`                              | `process_path`，否则 `process`；`\` 统一换成 `/`                                   | `unknown` |
-| `source`                               | `source_ip`（界面上称"设备"）                                                      | `unknown` |
-| `inbound`                              | `inbound_user`，为空时取 `inbound_name`                                            | `unknown` |
-| `target`                               | `host`，否则 `destination_ip`（界面上称"主机"）                                    | `unknown` |
-| `protocol`                             | `network`                                                                          | `unknown` |
-| `rule`                                 | `RuleKey { kind, payload }`                                                        | —         |
-| `chains`                               | clash 原始顺序：出口在前，最外层组在后                                             | 空        |
-| `profile`                              | 连接**首次出现时**的当前订阅 uid，此后不再改变                                     | `None`    |
-| `source_region` / `destination_region` | GeoIP 代码去重并转大写；恰好一个时取该值，否则未知（逻辑从 `geography.ts` 移过来） | `unknown` |
+| 字段                                   | 来源                                                                                                   | 未知时    |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------- |
+| `process`                              | `process_path`，否则 `process`；`\` 统一换成 `/`                                                       | `unknown` |
+| `source`                               | `source_ip`（界面上称"设备"）                                                                          | `unknown` |
+| `inbound`                              | `inbound_user`，为空时取 `inbound_name`                                                                | `unknown` |
+| `target`                               | `host`，否则 `destination_ip`（界面上称"主机"）                                                        | `unknown` |
+| `protocol`                             | `network`                                                                                              | `unknown` |
+| `rule`                                 | `RuleKey { kind, payload }`                                                                            | —         |
+| `chains`                               | clash 原始顺序：出口在前，最外层组在后                                                                 | 空        |
+| `profile`                              | 连接**首次出现时**的当前订阅 uid，此后不再改变                                                         | `None`    |
+| `source_region` / `destination_region` | GeoIP 代码去重并转大写；恰好一个时取该值，否则未知（逻辑从 `geography.ts` 移过来）；后续定位方式见 §11 | `unknown` |
 
 `profile` 固定为首次出现时的值，是因为连接的规则与策略链属于建立它时的订阅配置。
 
@@ -323,7 +323,7 @@ pub enum TrafficRetention {
 | 筛选 chip | 页面内模块 `filter-chip.tsx`（只此一处使用，不放进 `components/ui`）。`h-8 rounded-lg border border-outline-variant px-3 text-sm`，内容为"维度名：值"，末尾是带 `aria-label` 的移除按钮；有筛选时末尾加一个"清除全部"文字按钮                                                                                                                                                                                        |
 | 拓扑卡片  | 与其他卡片相同的 basic `Card`，沿用现有的 SVG 桑基图绘制（节点、连线、`motion` 动画、`prefers-reduced-motion`）。数据改为报表里的 `topology`。点击节点即添加该层维度的筛选，"其他"节点不可点击；悬停时只高亮与该节点相连的边（后端不再返回每条连接 id）。连线上不标数值。节点或连线超过 200 时不做动画、列顶部对齐，绘图区限高并在内部滚动，列标题吸顶                                                               |
 | 层级模板  | `Select`：应用/来源 → 规则 → 策略链 → 出口（默认）；设备 → 主机 → 出口；入站 → 规则 → 出口；进程 → 主机 → 出口                                                                                                                                                                                                                                                                                                       |
-| 地图      | 沿用 `GeographyView` 的绘制；数据来自报表的 `topology`，请求为 `layers = [SourceRegion, DestinationRegion]`、`limit_per_layer = None`。目标地区的合计取第二层节点                                                                                                                                                                                                                                                    |
+| 地图      | 沿用 `GeographyView` 的绘制；数据来自报表的 `topology`，请求为 `layers = [SourceRegion, DestinationRegion, DestinationBasis]`、`limit_per_layer = None`。目标地区的合计取第二层节点；着色、占比列表和定位依据见 §11.6.9                                                                                                                                                                                              |
 | 查看全部  | `Modal`，用 `query_traffic_usage` 分页（每页 50 条，滚动到底加载下一页），行组件与排名行相同，点击行添加筛选并关闭弹窗                                                                                                                                                                                                                                                                                               |
 | 状态      | 记录不可用：`bg-error-container text-on-error-container rounded-2xl p-4`；当前范围没有数据：`text-on-surface-variant` 提示                                                                                                                                                                                                                                                                                           |
 
@@ -355,3 +355,530 @@ pub enum TrafficRetention {
 - 全文搜索、导出、"清空统计"按钮；
 - 天级粒度与历史数据压缩；
 - 记录开关（存储打不开时仍按现在的方式禁用）。
+
+---
+
+## 11. 地理定位：接入 nyanpasu-geodata、定位依据与 DIRECT 出口
+
+**日期：** 2026-10-02（本节为后续补充）
+**状态：** §11.8 的探测接口已实现但未接入。其余部分是设计，按 §11.9 分成多个叠加 PR 实施。`nyanpasu-geodata`（#5537，`904993c89`）已经合入 main，但应用目前还没有依赖它。
+**核对依据：** mihomo Alpha `9f053c49`。§11.1 表中的路径相对 mihomo 仓库，其余路径相对本仓库。
+
+### 11.1 内核字段的实际语义
+
+| 事实                                                                                                                             | 位置                                                                                                                          | 对地图的影响                                                         |
+| -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `DstGeoIP` 只在 `GEOIP` 规则执行时写入。mmdb 模式写入完整查表结果；geodata 模式只追加命中的那个代码，未命中时保持 nil            | `rules/common/geoip.go:35-94`                                                                                                 | geodata 模式下它只说明命中了哪条规则，不能当作定位结果               |
+| IP-CIDR、IP-SUFFIX、IP-ASN、GEOIP 规则以及 ipcidr 规则集都会触发 `ResolveIP`（使用 DefaultResolver）                             | `tunnel/tunnel.go:337-350`                                                                                                    | `destinationIP` 有值的连接比 `destinationGeoIP` 有值的多             |
+| fake-ip 模式会清空 `DstIP`                                                                                                       | `tunnel/tunnel.go:296-299`                                                                                                    | 命中纯域名规则的连接，两个字段都为空                                 |
+| TCP 只有命中 hosts 时才调用 `Pure()`，其余情况交给出站的是域名                                                                   | `tunnel/tunnel.go:561-567`                                                                                                    | 走代理的域名连接，`destinationIP` 是本地解析的结果，代理端会重新解析 |
+| DIRECT 的 TCP 按 Host 拨号，使用 `DirectHostResolver`，不回写 `DstIP`；DIRECT 的 UDP 在 `ResolveUDP` 中回写 `DstIP`              | `adapter/outbound/direct.go:24-30`、`52-58`                                                                                   | DIRECT TCP 的实际对端以 `remoteDestination` 为准                     |
+| `RemoteDst` 在 TCP 下取 socket 对端；在 UDP 下只取出站配置的地址（DIRECT 为空，代理可能是域名）                                  | `tunnel/statistic/tracker.go:120,212`；`adapter/outbound/base.go:232-243,312-315`                                             | 走代理时 `remoteDestination` 是节点入口，不是目标                    |
+| Meta-geoip0 数据库可能返回多个标签；mihomo 默认 `geox-url` 下载的就是这种格式的 `geoip.metadb`，并写入已有的 `Country.mmdb` 路径 | `component/mmdb/reader.go:55-68`；`config/config.go:584`；`component/updater/update_geo.go:47-48`；`constant/path.go:126-145` | 现有的 `normalize_region` 遇到多个标签就判为未知（§11.6.7）          |
+
+### 11.2 候选链
+
+选出用于定位的 IP 后，统一用应用自己的国家索引（§11.5）查表。降级只在描述同一对象的证据之间进行。
+
+**目标地区：**
+
+| 顺序 | 条件                                                           | 定位用的 IP         | 依据       |
+| ---- | -------------------------------------------------------------- | ------------------- | ---------- |
+| 1    | 出口 `chains[0] == "DIRECT"`、TCP，`remoteDestination` 是 IP   | `remoteDestination` | `Dialed`   |
+| 2    | 出口为 DIRECT、UDP                                             | `destinationIP`     | `Dialed`   |
+| 3    | `host` 为空（客户端直接连接 IP），或 TCP 且 `dnsMode == hosts` | `destinationIP`     | `Dialed`   |
+| 4    | 其余：出站拿到的是域名，`destinationIP` 有值                   | `destinationIP`     | `Resolved` |
+| 5    | 以上都不满足                                                   | —                   | 未知       |
+
+**源地区：** 用 `sourceIP` 查表。网关场景下的公网客户端可以由此定位；回环和内网地址查不到，结果为未知（本机位置见 §11.7）。
+
+- 索引不可用时（内核尚未就绪、所在目录没有对应数据库、加载失败），退回内核给出的 `destinationGeoIP` / `sourceGeoIP`。内核的代码描述的是 `destinationIP`，依据按第 3、4 行判定。
+- 用出口名判断 DIRECT 是近似做法：自定义的 `type: direct` 节点会落到第 4 行。结果偏保守，但不会标错。
+- 以下证据描述的是别的对象，不用于目标地区：
+  - 走代理时的 `remoteDestination`：它是节点入口；
+  - 应用自行解析域名：TUN 加 fake-ip 时拿到的是 fake IP，其余情况得到的也只是客户端视角；
+  - GeoSite：它是分类，不是位置；
+  - 出口探测：只能按代理链缓存，不是逐连接的事实。
+
+### 11.3 依据
+
+- `Dimensions` 新增 `destination_basis: Option<GeoBasis>`，取值 `Dialed`（出站实际拨的就是这个 IP）或 `Resolved`（出站拿到的是域名，这个 IP 只是内核在规则匹配时本地解析的结果）。地区未知时为 `None`。
+- 依据不包含字段名、查表方或 IP 本身：字段名是内核的实现细节；查表方不影响可信度；IP 会让维度组合数量暴涨。
+- 依据由出口、协议、host 是否为空以及 `dnsMode` 决定，前三项已经在维度中，所以新增的组合很少。
+- 新增 `Dimension::DestinationBasis`。地图请求三层拓扑 `[SourceRegion, DestinationRegion, DestinationBasis]`：地区节点仍按地区代码区分，第二层到第三层的边给出每个地区按依据拆分的用量（§11.6.9）。
+- schema 从 2 升到 3，统计数据按可丢弃处理，直接清库。
+
+### 11.4 服务拓扑
+
+```text
+组合根 setup.rs / NyanpasuClient::with_parts
+│
+├─ FsCountryIndexSource（适配器，core/geo/adapters.rs）
+│    读 <app_data_dir> 里内核的国家库；镜像缓存在 <app_data_dir>/cache/geodata；监听国家库文件
+│        ▲ load(mode, current) / watch(changed)
+│        │
+├─ GeoIndexActor + GeoIndexClient（actor，core/geo/）
+│    独占：当前 geodata-mode、当前索引的内容键、watch::Sender<Option<Arc<IpIndex>>>
+│    输入：follow_core 任务 ── CoreClientV2::api_client() → ApiClient::configs().geodata_mode
+│          文件监听回调 ── FilesChanged
+│        │ watch::Receiver<Option<Arc<IpIndex>>>（只读快照，单向往下游）
+│        ▼
+├─ TrafficActor 的 pump 任务（现有，core/traffic/actor.rs）
+│    StreamsClient 的连接帧 ──▶ frame_from_snapshot(raw, wall, mono, index)
+│        │                          └─ core/traffic/geo.rs（纯函数）locate_source / locate_destination
+│        ▼
+│    Session（nyanpasu-traffic）按含 destination_basis 的 Dimensions 记账
+│
+└─ DirectEgressProbe（已实现，§11.8）┄┄ 后续接入 GeoIndexActor，发布本机位置（§11.7）
+```
+
+| 组件                                      | 类别     | 位置                            | 职责                                                                                          |
+| ----------------------------------------- | -------- | ------------------------------- | --------------------------------------------------------------------------------------------- |
+| `GeoIndexActor` / `GeoIndexClient`        | actor    | `core/geo/actor.rs`、`mod.rs`   | 跟随内核实例读取 `geodata-mode`；收到模式或文件变化时在阻塞线程加载；只在内容变化时发布新索引 |
+| `CountryIndexSource`                      | 端口     | `core/geo/ports.rs`             | `load`：按模式读取、哈希，打开或构建索引；`watch`：国家库文件被写入时回调                     |
+| `FsCountryIndexSource`                    | 适配器   | `core/geo/adapters.rs`          | 发现文件、`read_source`、SHA-256、镜像缓存（mmap）、notify 监听                               |
+| `locate_source` / `locate_destination`    | 纯服务   | `core/traffic/geo.rs`           | 候选链、查表、退回内核代码                                                                    |
+| `CountryLookup`                           | 纯接口   | `core/traffic/geo.rs`           | `IpAddr → Option<String>`（大写 ISO 代码）；为 `IpIndex` 实现，测试用固定表实现               |
+| `GeoBasis`、`Dimension::DestinationBasis` | 领域类型 | `nyanpasu-traffic/src/model.rs` | 依据的取值与分组键                                                                            |
+
+- **为什么单独一个 actor：** 索引有自己的生命周期（文件监听、跟随内核实例、阻塞构建），和记账无关；记账存储打不开时 `TrafficClient` 为 `None`，索引仍应可用。把构建放进 `TrafficActor` 的处理器还会推迟帧处理。
+- **为什么用 watch 发布快照，而不是每帧查询 actor：** 每帧有几百条连接，单次查表约 40 ns。`IpIndex` 是不可变的 `Send + Sync` 值，发布的是只读快照，不是共享的可变状态；依赖方向保持为单向的树。
+- **不加载 ASN 与 GeoSite：** 地图只需要国家代码（§11.2 已排除 GeoSite）。
+
+### 11.5 接入 nyanpasu-geodata
+
+**读哪个文件。** 内核以 `-d <app_data_dir>` 启动（`backend/tauri/src/core/actor_v2/local_host.rs:22` 的 `working_dir`；服务模式使用同一个 `working_dir`），启动前 `init_resources` 会把内置的 `Country.mmdb`、`geoip.dat` 复制到这里（`utils/init/mod.rs:164-219`）。`MihomoGeoFiles::discover(home)` 按内核的规则解析文件名。
+
+| `geodata-mode` | 文件                                                      | 构建                      |
+| -------------- | --------------------------------------------------------- | ------------------------- |
+| `false` 或缺省 | `ip_mmdb`（`Country.mmdb` > `geoip.db` > `geoip.metadb`） | `IpIndex::from_mmdb`      |
+| `true`         | `geoip_dat`（`GeoIP.dat`）                                | `IpIndex::from_geoip_dat` |
+
+**模式从哪里来。** 读取运行中内核的 `GET /configs` 的 `geodata-mode` 字段（`ApiClient::configs()`，clash-api `configs.rs:323`）。clash-rs 和 Clash Premium 不返回该字段，按 `false` 处理。每当内核绑定新实例时重新读取，写法与 `StreamsClient` 的 worker 相同（`core/clash/ws.rs:441-487`）：`core.api_client()` → `configs()` → `api.cancelled()`。内核回答之前没有模式，也就不加载；这时还没有连接。
+
+**何时重新加载。**
+
+1. 内核绑定新实例：模式可能变了，`init_resources` 也可能更新了文件。
+2. 文件被写入：用 `notify-debouncer-full`（已是依赖，`state/profiles/scheduler.rs` 在用）非递归监听 `app_data_dir`，防抖 2 秒，只认四个国家库文件名（忽略大小写）。这覆盖了内核的 `geo-auto-update` 原地改写（mihomo `component/updater/update_geo.go:47-73` 先关闭自己的映射，再经 `component/resource/vehicle.go:38-47` 的 `os.WriteFile` 写回原路径），以及外部面板调用 `/configs/geo` 或 `/upgrade/geo`。应用本身不调用这两个 API（clash-api 的 `update_geo_databases` 目前没有调用方）。
+3. 内容没变时不重建：适配器用 `read_source` 把文件复制到匿名内存（绝不映射内核的文件），计算 SHA-256；与当前索引的键相同就返回 `Unchanged`，不碰缓存。
+
+**镜像缓存。**
+
+- 目录：`paths.cache_dir().join("geodata")`，即 `<app_data_dir>/cache/geodata`。`cache_dir` 本来就标注为可清理。
+- 文件名：`country-{mmdb|dat}-{sha256 十六进制}.idx`，按内容寻址，所以同名文件的内容永远相同，不会改写一个正在被映射的文件。
+- 命中：只读打开（Windows 下共享模式为 `READ | DELETE`，不带 `WRITE`），用 `memmap2::Mmap` 映射，`IpIndex::from_bytes`。`from_bytes` 失败就删除该文件并重建。
+- 未命中：在阻塞线程上构建；用 `tempfile::NamedTempFile::new_in(dir)` 写入 `as_bytes()`，再 `persist` 到目标名；然后丢弃构建出的索引，改从镜像重新打开，让页面成为可回收的文件页。
+- 清理：切换成功后尽力删除同类的其他镜像，失败就忽略（例如 Windows 上仍被映射），下次切换时再试。
+
+**失败语义。**
+
+- `load` 出错：保留当前索引，记录 warn。
+- `Missing`（目录里没有对应的数据库）：发布 `None`，按 §11.2 退回内核代码。
+- 创建文件监听失败：记录 warn，只在内核实例变化时重新加载。
+
+**成本。** 重新打开镜像约 3 ms，私有内存约 0.01 MiB；单次查表约 40 ns（均为 `nyanpasu-geodata/DESIGN.md` 的 Windows 实测）。其余数字是 2026-10-02 在 i9-14900KF（Windows 11，release，`opt-level = 's'`）上对内置数据库各测三轮的结果：
+
+| 文件           | 大小     | 读取（冷 / 热） | SHA-256 | 构建   | 镜像     |
+| -------------- | -------- | --------------- | ------- | ------ | -------- |
+| `Country.mmdb` | 7.5 MiB  | 16.9 / 2.4 ms   | 2.8 ms  | 75 ms  | 4.71 MiB |
+| `geoip.dat`    | 16.3 MiB | 20.9 / 5.2 ms   | 6.2 ms  | 240 ms | 5.22 MiB |
+
+因此内容未变时，一次检查耗时在几毫秒到二十几毫秒之间。这颗 CPU 支持 SHA 指令，不支持的 CPU 上哈希会更慢。
+
+**依赖。** `backend/tauri/Cargo.toml` 新增 `nyanpasu-geodata = { path = '../nyanpasu-geodata' }` 和 `memmap2 = '0.9'`（与 nyanpasu-geodata 相同的主版本）。`sha2`、`hex`、`tempfile`、`notify-debouncer-full` 已经是依赖。
+
+### 11.6 关键代码
+
+以下片段定义接口和数据流；内部实现细节以 PR 为准。
+
+**11.6.1 端口**（`backend/tauri/src/core/geo/ports.rs`）
+
+```rust
+/// Which country database the core reads: `geodata-mode` in its running config.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GeodataMode {
+    Mmdb,
+    Dat,
+}
+
+/// What a published index was built from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexKey {
+    pub mode: GeodataMode,
+    pub sha256: [u8; 32],
+}
+
+pub enum Loaded {
+    /// The database still has the content of `current`.
+    Unchanged,
+    /// The core's home has no database for this mode.
+    Missing,
+    Index { key: IndexKey, index: Arc<IpIndex> },
+}
+
+#[cfg_attr(test, mockall::automock)]
+pub trait CountryIndexSource: Send + Sync + 'static {
+    /// Blocking: reads and hashes the database, then reopens or builds its index.
+    fn load(&self, mode: GeodataMode, current: Option<IndexKey>) -> Result<Loaded, GeoIndexError>;
+    /// Calls `changed` after a country database in the core's home is written; watching
+    /// ends when the returned guard drops.
+    fn watch(&self, changed: OnChange) -> Result<Box<dyn Send>, GeoIndexError>;
+}
+```
+
+**11.6.2 actor**（`backend/tauri/src/core/geo/actor.rs`）
+
+```rust
+pub struct GeoIndexArgs {
+    pub source: Arc<dyn CountryIndexSource>,
+    pub core: CoreClientV2,
+}
+
+pub(super) enum Message {
+    /// A core instance answered `GET /configs`.
+    Mode(GeodataMode),
+    /// A country database in the core's home was written.
+    FilesChanged,
+}
+
+pub(super) struct State {
+    source: Arc<dyn CountryIndexSource>,
+    mode: Option<GeodataMode>,
+    key: Option<IndexKey>,
+    published: watch::Sender<Option<Arc<IpIndex>>>,
+    _watch: Option<Box<dyn Send>>,
+    follower: JoinHandle<()>,
+}
+
+// handle(): every message ends in one reload of the current mode.
+match message {
+    Message::Mode(mode) => state.mode = Some(mode),
+    Message::FilesChanged => {}
+}
+let Some(mode) = state.mode else { return Ok(()) };
+let (source, current) = (state.source.clone(), state.key.clone());
+match blocking::join(spawn_blocking(move || source.load(mode, current)).await) {
+    Ok(Loaded::Unchanged) => {}
+    Ok(Loaded::Missing) => {
+        state.key = None;
+        state.published.send_replace(None);
+    }
+    Ok(Loaded::Index { key, index }) => {
+        state.key = Some(key);
+        state.published.send_replace(Some(index));
+    }
+    Err(error) => tracing::warn!(%error, "the country index was not reloaded"),
+}
+
+/// Reads `geodata-mode` from every core instance as it binds.
+async fn follow_core(actor: ActorRef<Message>, core: CoreClientV2) {
+    loop {
+        let Ok(api) = core.api_client().await else {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            continue;
+        };
+        loop {
+            match api.configs().await {
+                Ok(config) => {
+                    let mode = match config.geodata_mode {
+                        Some(true) => GeodataMode::Dat,
+                        _ => GeodataMode::Mmdb,
+                    };
+                    if actor.cast(Message::Mode(mode)).is_err() {
+                        return;
+                    }
+                    break;
+                }
+                Err(_) if api.is_revoked() => break,
+                Err(_) => tokio::time::sleep(Duration::from_secs(1)).await,
+            }
+        }
+        api.cancelled().await;
+    }
+}
+```
+
+`pre_start` 调用 `source.watch(OnChange::new(move || { let _ = myself.cast(Message::FilesChanged); }))`，把返回的守卫保存在状态里。`post_stop` 中止 `follower`，并丢弃守卫。`GeoIndexClient::spawn(args, shutdown, &tasks)` 的签名与 `ProxiesClient::spawn` 相同；`GeoIndexClient::subscribe()` 返回 `watch::Receiver<Option<Arc<IpIndex>>>`。客户端不暴露其他方法。
+
+**11.6.3 适配器**（`backend/tauri/src/core/geo/adapters.rs`）
+
+```rust
+pub struct FsCountryIndexSource {
+    /// The core's home: `-d` of every core the app starts.
+    home: PathBuf,
+    /// Index images, named by the content they were built from.
+    cache: PathBuf,
+}
+
+impl CountryIndexSource for FsCountryIndexSource {
+    fn load(&self, mode: GeodataMode, current: Option<IndexKey>) -> Result<Loaded, GeoIndexError> {
+        let files = MihomoGeoFiles::discover(&self.home)?;
+        let Some(path) = (match mode {
+            GeodataMode::Mmdb => files.ip_mmdb,
+            GeodataMode::Dat => files.geoip_dat,
+        }) else {
+            return Ok(Loaded::Missing);
+        };
+        let source = read_source(&path)?;
+        let key = IndexKey { mode, sha256: Sha256::digest(&*source).into() };
+        if current.as_ref() == Some(&key) {
+            return Ok(Loaded::Unchanged);
+        }
+        let image = self.cache.join(image_name(&key));
+        // An unreadable image is rebuilt; `reopen` removes one `from_bytes` rejects.
+        let index = match self.reopen(&image).unwrap_or(None) {
+            Some(index) => index,
+            None => {
+                let built = match mode {
+                    GeodataMode::Mmdb => IpIndex::from_mmdb(&source)?,
+                    GeodataMode::Dat => IpIndex::from_geoip_dat(&source)?,
+                };
+                drop(source);
+                // The image is only a cache: without it the built index serves.
+                match self.store(&image, built.as_bytes()).and_then(|()| self.reopen(&image)) {
+                    Ok(Some(reopened)) => reopened,
+                    _ => built,
+                }
+            }
+        };
+        self.remove_other_images(&key);
+        Ok(Loaded::Index { key, index: Arc::new(index) })
+    }
+    // watch(): notify-debouncer-full, NonRecursive on `home`, 2 s; calls `changed` when an
+    // event names Country.mmdb, geoip.db, geoip.metadb or GeoIP.dat, ignoring ASCII case.
+}
+```
+
+**11.6.4 纯函数**（`backend/tauri/src/core/traffic/geo.rs`）
+
+```rust
+/// A country for an address: an upper-case ISO code, as the map's markers are keyed.
+pub(crate) trait CountryLookup {
+    fn country(&self, ip: IpAddr) -> Option<String>;
+}
+
+impl CountryLookup for IpIndex {
+    fn country(&self, ip: IpAddr) -> Option<String> {
+        Some(self.lookup(ip)?.country()?.to_ascii_uppercase())
+    }
+}
+
+/// What `destinationIP` is to the outbound: rows 2 to 4 of §11.2.
+fn destination_ip_basis(meta: &ConnectionMetadataFields, exit: Option<&str>) -> GeoBasis {
+    let tcp = matches!(meta.network, Some(ConfigEnum::Known(ConnectionNetwork::Tcp)));
+    let hosts = matches!(meta.dns_mode, Some(ConfigEnum::Known(DnsMode::Hosts)));
+    let dialed = (exit == Some("DIRECT") && !tcp)
+        || meta.host.as_deref().is_none_or(str::is_empty)
+        || (tcp && hosts);
+    if dialed { GeoBasis::Dialed } else { GeoBasis::Resolved }
+}
+
+/// The address that stands for the destination, and its basis (§11.2).
+fn destination(meta: &ConnectionMetadataFields, exit: Option<&str>) -> Option<(IpAddr, GeoBasis)> {
+    let parse = |value: Option<&String>| value?.parse::<IpAddr>().ok();
+    let tcp = matches!(meta.network, Some(ConfigEnum::Known(ConnectionNetwork::Tcp)));
+    if exit == Some("DIRECT") && tcp {
+        if let Some(peer) = parse(meta.remote_destination.as_ref()) {
+            return Some((peer, GeoBasis::Dialed));
+        }
+    }
+    let ip = parse(meta.destination_ip.as_ref())?;
+    Some((ip, destination_ip_basis(meta, exit)))
+}
+
+pub(crate) fn locate_destination(
+    meta: &ConnectionMetadataFields,
+    exit: Option<&str>,
+    index: Option<&dyn CountryLookup>,
+) -> (String, Option<GeoBasis>) {
+    let Some(index) = index else {
+        // The core's codes describe destinationIP, whatever the outbound dialed.
+        let region = normalize_region(meta.destination_geo_ip.iter().flatten());
+        let basis = (region != UNKNOWN).then(|| destination_ip_basis(meta, exit));
+        return (region, basis);
+    };
+    match destination(meta, exit).and_then(|(ip, basis)| Some((index.country(ip)?, basis))) {
+        Some((region, basis)) => (region, Some(basis)),
+        None => (UNKNOWN.to_owned(), None),
+    }
+}
+
+pub(crate) fn locate_source(meta: &ConnectionMetadataFields, index: Option<&dyn CountryLookup>) -> String {
+    match index {
+        Some(index) => meta
+            .source_ip
+            .as_deref()
+            .and_then(|ip| ip.parse().ok())
+            .and_then(|ip| index.country(ip))
+            .unwrap_or_else(|| UNKNOWN.to_owned()),
+        None => normalize_region(meta.source_geo_ip.iter().flatten()),
+    }
+}
+```
+
+**11.6.5 帧转换与 pump**（`core/traffic/source.rs`、`core/traffic/actor.rs`）
+
+```rust
+pub(crate) fn frame_from_snapshot(
+    frame: &ClashConnectionsFrame,
+    wall_ms: i64,
+    mono: Duration,
+    index: Option<&dyn CountryLookup>,
+) -> Frame
+
+pub struct TrafficArgs {
+    // ...existing fields
+    /// The country index the regions are looked up in; `None` until the core's database loads.
+    pub geo: watch::Receiver<Option<Arc<IpIndex>>>,
+}
+
+// pump(): the latest index at the moment each frame converts.
+let index = geo.borrow().clone();
+let frame = frame_from_snapshot(&raw, clock.now_ms(), origin.elapsed(), index.as_deref());
+```
+
+连接存活期间，如果地区随索引变化（例如索引在连接中途加载完成），关闭时按最终维度入账（`accounting.rs:328-356`），不会拆成两笔。
+
+**11.6.6 组合根**（`setup.rs`、`client/mod.rs`）
+
+```rust
+// setup.rs, before ClientSetupArgs takes `paths`
+let geo_index = Arc::new(FsCountryIndexSource::new(
+    paths.app_data_dir().to_owned(),
+    paths.cache_dir().join("geodata"),
+));
+
+// NyanpasuClient::with_parts, before TrafficClient::spawn
+let geo = crate::core::geo::GeoIndexClient::spawn(
+    crate::core::geo::GeoIndexArgs { source: geo_index, core: core_v2.clone() },
+    shutdown.child_token(),
+    &tasks,
+)
+.await?;
+// TrafficArgs { ..., geo: geo.subscribe() }; NyanpasuClientInner keeps `geo` as
+// `_geo_index`, since its actor stops with the last handle.
+```
+
+**11.6.7 领域类型**（`nyanpasu-traffic`）
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub enum GeoBasis {
+    /// The outbound dialed this address.
+    Dialed,
+    /// The outbound was handed the host; the core resolved this address only for its rules.
+    Resolved,
+}
+
+pub struct Dimensions {
+    // ...existing fields
+    /// How `destination_region` was located; `None` while it is unknown.
+    #[serde(default)]
+    pub destination_basis: Option<GeoBasis>,
+}
+
+// Dimension gains DestinationBasis; group_key maps it to "dialed", "resolved" or "".
+// redb.rs: SCHEMA_VERSION = 3.
+```
+
+`normalize_region`（`bucket.rs:63`）改为与 `Tags::country()` 相同的规则：去重后恰好只有一个两字母 ASCII 代码时才采用，转为大写；否则为未知。
+
+**11.6.8 前端：请求**（`topology/_modules/search.ts`）
+
+```ts
+// The map's third layer splits every destination region by how it was located.
+view === 'map'
+  ? {
+      layers: ['source_region', 'destination_region', 'destination_basis'],
+      metric,
+      limit_per_layer: null,
+    }
+  : ...
+```
+
+`DIMENSIONS` 加入 `'destination_basis'`，使它可以作为筛选条件出现在 URL 中。
+
+**11.6.9 前端：地图**（`topology/_modules/geography-view.tsx`）
+
+- 地图数据：`deno task generate:topology-map` 改为输出 `sphere`（海洋）、`graticule`、`countries`（每个国家一条路径，按 `ISO_A2_EH` 取键，与 `centers` 相同）、`unassigned`（没有两字母代码的轮廓）和 `centers`。1:110m 轮廓里没有 HK、SG 这类小地区，它们仍用标记点。
+- 着色：地区按当前指标的占比分五档（< 2%、≥ 2%、≥ 5%、≥ 10%、≥ 25%），在陆地色 `surface-variant` 上叠加主色 `primary`，不透明度为 0.2–1.0。由 `motion` 动画过渡 `fillOpacity`，地区出现和消失时淡入淡出。图例和列表里的色块用 `color-mix(in srgb, primary, surface-variant)` 算出同一种颜色。全部取自主题令牌，亮色和暗色模式都随主题变化。
+- 国界线用 `surface` 色描边，在两种模式下都表现为一道缝隙。原来的 `stroke-outline-variant` 在暗色模式下与 `surface-variant` 同色（都是 `#43474e`），所以看不见国界。
+- 依据：累加第 1 层到第 2 层的边，没有 `dialed` 用量的地区叠加斜线图案（同时用于小地区标记），列表中显示"本地解析"标签。
+- 占比列表：卡片宽度 ≥ 1024px 时（容器查询 `@5xl`），列表放在地图右侧，高度与地图相同并可滚动；卡片较窄时，列表放在地图下方，完整列出全部地区。每行包括色块、名称、"本地解析"标签、用量、占比，以及占比条。点击某行即添加筛选；悬停时在地图上勾出对应国家，反之亦然。新行淡入，次序变化时行滑到新位置，占比条宽度也有过渡；离开的行直接移除：换一个筛选时列表几乎整个替换，逐行淡出看不出什么，却会让页面卡顿。行只在位次变化时测量布局（`layoutDependency`），次序不变的刷新不读取布局。
+- 弧线：只取第 0 层到第 1 层的边，用三重方式表示方向：渐变从来源端的淡色过渡到目标端的实色；目标端有箭头，并画实心点，来源端画空心环；一个小点沿弧线从来源移向目标（开启减少动态效果时不显示）。小点不在 SVG 里：它们放在地图上方的 HTML 层，用 Web Animations 的 `transform` 关键帧沿同一条二次曲线匀速移动，由合成线程驱动，既不逐帧重绘整张地图，也不会在刷新占用主线程时停顿；地图移出视口时不渲染小点。悬停某个地区时，与它相关的弧线保持清晰，其余弧线变淡。选中某个目标时，它的来源地区以 `tertiary` 描边并标出名称。
+- 不随数据变化的底图（海洋、经纬网、国界）只渲染一次。弧线粗细和小地区标记的半径按 0.5 取整，刷新时占比的微小变化不会触发动画和重绘。
+- 没有弧线时（来源都是本机或局域网），地图下方用一行文字说明原因；着色和占比列表本身已经承载了主要信息。
+- 覆盖率：第 2 层节点按键求和，文案为"实测 {dialed} · 本地解析 {resolved} · 共 {total} 条连接"。
+- "只看实测"：标题栏中的 M3 筛选条（filter chip，选中时带对勾），添加或移除筛选 `{ d: 'destination_basis', v: 'dialed' }`，筛选 chip 显示"定位依据：实测"。
+- `parseTraffic` 遇到 999.5–1000 之间的数值，原本会用 `toPrecision(3)` 输出 `1.00e+3`，现在改为输出整数。
+- i18n：`traffic_dimension_destination_basis` 加在全部五种语言中；`topology_geo_basis_dialed`、`topology_geo_basis_resolved`、`topology_geo_dialed_only`、`topology_geo_region_count`、`topology_geo_share_legend`、`topology_geo_resolved_legend`、`topology_geo_no_routes` 以及修改后的 `topology_geo_coverage`、`topology_geo_caption`，只加在 en、zh-cn、zh-tw 中（ko、ru 原本就没有 `topology_geo_*` 这一组，会退回英文）。改完后运行 paraglide 编译。
+
+### 11.7 本机位置（后续，不在本次叠加 PR 内）
+
+来源是回环或内网地址的连接就是本机发起的，可以用 DIRECT 出口地址定位。接入时：
+
+- `GeoIndexActor` 增加依赖 `Arc<dyn DirectEgressProbe>` 和 `StateSnapshot<ClashConfig>`（读取 TUN 设置），发布的内容从 `Option<Arc<IpIndex>>` 改为 `GeoView { country: Option<Arc<IpIndex>>, local: Option<String> }`。
+- `locate_source` 对回环或内网的 `sourceIP` 返回 `local`；探测结果为 `TunEnabled` 或没有地址时，源地区保持未知。
+- 待定：何时重新探测（应用目前没有网络变化的信号），以及 TUN 开启时是否保留上一次的结果。接入点在 `core/traffic/source.rs` 的 `TODO(traffic-geo)`。
+
+### 11.8 DIRECT 出口探测接口（已实现，未接入）
+
+| 项目     | 内容                                                                                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 接口     | `NyanpasuClient::probe_direct_egress() -> DirectEgress`；RPC query `probe_direct_egress`，仅桌面端                                                       |
+| 结果     | `TunEnabled`，或 `Probed { ipv4, ipv6 }`；某个地址族不可达、超时，或回显的内容不是该地址族的地址时，对应字段为 `None`                                    |
+| 做法     | 端口 `DirectEgressProbe`，适配器 `HttpDirectEgressProbe`。应用自己发请求，并清空 reqwest 的全部代理设置，既不走系统代理也不走内核端口。每个请求限时 5 秒 |
+| 回显服务 | DNSPod：`https://ipv4.ddnspod.com`、`https://ipv6.ddnspod.com`。两个主机名分别只有 A 记录、只有 AAAA 记录（2026-10-02 用 DoH 核实），返回纯文本地址      |
+| TUN      | `enable_tun_mode` 打开时直接返回 `TunEnabled`，不发请求：TUN 会接管应用自己的请求并按规则分流，回显的可能是代理出口                                      |
+
+没有采用的做法：
+
+- 在运行配置中注入 `proxy: DIRECT` 的 `listeners`：mihomo 只能从 `listeners`、`tunnels` 或 provider 的 `proxy` 字段得到 `SpecialProxy`，不能按单个请求指定出站；而配置里只要出现非空的 `listeners`，runtime 就会判定 `InboundSurface`，禁用无缝切换（`nyanpasu-core-manager/src/config/mihomo.rs:437-443`）。
+- 绑定物理网卡：reqwest 的 `interface()` 不支持 Windows。
+- ipw.cn：截至 2026-10-02，整个区已经没有 A/AAAA 记录。
+
+已知限制：
+
+- 结果是"最近一次探测到的 DIRECT 出口"。多出口、策略路由或校园网环境下，访问不同目的地的出口可能不同；国内回显服务测到的是国内路径的出口。
+- 接口不做缓存，由调用方决定。
+- 判断 TUN 依据的是设置项，不是实际运行状态：TUN 启动失败时探测也会被拒绝。
+
+### 11.9 交付拆分（叠加 PR）
+
+全部完成后统一创建，每个 PR 以前一个为 base：
+
+| #   | 分支                             | 内容                                                                                                    |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 1   | `feat/direct-egress-probe`       | §11.8                                                                                                   |
+| 2   | `docs/traffic-geolocation`       | 本节                                                                                                    |
+| 3   | `fix/traffic-region-country-tag` | `normalize_region` 的两字母规则及测试                                                                   |
+| 4   | `feat/geo-country-index`         | `core/geo`（端口、适配器、actor）、依赖、组合根；流量按索引查 `sourceIP`、`destinationIP`，退回内核代码 |
+| 5   | `feat/traffic-destination-basis` | 目标地区候选链、`GeoBasis`、`Dimension::DestinationBasis`、schema 3                                     |
+| 6   | `feat/traffic-map-basis`         | 前端：地图第三层、按占比着色与占比列表、覆盖率拆分、斜线标记、方向弧线、"只看实测"、i18n                |
+| 7   | `feat/traffic-mock-report`       | 开发构建的调试开关：流量页改用前端生成的报表，与连接页的 mock 开关相同                                  |
+
+base 不是 main 的叠加 PR 默认不触发 CI，需要加入 GitHub 原生 stack，或在合入前改 base 后补跑。
+
+### 11.10 判据
+
+| 输入                                                         | 期望                                                | 所在 PR   |
+| ------------------------------------------------------------ | --------------------------------------------------- | --------- |
+| `normalize_region(["google", "us"])`                         | `US`                                                | 3         |
+| `normalize_region(["private"])`、`["cn", "us"]`              | 未知                                                | 3         |
+| 适配器：同一内容第二次加载                                   | `Unchanged`，不访问缓存目录                         | 4         |
+| 适配器：新实例、同一缓存目录                                 | 从镜像重新打开，不新建镜像文件                      | 4         |
+| 适配器：镜像损坏                                             | 删除后重建，结果与首次构建一致                      | 4         |
+| 适配器：模式由 mmdb 切到 dat                                 | 键不同，索引来自 `GeoIP.dat`                        | 4         |
+| actor：尚未收到模式时收到 `FilesChanged`                     | 不调用 `load`                                       | 4         |
+| actor：`load` 返回 `Unchanged`                               | 不重复发布                                          | 4         |
+| pump：发布新索引之后的帧                                     | 按新索引定位                                        | 4         |
+| DIRECT、TCP，`destinationIP` 为空，`remoteDestination` 是 IP | 按 `remoteDestination` 定位，`Dialed`               | 5         |
+| 走代理，有 host，有 `destinationIP`                          | `Resolved`                                          | 5         |
+| 走代理，只有 `remoteDestination`                             | 未知（不使用节点入口）                              | 5         |
+| 走代理，host 为空，有 `destinationIP`                        | `Dialed`                                            | 5         |
+| 没有索引，内核给出 `["us"]`，走代理且有 host                 | `US`，`Resolved`                                    | 5         |
+| 地图：某地区只有 `resolved` 用量                             | 斜线填充，列表标"本地解析"；覆盖率分别计数          | 6         |
+| 地图：打开"只看实测"                                         | 添加 `destination_basis = dialed` 筛选，chip 可移除 | 6         |
+| 探测：`enable_tun_mode` 为真                                 | `TunEnabled`，适配器未被调用                        | 2（已有） |

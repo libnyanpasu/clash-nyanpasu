@@ -7,10 +7,6 @@ import {
   useState,
 } from 'react'
 import { rpc } from '@/services/rpc'
-import {
-  downloadUpdateWithFallback,
-  type UpdateDownloadCandidate,
-} from '@/utils/update-download-fallback'
 import { isUpdaterSupported } from '@/utils/updater-support'
 import { isLinux } from '@nyanpasu/platform'
 import {
@@ -20,10 +16,14 @@ import {
   useSetting,
 } from '@nyanpasu/query'
 import { unwrapResult } from '@nyanpasu/rpc'
-import { type ReleaseChannel } from '@nyanpasu/rpc/types'
+import {
+  type ReleaseChannel,
+  type UpdateDownloadEvent,
+  type UpdateSource,
+} from '@nyanpasu/rpc/types'
 import packageJson from '@root/package.json'
-import { isTauri } from '@tauri-apps/api/core'
-import { Update, type DownloadEvent } from '@tauri-apps/plugin-updater'
+import { Channel, isTauri } from '@tauri-apps/api/core'
+import { Update } from '@tauri-apps/plugin-updater'
 import { useBlockTask } from './block-task-provider'
 
 const NyanpasuUpdateContext = createContext<{
@@ -39,9 +39,10 @@ const NyanpasuUpdateContext = createContext<{
   isInstalling: boolean
   setIsInstalling: (installing: boolean) => void
   checkNewVersion: () => Promise<Update | null>
-  downloadNewVersion: (
-    onEvent?: (event: DownloadEvent) => void,
-  ) => Promise<Update>
+  /** Resolves only when the backend could not install the update. */
+  installNewVersion: (
+    onEvent?: (event: UpdateDownloadEvent) => void,
+  ) => Promise<void>
   isSupported: boolean
 } | null>(null)
 
@@ -90,7 +91,7 @@ export default function NyanpasuUpdateProvider({
 
   const [downloads, setDownloads] = useState<{
     generation: number
-    candidates: UpdateDownloadCandidate<Update>[]
+    candidates: { source: UpdateSource; update: Update }[]
   } | null>(null)
   const newVersion = downloads?.candidates[0]?.update ?? null
   const hasNewVersion = newVersion !== null
@@ -163,6 +164,25 @@ export default function NyanpasuUpdateProvider({
     [downloads],
   )
 
+  // The backend downloads from each source in turn, shuts the app down and
+  // hands over to the installer, so this settles only on failure.
+  const installNewVersion = async (
+    onEvent?: (event: UpdateDownloadEvent) => void,
+  ) => {
+    const channel = new Channel<UpdateDownloadEvent>()
+    channel.onmessage = (event) => onEvent?.(event)
+
+    unwrapResult(
+      await rpc.installUpdate(
+        (downloads?.candidates ?? []).map(({ source, update }) => ({
+          source,
+          rid: update.rid,
+        })),
+        channel,
+      ),
+    )
+  }
+
   // auto check update
   useEffect(() => {
     const key = JSON.stringify([
@@ -207,8 +227,7 @@ export default function NyanpasuUpdateProvider({
         isInstalling,
         setIsInstalling,
         checkNewVersion: blockTask.execute,
-        downloadNewVersion: (onEvent) =>
-          downloadUpdateWithFallback(downloads?.candidates ?? [], onEvent),
+        installNewVersion,
         isSupported,
       }}
     >

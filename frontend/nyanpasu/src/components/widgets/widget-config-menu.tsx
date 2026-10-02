@@ -147,6 +147,7 @@ function ConfigFields({
                 }
               />
               <NumberStepper
+                variant="filled"
                 label={m.dashboard_widget_config_expiry_threshold()}
                 value={config.expiryWarningDays}
                 min={WIDGET_CONFIG_NUMBER_RANGES.expiryWarningDays[0]}
@@ -159,6 +160,7 @@ function ConfigFields({
                 }
               />
               <NumberStepper
+                variant="filled"
                 label={m.dashboard_widget_config_quota_threshold()}
                 value={config.quotaWarningPercent}
                 min={WIDGET_CONFIG_NUMBER_RANGES.quotaWarningPercent[0]}
@@ -230,6 +232,7 @@ function ConfigFields({
           {config.type !== WidgetId.RecentTraffic && (
             <>
               <NumberStepper
+                variant="filled"
                 label={m.dashboard_widget_config_top()}
                 value={config.topN}
                 min={WIDGET_CONFIG_NUMBER_RANGES.topN[0]}
@@ -270,6 +273,7 @@ function ConfigFields({
             onChange={(sort) => onChange({ ...config, sort })}
           />
           <NumberStepper
+            variant="filled"
             label={m.dashboard_widget_config_top()}
             value={config.topN}
             min={WIDGET_CONFIG_NUMBER_RANGES.topN[0]}
@@ -317,6 +321,7 @@ function ConfigFields({
             onChange={(kinds) => onChange({ ...config, kinds })}
           />
           <NumberStepper
+            variant="filled"
             label={m.dashboard_widget_config_items()}
             value={config.maxItems}
             min={WIDGET_CONFIG_NUMBER_RANGES.maxItems[0]}
@@ -438,6 +443,7 @@ function ConfigFields({
             onChange={(showChart) => onChange({ ...config, showChart })}
           />
           <NumberStepper
+            variant="filled"
             label={m.dashboard_widget_sparkline_config_samples()}
             value={config.samples}
             min={WIDGET_CONFIG_NUMBER_RANGES.samples[0]}
@@ -582,10 +588,7 @@ export default function WidgetConfigMenu({
           className="flex min-h-0 flex-auto flex-col"
           data-slot="widget-config-menu"
         >
-          <h2
-            id={titleId}
-            className="shrink-0 px-4 pt-4 pb-4 text-sm font-semibold"
-          >
+          <h2 id={titleId} className="shrink-0 px-4 pt-4 text-sm font-semibold">
             {m.dashboard_widget_config_title()}
           </h2>
           <ScrollArea
@@ -593,7 +596,7 @@ export default function WidgetConfigMenu({
             data-slot="widget-config-scroll-area"
           >
             <div
-              className="space-y-4 px-4 pb-4"
+              className="space-y-4 px-4 py-4"
               data-slot="widget-config-fields"
             >
               <ConfigFields

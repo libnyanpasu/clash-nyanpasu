@@ -2,17 +2,22 @@ import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { NumberStepper } from '@nyanpasu/ui/number-stepper'
+import {
+  NumberStepper,
+  type NumberStepperVariant,
+} from '@nyanpasu/ui/number-stepper'
 
 function mount(
   onTestFinished: (fn: () => void) => void,
   {
     disabled = false,
+    variant = 'outlined',
     min = 2,
     max = 20,
     initialValue = 5,
   }: {
     disabled?: boolean
+    variant?: NumberStepperVariant
     min?: number
     max?: number
     initialValue?: number
@@ -34,6 +39,7 @@ function mount(
           decrementLabel="Decrease Sample count"
           incrementLabel="Increase Sample count"
           disabled={disabled}
+          variant={variant}
           onChange={setValue}
         />
       </>
@@ -47,49 +53,50 @@ function mount(
   return container
 }
 
-test('stepper supports buttons, typed values, keyboard and boundaries', async ({
-  onTestFinished,
-}) => {
-  const container = mount(onTestFinished)
-  const input = page.getByRole('spinbutton', { name: 'Sample count' })
-  await expect.element(input).toHaveValue('5')
+test.for(['outlined', 'filled', 'tonal'] as const)(
+  '%s stepper supports buttons, typed values, keyboard and boundaries',
+  async (variant, { onTestFinished }) => {
+    const container = mount(onTestFinished, { variant })
+    const input = page.getByRole('spinbutton', { name: 'Sample count' })
+    await expect.element(input).toHaveValue('5')
 
-  await userEvent.click(
-    page.getByRole('button', { name: 'Increase Sample count' }),
-  )
-  await expect.element(input).toHaveValue('6')
+    await userEvent.click(
+      page.getByRole('button', { name: 'Increase Sample count' }),
+    )
+    await expect.element(input).toHaveValue('6')
 
-  await userEvent.clear(input)
-  await userEvent.type(input, '15')
-  await expect.element(input).toHaveValue('15')
-  await expect
-    .element(page.getByTestId('committed-value'))
-    .toHaveTextContent('6')
-  await userEvent.keyboard('{Enter}')
-  await expect
-    .element(page.getByTestId('committed-value'))
-    .toHaveTextContent('15')
+    await userEvent.clear(input)
+    await userEvent.type(input, '15')
+    await expect.element(input).toHaveValue('15')
+    await expect
+      .element(page.getByTestId('committed-value'))
+      .toHaveTextContent('6')
+    await userEvent.keyboard('{Enter}')
+    await expect
+      .element(page.getByTestId('committed-value'))
+      .toHaveTextContent('15')
 
-  await userEvent.clear(input)
-  await userEvent.type(input, '999')
-  await expect
-    .element(page.getByTestId('committed-value'))
-    .toHaveTextContent('15')
-  await userEvent.keyboard('{Enter}')
-  await expect.element(input).toHaveValue('20')
-  await userEvent.keyboard('{ArrowUp}')
-  await expect.element(input).toHaveValue('20')
-  expect(
-    (
-      container.querySelector(
-        'button[aria-label="Increase Sample count"]',
-      ) as HTMLButtonElement
-    ).disabled,
-  ).toBe(true)
+    await userEvent.clear(input)
+    await userEvent.type(input, '999')
+    await expect
+      .element(page.getByTestId('committed-value'))
+      .toHaveTextContent('15')
+    await userEvent.keyboard('{Enter}')
+    await expect.element(input).toHaveValue('20')
+    await userEvent.keyboard('{ArrowUp}')
+    await expect.element(input).toHaveValue('20')
+    expect(
+      (
+        container.querySelector(
+          'button[aria-label="Increase Sample count"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
 
-  await userEvent.keyboard('{Home}')
-  await expect.element(input).toHaveValue('2')
-})
+    await userEvent.keyboard('{Home}')
+    await expect.element(input).toHaveValue('2')
+  },
+)
 
 test('invalid input restores the controlled value', async ({
   onTestFinished,

@@ -32,7 +32,12 @@ export function WidgetOptionSelect({
 }) {
   const selected = options.find((option) => option.value === value)
   return (
-    <Select value={value} disabled={disabled} onValueChange={onChange}>
+    <Select
+      variant="outlined"
+      value={value}
+      disabled={disabled}
+      onValueChange={onChange}
+    >
       <SelectTrigger aria-label={label}>
         <SelectValue placeholder={label}>
           {selected?.label ?? value}

@@ -3,6 +3,7 @@ import {
   PropsWithChildren,
   useCallback,
   useContext,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -98,6 +99,11 @@ const applyRootStyleVar = (mode: ResolvedThemeMode, themePalette: Theme) => {
   }
 }
 
+export type ThemePreview = {
+  color?: string
+  mode?: ThemeMode
+}
+
 const ThemeContext = createContext<{
   themePalette: Theme
   themeCssVars: string
@@ -106,6 +112,7 @@ const ThemeContext = createContext<{
   themeMode: ThemeMode
   currentThemeMode: ResolvedThemeMode
   setThemeMode: (mode: ThemeMode) => Promise<void>
+  setThemePreview: (preview: ThemePreview | null) => void
 } | null>(null)
 
 export function useExperimentalThemeContext() {
@@ -128,17 +135,27 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   const [resolvedThemeMode, setResolvedThemeMode] =
     useState<ResolvedThemeMode>(getSystemThemeMode())
 
+  // An unsaved color / mode shown on top of the saved settings.
+  const [preview, setPreview] = useState<ThemePreview | null>(null)
+
+  // Dragging a color changes it faster than themes rebuild; let React skip
+  // the intermediate ones.
+  const effectiveColor = useDeferredValue(preview?.color ?? themeColor.value)
+  const effectiveMode = preview?.mode ?? themeMode.value
+
   // The theme of the last session paints the window until the settings have
   // loaded; `theme_color` is always present once they have.
   const [cachedTheme] = useState(readCachedTheme)
 
   const theme = useMemo(
     () =>
-      themeColor.value === undefined
-        ? cachedTheme
-        : createTheme(themeColor.value),
-    [themeColor.value, cachedTheme],
+      effectiveColor === undefined ? cachedTheme : createTheme(effectiveColor),
+    [effectiveColor, cachedTheme],
   )
+
+  // Only the saved color is cached for the next launch, never a preview
+  // (including the deferred frame right after a preview is cleared).
+  const isSavedTheme = effectiveColor === themeColor.value
 
   // automatically insert custom theme css vars into document head
   useEffect(() => {
@@ -146,7 +163,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   }, [theme.cssVars])
 
   useEffect(() => {
-    if (theme === cachedTheme) {
+    if (theme === cachedTheme || !isSavedTheme) {
       return
     }
 
@@ -156,7 +173,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
     } catch {
       // ignore quota / security errors
     }
-  }, [theme, cachedTheme])
+  }, [theme, cachedTheme, isSavedTheme])
 
   // The setting hooks return new objects every render; the setters read
   // them through refs so the context value stays stable.
@@ -172,6 +189,14 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
     }
   }, [])
 
+  const setThemePreview = useCallback((next: ThemePreview | null) => {
+    setPreview((current) =>
+      current?.color === next?.color && current?.mode === next?.mode
+        ? current
+        : next,
+    )
+  }, [])
+
   const applyThemeMode = useCallback((mode: ResolvedThemeMode) => {
     changeHtmlThemeMode(mode)
     setResolvedThemeMode(mode)
@@ -180,7 +205,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   // initialize theme mode on mount
   useEffect(() => {
     const initializeTheme = async () => {
-      if (themeMode.value === ThemeMode.SYSTEM) {
+      if (effectiveMode === ThemeMode.SYSTEM) {
         // Apply a synchronous system fallback first to avoid a light flash.
         applyThemeMode(getSystemThemeMode())
 
@@ -190,31 +215,31 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
           systemTheme === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
         )
       } else if (
-        themeMode.value === ThemeMode.LIGHT ||
-        themeMode.value === ThemeMode.DARK
+        effectiveMode === ThemeMode.LIGHT ||
+        effectiveMode === ThemeMode.DARK
       ) {
-        applyThemeMode(themeMode.value as ResolvedThemeMode)
+        applyThemeMode(effectiveMode as ResolvedThemeMode)
       } else {
         // Setting value may still be loading; keep current class to avoid visual flicker.
       }
     }
 
     initializeTheme()
-  }, [appWindow, applyThemeMode, themeMode.value])
+  }, [appWindow, applyThemeMode, effectiveMode])
 
   // listen to theme changed event and change html theme mode
   useEffect(() => {
     if (!appWindow) {
       const media = window.matchMedia('(prefers-color-scheme: dark)')
       const update = () => {
-        if (themeMode.value === ThemeMode.SYSTEM)
+        if (effectiveMode === ThemeMode.SYSTEM)
           applyThemeMode(getSystemThemeMode())
       }
       media.addEventListener('change', update)
       return () => media.removeEventListener('change', update)
     }
     const unlisten = appWindow.onThemeChanged((theme) => {
-      if (themeMode.value === ThemeMode.SYSTEM) {
+      if (effectiveMode === ThemeMode.SYSTEM) {
         applyThemeMode(
           theme === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
         )
@@ -224,7 +249,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
     return () => {
       unlisten.then((fn) => fn())
     }
-  }, [appWindow, applyThemeMode, themeMode.value])
+  }, [appWindow, applyThemeMode, effectiveMode])
 
   const setThemeMode = useCallback(
     async (mode: ThemeMode) => {
@@ -241,16 +266,16 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   )
 
   const currentThemeMode = useMemo<ResolvedThemeMode>(() => {
-    if (themeMode.value === ThemeMode.DARK) {
+    if (effectiveMode === ThemeMode.DARK) {
       return ThemeMode.DARK
     }
 
-    if (themeMode.value === ThemeMode.LIGHT) {
+    if (effectiveMode === ThemeMode.LIGHT) {
       return ThemeMode.LIGHT
     }
 
     return resolvedThemeMode
-  }, [resolvedThemeMode, themeMode.value])
+  }, [resolvedThemeMode, effectiveMode])
 
   useEffect(() => {
     applyRootStyleVar(currentThemeMode, theme.palette)
@@ -267,6 +292,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
       themeMode: themeMode.value as ThemeMode,
       currentThemeMode,
       setThemeMode,
+      setThemePreview,
     }),
     [
       theme,
@@ -275,6 +301,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
       themeMode.value,
       currentThemeMode,
       setThemeMode,
+      setThemePreview,
     ],
   )
 

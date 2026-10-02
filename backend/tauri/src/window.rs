@@ -670,6 +670,12 @@ pub trait AppWindow {
                     }
                 });
 
+                if base_label == crate::consts::MAIN_WINDOW_LABEL
+                    && let Some(startup) = app_handle
+                        .try_state::<std::sync::Arc<crate::utils::startup::StartupTimings>>()
+                {
+                    startup.milestone("main_window_created");
+                }
                 Ok(WindowCreateResult::new(label))
             }
             Err(err) => {

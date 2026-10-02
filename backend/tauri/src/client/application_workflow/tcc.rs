@@ -725,11 +725,16 @@ impl ApplicationWorkflow {
         } else {
             effective_host(app, self.lifecycle.service_usable_now(), baseline.host)
         };
-        let prepared = match self
+        let stage = self
+            .startup
+            .is_none()
+            .then(|| crate::utils::startup::StartupStage::new("reconcile.runtime_build"));
+        let prepared = self
             .preparation
             .prepare_candidate_inputs(inputs.expect("critical operations capture runtime inputs"))
-            .await
-        {
+            .await;
+        drop(stage);
+        let prepared = match prepared {
             Ok(prepared) => prepared,
             // A candidate that cannot be built cannot be built later either.
             Err(error) => {
@@ -772,14 +777,19 @@ impl ApplicationWorkflow {
         // recorded, and the Try becomes the only authority. A host that *has*
         // the capability and could not serve it is the §2.4 row that defaults
         // to a refusal, deferrable only where the command policy allows it.
-        match self
+        let stage = self
+            .startup
+            .is_none()
+            .then(|| crate::utils::startup::StartupStage::new("reconcile.config_check"));
+        let checked = self
             .validator
             .check(RuntimeCheckRequest {
                 core_spec: spec,
                 intent: &prepared.intent,
             })
-            .await
-        {
+            .await;
+        drop(stage);
+        match checked {
             RuntimeCheckOutcome::Passed => *check = CheckRecord::Passed,
             RuntimeCheckOutcome::Rejected { kind, message } => {
                 return self.dispose(
@@ -862,6 +872,10 @@ impl ApplicationWorkflow {
             .clone()
             .expect("critical baseline was observed");
         if target_host != baseline.host {
+            let _stage = self
+                .startup
+                .is_none()
+                .then(|| crate::utils::startup::StartupStage::new("reconcile.host_handoff"));
             // Only switching service mode on may install or start the daemon;
             // any other save adopts a Service that is already `Ready`.
             match self
@@ -944,11 +958,16 @@ impl ApplicationWorkflow {
             }
         }
 
-        let outcome = match self
+        let stage = self
+            .startup
+            .is_none()
+            .then(|| crate::utils::startup::StartupStage::new("reconcile.core_apply"));
+        let submitted = self
             .lifecycle
             .submit_runtime(prepared, &self.preparation, &expected)
-            .await
-        {
+            .await;
+        drop(stage);
+        let outcome = match submitted {
             Ok(RuntimeSubmission::Applied {
                 product,
                 receipt,

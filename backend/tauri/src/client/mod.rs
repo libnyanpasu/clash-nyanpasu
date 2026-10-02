@@ -125,6 +125,7 @@ async fn new_typed_config_clients(
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
 ) -> anyhow::Result<(ApplicationClient, SessionStateClient, ClashConfigClient)> {
+    let stage = crate::utils::startup::StartupStage::new("client.application_config");
     let application = ApplicationClient::new(
         mutations.clone(),
         build_channel,
@@ -133,14 +134,18 @@ async fn new_typed_config_clients(
         tasks,
     )
     .await?;
+    drop(stage);
 
+    let stage = crate::utils::startup::StartupStage::new("client.session_state");
     let session_state = SessionStateClient::new(
         utf8_path(paths.session_state_path())?,
         shutdown.child_token(),
         tasks,
     )
     .await?;
+    drop(stage);
 
+    let _stage = crate::utils::startup::StartupStage::new("client.clash_config");
     let clash_config = ClashConfigClient::new(
         mutations.clone(),
         utf8_path(paths.clash_config_path())?,
@@ -274,10 +279,12 @@ impl NyanpasuClient {
         let (owner_shutdown, owner_tasks) = (shutdown.clone(), tasks.clone());
         let (application, session_state, clash_config, profiles, ports, fs) =
             tauri::async_runtime::block_on(async move {
+                let stage = crate::utils::startup::StartupStage::new("client.stale_candidates");
                 runtime_paths_for_setup
                     .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
                     .await
                     .context("failed to clean stale runtime candidates")?;
+                drop(stage);
                 let (application, session_state, clash_config) = new_typed_config_clients(
                     mutations.clone(),
                     bundle_metadata.release_channel,
@@ -296,6 +303,7 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                 ));
+                let _stage = crate::utils::startup::StartupStage::new("client.profiles");
                 let profiles = profiles::ProfilesClient::new_with_jobs(
                     mutations.clone(),
                     profiles_path,
@@ -383,8 +391,10 @@ impl NyanpasuClient {
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> anyhow::Result<Self> {
+        let stage = crate::utils::startup::StartupStage::new("client.debug_http_actor");
         let debug_http =
             crate::server::debug_http::HttpServerClient::spawn(http_frontend, http_routes).await?;
+        drop(stage);
         tasks.spawn({
             let (http, token) = (debug_http.clone(), shutdown.child_token());
             async move {
@@ -394,6 +404,7 @@ impl NyanpasuClient {
                 }
             }
         });
+        let stage = crate::utils::startup::StartupStage::new("client.log_actors");
         let core_logs =
             crate::core::logs::CoreLogsClient::spawn(logging.core, shutdown.child_token(), &tasks)
                 .await?;
@@ -409,6 +420,8 @@ impl NyanpasuClient {
             }
         });
         let service_logs = logging.service;
+        drop(stage);
+        let stage = crate::utils::startup::StartupStage::new("client.effects_actor");
         let effects = effects::actor::EffectsClient::spawn(
             effects::actor::EffectsArgs {
                 port: effects,
@@ -423,6 +436,8 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        drop(stage);
+        let stage = crate::utils::startup::StartupStage::new("client.workflow_actor");
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
                 notifications: Arc::new(effects.clone()),
@@ -449,9 +464,11 @@ impl NyanpasuClient {
             },
         )
         .await?;
+        drop(stage);
         if let Some(mutations) = mutations {
             mutations.connect(application_workflow.clone(), Arc::new(effects.clone()));
         }
+        let stage = crate::utils::startup::StartupStage::new("client.updater_actor");
         let updater = crate::core::updater::UpdaterClient::spawn(
             Arc::new(crate::core::updater::HttpUpdaterBackend::new(
                 std::env::current_exe()?
@@ -465,12 +482,16 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        drop(stage);
+        let stage = crate::utils::startup::StartupStage::new("client.proxies_actor");
         let proxies = crate::core::proxies::ProxiesClient::spawn(
             core_v2.clone(),
             shutdown.child_token(),
             &tasks,
         )
         .await?;
+        drop(stage);
+        let stage = crate::utils::startup::StartupStage::new("client.streams_actor");
         let streams = crate::core::clash::ws::StreamsClient::spawn(
             core_v2.clone(),
             core_logs.clone(),
@@ -478,6 +499,8 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        drop(stage);
+        let _stage = crate::utils::startup::StartupStage::new("client.traffic_actor");
         let traffic = match traffic_store {
             Some(store) => {
                 match crate::core::traffic::TrafficClient::spawn(

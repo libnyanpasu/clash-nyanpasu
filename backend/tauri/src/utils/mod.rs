@@ -12,6 +12,7 @@ pub mod main_thread;
 pub mod path;
 pub mod proxy_env;
 pub mod resolve;
+pub mod startup;
 // mod winhelp;
 pub mod hwid;
 #[cfg(windows)]

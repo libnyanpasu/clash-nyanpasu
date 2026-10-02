@@ -47,6 +47,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
     jobs_capture: nyanpasu_jobs::LogCapture,
 ) -> Result<(), anyhow::Error> {
+    let startup = app.state::<Arc<crate::utils::startup::StartupTimings>>();
+    let stage = startup.stage("setup.paths_and_boundaries");
     let app_handle = app.app_handle().clone();
     let rpc_events = crate::unified_rpc::EventBus::new();
     crate::unified_rpc::bridge_tauri_events(&app_handle, rpc_events.clone());
@@ -82,12 +84,18 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .ok()
         .map(|dir| dir.join("resources"));
     let paths = PathResolver::from_env(resources_dir).context("Failed to resolve app paths")?;
+    drop(stage);
+    let stage = startup.stage("setup.in_process_migrations");
     let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
         .context("Failed to setup config migrations")?;
     migrations
         .run_pending()
         .context("Failed to run config migrations before client setup")?;
+    drop(stage);
+    let stage = startup.stage("setup.resources");
     crate::log_err!(crate::utils::init::init_resources(&paths));
+    drop(stage);
+    let stage = startup.stage("setup.runtime_paths_and_service_ipc");
     // For commands that need a path, such as the Windows UWP loopback tool.
     app.manage(paths.clone());
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
@@ -98,13 +106,19 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let service_binary = paths
         .service_binary_path()
         .context("Failed to locate the service binary")?;
+    drop(stage);
     let (core_v2, service) = tauri::async_runtime::block_on(async {
+        let stage = startup.stage("setup.local_core_manager");
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
+        drop(stage);
+        let stage = startup.stage("setup.core_actor");
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
             Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
         let core = crate::core::actor_v2::CoreClient::spawn(local)
             .await
             .context("Failed to spawn core actor")?;
+        drop(stage);
+        let _stage = startup.stage("setup.service_actor");
         let adapter = Arc::new(
             crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
                 service_ipc.clone(),
@@ -123,6 +137,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // One instance behind both the system proxy actor and the client's own
     // read of the OS settings.
     let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
+    let stage = startup.stage("setup.jobs");
     let jobs = tauri::async_runtime::block_on(crate::client::jobs::start(
         paths.jobs_path(),
         jobs_capture,
@@ -130,6 +145,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &tasks,
     ))
     .context("Failed to start jobs owner")?;
+    drop(stage);
+    let stage = startup.stage("setup.effect_adapters");
     let (effects, widget_controller) = build_application_effects(
         &app_handle,
         main_thread.clone(),
@@ -140,29 +157,41 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &shutdown,
         &tasks,
     )?;
+    drop(stage);
+    let stage = startup.stage("setup.traffic_store");
     let traffic_store = open_traffic_store(&paths);
+    drop(stage);
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
     // Opened after the in-process migrations above, which open the same file.
+    let stage = startup.stage("setup.web_storage");
     let storage = crate::core::storage::Storage::try_new(&paths.storage_path())
         .context("Failed to open the storage")?;
     app.manage(storage.clone());
+    drop(stage);
+    let stage = startup.stage("setup.debug_http_frontend");
+    let http_frontend = Some(debug_http_frontend(&app_handle)?);
+    drop(stage);
+    let stage = startup.stage("setup.core_log_store");
+    let core_log_store: Box<dyn crate::core::logs::CoreLogStore> =
+        match crate::core::logs::RedbCoreLogStore::open(paths.app_logs_dir().join("core")) {
+            Ok(store) => Box::new(store),
+            Err(error) => {
+                tracing::warn!(%error, "Core log storage unavailable");
+                Box::new(crate::core::logs::UnavailableCoreLogStore(format!(
+                    "{error:#}"
+                )))
+            }
+        };
+    drop(stage);
+    let stage = startup.stage("setup.client");
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
-        http_frontend: Some(debug_http_frontend(&app_handle)?),
+        http_frontend,
         http_routes,
         jobs,
         logging: crate::client::logs::LoggingSetup {
-            core: match crate::core::logs::RedbCoreLogStore::open(paths.app_logs_dir().join("core"))
-            {
-                Ok(store) => Box::new(store),
-                Err(error) => {
-                    tracing::warn!(%error, "Core log storage unavailable");
-                    Box::new(crate::core::logs::UnavailableCoreLogStore(format!(
-                        "{error:#}"
-                    )))
-                }
-            },
+            core: core_log_store,
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
                 paths.app_logs_dir(),
                 "clash-nyanpasu".into(),
@@ -187,6 +216,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         tasks: tasks.clone(),
     })
     .context("Failed to setup nyanpasu client")?;
+    drop(stage);
+    let stage = startup.stage("setup.event_forwarding");
     // The tray menu and the first window render with the process locale, so
     // the configured language replaces the system default before either exists.
     RustI18nLocaleSink.set_locale(client.app_config_snapshot().language);
@@ -203,10 +234,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &shutdown,
         hotkey_action_pump(hotkey_rx, client.clone()),
     ));
+    drop(stage);
     // The widget needs the client's connection stream and the client needs the
     // widget controller, so the controller is built empty and filled here, in
     // the one place that has both. Its desired configuration arrives with the
     // startup effect reconcile like every other effect.
+    let stage = startup.stage("setup.widget");
     let widget_manager = tauri::async_runtime::block_on(crate::widget::setup(
         client.subscribe_clash_connections(),
         shutdown.child_token(),
@@ -216,7 +249,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
+    drop(stage);
     // Picked last, so the server binds it soon after.
+    let _stage = startup.stage("setup.internal_server_spawn");
     let server_port = port_scanner::request_open_port()
         .context("Failed to find a free port for the internal server")?;
     // Dropped on the cancel rather than drained: an icon request in flight

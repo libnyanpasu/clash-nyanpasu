@@ -149,14 +149,22 @@ fn set_window_controls_pos(
 }
 
 /// handle something when start app
-pub fn resolve_setup(app: &mut App) {
+pub fn resolve_setup(app: &mut App, startup: &super::startup::StartupTimings) {
+    let _resolve = startup.stage("resolve.setup");
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     #[cfg(target_os = "macos")]
     let ready_app_handle = app.app_handle().clone();
+    let ready_startup = app
+        .state::<std::sync::Arc<super::startup::StartupTimings>>()
+        .inner()
+        .clone();
     WindowReadyEvent::listen(app, move |event| {
         let label = &event.payload.label;
         tracing::debug!("Window '{}' is ready", label);
+        if label == crate::consts::MAIN_WINDOW_LABEL {
+            ready_startup.milestone("main_window_ready");
+        }
         #[cfg(target_os = "macos")]
         if label == crate::consts::MAIN_WINDOW_LABEL {
             log_err!(ready_app_handle.run_on_main_thread(|| {
@@ -168,14 +176,19 @@ pub fn resolve_setup(app: &mut App) {
     #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");
     #[cfg(any(windows, target_os = "linux"))]
-    crate::core::tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
+    {
+        let _stage = startup.stage("resolve.tray_image_cache");
+        crate::core::tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
+    }
 
     {
+        let stage = startup.stage("resolve.startup_reconcile");
         let client = app.state::<crate::client::NyanpasuClient>();
         // TODO(startup): resolve_setup needs restructuring; startup_reconcile
         // should not block setup. See
         // docs/plan/2026-09-28-workflow-lifecycle-simplification.md §9.
         let report = tauri::async_runtime::block_on(client.startup_reconcile());
+        drop(stage);
         if let Some(observation) = &report.observation {
             log::info!(
                 target: "app",
@@ -198,27 +211,36 @@ pub fn resolve_setup(app: &mut App) {
         }
         // Even an unsettled startup lets them run: what they change queues
         // behind the startup command.
+        let _stage = startup.stage("resolve.background_sources_spawn");
         log_err!(client.start_background_sources());
     }
 
+    let stage = startup.stage("resolve.clash_connectors");
     log::trace!("init clash connection connector");
     log_err!(crate::core::clash::setup(app));
+    drop(stage);
 
+    let stage = startup.stage("resolve.clash_streams");
     log_err!(tauri::async_runtime::block_on(
         app.state::<crate::client::NyanpasuClient>()
             .start_clash_streams()
     ));
+    drop(stage);
 
     let silent_start = app
         .state::<NyanpasuClient>()
         .app_config_snapshot()
         .enable_silent_start;
     if !silent_start {
+        let _stage = startup.stage("resolve.main_window");
         create_window(app.app_handle());
         spawn_window_ready_timeout(app.app_handle().clone());
+    } else {
+        startup.milestone("silent_start");
     }
 
     // test job
+    let _stage = startup.stage("resolve.listeners");
     proxies::setup_proxies(app.app_handle());
     crate::core::storage::register_web_storage_listener(app.app_handle());
 }
@@ -239,7 +261,12 @@ fn spawn_window_ready_timeout(app_handle: AppHandle) {
                     "Main window still hidden after {}s timeout, showing as fallback",
                     TIMEOUT_SECS
                 );
-                let _ = win.show();
+                if win.show().is_ok()
+                    && let Some(startup) =
+                        inner.try_state::<std::sync::Arc<super::startup::StartupTimings>>()
+                {
+                    startup.milestone("main_window_fallback_shown");
+                }
                 let _ = win.set_focus();
                 #[cfg(target_os = "macos")]
                 crate::utils::dock::macos::show_dock_icon();

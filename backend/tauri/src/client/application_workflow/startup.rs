@@ -474,10 +474,13 @@ impl ApplicationWorkflow {
         }
         // S1: a command the ServiceActor still runs may be replacing the very
         // daemon a probe would answer for, so nothing is decided past it.
-        if !matches!(
-            self.lifecycle.core.service_command_settled().await,
-            Ok(true)
-        ) {
+        let stage = self
+            .startup
+            .is_none()
+            .then(|| crate::utils::startup::StartupStage::new("reconcile.service_command_settled"));
+        let settled = self.lifecycle.core.service_command_settled().await;
+        drop(stage);
+        if !matches!(settled, Ok(true)) {
             let observation = StartupObservation {
                 desired,
                 service: None,
@@ -490,7 +493,12 @@ impl ApplicationWorkflow {
             );
             return (observation, waiting);
         }
+        let stage = self
+            .startup
+            .is_none()
+            .then(|| crate::utils::startup::StartupStage::new("reconcile.service_probe"));
         let probe = self.lifecycle.core.probe_service_host().await;
+        drop(stage);
         // The generation this attempt is about: a daemon that becomes ready
         // again while it runs is a newer one, and its failure is not this.
         let generation = probe.as_ref().map_or_else(
@@ -498,7 +506,12 @@ impl ApplicationWorkflow {
             |status| status.ready_generation,
         );
         let service = ServiceEvidence::from_probe(&probe, &self.lifecycle.instance_config_dir);
+        let stage = self
+            .startup
+            .is_none()
+            .then(|| crate::utils::startup::StartupStage::new("reconcile.runtime_status"));
         let runtime = self.lifecycle.core.refresh_status().await.ok();
+        drop(stage);
         let owner = runtime.as_ref().map_or_else(
             || self.lifecycle.core.core_status().host,
             |status| status.host,
@@ -509,6 +522,10 @@ impl ApplicationWorkflow {
             self.lifecycle.service_usable(service.phase(), generation),
             owner,
         );
+        let _stage = self
+            .startup
+            .is_none()
+            .then(|| crate::utils::startup::StartupStage::new("reconcile.establish_runtime"));
         let mut reestablished = self.establish(desired, owner, &service, automatic).await;
         let mut desired = desired;
         // Service mode is a preference: a ready service that still failed to
@@ -833,7 +850,12 @@ impl ApplicationWorkflow {
                 ),
             );
         }
+        let stage = self
+            .startup
+            .is_none()
+            .then(|| crate::utils::startup::StartupStage::new("reconcile.capture_profiles"));
         let inputs = self.capture_committed().await;
+        drop(stage);
         let Some(identity) = inputs.target_key() else {
             return self.block("the committed configuration has no runtime identity".to_owned());
         };

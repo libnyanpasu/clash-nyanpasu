@@ -5,9 +5,9 @@ use aho_corasick::AhoCorasick;
 use fst::{Map, MapBuilder, raw::Output};
 use regex_automata::{
     Input, MatchKind, PatternSet,
-    meta::{self, Regex},
+    meta::{self, Config as RegexConfig, Regex},
     nfa::thompson::WhichCaptures,
-    util::syntax,
+    util::syntax::Config as RegexSyntaxConfig,
 };
 
 use crate::{
@@ -312,14 +312,14 @@ fn regex_builder() -> meta::Builder {
     let mut builder = meta::Builder::new();
     builder
         .configure(
-            meta::Config::new()
+            RegexConfig::new()
                 .nfa_size_limit(Some(10 << 20))
                 .hybrid_cache_capacity(2 << 20)
                 .match_kind(MatchKind::All)
                 .utf8_empty(true)
                 .which_captures(WhichCaptures::None),
         )
-        .syntax(syntax::Config::new().utf8(true));
+        .syntax(RegexSyntaxConfig::new().utf8(true));
     builder
 }
 

@@ -7,7 +7,7 @@ import nyanpasuMergeSchema from 'meta-json-schema/schemas/clash-nyanpasu-merge-j
 import clashMetaSchema from 'meta-json-schema/schemas/meta-json-schema.json'
 import * as monaco from 'monaco-editor'
 import { configureMonacoYaml } from 'monaco-yaml'
-import { OS } from '@/consts'
+import { OS } from '@nyanpasu/platform'
 
 export const MONACO_FONT_FAMILY = [
   '"Cascadia Code NF"',

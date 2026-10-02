@@ -2,16 +2,16 @@ import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-ro
 import { AnimatePresence } from 'motion/react'
 import { ChangeEvent, useState } from 'react'
 import { Controller } from 'react-hook-form'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
+} from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { formatError, sleep } from '@/utils'
 import { message } from '@/utils/notification'
@@ -20,7 +20,7 @@ import {
   useClashInfo,
   useClashSetting,
   useRuntimeProfile,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,

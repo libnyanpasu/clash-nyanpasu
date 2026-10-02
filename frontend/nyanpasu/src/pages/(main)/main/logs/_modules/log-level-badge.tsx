@@ -1,5 +1,5 @@
 import { ComponentProps } from 'react'
-import HighlightText from '@/components/ui/highlight-text'
+import HighlightText from '@nyanpasu/ui/highlight-text'
 import { cn } from '@nyanpasu/utils'
 
 export default function LogLevelBadge({

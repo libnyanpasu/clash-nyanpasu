@@ -3,10 +3,12 @@ import {
   useClashConnectionDetails,
   useCurrentProfileUid,
   useTrafficUsageByKeys,
+} from '@nyanpasu/query'
+import {
   type Bytes,
   type ClashRule,
   type TrafficQuery,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 
 /**
  * Identifies a rule the way a connection's `rule` / `rulePayload` and the

@@ -1,8 +1,9 @@
 import { createRoot } from 'react-dom/client'
 import { expect, test } from 'vitest'
-import { useSystemAccentColor, useSystemProxy } from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useSystemAccentColor, useSystemProxy } from '@nyanpasu/query'
+import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 test('polling an unchanged system proxy and accent color does not re-render', async ({
   onTestFinished,

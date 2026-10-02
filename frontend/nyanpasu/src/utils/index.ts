@@ -1,35 +1,10 @@
-// oxlint-disable typescript/no-explicit-any
-import { EnvInfo, isIpcError } from '@nyanpasu/interface'
+import { isIpcError } from '@nyanpasu/rpc'
+import { EnvInfo } from '@nyanpasu/rpc/types'
 import { ipcErrorMessage } from './ipc-error'
 import type { ProfileLabel } from './profile-label'
 
-/**
- * classNames filter out falsy values and join the rest with a space
- * @param classes - array of classes
- * @returns string of classes
- */
-export function classNames(...classes: any[]) {
-  return classes.filter(Boolean).join(' ')
-}
-
 export async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-export const containsSearchTerm = (obj: any, term: string): boolean => {
-  if (!obj || !term) return false
-
-  if (typeof obj === 'string') {
-    return obj.toLowerCase().includes(term.toLowerCase())
-  }
-
-  if (typeof obj === 'object') {
-    return Object.values(obj).some((value: any) =>
-      containsSearchTerm(value, term),
-    )
-  }
-
-  return false
 }
 
 /** The simplest message for a caught error; the original goes to "copy error details". */

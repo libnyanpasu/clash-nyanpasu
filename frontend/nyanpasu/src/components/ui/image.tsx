@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { useServerPort } from '@nyanpasu/interface'
-import { LazyImage, type LazyImageProps } from '@nyanpasu/utils'
+import { LazyImage, type LazyImageProps } from '@nyanpasu/ui/lazy-image'
+import { useServerPort } from '@nyanpasu/query'
 
 type SharedImageProps = Omit<LazyImageProps, 'src'>
 

@@ -4,7 +4,7 @@ import { message } from '@/utils/notification'
 import {
   ClashRulesProviderQueryItem,
   useUpdateClashRulesProvider,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 
 export const useRulesProviderUpdate = (data: ClashRulesProviderQueryItem) => {
   const update = useUpdateClashRulesProvider()

@@ -1,7 +1,8 @@
 import { ComponentProps } from 'react'
-import { Button } from '@/components/ui/button'
-import { useLockFn } from '@/hooks/use-lock-fn'
-import { rpc, type ProfileItem_Serialize } from '@nyanpasu/interface'
+import { Button } from '@nyanpasu/ui/button'
+import { rpc } from '@/services/rpc'
+import { useLockFn } from '@nyanpasu/hooks'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 
 export default function ViewContent({
   profile,

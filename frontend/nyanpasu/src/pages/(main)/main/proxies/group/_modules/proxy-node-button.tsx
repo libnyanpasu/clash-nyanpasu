@@ -1,11 +1,11 @@
 import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
 import { ComponentProps, memo, MouseEvent, useMemo } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
-import { Button } from '@/components/ui/button'
-import { useLockFn } from '@/hooks/use-lock-fn'
-import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { ClashProxiesQueryProxyItem } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 function FeatureChip({

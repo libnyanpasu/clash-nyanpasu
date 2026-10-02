@@ -2,28 +2,24 @@ import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import RuleSettingsRounded from '~icons/material-symbols/rule-settings-rounded'
 import { filesize } from 'filesize'
 import { useMemo } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { LinearProgress } from '@nyanpasu/ui/progress'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { LinearProgress } from '@/components/ui/progress'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatError } from '@/utils'
 import { formatDate, formatRelativeTime } from '@/utils/date'
 import { message } from '@/utils/notification'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   getRemoteSource,
   isTransformItem,
   useProfileMutations,
   useProfileSyncStatus,
-  type ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import UpdateOptionEditor from './update-option-editor'
 
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))

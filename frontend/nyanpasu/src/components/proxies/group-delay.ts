@@ -2,7 +2,7 @@ import type {
   Proxies_Serialize,
   ProxyGroupItem_Serialize,
   ProxyItem_Serialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 
 export function getGroupSelectedDelay(
   group: ProxyGroupItem_Serialize,

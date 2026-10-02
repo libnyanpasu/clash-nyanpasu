@@ -1,9 +1,9 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import useCustomCss from '@/hooks/use-custom-css'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { rpc } from '@nyanpasu/interface'
+import { rpc } from '@/services/rpc'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   ItemContainer,
   ItemLabel,

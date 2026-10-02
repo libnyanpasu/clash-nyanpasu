@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ClashProxiesProviderQueryItem } from '@nyanpasu/interface'
+import { ClashProxiesProviderQueryItem } from '@nyanpasu/query'
 
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
 

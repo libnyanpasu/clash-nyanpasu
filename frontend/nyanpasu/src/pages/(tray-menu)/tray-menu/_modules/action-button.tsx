@@ -1,5 +1,5 @@
 import { ComponentProps, CSSProperties } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import { cn } from '@nyanpasu/utils'
 import { AsyncHandler, useTrayClickHandler } from './hooks'
 

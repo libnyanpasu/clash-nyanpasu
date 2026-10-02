@@ -20,6 +20,8 @@ retain their operational checklist and section numbers.
 Start with the [root README](../../README.md#development) for running the app and
 [CONTRIBUTING.md](../../CONTRIBUTING.md) for contribution setup. For frontend test
 setup, see the [Vitest guide](../frontend-testing.md).
+For package ownership, dependency directions, and source-only typechecking, see
+[Frontend packages](frontend-packages.md).
 
 ## Rules to keep in mind
 

@@ -1,15 +1,19 @@
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { m } from '@/paraglide/messages'
+import { mutations, queries } from '@/services/rpc'
+import { useLockFn } from '@nyanpasu/hooks'
+import { invokeMutation, unwrapQueryOptions } from '@nyanpasu/query'
 import {
+  Button,
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
-import { useLockFn } from '@/hooks/use-lock-fn'
-import { m } from '@/paraglide/messages'
-import { invokeMutation, rpc, unwrapQueryOptions } from '@nyanpasu/interface'
+} from '@nyanpasu/ui'
 import { useQuery } from '@tanstack/react-query'
 import {
   SettingsCard,
@@ -20,9 +24,9 @@ import {
 } from '../../_modules/settings-card'
 
 export default function KVStorage() {
-  const storageQuery = rpc.queries.getAllStorageItems()
-  const clearStorage = rpc.mutations.clearStorage
-  const removeStorageItem = rpc.mutations.removeStorageItem
+  const storageQuery = queries.getAllStorageItems()
+  const clearStorage = mutations.clearStorage
+  const removeStorageItem = mutations.removeStorageItem
   const query = useQuery(
     unwrapQueryOptions(storageQuery, storageQuery.queryFn!),
   )

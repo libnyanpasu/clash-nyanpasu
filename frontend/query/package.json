@@ -1,0 +1,30 @@
+{
+  "name": "@nyanpasu/query",
+  "version": "2.0.0-beta.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./provider": "./src/provider/index.tsx",
+    "./provider/rpc-provider": "./src/provider/rpc-provider.tsx",
+    "./profile": "./src/ipc/use-profile.ts",
+    "./settings": "./src/ipc/use-settings.ts"
+  },
+  "dependencies": {
+    "@nyanpasu/rpc": "workspace:^",
+    "@tauri-apps/api": "2.12.0",
+    "es-toolkit": "1.52.0",
+    "react-use": "17.6.1"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "5.104.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

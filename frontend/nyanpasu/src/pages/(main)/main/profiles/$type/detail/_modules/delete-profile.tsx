@@ -1,14 +1,12 @@
 import { ComponentProps } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import {
-  useProfileMutations,
-  type ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useProfileMutations } from '@nyanpasu/query'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { useNavigate } from '@tanstack/react-router'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { Route as IndexRoute } from '../$uid'

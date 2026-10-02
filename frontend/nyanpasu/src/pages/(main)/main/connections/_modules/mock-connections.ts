@@ -1,7 +1,7 @@
 import type {
   ClashConnection_Serialize,
   ClosedConnection,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 
 // Generated connections for previewing the connections page in dev builds.
 // Each slot reconnects on its own period, so which connections are open or

@@ -2,27 +2,24 @@ import { AnimatePresence } from 'motion/react'
 import { ComponentProps, useCallback, useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { Input, NumericInput } from '@/components/ui/input'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { Input, NumericInput } from '@nyanpasu/ui/input'
 import {
   Modal,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
-import { SwitchItem } from '@/components/ui/switch'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/modal'
+import { SwitchItem } from '@nyanpasu/ui/switch'
+import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  getRemoteSource,
-  useProfileMutations,
-  type ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { getRemoteSource, useProfileMutations } from '@nyanpasu/query'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({

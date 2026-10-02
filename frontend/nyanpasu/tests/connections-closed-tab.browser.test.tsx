@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
-import type { ClosedConnection, ClosedCursor } from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ClosedConnection, ClosedCursor } from '@nyanpasu/rpc/types'
+import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import ClosedViewer from '../src/pages/(main)/main/connections/_modules/closed-viewer'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),

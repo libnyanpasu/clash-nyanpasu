@@ -1,27 +1,23 @@
 import { startCase } from 'es-toolkit/compat'
 import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import {
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
-import { OS } from '@/consts'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
+import { rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import {
-  rpc,
-  unwrapResult,
-  useCoreDir,
-  useServicePrompt,
-  useSystemService,
-} from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { OS } from '@nyanpasu/platform'
+import { useCoreDir, useServicePrompt, useSystemService } from '@nyanpasu/query'
+import { unwrapResult } from '@nyanpasu/rpc'
 import { cn } from '@nyanpasu/utils'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {

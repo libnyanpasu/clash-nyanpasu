@@ -6,21 +6,21 @@ import {
   useRef,
   useState,
 } from 'react'
-import { isLinux } from '@/consts'
+import { rpc } from '@/services/rpc'
 import {
   downloadUpdateWithFallback,
   type UpdateDownloadCandidate,
 } from '@/utils/update-download-fallback'
 import { isUpdaterSupported } from '@/utils/updater-support'
+import { isLinux } from '@nyanpasu/platform'
 import {
-  rpc,
-  unwrapResult,
   useIsAppImage,
   useIsPortable,
   useReleaseChannel,
   useSetting,
-  type ReleaseChannel,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
+import { unwrapResult } from '@nyanpasu/rpc'
+import { type ReleaseChannel } from '@nyanpasu/rpc/types'
 import packageJson from '@root/package.json'
 import { isTauri } from '@tauri-apps/api/core'
 import { Update, type DownloadEvent } from '@tauri-apps/plugin-updater'

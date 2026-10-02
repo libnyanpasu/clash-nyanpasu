@@ -3,13 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { server } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { Route as DetailRoute } from '@/pages/(main)/main/profiles/$type/detail/$uid'
 import { Route as TypeIndexRoute } from '@/pages/(main)/main/profiles/$type/index'
 import { Route as ProfilesRoute } from '@/pages/(main)/main/profiles/route'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -19,6 +19,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { mockIPC } from '@tauri-apps/api/mocks'
+import { TestQueryProvider as QueryClientProvider } from '../tests/query-provider'
 import { measureFrames, onProfilerRender, summarize } from './measure'
 
 // Moves between the profiles list and a profile's detail page, then refetches

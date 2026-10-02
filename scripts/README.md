@@ -12,5 +12,6 @@ conventions, dependency handling and verification.
 deno task prepare:check
 deno task generate:git-info
 deno task lint:deno
+deno task lint:frontend-boundaries
 deno task test:scripts
 ```

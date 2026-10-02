@@ -1,9 +1,9 @@
-import type {
-  DndGridItemType,
-  GridItemConstraints,
-  GridSize,
-} from '@/components/ui/dnd-grid'
-import { isOverlap } from '@/components/ui/dnd-grid/utils'
+import {
+  isOverlap,
+  type DndGridItemType,
+  type GridItemConstraints,
+  type GridSize,
+} from '@nyanpasu/ui/dnd-grid'
 
 export function sizeKey(size: GridSize): string {
   return `${size.cols}x${size.rows}`

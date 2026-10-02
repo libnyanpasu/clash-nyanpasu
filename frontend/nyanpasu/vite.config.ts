@@ -86,12 +86,6 @@ export default defineConfig(({ command, mode }) => {
         { find: '@root', replacement: path.resolve('../../') },
         { find: '@repo', replacement: path.resolve('../../') },
         { find: '@', replacement: path.resolve('./src') },
-        { find: '@interface', replacement: path.resolve('../interface/src') },
-        {
-          find: '@nyanpasu/interface',
-          replacement: path.resolve('../interface/src'),
-        },
-        { find: '@nyanpasu/utils', replacement: path.resolve('../utils/src') },
         { find: '~', replacement: path.resolve('.') },
         {
           // monaco-worker-manager (monaco-yaml dep) still imports the pre-0.56
@@ -101,7 +95,7 @@ export default defineConfig(({ command, mode }) => {
           replacement: 'monaco-editor/',
         },
       ],
-      dedupe: ['react', 'react-dom'],
+      dedupe: ['react', 'react-dom', '@tanstack/react-query'],
     },
     optimizeDeps: {
       entries: ['./src/main.tsx'],

@@ -1,4 +1,5 @@
-import type { ClashLog, LogRow } from '@nyanpasu/interface'
+import type { ClashLog } from '@nyanpasu/query'
+import type { LogRow } from '@nyanpasu/rpc/types'
 
 const LEVELS = ['info', 'warning', 'error', 'debug']
 

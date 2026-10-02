@@ -1,5 +1,5 @@
-import { useLockFn } from '@/hooks/use-lock-fn'
-import { useSetting } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useSetting } from '@nyanpasu/query'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 

@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
 import { ErrorMessage } from '@/components/error-message'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
 import {
   useProfileSyncLogs,
   useProfileSyncRuns,
   useProfileSyncStatus,
-  type RunDto,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
+import { type RunDto } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { useQueryClient } from '@tanstack/react-query'
 import LogLevelBadge from '../../../../logs/_modules/log-level-badge'

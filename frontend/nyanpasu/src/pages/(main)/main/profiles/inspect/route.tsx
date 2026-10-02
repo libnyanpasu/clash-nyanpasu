@@ -1,5 +1,11 @@
 import ArticleRounded from '~icons/material-symbols/article-rounded'
 import { useEffect, useState } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import {
+  SegmentedButton,
+  SegmentedButtonItem,
+} from '@nyanpasu/ui/segmented-button'
+import { Switch } from '@nyanpasu/ui/switch'
 import { ErrorMessage } from '@/components/error-message'
 import {
   StepLabel,
@@ -7,20 +13,13 @@ import {
   useOpenProfile,
   useProfileLookup,
 } from '@/components/profile-label'
-import { Button } from '@/components/ui/button'
-import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
-import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
+import { events, queries } from '@/services/rpc'
+import { unwrapQueryOptions } from '@nyanpasu/query'
 import {
-  events,
-  queries,
-  unwrapQueryOptions,
   type RuntimeInspection,
   type RuntimeInspectionContent,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import LogLevelBadge from '../../logs/_modules/log-level-badge'

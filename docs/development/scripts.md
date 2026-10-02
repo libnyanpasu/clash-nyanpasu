@@ -22,6 +22,7 @@ Put handwritten script source under `scripts/src/`, grouped by responsibility:
 | `notifications/`       | Release notifications                                                               |
 | `generate/`            | Git metadata, data slots and offline map generation                                 |
 | `testing/`             | Browser integration checks requiring a running application                          |
+| `frontend/`            | Frontend workspace package-boundary inventory, policy checks and gate CLI           |
 | `shared/`              | Small modules reused across script categories, such as logging and repository paths |
 
 Keep Deno configuration, its lockfile, script documentation and editor configuration
@@ -85,6 +86,7 @@ Prettier conventions do not replace the existing Deno formatter for these files.
 ```sh
 deno task lint:deno
 deno task test:scripts
+deno task lint:frontend-boundaries
 deno task lint:architecture-ledger
 ```
 

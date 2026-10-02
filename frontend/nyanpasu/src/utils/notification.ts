@@ -1,5 +1,6 @@
 import { m } from '@/paraglide/messages'
-import { commands, isIpcError, unwrapResult } from '@nyanpasu/interface'
+import { commands } from '@/services/rpc'
+import { isIpcError, unwrapResult } from '@nyanpasu/rpc'
 import { isTauri } from '@tauri-apps/api/core'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {

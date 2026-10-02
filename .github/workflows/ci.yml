@@ -336,4 +336,4 @@ jobs:
 
       - name: Check typescript bindings freshness
         if: matrix.os == 'ubuntu-latest'
-        run: git diff --exit-code -- frontend/interface/src/ipc/bindings.ts
+        run: git diff --exit-code -- frontend/rpc/src/tauri-bindings.ts frontend/rpc/src/rpc-bindings.ts frontend/query/src/query-bindings.ts

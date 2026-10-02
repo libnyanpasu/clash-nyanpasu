@@ -1,7 +1,7 @@
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import NyanpasuUpdateProvider from '@/components/providers/nyanpasu-update-provider'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
-import useIsMobile from '@/hooks/use-is-moblie'
+import { useIsMobile } from '@nyanpasu/hooks'
 import { cn } from '@nyanpasu/utils'
 import packageJson from '@root/package.json'
 import { createFileRoute } from '@tanstack/react-router'

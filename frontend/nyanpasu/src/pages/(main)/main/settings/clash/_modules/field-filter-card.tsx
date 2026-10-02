@@ -1,22 +1,23 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import { PropsWithChildren, useMemo } from 'react'
-import CLASH_FIELD from '@/assets/json/clash-field.json'
-import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import {
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import TextMarquee from '@/components/ui/text-marquee'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/modal'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
+import CLASH_FIELD from '@/assets/json/clash-field.json'
+import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
-import { rpc, useProfile } from '@nyanpasu/interface'
+import { rpc } from '@/services/rpc'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useProfile } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 type Item = {

@@ -11,35 +11,36 @@ import {
   useRef,
   useState,
 } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
+} from '@nyanpasu/ui/dropdown-menu'
+import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
+} from '@nyanpasu/ui/modal'
 import {
   ScrollArea,
   useScrollArea,
   useScrollAreaViewport,
-} from '@/components/ui/scroll-area'
+} from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
+import { getLocale } from '@/paraglide/runtime'
+import { useFileLogs } from '@nyanpasu/query'
 import {
-  useFileLogs,
   type Filter,
   type Level,
   type LogError,
   type LogRow,
   type LogSource,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Route } from '../route'
@@ -67,7 +68,7 @@ function errorMessage(error: LogError) {
       return m.logs_source_unavailable()
   }
 }
-const DateTimeField = lazy(() => import('@/components/ui/date-time-field'))
+const DateTimeField = lazy(() => import('@nyanpasu/ui/date-time-field'))
 
 // A row formats its time once when it mounts, not on every list render.
 const FileLogRecord = memo(function FileLogRecord({
@@ -254,6 +255,9 @@ export default function FileLogs({ source }: { source: LogSource }) {
                     }
                   >
                     <DateTimeField
+                      locale={getLocale()}
+                      openCalendarLabel={m.date_time_open_calendar()}
+                      clearLabel={m.common_clear()}
                       label={m.logs_from_label()}
                       value={draft.from}
                       onChange={(from) =>
@@ -261,6 +265,9 @@ export default function FileLogs({ source }: { source: LogSource }) {
                       }
                     />
                     <DateTimeField
+                      locale={getLocale()}
+                      openCalendarLabel={m.date_time_open_calendar()}
+                      clearLabel={m.common_clear()}
                       label={m.logs_to_label()}
                       value={draft.to}
                       onChange={(to) => setDraft((value) => ({ ...value, to }))}

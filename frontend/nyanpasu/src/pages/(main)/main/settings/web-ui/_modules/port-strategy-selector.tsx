@@ -1,13 +1,14 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
-import { useClashSetting, type PortStrategyKind } from '@nyanpasu/interface'
+import { useClashSetting } from '@nyanpasu/query'
+import { type PortStrategyKind } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,

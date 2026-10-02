@@ -10,10 +10,11 @@ import {
   useRef,
   useState,
 } from 'react'
-import { cn, getSystem } from '@nyanpasu/utils'
+import { getClientSystem } from '@nyanpasu/platform'
+import { cn } from '@nyanpasu/utils'
 import { readTextFile } from '@tauri-apps/plugin-fs'
 
-const isWin = getSystem() === 'windows'
+const isWin = getClientSystem() === 'windows'
 
 const FileDropZoneContext = createContext<{
   isDragging: boolean

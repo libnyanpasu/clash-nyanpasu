@@ -6,8 +6,8 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useDndGridContext } from '@/components/ui/dnd-grid/context'
-import { useKvStorage } from '@nyanpasu/interface'
+import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { useKvStorage } from '@nyanpasu/query'
 import {
   DEFAULT_WIDGET_CONFIGS,
   EMPTY_WIDGET_CONFIG_STORAGE,

@@ -1,5 +1,5 @@
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { useClashSetting, useSetting } from '@nyanpasu/interface'
+import { useClashSetting, useSetting } from '@nyanpasu/query'
 
 export const useSystemProxy = () => {
   const systemProxy = useSetting('enable_system_proxy')

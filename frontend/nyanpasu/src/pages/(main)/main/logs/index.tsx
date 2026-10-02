@@ -6,20 +6,20 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import {
+  ScrollArea,
+  useScrollArea,
+  useScrollAreaViewport,
+} from '@nyanpasu/ui/scroll-area'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import { ContextMenuItem } from '@/components/ui/context-menu'
-import {
-  ScrollArea,
-  useScrollArea,
-  useScrollAreaViewport,
-} from '@/components/ui/scroll-area'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { useClashLogs } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useClashLogs } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import FileLogs from './_modules/file-logs'

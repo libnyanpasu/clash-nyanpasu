@@ -1,25 +1,25 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useMedia } from 'react-use'
-import { Card } from '@/components/ui/card'
+import { Card } from '@nyanpasu/ui/card'
 import {
   SegmentedButton,
   SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
+} from '@nyanpasu/ui/segmented-button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from '@nyanpasu/ui/select'
 import { m } from '@/paraglide/messages'
 import type {
   Dimension,
   Metric,
   Topology,
   TopologyNode,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import GeographyView from './geography-view'
 import {

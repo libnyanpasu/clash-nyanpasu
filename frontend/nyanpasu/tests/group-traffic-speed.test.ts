@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import type { ClashConnectionsSummary } from '../../interface/src/ipc/rpc-bindings'
+import type { ClashConnectionsSummary } from '@nyanpasu/rpc/types'
 import { latestGroupTrafficSpeed } from '../src/pages/(main)/main/proxies/_modules/group-traffic-speed.ts'
 
 const summary = (

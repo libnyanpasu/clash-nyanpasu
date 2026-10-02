@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { ThemedToken } from 'shiki'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import { m } from '@/paraglide/messages'
-import type { SnapshotDiffHunk } from '@nyanpasu/interface'
+import type { SnapshotDiffHunk } from '@nyanpasu/rpc/types'
 
 /** Highlighted tokens for each shown line of a hunk; undefined for markers. */
 type HunkTokens = (ThemedToken[] | undefined)[]

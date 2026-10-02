@@ -4,7 +4,7 @@ import { message } from '@/utils/notification'
 import {
   ClashProxiesProviderQueryItem,
   useUpdateClashProxiesProvider,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 
 export const useProxiesProviderUpdate = (
   data: ClashProxiesProviderQueryItem,

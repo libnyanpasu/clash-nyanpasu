@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { CacheImage } from '@/components/ui/image'
-import { useClashProxies } from '@nyanpasu/interface'
+import { useClashProxies } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 export default function ProxyIcon({ groupName }: { groupName: string }) {

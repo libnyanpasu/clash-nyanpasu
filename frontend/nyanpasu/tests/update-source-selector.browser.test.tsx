@@ -9,7 +9,7 @@ const backend = vi.hoisted(() => ({
   save: vi.fn(),
   installing: false,
 }))
-vi.mock('@nyanpasu/interface', () => ({
+vi.mock('@nyanpasu/query', () => ({
   useSetting: () => {
     const [value, setValue] = useState(backend.sources)
     return {

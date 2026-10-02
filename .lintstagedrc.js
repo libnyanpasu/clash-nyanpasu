@@ -27,20 +27,11 @@ export default {
       `oxlint --fix --no-error-on-unmatched-pattern ${files}`,
     ]
   },
-  'frontend/interface/**/*.{ts,tsx}': [
+  'frontend/**/*.{ts,tsx}': [
     'prettier --write',
     'oxlint --fix',
-    () => 'tsc -p frontend/interface/tsconfig.json --noEmit',
-  ],
-  'frontend/utils/**/*.{ts,tsx}': [
-    'prettier --write',
-    'oxlint --fix',
-    () => 'tsc -p frontend/utils/tsconfig.json --noEmit',
-  ],
-  'frontend/nyanpasu/**/*.{ts,tsx}': [
-    'prettier --write',
-    'oxlint --fix',
-    () => 'tsc -p frontend/nyanpasu/tsconfig.json --noEmit',
+    () => 'pnpm typecheck',
+    () => 'deno task lint:frontend-boundaries',
   ],
   'backend/**/*.{rs,toml}': [
     () =>

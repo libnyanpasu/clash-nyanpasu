@@ -4,11 +4,20 @@ import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
 
 const browserTests = ['frontend/*/tests/**/*.browser.test.{ts,tsx}']
+const alias = [
+  { find: '@', replacement: path.resolve('frontend/nyanpasu/src') },
+  { find: '@root', replacement: path.resolve('.') },
+  {
+    find: /^~icons\/.*$/,
+    replacement: path.resolve('frontend/nyanpasu/tests/icon-stub.tsx'),
+  },
+]
 
 export default defineConfig({
   test: {
     projects: [
       {
+        resolve: { alias },
         test: {
           name: 'unit',
           environment: 'node',
@@ -19,45 +28,18 @@ export default defineConfig({
       {
         plugins: [react()],
         resolve: {
-          alias: [
-            ...Object.entries({
-              '@': path.resolve('frontend/nyanpasu/src'),
-              '@root': path.resolve('.'),
-              '@interface': path.resolve('frontend/interface/src'),
-              '@nyanpasu/interface': path.resolve(
-                'frontend/interface/src/index.ts',
-              ),
-              '@nyanpasu/utils': path.resolve('frontend/utils/src/index.ts'),
-              '@tauri-apps/api': path.resolve(
-                'frontend/interface/node_modules/@tauri-apps/api',
-              ),
-              '@tanstack/react-query': path.resolve(
-                'frontend/interface/node_modules/@tanstack/react-query',
-              ),
-              clsx: path.resolve('frontend/utils/node_modules/clsx'),
-              'react-use': path.resolve(
-                'frontend/interface/node_modules/react-use',
-              ),
-              'tailwind-merge': path.resolve(
-                'frontend/utils/node_modules/tailwind-merge',
-              ),
-              'vitest-browser-react': path.resolve(
-                'frontend/interface/node_modules/vitest-browser-react',
-              ),
-            }).map(([find, replacement]) => ({ find, replacement })),
-            {
-              find: /^~icons\/.*$/,
-              replacement: path.resolve(
-                'frontend/nyanpasu/tests/icon-stub.tsx',
-              ),
-            },
-          ],
+          alias,
+          dedupe: ['react', 'react-dom', '@tanstack/react-query'],
         },
         optimizeDeps: {
+          // A barrel loads every re-export in native ESM, including unused controls.
+          entries: [...browserTests, 'frontend/ui/src/index.ts'],
           include: [
             'react',
+            'react-dom',
             'react-dom/client',
             'react/jsx-runtime',
+            'react/jsx-dev-runtime',
             '@tanstack/react-query',
             '@tauri-apps/api/core',
             '@tauri-apps/api/event',
@@ -68,7 +50,6 @@ export default defineConfig({
             'tailwind-merge',
             'vitest-browser-react',
           ],
-          exclude: ['@nyanpasu/interface', '@nyanpasu/utils'],
         },
         test: {
           name: 'browser',

@@ -1,6 +1,6 @@
 import NoteStackAddRounded from '~icons/material-symbols/note-stack-add-rounded'
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import { cn } from '@nyanpasu/utils'
 import { ProfileType } from '../../_modules/consts'
 import { Action, Route as IndexRoute } from '../index'

@@ -8,7 +8,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from 'react'
-import { useScrollAreaViewport } from '@/components/ui/scroll-area'
+import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import { cn } from '@nyanpasu/utils'
 import {
   columnOrderingFeature,

@@ -4,7 +4,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../main/profiles/_modules/consts'

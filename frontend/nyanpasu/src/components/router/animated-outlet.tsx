@@ -3,7 +3,7 @@ import { ComponentProps, useRef } from 'react'
 import {
   ClashConnectionDetailsFreezeBoundary,
   ClashWSFreezeBoundary,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import {
   Outlet,
   RouterContextProvider,

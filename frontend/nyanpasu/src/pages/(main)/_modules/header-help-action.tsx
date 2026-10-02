@@ -4,11 +4,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
+import { rpc } from '@/services/rpc'
 import { formatEnvInfos } from '@/utils'
-import { rpc } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
 import { Link } from '@tanstack/react-router'
 import { isTauri } from '@tauri-apps/api/core'
 

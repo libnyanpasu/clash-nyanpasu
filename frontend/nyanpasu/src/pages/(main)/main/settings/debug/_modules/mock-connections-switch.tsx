@@ -1,4 +1,4 @@
-import { Switch } from '@/components/ui/switch'
+import { Switch } from '@nyanpasu/ui/switch'
 import { useMockConnectionsSetting } from '@/hooks/use-mock-connections'
 import {
   ItemContainer,

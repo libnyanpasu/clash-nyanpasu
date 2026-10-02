@@ -1,13 +1,14 @@
 import { Profiler } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
-import { MutationProvider } from '@interface/provider/mutation-provider'
-import { useClashProxiesProvider } from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useClashProxiesProvider } from '@nyanpasu/query'
+import { MutationProvider } from '@nyanpasu/query/provider'
+import { QueryClient } from '@tanstack/react-query'
 import { emit } from '@tauri-apps/api/event'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
-// The interface picks the Tauri event transport at import time.
+// Client construction selects the desktop event adapter for this test.
 vi.hoisted(() => {
   Object.assign(window, { __TAURI_INTERNALS__: {} })
 })
@@ -67,10 +68,12 @@ test('a proxies event refreshes only mounted provider views, without re-renderin
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)
-  onTestFinished(() => {
+  onTestFinished(async () => {
     root.unmount()
     container.remove()
     queries.clear()
+    // Resolve provider subscription cleanup before clearing the native adapter.
+    await Promise.resolve()
     clearMocks()
   })
   const render = (mounted: boolean) =>

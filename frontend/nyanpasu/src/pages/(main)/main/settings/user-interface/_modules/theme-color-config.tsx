@@ -1,11 +1,7 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import Check from '~icons/material-symbols/check-rounded'
 import { useCallback, useMemo, useState } from 'react'
-import {
-  DEFAULT_COLOR,
-  useExperimentalThemeContext,
-} from '@/components/providers/theme-provider'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -16,9 +12,10 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@nyanpasu/ui/dropdown-menu'
+import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
-import { useSystemAccentColor } from '@interface/ipc'
+import { useSystemAccentColor } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { Hue } from '@uiw/react-color'
 import {
@@ -30,14 +27,7 @@ import {
   SettingsCardContent,
 } from '../../_modules/settings-card'
 
-const PERSETS = [
-  DEFAULT_COLOR,
-  '#9e1e67',
-  '#3d009e',
-  '#00089e',
-  '#066b9e',
-  '#9e5a00',
-]
+const PERSETS = ['#9e1e67', '#3d009e', '#00089e', '#066b9e', '#9e5a00']
 
 function hueToHex(hue: number) {
   const h = ((hue % 360) + 360) % 360

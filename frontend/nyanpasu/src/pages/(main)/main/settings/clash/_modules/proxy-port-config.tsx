@@ -3,32 +3,31 @@ import { AnimatePresence } from 'motion/react'
 import { PropsWithChildren, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { NumericInput } from '@/components/ui/input'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { NumericInput } from '@nyanpasu/ui/input'
 import {
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
+} from '@nyanpasu/ui/modal'
 import {
   SegmentedButton,
   SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
-import { Switch } from '@/components/ui/switch'
+} from '@nyanpasu/ui/segmented-button'
+import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useClashConfig, useClashSetting } from '@nyanpasu/query'
 import {
-  useClashConfig,
-  useClashSetting,
   type ClashApiConfig,
   type PortStrategy,
   type PortStrategyKind,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,

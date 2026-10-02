@@ -1,14 +1,12 @@
-import { useCallback, useEffect } from 'react'
-import { isMacOS } from '@/consts'
+import { useCallback, useEffect, useState } from 'react'
+import { createWindowAdapter, isMacOS } from '@nyanpasu/platform'
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { isTauri } from '@tauri-apps/api/core'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-
-const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
 const IS_MAXIMIZED_QUERY_KEY = 'isMaximized'
 
 export default function useWindowMaximized() {
+  const [appWindow] = useState(createWindowAdapter)
+
   // Only `data` is read, so the tracked query re-renders callers when the
   // state changes, not on every fetch.
   const { data: isMaximized, refetch } = useSuspenseQuery({

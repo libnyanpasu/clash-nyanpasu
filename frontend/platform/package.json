@@ -1,0 +1,15 @@
+{
+  "name": "@nyanpasu/platform",
+  "private": true,
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.0"
+  }
+}

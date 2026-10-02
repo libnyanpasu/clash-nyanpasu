@@ -2,7 +2,7 @@ import { memo, type ReactNode } from 'react'
 import {
   SegmentedButton,
   SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
+} from '@nyanpasu/ui/segmented-button'
 import { m } from '@/paraglide/messages'
 import { Route as IndexRoute, LogLevelsLayout } from '../route'
 

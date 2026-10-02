@@ -1,11 +1,11 @@
 import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
 import ArrowForwardRounded from '~icons/material-symbols/arrow-forward-rounded'
 import { memo, type ReactNode } from 'react'
-import HighlightText from '@/components/ui/highlight-text'
+import HighlightText from '@nyanpasu/ui/highlight-text'
 import { CacheImage } from '@/components/ui/image'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
-import type { Bytes, ClashRule } from '@nyanpasu/interface'
+import type { Bytes, ClashRule } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import type { RuleLiveStats } from './use-rule-stats'
 

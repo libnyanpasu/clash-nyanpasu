@@ -1,0 +1,21 @@
+{
+  "name": "@nyanpasu/rpc",
+  "version": "2.0.0-beta.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./client": "./src/rpc-bindings.ts",
+    "./transport": "./src/transport.ts",
+    "./events": "./src/event-transport.ts"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.0"
+  }
+}

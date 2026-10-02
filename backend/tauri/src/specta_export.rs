@@ -189,30 +189,46 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     (query_bindings, builder.dangerously_cast_bigints_to_number())
 }
 
-pub(crate) fn append_query_bindings(
-    path: impl AsRef<std::path::Path>,
-    query_bindings: &str,
-) -> std::io::Result<()> {
-    use std::io::Write;
-
-    // specta-typescript 0.0.12 predates Typescript::with_raw, so append the
-    // query framework fragment after the regular bindings export.
-    let mut file = std::fs::OpenOptions::new().append(true).open(path)?;
-    writeln!(file, "\n{query_bindings}")?;
-    Ok(())
-}
-
 pub(crate) fn adapt_rpc_bindings(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
     adapt_command_transport(path.as_ref())?;
     adapt_event_transport(path)
+}
+
+pub(crate) fn adapt_query_bindings(
+    path: impl AsRef<std::path::Path>,
+    query_bindings: &str,
+) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
+
+    let queries_start = "export const queries = {";
+    let mutations_start = "export const mutations = {";
+    if query_bindings.matches(queries_start).count() != 1
+        || query_bindings.matches(mutations_start).count() != 1
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "TanStack Query bindings changed; query package factory was not generated",
+        ));
+    }
+
+    let source = query_bindings
+        .replacen(queries_start, "const queries = {", 1)
+        .replacen(mutations_start, "const mutations = {", 1);
+    let queries_start = source.find("const queries = {").unwrap();
+    let imports = &source[..queries_start];
+    let source = format!(
+        "{}\nimport type {{ RpcClient }} from '@nyanpasu/rpc'\n\nexport function createQueryBindings(rpc: RpcClient) {{\n  const commands = rpc\n\n{}\n  return {{ queries, mutations }}\n}}\n",
+        imports,
+        &source[queries_start..]
+    );
+    std::fs::write(path, source)
 }
 
 fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
     use std::io::{Error, ErrorKind};
 
     const ORIGINAL: &str = "import { invoke as __TAURI_INVOKE } from \"@tauri-apps/api/core\";";
-    const REPLACEMENT: &str =
-        "import { invokeRpcCommand as __RPC_INVOKE } from \"./command-transport\";";
+    const REPLACEMENT: &str = "";
 
     const CHANNEL_ORIGINAL: &str =
         "import { invoke as __TAURI_INVOKE, Channel } from \"@tauri-apps/api/core\";";
@@ -234,38 +250,72 @@ fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result
     // Channel is only a desktop command argument type. Keeping its import
     // erased makes the shared schema safe to load in a browser.
     let replacement = if original == CHANNEL_ORIGINAL {
-        format!("{REPLACEMENT}\n{CHANNEL_TYPE_IMPORT}")
+        CHANNEL_TYPE_IMPORT.to_owned()
     } else {
         REPLACEMENT.to_owned()
     };
-    std::fs::write(
-        path,
-        source
-            .replacen(original, &replacement, 1)
-            .replace("__TAURI_INVOKE", "__RPC_INVOKE"),
-    )
+    let source = source
+        .replacen(original, &replacement, 1)
+        .replace("__TAURI_INVOKE", "__RPC_INVOKE");
+    let commands_start = "export const commands = {";
+    let events_start = "/** Events */";
+    let types_start = "/* Types */";
+    if source.matches(commands_start).count() != 1
+        || source.matches(events_start).count() != 1
+        || source.matches(types_start).count() != 1
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "tauri-specta output changed; RPC client factory was not generated",
+        ));
+    }
+    let command_at = source.find(commands_start).unwrap();
+    let events_at = source.find(events_start).unwrap();
+    let types_at = source.find(types_start).unwrap();
+    let prefix = format!(
+        "import type {{ RpcTransport }} from './transport'\nimport {{ createDefaultRpcTransport }} from './transport'\n\nexport function createRpcClient(transport: RpcTransport = createDefaultRpcTransport()) {{\n  const __RPC_INVOKE = transport.commands.invoke.bind(transport.commands)\n"
+    );
+    let commands = source[command_at..events_at].replacen(commands_start, "const commands = {", 1);
+    let events_and_separator = source[events_at..types_at].replacen(events_start, "", 1);
+    let event_object_at = events_and_separator
+        .find("export const events = {")
+        .ok_or_else(|| Error::new(ErrorKind::InvalidData, "missing generated event object"))?;
+    let mut events_and_separator = events_and_separator;
+    events_and_separator.replace_range(
+        event_object_at..event_object_at + "export const events = {".len(),
+        "const events = {",
+    );
+    let commands_and_events = format!(
+        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, listenMutation: (callback: (payload: StateChanged) => void) => transport.events.listenMutation((payload) => callback(payload as StateChanged)), listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
+    );
+    let source = format!(
+        "{}{}{}",
+        &source[..command_at],
+        commands_and_events,
+        &source[types_at..]
+    );
+    std::fs::write(path, source)
 }
 
 fn adapt_event_transport(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
     use std::io::{Error, ErrorKind};
 
     const EVENT_IMPORT: &str = "import * as __TAURI_EVENT from \"@tauri-apps/api/event\";";
-    const TRANSPORT_IMPORT: &str =
-        "import { emitHttpEvent, listenHttpEvent, onceHttpEvent } from \"./event-transport\";";
     const EVENT_IMPL_START: &str = "type EventEmit<T> = [T] extends [null]";
     const EVENT_IMPL_END: &str = "    return Object.assign(fn, base);\n}";
     const RPC_EVENT_IMPL: &str = r#"type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;
-
 type RpcEvent<T> = { event: string; id: number; payload: T };
 type RpcEventCallback<T> = (event: RpcEvent<T>) => void;
 
-function makeEvent<T>(name: string, serialize?: (payload: T) => unknown, deserialize?: (payload: any) => T) {
+import type { RpcEventTransport } from './event-transport';
+
+function makeEvent<T>(eventTransport: RpcEventTransport, name: string, serialize?: (payload: T) => unknown, deserialize?: (payload: any) => T) {
     const mapEvent = (cb: RpcEventCallback<T>) => (event: RpcEvent<any>) => cb({ ...event, payload: deserialize ? deserialize(event.payload) : event.payload });
     const mapPayload = (payload: T) => serialize ? serialize(payload) : payload;
     return {
-        listen: (cb: RpcEventCallback<T>) => listenHttpEvent(name, mapEvent(cb)),
-        once: (cb: RpcEventCallback<T>) => onceHttpEvent(name, mapEvent(cb)),
-        emit: ((payload: T) => emitHttpEvent(name, mapPayload(payload)) as unknown) as EventEmit<T>
+        listen: (cb: RpcEventCallback<T>) => eventTransport.listen(name, mapEvent(cb)),
+        once: (cb: RpcEventCallback<T>) => eventTransport.once(name, mapEvent(cb)),
+        emit: ((payload: T) => eventTransport.emit(name, mapPayload(payload)) as unknown) as EventEmit<T>
     };
 }"#;
 
@@ -280,22 +330,67 @@ function makeEvent<T>(name: string, serialize?: (payload: T) => unknown, deseria
             "tauri-specta event bindings changed; event transport was not installed",
         ));
     }
-    let mut source = source.replacen(EVENT_IMPORT, TRANSPORT_IMPORT, 1);
+    let mut source = source.replacen(EVENT_IMPORT, "", 1);
     let start = source.find(EVENT_IMPL_START).unwrap();
     let end = source.find(EVENT_IMPL_END).unwrap() + EVENT_IMPL_END.len();
     source.replace_range(start..end, RPC_EVENT_IMPL);
     let runtime_source =
         source.replace("import type { Channel } from \"@tauri-apps/api/core\";", "");
-    if runtime_source.contains("__TAURI_EVENT")
-        || runtime_source.contains("@tauri-apps/api/")
-        || runtime_source.contains("new Channel")
-    {
+    if runtime_source.contains("__TAURI_EVENT") || runtime_source.contains("new Channel") {
         return Err(Error::new(
             ErrorKind::InvalidData,
-            "RPC event binding still references Tauri",
+            "RPC event binding still references a Tauri runtime adapter",
         ));
     }
+    let source = inject_event_transport(&source)?;
     std::fs::write(path, source)
+}
+
+fn inject_event_transport(source: &str) -> std::io::Result<String> {
+    use std::io::{Error, ErrorKind};
+
+    let mut events_end = source
+        .find("/* Types */")
+        .ok_or_else(|| Error::new(ErrorKind::InvalidData, "missing generated types section"))?;
+    let mut output = source.to_owned();
+    let mut search_from = 0;
+    while search_from < events_end {
+        let Some(relative_start) = output[search_from..events_end].find("makeEvent<") else {
+            break;
+        };
+        let start = search_from + relative_start;
+        let mut depth = 0usize;
+        let mut open = None;
+        for (offset, ch) in output[start..].char_indices() {
+            match ch {
+                '<' => depth += 1,
+                '>' => {
+                    depth = depth.checked_sub(1).ok_or_else(|| {
+                        Error::new(ErrorKind::InvalidData, "invalid generated event generic")
+                    })?;
+                    if depth == 0 {
+                        open = Some(start + offset + 1);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let open = open.ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidData,
+                "unterminated generated event generic",
+            )
+        })?;
+        let paren = output[open..]
+            .find('(')
+            .map(|offset| open + offset)
+            .ok_or_else(|| Error::new(ErrorKind::InvalidData, "invalid generated event call"))?;
+        output.insert_str(paren + 1, "transport.events, ");
+        events_end += "transport.events, ".len();
+        search_from = paren + 1 + "transport.events, ".len();
+    }
+    Ok(output)
 }
 
 #[cfg(test)]
@@ -303,16 +398,20 @@ mod tests {
     use specta_typescript::Typescript;
 
     use super::{
-        adapt_rpc_bindings, append_query_bindings, build_specta_builder, build_transport_builder,
+        adapt_query_bindings, adapt_rpc_bindings, build_specta_builder, build_transport_builder,
     };
 
     const BINDINGS_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../frontend/interface/src/ipc/bindings.ts"
+        "/../../frontend/rpc/src/tauri-bindings.ts"
     );
     const RPC_BINDINGS_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../frontend/interface/src/ipc/rpc-bindings.ts"
+        "/../../frontend/rpc/src/rpc-bindings.ts"
+    );
+    const QUERY_BINDINGS_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../frontend/query/src/query-bindings.ts"
     );
 
     fn exported_type<'a>(generated: &'a str, name: &str) -> &'a str {
@@ -356,38 +455,51 @@ mod tests {
                 RPC_BINDINGS_PATH,
             )
             .expect("failed to export RPC schema bindings");
-        append_query_bindings(RPC_BINDINGS_PATH, &query_bindings)
-            .expect("failed to append TanStack Query bindings");
         adapt_rpc_bindings(RPC_BINDINGS_PATH).expect("failed to generate RPC bindings");
+        adapt_query_bindings(QUERY_BINDINGS_PATH, &query_bindings)
+            .expect("failed to generate query bindings");
 
-        let package_manager = if cfg!(target_os = "windows") {
-            "pnpm.cmd"
+        let prettier_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../node_modules/.bin")
+            .join(if cfg!(target_os = "windows") {
+                "prettier.cmd"
+            } else {
+                "prettier"
+            });
+        let mut prettier = if cfg!(target_os = "windows") {
+            let mut command = std::process::Command::new("cmd");
+            command.arg("/C").arg(prettier_path);
+            command
         } else {
-            "pnpm"
+            std::process::Command::new(prettier_path)
         };
-        let status = std::process::Command::new(package_manager)
+        let status = prettier
             .args([
-                "exec",
-                "prettier",
                 "--write",
                 BINDINGS_PATH,
                 RPC_BINDINGS_PATH,
+                QUERY_BINDINGS_PATH,
             ])
             .status()
-            .expect("failed to spawn pnpm exec prettier");
+            .expect("failed to spawn workspace Prettier binary");
         assert!(status.success(), "prettier --write failed on bindings.ts");
 
         let transport_generated =
             std::fs::read_to_string(BINDINGS_PATH).expect("bindings.ts must exist after export");
         let generated = std::fs::read_to_string(RPC_BINDINGS_PATH)
             .expect("rpc-bindings.ts must exist after export");
+        let query_generated = std::fs::read_to_string(QUERY_BINDINGS_PATH)
+            .expect("query-bindings.ts must exist after export");
         assert!(transport_generated.contains("invoke as __TAURI_INVOKE"));
         assert!(transport_generated.contains("callRpc:"));
         assert!(!transport_generated.contains("getProfiles:"));
-        assert!(generated.contains("invokeRpcCommand as __RPC_INVOKE"));
+        assert!(generated.contains("createRpcClient"));
+        assert!(generated.contains("transport.commands.invoke"));
         assert!(!generated.contains("__TAURI_INVOKE"));
-        let (_, queries) = generated.split_once("export const queries =").unwrap();
-        let (queries, mutations) = queries.split_once("export const mutations =").unwrap();
+        assert!(!generated.contains("export const queries ="));
+        assert!(!generated.contains("export const mutations ="));
+        let (_, queries) = query_generated.split_once("const queries =").unwrap();
+        let (queries, mutations) = queries.split_once("const mutations =").unwrap();
         assert!(!transport_generated.contains("subscribeClashConnectionDetails:"));
         assert!(!transport_generated.contains("unsubscribeClashConnectionDetails:"));
         assert!(!queries.contains("subscribeClashConnectionDetails:"));

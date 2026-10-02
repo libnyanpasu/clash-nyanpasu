@@ -8,7 +8,7 @@ const backend = vi.hoisted(() => ({
   retention: '7d',
   save: vi.fn(),
 }))
-vi.mock('@nyanpasu/interface', () => ({
+vi.mock('@nyanpasu/query', () => ({
   useSetting: () => {
     const [value, setValue] = useState(backend.retention)
     return {

@@ -2,7 +2,8 @@ import { Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test } from 'vitest'
 import useWindowMaximized from '@/hooks/use-window-maximized'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 const nextFrame = () =>
   new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))

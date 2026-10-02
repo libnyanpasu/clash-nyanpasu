@@ -2,17 +2,17 @@ import AllInboxRounded from '~icons/material-symbols/all-inbox-outline-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { filesize } from 'filesize'
 import { ComponentProps, PropsWithChildren } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent } from '@nyanpasu/ui/card'
+import { LinearProgress } from '@nyanpasu/ui/progress'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { LinearProgress } from '@/components/ui/progress'
-import TextMarquee from '@/components/ui/text-marquee'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatError } from '@/utils'
 import { formatRelativeTime } from '@/utils/date'
 import { message } from '@/utils/notification'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   ClashProxiesProviderQueryItem,
   ClashRulesProviderQueryItem,
@@ -20,7 +20,7 @@ import {
   useClashRulesProvider,
   useUpdateClashProxiesProvider,
   useUpdateClashRulesProvider,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useProxiesProviderUpdate } from './_modules/use-proxies-provider-update'

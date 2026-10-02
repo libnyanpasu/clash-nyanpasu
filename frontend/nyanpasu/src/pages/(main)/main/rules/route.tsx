@@ -1,23 +1,19 @@
 import ListRounded from '~icons/material-symbols/lists-rounded'
 import { ComponentProps, PropsWithChildren, ReactNode, useMemo } from 'react'
 import z from 'zod'
-import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@nyanpasu/ui/button'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import {
   Sidebar,
   SidebarLabelItem,
   SidebarProvider,
   SidebarToggleButton,
   useSidebar,
-} from '@/components/ui/slider-sidebar'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useIsMobileOrTablet } from '@/hooks/use-is-moblie'
+} from '@nyanpasu/ui/slider-sidebar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import { useClashRules } from '@nyanpasu/interface'
+import { useIsMobileOrTablet } from '@nyanpasu/hooks'
+import { useClashRules } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import ProxyIcon from './_modules/proxy-icon'

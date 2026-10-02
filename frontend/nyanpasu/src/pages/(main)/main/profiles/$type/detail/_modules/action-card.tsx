@@ -3,13 +3,10 @@ import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
 import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
 import FileOpenOutlineRounded from '~icons/material-symbols/file-open-outline-rounded'
 import { ComponentProps } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import { m } from '@/paraglide/messages'
-import {
-  isRemoteItem,
-  isTransformItem,
-  type ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+import { isRemoteItem, isTransformItem } from '@nyanpasu/query'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import ActiveButton from './active-button'
 import DeleteProfile from './delete-profile'

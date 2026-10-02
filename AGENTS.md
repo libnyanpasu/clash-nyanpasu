@@ -431,7 +431,7 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
 - Keep command metadata in `backend/tauri/src/specta_export.rs`. Register read-only operations as queries and side-effecting operations as mutations, even if their names start with `get` or `query`. Regenerate TypeScript bindings through the existing export workflow; do not hand-edit generated bindings.
-- Frontend application calls use `frontend/interface/src/ipc/rpc.ts`, generated `rpc-bindings.ts`, and the shared query/mutation helpers. Transport selection belongs in `command-transport.ts`. Do not call raw Tauri `invoke`, import legacy transport `bindings.ts` for application commands, or add ad hoc HTTP fetches in pages/hooks.
+- Frontend application calls use `@nyanpasu/rpc` generated bindings and transport adapters, then `@nyanpasu/query` for query/mutation hooks. RPC has no React Query dependency; query receives its RPC client/context explicitly. Transport selection belongs in the RPC package. Do not call raw Tauri `invoke`, import legacy transport bindings for application commands, or add ad hoc HTTP fetches in pages/hooks.
 - Native Tauri plugin APIs and frame delivery remain boundary-specific adapters. Channel subscription control is an application operation: declare it with `#[nyanpasu_macro::rpc]`, register it as a mutation, and call it through `rpc`. The desktop dispatcher binds Channel descriptors to the invoking webview; a Channel does not opt an operation into HTTP. Browser-accessible UI must guard native capabilities and provide an appropriate browser path or explicit unsupported state.
 
 ### Declare capabilities and preserve transport semantics
@@ -480,12 +480,14 @@ pub trait ConfigStore: Send + Sync + 'static {
 
 - Rust follows the existing nightly Rustfmt configuration and Clippy checks; see [Rust code style](docs/development/rust.md). Do not introduce a stricter Rust lint profile as incidental cleanup.
 - TS/TSX follows Prettier, Oxlint, and package TypeScript checks; see [TypeScript and React code style](docs/development/typescript.md).
+- Frontend code is split into the nine private source packages documented in [Frontend package boundaries](docs/development/frontend-packages.md). Shared packages expose their public API through `src/index.ts`, retain source subpaths where useful, and typecheck with `noEmit`; do not add an interface `dist` build prerequisite. The root TypeScript project is a reference index, while `pnpm typecheck` checks each package and then Node configuration/perf/tests. Each package includes only its own `src`; tests live in `frontend/<package>/tests/`.
+- Keep package direction explicit: `rpc` has no React Query dependency; `query` depends on RPC and receives its client/context explicitly; `ui` has no app, platform, RPC, or query imports. The app alone owns routes and Paraglide. Tailwind scans shared packages that produce UI classes; the data-slot generator scans `frontend/*/src/**/*.tsx`. Platform-dependent behavior is injected through lazy adapters, and providers receive callbacks such as `onDegraded` as parameters rather than using globals.
 - Use the existing feature/component namespace for i18n message keys. Dashboard widget text, including configuration controls, uses `dashboard_widget_*`, not a parallel `dashboard_config_*` prefix. Place new keys beside related messages in every locale file, preserving logical groups and order across locales; do not append unrelated keys at the end. Update locale sources and regenerate Paraglide output through its existing workflow; do not hand-edit generated message modules.
 - Include the owning component's name for messages used only by that component: `core_service`-exclusive messages carry a `core_service` segment under their feature namespace. Dashboard options exclusive to `ProxyShortcutsWidget` or `CoreShortcutsWidget` use `dashboard_widget_proxy_shortcuts_*` or `dashboard_widget_core_shortcuts_*`; shared messages belong to the smallest common scope, such as `dashboard_widget_config_*` for shared configuration UI.
 - Prefer descriptive, stable `data-slot` names on React component DOM roots and meaningful parts for readability and custom CSS. Preserve existing slots and forward data attributes; do not add DOM wrappers solely for a slot.
 - Before adding constants or environment predicates, search for existing definitions. Reuse equivalent ones or promote genuinely shared local definitions to the smallest common scope; keep one-use details local and distinguish Tauri execution, OS identity, and viewport size.
 - Separate different responsibilities with one blank line, especially query-client access, queries, mutations, derived values, handlers, and the final return. Keep related statements together.
-- Prefer `frontend/nyanpasu/src/components/ui/` components. For missing controls, check Radix primitives and add styled, accessible wrappers there before using them in features. Follow Material You and existing project tokens and interaction states. Oxlint restricts direct Radix imports to that UI layer.
+- Prefer `@nyanpasu/ui` components. For missing controls, check Radix primitives and add styled, accessible wrappers in `frontend/ui/` before using them in features. Follow Material You and existing project tokens and interaction states. Oxlint restricts direct Radix imports to that UI layer.
 - Semantic naming, reuse, grouping, and visual consistency remain mandatory review requirements even when formatting and lint pass.
 
 ### Repository scripts
@@ -579,10 +581,9 @@ Only `sidecar/` and `resources/` are symlink candidates.
 
 ### Gitignored build prerequisites a fresh worktree lacks
 
-- **`frontend/interface/dist`** — `@nyanpasu/interface` (`main` → `./dist/index.js`) is consumed by `@nyanpasu/nyanpasu`. Produce with `pnpm -F interface build`.
 - **`backend/tauri/tmp/dist`** — `backend/tauri/build.rs` calls `tauri_build::build()`, which validates `frontendDist: ./tmp/dist` **at compile time**. When missing, every `cargo build` / `clippy` / `cargo test --all-features` / rust-analyzer run on the tauri crate fails. Resolve one of:
   - Rust-only worktree → drop a placeholder (cheapest, no vite build).
-  - Runnable UI → `pnpm web:build` (build `interface` first; it clears and refills `tmp/dist`).
+  - Runnable UI → `pnpm web:build` (workspace packages resolve from source; this clears and refills `tmp/dist`).
 
 `backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `deno task generate:git-info` only if accurate commit metadata must be baked in.
 
@@ -600,12 +601,11 @@ New-Item -ItemType SymbolicLink backend/tauri/sidecar   -Target "$main/backend/t
 New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/tauri/resources"
 
 pnpm install
-pnpm -F interface build                               # -> frontend/interface/dist (gitignored)
 
 # Satisfy tauri-build's frontendDist check — pick one:
 New-Item -ItemType Directory -Force backend/tauri/tmp/dist | Out-Null            # A) Rust-only placeholder
 Set-Content backend/tauri/tmp/dist/index.html '<!doctype html><title>dev</title>'
-# pnpm web:build                                      # B) real UI (replaces tmp/dist)
+# pnpm web:build                                      # B) real UI (builds app and replaces tmp/dist)
 ```
 
 ### Remove a worktree

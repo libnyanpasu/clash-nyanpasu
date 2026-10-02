@@ -1,35 +1,37 @@
 import { PropsWithChildren, useEffect, useState } from 'react'
 import Markdown from 'react-markdown'
-import AnimatedLogo from '@/components/logo/animated-logo'
-import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import {
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
-import { LinearProgress } from '@/components/ui/progress'
-import { ScrollArea } from '@/components/ui/scroll-area'
+} from '@nyanpasu/ui/modal'
+import { LinearProgress } from '@nyanpasu/ui/progress'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { SwitchItem } from '@/components/ui/switch'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/select'
+import { SwitchItem } from '@nyanpasu/ui/switch'
+import AnimatedLogo from '@/components/logo/animated-logo'
+import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
 import {
   Action as AboutAction,
   Route as AboutRoute,
 } from '@/pages/(main)/main/settings/about/route'
 import { m } from '@/paraglide/messages'
+import { commands } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { commands, useSetting, type ReleaseChannel } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useSetting } from '@nyanpasu/query'
+import { type ReleaseChannel } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { relaunch } from '@tauri-apps/plugin-process'
 import {

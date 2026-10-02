@@ -8,9 +8,7 @@
     "dev": "run-p tauri:dev",
     "dev:diff": "run-p tauri:diff",
     "build": "tauri build",
-    "build:packages": "run-s build:package:*",
-    "build:package:interface": "pnpm --filter=@nyanpasu/interface build",
-    "build:package:utils": "pnpm --filter=@nyanpasu/utils build",
+    "build:packages": "pnpm -r --filter './frontend/*' --filter '!@nyanpasu/nyanpasu' typecheck",
     "build:release": "run-s build:packages build",
     "build:debug": "tauri build -f verge-dev deadlock-detection -d -c \"{ \\\"tauri\\\" : { \\\"updater\\\": { \\\"active\\\": false } }} \"",
     "build:nightly": "tauri build -f nightly -c ./backend/tauri/tauri.nightly.conf.json",
@@ -30,10 +28,7 @@
     "lint:architecture-ledger": "deno task lint:architecture-ledger",
     "architecture-ledger": "deno task architecture-ledger",
     "lint:styles": "stylelint --cache --allow-empty-input \"**/*.css\"",
-    "lint:ts": "run-s lint:ts:*",
-    "lint:ts:interface": "tsc --noEmit --project ./frontend/interface/tsconfig.json",
-    "lint:ts:nyanpasu": "tsc --noEmit --project ./frontend/nyanpasu/tsconfig.json",
-    "lint:ts:utils": "tsc --noEmit --project ./frontend/utils/tsconfig.json",
+    "lint:ts": "pnpm -r --filter './frontend/*' typecheck && pnpm lint:ts:node && pnpm lint:ts:perf && pnpm lint:ts:tests",
     "lint:ts:perf": "tsc --noEmit --project ./frontend/nyanpasu/perf/tsconfig.json",
     "lint:ts:tests": "tsc --noEmit --project tsconfig.test.json",
     "lint:clippy": "cargo clippy --manifest-path ./backend/Cargo.toml --all-targets --all-features",
@@ -65,7 +60,9 @@
     "prepare:nightly": "deno task prepare:nightly",
     "prepare:release": "deno task prepare:release",
     "prepare:preview": "deno task prepare:preview",
-    "prepare:check": "deno task prepare:check"
+    "prepare:check": "deno task prepare:check",
+    "lint:frontend-boundaries": "deno task lint:frontend-boundaries",
+    "lint:ts:node": "tsc --noEmit --project ./frontend/nyanpasu/tsconfig.node.json"
   },
   "dependencies": {
     "husky": "9.1.7"
@@ -99,7 +96,16 @@
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.2",
-    "vitest": "5.0.3"
+    "vitest": "5.0.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "vite-plugin-svgr": "5.2.0",
+    "vitest-browser-react": "2.3.0",
+    "@tanstack/react-query": "5.104.0",
+    "@tauri-apps/api": "2.12.0",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.7.0",
+    "react-use": "17.6.1"
   },
   "packageManager": "pnpm@12.8.1",
   "engines": {

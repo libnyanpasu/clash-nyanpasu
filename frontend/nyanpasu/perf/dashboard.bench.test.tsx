@@ -2,10 +2,12 @@ import { Profiler, type ProfilerOnRenderCallback } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
+import { rpc } from '@/services/rpc'
+import { RpcProvider } from '@nyanpasu/query/provider'
 import '@/assets/styles/tailwind.css'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { Route as DashboardIndexRoute } from '@/pages/(main)/main/dashboard/index'
 import { Route as DashboardRoute } from '@/pages/(main)/main/dashboard/route'
 import {
@@ -86,35 +88,28 @@ const savedLayouts = vi.hoisted(() => {
   })
 })
 localStorage.setItem(`nyanpasu-kv-:${btoa('dashboard-widgets')}`, savedLayouts)
-vi.mock('@interface/ipc/rpc', async (importOriginal) => {
-  const { rpc } = await importOriginal<typeof import('@interface/ipc/rpc')>()
+vi.mock('@/services/rpc', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/services/rpc')>()
   const ok = <T,>(data: T) => ({ status: 'ok' as const, data })
   return {
+    ...original,
     rpc: {
-      ...rpc,
-      queries: {
-        ...rpc.queries,
-        getStorageItem: () => ({
-          queryFn: async () => {
-            await new Promise((resolve) => setTimeout(resolve, 20))
-            return ok(savedLayouts)
-          },
-        }),
+      ...original.rpc,
+      getStorageItem: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        return ok(savedLayouts)
       },
-      mutations: {
-        ...rpc.mutations,
-        setStorageItem: { mutationFn: async () => ok(null) },
-      },
+      setStorageItem: async () => ok(null),
       listenResync: () => () => {},
       events: {
-        ...rpc.events,
+        ...original.rpc.events,
         storageValueChangedEvent: { listen: async () => () => {} },
       },
     },
   }
 })
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => {
+vi.mock('@nyanpasu/query', async (importOriginal) => {
   const { useSyncExternalStore } = await import('react')
   const noop = async () => {}
   const setting = (value: unknown) => ({ value, upsert: noop })
@@ -233,7 +228,11 @@ async function mount(onTestFinished: (fn: () => void) => void) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-  root.render(<RouterProvider router={router as never} />)
+  root.render(
+    <RpcProvider rpc={rpc}>
+      <RouterProvider router={router as never} />
+    </RpcProvider>,
+  )
   onTestFinished(() => root.unmount())
   await expect
     .poll(() => container.querySelector('[data-slot="other-page"]'))

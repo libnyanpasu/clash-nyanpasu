@@ -10,7 +10,7 @@ const outputPath = join(
   "frontend/nyanpasu/src/generated/data-slots.gen.ts",
 );
 
-const files: string[] = await globby(["frontend/nyanpasu/src/**/*.tsx"], {
+const files: string[] = await globby(["frontend/*/src/**/*.tsx"], {
   cwd: WORKSPACE_ROOT,
   absolute: true,
 });

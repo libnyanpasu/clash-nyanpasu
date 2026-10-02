@@ -1,24 +1,24 @@
 import { useEffect } from 'react'
 import { FormProvider, useForm, useWatch } from 'react-hook-form'
-import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { Modal, ModalContent, ModalTitle } from '@/components/ui/modal'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { Modal, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import {
   SegmentedButton,
   SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/segmented-button'
+import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useProfileMutations } from '@nyanpasu/query'
 import {
-  useProfileMutations,
   type NewProfileRequest_Deserialize,
   type ProfileSource_Deserialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import {
   CompositionMembersField,
   ExternalFileField,

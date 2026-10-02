@@ -1,9 +1,4 @@
 import { PropsWithChildren } from 'react'
-import { useLanguage } from '@/components/providers/language-provider'
-import {
-  ThemeMode,
-  useExperimentalThemeContext,
-} from '@/components/providers/theme-provider'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -15,12 +10,15 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { CircularProgress } from '@/components/ui/progress'
+} from '@nyanpasu/ui/dropdown-menu'
+import { CircularProgress } from '@nyanpasu/ui/progress'
+import { useLanguage } from '@/components/providers/language-provider'
+import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { Locale, locales } from '@/paraglide/runtime'
-import { ProxyMode, useProxyMode } from '@nyanpasu/interface'
+import { ProxyMode, useProxyMode } from '@nyanpasu/query'
+import { ThemeMode } from '@nyanpasu/theme'
 
 const LanguageSelector = () => {
   const { language, setLanguage } = useLanguage()

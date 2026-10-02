@@ -7,11 +7,13 @@ const backend = vi.hoisted(() => ({
   take: vi.fn<() => Promise<unknown>>(),
   create: vi.fn<(input: unknown) => Promise<void>>(),
 }))
-vi.mock('@nyanpasu/interface', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nyanpasu/interface')>()),
+vi.mock('@nyanpasu/query', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@nyanpasu/query')>()),
+  useProfile: () => ({ create: { mutateAsync: backend.create } }),
+}))
+vi.mock('@/services/rpc', () => ({
   commands: { takePendingDeepLinks: backend.take },
   events: { schemeRequestReceivedEvent: { listen: backend.listen } },
-  useProfile: () => ({ create: { mutateAsync: backend.create } }),
 }))
 vi.mock('@/utils/notification', () => ({ message: async () => {} }))
 

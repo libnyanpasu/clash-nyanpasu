@@ -3,7 +3,7 @@ import type {
   ClashConnectionDetails_Serialize,
   ClashRule,
   UsageGroup,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 
 const RULE_TYPES = ['DomainSuffix', 'DomainKeyword', 'Domain', 'IPCIDR']
 

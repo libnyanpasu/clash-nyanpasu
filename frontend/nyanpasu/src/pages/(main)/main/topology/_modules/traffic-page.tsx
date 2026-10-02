@@ -4,15 +4,10 @@ import DevicesRounded from '~icons/material-symbols/devices-rounded'
 import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
 import { useCallback, useMemo, useState } from 'react'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
-import {
-  useProfile,
-  useSetting,
-  useTrafficReport,
-  type Dimension,
-  type ReportRequest,
-} from '@nyanpasu/interface'
+import { useProfile, useSetting, useTrafficReport } from '@nyanpasu/query'
+import { type Dimension, type ReportRequest } from '@nyanpasu/rpc/types'
 import Notice from './notice'
 import RankingCard from './ranking-card'
 import {

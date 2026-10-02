@@ -1,15 +1,11 @@
+import { Switch } from '@nyanpasu/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
-import { Switch } from '@/components/ui/switch'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useSetting, useSystemService } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useSetting, useSystemService } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,

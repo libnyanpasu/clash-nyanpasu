@@ -1,21 +1,22 @@
 import { useEffect } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import { ErrorMessage } from '@/components/error-message'
-import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
+import { commands, events } from '@/services/rpc'
 import { effectFailureMessage } from '@/utils/ipc-error'
 import {
   acceptConfigurationStatus,
   attentionSources,
-  commands,
-  events,
   invokeMutation,
   MutationUnconfirmedError,
   sourceMessage,
-  unwrapResult,
+} from '@nyanpasu/query'
+import { unwrapResult } from '@nyanpasu/rpc'
+import {
   type ConfigurationStatus,
   type ConvergenceHealth,
   type EffectKind,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import {
   useMutation,
   useMutationState,

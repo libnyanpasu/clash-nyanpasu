@@ -1,6 +1,6 @@
-import { Button } from '@/components/ui/button'
-import { useLockFn } from '@/hooks/use-lock-fn'
-import { rpc } from '@nyanpasu/interface'
+import { Button } from '@nyanpasu/ui/button'
+import { rpc } from '@/services/rpc'
+import { useLockFn } from '@nyanpasu/hooks'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import {

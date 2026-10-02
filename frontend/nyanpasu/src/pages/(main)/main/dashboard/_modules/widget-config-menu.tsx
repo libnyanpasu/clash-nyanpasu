@@ -1,24 +1,16 @@
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import { motion, useReducedMotion } from 'motion/react'
 import { useId } from 'react'
-import { Button } from '@/components/ui/button'
-import { useDndGridContext } from '@/components/ui/dnd-grid/context'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@nyanpasu/ui/button'
+import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { Popover, PopoverContent, PopoverTrigger } from '@nyanpasu/ui/popover'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import {
   SegmentedButton,
   SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
-import { Switch } from '@/components/ui/switch'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+} from '@nyanpasu/ui/segmented-button'
+import { Switch } from '@nyanpasu/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { useDashboardContext } from './provider'
 import {

@@ -1,6 +1,6 @@
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { m } from '@/paraglide/messages'
-import { useSystemProxy } from '@nyanpasu/interface'
+import { useSystemProxy } from '@nyanpasu/query'
 
 export default function CurrentSystemProxy() {
   const { data } = useSystemProxy()

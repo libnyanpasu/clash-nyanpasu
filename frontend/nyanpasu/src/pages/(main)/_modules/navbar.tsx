@@ -9,17 +9,17 @@ import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-r
 import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import TerminalRounded from '~icons/material-symbols/terminal-rounded'
 import { ComponentProps, ReactElement, useMemo } from 'react'
-import AnimatedTabs, { AnimatedTabsItem } from '@/components/ui/animated-tabs'
-import { Button } from '@/components/ui/button'
+import AnimatedTabs, { AnimatedTabsItem } from '@nyanpasu/ui/animated-tabs'
+import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import type { FileRoutesByTo } from '@/route-tree.gen'
-import { useClashProxies } from '@nyanpasu/interface'
+import { useClashProxies } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import {
   Link,

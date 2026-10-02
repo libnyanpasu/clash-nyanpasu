@@ -4,28 +4,23 @@ import { sentenceCase } from 'change-case'
 import { isValid, parseISO } from 'date-fns'
 import { filesize } from 'filesize'
 import { ComponentProps, memo } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { ContextMenuItem } from '@/components/ui/context-menu'
-import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-} from '@/components/ui/modal'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   type ClosedConnection,
   type Connection_Serialize,
   type ConnectionMetadataFields_Serialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import type { ConnectionRow } from './active-viewer'
 import { RelativeTimeCell } from './cells'

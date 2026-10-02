@@ -1,4 +1,4 @@
-import { CircularProgress } from '@/components/ui/progress'
+import { CircularProgress } from '@nyanpasu/ui/progress'
 
 export default function LoadingSkeleton() {
   return (

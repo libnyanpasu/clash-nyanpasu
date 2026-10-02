@@ -1,4 +1,4 @@
-import type { SnapshotDiffHunk } from '@nyanpasu/interface'
+import type { SnapshotDiffHunk } from '@nyanpasu/rpc/types'
 
 // A runtime config as a subscription produces it: proxies with their
 // options, groups listing every proxy, and a long rule list.

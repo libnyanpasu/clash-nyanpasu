@@ -1,8 +1,9 @@
 import { createRoot } from 'react-dom/client'
 import { expect, test } from 'vitest'
-import { useSetting } from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useSetting } from '@nyanpasu/query'
+import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 test('a setting consumer does not re-render when a refetch finds nothing new', async ({
   onTestFinished,

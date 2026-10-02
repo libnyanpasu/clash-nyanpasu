@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { expect, test } from 'vitest'
 import { m } from '@/paraglide/messages'
-import type { SnapshotDiffHunk } from '@nyanpasu/interface'
+import type { SnapshotDiffHunk } from '@nyanpasu/rpc/types'
 import DiffViewer from '../src/pages/(main)/main/profiles/inspect/_modules/diff-viewer'
 
 const hunk = (start: number, lines: number): SnapshotDiffHunk => ({

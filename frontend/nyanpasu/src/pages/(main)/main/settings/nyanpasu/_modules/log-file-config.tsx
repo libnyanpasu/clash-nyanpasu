@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Slider } from '@/components/ui/slider'
+import { Slider } from '@nyanpasu/ui/slider'
 import { m } from '@/paraglide/messages'
-import { useSetting } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/query'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 const MAX_LOG_FILES = 7

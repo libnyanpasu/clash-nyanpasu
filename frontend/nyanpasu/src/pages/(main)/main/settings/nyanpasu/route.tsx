@@ -1,5 +1,5 @@
 import { m } from '@/paraglide/messages'
-import { useSetting } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'

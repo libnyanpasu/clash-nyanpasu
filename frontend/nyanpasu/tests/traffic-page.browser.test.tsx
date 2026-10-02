@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import type {
@@ -12,12 +12,8 @@ import type {
   TrafficReport,
   UsageGroup,
   UsagePage,
-} from '@nyanpasu/interface'
-import {
-  focusManager,
-  QueryClient,
-  QueryClientProvider,
-} from '@tanstack/react-query'
+} from '@nyanpasu/rpc/types'
+import { focusManager, QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import {
   LAYER_TEMPLATES,
@@ -32,6 +28,7 @@ import {
   regionName,
   usageLabel,
 } from '../src/pages/(main)/main/topology/_modules/usage-label'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 const backend = vi.hoisted(() => ({
   retention: '7d',
@@ -39,8 +36,8 @@ const backend = vi.hoisted(() => ({
   intervals: [] as unknown[],
 }))
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@nyanpasu/interface')>()
+vi.mock('@nyanpasu/query', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@nyanpasu/query')>()
 
   return {
     ...original,

@@ -5,28 +5,23 @@ import { isObject } from 'es-toolkit/compat'
 import { filesize } from 'filesize'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { CircularProgress } from '@nyanpasu/ui/progress'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { CircularProgress } from '@/components/ui/progress'
-import TextMarquee from '@/components/ui/text-marquee'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import useCoreIcon from '@/hooks/use-core-icon'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
-  ClashCore,
   ClashCoresDetail,
-  UpdaterSummary,
   useClashCores,
   useDeleteClashConnections,
   useSetting,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
+import { ClashCore, UpdaterSummary } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
   SettingsCard,

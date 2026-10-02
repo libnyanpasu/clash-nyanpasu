@@ -87,18 +87,6 @@ export default defineConfig({
           ]),
       { find: '@root', replacement: path.resolve(root, '../../') },
       { find: '@', replacement: path.resolve(root, './src') },
-      {
-        find: '@interface',
-        replacement: path.resolve(root, '../interface/src'),
-      },
-      {
-        find: '@nyanpasu/interface',
-        replacement: path.resolve(root, '../interface/src'),
-      },
-      {
-        find: '@nyanpasu/utils',
-        replacement: path.resolve(root, '../utils/src'),
-      },
       // There is no Tauri runtime in the browser; modules that read the
       // current window at import time get a stub.
       {
@@ -106,7 +94,7 @@ export default defineConfig({
         replacement: path.resolve(root, './perf/fixtures/webview-window.ts'),
       },
     ],
-    dedupe: ['react', 'react-dom'],
+    dedupe: ['react', 'react-dom', '@tanstack/react-query'],
   },
   // Dependencies only some benchmarks import. Vite otherwise discovers them
   // mid-run and reloads the page, which breaks the module mocks of the

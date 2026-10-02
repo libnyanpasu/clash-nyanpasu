@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useClashConnections } from '@nyanpasu/interface'
+import { useClashConnections } from '@nyanpasu/query'
 import { latestGroupTrafficSpeed } from './group-traffic-speed'
 
 export function useGroupTrafficSpeed(groupName?: string) {

@@ -1,13 +1,13 @@
-import { Switch } from '@/components/ui/switch'
-import { useLockFn } from '@/hooks/use-lock-fn'
+import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   breaksOnProxyChange,
   proxyChangeBreakMode,
   useClashSetting,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,

@@ -1,5 +1,5 @@
-import { AppContentScrollArea } from '@/components/ui/scroll-area'
-import useIsMobile from '@/hooks/use-is-moblie'
+import { AppContentScrollArea } from '@nyanpasu/ui/scroll-area'
+import { useIsMobile } from '@nyanpasu/hooks'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import SettingsNavigate from './_modules/settings-navigate'

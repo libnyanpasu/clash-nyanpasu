@@ -3,22 +3,22 @@ import { filesize } from 'filesize'
 import { AnimatePresence } from 'motion/react'
 import { ReactNode } from 'react'
 import { Controller, useFormContext, useWatch } from 'react-hook-form'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
+import { Input, NumericInput } from '@nyanpasu/ui/input'
+import { CircularProgress } from '@nyanpasu/ui/progress'
+import {
+  SegmentedButton,
+  SegmentedButtonItem,
+} from '@nyanpasu/ui/segmented-button'
+import { SwitchItem } from '@nyanpasu/ui/switch'
 import {
   FileDropZone,
   FileDropZoneFileSelected,
   FileDropZoneLoading,
   FileDropZonePlaceholder,
 } from '@/components/ui/file-drop-zone'
-import { Input, NumericInput } from '@/components/ui/input'
-import { CircularProgress } from '@/components/ui/progress'
-import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
-import { SwitchItem } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
-import { isConfigItem, useProfile } from '@nyanpasu/interface'
+import { isConfigItem, useProfile } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { open } from '@tauri-apps/plugin-dialog'
 import AnimatedErrorItem from '../../_modules/error-item'

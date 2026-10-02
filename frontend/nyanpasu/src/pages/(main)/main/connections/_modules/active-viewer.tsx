@@ -13,10 +13,10 @@ import { formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
 import { searchableText } from '@/utils/searchable-text'
 import {
-  ClashConnection_Serialize,
   useClashConnectionDetails,
   useDeleteClashConnections,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
+import { ClashConnection_Serialize } from '@nyanpasu/rpc/types'
 import {
   ChainCell,
   RelativeTimeCell,

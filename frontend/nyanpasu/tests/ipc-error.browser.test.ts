@@ -14,7 +14,7 @@ import type {
   RuntimeError,
   StorageOperationError,
   SystemDnsError,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 
 const profiles = (error: ProfilesError): IpcError => ({
   kind: { domain: 'profiles', error },

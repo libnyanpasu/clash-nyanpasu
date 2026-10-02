@@ -1,12 +1,8 @@
 import { memo, useDeferredValue, useMemo, useState } from 'react'
-import { ScrollArea, useScrollAreaViewport } from '@/components/ui/scroll-area'
+import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
-import {
-  useClashProxies,
-  useClashRules,
-  type Bytes,
-  type ClashRule,
-} from '@nyanpasu/interface'
+import { useClashProxies, useClashRules } from '@nyanpasu/query'
+import { type Bytes, type ClashRule } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'

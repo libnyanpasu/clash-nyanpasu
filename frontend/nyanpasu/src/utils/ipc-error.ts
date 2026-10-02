@@ -25,7 +25,7 @@ import type {
   RuntimePipelineError,
   StorageOperationError,
   SystemDnsError,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import { stepParts, type ProfileLabel } from './profile-label'
 
 /** The simplest message for a failed command, localized by its domain. */

@@ -1,0 +1,12 @@
+{
+  "name": "@nyanpasu/constants",
+  "private": true,
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

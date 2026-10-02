@@ -1,11 +1,7 @@
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
-import type { Usage } from '@nyanpasu/interface'
+import type { Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import type { UsageLabel } from './usage-label'
 

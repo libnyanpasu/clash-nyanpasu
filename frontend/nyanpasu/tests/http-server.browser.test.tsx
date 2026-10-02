@@ -1,27 +1,23 @@
 import { expect, test, vi, type TestContext } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 import HttpServer from '../src/pages/(main)/main/settings/debug/_modules/http-server'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 const backend = vi.hoisted(() => ({
   desktop: true,
   status: vi.fn(),
   set: vi.fn(),
 }))
-vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => backend.desktop }))
+vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@tauri-apps/api/core')>()),
+  isTauri: () => backend.desktop,
+}))
 vi.mock('@nyanpasu/utils', () => ({
   cn: (...values: unknown[]) => values.filter(Boolean).join(' '),
 }))
-vi.mock('@nyanpasu/interface', () => ({
+vi.mock('@/services/rpc', () => ({
   rpc: { getDebugHttpStatus: backend.status, setDebugHttpEnabled: backend.set },
-  unwrapResult: (result: {
-    status: string
-    data?: unknown
-    error?: unknown
-  }) => {
-    if (result.status === 'error') throw result.error
-    return result.data
-  },
 }))
 
 async function setup(

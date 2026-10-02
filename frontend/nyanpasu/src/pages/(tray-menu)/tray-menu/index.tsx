@@ -9,25 +9,22 @@ import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import SettingsEthernet from '~icons/material-symbols/settings-ethernet-rounded'
 import TerminalIcon from '~icons/material-symbols/terminal-rounded'
 import {
-  CopyEnvOption,
-  ProxyMode as ProxyModeType,
-  rpc,
-  useProxyMode,
-} from '@nyanpasu/interface/ipc'
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@nyanpasu/ui/dropdown-menu'
 import {
   SegmentedButton,
   SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
-import TextMarquee from '@/components/ui/text-marquee'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/segmented-button'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
+import { rpc } from '@/services/rpc'
+import { useLockFn } from '@nyanpasu/hooks'
+import { ProxyMode as ProxyModeType, useProxyMode } from '@nyanpasu/query'
+import { CopyEnvOption } from '@nyanpasu/rpc/types'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ActionButton } from './_modules/action-button'
 import { useTrayClickHandler } from './_modules/hooks'

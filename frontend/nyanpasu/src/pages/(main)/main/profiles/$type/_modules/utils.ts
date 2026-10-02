@@ -1,8 +1,5 @@
-import {
-  isConfigItem,
-  isTransformItem,
-  type ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+import { isConfigItem, isTransformItem } from '@nyanpasu/query'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { ProfileType } from '../../_modules/consts'
 
 export type ConfigProfile = Extract<ProfileItem_Serialize, { type: 'config' }>

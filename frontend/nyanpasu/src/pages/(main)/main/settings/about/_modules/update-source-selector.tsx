@@ -1,12 +1,13 @@
 import { useState } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { SwitchItem } from '@nyanpasu/ui/switch'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
-import { Button } from '@/components/ui/button'
-import { SwitchItem } from '@/components/ui/switch'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useSetting, type UpdateSource } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useSetting } from '@nyanpasu/query'
+import { type UpdateSource } from '@nyanpasu/rpc/types'
 
 const SOURCES: UpdateSource[] = ['nyanpasu', 'github']
 

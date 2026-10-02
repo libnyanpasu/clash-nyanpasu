@@ -11,28 +11,25 @@ import {
   useRef,
   useState,
 } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { LinearProgress } from '@nyanpasu/ui/progress'
+import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { ContextMenuItem } from '@/components/ui/context-menu'
-import { LinearProgress } from '@/components/ui/progress'
-import { useScrollAreaViewport } from '@/components/ui/scroll-area'
-import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import {
-  getProfileSource,
-  useProfile,
-  type ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+import { getProfileSource, useProfile } from '@nyanpasu/query'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'

@@ -1,15 +1,15 @@
-import { useBlockTaskContext } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import {
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/modal'
+import { useBlockTaskContext } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   SettingsCard,
   SettingsCardAnimatedItem,

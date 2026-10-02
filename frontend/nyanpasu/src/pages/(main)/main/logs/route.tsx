@@ -8,21 +8,17 @@ import StopCircleRounded from '~icons/material-symbols/stop-circle-rounded'
 import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { ComponentProps, memo, PropsWithChildren } from 'react'
 import { z } from 'zod'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import {
   Sidebar,
   SidebarLabelItem,
   SidebarProvider,
   SidebarToggleButton,
   useSidebar,
-} from '@/components/ui/slider-sidebar'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useIsMobileOrTablet } from '@/hooks/use-is-moblie'
+} from '@nyanpasu/ui/slider-sidebar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
+import { useIsMobileOrTablet } from '@nyanpasu/hooks'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import { LogLevel } from './_modules/consts'

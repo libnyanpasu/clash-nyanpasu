@@ -106,6 +106,10 @@ impl ExitGate {
     pub fn cleaned_up(&mut self) {
         self.phase = ExitPhase::Finished;
     }
+
+    pub fn has_shut_down(&self) -> bool {
+        self.phase == ExitPhase::Finished
+    }
 }
 
 /// The exit boundary's state, managed by Tauri.
@@ -164,13 +168,36 @@ fn start_shutdown(app_handle: &AppHandle) {
     });
 }
 
-/// Shuts every owner down and leaves the app running, for a caller that ends
-/// the process itself: the updater's installer, or a relaunch.
-pub async fn clean_up(app_handle: &AppHandle) {
+/// Releases everything the app holds, the core included, and leaves the app
+/// running, for a caller that then ends the process itself rather than through
+/// Tauri's exit: the updater's installer.
+pub async fn shutdown_before_exit(app_handle: &AppHandle) {
     if let Some(client) = request_shutdown(app_handle) {
         client.wait_shutdown().await;
     }
     app_handle.state::<ExitBoundary>().gate.lock().cleaned_up();
+}
+
+/// Whether the owners have already shut down, so the app only waits for its
+/// process to end.
+pub fn has_shut_down(app_handle: &AppHandle) -> bool {
+    app_handle
+        .state::<ExitBoundary>()
+        .gate
+        .lock()
+        .has_shut_down()
+}
+
+/// [`shutdown_before_exit`] for a synchronous caller. On a worker of the
+/// (multi-thread) async runtime the worker's queue is handed to another thread
+/// first, so the owners keep running while this one waits.
+pub fn shutdown_before_exit_blocking(app_handle: &AppHandle) {
+    let shutdown = shutdown_before_exit(app_handle);
+    if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::task::block_in_place(|| tauri::async_runtime::block_on(shutdown));
+    } else {
+        tauri::async_runtime::block_on(shutdown);
+    }
 }
 
 /// Shuts the app down from the main thread while the event loop on it can no
@@ -310,7 +337,9 @@ mod tests {
     #[test]
     fn a_restart_after_a_clean_up_relaunches_as_the_exit_goes_through() {
         let mut gate = ExitGate::default();
+        assert!(!gate.has_shut_down());
         gate.cleaned_up();
+        assert!(gate.has_shut_down());
         assert_eq!(gate.on_exit_requested(None), ExitDecision::Prevent);
         gate.request_restart();
         assert_eq!(

@@ -31,7 +31,6 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { commands, useSetting, type ReleaseChannel } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
-import { relaunch } from '@tauri-apps/plugin-process'
 import {
   SettingsCard,
   SettingsCardContent,
@@ -152,7 +151,7 @@ const ReleaseChannelSelector = () => {
 const NewVersionModal = ({ children }: PropsWithChildren) => {
   const { action } = AboutRoute.useSearch()
 
-  const { newVersion, downloadNewVersion, isInstalling, setIsInstalling } =
+  const { newVersion, installNewVersion, isInstalling, setIsInstalling } =
     useNyanpasuUpdate()
 
   const [contentLength, setContentLength] = useState(0)
@@ -192,10 +191,10 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
     try {
       setIsInstalling(true)
 
-      // Install the update. This will also restart the app on Windows!
+      // The app restarts into the new version once it is installed.
       setContentDownloaded(0)
       setContentLength(0)
-      const downloaded = await downloadNewVersion((e) => {
+      await installNewVersion((e) => {
         switch (e.event) {
           case 'Started':
             setContentDownloaded(0)
@@ -206,13 +205,6 @@ const NewVersionModal = ({ children }: PropsWithChildren) => {
             break
         }
       })
-
-      await commands.cleanupProcesses()
-      // cleanup and stop core
-      await downloaded.install()
-      // On macOS and Linux you will need to restart the app manually.
-      // You could use this step to display another confirmation dialog.
-      await relaunch()
     } catch (e) {
       console.error(e)
       message(formatError(e), {

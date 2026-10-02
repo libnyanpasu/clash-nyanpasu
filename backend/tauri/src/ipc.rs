@@ -1212,16 +1212,6 @@ pub async fn get_service_install_prompt() -> Result<String> {
     Ok(prompt)
 }
 
-/// Shuts every owner down and returns with the app still running; the caller
-/// then installs an update or relaunches.
-#[nyanpasu_macro::rpc]
-#[tauri::command]
-#[specta::specta]
-pub async fn cleanup_processes(app_handle: AppHandle) -> Result {
-    crate::utils::exit::clean_up(&app_handle).await;
-    Ok(())
-}
-
 /// Namespace prefix for all frontend-visible KV entries.
 /// Internal subsystems (e.g. task storage) use un-prefixed keys and are
 /// never exposed to the frontend through these IPC commands.
@@ -1506,16 +1496,10 @@ pub async fn close_log_session(
         .await
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct UpdateDownload {
-    source: nyanpasu_config::application::UpdateSource,
-    rid: tauri::ResourceId,
-}
-
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 // TODO: a copied from updater metadata, and should be moved a separate updater module
 pub struct UpdateWrapper {
-    downloads: Vec<UpdateDownload>,
+    downloads: Vec<crate::utils::app_update::UpdateDownload>,
     available: bool,
     current_version: String,
     version: String,
@@ -1584,6 +1568,16 @@ pub async fn check_update(
         .context("failed to configure update endpoints")?
         .version_comparator(move |_, remote| {
             crate::bundle::is_newer_release(channel, &local, &remote, build_time)
+        })
+        // Windows only: the installer ends the process right after this hook,
+        // so the app shuts itself down here. This replaces the plugin's
+        // default hook, which only ran Tauri's own cleanup.
+        .on_before_exit({
+            let app_handle = webview.app_handle().clone();
+            move || {
+                crate::utils::exit::shutdown_before_exit_blocking(&app_handle);
+                app_handle.cleanup_before_exit();
+            }
         });
     // apply proxy
     builder = builder.proxy(
@@ -1618,7 +1612,7 @@ pub async fn check_update(
                     // A source changes only the download route; every attempt must verify
                     // against the same release version, signature and public key.
                     download.download_url = url;
-                    UpdateDownload {
+                    crate::utils::app_update::UpdateDownload {
                         source,
                         rid: webview.resources_table().add(download),
                     }
@@ -1627,6 +1621,21 @@ pub async fn check_update(
             Ok(wrapper)
         })
         .transpose()
+}
+
+/// Downloads the update `check_update` found, from the first of its sources
+/// that succeeds, then installs it and restarts into the new version. It
+/// returns only when it fails.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn install_update(
+    webview: tauri::Webview,
+    downloads: Vec<crate::utils::app_update::UpdateDownload>,
+    on_event: tauri::ipc::Channel<crate::utils::app_update::UpdateDownloadEvent>,
+) -> Result {
+    crate::utils::app_update::install(&webview, downloads, on_event).await?;
+    Ok(())
 }
 
 #[nyanpasu_macro::rpc]

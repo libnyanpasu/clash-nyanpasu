@@ -444,16 +444,22 @@ export const commands = {
     typedError<null, IpcError>(__RPC_INVOKE('update_proxy_provider', { name })),
   restartApplication: () =>
     typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
+  /**
+   *  Downloads the update `check_update` found, from the first of its sources
+   *  that succeeds, then installs it and restarts into the new version. It
+   *  returns only when it fails.
+   */
+  installUpdate: (
+    downloads: UpdateDownload[],
+    onEvent: Channel<UpdateDownloadEvent>,
+  ) =>
+    typedError<null, IpcError>(
+      __RPC_INVOKE('install_update', { downloads, onEvent }),
+    ),
   setTrayIcon: (mode: TrayIcon, path: string | null) =>
     typedError<null, IpcError>(__RPC_INVOKE('set_tray_icon', { mode, path })),
   openThat: (path: string) =>
     typedError<null, IpcError>(__RPC_INVOKE('open_that', { path })),
-  /**
-   *  Shuts every owner down and returns with the app still running; the caller
-   *  then installs an update or relaunches.
-   */
-  cleanupProcesses: () =>
-    typedError<null, IpcError>(__RPC_INVOKE('cleanup_processes')),
   setStorageItem: (key: string, value: string) =>
     typedError<null, IpcError>(
       __RPC_INVOKE('set_storage_item', { key, value }),
@@ -4234,10 +4240,27 @@ export type TrayMenuMode = 'native' | 'webview'
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 
+/**  One route to the package `check_update` found. */
 export type UpdateDownload = {
   source: UpdateSource
   rid: number
 }
+
+/**  Download progress, in the shape of the updater plugin's own event. */
+export type UpdateDownloadEvent =
+  | {
+      event: 'Started'
+      data: {
+        contentLength: number | null
+      }
+    }
+  | {
+      event: 'Progress'
+      data: {
+        chunkLength: number
+      }
+    }
+  | { event: 'Finished' }
 
 export type UpdateSource = 'nyanpasu' | 'github'
 
@@ -4940,6 +4963,11 @@ export const mutations = {
     mutationFn: (input: Parameters<typeof commands.restartApplication>) =>
       commands.restartApplication(...input),
   }),
+  installUpdate: mutationOptions({
+    mutationKey: ['installUpdate'],
+    mutationFn: (input: Parameters<typeof commands.installUpdate>) =>
+      commands.installUpdate(...input),
+  }),
   setTrayIcon: mutationOptions({
     mutationKey: ['setTrayIcon'],
     mutationFn: (input: Parameters<typeof commands.setTrayIcon>) =>
@@ -4949,11 +4977,6 @@ export const mutations = {
     mutationKey: ['openThat'],
     mutationFn: (input: Parameters<typeof commands.openThat>) =>
       commands.openThat(...input),
-  }),
-  cleanupProcesses: mutationOptions({
-    mutationKey: ['cleanupProcesses'],
-    mutationFn: (input: Parameters<typeof commands.cleanupProcesses>) =>
-      commands.cleanupProcesses(...input),
   }),
   setStorageItem: mutationOptions({
     mutationKey: ['setStorageItem'],

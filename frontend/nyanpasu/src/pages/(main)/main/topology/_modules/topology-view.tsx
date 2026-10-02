@@ -288,6 +288,11 @@ export default function TopologyView({
               filters.find((filter) => filter.d === 'destination_region')?.v
             }
             onSelect={(code) => onSelect('destination_region', code)}
+            measuredOnly={filters.some(
+              (filter) =>
+                filter.d === 'destination_basis' && filter.v === 'dialed',
+            )}
+            onMeasuredOnlyChange={() => onSelect('destination_basis', 'dialed')}
           />
         ) : !nodes.length ? (
           <div className="text-on-surface-variant grid min-h-64 place-content-center text-center">

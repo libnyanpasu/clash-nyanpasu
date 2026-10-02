@@ -93,7 +93,8 @@ export const toTopologyRequest = ({
 >): TopologyRequest =>
   view === 'map'
     ? {
-        layers: ['source_region', 'destination_region'],
+        // The third layer splits each destination region by how it was located.
+        layers: ['source_region', 'destination_region', 'destination_basis'],
         metric,
         // The map places every region, so none merges into "other".
         limit_per_layer: null,

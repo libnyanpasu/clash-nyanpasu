@@ -276,6 +276,7 @@ test('the first request is the last hour of everything, unfiltered', async ({
       expect.stringContaining('1'),
       expect.stringContaining('2'),
       expect.stringContaining('1'),
+      expect.stringContaining('1'),
     ])
 })
 
@@ -970,7 +971,7 @@ test('the stat card with a hint and a ranking row reveal their tooltip on focus'
 
   const cards = () =>
     document.querySelectorAll<HTMLElement>('[data-slot="traffic-stat"]')
-  await expect.poll(() => cards().length).toBe(6)
+  await expect.poll(() => cards().length).toBe(7)
   expect(cards()[1].tabIndex).toBe(0)
   expect(cards()[2].tabIndex).toBe(-1)
 

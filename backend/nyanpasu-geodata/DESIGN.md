@@ -25,6 +25,7 @@ to the caller.
 
 The system allocators keep freed heap pages for the process's later
 allocations instead of returning them to the OS. Measured on macOS:
+
 - freeing a 121 MiB `Vec` leaves `phys_footprint` unchanged, even after
   `malloc_zone_pressure_relief`;
 - mimalloc retains as much or more.
@@ -89,8 +90,13 @@ counting pass. Each range carries every code containing it, in file order.
 - `Domain` and `Full` values are stored reversed in an FST. A lookup walks the
   host backwards once and collects postings at label boundaries.
 - `Plain` keywords go through Aho-Corasick.
-- `Regex` rules go through a `RegexSet`. Patterns the `regex` crate rejects
-  (look-around, for instance) are skipped and counted.
+- `Regex` rules go through one `regex-automata` meta regex, configured as
+  `regex::RegexSet` is. Patterns it rejects (look-around, for instance) are
+  skipped and counted.
+- Every lookup shares one regex search cache behind a mutex. `RegexSet` keeps a
+  cache of about 0.8 MiB per concurrent caller and never frees it, so its
+  memory followed the peak thread count; a shared cache keeps it at one, at the
+  cost of serializing the regex step.
 - Postings are `u32`: `FULL | list << 16 | attribute set`.
 - `keep` limits the lists indexed.
 
@@ -103,6 +109,7 @@ counting pass. Each range carries every code containing it, in file order.
 
   Codes are lowercased and repeats dropped. Records of an unexpected shape
   yield nothing, like the core's ignored decode errors.
+
 - **ASN records.** Supported types are `GeoLite2-ASN`,
   `DBIP-ASN-Lite (compat=GeoLite2-ASN)` and `ipinfo generic_asn_free.mmdb`.
   Any other type is an error. `Asn::mihomo_label` reproduces `"<number> <org>"`.
@@ -125,12 +132,14 @@ counting pass. Each range carries every code containing it, in file order.
 
 Input files can come from any URL a subscription sets as `geox-url`, so they
 are treated as untrusted:
+
 - the protobuf reader is bounds-checked and allocation-free;
 - every malformed input returns `GeoError`;
 - tests cut fixtures at every length and feed random bytes, and none of them
   may panic.
 
 Sizes are bounded where crafted input could otherwise blow up:
+
 - one address carries at most 255 tags and one GeoSite rule at most 255
   attributes, since staggered overlaps would otherwise intern sets of
   quadratic total size;
@@ -138,8 +147,8 @@ Sizes are bounded where crafted input could otherwise blow up:
 - the MMDB walk is bounded by `check_tree`.
 
 What remains linear in the file size is the CPU spent compiling a GeoSite file
-with very many large regexes. Each pattern is still bounded by the `regex`
-crate's size limit.
+with very many large regexes. Each pattern is still bounded by the NFA size
+limit `regex` uses (10 MiB).
 
 ## Tests
 
@@ -159,6 +168,7 @@ crate's size limit.
 
 `examples/bench.rs` reports the process memory growth over a baseline, stage
 by stage:
+
 - macOS: `phys_footprint` / RSS;
 - Windows: private bytes / working set;
 - Linux: `RssAnon` / `VmRSS`.
@@ -169,32 +179,48 @@ process (`bench dir <dir>` spawns them), followed by 1 M random lookups (200 k
 hosts for GeoSite). `--heap-read` reads the file with `std::fs::read` for
 comparison.
 
-Setup: release profile as shipped (`opt-level = 's'`, LTO), Apple M3
-(4P + 4E), 2026-10-02.
+Setup: release profile as shipped (`opt-level = 's'`, LTO).
 
-| File                                   | Size     | Build  | Index heap | Loaded¹    | Lookup | Raw MMDB² | 8 threads  |
-| -------------------------------------- | -------- | ------ | ---------- | ---------- | ------ | --------- | ---------- |
-| `Country.mmdb` (bundled, GeoLite2)     | 7.9 MiB  | 70 ms  | 4.71 MiB   | 4.91 MiB   | 30 ns  | 112 ns    | 135 M/s    |
-| `geoip.metadb` (Meta-geoip0, default)  | 8.0 MiB  | 75 ms  | 5.21 MiB   | 5.59 MiB   | 28 ns  | 60 ns     | 138 M/s    |
-| `geoip.db` (sing-geoip)                | 7.8 MiB  | 72 ms  | 5.12 MiB   | 5.31 MiB   | 28 ns  | 58 ns     | 126 M/s    |
-| `dbip-country-lite.mmdb`               | 8.0 MiB  | 84 ms  | 5.42 MiB   | 5.62 MiB   | 29 ns  | 156 ns    | 128 M/s    |
-| `GeoLite2-City.mmdb` (stress)          | 61.0 MiB | 381 ms | 5.18 MiB   | 5.41 MiB   | 33 ns  | 151 ns    | 123 M/s    |
-| `dbip-city-lite.mmdb` (largest)        | 121 MiB  | 808 ms | 5.28 MiB   | 5.52 MiB   | 30 ns  | 228 ns    | 129 M/s    |
-| `GeoLite2-ASN.mmdb` (default)          | 11.5 MiB | 98 ms  | 8.36 MiB   | 8.47 MiB   | 41 ns  | 69 ns     | 95 M/s     |
-| `dbip-asn-lite.mmdb`                   | 9.1 MiB  | 69 ms  | 7.72 MiB   | 7.84 MiB   | 40 ns  | 87 ns     | 63 M/s     |
-| `geoip.dat` (bundled, largest)         | 17.6 MiB | 218 ms | 5.24 MiB   | 5.58 MiB   | 29 ns  | –         | 118 M/s    |
-| `geoip.dat` (Loyalsoldier)             | 15.8 MiB | 201 ms | 5.21 MiB   | 5.56 MiB   | 30 ns  | –         | 117 M/s    |
-| `geosite.dat` (MetaCubeX default)      | 4.1 MiB  | 115 ms | 3.56 MiB   | 10.63 MiB  | 361 ns | –         | 10.0 M/s³  |
-| `geosite.dat` (Loyalsoldier, largest)  | 10.5 MiB | 244 ms | 7.95 MiB   | 16.98 MiB  | 370 ns | –         | 10.3 M/s³  |
+**macOS**, Apple M3 (4P + 4E), 2026-10-02:
 
-¹ The growth in `phys_footprint` once the file is dropped, i.e. what loading
-costs the process. With `--heap-read`, the file stays in it: 12.8 MiB for the
-bundled `Country.mmdb` and 126.7 MiB for `dbip-city-lite`.
+| File                                  | Size     | Build  | Index heap | Loaded¹   | Lookup | Raw MMDB² | 8 threads |
+| ------------------------------------- | -------- | ------ | ---------- | --------- | ------ | --------- | --------- |
+| `Country.mmdb` (bundled, GeoLite2)    | 7.9 MiB  | 70 ms  | 4.71 MiB   | 4.91 MiB  | 30 ns  | 112 ns    | 135 M/s   |
+| `geoip.metadb` (Meta-geoip0, default) | 8.0 MiB  | 75 ms  | 5.21 MiB   | 5.59 MiB  | 28 ns  | 60 ns     | 138 M/s   |
+| `geoip.db` (sing-geoip)               | 7.8 MiB  | 72 ms  | 5.12 MiB   | 5.31 MiB  | 28 ns  | 58 ns     | 126 M/s   |
+| `dbip-country-lite.mmdb`              | 8.0 MiB  | 84 ms  | 5.42 MiB   | 5.62 MiB  | 29 ns  | 156 ns    | 128 M/s   |
+| `GeoLite2-City.mmdb` (stress)         | 61.0 MiB | 381 ms | 5.18 MiB   | 5.41 MiB  | 33 ns  | 151 ns    | 123 M/s   |
+| `dbip-city-lite.mmdb` (largest)       | 121 MiB  | 808 ms | 5.28 MiB   | 5.52 MiB  | 30 ns  | 228 ns    | 129 M/s   |
+| `GeoLite2-ASN.mmdb` (default)         | 11.5 MiB | 98 ms  | 8.36 MiB   | 8.47 MiB  | 41 ns  | 69 ns     | 95 M/s    |
+| `dbip-asn-lite.mmdb`                  | 9.1 MiB  | 69 ms  | 7.72 MiB   | 7.84 MiB  | 40 ns  | 87 ns     | 63 M/s    |
+| `geoip.dat` (bundled, largest)        | 17.6 MiB | 218 ms | 5.24 MiB   | 5.58 MiB  | 29 ns  | –         | 118 M/s   |
+| `geoip.dat` (Loyalsoldier)            | 15.8 MiB | 201 ms | 5.21 MiB   | 5.56 MiB  | 30 ns  | –         | 117 M/s   |
+| `geosite.dat` (MetaCubeX default)     | 4.1 MiB  | 115 ms | 3.56 MiB   | 10.63 MiB | 361 ns | –         | 10.0 M/s³ |
+| `geosite.dat` (Loyalsoldier, largest) | 10.5 MiB | 244 ms | 7.95 MiB   | 16.98 MiB | 370 ns | –         | 10.3 M/s³ |
+
+**Windows**, Intel Core i9-14900KF (8P + 16E, 32 threads), Windows 11
+26200, 2026-10-02:
+
+| File                     | Size     | Build  | Index heap | Loaded¹  | Lookup | Raw MMDB² | 8 threads | 32 threads |
+| ------------------------ | -------- | ------ | ---------- | -------- | ------ | --------- | --------- | ---------- |
+| `Country.mmdb` (bundled) | 7.5 MiB  | 77 ms  | 4.71 MiB   | 4.81 MiB | 35 ns  | 96 ns     | 191 M/s   | 313 M/s    |
+| `geoip.dat` (bundled)    | 16.3 MiB | 237 ms | 5.23 MiB   | 5.41 MiB | 36 ns  | –         | 160 M/s   | 373 M/s    |
+| `geosite.dat` (bundled)  | 4.0 MiB  | 138 ms | 3.98 MiB   | 5.82 MiB | 366 ns | –         | 4.0 M/s   | 2.9 M/s    |
+
+¹ The growth in `phys_footprint` (macOS) or private bytes (Windows) once the
+file is dropped, i.e. what loading costs the process. With `--heap-read`, the
+file stays in it on macOS: 12.8 MiB for the bundled `Country.mmdb` and
+126.7 MiB for `dbip-city-lite`. The Windows heap returns a block that large,
+so `--heap-read` loads the same as `read_source` there.
 ² Lookup and decode against the whole file kept in memory, which is the
 resident alternative to this crate.
-³ The regex pool keeps one lazy-DFA cache per thread that has looked up a
-host, about 0.8 MiB per thread (6.5 MiB after 8 threads).
+³ Measured with `RegexSet`, before lookups shared one regex cache. Its pool
+kept a cache per concurrent caller, about 0.8 MiB each: 6.5 MiB after 8
+threads, and 25 MiB after 32 threads on Windows. The shared cache adds 0.4 MiB
+to the index heap and grows to 0.8 MiB with use, whatever the thread count.
 
 IP lookups do not allocate and scale with cores. GeoSite lookups allocate
-their result and reach 10 M/s on 8 threads. Windows and Linux figures are not
-measured yet.
+their result and take the regex cache lock, so their throughput peaks around
+4 threads (about 5 M/s on Windows) and falls under contention; single-thread
+latency is unchanged. Multi-thread throughput varies by up to a third between
+runs. Linux figures are not measured yet.

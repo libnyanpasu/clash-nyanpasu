@@ -1,9 +1,14 @@
 //! `GeoSite.dat` (V2Ray `GeoSiteList`): domain rules grouped into lists.
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, sync::Mutex};
 
 use aho_corasick::AhoCorasick;
 use fst::{Map, MapBuilder, raw::Output};
-use regex::{Regex, RegexSet};
+use regex_automata::{
+    Input, MatchKind, PatternSet,
+    meta::{self, Regex},
+    nfa::thompson::WhichCaptures,
+    util::syntax,
+};
 
 use crate::{GeoError, GeoResult, proto::Fields, scratch::ScratchVec};
 
@@ -24,7 +29,10 @@ pub struct SiteIndex {
     /// Reversed `Domain` / `Full` values to their offset in `postings`.
     domains: Map<Box<[u8]>>,
     keywords: AhoCorasick,
-    regexes: RegexSet,
+    regexes: Regex,
+    /// One search cache for every thread. `regex` keeps a cache per concurrent
+    /// caller (about 0.8 MiB each) and never frees them.
+    regex_cache: Mutex<Box<meta::Cache>>,
     /// `postings` offset of each keyword, then of each regex.
     pattern_postings: Box<[u32]>,
     /// At each offset: an entry count, then the entries, ascending.
@@ -90,8 +98,13 @@ impl SiteIndex {
             entries.extend_from_slice(self.posting(offset as usize));
         }
         let keywords = self.keywords.patterns_len();
-        for regex in self.regexes.matches(&host).iter() {
-            let offset = self.pattern_postings[keywords + regex];
+        let mut regexes = PatternSet::new(self.regexes.pattern_len());
+        let mut cache = self.regex_cache.lock().unwrap();
+        self.regexes
+            .which_overlapping_matches_with(&mut cache, &Input::new(bytes), &mut regexes);
+        drop(cache);
+        for regex in regexes.iter() {
+            let offset = self.pattern_postings[keywords + regex.as_usize()];
             entries.extend_from_slice(self.posting(offset as usize));
         }
         entries.sort_unstable();
@@ -314,19 +327,21 @@ impl Builder {
             keywords.push(keyword);
         }
         let mut regexes: Vec<(String, Vec<u32>)> = self.regexes.into_iter().collect();
-        let set = match RegexSet::new(regexes.iter().map(|(regex, _)| regex)) {
+        let builder = regex_builder();
+        let set = match builder.build_many(&regexes.iter().map(|(r, _)| r).collect::<Vec<_>>()) {
             Ok(set) => set,
             Err(_) => {
                 // Compiling every pattern alone costs heap the allocator keeps,
                 // so it only runs once the set is known to contain a bad one.
                 regexes.retain(|(regex, entries)| {
-                    let valid = Regex::new(regex).is_ok();
+                    let valid = builder.build(regex).is_ok();
                     if !valid {
                         self.skipped += entries.len();
                     }
                     valid
                 });
-                RegexSet::new(regexes.iter().map(|(regex, _)| regex))
+                builder
+                    .build_many(&regexes.iter().map(|(r, _)| r).collect::<Vec<_>>())
                     .map_err(|_| GeoError::TooMany("regex rules"))?
             }
         };
@@ -346,12 +361,29 @@ impl Builder {
             domains,
             keywords: AhoCorasick::new(&keywords)
                 .map_err(|_| GeoError::TooMany("keyword rules"))?,
+            regex_cache: Mutex::new(Box::new(set.create_cache())),
             regexes: set,
             pattern_postings: pattern_postings.into_boxed_slice(),
             postings: postings.as_slice().into(),
             skipped: self.skipped,
         })
     }
+}
+
+/// The configuration `regex::RegexSet` uses.
+fn regex_builder() -> meta::Builder {
+    let mut builder = meta::Builder::new();
+    builder
+        .configure(
+            meta::Config::new()
+                .nfa_size_limit(Some(10 << 20))
+                .hybrid_cache_capacity(2 << 20)
+                .match_kind(MatchKind::All)
+                .utf8_empty(true)
+                .which_captures(WhichCaptures::None),
+        )
+        .syntax(syntax::Config::new().utf8(true));
+    builder
 }
 
 /// Appends the deduplicated `entries` of one pattern and records their offset.

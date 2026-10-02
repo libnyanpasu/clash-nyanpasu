@@ -6694,6 +6694,7 @@ dependencies = [
  "maxminddb",
  "memmap2",
  "regex",
+ "regex-automata",
  "serde",
  "tempfile",
  "thiserror 2.0.21",

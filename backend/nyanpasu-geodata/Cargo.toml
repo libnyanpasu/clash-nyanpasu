@@ -11,9 +11,21 @@ bytemuck = { version = '1', features = ['derive'] }
 fst = '0.4'
 maxminddb = '0.32'
 memmap2 = '0.9'
-regex = '1'
+regex-automata = { version = '0.4', default-features = false, features = [
+  'std',
+  'syntax',
+  'unicode',
+  'meta',
+  'nfa-pikevm',
+  'nfa-backtrack',
+  'hybrid',
+  'dfa-onepass',
+  'perf-inline',
+  'perf-literal',
+] }
 serde = { version = '1', features = ['derive'] }
 thiserror.workspace = true
 
 [dev-dependencies]
+regex = '1'
 tempfile = '3'

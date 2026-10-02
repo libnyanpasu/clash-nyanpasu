@@ -4,6 +4,7 @@ import { ensureDir } from "jsr:@std/fs@^1.0.19";
 import { dirname, join } from "jsr:@std/path@^1.1.2";
 import { globby } from "npm:globby";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
+import { extractDataSlots } from "./data-slots.ts";
 
 const outputPath = join(
   WORKSPACE_ROOT,
@@ -18,8 +19,8 @@ const slots = new Set<string>();
 
 for (const file of files) {
   const content = await Deno.readTextFile(file);
-  for (const match of content.matchAll(/data-slot="([^"]+)"/g)) {
-    slots.add(match[1]);
+  for (const slot of extractDataSlots(content)) {
+    slots.add(slot);
   }
 }
 

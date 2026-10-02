@@ -25,7 +25,6 @@ pub struct RpcDependencies {
 
 const EVENT_NAMES: &[&str] = &[
     <crate::core::clash::ws::ClashWsEvent as tauri_specta::Event>::NAME,
-    <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
     <crate::core::actor_v2::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
@@ -143,11 +142,6 @@ impl RpcError {
         let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
         while let Some(error) = source {
             if let Some(log) = error.downcast_ref::<nyanpasu_logging::LogError>() {
-                result.domain_error = serde_json::to_value(log)
-                    .ok()
-                    .map(|value| Box::new(RpcValue(value)));
-            }
-            if let Some(log) = error.downcast_ref::<crate::core::logs::CoreLogError>() {
                 result.domain_error = serde_json::to_value(log)
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
@@ -420,6 +414,28 @@ mod tests {
     use futures::StreamExt;
     use tower::ServiceExt;
 
+    fn core_record(number: i64, message: String) -> serde_json::Value {
+        serde_json::json!({
+            "t": "log", "at": number, "epoch": 1, "kind": "mihomo",
+            "stream": "stderr", "level": "debug", "timestamp": null,
+            "target": null, "message": message, "fields": [],
+            "raw": message, "truncated": false,
+        })
+    }
+
+    fn write_core_archive(
+        directory: &std::path::Path,
+        records: impl IntoIterator<Item = serde_json::Value>,
+    ) {
+        use std::io::Write;
+        std::fs::create_dir_all(directory).unwrap();
+        let mut file = std::fs::File::create(directory.join("core-000001.jsonl")).unwrap();
+        for record in records {
+            serde_json::to_writer(&mut file, &record).unwrap();
+            file.write_all(b"\n").unwrap();
+        }
+    }
+
     #[test]
     fn shared_profile_command_over_experimental_http() {
         let directory = tempfile::tempdir().unwrap();
@@ -435,6 +451,10 @@ mod tests {
             b"{\"level\":\"INFO\",\"fields\":{\"message\":\"rpc log\"}}\n",
         )
         .unwrap();
+        write_core_archive(
+            &args.paths.app_logs_dir().join("core"),
+            [core_record(1, "console startup failure".into())],
+        );
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
@@ -445,6 +465,22 @@ mod tests {
         .unwrap();
         assert!(rpc.command_names().contains(&"get_debug_http_status"));
         assert!(rpc.command_names().contains(&"get_profiles"));
+        for removed in [
+            "query_core_logs",
+            "get_core_log",
+            "get_core_log_status",
+            "clear_core_logs",
+        ] {
+            assert!(!rpc.command_names().contains(&removed));
+        }
+        for shared in [
+            "list_log_files",
+            "open_log_session",
+            "query_logs",
+            "close_log_session",
+        ] {
+            assert!(rpc.command_names().contains(&shared));
+        }
         assert!(rpc.command_names().contains(&"quit_application"));
         assert!(
             rpc.command_names()
@@ -456,27 +492,6 @@ mod tests {
         );
         let app = rpc.router();
         tauri::async_runtime::block_on(async move {
-            let status =
-                rpc_for_test_call(&app, "get_core_log_status", serde_json::json!({}), None).await;
-            assert_eq!(status.0, StatusCode::OK);
-            assert!(status.1.get("budget").is_none());
-            let query = serde_json::json!({"query":{"direction":"latest","cursor":null,"level":"debug","keyword":"","limit":200}});
-            let page = rpc_for_test_call(&app, "query_core_logs", query.clone(), None).await;
-            assert_eq!(page.0, StatusCode::OK);
-            assert!(page.1["rows"].as_array().unwrap().is_empty());
-            let detail = rpc_for_test_call(
-                &app,
-                "get_core_log",
-                serde_json::json!({"cursor":{"generation":status.1["generation"],"sequence":1}}),
-                None,
-            )
-            .await;
-            assert_eq!(detail.1["domain_error"]["kind"], "record_gone");
-            let cleared =
-                rpc_for_test_call(&app, "clear_core_logs", serde_json::json!({}), None).await;
-            assert_eq!(cleared.0, StatusCode::OK);
-            let page = rpc_for_test_call(&app, "query_core_logs", query, None).await;
-            assert_ne!(page.1["status"]["generation"], status.1["generation"]);
             for (body, status, expected) in [
                 (
                     r#"{"method":"get_profiles","params":{}}"#,
@@ -565,33 +580,52 @@ mod tests {
                 rpc_for_test_call(&app, "get_hotkey_functions", serde_json::json!({}), None).await;
             assert_eq!(pure.0, StatusCode::OK);
             assert!(pure.1.is_array());
-            let cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
-            let open = rpc_for_test_call(
+            for source in ["app", "core_local"] {
+                let cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
+                let open = rpc_for_test_call(
+                    &app,
+                    "open_log_session",
+                    serde_json::json!({
+                        "source": source,
+                        "request": {"request_id":"first", "file":null},
+                    }),
+                    Some(&cookie),
+                )
+                .await;
+                assert_eq!(open.0, StatusCode::OK);
+                assert!(open.1["id"].is_string());
+                let query = serde_json::json!({"source":source, "request":{"session":open.1["id"], "filter":nyanpasu_logging::Filter::default(),"direction":"latest","cursor":null,"limit":200}});
+                let other_cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
+                let foreign =
+                    rpc_for_test_call(&app, "query_logs", query.clone(), Some(&other_cookie)).await;
+                assert_eq!(foreign.1["domain_error"], "session_expired");
+                let wrong_source = if source == "app" { "core_local" } else { "app" };
+                let mut wrong_query = query.clone();
+                wrong_query["source"] = serde_json::json!(wrong_source);
+                let foreign_source =
+                    rpc_for_test_call(&app, "query_logs", wrong_query, Some(&cookie)).await;
+                assert_eq!(foreign_source.1["domain_error"], "session_expired");
+                let own = rpc_for_test_call(&app, "query_logs", query, Some(&cookie)).await;
+                assert_eq!(own.0, StatusCode::OK, "{:?}", own.1);
+                assert!(own.1.get("rows").is_some());
+                let close = rpc_for_test_call(
+                    &app,
+                    "close_log_session",
+                    serde_json::json!({"source":source, "session":open.1["id"]}),
+                    Some(&cookie),
+                )
+                .await;
+                assert_eq!(close.0, StatusCode::OK);
+                assert!(close.1.is_null());
+            }
+            let unsupported_core = rpc_for_test_call(
                 &app,
-                "open_log_session",
-                serde_json::json!({"source":"app", "request":{"request_id":"first", "file":null}}),
-                Some(&cookie),
+                "list_log_files",
+                serde_json::json!({"source":"core_service"}),
+                None,
             )
             .await;
-            assert_eq!(open.0, StatusCode::OK);
-            assert!(open.1["id"].is_string());
-            let query = serde_json::json!({"source":"app", "request":{"session":open.1["id"], "filter":nyanpasu_logging::Filter::default(),"direction":"latest","cursor":null,"limit":200}});
-            let other_cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
-            let foreign =
-                rpc_for_test_call(&app, "query_logs", query.clone(), Some(&other_cookie)).await;
-            assert_eq!(foreign.1["domain_error"], "session_expired");
-            let own = rpc_for_test_call(&app, "query_logs", query, Some(&cookie)).await;
-            assert_eq!(own.0, StatusCode::OK, "{:?}", own.1);
-            assert!(own.1.get("rows").is_some());
-            let close = rpc_for_test_call(
-                &app,
-                "close_log_session",
-                serde_json::json!({"source":"app", "session":open.1["id"]}),
-                Some(&cookie),
-            )
-            .await;
-            assert_eq!(close.0, StatusCode::OK);
-            assert!(close.1.is_null());
+            assert_eq!(unsupported_core.1["domain_error"], "unsupported");
             let set = app.clone().oneshot(Request::post("/bridge/rpc")
             .header("content-type", "application/json")
             .body(Body::from(r#"{"method":"set_storage_item","params":{"key":"theme","value":"dark"}}"#)).unwrap())
@@ -655,25 +689,6 @@ mod tests {
                 std::str::from_utf8(&frame)
                     .unwrap()
                     .contains("\"sequence\":1")
-            );
-            let name = <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME;
-            let response = app
-                .oneshot(
-                    Request::get(format!("/bridge/events?name={name}"))
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            assert_eq!(response.status(), StatusCode::OK);
-            let mut body = response.into_body().into_data_stream();
-            body.next().await.unwrap().unwrap();
-            events.publish(name, serde_json::json!({"status":{"version":1}}));
-            let frame = body.next().await.unwrap().unwrap();
-            assert!(
-                std::str::from_utf8(&frame)
-                    .unwrap()
-                    .contains("\"version\":1")
             );
         });
     }
@@ -835,29 +850,26 @@ mod tests {
             &directory,
             crate::client::tests::TestControlEndpoint::succeeding(),
         );
-        for first in (0..10000).step_by(40) {
-            let batch: Vec<_> = (first..first + 40)
-                .map(|number| {
-                    serde_json::to_vec(&crate::core::logs::CoreLogRecord {
-                        source: crate::core::logs::CoreLogSource {
-                            capture: "http-fixture".into(),
-                            instance_id: "instance".into(),
-                            core_kind: Some("Mihomo".into()),
-                        },
-                        received_at: number,
-                        time: None,
-                        log_type: "debug".into(),
-                        payload: if number == 9999 {
-                            format!("core-http-fixture {} complete-tail", "x".repeat(8192))
-                        } else {
-                            format!("core-http-fixture {number}")
-                        },
-                    })
-                    .unwrap()
-                })
-                .collect();
-            args.logging.core.append(&batch).unwrap();
-        }
+        let config = nyanpasu_config::application::NyanpasuAppConfig {
+            language: nyanpasu_config::application::I18nLanguage::English,
+            ..Default::default()
+        };
+        std::fs::write(
+            args.paths.application_config_path(),
+            serde_yaml::to_string(&config).unwrap(),
+        )
+        .unwrap();
+        write_core_archive(
+            &args.paths.app_logs_dir().join("core"),
+            (0..10000).map(|number| {
+                let message = if number == 9999 {
+                    format!("core-http-fixture {} complete-tail", "x".repeat(8192))
+                } else {
+                    format!("core-http-fixture {number}")
+                };
+                core_record(number, message)
+            }),
+        );
         args.http_frontend = Some(match std::env::var("NYANPASU_HTTP_UI_DEV_URL") {
             Ok(url) => Frontend::Dev(url.parse().unwrap()),
             Err(_) => Frontend::Embedded(Arc::new(Dist(

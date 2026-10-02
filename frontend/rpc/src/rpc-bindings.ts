@@ -16,18 +16,6 @@ export function createRpcClient(
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('get_debug_http_status'),
       ),
-    queryCoreLogs: (query: CoreLogQuery) =>
-      typedError<CoreLogPage, CoreLogError>(
-        __RPC_INVOKE('query_core_logs', { query }),
-      ),
-    getCoreLog: (cursor: CoreLogCursor) =>
-      typedError<CoreLogRecord, CoreLogError>(
-        __RPC_INVOKE('get_core_log', { cursor }),
-      ),
-    getCoreLogStatus: () =>
-      typedError<CoreLogStatus, CoreLogError>(
-        __RPC_INVOKE('get_core_log_status'),
-      ),
     listLogFiles: (source: LogSource) =>
       typedError<LogFileInfo[], LogError>(
         __RPC_INVOKE('list_log_files', { source }),
@@ -293,8 +281,6 @@ export function createRpcClient(
       typedError<null, IpcError>(
         __RPC_INVOKE('unsubscribe_clash_connection_details', { id }),
       ),
-    clearCoreLogs: () =>
-      typedError<null, CoreLogError>(__RPC_INVOKE('clear_core_logs')),
     openLogSession: (source: LogSource, request: OpenLogs) =>
       typedError<LogSession, LogError>(
         __RPC_INVOKE('open_log_session', { source, request }),
@@ -542,10 +528,6 @@ export function createRpcClient(
     configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
       transport.events,
       'configuration-status-changed',
-    ),
-    coreLogsChanged: makeEvent<CoreLogsChanged>(
-      transport.events,
-      'core-logs-changed',
     ),
     coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
       transport.events,
@@ -879,7 +861,7 @@ export type ClashWsEvent = {
   update: ClashWsUpdate
 }
 
-export type ClashWsKind = 'connections' | 'logs' | 'traffic' | 'memory'
+export type ClashWsKind = 'connections' | 'traffic' | 'memory'
 
 export type ClashWsMemory = {
   inuse: number
@@ -888,7 +870,6 @@ export type ClashWsMemory = {
 
 export type ClashWsRecording = {
   connections: boolean
-  logs: boolean
   traffic: boolean
   memory: boolean
 }
@@ -1463,73 +1444,6 @@ export type CoreInfos_Serialize = {
   health?: CoreHealthInfo | null
   revision?: ConfigRevisionInfo | null
   detail?: CoreStateDetail | null
-}
-
-export type CoreLogCursor = {
-  generation: string
-  sequence: number
-}
-
-export type CoreLogDirection = 'latest' | 'before' | 'after'
-
-export type CoreLogError =
-  | { kind: 'invalid_request' }
-  | { kind: 'cursor_expired' }
-  | { kind: 'record_gone' }
-  | { kind: 'too_large' }
-  | { kind: 'unavailable'; message: string }
-
-export type CoreLogPage = {
-  rows: CoreLogRow[]
-  /**
-   *  Last consumed candidate, including nonmatches. A row excluded by the response
-   *  budget is not consumed and must appear in the next request.
-   */
-  cursor: CoreLogCursor | null
-  more: boolean
-  status: CoreLogStatus
-}
-
-export type CoreLogQuery = {
-  direction: CoreLogDirection
-  cursor: CoreLogCursor | null
-  level: string | null
-  keyword: string
-  limit: number
-}
-
-export type CoreLogRecord = {
-  source: CoreLogSource
-  received_at: number
-  time: string | null
-  type: string
-  payload: string
-}
-
-export type CoreLogRow = {
-  id: CoreLogCursor
-  record: CoreLogRecord
-  truncated: boolean
-}
-
-export type CoreLogSource = {
-  capture: string
-  instance_id: string
-  core_kind: string | null
-}
-
-export type CoreLogStatus = {
-  generation: string
-  version: number
-  first: CoreLogCursor | null
-  head: CoreLogCursor | null
-  bytes: number
-  error: string | null
-  discarded: number
-}
-
-export type CoreLogsChanged = {
-  status: CoreLogStatus
 }
 
 /**  A failure of locating the binary a core is started from. */
@@ -2295,7 +2209,7 @@ export type LogSession = {
   lease_ms: number
 }
 
-export type LogSource = 'app' | 'service'
+export type LogSource = 'app' | 'service' | 'core_local' | 'core_service'
 
 export type LogSpan = 'log' | 'info' | 'warn' | 'error'
 
@@ -4137,6 +4051,8 @@ export type StatusResBody_Deserialize = {
   logs?: LogPathsInfo_Deserialize | null
   /**  Optional viewer protocol; absence does not affect core control compatibility. */
   log_query_version?: number | null
+  /**  Core console archive protocol, independent of service log support. */
+  core_log_query_version?: number | null
 }
 
 export type StatusResBody_Serialize = {
@@ -4152,6 +4068,8 @@ export type StatusResBody_Serialize = {
   logs?: LogPathsInfo_Serialize | null
   /**  Optional viewer protocol; absence does not affect core control compatibility. */
   log_query_version?: number | null
+  /**  Core console archive protocol, independent of service log support. */
+  core_log_query_version?: number | null
 }
 
 export type StepLogEntry = {

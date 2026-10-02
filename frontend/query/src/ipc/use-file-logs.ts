@@ -62,6 +62,7 @@ export function useFileLogs(
     let older: LogCursor | null = null
     let floor: LogCursor | null = null
     let head: LogCursor | null = null
+    let currentFile: string | null = null
     let requestOlder = false
     let busy = false
     let failures = 0
@@ -120,6 +121,12 @@ export function useFileLogs(
           delay = 100
           return
         }
+        if (currentFile && page.file !== currentFile) {
+          const files = unwrapResult(await api.listLogFiles(source))
+          if (disposed || requestEpoch !== epoch) return
+          setView((value) => ({ ...value, files }))
+        }
+        currentFile = page.file
         head = page.head
         if (direction === 'before') {
           older = page.cursor

@@ -37,6 +37,7 @@ try {
   if (!(await advanced.isChecked())) await advanced.click();
   const toggle = page.getByRole("switch", { name: "Axum HTTP server" });
   await toggle.waitFor({ timeout: 30000 });
+  await toggle.and(page.locator('[aria-checked="true"]')).waitFor();
   assert.equal(await toggle.isDisabled(), true);
   assert.equal(await toggle.isChecked(), true);
   assert.equal(
@@ -93,20 +94,39 @@ try {
       assert.equal(response.status, 200);
       return response.data;
     };
-    const initial = await call("get_core_log_status");
-    const query = {
+    const source = "core_local";
+    const files = await call("list_log_files", { source });
+    assert.equal(files.length, 1);
+    const session = await call("open_log_session", {
+      source,
+      request: { request_id: crypto.randomUUID(), file: null },
+    });
+    const request = {
+      session: session.id,
       direction: "latest",
       cursor: null,
-      level: "debug",
-      keyword: "core-http-fixture",
+      filter: {
+        levels: ["debug"],
+        text: "core-http-fixture",
+        target: null,
+        from_ms: null,
+        to_ms: null,
+      },
       limit: 200,
     };
-    const preview = await call("query_core_logs", { query });
+    let preview = await call("query_logs", { source, request });
+    const deadline = Date.now() + 10000;
+    while (preview.building) {
+      assert.ok(Date.now() < deadline, "Core archive indexing must finish");
+      preview = await call("query_logs", { source, request });
+    }
     assert.equal(preview.rows.length, 200);
     const last = preview.rows.at(-1);
-    assert.equal(last.truncated, true);
-    const detail = await call("get_core_log", { cursor: last.id });
-    assert.ok(detail.payload.endsWith("complete-tail"));
+    assert.equal(last.truncated, false);
+    const frame = JSON.parse(last.raw);
+    assert.equal(frame.t, "log");
+    assert.equal(frame.stream, "stderr");
+    assert.ok(frame.message.endsWith("complete-tail"));
     await page.goto(`${url}/main/logs`, { waitUntil: "domcontentloaded" });
     const viewer = page.locator('[data-slot="core-logs-viewer"]');
     await viewer.getByText(/core-http-fixture/).first().waitFor();
@@ -120,13 +140,20 @@ try {
       /core-http-fixture/,
     ).first().waitFor();
     await page.getByRole("button", {
-      name: "Clear saved Core log history",
+      name: "Clear current display",
       exact: true,
     }).click();
-    await other.getByText("No logs recorded", { exact: true }).waitFor();
-    const cleared = await call("get_core_log_status");
-    assert.notEqual(cleared.generation, initial.generation);
-    assert.equal(cleared.head, null);
+    await page.getByText("No logs recorded", { exact: true }).waitFor();
+    assert.ok(
+      await other.locator('[data-slot="core-logs-viewer"]').getByText(
+        /core-http-fixture/,
+      ).count() > 0,
+      "Clearing one viewer must preserve the other viewer",
+    );
+    const retained = await call("query_logs", { source, request });
+    assert.equal(retained.rows.length, 200);
+    assert.equal(retained.rows.at(-1).id, last.id);
+    await call("close_log_session", { source, session: session.id });
     await other.close();
   }
   assert.deepEqual(

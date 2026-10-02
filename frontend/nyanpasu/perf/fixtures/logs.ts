@@ -1,11 +1,10 @@
-import type { ClashLog } from '@nyanpasu/query'
 import type { LogRow } from '@nyanpasu/rpc/types'
 
-const LEVELS = ['info', 'warning', 'error', 'debug']
+const LEVELS = ['info', 'warn', 'error', 'debug'] as const
 
 // Core log lines as mihomo writes them: mostly one-line connection records,
 // with an occasional long line that wraps over several rows.
-export function createLogsFixture(count: number): ClashLog[] {
+export function createLogsFixture(count: number): LogRow[] {
   return Array.from({ length: count }, (_, i) => {
     const target = `${['www', 'api', 'cdn', 'static'][i % 4]}.example-${i % 97}.com:443`
     const payload =
@@ -14,19 +13,30 @@ export function createLogsFixture(count: number): ClashLog[] {
         : `[TCP] 127.0.0.1:${50000 + i} --> ${target} match RuleSet(proxy) using Group ${i % 30}[🇯🇵 Node ${i % 1500}]`
 
     return {
-      id: { generation: 'fixture', sequence: i + 1 },
+      id: `fixture:${i + 1}`,
+      timestamp: String(1_700_000_000_000 + i * 1000),
+      level: LEVELS[i % LEVELS.length],
+      target: 'mihomo',
+      message: payload,
+      raw: JSON.stringify({
+        t: 'log',
+        at: 1_700_000_000_000 + i * 1000,
+        epoch: 1,
+        kind: 'mihomo',
+        stream: 'stdout',
+        level:
+          LEVELS[i % LEVELS.length] === 'warn'
+            ? 'warning'
+            : LEVELS[i % LEVELS.length],
+        timestamp: null,
+        target: 'mihomo',
+        message: payload,
+        fields: [],
+        raw: payload,
+        truncated: false,
+      }),
+      unparsed: false,
       truncated: false,
-      record: {
-        type: LEVELS[i % LEVELS.length],
-        time: new Date(1_700_000_000_000 + i * 1000).toLocaleTimeString(),
-        received_at: 1_700_000_000_000 + i * 1000,
-        source: {
-          capture: 'fixture',
-          instance_id: 'fixture',
-          core_kind: 'Mihomo',
-        },
-        payload,
-      },
     }
   })
 }

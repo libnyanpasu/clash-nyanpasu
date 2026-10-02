@@ -158,16 +158,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         http_routes,
         jobs,
         logging: crate::client::logs::LoggingSetup {
-            core: match crate::core::logs::RedbCoreLogStore::open(paths.app_logs_dir().join("core"))
-            {
-                Ok(store) => Box::new(store),
-                Err(error) => {
-                    tracing::warn!(%error, "Core log storage unavailable");
-                    Box::new(crate::core::logs::UnavailableCoreLogStore(format!(
-                        "{error:#}"
-                    )))
-                }
-            },
+            core_files: Arc::new(nyanpasu_logging::FsCoreLogFiles::new(
+                crate::core::actor_v2::local_host::core_log_dir(&paths),
+            )),
+            core_service: Arc::new(crate::client::logs::IpcCoreLogs::new(service_ipc.clone())),
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
                 paths.app_logs_dir(),
                 "clash-nyanpasu".into(),

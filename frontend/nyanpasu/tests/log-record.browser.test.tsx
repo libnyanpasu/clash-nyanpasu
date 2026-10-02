@@ -5,47 +5,6 @@ import { m } from '../src/paraglide/messages'
 
 const log = { type: 'info', time: '12:00:00', payload: 'dial example.com' }
 
-test('a Core preview fetches complete text for copy and closing an in-flight detail releases the row', async ({
-  onTestFinished,
-}) => {
-  const writeText = vi
-    .spyOn(navigator.clipboard, 'writeText')
-    .mockResolvedValue(undefined)
-  onTestFinished(() => writeText.mockRestore())
-  let finishPending!: (value: unknown) => void
-  const loadRaw = vi
-    .fn()
-    .mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishPending = resolve
-        }),
-    )
-    .mockResolvedValue({ ...log, payload: 'complete body' })
-  const props = {
-    time: log.time,
-    level: log.type,
-    message: 'preview',
-    raw: log,
-    search: '',
-    loadRaw,
-    onInspect: vi.fn(),
-  }
-  const view = await render(<LogRecord {...props} expanded />)
-  onTestFinished(() => view.unmount())
-  await expect.poll(() => loadRaw.mock.calls.length).toBe(1)
-  await view.rerender(<LogRecord {...props} expanded={false} />)
-  await expect
-    .element(view.getByRole('button', { name: m.logs_copy() }))
-    .toBeEnabled()
-  finishPending({ ...log, payload: 'stale detail' })
-  await view.getByRole('button', { name: m.logs_copy() }).click()
-  expect(writeText).toHaveBeenCalledWith(
-    JSON.stringify({ ...log, payload: 'complete body' }, null, 2),
-  )
-  expect(view.container.querySelector('[role="region"]')).toBeNull()
-})
-
 test('a record row copies and inspects its record as JSON', async ({
   onTestFinished,
 }) => {

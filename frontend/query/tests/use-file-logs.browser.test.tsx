@@ -133,3 +133,52 @@ test('a tail poll appends new rows after the cached ones', async ({
     .poll(() => hook.result.current.rows.map((r) => r.id), { timeout: 5_000 })
     .toEqual(['generation:1', 'generation:2', 'generation:3'])
 })
+
+test('a late rotation catalog cannot restore rows after follow-latest resets the view', async ({
+  onTestFinished,
+}) => {
+  let finishCatalog!: (
+    files: { id: string; name: string; bytes: string }[],
+  ) => void
+  let finishLatest!: (result: LogPage) => void
+  let catalogCalls = 0
+  let queries = 0
+  const files = [{ id: 'rotated.log', name: 'rotated.log', bytes: '100' }]
+  const { hook } = await mountLogsHook(
+    {
+      list_log_files: () => {
+        catalogCalls += 1
+        return catalogCalls === 2
+          ? new Promise((resolve) => {
+              finishCatalog = resolve
+            })
+          : files
+      },
+      open_log_session: () => ({ id: 'session', lease_ms: 60_000 }),
+      close_log_session: () => null,
+      query_logs: () => {
+        queries += 1
+        if (queries === 1) return page([row(1)], 1)
+        if (queries === 2) return { ...page([row(2)], 2), file: 'rotated.log' }
+        return new Promise((resolve) => {
+          finishLatest = resolve
+        })
+      },
+    },
+    onTestFinished,
+  )
+  await expect
+    .poll(() => hook.result.current.rows.map((record) => record.id))
+    .toEqual(['generation:1'])
+  window.dispatchEvent(new Event('focus'))
+  await expect.poll(() => catalogCalls).toBe(2)
+  hook.result.current.latest()
+  await expect.poll(() => hook.result.current.rows.length).toBe(0)
+  finishCatalog(files)
+  await expect.poll(() => queries, { timeout: 5_000 }).toBe(3)
+  expect(hook.result.current.rows).toEqual([])
+  finishLatest({ ...page([row(3)], 3), file: 'rotated.log' })
+  await expect
+    .poll(() => hook.result.current.rows.map((record) => record.id))
+    .toEqual(['generation:3'])
+})

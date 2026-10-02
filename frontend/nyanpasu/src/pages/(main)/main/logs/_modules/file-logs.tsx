@@ -97,7 +97,13 @@ const FileLogRecord = memo(function FileLogRecord({
   )
 })
 
-export default function FileLogs({ source }: { source: LogSource }) {
+export default function FileLogs({
+  source,
+  displaySource = source === 'app' || source === 'service' ? source : 'core',
+}: {
+  source: LogSource
+  displaySource?: 'core' | 'app' | 'service'
+}) {
   const { level } = Route.useSearch()
   const filterForm = useRef<HTMLFormElement>(null)
   const [following, setFollowing] = useState(true)
@@ -136,7 +142,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
   }
   return (
     <LogsLayout
-      source={source}
+      source={displaySource}
       search={
         <LogSearch
           value={search}
@@ -291,7 +297,10 @@ export default function FileLogs({ source }: { source: LogSource }) {
         </>
       }
     >
-      <div className={logPanelClass} data-slot="file-logs">
+      <div
+        className={logPanelClass}
+        data-slot={displaySource === 'core' ? 'core-logs' : 'file-logs'}
+      >
         {(logs.loading ||
           logs.loadingOlder ||
           logs.error ||
@@ -331,6 +340,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
         <ScrollArea className="min-h-0 flex-1">
           <FileRows
             key={`${file}:${JSON.stringify(filter)}`}
+            displaySource={displaySource}
             logs={logs}
             search={debounced}
             following={following}
@@ -353,12 +363,14 @@ export default function FileLogs({ source }: { source: LogSource }) {
 }
 
 function FileRows({
+  displaySource,
   logs,
   search,
   following,
   setFollowing,
   setUnseen,
 }: {
+  displaySource: 'core' | 'app' | 'service'
   logs: ReturnType<typeof useFileLogs>
   search: string
   following: boolean
@@ -459,13 +471,21 @@ function FileRows({
     return () => clearTimeout(timer)
   }, [logs, rows, following, isTop, virtualizer, viewportRef, setFollowing])
   return (
-    <div>
+    <div
+      data-slot={
+        displaySource === 'core' ? 'core-logs-viewer' : 'file-logs-viewer'
+      }
+    >
       {!logs.rows.length && !logs.loading && !logs.error && (
         <LogEmptyState>
           {logs.more ? m.logs_search_incomplete() : m.logs_empty_message()}
         </LogEmptyState>
       )}
-      <div className="relative" style={{ height: totalSize }}>
+      <div
+        data-slot="logs-virtual-list"
+        className="relative"
+        style={{ height: totalSize }}
+      >
         {showRows &&
           virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index]

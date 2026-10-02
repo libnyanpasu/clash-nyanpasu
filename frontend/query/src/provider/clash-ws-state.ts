@@ -24,7 +24,7 @@ export function applyClashWsEvent(
     case 'recording_changed':
       return { ...next, recording: update.data }
     case 'history_cleared':
-      return update.data === 'logs' ? next : { ...next, [update.data]: [] }
+      return { ...next, [update.data]: [] }
     case 'connections_updated':
       return next.recording.connections
         ? {

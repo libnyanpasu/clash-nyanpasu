@@ -13,11 +13,12 @@ const sameLayers = (a: ReportRequest, b: ReportRequest) => {
 /**
  * The total, rankings and topology of the traffic `request.query` selects.
  * `refetchInterval: false` stops the polling and keeps the last report, also
- * when the window regains focus or the network reconnects.
+ * when the window regains focus or the network reconnects. `enabled: false`
+ * asks for nothing.
  */
 export function useTrafficReport(
   request: ReportRequest,
-  options?: { refetchInterval?: number | false },
+  options?: { refetchInterval?: number | false; enabled?: boolean },
 ) {
   const api = useQueryApi()
   const refetchInterval = options?.refetchInterval ?? 2000
@@ -35,6 +36,7 @@ export function useTrafficReport(
         ? previous
         : { ...previous, topology: null }),
     refetchInterval,
+    enabled: options?.enabled ?? true,
     refetchOnWindowFocus: !paused,
     refetchOnReconnect: !paused,
     // Unavailable recording fails every time; the next poll retries anyway.

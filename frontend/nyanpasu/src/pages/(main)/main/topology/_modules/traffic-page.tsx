@@ -5,9 +5,11 @@ import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
 import { useCallback, useMemo, useState } from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { useMockTrafficNow } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
 import { useProfile, useSetting, useTrafficReport } from '@nyanpasu/query'
 import { type Dimension, type ReportRequest } from '@nyanpasu/rpc/types'
+import { mockTrafficReport } from './mock-traffic'
 import Notice from './notice'
 import RankingCard from './ranking-card'
 import {
@@ -84,9 +86,21 @@ export default function TrafficPage({
     [query, view, layers, metric, limit],
   )
 
-  const { data: report, isError } = useTrafficReport(request, {
+  // Dev builds only: generated usage replaces the recorded one.
+  const mockNow = useMockTrafficNow(paused)
+
+  const { data: recorded, isError: failed } = useTrafficReport(request, {
     refetchInterval: paused ? false : pollInterval(range),
+    enabled: mockNow === null,
   })
+
+  const mocked = useMemo(
+    () => (mockNow === null ? undefined : mockTrafficReport(request, mockNow)),
+    [request, mockNow],
+  )
+
+  const report = mocked ?? recorded
+  const isError = !mocked && failed
 
   const empty =
     !!report &&

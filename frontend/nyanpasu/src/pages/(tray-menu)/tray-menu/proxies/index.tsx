@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
+import DelayChip from '@/components/proxies/delay-chip'
+import { CacheImage } from '@/components/ui/image'
+import { m } from '@/paraglide/messages'
 import {
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
   useClashProxies,
-} from '@nyanpasu/interface/ipc'
-import DelayChip from '@/components/proxies/delay-chip'
-import { CacheImage } from '@/components/ui/image'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import TextMarquee from '@/components/ui/text-marquee'
-import { m } from '@/paraglide/messages'
+} from '@nyanpasu/query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ActionButton } from '../_modules/action-button'
 import BackButton from './_modules/back-button'

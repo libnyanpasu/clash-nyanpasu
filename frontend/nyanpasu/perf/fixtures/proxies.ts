@@ -2,7 +2,7 @@ import type {
   ClashProxiesQuery,
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 
 const PROXY_TYPES = ['Shadowsocks', 'Vmess', 'Trojan', 'Hysteria2']
 

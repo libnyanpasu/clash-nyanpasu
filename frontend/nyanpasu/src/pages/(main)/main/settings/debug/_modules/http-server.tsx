@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Switch } from '@/components/ui/switch'
-import { rpc, unwrapResult } from '@nyanpasu/interface'
+import { Switch } from '@nyanpasu/ui/switch'
+import { rpc } from '@/services/rpc'
+import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isTauri } from '@tauri-apps/api/core'
 import {

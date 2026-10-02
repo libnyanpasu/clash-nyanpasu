@@ -3,15 +3,15 @@ import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-roun
 import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
 import { useCallback, useDeferredValue, useMemo } from 'react'
-import { Button } from '@/components/ui/button'
-import { useScrollAreaViewport } from '@/components/ui/scroll-area'
+import { Button } from '@nyanpasu/ui/button'
+import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import { useContainerBreakpointValue } from '@nyanpasu/hooks'
 import {
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
   useClashProxies,
   useProxyMode,
-} from '@nyanpasu/interface'
-import { useContainerBreakpointValue } from '@nyanpasu/utils'
+} from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useGroupTrafficSpeed } from '../_modules/hooks'

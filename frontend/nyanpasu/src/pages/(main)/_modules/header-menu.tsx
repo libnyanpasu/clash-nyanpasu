@@ -1,6 +1,6 @@
 import { ComponentProps } from 'react'
+import { Button, ButtonProps } from '@nyanpasu/ui/button'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
-import { Button, ButtonProps } from '@/components/ui/button'
 import { Action as AboutAction } from '@/pages/(main)/main/settings/about/route'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'

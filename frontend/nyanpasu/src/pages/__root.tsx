@@ -1,24 +1,19 @@
-import { lazy, useEffect, useRef } from 'react'
+import { lazy, useCallback, useEffect, useRef, type RefObject } from 'react'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { useProfileLookup } from '@/components/profile-label'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDeepLinkImport } from '@/hooks/use-deep-link-import'
 import { m } from '@/paraglide/messages'
+import { queryClient, rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { degradationReasonMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
 import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
-import {
-  NyanpasuProvider,
-  rpc,
-  setMutationDegradationHandler,
-  useSettings,
-  type Degradation,
-  type DegradationPhase,
-} from '@nyanpasu/interface'
+import { NyanpasuQueryProvider, useSettings } from '@nyanpasu/query'
+import { type Degradation, type DegradationPhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
   createRootRoute,
@@ -170,43 +165,49 @@ function formatDegradationItem(
   })
 }
 
-function MutationDegradationNotifier() {
+type DegradationHandler = (degradations: Degradation[]) => void
+
+function MutationDegradationNotifier({
+  handler,
+}: {
+  handler: RefObject<DegradationHandler | null>
+}) {
   const profiles = useProfileLookup()
-  useEffect(
-    () =>
-      // setMutationDegradationHandler returns a disposer; useEffect cleanup
-      // passes it through so StrictMode remount / HMR leave no dangling handler.
-      setMutationDegradationHandler((degradations) => {
-        if (degradations.length === 0) {
-          return
-        }
+  useEffect(() => {
+    const notify: DegradationHandler = (degradations) => {
+      if (degradations.length === 0) {
+        return
+      }
 
-        // Backend `message` is diagnostic-only; primary copy is phase + reason.
-        for (const degradation of degradations) {
-          console.warn('[mutation-degradation]', {
-            phase: degradation.phase,
-            reason: degradation.reason,
-            retryable: degradation.retryable,
-            message: degradation.message,
-          })
-        }
-
-        const items = degradations
-          .map((degradation) =>
-            formatDegradationItem(degradation, (id) =>
-              profileDialogLabel(profiles, id),
-            ),
-          )
-          .join('; ')
-        message(m.mutation_degraded_summary({ items }), {
-          title: m.mutation_degraded_title(),
-          kind: 'warning',
-        }).catch((error) => {
-          console.error('[mutation-degradation] failed to show warning', error)
+      // Backend `message` is diagnostic-only; primary copy is phase + reason.
+      for (const degradation of degradations) {
+        console.warn('[mutation-degradation]', {
+          phase: degradation.phase,
+          reason: degradation.reason,
+          retryable: degradation.retryable,
+          message: degradation.message,
         })
-      }),
-    [profiles],
-  )
+      }
+
+      const items = degradations
+        .map((degradation) =>
+          formatDegradationItem(degradation, (id) =>
+            profileDialogLabel(profiles, id),
+          ),
+        )
+        .join('; ')
+      message(m.mutation_degraded_summary({ items }), {
+        title: m.mutation_degraded_title(),
+        kind: 'warning',
+      }).catch((error) => {
+        console.error('[mutation-degradation] failed to show warning', error)
+      })
+    }
+    handler.current = notify
+    return () => {
+      if (handler.current === notify) handler.current = null
+    }
+  }, [handler, profiles])
   return null
 }
 
@@ -216,15 +217,25 @@ function DeepLinkImport() {
 }
 
 export default function App() {
+  const degradationHandler = useRef<DegradationHandler | null>(null)
+  const onDegraded = useCallback(
+    (items: Degradation[]) => degradationHandler.current?.(items),
+    [],
+  )
+
   return (
-    <NyanpasuProvider>
+    <NyanpasuQueryProvider
+      rpc={rpc}
+      queryClient={queryClient}
+      onDegraded={onDegraded}
+    >
       <BlockTaskProvider>
         <LanguageProvider>
           <ExperimentalThemeProvider>
             <CustomCssProvider>
               <TooltipProvider>
                 <WindowReveal />
-                <MutationDegradationNotifier />
+                <MutationDegradationNotifier handler={degradationHandler} />
                 {appWindow?.label === 'main' && <DeepLinkImport />}
                 <Outlet />
               </TooltipProvider>
@@ -234,6 +245,6 @@ export default function App() {
           <TanStackRouterDevtools />
         </LanguageProvider>
       </BlockTaskProvider>
-    </NyanpasuProvider>
+    </NyanpasuQueryProvider>
   )
 }

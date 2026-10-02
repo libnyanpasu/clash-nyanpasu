@@ -5,8 +5,8 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { formatError } from '@/utils'
+import { useLockFn } from '@nyanpasu/hooks'
 
 type BlockTaskStatus = 'idle' | 'pending' | 'success' | 'error'
 

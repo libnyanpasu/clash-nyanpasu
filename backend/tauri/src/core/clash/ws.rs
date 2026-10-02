@@ -237,6 +237,7 @@ enum Delivery {
 }
 enum Message {
     Start(RpcReplyPort<()>),
+    LifecycleChanged,
     Snapshot(RpcReplyPort<ClashWsSnapshot>),
     Recording(ClashWsKind, bool, RpcReplyPort<ClashWsRecording>),
     Clear(ClashWsKind, RpcReplyPort<Result<()>>),
@@ -255,6 +256,8 @@ struct StreamsActor;
 struct State {
     args: Args,
     task: Option<JoinHandle<()>>,
+    lifecycle: Option<JoinHandle<()>>,
+    log_session_active: bool,
     generation: u64,
     api: Option<ApiClient>,
     status: ClashConnectionsConnectorState,
@@ -267,6 +270,9 @@ struct State {
 impl Drop for State {
     fn drop(&mut self) {
         if let Some(task) = self.task.take() {
+            task.abort();
+        }
+        if let Some(task) = self.lifecycle.take() {
             task.abort();
         }
     }
@@ -328,6 +334,10 @@ impl State {
             .is_some_and(|current| current.same_instance(api))
     }
     async fn stop(&mut self) {
+        if let Some(task) = self.lifecycle.take() {
+            task.abort();
+            let _ = task.await;
+        }
         self.generation += 1;
         if let Some(task) = self.task.take() {
             task.abort();
@@ -620,6 +630,8 @@ impl Actor for StreamsActor {
         Ok(State {
             args,
             task: None,
+            lifecycle: None,
+            log_session_active: false,
             generation: 0,
             api: None,
             status: ClashConnectionsConnectorState::Disconnected,
@@ -642,6 +654,18 @@ impl Actor for StreamsActor {
         match message {
             Message::Start(reply) => {
                 if !state.args.shutdown.is_cancelled() && state.task.is_none() {
+                    let mut status = state.args.core.subscribe();
+                    let listener = actor.clone();
+                    state.lifecycle = Some(tokio::spawn(async move {
+                        loop {
+                            if listener.cast(Message::LifecycleChanged).is_err() {
+                                break;
+                            }
+                            if status.changed().await.is_err() {
+                                break;
+                            }
+                        }
+                    }));
                     state.generation += 1;
                     state.task = Some(tokio::spawn(run(
                         actor,
@@ -650,6 +674,34 @@ impl Actor for StreamsActor {
                     )));
                 }
                 let _ = reply.send(());
+            }
+            Message::LifecycleChanged => {
+                let projection = state.args.core.status();
+                // A missing or unreachable endpoint is not proof of process exit.
+                if state.log_session_active
+                    && let Some(snapshot) = projection.snapshot
+                    && matches!(
+                        projection.connectivity,
+                        crate::core::actor_v2::EndpointConnectivity::Connected
+                    )
+                    && matches!(
+                        snapshot.state,
+                        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+                    )
+                {
+                    // Display projections can contain a late pre-restart snapshot.
+                    // Re-read before deleting; clearing this flag also avoids reacting
+                    // again to the confirmation's own status publication.
+                    if let Ok(current) = state.args.core.refresh_status().await
+                        && matches!(
+                            current.snapshot.and_then(|s| s.state),
+                            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+                        )
+                    {
+                        state.log_session_active = false;
+                        let _ = state.args.logs.set_instance(None).await;
+                    }
+                }
             }
             Message::Snapshot(reply) => {
                 let _ = reply.send(state.snapshot());
@@ -683,6 +735,17 @@ impl Actor for StreamsActor {
                                 if !state.accepts(&api) {
                                     state.reset();
                                 }
+                                // Identity survives socket/controller reconnects. Complete the
+                                // reset before any samples from the new instance are admitted.
+                                if let Err(error) = state
+                                    .args
+                                    .logs
+                                    .set_instance(Some(api.instance_id().to_owned()))
+                                    .await
+                                {
+                                    tracing::warn!(%error, "Core log session reset failed");
+                                }
+                                state.log_session_active = true;
                                 state.api = Some(api);
                             }
                         }
@@ -1336,5 +1399,81 @@ mod tests {
             serde_json::to_vec(&small_snapshot).unwrap().len(),
             serde_json::to_vec(&large_snapshot).unwrap().len(),
         );
+    }
+
+    #[tokio::test]
+    async fn log_file_survives_controller_rebind_and_is_deleted_on_confirmed_stop() {
+        let directory = tempfile::tempdir().unwrap();
+        let token = CancellationToken::new();
+        let tasks = TaskTracker::new();
+        let logs = crate::core::logs::CoreLogsClient::spawn(
+            Box::new(crate::core::logs::RedbCoreLogStore::open(directory.path().into()).unwrap()),
+            token.clone(),
+            &tasks,
+        )
+        .await
+        .unwrap();
+        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
+        let endpoint = endpoint(url);
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let client = StreamsClient::spawn(core.clone(), logs.clone(), token.clone(), &tasks)
+            .await
+            .unwrap();
+        let mut events = client.subscribe_ws();
+        client.start().await.unwrap();
+        connected(&mut events).await;
+        let api = core.api_client().await.unwrap();
+        let sample = || {
+            Sample::Log(clash_api::LogEntry {
+                level: clash_api::ConfigEnum::Known(clash_api::LogLevel::Debug),
+                payload: "x".repeat(70 * 1024),
+            })
+        };
+        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api.clone(), sample())).await);
+        let before = logs.status().await.unwrap();
+        assert!(before.head.is_some());
+        assert!(directory.path().join("current.redb").exists());
+        // A new API capability for the same process is not a new log session.
+        endpoint
+            .binding
+            .send_modify(|binding| binding.as_mut().unwrap().secret = Some("changed".into()));
+        let rebound = core.api_client().await.unwrap();
+        assert!(deliver(&client.0.actor, 1, Delivery::Bind(rebound)).await);
+        assert_eq!(logs.status().await.unwrap().generation, before.generation);
+        assert_eq!(logs.status().await.unwrap().head, before.head);
+        let mut changed = logs.subscribe();
+        let mut replacement_binding = endpoint.binding.borrow().clone().unwrap();
+        replacement_binding.instance_id = "replacement".into();
+        endpoint.binding.send_replace(None);
+        core.refresh_status().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let status = changed.borrow_and_update().clone();
+                if status.generation != before.generation && status.head.is_none() {
+                    break;
+                }
+                changed.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!directory.path().join("current.redb").exists());
+        assert!(!deliver(&client.0.actor, 1, Delivery::Sample(api, sample())).await);
+        endpoint.binding.send_replace(Some(replacement_binding));
+        let replacement = core.api_client().await.unwrap();
+        assert!(deliver(&client.0.actor, 1, Delivery::Bind(replacement.clone())).await);
+        assert!(deliver(&client.0.actor, 1, Delivery::Sample(replacement, sample())).await);
+        let current = logs.status().await.unwrap();
+        assert!(current.head.is_some());
+        // This notification may still refer to the displayed stopped state.
+        client.0.actor.cast(Message::LifecycleChanged).unwrap();
+        client.snapshot().await.unwrap(); // acknowledge lifecycle handling
+        assert_eq!(logs.status().await.unwrap().generation, current.generation);
+        assert_eq!(logs.status().await.unwrap().head, current.head);
+        assert!(directory.path().join("current.redb").exists());
+        token.cancel();
+        tasks.close();
+        tasks.wait().await;
+        server.abort();
     }
 }

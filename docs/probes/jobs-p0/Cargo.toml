@@ -10,7 +10,7 @@ publish = false
 [dev-dependencies]
 chrono = '=0.4.45'
 chrono-tz = '=0.10.4'
-croner = '=4.0.0'
+croner = '=4.0.1'
 redb = '=4.3.0'
 serde = { version = '=1.0.229', features = ['derive'] }
 serde_json = '=1.0.151'

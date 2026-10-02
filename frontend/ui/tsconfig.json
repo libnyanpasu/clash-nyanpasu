@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.browser.json",
+  "include": ["src"],
+  "compilerOptions": {
+    "types": ["unplugin-icons/types/react"],
+  },
+}

@@ -4,9 +4,9 @@ import {
   SystemProxyButton,
   TunModeButton,
 } from '@/components/settings/system-proxy'
-import { isMacOS, isWindows } from '@/consts'
 import { m } from '@/paraglide/messages'
-import { useSetting } from '@nyanpasu/interface'
+import { isMacOS, isWindows } from '@nyanpasu/platform'
+import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   SettingsCard,

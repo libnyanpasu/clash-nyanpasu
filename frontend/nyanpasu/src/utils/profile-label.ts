@@ -3,7 +3,7 @@ import type {
   ConfigExecutionRole,
   OperatorTag,
   ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 
 export type ProfileLabel = (id: string) => string
 

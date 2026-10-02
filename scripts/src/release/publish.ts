@@ -10,12 +10,6 @@ const TAURI_NIGHTLY_APP_CONF_PATH = path.join(
 );
 const PACKAGE_JSON_PATH = path.join(cwd, "package.json");
 
-const MONO_REPO_PATHS = [
-  path.join(cwd, "frontend/nyanpasu"),
-  path.join(cwd, "frontend/utils"),
-  path.join(cwd, "frontend/interface"),
-];
-
 export const RELEASE_TYPES = [
   "major",
   "minor",
@@ -83,8 +77,14 @@ async function resolvePublish() {
     JSON.stringify(tauriNightlyJson, null, 2),
   );
 
-  for (const monoRepoPath of MONO_REPO_PATHS) {
-    const monoRepoPackageJsonPath = path.join(monoRepoPath, "package.json");
+  for await (const entry of Deno.readDir(path.join(cwd, "frontend"))) {
+    if (!entry.isDirectory) continue;
+    const monoRepoPackageJsonPath = path.join(
+      cwd,
+      "frontend",
+      entry.name,
+      "package.json",
+    );
     try {
       const monoRepoPackageJson = JSON.parse(
         await Deno.readTextFile(monoRepoPackageJsonPath),

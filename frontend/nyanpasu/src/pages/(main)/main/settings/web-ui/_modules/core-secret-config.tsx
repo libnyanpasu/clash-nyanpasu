@@ -4,31 +4,27 @@ import { AnimatePresence } from 'motion/react'
 import { ChangeEvent, useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
   ModalClose,
   ModalContent,
   ModalTitle,
   ModalTrigger,
-} from '@/components/ui/modal'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/modal'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { formatError, sleep } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   useClashConfig,
   useClashInfo,
   useRuntimeProfile,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   ItemContainer,

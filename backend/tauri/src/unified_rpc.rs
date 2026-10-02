@@ -459,12 +459,18 @@ mod tests {
             let status =
                 rpc_for_test_call(&app, "get_core_log_status", serde_json::json!({}), None).await;
             assert_eq!(status.0, StatusCode::OK);
-            assert_eq!(status.1["budget"], 64 * 1024 * 1024);
+            assert!(status.1.get("budget").is_none());
             let query = serde_json::json!({"query":{"direction":"latest","cursor":null,"level":"debug","keyword":"","limit":200}});
             let page = rpc_for_test_call(&app, "query_core_logs", query.clone(), None).await;
             assert_eq!(page.0, StatusCode::OK);
             assert!(page.1["rows"].as_array().unwrap().is_empty());
-            let detail = rpc_for_test_call(&app, "get_core_log", serde_json::json!({"cursor":{"generation":status.1["generation"],"segment":1,"sequence":1}}), None).await;
+            let detail = rpc_for_test_call(
+                &app,
+                "get_core_log",
+                serde_json::json!({"cursor":{"generation":status.1["generation"],"sequence":1}}),
+                None,
+            )
+            .await;
             assert_eq!(detail.1["domain_error"]["kind"], "record_gone");
             let cleared =
                 rpc_for_test_call(&app, "clear_core_logs", serde_json::json!({}), None).await;

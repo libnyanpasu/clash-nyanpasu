@@ -1,7 +1,7 @@
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import parseTraffic from '@/utils/parse-traffic'
-import type { Dimension, Metric, Usage } from '@nyanpasu/interface'
+import type { Dimension, Metric, Usage } from '@nyanpasu/rpc/types'
 
 export type UsageLabel = {
   text: string

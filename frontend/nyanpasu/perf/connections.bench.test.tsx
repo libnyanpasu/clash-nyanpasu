@@ -3,14 +3,14 @@ import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { Route as ConnectionsIndexRoute } from '@/pages/(main)/main/connections/index'
 import { Route as ConnectionsRoute } from '@/pages/(main)/main/connections/route'
 import { Route as RulesIndexRoute } from '@/pages/(main)/main/rules/index'
 import { Route as RulesRoute } from '@/pages/(main)/main/rules/route'
-import type { ClashConnectionDetails_Serialize } from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ClashConnectionDetails_Serialize } from '@nyanpasu/rpc/types'
+import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -20,6 +20,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { mockIPC } from '@tauri-apps/api/mocks'
+import { TestQueryProvider as QueryClientProvider } from '../tests/query-provider'
 import {
   createConnectionStream,
   createRulesFixture,
@@ -63,7 +64,7 @@ const stream = vi.hoisted(() => ({
   publish: (_frame: ClashConnectionDetails_Serialize) => {},
 }))
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => {
+vi.mock('@nyanpasu/query', async (importOriginal) => {
   const { createContext, useContext } = await import('react')
   const { createRulesFixture } = await import('./fixtures/connections')
 

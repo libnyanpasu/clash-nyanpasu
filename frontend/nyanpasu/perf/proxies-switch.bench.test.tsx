@@ -3,8 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { Route as GroupRoute } from '@/pages/(main)/main/proxies/group/$name'
 import { Route as ProxiesRoute } from '@/pages/(main)/main/proxies/route'
 import {
@@ -40,7 +40,7 @@ declare module 'vitest/browser' {
   }
 }
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => {
+vi.mock('@nyanpasu/query', async (importOriginal) => {
   const { createProxiesFixture } = await import('./fixtures/proxies')
   const noop = async () => {}
   // Stable objects, as React Query hands out between refetches.

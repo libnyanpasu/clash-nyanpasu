@@ -1,35 +1,17 @@
 {
+  "extends": "./tsconfig.browser.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "strict": true,
-    "noEmit": true,
-    "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
     "allowJs": true,
     "types": [
       "node",
       "vite/client",
       "vitest/browser",
-      "./frontend/nyanpasu/node_modules/vite-plugin-svgr/client"
+      "vite-plugin-svgr/client"
     ],
     "paths": {
       "@/*": ["./frontend/nyanpasu/src/*"],
       "@root/*": ["./*"],
-      "react": ["./frontend/interface/node_modules/@types/react/index.d.ts"],
-      "react/*": ["./frontend/interface/node_modules/@types/react/*"],
-      "vitest-browser-react": [
-        "./frontend/interface/node_modules/vitest-browser-react"
-      ],
-      "@interface/*": ["./frontend/interface/src/*"],
-      "@nyanpasu/interface": ["./frontend/interface/src/index.ts"],
-      "@nyanpasu/interface/*": ["./frontend/interface/src/*"],
-      "@nyanpasu/utils": ["./frontend/utils/src/index.ts"],
-      "@nyanpasu/utils/*": ["./frontend/utils/src/*"],
       "~icons/*": ["./frontend/nyanpasu/tests/icon-stub.tsx"]
     }
   },

@@ -2,18 +2,15 @@ import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-ro
 import DeviceResetRounded from '~icons/material-symbols/device-reset-rounded'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
+import { CircularProgress } from '@nyanpasu/ui/progress'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { TrayImage } from '@/components/ui/image'
-import { CircularProgress } from '@/components/ui/progress'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { mutations, queries } from '@/services/rpc'
 import { message } from '@/utils/notification'
-import { invokeMutation, rpc, unwrapQueryOptions } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { invokeMutation, unwrapQueryOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { useQuery } from '@tanstack/react-query'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -28,8 +25,8 @@ enum TrayIconMode {
 const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
   const [iconVersion, setIconVersion] = useState(0)
 
-  const isIconSetQuery = rpc.queries.isTrayIconSet(mode)
-  const setTrayIcon = rpc.mutations.setTrayIcon
+  const isIconSetQuery = queries.isTrayIconSet(mode)
+  const setTrayIcon = mutations.setTrayIcon
   const isIconSet = useQuery(
     unwrapQueryOptions(isIconSetQuery, isIconSetQuery.queryFn!),
   )

@@ -1,12 +1,12 @@
 import { memo } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import GroupSummary from '@/components/proxies/group-summary'
-import { Button } from '@/components/ui/button'
 import { CacheImage } from '@/components/ui/image'
 import {
   ClashProxiesQuery,
   ClashProxiesQueryGroupItem,
   useClashProxies,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { Link, useLocation } from '@tanstack/react-router'
 

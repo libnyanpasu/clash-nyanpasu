@@ -1,5 +1,5 @@
 import { createContext, Fragment, useContext } from 'react'
-import HighlightText from '@/components/ui/highlight-text'
+import HighlightText from '@nyanpasu/ui/highlight-text'
 import { getLocale } from '@/paraglide/runtime'
 import { formatDate, formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'

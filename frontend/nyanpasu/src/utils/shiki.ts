@@ -18,17 +18,6 @@ export async function getShikiSingleton() {
   return shiki
 }
 
-export async function formatAnsi(str: string) {
-  const instance = await getShikiSingleton()
-  return instance.codeToHtml(str, {
-    lang: 'ansi',
-    themes: {
-      dark: 'nord',
-      light: 'min-light',
-    },
-  })
-}
-
 export async function highlightYaml(code: string) {
   const instance = await getShikiSingleton()
   await instance.loadLanguage(import('shiki/langs/yaml.mjs'))

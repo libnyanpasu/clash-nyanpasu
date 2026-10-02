@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { m } from '@/paraglide/messages'
-import { useProfile } from '@nyanpasu/interface'
+import { useProfile } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { TransformChainEditor } from '../$type/detail/_modules/chian-editor-card'
 

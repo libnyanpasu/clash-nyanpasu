@@ -1,8 +1,11 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import { AnimatePresence, motion } from 'motion/react'
-import { Button } from '@/components/ui/button'
-import { DndGridItem, DndGridItemProps } from '@/components/ui/dnd-grid'
-import { useDndGridContext } from '@/components/ui/dnd-grid/context'
+import { Button } from '@nyanpasu/ui/button'
+import {
+  DndGridItem,
+  DndGridItemProps,
+  useDndGridContext,
+} from '@nyanpasu/ui/dnd-grid'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 import { WidgetComponentProps } from './consts'

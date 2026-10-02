@@ -5,15 +5,11 @@ import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
 import SwapVertRounded from '~icons/material-symbols/swap-vert-rounded'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
-import { Card } from '@/components/ui/card'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Card } from '@nyanpasu/ui/card'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
-import type { Dimension, TrafficReport } from '@nyanpasu/interface'
+import type { Dimension, TrafficReport } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { dimensionName } from './usage-label'
 

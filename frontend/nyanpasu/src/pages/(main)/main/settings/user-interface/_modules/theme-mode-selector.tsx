@@ -1,16 +1,14 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import {
-  ThemeMode,
-  useExperimentalThemeContext,
-} from '@/components/providers/theme-provider'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@nyanpasu/ui/dropdown-menu'
+import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
+import { ThemeMode } from '@nyanpasu/theme'
 import {
   ItemContainer,
   ItemLabel,

@@ -5,10 +5,10 @@ import {
   useEffect,
   useState,
 } from 'react'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { getLocale, Locale, setLocale } from '@/paraglide/runtime'
 import { getCachedLanguage, normalizeLanguage } from '@/utils/language'
-import { useSettings } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useSettings } from '@nyanpasu/query'
 
 const LanguageContext = createContext<{
   language?: Locale

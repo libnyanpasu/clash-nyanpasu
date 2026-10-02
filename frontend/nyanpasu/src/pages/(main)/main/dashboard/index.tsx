@@ -1,24 +1,24 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
 import EditRounded from '~icons/material-symbols/edit-rounded'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import {
+  DndGrid,
+  DndGridProvider,
+  DndGridRoot,
+  hasOverlap,
+  useDndGridRoot,
+  type DndGridItemType,
+  type GridSize,
+} from '@nyanpasu/ui/dnd-grid'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import { ContextMenuItem } from '@/components/ui/context-menu'
-import {
-  DndGrid,
-  DndGridProvider,
-  DndGridRoot,
-  useDndGridRoot,
-  type DndGridItemType,
-  type GridSize,
-} from '@/components/ui/dnd-grid'
-import { hasOverlap } from '@/components/ui/dnd-grid/utils'
 import { m } from '@/paraglide/messages'
 import { DragOverlay } from '@dnd-kit/core'
-import { useKvStorage } from '@nyanpasu/interface'
+import { useKvStorage } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   DashboardItem,

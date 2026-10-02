@@ -35,8 +35,8 @@ const proxies = vi.hoisted(() => {
   }
 })
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nyanpasu/interface')>()),
+vi.mock('@nyanpasu/query', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@nyanpasu/query')>()),
   useClashProxies: () => ({
     proxies: { data: useSyncExternalStore(proxies.subscribe, proxies.get) },
   }),

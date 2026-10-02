@@ -34,7 +34,7 @@
   ],
   "overrides": [
     {
-      "files": ["frontend/nyanpasu/src/**/*.{ts,tsx}"],
+      "files": ["frontend/**/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -42,7 +42,7 @@
             "patterns": [
               {
                 "group": ["radix-ui", "radix-ui/*", "@radix-ui/*"],
-                "message": "Use components/ui wrappers. Add and style missing Radix primitives in components/ui first."
+                "message": "Use @nyanpasu/ui wrappers. Add and style missing Radix primitives in the UI package first."
               }
             ]
           }
@@ -50,7 +50,7 @@
       }
     },
     {
-      "files": ["frontend/nyanpasu/src/components/ui/**/*.{ts,tsx}"],
+      "files": ["frontend/ui/src/**/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": "off"
       }

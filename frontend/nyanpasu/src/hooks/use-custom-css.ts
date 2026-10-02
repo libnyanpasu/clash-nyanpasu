@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { compileCustomCss } from '@/utils/custom-css-compiler'
 import { insertStyle } from '@/utils/styled'
-import { useKvStorage } from '@interface/hooks'
+import { useKvStorage } from '@nyanpasu/query'
 
 const CUSTOM_CSS_KV_KEY = 'custom-css'
 const CUSTOM_CSS_COMPILED_KV_KEY = 'custom-css-compiled'

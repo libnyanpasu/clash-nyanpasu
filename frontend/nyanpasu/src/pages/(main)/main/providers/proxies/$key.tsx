@@ -1,4 +1,4 @@
-import { useClashProxiesProvider } from '@nyanpasu/interface'
+import { useClashProxiesProvider } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { ProvidersTitle } from '../_modules/providers-title'
 import { InfoCard } from './_modules/info-card'

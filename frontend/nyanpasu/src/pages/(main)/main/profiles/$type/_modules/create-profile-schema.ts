@@ -1,12 +1,12 @@
 import z from 'zod'
 import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
+import { ProfileTemplate } from '@nyanpasu/query'
 import {
-  ProfileTemplate,
   type ProfileDefinition_Deserialize,
   type ProfileSource_Deserialize,
   type TransformKind,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import { ProfileType } from '../../_modules/consts'
 import { subscriptionUrlSchema } from '../../_modules/subscription-url-schema'
 

@@ -16,7 +16,7 @@ pub enum CoreLogError {
     InvalidRequest,
     #[error("the log cursor has expired")]
     CursorExpired,
-    #[error("the log record has rolled out")]
+    #[error("the log record is no longer available")]
     RecordGone,
     #[error("the log record exceeds the storage limit")]
     TooLarge,
@@ -34,7 +34,6 @@ impl From<anyhow::Error> for CoreLogError {
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CoreLogCursor {
     pub generation: String,
-    pub segment: u64,
     pub sequence: u64,
 }
 
@@ -100,7 +99,6 @@ pub struct CoreLogStatus {
     pub first: Option<CoreLogCursor>,
     pub head: Option<CoreLogCursor>,
     pub bytes: u64,
-    pub budget: u64,
     pub error: Option<String>,
     pub discarded: u64,
 }

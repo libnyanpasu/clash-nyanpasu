@@ -3,12 +3,12 @@ import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { Route as ClashRoute } from '@/pages/(main)/main/settings/clash/route'
 import { Route as SettingsRoute } from '@/pages/(main)/main/settings/route'
 import { Route as SystemRoute } from '@/pages/(main)/main/settings/system/route'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -17,6 +17,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router'
+import { TestQueryProvider as QueryClientProvider } from '../tests/query-provider'
 import { measureFrames, onProfilerRender, summarize } from './measure'
 
 // Opens settings pages from an empty settings page and reports the frame
@@ -39,7 +40,7 @@ vi.mock('@/assets/image/logo.svg?react', () => ({ default: () => null }))
 // The pages only need their settings to render: the setting hooks hand out
 // plain values, and every other hook an idle query and mutation.
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => {
+vi.mock('@nyanpasu/query', async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>()
   const noop = async () => {}
   const upsert = Object.assign(async () => {}, {

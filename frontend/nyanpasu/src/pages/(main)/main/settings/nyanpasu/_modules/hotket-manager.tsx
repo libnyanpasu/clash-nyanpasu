@@ -3,14 +3,14 @@ import EditOutlineRounded from '~icons/material-symbols/edit-outline-rounded'
 import ErrorRounded from '~icons/material-symbols/error-rounded'
 import { isEqual } from 'es-toolkit'
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Kbd } from '@/components/ui/kbd'
-import { useLockFn } from '@/hooks/use-lock-fn'
+import { Button } from '@nyanpasu/ui/button'
+import { Kbd } from '@nyanpasu/ui/kbd'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { parseHotkey } from '@/utils/parse-hotkey'
-import { useHotkeyFunctions, useHotkeys } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useHotkeyFunctions, useHotkeys } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,

@@ -2,10 +2,11 @@ import { Profiler } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
-import type { ClashLog, LogRow } from '@nyanpasu/interface'
+import type { ClashLog } from '@nyanpasu/query'
+import type { LogRow } from '@nyanpasu/rpc/types'
 import '@/assets/styles/tailwind.css'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { Route as LogsIndexRoute } from '@/pages/(main)/main/logs/index'
 import { Route as LogsRoute } from '@/pages/(main)/main/logs/route'
 import {
@@ -76,7 +77,7 @@ const store = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => {
+vi.mock('@nyanpasu/query', async (importOriginal) => {
   const { useEffect, useState, useSyncExternalStore } = await import('react')
   const { createFileLogsFixture, createLogsFixture } =
     await import('./fixtures/logs')

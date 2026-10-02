@@ -1,5 +1,5 @@
 import { memo, ReactNode } from 'react'
-import type { DndGridItemType } from '@/components/ui/dnd-grid'
+import type { DndGridItemType } from '@nyanpasu/ui/dnd-grid'
 import { WidgetId } from './widget-config'
 import { CoreShortcutsWidget, ProxyShortcutsWidget } from './widget-shortcut'
 import {

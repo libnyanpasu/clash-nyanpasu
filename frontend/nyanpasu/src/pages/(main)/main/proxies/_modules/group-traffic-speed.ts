@@ -1,4 +1,4 @@
-import type { ClashConnectionsSummary } from '@nyanpasu/interface'
+import type { ClashConnectionsSummary } from '@nyanpasu/rpc/types'
 
 export type GroupTrafficSpeed = {
   download: number

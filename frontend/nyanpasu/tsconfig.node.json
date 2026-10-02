@@ -1,18 +1,8 @@
 {
-  "include": ["vite.config.*", "tailwind.config.ts"],
+  "extends": "../../tsconfig.node.json",
   "compilerOptions": {
     "allowJs": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "composite": true,
-    "types": ["node", "vite/client"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true
-  }
+    "types": ["node", "vite/client"]
+  },
+  "include": ["vite.config.*", "tailwind.config.ts"]
 }

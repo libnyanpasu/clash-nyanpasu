@@ -300,6 +300,7 @@
   "update_sources_move_down": "Move source down",
   "update_source_nyanpasu": "Nyanpasu mirror",
   "update_source_github": "GitHub Releases",
+  "update_source_ghfast": "GHFast mirror",
   "profile_subscription_title": "Remote information",
   "profile_subscription_updated_at": "Updated {updated}",
   "profile_subscription_next_update_at": "Next scheduled update: {next}",

@@ -113,6 +113,9 @@ pub fn update_endpoints(channel: Channel) -> Vec<String> {
         format!(
             "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update{suffix}.json"
         ),
+        format!(
+            "https://ghfast.top/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update{suffix}.json"
+        ),
     ]
 }
 
@@ -132,19 +135,22 @@ pub fn update_download_urls(
     {
         bail!("unsupported application update download URL: {announced}");
     }
-    Ok(sources
+    sources
         .iter()
         .map(|source| {
             let mut url = announced.clone();
             let host = match source {
                 UpdateSource::Nyanpasu => "nyanpasu-script.majokeiko.com",
-                UpdateSource::Github => "github.com",
+                UpdateSource::Github | UpdateSource::Ghfast => "github.com",
             };
             url.set_host(Some(host))
                 .expect("update source hosts are valid");
-            (*source, url)
+            if *source == UpdateSource::Ghfast {
+                url = url::Url::parse(&format!("https://ghfast.top/{url}"))?;
+            }
+            Ok((*source, url))
         })
-        .collect())
+        .collect()
 }
 
 pub fn is_newer_release(

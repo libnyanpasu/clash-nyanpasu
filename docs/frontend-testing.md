@@ -2,8 +2,9 @@
 
 Frontend tests use Vitest. Pure logic runs in Node; React component and hook
 integration tests run in Chromium through Vitest Browser Mode. Tests import source
-directly and do not require a running Tauri application, downloaded sidecars, or a
-frontend build.
+through frontend workspace package exports and do not require a running Tauri
+application, downloaded sidecars, or a package build. There is no interface `dist`
+prerequisite.
 
 ## Setup and commands
 
@@ -34,8 +35,9 @@ Place tests under the owning package's `frontend/<package>/tests/` directory:
 - `*.browser.test.ts` or `*.browser.test.tsx`: browser component/hook tests.
 
 Both projects discover nested directories automatically. Do not add a pnpm command
-for individual test files. Keep tests outside `src/` so they are excluded from
-package declaration builds and the application's route generation.
+for individual test files. Keep tests under the owning package's `tests/`, outside
+`src/`, so package typechecks and the application's route generation stay scoped
+to production source.
 
 Import `test`, `expect`, and `vi` explicitly from `vitest`. Use typed fixtures and
 keep production source independent of test globals. Runtime malformed-data cases
@@ -43,11 +45,13 @@ may deliberately cross a type boundary; document the narrow assertion at that
 boundary rather than disabling typechecking for the suite.
 
 The standalone `vitest.config.ts` deliberately avoids the application's build
-plugins. Use relative source imports; if a new test needs an application alias,
-configure it in both the test runtime and `tsconfig.test.json`, resolving it from
-the configuration file. Do not depend on a previously built interface `dist`.
-React browser tests use `vitest-browser-react`; declare it in the consuming package
-when adding browser tests to another package.
+plugins. Package imports resolve through package exports. The test config keeps
+the app `@` alias, repository-root `@root` alias, and `~icons` test stub; do not add
+aliases to sibling package source or `node_modules` internals. If a test needs an
+app alias, keep it consistent with `tsconfig.test.json`.
+React browser tests use `vitest-browser-react` from the root test runtime. Select
+one package independently with `pnpm test:frontend frontend/query/tests`, for
+example. Package production dependencies remain declared in their own manifests.
 
 ## Isolation and asynchronous behavior
 
@@ -62,13 +66,12 @@ query caches after each test. Restore mocks and timers even on failure. The dela
 history suite freezes only interval timers to prevent polling from overwriting the
 asserted cache on slow workers, and verifies that the mutation clears its interval.
 
-## TODO: WebUI end-to-end tests
+## Real HTTP UI integration
 
-Browser Mode tests currently mock IPC and do not verify the real backend chain.
-Real E2E is deferred until IPC is decoupled and an independent WebUI exists. At that
-point, evaluate Playwright Test against the running WebUI and its actual service,
-with isolated data, readiness checks and deterministic teardown. No Tauri desktop
-driver or placeholder E2E command is introduced by this migration.
-
-See the [migration plan](superpowers/plans/2026-09-16-frontend-vitest-migration.md)
-for the deferred prerequisites and acceptance criteria.
+Browser Mode tests mock transports and do not verify the real backend chain. The
+existing `deno task test:http-ui <running debug HTTP server URL>` checks the
+browser UI and actual HTTP RPC against an already-running debug server. Use its
+authenticated entry URL; the script verifies credential removal from the URL,
+HTTP capability restrictions, structured errors, and absence of native API errors.
+This requires a runnable backend and isolated test data. Unit tests, Browser Mode,
+and a successful frontend build do not establish desktop or real HTTP acceptance.

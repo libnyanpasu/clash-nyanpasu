@@ -1,4 +1,4 @@
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/(tray-menu)/tray-menu/proxies/group')({

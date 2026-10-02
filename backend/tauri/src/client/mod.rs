@@ -74,7 +74,8 @@ pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
 pub use event_sink::{
-    STATE_CHANGED_URI, StateChanged, TauriMainThread, TauriUiEventSink, UiEventSink,
+    MainThreadHandoff, MainThreadWork, STATE_CHANGED_URI, StateChanged, TauriMainThread,
+    TauriUiEventSink, UiEventSink,
 };
 pub use main_thread::MainThreadExecutor;
 pub use ports::SessionPortResolver;

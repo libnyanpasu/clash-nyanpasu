@@ -1,16 +1,16 @@
 import { ComponentProps } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   useCurrentProfileUid,
   useDeleteClashConnections,
   useProfileMutations,
-  type ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 
 export const useActiveProfile = (profile: ProfileItem_Serialize) => {

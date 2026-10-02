@@ -8,7 +8,8 @@
     "bench": "vitest run --config perf/vitest.perf.config.ts --silent=false",
     "bundle:visualize": "vite-bundle-visualizer",
     "dev": "vite",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",
@@ -17,13 +18,10 @@
     "@fontsource-variable/inter": "5.3.0",
     "@hookform/resolvers": "5.9.1",
     "@inlang/paraglide-js": "2.25.4",
-    "@internationalized/date": "3.12.4",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.4.0",
-    "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/utils": "workspace:^",
     "@paper-design/shaders-react": "0.0.81",
-    "@radix-ui/react-use-controllable-state": "1.2.6",
     "@tailwindcss/postcss": "4.3.3",
     "@tanstack/react-table": "9.2.4",
     "@tanstack/react-virtual": "3.14.13",
@@ -39,15 +37,20 @@
     "mermaid": "12.0.0",
     "monaco-editor": "0.57.0",
     "motion": "13.5.0",
-    "radix-ui": "1.6.7",
     "react": "19.3.0",
-    "react-aria-components": "1.21.1",
     "react-dom": "19.3.0",
     "react-hook-form": "7.89.0",
     "react-markdown": "10.1.0",
     "react-use": "17.6.1",
     "vaul": "1.1.2",
-    "vite-bundle-visualizer": "1.2.1"
+    "vite-bundle-visualizer": "1.2.1",
+    "@nyanpasu/constants": "workspace:^",
+    "@nyanpasu/hooks": "workspace:^",
+    "@nyanpasu/platform": "workspace:^",
+    "@nyanpasu/rpc": "workspace:^",
+    "@nyanpasu/query": "workspace:^",
+    "@nyanpasu/theme": "workspace:^",
+    "@nyanpasu/ui": "workspace:^"
   },
   "devDependencies": {
     "@csstools/normalize.css": "12.1.1",
@@ -85,5 +88,6 @@
     "vite-plugin-html": "3.2.2",
     "vite-plugin-svgr": "5.2.0",
     "zod": "4.6.5"
-  }
+  },
+  "private": true
 }

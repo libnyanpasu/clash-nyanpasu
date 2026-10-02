@@ -1,13 +1,14 @@
 import { useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import parseTraffic from '@/utils/parse-traffic'
-import type { ClashConnection_Serialize } from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ClashConnection_Serialize } from '@nyanpasu/rpc/types'
+import { QueryClient } from '@tanstack/react-query'
 import ActiveViewer from '../src/pages/(main)/main/connections/_modules/active-viewer'
 import { mockActiveConnections } from '../src/pages/(main)/main/connections/_modules/mock-connections'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
@@ -31,8 +32,8 @@ const stream = vi.hoisted(() => {
   }
 })
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nyanpasu/interface')>()),
+vi.mock('@nyanpasu/query', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@nyanpasu/query')>()),
   useClashConnectionDetails: () => {
     const data = useSyncExternalStore(stream.subscribe, stream.get)
     return { data, isLoading: data === null }

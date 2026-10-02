@@ -25,7 +25,7 @@ import {
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
-} from '@/components/ui/context-menu'
+} from '@nyanpasu/ui/context-menu'
 import { m } from '@/paraglide/messages'
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 

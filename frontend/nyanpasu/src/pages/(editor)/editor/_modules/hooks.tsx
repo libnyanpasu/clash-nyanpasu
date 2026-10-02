@@ -5,8 +5,8 @@ import {
   isRemoteItem,
   isTransformItem,
   useProfile,
-  type ProfileItem_Serialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
+import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 
 type CurrentProfileData = ProfileItem_Serialize & {
   language: string

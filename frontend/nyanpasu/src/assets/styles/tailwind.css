@@ -5,6 +5,8 @@
 
 @import 'tailwindcss';
 
+@source '../../../../ui/src';
+
 @config '../../../tailwind.config.ts';
 
 @tailwind utilities;

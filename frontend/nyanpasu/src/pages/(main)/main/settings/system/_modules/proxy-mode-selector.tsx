@@ -1,7 +1,7 @@
-import AnimatedTabs, { AnimatedTabsItem } from '@/components/ui/animated-tabs'
-import { useLockFn } from '@/hooks/use-lock-fn'
+import AnimatedTabs, { AnimatedTabsItem } from '@nyanpasu/ui/animated-tabs'
 import { m } from '@/paraglide/messages'
-import { ProxyMode, useProxyMode } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { ProxyMode, useProxyMode } from '@nyanpasu/query'
 
 export default function ProxyModeSelector() {
   const { value, upsert } = useProxyMode()

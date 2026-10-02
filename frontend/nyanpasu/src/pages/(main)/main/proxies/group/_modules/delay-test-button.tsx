@@ -1,16 +1,12 @@
 import BoltRounded from '~icons/material-symbols/bolt-rounded'
 import { useState } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { Button } from '@/components/ui/button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { sleep } from '@/utils'
-import { useClashProxies } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useClashProxies } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { Route as NameRoute } from '../$name'
 

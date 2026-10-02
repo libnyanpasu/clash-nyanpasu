@@ -1,11 +1,11 @@
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { useLockFn } from '@/hooks/use-lock-fn'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatRelativeTime } from '@/utils/date'
-import { ClashProxiesProviderQueryItem } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { ClashProxiesProviderQueryItem } from '@nyanpasu/query'
 import { useProxiesProviderUpdate } from '../../_modules/use-proxies-provider-update'
 
 export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {

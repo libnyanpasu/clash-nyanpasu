@@ -11,7 +11,7 @@ const settings = vi.hoisted(() => ({
   theme_color: '#ff0000' as string | undefined,
 }))
 // Like the real hook, every call returns a new object.
-vi.mock('@nyanpasu/interface', () => ({
+vi.mock('@nyanpasu/query', () => ({
   useSetting: (key: keyof typeof settings) => ({
     value: settings[key],
     upsert: async () => {},

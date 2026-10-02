@@ -1,18 +1,19 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import type {
   ClashConnection_Serialize,
   ClosedConnection,
-} from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+} from '@nyanpasu/rpc/types'
+import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import ActiveViewer from '../src/pages/(main)/main/connections/_modules/active-viewer'
 import ClosedViewer from '../src/pages/(main)/main/connections/_modules/closed-viewer'
 import { mockActiveConnections } from '../src/pages/(main)/main/connections/_modules/mock-connections'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
@@ -36,8 +37,8 @@ const stream = vi.hoisted(() => {
   }
 })
 
-vi.mock('@nyanpasu/interface', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nyanpasu/interface')>()),
+vi.mock('@nyanpasu/query', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@nyanpasu/query')>()),
   useClashConnectionDetails: () => {
     const data = useSyncExternalStore(stream.subscribe, stream.get)
     return { data, isLoading: data === null }

@@ -4,16 +4,16 @@ import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import { filesize } from 'filesize'
 import { ComponentProps, ComponentType, ReactNode } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Sparkline } from '@/components/ui/sparkline'
-import TextMarquee from '@/components/ui/text-marquee'
+import { Card, CardContent } from '@nyanpasu/ui/card'
+import { Sparkline } from '@nyanpasu/ui/sparkline'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import {
   MAX_TRAFFIC_HISTORY,
   useClashConnections,
   useClashMemory,
   useClashTraffic,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { WidgetComponentProps } from './consts'
 import { useWidgetConfig } from './provider'

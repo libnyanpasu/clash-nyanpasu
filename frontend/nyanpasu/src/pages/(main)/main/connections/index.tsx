@@ -1,22 +1,18 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import ViewColumnRounded from '~icons/material-symbols/view-column-rounded'
 import { useDeferredValue, useState } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import { Button } from '@/components/ui/button'
-import { ContextMenuItem } from '@/components/ui/context-menu'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { useDeleteClashConnections } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useDeleteClashConnections } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import ActiveViewer from './_modules/active-viewer'

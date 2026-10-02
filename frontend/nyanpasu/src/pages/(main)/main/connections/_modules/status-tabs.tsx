@@ -1,10 +1,10 @@
 import {
   SegmentedButton,
   SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
+} from '@nyanpasu/ui/segmented-button'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
-import { useClashConnections, useTrafficSummary } from '@nyanpasu/interface'
+import { useClashConnections, useTrafficSummary } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import {
   mockActiveConnections,

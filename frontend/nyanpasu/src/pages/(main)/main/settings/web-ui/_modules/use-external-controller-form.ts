@@ -3,10 +3,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { m } from '@/paraglide/messages'
 import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  parseControllerAddress,
-  type ControllerAddress,
-} from '@nyanpasu/interface'
+import { parseControllerAddress, type ControllerAddress } from '@nyanpasu/query'
 
 const formSchema = z.object({
   externalController: z

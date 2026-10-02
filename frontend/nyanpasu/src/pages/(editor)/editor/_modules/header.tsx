@@ -2,7 +2,7 @@ import { ComponentProps } from 'react'
 import { DefaultHeader, MacOSHeader } from '@/components/window/system-titlebar'
 import WindowControl from '@/components/window/window-control'
 import WindowTitle from '@/components/window/window-title'
-import { isMacOS } from '@/consts'
+import { isMacOS } from '@nyanpasu/platform'
 
 const DEFAULT_APP_NAME = 'Clash Nyanpasu - Editor'
 

@@ -15,6 +15,7 @@ enum Message {
     Query(CoreLogQuery, RpcReplyPort<CoreLogResult<CoreLogPage>>),
     Detail(CoreLogCursor, RpcReplyPort<CoreLogResult<CoreLogRecord>>),
     Clear(RpcReplyPort<CoreLogResult<()>>),
+    SetInstance(Option<String>, RpcReplyPort<CoreLogResult<()>>),
     Status(RpcReplyPort<CoreLogStatus>),
     #[cfg(test)]
     FlushNow(RpcReplyPort<CoreLogResult<()>>),
@@ -29,6 +30,8 @@ struct State {
     shutdown: CancellationToken,
     changed: watch::Sender<CoreLogStatus>,
     status: CoreLogStatus,
+    instance: Option<String>,
+    failed: bool,
     pending: Vec<Vec<u8>>,
     pending_bytes: usize,
     timer: Option<JoinHandle<()>>,
@@ -80,32 +83,43 @@ impl State {
             return Ok(());
         }
         let records = std::mem::take(&mut self.pending);
-        let returned = self
-            .blocking(move |store| {
-                let result = store.append(&records);
-                Ok((records, result, store.status()))
-            })
+        self.pending_bytes = 0;
+        let count = records.len() as u64;
+        let (result, status) = self
+            .blocking(move |store| Ok((store.append(&records), store.status())))
             .await?;
-        let (records, result, status) = returned;
-        match &result {
-            Ok(()) => {
-                self.pending_bytes = 0;
-                if let Ok(mut status) = status {
-                    status.version = self.status.version;
-                    status.discarded = self.status.discarded;
-                    self.status = status;
-                }
-                self.status.error = None;
+        if let Ok(mut status) = status {
+            status.version = self.status.version;
+            status.discarded = self.status.discarded;
+            self.status = status;
+        }
+        if let Err(error) = &result {
+            // Commit errors can have an uncertain outcome. Never replay this batch.
+            self.failed = true;
+            self.status.error = Some(error.to_string());
+            self.status.discarded = self.status.discarded.saturating_add(count);
+        }
+        self.publish();
+        result
+    }
+
+    async fn clear(&mut self) -> CoreLogResult<()> {
+        if let Some(timer) = self.timer.take() {
+            timer.abort();
+        }
+        self.pending.clear();
+        self.pending_bytes = 0;
+        let result = self.blocking(|store| store.clear()).await;
+        match self.blocking(|store| store.status()).await {
+            Ok(mut status) => {
+                status.version = self.status.version;
+                self.status = status;
             }
-            Err(error) => {
-                self.pending = records;
-                self.status.error = Some(error.to_string());
-                if let Ok(status) = status {
-                    self.status.first = status.first;
-                    self.status.head = status.head;
-                    self.status.bytes = status.bytes;
-                }
-            }
+            Err(error) => self.status.error = Some(error.to_string()),
+        }
+        self.failed = result.is_err();
+        if let Err(error) = &result {
+            self.status.error = Some(error.to_string());
         }
         self.publish();
         result
@@ -116,17 +130,25 @@ impl State {
         actor: &ActorRef<Message>,
         record: CoreLogRecord,
     ) -> CoreLogResult<()> {
-        if self.status.error.is_some() && !self.pending.is_empty() {
-            self.status.discarded = self.status.discarded.saturating_add(1);
+        if self.instance.as_deref() != Some(&record.source.instance_id) {
             return Err(CoreLogError::Unavailable(
-                self.status.error.clone().unwrap(),
+                "Core log source is not the active instance".into(),
+            ));
+        }
+        if self.failed {
+            self.status.discarded = self.status.discarded.saturating_add(1);
+            self.schedule(actor);
+            return Err(CoreLogError::Unavailable(
+                self.status
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "Core log storage unavailable".into()),
             ));
         }
         let bytes = serde_json::to_vec(&record)
             .map_err(|error| CoreLogError::Unavailable(error.to_string()))?;
         if bytes.len() > MAX_RECORD_BYTES || !record.metadata_fits() {
             self.status.discarded = self.status.discarded.saturating_add(1);
-            self.status.error = Some(CoreLogError::TooLarge.to_string());
             self.schedule(actor);
             return Err(CoreLogError::TooLarge);
         }
@@ -141,7 +163,7 @@ impl State {
         self.pending_bytes += bytes.len();
         self.pending.push(bytes);
         self.schedule(actor);
-        if self.pending_bytes >= BATCH_BYTES || self.status.error.is_some() {
+        if self.pending_bytes >= BATCH_BYTES {
             self.flush().await?;
         }
         Ok(())
@@ -164,6 +186,8 @@ impl Actor for CoreLogsActor {
             shutdown: args.shutdown,
             changed: args.changed,
             status: CoreLogStatus::default(),
+            instance: None,
+            failed: false,
             pending: Vec::new(),
             pending_bytes: 0,
             timer: None,
@@ -175,6 +199,7 @@ impl Actor for CoreLogsActor {
                 error: Some(error.to_string()),
                 ..Default::default()
             });
+        state.failed = state.status.error.is_some();
         state.changed.send_replace(state.status.clone());
         Ok(state)
     }
@@ -205,9 +230,6 @@ impl Actor for CoreLogsActor {
                 } else {
                     let _ = state.flush().await;
                 }
-                if !state.pending.is_empty() {
-                    state.schedule(&actor);
-                }
             }
             Message::Query(query, reply) => {
                 let result =
@@ -229,20 +251,15 @@ impl Actor for CoreLogsActor {
                 let _ = reply.send(state.status.clone());
             }
             Message::Clear(reply) => {
-                state.pending.clear();
-                state.pending_bytes = 0;
-                let result = state.blocking(|store| store.clear()).await;
-                match state.blocking(|store| store.status()).await {
-                    Ok(mut status) => {
-                        status.version = state.status.version;
-                        state.status = status;
-                    }
-                    Err(error) => state.status.error = Some(error.to_string()),
-                }
-                if let Err(error) = &result {
-                    state.status.error = Some(error.to_string());
-                }
-                state.publish();
+                let _ = reply.send(state.clear().await);
+            }
+            Message::SetInstance(instance, reply) => {
+                let result = if state.instance != instance {
+                    state.instance = instance;
+                    state.clear().await
+                } else {
+                    Ok(())
+                };
                 let _ = reply.send(result);
             }
             #[cfg(test)]
@@ -261,8 +278,8 @@ impl Actor for CoreLogsActor {
         if let Some(timer) = state.timer.take() {
             timer.abort();
         }
-        if let Err(error) = state.flush().await {
-            tracing::warn!(%error, "Core log shutdown flush failed");
+        if let Err(error) = state.clear().await {
+            tracing::warn!(%error, "Core log shutdown cleanup failed");
         }
         let store = state.store.take();
         joined(tokio::task::spawn_blocking(move || drop(store))).await;
@@ -327,6 +344,10 @@ impl CoreLogsClient {
     }
     pub async fn clear(&self) -> CoreLogResult<()> {
         self.call(Message::Clear).await?
+    }
+    pub(crate) async fn set_instance(&self, instance: Option<String>) -> CoreLogResult<()> {
+        self.call(|reply| Message::SetInstance(instance, reply))
+            .await?
     }
     pub async fn status(&self) -> CoreLogResult<CoreLogStatus> {
         self.call(Message::Status).await

@@ -5,7 +5,7 @@ import type {
   TrafficQuery,
   TrafficRange,
   TrafficRetention,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 
 export const RANGES = [
   'last_hour',

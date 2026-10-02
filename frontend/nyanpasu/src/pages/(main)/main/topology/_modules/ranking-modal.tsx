@@ -1,17 +1,9 @@
 import { useEffect, useRef } from 'react'
-import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-} from '@/components/ui/modal'
-import { ScrollArea, useScrollAreaViewport } from '@/components/ui/scroll-area'
+import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
+import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
-import {
-  useTrafficUsagePages,
-  type Dimension,
-  type TrafficQuery,
-} from '@nyanpasu/interface'
+import { useTrafficUsagePages } from '@nyanpasu/query'
+import { type Dimension, type TrafficQuery } from '@nyanpasu/rpc/types'
 import Notice from './notice'
 import RankingRow from './ranking-row'
 import type { UsageLabel } from './usage-label'

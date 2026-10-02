@@ -1,14 +1,14 @@
 import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
 import { useMemo } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
 import {
   SystemProxyButton,
   TunModeButton,
 } from '@/components/settings/system-proxy'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { useDndGridContext } from '@/components/ui/dnd-grid/context'
-import TextMarquee from '@/components/ui/text-marquee'
 import useCoreIcon from '@/hooks/use-core-icon'
 import { m } from '@/paraglide/messages'
 import {
@@ -20,7 +20,7 @@ import {
   useSetting,
   useSystemProxy,
   useSystemService,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { WidgetComponentProps } from './consts'

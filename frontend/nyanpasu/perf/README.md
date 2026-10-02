@@ -52,6 +52,6 @@ between JavaScript and style/layout.
 
 ## Adding a benchmark
 
-Name it `*.bench.test.tsx`. Mock the `@nyanpasu/interface` hooks the page reads
+Name it `*.bench.test.tsx`. Mock the `@nyanpasu/query` hooks the page reads
 with stable fixture objects, mount the page's routes with the ids and paths from
 `route-tree.gen.ts`, and measure actions with `measureFrames` from `measure.ts`.

@@ -5,10 +5,8 @@ import { getLocale } from '@/paraglide/runtime'
 import { formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
 import { searchableText } from '@/utils/searchable-text'
-import {
-  useTrafficClosedConnections,
-  type ClosedConnection,
-} from '@nyanpasu/interface'
+import { useTrafficClosedConnections } from '@nyanpasu/query'
+import { type ClosedConnection } from '@nyanpasu/rpc/types'
 import {
   ChainCell,
   RelativeTimeCell,

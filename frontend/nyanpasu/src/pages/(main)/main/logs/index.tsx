@@ -1,25 +1,25 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
 import { useCallback, useDeferredValue, useEffect, useState } from 'react'
+import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import {
+  ScrollArea,
+  useScrollArea,
+  useScrollAreaViewport,
+} from '@nyanpasu/ui/scroll-area'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import { Button } from '@/components/ui/button'
-import { ContextMenuItem } from '@/components/ui/context-menu'
-import {
-  ScrollArea,
-  useScrollArea,
-  useScrollAreaViewport,
-} from '@/components/ui/scroll-area'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import {
-  useClashLogs,
-  type CoreLogCursor,
-  type CoreLogRecord,
-  type CoreLogRow,
-} from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useClashLogs } from '@nyanpasu/query'
+import type {
+  CoreLogCursor,
+  CoreLogRecord,
+  CoreLogRow,
+} from '@nyanpasu/rpc/types'
+import { Button } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import FileLogs from './_modules/file-logs'
@@ -92,7 +92,7 @@ function Viewer({
     getScrollElement: () => viewportRef.current,
     getItemKey: (index) => {
       const id = rows[index].id
-      return `${id.generation}:${id.segment}:${id.sequence}`
+      return `${id.generation}:${id.sequence}`
     },
     estimateSize: () => 110,
     overscan: 5,

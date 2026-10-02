@@ -61,8 +61,8 @@ fn deadlock_detection() {
     });
 }
 
-/// Shows a panic dialog and saves logs, then exits: through the app when a
-/// handle exists, so the shutdown still runs, or the process otherwise.
+/// Shows a panic dialog and saves logs, then exits once the app has shut down
+/// when a handle exists, or at once otherwise.
 fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
     nyanpasu_panics::setup_panic_hook(move |report| {
         let nyanpasu_panics::PanicReport {
@@ -98,6 +98,15 @@ backtrace: {backtrace:#?}
         }
 
         match &app_handle {
+            // The event loop that would run the exit is the one panicking, so
+            // the shutdown runs here and the process ends after it.
+            Some(app_handle) if utils::main_thread::is_main_thread() => {
+                utils::exit::shutdown_on_main_thread(app_handle);
+                std::process::exit(1);
+            }
+            // The hook must return: the panicking task can finish, and release
+            // what it holds, only once it unwinds. The exit boundary then
+            // waits for every owner before the app exits.
             Some(app_handle) => app_handle.exit(1),
             None => std::process::exit(1),
         }
@@ -190,8 +199,9 @@ pub fn run() -> std::io::Result<()> {
 
     #[cfg(debug_assertions)]
     {
-        const SPECTA_BINDINGS_PATH: &str = "../../frontend/interface/src/ipc/bindings.ts";
-        const RPC_BINDINGS_PATH: &str = "../../frontend/interface/src/ipc/rpc-bindings.ts";
+        const SPECTA_BINDINGS_PATH: &str = "../../frontend/rpc/src/tauri-bindings.ts";
+        const RPC_BINDINGS_PATH: &str = "../../frontend/rpc/src/rpc-bindings.ts";
+        const QUERY_BINDINGS_PATH: &str = "../../frontend/query/src/query-bindings.ts";
 
         transport_builder
             .export(
@@ -204,24 +214,31 @@ pub fn run() -> std::io::Result<()> {
             RPC_BINDINGS_PATH,
         ) {
             Ok(_) => {
-                if let Err(e) =
-                    specta_export::append_query_bindings(RPC_BINDINGS_PATH, &query_bindings)
-                {
-                    panic!("Failed to append TanStack Query bindings: {e}");
+                if let Err(e) = specta_export::adapt_rpc_bindings(RPC_BINDINGS_PATH) {
+                    panic!("Failed to generate RPC bindings: {e}");
                 }
-                specta_export::adapt_rpc_bindings(RPC_BINDINGS_PATH)
-                    .expect("Failed to generate RPC bindings");
-                let npx_command = if cfg!(target_os = "windows") {
-                    "npx.cmd"
+                specta_export::adapt_query_bindings(QUERY_BINDINGS_PATH, &query_bindings)
+                    .expect("Failed to generate query bindings");
+                let prettier_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../node_modules/.bin")
+                    .join(if cfg!(target_os = "windows") {
+                        "prettier.cmd"
+                    } else {
+                        "prettier"
+                    });
+                let mut prettier = if cfg!(target_os = "windows") {
+                    let mut command = std::process::Command::new("cmd");
+                    command.arg("/C").arg(prettier_path);
+                    command
                 } else {
-                    "npx"
+                    std::process::Command::new(prettier_path)
                 };
-                let _ = std::process::Command::new(npx_command)
+                let _ = prettier
                     .args([
-                        "prettier",
                         "--write",
                         SPECTA_BINDINGS_PATH,
                         RPC_BINDINGS_PATH,
+                        QUERY_BINDINGS_PATH,
                     ])
                     .output();
                 log::debug!("Exported typescript bindings, path: {SPECTA_BINDINGS_PATH}");
@@ -319,15 +336,6 @@ pub fn run() -> std::io::Result<()> {
                     queue_deep_link(&handle, request);
                 }
             ));
-            let client = app.state::<crate::client::NyanpasuClient>().inner().clone();
-            let server_port = app.state::<server::ServerPort>().0;
-            std::thread::spawn(move || {
-                nyanpasu_utils::runtime::block_on(async move {
-                    server::run(server_port, client)
-                        .await
-                        .expect("failed to start server");
-                });
-            });
             Ok(())
         });
 

@@ -1,18 +1,20 @@
 import { useState } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { SwitchItem } from '@nyanpasu/ui/switch'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
-import { Button } from '@/components/ui/button'
-import { SwitchItem } from '@/components/ui/switch'
-import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useSetting, type UpdateSource } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useSetting } from '@nyanpasu/query'
+import { type UpdateSource } from '@nyanpasu/rpc/types'
 
-const SOURCES: UpdateSource[] = ['nyanpasu', 'github']
+const SOURCES: UpdateSource[] = ['nyanpasu', 'github', 'ghfast']
 
 const SOURCE_HOSTS: Record<UpdateSource, string> = {
   nyanpasu: 'nyanpasu-script.majokeiko.com',
   github: 'github.com',
+  ghfast: 'ghfast.top',
 }
 
 export default function UpdateSourceSelector() {
@@ -68,6 +70,7 @@ export default function UpdateSourceSelector() {
   const labels: Record<UpdateSource, string> = {
     nyanpasu: m.update_source_nyanpasu(),
     github: m.update_source_github(),
+    ghfast: m.update_source_ghfast(),
   }
 
   return (

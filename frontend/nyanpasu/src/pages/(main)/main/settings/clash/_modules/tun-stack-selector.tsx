@@ -1,21 +1,17 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { useCallback, useMemo } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import {
-  TunStack,
-  useClashSetting,
-  useRuntimeProfile,
-  useSetting,
-} from '@nyanpasu/interface'
+import { useClashSetting, useRuntimeProfile, useSetting } from '@nyanpasu/query'
+import { TunStack } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,

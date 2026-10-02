@@ -1,10 +1,11 @@
-import { Button, ButtonProps } from '@/components/ui/button'
-import TextMarquee from '@/components/ui/text-marquee'
-import { useLockFn } from '@/hooks/use-lock-fn'
+import { Button, ButtonProps } from '@nyanpasu/ui/button'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
+import { rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { rpc, unwrapResult } from '@nyanpasu/interface'
+import { useLockFn } from '@nyanpasu/hooks'
+import { unwrapResult } from '@nyanpasu/rpc'
 import { cn } from '@nyanpasu/utils'
 
 const PathButton = ({

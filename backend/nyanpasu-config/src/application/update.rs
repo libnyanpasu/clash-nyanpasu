@@ -6,6 +6,7 @@ use specta::Type;
 pub enum UpdateSource {
     Nyanpasu,
     Github,
+    Ghfast,
 }
 
 pub fn default_update_sources() -> Vec<UpdateSource> {

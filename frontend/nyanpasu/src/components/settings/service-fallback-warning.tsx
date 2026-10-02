@@ -1,16 +1,8 @@
 import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { useMemo } from 'react'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import {
-  useCoreStatus,
-  useSetting,
-  useSystemService,
-} from '@nyanpasu/interface'
+import { useCoreStatus, useSetting, useSystemService } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 /**

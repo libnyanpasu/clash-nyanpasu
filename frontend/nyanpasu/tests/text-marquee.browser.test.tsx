@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
-import TextMarquee from '@/components/ui/text-marquee'
+import { TextMarquee } from '@nyanpasu/ui'
 
 const LONG = 'a marquee text that is far wider than its container'
 

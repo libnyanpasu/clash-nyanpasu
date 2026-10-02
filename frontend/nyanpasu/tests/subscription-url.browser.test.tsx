@@ -6,9 +6,10 @@ import ProfileQuickImport from '@/pages/(main)/main/profiles/_modules/profile-qu
 import CreateProfileModal from '@/pages/(main)/main/profiles/$type/_modules/create-profile-modal'
 import SubscriptionUrlEditor from '@/pages/(main)/main/profiles/$type/detail/_modules/subscription-url-editor'
 import { m } from '@/paraglide/messages'
-import type { ProfileItem_Serialize } from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
+import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 const notifications = vi.hoisted(() => ({ message: vi.fn() }))
 vi.mock('@/utils/notification', () => notifications)

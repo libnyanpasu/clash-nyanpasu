@@ -1,7 +1,0 @@
-export * from './hooks'
-export * from './ipc'
-export * from './openapi'
-export * from './provider'
-export * from './service'
-export * from './template'
-export * from './utils'

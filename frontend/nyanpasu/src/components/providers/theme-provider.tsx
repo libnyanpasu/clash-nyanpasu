@@ -1,4 +1,3 @@
-import { kebabCase } from 'es-toolkit'
 import {
   createContext,
   PropsWithChildren,
@@ -10,72 +9,25 @@ import {
   useState,
 } from 'react'
 import { insertStyle } from '@/utils/styled'
+import { createWindowAdapter } from '@nyanpasu/platform'
+import { useSetting } from '@nyanpasu/query'
 import {
-  argbFromHex,
+  alpha,
+  createTheme,
+  darken,
+  DEFAULT_COLOR,
+  getThemeScheme,
   hexFromArgb,
-  Theme,
-  themeFromSourceColor,
-} from '@material/material-color-utilities'
-import { useSetting } from '@nyanpasu/interface'
-import { alpha, darken, lighten } from '@nyanpasu/utils'
-import { isTauri } from '@tauri-apps/api/core'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-
-const appWindow = isTauri() ? getCurrentWebviewWindow() : null
-
-export const DEFAULT_COLOR = '#1867C0'
-
-export enum ThemeMode {
-  LIGHT = 'light',
-  DARK = 'dark',
-  SYSTEM = 'system',
-}
-
-type ResolvedThemeMode = ThemeMode.LIGHT | ThemeMode.DARK
+  lighten,
+  ThemeMode,
+  type ResolvedThemeMode,
+  type Theme,
+} from '@nyanpasu/theme'
 
 const CUSTOM_THEME_KEY = 'custom-theme' as const
 
 const THEME_PALETTE_KEY = 'theme-palette-v1' as const
 const THEME_CSS_VARS_KEY = 'theme-css-vars-v1' as const
-
-const generateThemeCssVars = ({ schemes }: Theme) => {
-  let lightCssVars = ':root{'
-  let darkCssVars = ':root.dark{'
-
-  Object.entries(schemes).forEach(([mode, scheme]) => {
-    let inputScheme
-
-    // Safely convert scheme to JSON if possible, otherwise use as-is
-    if (typeof scheme.toJSON === 'function') {
-      inputScheme = scheme.toJSON()
-    } else {
-      inputScheme = scheme
-    }
-
-    Object.entries(inputScheme).forEach(([key, value]) => {
-      if (mode === 'light') {
-        lightCssVars += `--color-md-${kebabCase(key)}: ${hexFromArgb(value)};`
-      } else {
-        darkCssVars += `--color-md-${kebabCase(key)}: ${hexFromArgb(value)};`
-      }
-    })
-  })
-
-  lightCssVars += '}'
-  darkCssVars += '}'
-
-  return lightCssVars + darkCssVars
-}
-
-// Context readers get the plain JSON shape the cache has always held.
-const createTheme = (color: string) => {
-  const theme = themeFromSourceColor(argbFromHex(color || DEFAULT_COLOR))
-
-  return {
-    palette: JSON.parse(JSON.stringify(theme)) as Theme,
-    cssVars: generateThemeCssVars(theme),
-  }
-}
 
 const readCachedTheme = () => {
   try {
@@ -115,12 +67,6 @@ const getSystemThemeMode = () => {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
     ? ThemeMode.DARK
     : ThemeMode.LIGHT
-}
-
-const getThemeScheme = (theme: Theme, mode: ResolvedThemeMode) => {
-  const scheme = theme.schemes[mode]
-
-  return typeof scheme.toJSON === 'function' ? scheme.toJSON() : scheme
 }
 
 const applyRootStyleVar = (mode: ResolvedThemeMode, themePalette: Theme) => {
@@ -175,6 +121,7 @@ export function useExperimentalThemeContext() {
 }
 
 export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
+  const [appWindow] = useState(createWindowAdapter)
   const themeMode = useSetting('theme_mode')
 
   const themeColor = useSetting('theme_color')
@@ -253,7 +200,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
     }
 
     initializeTheme()
-  }, [applyThemeMode, themeMode.value])
+  }, [appWindow, applyThemeMode, themeMode.value])
 
   // listen to theme changed event and change html theme mode
   useEffect(() => {
@@ -266,10 +213,10 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
       media.addEventListener('change', update)
       return () => media.removeEventListener('change', update)
     }
-    const unlisten = appWindow.onThemeChanged((e) => {
+    const unlisten = appWindow.onThemeChanged((theme) => {
       if (themeMode.value === ThemeMode.SYSTEM) {
         applyThemeMode(
-          e.payload === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
+          theme === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
         )
       }
     })
@@ -277,7 +224,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
     return () => {
       unlisten.then((fn) => fn())
     }
-  }, [applyThemeMode, themeMode.value])
+  }, [appWindow, applyThemeMode, themeMode.value])
 
   const setThemeMode = useCallback(
     async (mode: ThemeMode) => {

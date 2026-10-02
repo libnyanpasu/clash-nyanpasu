@@ -1,9 +1,9 @@
-import TextMarquee from '@/components/ui/text-marquee'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import type {
   Proxies_Serialize,
   ProxyGroupItem_Serialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import DelayChip from './delay-chip'
 import { getGroupSelectedDelay } from './group-delay'
 

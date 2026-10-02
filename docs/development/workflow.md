@@ -75,10 +75,9 @@ Only `sidecar/` and `resources/` are symlink candidates.
 
 ### Gitignored build prerequisites a fresh worktree lacks
 
-- **`frontend/interface/dist`** — `@nyanpasu/interface` (`main` → `./dist/index.js`) is consumed by `@nyanpasu/nyanpasu`. Produce with `pnpm -F interface build`.
 - **`backend/tauri/tmp/dist`** — `backend/tauri/build.rs` calls `tauri_build::build()`, which validates `frontendDist: ./tmp/dist` **at compile time**. When missing, every `cargo build` / `clippy` / `cargo test --all-features` / rust-analyzer run on the tauri crate fails. Resolve one of:
   - Rust-only worktree → drop a placeholder (cheapest, no vite build).
-  - Runnable UI → `pnpm web:build` (build `interface` first; it clears and refills `tmp/dist`).
+  - Runnable UI → `pnpm web:build` (workspace packages resolve from source; this clears and refills `tmp/dist`).
 
 `backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `deno task generate:git-info` only if accurate commit metadata must be baked in.
 
@@ -96,12 +95,11 @@ New-Item -ItemType SymbolicLink backend/tauri/sidecar   -Target "$main/backend/t
 New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/tauri/resources"
 
 pnpm install
-pnpm -F interface build                               # -> frontend/interface/dist (gitignored)
 
 # Satisfy tauri-build's frontendDist check — pick one:
 New-Item -ItemType Directory -Force backend/tauri/tmp/dist | Out-Null            # A) Rust-only placeholder
 Set-Content backend/tauri/tmp/dist/index.html '<!doctype html><title>dev</title>'
-# pnpm web:build                                      # B) real UI (replaces tmp/dist)
+# pnpm web:build                                      # B) real UI (builds app and replaces tmp/dist)
 ```
 
 ### Remove a worktree

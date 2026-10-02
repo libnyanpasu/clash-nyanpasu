@@ -1,16 +1,13 @@
 import { motion } from 'motion/react'
 import { ComponentProps } from 'react'
+import { Button } from '@nyanpasu/ui/button'
+import { AppContentScrollArea } from '@nyanpasu/ui/scroll-area'
+import { Separator } from '@nyanpasu/ui/separator'
+import { Sidebar, SidebarContent } from '@nyanpasu/ui/sidebar'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
-import { Button } from '@/components/ui/button'
-import { AppContentScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
-import { Sidebar, SidebarContent } from '@/components/ui/sidebar'
-import TextMarquee from '@/components/ui/text-marquee'
-import useIsMobile from '@/hooks/use-is-moblie'
-import {
-  useClashProxiesProvider,
-  useClashRulesProvider,
-} from '@nyanpasu/interface'
+import { useIsMobile } from '@nyanpasu/hooks'
+import { useClashProxiesProvider, useClashRulesProvider } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, useLocation } from '@tanstack/react-router'
 

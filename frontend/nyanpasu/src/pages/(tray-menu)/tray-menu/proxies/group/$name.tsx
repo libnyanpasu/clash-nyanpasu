@@ -1,17 +1,17 @@
 import BoltRounded from '~icons/material-symbols/bolt-rounded'
 import { useMemo } from 'react'
+import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
+import { useBlockTask } from '@/components/providers/block-task-provider'
+import DelayChip from '@/components/proxies/delay-chip'
+import { m } from '@/paraglide/messages'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
   useClashProxies,
   useProxyMode,
-} from '@nyanpasu/interface/ipc'
-import { useBlockTask } from '@/components/providers/block-task-provider'
-import DelayChip from '@/components/proxies/delay-chip'
-import { useScrollAreaViewport } from '@/components/ui/scroll-area'
-import TextMarquee from '@/components/ui/text-marquee'
-import { useLockFn } from '@/hooks/use-lock-fn'
-import { m } from '@/paraglide/messages'
+} from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'

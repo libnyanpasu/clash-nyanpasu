@@ -1,12 +1,8 @@
 import { useMemo } from 'react'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { profileTypeOf } from '@/pages/(main)/main/profiles/$type/_modules/utils'
 import type { LabelPart, ProfileLookup } from '@/utils/profile-label'
-import { useProfile } from '@nyanpasu/interface'
+import { useProfile } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { useNavigate } from '@tanstack/react-router'
 

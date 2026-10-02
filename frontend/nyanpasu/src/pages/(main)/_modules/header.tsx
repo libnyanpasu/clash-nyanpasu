@@ -5,7 +5,7 @@ import {
   MacOSHeaderLeft,
 } from '@/components/window/system-titlebar'
 import WindowTitle from '@/components/window/window-title'
-import { isMacOS } from '@/consts'
+import { isMacOS } from '@nyanpasu/platform'
 import HeaderMenu from './header-menu'
 
 const APP_NAME = 'Clash Nyanpasu'

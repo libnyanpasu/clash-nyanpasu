@@ -2,7 +2,7 @@ import type { Config } from 'tailwindcss'
 import createPlugin from 'tailwindcss/plugin'
 
 module.exports = {
-  content: ['./src/**/*.{tsx,ts}'],
+  content: ['./src/**/*.{tsx,ts}', '../ui/src/**/*.{tsx,ts}'],
   darkMode: 'selector',
   theme: {
     screens: {

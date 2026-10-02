@@ -1,13 +1,8 @@
 import DragIndicatorRounded from '~icons/material-symbols/drag-indicator-rounded'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-} from '@/components/ui/modal'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Switch } from '@/components/ui/switch'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'

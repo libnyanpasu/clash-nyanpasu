@@ -1,12 +1,12 @@
 import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatedItem } from '@nyanpasu/ui/animated-item'
+import { Button } from '@nyanpasu/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { CircularProgress } from '@nyanpasu/ui/progress'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { useBlockTask } from '@/components/providers/block-task-provider'
-import { AnimatedItem } from '@/components/ui/animated-item'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { CircularProgress } from '@/components/ui/progress'
-import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -17,8 +17,8 @@ import {
   scopedTransformsOf,
   useProfile,
   useProfileMutations,
-  type ProfileDefinition_Deserialize,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
+import { type ProfileDefinition_Deserialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
   isChainProfile,

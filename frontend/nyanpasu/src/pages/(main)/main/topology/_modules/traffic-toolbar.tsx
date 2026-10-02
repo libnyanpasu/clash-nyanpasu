@@ -1,29 +1,25 @@
 import PauseRounded from '~icons/material-symbols/pause-rounded'
 import PlayArrowRounded from '~icons/material-symbols/play-arrow-rounded'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import {
   SegmentedButton,
   SegmentedButtonItem,
-} from '@/components/ui/segmented-button'
+} from '@nyanpasu/ui/segmented-button'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+} from '@nyanpasu/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import type {
   Dimension,
   TrafficRange,
   TrafficRetention,
   TrafficScope,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import FilterChip from './filter-chip'
 import {

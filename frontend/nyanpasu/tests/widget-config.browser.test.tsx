@@ -1,8 +1,8 @@
 import { createRoot } from 'react-dom/client'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
-import { DndGridProvider } from '@/components/ui/dnd-grid/context'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import {
   DashboardProvider,
   useDashboardContext,
@@ -14,7 +14,9 @@ import {
 } from '@/pages/(main)/main/dashboard/_modules/widget-config'
 import WidgetItem from '@/pages/(main)/main/dashboard/_modules/widget-item'
 import { m } from '@/paraglide/messages'
+import { rpc } from '@/services/rpc'
 import { DndContext } from '@dnd-kit/core'
+import { RpcProvider } from '@nyanpasu/query/provider'
 
 const backend = vi.hoisted(() => ({
   value: null as string | null,
@@ -22,32 +24,23 @@ const backend = vi.hoisted(() => ({
   writes: [] as string[],
   wait: null as Promise<void> | null,
 }))
-vi.mock('@interface/ipc/rpc', async (importOriginal) => {
-  const { rpc } = await importOriginal<typeof import('@interface/ipc/rpc')>()
+vi.mock('@/services/rpc', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/services/rpc')>()
   return {
+    ...original,
     rpc: {
-      ...rpc,
-      queries: {
-        ...rpc.queries,
-        getStorageItem: () => ({
-          queryFn: async () => ({ status: 'ok', data: backend.value }),
-        }),
-      },
-      mutations: {
-        ...rpc.mutations,
-        setStorageItem: {
-          mutationFn: async ([, value]: [string, string]) => {
-            backend.writes.push(value)
-            await backend.wait
-            if (backend.fail) return { status: 'error', error: 'disk full' }
-            backend.value = value
-            return { status: 'ok', data: null }
-          },
-        },
+      ...original.rpc,
+      getStorageItem: async () => ({ status: 'ok', data: backend.value }),
+      setStorageItem: async (_key: string, value: string) => {
+        backend.writes.push(value)
+        await backend.wait
+        if (backend.fail) return { status: 'error', error: 'disk full' }
+        backend.value = value
+        return { status: 'ok', data: null }
       },
       listenResync: () => () => {},
       events: {
-        ...rpc.events,
+        ...original.rpc.events,
         storageValueChangedEvent: { listen: async () => () => {} },
       },
     },
@@ -136,13 +129,15 @@ function mount(
     )
   }
   root.render(
-    <DashboardProvider>
-      <TooltipProvider>
-        <DndContext onDragStart={() => controls.dragStarts++}>
-          <Scene />
-        </DndContext>
-      </TooltipProvider>
-    </DashboardProvider>,
+    <RpcProvider rpc={rpc}>
+      <DashboardProvider>
+        <TooltipProvider>
+          <DndContext onDragStart={() => controls.dragStarts++}>
+            <Scene />
+          </DndContext>
+        </TooltipProvider>
+      </DashboardProvider>
+    </RpcProvider>,
   )
   onTestFinished(() => {
     root.unmount()

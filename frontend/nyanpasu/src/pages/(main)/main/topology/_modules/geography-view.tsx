@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { useMedia } from 'react-use'
 import worldMap from '@/assets/maps/world-map.json'
 import { m } from '@/paraglide/messages'
-import type { Metric, Topology, Usage } from '@nyanpasu/interface'
+import type { Metric, Topology, Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { largest, regionName, usageAmount, usageValue } from './usage-label'
 

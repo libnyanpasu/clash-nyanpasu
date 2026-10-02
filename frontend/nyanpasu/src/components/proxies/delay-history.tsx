@@ -1,9 +1,9 @@
 import { ReactElement } from 'react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
-import { ProxyItemHistory } from '@nyanpasu/interface'
+import { ProxyItemHistory } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import DelayChip from './delay-chip'
 
 const HISTORY_LIMIT = 10

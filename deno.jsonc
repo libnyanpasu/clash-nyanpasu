@@ -132,6 +132,10 @@
     "test:http-ui": {
       "description": "Run the browser HTTP UI integration test",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/testing/test-http-ui.ts"
+    },
+    "lint:frontend-boundaries": {
+      "description": "Check frontend workspace package exports and dependency boundaries",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/frontend/main.ts"
     }
   }
 }

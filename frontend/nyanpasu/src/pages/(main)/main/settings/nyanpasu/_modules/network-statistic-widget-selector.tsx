@@ -1,19 +1,19 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { Button } from '@/components/ui/button'
+import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { useLockFn } from '@/hooks/use-lock-fn'
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
+import { useLockFn } from '@nyanpasu/hooks'
 import {
   fromNetworkStatisticWidgetOption,
   toNetworkStatisticWidgetOption,
   useSetting,
   type NetworkStatisticWidgetOption,
-} from '@nyanpasu/interface'
+} from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,

@@ -1,4 +1,5 @@
-import type { ClashLog, LogRow } from '@nyanpasu/interface'
+import type { ClashLog } from '@nyanpasu/query'
+import type { LogRow } from '@nyanpasu/rpc/types'
 
 const LEVELS = ['info', 'warning', 'error', 'debug']
 
@@ -13,7 +14,7 @@ export function createLogsFixture(count: number): ClashLog[] {
         : `[TCP] 127.0.0.1:${50000 + i} --> ${target} match RuleSet(proxy) using Group ${i % 30}[🇯🇵 Node ${i % 1500}]`
 
     return {
-      id: { generation: 'fixture', segment: 1, sequence: i + 1 },
+      id: { generation: 'fixture', sequence: i + 1 },
       truncated: false,
       record: {
         type: LEVELS[i % LEVELS.length],

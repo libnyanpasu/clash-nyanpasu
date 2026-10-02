@@ -1,13 +1,13 @@
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ErrorMessage } from '@/components/error-message'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { ipcErrorMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
 import { profileDialogLabel } from '@/utils/profile-label'
-import type { IpcError, ProfileItem_Serialize } from '@nyanpasu/interface'
+import type { IpcError, ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 
 const items: ProfileItem_Serialize[] = [
@@ -50,8 +50,8 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-router')>()),
   useNavigate: () => vi.fn(),
 }))
-vi.mock('@nyanpasu/interface', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nyanpasu/interface')>()),
+vi.mock('@nyanpasu/query', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@nyanpasu/query')>()),
   useProfile: () => ({ query: { data: { items } } }),
 }))
 

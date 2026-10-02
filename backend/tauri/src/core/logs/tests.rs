@@ -9,7 +9,7 @@ use std::{
 use tempfile::TempDir;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{redb::Limits, *};
+use super::*;
 
 fn record(number: usize, size: usize) -> CoreLogRecord {
     CoreLogRecord {
@@ -70,13 +70,15 @@ impl CoreLogsClient {
             inner: RedbCoreLogStore::open(directory.path().into()).unwrap(),
             _directory: directory,
         };
-        Self::spawn(
+        let client = Self::spawn(
             Box::new(store),
             CancellationToken::new(),
             &TaskTracker::new(),
         )
         .await
-        .unwrap()
+        .unwrap();
+        client.set_instance(Some("instance".into())).await.unwrap();
+        client
     }
 }
 
@@ -98,6 +100,7 @@ async fn actor_memory_under_sustained_capture() {
     )
     .await
     .unwrap();
+    client.set_instance(Some("instance".into())).await.unwrap();
     let mut captured = 0;
     for checkpoint in [1000, 10000, 100000] {
         while captured < checkpoint {
@@ -110,7 +113,7 @@ async fn actor_memory_under_sustained_capture() {
             .await
             .unwrap();
         assert!(page.rows.len() <= MAX_PAGE_ROWS);
-        assert!(page.status.bytes <= page.status.budget);
+        assert_eq!(page.status.first.as_ref().unwrap().sequence, 1);
         drop(page);
         let status = client.status().await.unwrap();
         let process = std::fs::read_to_string("/proc/self/status").unwrap();
@@ -130,7 +133,7 @@ async fn actor_memory_under_sustained_capture() {
             serde_json::json!({
                 "captured": captured, "payload_bytes": size,
                 "rss_kib": memory("VmRSS:"), "peak_rss_kib": memory("VmHWM:"),
-                "disk_bytes": status.bytes, "budget_bytes": status.budget,
+                "disk_bytes": status.bytes,
                 "first": status.first, "head": status.head,
             })
         );
@@ -141,30 +144,22 @@ async fn actor_memory_under_sustained_capture() {
 }
 
 #[test]
-fn rolling_is_a_contiguous_suffix_under_the_physical_budget_and_survives_restart() {
+fn one_database_keeps_all_records_until_clear_and_startup_discards_old_history() {
     let directory = TempDir::new().unwrap();
-    let limits = Limits {
-        total: 12 * 1024 * 1024,
-        segment: 4 * 1024 * 1024,
-    };
-    let mut store = RedbCoreLogStore::open_with_limits(directory.path().into(), limits).unwrap();
-    store.append(&[encoded(0, 1024)]).unwrap();
-    let expired = store.status().unwrap().head.unwrap();
-    for first in (1..20001).step_by(40) {
-        let batch: Vec<_> = (first..first + 40).map(|n| encoded(n, 1024)).collect();
-        store.append(&batch).unwrap();
-        assert!(store.status().unwrap().bytes <= limits.total);
-    }
-    assert_eq!(
+    let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    for first in (0..10000).step_by(40) {
         store
-            .query(query(CoreLogDirection::After, Some(expired)))
-            .unwrap_err(),
-        CoreLogError::CursorExpired
-    );
-    let before = store.status().unwrap();
-    drop(store);
-    let mut store = RedbCoreLogStore::open_with_limits(directory.path().into(), limits).unwrap();
-    assert_eq!(store.status().unwrap().head, before.head);
+            .append(
+                &(first..first + 40)
+                    .map(|n| encoded(n, 1024))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+    }
+    let status = store.status().unwrap();
+    assert_eq!(status.first.as_ref().unwrap().sequence, 1);
+    assert_eq!(status.head.as_ref().unwrap().sequence, 10000);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
     let mut request = query(CoreLogDirection::Latest, None);
     let mut ids = Vec::new();
     loop {
@@ -176,14 +171,24 @@ fn rolling_is_a_contiguous_suffix_under_the_physical_budget_and_survives_restart
         request = query(CoreLogDirection::Before, page.cursor);
     }
     ids.sort_unstable();
-    assert_eq!(ids.last(), Some(&20000));
-    assert!(ids[0] > 0);
-    assert!(ids.windows(2).all(|w| w[1] == w[0] + 1));
+    assert_eq!(ids, (0..10000).collect::<Vec<_>>());
     let mut warnings = query(CoreLogDirection::Latest, None);
     warnings.level = Some("WARN".into());
     let page = store.query(warnings).unwrap();
     assert!(!page.rows.is_empty());
     assert!(page.rows.iter().all(|row| row.record.received_at % 2 == 0));
+    drop(store);
+    let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    assert!(!directory.path().join("current.redb").exists());
+    assert!(store.status().unwrap().head.is_none());
+    assert!(matches!(
+        store.detail(status.head.unwrap()),
+        Err(CoreLogError::RecordGone)
+    ));
+    store.append(&[encoded(10000, 32)]).unwrap();
+    assert!(directory.path().join("current.redb").exists());
+    store.clear().unwrap();
+    assert!(!directory.path().join("current.redb").exists());
 }
 
 #[tokio::test]
@@ -198,6 +203,7 @@ async fn oversized_metadata_is_discarded_without_poisoning_the_pending_batch() {
     )
     .await
     .unwrap();
+    client.set_instance(Some("instance".into())).await.unwrap();
     let mut malformed = record(1, 128);
     malformed.log_type = "x".repeat(129);
     assert_eq!(client.append(malformed).await, Err(CoreLogError::TooLarge));
@@ -311,18 +317,22 @@ fn directory_owner_and_invalid_requests_are_rejected() {
 }
 
 #[test]
-fn corrupt_store_is_reported_and_preserved() {
+fn startup_removes_corrupt_previous_session_and_legacy_shards() {
     let directory = TempDir::new().unwrap();
+    let shard = directory.path().join(format!(
+        "{}.00000000000000000001.redb",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::write(&shard, b"old shard").unwrap();
+    std::fs::write(directory.path().join("current.redb"), b"corrupt database").unwrap();
+    std::fs::write(directory.path().join("control.json"), b"old control").unwrap();
+    std::fs::write(directory.path().join("unrelated.txt"), b"keep").unwrap();
     let store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    assert!(!shard.exists());
+    assert!(!directory.path().join("current.redb").exists());
+    assert!(!directory.path().join("control.json").exists());
+    assert!(directory.path().join("unrelated.txt").exists());
     drop(store);
-    let path = std::fs::read_dir(directory.path())
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .find(|p| p.extension().is_some_and(|s| s == "redb"))
-        .unwrap();
-    std::fs::write(&path, b"corrupt database").unwrap();
-    assert!(RedbCoreLogStore::open(directory.path().into()).is_err());
-    assert_eq!(std::fs::read(path).unwrap(), b"corrupt database");
 }
 
 struct FailingStore {
@@ -353,7 +363,7 @@ impl CoreLogStore for FailingStore {
 }
 
 #[tokio::test]
-async fn failed_batch_stays_bounded_new_samples_are_counted_and_retry_is_not_duplicated() {
+async fn write_failure_stops_capture_without_replay_until_explicit_clear() {
     let directory = TempDir::new().unwrap();
     let fail = Arc::new(AtomicBool::new(true));
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -370,23 +380,36 @@ async fn failed_batch_stays_bounded_new_samples_are_counted_and_retry_is_not_dup
     let logs = CoreLogsClient::spawn(Box::new(store), token.clone(), &tasks)
         .await
         .unwrap();
+    logs.set_instance(Some("instance".into())).await.unwrap();
     logs.append(record(1, 32)).await.unwrap();
     assert!(logs.flush().await.is_err());
     for number in 2..102 {
         assert!(logs.append(record(number, 32)).await.is_err());
     }
-    assert!(attempts.load(Ordering::SeqCst) >= 1);
-    assert_eq!(logs.status().await.unwrap().discarded, 100);
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(logs.status().await.unwrap().discarded, 101);
     fail.store(false, Ordering::SeqCst);
     logs.flush().await.unwrap();
     let page = logs
         .query(query(CoreLogDirection::Latest, None))
         .await
         .unwrap();
-    assert_eq!(page.rows.len(), 1);
-    assert_eq!(page.rows[0].record.received_at, 1);
-    assert!(page.status.error.is_none());
-    logs.append(record(102, 32)).await.unwrap();
+    assert!(page.rows.is_empty());
+    assert!(page.status.error.is_some());
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    assert!(logs.append(record(102, 32)).await.is_err());
+    logs.clear().await.unwrap();
+    logs.append(record(103, 32)).await.unwrap();
+    logs.flush().await.unwrap();
+    assert_eq!(
+        logs.query(query(CoreLogDirection::Latest, None))
+            .await
+            .unwrap()
+            .rows[0]
+            .record
+            .received_at,
+        103
+    );
     token.cancel();
     tasks.close();
     tasks.wait().await;
@@ -394,7 +417,7 @@ async fn failed_batch_stays_bounded_new_samples_are_counted_and_retry_is_not_dup
 }
 
 #[tokio::test]
-#[ignore = "subprocess fixture for abrupt exit recovery"]
+#[ignore = "subprocess fixture for previous session cleanup"]
 async fn crash_writer_child() {
     let Ok(directory) = std::env::var("NYANPASU_CORE_LOG_CRASH_DIRECTORY") else {
         return;
@@ -406,6 +429,7 @@ async fn crash_writer_child() {
     )
     .await
     .unwrap();
+    logs.set_instance(Some("instance".into())).await.unwrap();
     for number in 0..100 {
         logs.append(record(number, 32)).await.unwrap();
     }
@@ -415,7 +439,7 @@ async fn crash_writer_child() {
 }
 
 #[test]
-fn abrupt_exit_keeps_committed_records_and_not_the_pending_batch() {
+fn startup_discards_both_committed_and_pending_records_after_abrupt_exit() {
     let directory = TempDir::new().unwrap();
     let status = Command::new(std::env::current_exe().unwrap())
         .args([
@@ -430,6 +454,72 @@ fn abrupt_exit_keeps_committed_records_and_not_the_pending_batch() {
     assert_eq!(status.code(), Some(91));
     let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
     let page = store.query(query(CoreLogDirection::Latest, None)).unwrap();
-    assert_eq!(page.rows.len(), 100);
-    assert_eq!(page.rows.last().unwrap().record.received_at, 99);
+    assert!(page.rows.is_empty());
+    assert!(!directory.path().join("current.redb").exists());
+}
+
+#[tokio::test]
+async fn session_changes_delete_committed_and_pending_logs_but_reconnect_preserves_them() {
+    let directory = TempDir::new().unwrap();
+    let token = CancellationToken::new();
+    let tasks = TaskTracker::new();
+    let logs = CoreLogsClient::spawn(
+        Box::new(RedbCoreLogStore::open(directory.path().into()).unwrap()),
+        token.clone(),
+        &tasks,
+    )
+    .await
+    .unwrap();
+    logs.set_instance(Some("instance".into())).await.unwrap();
+    logs.append(record(1, 32)).await.unwrap();
+    logs.flush().await.unwrap();
+    let before = logs.status().await.unwrap();
+    logs.append(record(2, 32)).await.unwrap();
+    logs.set_instance(Some("instance".into())).await.unwrap();
+    assert_eq!(logs.status().await.unwrap().generation, before.generation);
+    logs.flush().await.unwrap();
+    assert_eq!(
+        logs.query(query(CoreLogDirection::Latest, None))
+            .await
+            .unwrap()
+            .rows
+            .len(),
+        2
+    );
+    logs.append(record(3, 32)).await.unwrap();
+    logs.set_instance(None).await.unwrap();
+    assert!(!directory.path().join("current.redb").exists());
+    assert!(
+        logs.query(query(CoreLogDirection::Latest, None))
+            .await
+            .unwrap()
+            .rows
+            .is_empty()
+    );
+    assert_eq!(
+        logs.query(query(CoreLogDirection::After, before.head.clone()))
+            .await
+            .unwrap_err(),
+        CoreLogError::CursorExpired
+    );
+    assert!(logs.append(record(4, 32)).await.is_err());
+    logs.set_instance(Some("replacement".into())).await.unwrap();
+    assert!(logs.append(record(5, 32)).await.is_err());
+    let mut replacement = record(6, 32);
+    replacement.source.instance_id = "replacement".into();
+    logs.append(replacement).await.unwrap();
+    logs.flush().await.unwrap();
+    assert_eq!(
+        logs.query(query(CoreLogDirection::Latest, None))
+            .await
+            .unwrap()
+            .rows[0]
+            .record
+            .received_at,
+        6
+    );
+    token.cancel();
+    tasks.close();
+    tasks.wait().await;
+    assert!(!directory.path().join("current.redb").exists());
 }

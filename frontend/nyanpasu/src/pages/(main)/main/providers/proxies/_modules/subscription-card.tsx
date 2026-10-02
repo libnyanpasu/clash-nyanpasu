@@ -1,8 +1,8 @@
 import { filesize } from 'filesize'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { LinearProgress } from '@/components/ui/progress'
+import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { LinearProgress } from '@nyanpasu/ui/progress'
 import { m } from '@/paraglide/messages'
-import { ClashProxiesProviderQueryItem } from '@nyanpasu/interface'
+import { ClashProxiesProviderQueryItem } from '@nyanpasu/query'
 import { useProxiesSubscription } from '../../_modules/use-proxies-subscription'
 
 export const SubscriptionCard = ({

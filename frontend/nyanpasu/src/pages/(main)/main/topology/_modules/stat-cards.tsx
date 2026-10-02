@@ -9,9 +9,9 @@ import { Card } from '@nyanpasu/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
+import { dimensionName } from '@/utils/traffic-usage'
 import type { Dimension, TrafficReport } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { dimensionName } from './usage-label'
 
 function StatCard({
   icon: Icon,

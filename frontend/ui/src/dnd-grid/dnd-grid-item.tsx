@@ -209,7 +209,7 @@ function DndGridItemDraggable<T extends string>({
         x: springX,
         y: springY,
       }}
-      {...attributes}
+      {...(!disabled ? attributes : {})}
       {...listeners}
       onPointerDown={(event) => {
         // Portaled controls bubble through React but are outside the drag surface.

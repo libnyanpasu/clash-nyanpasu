@@ -1,6 +1,6 @@
 import { unwrapResult } from '@nyanpasu/rpc'
 import type { ReportRequest } from '@nyanpasu/rpc/types'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 
 const sameLayers = (a: ReportRequest, b: ReportRequest) => {
@@ -39,5 +39,29 @@ export function useTrafficReport(
     refetchOnReconnect: !paused,
     // Unavailable recording fails every time; the next poll retries anyway.
     retry: false,
+  })
+}
+
+/**
+ * Observe a set of already-canonicalized reports. Callers should deduplicate
+ * requests before passing them here so each report has one polling observer.
+ */
+export function useTrafficReports(
+  requests: ReportRequest[],
+  options?: { refetchInterval?: number | false },
+) {
+  const api = useQueryApi()
+  const refetchInterval = options?.refetchInterval ?? 2000
+  const paused = refetchInterval === false
+
+  return useQueries({
+    queries: requests.map((request) => ({
+      queryKey: ['traffic-report', request] as const,
+      queryFn: async () => unwrapResult(await api.queryTrafficReport(request)),
+      refetchInterval,
+      refetchOnWindowFocus: !paused,
+      refetchOnReconnect: !paused,
+      retry: false,
+    })),
   })
 }

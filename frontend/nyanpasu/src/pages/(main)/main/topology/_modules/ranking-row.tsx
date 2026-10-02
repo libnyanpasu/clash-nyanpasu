@@ -1,9 +1,9 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
+import type { UsageLabel } from '@/utils/traffic-usage'
 import type { Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import type { UsageLabel } from './usage-label'
 
 const traffic = (bytes: number) => parseTraffic(bytes).join(' ')
 

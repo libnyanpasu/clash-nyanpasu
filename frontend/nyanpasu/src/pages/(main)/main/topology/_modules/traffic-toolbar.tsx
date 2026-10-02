@@ -14,6 +14,8 @@ import {
 } from '@nyanpasu/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
+import { beyondRetention } from '@/utils/traffic-retention'
+import { dimensionName, type UsageLabel } from '@/utils/traffic-usage'
 import type {
   Dimension,
   TrafficRange,
@@ -22,13 +24,7 @@ import type {
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import FilterChip from './filter-chip'
-import {
-  beyondRetention,
-  RANGES,
-  type SearchFilter,
-  type TrafficSearch,
-} from './search'
-import { dimensionName, type UsageLabel } from './usage-label'
+import { RANGES, type SearchFilter, type TrafficSearch } from './search'
 
 const rangeName = (range: TrafficRange) =>
   ({

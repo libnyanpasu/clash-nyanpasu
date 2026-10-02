@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
+import { beyondRetention } from '@/utils/traffic-retention'
 import {
-  beyondRetention,
   pollInterval,
   setFilter,
   toggleFilter,

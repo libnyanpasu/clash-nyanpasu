@@ -20,6 +20,13 @@ import {
   WidgetConfig,
   WidgetId,
 } from './widget-config'
+import {
+  FavoriteProfilesField,
+  ProviderReferencesField,
+  ReportProfileField,
+  SubscriptionTargetField,
+  WidgetOptionSelect,
+} from './widget-reference-fields'
 
 function Choice<T extends string>({
   label,
@@ -104,6 +111,277 @@ function ConfigFields({
   onChange: (config: WidgetConfig) => void
 }) {
   switch (config.type) {
+    case WidgetId.SubscriptionQuota:
+    case WidgetId.SubscriptionSchedule:
+      return (
+        <>
+          <SubscriptionTargetField
+            target={config.target}
+            disabled={disabled}
+            onChange={(target) => onChange({ ...config, target })}
+          />
+          {config.type === WidgetId.SubscriptionSchedule ? (
+            <Toggle
+              label={m.dashboard_widget_config_recent_runs()}
+              checked={config.showRecentRuns}
+              disabled={disabled}
+              onChange={(showRecentRuns) =>
+                onChange({ ...config, showRecentRuns })
+              }
+            />
+          ) : (
+            <>
+              <Toggle
+                label={m.dashboard_widget_config_expiry()}
+                checked={config.showExpiry}
+                disabled={disabled}
+                onChange={(showExpiry) => onChange({ ...config, showExpiry })}
+              />
+              <Toggle
+                label={m.dashboard_widget_config_progress()}
+                checked={config.showProgress}
+                disabled={disabled}
+                onChange={(showProgress) =>
+                  onChange({ ...config, showProgress })
+                }
+              />
+              <Choice
+                label={m.dashboard_widget_config_expiry_threshold()}
+                value={String(config.expiryWarningDays)}
+                options={[7, 14, 30].map((value) => ({
+                  value: String(value),
+                  label: m.dashboard_widget_config_days({ days: value }),
+                }))}
+                disabled={disabled}
+                onChange={(value) =>
+                  onChange({
+                    ...config,
+                    expiryWarningDays: Number(value) as 7 | 14 | 30,
+                  })
+                }
+              />
+              <Choice
+                label={m.dashboard_widget_config_quota_threshold()}
+                value={String(config.quotaWarningPercent)}
+                options={[10, 20, 30].map((value) => ({
+                  value: String(value),
+                  label: `${value}%`,
+                }))}
+                disabled={disabled}
+                onChange={(value) =>
+                  onChange({
+                    ...config,
+                    quotaWarningPercent: Number(value) as 10 | 20 | 30,
+                  })
+                }
+              />
+            </>
+          )}
+        </>
+      )
+    case WidgetId.ProfileShortcuts:
+      return (
+        <FavoriteProfilesField
+          profileUids={config.profileUids}
+          disabled={disabled}
+          onChange={(profileUids) => onChange({ ...config, profileUids })}
+        />
+      )
+    case WidgetId.ProxyMode:
+      return (
+        <Toggle
+          label={m.dashboard_widget_config_help()}
+          checked={config.showHelp}
+          disabled={disabled}
+          onChange={(showHelp) => onChange({ ...config, showHelp })}
+        />
+      )
+    case WidgetId.RecentTraffic:
+    case WidgetId.OriginTraffic:
+    case WidgetId.ExitTraffic:
+    case WidgetId.TargetTraffic:
+    case WidgetId.RuleTraffic:
+      return (
+        <>
+          <WidgetOptionSelect
+            label={m.dashboard_widget_config_range()}
+            value={config.range}
+            disabled={disabled}
+            options={[
+              {
+                value: 'last_hour',
+                label: m.dashboard_widget_config_range_hour(),
+              },
+              {
+                value: 'last6_hours',
+                label: m.dashboard_widget_config_range_6hours(),
+              },
+              {
+                value: 'last24_hours',
+                label: m.dashboard_widget_config_range_24hours(),
+              },
+              {
+                value: 'last7_days',
+                label: m.dashboard_widget_config_range_7days(),
+              },
+              {
+                value: 'last30_days',
+                label: m.dashboard_widget_config_range_30days(),
+              },
+              { value: 'all', label: m.dashboard_widget_config_range_all() },
+            ]}
+            onChange={(range) =>
+              onChange({ ...config, range: range as typeof config.range })
+            }
+          />
+          <ReportProfileField
+            profileUid={config.profileUid}
+            disabled={disabled}
+            onChange={(profileUid) => onChange({ ...config, profileUid })}
+          />
+          <Toggle
+            label={m.dashboard_widget_config_directions()}
+            checked={config.showDirections}
+            disabled={disabled}
+            onChange={(showDirections) =>
+              onChange({ ...config, showDirections })
+            }
+          />
+          {config.type !== WidgetId.RecentTraffic && (
+            <>
+              <Choice
+                label={m.dashboard_widget_config_top()}
+                value={String(config.topN)}
+                options={[3, 5].map((value) => ({
+                  value: String(value),
+                  label: String(value),
+                }))}
+                disabled={disabled}
+                onChange={(value) =>
+                  onChange({ ...config, topN: Number(value) as 3 | 5 })
+                }
+              />
+              {(config.type === WidgetId.OriginTraffic ||
+                config.type === WidgetId.TargetTraffic) && (
+                <Toggle
+                  label={m.dashboard_widget_config_hide_names()}
+                  checked={config.hideNames}
+                  disabled={disabled}
+                  onChange={(hideNames) => onChange({ ...config, hideNames })}
+                />
+              )}
+            </>
+          )}
+        </>
+      )
+    case WidgetId.ActiveConnections:
+      return (
+        <>
+          <Choice
+            label={m.dashboard_widget_config_sort()}
+            value={config.sort}
+            options={[
+              {
+                value: 'download',
+                label: m.dashboard_widget_config_download(),
+              },
+              { value: 'upload', label: m.dashboard_widget_config_upload() },
+              { value: 'total', label: m.dashboard_widget_config_total() },
+            ]}
+            disabled={disabled}
+            onChange={(sort) => onChange({ ...config, sort })}
+          />
+          <Choice
+            label={m.dashboard_widget_config_top()}
+            value={String(config.topN)}
+            options={[3, 5].map((value) => ({
+              value: String(value),
+              label: String(value),
+            }))}
+            disabled={disabled}
+            onChange={(value) =>
+              onChange({ ...config, topN: Number(value) as 3 | 5 })
+            }
+          />
+          <Toggle
+            label={m.dashboard_widget_config_process()}
+            checked={config.showProcess}
+            disabled={disabled}
+            onChange={(showProcess) => onChange({ ...config, showProcess })}
+          />
+          <Toggle
+            label={m.dashboard_widget_config_hide_targets()}
+            checked={config.hideTargets}
+            disabled={disabled}
+            onChange={(hideTargets) => onChange({ ...config, hideTargets })}
+          />
+        </>
+      )
+    case WidgetId.ConfigurationHealth:
+      return (
+        <>
+          <Toggle
+            label={m.dashboard_widget_config_sources()}
+            checked={config.showSources}
+            disabled={disabled}
+            onChange={(showSources) => onChange({ ...config, showSources })}
+          />
+          <Choice
+            label={m.dashboard_widget_config_items()}
+            value={String(config.maxItems)}
+            options={[1, 3, 5].map((value) => ({
+              value: String(value),
+              label: String(value),
+            }))}
+            disabled={disabled}
+            onChange={(value) =>
+              onChange({ ...config, maxItems: Number(value) as 1 | 3 | 5 })
+            }
+          />
+        </>
+      )
+    case WidgetId.ProviderUpdates:
+      return (
+        <>
+          <Choice
+            label={m.dashboard_widget_config_provider_types()}
+            value={config.kinds}
+            options={[
+              {
+                value: 'both',
+                label: m.dashboard_widget_config_both_providers(),
+              },
+              {
+                value: 'proxy',
+                label: m.dashboard_widget_config_proxy_providers(),
+              },
+              {
+                value: 'rule',
+                label: m.dashboard_widget_config_rule_providers(),
+              },
+            ]}
+            disabled={disabled}
+            onChange={(kinds) => onChange({ ...config, kinds })}
+          />
+          <Choice
+            label={m.dashboard_widget_config_items()}
+            value={String(config.maxItems)}
+            options={[3, 5].map((value) => ({
+              value: String(value),
+              label: String(value),
+            }))}
+            disabled={disabled}
+            onChange={(value) =>
+              onChange({ ...config, maxItems: Number(value) as 3 | 5 })
+            }
+          />
+          <ProviderReferencesField
+            resources={config.resources}
+            disabled={disabled}
+            onChange={(resources) => onChange({ ...config, resources })}
+          />
+        </>
+      )
     case WidgetId.ProxyShortcuts:
       return (
         <>

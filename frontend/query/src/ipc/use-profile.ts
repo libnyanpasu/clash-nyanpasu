@@ -93,9 +93,11 @@ const profilesQuery = (queries: ReturnType<typeof useQueryApi>['queries']) => {
   }
 }
 
-export const useProfile = () => {
+export const useProfile = (
+  options: { refetchInterval?: number | false } = {},
+) => {
   const api = useQueryApi()
-  const query = useQuery(profilesQuery(api.queries))
+  const query = useQuery({ ...profilesQuery(api.queries), ...options })
 
   return { query, ...useProfileMutations() }
 }

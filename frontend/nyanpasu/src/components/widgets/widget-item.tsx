@@ -24,14 +24,14 @@ export default function WidgetItem({
   widgetType,
   ...props
 }: WidgetItemProps) {
-  const { disabled, sourceOnly } = useDndGridContext()
+  const { disabled, sourceOnly, isOverlay } = useDndGridContext()
 
   return (
     <DndGridItem {...props} className={cn('relative', className)}>
       {children}
 
       <AnimatePresence>
-        {!disabled && !sourceOnly && (
+        {!disabled && !sourceOnly && !isOverlay && (
           <Button
             variant="raised"
             className={cn(
@@ -69,7 +69,7 @@ export default function WidgetItem({
         )}
       </AnimatePresence>
 
-      {!disabled && !sourceOnly && (
+      {!disabled && !sourceOnly && !isOverlay && (
         <WidgetConfigMenu id={props.id} type={widgetType} />
       )}
     </DndGridItem>

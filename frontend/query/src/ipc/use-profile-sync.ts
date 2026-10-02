@@ -42,8 +42,11 @@ export function useProfileSyncStatus(uid: string) {
   })
 }
 
-/** Not polled: refresh it (key `['profile-sync-runs', uid]`) when runs change. */
-export function useProfileSyncRuns(uid: string) {
+/** Run history is normally not polled; dashboard summaries may opt into calibration. */
+export function useProfileSyncRuns(
+  uid: string,
+  options: { refetchInterval?: number | false } = {},
+) {
   const api = useQueryApi()
   return useInfiniteQuery({
     queryKey: ['profile-sync-runs', uid],
@@ -51,6 +54,7 @@ export function useProfileSyncRuns(uid: string) {
     queryFn: async ({ pageParam }) =>
       unwrapResult(await api.getProfileSyncRuns(uid, pageParam)),
     getNextPageParam: (page) => page.next ?? undefined,
+    refetchInterval: options.refetchInterval,
   })
 }
 

@@ -4,6 +4,12 @@ import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
+import {
+  dimensionName,
+  largest,
+  regionName,
+  usageLabel,
+} from '@/utils/traffic-usage'
 import type {
   Dimension,
   ReportRequest,
@@ -22,12 +28,6 @@ import {
   type TrafficSearch,
 } from '../src/pages/(main)/main/topology/_modules/search'
 import TrafficPage from '../src/pages/(main)/main/topology/_modules/traffic-page'
-import {
-  dimensionName,
-  largest,
-  regionName,
-  usageLabel,
-} from '../src/pages/(main)/main/topology/_modules/usage-label'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 const backend = vi.hoisted(() => ({

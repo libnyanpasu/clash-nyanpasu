@@ -20,10 +20,13 @@ export type ClashProxiesProviderQuery = Record<
   ClashProxiesProviderQueryItem
 >
 
-export const useClashProxiesProvider = () => {
+export const useClashProxiesProvider = (
+  options: { refetchInterval?: number | false; enabled?: boolean } = {},
+) => {
   const api = useQueryApi()
   const providersQuery = api.queries.clashApiGetProvidersProxies()
   return useQuery({
+    ...options,
     queryKey: providersQuery.queryKey,
     queryFn: async () => {
       const result = unwrapResult(await invokeQuery(providersQuery))

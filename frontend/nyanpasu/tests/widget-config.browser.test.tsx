@@ -7,12 +7,12 @@ import {
   DashboardProvider,
   useDashboardContext,
   useWidgetConfig,
-} from '@/pages/(main)/main/dashboard/_modules/provider'
+} from '@/components/widgets/provider'
 import {
   WidgetId,
   type WidgetConfigStorage,
-} from '@/pages/(main)/main/dashboard/_modules/widget-config'
-import WidgetItem from '@/pages/(main)/main/dashboard/_modules/widget-item'
+} from '@/components/widgets/widget-config'
+import WidgetItem from '@/components/widgets/widget-item'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { DndContext } from '@dnd-kit/core'

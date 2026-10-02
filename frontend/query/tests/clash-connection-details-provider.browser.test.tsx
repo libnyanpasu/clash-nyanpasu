@@ -106,9 +106,16 @@ function mockSubscriptions() {
   return { channels, unsubscribed, send }
 }
 
-function Consumer({ onRender }: { onRender: (data: unknown) => void }) {
-  const { data } = useClashConnectionDetails()
-  onRender(data)
+function Consumer({
+  onRender,
+  onState,
+}: {
+  onRender: (data: unknown) => void
+  onState?: (state: ReturnType<typeof useClashConnectionDetails>) => void
+}) {
+  const state = useClashConnectionDetails()
+  onRender(state.data)
+  onState?.(state)
   return null
 }
 
@@ -139,19 +146,25 @@ test('the first consumer subscribes, and the frame it renders came through the c
 }) => {
   const { channels, send } = mockSubscriptions()
   const renders: unknown[] = []
+  const states: ReturnType<typeof useClashConnectionDetails>[] = []
 
   const { screen, rpc } = await renderWithRpc(
     <ClashConnectionDetailsProvider connectorState="connected">
-      <Consumer onRender={(data) => renders.push(data)} />
+      <Consumer
+        onRender={(data) => renders.push(data)}
+        onState={(state) => states.push(state)}
+      />
     </ClashConnectionDetailsProvider>,
   )
   teardown(onTestFinished, screen, rpc)
 
   await expect.poll(() => channels.size).toBe(1)
+  expect(states.at(-1)?.status).toBe('connecting')
   expect(renders.at(-1)).toBe(null) // no frame yet
 
   send(0, details(1))
   await expect.poll(() => renders.at(-1)).toEqual(details(1))
+  await expect.poll(() => states.at(-1)?.status).toBe('connected')
 })
 
 test('two consumers share a single subscription', async ({
@@ -271,6 +284,7 @@ test('a failed subscription reports the error and does not unsubscribe', async (
 }) => {
   const error = new Error('subscription failed')
   const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const states: ReturnType<typeof useClashConnectionDetails>[] = []
   mockRpcCalls((method, params) => {
     expect(method).toBe('subscribe_clash_connection_details')
     expect(Object.keys(params)).toEqual(['onFrame'])
@@ -280,7 +294,7 @@ test('a failed subscription reports the error and does not unsubscribe', async (
 
   const { screen, rpc } = await renderWithRpc(
     <ClashConnectionDetailsProvider connectorState="connected">
-      <Consumer onRender={() => {}} />
+      <Consumer onRender={() => {}} onState={(state) => states.push(state)} />
     </ClashConnectionDetailsProvider>,
   )
   teardown(onTestFinished, screen, rpc)
@@ -289,6 +303,55 @@ test('a failed subscription reports the error and does not unsubscribe', async (
   await expect
     .poll(() => errorSpy)
     .toHaveBeenCalledWith('failed to subscribe to connection details:', error)
+  await expect.poll(() => states.at(-1)?.status).toBe('error')
+})
+
+test('a late rejected subscription from a replaced owner cannot overwrite a live retry', async ({
+  onTestFinished,
+}) => {
+  const channels = new Map<number, Channel<ClashConnectionDetails_Serialize>>()
+  const states: ReturnType<typeof useClashConnectionDetails>[] = []
+  const index = nextIndex()
+  let calls = 0
+  let rejectFirst!: (error: Error) => void
+  mockRpcCalls((method, params) => {
+    if (method === 'subscribe_clash_connection_details') {
+      const channel =
+        params.onFrame as Channel<ClashConnectionDetails_Serialize>
+      const id = calls++
+      channels.set(id, channel)
+      if (id === 0) {
+        return new Promise<number>((_resolve, reject) => {
+          rejectFirst = reject
+        })
+      }
+      return id
+    }
+    if (method === 'unsubscribe_clash_connection_details') return null
+    throw new Error(`Unexpected RPC method: ${method}`)
+  })
+
+  const { screen, rpc } = await renderWithRpc(
+    <ClashConnectionDetailsProvider connectorState="connected">
+      <Consumer onRender={() => {}} onState={(state) => states.push(state)} />
+    </ClashConnectionDetailsProvider>,
+  )
+  teardown(onTestFinished, screen, rpc)
+  await expect.poll(() => calls).toBe(1)
+
+  states.at(-1)?.retry()
+  await expect.poll(() => calls).toBe(2)
+  const channel = channels.get(1)!
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).__TAURI_INTERNALS__.runCallback(channel.id, {
+    index: index(channel),
+    message: details(4),
+  })
+  await expect.poll(() => states.at(-1)?.status).toBe('connected')
+
+  rejectFirst(new Error('late rejection'))
+  await Promise.resolve()
+  expect(states.at(-1)?.status).toBe('connected')
 })
 
 test('a rejected unsubscribe is reported without an unhandled rejection', async ({
@@ -370,7 +433,9 @@ test('browser consumers share an SSE stream and release it on unmount', async ({
   delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
   const streams: FakeSource[] = []
   class FakeSource {
+    onopen: (() => void) | null = null
     onmessage: ((event: MessageEvent<string>) => void) | null = null
+    onerror: ((event: Event) => void) | null = null
     close = vi.fn()
     constructor(readonly url: string) {
       streams.push(this)
@@ -378,9 +443,13 @@ test('browser consumers share an SSE stream and release it on unmount', async ({
   }
   vi.stubGlobal('EventSource', FakeSource)
   const renders: unknown[] = []
+  const states: ReturnType<typeof useClashConnectionDetails>[] = []
   const { screen, rpc } = await renderWithRpc(
     <ClashConnectionDetailsProvider connectorState="connected">
-      <Consumer onRender={(data) => renders.push(data)} />
+      <Consumer
+        onRender={(data) => renders.push(data)}
+        onState={(state) => states.push(state)}
+      />
       <Consumer onRender={() => {}} />
     </ClashConnectionDetailsProvider>,
   )
@@ -391,10 +460,15 @@ test('browser consumers share an SSE stream and release it on unmount', async ({
   })
   await expect.poll(() => streams.length).toBe(1)
   expect(streams[0].url).toBe('/bridge/connection-details')
+  streams[0].onerror?.(new Event('error'))
+  await expect.poll(() => states.at(-1)?.status).toBe('error')
+  streams[0].onopen?.()
+  await expect.poll(() => states.at(-1)?.status).toBe('connecting')
   streams[0].onmessage?.(
     new MessageEvent('message', { data: JSON.stringify(details(3)) }),
   )
   await expect.poll(() => renders.at(-1)).toEqual(details(3))
+  await expect.poll(() => states.at(-1)?.status).toBe('connected')
   await screen.unmount()
   expect(streams[0].close).toHaveBeenCalledOnce()
 })

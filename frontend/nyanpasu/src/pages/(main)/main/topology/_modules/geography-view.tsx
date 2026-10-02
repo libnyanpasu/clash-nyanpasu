@@ -3,9 +3,14 @@ import { useMemo } from 'react'
 import { useMedia } from 'react-use'
 import worldMap from '@/assets/maps/world-map.json'
 import { m } from '@/paraglide/messages'
+import {
+  largest,
+  regionName,
+  usageAmount,
+  usageValue,
+} from '@/utils/traffic-usage'
 import type { Metric, Topology, Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { largest, regionName, usageAmount, usageValue } from './usage-label'
 
 const centers: Readonly<Record<string, number[]>> = worldMap.centers
 const geographicRegions: ReadonlySet<string> = new Set(Object.keys(centers))

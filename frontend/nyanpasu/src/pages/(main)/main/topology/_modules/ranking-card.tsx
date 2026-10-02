@@ -3,11 +3,11 @@ import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
+import type { UsageLabel } from '@/utils/traffic-usage'
 import type { Dimension, Ranking, TrafficQuery } from '@nyanpasu/rpc/types'
 import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
 import { setFilter, toggleFilter, type SearchFilter } from './search'
-import type { UsageLabel } from './usage-label'
 
 function CountBadge({ count }: { count: number }) {
   return (

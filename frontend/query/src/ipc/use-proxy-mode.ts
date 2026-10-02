@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useClashConfig } from './use-clash-config'
-import { useSetting } from './use-settings'
+import { useSettings } from './use-settings'
 
 export type ProxyMode = 'rule' | 'global' | 'direct' | 'script'
 
@@ -19,7 +19,8 @@ export type ProxyMode = 'rule' | 'global' | 'direct' | 'script'
 export const useProxyMode = () => {
   const clashConfig = useClashConfig()
 
-  const clashCore = useSetting('core')
+  const settings = useSettings()
+  const clashCore = settings.query.data?.core
 
   const value = useMemo(() => {
     const modes: Record<'rule' | 'global' | 'direct', boolean> & {
@@ -31,7 +32,7 @@ export const useProxyMode = () => {
     }
 
     // only clash premium support script mode
-    if (clashCore.value === 'clash') {
+    if (clashCore === 'clash') {
       modes.script = false
     }
 
@@ -47,19 +48,22 @@ export const useProxyMode = () => {
     }
 
     return modes
-  }, [clashConfig.query.data, clashCore.value])
+  }, [clashConfig.query.data, clashCore])
 
   const upsert = async (mode: ProxyMode) => {
     // only clash premium support script mode
-    if (clashCore.value !== 'clash' && mode === 'script') {
+    if (clashCore !== 'clash' && mode === 'script') {
       throw new Error('Script mode is only available for Clash Premium')
     }
 
-    await clashConfig.upsert.mutateAsync({ mode })
+    return await clashConfig.upsert.mutateAsync({ mode })
   }
 
   return {
     value,
+    query: clashConfig.query,
+    settingsQuery: settings.query,
+    isPending: clashConfig.upsert.isPending,
     upsert,
   }
 }

@@ -129,16 +129,6 @@ impl ApiClient {
         Ok(ApiStream::new(self.clone(), stream))
     }
 
-    pub async fn logs_ws(&self) -> Result<ApiStream<clash_api::LogEntry>, ApiError> {
-        let stream = self
-            .execute(
-                self.client
-                    .logs_ws(clash_api::LogQuery::new(clash_api::LogLevel::Debug)),
-            )
-            .await?;
-        Ok(ApiStream::new(self.clone(), stream))
-    }
-
     pub async fn traffic_ws(&self) -> Result<ApiStream<clash_api::Traffic>, ApiError> {
         let stream = self.execute(self.client.traffic_ws()).await?;
         Ok(ApiStream::new(self.clone(), stream))

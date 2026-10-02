@@ -82,17 +82,6 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
         .inner()
         .clone();
     let mut ws_rx = client.subscribe_clash_ws();
-    let mut logs_rx = client.subscribe_core_logs();
-    let logs_app = manager.app_handle().clone();
-    let logs_token = client.shutdown_child_token();
-    client.spawn_tracked(&logs_token, async move {
-        while logs_rx.changed().await.is_ok() {
-            let status = logs_rx.borrow_and_update().clone();
-            if let Err(error) = (crate::core::logs::CoreLogsChanged { status }).emit(&logs_app) {
-                tracing::warn!(%error, "failed to emit Core log status");
-            }
-        }
-    });
     let app = manager.app_handle().clone();
     let ws_task = tauri::async_runtime::spawn(async move {
         loop {

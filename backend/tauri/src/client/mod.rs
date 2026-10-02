@@ -210,7 +210,8 @@ fn url_derived_name(url: &url::Url) -> String {
 struct NyanpasuClientInner {
     debug_http: crate::server::debug_http::HttpServerClient,
     bundle_metadata: crate::bundle::BundleMetadata,
-    core_logs: crate::core::logs::CoreLogsClient,
+    core_logs: nyanpasu_logging::LogsClient,
+    core_service_logs: Arc<dyn logs::ServiceLogsPort>,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
@@ -409,20 +410,20 @@ impl NyanpasuClient {
             }
         });
         let core_logs =
-            crate::core::logs::CoreLogsClient::spawn(logging.core, shutdown.child_token(), &tasks)
-                .await?;
+            nyanpasu_logging::LogsClient::start(logging.core_files, logging.clock.clone()).await?;
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
-        // The log client exposes no actor cell, so a tracked task stops it.
-        tasks.spawn({
-            let (logs, token) = (app_logs.clone(), shutdown.child_token());
-            async move {
+        // The log clients expose no actor cell, so tracked tasks stop each owner.
+        for logs in [app_logs.clone(), core_logs.clone()] {
+            let token = shutdown.child_token();
+            tasks.spawn(async move {
                 token.cancelled().await;
                 if let Err(error) = logs.shutdown().await {
-                    tracing::warn!("the application log did not shut down cleanly: {error}");
+                    tracing::warn!("log queries did not shut down cleanly: {error}");
                 }
-            }
-        });
+            });
+        }
         let service_logs = logging.service;
+        let core_service_logs = logging.core_service;
         let effects = effects::actor::EffectsClient::spawn(
             effects::actor::EffectsArgs {
                 port: effects,
@@ -487,7 +488,6 @@ impl NyanpasuClient {
         .await?;
         let streams = crate::core::clash::ws::StreamsClient::spawn(
             core_v2.clone(),
-            core_logs.clone(),
             shutdown.child_token(),
             &tasks,
         )
@@ -536,6 +536,7 @@ impl NyanpasuClient {
                 debug_http,
                 bundle_metadata,
                 core_logs,
+                core_service_logs,
                 app_logs,
                 jobs,
                 service_logs,
@@ -1895,6 +1896,7 @@ pub(crate) mod tests {
                 status: nyanpasu_ipc::types::ServiceStatus::Running,
                 server: Some(nyanpasu_ipc::api::status::StatusResBody {
                     log_query_version: None,
+                    core_log_query_version: None,
                     version: std::borrow::Cow::Borrowed("2.0.0"),
                     core_infos: nyanpasu_ipc::api::status::CoreInfos {
                         instance_id: None,

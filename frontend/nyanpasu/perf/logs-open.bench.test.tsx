@@ -2,7 +2,6 @@ import { Profiler } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import { commands, server } from 'vitest/browser'
-import type { ClashLog } from '@nyanpasu/query'
 import type { LogRow } from '@nyanpasu/rpc/types'
 import '@/assets/styles/tailwind.css'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
@@ -28,8 +27,7 @@ import {
 // drops each opening causes. See `perf/README.md`.
 
 const env = import.meta.env
-// Both sources show a bounded page; `app` shows a log file, whose
-// first page arrives after the page has opened.
+// Both sources show a bounded archive page after the page opens.
 const SOURCE = (env.VITE_PERF_SOURCE ?? 'core') as 'core' | 'app'
 const LOGS = Number(env.VITE_PERF_LOGS ?? 200)
 const SWITCHES = Number(env.VITE_PERF_SWITCHES ?? 12)
@@ -44,35 +42,17 @@ declare module 'vitest/browser' {
   }
 }
 
-// The logs the page shows. An arriving log replaces the array, as the
-// websocket history and the file log hook do.
+// The shared viewer receives bounded pages from the archive query hook.
 const store = vi.hoisted(() => ({
-  core: null as unknown as {
-    data: ClashLog[]
-    isLoading: boolean
-    error: null
-    clean: { mutateAsync: () => Promise<void> }
-    status: null
-    more: boolean
-    loadingOlder: boolean
-    retry: () => void
-    loadOlder: () => void
-    detail: () => Promise<ClashLog['record']>
-  },
   file: null as unknown as { rows: LogRow[] } & Record<string, unknown>,
   listeners: new Set<() => void>(),
   subscribe(listener: () => void) {
     store.listeners.add(listener)
     return () => store.listeners.delete(listener)
   },
-  push(log: ClashLog | LogRow) {
-    if ('record' in log) {
-      const { data } = store.core
-      store.core = { ...store.core, data: [...data.slice(1), log] }
-    } else {
-      const { rows } = store.file
-      store.file = { ...store.file, rows: [...rows.slice(1), log] }
-    }
+  push(log: LogRow) {
+    const { rows } = store.file
+    store.file = { ...store.file, rows: [...rows.slice(1), log] }
     for (const listener of store.listeners) listener()
   },
 }))
@@ -82,7 +62,9 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
   const { createFileLogsFixture, createLogsFixture } =
     await import('./fixtures/logs')
   store.file = {
-    rows: createFileLogsFixture(Number(import.meta.env.VITE_PERF_LOGS ?? 200)),
+    rows: (import.meta.env.VITE_PERF_SOURCE === 'app'
+      ? createFileLogsFixture
+      : createLogsFixture)(Number(import.meta.env.VITE_PERF_LOGS ?? 200)),
     files: [],
     page: null,
     error: null,
@@ -95,22 +77,14 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
     retry: () => {},
   }
   const fileLogsLoading = { ...store.file, rows: [], loading: true }
-  store.core = {
-    data: createLogsFixture(Number(import.meta.env.VITE_PERF_LOGS ?? 200)),
-    isLoading: false,
-    error: null,
-    clean: { mutateAsync: async () => {} },
-    status: null,
-    more: false,
-    loadingOlder: false,
-    retry: () => {},
-    loadOlder: () => {},
-    detail: async () => createLogsFixture(1)[0].record,
-  }
 
   return {
     ...(await importOriginal<object>()),
-    useClashLogs: () => useSyncExternalStore(store.subscribe, () => store.core),
+    useCoreStatus: () => ({
+      data: { type: 'local' },
+      isPending: false,
+      isError: false,
+    }),
     // Like the real hook, a mounted viewer starts empty and receives its
     // first page from IPC a moment later.
     useFileLogs: () => {
@@ -317,7 +291,7 @@ test(`receive ${SOURCE} logs with ${LOGS} logs on the page`, async ({
   }
 
   const last = incoming.at(-1)!
-  const text = 'record' in last ? last.record.payload : last.message
+  const text = last.message
   // The page still follows the newest log.
   await expect
     .poll(() =>

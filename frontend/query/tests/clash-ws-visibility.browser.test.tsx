@@ -18,7 +18,7 @@ vi.hoisted(() => {
 const snapshot: ClashWsSnapshot = {
   sequence: 0,
   state: 'connected',
-  recording: { connections: true, logs: true, traffic: true, memory: true },
+  recording: { connections: true, traffic: true, memory: true },
   connections: [],
   traffic: [],
   memory: [],

@@ -19,7 +19,6 @@ export const events = {
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
   ),
-  coreLogsChanged: makeEvent<CoreLogsChanged>('core-logs-changed'),
   coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
     'core-status-changed-event',
   ),
@@ -63,7 +62,7 @@ export type ClashWsEvent = {
   update: ClashWsUpdate
 }
 
-export type ClashWsKind = 'connections' | 'logs' | 'traffic' | 'memory'
+export type ClashWsKind = 'connections' | 'traffic' | 'memory'
 
 export type ClashWsMemory = {
   inuse: number
@@ -72,7 +71,6 @@ export type ClashWsMemory = {
 
 export type ClashWsRecording = {
   connections: boolean
-  logs: boolean
   traffic: boolean
   memory: boolean
 }
@@ -205,25 +203,6 @@ export type CoreInfos_Serialize = {
   health?: CoreHealthInfo | null
   revision?: ConfigRevisionInfo | null
   detail?: CoreStateDetail | null
-}
-
-export type CoreLogCursor = {
-  generation: string
-  sequence: number
-}
-
-export type CoreLogStatus = {
-  generation: string
-  version: number
-  first: CoreLogCursor | null
-  head: CoreLogCursor | null
-  bytes: number
-  error: string | null
-  discarded: number
-}
-
-export type CoreLogsChanged = {
-  status: CoreLogStatus
 }
 
 export type CoreState = 'Running' | { Stopped: string | null }
@@ -665,6 +644,8 @@ export type StatusResBody_Deserialize = {
   logs?: LogPathsInfo_Deserialize | null
   /**  Optional viewer protocol; absence does not affect core control compatibility. */
   log_query_version?: number | null
+  /**  Core console archive protocol, independent of service log support. */
+  core_log_query_version?: number | null
 }
 
 export type StatusResBody_Serialize = {
@@ -680,6 +661,8 @@ export type StatusResBody_Serialize = {
   logs?: LogPathsInfo_Serialize | null
   /**  Optional viewer protocol; absence does not affect core control compatibility. */
   log_query_version?: number | null
+  /**  Core console archive protocol, independent of service log support. */
+  core_log_query_version?: number | null
 }
 
 /**

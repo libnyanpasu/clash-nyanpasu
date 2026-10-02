@@ -12,8 +12,17 @@ use snafu::{ResultExt, Snafu};
 
 use crate::utils::path::PathResolver;
 
+pub fn core_log_dir(paths: &PathResolver) -> std::path::PathBuf {
+    paths
+        .app_config_dir()
+        .join(crate::client::runtime::RUNTIME_CONFIG_DIR)
+        .join("control/logs")
+}
+
 pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
-    let runtime_root = paths.app_config_dir().join("runtime");
+    let runtime_root = paths
+        .app_config_dir()
+        .join(crate::client::runtime::RUNTIME_CONFIG_DIR);
     let options = ManagerOptions {
         runtime_dir: Some(to_utf8(runtime_root.join("control"))?),
         local_ipc_policy: LocalIpcPolicy::Disable,

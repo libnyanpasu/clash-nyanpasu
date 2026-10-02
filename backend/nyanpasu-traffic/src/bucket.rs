@@ -58,18 +58,24 @@ impl TrafficRange {
     }
 }
 
-/// The one region a GeoIP tag list names. Several distinct codes are ambiguous, and counting the
-/// bytes in each would duplicate them, so they are unknown just like no code at all.
+/// The one country a GeoIP tag list names. Databases mix country codes with categories such as
+/// `google` or `private`, so only two-letter codes count. Several distinct countries are
+/// ambiguous, and counting the bytes in each would duplicate them, so they are unknown just like
+/// no country at all.
 pub fn normalize_region<S: AsRef<str>>(codes: impl IntoIterator<Item = S>) -> String {
     let mut regions: Vec<String> = Vec::new();
     for code in codes {
-        let code = code.as_ref().to_uppercase();
+        let code = code.as_ref();
+        if code.len() != 2 || !code.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+            continue;
+        }
+        let code = code.to_ascii_uppercase();
         if !regions.contains(&code) {
             regions.push(code);
         }
     }
     match <[String; 1]>::try_from(regions) {
-        Ok([region]) if !region.is_empty() => region,
+        Ok([region]) => region,
         _ => "unknown".to_owned(),
     }
 }
@@ -181,5 +187,18 @@ mod tests {
         assert_eq!(normalize_region(["cn", "CN", "Cn"]), "CN");
         assert_eq!(normalize_region(["cn", "us"]), "unknown");
         assert_eq!(normalize_region([""]), "unknown");
+    }
+
+    #[test]
+    fn a_country_among_category_tags_is_the_region() {
+        assert_eq!(normalize_region(["google", "us"]), "US");
+        assert_eq!(normalize_region(["telegram", "GB", "gb"]), "GB");
+    }
+
+    #[test]
+    fn category_tags_alone_name_no_region() {
+        assert_eq!(normalize_region(["private"]), "unknown");
+        assert_eq!(normalize_region(["GOOGLE", "cloudflare"]), "unknown");
+        assert_eq!(normalize_region(["c1"]), "unknown");
     }
 }

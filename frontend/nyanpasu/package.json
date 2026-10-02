@@ -65,7 +65,6 @@
     "@tauri-apps/plugin-dialog": "2.8.0",
     "@tauri-apps/plugin-fs": "2.6.0",
     "@tauri-apps/plugin-notification": "2.5.0",
-    "@tauri-apps/plugin-process": "2.4.0",
     "@tauri-apps/plugin-updater": "2.13.0",
     "@types/d3": "7.4.3",
     "@types/less": "3.0.8",

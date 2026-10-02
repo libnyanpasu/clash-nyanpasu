@@ -246,6 +246,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getIpsbAsn', ...args],
         queryFn: () => commands.getIpsbAsn(...args),
       }),
+    probeDirectEgress: (
+      ...args: Parameters<typeof commands.probeDirectEgress>
+    ) =>
+      queryOptions({
+        queryKey: ['probeDirectEgress', ...args],
+        queryFn: () => commands.probeDirectEgress(...args),
+      }),
     isAppimage: (...args: Parameters<typeof commands.isAppimage>) =>
       queryOptions({
         queryKey: ['isAppimage', ...args],

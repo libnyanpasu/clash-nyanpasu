@@ -177,6 +177,8 @@ export function createRpcClient(
         __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
       ),
     getIpsbAsn: () => typedError<any, IpcError>(__RPC_INVOKE('get_ipsb_asn')),
+    probeDirectEgress: () =>
+      typedError<DirectEgress, IpcError>(__RPC_INVOKE('probe_direct_egress')),
     isAppimage: () =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_appimage')),
     getServiceInstallPrompt: () =>
@@ -1737,6 +1739,18 @@ export type Dimensions = {
   source_region?: string
   destination_region?: string
 }
+
+export type DirectEgress =
+  /**
+   *  Nothing was probed: TUN mode captures the app's own requests and routes
+   *  them by rule, so an echo could come back from a proxy exit.
+   */
+  | { kind: 'tun_enabled' }
+  /**
+   *  `None` for a family the echo service gave no address over, such as a
+   *  network without IPv6.
+   */
+  | { kind: 'probed'; ipv4: string | null; ipv6: string | null }
 
 export type Direction = 'latest' | 'before' | 'after'
 

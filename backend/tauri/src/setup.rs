@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::{
     client::{
-        ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
-        TauriMainThread, TauriUiEventSink,
+        ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
+        OsSystemDnsCache, RuntimePaths, TauriMainThread, TauriUiEventSink,
         effects::executor::ApplicationEffectExecutor,
         hotkey::{
             HotkeyArgs, HotkeyClient,
@@ -177,6 +177,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
+        direct_egress: Arc::new(HttpDirectEgressProbe::dnspod()),
         os_proxy: os_proxy.clone(),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         effects,

@@ -73,6 +73,10 @@ fn dimensions(connection: &Connection) -> Dimensions {
         inbound: inbound.unwrap_or(UNKNOWN).to_owned(),
         // Labelled by the accounting session when it first sees the connection.
         profile: None,
+        // TODO(traffic-geo): a loopback or private source is this machine, so
+        // locate it at the address `NyanpasuClient::probe_direct_egress` reports,
+        // and leave it unknown on `TunEnabled` or no address. Wire it once
+        // regions come from the app's own geodata index rather than the core.
         source_region: region(known.and_then(|m| m.source_geo_ip.as_ref())),
         destination_region: region(known.and_then(|m| m.destination_geo_ip.as_ref())),
     }

@@ -420,6 +420,19 @@ mod tests {
   );
 });
 
+Deno.test("scanFile: a path-qualified Config is another crate's type", () => {
+  const source = `
+fn build() {
+    let _ = meta::Config::new();
+    let _ = regex_automata::util::syntax::Config::new();
+}
+`;
+  const buckets = createBuckets();
+  scanFile("backend/nyanpasu-geodata/src/index/site.rs", source, buckets);
+
+  assertEquals(buckets.configCalls.total, 0);
+});
+
 Deno.test("scanFile: the migration's legacy schema does not count as legacy DTO refs", () => {
   const source = `
 pub struct IVerge {}

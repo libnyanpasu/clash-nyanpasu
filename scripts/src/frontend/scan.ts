@@ -74,7 +74,7 @@ export async function scanFrontendPackages(
     }
 
     const packageName = String(manifest.name ?? entry.name);
-    const relativePackagePath = path.join("frontend", entry.name);
+    const relativePackagePath = `frontend/${entry.name}`;
     const sources: FrontendPackage["sources"] = [];
     for (
       const absoluteSourcePath of await sourceFiles(

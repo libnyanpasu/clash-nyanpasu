@@ -95,10 +95,13 @@ test('a tail poll that finds no new rows does not re-render the viewer', async (
       .poll(() => queryLogs.mock.calls.length, { timeout: 5_000 })
       .toBeGreaterThanOrEqual(count)
   // React may run the component once more for the first identical state
-  // before its eager bail-out applies; count from the first idle poll.
-  await polled(queryLogs.mock.calls.length + 1)
+  // before its eager bail-out applies; count from the first idle poll. A poll
+  // is only scheduled once the previous one is applied, so the start of the
+  // next call is what marks a poll as applied.
+  const latest = queryLogs.mock.calls.length
+  await polled(latest + 2)
   const settled = renders
-  await polled(queryLogs.mock.calls.length + 2)
+  await polled(latest + 3)
 
   expect(hook.result.current.rows).toBe(rows)
   expect(renders).toBe(settled)

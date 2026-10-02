@@ -227,6 +227,14 @@ jobs:
           path: ./upload-results.json
           if-no-files-found: ignore
 
+      - name: Upload file server diagnostics
+        if: ${{ inputs.nightly == true && inputs.bundle-type != 'fixed-webview' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-diagnostics-windows-${{ inputs.arch }}-standard
+          path: ./upload-report.json
+          if-no-files-found: error
+
       - name: Clean standard bundle outputs
         if: ${{ inputs.bundle-type == 'both' }}
         run: |
@@ -234,6 +242,7 @@ jobs:
           Get-ChildItem -Path "." -Filter "*_portable.zip" -ErrorAction SilentlyContinue |
             Remove-Item -Force
           Remove-Item -Path "./upload-results.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "./upload-report.json" -Force -ErrorAction SilentlyContinue
 
       - name: Download fixed WebView
         if: ${{ inputs.bundle-type != 'standard' }}
@@ -340,3 +349,11 @@ jobs:
           name: upload-results-windows-${{ inputs.arch }}-fixed-webview
           path: ./upload-results.json
           if-no-files-found: ignore
+
+      - name: Upload file server diagnostics with fixed WebView
+        if: ${{ inputs.nightly == true && inputs.bundle-type != 'standard' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-diagnostics-windows-${{ inputs.arch }}-fixed-webview
+          path: ./upload-report.json
+          if-no-files-found: error

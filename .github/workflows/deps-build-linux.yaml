@@ -272,3 +272,11 @@ jobs:
           name: upload-results-linux-${{ inputs.arch }}
           path: ./upload-results.json
           if-no-files-found: ignore
+
+      - name: Upload file server diagnostics
+        if: ${{ inputs.nightly == true }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-diagnostics-linux-${{ inputs.arch }}
+          path: ./upload-report.json
+          if-no-files-found: error

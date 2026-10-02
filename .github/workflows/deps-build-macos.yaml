@@ -189,3 +189,11 @@ jobs:
           name: upload-results-macos-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
           path: ./upload-results.json
           if-no-files-found: ignore
+
+      - name: Upload file server diagnostics
+        if: ${{ inputs.nightly == true }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-diagnostics-macos-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
+          path: ./upload-report.json
+          if-no-files-found: error

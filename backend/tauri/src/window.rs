@@ -672,7 +672,7 @@ pub trait AppWindow {
 
                 if base_label == crate::consts::MAIN_WINDOW_LABEL
                     && let Some(startup) = app_handle
-                        .try_state::<std::sync::Arc<crate::utils::startup::StartupTimings>>()
+                        .try_state::<std::sync::Arc<crate::utils::startup::StartupTrace>>()
                 {
                     startup.milestone("main_window_created");
                 }

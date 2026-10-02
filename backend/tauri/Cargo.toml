@@ -171,6 +171,7 @@ log = '0.4.20'
 tracing = { workspace = true }
 tracing-attributes = '0.1'
 tracing-futures = '0.2'
+tracing-chrome = '0.7.2'
 tracing-subscriber = { version = '0.3', features = [
   'env-filter',
   'json',

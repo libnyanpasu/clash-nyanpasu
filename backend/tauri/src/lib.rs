@@ -63,7 +63,10 @@ fn deadlock_detection() {
 
 /// Shows a panic dialog and saves logs, then exits once the app has shut down
 /// when a handle exists, or at once otherwise.
-fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
+fn install_panic_hook(
+    app_handle: Option<tauri::AppHandle>,
+    startup: std::sync::Arc<utils::startup::StartupTrace>,
+) {
     nyanpasu_panics::setup_panic_hook(move |report| {
         let nyanpasu_panics::PanicReport {
             payload,
@@ -102,13 +105,17 @@ backtrace: {backtrace:#?}
             // the shutdown runs here and the process ends after it.
             Some(app_handle) if utils::main_thread::is_main_thread() => {
                 utils::exit::shutdown_on_main_thread(app_handle);
+                startup.finish();
                 std::process::exit(1);
             }
             // The hook must return: the panicking task can finish, and release
             // what it holds, only once it unwinds. The exit boundary then
             // waits for every owner before the app exits.
             Some(app_handle) => app_handle.exit(1),
-            None => std::process::exit(1),
+            None => {
+                startup.finish();
+                std::process::exit(1);
+            }
         }
     });
 }
@@ -126,8 +133,6 @@ fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> std::io::Result<()> {
-    let startup = std::sync::Arc::new(utils::startup::StartupTimings::new());
-    let entry = startup.stage("entry.commands_and_deep_link");
     // share the tauri async runtime to nyanpasu-utils
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
@@ -147,6 +152,10 @@ pub fn run() -> std::io::Result<()> {
         // Parse commands
         cmds::parse().unwrap();
     };
+    // Utility commands exit independently. Trace the GUI bootstrap, including
+    // its migration child wait, without creating traces in those subprocesses.
+    let (logging_bootstrap, startup) = init::logging::bootstrap().map_err(std::io::Error::other)?;
+    let entry = crate::utils::startup::span!("entry.deep_link");
     #[cfg(feature = "verge-dev")]
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");
 
@@ -155,7 +164,7 @@ pub fn run() -> std::io::Result<()> {
     drop(entry);
 
     // 单例检测 with robust logging
-    let singleton = startup.stage("entry.single_instance");
+    let singleton = crate::utils::startup::span!("entry.single_instance");
     let single_instance_result = utils::init::check_singleton();
     drop(singleton);
     match &single_instance_result {
@@ -164,6 +173,7 @@ pub fn run() -> std::io::Result<()> {
         }
         Ok(None) => {
             tracing::warn!(target: "app", "Another instance is running; exiting");
+            startup.finish();
             std::process::exit(0);
         }
         Err(e) => {
@@ -172,11 +182,11 @@ pub fn run() -> std::io::Result<()> {
         }
     }
     // Use system locale as default
-    let locale = startup.stage("entry.system_locale");
+    let locale = crate::utils::startup::span!("entry.system_locale");
     rust_i18n::set_locale(utils::help::detect_system_i18n_key());
     drop(locale);
 
-    let migrations = startup.stage("entry.migration_subprocess");
+    let migrations = crate::utils::startup::span!("entry.migration_subprocess");
     if single_instance_result
         .as_ref()
         .is_ok_and(|instance| instance.is_some())
@@ -190,37 +200,30 @@ pub fn run() -> std::io::Result<()> {
             Ok(paths) => utils::dialog::migration_failed_dialog(&message, &paths, backup_failed),
             Err(_) => utils::dialog::panic_dialog(&message),
         }
+        drop(migrations);
+        startup.finish();
         std::process::exit(1);
     }
     drop(migrations);
 
-    let logging = startup.stage("entry.logging");
+    let logging = crate::utils::startup::span!("entry.logging");
     let (logger_reload, jobs_capture) =
-        init::logging::init().expect("failed to initialize logging");
+        init::logging::init(logging_bootstrap).expect("failed to initialize logging");
     drop(logging);
-    startup.enable_logging();
-    tracing::info!(
-        target: "clash_nyanpasu::startup",
-        pid = std::process::id(),
-        debug_assertions = cfg!(debug_assertions),
-        os = std::env::consts::OS,
-        arch = std::env::consts::ARCH,
-        "startup measurement context"
-    );
-    let config = startup.stage("entry.config_files");
+    let config = crate::utils::startup::span!("entry.config_files");
     crate::log_err!(init::init_config());
     drop(config);
 
     // Until setup hands over an app handle, a panic can only end the process.
-    install_panic_hook(None);
+    install_panic_hook(None, startup.clone());
 
     // Keep the Tauri transport surface separate from the RPC schema.
-    let transport = startup.stage("entry.transport_schema");
+    let transport = crate::utils::startup::span!("entry.transport_schema");
     let transport_builder = specta_export::build_transport_builder();
     drop(transport);
     #[cfg(debug_assertions)]
     {
-        let _bindings = startup.stage("entry.debug_bindings_export");
+        let _bindings = crate::utils::startup::span!("entry.debug_bindings_export");
         let (query_bindings, rpc_schema_builder) = specta_export::build_specta_builder();
         const SPECTA_BINDINGS_PATH: &str = "../../frontend/rpc/src/tauri-bindings.ts";
         const RPC_BINDINGS_PATH: &str = "../../frontend/rpc/src/rpc-bindings.ts";
@@ -279,7 +282,7 @@ pub fn run() -> std::io::Result<()> {
         _ => None,
     };
 
-    let bundle = startup.stage("entry.bundle_context");
+    let bundle = crate::utils::startup::span!("entry.bundle_context");
     let mut context = tauri::generate_context!();
     let executable_dir =
         utils::dirs::app_install_dir().expect("failed to locate the application directory");
@@ -291,7 +294,7 @@ pub fn run() -> std::io::Result<()> {
         .expect("failed to configure bundle startup");
     drop(bundle);
 
-    let plugins = startup.stage("tauri.plugin_construction");
+    let plugins = crate::utils::startup::span!("tauri.plugin_construction");
     let setup_startup = startup.clone();
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
@@ -311,7 +314,7 @@ pub fn run() -> std::io::Result<()> {
         .on_page_load(|webview, payload| {
             if webview.label() == crate::consts::MAIN_WINDOW_LABEL
                 && let Some(startup) =
-                    webview.try_state::<std::sync::Arc<utils::startup::StartupTimings>>()
+                    webview.try_state::<std::sync::Arc<utils::startup::StartupTrace>>()
             {
                 startup.milestone(match payload.event() {
                     tauri::webview::PageLoadEvent::Started => "main_page_load_started",
@@ -325,8 +328,8 @@ pub fn run() -> std::io::Result<()> {
             }
         })
         .setup(move |app| {
-            let _setup = setup_startup.stage("tauri.setup");
-            let services = setup_startup.stage("setup.services");
+            let _setup = crate::utils::startup::span!("tauri.setup");
+            let services = crate::utils::startup::span!("setup.services");
             transport_builder.mount_events(app);
             setup::setup(app, metadata, logger_reload, jobs_capture)
                 .context("Failed to setup the app")
@@ -353,14 +356,14 @@ pub fn run() -> std::io::Result<()> {
                 app.set_menu(menu).unwrap();
             }
 
-            install_panic_hook(Some(app.handle().clone()));
+            install_panic_hook(Some(app.handle().clone()), setup_startup.clone());
             resolve::resolve_setup(app, &setup_startup);
-            let rpc = setup_startup.stage("setup.unified_rpc");
+            let rpc = crate::utils::startup::span!("setup.unified_rpc");
             setup::setup_unified_rpc(app).context("Failed to initialize unified RPC")?;
             drop(rpc);
 
             // setup custom scheme
-            let _deep_links = setup_startup.stage("setup.deep_links");
+            let _deep_links = crate::utils::startup::span!("setup.deep_links");
             let handle = app.handle().clone();
             // Deep links wait here until a frontend takes them.
             app.manage(crate::ipc::PendingDeepLinks::default());
@@ -384,7 +387,7 @@ pub fn run() -> std::io::Result<()> {
         });
     drop(plugins);
 
-    let build = startup.stage("tauri.build");
+    let build = crate::utils::startup::span!("tauri.build");
     let app = builder
         .build(context)
         .expect("error while running tauri application");
@@ -392,6 +395,7 @@ pub fn run() -> std::io::Result<()> {
     startup.milestone("tauri_build_finished");
     app.run(move |app_handle, e| match e {
         tauri::RunEvent::Ready => startup.milestone("event_loop_ready"),
+        tauri::RunEvent::Exit => startup.finish(),
         tauri::RunEvent::ExitRequested { api, code, .. } => {
             utils::exit::on_exit_requested(app_handle, code, &api);
         }

@@ -21,6 +21,8 @@ use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use nyanpasu_ipc::api::status::CoreStateDetail;
 use snafu::{IntoError, ResultExt};
 
+use tracing::Instrument;
+
 use super::{
     attempt::{AppliedVerdict, AttemptStage, LiveAttempt},
     impact,
@@ -728,10 +730,11 @@ impl ApplicationWorkflow {
         let stage = self
             .startup
             .is_none()
-            .then(|| crate::utils::startup::StartupStage::new("reconcile.runtime_build"));
+            .then(|| crate::utils::startup::span!("reconcile.runtime_build"));
         let prepared = self
             .preparation
             .prepare_candidate_inputs(inputs.expect("critical operations capture runtime inputs"))
+            .instrument(stage.clone().unwrap_or_else(tracing::Span::none))
             .await;
         drop(stage);
         let prepared = match prepared {
@@ -780,13 +783,14 @@ impl ApplicationWorkflow {
         let stage = self
             .startup
             .is_none()
-            .then(|| crate::utils::startup::StartupStage::new("reconcile.config_check"));
+            .then(|| crate::utils::startup::span!("reconcile.config_check"));
         let checked = self
             .validator
             .check(RuntimeCheckRequest {
                 core_spec: spec,
                 intent: &prepared.intent,
             })
+            .instrument(stage.clone().unwrap_or_else(tracing::Span::none))
             .await;
         drop(stage);
         match checked {
@@ -872,15 +876,16 @@ impl ApplicationWorkflow {
             .clone()
             .expect("critical baseline was observed");
         if target_host != baseline.host {
-            let _stage = self
+            let stage = self
                 .startup
                 .is_none()
-                .then(|| crate::utils::startup::StartupStage::new("reconcile.host_handoff"));
+                .then(|| crate::utils::startup::span!("reconcile.host_handoff"));
             // Only switching service mode on may install or start the daemon;
             // any other save adopts a Service that is already `Ready`.
             match self
                 .lifecycle
                 .move_execution_host(target_host, switching_on)
+                .instrument(stage.clone().unwrap_or_else(tracing::Span::none))
                 .await
             {
                 Ok(report) => {
@@ -961,10 +966,11 @@ impl ApplicationWorkflow {
         let stage = self
             .startup
             .is_none()
-            .then(|| crate::utils::startup::StartupStage::new("reconcile.core_apply"));
+            .then(|| crate::utils::startup::span!("reconcile.core_apply"));
         let submitted = self
             .lifecycle
             .submit_runtime(prepared, &self.preparation, &expected)
+            .instrument(stage.clone().unwrap_or_else(tracing::Span::none))
             .await;
         drop(stage);
         let outcome = match submitted {

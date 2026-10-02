@@ -9,15 +9,59 @@ use std::{
     fs,
     io::IsTerminal,
     path::PathBuf,
-    sync::mpsc::{self, Sender},
+    sync::{
+        Arc,
+        mpsc::{self, Sender},
+    },
     thread,
 };
 use tracing::error;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_log::log_tracer;
-use tracing_subscriber::{EnvFilter, Layer as _, filter, fmt, layer::SubscriberExt, reload};
+use tracing_subscriber::{EnvFilter, Layer, Registry, filter, fmt, layer::SubscriberExt, reload};
 
 pub type ReloadSignal = (Option<LoggingLevel>, Option<LogRotation>);
+pub(crate) type LogLayer = Box<dyn Layer<Registry> + Send + Sync>;
+
+pub struct LoggingBootstrap {
+    file: reload::Handle<Option<LogLayer>, Registry>,
+    filter: reload::Handle<EnvFilter, Registry>,
+    jobs: nyanpasu_jobs::LogCapture,
+}
+
+fn layers(trace: Option<LogLayer>) -> (Vec<LogLayer>, LoggingBootstrap) {
+    let jobs = crate::client::jobs::capture();
+    let (file, file_handle) = reload::Layer::new(None::<LogLayer>);
+    let (filter, filter_handle) = reload::Layer::new(app_filter(LoggingLevel::Debug));
+    // Filters are registered when the registry is built, before any formatter
+    // is attached. Reloading a newly filtered layer later would skip on_layer.
+    let layers = vec![
+        file.with_filter(filter).boxed(),
+        jobs.layer().boxed(),
+        trace.boxed(),
+    ];
+    (
+        layers,
+        LoggingBootstrap {
+            file: file_handle,
+            filter: filter_handle,
+            jobs,
+        },
+    )
+}
+
+/// Install one registry before migrations, without opening application log files.
+pub fn bootstrap() -> Result<(LoggingBootstrap, Arc<crate::utils::startup::StartupTrace>)> {
+    let directory = std::env::var_os("NYANPASU_TRACE_DIR").map(PathBuf::from);
+    let (trace_layer, trace) = crate::utils::startup::layer(directory.as_deref())?;
+    let trace = Arc::new(trace);
+    let (layers, bootstrap) = layers(trace_layer);
+    log_tracer::LogTracer::init()?;
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(layers))
+        .map_err(|x| anyhow!("setup logging error: {}", x))?;
+    trace.entry();
+    Ok((bootstrap, trace))
+}
 
 /// Keeps the file writer alive. Fields drop in declaration order: the guard
 /// flushes the non-blocking queue into the file writer before the handle shuts
@@ -82,9 +126,15 @@ fn app_filter(level: LoggingLevel) -> EnvFilter {
         .add_directive(format!("clash_nyanpasu={level}").parse().unwrap())
 }
 
-/// initial instance global logger, returning the channel that reloads it
-pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
-    let jobs = crate::client::jobs::capture();
+/// Attach the application log at its original initialization stage.
+pub fn init(
+    bootstrap: LoggingBootstrap,
+) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
+    let LoggingBootstrap {
+        file: application_handle,
+        filter: filter_handle,
+        jobs,
+    } = bootstrap;
     let log_dir = dirs::app_logs_dir().unwrap();
     if !log_dir.exists() {
         let _ = fs::create_dir_all(&log_dir);
@@ -97,7 +147,7 @@ pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
             max_file_size: 10,
         },
     );
-    let (filter, filter_handle) = reload::Layer::new(app_filter(log_level));
+    filter_handle.reload(app_filter(log_level))?;
 
     // register the logger
     let (appender, _guard) = get_file_appender(log_rotation)?;
@@ -159,13 +209,7 @@ pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
     #[cfg(debug_assertions)]
     let file_layer = file_layer.and_then(terminal_layer);
 
-    let subscriber = tracing_subscriber::registry()
-        .with(file_layer.with_filter(filter))
-        .with(jobs.layer());
-
-    log_tracer::LogTracer::init()?;
-    tracing::subscriber::set_global_default(subscriber)
-        .map_err(|x| anyhow!("setup logging error: {}", x))?;
+    application_handle.reload(Some(file_layer.boxed()))?;
     Ok((sender, jobs))
 }
 
@@ -174,6 +218,55 @@ mod tests {
     use super::*;
     use nyanpasu_logging::{FsLogFiles, LogFiles};
     use std::io::Write;
+
+    #[test]
+    fn attaching_logs_later_and_reloading_silent_preserves_early_trace() {
+        let dir = tempfile::tempdir().unwrap();
+        let trace_dir = dir.path().join("traces");
+        let log_path = dir.path().join("app.log");
+        let (trace_layer, trace) = crate::utils::startup::layer(Some(&trace_dir)).unwrap();
+        let (layers, bootstrap) = layers(trace_layer);
+        let subscriber = tracing_subscriber::registry().with(layers);
+        tracing::subscriber::with_default(subscriber, || {
+            trace.entry();
+            drop(crate::utils::startup::span!("entry.before_logging"));
+            assert!(!log_path.exists());
+            let writer = Arc::new(fs::File::create(&log_path).unwrap());
+            bootstrap
+                .file
+                .reload(Some(
+                    fmt::layer()
+                        .json()
+                        .with_writer(move || writer.try_clone().unwrap())
+                        .boxed(),
+                ))
+                .unwrap();
+            tracing::info!(target: "clash_nyanpasu", "log attached");
+            bootstrap
+                .filter
+                .reload(app_filter(LoggingLevel::Silent))
+                .unwrap();
+            tracing::info!(target: "clash_nyanpasu", "must be filtered");
+            drop(crate::utils::startup::span!("entry.after_silent"));
+            trace.finish();
+        });
+        let lines = fs::read_to_string(log_path).unwrap();
+        assert!(lines.contains("log attached"));
+        assert!(!lines.contains("must be filtered"));
+        let path = fs::read_dir(trace_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let events: Vec<serde_json::Value> =
+            serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        for name in ["entry.before_logging", "entry.after_silent"] {
+            assert!(events.iter().any(|e| e["name"] == name && e["ph"] == "b"));
+            assert!(events.iter().any(|e| e["name"] == name && e["ph"] == "e"));
+        }
+        assert!(events.iter().all(|e| e["cat"] != "clash_nyanpasu"));
+    }
 
     /// Every level the settings offer, `silent` included, sets both of the
     /// app's own crates to the level `tracing` knows it by.

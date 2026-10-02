@@ -1,127 +1,108 @@
-//! Monotonic startup measurements, owned by the bootstrap rather than a global.
+//! Bootstrap-owned Chrome trace output; stage clocks and serialization belong to tracing-chrome.
+use anyhow::{Context, Result};
 use parking_lot::Mutex;
-use std::{collections::HashSet, time::Instant};
+use std::{collections::HashSet, fs, path::Path, time::SystemTime};
+use tracing_chrome::{ChromeLayerBuilder, FlushGuard, TraceStyle};
+use tracing_subscriber::{Layer as _, filter::filter_fn};
 
-#[derive(Default)]
-struct Records {
-    pending: Option<Vec<Measurement>>,
-    milestones: HashSet<&'static str>,
+pub(crate) const TARGET: &str = "clash_nyanpasu::startup";
+
+// Async export groups descendants by root ID. Separate roots keep concurrent
+// stages on independent tracks rather than producing overlapping nested events.
+macro_rules! span {
+    ($name:literal) => {
+        tracing::info_span!(target: $crate::utils::startup::TARGET, parent: None, $name)
+    };
+}
+pub(crate) use span;
+
+pub(crate) fn layer(
+    directory: Option<&Path>,
+) -> Result<(Option<super::init::logging::LogLayer>, StartupTrace)> {
+    let Some(directory) = directory else {
+        return Ok((None, StartupTrace::new(None)));
+    };
+    anyhow::ensure!(
+        directory.is_absolute(),
+        "NYANPASU_TRACE_DIR must be absolute"
+    );
+    fs::create_dir_all(directory).context("failed to create startup trace directory")?;
+    let stamp = SystemTime::UNIX_EPOCH.elapsed()?.as_nanos();
+    let path = directory.join(format!("startup-{}-{stamp}.json", std::process::id()));
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .with_context(|| format!("failed to create startup trace {}", path.display()))?;
+    let (layer, guard) = ChromeLayerBuilder::new()
+        .writer(file)
+        .trace_style(TraceStyle::Async)
+        .include_args(true)
+        .include_locations(false)
+        .build();
+    Ok((
+        Some(
+            layer
+                .with_filter(filter_fn(|meta| meta.target() == TARGET))
+                .boxed(),
+        ),
+        StartupTrace::new(Some(guard)),
+    ))
 }
 
-pub struct StartupTimings {
-    started: Instant,
-    records: Mutex<Records>,
+/// A logging adapter owned by bootstrap and shared with Tauri lifecycle callbacks.
+pub struct StartupTrace {
+    // FlushGuard is Send but not Sync. This lock only serializes output shutdown;
+    // it does not expose or share any actor's state.
+    guard: Mutex<Option<FlushGuard>>,
+    milestones: Mutex<HashSet<&'static str>>,
 }
 
-impl StartupTimings {
-    pub fn new() -> Self {
+impl StartupTrace {
+    fn new(guard: Option<FlushGuard>) -> Self {
         Self {
-            started: Instant::now(),
-            records: Mutex::new(Records {
-                pending: Some(Vec::new()),
-                ..Records::default()
-            }),
+            guard: Mutex::new(guard),
+            milestones: Mutex::new(HashSet::new()),
         }
     }
 
-    pub fn stage(&self, name: &'static str) -> StartupStage<'_> {
-        StartupStage {
-            name,
-            started: Instant::now(),
-            timings: Some(self),
-        }
+    pub fn entry(&self) {
+        tracing::info!(
+            name: "startup_entry",
+            target: TARGET,
+            parent: None,
+            pid = std::process::id(),
+            debug_assertions = cfg!(debug_assertions),
+            os = std::env::consts::OS,
+            arch = std::env::consts::ARCH,
+        );
     }
 
-    /// Replay measurements made before the application's logger existed.
-    pub fn enable_logging(&self) {
-        let pending = self.records.lock().pending.take().unwrap_or_default();
-        for measurement in pending {
-            measurement.emit();
-        }
-    }
-
-    fn record(&self, measurement: Measurement) {
-        let mut records = self.records.lock();
-        if let Some(pending) = &mut records.pending {
-            pending.push(measurement);
-        } else {
-            drop(records);
-            measurement.emit();
-        }
-    }
-
-    /// Later reloads, window reopenings and tray rebuilds are not startup.
+    /// Later window reopenings and tray rebuilds are not startup milestones.
     pub fn milestone(&self, name: &'static str) {
-        if self.records.lock().milestones.insert(name) {
+        if self.milestones.lock().insert(name) {
             tracing::info!(
-                target: "clash_nyanpasu::startup",
-                pid = std::process::id(),
-                milestone = name,
-                elapsed_ms = self.started.elapsed().as_secs_f64() * 1000.0,
-                "startup milestone"
+                name: "startup.milestone",
+                target: TARGET,
+                parent: None,
+                milestone = %name,
             );
         }
     }
-}
 
-struct Measurement {
-    stage: &'static str,
-    elapsed_ms: f64,
-    start_ms: Option<f64>,
-    end_ms: Option<f64>,
-}
-
-impl Measurement {
-    fn emit(&self) {
-        tracing::info!(
-            target: "clash_nyanpasu::startup",
-            pid = std::process::id(),
-            stage = self.stage,
-            elapsed_ms = self.elapsed_ms,
-            start_ms = self.start_ms,
-            end_ms = self.end_ms,
-            "startup stage finished"
-        );
-    }
-}
-
-/// A scope duration includes awaited work and is also recorded on early return.
-/// Finishing the scope does not imply that the operation succeeded.
-pub struct StartupStage<'a> {
-    name: &'static str,
-    started: Instant,
-    timings: Option<&'a StartupTimings>,
-}
-
-impl StartupStage<'static> {
-    /// Constructor details have their own duration, without a process origin.
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            started: Instant::now(),
-            timings: None,
+    /// Complete the file, preserving any still-open span as incomplete.
+    /// Tauri and early process::exit paths must call this explicitly.
+    pub fn finish(&self) {
+        if let Some(guard) = self.guard.lock().take() {
+            tracing::info!(name: "capture_end", target: TARGET, parent: None, finished = true);
+            drop(guard);
         }
     }
 }
 
-impl Drop for StartupStage<'_> {
+impl Drop for StartupTrace {
     fn drop(&mut self) {
-        let ended = Instant::now();
-        let measurement = Measurement {
-            stage: self.name,
-            elapsed_ms: ended.duration_since(self.started).as_secs_f64() * 1000.0,
-            start_ms: self
-                .timings
-                .map(|timings| self.started.duration_since(timings.started).as_secs_f64() * 1000.0),
-            end_ms: self
-                .timings
-                .map(|timings| ended.duration_since(timings.started).as_secs_f64() * 1000.0),
-        };
-        if let Some(timings) = self.timings {
-            timings.record(measurement);
-        } else {
-            measurement.emit();
-        }
+        self.finish();
     }
 }
 

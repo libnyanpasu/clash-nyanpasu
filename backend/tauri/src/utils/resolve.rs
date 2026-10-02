@@ -149,14 +149,14 @@ fn set_window_controls_pos(
 }
 
 /// handle something when start app
-pub fn resolve_setup(app: &mut App, startup: &super::startup::StartupTimings) {
-    let _resolve = startup.stage("resolve.setup");
+pub fn resolve_setup(app: &mut App, startup: &super::startup::StartupTrace) {
+    let _resolve = crate::utils::startup::span!("resolve.setup");
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     #[cfg(target_os = "macos")]
     let ready_app_handle = app.app_handle().clone();
     let ready_startup = app
-        .state::<std::sync::Arc<super::startup::StartupTimings>>()
+        .state::<std::sync::Arc<super::startup::StartupTrace>>()
         .inner()
         .clone();
     WindowReadyEvent::listen(app, move |event| {
@@ -177,18 +177,33 @@ pub fn resolve_setup(app: &mut App, startup: &super::startup::StartupTimings) {
     log::trace!("init system tray");
     #[cfg(any(windows, target_os = "linux"))]
     {
-        let _stage = startup.stage("resolve.tray_image_cache");
+        let _stage = crate::utils::startup::span!("resolve.tray_image_cache");
         crate::core::tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
     }
 
     {
-        let stage = startup.stage("resolve.startup_reconcile");
+        let stage = crate::utils::startup::span!("resolve.startup_reconcile");
         let client = app.state::<crate::client::NyanpasuClient>();
         // TODO(startup): resolve_setup needs restructuring; startup_reconcile
         // should not block setup. See
         // docs/plan/2026-09-28-workflow-lifecycle-simplification.md §9.
-        let report = tauri::async_runtime::block_on(client.startup_reconcile());
+        let report = tauri::async_runtime::block_on(tracing::Instrument::instrument(
+            client.startup_reconcile(),
+            stage.clone(),
+        ));
         drop(stage);
+        let outcome = match &report.outcome {
+            StartupOutcome::Ready => "ready",
+            StartupOutcome::ReadyDegraded { .. } => "ready_degraded",
+            StartupOutcome::RecoveryRequired { .. } => "recovery_required",
+            StartupOutcome::Unsettled { .. } => "unsettled",
+        };
+        tracing::info!(
+            name: "startup_outcome",
+            target: super::startup::TARGET,
+            parent: None,
+            outcome = %outcome,
+        );
         if let Some(observation) = &report.observation {
             log::info!(
                 target: "app",
@@ -211,16 +226,16 @@ pub fn resolve_setup(app: &mut App, startup: &super::startup::StartupTimings) {
         }
         // Even an unsettled startup lets them run: what they change queues
         // behind the startup command.
-        let _stage = startup.stage("resolve.background_sources_spawn");
+        let _stage = crate::utils::startup::span!("resolve.background_sources_spawn");
         log_err!(client.start_background_sources());
     }
 
-    let stage = startup.stage("resolve.clash_connectors");
+    let stage = crate::utils::startup::span!("resolve.clash_connectors");
     log::trace!("init clash connection connector");
     log_err!(crate::core::clash::setup(app));
     drop(stage);
 
-    let stage = startup.stage("resolve.clash_streams");
+    let stage = crate::utils::startup::span!("resolve.clash_streams");
     log_err!(tauri::async_runtime::block_on(
         app.state::<crate::client::NyanpasuClient>()
             .start_clash_streams()
@@ -232,7 +247,7 @@ pub fn resolve_setup(app: &mut App, startup: &super::startup::StartupTimings) {
         .app_config_snapshot()
         .enable_silent_start;
     if !silent_start {
-        let _stage = startup.stage("resolve.main_window");
+        let _stage = crate::utils::startup::span!("resolve.main_window");
         create_window(app.app_handle());
         spawn_window_ready_timeout(app.app_handle().clone());
     } else {
@@ -240,7 +255,7 @@ pub fn resolve_setup(app: &mut App, startup: &super::startup::StartupTimings) {
     }
 
     // test job
-    let _stage = startup.stage("resolve.listeners");
+    let _stage = crate::utils::startup::span!("resolve.listeners");
     proxies::setup_proxies(app.app_handle());
     crate::core::storage::register_web_storage_listener(app.app_handle());
 }
@@ -263,7 +278,7 @@ fn spawn_window_ready_timeout(app_handle: AppHandle) {
                 );
                 if win.show().is_ok()
                     && let Some(startup) =
-                        inner.try_state::<std::sync::Arc<super::startup::StartupTimings>>()
+                        inner.try_state::<std::sync::Arc<super::startup::StartupTrace>>()
                 {
                     startup.milestone("main_window_fallback_shown");
                 }

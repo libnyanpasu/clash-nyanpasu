@@ -373,7 +373,7 @@ impl Tray {
                     .show_menu_on_left_click(false)
                     .build(app_handle)?;
                 if let Some(startup) =
-                    app_handle.try_state::<std::sync::Arc<crate::utils::startup::StartupTimings>>()
+                    app_handle.try_state::<std::sync::Arc<crate::utils::startup::StartupTrace>>()
                 {
                     startup.milestone("tray_icon_created");
                 }

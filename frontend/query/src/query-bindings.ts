@@ -601,6 +601,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.restartApplication>) =>
         commands.restartApplication(...input),
     }),
+    installUpdate: mutationOptions({
+      mutationKey: ['installUpdate'],
+      mutationFn: (input: Parameters<typeof commands.installUpdate>) =>
+        commands.installUpdate(...input),
+    }),
     setTrayIcon: mutationOptions({
       mutationKey: ['setTrayIcon'],
       mutationFn: (input: Parameters<typeof commands.setTrayIcon>) =>
@@ -610,11 +615,6 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['openThat'],
       mutationFn: (input: Parameters<typeof commands.openThat>) =>
         commands.openThat(...input),
-    }),
-    cleanupProcesses: mutationOptions({
-      mutationKey: ['cleanupProcesses'],
-      mutationFn: (input: Parameters<typeof commands.cleanupProcesses>) =>
-        commands.cleanupProcesses(...input),
     }),
     setStorageItem: mutationOptions({
       mutationKey: ['setStorageItem'],

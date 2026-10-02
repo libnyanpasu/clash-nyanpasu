@@ -17,8 +17,11 @@ const SKIP_DIR_NAMES = new Set([
   "nyanpasu-runtime",
 ]);
 
-/** Config facade call sites still bound to the legacy global config graph. */
-export const CONFIG_CALL_RE = /\bConfig::([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
+/**
+ * Config facade call sites still bound to the legacy global config graph.
+ * A path-qualified `Config` (`meta::Config::new()`) is another crate's type.
+ */
+export const CONFIG_CALL_RE = /(?<!::)\bConfig::([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
 
 /** Service-style `Foo::global()` lookups (excludes bare `global(`). */
 export const SERVICE_GLOBAL_RE = /\b([A-Za-z_][A-Za-z0-9_]*)::global\s*\(/g;

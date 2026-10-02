@@ -61,8 +61,8 @@ fn deadlock_detection() {
     });
 }
 
-/// Shows a panic dialog and saves logs, then exits: through the app when a
-/// handle exists, so the shutdown still runs, or the process otherwise.
+/// Shows a panic dialog and saves logs, then exits once the app has shut down
+/// when a handle exists, or at once otherwise.
 fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
     nyanpasu_panics::setup_panic_hook(move |report| {
         let nyanpasu_panics::PanicReport {
@@ -98,6 +98,15 @@ backtrace: {backtrace:#?}
         }
 
         match &app_handle {
+            // The event loop that would run the exit is the one panicking, so
+            // the shutdown runs here and the process ends after it.
+            Some(app_handle) if utils::main_thread::is_main_thread() => {
+                utils::exit::shutdown_on_main_thread(app_handle);
+                std::process::exit(1);
+            }
+            // The hook must return: the panicking task can finish, and release
+            // what it holds, only once it unwinds. The exit boundary then
+            // waits for every owner before the app exits.
             Some(app_handle) => app_handle.exit(1),
             None => std::process::exit(1),
         }

@@ -173,6 +173,31 @@ pub async fn clean_up(app_handle: &AppHandle) {
     app_handle.state::<ExitBoundary>().gate.lock().cleaned_up();
 }
 
+/// Shuts the app down from the main thread while the event loop on it can no
+/// longer run, as after a panic there: the work owners send to the main thread
+/// runs here instead, until every owner has finished. The final window
+/// geometry is not saved, since reading it is work for that event loop.
+pub fn shutdown_on_main_thread(app_handle: &AppHandle) {
+    let Some(client) = app_handle
+        .try_state::<NyanpasuClient>()
+        .map(|state| state.inner().clone())
+    else {
+        return;
+    };
+    let (done, work) = app_handle
+        .state::<std::sync::Arc<crate::client::MainThreadHandoff>>()
+        .take_over();
+    client.request_shutdown();
+    tauri::async_runtime::spawn(async move {
+        client.wait_shutdown().await;
+        let _ = done.send(crate::client::MainThreadWork::Done);
+    });
+    while let Ok(crate::client::MainThreadWork::Run(task)) = work.recv() {
+        task();
+    }
+    app_handle.cleanup_before_exit();
+}
+
 /// Queues the main window's final geometry, then cancels the root token. The
 /// order matters: the session state owner drains what was queued before the
 /// cancel, so the save is written before it stops.

@@ -51,8 +51,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let rpc_events = crate::unified_rpc::EventBus::new();
     crate::unified_rpc::bridge_tauri_events(&app_handle, rpc_events.clone());
     app.manage(rpc_events);
-    let main_thread: Arc<dyn MainThreadExecutor> =
-        Arc::new(TauriMainThread::new(app_handle.clone()));
+    // Shared with the panic hook, which takes the main thread's work over
+    // once the event loop is gone.
+    let main_thread_handoff = Arc::new(crate::client::MainThreadHandoff::default());
+    app.manage(main_thread_handoff.clone());
+    let main_thread: Arc<dyn MainThreadExecutor> = Arc::new(TauriMainThread::new(
+        app_handle.clone(),
+        main_thread_handoff,
+    ));
     // The root of the shutdown. Created here rather than in the client: the
     // system proxy, hotkey and widget owners are built outside it.
     let shutdown = CancellationToken::new();

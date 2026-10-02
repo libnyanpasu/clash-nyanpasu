@@ -21,6 +21,7 @@ import ConnectionsTable, {
 import TableRow, {
   closedConnectionDetail,
   ConnectionDetailModal,
+  type ConnectionDetail,
 } from './table-row'
 import {
   closedConnectionId,
@@ -136,8 +137,10 @@ const byNumber =
   ) =>
     (valueOf(rowA.original) ?? 0) - (valueOf(rowB.original) ?? 0)
 
+// `key` is the row's id in this table, which the details report back.
 type DetailTarget =
-  { kind: 'active'; id: string } | { kind: 'closed'; row: ClosedConnection }
+  | { kind: 'active'; key: string; id: string }
+  | { kind: 'closed'; key: string; row: ClosedConnection }
 
 // Live and closed connections of the selection in one table, as the traffic
 // page's "all" scope counts them. Memoized like the other views, so a
@@ -148,12 +151,19 @@ const AllViewer = memo(function AllViewer({
   selection,
   settingsOpen,
   onSettingsOpenChange,
+  onLocateRule,
+  onViewRuleUsage,
+  focusRowId,
 }: {
   search: string
   proxy?: string | null
   selection: ConnectionsSelection
   settingsOpen: boolean
   onSettingsOpenChange: (open: boolean) => void
+  onLocateRule?: (detail: ConnectionDetail) => void
+  onViewRuleUsage?: (detail: ConnectionDetail) => void
+  // The row to scroll to and highlight once it appears.
+  focusRowId?: string
 }) {
   const { connections, rows: activeRows } = useActiveConnectionRows({
     search,
@@ -185,12 +195,13 @@ const AllViewer = memo(function AllViewer({
   const activeDetail = useActiveConnectionDetail(
     connections,
     detailTarget?.kind === 'active' ? detailTarget.id : null,
+    detailTarget?.kind === 'active' ? detailTarget.key : null,
   )
 
   const detail = useMemo(
     () =>
       detailTarget?.kind === 'closed'
-        ? closedConnectionDetail(detailTarget.row)
+        ? closedConnectionDetail(detailTarget.row, detailTarget.key)
         : activeDetail,
     [detailTarget, activeDetail],
   )
@@ -213,7 +224,11 @@ const AllViewer = memo(function AllViewer({
         <TableRow
           {...props}
           onViewDetails={() =>
-            setDetailTarget({ kind: 'active', id: row.active.id })
+            setDetailTarget({
+              kind: 'active',
+              key: row.key,
+              id: row.active.id,
+            })
           }
           onCloseConnection={() => deleteConnectionsRef.current(row.active.id)}
         />
@@ -221,7 +236,7 @@ const AllViewer = memo(function AllViewer({
         <TableRow
           {...props}
           onViewDetails={() =>
-            setDetailTarget({ kind: 'closed', row: row.closed })
+            setDetailTarget({ kind: 'closed', key: row.key, row: row.closed })
           }
         />
       ),
@@ -437,6 +452,7 @@ const AllViewer = memo(function AllViewer({
               : m.connections_empty_message()
         }
         onEndReached={onEndReached}
+        focusRowId={focusRowId}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
       />
@@ -446,6 +462,8 @@ const AllViewer = memo(function AllViewer({
           detail={detail}
           onClose={closeDetail}
           onCloseConnection={closeDetailConnection}
+          onLocateRule={onLocateRule}
+          onViewRuleUsage={onViewRuleUsage}
         />
       </RowsTickContext.Provider>
     </>

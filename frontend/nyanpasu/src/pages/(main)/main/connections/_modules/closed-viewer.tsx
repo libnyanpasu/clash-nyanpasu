@@ -19,6 +19,7 @@ import ConnectionsTable, {
 import TableRow, {
   closedConnectionDetail,
   ConnectionDetailModal,
+  type ConnectionDetail,
 } from './table-row'
 import {
   closedConnectionId,
@@ -38,12 +39,19 @@ const ClosedViewer = memo(function ClosedViewer({
   selection,
   settingsOpen,
   onSettingsOpenChange,
+  onLocateRule,
+  onViewRuleUsage,
+  focusRowId,
 }: {
   search: string
   proxy?: string | null
   selection: ConnectionsSelection
   settingsOpen: boolean
   onSettingsOpenChange: (open: boolean) => void
+  onLocateRule?: (detail: ConnectionDetail) => void
+  onViewRuleUsage?: (detail: ConnectionDetail) => void
+  // The row to scroll to and highlight once it appears.
+  focusRowId?: string
 }) {
   const { rows, error, hasNextPage, onEndReached } = useClosedConnectionRows({
     search,
@@ -55,7 +63,10 @@ const ClosedViewer = memo(function ClosedViewer({
   const [detailRow, setDetailRow] = useState<ClosedConnection | null>(null)
 
   const detail = useMemo(
-    () => (detailRow === null ? undefined : closedConnectionDetail(detailRow)),
+    () =>
+      detailRow === null
+        ? undefined
+        : closedConnectionDetail(detailRow, closedConnectionId(detailRow)),
     [detailRow],
   )
 
@@ -217,12 +228,18 @@ const ClosedViewer = memo(function ClosedViewer({
               : m.connections_empty_message()
         }
         onEndReached={onEndReached}
+        focusRowId={focusRowId}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
       />
 
       <RowsTickContext.Provider value={rows}>
-        <ConnectionDetailModal detail={detail} onClose={closeDetail} />
+        <ConnectionDetailModal
+          detail={detail}
+          onClose={closeDetail}
+          onLocateRule={onLocateRule}
+          onViewRuleUsage={onViewRuleUsage}
+        />
       </RowsTickContext.Provider>
     </>
   )

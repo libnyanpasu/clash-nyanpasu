@@ -30,6 +30,10 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useLocalStorage } from '@uidotdev/usehooks'
+import {
+  focusHighlightStyle,
+  useFocusHighlight,
+} from '../../_modules/focus-highlight'
 import { RowsTickContext } from './cells'
 import { useColumnSettings } from './column-settings'
 import ColumnSettingsModal from './column-settings-modal'
@@ -58,7 +62,7 @@ export type ConnectionColumn<TRow extends RowData> = ColumnDef<
   header: () => string
 }
 
-export type RowProps = ComponentProps<'tr'>
+export type RowProps = ComponentProps<'tr'> & { 'data-focused'?: boolean }
 
 type RenderRow<TRow> = (row: TRow, props: RowProps) => ReactNode
 
@@ -72,6 +76,8 @@ const ROW_HEIGHT = 36
 // Rows closer than this to the end load the next page.
 const END_REACHED_THRESHOLD = 20
 
+const rowKey = (row: { id: string }) => row.id
+
 const sameItems = <T,>(a: readonly T[], b: readonly T[]) =>
   a.length === b.length && a.every((item, index) => item === b[index])
 
@@ -81,6 +87,8 @@ type BodyRowProps<TRow extends RowData> = {
   columns: ReadonlyArray<Column<typeof features, TRow>>
   widths: readonly number[]
   offset: number
+  // Highlighted as the row the page was returned to.
+  focused: boolean
   renderRow: RenderRow<TRow>
   isRowEqual: (a: TRow, b: TRow) => boolean
 }
@@ -93,6 +101,7 @@ const BodyRow = memo(
     row,
     widths,
     offset,
+    focused,
     renderRow,
   }: BodyRowProps<TRow>) {
     return renderRow(row.original, {
@@ -100,9 +109,11 @@ const BodyRow = memo(
         'transition-colors',
         'hover:bg-primary/5 active:bg-primary/10',
       ),
+      'data-focused': focused,
       style: {
         height: `${ROW_HEIGHT}px`,
         transform: `translateY(${offset}px)`,
+        ...(focused && focusHighlightStyle),
       },
       children: row.getVisibleCells().map((cell, index) => (
         <td
@@ -123,6 +134,7 @@ const BodyRow = memo(
   },
   (prev, next) =>
     prev.offset === next.offset &&
+    prev.focused === next.focused &&
     prev.renderRow === next.renderRow &&
     prev.isRowEqual === next.isRowEqual &&
     sameItems(prev.columns, next.columns) &&
@@ -139,6 +151,7 @@ function ConnectionsTable<TRow extends RowData>({
   isRowEqual = Object.is,
   emptyMessage,
   onEndReached,
+  focusRowId,
   settingsOpen,
   onSettingsOpenChange,
 }: {
@@ -151,6 +164,8 @@ function ConnectionsTable<TRow extends RowData>({
   isRowEqual?: (a: TRow, b: TRow) => boolean
   emptyMessage: string
   onEndReached?: () => void
+  // The row to scroll to and highlight once it appears.
+  focusRowId?: string
   settingsOpen: boolean
   onSettingsOpenChange: (open: boolean) => void
 }) {
@@ -217,6 +232,15 @@ function ConnectionsTable<TRow extends RowData>({
       onEndReached?.()
     }
   }, [lastVirtualIndex, rows.length, onEndReached])
+
+  // Rows arrive after the table mounts, so the focus waits for its row; pages
+  // are not loaded to find it.
+  const focusedRowId = useFocusHighlight(
+    focusRowId,
+    rows,
+    rowKey,
+    rowVirtualizer,
+  )
 
   const [viewportWidth, setViewportWidth] = useState(0)
 
@@ -390,6 +414,7 @@ function ConnectionsTable<TRow extends RowData>({
                     columns={visibleColumns}
                     widths={cellWidths}
                     offset={virtualRow.start - index * virtualRow.size}
+                    focused={row.id === focusedRowId}
                     renderRow={renderRow}
                     isRowEqual={isRowEqual}
                   />

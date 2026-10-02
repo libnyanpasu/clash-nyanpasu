@@ -244,11 +244,12 @@ export function useClosedConnectionRows({
 /**
  * The details of the live connection `id`, following its samples. The last
  * sample is kept, so the dialog stays on it after the connection closes and
- * leaves the stream.
+ * leaves the stream. `rowId` is the connection's row id in the opening table.
  */
 export function useActiveConnectionDetail(
   connections: ConnectionRow[],
   id: string | null,
+  rowId = id,
 ) {
   // Looked up unfiltered: a search or proxy filter hiding the row does not
   // close the connection.
@@ -266,7 +267,25 @@ export function useActiveConnectionDetail(
   const detailRow = liveRow ?? (lastRow?.id === id ? lastRow : undefined)
 
   return useMemo(
-    () => detailRow && activeConnectionDetail(detailRow, detailRow !== liveRow),
-    [detailRow, liveRow],
+    () =>
+      detailRow && rowId !== null
+        ? activeConnectionDetail(detailRow, detailRow !== liveRow, rowId)
+        : undefined,
+    [detailRow, liveRow, rowId],
   )
+}
+
+/**
+ * The entry's focus while the page stays on the tab it opened with. Each tab
+ * mounts its own table, so a focus kept past a tab switch would be applied
+ * again on returning to that tab; the first switch drops it.
+ */
+export function useTabFocus(scope: string, focus: string | undefined) {
+  const [tabFocus, setTabFocus] = useState({ scope, focus })
+
+  if (tabFocus.focus !== undefined && tabFocus.scope !== scope) {
+    setTabFocus({ scope, focus: undefined })
+  }
+
+  return tabFocus.scope === scope ? tabFocus.focus : undefined
 }

@@ -163,6 +163,7 @@ mod tests {
             profile: None,
             source_region: "unknown".into(),
             destination_region: "unknown".into(),
+            destination_basis: None,
         }
     }
 

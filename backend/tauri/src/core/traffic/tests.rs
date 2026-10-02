@@ -321,6 +321,7 @@ fn dims(process: &str) -> Dimensions {
         profile: None,
         source_region: "unknown".into(),
         destination_region: "unknown".into(),
+        destination_basis: None,
     }
 }
 
@@ -1419,6 +1420,7 @@ fn frame_from_snapshot_extracts_dimensions() {
             profile: None,
             source_region: "unknown".into(),
             destination_region: "unknown".into(),
+            destination_basis: None,
         }
     );
 

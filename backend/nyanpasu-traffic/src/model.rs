@@ -67,15 +67,38 @@ pub struct Dimensions {
     /// The profile that was current when the connection first appeared; never rewritten.
     #[serde(default)]
     pub profile: Option<String>,
-    /// Normalized GeoIP region, see `normalize_region`.
+    /// An upper-case country code, or `unknown`.
     #[serde(default = "unknown")]
     pub source_region: String,
     #[serde(default = "unknown")]
     pub destination_region: String,
+    /// How `destination_region` was located; `None` while it is unknown.
+    #[serde(default)]
+    pub destination_basis: Option<GeoBasis>,
 }
 
 fn unknown() -> String {
     UNKNOWN.to_owned()
+}
+
+/// What the address a destination was located by is to the outbound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub enum GeoBasis {
+    /// The outbound dialed this address.
+    Dialed,
+    /// The outbound was handed the host; the core resolved this address only for its rules.
+    Resolved,
+}
+
+impl GeoBasis {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GeoBasis::Dialed => "dialed",
+            GeoBasis::Resolved => "resolved",
+        }
+    }
 }
 
 impl Dimensions {
@@ -117,10 +140,12 @@ pub enum Dimension {
     Profile,
     SourceRegion,
     DestinationRegion,
+    /// How the destination region was located; empty while it is unknown.
+    DestinationBasis,
 }
 
 impl Dimension {
-    pub const ALL: [Dimension; 12] = [
+    pub const ALL: [Dimension; 13] = [
         Dimension::Origin,
         Dimension::Process,
         Dimension::Source,
@@ -133,6 +158,7 @@ impl Dimension {
         Dimension::Profile,
         Dimension::SourceRegion,
         Dimension::DestinationRegion,
+        Dimension::DestinationBasis,
     ];
 
     pub fn name(self) -> &'static str {
@@ -149,6 +175,7 @@ impl Dimension {
             Dimension::Profile => "profile",
             Dimension::SourceRegion => "source_region",
             Dimension::DestinationRegion => "destination_region",
+            Dimension::DestinationBasis => "destination_basis",
         }
     }
 }
@@ -167,6 +194,7 @@ pub fn group_key(d: &Dimensions, g: Dimension) -> String {
         Dimension::Profile => d.profile.clone().unwrap_or_default(),
         Dimension::SourceRegion => d.source_region.clone(),
         Dimension::DestinationRegion => d.destination_region.clone(),
+        Dimension::DestinationBasis => d.destination_basis.map_or("", GeoBasis::as_str).to_owned(),
     }
 }
 
@@ -414,6 +442,7 @@ mod tests {
             profile: Some("p1".into()),
             source_region: "CN".into(),
             destination_region: "US".into(),
+            destination_basis: Some(GeoBasis::Dialed),
         }
     }
 
@@ -433,6 +462,7 @@ mod tests {
         assert_eq!(key(Dimension::Profile), "p1");
         assert_eq!(key(Dimension::SourceRegion), "CN");
         assert_eq!(key(Dimension::DestinationRegion), "US");
+        assert_eq!(key(Dimension::DestinationBasis), "dialed");
     }
 
     #[test]

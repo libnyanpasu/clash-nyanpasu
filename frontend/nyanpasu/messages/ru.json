@@ -32,6 +32,7 @@
   "traffic_dimension_profile": "Профиль",
   "traffic_dimension_source_region": "Регион источника",
   "traffic_dimension_destination_region": "Регион назначения",
+  "traffic_dimension_destination_basis": "Основание местоположения",
   "traffic_stat_total": "Весь трафик",
   "traffic_stat_connections": "Соединения",
   "traffic_stat_connections_hint": "Это статистика, а не точный учёт. Соединение учитывается в периоде, в котором оно закрылось, даже если его трафик был до начала периода.",

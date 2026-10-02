@@ -104,6 +104,7 @@ export const dimensionName = (dimension: Dimension) =>
     profile: m.traffic_dimension_profile,
     source_region: m.traffic_dimension_source_region,
     destination_region: m.traffic_dimension_destination_region,
+    destination_basis: m.traffic_dimension_destination_basis,
   })[dimension]()
 
 /** What the metric weighs a usage by. */

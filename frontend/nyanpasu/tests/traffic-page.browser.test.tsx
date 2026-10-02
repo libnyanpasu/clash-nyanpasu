@@ -95,19 +95,21 @@ function topologyFor({ layers }: TopologyRequest): Topology {
       ? ['CN', null]
       : dimension === 'destination_region'
         ? ['US', 'unknown']
-        : [
-            `${dimension}-${index}`,
-            ...Array.from(
-              {
-                length:
-                  dimension === 'exit'
-                    ? (rpc.extraExitNodes ?? rpc.extraNodes)
-                    : rpc.extraNodes,
-              },
-              (_, extra) => `${dimension}-${index}-${extra}`,
-            ),
-            null,
-          ]
+        : dimension === 'destination_basis'
+          ? rpc.basisKeys
+          : [
+              `${dimension}-${index}`,
+              ...Array.from(
+                {
+                  length:
+                    dimension === 'exit'
+                      ? (rpc.extraExitNodes ?? rpc.extraNodes)
+                      : rpc.extraNodes,
+                },
+                (_, extra) => `${dimension}-${index}-${extra}`,
+              ),
+              null,
+            ]
   const nodes = layers.flatMap((dimension, layer) =>
     keys(dimension, layer).map((key) => ({
       id: nodeId(layer, key),
@@ -143,6 +145,8 @@ const rpc = vi.hoisted(() => ({
   extraNodes: 0,
   // The same for the exit layer; the default follows `extraNodes`.
   extraExitNodes: undefined as number | undefined,
+  // How the map's destination regions were located.
+  basisKeys: ['dialed', 'resolved'],
 }))
 
 function mockBackend(pages: Record<string, UsagePage> = {}) {
@@ -228,6 +232,7 @@ async function open(
     rpc.usageError = false
     rpc.extraNodes = 0
     rpc.extraExitNodes = undefined
+    rpc.basisKeys = ['dialed', 'resolved']
     backend.retention = '7d'
     backend.intervals = []
   })
@@ -768,7 +773,7 @@ test('the map asks for every region and a region filters the destination', async
     true,
   )
   expect(last().topology).toEqual({
-    layers: ['source_region', 'destination_region'],
+    layers: ['source_region', 'destination_region', 'destination_basis'],
     metric: 'bytes',
     limit_per_layer: null,
   })
@@ -781,6 +786,60 @@ test('the map asks for every region and a region filters the destination', async
   await expect
     .poll(() => last().query.filters)
     .toEqual([{ dimension: 'destination_region', value: 'US' }])
+})
+
+test('the measured-only switch filters the map by how destinations were located', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'map' })
+  await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
+  // Each region and each basis carries three connections.
+  await expect
+    .element(
+      view.getByText(
+        m.topology_geo_coverage({ dialed: 3, resolved: 3, total: 6 }),
+      ),
+    )
+    .toBeInTheDocument()
+
+  const measuredOnly = view.getByRole('button', {
+    name: m.topology_geo_dialed_only(),
+  })
+  await expect.element(measuredOnly).toHaveAttribute('aria-pressed', 'false')
+  await measuredOnly.click()
+  await expect
+    .poll(() => last().query.filters)
+    .toEqual([{ dimension: 'destination_basis', value: 'dialed' }])
+  await expect.element(measuredOnly).toHaveAttribute('aria-pressed', 'true')
+
+  await measuredOnly.click()
+  await expect.poll(() => last().query.filters).toEqual([])
+})
+
+test('a region placed only by local DNS says so', async ({
+  onTestFinished,
+}) => {
+  rpc.basisKeys = ['resolved']
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'map' })
+
+  await expect
+    .element(
+      view.getByRole('button', {
+        name: new RegExp(
+          `^${regionName('US')} · .+ · ${m.topology_geo_basis_resolved()}$`,
+        ),
+      }),
+    )
+    .toBeInTheDocument()
+  await expect
+    .element(
+      view.getByText(
+        m.topology_geo_coverage({ dialed: 0, resolved: 3, total: 6 }),
+      ),
+    )
+    .toBeInTheDocument()
 })
 
 const limitSelect = (view: Awaited<ReturnType<typeof open>>) =>
@@ -812,7 +871,7 @@ test('the limit of nodes per layer changes the request, all asks for none', asyn
   await view.getByRole('radio', { name: m.topology_geo_map() }).click()
   await expect
     .poll(() => last().topology?.layers)
-    .toEqual(['source_region', 'destination_region'])
+    .toEqual(['source_region', 'destination_region', 'destination_basis'])
   expect(last().topology?.limit_per_layer).toBeNull()
   await expect.element(limitSelect(view)).not.toBeInTheDocument()
 })
@@ -830,7 +889,7 @@ test('a view switch keeps the figures but never draws the other columns', async 
   await view.getByRole('radio', { name: m.topology_geo_map() }).click()
   await expect
     .poll(() => last().topology?.layers)
-    .toEqual(['source_region', 'destination_region'])
+    .toEqual(['source_region', 'destination_region', 'destination_basis'])
 
   // The flow's rules are no regions: the map is empty, the page still stands.
   await expect

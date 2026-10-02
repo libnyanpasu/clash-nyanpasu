@@ -9,6 +9,12 @@ import { format } from "npm:prettier@3.9.9";
 import { dirname, join } from "jsr:@std/path";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 
+type CountryCollection = {
+  features: Array<
+    { properties: { ISO_A2_EH: string } } & GeoPermissibleObjects
+  >;
+};
+
 type LabelCollection = {
   features: Array<
     { properties: { ISO_A2_EH: string; LABEL_X: number; LABEL_Y: number } }
@@ -29,7 +35,7 @@ async function downloadGeoJson<T>(scale: number): Promise<T> {
 }
 
 const [countries, locations] = await Promise.all([
-  downloadGeoJson<GeoPermissibleObjects>(110),
+  downloadGeoJson<CountryCollection>(110),
   downloadGeoJson<LabelCollection>(10),
 ]);
 const projection = geoNaturalEarth1().fitExtent([[18, 18], [942, 442]], {
@@ -44,6 +50,17 @@ for (const { properties: p } of locations.features) {
     Math.round(value * 10) / 10
   );
 }
+// One path per country, keyed like the label points, so regions can be shaded;
+// features without a two-letter code are only drawn.
+const shapes: Record<string, string> = {};
+const unassigned: string[] = [];
+for (const feature of countries.features) {
+  const shape = path(feature);
+  if (!shape) continue;
+  const code = feature.properties.ISO_A2_EH;
+  if (/^[A-Z]{2}$/.test(code)) shapes[code] = (shapes[code] ?? "") + shape;
+  else unassigned.push(shape);
+}
 const output = join(
   WORKSPACE_ROOT,
   "frontend/nyanpasu/src/assets/maps/world-map.json",
@@ -53,13 +70,17 @@ await Deno.writeTextFile(
   output,
   await format(
     JSON.stringify({
-      outline: path(countries),
+      sphere: path({ type: "Sphere" }),
       graticule: path(geoGraticule10()),
+      countries: Object.fromEntries(Object.entries(shapes).sort()),
+      unassigned: unassigned.join(""),
       centers: Object.fromEntries(Object.entries(centers).sort()),
     }),
     { parser: "json" },
   ),
 );
 console.log(
-  `Generated offline map with ${Object.keys(centers).length} region labels`,
+  `Generated offline map with ${
+    Object.keys(shapes).length
+  } country shapes and ${Object.keys(centers).length} region labels`,
 );

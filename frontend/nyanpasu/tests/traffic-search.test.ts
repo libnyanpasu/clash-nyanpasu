@@ -108,7 +108,7 @@ test('the flow asks for the template layers, the map for every region', () => {
       trafficSearchSchema.parse({ view: 'map', metric: 'connections' }),
     ),
   ).toEqual({
-    layers: ['source_region', 'destination_region'],
+    layers: ['source_region', 'destination_region', 'destination_basis'],
     metric: 'connections',
     limit_per_layer: null,
   })

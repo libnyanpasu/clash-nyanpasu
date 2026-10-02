@@ -1,3 +1,4 @@
+import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo, useRef } from 'react'
 import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
 import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
@@ -58,16 +59,20 @@ function UsageRows({
   labelOf,
   onSelect,
 }: Omit<UsageListProps, 'query'> & { groups: UsageGroup[] }) {
-  return groups.map((group, index) => (
-    <RankingRow
-      key={group.key}
-      label={labelOf(dimension, group.key)}
-      usage={group.usage}
-      first={index === 0}
-      active={group.key === selected}
-      onSelect={() => onSelect(group.key)}
-    />
-  ))
+  return (
+    <AnimatePresence initial={false}>
+      {groups.map((group, index) => (
+        <RankingRow
+          key={group.key}
+          label={labelOf(dimension, group.key)}
+          usage={group.usage}
+          rank={index}
+          active={group.key === selected}
+          onSelect={() => onSelect(group.key)}
+        />
+      ))}
+    </AnimatePresence>
+  )
 }
 
 function UsageList({

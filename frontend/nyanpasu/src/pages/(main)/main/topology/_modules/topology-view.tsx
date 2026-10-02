@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState, type ReactNode } from 'react'
-import { useMedia } from 'react-use'
 import { Card } from '@nyanpasu/ui/card'
 import {
   SegmentedButton,
@@ -30,6 +29,7 @@ import {
   type Limit,
   type SearchFilter,
 } from './search'
+import { usePageTransition } from './transition'
 import {
   dimensionName,
   largest,
@@ -109,11 +109,7 @@ export default function TopologyView({
   /** A node or region was picked: its dimension and value become a filter. */
   onSelect: (dimension: Dimension, key: string) => void
 }) {
-  const reducedMotion = useMedia('(prefers-reduced-motion: reduce)', false)
-  const transition = {
-    duration: reducedMotion ? 0 : 0.32,
-    ease: [0.2, 0, 0, 1] as const,
-  }
+  const { transition } = usePageTransition()
   const [hovered, setHovered] = useState<string>()
   const layers = LAYER_TEMPLATES[template]
   const graphWidth = COLUMN_STEP * (layers.length - 1) + NODE_WIDTH

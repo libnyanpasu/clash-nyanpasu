@@ -22,7 +22,7 @@
     "class-variance-authority": "0.7.1",
     "d3": "7.9.0",
     "es-toolkit": "1.52.0",
-    "motion": "13.5.0",
+    "motion": "14.0.0",
     "radix-ui": "1.6.7",
     "react-aria-components": "1.21.1"
   },

@@ -56,6 +56,18 @@ impl TrafficRange {
             Tier::Hour => hour_of(from_ms),
         })
     }
+
+    /// Wall-clock milliseconds where `start` begins; `None` for `All`. A closed connection counts
+    /// in the bucket of its close time, so it is in the range exactly when it closed at or after
+    /// this.
+    pub fn start_ms(self, now_ms: i64) -> Option<i64> {
+        let bucket_ms = match self.tier() {
+            Tier::Minute => MINUTE_MS,
+            Tier::Hour => HOUR_MS,
+        };
+        self.start(now_ms)
+            .map(|bucket| i64::from(bucket) * bucket_ms)
+    }
 }
 
 /// The one country a GeoIP tag list names. Databases mix country codes with categories such as
@@ -172,6 +184,18 @@ mod tests {
             TrafficRange::LastHour.start(top_of_hour + HOUR_MS + MINUTE_MS),
             Some(minute_of(top_of_hour) + 1)
         );
+    }
+
+    #[test]
+    fn range_start_times_are_where_their_first_bucket_begins() {
+        let now = 30 * HOUR_MS + 5 * MINUTE_MS + 7;
+        assert_eq!(
+            TrafficRange::LastHour.start_ms(now),
+            Some(29 * HOUR_MS + 5 * MINUTE_MS)
+        );
+        assert_eq!(TrafficRange::Last24Hours.start_ms(now), Some(6 * HOUR_MS));
+        assert_eq!(TrafficRange::All.start_ms(now), None);
+        assert_eq!(TrafficRange::Last30Days.start_ms(now), Some(0));
     }
 
     #[test]

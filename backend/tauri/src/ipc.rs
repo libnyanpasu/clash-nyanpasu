@@ -1422,12 +1422,24 @@ pub async fn query_traffic_usage_by_keys(
 #[specta::specta]
 pub async fn query_traffic_closed_connections(
     client: tauri::State<'_, NyanpasuClient>,
+    range: nyanpasu_traffic::TrafficRange,
+    filters: Vec<nyanpasu_traffic::TrafficFilter>,
     before: Option<nyanpasu_traffic::ClosedCursor>,
     limit: usize,
 ) -> Result<nyanpasu_traffic::ClosedPage> {
     Ok(client
-        .query_traffic_closed_connections(before, limit)
+        .query_traffic_closed_connections(range, filters, before, limit)
         .await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_active_connection_ids(
+    client: tauri::State<'_, NyanpasuClient>,
+    filters: Vec<nyanpasu_traffic::TrafficFilter>,
+) -> Result<Vec<String>> {
+    Ok(client.query_traffic_active_connection_ids(filters).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]

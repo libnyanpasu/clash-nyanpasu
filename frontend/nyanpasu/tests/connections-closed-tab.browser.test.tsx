@@ -4,7 +4,12 @@ import { expect, test, vi } from 'vitest'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
-import type { ClosedConnection, ClosedCursor } from '@nyanpasu/rpc/types'
+import type {
+  ClosedConnection,
+  ClosedCursor,
+  TrafficFilter,
+  TrafficRange,
+} from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import ClosedViewer from '../src/pages/(main)/main/connections/_modules/closed-viewer'
@@ -74,8 +79,21 @@ test('lists closed connections and loads older pages at the end', async ({
     expect((args as { method: string }).method).toBe(
       'query_traffic_closed_connections',
     )
-    const { before } = (args as { params: { before: ClosedCursor | null } })
-      .params
+    const { range, filters, before, limit } = (
+      args as {
+        params: {
+          range: TrafficRange
+          filters: TrafficFilter[]
+          before: ClosedCursor | null
+          limit: number
+        }
+      }
+    ).params
+    expect({ range, filters, limit }).toEqual({
+      range: 'all',
+      filters: [],
+      limit: 200,
+    })
     requested.push(before)
     return before === null
       ? {

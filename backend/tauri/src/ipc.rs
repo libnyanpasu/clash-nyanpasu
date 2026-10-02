@@ -1,7 +1,7 @@
 use crate::{
     client::{
-        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
-        system_proxy::ports::OsProxyError,
+        ClientError, DirectEgress, NyanpasuClient, RuntimeError, SystemDnsError,
+        effects::error::EffectsError, system_proxy::ports::OsProxyError,
     },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
@@ -560,6 +560,13 @@ pub async fn get_ipsb_asn(
     let value = crate::utils::net::get_ipsb_asn(client.clash_info().port).await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn probe_direct_egress(client: State<'_, NyanpasuClient>) -> Result<DirectEgress> {
+    Ok(client.probe_direct_egress().await)
 }
 
 // ---- typed configuration commands (thin adapters over NyanpasuClient) ----
@@ -1387,11 +1394,12 @@ pub async fn query_traffic_usage(
     client: tauri::State<'_, NyanpasuClient>,
     query: nyanpasu_traffic::TrafficQuery,
     group_by: nyanpasu_traffic::Dimension,
+    metric: nyanpasu_traffic::Metric,
     after: Option<nyanpasu_traffic::UsageCursor>,
     limit: usize,
 ) -> Result<nyanpasu_traffic::UsagePage> {
     Ok(client
-        .query_traffic_usage(query, group_by, after, limit)
+        .query_traffic_usage(query, group_by, metric, after, limit)
         .await?)
 }
 

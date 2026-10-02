@@ -167,6 +167,7 @@ struct Env {
     retention: Arc<FakeRetention>,
     clock: Arc<FakeClock>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
+    geo: watch::Sender<Option<Arc<nyanpasu_geodata::IpIndex>>>,
 }
 
 impl Env {
@@ -186,6 +187,7 @@ impl Env {
                 retention: self.retention.clone(),
                 clock: self.clock.clone(),
                 frames: self.frames.subscribe(),
+                geo: self.geo.subscribe(),
             },
             shutdown.clone(),
             tasks,
@@ -230,6 +232,7 @@ impl Harness {
             retention: Arc::new(FakeRetention(Mutex::new(None))),
             clock: Arc::new(FakeClock(AtomicI64::new(2_000))),
             frames: watch::channel(None).0,
+            geo: watch::channel(None).0,
         };
         env.retention.keep_days(7);
         let shutdown = CancellationToken::new();
@@ -318,6 +321,7 @@ fn dims(process: &str) -> Dimensions {
         profile: None,
         source_region: "unknown".into(),
         destination_region: "unknown".into(),
+        destination_basis: None,
     }
 }
 
@@ -376,6 +380,7 @@ fn everything() -> TrafficQuery {
 fn request(query: TrafficQuery, rankings: &[Dimension]) -> ReportRequest {
     ReportRequest {
         query,
+        metric: Metric::Bytes,
         rankings: rankings.to_vec(),
         ranking_limit: 10,
         topology: None,
@@ -493,7 +498,6 @@ async fn reports_keep_the_top_rankings_and_merge_the_topology() {
     asked.ranking_limit = 2;
     asked.topology = Some(TopologyRequest {
         layers: vec![Dimension::Process, Dimension::Exit],
-        metric: Metric::Bytes,
         limit_per_layer: Some(1),
     });
     let report = h.report(asked).await;
@@ -515,7 +519,6 @@ async fn an_invalid_topology_is_refused() {
     let mut asked = request(everything(), &[]);
     asked.topology = Some(TopologyRequest {
         layers: vec![Dimension::Process],
-        metric: Metric::Bytes,
         limit_per_layer: None,
     });
     let error = h.client.report(asked).await.unwrap_err().to_string();
@@ -539,7 +542,7 @@ async fn a_query_repeating_a_filter_dimension_is_refused_everywhere() {
     refused(h.client.report(request(repeated(), &[])).await.unwrap_err());
     refused(
         h.client
-            .usage(repeated(), Dimension::Process, None, 10)
+            .usage(repeated(), Dimension::Process, Metric::Bytes, None, 10)
             .await
             .unwrap_err(),
     );
@@ -569,7 +572,13 @@ async fn usage_pages_continue_after_the_cursor() {
     let h = &h;
     let page = |after, limit| async move {
         h.client
-            .usage(everything(), Dimension::Process, after, limit)
+            .usage(
+                everything(),
+                Dimension::Process,
+                Metric::Bytes,
+                after,
+                limit,
+            )
             .await
             .unwrap()
     };
@@ -1323,6 +1332,33 @@ async fn pump_delivers_frames_and_lost_feeds() {
     until(&h.client, |s| s.current_rate.is_none()).await;
 }
 
+#[tokio::test]
+async fn pump_locates_regions_with_the_published_index() {
+    let h = Harness::new("p1").await;
+    let dat = crate::core::geo::fixtures::geoip_dat(&[("US", &["8.0.0.0/8"])]);
+    h.geo.send_replace(Some(Arc::new(
+        nyanpasu_geodata::IpIndex::from_geoip_dat(&dat).unwrap(),
+    )));
+
+    h.frames.send_replace(Some(raw_frame(
+        100,
+        200,
+        // The index answers instead of the core's code.
+        vec![connection(
+            A,
+            100,
+            200,
+            json!({ "destinationIP": "8.8.8.8", "destinationGeoIP": ["cn"] }),
+        )],
+    )));
+    until(&h.client, |s| s.last_sample_at.is_some()).await;
+
+    let report = h
+        .report(request(everything(), &[Dimension::DestinationRegion]))
+        .await;
+    assert_eq!(report.rankings[0].groups[0].key, "US");
+}
+
 #[test]
 fn frame_from_snapshot_extracts_dimensions() {
     let connections = vec![
@@ -1361,7 +1397,7 @@ fn frame_from_snapshot_extracts_dimensions() {
         ),
     ];
     let raw = raw_frame(-1, 30, connections);
-    let frame = frame_from_snapshot(&raw, 7_000, Duration::from_millis(9));
+    let frame = frame_from_snapshot(&raw, 7_000, Duration::from_millis(9), None);
 
     assert_eq!(frame.instance_id, CORE);
     assert_eq!(frame.wall_ms, 7_000);
@@ -1389,6 +1425,7 @@ fn frame_from_snapshot_extracts_dimensions() {
             profile: None,
             source_region: "unknown".into(),
             destination_region: "unknown".into(),
+            destination_basis: None,
         }
     );
 
@@ -1430,7 +1467,7 @@ fn frame_from_snapshot_maps_the_inbound_and_the_regions() {
             with(json!({ "sourceGeoIP": [], "destinationGeoIP": null })),
         ],
     );
-    let frame = frame_from_snapshot(&raw, 0, Duration::ZERO);
+    let frame = frame_from_snapshot(&raw, 0, Duration::ZERO, None);
     let regions = |i: usize| {
         let d = &frame.connections[i].dimensions;
         (

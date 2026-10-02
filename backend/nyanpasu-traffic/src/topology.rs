@@ -68,7 +68,7 @@ pub fn project<'a>(
     ordered.sort_by(|((a_layer, a_key), a), ((b_layer, b_key), b)| {
         a_layer
             .cmp(b_layer)
-            .then_with(|| value(b, metric).cmp(&value(a, metric)))
+            .then_with(|| metric.of(b).cmp(&metric.of(a)))
             .then_with(|| a_key.cmp(b_key))
     });
 
@@ -127,13 +127,6 @@ fn add(slot: &mut Usage, usage: Usage) {
     *slot = slot.saturating_add(usage);
 }
 
-fn value(usage: &Usage, metric: Metric) -> u128 {
-    match metric {
-        Metric::Bytes => usage.bytes.total(),
-        Metric::Connections => u128::from(usage.connections),
-    }
-}
-
 /// Unique per layer and key; the JSON encoding keeps separators inside a key from colliding, and
 /// the merged node (`None`, JSON null) never equals a real key (a string).
 fn node_id(layer: u8, key: Option<&str>) -> String {
@@ -163,6 +156,7 @@ mod tests {
             profile: None,
             source_region: "unknown".into(),
             destination_region: "unknown".into(),
+            destination_basis: None,
         }
     }
 

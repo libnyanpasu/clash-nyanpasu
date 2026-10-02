@@ -28,6 +28,7 @@ const DIMENSIONS = [
   'profile',
   'source_region',
   'destination_region',
+  'destination_basis',
 ] as const satisfies readonly Dimension[]
 
 export const TEMPLATES = ['origin', 'source', 'inbound', 'process'] as const
@@ -83,22 +84,17 @@ export const toQuery = ({
 export const toTopologyRequest = ({
   view,
   layers,
-  metric,
   limit,
-}: Pick<
-  TrafficSearch,
-  'view' | 'layers' | 'metric' | 'limit'
->): TopologyRequest =>
+}: Pick<TrafficSearch, 'view' | 'layers' | 'limit'>): TopologyRequest =>
   view === 'map'
     ? {
-        layers: ['source_region', 'destination_region'],
-        metric,
+        // The third layer splits each destination region by how it was located.
+        layers: ['source_region', 'destination_region', 'destination_basis'],
         // The map places every region, so none merges into "other".
         limit_per_layer: null,
       }
     : {
         layers: [...LAYER_TEMPLATES[layers ?? DEFAULT_TEMPLATE]],
-        metric,
         limit_per_layer: limit === 'all' ? null : limit,
       }
 

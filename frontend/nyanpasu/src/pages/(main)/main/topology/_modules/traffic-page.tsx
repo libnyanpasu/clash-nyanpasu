@@ -5,10 +5,12 @@ import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
 import { useCallback, useMemo, useState } from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { useMockTrafficNow } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
 import { usageLabel } from '@/utils/traffic-usage'
 import { useProfile, useSetting, useTrafficReport } from '@nyanpasu/query'
 import { type Dimension, type ReportRequest } from '@nyanpasu/rpc/types'
+import { mockTrafficReport } from './mock-traffic'
 import Notice from './notice'
 import RankingCard from './ranking-card'
 import {
@@ -73,20 +75,33 @@ export default function TrafficPage({
   )
 
   // Only one of the flow and the map is on screen, so the report carries the
-  // topology of that one.
+  // topology of that one. The metric orders the rankings and the topology alike.
   const request = useMemo<ReportRequest>(
     () => ({
       query,
+      metric,
       rankings: RANKINGS.map(({ dimension }) => dimension),
       ranking_limit: RANKING_LIMIT,
-      topology: toTopologyRequest({ view, layers, metric, limit }),
+      topology: toTopologyRequest({ view, layers, limit }),
     }),
-    [query, view, layers, metric, limit],
+    [query, metric, view, layers, limit],
   )
 
-  const { data: report, isError } = useTrafficReport(request, {
+  // Dev builds only: generated usage replaces the recorded one.
+  const mockNow = useMockTrafficNow(paused)
+
+  const { data: recorded, isError: failed } = useTrafficReport(request, {
     refetchInterval: paused ? false : pollInterval(range),
+    enabled: mockNow === null,
   })
+
+  const mocked = useMemo(
+    () => (mockNow === null ? undefined : mockTrafficReport(request, mockNow)),
+    [request, mockNow],
+  )
+
+  const report = mocked ?? recorded
+  const isError = !mocked && failed
 
   const empty =
     !!report &&
@@ -108,7 +123,6 @@ export default function TrafficPage({
             view={view}
             onViewChange={(next) => onSearchChange({ view: next })}
             metric={metric}
-            onMetricChange={(next) => onSearchChange({ metric: next })}
             template={layers ?? DEFAULT_TEMPLATE}
             onTemplateChange={(next) => onSearchChange({ layers: next })}
             limit={limit}
@@ -139,6 +153,7 @@ export default function TrafficPage({
                         title={title()}
                         ranking={ranking}
                         query={query}
+                        metric={metric}
                         filters={filters}
                         labelOf={labelOf}
                         onFiltersChange={(next) =>

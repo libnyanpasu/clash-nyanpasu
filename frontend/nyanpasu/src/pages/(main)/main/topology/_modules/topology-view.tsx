@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState, type ReactNode } from 'react'
-import { useMedia } from 'react-use'
 import { Card } from '@nyanpasu/ui/card'
 import {
   SegmentedButton,
@@ -37,6 +36,7 @@ import {
   type Limit,
   type SearchFilter,
 } from './search'
+import { usePageTransition } from './transition'
 
 const tones = [
   'bg-primary-container text-on-primary-container',
@@ -85,7 +85,6 @@ export default function TopologyView({
   view: mode,
   onViewChange,
   metric,
-  onMetricChange,
   template,
   onTemplateChange,
   limit,
@@ -98,8 +97,8 @@ export default function TopologyView({
   topology: Topology | null | undefined
   view: 'flow' | 'map'
   onViewChange: (view: 'flow' | 'map') => void
+  /** Set for the whole page, in the toolbar. */
   metric: Metric
-  onMetricChange: (metric: Metric) => void
   template: LayerTemplate
   onTemplateChange: (template: LayerTemplate) => void
   limit: Limit
@@ -109,11 +108,7 @@ export default function TopologyView({
   /** A node or region was picked: its dimension and value become a filter. */
   onSelect: (dimension: Dimension, key: string) => void
 }) {
-  const reducedMotion = useMedia('(prefers-reduced-motion: reduce)', false)
-  const transition = {
-    duration: reducedMotion ? 0 : 0.32,
-    ease: [0.2, 0, 0, 1] as const,
-  }
+  const { transition } = usePageTransition()
   const [hovered, setHovered] = useState<string>()
   const layers = LAYER_TEMPLATES[template]
   const graphWidth = COLUMN_STEP * (layers.length - 1) + NODE_WIDTH
@@ -188,30 +183,6 @@ export default function TopologyView({
           </SegmentedButton>
 
           <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-4">
-            <SegmentedButton
-              value={metric}
-              onValueChange={(value) => {
-                if (value === 'connections' || value === 'bytes')
-                  onMetricChange(value)
-              }}
-              size="sm"
-              className="w-auto shrink-0"
-              aria-label={m.topology_weight()}
-            >
-              <SegmentedButtonItem
-                value="bytes"
-                className="flex-none whitespace-nowrap"
-              >
-                {m.topology_by_bytes()}
-              </SegmentedButtonItem>
-              <SegmentedButtonItem
-                value="connections"
-                className="flex-none whitespace-nowrap"
-              >
-                {m.topology_by_connections()}
-              </SegmentedButtonItem>
-            </SegmentedButton>
-
             {mode === 'flow' && (
               <div className="w-full sm:w-64">
                 <Select
@@ -288,6 +259,11 @@ export default function TopologyView({
               filters.find((filter) => filter.d === 'destination_region')?.v
             }
             onSelect={(code) => onSelect('destination_region', code)}
+            measuredOnly={filters.some(
+              (filter) =>
+                filter.d === 'destination_basis' && filter.v === 'dialed',
+            )}
+            onMeasuredOnlyChange={() => onSelect('destination_basis', 'dialed')}
           />
         ) : !nodes.length ? (
           <div className="text-on-surface-variant grid min-h-64 place-content-center text-center">

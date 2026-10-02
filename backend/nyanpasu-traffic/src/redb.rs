@@ -19,7 +19,7 @@ use std::{
 };
 
 /// Statistics are disposable: a file written by another schema is wiped, never migrated.
-const SCHEMA_VERSION: u64 = 2;
+const SCHEMA_VERSION: u64 = 3;
 
 const VERSION_KEY: &str = "version";
 const META_KEY: &str = "meta";
@@ -479,6 +479,7 @@ mod tests {
             profile: None,
             source_region: "unknown".into(),
             destination_region: "unknown".into(),
+            destination_basis: None,
         }
     }
 
@@ -1192,6 +1193,7 @@ mod tests {
                     profile: Some(format!("profile-{}", i % 3)),
                     source_region: "CN".into(),
                     destination_region: format!("R{}", i % 12),
+                    destination_basis: None,
                 })
             })
             .collect();
@@ -1227,6 +1229,7 @@ mod tests {
                     value: "mixed-1".into(),
                 }],
             },
+            metric: Metric::Bytes,
             rankings: vec![
                 Dimension::Origin,
                 Dimension::Inbound,
@@ -1242,7 +1245,6 @@ mod tests {
                     Dimension::Chain,
                     Dimension::Exit,
                 ],
-                metric: Metric::Bytes,
                 limit_per_layer: Some(7),
             }),
         };

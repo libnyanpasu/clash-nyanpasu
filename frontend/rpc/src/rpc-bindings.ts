@@ -177,6 +177,8 @@ export function createRpcClient(
         __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
       ),
     getIpsbAsn: () => typedError<any, IpcError>(__RPC_INVOKE('get_ipsb_asn')),
+    probeDirectEgress: () =>
+      typedError<DirectEgress, IpcError>(__RPC_INVOKE('probe_direct_egress')),
     isAppimage: () =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_appimage')),
     getServiceInstallPrompt: () =>
@@ -210,14 +212,21 @@ export function createRpcClient(
     queryTrafficUsage: (
       query: TrafficQuery,
       groupBy: Dimension,
+      metric: Metric,
       after: {
-        bytes: Bytes
+        usage: Usage
         key: string
       } | null,
       limit: number,
     ) =>
       typedError<UsagePage, IpcError>(
-        __RPC_INVOKE('query_traffic_usage', { query, groupBy, after, limit }),
+        __RPC_INVOKE('query_traffic_usage', {
+          query,
+          groupBy,
+          metric,
+          after,
+          limit,
+        }),
       ),
     queryTrafficUsageByKeys: (
       query: TrafficQuery,
@@ -1718,6 +1727,8 @@ export type Dimension =
   | 'profile'
   | 'source_region'
   | 'destination_region'
+  /**  How the destination region was located; empty while it is unknown. */
+  | 'destination_basis'
 
 export type Dimensions = {
   /**  Process path or name. */
@@ -1733,10 +1744,24 @@ export type Dimensions = {
   chains: string[]
   /**  The profile that was current when the connection first appeared; never rewritten. */
   profile?: string | null
-  /**  Normalized GeoIP region, see `normalize_region`. */
+  /**  An upper-case country code, or `unknown`. */
   source_region?: string
   destination_region?: string
+  /**  How `destination_region` was located; `None` while it is unknown. */
+  destination_basis?: GeoBasis | null
 }
+
+export type DirectEgress =
+  /**
+   *  Nothing was probed: TUN mode captures the app's own requests and routes
+   *  them by rule, so an echo could come back from a proxy exit.
+   */
+  | { kind: 'tun_enabled' }
+  /**
+   *  `None` for a family the echo service gave no address over, such as a
+   *  network without IPv6.
+   */
+  | { kind: 'probed'; ipv4: string | null; ipv6: string | null }
 
 export type Direction = 'latest' | 'before' | 'after'
 
@@ -1951,6 +1976,13 @@ export type Filter = {
   to_ms: number | null
   text: string | null
 }
+
+/**  What the address a destination was located by is to the outbound. */
+export type GeoBasis =
+  /**  The outbound dialed this address. */
+  | 'dialed'
+  /**  The outbound was handed the host; the core resolved this address only for its rules. */
+  | 'resolved'
 
 export type GetSysProxyResponse = {
   enable: boolean
@@ -3583,6 +3615,8 @@ export type RemoteProfileOptionsPatch_Serialize = {
 
 export type ReportRequest = {
   query: TrafficQuery
+  /**  What the rankings and the topology order and merge their groups by. */
+  metric: Metric
   /**  One ranking per dimension. */
   rankings: Dimension[]
   /**  Groups per ranking, capped at `MAX_LIMIT`. */
@@ -4254,7 +4288,6 @@ export type TopologyNode = {
 export type TopologyRequest = {
   /**  Two to five distinct dimensions, from the first column to the last. */
   layers: Dimension[]
-  metric: Metric
   /**  Nodes beyond this many per layer merge into one "other" node; `None` keeps them all. */
   limit_per_layer: number | null
 }
@@ -4407,9 +4440,12 @@ export type Usage = {
   connections: number
 }
 
-/**  Exclusive position for heaviest-first paging of grouped usage: the last group of a page. */
+/**
+ *  Exclusive position for heaviest-first paging of grouped usage: the last group of a page, with
+ *  its whole usage, so it places the next page under either metric.
+ */
 export type UsageCursor = {
-  bytes: Bytes
+  usage: Usage
   key: string
 }
 

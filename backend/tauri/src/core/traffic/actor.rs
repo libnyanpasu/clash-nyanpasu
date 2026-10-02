@@ -3,8 +3,9 @@
 //! frames until the next flush retries it.
 use std::{sync::Arc, time::Duration};
 
+use nyanpasu_geodata::IpIndex;
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, Dimension, Frame, Prune, ReportRequest, Row, Session, Tier,
+    ClosedCursor, ClosedPage, Dimension, Frame, Metric, Prune, ReportRequest, Row, Session, Tier,
     TrafficError, TrafficQuery, TrafficReport, TrafficResult, TrafficScope, TrafficStore,
     TrafficSummary, UsageCursor, UsageGroup, UsagePage, filter_rows, merge_closed_page, report,
     usage_by_keys, usage_page,
@@ -13,6 +14,7 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult}
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
 
 use super::{
+    geo::CountryLookup,
     ports::{Clock, ProfileSelection, RetentionPolicy},
     source::frame_from_snapshot,
 };
@@ -31,6 +33,7 @@ pub(super) enum Message {
     Usage(
         TrafficQuery,
         Dimension,
+        Metric,
         Option<UsageCursor>,
         usize,
         RpcReplyPort<TrafficResult<UsagePage>>,
@@ -54,6 +57,8 @@ pub struct TrafficArgs {
     pub retention: Arc<dyn RetentionPolicy>,
     pub clock: Arc<dyn Clock>,
     pub frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
+    /// The country index regions are looked up in; `None` until the core's database loads.
+    pub geo: watch::Receiver<Option<Arc<IpIndex>>>,
 }
 
 pub(super) struct TrafficActor;
@@ -88,6 +93,7 @@ impl Actor for TrafficActor {
             retention,
             clock,
             frames,
+            geo,
         } = args;
         // An unreadable store must not start an empty session: the stored live connections would
         // be recorded again and the store diverge from what the session knows.
@@ -102,7 +108,7 @@ impl Actor for TrafficActor {
             session,
             collected_at: None,
             collection_due: true,
-            pump: tokio::spawn(pump(myself, frames, clock.clone())),
+            pump: tokio::spawn(pump(myself, frames, geo, clock.clone())),
             clock,
         })
     }
@@ -134,8 +140,8 @@ impl Actor for TrafficActor {
             Message::Report(request, reply) => {
                 let _ = reply.send(state.report(request).await);
             }
-            Message::Usage(query, dimension, after, limit, reply) => {
-                let _ = reply.send(state.usage(query, dimension, after, limit).await);
+            Message::Usage(query, dimension, metric, after, limit, reply) => {
+                let _ = reply.send(state.usage(query, dimension, metric, after, limit).await);
             }
             Message::UsageByKeys(query, dimension, keys, reply) => {
                 let _ = reply.send(state.usage_by_keys(query, dimension, keys).await);
@@ -218,6 +224,7 @@ impl State {
         &self,
         query: TrafficQuery,
         dimension: Dimension,
+        metric: Metric,
         after: Option<UsageCursor>,
         limit: usize,
     ) -> TrafficResult<UsagePage> {
@@ -226,6 +233,7 @@ impl State {
             usage_page(
                 filter_rows(rows, &query.filters),
                 dimension,
+                metric,
                 after.as_ref(),
                 limit,
             )
@@ -317,6 +325,7 @@ async fn blocking<T: Send + 'static>(
 async fn pump(
     actor: ActorRef<Message>,
     mut frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
+    geo: watch::Receiver<Option<Arc<IpIndex>>>,
     clock: Arc<dyn Clock>,
 ) {
     let origin = tokio::time::Instant::now();
@@ -331,7 +340,14 @@ async fn pump(
                 let latest = frames.borrow_and_update().clone();
                 match latest {
                     Some(raw) => {
-                        let frame = frame_from_snapshot(&raw, clock.now_ms(), origin.elapsed());
+                        // The index as published when the frame converts.
+                        let index = geo.borrow().clone();
+                        let frame = frame_from_snapshot(
+                            &raw,
+                            clock.now_ms(),
+                            origin.elapsed(),
+                            index.as_deref().map(|index| index as &dyn CountryLookup),
+                        );
                         call(&actor, |reply| Message::Observe(frame, reply)).await
                     }
                     None => call(&actor, Message::Disconnected).await,

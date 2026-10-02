@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, Dimension, ReportRequest, TrafficQuery, TrafficReport,
+    ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficQuery, TrafficReport,
     TrafficSummary, UsageCursor, UsageGroup, UsagePage,
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
@@ -61,17 +61,18 @@ impl TrafficClient {
         Ok(self.call(|reply| Message::Report(request, reply)).await??)
     }
 
-    /// `limit` groups of what `query` selects, heaviest first, strictly after `after`, including
-    /// what is not flushed yet.
+    /// `limit` groups of what `query` selects, heaviest by `metric` first, strictly after `after`,
+    /// including what is not flushed yet.
     pub async fn usage(
         &self,
         query: TrafficQuery,
         dimension: Dimension,
+        metric: Metric,
         after: Option<UsageCursor>,
         limit: usize,
     ) -> Result<UsagePage> {
         Ok(self
-            .call(|reply| Message::Usage(query, dimension, after, limit, reply))
+            .call(|reply| Message::Usage(query, dimension, metric, after, limit, reply))
             .await??)
     }
 

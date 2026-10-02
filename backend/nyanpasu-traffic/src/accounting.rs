@@ -442,6 +442,7 @@ mod tests {
             profile: None,
             source_region: "unknown".into(),
             destination_region: "unknown".into(),
+            destination_basis: None,
         }
     }
 
@@ -503,6 +504,7 @@ mod tests {
                 scope: TrafficScope::Active,
                 filters: Vec::new(),
             },
+            metric: Metric::Bytes,
             rankings: vec![dimension],
             ranking_limit: 200,
             topology: None,
@@ -1440,6 +1442,7 @@ mod tests {
                     scope,
                     filters: Vec::new(),
                 },
+                metric: Metric::Bytes,
                 rankings: Dimension::ALL.to_vec(),
                 ranking_limit: 200,
                 topology: None,

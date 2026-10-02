@@ -73,6 +73,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_core_status,
             ipc::url_delay_test,
             ipc::get_ipsb_asn,
+            ipc::probe_direct_egress,
             ipc::is_appimage,
             ipc::get_service_install_prompt,
             ipc::get_storage_item,

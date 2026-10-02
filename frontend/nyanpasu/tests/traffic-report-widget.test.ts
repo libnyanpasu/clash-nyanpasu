@@ -44,6 +44,7 @@ const report = (): TrafficReport => ({
 
 test('requests all widget dimensions with a shared query and optional profile filter', () => {
   expect(createTrafficReportRequest('last_hour', null)).toEqual({
+    metric: 'bytes',
     query: { range: 'last_hour', scope: 'all', filters: [] },
     rankings: ['origin', 'exit', 'target', 'rule'],
     ranking_limit: 5,

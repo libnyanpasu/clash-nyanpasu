@@ -1,10 +1,15 @@
+import { AnimatePresence } from 'motion/react'
 import { useState, type ComponentType, type SVGProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import { m } from '@/paraglide/messages'
-import parseTraffic from '@/utils/parse-traffic'
-import type { UsageLabel } from '@/utils/traffic-usage'
-import type { Dimension, Ranking, TrafficQuery } from '@nyanpasu/rpc/types'
+import { usageAmount, type UsageLabel } from '@/utils/traffic-usage'
+import type {
+  Dimension,
+  Metric,
+  Ranking,
+  TrafficQuery,
+} from '@nyanpasu/rpc/types'
 import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
 import { setFilter, toggleFilter, type SearchFilter } from './search'
@@ -22,6 +27,7 @@ export default function RankingCard({
   title,
   ranking,
   query,
+  metric,
   filters,
   labelOf,
   onFiltersChange,
@@ -30,6 +36,8 @@ export default function RankingCard({
   title: string
   ranking: Ranking
   query: TrafficQuery
+  /** What the ranking is ordered by, and what each row leads with. */
+  metric: Metric
   filters: SearchFilter[]
   labelOf: (dimension: Dimension, key: string) => UsageLabel
   onFiltersChange: (filters: SearchFilter[]) => void
@@ -64,25 +72,26 @@ export default function RankingCard({
       </div>
 
       <div className="flex flex-col gap-1">
-        {ranking.groups.map((group, index) => (
-          <RankingRow
-            key={group.key}
-            label={labelOf(dimension, group.key)}
-            usage={group.usage}
-            first={index === 0}
-            active={group.key === selected}
-            onSelect={() =>
-              onFiltersChange(toggleFilter(filters, dimension, group.key))
-            }
-          />
-        ))}
+        <AnimatePresence initial={false}>
+          {ranking.groups.map((group, index) => (
+            <RankingRow
+              key={group.key}
+              label={labelOf(dimension, group.key)}
+              usage={group.usage}
+              metric={metric}
+              rank={index}
+              active={group.key === selected}
+              onSelect={() =>
+                onFiltersChange(toggleFilter(filters, dimension, group.key))
+              }
+            />
+          ))}
+        </AnimatePresence>
 
         {others > 0 && (
           <p className="text-on-surface-variant truncate px-4 py-2 text-xs tabular-nums">
             {m.traffic_rank_other({ count: others.toLocaleString() })} ·{' '}
-            {parseTraffic(
-              ranking.other.bytes.upload + ranking.other.bytes.download,
-            ).join(' ')}
+            {usageAmount(ranking.other, metric)}
           </p>
         )}
       </div>
@@ -92,6 +101,7 @@ export default function RankingCard({
         onOpenChange={setViewAll}
         title={title}
         dimension={dimension}
+        metric={metric}
         // Every value of the dimension is a choice, so its own filter stays off.
         query={{
           ...query,

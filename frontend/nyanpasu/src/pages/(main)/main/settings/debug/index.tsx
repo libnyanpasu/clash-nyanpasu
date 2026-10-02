@@ -15,6 +15,7 @@ import { useDebugContext } from './_modules/debug-provider'
 import HttpServer from './_modules/http-server'
 import KVStorage from './_modules/kv-storage'
 import MockConnectionsSwitch from './_modules/mock-connections-switch'
+import MockTrafficSwitch from './_modules/mock-traffic-switch'
 import PathUtilsCard from './_modules/path-utils-card'
 import WindowDebug from './_modules/window-debug'
 
@@ -57,6 +58,7 @@ const AdvanceToolsSettings = () => {
 
               <HttpServer />
               {import.meta.env.DEV && <MockConnectionsSwitch />}
+              {import.meta.env.DEV && <MockTrafficSwitch />}
             </>
           )}
         </AnimatePresence>

@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use nyanpasu_config::{application::NyanpasuAppConfig, profile::Profiles};
 use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, Dimension, ReportRequest, TrafficQuery, TrafficReport,
+    ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficQuery, TrafficReport,
     TrafficSummary, UsageCursor, UsageGroup, UsagePage,
 };
 
@@ -75,10 +75,14 @@ impl NyanpasuClient {
         &self,
         query: TrafficQuery,
         group_by: Dimension,
+        metric: Metric,
         after: Option<UsageCursor>,
         limit: usize,
     ) -> Result<UsagePage> {
-        Ok(self.traffic()?.usage(query, group_by, after, limit).await?)
+        Ok(self
+            .traffic()?
+            .usage(query, group_by, metric, after, limit)
+            .await?)
     }
     pub async fn query_traffic_usage_by_keys(
         &self,
@@ -106,7 +110,7 @@ mod tests {
 
     use nyanpasu_traffic::{
         ActiveConnection, ClosedCursor, ClosedPage, Dimension, Dimensions, FlushBatch, Flushed,
-        RedbTrafficStore, ReportRequest, SessionMeta, Tier, TrafficError, TrafficQuery,
+        Metric, RedbTrafficStore, ReportRequest, SessionMeta, Tier, TrafficError, TrafficQuery,
         TrafficRange, TrafficResult, TrafficScope, TrafficStore, Usage,
     };
     use tempfile::tempdir;
@@ -177,7 +181,7 @@ mod tests {
             );
             assert_eq!(
                 client
-                    .query_traffic_usage(everything(), Dimension::Process, None, 10)
+                    .query_traffic_usage(everything(), Dimension::Process, Metric::Bytes, None, 10)
                     .await
                     .unwrap_err()
                     .to_string(),
@@ -199,6 +203,7 @@ mod tests {
                 client
                     .query_traffic_report(ReportRequest {
                         query: everything(),
+                        metric: Metric::Bytes,
                         rankings: vec![Dimension::Process],
                         ranking_limit: 10,
                         topology: None,

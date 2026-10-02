@@ -97,21 +97,17 @@ test('a range is beyond the retention when it reaches back further', () => {
 test('the flow asks for the template layers, the map for every region', () => {
   expect(toTopologyRequest(trafficSearchSchema.parse({}))).toEqual({
     layers: ['origin', 'rule', 'chain', 'exit'],
-    metric: 'bytes',
     limit_per_layer: 7,
   })
   expect(
     toTopologyRequest(trafficSearchSchema.parse({ layers: 'source' })).layers,
   ).toEqual(['source', 'target', 'exit'])
-  expect(
-    toTopologyRequest(
-      trafficSearchSchema.parse({ view: 'map', metric: 'connections' }),
-    ),
-  ).toEqual({
-    layers: ['source_region', 'destination_region'],
-    metric: 'connections',
-    limit_per_layer: null,
-  })
+  expect(toTopologyRequest(trafficSearchSchema.parse({ view: 'map' }))).toEqual(
+    {
+      layers: ['source_region', 'destination_region', 'destination_basis'],
+      limit_per_layer: null,
+    },
+  )
   expect(trafficSearchSchema.safeParse({ layers: 'nope' }).success).toBe(false)
 })
 

@@ -21,6 +21,7 @@ export function createTrafficReportRequest(
   profileUid: string | null,
 ): ReportRequest {
   return {
+    metric: 'bytes',
     query: {
       range,
       scope: 'all',

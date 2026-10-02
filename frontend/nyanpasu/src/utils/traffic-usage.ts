@@ -39,6 +39,14 @@ export function regionName(code: string) {
   }
 }
 
+/** How a destination region was located, as a `destination_basis` key says. */
+const basisName = (key: string) =>
+  key === 'dialed'
+    ? m.topology_geo_basis_dialed()
+    : key === 'resolved'
+      ? m.topology_geo_basis_resolved()
+      : key
+
 const isIp = (value: string) =>
   /^\d{1,3}(\.\d{1,3}){3}$/.test(value) ||
   (value.includes(':') && /^[0-9a-f:.]+$/i.test(value))
@@ -81,6 +89,8 @@ export function usageLabel(
     case 'source_region':
     case 'destination_region':
       return plain(regionName(key), key)
+    case 'destination_basis':
+      return plain(basisName(key), key)
     case 'origin':
     case 'source':
     case 'target':
@@ -104,6 +114,7 @@ export const dimensionName = (dimension: Dimension) =>
     profile: m.traffic_dimension_profile,
     source_region: m.traffic_dimension_source_region,
     destination_region: m.traffic_dimension_destination_region,
+    destination_basis: m.traffic_dimension_destination_basis,
   })[dimension]()
 
 /** What the metric weighs a usage by. */

@@ -2,8 +2,9 @@
 use std::time::Duration;
 
 use clash_api::{ConfigEnum, Connection, ConnectionNetwork};
-use nyanpasu_traffic::{Bytes, Dimensions, Frame, RuleKey, Sample, normalize_region};
+use nyanpasu_traffic::{Bytes, Dimensions, Frame, RuleKey, Sample};
 
+use super::geo::{CountryLookup, locate_destination, locate_source};
 use crate::core::clash::ws::ClashConnectionsFrame;
 
 const UNKNOWN: &str = "unknown";
@@ -12,6 +13,7 @@ pub(crate) fn frame_from_snapshot(
     frame: &ClashConnectionsFrame,
     wall_ms: i64,
     mono: Duration,
+    index: Option<&dyn CountryLookup>,
 ) -> Frame {
     let snapshot = &frame.snapshot;
     Frame {
@@ -19,16 +21,21 @@ pub(crate) fn frame_from_snapshot(
         wall_ms,
         mono,
         totals: counters(snapshot.upload_total, snapshot.download_total),
-        connections: snapshot.connections.iter().flatten().map(sample).collect(),
+        connections: snapshot
+            .connections
+            .iter()
+            .flatten()
+            .map(|connection| sample(connection, index))
+            .collect(),
     }
 }
 
-fn sample(connection: &Connection) -> Sample {
+fn sample(connection: &Connection, index: Option<&dyn CountryLookup>) -> Sample {
     Sample {
         id: connection.id.to_string(),
         started_at: connection.start.timestamp_millis(),
         counters: counters(connection.upload, connection.download),
-        dimensions: dimensions(connection),
+        dimensions: dimensions(connection, index),
     }
 }
 
@@ -40,7 +47,7 @@ fn counters(upload: i64, download: i64) -> Bytes {
     }
 }
 
-fn dimensions(connection: &Connection) -> Dimensions {
+fn dimensions(connection: &Connection, index: Option<&dyn CountryLookup>) -> Dimensions {
     let known = connection.metadata.as_ref().map(|meta| &meta.known);
     let process = known
         .and_then(|m| text(m.process_path.as_ref()))
@@ -51,7 +58,6 @@ fn dimensions(connection: &Connection) -> Dimensions {
     let inbound = known
         .and_then(|m| text(m.inbound_user.as_ref()))
         .or_else(|| known.and_then(|m| text(m.inbound_name.as_ref())));
-    let region = |codes: Option<&Vec<String>>| normalize_region(codes.into_iter().flatten());
     Dimensions {
         process: process.unwrap_or(UNKNOWN).replace('\\', "/"),
         source: known
@@ -75,10 +81,11 @@ fn dimensions(connection: &Connection) -> Dimensions {
         profile: None,
         // TODO(traffic-geo): a loopback or private source is this machine, so
         // locate it at the address `NyanpasuClient::probe_direct_egress` reports,
-        // and leave it unknown on `TunEnabled` or no address. Wire it once
-        // regions come from the app's own geodata index rather than the core.
-        source_region: region(known.and_then(|m| m.source_geo_ip.as_ref())),
-        destination_region: region(known.and_then(|m| m.destination_geo_ip.as_ref())),
+        // and leave it unknown on `TunEnabled` or no address. Wiring it waits
+        // on when to probe again: the app has no network-change signal yet.
+        source_region: known.map_or_else(|| UNKNOWN.to_owned(), |m| locate_source(m, index)),
+        destination_region: known
+            .map_or_else(|| UNKNOWN.to_owned(), |m| locate_destination(m, index)),
     }
 }
 

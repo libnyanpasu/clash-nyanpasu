@@ -124,11 +124,8 @@ fn an_mmdb_build_keeps_its_buffers_off_the_heap() {
     );
 }
 
-#[test]
-fn a_geosite_build_keeps_its_buffers_off_the_heap() {
-    // The fst builder's node registry is the one buffer the crate cannot
-    // place; its size is bounded, and at this size the kept index outgrows it.
-    let values: Vec<String> = (0..120_000)
+fn geosite_build_transient(hosts: usize) -> isize {
+    let values: Vec<String> = (0..hosts)
         .map(|i| format!("host{i}.example{}.com", i % 97))
         .collect();
     let rules: Vec<Rule<'_>> = values
@@ -146,9 +143,19 @@ fn a_geosite_build_keeps_its_buffers_off_the_heap() {
 
     let (index, transient) = transient(|| SiteIndex::from_geosite_dat(&dat, |_| true).unwrap());
     assert_eq!(index.lookup("a.host1.example1.com").len(), 1);
+    transient
+}
+
+#[test]
+fn a_geosite_build_keeps_its_buffers_off_the_heap() {
+    // The fst builder's node registry is the one buffer the crate cannot
+    // place: a fixed table of about 1 MiB, filled at either size. Everything
+    // that grows with the input stays off the heap.
+    let small = geosite_build_transient(60_000);
+    let large = geosite_build_transient(240_000);
     assert!(
-        transient <= TRANSIENT_LIMIT,
-        "{transient} transient heap bytes"
+        large <= small + TRANSIENT_LIMIT,
+        "{small} then {large} transient heap bytes"
     );
 }
 

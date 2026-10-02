@@ -6,7 +6,7 @@ use maxminddb::{LookupResult, Metadata, Reader, WithinOptions};
 use crate::{
     GeoError, GeoResult,
     collection::{
-        range_table::{Id, RangeTable, RangeTableBuilder, Span},
+        range_table::{Id, RangeSteps, RangeTableBuilder, Span},
         scratch::ScratchVec,
     },
 };
@@ -18,7 +18,7 @@ pub(crate) fn compile<'a, I: Id>(
     bytes: &'a [u8],
     reader: &'a Reader<&'a [u8]>,
     mut record: impl FnMut(&LookupResult<'a, &'a [u8]>) -> GeoResult<I>,
-) -> GeoResult<RangeTable<I>> {
+) -> GeoResult<RangeSteps<I>> {
     check_tree(bytes, reader.metadata())?;
     let mut cache = RecordCache::new()?;
     let mut builder = RangeTableBuilder::new()?;

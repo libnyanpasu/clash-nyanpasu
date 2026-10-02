@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, ops::Deref};
 
 use maxminddb::{PathElement, Reader};
 use serde::{Deserialize, de::IgnoredAny};
@@ -6,16 +6,20 @@ use serde::{Deserialize, de::IgnoredAny};
 use crate::{
     GeoError, GeoResult,
     collection::{
-        range_table::{Id, RangeTable},
-        tags::{MAX_SET, TagInterner, TagStore, Tags},
+        image::{Image, ImageWriter, Kind},
+        range_table::{self, Id, RangeSteps, RangeTable},
+        tags::{self, MAX_SET, TagInterner, TagStore, Tags},
     },
     parser::{geoip_dat, mmdb},
 };
 
+/// Image sections: the range table, then the tag store.
+const TABLE: usize = 0;
+const TAGS: usize = 6;
+
 /// IP to tags: country codes and the categories some databases add.
 pub struct IpIndex {
-    table: RangeTable<u16>,
-    tags: TagStore,
+    image: Image,
 }
 
 /// Record layouts by `database_type`, as the core decodes them.
@@ -77,19 +81,44 @@ impl IpIndex {
                 tags.set(&set)
             }
         })?;
-        Ok(Self {
-            table,
-            tags: tags.finish(),
-        })
+        Self::write(&table, &tags)
     }
 
     /// `GeoIP.dat`: an address carries every entry code that contains it.
     pub fn from_geoip_dat(bytes: &[u8]) -> GeoResult<Self> {
         let (table, tags) = geoip_dat::compile(bytes)?;
-        Ok(Self { table, tags })
+        Self::write(&table, &tags)
+    }
+
+    /// Opens an index from the bytes `as_bytes` returned, typically a
+    /// read-only map of a file they were written to. They must be aligned to
+    /// 16 bytes, as maps are, and must not change while the index lives.
+    pub fn from_bytes(bytes: impl Deref<Target = [u8]> + Send + Sync + 'static) -> GeoResult<Self> {
+        let sections = [range_table::sections::<u16>().as_slice(), &tags::SECTIONS].concat();
+        let image = Image::open(Box::new(bytes), Kind::Ip, &sections)?;
+        RangeTable::<u16>::new(&image, TABLE).check()?;
+        TagStore::new(&image, TAGS).check()?;
+        Ok(Self { image })
+    }
+
+    /// The index in one block of bytes, to store and reopen with `from_bytes`
+    /// on a machine of the same byte order and crate format version.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.image.bytes()
     }
 
     pub fn lookup(&self, ip: IpAddr) -> Option<Tags<'_>> {
-        self.table.get(ip).map(|set| self.tags.get(set))
+        RangeTable::<u16>::new(&self.image, TABLE)
+            .get(ip)
+            .map(|set| TagStore::new(&self.image, TAGS).get(set))
+    }
+
+    fn write(table: &RangeSteps<u16>, tags: &TagInterner) -> GeoResult<Self> {
+        let mut image = ImageWriter::new(Kind::Ip);
+        table.write(&mut image);
+        tags.write(&mut image);
+        Ok(Self {
+            image: image.finish()?,
+        })
     }
 }

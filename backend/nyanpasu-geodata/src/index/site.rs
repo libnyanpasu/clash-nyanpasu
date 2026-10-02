@@ -1,5 +1,5 @@
 //! Host lookups over the rules of `GeoSite.dat`.
-use std::{borrow::Cow, sync::Mutex};
+use std::{borrow::Cow, ops::Deref, sync::Mutex};
 
 use aho_corasick::AhoCorasick;
 use fst::{Map, MapBuilder, raw::Output};
@@ -12,29 +12,67 @@ use regex_automata::{
 
 use crate::{
     GeoError, GeoResult,
-    collection::scratch::ScratchVec,
+    collection::{
+        image::{Image, ImageWriter, Kind, STR_TABLE, StrTableBuilder},
+        scratch::ScratchVec,
+    },
     parser::geosite_dat::{self, FULL, Rules},
 };
 
+/// Image sections. Lists, attributes, keywords and regexes are `StrTable`s;
+/// set `i` is `SET_MEMBERS[SET_ENDS[i - 1]..SET_ENDS[i]]` and set 0 is empty;
+/// `DOMAINS` is an FST of reversed `Domain` / `Full` values to their offset
+/// in `POSTINGS`, which holds at each offset an entry count, then the
+/// entries, ascending; `PATTERN_POSTINGS` holds the `POSTINGS` offset of each
+/// keyword, then of each regex.
+const LISTS: usize = 0;
+const ATTRIBUTES: usize = 2;
+const SET_ENDS: usize = 4;
+const SET_MEMBERS: usize = 5;
+const DOMAINS: usize = 6;
+const POSTINGS: usize = 7;
+const PATTERN_POSTINGS: usize = 8;
+const KEYWORDS: usize = 9;
+const REGEXES: usize = 11;
+/// One `u64`: the rules left out.
+const SKIPPED: usize = 13;
+const SECTIONS: [usize; 14] = [
+    STR_TABLE[0],
+    STR_TABLE[1],
+    STR_TABLE[0],
+    STR_TABLE[1],
+    4,
+    2,
+    1,
+    4,
+    4,
+    STR_TABLE[0],
+    STR_TABLE[1],
+    STR_TABLE[0],
+    STR_TABLE[1],
+    8,
+];
+
 /// Host to the lists (and rule attributes) whose rules match it.
 pub struct SiteIndex {
-    lists: Box<[Box<str>]>,
-    attributes: Box<[Box<str>]>,
-    /// Set `i` is `set_members[set_ends[i - 1]..set_ends[i]]`; set 0 is empty.
-    set_ends: Box<[u32]>,
-    set_members: Box<[u16]>,
-    /// Reversed `Domain` / `Full` values to their offset in `postings`.
-    domains: Map<Box<[u8]>>,
+    image: Image,
+    domains: Map<Section>,
+    /// Rebuilt from the image when it is opened: neither has a stable
+    /// serialized form, and both are small.
     keywords: AhoCorasick,
     regexes: Regex,
     /// One search cache for every thread. `regex` keeps a cache per concurrent
     /// caller (about 0.8 MiB each) and never frees them.
     regex_cache: Mutex<Box<meta::Cache>>,
-    /// `postings` offset of each keyword, then of each regex.
-    pattern_postings: Box<[u32]>,
-    /// At each offset: an entry count, then the entries, ascending.
-    postings: Box<[u32]>,
-    skipped: usize,
+}
+
+/// An image section the FST owns.
+struct Section(Image, usize);
+
+impl AsRef<[u8]> for Section {
+    fn as_ref(&self) -> &[u8] {
+        self.0.section(self.1)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -47,6 +85,30 @@ impl SiteIndex {
     /// Indexes the lists `keep` accepts; it receives lowercase list names.
     pub fn from_geosite_dat(bytes: &[u8], keep: impl Fn(&str) -> bool) -> GeoResult<Self> {
         build(geosite_dat::parse(bytes, keep)?)
+    }
+
+    /// Opens an index from the bytes `as_bytes` returned, typically a
+    /// read-only map of a file they were written to. They must be aligned to
+    /// 16 bytes, as maps are, and must not change while the index lives.
+    pub fn from_bytes(bytes: impl Deref<Target = [u8]> + Send + Sync + 'static) -> GeoResult<Self> {
+        let image = Image::open(Box::new(bytes), Kind::Site, &SECTIONS)?;
+        for strings in [LISTS, ATTRIBUTES, KEYWORDS, REGEXES] {
+            image.strs(strings).check()?;
+        }
+        if image.section::<u64>(SKIPPED).len() != 1 {
+            return Err(GeoError::Malformed("index image skipped rules"));
+        }
+        let regexes = image.strs(REGEXES).iter().collect::<Vec<_>>();
+        let regexes = regex_builder()
+            .build_many(&regexes)
+            .map_err(|_| GeoError::Malformed("index image regex rules"))?;
+        Self::open(image, regexes)
+    }
+
+    /// The index in one block of bytes, to store and reopen with `from_bytes`
+    /// on a machine of the same byte order and crate format version.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.image.bytes()
     }
 
     /// Ordered by list, then attribute set, each pair once.
@@ -83,8 +145,9 @@ impl SiteIndex {
                 );
             }
         }
+        let pattern_postings = self.image.section::<u32>(PATTERN_POSTINGS);
         for found in self.keywords.find_overlapping_iter(bytes) {
-            let offset = self.pattern_postings[found.pattern().as_usize()];
+            let offset = pattern_postings[found.pattern().as_usize()];
             entries.extend_from_slice(self.posting(offset as usize));
         }
         let keywords = self.keywords.patterns_len();
@@ -94,7 +157,7 @@ impl SiteIndex {
             .which_overlapping_matches_with(&mut cache, &Input::new(bytes), &mut regexes);
         drop(cache);
         for regex in regexes.iter() {
-            let offset = self.pattern_postings[keywords + regex.as_usize()];
+            let offset = pattern_postings[keywords + regex.as_usize()];
             entries.extend_from_slice(self.posting(offset as usize));
         }
         entries.sort_unstable();
@@ -108,30 +171,47 @@ impl SiteIndex {
     /// Rules left out of the index: regexes the `regex` crate cannot compile
     /// and rule types this crate does not know.
     pub fn skipped_rules(&self) -> usize {
-        self.skipped
+        self.image.section::<u64>(SKIPPED)[0] as usize
+    }
+
+    fn open(image: Image, regexes: Regex) -> GeoResult<Self> {
+        let keywords = AhoCorasick::new(image.strs(KEYWORDS).iter())
+            .map_err(|_| GeoError::TooMany("keyword rules"))?;
+        let domains = Map::new(Section(image.clone(), DOMAINS))
+            .map_err(|_| GeoError::Malformed("GeoSite domain index"))?;
+        Ok(Self {
+            image,
+            domains,
+            keywords,
+            regex_cache: Mutex::new(Box::new(regexes.create_cache())),
+            regexes,
+        })
     }
 
     fn posting(&self, offset: usize) -> &[u32] {
-        let count = self.postings[offset] as usize;
-        &self.postings[offset + 1..offset + 1 + count]
+        let postings = self.image.section::<u32>(POSTINGS);
+        let count = postings[offset] as usize;
+        &postings[offset + 1..offset + 1 + count]
     }
 }
 
 impl<'a> SiteMatch<'a> {
     pub fn list(&self) -> &'a str {
-        &self.index.lists[(self.entry >> 16) as usize]
+        self.index
+            .image
+            .strs(LISTS)
+            .get((self.entry >> 16) as usize)
     }
 
     /// Lowercase keys of the matching rule's attributes, in rule order.
     pub fn attributes(&self) -> impl Iterator<Item = &'a str> + 'a {
-        let index = self.index;
+        let image = &self.index.image;
+        let (ends, attributes) = (image.section::<u32>(SET_ENDS), image.strs(ATTRIBUTES));
         let set = (self.entry & 0xffff) as usize;
-        let start = set
-            .checked_sub(1)
-            .map_or(0, |prev| index.set_ends[prev] as usize);
-        index.set_members[start..index.set_ends[set] as usize]
+        let start = set.checked_sub(1).map_or(0, |prev| ends[prev] as usize);
+        image.section::<u16>(SET_MEMBERS)[start..ends[set] as usize]
             .iter()
-            .map(move |attribute| &*index.attributes[usize::from(*attribute)])
+            .map(move |attribute| attributes.get(usize::from(*attribute)))
     }
 }
 
@@ -144,7 +224,7 @@ impl std::fmt::Debug for SiteMatch<'_> {
     }
 }
 
-/// Compiles the rules into the lookup structures.
+/// Compiles the rules into an image and the lookup structures.
 fn build(rules: Rules) -> GeoResult<SiteIndex> {
     let Rules {
         lists,
@@ -180,14 +260,12 @@ fn build(rules: Rules) -> GeoResult<SiteIndex> {
     drop(domains);
     drop(arena);
     let fst = map.into_inner().map_err(index_error)?;
-    let domains = Map::new(Box::<[u8]>::from(fst.as_slice())).map_err(index_error)?;
-    drop(fst);
 
     let mut pattern_postings = Vec::new();
-    let mut keyword_patterns = Vec::new();
+    let mut keyword_patterns = StrTableBuilder::default();
     for (keyword, mut entries) in keywords {
         pattern_posting(&mut entries, &mut postings, &mut pattern_postings)?;
-        keyword_patterns.push(keyword);
+        keyword_patterns.push(&keyword)?;
     }
     let mut regexes: Vec<(String, Vec<u32>)> = regexes.into_iter().collect();
     let builder = regex_builder();
@@ -208,23 +286,25 @@ fn build(rules: Rules) -> GeoResult<SiteIndex> {
                 .map_err(|_| GeoError::TooMany("regex rules"))?
         }
     };
-    for (_, entries) in &mut regexes {
+    let mut regex_patterns = StrTableBuilder::default();
+    for (regex, entries) in &mut regexes {
         pattern_posting(entries, &mut postings, &mut pattern_postings)?;
+        regex_patterns.push(regex)?;
     }
-    Ok(SiteIndex {
-        lists: lists.into_boxed_slice(),
-        attributes: attributes.into_boxed_slice(),
-        set_ends: set_ends.into_boxed_slice(),
-        set_members: set_members.into_boxed_slice(),
-        domains,
-        keywords: AhoCorasick::new(&keyword_patterns)
-            .map_err(|_| GeoError::TooMany("keyword rules"))?,
-        regex_cache: Mutex::new(Box::new(set.create_cache())),
-        regexes: set,
-        pattern_postings: pattern_postings.into_boxed_slice(),
-        postings: postings.as_slice().into(),
-        skipped,
-    })
+
+    let skipped = [skipped as u64];
+    let mut image = ImageWriter::new(Kind::Site);
+    lists.write(&mut image);
+    attributes.write(&mut image);
+    image.push(&set_ends);
+    image.push(&set_members);
+    image.push(fst.as_slice());
+    image.push(postings.as_slice());
+    image.push(&pattern_postings);
+    keyword_patterns.write(&mut image);
+    regex_patterns.write(&mut image);
+    image.push(&skipped);
+    SiteIndex::open(image.finish()?, set)
 }
 
 /// The configuration `regex::RegexSet` uses.

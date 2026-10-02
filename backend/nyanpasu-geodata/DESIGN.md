@@ -4,17 +4,19 @@
 
 Answer "where is this address / what is this host" from the databases the
 mihomo core uses, with low resident memory and sub-microsecond lookups. The
-crate is a pure service: bytes in, immutable index out. Discovering the core's
-home directory, reloading after a geo update and caching per connection belong
-to the caller.
+crate is a pure service: bytes in, immutable index out. An index can also be
+stored as bytes and reopened from a read-only map of them. Discovering the
+core's home directory, reloading after a geo update, storing indexes and
+caching per connection belong to the caller.
 
 ## Layout
 
 Dependencies point one way, `index` → `parser` → `collection`:
 
 - `collection/`: the data structures. `scratch.rs` holds build buffers in
-  anonymous memory, `range_table.rs` the IP range table and `tags.rs` interned
-  tag names and sets.
+  anonymous memory, `image.rs` the byte image every index lives in,
+  `range_table.rs` the IP range table and `tags.rs` interned tag names and
+  sets.
 - `parser/`: the database formats, each read into collections. `proto.rs` is
   the protobuf field reader; `mmdb.rs` and `geoip_dat.rs` compile their format
   into a range table, and `geosite_dat.rs` collects GeoSite rules by kind.
@@ -57,18 +59,21 @@ unmapped, whatever the allocator. Hence:
   the tree check, `GeoIP.dat` sweep events, GeoSite keys, postings and FST
   output.
   `ScratchVec` grows by remapping, so the old mapping is returned at once, and
-  `ScratchMap` is an open-addressing table on top of it. Only exact-size final
-  arrays are copied onto the heap.
+  `ScratchMap` is an open-addressing table on top of it.
+- The index itself is copied once into an image in anonymous memory of its
+  exact size (see below). Only GeoSite's keyword automaton and regex set live
+  on the heap.
 - ASN records are keyed by data offset in a `ScratchMap` rather than
   deduplicated by content in heap hash maps.
 
 What remains on the heap during a build is small and bounded (tag and list
 interners, regex compilation), with one exception: the `fst` builder's node
 registry allocates many small blocks. The registry itself is bounded, but its
-freed blocks fragment the heap, so a GeoSite build still leaves about 7–9 MiB
-behind (see benchmarks). `tests/build_heap.rs` guards against large build
-buffers returning to the heap; it measures heap peaks, so it cannot see this
-kind of fragmentation.
+freed blocks fragment the heap, so a GeoSite build still leaves some freed
+heap behind (see benchmarks). `tests/build_heap.rs` guards against large build
+buffers returning to the heap: what a build holds on the heap beyond its
+result must stay small, and for GeoSite must not grow with the input. It
+measures heap peaks, so it cannot see fragmentation.
 
 ## IP range table (`collection/range_table.rs`)
 
@@ -83,6 +88,41 @@ lookup is one `partition_point`.
   nests its IPv4 subtree; IPv4-mapped addresses are canonicalised first.
 - Ids are `u16` (tag sets) or `u32` (ASN records); the two largest values mark
   gaps and fine blocks.
+
+## Index images (`collection/image.rs`)
+
+Every index is one byte image:
+
+- a header: magic, format version, index type, section count and the CRC-32
+  of everything after the header;
+- a section table of starts and lengths;
+- sections of plain values in native byte order, each aligned to 16 bytes.
+
+A build writes the image straight into anonymous memory, and lookups slice its
+sections in place; that access costs a few nanoseconds per lookup over owned
+arrays. `as_bytes` returns the image and `from_bytes` opens one, typically a
+read-only map of a file it was written to. Opening checks the header, the
+alignment, each section's shape and the checksum, then that every string is
+UTF-8 and every step list starts at address zero. The checksum detects damage,
+not tampering: an image is trusted like the code that wrote it. Any error
+means the caller rebuilds from the source.
+
+GeoSite stores its FST, postings and pattern strings. Aho-Corasick and
+`regex-automata` have no stable serialized form, so the keyword automaton and
+the regex set are rebuilt on open: about 9 ms and 1.3 MiB of heap for the
+bundled file.
+
+Pages mapped from a file are file-backed and clean. They count in the working
+set and RSS but not in private bytes, `phys_footprint` or `RssAnon`, take no
+commit charge, and can be dropped under memory pressure without a pagefile
+write. A stored index is thus nearly free in the process's private memory;
+see the benchmarks.
+
+A caller caching images keys them by the source content, writes a new image to
+a temporary file and renames it into place, and never rewrites a mapped file:
+a mapping of a file changed underneath reads torn data, the reason this crate
+never maps the core's own files. On Windows, opening the file without
+`FILE_SHARE_WRITE` keeps other writers out while it is mapped.
 
 ## Sources
 
@@ -168,10 +208,11 @@ limit `regex` uses (10 MiB).
 
 ## Tests
 
-- **Unit tests.** `collection/range_table.rs`, `collection/scratch.rs` and
-  `files.rs` carry their own unit tests.
+- **Unit tests.** `collection/image.rs`, `collection/range_table.rs`,
+  `collection/scratch.rs` and `files.rs` carry their own unit tests.
 - **Integration tests.** Fixtures are built in-process: a minimal MMDB writer
-  and protobuf encoders live in `tests/support`.
+  and protobuf encoders live in `tests/support`. `tests/image.rs` reopens
+  every index type from a mapped file and refuses damaged or foreign bytes.
 - **Differential checks.** `tests/real_databases.rs` (ignored by default) runs
   over any directory of real files:
   - MMDB indexes against `maxminddb` lookups with the core's decoding, on
@@ -179,7 +220,8 @@ limit `regex` uses (10 MiB).
   - `GeoIP.dat` against per-code range membership;
   - `GeoSite.dat` against a linear scan of every rule.
 
-  All 25 files tested agree completely, including both city databases.
+  Each index is stored and reopened from a mapped file before the check. All
+  25 files tested agree completely, including both city databases.
 
 ## Benchmarks
 
@@ -197,11 +239,13 @@ It also reports the live heap (from a counting allocator), the build time,
 single-thread latency and multi-thread throughput. Each file runs in its own
 process (`bench dir <dir>` spawns them), followed by 1 M random lookups (200 k
 hosts for GeoSite). `--heap-read` reads the file with `std::fs::read` for
-comparison.
+comparison. `--reopen` then stores the index in a temporary file and runs the
+same benchmark in a fresh process that maps it, as a cache hit would.
 
 Setup: release profile as shipped (`opt-level = 's'`, LTO).
 
-**macOS**, Apple M3 (4P + 4E), 2026-10-02:
+**macOS**, Apple M3 (4P + 4E), 2026-10-02, measured before indexes moved into
+images (the index heap is now the image, in anonymous memory):
 
 | File                                  | Size     | Build  | Index heap | Loaded¹   | Lookup | Raw MMDB² | 8 threads |
 | ------------------------------------- | -------- | ------ | ---------- | --------- | ------ | --------- | --------- |
@@ -221,11 +265,11 @@ Setup: release profile as shipped (`opt-level = 's'`, LTO).
 **Windows**, Intel Core i9-14900KF (8P + 16E, 32 threads), Windows 11
 26200, 2026-10-02:
 
-| File                     | Size     | Build  | Index heap | Loaded¹  | Lookup | Raw MMDB² | 8 threads | 32 threads |
-| ------------------------ | -------- | ------ | ---------- | -------- | ------ | --------- | --------- | ---------- |
-| `Country.mmdb` (bundled) | 7.5 MiB  | 77 ms  | 4.71 MiB   | 4.81 MiB | 35 ns  | 96 ns     | 191 M/s   | 313 M/s    |
-| `geoip.dat` (bundled)    | 16.3 MiB | 237 ms | 5.23 MiB   | 5.41 MiB | 36 ns  | –         | 160 M/s   | 373 M/s    |
-| `geosite.dat` (bundled)  | 4.0 MiB  | 138 ms | 3.98 MiB   | 5.82 MiB | 366 ns | –         | 4.0 M/s   | 2.9 M/s    |
+| File                     | Size     | Build  | Image    | Built⁴: private / shared commit | Reopened⁵: open / private | Lookup | Raw MMDB² | 8 threads | 32 threads |
+| ------------------------ | -------- | ------ | -------- | ------------------------------- | ------------------------- | ------ | --------- | --------- | ---------- |
+| `Country.mmdb` (bundled) | 7.5 MiB  | 75 ms  | 4.71 MiB | 0.07 / 4.71 MiB                 | 3.0 ms / 0.01 MiB         | 41 ns  | 96 ns     | 176 M/s   | 336 M/s    |
+| `geoip.dat` (bundled)    | 16.3 MiB | 239 ms | 5.22 MiB | 0.05 / 5.23 MiB                 | 3.3 ms / 0.01 MiB         | 42 ns  | –         | 171 M/s   | 353 M/s    |
+| `geosite.dat` (bundled)  | 4.0 MiB  | 136 ms | 2.71 MiB | 3.47 / 2.71 MiB                 | 9.3 ms / 2.27 MiB         | 381 ns | –         | 3.5 M/s   | 2.8 M/s    |
 
 ¹ The growth in `phys_footprint` (macOS) or private bytes (Windows) once the
 file is dropped, i.e. what loading costs the process. With `--heap-read`, the
@@ -238,9 +282,18 @@ resident alternative to this crate.
 kept a cache per concurrent caller, about 0.8 MiB each: 6.5 MiB after 8
 threads, and 25 MiB after 32 threads on Windows. The shared cache adds 0.4 MiB
 to the index heap and grows to 0.8 MiB with use, whatever the thread count.
+⁴ Once the file is dropped. Windows counts the image, in anonymous memory, as
+shared commit. GeoSite's private bytes are the regex set and its cache
+(1.26 MiB of live heap) plus freed build heap the allocator keeps.
+⁵ In a fresh process that maps the stored image. The working set grows by the
+pages lookups touch, all of them file-backed; GeoSite's private bytes are the
+regexes compiled again.
 
 IP lookups do not allocate and scale with cores. GeoSite lookups allocate
 their result and take the regex cache lock, so their throughput peaks around
 4 threads (about 5 M/s on Windows) and falls under contention; single-thread
 latency is unchanged. Multi-thread throughput varies by up to a third between
 runs. Linux figures are not measured yet.
+
+IP lookups through an image take about 40 ns on Windows against 35 ns with
+owned arrays: each lookup reaches its sections through the image's owner.

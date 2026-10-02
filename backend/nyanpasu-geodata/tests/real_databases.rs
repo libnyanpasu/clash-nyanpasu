@@ -1,7 +1,10 @@
 //! Differential checks against real databases. Run with
 //! `NYANPASU_GEODATA_DIR=<dir> cargo test --release -p nyanpasu-geodata -- --ignored`;
 //! every `*.mmdb`, `*.metadb`, `*.db` and `*.dat` file in the directory is
-//! compared against a straightforward reading of the same file.
+//! compared against a straightforward reading of the same file. Each index is
+//! stored and reopened from a mapped file first, as a cache would load it.
+mod support;
+
 use std::{
     collections::HashSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -10,6 +13,7 @@ use std::{
 
 use maxminddb::{PathElement, Reader};
 use nyanpasu_geodata::{AsnIndex, IpIndex, SiteIndex};
+use support::mapped;
 
 const SAMPLES: usize = 200_000;
 
@@ -101,7 +105,8 @@ fn mmdb_indexes_answer_like_the_raw_reader() {
         let reader = Reader::from_source(bytes.clone()).unwrap();
         let mut hits = 0;
         if is_asn(&reader) {
-            let index = AsnIndex::from_mmdb(&bytes).unwrap();
+            let built = AsnIndex::from_mmdb(&bytes).unwrap();
+            let index = AsnIndex::from_bytes(mapped(built.as_bytes())).unwrap();
             for ip in &addresses {
                 let raw = reader
                     .lookup(*ip)
@@ -121,7 +126,8 @@ fn mmdb_indexes_answer_like_the_raw_reader() {
                 hits += usize::from(raw.is_some());
             }
         } else {
-            let index = IpIndex::from_mmdb(&bytes).unwrap();
+            let built = IpIndex::from_mmdb(&bytes).unwrap();
+            let index = IpIndex::from_bytes(mapped(built.as_bytes())).unwrap();
             for ip in &addresses {
                 let raw = core_codes(&reader, *ip);
                 let ours: Vec<String> = index
@@ -220,7 +226,8 @@ fn geoip_dat_indexes_answer_like_per_code_ranges() {
             }
             *ranges = merged;
         }
-        let index = IpIndex::from_geoip_dat(&bytes).unwrap();
+        let built = IpIndex::from_geoip_dat(&bytes).unwrap();
+        let index = IpIndex::from_bytes(mapped(built.as_bytes())).unwrap();
         let mut hits = 0;
         for ip in &addresses {
             let key = match ip.to_canonical() {
@@ -297,7 +304,8 @@ fn geosite_indexes_answer_like_a_rule_scan() {
             }
         }
         samples.truncate(600);
-        let index = SiteIndex::from_geosite_dat(&bytes, |_| true).unwrap();
+        let built = SiteIndex::from_geosite_dat(&bytes, |_| true).unwrap();
+        let index = SiteIndex::from_bytes(mapped(built.as_bytes())).unwrap();
         let regexes: Vec<Option<regex::Regex>> = rules
             .iter()
             .map(|r| (r.1 == 1).then(|| regex::Regex::new(&r.2).ok()).flatten())

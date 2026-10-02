@@ -1,9 +1,15 @@
 //! Address-range tables: sorted step lists mapping each address to a record id.
-use std::net::IpAddr;
+use std::{marker::PhantomData, net::IpAddr};
 
 use bytemuck::Pod;
 
-use crate::{GeoError, GeoResult, collection::scratch::ScratchVec};
+use crate::{
+    GeoError, GeoResult,
+    collection::{
+        image::{Image, ImageWriter},
+        scratch::ScratchVec,
+    },
+};
 
 /// Record id stored per range. `NONE` marks addresses without a record;
 /// `FINE` sends a /64 block to the full-width table.
@@ -70,29 +76,51 @@ impl Span {
     }
 }
 
-pub(crate) struct RangeTable<I> {
-    v4: Steps<u32, I>,
-    /// Keyed by the upper 64 bits; `FINE` blocks continue in `fine`.
-    v6: Steps<u64, I>,
-    fine: Steps<u128, I>,
+/// Image sections of a range table: the starts and ids of the IPv4 list, of
+/// the IPv6 list keyed by the upper 64 bits (`FINE` blocks continue in the
+/// third list) and of the full-width list.
+pub(crate) const fn sections<I>() -> [usize; 6] {
+    let id = size_of::<I>();
+    [4, id, 8, id, 16, id]
 }
 
-struct Steps<K, I> {
-    starts: Box<[K]>,
-    ids: Box<[I]>,
+/// A range table read from the six image sections from `first`.
+pub(crate) struct RangeTable<'a, I> {
+    image: &'a Image,
+    first: usize,
+    _ids: PhantomData<I>,
 }
 
-impl<I: Id> RangeTable<I> {
+impl<'a, I: Id> RangeTable<'a, I> {
+    pub(crate) fn new(image: &'a Image, first: usize) -> Self {
+        Self {
+            image,
+            first,
+            _ids: PhantomData,
+        }
+    }
+
+    /// Lookups index the step before the key, so each list must start at
+    /// address zero, with as many ids as starts.
+    pub(crate) fn check(&self) -> GeoResult<()> {
+        let valid = self.v4().starts_at_zero() && self.v6().starts_at_zero();
+        if valid && self.fine().starts_at_zero() {
+            Ok(())
+        } else {
+            Err(GeoError::Malformed("index image range table"))
+        }
+    }
+
     pub(crate) fn get(&self, ip: IpAddr) -> Option<I> {
         let id = match ip.to_canonical() {
-            IpAddr::V4(ip) => self.v4.get(u32::from(ip)),
+            IpAddr::V4(ip) => self.v4().get(u32::from(ip)),
             IpAddr::V6(ip) => {
                 let key = u128::from(ip);
                 if key >> 32 == 0 {
-                    self.v4.get(key as u32)
+                    self.v4().get(key as u32)
                 } else {
-                    match self.v6.get((key >> 64) as u64) {
-                        id if id == I::FINE => self.fine.get(key),
+                    match self.v6().get((key >> 64) as u64) {
+                        id if id == I::FINE => self.fine().get(key),
                         id => id,
                     }
                 }
@@ -100,12 +128,40 @@ impl<I: Id> RangeTable<I> {
         };
         (id != I::NONE).then_some(id)
     }
+
+    fn v4(&self) -> Steps<'a, u32, I> {
+        self.steps(0)
+    }
+
+    fn v6(&self) -> Steps<'a, u64, I> {
+        self.steps(2)
+    }
+
+    fn fine(&self) -> Steps<'a, u128, I> {
+        self.steps(4)
+    }
+
+    fn steps<K: Pod>(&self, at: usize) -> Steps<'a, K, I> {
+        Steps {
+            starts: self.image.section(self.first + at),
+            ids: self.image.section(self.first + at + 1),
+        }
+    }
 }
 
-impl<K: Copy + Ord, I: Copy> Steps<K, I> {
+struct Steps<'a, K, I> {
+    starts: &'a [K],
+    ids: &'a [I],
+}
+
+impl<K: Pod + Ord, I: Copy> Steps<'_, K, I> {
     fn get(&self, key: K) -> I {
         // Every list starts at address zero, so the index is at least one.
         self.ids[self.starts.partition_point(|start| *start <= key) - 1]
+    }
+
+    fn starts_at_zero(&self) -> bool {
+        self.starts.first() == Some(&K::zeroed()) && self.starts.len() == self.ids.len()
     }
 }
 
@@ -155,13 +211,31 @@ impl<I: Id> RangeTableBuilder<I> {
         }
     }
 
-    pub(crate) fn finish(self) -> GeoResult<RangeTable<I>> {
+    pub(crate) fn finish(self) -> GeoResult<RangeSteps<I>> {
         let (v6, fine) = split_v6(&self.v6)?;
-        Ok(RangeTable {
-            v4: self.v4.into_steps(),
-            v6: v6.into_steps(),
-            fine: fine.into_steps(),
+        Ok(RangeSteps {
+            v4: self.v4,
+            v6,
+            fine,
         })
+    }
+}
+
+/// A built range table, to write into an image.
+pub(crate) struct RangeSteps<I> {
+    v4: StepList<u32, I>,
+    v6: StepList<u64, I>,
+    fine: StepList<u128, I>,
+}
+
+impl<I: Id> RangeSteps<I> {
+    pub(crate) fn write<'a>(&'a self, image: &mut ImageWriter<'a>) {
+        image.push(self.v4.starts.as_slice());
+        image.push(self.v4.ids.as_slice());
+        image.push(self.v6.starts.as_slice());
+        image.push(self.v6.ids.as_slice());
+        image.push(self.fine.starts.as_slice());
+        image.push(self.fine.ids.as_slice());
     }
 }
 
@@ -194,13 +268,6 @@ impl<K: Pod + Ord, I: Id> StepList<K, I> {
             self.ids.push(id)?;
         }
         Ok(())
-    }
-
-    fn into_steps(self) -> Steps<K, I> {
-        Steps {
-            starts: self.starts.as_slice().into(),
-            ids: self.ids.as_slice().into(),
-        }
     }
 }
 
@@ -240,6 +307,24 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     use super::*;
+    use crate::collection::image::Kind;
+
+    struct Table(Image);
+
+    impl Table {
+        fn get(&self, ip: IpAddr) -> Option<u16> {
+            RangeTable::<u16>::new(&self.0, 0).get(ip)
+        }
+    }
+
+    fn finish(builder: RangeTableBuilder<u16>) -> Table {
+        let steps = builder.finish().unwrap();
+        let mut image = ImageWriter::new(Kind::Ip);
+        steps.write(&mut image);
+        let image = image.finish().unwrap();
+        RangeTable::<u16>::new(&image, 0).check().unwrap();
+        Table(image)
+    }
 
     fn v4(s: &str) -> IpAddr {
         IpAddr::V4(s.parse::<Ipv4Addr>().unwrap())
@@ -269,7 +354,7 @@ mod tests {
         builder
             .insert(Span::v4(0x0800_0000, 8).unwrap(), 2)
             .unwrap(); // 8.0.0.0/8
-        let table = builder.finish().unwrap();
+        let table = finish(builder);
 
         assert_eq!(table.get(v4("0.0.0.0")), None);
         assert_eq!(table.get(v4("1.0.0.255")), None);
@@ -290,10 +375,10 @@ mod tests {
         builder
             .insert(Span::v4(0x0A80_0000, 9).unwrap(), 3)
             .unwrap(); // 10.128.0.0/9
-        let table = builder.finish().unwrap();
+        let table = finish(builder);
 
         // leading gap, 10.0.0.0/8, trailing gap
-        assert_eq!(table.v4.starts.len(), 3);
+        assert_eq!(table.0.section::<u32>(0).len(), 3);
         assert_eq!(table.get(v4("10.127.255.255")), Some(3));
         assert_eq!(table.get(v4("10.128.0.0")), Some(3));
     }
@@ -302,13 +387,13 @@ mod tests {
     fn whole_address_spaces_cover_their_last_address() {
         let mut builder = RangeTableBuilder::<u16>::new().unwrap();
         builder.insert(Span::v4(0, 0).unwrap(), 1).unwrap();
-        let table = builder.finish().unwrap();
+        let table = finish(builder);
         assert_eq!(table.get(v4("255.255.255.255")), Some(1));
 
         // `::/0` also covers the nested IPv4 space.
         let mut builder = RangeTableBuilder::<u16>::new().unwrap();
         insert_v6(&mut builder, "::", 0, 2);
-        let table = builder.finish().unwrap();
+        let table = finish(builder);
         assert_eq!(
             table.get(v6("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")),
             Some(2)
@@ -322,7 +407,7 @@ mod tests {
         let mut builder = RangeTableBuilder::<u16>::new().unwrap();
         insert_v6(&mut builder, "2001:db8::", 32, 1);
         insert_v6(&mut builder, "2400:cb00::", 48, 2);
-        let table = builder.finish().unwrap();
+        let table = finish(builder);
 
         assert_eq!(table.get(v6("2001:db7:ffff::")), None);
         assert_eq!(table.get(v6("2001:db8:1234::1")), Some(1));
@@ -346,7 +431,7 @@ mod tests {
                 1,
             )
             .unwrap();
-        let table = builder.finish().unwrap();
+        let table = finish(builder);
 
         assert_eq!(table.get(v6("2001:db8:0:4::1")), Some(1));
         assert_eq!(table.get(v6("2001:db8:0:5::")), Some(1));
@@ -372,7 +457,7 @@ mod tests {
                 2,
             )
             .unwrap();
-        let table = builder.finish().unwrap();
+        let table = finish(builder);
 
         assert_eq!(table.get(v6("2001:db8:0:5::")), Some(1));
         assert_eq!(table.get(v6("2001:db8:0:5::100")), None);
@@ -387,7 +472,7 @@ mod tests {
         builder
             .insert(Span::v4(0x0102_0300, 24).unwrap(), 1)
             .unwrap(); // 1.2.3.0/24
-        let table = builder.finish().unwrap();
+        let table = finish(builder);
 
         assert_eq!(table.get(v6("::1.2.3.4")), Some(1));
         assert_eq!(table.get(v6("::ffff:1.2.3.4")), Some(1));

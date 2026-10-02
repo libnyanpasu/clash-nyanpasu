@@ -1,7 +1,11 @@
 //! `GeoSite.dat` (V2Ray `GeoSiteList`): domain rules grouped into lists.
 use std::collections::HashMap;
 
-use crate::{GeoError, GeoResult, collection::scratch::ScratchVec, parser::proto::Fields};
+use crate::{
+    GeoError, GeoResult,
+    collection::{image::StrTableBuilder, scratch::ScratchVec},
+    parser::proto::Fields,
+};
 
 /// Entry bit of a `Full` rule, which matches the whole host only.
 pub(crate) const FULL: u32 = 1 << 31;
@@ -14,8 +18,8 @@ const MAX_ATTRIBUTES: usize = 255;
 /// `FULL? | list << 16 | attribute set`.
 #[derive(Default)]
 pub(crate) struct Rules {
-    pub(crate) lists: Vec<Box<str>>,
-    pub(crate) attributes: Vec<Box<str>>,
+    pub(crate) lists: StrTableBuilder,
+    pub(crate) attributes: StrTableBuilder,
     /// Set `i` is `set_members[set_ends[i - 1]..set_ends[i]]`; set 0 is empty.
     pub(crate) set_ends: Vec<u32>,
     pub(crate) set_members: Vec<u16>,
@@ -74,9 +78,8 @@ impl Parser {
                     return Err(GeoError::TooMany("GeoSite lists"));
                 }
                 let list = lists.len() as u32;
-                let name = Box::<str>::from(name);
-                lists.push(name.clone());
-                self.list_ids.insert(name, list);
+                lists.push(&name)?;
+                self.list_ids.insert(name.into(), list);
                 list
             }
         };
@@ -146,9 +149,8 @@ impl Parser {
         let attributes = &mut self.rules.attributes;
         let id =
             u16::try_from(attributes.len()).map_err(|_| GeoError::TooMany("GeoSite attributes"))?;
-        let key = Box::<str>::from(key);
-        attributes.push(key.clone());
-        self.attribute_ids.insert(key, id);
+        attributes.push(&key)?;
+        self.attribute_ids.insert(key.into(), id);
         Ok(id)
     }
 

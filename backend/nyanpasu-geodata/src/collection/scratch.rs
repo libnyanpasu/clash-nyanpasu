@@ -196,6 +196,14 @@ impl<T: Pod> Default for ScratchVec<T> {
     }
 }
 
+impl<T: Pod> std::ops::Deref for ScratchVec<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+
 /// Lets writers such as the FST builder collect their output outside the heap.
 impl std::io::Write for ScratchVec<u8> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {

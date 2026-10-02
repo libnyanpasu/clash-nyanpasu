@@ -1,14 +1,17 @@
 //! Load time, memory and lookup throughput over real database files.
 //!
 //! ```text
-//! cargo run --release -p nyanpasu-geodata --example bench -- <kind> <file> [--heap-read]
-//! cargo run --release -p nyanpasu-geodata --example bench -- dir <dir> [--heap-read]
+//! cargo run --release -p nyanpasu-geodata --example bench -- <kind> <file> [flags]
+//! cargo run --release -p nyanpasu-geodata --example bench -- dir <dir> [flags]
 //! ```
 //!
 //! `kind` is `ip`, `asn`, `geoip-dat` or `geosite`; `dir` benchmarks every
 //! database file in a directory (a core home works), each in its own process
-//! because process memory is measured for the whole process. `--heap-read`
-//! reads the file with `std::fs::read` instead of `read_source`.
+//! because process memory is measured for the whole process. Flags:
+//! - `--heap-read` reads the file with `std::fs::read` instead of `read_source`;
+//! - `--reopen` then stores the index in a temporary file and benchmarks it
+//!   again in a fresh process that maps the file, as a cache would load it;
+//! - `--image` takes `file` to be such a stored index.
 //!
 //! Process memory is the private / committed figure and the resident set:
 //! `phys_footprint` / RSS on macOS, `RssAnon` / `VmRSS` on Linux. Windows adds
@@ -244,6 +247,27 @@ enum Index {
 }
 
 impl Index {
+    /// Opens a stored index by mapping it read-only.
+    fn open(kind: &str, path: &Path) -> Self {
+        let file = std::fs::File::open(path).unwrap();
+        // SAFETY: the bench's own temporary file, not written while mapped.
+        let map = unsafe { memmap2::Mmap::map(&file) }.unwrap();
+        match kind {
+            "ip" | "geoip-dat" => Index::Ip(IpIndex::from_bytes(map).unwrap()),
+            "asn" => Index::Asn(AsnIndex::from_bytes(map).unwrap()),
+            "geosite" => Index::Site(SiteIndex::from_bytes(map).unwrap()),
+            other => panic!("unknown kind {other}"),
+        }
+    }
+
+    fn bytes(&self) -> &[u8] {
+        match self {
+            Index::Ip(index) => index.as_bytes(),
+            Index::Asn(index) => index.as_bytes(),
+            Index::Site(index) => index.as_bytes(),
+        }
+    }
+
     fn hit(&self, ip: IpAddr, host: &str) -> bool {
         match self {
             Index::Ip(index) => index.lookup(ip).is_some(),
@@ -450,14 +474,17 @@ fn main() {
         .collect();
     let args: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
     let [kind, path] = args[..] else {
-        eprintln!("usage: bench <ip|asn|geoip-dat|geosite|dir> <path> [--heap-read]");
+        eprintln!(
+            "usage: bench <ip|asn|geoip-dat|geosite|dir> <path> [--heap-read] [--reopen] [--image]"
+        );
         std::process::exit(2);
     };
     let (kind, path) = (kind.as_str(), Path::new(path));
     if kind == "dir" {
         return bench_dir(path, &flags);
     }
-    let heap_read = flags.iter().any(|f| f == "--heap-read");
+    let flag = |name: &str| flags.iter().any(|f| f == name);
+    let (heap_read, image) = (flag("--heap-read"), flag("--image"));
 
     // The workload is allocated before the baseline so it stays out of it.
     let site = kind == "geosite";
@@ -468,42 +495,56 @@ fn main() {
 
     let base = Baseline::take();
     println!(
-        "{} ({kind}, read into {})",
+        "{} ({kind}, {})",
         path.file_name().unwrap().to_string_lossy(),
-        if heap_read {
-            "the heap"
+        if image {
+            "a stored index mapped from a file"
+        } else if heap_read {
+            "read into the heap"
         } else {
-            "anonymous memory"
+            "read into anonymous memory"
         }
     );
     println!(
         "  process memory over baseline, {}:",
         MEMORY_LABELS.join(" / ")
     );
-    let source: Box<dyn std::ops::Deref<Target = [u8]>> = if heap_read {
-        Box::new(std::fs::read(path).unwrap())
+    let mut file = std::fs::metadata(path).unwrap().len() as usize;
+    let source: Option<Box<dyn std::ops::Deref<Target = [u8]>>> = if image {
+        None
+    } else if heap_read {
+        Some(Box::new(std::fs::read(path).unwrap()))
     } else {
-        Box::new(read_source(path).unwrap())
+        Some(Box::new(read_source(path).unwrap()))
     };
-    let file = source.len();
-    base.stage("file read");
+    if let Some(source) = &source {
+        file = source.len();
+        base.stage("file read");
+    }
 
     PEAK.store(LIVE.load(Relaxed), Relaxed);
     let before = LIVE.load(Relaxed);
     let start = Instant::now();
-    let index = match kind {
-        "ip" => Index::Ip(IpIndex::from_mmdb(&source).unwrap()),
-        "asn" => Index::Asn(AsnIndex::from_mmdb(&source).unwrap()),
-        "geoip-dat" => Index::Ip(IpIndex::from_geoip_dat(&source).unwrap()),
-        "geosite" => Index::Site(SiteIndex::from_geosite_dat(&source, |_| true).unwrap()),
-        other => panic!("unknown kind {other}"),
+    let index = match (kind, &source) {
+        (kind, None) => Index::open(kind, path),
+        ("ip", Some(source)) => Index::Ip(IpIndex::from_mmdb(source).unwrap()),
+        ("asn", Some(source)) => Index::Asn(AsnIndex::from_mmdb(source).unwrap()),
+        ("geoip-dat", Some(source)) => Index::Ip(IpIndex::from_geoip_dat(source).unwrap()),
+        ("geosite", Some(source)) => {
+            Index::Site(SiteIndex::from_geosite_dat(source, |_| true).unwrap())
+        }
+        (other, _) => panic!("unknown kind {other}"),
     };
     let build = start.elapsed();
     let heap_peak = PEAK.load(Relaxed) - before;
     let index_heap = LIVE.load(Relaxed) - before;
-    base.stage("index built");
-    drop(source);
-    base.stage("file dropped (loaded)");
+    if image {
+        base.stage("index opened (loaded)");
+    } else {
+        base.stage("index built");
+        drop(source);
+        base.stage("file dropped (loaded)");
+    }
 
     let mut hits = 0usize;
     for i in 0..queries {
@@ -555,15 +596,17 @@ fn main() {
         let ops = (per_thread * threads) as f64 / start.elapsed().as_secs_f64();
         scaling.push((threads, ops));
     }
-    let raw = matches!(kind, "ip" | "asn")
+    let raw = (matches!(kind, "ip" | "asn") && !image)
         .then(|| raw_lookup_ns(&std::fs::read(path).unwrap(), kind, &ips));
 
     println!(
-        "  file {:.1} MiB | build {:.0} ms | build heap peak {:.2} MiB | index heap {:.2} MiB",
+        "  file {:.1} MiB | {} {:.1} ms | heap peak {:.2} MiB | index heap {:.2} MiB | image {:.2} MiB",
         mib(file as f64),
+        if image { "open" } else { "build" },
         build.as_secs_f64() * 1e3,
         mib(heap_peak as f64),
         mib(index_heap as f64),
+        mib(index.bytes().len() as f64),
     );
     println!(
         "  lookup {single:.0} ns/op single-thread ({:.1}% hits){}",
@@ -580,4 +623,17 @@ fn main() {
             .collect::<Vec<_>>()
             .join(" | ")
     );
+
+    if flag("--reopen") && !image {
+        let stored =
+            std::env::temp_dir().join(format!("nyanpasu-geodata-{}.idx", std::process::id()));
+        std::fs::write(&stored, index.bytes()).unwrap();
+        drop(index);
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([kind, stored.to_str().unwrap(), "--image"])
+            .status()
+            .unwrap();
+        std::fs::remove_file(&stored).unwrap();
+        assert!(status.success(), "reopened bench failed: {status}");
+    }
 }

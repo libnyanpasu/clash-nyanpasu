@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 aho-corasick = '1'
 bytemuck = { version = '1', features = ['derive'] }
+crc32fast = '1'
 fst = '0.4'
 maxminddb = '0.32'
 memmap2 = '0.9'

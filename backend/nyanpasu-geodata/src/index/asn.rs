@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, ops::Deref};
 
 use maxminddb::Reader;
 use serde::Deserialize;
@@ -6,18 +6,21 @@ use serde::Deserialize;
 use crate::{
     GeoError, GeoResult,
     collection::{
-        range_table::{Id, RangeTable},
+        image::{Image, ImageWriter, Kind, STR_TABLE},
+        range_table::{self, Id, RangeTable},
         scratch::{ScratchMap, ScratchVec},
     },
     parser::mmdb,
 };
 
+/// Image sections: the range table, then per record its number and, as a
+/// `StrTable`, its organization.
+const TABLE: usize = 0;
+const NUMBERS: usize = 6;
+const ORGANIZATIONS: usize = 7;
+
 pub struct AsnIndex {
-    table: RangeTable<u32>,
-    numbers: Box<[u32]>,
-    /// The organization of record `i` is `org_text[org_ends[i - 1]..org_ends[i]]`.
-    org_ends: Box<[u32]>,
-    org_text: Box<str>,
+    image: Image,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,24 +111,42 @@ impl AsnIndex {
             records.by_offset.insert(offset, id)?;
             Ok(id)
         })?;
-        let org_text = std::str::from_utf8(records.org_text.as_slice())
-            .map_err(|_| GeoError::Malformed("ASN organization text"))?;
+        let mut image = ImageWriter::new(Kind::Asn);
+        table.write(&mut image);
+        image.push(records.numbers.as_slice());
+        image.push(records.org_ends.as_slice());
+        image.push(records.org_text.as_slice());
         Ok(Self {
-            table,
-            numbers: records.numbers.as_slice().into(),
-            org_ends: records.org_ends.as_slice().into(),
-            org_text: org_text.into(),
+            image: image.finish()?,
         })
     }
 
+    /// Opens an index from the bytes `as_bytes` returned, typically a
+    /// read-only map of a file they were written to. They must be aligned to
+    /// 16 bytes, as maps are, and must not change while the index lives.
+    pub fn from_bytes(bytes: impl Deref<Target = [u8]> + Send + Sync + 'static) -> GeoResult<Self> {
+        let sections = [range_table::sections::<u32>().as_slice(), &[4], &STR_TABLE].concat();
+        let image = Image::open(Box::new(bytes), Kind::Asn, &sections)?;
+        RangeTable::<u32>::new(&image, TABLE).check()?;
+        let organizations = image.strs(ORGANIZATIONS);
+        organizations.check()?;
+        if organizations.len() != image.section::<u32>(NUMBERS).len() {
+            return Err(GeoError::Malformed("index image ASN records"));
+        }
+        Ok(Self { image })
+    }
+
+    /// The index in one block of bytes, to store and reopen with `from_bytes`
+    /// on a machine of the same byte order and crate format version.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.image.bytes()
+    }
+
     pub fn lookup(&self, ip: IpAddr) -> Option<Asn<'_>> {
-        let id = self.table.get(ip)?.index();
-        let start = id
-            .checked_sub(1)
-            .map_or(0, |prev| self.org_ends[prev] as usize);
+        let id = RangeTable::<u32>::new(&self.image, TABLE).get(ip)?.index();
         Some(Asn {
-            number: self.numbers[id],
-            organization: &self.org_text[start..self.org_ends[id] as usize],
+            number: self.image.section::<u32>(NUMBERS)[id],
+            organization: self.image.strs(ORGANIZATIONS).get(id),
         })
     }
 }

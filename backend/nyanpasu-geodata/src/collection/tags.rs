@@ -1,22 +1,31 @@
 //! Interned tag names and tag sets shared by every IP index record.
 use std::collections::HashMap;
 
-use crate::{GeoError, GeoResult, collection::range_table::Id};
+use crate::{
+    GeoError, GeoResult,
+    collection::{
+        image::{Image, ImageWriter, STR_TABLE, StrTableBuilder},
+        range_table::Id,
+    },
+};
 
 /// Tags one address may carry. Real databases stay below five; the bound keeps
 /// crafted overlaps from interning sets of quadratic total size.
 pub(crate) const MAX_SET: usize = 255;
 
-pub(crate) struct TagStore {
-    names: Box<[Box<str>]>,
-    /// Set `i` is `members[ends[i - 1]..ends[i]]`.
-    ends: Box<[u32]>,
-    members: Box<[u16]>,
+/// Image sections of a tag store: the names, set ends and set members.
+pub(crate) const SECTIONS: [usize; 4] = [STR_TABLE[0], STR_TABLE[1], 4, 2];
+
+/// Tag names and sets in the four image sections from `first`. Set `i` is
+/// `members[ends[i - 1]..ends[i]]`.
+pub(crate) struct TagStore<'a> {
+    image: &'a Image,
+    first: usize,
 }
 
 #[derive(Default)]
 pub(crate) struct TagInterner {
-    names: Vec<Box<str>>,
+    names: StrTableBuilder,
     by_name: HashMap<Box<str>, u16>,
     sets: HashMap<Box<[u16]>, u16>,
     ends: Vec<u32>,
@@ -31,9 +40,8 @@ impl TagInterner {
             return Ok(*id);
         }
         let id = u16::try_from(self.names.len()).map_err(|_| GeoError::TooMany("tags"))?;
-        let name = Box::<str>::from(name);
-        self.names.push(name.clone());
-        self.by_name.insert(name, id);
+        self.names.push(&name)?;
+        self.by_name.insert(name.into(), id);
         Ok(id)
     }
 
@@ -53,24 +61,31 @@ impl TagInterner {
         Ok(id)
     }
 
-    pub(crate) fn finish(self) -> TagStore {
-        TagStore {
-            names: self.names.into_boxed_slice(),
-            ends: self.ends.into_boxed_slice(),
-            members: self.members.into_boxed_slice(),
-        }
+    pub(crate) fn write<'a>(&'a self, image: &mut ImageWriter<'a>) {
+        self.names.write(image);
+        image.push(&self.ends);
+        image.push(&self.members);
     }
 }
 
-impl TagStore {
-    pub(crate) fn get(&self, set: u16) -> Tags<'_> {
+impl<'a> TagStore<'a> {
+    pub(crate) fn new(image: &'a Image, first: usize) -> Self {
+        Self { image, first }
+    }
+
+    pub(crate) fn check(&self) -> GeoResult<()> {
+        self.image.strs(self.first).check()
+    }
+
+    /// Reads the names only once the tags are iterated.
+    pub(crate) fn get(&self, set: u16) -> Tags<'a> {
         let set = set.index();
-        let start = set
-            .checked_sub(1)
-            .map_or(0, |prev| self.ends[prev] as usize);
+        let ends = self.image.section::<u32>(self.first + 2);
+        let start = set.checked_sub(1).map_or(0, |prev| ends[prev] as usize);
         Tags {
-            store: self,
-            members: &self.members[start..self.ends[set] as usize],
+            image: self.image,
+            names: self.first,
+            members: &self.image.section(self.first + 3)[start..ends[set] as usize],
         }
     }
 }
@@ -78,16 +93,17 @@ impl TagStore {
 /// The tags of one address, lowercase, in source order.
 #[derive(Clone, Copy)]
 pub struct Tags<'a> {
-    store: &'a TagStore,
+    image: &'a Image,
+    names: usize,
     members: &'a [u16],
 }
 
 impl<'a> Tags<'a> {
     pub fn iter(&self) -> impl Iterator<Item = &'a str> + 'a {
-        let store = self.store;
+        let names = self.image.strs(self.names);
         self.members
             .iter()
-            .map(move |tag| &*store.names[usize::from(*tag)])
+            .map(move |tag| names.get(usize::from(*tag)))
     }
 
     /// The tag when exactly one tag is a two-letter code; databases mix

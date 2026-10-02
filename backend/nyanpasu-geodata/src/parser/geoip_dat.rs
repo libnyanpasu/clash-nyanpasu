@@ -5,9 +5,9 @@ use bytemuck::{Pod, Zeroable};
 use crate::{
     GeoError, GeoResult,
     collection::{
-        range_table::{Id, RangeTable, RangeTableBuilder, Span},
+        range_table::{Id, RangeSteps, RangeTableBuilder, Span},
         scratch::ScratchVec,
-        tags::{MAX_SET, TagInterner, TagStore},
+        tags::{MAX_SET, TagInterner},
     },
     parser::proto::Fields,
 };
@@ -23,7 +23,7 @@ struct Event {
     open: u8,
 }
 
-pub(crate) fn compile(bytes: &[u8]) -> GeoResult<(RangeTable<u16>, TagStore)> {
+pub(crate) fn compile(bytes: &[u8]) -> GeoResult<(RangeSteps<u16>, TagInterner)> {
     let mut tags = TagInterner::default();
     let (mut v4, mut v6) = (0, 0);
     spans(bytes, &mut tags, |_, span| {
@@ -60,7 +60,7 @@ pub(crate) fn compile(bytes: &[u8]) -> GeoResult<(RangeTable<u16>, TagStore)> {
         })?;
         sweep(events.as_mut_slice(), family_v6, &mut tags, &mut builder)?;
     }
-    Ok((builder.finish()?, tags.finish()))
+    Ok((builder.finish()?, tags))
 }
 
 /// Calls `f` with the code tag and table span of every CIDR.

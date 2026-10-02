@@ -10,12 +10,12 @@ are released. Nothing holds the core's files open or mapped, so the core can
 rewrite them in place (`geo-auto-update`) while an index is alive. Indexes are
 `Send + Sync`; share them behind an `Arc` and rebuild to reload.
 
-| File (as the core resolves it)                 | Index                                  |
-| ---------------------------------------------- | -------------------------------------- |
-| `Country.mmdb` / `geoip.db` / `geoip.metadb`   | `IpIndex::from_mmdb`                   |
-| `ASN.mmdb`                                     | `AsnIndex::from_mmdb`                  |
-| `GeoIP.dat` (`geodata-mode: true`)             | `IpIndex::from_geoip_dat`              |
-| `GeoSite.dat`                                  | `SiteIndex::from_geosite_dat`          |
+| File (as the core resolves it)               | Index                         |
+| -------------------------------------------- | ----------------------------- |
+| `Country.mmdb` / `geoip.db` / `geoip.metadb` | `IpIndex::from_mmdb`          |
+| `ASN.mmdb`                                   | `AsnIndex::from_mmdb`         |
+| `GeoIP.dat` (`geodata-mode: true`)           | `IpIndex::from_geoip_dat`     |
+| `GeoSite.dat`                                | `SiteIndex::from_geosite_dat` |
 
 ```rust
 use nyanpasu_geodata::{IpIndex, MihomoGeoFiles, read_source};
@@ -32,6 +32,14 @@ Read files with `read_source` rather than `std::fs::read`. The system
 allocator keeps freed heap pages, so a file read onto the heap would stay in
 the process footprint after the build; `read_source` uses anonymous memory,
 which the OS takes back when the source drops.
+
+An index lives in one block of bytes. Store `index.as_bytes()` in a file and
+reopen it later with `IpIndex::from_bytes` (or `AsnIndex` / `SiteIndex`) over a
+read-only memory map of that file: opening takes milliseconds instead of a
+rebuild, and the mapped pages are file-backed, so they stay out of the
+process's private memory. Key stored indexes by the source content, replace
+them by renaming a new file into place, and rebuild whenever `from_bytes`
+fails.
 
 Building is synchronous CPU work (tens to hundreds of milliseconds); async
 callers run it on a blocking thread. `examples/bench.rs` measures load time,

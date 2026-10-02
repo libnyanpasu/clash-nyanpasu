@@ -69,10 +69,24 @@ impl NyanpasuClient {
         self.inner.tasks.close();
     }
 
-    /// Waits until every owner has finished tearing itself down. There is no
-    /// bound: an owner that never finishes keeps this waiting.
+    /// Waits until every owner has finished tearing itself down and the core
+    /// has stopped. There is no bound: an owner that never finishes keeps this
+    /// waiting.
     pub async fn wait_shutdown(&self) {
         self.inner.tasks.wait().await;
+        // The workflow stops the core in its `post_stop`, which ractor skips
+        // when the workflow panicked. Every owner has finished by now, so
+        // nothing drives the core any more, and a stop the workflow already
+        // made is only replayed.
+        let stop = self
+            .inner
+            .core_api
+            .shutdown()
+            .await
+            .and_then(|report| report.stop);
+        if let Err(error) = stop {
+            tracing::warn!(%error, "the core was not proven stopped");
+        }
     }
 
     /// A child of the root shutdown token, for Tauri-boundary background
@@ -527,6 +541,19 @@ mod tests {
             "the session owner has drained"
         );
         assert_eq!(g.client.main_window_geometry(), Some(geometry(1234)));
+    }
+
+    /// A workflow that died without its `post_stop`, as a panicking one does,
+    /// still leaves the core stopped once every owner has finished.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_core_stops_even_when_the_workflow_died_without_its_cleanup() {
+        let g = Graph::new().await;
+        g.client.inner.application_workflow.kill().await;
+
+        g.client.request_shutdown();
+        assert!(g.stopped_within(SETTLE).await);
+
+        assert_eq!(g.events(), ["core stopped"]);
     }
 
     /// The owners with nothing to persist stop on the token too, so a client

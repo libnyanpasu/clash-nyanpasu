@@ -147,6 +147,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let storage = crate::core::storage::Storage::try_new(&paths.storage_path())
         .context("Failed to open the storage")?;
     app.manage(storage.clone());
+    // The core runs with the app data dir as its home, where its geo databases live.
+    let geo_index = Arc::new(crate::core::geo::FsCountryIndexSource::new(
+        paths.app_data_dir().to_owned(),
+        paths.cache_dir().join("geodata"),
+    ));
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         http_frontend: Some(debug_http_frontend(&app_handle)?),
@@ -178,6 +183,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         service,
         system_dns: Arc::new(OsSystemDnsCache),
         direct_egress: Arc::new(HttpDirectEgressProbe::dnspod()),
+        geo_index,
         os_proxy: os_proxy.clone(),
         binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         effects,

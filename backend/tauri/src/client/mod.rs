@@ -102,6 +102,7 @@ pub struct ClientSetupArgs {
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
     pub direct_egress: Arc<dyn DirectEgressProbe>,
+    pub geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
@@ -230,6 +231,9 @@ struct NyanpasuClientInner {
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
+    /// Held for its actor, which stops with the last handle; the traffic pump only holds the
+    /// index it publishes.
+    _geo_index: crate::core::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
@@ -258,6 +262,7 @@ impl NyanpasuClient {
             service,
             system_dns,
             direct_egress,
+            geo_index,
             os_proxy,
             binary_installer,
             effects,
@@ -343,6 +348,7 @@ impl NyanpasuClient {
             service,
             system_dns,
             direct_egress,
+            geo_index,
             os_proxy,
             binary_installer,
             effects,
@@ -379,6 +385,7 @@ impl NyanpasuClient {
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
+        geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
@@ -485,6 +492,15 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        let geo_index = crate::core::geo::GeoIndexClient::spawn(
+            crate::core::geo::GeoIndexArgs {
+                source: geo_index,
+                core: core_v2.clone(),
+            },
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await?;
         let traffic = match traffic_store {
             Some(store) => {
                 match crate::core::traffic::TrafficClient::spawn(
@@ -498,6 +514,7 @@ impl NyanpasuClient {
                         )),
                         clock: Arc::new(traffic::SystemClock),
                         frames: streams.subscribe_connection_frames(),
+                        geo: geo_index.subscribe(),
                     },
                     shutdown.child_token(),
                     &tasks,
@@ -539,6 +556,7 @@ impl NyanpasuClient {
                 updater,
                 system_dns,
                 direct_egress,
+                _geo_index: geo_index,
                 os_proxy,
                 effects,
                 window,
@@ -2241,6 +2259,7 @@ pub(crate) mod tests {
             clash_config,
             system_dns,
             Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy,
         )
         .await
@@ -2253,6 +2272,7 @@ pub(crate) mod tests {
         clash_config: ClashConfigClient,
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
+        geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn OsProxyPort>,
     ) -> NyanpasuClient {
         let profiles = profiles::ProfilesClient::new(
@@ -2302,6 +2322,7 @@ pub(crate) mod tests {
             service,
             system_dns,
             direct_egress,
+            geo_index,
             os_proxy,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
@@ -2458,6 +2479,7 @@ pub(crate) mod tests {
             clash_config,
             Arc::new(NoopSystemDnsCache),
             Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
         .await;
@@ -2573,6 +2595,7 @@ pub(crate) mod tests {
             clash_config,
             Arc::new(NoopSystemDnsCache),
             Arc::new(direct_egress),
+            Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
         .await
@@ -2656,6 +2679,7 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
             direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
@@ -2999,6 +3023,7 @@ pub(crate) mod tests {
             service,
             Arc::new(NoopSystemDnsCache),
             Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(effects::ports::NoopApplicationEffects),
@@ -3162,6 +3187,7 @@ pub(crate) mod tests {
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
             direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
@@ -4135,6 +4161,7 @@ pub(crate) mod tests {
                 service,
                 Arc::new(NoopSystemDnsCache),
                 Arc::new(direct_egress::MockDirectEgressProbe::new()),
+                Arc::new(crate::core::geo::NoopCountryIndexSource),
                 Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(effects::ports::NoopApplicationEffects),

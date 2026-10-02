@@ -3,6 +3,7 @@
 //! recording.
 mod actor;
 mod client;
+mod geo;
 mod ports;
 mod source;
 #[cfg(test)]

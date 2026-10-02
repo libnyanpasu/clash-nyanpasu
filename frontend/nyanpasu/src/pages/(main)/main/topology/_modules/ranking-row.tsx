@@ -1,35 +1,52 @@
+import { motion } from 'motion/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
 import type { Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { usePageTransition } from './transition'
 import type { UsageLabel } from './usage-label'
 
 const traffic = (bytes: number) => parseTraffic(bytes).join(' ')
 
+/**
+ * A group of a ranking. Inside `AnimatePresence`, a new row fades in and a
+ * row whose place changes slides there. A leaving row goes at once: when a
+ * filter replaces the whole list, animating every row out stalls the page.
+ */
 export default function RankingRow({
   label,
   usage,
-  first,
+  rank,
   active,
   onSelect,
 }: {
   label: UsageLabel
   usage: Usage
-  /** The heaviest group of its list. */
-  first?: boolean
+  /** Its place in the list, 0 for the heaviest group. */
+  rank: number
   /** Whether the group is already a filter. */
   active: boolean
   onSelect: () => void
 }) {
+  const { transition } = usePageTransition()
+
   const { upload, download } = usage.bytes
+
+  const first = rank === 0
 
   // The tooltip hangs on the button, so focusing the row with the keyboard
   // reveals the full label as well.
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <motion.button
+          // Measured only when its place changes, not on every refresh.
+          layout="position"
+          layoutDependency={rank}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={transition}
           type="button"
           aria-pressed={active}
           className={cn(
@@ -76,7 +93,7 @@ export default function RankingRow({
               {m.topology_connection_count({ count: usage.connections })}
             </span>
           </span>
-        </button>
+        </motion.button>
       </TooltipTrigger>
 
       <TooltipContent className="max-w-96 rounded-2xl break-all">

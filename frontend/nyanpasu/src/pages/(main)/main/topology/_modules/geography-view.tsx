@@ -1,13 +1,13 @@
 import CheckRounded from '~icons/material-symbols/check-rounded'
 import { AnimatePresence, motion, useInView } from 'motion/react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { useMedia } from 'react-use'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import worldMap from '@/assets/maps/world-map.json'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import type { Metric, Topology, Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { usePageTransition } from './transition'
 import { largest, regionName, usageAmount, usageValue } from './usage-label'
 
 const centers: Readonly<Record<string, number[]>> = worldMap.centers
@@ -236,7 +236,7 @@ export default function GeographyView({
   measuredOnly: boolean
   onMeasuredOnlyChange: () => void
 }) {
-  const reducedMotion = useMedia('(prefers-reduced-motion: reduce)', false)
+  const { reducedMotion, transition } = usePageTransition()
 
   const [hovered, setHovered] = useState<string | null>(null)
 
@@ -244,11 +244,6 @@ export default function GeographyView({
 
   // Off screen, the travelling dots need not keep the compositor busy.
   const onScreen = useInView(map)
-
-  const transition = {
-    duration: reducedMotion ? 0 : 0.32,
-    ease: [0.2, 0, 0, 1] as const,
-  }
 
   const { regions, routes, total, unknown, dialed, resolved } = useMemo(() => {
     const nodes = topology?.nodes ?? []

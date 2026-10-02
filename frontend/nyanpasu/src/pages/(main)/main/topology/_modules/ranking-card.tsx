@@ -1,3 +1,4 @@
+import { AnimatePresence } from 'motion/react'
 import { useState, type ComponentType, type SVGProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
@@ -64,18 +65,20 @@ export default function RankingCard({
       </div>
 
       <div className="flex flex-col gap-1">
-        {ranking.groups.map((group, index) => (
-          <RankingRow
-            key={group.key}
-            label={labelOf(dimension, group.key)}
-            usage={group.usage}
-            first={index === 0}
-            active={group.key === selected}
-            onSelect={() =>
-              onFiltersChange(toggleFilter(filters, dimension, group.key))
-            }
-          />
-        ))}
+        <AnimatePresence initial={false}>
+          {ranking.groups.map((group, index) => (
+            <RankingRow
+              key={group.key}
+              label={labelOf(dimension, group.key)}
+              usage={group.usage}
+              rank={index}
+              active={group.key === selected}
+              onSelect={() =>
+                onFiltersChange(toggleFilter(filters, dimension, group.key))
+              }
+            />
+          ))}
+        </AnimatePresence>
 
         {others > 0 && (
           <p className="text-on-surface-variant truncate px-4 py-2 text-xs tabular-nums">

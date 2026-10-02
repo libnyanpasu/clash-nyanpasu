@@ -212,14 +212,21 @@ export function createRpcClient(
     queryTrafficUsage: (
       query: TrafficQuery,
       groupBy: Dimension,
+      metric: Metric,
       after: {
-        bytes: Bytes
+        usage: Usage
         key: string
       } | null,
       limit: number,
     ) =>
       typedError<UsagePage, IpcError>(
-        __RPC_INVOKE('query_traffic_usage', { query, groupBy, after, limit }),
+        __RPC_INVOKE('query_traffic_usage', {
+          query,
+          groupBy,
+          metric,
+          after,
+          limit,
+        }),
       ),
     queryTrafficUsageByKeys: (
       query: TrafficQuery,
@@ -3608,6 +3615,8 @@ export type RemoteProfileOptionsPatch_Serialize = {
 
 export type ReportRequest = {
   query: TrafficQuery
+  /**  What the rankings and the topology order and merge their groups by. */
+  metric: Metric
   /**  One ranking per dimension. */
   rankings: Dimension[]
   /**  Groups per ranking, capped at `MAX_LIMIT`. */
@@ -4279,7 +4288,6 @@ export type TopologyNode = {
 export type TopologyRequest = {
   /**  Two to five distinct dimensions, from the first column to the last. */
   layers: Dimension[]
-  metric: Metric
   /**  Nodes beyond this many per layer merge into one "other" node; `None` keeps them all. */
   limit_per_layer: number | null
 }
@@ -4432,9 +4440,12 @@ export type Usage = {
   connections: number
 }
 
-/**  Exclusive position for heaviest-first paging of grouped usage: the last group of a page. */
+/**
+ *  Exclusive position for heaviest-first paging of grouped usage: the last group of a page, with
+ *  its whole usage, so it places the next page under either metric.
+ */
 export type UsageCursor = {
-  bytes: Bytes
+  usage: Usage
   key: string
 }
 

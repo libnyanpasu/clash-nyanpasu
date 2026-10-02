@@ -251,11 +251,11 @@ test('the first request is the last hour of everything, unfiltered', async ({
   await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
   expect(rpc.reports[0]).toEqual({
     query: { range: 'last_hour', scope: 'all', filters: [] },
+    metric: 'bytes',
     rankings: ['source', 'inbound', 'target', 'exit', 'process'],
     ranking_limit: 5,
     topology: {
       layers: ['origin', 'rule', 'chain', 'exit'],
-      metric: 'bytes',
       limit_per_layer: 7,
     },
   })
@@ -484,7 +484,7 @@ test('unavailable recording shows the error card instead of the figures', async 
 test('view all pages through every value and a pick filters and closes', async ({
   onTestFinished,
 }) => {
-  const cursor = { bytes: { upload: 1, download: 2 }, key: 'first.example' }
+  const cursor = { usage: usage(1, 2, 1), key: 'first.example' }
   const empty = usage(0, 0, 0)
   mockBackend({
     '': {
@@ -526,6 +526,7 @@ test('view all pages through every value and a pick filters and closes', async (
         filters: [{ dimension: 'inbound', value: 'mixed' }],
       },
       groupBy: 'target',
+      metric: 'bytes',
       after: null,
       limit: 50,
     },
@@ -596,8 +597,11 @@ test('the template and the metric change the topology of the same request', asyn
     .poll(() => last().topology?.layers)
     .toEqual(['process', 'target', 'exit'])
 
-  await view.getByRole('radio', { name: m.topology_by_connections() }).click()
-  await expect.poll(() => last().topology?.metric).toBe('connections')
+  await view.getByRole('combobox', { name: m.traffic_metric_label() }).click()
+  await view
+    .getByRole('option', { name: m.traffic_metric_connections() })
+    .click()
+  await expect.poll(() => last().metric).toBe('connections')
   expect(last().topology?.layers).toEqual(['process', 'target', 'exit'])
 
   // The nodes are drawn from the ones the backend returned.
@@ -755,12 +759,51 @@ test('the header controls keep their names', async ({ onTestFinished }) => {
     .element(view.getByRole('radiogroup', { name: m.topology_view() }))
     .toBeInTheDocument()
   await expect
-    .element(view.getByRole('radiogroup', { name: m.topology_weight() }))
-    .toBeInTheDocument()
-  await expect
     .element(view.getByRole('combobox', { name: m.traffic_layers_label() }))
     .toBeInTheDocument()
   await expect.element(limitSelect(view)).toBeInTheDocument()
+})
+
+test('the toolbar metric orders the rankings and the full list', async ({
+  onTestFinished,
+}) => {
+  mockBackend({
+    '': {
+      total: usage(0, 0, 0),
+      groups: [],
+      other: usage(0, 0, 0),
+      next: null,
+    },
+  })
+  const view = await open(onTestFinished)
+  const toolbar = () =>
+    document.querySelector<HTMLElement>('[data-slot="traffic-toolbar"]')!
+  const inbound = view.getByRole('button', { name: /^mixed/ })
+
+  await expect.element(inbound).toBeInTheDocument()
+  expect(inbound.element().textContent).toContain('mixed3.00 KiB')
+
+  const metric = view.getByRole('combobox', { name: m.traffic_metric_label() })
+  expect(toolbar().contains(metric.element())).toBe(true)
+  await metric.click()
+  await view
+    .getByRole('option', { name: m.traffic_metric_connections() })
+    .click()
+
+  await expect.poll(() => last().metric).toBe('connections')
+  // A row leads with the metric and ends its second line with the other one.
+  expect(inbound.element().textContent).toContain(
+    `mixed${m.topology_connection_count({ count: 3 })}`,
+  )
+  expect(inbound.element().textContent).toMatch(/3\.00 KiB$/)
+
+  await view
+    .getByRole('button', { name: m.traffic_rank_view_all() })
+    .nth(1)
+    .click()
+  await expect
+    .poll(() => rpc.pages.at(-1))
+    .toEqual(expect.objectContaining({ metric: 'connections' }))
 })
 
 test('the map asks for every region and a region filters the destination', async ({
@@ -775,7 +818,6 @@ test('the map asks for every region and a region filters the destination', async
   )
   expect(last().topology).toEqual({
     layers: ['source_region', 'destination_region', 'destination_basis'],
-    metric: 'bytes',
     limit_per_layer: null,
   })
 

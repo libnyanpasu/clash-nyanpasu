@@ -1229,6 +1229,7 @@ mod tests {
                     value: "mixed-1".into(),
                 }],
             },
+            metric: Metric::Bytes,
             rankings: vec![
                 Dimension::Origin,
                 Dimension::Inbound,
@@ -1244,7 +1245,6 @@ mod tests {
                     Dimension::Chain,
                     Dimension::Exit,
                 ],
-                metric: Metric::Bytes,
                 limit_per_layer: Some(7),
             }),
         };

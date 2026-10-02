@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 
 use nyanpasu_geodata::IpIndex;
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, Dimension, Frame, Prune, ReportRequest, Row, Session, Tier,
+    ClosedCursor, ClosedPage, Dimension, Frame, Metric, Prune, ReportRequest, Row, Session, Tier,
     TrafficError, TrafficQuery, TrafficReport, TrafficResult, TrafficScope, TrafficStore,
     TrafficSummary, UsageCursor, UsageGroup, UsagePage, filter_rows, merge_closed_page, report,
     usage_by_keys, usage_page,
@@ -33,6 +33,7 @@ pub(super) enum Message {
     Usage(
         TrafficQuery,
         Dimension,
+        Metric,
         Option<UsageCursor>,
         usize,
         RpcReplyPort<TrafficResult<UsagePage>>,
@@ -139,8 +140,8 @@ impl Actor for TrafficActor {
             Message::Report(request, reply) => {
                 let _ = reply.send(state.report(request).await);
             }
-            Message::Usage(query, dimension, after, limit, reply) => {
-                let _ = reply.send(state.usage(query, dimension, after, limit).await);
+            Message::Usage(query, dimension, metric, after, limit, reply) => {
+                let _ = reply.send(state.usage(query, dimension, metric, after, limit).await);
             }
             Message::UsageByKeys(query, dimension, keys, reply) => {
                 let _ = reply.send(state.usage_by_keys(query, dimension, keys).await);
@@ -223,6 +224,7 @@ impl State {
         &self,
         query: TrafficQuery,
         dimension: Dimension,
+        metric: Metric,
         after: Option<UsageCursor>,
         limit: usize,
     ) -> TrafficResult<UsagePage> {
@@ -231,6 +233,7 @@ impl State {
             usage_page(
                 filter_rows(rows, &query.filters),
                 dimension,
+                metric,
                 after.as_ref(),
                 limit,
             )

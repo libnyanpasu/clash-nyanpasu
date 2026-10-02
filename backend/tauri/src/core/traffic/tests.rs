@@ -380,6 +380,7 @@ fn everything() -> TrafficQuery {
 fn request(query: TrafficQuery, rankings: &[Dimension]) -> ReportRequest {
     ReportRequest {
         query,
+        metric: Metric::Bytes,
         rankings: rankings.to_vec(),
         ranking_limit: 10,
         topology: None,
@@ -497,7 +498,6 @@ async fn reports_keep_the_top_rankings_and_merge_the_topology() {
     asked.ranking_limit = 2;
     asked.topology = Some(TopologyRequest {
         layers: vec![Dimension::Process, Dimension::Exit],
-        metric: Metric::Bytes,
         limit_per_layer: Some(1),
     });
     let report = h.report(asked).await;
@@ -519,7 +519,6 @@ async fn an_invalid_topology_is_refused() {
     let mut asked = request(everything(), &[]);
     asked.topology = Some(TopologyRequest {
         layers: vec![Dimension::Process],
-        metric: Metric::Bytes,
         limit_per_layer: None,
     });
     let error = h.client.report(asked).await.unwrap_err().to_string();
@@ -543,7 +542,7 @@ async fn a_query_repeating_a_filter_dimension_is_refused_everywhere() {
     refused(h.client.report(request(repeated(), &[])).await.unwrap_err());
     refused(
         h.client
-            .usage(repeated(), Dimension::Process, None, 10)
+            .usage(repeated(), Dimension::Process, Metric::Bytes, None, 10)
             .await
             .unwrap_err(),
     );
@@ -573,7 +572,13 @@ async fn usage_pages_continue_after_the_cursor() {
     let h = &h;
     let page = |after, limit| async move {
         h.client
-            .usage(everything(), Dimension::Process, after, limit)
+            .usage(
+                everything(),
+                Dimension::Process,
+                Metric::Bytes,
+                after,
+                limit,
+            )
             .await
             .unwrap()
     };

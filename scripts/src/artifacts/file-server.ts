@@ -19,6 +19,41 @@ export interface UploadResult {
   downloadUrl: string;
 }
 
+export interface UploadFailure {
+  fileName: string;
+  message: string;
+  stack?: string;
+}
+
+export interface UploadBatchResult {
+  results: UploadResult[];
+  failures: UploadFailure[];
+}
+
+function getErrorDetails(
+  error: unknown,
+): Pick<UploadFailure, "message" | "stack"> {
+  const messages: string[] = [];
+  const stacks: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    messages.push(`${current.name}: ${current.message}`);
+    if (current.stack) stacks.push(current.stack);
+    current = current.cause;
+  }
+  if (current !== undefined && !(current instanceof Error)) {
+    messages.push(String(current));
+  }
+
+  return {
+    message: messages.join("\nCaused by: "),
+    ...(stacks.length > 0 ? { stack: stacks.join("\nCaused by:\n") } : {}),
+  };
+}
+
 export interface InitResponse {
   uploadId: string;
   chunkSize: number;
@@ -78,7 +113,19 @@ export async function initUploadSession(
     );
   }
 
-  return (await resp.json()) as InitResponse;
+  const data = await resp.json() as Partial<InitResponse>;
+  if (
+    typeof data.uploadId !== "string" || !data.uploadId ||
+    typeof data.chunkSize !== "number" ||
+    !Number.isSafeInteger(data.chunkSize) ||
+    data.chunkSize <= 0
+  ) {
+    throw new Error(
+      `upload init returned an invalid response: ${JSON.stringify(data)}`,
+    );
+  }
+
+  return data as InitResponse;
 }
 
 export async function uploadChunk(
@@ -107,7 +154,21 @@ export async function uploadChunk(
     );
   }
 
-  return (await resp.json()) as ChunkResponse;
+  const data = await resp.json() as Partial<ChunkResponse>;
+  if (typeof data.done !== "boolean") {
+    throw new Error(
+      `chunk upload returned an invalid response: ${JSON.stringify(data)}`,
+    );
+  }
+  if (data.done && (typeof data.file?.id !== "string" || !data.file.id)) {
+    throw new Error(
+      `completed chunk upload did not return a file id: ${
+        JSON.stringify(data)
+      }`,
+    );
+  }
+
+  return data as ChunkResponse;
 }
 
 export async function performChunkedUpload<T>(
@@ -140,6 +201,11 @@ export async function performChunkedUpload<T>(
         const n = await file.read(buf.subarray(bytesRead));
         if (n === null) break;
         bytesRead += n;
+      }
+      if (bytesRead !== size) {
+        throw new Error(
+          `Unexpected end of file while reading ${label}: expected ${size} bytes, got ${bytesRead}`,
+        );
       }
 
       const end = endExclusive - 1;
@@ -210,30 +276,44 @@ export async function uploadToFileServer(
       uploadChunk(uploadId, chunk, start, end, total, token),
   });
 
-  const downloadUrl = `${FILE_SERVER_BIN_URL}/${data.file!.id}`;
+  const fileId = data.file?.id;
+  if (!fileId) {
+    throw new Error(`Upload of ${fileName} completed without a file id`);
+  }
+
+  const downloadUrl = `${FILE_SERVER_BIN_URL}/${fileId}`;
   consola.success(`uploaded ${fileName} -> ${downloadUrl}`);
   return { fileName, downloadUrl };
 }
 
-export async function uploadAllFiles(
+export async function uploadAllFilesWithResults(
   filePaths: string[],
   token: string,
   folderPath?: string,
-): Promise<UploadResult[]> {
+  uploadFile: typeof uploadToFileServer = uploadToFileServer,
+): Promise<UploadBatchResult> {
   const results: UploadResult[] = [];
+  const failures: UploadFailure[] = [];
   const queue = [...filePaths];
   const inFlight: Promise<void>[] = [];
 
   async function processNext(): Promise<void> {
     while (queue.length > 0) {
       const filePath = queue.shift()!;
-      const result = await retry(
-        () => uploadToFileServer(filePath, token, folderPath),
-        {
-          maxAttempts: CHUNK_RETRY_ATTEMPTS,
-        },
-      );
-      results.push(result);
+      try {
+        const result = await retry(
+          () => uploadFile(filePath, token, folderPath),
+          {
+            maxAttempts: CHUNK_RETRY_ATTEMPTS,
+          },
+        );
+        results.push(result);
+      } catch (error) {
+        failures.push({
+          fileName: path.basename(filePath),
+          ...getErrorDetails(error),
+        });
+      }
     }
   }
 
@@ -243,5 +323,26 @@ export async function uploadAllFiles(
   }
   await Promise.all(inFlight);
 
+  return { results, failures };
+}
+
+export async function uploadAllFiles(
+  filePaths: string[],
+  token: string,
+  folderPath?: string,
+): Promise<UploadResult[]> {
+  const { results, failures } = await uploadAllFilesWithResults(
+    filePaths,
+    token,
+    folderPath,
+  );
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures.map(({ fileName, message }) =>
+        new Error(`${fileName}: ${message}`)
+      ),
+      `Failed to upload ${failures.length} of ${filePaths.length} files`,
+    );
+  }
   return results;
 }

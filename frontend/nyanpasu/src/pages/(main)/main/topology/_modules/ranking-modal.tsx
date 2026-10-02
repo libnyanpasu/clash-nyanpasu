@@ -10,6 +10,7 @@ import { m } from '@/paraglide/messages'
 import { useTrafficUsagePages } from '@nyanpasu/query'
 import {
   type Dimension,
+  type Metric,
   type TrafficQuery,
   type UsageGroup,
 } from '@nyanpasu/rpc/types'
@@ -47,6 +48,7 @@ function LoadMore({ onVisible }: { onVisible: () => void }) {
 type UsageListProps = {
   query: TrafficQuery
   dimension: Dimension
+  metric: Metric
   selected?: string
   labelOf: (dimension: Dimension, key: string) => UsageLabel
   onSelect: (key: string) => void
@@ -55,6 +57,7 @@ type UsageListProps = {
 function UsageRows({
   groups,
   dimension,
+  metric,
   selected,
   labelOf,
   onSelect,
@@ -66,6 +69,7 @@ function UsageRows({
           key={group.key}
           label={labelOf(dimension, group.key)}
           usage={group.usage}
+          metric={metric}
           rank={index}
           active={group.key === selected}
           onSelect={() => onSelect(group.key)}
@@ -78,12 +82,13 @@ function UsageRows({
 function UsageList({
   query,
   dimension,
+  metric,
   selected,
   labelOf,
   onSelect,
 }: UsageListProps) {
   const { data, isError, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    useTrafficUsagePages(query, dimension)
+    useTrafficUsagePages(query, dimension, metric)
 
   const groups = data?.pages.flatMap((page) => page.groups) ?? []
 
@@ -93,6 +98,7 @@ function UsageList({
         <UsageRows
           groups={groups}
           dimension={dimension}
+          metric={metric}
           selected={selected}
           labelOf={labelOf}
           onSelect={onSelect}
@@ -117,18 +123,24 @@ function UsageList({
 }
 
 // Dev builds only: every generated group at once, as of when the list opened.
-function MockUsageList({ query, dimension, ...rows }: UsageListProps) {
+function MockUsageList({ query, dimension, metric, ...rows }: UsageListProps) {
   const now = useMockTrafficNow(true)
 
   const groups = useMemo(
-    () => (now === null ? [] : mockTrafficGroups(query, dimension, now)),
-    [query, dimension, now],
+    () =>
+      now === null ? [] : mockTrafficGroups(query, dimension, metric, now),
+    [query, dimension, metric, now],
   )
 
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="flex flex-col gap-1 px-2">
-        <UsageRows groups={groups} dimension={dimension} {...rows} />
+        <UsageRows
+          groups={groups}
+          dimension={dimension}
+          metric={metric}
+          {...rows}
+        />
 
         {groups.length === 0 && <Notice>{m.traffic_empty()}</Notice>}
       </div>
@@ -142,6 +154,7 @@ export default function RankingModal({
   title,
   query,
   dimension,
+  metric,
   selected,
   labelOf,
   onSelect,
@@ -151,6 +164,7 @@ export default function RankingModal({
   title: string
   query: TrafficQuery
   dimension: Dimension
+  metric: Metric
   selected?: string
   labelOf: (dimension: Dimension, key: string) => UsageLabel
   onSelect: (key: string) => void
@@ -168,6 +182,7 @@ export default function RankingModal({
           <List
             query={query}
             dimension={dimension}
+            metric={metric}
             selected={selected}
             labelOf={labelOf}
             onSelect={onSelect}

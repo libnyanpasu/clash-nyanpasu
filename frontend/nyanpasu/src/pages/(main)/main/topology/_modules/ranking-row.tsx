@@ -1,11 +1,10 @@
 import { motion } from 'motion/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
-import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
-import type { Usage } from '@nyanpasu/rpc/types'
+import type { Metric, Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { usePageTransition } from './transition'
-import type { UsageLabel } from './usage-label'
+import { usageAmount, type UsageLabel } from './usage-label'
 
 const traffic = (bytes: number) => parseTraffic(bytes).join(' ')
 
@@ -17,12 +16,15 @@ const traffic = (bytes: number) => parseTraffic(bytes).join(' ')
 export default function RankingRow({
   label,
   usage,
+  metric,
   rank,
   active,
   onSelect,
 }: {
   label: UsageLabel
   usage: Usage
+  /** The amount the row leads with; the other one closes its second line. */
+  metric: Metric
   /** Its place in the list, 0 for the heaviest group. */
   rank: number
   /** Whether the group is already a filter. */
@@ -74,7 +76,7 @@ export default function RankingRow({
                 first && 'text-primary font-medium',
               )}
             >
-              {traffic(upload + download)}
+              {usageAmount(usage, metric)}
             </span>
           </span>
 
@@ -90,7 +92,7 @@ export default function RankingRow({
             </span>
 
             <span className="truncate">
-              {m.topology_connection_count({ count: usage.connections })}
+              {usageAmount(usage, metric === 'bytes' ? 'connections' : 'bytes')}
             </span>
           </span>
         </motion.button>

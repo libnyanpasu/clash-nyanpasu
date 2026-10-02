@@ -31,12 +31,21 @@ impl Usage {
     }
 }
 
+impl Metric {
+    /// The amount of `usage` this metric weighs.
+    pub fn of(self, usage: &Usage) -> u128 {
+        match self {
+            Metric::Bytes => usage.bytes.total(),
+            Metric::Connections => u128::from(usage.connections),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TopologyRequest {
     /// Two to five distinct dimensions, from the first column to the last.
     pub layers: Vec<Dimension>,
-    pub metric: Metric,
     /// Nodes beyond this many per layer merge into one "other" node; `None` keeps them all.
     pub limit_per_layer: Option<usize>,
 }
@@ -45,6 +54,8 @@ pub struct TopologyRequest {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct ReportRequest {
     pub query: TrafficQuery,
+    /// What the rankings and the topology order and merge their groups by.
+    pub metric: Metric,
     /// One ranking per dimension.
     pub rankings: Vec<Dimension>,
     /// Groups per ranking, capped at `MAX_LIMIT`.
@@ -151,7 +162,7 @@ pub fn report<'a>(
             .rankings
             .iter()
             .map(|&dimension| {
-                let mut groups = ranked(&rows, dimension, rated);
+                let mut groups = ranked(&rows, dimension, rated, request.metric);
                 let distinct = groups.len() as u64;
                 let other = sum(groups
                     .split_off(limit.min(groups.len()))
@@ -170,33 +181,40 @@ pub fn report<'a>(
                 rows.iter()
                     .map(|(dimensions, usage, _)| (*dimensions, *usage)),
                 &t.layers,
-                t.metric,
+                request.metric,
                 t.limit_per_layer,
             )
         }),
     }
 }
 
-/// The `limit` groups ranked after `after`, or the top ones; the rest after the page is folded
-/// into `other`. `total` covers every group.
+/// The `limit` groups ranked by `metric` after `after`, or the top ones; the rest after the page
+/// is folded into `other`. `total` covers every group.
 pub fn usage_page<'a>(
     rows: impl IntoIterator<Item = Row<'a>>,
     dimension: Dimension,
+    metric: Metric,
     after: Option<&UsageCursor>,
     limit: usize,
 ) -> UsagePage {
-    let mut groups = ranked(&rows.into_iter().collect::<Vec<_>>(), dimension, true);
+    let mut groups = ranked(
+        &rows.into_iter().collect::<Vec<_>>(),
+        dimension,
+        true,
+        metric,
+    );
     let total = sum(groups.iter().map(|g| &g.usage));
     groups.retain(|g| {
-        after
-            .is_none_or(|c| rank((&g.key, &g.usage.bytes), (&c.key, &c.bytes)) == Ordering::Greater)
+        after.is_none_or(|c| {
+            rank(metric, (&g.key, &g.usage), (&c.key, &c.usage)) == Ordering::Greater
+        })
     });
     let rest = groups.split_off(limit.clamp(1, MAX_LIMIT).min(groups.len()));
     let next = if rest.is_empty() {
         None
     } else {
         groups.last().map(|g| UsageCursor {
-            bytes: g.usage.bytes,
+            usage: g.usage,
             key: g.key.clone(),
         })
     };
@@ -215,7 +233,7 @@ pub fn usage_by_keys<'a>(
     keys: &[String],
 ) -> Vec<UsageGroup> {
     let mut groups: HashMap<String, UsageGroup> =
-        ranked(&rows.into_iter().collect::<Vec<_>>(), dimension, true)
+        grouped(&rows.into_iter().collect::<Vec<_>>(), dimension, true)
             .into_iter()
             .map(|g| (g.key.clone(), g))
             .collect();
@@ -223,8 +241,15 @@ pub fn usage_by_keys<'a>(
     keys.iter().filter_map(|key| groups.remove(key)).collect()
 }
 
-/// Every group of `dimension`, heaviest first; equal traffic ranks by key.
-fn ranked(rows: &[Row<'_>], dimension: Dimension, rated: bool) -> Vec<UsageGroup> {
+/// Every group of `dimension`, heaviest by `metric` first; equal amounts rank by key.
+fn ranked(rows: &[Row<'_>], dimension: Dimension, rated: bool, metric: Metric) -> Vec<UsageGroup> {
+    let mut groups = grouped(rows, dimension, rated);
+    groups.sort_by(|a, b| rank(metric, (&a.key, &a.usage), (&b.key, &b.usage)));
+    groups
+}
+
+/// Every group of `dimension`, in no particular order.
+fn grouped(rows: &[Row<'_>], dimension: Dimension, rated: bool) -> Vec<UsageGroup> {
     let mut groups: HashMap<String, UsageGroup> = HashMap::new();
     for (dimensions, usage, rate) in rows {
         let group = groups
@@ -239,14 +264,15 @@ fn ranked(rows: &[Row<'_>], dimension: Dimension, rated: bool) -> Vec<UsageGroup
             group.current_rate = Some(add_rate(group.current_rate, rate));
         }
     }
-    let mut groups: Vec<UsageGroup> = groups.into_values().collect();
-    groups.sort_by(|a, b| rank((&a.key, &a.usage.bytes), (&b.key, &b.usage.bytes)));
-    groups
+    groups.into_values().collect()
 }
 
-/// Heaviest first; equal traffic ranks by key.
-fn rank((a_key, a): (&str, &Bytes), (b_key, b): (&str, &Bytes)) -> Ordering {
-    b.total().cmp(&a.total()).then_with(|| a_key.cmp(b_key))
+/// Heaviest by `metric` first; equal amounts rank by key.
+fn rank(metric: Metric, (a_key, a): (&str, &Usage), (b_key, b): (&str, &Usage)) -> Ordering {
+    metric
+        .of(b)
+        .cmp(&metric.of(a))
+        .then_with(|| a_key.cmp(b_key))
 }
 
 fn sum<'a>(usages: impl IntoIterator<Item = &'a Usage>) -> Usage {
@@ -321,6 +347,7 @@ mod tests {
     fn request(query: TrafficQuery, rankings: &[Dimension], limit: usize) -> ReportRequest {
         ReportRequest {
             query,
+            metric: Metric::Bytes,
             rankings: rankings.to_vec(),
             ranking_limit: limit,
             topology: None,
@@ -443,6 +470,34 @@ mod tests {
     }
 
     #[test]
+    fn rankings_and_pages_follow_the_metric() {
+        // a.com: 42 B over 2 conns, b.com: 0 B over 1, c.com: 3 B over 1.
+        let f = Fixture::new();
+        let ranking = |metric| {
+            let mut req = request(query(&[], TrafficScope::All), &[Dimension::Target], 10);
+            req.metric = metric;
+            report(f.rows(), &req).rankings.remove(0).groups
+        };
+        assert_eq!(keys(&ranking(Metric::Bytes)), ["a.com", "c.com", "b.com"]);
+        assert_eq!(
+            keys(&ranking(Metric::Connections)),
+            ["a.com", "b.com", "c.com"]
+        );
+
+        let first = usage_page(f.rows(), Dimension::Target, Metric::Connections, None, 2);
+        assert_eq!(keys(&first.groups), ["a.com", "b.com"]);
+        let second = usage_page(
+            f.rows(),
+            Dimension::Target,
+            Metric::Connections,
+            first.next.as_ref(),
+            2,
+        );
+        assert_eq!(keys(&second.groups), ["c.com"]);
+        assert_eq!(second.next, None);
+    }
+
+    #[test]
     fn distinct_counts_only_the_filtered_values() {
         let f = Fixture::new();
         let r = report(
@@ -542,14 +597,20 @@ mod tests {
     #[test]
     fn pages_continue_after_the_cursor() {
         let f = Fixture::new();
-        let first = usage_page(f.rows(), Dimension::Process, None, 2);
+        let first = usage_page(f.rows(), Dimension::Process, Metric::Bytes, None, 2);
         assert_eq!(keys(&first.groups), ["curl", "firefox"]);
         assert_eq!(first.total, usage(15, 30, 4));
         assert_eq!(first.other, usage(1, 2, 1));
         let cursor = first.next.unwrap();
         assert_eq!(cursor.key, "firefox");
 
-        let second = usage_page(f.rows(), Dimension::Process, Some(&cursor), 2);
+        let second = usage_page(
+            f.rows(),
+            Dimension::Process,
+            Metric::Bytes,
+            Some(&cursor),
+            2,
+        );
         assert_eq!(keys(&second.groups), ["wget"]);
         assert_eq!(second.other, Usage::default());
         assert_eq!(second.next, None);
@@ -561,13 +622,16 @@ mod tests {
         // The cursor's own group may have grown or vanished; paging goes by rank position.
         let f = Fixture::new();
         let cursor = UsageCursor {
-            bytes: Bytes {
-                upload: 100,
-                download: 0,
-            },
+            usage: usage(100, 0, 9),
             key: "gone".into(),
         };
-        let page = usage_page(f.rows(), Dimension::Process, Some(&cursor), 10);
+        let page = usage_page(
+            f.rows(),
+            Dimension::Process,
+            Metric::Bytes,
+            Some(&cursor),
+            10,
+        );
         assert_eq!(keys(&page.groups), ["curl", "firefox", "wget"]);
     }
 
@@ -603,7 +667,6 @@ mod tests {
         );
         req.topology = Some(TopologyRequest {
             layers: vec![Dimension::Origin, Dimension::Exit],
-            metric: Metric::Bytes,
             limit_per_layer: None,
         });
         let topology = report(f.rows(), &req).topology.unwrap();
@@ -640,7 +703,6 @@ mod tests {
             let mut req = request(query(&[], TrafficScope::All), &[], usize::MAX);
             req.topology = Some(TopologyRequest {
                 layers: layers.to_vec(),
-                metric: Metric::Bytes,
                 limit_per_layer: limit,
             });
             req.checked()

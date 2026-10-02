@@ -75,15 +75,16 @@ export default function TrafficPage({
   )
 
   // Only one of the flow and the map is on screen, so the report carries the
-  // topology of that one.
+  // topology of that one. The metric orders the rankings and the topology alike.
   const request = useMemo<ReportRequest>(
     () => ({
       query,
+      metric,
       rankings: RANKINGS.map(({ dimension }) => dimension),
       ranking_limit: RANKING_LIMIT,
-      topology: toTopologyRequest({ view, layers, metric, limit }),
+      topology: toTopologyRequest({ view, layers, limit }),
     }),
-    [query, view, layers, metric, limit],
+    [query, metric, view, layers, limit],
   )
 
   // Dev builds only: generated usage replaces the recorded one.
@@ -122,7 +123,6 @@ export default function TrafficPage({
             view={view}
             onViewChange={(next) => onSearchChange({ view: next })}
             metric={metric}
-            onMetricChange={(next) => onSearchChange({ metric: next })}
             template={layers ?? DEFAULT_TEMPLATE}
             onTemplateChange={(next) => onSearchChange({ layers: next })}
             limit={limit}
@@ -153,6 +153,7 @@ export default function TrafficPage({
                         title={title()}
                         ranking={ranking}
                         query={query}
+                        metric={metric}
                         filters={filters}
                         labelOf={labelOf}
                         onFiltersChange={(next) =>

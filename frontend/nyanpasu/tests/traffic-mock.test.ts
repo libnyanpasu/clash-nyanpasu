@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import type {
   Dimension,
+  Metric,
   ReportRequest,
   TrafficFilter,
   TrafficScope,
@@ -18,6 +19,7 @@ const request = (
     filters?: TrafficFilter[]
     scope?: TrafficScope
     rankings?: Dimension[]
+    metric?: Metric
     topology?: ReportRequest['topology']
   } = {},
 ): ReportRequest => ({
@@ -26,6 +28,7 @@ const request = (
     scope: overrides.scope ?? 'all',
     filters: overrides.filters ?? [],
   },
+  metric: overrides.metric ?? 'bytes',
   rankings: overrides.rankings ?? ['destination_region'],
   ranking_limit: 5,
   topology: overrides.topology ?? null,
@@ -34,7 +37,6 @@ const request = (
 const map = request({
   topology: {
     layers: ['source_region', 'destination_region', 'destination_basis'],
-    metric: 'bytes',
     limit_per_layer: null,
   },
 })
@@ -65,8 +67,27 @@ test('a ranking and its other add up to the total', () => {
     report.total,
   )
   expect(
-    mockTrafficGroups(request().query, 'destination_region', NOW),
+    mockTrafficGroups(request().query, 'destination_region', 'bytes', NOW),
   ).toHaveLength(ranking.distinct)
+})
+
+test('rankings and the full list order by the metric', () => {
+  const counts = (metric: Metric) => [
+    mockTrafficReport(request({ metric, rankings: ['target'] }), NOW)
+      .rankings[0].groups,
+    mockTrafficGroups(request().query, 'target', metric, NOW),
+  ]
+
+  for (const groups of counts('connections')) {
+    const values = groups.map((g) => g.usage.connections)
+    expect(values).toEqual([...values].sort((a, b) => b - a))
+  }
+  for (const groups of counts('bytes')) {
+    const values = groups.map(
+      (g) => g.usage.bytes.upload + g.usage.bytes.download,
+    )
+    expect(values).toEqual([...values].sort((a, b) => b - a))
+  }
 })
 
 test('the map splits regions by basis and leaves unknown regions without one', () => {
@@ -115,11 +136,8 @@ test('only live connections have a rate, and closed ones none', () => {
 test('a limited flow merges the rest of each layer into one node', () => {
   const { topology, total } = mockTrafficReport(
     request({
-      topology: {
-        layers: ['origin', 'target'],
-        metric: 'connections',
-        limit_per_layer: 2,
-      },
+      metric: 'connections',
+      topology: { layers: ['origin', 'target'], limit_per_layer: 2 },
     }),
     NOW,
   )

@@ -1394,11 +1394,12 @@ pub async fn query_traffic_usage(
     client: tauri::State<'_, NyanpasuClient>,
     query: nyanpasu_traffic::TrafficQuery,
     group_by: nyanpasu_traffic::Dimension,
+    metric: nyanpasu_traffic::Metric,
     after: Option<nyanpasu_traffic::UsageCursor>,
     limit: usize,
 ) -> Result<nyanpasu_traffic::UsagePage> {
     Ok(client
-        .query_traffic_usage(query, group_by, after, limit)
+        .query_traffic_usage(query, group_by, metric, after, limit)
         .await?)
 }
 

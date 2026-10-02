@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::query::Usage;
+
 const UNKNOWN: &str = "unknown";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -395,11 +397,12 @@ pub fn merge_closed_page(
     ClosedPage { connections, next }
 }
 
-/// Exclusive position for heaviest-first paging of grouped usage: the last group of a page.
+/// Exclusive position for heaviest-first paging of grouped usage: the last group of a page, with
+/// its whole usage, so it places the next page under either metric.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct UsageCursor {
-    pub bytes: Bytes,
+    pub usage: Usage,
     pub key: String,
 }
 

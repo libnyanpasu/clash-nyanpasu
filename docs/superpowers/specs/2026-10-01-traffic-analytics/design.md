@@ -207,13 +207,13 @@ pub struct Prune {
 ```rust
 pub struct ReportRequest {
     pub query: TrafficQuery,
+    pub metric: Metric,                    // Bytes | Connections，排名和拓扑都按它排序
     pub rankings: Vec<Dimension>,          // 每个维度一张排名卡片
     pub ranking_limit: usize,              // 每张卡片的条数，上限与现在的 MAX_LIMIT 相同
     pub topology: Option<TopologyRequest>,
 }
 pub struct TopologyRequest {
     pub layers: Vec<Dimension>,            // 2..=5 层，不能重复
-    pub metric: Metric,                    // Bytes | Connections
     pub limit_per_layer: Option<usize>,    // None = 不合并为"其他"（地图使用）
 }
 pub struct TrafficReport {
@@ -228,7 +228,7 @@ pub struct UsageGroup { pub key: String, pub usage: Usage, pub current_rate: Opt
 
 - 输入是一组 `(Dimensions, Usage)` 行，可能来自存储、待落盘缓冲或活跃连接。聚合器对每一行判断是否通过筛选，再按请求的各维度累加。纯函数，只用普通数据做测试。
 - **筛选：** 不同维度之间是 AND；同一维度只能有一个值（前端添加同维度的新筛选时替换旧值）。键为空串（例如没有策略组的 `Chain`）也可以作为筛选值。
-- **排序：** 按 `bytes.total()` 从大到小，相同时按键排序（与现有分页游标规则一致）。`distinct` 是筛选后该维度不同取值的个数，用于数字卡片。
+- **排序：** 按 `metric`（`bytes.total()` 或连接数）从大到小，相同时按键排序（与分页游标规则一致）。`distinct` 是筛选后该维度不同取值的个数，用于数字卡片。
 - **拓扑：** 把现在后端 `topology::project` 和前端 `buildTopology` 合并成一个纯函数：按层生成节点和边，节点 id 由（层序号，键）做 JSON 编码，避免不同层同名节点冲突（沿用现有做法）；每层按 `metric` 取前 N 个，其余合并成该层的"其他"节点，相关的边一并重定向到"其他"。`Chain` 层的键为空时，该路径跳过这一层，与现在"无策略组时省略组层"的行为一致。
 - **速率：** 只有活跃连接有速率，按分组相加。范围为"已结束"时速率为 `None`。
 
@@ -244,14 +244,14 @@ pub struct UsageGroup { pub key: String, pub usage: Usage, pub current_rate: Opt
 
 ### 5.3 对外接口
 
-| `NyanpasuClient` 方法 / IPC 命令                             | 说明                                                                                                                       |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `traffic_summary()` / `get_traffic_summary`                  | 返回 `{ active_connections, closed_connections, current_rate, last_sample_at }`；`closed_connections` 为保留期内的明细条数 |
-| `query_traffic_report(ReportRequest)`                        | 新增；流量页每次轮询只调这一个                                                                                             |
-| `query_traffic_usage(TrafficQuery, Dimension, after, limit)` | 加上 `TrafficQuery` 参数，其余不变；"查看全部"弹窗分页使用                                                                 |
-| `query_traffic_usage_by_keys(TrafficQuery, Dimension, keys)` | 加上 `TrafficQuery` 参数；规则页传 `{ range: All, scope: All, filters: [profile = 当前订阅] }`                             |
-| `query_traffic_closed_connections(before, limit)`            | 不变；返回保留期内的连接，不区分订阅                                                                                       |
-| `query_traffic_topology`                                     | 删除                                                                                                                       |
+| `NyanpasuClient` 方法 / IPC 命令                                     | 说明                                                                                                                         |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `traffic_summary()` / `get_traffic_summary`                          | 返回 `{ active_connections, closed_connections, current_rate, last_sample_at }`；`closed_connections` 为保留期内的明细条数   |
+| `query_traffic_report(ReportRequest)`                                | 新增；流量页每次轮询只调这一个                                                                                               |
+| `query_traffic_usage(TrafficQuery, Dimension, Metric, after, limit)` | 加上 `TrafficQuery` 和 `Metric` 参数，按度量排序分页；游标带上末组的整个 `Usage`，两种度量下都能定位；"查看全部"弹窗分页使用 |
+| `query_traffic_usage_by_keys(TrafficQuery, Dimension, keys)`         | 加上 `TrafficQuery` 参数；规则页传 `{ range: All, scope: All, filters: [profile = 当前订阅] }`                               |
+| `query_traffic_closed_connections(before, limit)`                    | 不变；返回保留期内的连接，不区分订阅                                                                                         |
+| `query_traffic_topology`                                             | 删除                                                                                                                         |
 
 所有查询仍在 actor 内串行执行，先在阻塞线程上调用 `store.usage(..)`，再在 actor 里合并内存数据。查询耗时较长时，帧会在 `watch` 中合并，只是速率的采样间隔变长；计数器是累计值，增量不会丢。§9 记录了这一点。
 
@@ -296,17 +296,18 @@ pub enum TrafficRetention {
 ```text
 ┌ ScrollArea  内容区 max-w-7xl mx-auto p-4 space-y-4 ─────────────────────┐
 │  数字卡片  总流量(↑↓) · 连接 · 设备 · 入站 · 主机 · 出口 · 进程         │
-│  拓扑卡片  [流向 | 地图]  [流量 | 连接数]  [层级模板 ▾]                 │
+│  拓扑卡片  [流向 | 地图]  [层级模板 ▾]                                  │
 │  排名卡片  热门设备 · 热门入站 · 热门主机 · 热门出口 · 热门进程        │
 └──────────────────────────────────────────────────────────────────────┘
 ┌ 底部工具栏 h-16 bg-mixed-background px-4 gap-3 ─────────────────────────┐
-│ [全部|活跃|已结束]  [筛选条件 chip … 横向滚动]  [最近 1 小时 ▾]  [⏸] │
+│ [全部|活跃|已结束]  [筛选 chip …]  [流量 ▾] [最近 1 小时 ▾] [⏸]      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 - 去掉现在的页内大标题（eyebrow、h1、描述段落）。连接页和规则页都没有页内大标题；原来的说明文字改放到对应卡片的 Tooltip 里。
 - 导航名称和页面标题改为"流量"，路由路径 `/main/topology` 不变。
 - **范围**（全部/活跃/已结束）放在工具栏，对整页生效，包括数字卡片、排名和拓扑。控件与连接页的 `StatusTabs` 相同：`SegmentedButton size="sm"`。
+- **度量**（流量 / 连接数）也放在工具栏，用与时间范围相同的 outlined `Select`，紧挨在它左边：两者都是查看设置，而分段按钮只留给范围，与连接页的底栏一致；两组分段按钮并排显得突兀。工具栏换行时，两个下拉框排在第二行，暂停按钮留在范围旁边。度量对整页生效：排名的排序和每行的主数值、"查看全部"的分页顺序、流向图的线宽与合并、地图的着色与占比。数字卡片同时显示流量和连接数，不受它影响。工具栏在自身宽度够放下所有控件时（容器查询 `@2xl`）排成一行，否则换行，因为页面旁的导航栏会占去一部分视口宽度。
 - **时间范围**使用 `Select`，选项按 §3.2 的六档，默认"最近 1 小时"。超过当前保留期限的档位（"全部"除外）置灰并附说明。
 - **暂停**：图标按钮加 Tooltip。暂停后停止轮询，保留当前数据（替代现在的"冻结快照"）。
 - 页面状态全部放在 URL search 中（zod 校验）：`range`、`scope`、`filters`（`[{ d, v }]`）、`view`（`flow` / `map`）、`layers`（模板名）、`metric`、`limit`（每层节点数：5 / 7（默认）/ 10 / 20 / `all`，`all` 对应 `limit_per_layer = None`）。删除旧的 `proxy` 参数；当前没有其他页面链接到它。
@@ -314,18 +315,18 @@ pub enum TrafficRetention {
 
 ### 8.2 组件与令牌
 
-| 元素      | 规范                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 数字卡片  | `Card`（basic），`p-3 flex items-center gap-3`；图标容器 `size-10 rounded-2xl bg-secondary-container text-on-secondary-container`；标签 `text-xs text-on-surface-variant`；数值 `text-xl font-medium tabular-nums`。标签和数值各占一行并截断（标签有 `title`），所有卡片同高，不会撑高同一行的其他卡片。总流量卡片跨两列，↑/↓ 竖排在数值右侧，行高与数值一行相同。连接卡片之后是五张不同取值个数的卡片，与下方五张排名卡片一一对应（设备、入站、主机、出口、进程）。共八格，网格 `grid-cols-2 sm:grid-cols-4 xl:grid-cols-8`，每行都排满                         |
-| 排名卡片  | `Card`（basic），标题行：图标 + `text-base font-medium` 标题 + 不同取值个数徽标（与 `CountBadge` 写法相同）+ 文字按钮"查看全部"。网格 `grid-cols-1 md:grid-cols-2 xl:grid-cols-3`                                                                                                                                                                                                                                                                                                                                                                                |
-| 排名行    | `<button>`，`rounded-2xl px-4 py-3`，悬停时 `hover:bg-on-surface/8`；第一名 `bg-secondary-container/60`，总量用 `text-primary`；已作为筛选条件的行用 `bg-secondary-container` 并设 `aria-pressed`。第一行：标签（截断，完整值放在 Tooltip）+ 总量；第二行 `text-xs text-on-surface-variant tabular-nums`：↑ 上传、↓ 下载、N 条连接（↑↓ 的写法沿用 `rule-row.tsx` 的 `text-outline`）。卡片底部一行"其他 N 项 · 流量"。新行淡入，次序变化时滑到新位置，离开的行直接移除（`motion` 的 `layout="position"`，以位次作 `layoutDependency`，次序不变的刷新不测量布局） |
-| 标签显示  | 进程显示文件名，完整路径放 Tooltip；设备（IP）用 `font-mono`；订阅显示订阅名称，已删除的订阅显示 uid 加"（已删除）"；`unknown` 和空串分别显示"未知""无策略组"                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 筛选 chip | 页面内模块 `filter-chip.tsx`（只此一处使用，不放进 `components/ui`）。`h-8 rounded-lg border border-outline-variant px-3 text-sm`，内容为"维度名：值"，末尾是带 `aria-label` 的移除按钮；有筛选时末尾加一个"清除全部"文字按钮                                                                                                                                                                                                                                                                                                                                    |
-| 拓扑卡片  | 与其他卡片相同的 basic `Card`，沿用现有的 SVG 桑基图绘制（节点、连线、`motion` 动画、`prefers-reduced-motion`）。数据改为报表里的 `topology`。点击节点即添加该层维度的筛选，"其他"节点不可点击；悬停时只高亮与该节点相连的边（后端不再返回每条连接 id）。连线上不标数值。节点或连线超过 200 时不做动画、列顶部对齐，绘图区限高并在内部滚动，列标题吸顶                                                                                                                                                                                                           |
-| 层级模板  | `Select`：应用/来源 → 规则 → 策略链 → 出口（默认）；设备 → 主机 → 出口；入站 → 规则 → 出口；进程 → 主机 → 出口                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 地图      | 沿用 `GeographyView` 的绘制；数据来自报表的 `topology`，请求为 `layers = [SourceRegion, DestinationRegion, DestinationBasis]`、`limit_per_layer = None`。目标地区的合计取第二层节点；着色、占比列表和定位依据见 §11.6.9                                                                                                                                                                                                                                                                                                                                          |
-| 查看全部  | `Modal`，用 `query_traffic_usage` 分页（每页 50 条，滚动到底加载下一页），行组件与排名行相同，点击行添加筛选并关闭弹窗                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| 状态      | 记录不可用：`bg-error-container text-on-error-container rounded-2xl p-4`；当前范围没有数据：`text-on-surface-variant` 提示                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 元素      | 规范                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 数字卡片  | `Card`（basic），`p-3 flex items-center gap-3`；图标容器 `size-10 rounded-2xl bg-secondary-container text-on-secondary-container`；标签 `text-xs text-on-surface-variant`；数值 `text-xl font-medium tabular-nums`。标签和数值各占一行并截断（标签有 `title`），所有卡片同高，不会撑高同一行的其他卡片。总流量卡片跨两列，↑/↓ 竖排在数值右侧，行高与数值一行相同。连接卡片之后是五张不同取值个数的卡片，与下方五张排名卡片一一对应（设备、入站、主机、出口、进程）。共八格，网格 `grid-cols-2 sm:grid-cols-4 xl:grid-cols-8`，每行都排满                                                         |
+| 排名卡片  | `Card`（basic），标题行：图标 + `text-base font-medium` 标题 + 不同取值个数徽标（与 `CountBadge` 写法相同）+ 文字按钮"查看全部"。网格 `grid-cols-1 md:grid-cols-2 xl:grid-cols-3`                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 排名行    | `<button>`，`rounded-2xl px-4 py-3`，悬停时 `hover:bg-on-surface/8`；第一名 `bg-secondary-container/60`，总量用 `text-primary`；已作为筛选条件的行用 `bg-secondary-container` 并设 `aria-pressed`。第一行：标签（截断，完整值放在 Tooltip）+ 按度量的主数值（流量或"N 条连接"）；第二行 `text-xs text-on-surface-variant tabular-nums`：↑ 上传、↓ 下载、另一种度量（↑↓ 的写法沿用 `rule-row.tsx` 的 `text-outline`）。卡片底部一行"其他 N 项 · 流量"。新行淡入，次序变化时滑到新位置，离开的行直接移除（`motion` 的 `layout="position"`，以位次作 `layoutDependency`，次序不变的刷新不测量布局） |
+| 标签显示  | 进程显示文件名，完整路径放 Tooltip；设备（IP）用 `font-mono`；订阅显示订阅名称，已删除的订阅显示 uid 加"（已删除）"；`unknown` 和空串分别显示"未知""无策略组"                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 筛选 chip | 页面内模块 `filter-chip.tsx`（只此一处使用，不放进 `components/ui`）。`h-8 rounded-lg border border-outline-variant px-3 text-sm`，内容为"维度名：值"，末尾是带 `aria-label` 的移除按钮；有筛选时末尾加一个"清除全部"文字按钮                                                                                                                                                                                                                                                                                                                                                                    |
+| 拓扑卡片  | 与其他卡片相同的 basic `Card`，沿用现有的 SVG 桑基图绘制（节点、连线、`motion` 动画、`prefers-reduced-motion`）。数据改为报表里的 `topology`。点击节点即添加该层维度的筛选，"其他"节点不可点击；悬停时只高亮与该节点相连的边（后端不再返回每条连接 id）。连线上不标数值。节点或连线超过 200 时不做动画、列顶部对齐，绘图区限高并在内部滚动，列标题吸顶                                                                                                                                                                                                                                           |
+| 层级模板  | `Select`：应用/来源 → 规则 → 策略链 → 出口（默认）；设备 → 主机 → 出口；入站 → 规则 → 出口；进程 → 主机 → 出口                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 地图      | 沿用 `GeographyView` 的绘制；数据来自报表的 `topology`，请求为 `layers = [SourceRegion, DestinationRegion, DestinationBasis]`、`limit_per_layer = None`。目标地区的合计取第二层节点；着色、占比列表和定位依据见 §11.6.9                                                                                                                                                                                                                                                                                                                                                                          |
+| 查看全部  | `Modal`，用 `query_traffic_usage` 分页（每页 50 条，滚动到底加载下一页），行组件与排名行相同，点击行添加筛选并关闭弹窗                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 状态      | 记录不可用：`bg-error-container text-on-error-container rounded-2xl p-4`；当前范围没有数据：`text-on-surface-variant` 提示                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ### 8.3 删除的前端代码
 
@@ -792,7 +793,6 @@ pub struct Dimensions {
 view === 'map'
   ? {
       layers: ['source_region', 'destination_region', 'destination_basis'],
-      metric,
       limit_per_layer: null,
     }
   : ...

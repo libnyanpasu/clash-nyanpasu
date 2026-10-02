@@ -1,6 +1,11 @@
 import { useMemo } from 'react'
 import { unwrapResult } from '@nyanpasu/rpc'
-import type { Dimension, TrafficQuery, UsageCursor } from '@nyanpasu/rpc/types'
+import type {
+  Dimension,
+  Metric,
+  TrafficQuery,
+  UsageCursor,
+} from '@nyanpasu/rpc/types'
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -72,21 +77,28 @@ export function useTrafficUsageByKeys(
 }
 
 /**
- * Every group of `dimension` within `query`, heaviest first, one page at a
- * time. Not polled: a listing that moves under the reader would skip and
- * repeat rows.
+ * Every group of `dimension` within `query`, heaviest by `metric` first, one
+ * page at a time. Not polled: a listing that moves under the reader would skip
+ * and repeat rows.
  */
 export function useTrafficUsagePages(
   query: TrafficQuery,
   dimension: Dimension,
+  metric: Metric,
 ) {
   const api = useQueryApi()
   return useInfiniteQuery({
-    queryKey: ['traffic-usage-pages', query, dimension],
+    queryKey: ['traffic-usage-pages', query, dimension, metric],
     initialPageParam: null as UsageCursor | null,
     queryFn: async ({ pageParam }) =>
       unwrapResult(
-        await api.queryTrafficUsage(query, dimension, pageParam, PAGE_SIZE),
+        await api.queryTrafficUsage(
+          query,
+          dimension,
+          metric,
+          pageParam,
+          PAGE_SIZE,
+        ),
       ),
     getNextPageParam: (page) => page.next ?? undefined,
     retry: false,

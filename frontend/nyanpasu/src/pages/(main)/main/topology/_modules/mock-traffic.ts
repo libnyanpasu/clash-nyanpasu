@@ -1,6 +1,7 @@
 import type {
   Dimension,
   Dimensions,
+  Metric,
   Rate,
   ReportRequest,
   Topology,
@@ -205,7 +206,10 @@ const addRate = (into: Rate | null, rate: Rate | null): Rate | null =>
         download: (into?.download ?? 0) + rate.download,
       }
 
-const weight = (usage: Usage) => usage.bytes.upload + usage.bytes.download
+const weight = (usage: Usage, metric: Metric) =>
+  metric === 'bytes'
+    ? usage.bytes.upload + usage.bytes.download
+    : usage.connections
 
 const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
@@ -234,8 +238,12 @@ function select(rows: MockRow[], query: TrafficQuery): MockRow[] {
     }))
 }
 
-/** Every group of `dimension`, heaviest first. */
-function groups(rows: MockRow[], dimension: Dimension): UsageGroup[] {
+/** Every group of `dimension`, heaviest by `metric` first. */
+function groups(
+  rows: MockRow[],
+  dimension: Dimension,
+  metric: Metric,
+): UsageGroup[] {
   const grouped = new Map<string, UsageGroup>()
 
   for (const { dimensions, usage, rate } of rows) {
@@ -251,16 +259,17 @@ function groups(rows: MockRow[], dimension: Dimension): UsageGroup[] {
   }
 
   return [...grouped.values()].sort(
-    (a, b) => weight(b.usage) - weight(a.usage) || byKey(a.key, b.key),
+    (a, b) =>
+      weight(b.usage, metric) - weight(a.usage, metric) || byKey(a.key, b.key),
   )
 }
 
 function topology(
   rows: MockRow[],
-  { layers, metric, limit_per_layer: limit }: TopologyRequest,
+  { layers, limit_per_layer: limit }: TopologyRequest,
+  metric: Metric,
 ): Topology {
-  const value = (usage: Usage) =>
-    metric === 'bytes' ? weight(usage) : usage.connections
+  const value = (usage: Usage) => weight(usage, metric)
 
   // An empty chain skips its layer, as in the backend.
   const paths = rows.map(({ dimensions }) =>
@@ -345,7 +354,7 @@ export function mockTrafficReport(
     total,
     current_rate: request.query.scope === 'closed' ? null : rate,
     rankings: request.rankings.map((dimension) => {
-      const all = groups(rows, dimension)
+      const all = groups(rows, dimension, request.metric)
       const other = emptyUsage()
       all
         .slice(request.ranking_limit)
@@ -358,7 +367,8 @@ export function mockTrafficReport(
         other,
       }
     }),
-    topology: request.topology && topology(rows, request.topology),
+    topology:
+      request.topology && topology(rows, request.topology, request.metric),
   }
 }
 
@@ -366,5 +376,6 @@ export function mockTrafficReport(
 export const mockTrafficGroups = (
   query: TrafficQuery,
   dimension: Dimension,
+  metric: Metric,
   now: number,
-) => groups(select(mockRows(now), query), dimension)
+) => groups(select(mockRows(now), query), dimension, metric)

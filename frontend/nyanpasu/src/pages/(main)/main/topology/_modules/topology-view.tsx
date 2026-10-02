@@ -85,7 +85,6 @@ export default function TopologyView({
   view: mode,
   onViewChange,
   metric,
-  onMetricChange,
   template,
   onTemplateChange,
   limit,
@@ -98,8 +97,8 @@ export default function TopologyView({
   topology: Topology | null | undefined
   view: 'flow' | 'map'
   onViewChange: (view: 'flow' | 'map') => void
+  /** Set for the whole page, in the toolbar. */
   metric: Metric
-  onMetricChange: (metric: Metric) => void
   template: LayerTemplate
   onTemplateChange: (template: LayerTemplate) => void
   limit: Limit
@@ -184,30 +183,6 @@ export default function TopologyView({
           </SegmentedButton>
 
           <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-4">
-            <SegmentedButton
-              value={metric}
-              onValueChange={(value) => {
-                if (value === 'connections' || value === 'bytes')
-                  onMetricChange(value)
-              }}
-              size="sm"
-              className="w-auto shrink-0"
-              aria-label={m.topology_weight()}
-            >
-              <SegmentedButtonItem
-                value="bytes"
-                className="flex-none whitespace-nowrap"
-              >
-                {m.topology_by_bytes()}
-              </SegmentedButtonItem>
-              <SegmentedButtonItem
-                value="connections"
-                className="flex-none whitespace-nowrap"
-              >
-                {m.topology_by_connections()}
-              </SegmentedButtonItem>
-            </SegmentedButton>
-
             {mode === 'flow' && (
               <div className="w-full sm:w-64">
                 <Select

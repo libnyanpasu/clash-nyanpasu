@@ -187,7 +187,10 @@ limit `regex` uses (10 MiB).
 by stage:
 
 - macOS: `phys_footprint` / RSS;
-- Windows: private bytes / working set;
+- Windows: private bytes / shared commit / working set / private working set.
+  memmap2's anonymous maps (`read_source`, build buffers) are pagefile-backed
+  sections, which Windows counts as shared commit and shared working set, not
+  as private bytes;
 - Linux: `RssAnon` / `VmRSS`.
 
 It also reports the live heap (from a counting allocator), the build time,

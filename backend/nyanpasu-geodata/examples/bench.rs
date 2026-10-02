@@ -11,9 +11,12 @@
 //! reads the file with `std::fs::read` instead of `read_source`.
 //!
 //! Process memory is the private / committed figure and the resident set:
-//! `phys_footprint` / RSS on macOS, private bytes / working set on Windows,
-//! `RssAnon` / `VmRSS` on Linux. Every figure is the growth over a baseline
-//! taken before the file is read.
+//! `phys_footprint` / RSS on macOS, `RssAnon` / `VmRSS` on Linux. Windows adds
+//! two columns: anonymous memory mapped through memmap2 (`read_source`, build
+//! buffers) is a pagefile-backed section, which Windows counts as shared
+//! commit and shared working set rather than private bytes, so the figures are
+//! private bytes / shared commit / working set / private working set. Every
+//! figure is the growth over a baseline taken before the file is read.
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     hint::black_box,
@@ -83,9 +86,25 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
 
-/// `(private, resident)` bytes of this process.
 #[cfg(target_os = "macos")]
-fn process_memory() -> (u64, u64) {
+const MEMORY_LABELS: &[&str] = &["footprint", "rss"];
+#[cfg(target_os = "windows")]
+const MEMORY_LABELS: &[&str] = &[
+    "private bytes",
+    "shared commit",
+    "working set",
+    "private WS",
+];
+#[cfg(target_os = "linux")]
+const MEMORY_LABELS: &[&str] = &["anon", "rss"];
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+const MEMORY_LABELS: &[&str] = &["private", "resident"];
+
+/// Bytes of this process, one per `MEMORY_LABELS` entry.
+type Memory = [u64; MEMORY_LABELS.len()];
+
+#[cfg(target_os = "macos")]
+fn process_memory() -> Memory {
     // <libproc.h> `rusage_info_v2`; only the leading fields are named.
     #[repr(C)]
     struct RusageInfoV2 {
@@ -111,13 +130,14 @@ fn process_memory() -> (u64, u64) {
     };
     const RUSAGE_INFO_V2: i32 = 2;
     unsafe { proc_pid_rusage(std::process::id() as i32, RUSAGE_INFO_V2, &mut info) };
-    (info.phys_footprint, info.resident_size)
+    [info.phys_footprint, info.resident_size]
 }
 
 #[cfg(target_os = "windows")]
-fn process_memory() -> (u64, u64) {
+fn process_memory() -> Memory {
+    /// `PROCESS_MEMORY_COUNTERS_EX2`.
     #[repr(C)]
-    struct ProcessMemoryCountersEx {
+    struct ProcessMemoryCountersEx2 {
         cb: u32,
         page_fault_count: u32,
         peak_working_set_size: usize,
@@ -129,18 +149,20 @@ fn process_memory() -> (u64, u64) {
         pagefile_usage: usize,
         peak_pagefile_usage: usize,
         private_usage: usize,
+        private_working_set_size: usize,
+        shared_commit_usage: u64,
     }
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn GetCurrentProcess() -> *mut std::ffi::c_void;
         fn K32GetProcessMemoryInfo(
             process: *mut std::ffi::c_void,
-            counters: *mut ProcessMemoryCountersEx,
+            counters: *mut ProcessMemoryCountersEx2,
             cb: u32,
         ) -> i32;
     }
-    let mut counters = ProcessMemoryCountersEx {
-        cb: size_of::<ProcessMemoryCountersEx>() as u32,
+    let mut counters = ProcessMemoryCountersEx2 {
+        cb: size_of::<ProcessMemoryCountersEx2>() as u32,
         page_fault_count: 0,
         peak_working_set_size: 0,
         working_set_size: 0,
@@ -151,17 +173,21 @@ fn process_memory() -> (u64, u64) {
         pagefile_usage: 0,
         peak_pagefile_usage: 0,
         private_usage: 0,
+        private_working_set_size: 0,
+        shared_commit_usage: 0,
     };
     let cb = counters.cb;
     unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, cb) };
-    (
+    [
         counters.private_usage as u64,
+        counters.shared_commit_usage,
         counters.working_set_size as u64,
-    )
+        counters.private_working_set_size as u64,
+    ]
 }
 
 #[cfg(target_os = "linux")]
-fn process_memory() -> (u64, u64) {
+fn process_memory() -> Memory {
     let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
     let field = |name: &str| {
         status
@@ -170,28 +196,20 @@ fn process_memory() -> (u64, u64) {
             .and_then(|rest| rest.split_whitespace().next()?.parse::<u64>().ok())
             .map_or(0, |kib| kib * 1024)
     };
-    (field("RssAnon:"), field("VmRSS:"))
+    [field("RssAnon:"), field("VmRSS:")]
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-fn process_memory() -> (u64, u64) {
-    (0, 0)
+fn process_memory() -> Memory {
+    [0; MEMORY_LABELS.len()]
 }
-
-const MEMORY_LABELS: &str = if cfg!(target_os = "macos") {
-    "footprint / rss"
-} else if cfg!(target_os = "windows") {
-    "private bytes / working set"
-} else {
-    "anon / rss"
-};
 
 fn mib(bytes: f64) -> f64 {
     bytes / (1 << 20) as f64
 }
 
 struct Baseline {
-    process: (u64, u64),
+    process: Memory,
     live: usize,
 }
 
@@ -204,12 +222,17 @@ impl Baseline {
     }
 
     fn stage(&self, name: &str) {
-        let (private, resident) = process_memory();
+        // Read before formatting, which allocates.
+        let (live, memory) = (LIVE.load(Relaxed), process_memory());
+        let figures: Vec<String> = memory
+            .iter()
+            .zip(self.process)
+            .map(|(now, base)| format!("{:>8.2}", mib(*now as f64 - base as f64)))
+            .collect();
         println!(
-            "    {name:<24} {:>8.2} / {:>8.2} MiB   (live heap {:.2} MiB)",
-            mib(private as f64 - self.process.0 as f64),
-            mib(resident as f64 - self.process.1 as f64),
-            mib(LIVE.load(Relaxed) as f64 - self.live as f64),
+            "    {name:<24} {} MiB   (live heap {:.2} MiB)",
+            figures.join(" / "),
+            mib(live as f64 - self.live as f64),
         );
     }
 }
@@ -453,7 +476,10 @@ fn main() {
             "anonymous memory"
         }
     );
-    println!("  process memory over baseline, {MEMORY_LABELS}:");
+    println!(
+        "  process memory over baseline, {}:",
+        MEMORY_LABELS.join(" / ")
+    );
     let source: Box<dyn std::ops::Deref<Target = [u8]>> = if heap_read {
         Box::new(std::fs::read(path).unwrap())
     } else {

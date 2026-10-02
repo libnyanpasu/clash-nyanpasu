@@ -401,8 +401,8 @@ importers:
         specifier: 0.57.0
         version: 0.57.0
       motion:
-        specifier: 13.5.0
-        version: 13.5.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: 14.0.0
+        version: 14.0.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -606,8 +606,8 @@ importers:
         specifier: 1.52.0
         version: 1.52.0
       motion:
-        specifier: 13.5.0
-        version: 13.5.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: 14.0.0
+        version: 14.0.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       radix-ui:
         specifier: 1.6.7
         version: 1.6.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -5164,8 +5164,8 @@ packages:
     engines: {node: '>=18.3.0'}
     hasBin: true
 
-  framer-motion@13.5.0:
-    resolution: {integrity: sha512-5KDKvhGTKKEQPWl8xg2mZRC+pGsenooz9v+ar6BpoXcD1mae4wdhvjxLaK+3jvFbge0jk4C8JeIjIC8m98z7hg==}
+  framer-motion@14.0.0:
+    resolution: {integrity: sha512-QAtHmybrDFSliyW1sexMtSQTQd+1jw2ajibEmzpuI4XdPVzQkn+dAzJMm2sW3pl9MJuSS4xN51djQ7huhlP/VA==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -5867,14 +5867,14 @@ packages:
     peerDependencies:
       monaco-editor: '>=0.36'
 
-  motion-dom@13.5.0:
-    resolution: {integrity: sha512-mSdelbdqc1LDi3m7RkYgnMgdys0qSDsNFpdf0Hjyf8U5Ln0AcjSeApKD4Q4Er3sBPFDzdLehDj4SLgwBf39poQ==}
+  motion-dom@14.0.0:
+    resolution: {integrity: sha512-aU3ApXo1yTpeUi3JU+jbDk2TELjxPE3MbBMUP7nZHlARb6RweJK+ojmLjpuB0YsY6zhbBl1YWGo8LMsI1/Llqw==}
 
-  motion-utils@13.5.0:
-    resolution: {integrity: sha512-Hqe/sqjIKliPZg8sVjWAkdySDPJNIeKH+euVkDOG8ri3DUUU7ZjndmHsGqEPz2iHpiyVaV5I22iguCMHU2he+Q==}
+  motion-utils@14.0.0:
+    resolution: {integrity: sha512-jBsyjVxTTRZNeuvd/v+btVXr90LQkYl4HhRu9T2ARc+PMnvkmjsjRVeAg4Qm10b6TlTw+kykWI8gu/6LuvpLSQ==}
 
-  motion@13.5.0:
-    resolution: {integrity: sha512-W/Vj6RDg9f9yJoaS+ohRYtl1j3Rb86fOCCjzn3M3M10Dg7ap3M7sMUeQs9wTsLQwHHmhioYsJLRRRTXxvhtHDA==}
+  motion@14.0.0:
+    resolution: {integrity: sha512-oGc2lkge2lkRZCP+J8/JsnYu4NFjqP1MtXirNdetn3QbvK2JqwM9A200EdT4C598KfzDhjLT12zF21xDM4Oilw==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -11446,10 +11446,10 @@ snapshots:
       fd-package-json: 2.0.0
       package-manager-detector: 1.8.0
 
-  framer-motion@13.5.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  framer-motion@14.0.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
-      motion-dom: 13.5.0
-      motion-utils: 13.5.0
+      motion-dom: 14.0.0
+      motion-utils: 14.0.0
       tslib: 2.8.1
     optionalDependencies:
       react: 19.3.0
@@ -12257,15 +12257,15 @@ snapshots:
       vscode-uri: 3.0.8
       yaml: 2.9.0
 
-  motion-dom@13.5.0:
+  motion-dom@14.0.0:
     dependencies:
-      motion-utils: 13.5.0
+      motion-utils: 14.0.0
 
-  motion-utils@13.5.0: {}
+  motion-utils@14.0.0: {}
 
-  motion@13.5.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  motion@14.0.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
-      framer-motion: 13.5.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      framer-motion: 14.0.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       tslib: 2.8.1
     optionalDependencies:
       react: 19.3.0

@@ -1,5 +1,5 @@
-//! `GeoSite.dat` (V2Ray `GeoSiteList`): domain rules grouped into lists.
-use std::{borrow::Cow, collections::HashMap, sync::Mutex};
+//! Host lookups over the rules of `GeoSite.dat`.
+use std::{borrow::Cow, sync::Mutex};
 
 use aho_corasick::AhoCorasick;
 use fst::{Map, MapBuilder, raw::Output};
@@ -10,14 +10,11 @@ use regex_automata::{
     util::syntax,
 };
 
-use crate::{GeoError, GeoResult, collection::scratch::ScratchVec, parser::proto::Fields};
-
-/// Entry bit of a `Full` rule, which matches the whole host only.
-const FULL: u32 = 1 << 31;
-/// An entry is `FULL? | list << 16 | attribute set`.
-const MAX_LISTS: usize = 1 << 15;
-/// Keeps crafted rules from making attribute deduplication quadratic.
-const MAX_ATTRIBUTES: usize = 255;
+use crate::{
+    GeoError, GeoResult,
+    collection::scratch::ScratchVec,
+    parser::geosite_dat::{self, FULL, Rules},
+};
 
 /// Host to the lists (and rule attributes) whose rules match it.
 pub struct SiteIndex {
@@ -49,14 +46,7 @@ pub struct SiteMatch<'a> {
 impl SiteIndex {
     /// Indexes the lists `keep` accepts; it receives lowercase list names.
     pub fn from_geosite_dat(bytes: &[u8], keep: impl Fn(&str) -> bool) -> GeoResult<Self> {
-        let mut builder = Builder::default();
-        for field in Fields::new(bytes) {
-            let (number, value) = field?;
-            if number == 1 {
-                builder.list(value.bytes()?, &keep)?;
-            }
-        }
-        builder.finish()
+        build(geosite_dat::parse(bytes, keep)?)
     }
 
     /// Ordered by list, then attribute set, each pair once.
@@ -154,220 +144,87 @@ impl std::fmt::Debug for SiteMatch<'_> {
     }
 }
 
-#[derive(Default)]
-struct Builder {
-    lists: Vec<Box<str>>,
-    list_ids: HashMap<Box<str>, u32>,
-    attributes: Vec<Box<str>>,
-    attribute_ids: HashMap<Box<str>, u16>,
-    sets: HashMap<Vec<u16>, u32>,
-    set_ends: Vec<u32>,
-    set_members: Vec<u16>,
-    /// Reversed lowercase `Domain` / `Full` values, back to back.
-    arena: ScratchVec<u8>,
-    /// `[arena offset, length, entry]`.
-    domains: ScratchVec<[u32; 3]>,
-    keywords: HashMap<String, Vec<u32>>,
-    regexes: HashMap<String, Vec<u32>>,
-    skipped: usize,
-}
-
-fn utf8(bytes: &[u8]) -> GeoResult<&str> {
-    std::str::from_utf8(bytes).map_err(|_| GeoError::Malformed("GeoSite text is not UTF-8"))
-}
-
-impl Builder {
-    fn list(&mut self, entry: &[u8], keep: &impl Fn(&str) -> bool) -> GeoResult<()> {
-        let mut code: &[u8] = &[];
-        for field in Fields::new(entry) {
-            if let (1, value) = field? {
-                code = value.bytes()?;
+/// Compiles the rules into the lookup structures.
+fn build(rules: Rules) -> GeoResult<SiteIndex> {
+    let Rules {
+        lists,
+        attributes,
+        set_ends,
+        set_members,
+        arena,
+        mut domains,
+        keywords,
+        regexes,
+        mut skipped,
+    } = rules;
+    let bytes = arena.as_slice();
+    let key = |[offset, len, _]: &[u32; 3]| &bytes[*offset as usize..(offset + len) as usize];
+    domains
+        .as_mut_slice()
+        .sort_unstable_by(|a, b| key(a).cmp(key(b)).then(a[2].cmp(&b[2])));
+    let mut postings = ScratchVec::new();
+    let index_error = |_| GeoError::Malformed("GeoSite domain index");
+    let mut map = MapBuilder::new(ScratchVec::new()).map_err(index_error)?;
+    for group in domains.as_slice().chunk_by(|a, b| key(a) == key(b)) {
+        let offset = postings.len();
+        postings.push(0)?;
+        for [_, _, entry] in group {
+            if postings.len() == offset + 1 || postings.as_slice().last() != Some(entry) {
+                postings.push(*entry)?;
             }
         }
-        let name = utf8(code)?.to_ascii_lowercase();
-        if name.is_empty() || !keep(&name) {
-            return Ok(());
-        }
-        let list = match self.list_ids.get(name.as_str()) {
-            Some(list) => *list,
-            None => {
-                if self.lists.len() == MAX_LISTS {
-                    return Err(GeoError::TooMany("GeoSite lists"));
+        postings.as_mut_slice()[offset] = (postings.len() - offset - 1) as u32;
+        map.insert(key(&group[0]), offset as u64)
+            .map_err(index_error)?;
+    }
+    drop(domains);
+    drop(arena);
+    let fst = map.into_inner().map_err(index_error)?;
+    let domains = Map::new(Box::<[u8]>::from(fst.as_slice())).map_err(index_error)?;
+    drop(fst);
+
+    let mut pattern_postings = Vec::new();
+    let mut keyword_patterns = Vec::new();
+    for (keyword, mut entries) in keywords {
+        pattern_posting(&mut entries, &mut postings, &mut pattern_postings)?;
+        keyword_patterns.push(keyword);
+    }
+    let mut regexes: Vec<(String, Vec<u32>)> = regexes.into_iter().collect();
+    let builder = regex_builder();
+    let set = match builder.build_many(&regexes.iter().map(|(r, _)| r).collect::<Vec<_>>()) {
+        Ok(set) => set,
+        Err(_) => {
+            // Compiling every pattern alone costs heap the allocator keeps,
+            // so it only runs once the set is known to contain a bad one.
+            regexes.retain(|(regex, entries)| {
+                let valid = builder.build(regex).is_ok();
+                if !valid {
+                    skipped += entries.len();
                 }
-                let list = self.lists.len() as u32;
-                let name = Box::<str>::from(name);
-                self.lists.push(name.clone());
-                self.list_ids.insert(name, list);
-                list
-            }
-        };
-        for field in Fields::new(entry) {
-            if let (2, value) = field? {
-                self.rule(value.bytes()?, list)?;
-            }
+                valid
+            });
+            builder
+                .build_many(&regexes.iter().map(|(r, _)| r).collect::<Vec<_>>())
+                .map_err(|_| GeoError::TooMany("regex rules"))?
         }
-        Ok(())
+    };
+    for (_, entries) in &mut regexes {
+        pattern_posting(entries, &mut postings, &mut pattern_postings)?;
     }
-
-    fn rule(&mut self, domain: &[u8], list: u32) -> GeoResult<()> {
-        let (mut kind, mut value, mut attributes) = (0, "", Vec::new());
-        for field in Fields::new(domain) {
-            match field? {
-                (1, field) => kind = field.varint()?,
-                (2, field) => value = utf8(field.bytes()?)?,
-                (3, field) => {
-                    for field in Fields::new(field.bytes()?) {
-                        if let (1, key) = field? {
-                            let attribute = self.attribute(utf8(key.bytes()?)?)?;
-                            if !attributes.contains(&attribute) {
-                                if attributes.len() == MAX_ATTRIBUTES {
-                                    return Err(GeoError::TooMany("attributes on one rule"));
-                                }
-                                attributes.push(attribute);
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        let entry = list << 16 | self.set(attributes)?;
-        match kind {
-            0 => self
-                .keywords
-                .entry(value.to_ascii_lowercase())
-                .or_default()
-                .push(entry),
-            1 => self
-                .regexes
-                .entry(value.to_owned())
-                .or_default()
-                .push(entry),
-            2 | 3 if !value.is_empty() => {
-                let offset = u32::try_from(self.arena.len())
-                    .map_err(|_| GeoError::TooMany("GeoSite domain bytes"))?;
-                for byte in value.bytes().rev() {
-                    self.arena.push(byte.to_ascii_lowercase())?;
-                }
-                let entry = if kind == 3 { entry | FULL } else { entry };
-                self.domains.push([offset, value.len() as u32, entry])?;
-            }
-            2 | 3 => {}
-            _ => self.skipped += 1,
-        }
-        Ok(())
-    }
-
-    fn attribute(&mut self, key: &str) -> GeoResult<u16> {
-        let key = key.to_ascii_lowercase();
-        if let Some(id) = self.attribute_ids.get(key.as_str()) {
-            return Ok(*id);
-        }
-        let id = u16::try_from(self.attributes.len())
-            .map_err(|_| GeoError::TooMany("GeoSite attributes"))?;
-        let key = Box::<str>::from(key);
-        self.attributes.push(key.clone());
-        self.attribute_ids.insert(key, id);
-        Ok(id)
-    }
-
-    fn set(&mut self, attributes: Vec<u16>) -> GeoResult<u32> {
-        if attributes.is_empty() {
-            return Ok(0);
-        }
-        if self.set_ends.is_empty() {
-            self.set_ends.push(0);
-        }
-        if let Some(id) = self.sets.get(&attributes) {
-            return Ok(*id);
-        }
-        let id = u32::try_from(self.set_ends.len())
-            .ok()
-            .filter(|id| *id <= 0xffff)
-            .ok_or(GeoError::TooMany("GeoSite attribute sets"))?;
-        self.set_members.extend_from_slice(&attributes);
-        self.set_ends.push(self.set_members.len() as u32);
-        self.sets.insert(attributes, id);
-        Ok(id)
-    }
-
-    fn finish(mut self) -> GeoResult<SiteIndex> {
-        let arena = std::mem::take(&mut self.arena);
-        let bytes = arena.as_slice();
-        let key = |[offset, len, _]: &[u32; 3]| &bytes[*offset as usize..(offset + len) as usize];
-        let mut domains = std::mem::take(&mut self.domains);
-        domains
-            .as_mut_slice()
-            .sort_unstable_by(|a, b| key(a).cmp(key(b)).then(a[2].cmp(&b[2])));
-        let mut postings = ScratchVec::new();
-        let index_error = |_| GeoError::Malformed("GeoSite domain index");
-        let mut map = MapBuilder::new(ScratchVec::new()).map_err(index_error)?;
-        for group in domains.as_slice().chunk_by(|a, b| key(a) == key(b)) {
-            let offset = postings.len();
-            postings.push(0)?;
-            for [_, _, entry] in group {
-                if postings.len() == offset + 1 || postings.as_slice().last() != Some(entry) {
-                    postings.push(*entry)?;
-                }
-            }
-            postings.as_mut_slice()[offset] = (postings.len() - offset - 1) as u32;
-            map.insert(key(&group[0]), offset as u64)
-                .map_err(index_error)?;
-        }
-        drop(domains);
-        drop(arena);
-        let fst = map.into_inner().map_err(index_error)?;
-        let domains = Map::new(Box::<[u8]>::from(fst.as_slice())).map_err(index_error)?;
-        drop(fst);
-
-        let mut pattern_postings = Vec::new();
-        let mut keywords = Vec::new();
-        for (keyword, mut entries) in self.keywords {
-            pattern_posting(&mut entries, &mut postings, &mut pattern_postings)?;
-            keywords.push(keyword);
-        }
-        let mut regexes: Vec<(String, Vec<u32>)> = self.regexes.into_iter().collect();
-        let builder = regex_builder();
-        let set = match builder.build_many(&regexes.iter().map(|(r, _)| r).collect::<Vec<_>>()) {
-            Ok(set) => set,
-            Err(_) => {
-                // Compiling every pattern alone costs heap the allocator keeps,
-                // so it only runs once the set is known to contain a bad one.
-                regexes.retain(|(regex, entries)| {
-                    let valid = builder.build(regex).is_ok();
-                    if !valid {
-                        self.skipped += entries.len();
-                    }
-                    valid
-                });
-                builder
-                    .build_many(&regexes.iter().map(|(r, _)| r).collect::<Vec<_>>())
-                    .map_err(|_| GeoError::TooMany("regex rules"))?
-            }
-        };
-        for (_, entries) in &mut regexes {
-            pattern_posting(entries, &mut postings, &mut pattern_postings)?;
-        }
-        let set_ends = if self.set_ends.is_empty() {
-            vec![0]
-        } else {
-            self.set_ends
-        };
-        Ok(SiteIndex {
-            lists: self.lists.into_boxed_slice(),
-            attributes: self.attributes.into_boxed_slice(),
-            set_ends: set_ends.into_boxed_slice(),
-            set_members: self.set_members.into_boxed_slice(),
-            domains,
-            keywords: AhoCorasick::new(&keywords)
-                .map_err(|_| GeoError::TooMany("keyword rules"))?,
-            regex_cache: Mutex::new(Box::new(set.create_cache())),
-            regexes: set,
-            pattern_postings: pattern_postings.into_boxed_slice(),
-            postings: postings.as_slice().into(),
-            skipped: self.skipped,
-        })
-    }
+    Ok(SiteIndex {
+        lists: lists.into_boxed_slice(),
+        attributes: attributes.into_boxed_slice(),
+        set_ends: set_ends.into_boxed_slice(),
+        set_members: set_members.into_boxed_slice(),
+        domains,
+        keywords: AhoCorasick::new(&keyword_patterns)
+            .map_err(|_| GeoError::TooMany("keyword rules"))?,
+        regex_cache: Mutex::new(Box::new(set.create_cache())),
+        regexes: set,
+        pattern_postings: pattern_postings.into_boxed_slice(),
+        postings: postings.as_slice().into(),
+        skipped,
+    })
 }
 
 /// The configuration `regex::RegexSet` uses.

@@ -17,7 +17,7 @@ Dependencies point one way, `index` → `parser` → `collection`:
   tag names and sets.
 - `parser/`: the database formats, each read into collections. `proto.rs` is
   the protobuf field reader; `mmdb.rs` and `geoip_dat.rs` compile their format
-  into a range table.
+  into a range table, and `geosite_dat.rs` collects GeoSite rules by kind.
 - `index/`: the public indexes `IpIndex`, `AsnIndex` and `SiteIndex`, which
   decode records the way the core does and answer lookups.
 - `files.rs` finds the core's files and reads them; `error.rs` holds
@@ -101,7 +101,7 @@ database tested has single-parent nodes plus the three standard aliases.
 a sweep over open/close events, one address family at a time in a buffer sized by a
 counting pass. Each range carries every code containing it, in file order.
 
-**`GeoSite.dat` (`index/site.rs`).**
+**`GeoSite.dat` (`parser/geosite_dat.rs`, `index/site.rs`).**
 
 - `Domain` and `Full` values are stored reversed in an FST. A lookup walks the
   host backwards once and collects postings at label boundaries.

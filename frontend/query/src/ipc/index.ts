@@ -45,7 +45,6 @@ export {
 export * from './use-profile-sync'
 export {
   MAX_CONNECTIONS_HISTORY,
-  MAX_LOGS_HISTORY,
   MAX_MEMORY_HISTORY,
   MAX_TRAFFIC_HISTORY,
 } from '../provider/clash-ws-state'

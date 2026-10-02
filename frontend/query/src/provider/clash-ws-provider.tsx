@@ -15,7 +15,6 @@ import {
   type ClashWsKind,
   type ClashWsSnapshot,
 } from '@nyanpasu/rpc/types'
-import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
 import { applyClashWsEvent } from './clash-ws-state'
@@ -23,7 +22,6 @@ import { useQueryApi } from './rpc-provider'
 
 type ClashWSHistory = {
   connections: ClashConnectionsSummary[]
-  logs: ClashLog[]
   traffic: ClashTraffic[]
   memory: ClashMemory[]
 }
@@ -38,10 +36,9 @@ type ClashWSStatus = {
 // One context per history kind: every ws event replaces the snapshot, but a
 // consumer only re-renders when its own history or the status changes.
 const ClashWSHistoryContexts: {
-  [K in ClashWsKind]: Context<ClashWSHistory[K] | null>
+  [K in keyof ClashWSHistory]: Context<ClashWSHistory[K] | null>
 } = {
   connections: createContext<ClashConnectionsSummary[] | null>(null),
-  logs: createContext<ClashLog[] | null>(null),
   traffic: createContext<ClashTraffic[] | null>(null),
   memory: createContext<ClashMemory[] | null>(null),
 }
@@ -58,13 +55,13 @@ const useClashWSValue = <T,>(context: Context<T | null>) => {
   return value
 }
 
-export const useClashWSHistory = <K extends ClashWsKind>(kind: K) =>
+export const useClashWSHistory = <K extends keyof ClashWSHistory>(kind: K) =>
   useClashWSValue<ClashWSHistory[K]>(ClashWSHistoryContexts[kind])
 
 export const useClashWSStatus = () => useClashWSValue(ClashWSStatusContext)
 
 type ClashWSValues = {
-  [K in ClashWsKind]: ClashWSHistory[K] | null
+  [K in keyof ClashWSHistory]: ClashWSHistory[K] | null
 } & {
   status: ClashWSStatus | null
 }
@@ -75,13 +72,11 @@ const ClashWSValuesProvider = ({
 }: PropsWithChildren<{ values: ClashWSValues }>) => (
   <ClashWSStatusContext.Provider value={values.status}>
     <ClashWSHistoryContexts.connections.Provider value={values.connections}>
-      <ClashWSHistoryContexts.logs.Provider value={values.logs}>
-        <ClashWSHistoryContexts.traffic.Provider value={values.traffic}>
-          <ClashWSHistoryContexts.memory.Provider value={values.memory}>
-            {children}
-          </ClashWSHistoryContexts.memory.Provider>
-        </ClashWSHistoryContexts.traffic.Provider>
-      </ClashWSHistoryContexts.logs.Provider>
+      <ClashWSHistoryContexts.traffic.Provider value={values.traffic}>
+        <ClashWSHistoryContexts.memory.Provider value={values.memory}>
+          {children}
+        </ClashWSHistoryContexts.memory.Provider>
+      </ClashWSHistoryContexts.traffic.Provider>
     </ClashWSHistoryContexts.connections.Provider>
   </ClashWSStatusContext.Provider>
 )
@@ -96,7 +91,6 @@ export const ClashWSFreezeBoundary = ({
 }: PropsWithChildren<{ frozen: boolean }>) => {
   const live: ClashWSValues = {
     connections: useContext(ClashWSHistoryContexts.connections),
-    logs: useContext(ClashWSHistoryContexts.logs),
     traffic: useContext(ClashWSHistoryContexts.traffic),
     memory: useContext(ClashWSHistoryContexts.memory),
     status: useContext(ClashWSStatusContext),
@@ -229,7 +223,6 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
   // Snapshot updates keep the arrays of untouched kinds, so memoizing on them
   // keeps each history context value stable across unrelated api.events.
   const connectionSnapshots = snapshot?.connections
-  const logSnapshots = snapshot?.logs
   const trafficSnapshots = snapshot?.traffic
   const memorySnapshots = snapshot?.memory
 
@@ -237,7 +230,6 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
     () => connectionSnapshots ?? [],
     [connectionSnapshots],
   )
-  const logs = useMemo(() => (logSnapshots ?? []) as ClashLog[], [logSnapshots])
   const traffic = useMemo(
     () => (trafficSnapshots ?? []) as ClashTraffic[],
     [trafficSnapshots],
@@ -254,8 +246,8 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
   )
 
   const values = useMemo(
-    () => ({ connections, logs, traffic, memory, status }),
-    [connections, logs, traffic, memory, status],
+    () => ({ connections, traffic, memory, status }),
+    [connections, traffic, memory, status],
   )
 
   return (

@@ -25,6 +25,7 @@ pub struct RpcDependencies {
 
 const EVENT_NAMES: &[&str] = &[
     <crate::core::clash::ws::ClashWsEvent as tauri_specta::Event>::NAME,
+    <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
     <crate::core::actor_v2::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
@@ -142,6 +143,11 @@ impl RpcError {
         let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
         while let Some(error) = source {
             if let Some(log) = error.downcast_ref::<nyanpasu_logging::LogError>() {
+                result.domain_error = serde_json::to_value(log)
+                    .ok()
+                    .map(|value| Box::new(RpcValue(value)));
+            }
+            if let Some(log) = error.downcast_ref::<crate::core::logs::CoreLogError>() {
                 result.domain_error = serde_json::to_value(log)
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
@@ -450,6 +456,27 @@ mod tests {
         );
         let app = rpc.router();
         tauri::async_runtime::block_on(async move {
+            let status =
+                rpc_for_test_call(&app, "get_core_log_status", serde_json::json!({}), None).await;
+            assert_eq!(status.0, StatusCode::OK);
+            assert!(status.1.get("budget").is_none());
+            let query = serde_json::json!({"query":{"direction":"latest","cursor":null,"level":"debug","keyword":"","limit":200}});
+            let page = rpc_for_test_call(&app, "query_core_logs", query.clone(), None).await;
+            assert_eq!(page.0, StatusCode::OK);
+            assert!(page.1["rows"].as_array().unwrap().is_empty());
+            let detail = rpc_for_test_call(
+                &app,
+                "get_core_log",
+                serde_json::json!({"cursor":{"generation":status.1["generation"],"sequence":1}}),
+                None,
+            )
+            .await;
+            assert_eq!(detail.1["domain_error"]["kind"], "record_gone");
+            let cleared =
+                rpc_for_test_call(&app, "clear_core_logs", serde_json::json!({}), None).await;
+            assert_eq!(cleared.0, StatusCode::OK);
+            let page = rpc_for_test_call(&app, "query_core_logs", query, None).await;
+            assert_ne!(page.1["status"]["generation"], status.1["generation"]);
             for (body, status, expected) in [
                 (
                     r#"{"method":"get_profiles","params":{}}"#,
@@ -610,6 +637,7 @@ mod tests {
                     .contains("nyanpasu://mutation")
             );
             let response = app
+                .clone()
                 .oneshot(
                     Request::get("/bridge/events?name=clash-ws-event")
                         .body(Body::empty())
@@ -627,6 +655,25 @@ mod tests {
                 std::str::from_utf8(&frame)
                     .unwrap()
                     .contains("\"sequence\":1")
+            );
+            let name = <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME;
+            let response = app
+                .oneshot(
+                    Request::get(format!("/bridge/events?name={name}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let mut body = response.into_body().into_data_stream();
+            body.next().await.unwrap().unwrap();
+            events.publish(name, serde_json::json!({"status":{"version":1}}));
+            let frame = body.next().await.unwrap().unwrap();
+            assert!(
+                std::str::from_utf8(&frame)
+                    .unwrap()
+                    .contains("\"version\":1")
             );
         });
     }
@@ -788,6 +835,29 @@ mod tests {
             &directory,
             crate::client::tests::TestControlEndpoint::succeeding(),
         );
+        for first in (0..10000).step_by(40) {
+            let batch: Vec<_> = (first..first + 40)
+                .map(|number| {
+                    serde_json::to_vec(&crate::core::logs::CoreLogRecord {
+                        source: crate::core::logs::CoreLogSource {
+                            capture: "http-fixture".into(),
+                            instance_id: "instance".into(),
+                            core_kind: Some("Mihomo".into()),
+                        },
+                        received_at: number,
+                        time: None,
+                        log_type: "debug".into(),
+                        payload: if number == 9999 {
+                            format!("core-http-fixture {} complete-tail", "x".repeat(8192))
+                        } else {
+                            format!("core-http-fixture {number}")
+                        },
+                    })
+                    .unwrap()
+                })
+                .collect();
+            args.logging.core.append(&batch).unwrap();
+        }
         args.http_frontend = Some(match std::env::var("NYANPASU_HTTP_UI_DEV_URL") {
             Ok(url) => Frontend::Dev(url.parse().unwrap()),
             Err(_) => Frontend::Embedded(Arc::new(Dist(
@@ -815,6 +885,7 @@ mod tests {
             let output = tokio::time::timeout(
                 std::time::Duration::from_secs(60),
                 tokio::process::Command::new("deno")
+                    .env("NYANPASU_HTTP_CORE_LOG_FIXTURE", "1")
                     .args(["task", "test:http-ui"])
                     .current_dir(repository)
                     .arg(&url)

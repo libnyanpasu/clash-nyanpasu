@@ -206,6 +206,7 @@ fn url_derived_name(url: &url::Url) -> String {
 struct NyanpasuClientInner {
     debug_http: crate::server::debug_http::HttpServerClient,
     bundle_metadata: crate::bundle::BundleMetadata,
+    core_logs: crate::core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn logs::ServiceLogsPort>,
@@ -393,6 +394,9 @@ impl NyanpasuClient {
                 }
             }
         });
+        let core_logs =
+            crate::core::logs::CoreLogsClient::spawn(logging.core, shutdown.child_token(), &tasks)
+                .await?;
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         // The log client exposes no actor cell, so a tracked task stops it.
         tasks.spawn({
@@ -469,6 +473,7 @@ impl NyanpasuClient {
         .await?;
         let streams = crate::core::clash::ws::StreamsClient::spawn(
             core_v2.clone(),
+            core_logs.clone(),
             shutdown.child_token(),
             &tasks,
         )
@@ -506,6 +511,7 @@ impl NyanpasuClient {
             inner: Arc::new(NyanpasuClientInner {
                 debug_http,
                 bundle_metadata,
+                core_logs,
                 app_logs,
                 jobs,
                 service_logs,

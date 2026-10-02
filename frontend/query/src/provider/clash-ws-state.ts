@@ -3,7 +3,6 @@ import type { ClashWsEvent, ClashWsSnapshot } from '@nyanpasu/rpc/types'
 export const MAX_CONNECTIONS_HISTORY = 32
 export const MAX_MEMORY_HISTORY = 32
 export const MAX_TRAFFIC_HISTORY = 32
-export const MAX_LOGS_HISTORY = 1024
 
 const append = <T>(items: T[], item: T, limit: number) =>
   [...items, item].slice(-limit)
@@ -25,7 +24,7 @@ export function applyClashWsEvent(
     case 'recording_changed':
       return { ...next, recording: update.data }
     case 'history_cleared':
-      return { ...next, [update.data]: [] }
+      return update.data === 'logs' ? next : { ...next, [update.data]: [] }
     case 'connections_updated':
       return next.recording.connections
         ? {
@@ -36,10 +35,6 @@ export function applyClashWsEvent(
               MAX_CONNECTIONS_HISTORY,
             ),
           }
-        : next
-    case 'log_appended':
-      return next.recording.logs
-        ? { ...next, logs: append(next.logs, update.data, MAX_LOGS_HISTORY) }
         : next
     case 'traffic_updated':
       return next.recording.traffic

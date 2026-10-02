@@ -13,6 +13,21 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getDebugHttpStatus', ...args],
         queryFn: () => commands.getDebugHttpStatus(...args),
       }),
+    queryCoreLogs: (...args: Parameters<typeof commands.queryCoreLogs>) =>
+      queryOptions({
+        queryKey: ['queryCoreLogs', ...args],
+        queryFn: () => commands.queryCoreLogs(...args),
+      }),
+    getCoreLog: (...args: Parameters<typeof commands.getCoreLog>) =>
+      queryOptions({
+        queryKey: ['getCoreLog', ...args],
+        queryFn: () => commands.getCoreLog(...args),
+      }),
+    getCoreLogStatus: (...args: Parameters<typeof commands.getCoreLogStatus>) =>
+      queryOptions({
+        queryKey: ['getCoreLogStatus', ...args],
+        queryFn: () => commands.getCoreLogStatus(...args),
+      }),
     listLogFiles: (...args: Parameters<typeof commands.listLogFiles>) =>
       queryOptions({
         queryKey: ['listLogFiles', ...args],
@@ -366,6 +381,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (
         input: Parameters<typeof commands.unsubscribeClashConnectionDetails>,
       ) => commands.unsubscribeClashConnectionDetails(...input),
+    }),
+    clearCoreLogs: mutationOptions({
+      mutationKey: ['clearCoreLogs'],
+      mutationFn: (input: Parameters<typeof commands.clearCoreLogs>) =>
+        commands.clearCoreLogs(...input),
     }),
     openLogSession: mutationOptions({
       mutationKey: ['openLogSession'],

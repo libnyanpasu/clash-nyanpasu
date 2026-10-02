@@ -14,9 +14,19 @@ export function createLogsFixture(count: number): ClashLog[] {
         : `[TCP] 127.0.0.1:${50000 + i} --> ${target} match RuleSet(proxy) using Group ${i % 30}[🇯🇵 Node ${i % 1500}]`
 
     return {
-      type: LEVELS[i % LEVELS.length],
-      time: new Date(1_700_000_000_000 + i * 1000).toLocaleTimeString(),
-      payload,
+      id: { generation: 'fixture', sequence: i + 1 },
+      truncated: false,
+      record: {
+        type: LEVELS[i % LEVELS.length],
+        time: new Date(1_700_000_000_000 + i * 1000).toLocaleTimeString(),
+        received_at: 1_700_000_000_000 + i * 1000,
+        source: {
+          capture: 'fixture',
+          instance_id: 'fixture',
+          core_kind: 'Mihomo',
+        },
+        payload,
+      },
     }
   })
 }

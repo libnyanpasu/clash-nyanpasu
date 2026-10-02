@@ -12,6 +12,7 @@ pub enum LogSource {
 }
 
 pub struct LoggingSetup {
+    pub core: Box<dyn crate::core::logs::CoreLogStore>,
     pub files: Arc<dyn LogFiles>,
     pub clock: Arc<dyn Clock>,
     pub service: Arc<dyn ServiceLogsPort>,
@@ -139,6 +140,7 @@ pub(crate) fn test_setup(directory: std::path::PathBuf) -> LoggingSetup {
         }
     }
     LoggingSetup {
+        core: Box::new(crate::core::logs::RedbCoreLogStore::open(directory.join("core")).unwrap()),
         files: Arc::new(FsLogFiles::new(directory, "clash-nyanpasu".into())),
         clock: Arc::new(MonotonicClock::default()),
         service: Arc::new(Unavailable),

@@ -131,7 +131,10 @@ impl ApiClient {
 
     pub async fn logs_ws(&self) -> Result<ApiStream<clash_api::LogEntry>, ApiError> {
         let stream = self
-            .execute(self.client.logs_ws(Default::default()))
+            .execute(
+                self.client
+                    .logs_ws(clash_api::LogQuery::new(clash_api::LogLevel::Debug)),
+            )
             .await?;
         Ok(ApiStream::new(self.clone(), stream))
     }

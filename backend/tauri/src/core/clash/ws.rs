@@ -25,7 +25,6 @@ use crate::core::{
 const MAX_CONNECTIONS_HISTORY: usize = 32;
 const MAX_MEMORY_HISTORY: usize = 32;
 const MAX_TRAFFIC_HISTORY: usize = 32;
-const MAX_LOGS_HISTORY: usize = 1024;
 const MAX_REASONABLE_MEMORY_BYTES: u64 = 16 * 1024_u64.pow(4);
 
 #[derive(Debug, Clone, Default, Copy, Type, Serialize, Deserialize)]
@@ -127,21 +126,12 @@ pub struct ClashWsTraffic {
 }
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize)]
-pub struct ClashWsLog {
-    #[serde(rename = "type")]
-    pub log_type: String,
-    pub time: Option<String>,
-    pub payload: String,
-}
-
-#[derive(Debug, Clone, Type, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClashWsSnapshot {
     pub sequence: u64,
     pub state: ClashConnectionsConnectorState,
     pub recording: ClashWsRecording,
     pub connections: Vec<ClashConnectionsSummary>,
-    pub logs: Vec<ClashWsLog>,
     pub traffic: Vec<ClashWsTraffic>,
     pub memory: Vec<ClashWsMemory>,
 }
@@ -159,7 +149,6 @@ pub enum ClashWsUpdate {
     Reset(Box<ClashWsSnapshot>),
     StateChanged(ClashConnectionsConnectorState),
     ConnectionsUpdated(ClashConnectionsSummary),
-    LogAppended(ClashWsLog),
     TrafficUpdated(ClashWsTraffic),
     MemoryUpdated(ClashWsMemory),
     RecordingChanged(ClashWsRecording),
@@ -169,7 +158,6 @@ pub enum ClashWsUpdate {
 #[derive(Default)]
 struct ClashWsHistory {
     connections: VecDeque<ClashConnectionsSummary>,
-    logs: VecDeque<ClashWsLog>,
     traffic: VecDeque<ClashWsTraffic>,
     memory: VecDeque<ClashWsMemory>,
 }
@@ -178,7 +166,7 @@ impl ClashWsHistory {
     fn clear(&mut self, kind: ClashWsKind) {
         match kind {
             ClashWsKind::Connections => self.connections.clear(),
-            ClashWsKind::Logs => self.logs.clear(),
+            ClashWsKind::Logs => {}
             ClashWsKind::Traffic => self.traffic.clear(),
             ClashWsKind::Memory => self.memory.clear(),
         }
@@ -195,7 +183,6 @@ impl ClashWsHistory {
             state,
             recording,
             connections: self.connections.iter().cloned().collect(),
-            logs: self.logs.iter().cloned().collect(),
             traffic: self.traffic.iter().cloned().collect(),
             memory: self.memory.iter().cloned().collect(),
         }
@@ -245,17 +232,21 @@ enum Delivery {
     Bind(ApiClient),
     State(ApiClient, ClashConnectionsConnectorState),
     Sample(ApiClient, Sample),
+    LogFailure(String),
     Invalidated,
 }
 enum Message {
     Start(RpcReplyPort<()>),
+    LifecycleChanged,
     Snapshot(RpcReplyPort<ClashWsSnapshot>),
     Recording(ClashWsKind, bool, RpcReplyPort<ClashWsRecording>),
-    Clear(ClashWsKind, RpcReplyPort<()>),
+    Clear(ClashWsKind, RpcReplyPort<Result<()>>),
     Deliver(u64, Box<Delivery>, RpcReplyPort<bool>),
 }
 struct Args {
     core: CoreClient,
+    logs: crate::core::logs::CoreLogsClient,
+    shutdown: CancellationToken,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
     details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
@@ -265,6 +256,8 @@ struct StreamsActor;
 struct State {
     args: Args,
     task: Option<JoinHandle<()>>,
+    lifecycle: Option<JoinHandle<()>>,
+    log_session_active: bool,
     generation: u64,
     api: Option<ApiClient>,
     status: ClashConnectionsConnectorState,
@@ -272,10 +265,14 @@ struct State {
     history: ClashWsHistory,
     recording: ClashWsRecording,
     previous: Option<ConnectionCounters>,
+    capture_prefix: String,
 }
 impl Drop for State {
     fn drop(&mut self) {
         if let Some(task) = self.task.take() {
+            task.abort();
+        }
+        if let Some(task) = self.lifecycle.take() {
             task.abort();
         }
     }
@@ -337,6 +334,10 @@ impl State {
             .is_some_and(|current| current.same_instance(api))
     }
     async fn stop(&mut self) {
+        if let Some(task) = self.lifecycle.take() {
+            task.abort();
+            let _ = task.await;
+        }
         self.generation += 1;
         if let Some(task) = self.task.take() {
             task.abort();
@@ -344,7 +345,7 @@ impl State {
         }
         self.reset();
     }
-    fn update(&mut self, sample: Sample) {
+    async fn update(&mut self, sample: Sample) {
         match sample {
             Sample::Connections(sample) => {
                 let now = tokio::time::Instant::now();
@@ -387,15 +388,36 @@ impl State {
                 self.publish_frame(sample);
             }
             Sample::Log(sample) => {
-                let log = ClashWsLog {
-                    log_type: sample.level.as_str().to_owned(),
-                    time: Some(chrono::Local::now().format("%H:%M:%S").to_string()),
-                    payload: sample.payload,
-                };
-                if self.recording.logs {
-                    push_limited(&mut self.history.logs, log.clone(), MAX_LOGS_HISTORY);
+                if self.recording.logs
+                    && let Some(api) = &self.api
+                {
+                    let projection = self.args.core.status();
+                    let source = crate::core::logs::CoreLogSource {
+                        capture: format!(
+                            "{}:{:?}:{}",
+                            self.capture_prefix,
+                            projection.host,
+                            api.instance_id()
+                        ),
+                        instance_id: api.instance_id().to_owned(),
+                        core_kind: projection
+                            .snapshot
+                            .and_then(|s| s.applied_kind)
+                            .map(|kind| format!("{kind:?}")),
+                    };
+                    let now = chrono::Local::now();
+                    let _ = self
+                        .args
+                        .logs
+                        .append(crate::core::logs::CoreLogRecord {
+                            source,
+                            received_at: now.timestamp_millis(),
+                            log_type: sample.level.as_str().to_owned(),
+                            time: Some(now.format("%H:%M:%S").to_string()),
+                            payload: sample.payload,
+                        })
+                        .await;
                 }
-                self.emit(ClashWsUpdate::LogAppended(log));
             }
             Sample::Traffic(sample) => {
                 let (Ok(up), Ok(down)) = (
@@ -530,16 +552,34 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, k
                                         return;
                                     }
                                 }
-                                Err(ApiError::Protocol(clash_api::Error::Decode { .. })) => {
+                                Err(
+                                    error @ ApiError::Protocol(clash_api::Error::Decode { .. }),
+                                ) => {
+                                    if kind == ClashWsKind::Logs {
+                                        let _ = deliver(
+                                            &actor,
+                                            generation,
+                                            Delivery::LogFailure(format!(
+                                                "{:#}",
+                                                anyhow::Error::new(error)
+                                            )),
+                                        )
+                                        .await;
+                                    }
                                     tracing::warn!(?kind, "discarded malformed Clash stream frame");
                                 }
                                 Err(ApiError::Stale) => break,
                                 Err(error) => {
-                                    tracing::warn!(
-                                        ?kind,
-                                        "Clash stream failed: {:#}",
-                                        anyhow::Error::new(error)
-                                    );
+                                    let error = anyhow::Error::new(error);
+                                    if kind == ClashWsKind::Logs {
+                                        let _ = deliver(
+                                            &actor,
+                                            generation,
+                                            Delivery::LogFailure(format!("{error:#}")),
+                                        )
+                                        .await;
+                                    }
+                                    tracing::warn!(?kind, "Clash stream failed: {:#}", error);
                                     break;
                                 }
                             }
@@ -590,6 +630,8 @@ impl Actor for StreamsActor {
         Ok(State {
             args,
             task: None,
+            lifecycle: None,
+            log_session_active: false,
             generation: 0,
             api: None,
             status: ClashConnectionsConnectorState::Disconnected,
@@ -597,6 +639,7 @@ impl Actor for StreamsActor {
             history: Default::default(),
             recording: Default::default(),
             previous: None,
+            capture_prefix: uuid::Uuid::new_v4().to_string(),
         })
     }
     async fn handle(
@@ -610,7 +653,19 @@ impl Actor for StreamsActor {
         }
         match message {
             Message::Start(reply) => {
-                if state.task.is_none() {
+                if !state.args.shutdown.is_cancelled() && state.task.is_none() {
+                    let mut status = state.args.core.subscribe();
+                    let listener = actor.clone();
+                    state.lifecycle = Some(tokio::spawn(async move {
+                        loop {
+                            if listener.cast(Message::LifecycleChanged).is_err() {
+                                break;
+                            }
+                            if status.changed().await.is_err() {
+                                break;
+                            }
+                        }
+                    }));
                     state.generation += 1;
                     state.task = Some(tokio::spawn(run(
                         actor,
@@ -619,6 +674,34 @@ impl Actor for StreamsActor {
                     )));
                 }
                 let _ = reply.send(());
+            }
+            Message::LifecycleChanged => {
+                let projection = state.args.core.status();
+                // A missing or unreachable endpoint is not proof of process exit.
+                if state.log_session_active
+                    && let Some(snapshot) = projection.snapshot
+                    && matches!(
+                        projection.connectivity,
+                        crate::core::actor_v2::EndpointConnectivity::Connected
+                    )
+                    && matches!(
+                        snapshot.state,
+                        Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+                    )
+                {
+                    // Display projections can contain a late pre-restart snapshot.
+                    // Re-read before deleting; clearing this flag also avoids reacting
+                    // again to the confirmation's own status publication.
+                    if let Ok(current) = state.args.core.refresh_status().await
+                        && matches!(
+                            current.snapshot.and_then(|s| s.state),
+                            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+                        )
+                    {
+                        state.log_session_active = false;
+                        let _ = state.args.logs.set_instance(None).await;
+                    }
+                }
             }
             Message::Snapshot(reply) => {
                 let _ = reply.send(state.snapshot());
@@ -629,12 +712,21 @@ impl Actor for StreamsActor {
                 let _ = reply.send(state.recording.clone());
             }
             Message::Clear(kind, reply) => {
-                state.history.clear(kind);
-                state.emit(ClashWsUpdate::HistoryCleared(kind));
-                let _ = reply.send(());
+                let result = if kind == ClashWsKind::Logs {
+                    state.args.logs.clear().await.map_err(anyhow::Error::new)
+                } else {
+                    state.history.clear(kind);
+                    Ok(())
+                };
+                if result.is_ok() {
+                    state.emit(ClashWsUpdate::HistoryCleared(kind));
+                }
+                let _ = reply.send(result);
             }
             Message::Deliver(generation, delivery, reply) => {
-                let mut accepted = state.task.is_some() && generation == state.generation;
+                let mut accepted = !state.args.shutdown.is_cancelled()
+                    && state.task.is_some()
+                    && generation == state.generation;
                 if accepted {
                     match *delivery {
                         Delivery::Bind(api) => {
@@ -643,6 +735,17 @@ impl Actor for StreamsActor {
                                 if !state.accepts(&api) {
                                     state.reset();
                                 }
+                                // Identity survives socket/controller reconnects. Complete the
+                                // reset before any samples from the new instance are admitted.
+                                if let Err(error) = state
+                                    .args
+                                    .logs
+                                    .set_instance(Some(api.instance_id().to_owned()))
+                                    .await
+                                {
+                                    tracing::warn!(%error, "Core log session reset failed");
+                                }
+                                state.log_session_active = true;
                                 state.api = Some(api);
                             }
                         }
@@ -660,8 +763,11 @@ impl Actor for StreamsActor {
                         Delivery::Sample(api, sample) => {
                             accepted = state.accepts(&api);
                             if accepted {
-                                state.update(sample);
+                                state.update(sample).await;
                             }
+                        }
+                        Delivery::LogFailure(error) => {
+                            let _ = state.args.logs.discard(error).await;
                         }
                         Delivery::Invalidated => state.reset(),
                     }
@@ -685,6 +791,8 @@ impl Actor for StreamsActor {
 pub struct StreamsClient(Arc<Inner>);
 struct Inner {
     actor: ActorRef<Message>,
+    #[cfg(test)]
+    logs: crate::core::logs::CoreLogsClient,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
     details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
@@ -698,6 +806,7 @@ impl Drop for Inner {
 impl StreamsClient {
     pub async fn spawn(
         core: CoreClient,
+        logs: crate::core::logs::CoreLogsClient,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> Result<Self> {
@@ -710,6 +819,8 @@ impl StreamsClient {
             StreamsActor,
             Args {
                 core,
+                logs: logs.clone(),
+                shutdown: shutdown.clone(),
                 connections: connections.clone(),
                 events: events.clone(),
                 details: details.clone(),
@@ -720,6 +831,8 @@ impl StreamsClient {
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner {
             actor,
+            #[cfg(test)]
+            logs,
             connections,
             events,
             details,
@@ -756,7 +869,7 @@ impl StreamsClient {
             .await
     }
     pub async fn clear_history(&self, kind: ClashWsKind) -> Result<()> {
-        self.call(|reply| Message::Clear(kind, reply)).await
+        self.call(|reply| Message::Clear(kind, reply)).await?
     }
     pub fn subscribe(&self) -> broadcast::Receiver<ClashConnectionsConnectorEvent> {
         self.0.connections.subscribe()
@@ -819,10 +932,14 @@ mod tests {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let endpoint = endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
+        let client = StreamsClient::spawn(
+            core.clone(),
+            crate::core::logs::CoreLogsClient::test_client().await,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
         let mut events = client.subscribe_ws();
         client.start().await.unwrap();
         connected(&mut events).await;
@@ -855,10 +972,14 @@ mod tests {
     async fn recording_clear_and_history_limits_are_serialized_with_samples() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
+        let client = StreamsClient::spawn(
+            core.clone(),
+            crate::core::logs::CoreLogsClient::test_client().await,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
         let mut events = client.subscribe_ws();
         client.start().await.unwrap();
         connected(&mut events).await;
@@ -917,13 +1038,17 @@ mod tests {
 
     #[tokio::test]
     async fn all_typed_workers_publish_and_actor_drop_releases_every_socket() {
-        use axum::extract::{Path, State as AxumState, ws::Message as Frame};
+        use axum::extract::{Path, Query, State as AxumState, ws::Message as Frame};
         use tokio::sync::mpsc;
         async fn stream(
             Path(kind): Path<String>,
+            Query(query): Query<std::collections::HashMap<String, String>>,
             AxumState(closed): AxumState<mpsc::UnboundedSender<String>>,
             ws: WebSocketUpgrade,
         ) -> impl IntoResponse {
+            if kind == "logs" {
+                assert_eq!(query.get("level").map(String::as_str), Some("debug"));
+            }
             ws.on_upgrade(move |mut socket| async move {
                 let json = match kind.as_str() {
                     "connections" => {
@@ -947,19 +1072,24 @@ mod tests {
         )
         .await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client = StreamsClient::spawn(core, CancellationToken::new(), &TaskTracker::new())
-            .await
-            .unwrap();
+        let client = StreamsClient::spawn(
+            core,
+            crate::core::logs::CoreLogsClient::test_client().await,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
         let mut events = client.subscribe_ws();
+        let mut logs = client.0.logs.subscribe();
         client.start().await.unwrap();
         tokio::time::timeout(Duration::from_secs(3), async {
-            let mut seen = [false; 4];
+            let mut seen = [false; 3];
             while !seen.iter().all(|seen| *seen) {
                 match events.recv().await.unwrap().update {
                     ClashWsUpdate::ConnectionsUpdated(_) => seen[0] = true,
-                    ClashWsUpdate::LogAppended(_) => seen[1] = true,
-                    ClashWsUpdate::TrafficUpdated(_) => seen[2] = true,
-                    ClashWsUpdate::MemoryUpdated(_) => seen[3] = true,
+                    ClashWsUpdate::TrafficUpdated(_) => seen[1] = true,
+                    ClashWsUpdate::MemoryUpdated(_) => seen[2] = true,
                     _ => {}
                 }
             }
@@ -968,7 +1098,26 @@ mod tests {
         .unwrap();
         let snapshot = client.snapshot().await.unwrap();
         assert_eq!(snapshot.connections[0].download_total, 100);
-        assert_eq!(snapshot.logs[0].log_type, "trace");
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while logs.borrow().head.is_none() {
+                logs.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let page = client
+            .0
+            .logs
+            .query(crate::core::logs::CoreLogQuery {
+                direction: crate::core::logs::CoreLogDirection::Latest,
+                cursor: None,
+                level: None,
+                keyword: String::new(),
+                limit: 200,
+            })
+            .await
+            .unwrap();
+        assert_eq!(page.rows[0].record.log_type, "trace");
         assert_eq!(snapshot.traffic[0].down, 4);
         assert_eq!(snapshot.memory[0].oslimit, 0);
         drop(client);
@@ -997,10 +1146,14 @@ mod tests {
     async fn details_watch_stays_none_without_a_subscriber() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
+        let client = StreamsClient::spawn(
+            core.clone(),
+            crate::core::logs::CoreLogsClient::test_client().await,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
         let mut events = client.subscribe_ws();
         client.start().await.unwrap();
         connected(&mut events).await;
@@ -1018,10 +1171,14 @@ mod tests {
     async fn details_frame_matches_the_connections_updated_sequence() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
+        let client = StreamsClient::spawn(
+            core.clone(),
+            crate::core::logs::CoreLogsClient::test_client().await,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
         let mut events = client.subscribe_ws();
         let mut details = client.subscribe_connection_details();
         client.start().await.unwrap();
@@ -1052,10 +1209,14 @@ mod tests {
     async fn reset_clears_the_details_watch() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
+        let client = StreamsClient::spawn(
+            core.clone(),
+            crate::core::logs::CoreLogsClient::test_client().await,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
         let mut events = client.subscribe_ws();
         let mut details = client.subscribe_connection_details();
         client.start().await.unwrap();
@@ -1081,10 +1242,14 @@ mod tests {
     async fn connection_frames_carry_the_instance_id_and_reset_clears_them() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
-        let client =
-            StreamsClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
-                .await
-                .unwrap();
+        let client = StreamsClient::spawn(
+            core.clone(),
+            crate::core::logs::CoreLogsClient::test_client().await,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
         let mut events = client.subscribe_ws();
         let mut frames = client.subscribe_connection_frames();
         client.start().await.unwrap();
@@ -1234,5 +1399,81 @@ mod tests {
             serde_json::to_vec(&small_snapshot).unwrap().len(),
             serde_json::to_vec(&large_snapshot).unwrap().len(),
         );
+    }
+
+    #[tokio::test]
+    async fn log_file_survives_controller_rebind_and_is_deleted_on_confirmed_stop() {
+        let directory = tempfile::tempdir().unwrap();
+        let token = CancellationToken::new();
+        let tasks = TaskTracker::new();
+        let logs = crate::core::logs::CoreLogsClient::spawn(
+            Box::new(crate::core::logs::RedbCoreLogStore::open(directory.path().into()).unwrap()),
+            token.clone(),
+            &tasks,
+        )
+        .await
+        .unwrap();
+        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
+        let endpoint = endpoint(url);
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let client = StreamsClient::spawn(core.clone(), logs.clone(), token.clone(), &tasks)
+            .await
+            .unwrap();
+        let mut events = client.subscribe_ws();
+        client.start().await.unwrap();
+        connected(&mut events).await;
+        let api = core.api_client().await.unwrap();
+        let sample = || {
+            Sample::Log(clash_api::LogEntry {
+                level: clash_api::ConfigEnum::Known(clash_api::LogLevel::Debug),
+                payload: "x".repeat(70 * 1024),
+            })
+        };
+        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api.clone(), sample())).await);
+        let before = logs.status().await.unwrap();
+        assert!(before.head.is_some());
+        assert!(directory.path().join("current.redb").exists());
+        // A new API capability for the same process is not a new log session.
+        endpoint
+            .binding
+            .send_modify(|binding| binding.as_mut().unwrap().secret = Some("changed".into()));
+        let rebound = core.api_client().await.unwrap();
+        assert!(deliver(&client.0.actor, 1, Delivery::Bind(rebound)).await);
+        assert_eq!(logs.status().await.unwrap().generation, before.generation);
+        assert_eq!(logs.status().await.unwrap().head, before.head);
+        let mut changed = logs.subscribe();
+        let mut replacement_binding = endpoint.binding.borrow().clone().unwrap();
+        replacement_binding.instance_id = "replacement".into();
+        endpoint.binding.send_replace(None);
+        core.refresh_status().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let status = changed.borrow_and_update().clone();
+                if status.generation != before.generation && status.head.is_none() {
+                    break;
+                }
+                changed.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!directory.path().join("current.redb").exists());
+        assert!(!deliver(&client.0.actor, 1, Delivery::Sample(api, sample())).await);
+        endpoint.binding.send_replace(Some(replacement_binding));
+        let replacement = core.api_client().await.unwrap();
+        assert!(deliver(&client.0.actor, 1, Delivery::Bind(replacement.clone())).await);
+        assert!(deliver(&client.0.actor, 1, Delivery::Sample(replacement, sample())).await);
+        let current = logs.status().await.unwrap();
+        assert!(current.head.is_some());
+        // This notification may still refer to the displayed stopped state.
+        client.0.actor.cast(Message::LifecycleChanged).unwrap();
+        client.snapshot().await.unwrap(); // acknowledge lifecycle handling
+        assert_eq!(logs.status().await.unwrap().generation, current.generation);
+        assert_eq!(logs.status().await.unwrap().head, current.head);
+        assert!(directory.path().join("current.redb").exists());
+        token.cancel();
+        tasks.close();
+        tasks.wait().await;
+        server.abort();
     }
 }

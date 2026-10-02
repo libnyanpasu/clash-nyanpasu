@@ -28,10 +28,10 @@ import {
 // drops each opening causes. See `perf/README.md`.
 
 const env = import.meta.env
-// `core` shows the core's websocket history; `app` shows a log file, whose
+// Both sources show a bounded page; `app` shows a log file, whose
 // first page arrives after the page has opened.
 const SOURCE = (env.VITE_PERF_SOURCE ?? 'core') as 'core' | 'app'
-const LOGS = Number(env.VITE_PERF_LOGS ?? (SOURCE === 'core' ? 1024 : 200))
+const LOGS = Number(env.VITE_PERF_LOGS ?? 200)
 const SWITCHES = Number(env.VITE_PERF_SWITCHES ?? 12)
 const WARMUP = 2
 const THROTTLE = Number(env.VITE_PERF_THROTTLE ?? 1)
@@ -52,6 +52,12 @@ const store = vi.hoisted(() => ({
     isLoading: boolean
     error: null
     clean: { mutateAsync: () => Promise<void> }
+    status: null
+    more: boolean
+    loadingOlder: boolean
+    retry: () => void
+    loadOlder: () => void
+    detail: () => Promise<ClashLog['record']>
   },
   file: null as unknown as { rows: LogRow[] } & Record<string, unknown>,
   listeners: new Set<() => void>(),
@@ -60,7 +66,7 @@ const store = vi.hoisted(() => ({
     return () => store.listeners.delete(listener)
   },
   push(log: ClashLog | LogRow) {
-    if ('payload' in log) {
+    if ('record' in log) {
       const { data } = store.core
       store.core = { ...store.core, data: [...data.slice(1), log] }
     } else {
@@ -90,10 +96,16 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
   }
   const fileLogsLoading = { ...store.file, rows: [], loading: true }
   store.core = {
-    data: createLogsFixture(Number(import.meta.env.VITE_PERF_LOGS ?? 1024)),
+    data: createLogsFixture(Number(import.meta.env.VITE_PERF_LOGS ?? 200)),
     isLoading: false,
     error: null,
     clean: { mutateAsync: async () => {} },
+    status: null,
+    more: false,
+    loadingOlder: false,
+    retry: () => {},
+    loadOlder: () => {},
+    detail: async () => createLogsFixture(1)[0].record,
   }
 
   return {
@@ -305,7 +317,7 @@ test(`receive ${SOURCE} logs with ${LOGS} logs on the page`, async ({
   }
 
   const last = incoming.at(-1)!
-  const text = 'payload' in last ? last.payload : last.message
+  const text = 'record' in last ? last.record.payload : last.message
   // The page still follows the newest log.
   await expect
     .poll(() =>

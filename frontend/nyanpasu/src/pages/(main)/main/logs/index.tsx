@@ -1,11 +1,5 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { useCallback, useDeferredValue, useEffect, useState } from 'react'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
 import {
   ScrollArea,
@@ -20,6 +14,12 @@ import {
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useClashLogs } from '@nyanpasu/query'
+import type {
+  CoreLogCursor,
+  CoreLogRecord,
+  CoreLogRow,
+} from '@nyanpasu/rpc/types'
+import { Button } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import FileLogs from './_modules/file-logs'
@@ -37,65 +37,103 @@ import { Route as IndexRoute } from './route'
 export const Route = createFileRoute('/(main)/main/logs/')({
   component: RouteComponent,
 })
+type CoreLogs = ReturnType<typeof useClashLogs>
 
-const Viewer = ({
+function CoreRecord({
+  row,
+  detail,
+  expanded,
+  onInspect,
+  search,
+}: {
+  row: CoreLogRow
+  detail: (cursor: CoreLogCursor) => Promise<CoreLogRecord>
+  expanded: boolean
+  onInspect: () => void
+  search: string
+}) {
+  const loadRaw = useCallback(() => detail(row.id), [detail, row.id])
+
+  return (
+    <LogRecord
+      time={row.record.time || ''}
+      timeTitle={new Date(row.record.received_at).toLocaleString()}
+      level={row.record.type}
+      message={row.record.payload}
+      raw={row.record}
+      loadRaw={loadRaw}
+      expanded={expanded}
+      incomplete={row.truncated}
+      incompleteTitle={m.logs_core_preview_truncated()}
+      search={search}
+      onInspect={onInspect}
+    />
+  )
+}
+
+function Viewer({
+  logs,
   search,
   following,
   setFollowing,
 }: {
+  logs: CoreLogs
   search: string
   following: boolean
   setFollowing: (value: boolean) => void
-}) => {
-  const { level } = IndexRoute.useSearch()
-  const { data } = useClashLogs()
-  // Incoming logs and search keystrokes re-render every visible row; deferring
-  // them keeps the input and scrolling responsive while a burst renders.
-  const logs = useDeferredValue(data)
+}) {
+  const rows = useDeferredValue(logs.data)
   const deferredSearch = useDeferredValue(search)
-  const filteredLogs = useMemo(() => {
-    if (!logs) return []
-    if (!level) return logs
-    return logs.filter(
-      (log) =>
-        log.type.toLowerCase().replace('warning', 'warn') ===
-        level.replace('warning', 'warn'),
-    )
-  }, [logs, level])
+  const [inspected, setInspected] = useState<string | null>(null)
   const { isBottom, scrollDirection } = useScrollArea()
   const { viewportRef } = useScrollAreaViewport()
   const rowVirtualizer = useVirtualizer({
-    count: filteredLogs.length,
+    count: rows.length,
     getScrollElement: () => viewportRef.current,
+    getItemKey: (index) => {
+      const id = rows[index].id
+      return `${id.generation}:${id.sequence}`
+    },
     estimateSize: () => 110,
     overscan: 5,
     useFlushSync: false,
     useAnimationFrameWithResizeObserver: true,
   })
   const totalSize = rowVirtualizer.getTotalSize()
-  // Mounting and measuring the rows is the bulk of opening the page. Router
-  // updates render synchronously, so the rows mount in a deferred render
-  // instead: the page commits at once, and React renders and measures the
-  // rows right after.
   const showRows = useDeferredValue(true, false)
-  const stopFollowing = useCallback(() => setFollowing(false), [setFollowing])
+
   useEffect(() => {
-    // ScrollArea attaches its viewport ref after this child's layout effects.
     rowVirtualizer.measure()
   }, [rowVirtualizer])
   useEffect(() => {
     if (scrollDirection === 'up' && !isBottom) setFollowing(false)
   }, [scrollDirection, isBottom, setFollowing])
   useEffect(() => {
-    if (!following || !filteredLogs.length) return
+    if (!following || !rows.length) return
     const frame = requestAnimationFrame(() =>
-      rowVirtualizer.scrollToIndex(filteredLogs.length - 1, { align: 'end' }),
+      rowVirtualizer.scrollToIndex(rows.length - 1, { align: 'end' }),
     )
     return () => cancelAnimationFrame(frame)
-  }, [filteredLogs, following, rowVirtualizer, totalSize])
+  }, [rows, following, rowVirtualizer, totalSize])
+
   return (
-    <div>
-      {!filteredLogs.length && <LogEmptyState />}
+    <div data-slot="core-logs-viewer">
+      {logs.more && (
+        <Button
+          disabled={logs.loadingOlder}
+          onClick={() => {
+            setFollowing(false)
+            logs.loadOlder()
+          }}
+        >
+          {m.logs_load_older()}
+        </Button>
+      )}
+      {!rows.length && !logs.isLoading && (
+        <LogEmptyState>
+          {logs.more ? m.logs_search_incomplete() : m.logs_empty_message()}
+        </LogEmptyState>
+      )}
       <div
         className="relative"
         data-slot="logs-virtual-list"
@@ -103,8 +141,9 @@ const Viewer = ({
       >
         {showRows &&
           rowVirtualizer.getVirtualItems().map((item) => {
-            const log = filteredLogs[item.index]
-            if (!log) return null
+            const row = rows[item.index]
+            if (!row) return null
+            const key = String(item.key)
             return (
               <div
                 key={item.key}
@@ -112,17 +151,17 @@ const Viewer = ({
                 data-index={item.index}
                 data-slot="logs-virtual-item"
                 className="absolute top-0 left-0 w-full select-text"
-                style={{
-                  transform: `translateY(${item.start}px)`,
-                }}
+                style={{ transform: `translateY(${item.start}px)` }}
               >
-                <LogRecord
-                  time={log.time || ''}
-                  level={log.type}
-                  message={log.payload || ''}
-                  raw={log}
+                <CoreRecord
+                  row={row}
+                  detail={logs.detail}
+                  expanded={inspected === key}
                   search={deferredSearch}
-                  onInspect={stopFollowing}
+                  onInspect={() => {
+                    setFollowing(false)
+                    setInspected((current) => (current === key ? null : key))
+                  }}
                 />
               </div>
             )
@@ -132,34 +171,23 @@ const Viewer = ({
   )
 }
 
-// The history changes with every core log event, so only the leaves that
-// show it subscribe; the layout, tabs and level sidebar stay put.
-function useClearLogs() {
-  const { data: logs, clean } = useClashLogs()
-  const clear = useLockFn(async () => {
-    await clean.mutateAsync()
-  })
-  return { empty: !logs?.length, clear }
-}
-
-function ClearLogsButton() {
-  const { empty, clear } = useClearLogs()
-  return <LogClearButton disabled={empty} onClick={clear} />
-}
-
-function ClearLogsMenuItem() {
-  const { empty, clear } = useClearLogs()
-  return (
-    <ContextMenuItem disabled={empty} onClick={clear}>
-      <DeleteForeverOutlineRounded className="size-4" />
-      <span>{m.logs_action_clear_log()}</span>
-    </ContextMenuItem>
-  )
-}
-
 function KernelLogs() {
+  const { level } = IndexRoute.useSearch()
   const [following, setFollowing] = useState(true)
   const [search, setSearch] = useState('')
+  const [debounced, setDebounced] = useState(search)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(search), 250)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const logs = useClashLogs(level ?? null, debounced, following)
+  const clear = useLockFn(async () => {
+    await logs.clean.mutateAsync()
+  })
+  const canClear = Boolean(logs.status?.head)
+  const error = logs.error || logs.status?.error
+
   return (
     <LogsLayout
       source="core"
@@ -170,13 +198,56 @@ function KernelLogs() {
           placeholder={m.logs_search_placeholder()}
         />
       }
-      actions={<ClearLogsButton />}
+      actions={
+        <LogClearButton
+          disabled={!canClear}
+          onClick={clear}
+          label={m.logs_core_clear_history()}
+        />
+      }
     >
-      <div className={logPanelClass}>
+      <div className={logPanelClass} data-slot="core-logs">
+        {(logs.isLoading ||
+          logs.loadingOlder ||
+          error ||
+          logs.status?.discarded) && (
+          <div
+            className="text-on-surface-variant flex flex-wrap items-center gap-2 px-4 py-2 text-xs"
+            role="status"
+          >
+            {logs.isLoading && <span>{m.logs_loading()}</span>}
+            {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
+            {error && (
+              <>
+                <span
+                  className="text-error"
+                  title={
+                    typeof error === 'string'
+                      ? error
+                      : error.kind === 'unavailable'
+                        ? error.message
+                        : error.kind
+                  }
+                >
+                  {m.logs_source_unavailable()}
+                </span>
+                <Button onClick={() => logs.retry()}>{m.logs_retry()}</Button>
+              </>
+            )}
+            {Boolean(logs.status?.discarded) && (
+              <span>
+                {m.logs_core_discarded({
+                  count: String(logs.status?.discarded),
+                })}
+              </span>
+            )}
+          </div>
+        )}
         <RegisterContextMenu>
           <RegisterContextMenuTrigger asChild>
             <ScrollArea className="min-h-0 flex-1">
               <Viewer
+                logs={logs}
                 search={search}
                 following={following}
                 setFollowing={setFollowing}
@@ -184,7 +255,10 @@ function KernelLogs() {
             </ScrollArea>
           </RegisterContextMenuTrigger>
           <RegisterContextMenuContent>
-            <ClearLogsMenuItem />
+            <ContextMenuItem disabled={!canClear} onClick={clear}>
+              <DeleteForeverOutlineRounded className="size-4" />
+              <span>{m.logs_core_clear_history()}</span>
+            </ContextMenuItem>
           </RegisterContextMenuContent>
         </RegisterContextMenu>
         {!following && <LogFollowButton onClick={() => setFollowing(true)} />}

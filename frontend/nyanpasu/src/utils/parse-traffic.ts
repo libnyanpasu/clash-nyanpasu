@@ -24,7 +24,8 @@ const parseTraffic = (num?: string | number) => {
   } else if (dat < 10) {
     ret = dat.toPrecision(3)
   } else {
-    ret = dat >= 1000 ? dat.toFixed(0) : dat.toPrecision(3)
+    // From 999.5 up, three significant digits round to 1000 and print as 1.00e+3.
+    ret = dat >= 999.5 ? dat.toFixed(0) : dat.toPrecision(3)
   }
 
   const unit = UNITS[exp]

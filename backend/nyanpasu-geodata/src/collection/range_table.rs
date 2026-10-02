@@ -3,7 +3,7 @@ use std::net::IpAddr;
 
 use bytemuck::Pod;
 
-use crate::{GeoError, GeoResult, scratch::ScratchVec};
+use crate::{GeoError, GeoResult, collection::scratch::ScratchVec};
 
 /// Record id stored per range. `NONE` marks addresses without a record;
 /// `FINE` sends a /64 block to the full-width table.

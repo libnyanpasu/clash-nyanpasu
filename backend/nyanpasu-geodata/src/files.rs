@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::scratch::ScratchVec;
+use crate::collection::scratch::ScratchVec;
 
 /// The geo files the mihomo core loads from its home directory.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

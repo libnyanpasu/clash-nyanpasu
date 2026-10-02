@@ -1,7 +1,7 @@
 //! Interned tag names and tag sets shared by every IP index record.
 use std::collections::HashMap;
 
-use crate::{GeoError, GeoResult, table::Id};
+use crate::{GeoError, GeoResult, collection::range_table::Id};
 
 /// Tags one address may carry. Real databases stay below five; the bound keeps
 /// crafted overlaps from interning sets of quadratic total size.

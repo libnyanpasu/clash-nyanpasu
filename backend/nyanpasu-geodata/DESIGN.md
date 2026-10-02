@@ -8,6 +8,21 @@ crate is a pure service: bytes in, immutable index out. Discovering the core's
 home directory, reloading after a geo update and caching per connection belong
 to the caller.
 
+## Layout
+
+Dependencies point one way, `index` → `parser` → `collection`:
+
+- `collection/`: the data structures. `scratch.rs` holds build buffers in
+  anonymous memory, `range_table.rs` the IP range table and `tags.rs` interned
+  tag names and sets.
+- `parser/`: the database formats, each read into collections. `proto.rs` is
+  the protobuf field reader; `mmdb.rs` and `geoip_dat.rs` compile their format
+  into a range table.
+- `index/`: the public indexes `IpIndex`, `AsnIndex` and `SiteIndex`, which
+  decode records the way the core does and answer lookups.
+- `files.rs` finds the core's files and reads them; `error.rs` holds
+  `GeoError`.
+
 ## Why compile instead of reading the files in place
 
 - **No mmap of the core's files.** mihomo rewrites `Country.mmdb` in place
@@ -38,8 +53,9 @@ unmapped, whatever the allocator. Hence:
 - `read_source` copies a file into anonymous memory. Being a copy, it never
   maps the core's file.
 - Build buffers that scale with the input live in anonymous memory too
-  (`scratch.rs`): range-table step lists, MMDB record caches and the tree check,
-  `GeoIP.dat` sweep events, GeoSite keys, postings and FST output.
+  (`collection/scratch.rs`): range-table step lists, MMDB record caches and
+  the tree check, `GeoIP.dat` sweep events, GeoSite keys, postings and FST
+  output.
   `ScratchVec` grows by remapping, so the old mapping is returned at once, and
   `ScratchMap` is an open-addressing table on top of it. Only exact-size final
   arrays are copied onto the heap.
@@ -54,7 +70,7 @@ behind (see benchmarks). `tests/build_heap.rs` guards against large build
 buffers returning to the heap; it measures heap peaks, so it cannot see this
 kind of fragmentation.
 
-## IP range table (`table.rs`)
+## IP range table (`collection/range_table.rs`)
 
 Sorted step lists: `starts[i]` is the first address mapped to `ids[i]`, so a
 lookup is one `partition_point`.
@@ -70,8 +86,8 @@ lookup is one `partition_point`.
 
 ## Sources
 
-**MMDB (`mmdb.rs`, `ip.rs`, `asn.rs`).** `maxminddb` walks the networks, and
-a fixed 64 Ki-slot cache keyed by data offset decodes each record about once.
+**MMDB (`parser/mmdb.rs`, `index/ip.rs`, `index/asn.rs`).** `maxminddb` walks
+the networks, and a fixed 64 Ki-slot cache keyed by data offset decodes each record about once.
 A city database with millions of records costs at most 768 KiB of anonymous memory.
 IP tag sets are interned by content, so a cache eviction only repeats a decode.
 ASN records are kept exactly once per data offset.
@@ -81,11 +97,11 @@ neither the iterator nor `Reader::verify` bounds it. Cycles need no check; the
 iterator fails on the first path deeper than the address width. Every real
 database tested has single-parent nodes plus the three standard aliases.
 
-**`GeoIP.dat` (`geoip_dat.rs`).** Per-code CIDR lists are inverted with a sweep
-over open/close events, one address family at a time in a buffer sized by a
+**`GeoIP.dat` (`parser/geoip_dat.rs`).** Per-code CIDR lists are inverted with
+a sweep over open/close events, one address family at a time in a buffer sized by a
 counting pass. Each range carries every code containing it, in file order.
 
-**`GeoSite.dat` (`site.rs`).**
+**`GeoSite.dat` (`index/site.rs`).**
 
 - `Domain` and `Full` values are stored reversed in an FST. A lookup walks the
   host backwards once and collects postings at label boundaries.
@@ -152,7 +168,8 @@ limit `regex` uses (10 MiB).
 
 ## Tests
 
-- **Unit tests.** `table.rs` and `files.rs` carry their own unit tests.
+- **Unit tests.** `collection/range_table.rs`, `collection/scratch.rs` and
+  `files.rs` carry their own unit tests.
 - **Integration tests.** Fixtures are built in-process: a minimal MMDB writer
   and protobuf encoders live in `tests/support`.
 - **Differential checks.** `tests/real_databases.rs` (ignored by default) runs

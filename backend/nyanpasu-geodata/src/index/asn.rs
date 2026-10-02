@@ -4,9 +4,12 @@ use maxminddb::Reader;
 use serde::Deserialize;
 
 use crate::{
-    GeoError, GeoResult, mmdb,
-    scratch::{ScratchMap, ScratchVec},
-    table::{Id, RangeTable},
+    GeoError, GeoResult,
+    collection::{
+        range_table::{Id, RangeTable},
+        scratch::{ScratchMap, ScratchVec},
+    },
+    parser::mmdb,
 };
 
 pub struct AsnIndex {

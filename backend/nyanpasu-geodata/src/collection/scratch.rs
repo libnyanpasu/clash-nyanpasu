@@ -196,6 +196,18 @@ impl<T: Pod> Default for ScratchVec<T> {
     }
 }
 
+/// Lets writers such as the FST builder collect their output outside the heap.
+impl std::io::Write for ScratchVec<u8> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.extend_from_slice(buf).map_err(std::io::Error::other)?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

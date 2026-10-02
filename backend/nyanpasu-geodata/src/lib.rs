@@ -3,21 +3,17 @@
 //! Every source is compiled at load time into a compact, immutable index and the
 //! source bytes are released: nothing keeps the core's files open or mapped, so
 //! the core can rewrite them in place while an index is alive.
-mod asn;
+mod collection;
 mod error;
 mod files;
-mod geoip_dat;
-mod ip;
-mod mmdb;
-mod proto;
-mod scratch;
-mod site;
-mod table;
-mod tags;
+mod index;
+mod parser;
 
-pub use asn::{Asn, AsnIndex};
+pub use collection::tags::Tags;
 pub use error::{GeoError, GeoResult};
 pub use files::{MihomoGeoFiles, Source, read_source};
-pub use ip::IpIndex;
-pub use site::{SiteIndex, SiteMatch};
-pub use tags::Tags;
+pub use index::{
+    asn::{Asn, AsnIndex},
+    ip::IpIndex,
+    site::{SiteIndex, SiteMatch},
+};

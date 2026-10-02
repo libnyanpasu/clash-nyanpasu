@@ -4,9 +4,12 @@ use maxminddb::{PathElement, Reader};
 use serde::{Deserialize, de::IgnoredAny};
 
 use crate::{
-    GeoError, GeoResult, geoip_dat, mmdb,
-    table::{Id, RangeTable},
-    tags::{MAX_SET, TagInterner, TagStore, Tags},
+    GeoError, GeoResult,
+    collection::{
+        range_table::{Id, RangeTable},
+        tags::{MAX_SET, TagInterner, TagStore, Tags},
+    },
+    parser::{geoip_dat, mmdb},
 };
 
 /// IP to tags: country codes and the categories some databases add.

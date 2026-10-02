@@ -5,8 +5,10 @@ use maxminddb::{LookupResult, Metadata, Reader, WithinOptions};
 
 use crate::{
     GeoError, GeoResult,
-    scratch::ScratchVec,
-    table::{Id, RangeTable, RangeTableBuilder, Span},
+    collection::{
+        range_table::{Id, RangeTable, RangeTableBuilder, Span},
+        scratch::ScratchVec,
+    },
 };
 
 /// Calls `record` once per distinct data record (barring cache evictions) and

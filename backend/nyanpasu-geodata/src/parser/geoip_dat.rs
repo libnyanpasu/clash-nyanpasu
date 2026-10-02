@@ -4,10 +4,12 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::{
     GeoError, GeoResult,
-    proto::Fields,
-    scratch::ScratchVec,
-    table::{Id, RangeTable, RangeTableBuilder, Span},
-    tags::{MAX_SET, TagInterner, TagStore},
+    collection::{
+        range_table::{Id, RangeTable, RangeTableBuilder, Span},
+        scratch::ScratchVec,
+        tags::{MAX_SET, TagInterner, TagStore},
+    },
+    parser::proto::Fields,
 };
 
 /// A code entering or leaving at `pos`. Packed: a full list holds about a

@@ -10,7 +10,7 @@ use regex_automata::{
     util::syntax,
 };
 
-use crate::{GeoError, GeoResult, proto::Fields, scratch::ScratchVec};
+use crate::{GeoError, GeoResult, collection::scratch::ScratchVec, parser::proto::Fields};
 
 /// Entry bit of a `Full` rule, which matches the whole host only.
 const FULL: u32 = 1 << 31;
@@ -301,7 +301,7 @@ impl Builder {
             .sort_unstable_by(|a, b| key(a).cmp(key(b)).then(a[2].cmp(&b[2])));
         let mut postings = ScratchVec::new();
         let index_error = |_| GeoError::Malformed("GeoSite domain index");
-        let mut map = MapBuilder::new(ScratchWriter(ScratchVec::new())).map_err(index_error)?;
+        let mut map = MapBuilder::new(ScratchVec::new()).map_err(index_error)?;
         for group in domains.as_slice().chunk_by(|a, b| key(a) == key(b)) {
             let offset = postings.len();
             postings.push(0)?;
@@ -317,7 +317,7 @@ impl Builder {
         drop(domains);
         drop(arena);
         let fst = map.into_inner().map_err(index_error)?;
-        let domains = Map::new(Box::<[u8]>::from(fst.0.as_slice())).map_err(index_error)?;
+        let domains = Map::new(Box::<[u8]>::from(fst.as_slice())).map_err(index_error)?;
         drop(fst);
 
         let mut pattern_postings = Vec::new();
@@ -397,20 +397,4 @@ fn pattern_posting(
     offsets.push(postings.len() as u32);
     postings.push(entries.len() as u32)?;
     postings.extend_from_slice(entries)
-}
-
-/// Collects the FST outside the heap, like the other build buffers.
-struct ScratchWriter(ScratchVec<u8>);
-
-impl std::io::Write for ScratchWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .extend_from_slice(buf)
-            .map_err(std::io::Error::other)?;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }

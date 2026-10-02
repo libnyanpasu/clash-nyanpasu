@@ -225,6 +225,20 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason:
       "read by the Win32 window procedure; written by set_ready_for_shutdown from the exit boundary in utils::exit",
   },
+  {
+    path: "backend/tauri/src/utils/main_thread.rs",
+    name: "MAIN_THREAD_ID",
+    category: "external",
+    reason:
+      "Windows main thread id, written once by a CRT initializer before main and only read after",
+  },
+  {
+    path: "backend/tauri/src/utils/main_thread.rs",
+    name: "RECORD_MAIN_THREAD_ID",
+    category: "external",
+    reason:
+      "CRT initializer the linker section points at, which has no closure state",
+  },
   // -- test-only ------------------------------------------------------------
   {
     path: "backend/tauri/src/core/migration/runner.rs",

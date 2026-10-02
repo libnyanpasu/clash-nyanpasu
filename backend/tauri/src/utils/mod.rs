@@ -7,6 +7,7 @@ pub mod dirs;
 pub mod exit;
 pub mod help;
 pub mod init;
+pub mod main_thread;
 pub mod path;
 pub mod proxy_env;
 pub mod resolve;

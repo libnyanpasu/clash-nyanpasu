@@ -1,5 +1,11 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
-import { useCallback, useDeferredValue, useEffect, useState } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
 import {
   ScrollArea,
@@ -85,8 +91,13 @@ function Viewer({
   const rows = useDeferredValue(logs.data)
   const deferredSearch = useDeferredValue(search)
   const [inspected, setInspected] = useState<string | null>(null)
-  const { isBottom, scrollDirection } = useScrollArea()
+  const { isBottom, scrollDirection, isTop } = useScrollArea()
   const { viewportRef } = useScrollAreaViewport()
+  const anchor = useRef<{
+    id: CoreLogCursor
+    delta: number
+    firstId: CoreLogCursor | undefined
+  } | null>(null)
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => viewportRef.current,
@@ -109,26 +120,68 @@ function Viewer({
     if (scrollDirection === 'up' && !isBottom) setFollowing(false)
   }, [scrollDirection, isBottom, setFollowing])
   useEffect(() => {
-    if (!following || !rows.length) return
-    const frame = requestAnimationFrame(() =>
-      rowVirtualizer.scrollToIndex(rows.length - 1, { align: 'end' }),
-    )
+    const frame = requestAnimationFrame(() => {
+      if (following) anchor.current = null
+      if (anchor.current) {
+        if (rows !== logs.data) return
+        if (rows[0]?.id === anchor.current.firstId && logs.more) return
+        const index = rows.findIndex(
+          (row) =>
+            row.id.generation === anchor.current?.id.generation &&
+            row.id.sequence === anchor.current?.id.sequence,
+        )
+        if (index >= 0) {
+          const offset = rowVirtualizer.getOffsetForIndex(index, 'start')
+          if (offset)
+            rowVirtualizer.scrollToOffset(offset[0] + anchor.current.delta)
+        }
+        anchor.current = null
+      } else if (following && rows.length) {
+        rowVirtualizer.scrollToIndex(rows.length - 1, { align: 'end' })
+      }
+    })
     return () => cancelAnimationFrame(frame)
-  }, [rows, following, rowVirtualizer, totalSize])
+  }, [rows, logs.data, logs.more, following, rowVirtualizer, totalSize])
+  useEffect(() => {
+    if (
+      logs.isLoading ||
+      logs.loadingOlder ||
+      logs.error ||
+      logs.status?.error ||
+      !logs.more ||
+      rows !== logs.data
+    )
+      return
+    const viewport = viewportRef.current
+    const fitsViewport =
+      viewport && viewport.scrollHeight <= viewport.clientHeight
+    if (
+      rows.length &&
+      !fitsViewport &&
+      (following || !isTop || (viewport?.scrollTop ?? 0) > 0)
+    )
+      return
+
+    // Continue short or empty filtered pages even without a scrollbar.
+    const timer = setTimeout(() => {
+      const first = rowVirtualizer
+        .getVirtualItems()
+        .find((item) => item.end > (viewportRef.current?.scrollTop ?? 0))
+      const row = first && rows[first.index]
+      if (row && first)
+        anchor.current = {
+          id: row.id,
+          delta: (viewportRef.current?.scrollTop ?? 0) - first.start,
+          firstId: rows[0]?.id,
+        }
+      setFollowing(false)
+      logs.loadOlder()
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [logs, rows, following, isTop, rowVirtualizer, viewportRef, setFollowing])
 
   return (
     <div data-slot="core-logs-viewer">
-      {logs.more && (
-        <Button
-          disabled={logs.loadingOlder}
-          onClick={() => {
-            setFollowing(false)
-            logs.loadOlder()
-          }}
-        >
-          {m.logs_load_older()}
-        </Button>
-      )}
       {!rows.length && !logs.isLoading && (
         <LogEmptyState>
           {logs.more ? m.logs_search_incomplete() : m.logs_empty_message()}
@@ -180,6 +233,7 @@ function KernelLogs() {
     const timer = setTimeout(() => setDebounced(search), 250)
     return () => clearTimeout(timer)
   }, [search])
+  useEffect(() => setFollowing(true), [level, debounced])
 
   const logs = useClashLogs(level ?? null, debounced, following)
   const clear = useLockFn(async () => {
@@ -210,7 +264,7 @@ function KernelLogs() {
         {(logs.isLoading ||
           logs.loadingOlder ||
           error ||
-          logs.status?.discarded) && (
+          Boolean(logs.status?.discarded)) && (
           <div
             className="text-on-surface-variant flex flex-wrap items-center gap-2 px-4 py-2 text-xs"
             role="status"
@@ -247,6 +301,7 @@ function KernelLogs() {
           <RegisterContextMenuTrigger asChild>
             <ScrollArea className="min-h-0 flex-1">
               <Viewer
+                key={`${level}:${debounced}`}
                 logs={logs}
                 search={search}
                 following={following}

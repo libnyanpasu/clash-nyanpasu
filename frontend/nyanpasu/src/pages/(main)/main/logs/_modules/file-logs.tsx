@@ -1,4 +1,3 @@
-import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import FilterListRounded from '~icons/material-symbols/filter-list-rounded'
 import {
   lazy,
@@ -12,12 +11,6 @@ import {
   useState,
 } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
 import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
@@ -31,6 +24,13 @@ import {
   useScrollArea,
   useScrollAreaViewport,
 } from '@nyanpasu/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@nyanpasu/ui/select'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { useFileLogs } from '@nyanpasu/query'
@@ -41,7 +41,6 @@ import {
   type LogRow,
   type LogSource,
 } from '@nyanpasu/rpc/types'
-import { cn } from '@nyanpasu/utils'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Route } from '../route'
 import {
@@ -150,41 +149,37 @@ export default function FileLogs({ source }: { source: LogSource }) {
       }
       actions={
         <>
-          <DropdownMenu align="end">
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label={`${m.logs_file_label()}: ${fileName}`}
+          <div className="w-40 min-w-28 shrink lg:w-56">
+            <Select
+              variant="outlined"
+              value={file ?? 'current'}
+              onValueChange={(value) =>
+                selectFile(value === 'current' ? null : value)
+              }
+            >
+              <SelectTrigger
+                aria-label={m.logs_file_label()}
                 title={fileName}
-                className={cn(
-                  'bg-surface-variant dark:bg-surface-variant/30',
-                  'text-on-surface dark:text-on-surface',
-                  'flex w-40 min-w-28 shrink items-center gap-2 rounded-full pr-2 pl-4 lg:w-56',
-                )}
+                className="h-10 min-w-0 py-2"
               >
-                <span className="min-w-0 flex-1 truncate text-left">
-                  {fileName}
-                </span>
-                <ArrowDropDownRounded aria-hidden className="size-5 shrink-0" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuCheckboxItem
-                checked={file === null}
-                onSelect={() => selectFile(null)}
-              >
-                {m.logs_current_file()}
-              </DropdownMenuCheckboxItem>
-              {logs.files.map((entry) => (
-                <DropdownMenuCheckboxItem
-                  key={entry.id}
-                  checked={file === entry.id}
-                  onSelect={() => selectFile(entry.id)}
+                <SelectValue
+                  className="truncate pr-4 text-sm"
+                  placeholder={m.logs_file_label()}
                 >
-                  {entry.name}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  {fileName}
+                </SelectValue>
+              </SelectTrigger>
+
+              <SelectContent>
+                <SelectItem value="current">{m.logs_current_file()}</SelectItem>
+                {logs.files.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Modal
             open={filterOpen}
             onOpenChange={(open) => {
@@ -407,6 +402,7 @@ function FileRows({
     const frame = requestAnimationFrame(() => {
       if (following) anchor.current = null
       if (anchor.current) {
+        if (rows !== logs.rows) return
         if (rows[0]?.id === anchor.current.firstId && logs.more) return
         const index = rows.findIndex((row) => row.id === anchor.current?.id)
         if (index >= 0) {
@@ -420,7 +416,7 @@ function FileRows({
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [rows, logs.more, following, virtualizer, totalSize])
+  }, [rows, logs.rows, logs.more, following, virtualizer, totalSize])
   useEffect(() => {
     const latest = rows.at(-1)?.id
     if (!following && latest && lastId.current && latest !== lastId.current) {

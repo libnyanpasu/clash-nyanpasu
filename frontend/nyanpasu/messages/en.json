@@ -45,6 +45,7 @@
   "traffic_filters_label": "Filters",
   "traffic_filter_remove": "Remove filter: {filter}",
   "traffic_filter_clear_all": "Clear all",
+  "traffic_filter_show_all": "Show all {count} filters",
   "traffic_view_connections": "Show connections",
   "traffic_dimension_origin": "Origin",
   "traffic_dimension_process": "Process",

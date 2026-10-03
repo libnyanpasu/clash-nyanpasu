@@ -23,6 +23,7 @@
   "traffic_filters_label": "Фильтры",
   "traffic_filter_remove": "Убрать фильтр: {filter}",
   "traffic_filter_clear_all": "Сбросить все",
+  "traffic_filter_show_all": "Показать все фильтры ({count})",
   "traffic_view_connections": "Показать соединения",
   "traffic_dimension_origin": "Источник",
   "traffic_dimension_process": "Процесс",

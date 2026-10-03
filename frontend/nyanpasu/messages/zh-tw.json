@@ -45,6 +45,7 @@
   "traffic_filters_label": "篩選條件",
   "traffic_filter_remove": "移除篩選：{filter}",
   "traffic_filter_clear_all": "清除全部",
+  "traffic_filter_show_all": "顯示全部 {count} 個篩選條件",
   "traffic_view_connections": "查看連線",
   "traffic_dimension_origin": "來源",
   "traffic_dimension_process": "處理程式",

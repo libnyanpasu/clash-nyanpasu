@@ -45,6 +45,7 @@
   "traffic_filters_label": "筛选条件",
   "traffic_filter_remove": "移除筛选：{filter}",
   "traffic_filter_clear_all": "清除全部",
+  "traffic_filter_show_all": "显示全部 {count} 个筛选条件",
   "traffic_view_connections": "查看连接",
   "traffic_dimension_origin": "来源",
   "traffic_dimension_process": "进程",

@@ -26,7 +26,7 @@ import type {
   TrafficScope,
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import FilterChip from '../../_modules/filter-chip'
+import FilterChips from '../../_modules/filter-chips'
 import {
   rangeName,
   RANGES,
@@ -104,38 +104,25 @@ export default function TrafficToolbar({
           ))}
         </SegmentedButton>
 
-        <div
+        <FilterChips
           className={cn(
             // When it wraps, the chips take a row of their own under the controls.
-            'order-last flex min-w-0 basis-full [scrollbar-width:none] items-center gap-2 overflow-x-auto',
+            'order-last basis-full',
             '@3xl:order-none @3xl:flex-1 @3xl:basis-0',
             filters.length === 0 && '@max-3xl:hidden',
           )}
-          role="group"
-          aria-label={m.traffic_filters_label()}
-        >
-          {filters.map((filter) => {
+          items={filters.map((filter) => {
             const label = labelOf(filter.d, filter.v)
 
-            return (
-              <FilterChip
-                key={filter.d}
-                label={`${dimensionName(filter.d)}: ${label.text}`}
-                title={label.title}
-                onRemove={() => removeFilter(filter)}
-              />
-            )
+            return {
+              key: filter.d,
+              label: `${dimensionName(filter.d)}: ${label.text}`,
+              title: label.title,
+              onRemove: () => removeFilter(filter),
+            }
           })}
-
-          {filters.length > 0 && (
-            <Button
-              className="h-8 shrink-0 px-3 whitespace-nowrap"
-              onClick={() => onSearchChange({ filters: [] })}
-            >
-              {m.traffic_filter_clear_all()}
-            </Button>
-          )}
-        </div>
+          onClearAll={() => onSearchChange({ filters: [] })}
+        />
 
         {/* What the rankings, the flow and the map all weigh usage by: a view
             setting like the time range, beside it, while the segmented button

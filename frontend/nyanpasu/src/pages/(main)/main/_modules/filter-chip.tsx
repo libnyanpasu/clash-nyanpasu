@@ -1,19 +1,25 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import { m } from '@/paraglide/messages'
+import { cn } from '@nyanpasu/utils'
 
 export default function FilterChip({
   label,
   title,
   onRemove,
+  className,
 }: {
   /** "Dimension: value" */
   label: string
   title?: string
   onRemove: () => void
+  className?: string
 }) {
   return (
     <span
-      className="border-outline-variant text-on-surface flex h-8 shrink-0 items-center gap-1 rounded-lg border pr-1 pl-3 text-sm"
+      className={cn(
+        'border-outline-variant text-on-surface flex h-8 shrink-0 items-center gap-1 rounded-lg border pr-1 pl-3 text-sm',
+        className,
+      )}
       data-slot="traffic-filter-chip"
       title={title}
     >

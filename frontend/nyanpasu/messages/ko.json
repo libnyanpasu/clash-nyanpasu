@@ -23,6 +23,7 @@
   "traffic_filters_label": "필터",
   "traffic_filter_remove": "필터 제거: {filter}",
   "traffic_filter_clear_all": "모두 지우기",
+  "traffic_filter_show_all": "필터 {count}개 모두 보기",
   "traffic_view_connections": "연결 보기",
   "traffic_dimension_origin": "출처",
   "traffic_dimension_process": "프로세스",

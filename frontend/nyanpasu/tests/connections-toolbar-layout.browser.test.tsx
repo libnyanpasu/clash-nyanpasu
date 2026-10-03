@@ -100,7 +100,7 @@ async function openToolbar(ticket: boolean) {
   onTestFinished(() => view.unmount())
 
   await expect
-    .element(view.getByRole('button', { name: m.traffic_filter_clear_all() }))
+    .element(view.getByRole('group', { name: m.traffic_filters_label() }))
     .toBeVisible()
 
   if (ticket) {

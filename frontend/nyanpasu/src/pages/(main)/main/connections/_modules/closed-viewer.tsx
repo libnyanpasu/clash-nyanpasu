@@ -5,7 +5,10 @@ import { getLocale } from '@/paraglide/runtime'
 import { formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
 import { searchableText } from '@/utils/searchable-text'
-import { useTrafficClosedConnections } from '@nyanpasu/query'
+import {
+  useTrafficClosedConnections,
+  type ClosedConnectionsSelection,
+} from '@nyanpasu/query'
 import { type ClosedConnection } from '@nyanpasu/rpc/types'
 import {
   ChainCell,
@@ -35,6 +38,11 @@ const sameRecord = () => true
 // The traffic history keeps the process path; the table shows its name.
 const processName = (process: string) => process.split('/').pop() || process
 
+const UNFILTERED = {
+  range: 'all',
+  filters: [],
+} satisfies ClosedConnectionsSelection
+
 // Closed connections of the current traffic session. Memoized like the active
 // view, so a keystroke's urgent render skips the table.
 const ClosedViewer = memo(function ClosedViewer({
@@ -55,7 +63,7 @@ const ClosedViewer = memo(function ClosedViewer({
     isFetchingNextPage,
     isFetchNextPageError,
     fetchNextPage,
-  } = useTrafficClosedConnections()
+  } = useTrafficClosedConnections(UNFILTERED)
 
   const mockNow = useMockConnectionsNow()
 

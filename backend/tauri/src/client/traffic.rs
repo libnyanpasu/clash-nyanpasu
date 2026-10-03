@@ -3,8 +3,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use nyanpasu_config::{application::NyanpasuAppConfig, profile::Profiles};
 use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficQuery, TrafficReport,
-    TrafficSummary, UsageCursor, UsageGroup, UsagePage,
+    ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficFilter, TrafficQuery,
+    TrafficRange, TrafficReport, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
 };
 
 use super::{ClientError, NyanpasuClient, Result};
@@ -94,10 +94,21 @@ impl NyanpasuClient {
     }
     pub async fn query_traffic_closed_connections(
         &self,
+        range: TrafficRange,
+        filters: Vec<TrafficFilter>,
         before: Option<ClosedCursor>,
         limit: usize,
     ) -> Result<ClosedPage> {
-        Ok(self.traffic()?.closed_connections(before, limit).await?)
+        Ok(self
+            .traffic()?
+            .closed_connections(range, filters, before, limit)
+            .await?)
+    }
+    pub async fn query_traffic_active_connection_ids(
+        &self,
+        filters: Vec<TrafficFilter>,
+    ) -> Result<Vec<String>> {
+        Ok(self.traffic()?.active_connection_ids(filters).await?)
     }
 }
 
@@ -109,9 +120,9 @@ mod tests {
     };
 
     use nyanpasu_traffic::{
-        ActiveConnection, ClosedCursor, ClosedPage, Dimension, Dimensions, FlushBatch, Flushed,
-        Metric, RedbTrafficStore, ReportRequest, SessionMeta, Tier, TrafficError, TrafficQuery,
-        TrafficRange, TrafficResult, TrafficScope, TrafficStore, Usage,
+        ActiveConnection, ClosedCursor, ClosedPage, ClosedSelection, Dimension, Dimensions,
+        FlushBatch, Flushed, Metric, RedbTrafficStore, ReportRequest, SessionMeta, Tier,
+        TrafficError, TrafficQuery, TrafficRange, TrafficResult, TrafficScope, TrafficStore, Usage,
     };
     use tempfile::tempdir;
 
@@ -148,6 +159,7 @@ mod tests {
             &self,
             _: Option<&ClosedCursor>,
             _: usize,
+            _: &ClosedSelection,
         ) -> TrafficResult<ClosedPage> {
             unreachable!("recording is disabled")
         }
@@ -215,7 +227,15 @@ mod tests {
             );
             assert_eq!(
                 client
-                    .query_traffic_closed_connections(None, 10)
+                    .query_traffic_closed_connections(TrafficRange::All, Vec::new(), None, 10)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                unavailable
+            );
+            assert_eq!(
+                client
+                    .query_traffic_active_connection_ids(Vec::new())
                     .await
                     .unwrap_err()
                     .to_string(),

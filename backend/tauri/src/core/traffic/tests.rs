@@ -8,10 +8,10 @@ use std::{
 };
 
 use nyanpasu_traffic::{
-    ActiveConnection, Bytes, ClosedCursor, ClosedPage, Dimension, Dimensions, FlushBatch, Flushed,
-    Frame, Metric, Rate, RedbTrafficStore, ReportRequest, RuleKey, Sample, SessionMeta, Tier,
-    TopologyRequest, TrafficError, TrafficFilter, TrafficQuery, TrafficRange, TrafficResult,
-    TrafficScope, TrafficStore, TrafficSummary, Usage, UsageGroup,
+    ActiveConnection, Bytes, ClosedCursor, ClosedPage, ClosedSelection, Dimension, Dimensions,
+    FlushBatch, Flushed, Frame, Metric, Rate, RedbTrafficStore, ReportRequest, RuleKey, Sample,
+    SessionMeta, Tier, TopologyRequest, TrafficError, TrafficFilter, TrafficQuery, TrafficRange,
+    TrafficResult, TrafficScope, TrafficStore, TrafficSummary, Usage, UsageGroup,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -136,8 +136,9 @@ impl TrafficStore for FlakyStore {
         &self,
         before: Option<&ClosedCursor>,
         limit: usize,
+        selection: &ClosedSelection,
     ) -> TrafficResult<ClosedPage> {
-        self.inner.closed_connections(before, limit)
+        self.inner.closed_connections(before, limit, selection)
     }
 
     fn closed_count(&self) -> TrafficResult<u64> {
@@ -552,6 +553,12 @@ async fn a_query_repeating_a_filter_dimension_is_refused_everywhere() {
             .await
             .unwrap_err(),
     );
+    refused(
+        h.client
+            .closed_connections(TrafficRange::All, repeated().filters, None, 10)
+            .await
+            .unwrap_err(),
+    );
 }
 
 #[tokio::test]
@@ -725,7 +732,7 @@ async fn a_failed_flush_is_retried_and_written_exactly_once() {
     assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
     assert!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .is_empty()
@@ -742,7 +749,7 @@ async fn a_failed_flush_is_retried_and_written_exactly_once() {
     );
     assert_eq!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .len(),
@@ -856,7 +863,7 @@ async fn shortening_the_retention_deletes_what_it_no_longer_covers() {
     assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
     assert!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .is_empty()
@@ -893,7 +900,7 @@ async fn keeping_everything_deletes_nothing() {
     );
     assert_eq!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .len(),
@@ -1259,10 +1266,14 @@ async fn closed_connections_appear_before_and_after_flush() {
     .await;
 
     // Not stored yet, but already listed ...
-    let pending = h.client.closed_connections(None, 10).await.unwrap();
+    let pending = h
+        .client
+        .closed_connections(TrafficRange::All, Vec::new(), None, 10)
+        .await
+        .unwrap();
     assert!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .is_empty()
@@ -1272,7 +1283,11 @@ async fn closed_connections_appear_before_and_after_flush() {
 
     // ... and listed once more after the flush moves it to the store.
     h.client.flush().await.unwrap();
-    let page = h.client.closed_connections(None, 10).await.unwrap();
+    let page = h
+        .client
+        .closed_connections(TrafficRange::All, Vec::new(), None, 10)
+        .await
+        .unwrap();
     assert_eq!(page, pending);
     assert_eq!(h.client.summary().await.unwrap().closed_connections, 1);
     assert_eq!(page.next, None);
@@ -1288,6 +1303,85 @@ async fn closed_connections_appear_before_and_after_flush() {
             ..dims("curl")
         }
     );
+}
+
+#[tokio::test]
+async fn closed_connections_select_pending_and_stored_alike() {
+    let h = Harness::new("p1").await;
+    h.clock.set(10 * HOUR);
+    h.close_in_hour_by(5, "curl").await;
+    h.client.flush().await.unwrap();
+    h.close_in_hour_by(6, "wget").await;
+    // Pending: c6 (wget). Stored: c5 (curl).
+    let curl = vec![TrafficFilter {
+        dimension: Dimension::Process,
+        value: "curl".into(),
+    }];
+    let wget = vec![TrafficFilter {
+        dimension: Dimension::Process,
+        value: "wget".into(),
+    }];
+    let ids = |page: ClosedPage| {
+        page.connections
+            .into_iter()
+            .map(|c| c.id)
+            .collect::<Vec<_>>()
+    };
+    let select = async |range, filters| {
+        ids(h
+            .client
+            .closed_connections(range, filters, None, 10)
+            .await
+            .unwrap())
+    };
+
+    assert_eq!(select(TrafficRange::All, curl.clone()).await, ["c5"]);
+    assert_eq!(select(TrafficRange::All, wget.clone()).await, ["c6"]);
+    h.client.flush().await.unwrap();
+    assert_eq!(select(TrafficRange::All, curl.clone()).await, ["c5"]);
+    assert_eq!(select(TrafficRange::All, wget.clone()).await, ["c6"]);
+
+    // The last hour starts at 9h, after both closed.
+    assert!(select(TrafficRange::LastHour, Vec::new()).await.is_empty());
+    assert_eq!(
+        select(TrafficRange::Last6Hours, Vec::new()).await,
+        ["c6", "c5"]
+    );
+}
+
+#[tokio::test]
+async fn active_connection_ids_follow_the_filters() {
+    let h = Harness::new("p1").await;
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(2, 2),
+        vec![sample("b", "wget", 1, 1), sample("a", "curl", 1, 1)],
+    ))
+    .await;
+    let filter = |value: &str| TrafficFilter {
+        dimension: Dimension::Process,
+        value: value.into(),
+    };
+
+    assert_eq!(
+        h.client
+            .active_connection_ids(vec![filter("curl")])
+            .await
+            .unwrap(),
+        ["a"]
+    );
+    assert_eq!(
+        h.client.active_connection_ids(Vec::new()).await.unwrap(),
+        ["a", "b"]
+    );
+    let error = h
+        .client
+        .active_connection_ids(vec![filter("curl"), filter("wget")])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.starts_with("invalid traffic request"), "{error}");
 }
 
 #[tokio::test]

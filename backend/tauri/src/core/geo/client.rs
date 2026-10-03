@@ -24,6 +24,12 @@ impl Drop for Inner {
 }
 
 impl GeoIndexClient {
+    #[cfg(test)]
+    pub(crate) async fn stop_for_test(&self) -> Result<()> {
+        self.0.actor.stop_and_wait(None, None).await?;
+        Ok(())
+    }
+
     pub async fn spawn(
         args: GeoIndexArgs,
         shutdown: CancellationToken,

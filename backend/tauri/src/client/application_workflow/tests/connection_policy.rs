@@ -640,6 +640,13 @@ fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
 fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
     let f = Fixture::new(false);
     tauri::async_runtime::block_on(async {
+        // Only this workflow may read the binding counted below; background
+        // geo discovery and proxy refreshes otherwise race these assertions.
+        f.client.inner._geo_index.stop_for_test().await.unwrap();
+        f.client.inner.proxies.stop_for_test().await.unwrap();
+        f.client.inner.core_api.refresh_status().await.unwrap();
+        f.endpoint.api_queries.store(0, Ordering::SeqCst);
+
         let uid = add_profile(&f).await;
         let mut config = f.client.get_clash_config().await.unwrap();
         config.break_connection.on_profile_change = false;
@@ -671,6 +678,14 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
             .unwrap();
         assert_eq!(f.endpoint.api_queries.load(Ordering::SeqCst), 0);
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "reconcile"]);
+
+        // The source remains available when a selection actually changes.
+        f.client.activate_profile(None).await.unwrap();
+        assert!(f.endpoint.api_queries.load(Ordering::SeqCst) > 0);
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "reconcile", "reconcile", "close"]
+        );
     });
 }
 

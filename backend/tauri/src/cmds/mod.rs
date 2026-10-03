@@ -42,25 +42,12 @@ enum Commands {
     StatisticWidget { variant: StatisticWidgetVariant },
 }
 
-struct DelayedExitGuard;
-impl DelayedExitGuard {
-    pub fn new() -> Self {
-        Self
-    }
-}
-impl Drop for DelayedExitGuard {
-    fn drop(&mut self) {
-        std::thread::sleep(std::time::Duration::from_secs(5));
-    }
-}
-
 pub fn parse() -> anyhow::Result<()> {
     let cli = Cli::parse();
     if cli.version {
         print_version_info();
     }
     if let Some(commands) = &cli.command {
-        let guard = DelayedExitGuard::new();
         match commands {
             Commands::Migrate(opts) => {
                 migrate::parse(opts);
@@ -99,7 +86,6 @@ pub fn parse() -> anyhow::Result<()> {
                     .expect("Failed to start statistic widget");
             }
         }
-        drop(guard);
         std::process::exit(0);
     }
     Ok(()) // bypass

@@ -2,9 +2,11 @@
 
 [Issue #5338](https://github.com/libnyanpasu/clash-nyanpasu/issues/5338)
 报告 Windows 11 25H2 x64 上运行程序后约 5 秒才出现托盘和窗口。
-源码中存在一个可直接解释固定等待的路径：GUI 启动同步等待 `migrate` 子进程，
+修正前存在一个可直接解释固定等待的路径：GUI 启动同步等待 `migrate` 子进程，
 而该子命令正常返回后，共用的 `DelayedExitGuard` 在退出前固定 sleep 5 秒。
-这是当前源码的静态证据，仍需在 issue 所述 Windows release 环境中测量确认其实际占比。
+当前实现已移除该共用延迟，子命令完成后立即退出；父进程仍等待迁移退出码和输出收尾。
+Windows 目录迁移后的 GUI 启动也改为在当前线程完成进程创建，不再用后台线程和固定 sleep 保活。
+实际启动延迟的改善仍需在 issue 所述 Windows release 环境中做同机 A/B 测量确认。
 
 ## 采集启动 trace
 
@@ -147,7 +149,7 @@ Remove-Item Env:NYANPASU_TRACE_DIR
 ## Perfetto 分析与统计
 
 先在 Perfetto 中打开单次 trace，定位入口事件，查看到托盘、窗口创建、ready 的时间线。
-按阶段名称前缀和时间范围检查大阶段的明细及并行工作。特别比较 `entry.migration_subprocess` 是否持续约 5 秒，
+按阶段名称前缀和时间范围检查大阶段的明细及并行工作。特别比较修正前后 `entry.migration_subprocess` 的耗时，
 再用 ETW 检查迁移子进程活动和退出等待。
 
 以下查询以一个文件为一个样本。Trace Processor 的 `ts` / `dur` 单位是 ns；
@@ -215,12 +217,12 @@ p95 使用排序后的 nearest-rank：第 `ceil(0.95 * n)` 个样本。
 
 ## 第二轮：解释慢阶段
 
-源码当前可见的候选如下；只有测量支持后才作为优化目标：
+先验证已移除的固定等待，再根据测量选择后续优化目标：
 
-- **优先验证固定 5 秒等待**：`cmds::parse` 为所有子命令创建 `DelayedExitGuard`，
-  `migrate::parse` 正常完成后返回，guard 的 Drop 固定 sleep 5 秒；GUI 的 `child.wait()` 等待它结束。
-  先采集未优化 trace，再考虑只让正常迁移子命令跳过延迟退出，保留其他命令的行为。
+- **验证子命令立即退出**：用修正前后构建做 A/B，确认 `entry.migration_subprocess` 不再包含退出前固定 5 秒等待。
   对照已迁移、首次安装、待迁移、迁移失败/备份失败场景，验证退出码、备份和数据库状态。
+  同时检查普通重启、Linux AppImage 重启、Windows 目录迁移后的重启，以及其他子命令的完成和退出行为。
+  Windows 目录迁移应在新 GUI 进程创建成功后退出；进程创建失败必须报告错误，不依赖 sleep 等待启动线程。
   不为绕过等待移除迁移或改变配置/数据库读取之前的迁移约束。
 - `entry.migration_subprocess` 仍大：继续追查子进程加载、实际迁移检查和磁盘访问。
   之后 setup 还执行进程内迁移，应分别测量，不能只看父进程等待推断实际迁移成本。

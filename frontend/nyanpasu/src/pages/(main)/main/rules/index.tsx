@@ -6,6 +6,7 @@ import { type Bytes, type ClashRule } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { ruleLabel } from '../_modules/traffic-filters'
 import { rankByValue } from './_modules/rank-by-value'
 import {
   RULE_ROW_HEIGHT,
@@ -13,11 +14,7 @@ import {
   RulesHeader,
   type RuleSort,
 } from './_modules/rule-row'
-import {
-  ruleLabel,
-  useRuleStats,
-  type RuleLiveStats,
-} from './_modules/use-rule-stats'
+import { useRuleStats, type RuleLiveStats } from './_modules/use-rule-stats'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/rules/')({

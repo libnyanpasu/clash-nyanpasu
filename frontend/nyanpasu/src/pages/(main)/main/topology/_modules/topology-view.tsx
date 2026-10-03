@@ -27,6 +27,7 @@ import type {
   TopologyNode,
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { type SearchFilter } from '../../_modules/traffic-filters'
 import GeographyView from './geography-view'
 import {
   LAYER_TEMPLATES,
@@ -34,7 +35,6 @@ import {
   TEMPLATES,
   type LayerTemplate,
   type Limit,
-  type SearchFilter,
 } from './search'
 import { usePageTransition } from './transition'
 

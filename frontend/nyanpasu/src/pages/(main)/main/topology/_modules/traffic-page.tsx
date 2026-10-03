@@ -3,20 +3,20 @@ import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
 import DevicesRounded from '~icons/material-symbols/devices-rounded'
 import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { useMockTrafficNow } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
-import { usageLabel } from '@/utils/traffic-usage'
-import { useProfile, useSetting, useTrafficReport } from '@nyanpasu/query'
+import { useSetting, useTrafficReport } from '@nyanpasu/query'
 import { type Dimension, type ReportRequest } from '@nyanpasu/rpc/types'
+import { toggleFilter } from '../../_modules/traffic-filters'
+import { useUsageLabelOf } from '../../_modules/use-usage-label-of'
 import { mockTrafficReport } from './mock-traffic'
 import Notice from './notice'
 import RankingCard from './ranking-card'
 import {
   DEFAULT_TEMPLATE,
   pollInterval,
-  toggleFilter,
   toQuery,
   toTopologyRequest,
   type TrafficSearch,
@@ -53,21 +53,7 @@ export default function TrafficPage({
 
   const { value: retention } = useSetting('traffic_retention')
 
-  const {
-    query: { data: profiles },
-  } = useProfile()
-
-  const profileNames = useMemo(
-    () =>
-      profiles && new Map(profiles.items.map((item) => [item.uid, item.name])),
-    [profiles],
-  )
-
-  const labelOf = useCallback(
-    (dimension: Dimension, key: string) =>
-      usageLabel(dimension, key, profileNames),
-    [profileNames],
-  )
+  const labelOf = useUsageLabelOf()
 
   const query = useMemo(
     () => toQuery({ range, scope, filters }),

@@ -1,9 +1,12 @@
 import { expect, test } from 'vitest'
 import { beyondRetention } from '@/utils/traffic-retention'
 import {
-  pollInterval,
   setFilter,
   toggleFilter,
+  toTrafficFilters,
+} from '../src/pages/(main)/main/_modules/traffic-filters'
+import {
+  pollInterval,
   toQuery,
   toTopologyRequest,
   trafficSearchSchema,
@@ -34,6 +37,12 @@ test('the filters of the url become the filters of the query', () => {
 
   expect(toQuery(search).filters).toEqual([
     { dimension: 'target', value: 'example.com' },
+  ])
+})
+
+test('the short filters of the url become the backend filters', () => {
+  expect(toTrafficFilters([{ d: 'rule', v: 'Match' }])).toEqual([
+    { dimension: 'rule', value: 'Match' },
   ])
 })
 

@@ -123,10 +123,6 @@ jobs:
         run: |
           pnpm prepare:nightly
 
-      - name: Build UI
-        run: |
-          pnpm -F ui build
-
       - name: Build Clash Nyanpasu (Stable)
         if: ${{ inputs.nightly == false }}
         run: |

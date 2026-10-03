@@ -86,6 +86,18 @@ test('parent re-renders do not re-measure an unchanged text', async ({
   }
   root.render(<Parent />)
   await expect.poll(() => content(container)?.textContent).toBe('short')
+
+  // The mount's first resize notification measures once and may arrive after
+  // the text renders. Observers are notified in creation order, so one created
+  // after the marquee's fires after it.
+  await expect.poll(() => observe).toHaveBeenCalled()
+  await new Promise<void>((resolve) => {
+    const settled = new ResizeObserver(() => {
+      settled.disconnect()
+      resolve()
+    })
+    settled.observe(container.querySelector('[data-slot="text-marquee"]')!)
+  })
   const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
   onTestFinished(() => scrollWidth.mockRestore())
   observe.mockClear()

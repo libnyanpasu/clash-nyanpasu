@@ -45,8 +45,8 @@
     "@nyanpasu/constants": "workspace:^",
     "@nyanpasu/hooks": "workspace:^",
     "@nyanpasu/platform": "workspace:^",
-    "@nyanpasu/rpc": "workspace:^",
     "@nyanpasu/query": "workspace:^",
+    "@nyanpasu/rpc": "workspace:^",
     "@nyanpasu/theme": "workspace:^",
     "@nyanpasu/ui": "workspace:^"
   },
@@ -63,7 +63,6 @@
     "@tauri-apps/plugin-dialog": "2.8.0",
     "@tauri-apps/plugin-fs": "2.6.0",
     "@tauri-apps/plugin-notification": "2.5.0",
-    "@tauri-apps/plugin-updater": "2.13.0",
     "@types/d3": "7.4.3",
     "@types/less": "3.0.8",
     "@types/react": "19.3.0",

@@ -164,6 +164,10 @@ pub struct NyanpasuAppConfig {
     /// Check update when app launch
     pub enable_auto_check_update: bool,
 
+    /// Download application updates automatically after they are found
+    #[serde(default)]
+    pub enable_auto_download_update: bool,
+
     /// None in older configurations means the channel of the installed build.
     #[serde(default)]
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
@@ -256,6 +260,7 @@ impl Default for NyanpasuAppConfig {
             max_log_files: 7,
             max_log_file_size: default_max_log_file_size(),
             enable_auto_check_update: true,
+            enable_auto_download_update: false,
             release_channel: None,
             update_sources: default_update_sources(),
             tray_selector_mode: ProxiesSelectorMode::default(),
@@ -318,6 +323,30 @@ mod patch_tests {
         value.as_object_mut().unwrap().remove("max_log_file_size");
         let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
         assert_eq!(config.max_log_file_size, 10);
+    }
+
+    #[test]
+    fn auto_download_update_defaults_off_for_defaults_and_existing_configurations() {
+        assert!(!NyanpasuAppConfig::default().enable_auto_download_update);
+
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("enable_auto_download_update");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert!(!config.enable_auto_download_update);
+    }
+
+    #[test]
+    fn auto_download_update_is_patchable() {
+        let patch: NyanpasuAppConfigPatch =
+            serde_json::from_str(r#"{"enable_auto_download_update":true}"#).unwrap();
+        assert_eq!(patch.enable_auto_download_update, Some(true));
+
+        let mut config = NyanpasuAppConfig::default();
+        config.apply(patch);
+        assert!(config.enable_auto_download_update);
     }
 
     #[test]

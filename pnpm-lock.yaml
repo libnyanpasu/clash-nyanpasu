@@ -455,9 +455,6 @@ importers:
       '@tauri-apps/plugin-notification':
         specifier: 2.5.0
         version: 2.5.0
-      '@tauri-apps/plugin-updater':
-        specifier: 2.13.0
-        version: 2.13.0
       '@types/d3':
         specifier: 7.4.3
         version: 7.4.3
@@ -3689,9 +3686,6 @@ packages:
 
   '@tauri-apps/plugin-notification@2.5.0':
     resolution: {integrity: sha512-S19zXtRLX1YryUh532YcGnjI3fzrBGj4oUcW87ojytmOAOCVMZ2bTTHOhI0enYZPH5uDmdQw+dEGCn5wfCm3zw==}
-
-  '@tauri-apps/plugin-updater@2.13.0':
-    resolution: {integrity: sha512-9iwTSOlxMPZGI6M84Nd00rv6g+xERo8g4GDvG9cazOao+HjdIHZYCcvkvSP6JGn7Z50/R8t2jbR+PxQxf2qKMQ==}
 
   '@tombi-toml/wasm-lib@1.5.8':
     resolution: {integrity: sha512-YR+yPlhnA9RaFnmZCfxLdC6xKm+NcNHu9ZyOHS6dEU47E2dhcZghENUWBHfczZ1Ml3c+p/jSwCRMwoebHwSTXQ==}
@@ -9650,10 +9644,6 @@ snapshots:
       '@tauri-apps/api': 2.12.0
 
   '@tauri-apps/plugin-notification@2.5.0':
-    dependencies:
-      '@tauri-apps/api': 2.12.0
-
-  '@tauri-apps/plugin-updater@2.13.0':
     dependencies:
       '@tauri-apps/api': 2.12.0
 

@@ -329,10 +329,12 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['queryTrafficClosedConnections', ...args],
         queryFn: () => commands.queryTrafficClosedConnections(...args),
       }),
-    checkUpdate: (...args: Parameters<typeof commands.checkUpdate>) =>
+    getAppUpdateState: (
+      ...args: Parameters<typeof commands.getAppUpdateState>
+    ) =>
       queryOptions({
-        queryKey: ['checkUpdate', ...args],
-        queryFn: () => commands.checkUpdate(...args),
+        queryKey: ['getAppUpdateState', ...args],
+        queryFn: () => commands.getAppUpdateState(...args),
       }),
     getReleaseChannel: (
       ...args: Parameters<typeof commands.getReleaseChannel>
@@ -376,6 +378,33 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['setReleaseChannel'],
       mutationFn: (input: Parameters<typeof commands.setReleaseChannel>) =>
         commands.setReleaseChannel(...input),
+    }),
+    checkAppUpdate: mutationOptions({
+      mutationKey: ['checkAppUpdate'],
+      mutationFn: (input: Parameters<typeof commands.checkAppUpdate>) =>
+        commands.checkAppUpdate(...input),
+    }),
+    downloadAppUpdate: mutationOptions({
+      mutationKey: ['downloadAppUpdate'],
+      mutationFn: (input: Parameters<typeof commands.downloadAppUpdate>) =>
+        commands.downloadAppUpdate(...input),
+    }),
+    cancelAppUpdateDownload: mutationOptions({
+      mutationKey: ['cancelAppUpdateDownload'],
+      mutationFn: (
+        input: Parameters<typeof commands.cancelAppUpdateDownload>,
+      ) => commands.cancelAppUpdateDownload(...input),
+    }),
+    installAppUpdate: mutationOptions({
+      mutationKey: ['installAppUpdate'],
+      mutationFn: (input: Parameters<typeof commands.installAppUpdate>) =>
+        commands.installAppUpdate(...input),
+    }),
+    discardAppUpdatePackage: mutationOptions({
+      mutationKey: ['discardAppUpdatePackage'],
+      mutationFn: (
+        input: Parameters<typeof commands.discardAppUpdatePackage>,
+      ) => commands.discardAppUpdatePackage(...input),
     }),
     subscribeClashConnectionDetails: mutationOptions({
       mutationKey: ['subscribeClashConnectionDetails'],
@@ -627,11 +656,6 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['restartApplication'],
       mutationFn: (input: Parameters<typeof commands.restartApplication>) =>
         commands.restartApplication(...input),
-    }),
-    installUpdate: mutationOptions({
-      mutationKey: ['installUpdate'],
-      mutationFn: (input: Parameters<typeof commands.installUpdate>) =>
-        commands.installUpdate(...input),
     }),
     setTrayIcon: mutationOptions({
       mutationKey: ['setTrayIcon'],

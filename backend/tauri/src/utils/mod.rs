@@ -1,4 +1,3 @@
-pub mod app_update;
 pub mod blocking;
 pub mod candy;
 pub mod color;

@@ -269,7 +269,6 @@ pub fn run() -> std::io::Result<()> {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .manage(utils::exit::ExitBoundary::default())
-        .manage(utils::app_update::UpdateInstallation::default())
         .invoke_handler(transport_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())

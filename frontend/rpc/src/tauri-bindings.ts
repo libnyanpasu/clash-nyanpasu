@@ -15,6 +15,9 @@ export const commands = {
 
 /** Events */
 export const events = {
+  appUpdateStateChanged: makeEvent<AppUpdateStateChanged>(
+    'app-update-state-changed',
+  ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
@@ -37,6 +40,41 @@ export const events = {
 }
 
 /* Types */
+export type AppUpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'up_to_date'
+  | 'available'
+  | 'downloading'
+  | 'cancelling'
+  | 'cancelled'
+  | 'verifying'
+  | 'ready'
+  | 'installing'
+  | 'failed'
+
+export type AppUpdateRelease = {
+  version: string
+  date: string | null
+  body: string | null
+}
+
+export type AppUpdateSnapshot = {
+  revision: number
+  phase: AppUpdatePhase
+  release: AppUpdateRelease | null
+  downloaded: number
+  total: number | null
+  speed: number | null
+  source: UpdateSource | null
+  error: string | null
+  last_checked_at: string | null
+  supported: boolean
+  endpoints: string[]
+}
+
+export type AppUpdateStateChanged = AppUpdateSnapshot
+
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'
 
@@ -696,6 +734,8 @@ export type TrafficRate = {
   download: number
   upload: number
 }
+
+export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast'
 
 /**  Message for inter-window communication */
 export type WindowMessageEvent = {

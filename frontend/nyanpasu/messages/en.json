@@ -553,6 +553,7 @@
   "connections_column_settings": "Columns",
   "connections_column_settings_reorder": "Drag to reorder",
   "connections_closed_unavailable": "Traffic recording is unavailable, so closed connections cannot be listed",
+  "connections_active_unavailable": "Traffic recording is unavailable, so connections cannot be filtered",
   "connections_closed_loading": "Loading older connections…",
   "connections_field_metadata": "Metadata",
   "connections_field_id": "ID",

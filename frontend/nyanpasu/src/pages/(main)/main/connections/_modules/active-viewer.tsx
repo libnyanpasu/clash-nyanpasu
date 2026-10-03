@@ -1,22 +1,10 @@
-import {
-  memo,
-  useCallback,
-  useDeferredValue,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
-import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
-import { searchableText } from '@/utils/searchable-text'
-import {
-  useClashConnectionDetails,
-  useDeleteClashConnections,
-} from '@nyanpasu/query'
-import { ClashConnection_Serialize } from '@nyanpasu/rpc/types'
+import { useDeleteClashConnections } from '@nyanpasu/query'
+import type { SearchFilter } from '../../_modules/traffic-filters'
 import {
   ChainCell,
   RelativeTimeCell,
@@ -29,17 +17,14 @@ import ConnectionsTable, {
   type ConnectionColumn,
   type RowProps,
 } from './connections-table'
-import { mockActiveConnections } from './mock-connections'
 import TableRow, {
   activeConnectionDetail,
   ConnectionDetailModal,
 } from './table-row'
-
-export type ConnectionRow = ClashConnection_Serialize & {
-  // Parsed once per sample: sorting by time compares numbers instead of
-  // parsing both dates in every comparison.
-  startMs: number
-}
+import {
+  useActiveConnectionRows,
+  type ConnectionRow,
+} from './use-connection-rows'
 
 // A connection's other fields are fixed for its life in the core, and its
 // relative time follows the table's tick, so only its traffic changes a row.
@@ -56,61 +41,21 @@ const connectionId = (row: ConnectionRow) => row.id
 const ActiveViewer = memo(function ActiveViewer({
   search,
   proxy,
+  filters,
   settingsOpen,
   onSettingsOpenChange,
 }: {
   search: string
   proxy?: string | null
+  filters: SearchFilter[]
   settingsOpen: boolean
   onSettingsOpenChange: (open: boolean) => void
 }) {
-  const { data: latest } = useClashConnectionDetails()
-
-  // Rebuilding the table from a sample is the bulk of every frame. A deferred
-  // sample renders in the background, where input and scrolling interrupt it.
-  const details = useDeferredValue(latest)
-
-  const mockNow = useMockConnectionsNow()
-
-  const connections = useMemo<ConnectionRow[]>(
-    () =>
-      (mockNow === null
-        ? (details?.connections ?? [])
-        : mockActiveConnections(mockNow)
-      ).map((conn) => ({
-        ...conn,
-        startMs: Date.parse(conn.start),
-      })),
-    [details, mockNow],
-  )
-
-  // A connection's strings stay the same while it is open, so its searchable
-  // text is built once and kept, by id, until it leaves the stream.
-  const searchTexts = useRef(new Map<string, string>())
-
-  const data = useMemo(() => {
-    const byProxy = connections.filter((conn) =>
-      proxy ? conn.chains?.includes(proxy) : true,
-    )
-
-    if (!search) {
-      return byProxy
-    }
-
-    const term = search.toLowerCase()
-    const previous = searchTexts.current
-    const texts = new Map<string, string>()
-
-    const matched = byProxy.filter((conn) => {
-      const text = previous.get(conn.id) ?? searchableText(conn)
-      texts.set(conn.id, text)
-      return text.includes(term)
-    })
-
-    searchTexts.current = texts
-
-    return matched
-  }, [connections, search, proxy])
+  const { connections, rows, loading, unavailable } = useActiveConnectionRows({
+    search,
+    proxy,
+    filters,
+  })
 
   const deleteConnections = useDeleteClashConnections()
 
@@ -326,11 +271,18 @@ const ActiveViewer = memo(function ActiveViewer({
       <ConnectionsTable
         settingsKey="connections-columns-active"
         columns={columns}
-        data={data}
+        data={rows}
         getRowId={connectionId}
         renderRow={renderRow}
         isRowEqual={sameTraffic}
-        emptyMessage={m.connections_empty_message()}
+        // Matching ids are on their way; nothing is known to be empty yet.
+        emptyMessage={
+          unavailable
+            ? m.connections_active_unavailable()
+            : loading
+              ? ''
+              : m.connections_empty_message()
+        }
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
       />

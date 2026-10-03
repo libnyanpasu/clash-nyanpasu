@@ -57,6 +57,7 @@ function renderActiveViewer(onTestFinished: (fn: () => void) => void) {
         <ScrollArea className="h-96">
           <ActiveViewer
             search=""
+            filters={[]}
             settingsOpen={false}
             onSettingsOpenChange={() => {}}
           />

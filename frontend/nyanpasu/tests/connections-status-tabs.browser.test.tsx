@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
 }))
 
-test('shows both counts and switches only to the other status', async ({
+test('shows both counts and switches only to the other scope', async ({
   onTestFinished,
 }) => {
   const container = document.createElement('div')
@@ -34,7 +34,7 @@ test('shows both counts and switches only to the other status', async ({
   expect(active.textContent).toContain((42).toLocaleString())
   expect(closed.textContent).toContain((1024).toLocaleString())
 
-  // Selecting the selected status again must not clear the selection.
+  // Selecting the selected scope again must not clear the selection.
   active.click()
   expect(onValueChange).not.toHaveBeenCalled()
 

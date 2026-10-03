@@ -4,14 +4,22 @@ import {
 } from '@nyanpasu/ui/segmented-button'
 import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
 import { m } from '@/paraglide/messages'
-import { useClashConnections, useTrafficSummary } from '@nyanpasu/query'
-import { cn } from '@nyanpasu/utils'
 import {
-  mockActiveConnections,
-  mockClosedConnections,
-} from './mock-connections'
+  useClashConnections,
+  useTrafficActiveConnectionIds,
+  useTrafficReport,
+  useTrafficSummary,
+} from '@nyanpasu/query'
+import { cn } from '@nyanpasu/utils'
+import { toTrafficFilters } from '../../_modules/traffic-filters'
+import {
+  isFiltered,
+  mockActiveRows,
+  mockClosedRows,
+  type ConnectionsSelection,
+} from './use-connection-rows'
 
-export type ConnectionsStatus = 'active' | 'closed'
+export type ConnectionsScope = 'active' | 'closed'
 
 function CountBadge({ count }: { count?: number }) {
   if (count === undefined) {
@@ -38,8 +46,8 @@ export function StatusTabs({
   activeCount,
   closedCount,
 }: {
-  value: ConnectionsStatus
-  onValueChange: (value: ConnectionsStatus) => void
+  value: ConnectionsScope
+  onValueChange: (value: ConnectionsScope) => void
   activeCount?: number
   closedCount?: number
 }) {
@@ -75,30 +83,58 @@ export function StatusTabs({
 }
 
 // Reads the counts on its own, so each sample re-renders the tabs alone and
-// not the page around them. Counts cover everything kept, whatever the
-// search or proxy filter shows.
-export default function ConnectionsStatusTabs(
-  props: Omit<Parameters<typeof StatusTabs>[0], 'activeCount' | 'closedCount'>,
-) {
+// not the page around them. Unfiltered, counts cover everything kept, whatever
+// the search or proxy filter shows; filtered, they count the selection as the
+// traffic report does.
+export default function ConnectionsStatusTabs({
+  selection,
+  ...props
+}: Omit<Parameters<typeof StatusTabs>[0], 'activeCount' | 'closedCount'> & {
+  selection: ConnectionsSelection
+}) {
   const { data: samples } = useClashConnections()
 
   const { data: summary } = useTrafficSummary()
 
   const mockNow = useMockConnectionsNow()
 
+  const filtered = isFiltered(selection)
+
+  const filters = toTrafficFilters(selection.filters)
+
+  const { data: ids } = useTrafficActiveConnectionIds(filters, {
+    enabled: filtered && mockNow === null,
+  })
+
+  const { data: report } = useTrafficReport(
+    {
+      query: { range: selection.range ?? 'all', scope: 'closed', filters },
+      metric: 'connections',
+      rankings: [],
+      ranking_limit: 1,
+      topology: null,
+    },
+    { enabled: filtered && mockNow === null },
+  )
+
+  const counts =
+    mockNow !== null
+      ? {
+          active: mockActiveRows(mockNow, selection.filters).length,
+          closed: mockClosedRows(mockNow, selection).length,
+        }
+      : filtered
+        ? { active: ids?.length, closed: report?.total.connections }
+        : {
+            active: samples?.at(-1)?.connectionCount,
+            closed: summary?.closed_connections,
+          }
+
   return (
     <StatusTabs
       {...props}
-      activeCount={
-        mockNow === null
-          ? samples?.at(-1)?.connectionCount
-          : mockActiveConnections(mockNow).length
-      }
-      closedCount={
-        mockNow === null
-          ? summary?.closed_connections
-          : mockClosedConnections(mockNow).length
-      }
+      activeCount={counts.active}
+      closedCount={counts.closed}
     />
   )
 }

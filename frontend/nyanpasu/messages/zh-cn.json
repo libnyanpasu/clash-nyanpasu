@@ -553,6 +553,7 @@
   "connections_column_settings": "列设置",
   "connections_column_settings_reorder": "拖动以调整顺序",
   "connections_closed_unavailable": "流量记录不可用，无法列出已关闭的连接",
+  "connections_active_unavailable": "流量记录不可用，无法筛选连接",
   "connections_closed_loading": "正在加载更早的连接…",
   "connections_field_metadata": "元数据",
   "connections_field_id": "ID",

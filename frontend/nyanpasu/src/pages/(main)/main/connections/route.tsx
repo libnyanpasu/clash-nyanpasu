@@ -11,18 +11,23 @@ import {
   useSidebar,
 } from '@nyanpasu/ui/slider-sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+import { keepReturn } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { useIsMobileOrTablet } from '@nyanpasu/hooks'
 import { useClashRules } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { RANGES, searchFilterSchema } from '../_modules/traffic-filters'
 import ProxyIcon from '../rules/_modules/proxy-icon'
 
 export const Route = createFileRoute('/(main)/main/connections')({
   component: RouteComponent,
   validateSearch: z.object({
     proxy: z.string().optional().nullable(),
-    status: z.enum(['active', 'closed']).optional(),
+    scope: z.enum(['active', 'closed']).optional(),
+    range: z.enum(RANGES).optional(),
+    filters: z.array(searchFilterSchema).optional(),
+    q: z.string().optional(),
   }),
 })
 
@@ -75,6 +80,7 @@ const Item = ({
               ...previous,
               proxy: item,
             })}
+            state={keepReturn}
           >
             <div className="text-md grid size-6 shrink-0 place-content-center">
               {icon}

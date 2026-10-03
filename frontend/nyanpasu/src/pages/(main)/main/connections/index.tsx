@@ -1,6 +1,6 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import ViewColumnRounded from '~icons/material-symbols/view-column-rounded'
-import { useDeferredValue, useState } from 'react'
+import { useCallback, useDeferredValue, useMemo, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
@@ -10,26 +10,72 @@ import {
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
+import { keepReturn } from '@/components/router/cross-navigation'
+import { ReturnButton } from '@/components/router/return-button'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useDeleteClashConnections } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
+import type { SearchFilter } from '../_modules/traffic-filters'
+import { useSearchTerm } from '../_modules/use-search-term'
 import ActiveViewer from './_modules/active-viewer'
 import ClosedViewer from './_modules/closed-viewer'
+import ConnectionsFilters from './_modules/connections-filters'
 import ConnectionsStatusTabs from './_modules/status-tabs'
+import {
+  isFiltered,
+  type ConnectionsSelection,
+} from './_modules/use-connection-rows'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/connections/')({
   component: RouteComponent,
 })
 
+const NO_FILTERS: SearchFilter[] = []
+
 function RouteComponent() {
-  const { proxy, status = 'active' } = IndexRoute.useSearch()
+  const {
+    proxy,
+    scope = 'active',
+    range,
+    filters = NO_FILTERS,
+    q,
+  } = IndexRoute.useSearch()
 
   const navigate = IndexRoute.useNavigate()
 
-  const [search, setSearch] = useState('')
+  // One object while the URL keeps it, so the memoized viewers skip renders.
+  const selection = useMemo<ConnectionsSelection>(
+    () => ({ range, filters }),
+    [range, filters],
+  )
+
+  const filtered = isFiltered(selection)
+
+  const handleSelectionChange = (next: ConnectionsSelection) =>
+    navigate({
+      search: (previous) => ({
+        ...previous,
+        range: next.range,
+        filters: next.filters.length > 0 ? next.filters : undefined,
+      }),
+      replace: true,
+      state: keepReturn,
+    })
+
+  const writeQuery = useCallback(
+    (next: string | undefined) =>
+      navigate({
+        search: (previous) => ({ ...previous, q: next }),
+        replace: true,
+        state: keepReturn,
+      }),
+    [navigate],
+  )
+
+  const [search, setSearch] = useSearchTerm(q, writeQuery)
 
   // Filtering, highlighting and re-sorting every connection is heavy; typing
   // stays responsive while the table catches up with the latest term.
@@ -52,7 +98,7 @@ function RouteComponent() {
   // Keyed by tab so switching starts the other table at the top.
   const scrollArea = (
     <ScrollArea
-      key={status}
+      key={scope}
       className={cn(
         'min-h-0 flex-1',
         // Start the vertical scrollbar below the sticky h-9 table header;
@@ -64,10 +110,11 @@ function RouteComponent() {
       type="hover"
     >
       {showTable &&
-        (status === 'closed' ? (
+        (scope === 'closed' ? (
           <ClosedViewer
             search={deferredSearch}
             proxy={proxy}
+            selection={selection}
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
           />
@@ -75,6 +122,7 @@ function RouteComponent() {
           <ActiveViewer
             search={deferredSearch}
             proxy={proxy}
+            filters={filters}
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
           />
@@ -84,7 +132,7 @@ function RouteComponent() {
 
   return (
     <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
-      {status === 'closed' ? (
+      {scope === 'closed' ? (
         scrollArea
       ) : (
         <RegisterContextMenu>
@@ -101,53 +149,70 @@ function RouteComponent() {
         </RegisterContextMenu>
       )}
 
+      {/* Chips share the row while it is wide enough; narrower, they take a
+          row of their own under the controls, as on the traffic page. */}
       <div
-        className="bg-mixed-background flex h-16 shrink-0 items-center gap-3 px-4"
+        className="bg-mixed-background @container shrink-0"
         data-slot="connections-toolbar"
       >
-        <ConnectionsStatusTabs
-          value={status}
-          onValueChange={(next) =>
-            navigate({
-              search: (previous) => ({ ...previous, status: next }),
-            })
-          }
-        />
+        <div className="flex min-h-16 flex-wrap items-center gap-3 px-4 py-3 @3xl:flex-nowrap @3xl:py-0">
+          <ReturnButton />
 
-        <input
-          type="text"
-          className={cn(
-            'bg-surface-variant dark:bg-surface-variant/30',
-            'h-10 min-w-0 flex-1 rounded-full px-4 text-sm outline-none',
+          <ConnectionsStatusTabs
+            value={scope}
+            onValueChange={(next) =>
+              navigate({
+                search: (previous) => ({ ...previous, scope: next }),
+                state: keepReturn,
+              })
+            }
+            selection={selection}
+          />
+
+          {filtered && (
+            <ConnectionsFilters
+              className="order-last basis-full @3xl:order-none @3xl:flex-1 @3xl:basis-0"
+              selection={selection}
+              onSelectionChange={handleSelectionChange}
+            />
           )}
-          placeholder={m.connections_search_placeholder()}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button onClick={() => setSettingsOpen(true)} icon>
-              <ViewColumnRounded />
-            </Button>
-          </TooltipTrigger>
+          <input
+            type="text"
+            className={cn(
+              'bg-surface-variant dark:bg-surface-variant/30',
+              'h-10 min-w-0 flex-1 rounded-full px-4 text-sm outline-none',
+              filtered && '@3xl:w-56 @3xl:flex-none @4xl:w-72',
+            )}
+            placeholder={m.connections_search_placeholder()}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
 
-          <TooltipContent>{m.connections_column_settings()}</TooltipContent>
-        </Tooltip>
-
-        {status === 'active' && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button onClick={handleCloseAllConnections} icon>
-                <CloseRounded />
+              <Button onClick={() => setSettingsOpen(true)} icon>
+                <ViewColumnRounded />
               </Button>
             </TooltipTrigger>
 
-            <TooltipContent>
-              {m.connections_close_all_connections()}
-            </TooltipContent>
+            <TooltipContent>{m.connections_column_settings()}</TooltipContent>
           </Tooltip>
-        )}
+
+          {scope === 'active' && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button onClick={handleCloseAllConnections} icon>
+                  <CloseRounded />
+                </Button>
+              </TooltipTrigger>
+
+              <TooltipContent>
+                {m.connections_close_all_connections()}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
     </div>
   )

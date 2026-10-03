@@ -1,6 +1,6 @@
 import type { TrafficRange, TrafficRetention } from '@nyanpasu/rpc/types'
 
-const RANGE_HOURS: Record<Exclude<TrafficRange, 'all'>, number> = {
+export const RANGE_HOURS: Record<Exclude<TrafficRange, 'all'>, number> = {
   last_hour: 1,
   last6_hours: 6,
   last24_hours: 24,

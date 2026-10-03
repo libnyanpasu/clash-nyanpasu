@@ -105,6 +105,7 @@ test('double-clicking a closed connection shows its details', async ({
   const container = render(
     <ClosedViewer
       search=""
+      selection={{ filters: [] }}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,
@@ -132,6 +133,7 @@ test('the details of an active connection stay open after it closes', async ({
   const container = render(
     <ActiveViewer
       search=""
+      filters={[]}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,

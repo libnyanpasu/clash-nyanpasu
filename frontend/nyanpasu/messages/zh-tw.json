@@ -553,6 +553,7 @@
   "connections_column_settings": "欄位設定",
   "connections_column_settings_reorder": "拖曳以調整順序",
   "connections_closed_unavailable": "流量記錄不可用，無法列出已關閉的連線",
+  "connections_active_unavailable": "流量記錄不可用，無法篩選連線",
   "connections_closed_loading": "正在載入更早的連線…",
   "connections_field_metadata": "中繼資料",
   "connections_field_id": "ID",

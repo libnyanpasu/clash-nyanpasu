@@ -19,6 +19,8 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
 }))
 
+const UNFILTERED = { filters: [] }
+
 const closed = (
   id: string,
   target: string,
@@ -106,6 +108,7 @@ test('lists closed connections and loads older pages at the end', async ({
   const container = render(
     <ClosedViewer
       search=""
+      selection={UNFILTERED}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,
@@ -142,6 +145,7 @@ test('a search keeps loading older pages until it finds a match', async ({
   const container = render(
     <ClosedViewer
       search="older"
+      selection={UNFILTERED}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,
@@ -161,7 +165,12 @@ test('column settings hide a column and remember it', async ({
   }))
 
   const container = render(
-    <ClosedViewer search="" settingsOpen onSettingsOpenChange={() => {}} />,
+    <ClosedViewer
+      search=""
+      selection={UNFILTERED}
+      settingsOpen
+      onSettingsOpenChange={() => {}}
+    />,
     onTestFinished,
   )
 
@@ -194,6 +203,7 @@ test('an unavailable traffic history explains the empty table', async ({
   const container = render(
     <ClosedViewer
       search=""
+      selection={UNFILTERED}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,
@@ -214,6 +224,7 @@ test('the mock connections setting replaces the traffic history', async ({
   const container = render(
     <ClosedViewer
       search=""
+      selection={UNFILTERED}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,

@@ -523,6 +523,7 @@
   "connections_column_settings": "Столбцы",
   "connections_column_settings_reorder": "Перетащите, чтобы изменить порядок",
   "connections_closed_unavailable": "Запись трафика недоступна, поэтому закрытые соединения не могут быть показаны",
+  "connections_active_unavailable": "Запись трафика недоступна, поэтому соединения не могут быть отфильтрованы",
   "connections_closed_loading": "Загрузка более ранних соединений…",
   "connections_field_metadata": "Метаданные",
   "connections_field_id": "ID",

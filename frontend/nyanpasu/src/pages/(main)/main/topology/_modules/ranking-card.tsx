@@ -10,9 +10,13 @@ import type {
   Ranking,
   TrafficQuery,
 } from '@nyanpasu/rpc/types'
+import {
+  setFilter,
+  toggleFilter,
+  type SearchFilter,
+} from '../../_modules/traffic-filters'
 import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
-import { setFilter, toggleFilter, type SearchFilter } from './search'
 
 function CountBadge({ count }: { count: number }) {
   return (

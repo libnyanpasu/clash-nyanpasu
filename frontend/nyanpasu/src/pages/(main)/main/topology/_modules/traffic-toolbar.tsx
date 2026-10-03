@@ -24,18 +24,13 @@ import type {
   TrafficScope,
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import FilterChip from './filter-chip'
-import { RANGES, type SearchFilter, type TrafficSearch } from './search'
-
-const rangeName = (range: TrafficRange) =>
-  ({
-    last_hour: m.traffic_range_last_hour,
-    last6_hours: m.traffic_range_last6_hours,
-    last24_hours: m.traffic_range_last24_hours,
-    last7_days: m.traffic_range_last7_days,
-    last30_days: m.traffic_range_last30_days,
-    all: m.traffic_range_all,
-  })[range]()
+import FilterChip from '../../_modules/filter-chip'
+import {
+  rangeName,
+  RANGES,
+  type SearchFilter,
+} from '../../_modules/traffic-filters'
+import { type TrafficSearch } from './search'
 
 const SCOPES = {
   all: m.traffic_scope_all,

@@ -274,8 +274,8 @@ impl Tray {
             )
             .item(
                 &SubmenuBuilder::new(app_handle, t!("tray.more.menu"))
-                    .text("restart_core", t!("tray.more.restart_core"))
                     .text("restart_app", t!("tray.more.restart_app"))
+                    .text("restart_core", t!("tray.more.restart_core"))
                     .item(
                         &MenuItemBuilder::new(format!("Version {version}"))
                             .id("app_version")

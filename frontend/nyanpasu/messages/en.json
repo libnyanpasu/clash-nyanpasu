@@ -684,7 +684,7 @@
   "dashboard_widget_subscription_quota_expires": "Expires {relative} ({date})",
   "dashboard_widget_subscription_quota_expiry_unknown": "Expiry date not provided",
   "dashboard_widget_subscription_quota_breakdown": "↑ {upload}  ↓ {download}",
-  "dashboard_widget_subscription_quota_updated": "Updated {time} ago",
+  "dashboard_widget_subscription_quota_updated": "Updated {time}",
   "dashboard_widget_subscription_quota_updated_unknown": "Update time unavailable",
   "dashboard_widget_subscription_quota_stale_error": "Could not refresh; showing last known data",
   "dashboard_widget_subscription_quota_committed_degraded": "Updated, but some effects did not finish",

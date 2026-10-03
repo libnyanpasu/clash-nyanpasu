@@ -47,7 +47,7 @@ test('requests all widget dimensions with a shared query and optional profile fi
     metric: 'bytes',
     query: { range: 'last_hour', scope: 'all', filters: [] },
     rankings: ['origin', 'exit', 'target', 'rule'],
-    ranking_limit: 5,
+    ranking_limit: 20,
     topology: null,
   })
   expect(
@@ -113,6 +113,28 @@ test('top five keeps the server order and uses only the server tail', () => {
       zeroTrafficUsage(),
     ),
   ).toEqual(report().total)
+})
+
+test('rankings can return more than five rows for expanded widget limits', () => {
+  const expandedReport = report()
+  expandedReport.rankings[0]!.groups.push(
+    group('sixth', 5, 5),
+    group('seventh', 4, 4),
+  )
+  expandedReport.rankings[0]!.distinct = 8
+
+  const sliced = sliceTrafficRanking(expandedReport, 'origin', 7)!
+
+  expect(sliced.groups.map(({ key }) => key)).toEqual([
+    'unknown',
+    '/apps/second',
+    'third',
+    'fourth',
+    'fifth',
+    'sixth',
+    'seventh',
+  ])
+  expect(sliced.otherCount).toBe(1)
 })
 
 test('missing dimensions return null and zero traffic has no percentage', () => {

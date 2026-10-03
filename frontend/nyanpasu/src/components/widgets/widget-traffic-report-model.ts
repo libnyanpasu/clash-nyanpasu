@@ -6,6 +6,7 @@ import type {
   Usage,
   UsageGroup,
 } from '@nyanpasu/rpc/types'
+import { WIDGET_CONFIG_NUMBER_RANGES } from './widget-config'
 
 export const TRAFFIC_REPORT_DIMENSIONS = [
   'origin',
@@ -14,7 +15,7 @@ export const TRAFFIC_REPORT_DIMENSIONS = [
   'rule',
 ] as const satisfies readonly Dimension[]
 
-export const TRAFFIC_REPORT_LIMIT = 5
+export const TRAFFIC_REPORT_LIMIT = WIDGET_CONFIG_NUMBER_RANGES.topN[1]
 
 export function createTrafficReportRequest(
   range: TrafficRange,
@@ -81,7 +82,7 @@ export type TrafficRankingSlice = {
 export function sliceTrafficRanking(
   report: TrafficReport,
   dimension: Dimension,
-  limit: 3 | 5,
+  limit: number,
 ): TrafficRankingSlice | null {
   const ranking = report.rankings.find((item) => item.dimension === dimension)
   if (!ranking) return null

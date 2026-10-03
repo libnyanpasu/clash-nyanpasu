@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import '@/assets/styles/tailwind.css'
+import '@nyanpasu/theme/styles/theme.css'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { page } from 'vitest/browser'
@@ -231,7 +233,7 @@ async function mount(
     queryClient.clear()
     rpc.dispose()
   })
-  return { view: rendered, controls }
+  return { view: rendered, controls, router }
 }
 
 test('does not fetch traffic metadata when no report widgets are visible', async ({
@@ -310,6 +312,26 @@ test('report navigation is enabled in normal view and unavailable while editing'
       .elements(),
   ).toHaveLength(0)
 })
+
+test.for([null, 'deleted-profile'])(
+  'traffic details preserve the widget profile scope %s',
+  async (profileUid, { onTestFinished }) => {
+    const { router } = await mount(onTestFinished, 'last7_days', profileUid)
+    await expect.poll(() => reports.requests.length).toBe(2)
+    const links = page.getByRole('link', {
+      name: m.dashboard_widget_traffic_report_open(),
+    })
+    await links.nth(1).click()
+    await expect
+      .poll(() => router.state.location.pathname)
+      .toBe('/main/topology')
+    expect(router.state.location.search).toMatchObject({
+      range: 'last7_days',
+      metric: 'bytes',
+      filters: profileUid ? [{ d: 'profile', v: profileUid }] : [],
+    })
+  },
+)
 
 test('different widget ranges use separate reports without crossing values', async ({
   onTestFinished,

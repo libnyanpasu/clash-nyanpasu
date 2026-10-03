@@ -187,7 +187,9 @@ function ReportWidgetShell({
                       search={{
                         range,
                         scope: 'all',
-                        filters: [],
+                        filters: profile
+                          ? [{ d: 'profile', v: profile.uid }]
+                          : [],
                         view: 'flow',
                         metric: 'bytes',
                         limit: 7,
@@ -313,7 +315,7 @@ function RankingRows({
 }: {
   report: TrafficReport
   dimension: ReportDimension
-  topN: 3 | 5
+  topN: number
   showDirections: boolean
   hideNames: boolean
 }) {
@@ -481,7 +483,7 @@ function TrafficOtherRow({
 
 function useReportConfig(id: string, widgetType: WidgetId) {
   return useWidgetConfig(id, widgetType) as ReportWidgetConfig & {
-    topN?: 3 | 5
+    topN?: number
     hideNames?: boolean
   }
 }

@@ -654,7 +654,7 @@
   "dashboard_widget_subscription_quota_expires": "Истекает {relative} ({date})",
   "dashboard_widget_subscription_quota_expiry_unknown": "Дата окончания не указана",
   "dashboard_widget_subscription_quota_breakdown": "↑ {upload}  ↓ {download}",
-  "dashboard_widget_subscription_quota_updated": "Обновлено {time} назад",
+  "dashboard_widget_subscription_quota_updated": "Обновлено {time}",
   "dashboard_widget_subscription_quota_updated_unknown": "Время обновления неизвестно",
   "dashboard_widget_subscription_quota_stale_error": "Не удалось обновить; показаны последние данные",
   "dashboard_widget_subscription_quota_committed_degraded": "Обновлено, но часть действий не завершилась",

@@ -22,8 +22,8 @@ import {
   type ConnectionMetadataFields_Serialize,
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import type { ConnectionRow } from './active-viewer'
 import { RelativeTimeCell } from './cells'
+import type { ConnectionRow } from './use-connection-rows'
 
 // Keys added by ConnectionRow, plus the two wrapper fields, that should not
 // be rendered as their own dialog row: `metadata` and `_extra` get their own

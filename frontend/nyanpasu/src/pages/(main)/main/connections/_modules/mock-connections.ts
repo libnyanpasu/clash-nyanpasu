@@ -1,6 +1,7 @@
 import type {
   ClashConnection_Serialize,
   ClosedConnection,
+  Dimensions,
 } from '@nyanpasu/rpc/types'
 
 // Generated connections for previewing the connections page in dev builds.
@@ -178,6 +179,21 @@ export function mockActiveConnections(
     ]
   })
 }
+
+/** What a mock connection is recorded under, as `mockClosedConnections` records it. */
+export const mockActiveDimensions = ({
+  metadata,
+  rule,
+  rulePayload,
+  chains,
+}: ClashConnection_Serialize): Dimensions => ({
+  process: metadata?.processPath ?? '',
+  source: metadata?.sourceIP ?? '',
+  target: metadata?.host ?? '',
+  protocol: metadata?.network ?? '',
+  rule: { kind: rule, payload: rulePayload },
+  chains,
+})
 
 export function mockClosedConnections(now: number): ClosedConnection[] {
   const closed = SLOTS.flatMap((slot) => {

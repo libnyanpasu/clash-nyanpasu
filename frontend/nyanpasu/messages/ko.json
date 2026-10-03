@@ -523,6 +523,7 @@
   "connections_column_settings": "열 설정",
   "connections_column_settings_reorder": "드래그하여 순서 변경",
   "connections_closed_unavailable": "트래픽 기록을 사용할 수 없어 닫힌 연결을 표시할 수 없습니다",
+  "connections_active_unavailable": "트래픽 기록을 사용할 수 없어 연결을 필터링할 수 없습니다",
   "connections_closed_loading": "이전 연결을 불러오는 중…",
   "connections_field_metadata": "메타데이터",
   "connections_field_id": "ID",

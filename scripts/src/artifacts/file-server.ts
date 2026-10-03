@@ -10,7 +10,9 @@ export const FILE_SERVER_BIN_URL = "https://archive.nyanpasu.org/bin";
 
 export const UPLOAD_CONCURRENCY = 3;
 export const CHUNK_RETRY_ATTEMPTS = 5;
-export const CHUNK_MULTIPLIER = 32;
+// 160 × 320 KiB = 50 MiB, below OneDrive's strict 60 MiB request limit
+// and the Workers 100 MB limit. Both file and cache uploads use this value.
+export const CHUNK_MULTIPLIER = 160;
 
 // --- types ---
 

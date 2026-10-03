@@ -34,3 +34,21 @@ fits. For example, on 2026-10-02 the nightly feed referenced seven distinct
 archives totalling about 1.285 GB. Mirroring all of them would require separate
 sites or another storage provider. The existing manifest site cannot host that
 complete set of archives.
+
+## Archive uploads and Telegram notifications
+
+Package build jobs upload installers and portable bundles to
+`archive.nyanpasu.org` using `nightly/<short commit hash>` or
+`release/<release tag>` as `FOLDER_PATH`. Both publication workflows verify all
+platform upload reports before sending a Telegram notification. Failed uploads
+retain their HTTP error details in the job log and `upload-diagnostics-*`
+artifacts.
+
+Telegram notifications contain release/build information and the archive home
+link; notification jobs do not download or upload packages. To resend a release
+notification after the updated workflow is available on GitHub, manually run
+`[Reusable] Notify Telegram of Releases` with `nightly: false` and the published
+`tag`, for example `v2.0.0-beta.1`. This sends only the notification to
+`@keikolog`; it does not rebuild packages or repair missing archive uploads.
+Re-running an older failed publication run uses that run's original workflow and
+scripts.

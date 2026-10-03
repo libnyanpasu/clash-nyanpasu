@@ -139,11 +139,17 @@ jobs:
         run: deno task test:windows-bundle
 
       - name: Set file server folder path
-        if: ${{ inputs.nightly == true }}
         shell: bash
         run: |
-          GIT_HASH=$(git rev-parse --short HEAD)
-          echo "FOLDER_PATH=nightly/${GIT_HASH}" >> $GITHUB_ENV
+          if [ "$NIGHTLY" = "true" ]; then
+            GIT_HASH=$(git rev-parse --short HEAD)
+            echo "FOLDER_PATH=nightly/${GIT_HASH}" >> "$GITHUB_ENV"
+          else
+            echo "FOLDER_PATH=release/${RELEASE_TAG}" >> "$GITHUB_ENV"
+          fi
+        env:
+          NIGHTLY: ${{ inputs.nightly }}
+          RELEASE_TAG: ${{ inputs.tag }}
 
       - name: Prepare release channel
         run: ${{ inputs.nightly == true && 'pnpm prepare:nightly --nsis' || 'pnpm prepare:release --nsis' }}
@@ -195,7 +201,7 @@ jobs:
             ./*_portable.zip
 
       - name: Upload to file server
-        if: ${{ inputs.nightly == true && inputs.bundle-type != 'fixed-webview' }}
+        if: ${{ inputs.bundle-type != 'fixed-webview' }}
         shell: bash
         continue-on-error: true
         run: |
@@ -206,16 +212,8 @@ jobs:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
           FOLDER_PATH: ${{ env.FOLDER_PATH }}
 
-      - name: Upload file server results
-        if: ${{ inputs.nightly == true && inputs.bundle-type != 'fixed-webview' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: upload-results-windows-${{ inputs.arch }}
-          path: ./upload-results.json
-          if-no-files-found: ignore
-
       - name: Upload file server diagnostics
-        if: ${{ inputs.nightly == true && inputs.bundle-type != 'fixed-webview' }}
+        if: ${{ inputs.bundle-type != 'fixed-webview' }}
         uses: actions/upload-artifact@v7
         with:
           name: upload-diagnostics-windows-${{ inputs.arch }}-standard
@@ -228,7 +226,6 @@ jobs:
           Remove-Item -LiteralPath "$env:BUILD_DIR/bundle" -Recurse -Force
           Get-ChildItem -Path "." -Filter "*_portable.zip" -ErrorAction SilentlyContinue |
             Remove-Item -Force
-          Remove-Item -Path "./upload-results.json" -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "./upload-report.json" -Force -ErrorAction SilentlyContinue
 
       - name: Download fixed WebView
@@ -318,7 +315,7 @@ jobs:
             ./*_portable.zip
 
       - name: Upload to file server with fixed WebView
-        if: ${{ inputs.nightly == true && inputs.bundle-type != 'standard' }}
+        if: ${{ inputs.bundle-type != 'standard' }}
         shell: bash
         continue-on-error: true
         run: |
@@ -329,16 +326,8 @@ jobs:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
           FOLDER_PATH: ${{ env.FOLDER_PATH }}
 
-      - name: Upload file server results with fixed WebView
-        if: ${{ inputs.nightly == true && inputs.bundle-type != 'standard' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: upload-results-windows-${{ inputs.arch }}-fixed-webview
-          path: ./upload-results.json
-          if-no-files-found: ignore
-
       - name: Upload file server diagnostics with fixed WebView
-        if: ${{ inputs.nightly == true && inputs.bundle-type != 'standard' }}
+        if: ${{ inputs.bundle-type != 'standard' }}
         uses: actions/upload-artifact@v7
         with:
           name: upload-diagnostics-windows-${{ inputs.arch }}-fixed-webview

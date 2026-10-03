@@ -81,14 +81,12 @@ try {
     report.failures.push({ fileName: "(upload setup)", ...details });
   }
   consola.error(details.message);
+  for (const failure of report.failures) {
+    consola.error(`${failure.fileName}: ${failure.message}`);
+  }
 }
 
-const resultsPath = path.join(WORKSPACE_ROOT, "upload-results.json");
 const reportPath = path.join(WORKSPACE_ROOT, "upload-report.json");
-await Deno.writeTextFile(
-  resultsPath,
-  JSON.stringify(report.uploadedFiles, null, 2),
-);
 await Deno.writeTextFile(reportPath, JSON.stringify(report, null, 2));
 
 const summaryPath = Deno.env.get("GITHUB_STEP_SUMMARY");
@@ -116,5 +114,5 @@ if (report.status === "failure") {
 }
 
 consola.success(
-  `Upload complete. ${report.uploadedFiles.length} files uploaded. Results written to ${resultsPath}`,
+  `Upload complete. ${report.uploadedFiles.length} files uploaded. Report written to ${reportPath}`,
 );

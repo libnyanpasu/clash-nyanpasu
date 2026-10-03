@@ -224,14 +224,19 @@ jobs:
             ./backend/target/**/*.rpm.sha256
 
       - name: Set file server folder path
-        if: ${{ inputs.nightly == true }}
         shell: bash
         run: |
-          GIT_HASH=$(git rev-parse --short HEAD)
-          echo "FOLDER_PATH=nightly/${GIT_HASH}" >> $GITHUB_ENV
+          if [ "$NIGHTLY" = "true" ]; then
+            GIT_HASH=$(git rev-parse --short HEAD)
+            echo "FOLDER_PATH=nightly/${GIT_HASH}" >> "$GITHUB_ENV"
+          else
+            echo "FOLDER_PATH=release/${RELEASE_TAG}" >> "$GITHUB_ENV"
+          fi
+        env:
+          NIGHTLY: ${{ inputs.nightly }}
+          RELEASE_TAG: ${{ inputs.tag }}
 
       - name: Upload to file server
-        if: ${{ inputs.nightly == true }}
         shell: bash
         continue-on-error: true
         run: |
@@ -239,6 +244,7 @@ jobs:
             "x86_64")
               deno task upload-build-artifacts \
                 "backend/target/**/*.deb" \
+                "backend/target/**/*.rpm" \
                 "backend/target/**/*.AppImage" ;;
             *)
               deno task upload-build-artifacts \
@@ -249,16 +255,7 @@ jobs:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
           FOLDER_PATH: ${{ env.FOLDER_PATH }}
 
-      - name: Upload file server results
-        if: ${{ inputs.nightly == true }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: upload-results-linux-${{ inputs.arch }}
-          path: ./upload-results.json
-          if-no-files-found: ignore
-
       - name: Upload file server diagnostics
-        if: ${{ inputs.nightly == true }}
         uses: actions/upload-artifact@v7
         with:
           name: upload-diagnostics-linux-${{ inputs.arch }}

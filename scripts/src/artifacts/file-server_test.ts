@@ -1,5 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@1";
-import { uploadAllFilesWithResults } from "./file-server.ts";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1";
+import { initUploadSession, uploadAllFilesWithResults } from "./file-server.ts";
 
 Deno.test("upload batch continues after a file exhausts retries", async () => {
   const files = ["first.dmg", "unavailable.deb", "last.rpm", "next.AppImage"];
@@ -32,4 +32,52 @@ Deno.test("upload batch continues after a file exhausts retries", async () => {
     true,
     outcome.failures[0].message,
   );
+});
+
+Deno.test("archive upload init preserves the release category path", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    assertEquals(String(input), "https://archive.nyanpasu.org/upload/init");
+    assertEquals(init?.headers, {
+      "x-authorization": "test-token",
+      "Content-Type": "application/json",
+    });
+    assertEquals(JSON.parse(String(init?.body)), {
+      filename: "installer.exe",
+      fileSize: 1024,
+      mimeType: null,
+      chunkMultiplier: 160,
+      folderPath: "release/v2.0.0-beta.1",
+    });
+    return Response.json({ uploadId: "test-session", chunkSize: 52428800 });
+  };
+  try {
+    assertEquals(
+      await initUploadSession(
+        "installer.exe",
+        1024,
+        null,
+        "test-token",
+        "release/v2.0.0-beta.1",
+      ),
+      { uploadId: "test-session", chunkSize: 52428800 },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("archive init failure preserves the server status and error detail", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () =>
+    Promise.resolve(Response.json({ error: "Unauthorized" }, { status: 401 }));
+  try {
+    await assertRejects(
+      () => initUploadSession("installer.exe", 1024, null, "test-token"),
+      Error,
+      'upload init failed: 401  - {"error":"Unauthorized"}',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

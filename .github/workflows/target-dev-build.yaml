@@ -122,7 +122,6 @@ jobs:
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:
       nightly: true
-      from-local: true
     secrets: inherit
 
   verify_archive_uploads:

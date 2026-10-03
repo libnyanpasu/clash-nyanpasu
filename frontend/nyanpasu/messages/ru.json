@@ -208,6 +208,8 @@
   "settings_nyanpasu_traffic_retention_90d": "90 дней",
   "settings_nyanpasu_traffic_retention_forever": "Бессрочно",
   "settings_nyanpasu_traffic_retention_hint": "При сокращении срока записи старше нового срока удаляются без возможности восстановления. В записях сохраняются посещённые хосты.",
+  "settings_nyanpasu_local_ip_probe_label": "Разрешить определение IP этого устройства",
+  "settings_nyanpasu_local_ip_probe_description": "При открытии страницы трафика запрашивать публичные IPv4/IPv6 у DNSPod для определения местоположения локальных источников на карте. При включённом TUN проверка не выполняется. Сохранённая история не меняется.",
   "settings_nyanpasu_network_statistic_widget_label": "Виджет статистики сети",
   "settings_nyanpasu_network_statistic_widget_disabled": "Отключено",
   "settings_nyanpasu_network_statistic_widget_large": "Подробный",

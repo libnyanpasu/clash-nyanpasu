@@ -7,7 +7,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { useMockTrafficNow } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
-import { useSetting, useTrafficReport } from '@nyanpasu/query'
+import { useLocalIpProbe, useSetting, useTrafficReport } from '@nyanpasu/query'
 import { type Dimension, type ReportRequest } from '@nyanpasu/rpc/types'
 import { toggleFilter } from '../../_modules/traffic-filters'
 import { useUsageLabelOf } from '../../_modules/use-usage-label-of'
@@ -80,6 +80,8 @@ export default function TrafficPage({
 
   // Dev builds only: generated usage replaces the recorded one.
   const mockNow = useMockTrafficNow(paused)
+
+  useLocalIpProbe(mockNow === null)
 
   const { data: recorded, isError: failed } = useTrafficReport(request, {
     refetchInterval: paused ? false : pollInterval(range),

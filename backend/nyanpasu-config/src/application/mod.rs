@@ -195,6 +195,10 @@ pub struct NyanpasuAppConfig {
     #[serde(default)]
     pub traffic_retention: TrafficRetention,
 
+    /// Allow public IP probes to locate LAN/local traffic sources.
+    #[serde(default)]
+    pub enable_local_ip_probe: bool,
+
     /// PAC URL for automatic proxy configuration
     /// This field is used to set PAC proxy without exposing it to the frontend UI
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -264,6 +268,7 @@ impl Default for NyanpasuAppConfig {
             tray_menu_close_behavior: TrayMenuCloseBehavior::default(),
             network_statistic_widget: NetworkStatisticWidgetConfig::default(),
             traffic_retention: TrafficRetention::default(),
+            enable_local_ip_probe: false,
             pac_url: None,
             enable_tray_text: false,
             enable_tray_traffic: false,
@@ -278,6 +283,20 @@ impl Default for NyanpasuAppConfig {
 mod patch_tests {
     use super::*;
     use struct_patch::Status;
+
+    #[test]
+    fn local_ip_probe_requires_opt_in_and_can_be_patched() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("enable_local_ip_probe");
+        let mut config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert!(!config.enable_local_ip_probe);
+        let patch = serde_json::from_str(r#"{"enable_local_ip_probe":true}"#).unwrap();
+        config.apply(patch);
+        assert!(config.enable_local_ip_probe);
+    }
 
     #[test]
     fn update_sources_default_for_existing_configurations_and_keep_patch_order() {

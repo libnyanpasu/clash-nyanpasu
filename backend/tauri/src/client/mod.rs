@@ -231,6 +231,7 @@ struct NyanpasuClientInner {
     updater: crate::core::updater::UpdaterClient,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
+    local_source: Arc<traffic::LocalSourceCache>,
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
     _geo_index: crate::core::geo::GeoIndexClient,
@@ -501,6 +502,10 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        let local_source = Arc::new(traffic::LocalSourceCache::new(
+            application.snapshot_handle(),
+            clash_config.snapshot_handle(),
+        ));
         let traffic = match traffic_store {
             Some(store) => {
                 match crate::core::traffic::TrafficClient::spawn(
@@ -515,6 +520,7 @@ impl NyanpasuClient {
                         clock: Arc::new(traffic::SystemClock),
                         frames: streams.subscribe_connection_frames(),
                         geo: geo_index.subscribe(),
+                        local_source: local_source.clone(),
                     },
                     shutdown.child_token(),
                     &tasks,
@@ -556,6 +562,7 @@ impl NyanpasuClient {
                 updater,
                 system_dns,
                 direct_egress,
+                local_source,
                 _geo_index: geo_index,
                 os_proxy,
                 effects,
@@ -746,16 +753,21 @@ impl NyanpasuClient {
         crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
     }
 
-    /// The public addresses the core's DIRECT outbound leaves from. The TUN
-    /// check reads the setting: a TUN that failed to start is still refused,
-    /// which costs an answer rather than risking a proxy exit's address.
-    pub async fn probe_direct_egress(&self) -> DirectEgress {
-        if self.inner.clash_config.snapshot().state.enable_tun_mode {
-            return DirectEgress::TunEnabled;
+    /// A caller-triggered probe. Traffic consumes the result without waiting for network IO.
+    pub async fn probe_direct_egress(&self) -> Result<DirectEgress> {
+        let cache = &self.inner.local_source;
+        if let Some(blocked) = cache.blocked() {
+            cache.set(&blocked);
+            return Ok(blocked);
         }
         let probe = &self.inner.direct_egress;
         let (ipv4, ipv6) = tokio::join!(probe.ipv4(), probe.ipv6());
-        DirectEgress::Probed { ipv4, ipv6 }
+        // Permission or TUN may change while the requests are in flight.
+        let result = cache
+            .blocked()
+            .unwrap_or(DirectEgress::Probed { ipv4, ipv6 });
+        cache.set(&result);
+        Ok(result)
     }
 
     pub async fn patch_app_config(
@@ -2585,7 +2597,7 @@ pub(crate) mod tests {
 
     async fn test_client_with_direct_egress(
         dir: &TempDir,
-        direct_egress: direct_egress::MockDirectEgressProbe,
+        direct_egress: Arc<dyn DirectEgressProbe>,
     ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
         test_client_from_typed_clients(
@@ -2594,7 +2606,7 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
-            Arc::new(direct_egress),
+            direct_egress,
             Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
@@ -2611,10 +2623,17 @@ pub(crate) mod tests {
             .times(1)
             .returning(move || Some(address));
         probe.expect_ipv6().times(1).returning(|| None);
-        let client = test_client_with_direct_egress(&dir, probe).await;
+        let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
 
         assert_eq!(
-            client.probe_direct_egress().await,
+            client.probe_direct_egress().await.unwrap(),
             DirectEgress::Probed {
                 ipv4: Some(address),
                 ipv6: None,
@@ -2628,7 +2647,7 @@ pub(crate) mod tests {
         let mut probe = direct_egress::MockDirectEgressProbe::new();
         probe.expect_ipv4().never();
         probe.expect_ipv6().never();
-        let client = test_client_with_direct_egress(&dir, probe).await;
+        let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
         let mut patch = ClashConfig::new_empty_patch();
         patch.enable_tun_mode = Some(true);
         client
@@ -2636,7 +2655,121 @@ pub(crate) mod tests {
             .await
             .expect("clash patch should succeed");
 
-        assert_eq!(client.probe_direct_egress().await, DirectEgress::TunEnabled);
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            client.probe_direct_egress().await.unwrap(),
+            DirectEgress::TunEnabled
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_egress_only_probes_on_request_and_failed_answers_clear_the_cache() {
+        use crate::core::traffic::LocalSourceLocation;
+        let dir = tempdir().unwrap();
+        let mut probe = direct_egress::MockDirectEgressProbe::new();
+        let mut sequence = mockall::Sequence::new();
+        probe
+            .expect_ipv4()
+            .times(1)
+            .in_sequence(&mut sequence)
+            .returning(|| Some("203.0.113.7".parse().unwrap()));
+        probe
+            .expect_ipv4()
+            .times(1)
+            .in_sequence(&mut sequence)
+            .returning(|| None);
+        probe.expect_ipv6().times(2).returning(|| None);
+        let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
+        assert_eq!(
+            client.probe_direct_egress().await.unwrap(),
+            DirectEgress::Disabled
+        );
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        assert_eq!(client.inner.local_source.addresses().ipv4, None);
+        client.probe_direct_egress().await.unwrap();
+        assert_eq!(
+            client.inner.local_source.addresses().ipv4,
+            Some("203.0.113.7".parse().unwrap())
+        );
+
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(false),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        assert_eq!(client.inner.local_source.addresses().ipv4, None);
+        assert_eq!(
+            client.probe_direct_egress().await.unwrap(),
+            DirectEgress::Disabled
+        );
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        client.probe_direct_egress().await.unwrap();
+        assert_eq!(client.inner.local_source.addresses().ipv4, None);
+    }
+
+    #[tokio::test]
+    async fn direct_egress_discards_an_answer_when_tun_is_enabled_during_the_request() {
+        use crate::core::traffic::LocalSourceLocation;
+        struct WaitingProbe {
+            started: tokio::sync::Notify,
+            release: tokio::sync::Notify,
+        }
+        #[async_trait::async_trait]
+        impl DirectEgressProbe for WaitingProbe {
+            async fn ipv4(&self) -> Option<std::net::Ipv4Addr> {
+                self.started.notify_one();
+                self.release.notified().await;
+                Some("203.0.113.7".parse().unwrap())
+            }
+            async fn ipv6(&self) -> Option<std::net::Ipv6Addr> {
+                None
+            }
+        }
+        let dir = tempdir().unwrap();
+        let probe = Arc::new(WaitingProbe {
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let client = test_client_with_direct_egress(&dir, probe.clone()).await;
+        client
+            .patch_app_config(NyanpasuAppConfigPatch {
+                enable_local_ip_probe: Some(true),
+                ..NyanpasuAppConfig::new_empty_patch()
+            })
+            .await
+            .unwrap();
+        let request = tokio::spawn({
+            let client = client.clone();
+            async move { client.probe_direct_egress().await }
+        });
+        probe.started.notified().await;
+        let mut patch = ClashConfig::new_empty_patch();
+        patch.enable_tun_mode = Some(true);
+        client.patch_clash_config(patch).await.unwrap();
+        probe.release.notify_one();
+        assert_eq!(request.await.unwrap().unwrap(), DirectEgress::TunEnabled);
+        assert_eq!(client.inner.local_source.addresses().ipv4, None);
     }
 
     pub(crate) fn test_client_args_with_endpoint(

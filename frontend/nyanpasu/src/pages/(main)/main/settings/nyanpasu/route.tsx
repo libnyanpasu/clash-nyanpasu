@@ -8,6 +8,7 @@ import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-s
 import BreakWhenProxyChangeSwitch from './_modules/break-when-proxy-change-switch'
 import EnableBuiltinEnhancedSwitch from './_modules/enable-builtin-enhanced-switch'
 import HotkeyManager from './_modules/hotket-manager'
+import LocalIpProbeSwitch from './_modules/local-ip-probe-switch'
 import LogFileConfig from './_modules/log-file-config'
 import LogLevelSelector from './_modules/log-level-selector'
 import NetworkStatisticWidgetSelector from './_modules/network-statistic-widget-selector'
@@ -42,6 +43,8 @@ const TrafficSettings = () => {
 
       <SettingsGroup>
         <TrafficRetentionSelector />
+
+        <LocalIpProbeSwitch />
       </SettingsGroup>
     </div>
   )

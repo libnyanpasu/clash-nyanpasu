@@ -562,11 +562,11 @@ pub async fn get_ipsb_asn(
     Ok(wrapped)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
 pub async fn probe_direct_egress(client: State<'_, NyanpasuClient>) -> Result<DirectEgress> {
-    Ok(client.probe_direct_egress().await)
+    Ok(client.probe_direct_egress().await?)
 }
 
 // ---- typed configuration commands (thin adapters over NyanpasuClient) ----

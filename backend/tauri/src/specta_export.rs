@@ -73,7 +73,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_core_status,
             ipc::url_delay_test,
             ipc::get_ipsb_asn,
-            ipc::probe_direct_egress,
             ipc::is_appimage,
             ipc::get_service_install_prompt,
             ipc::get_storage_item,
@@ -101,6 +100,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::subscribe_clash_connection_details,
             ipc::unsubscribe_clash_connection_details,
             // Side-effecting commands
+            ipc::probe_direct_egress,
             ipc::clear_core_logs,
             ipc::open_log_session,
             ipc::query_logs,

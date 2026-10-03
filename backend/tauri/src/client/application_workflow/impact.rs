@@ -778,6 +778,12 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                field: "enable_local_ip_probe",
+                mutate: |app| app.enable_local_ip_probe = true,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "traffic_retention",
                 mutate: |app| {
                     app.traffic_retention = nyanpasu_config::application::TrafficRetention::Forever

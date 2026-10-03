@@ -177,8 +177,6 @@ export function createRpcClient(
         __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
       ),
     getIpsbAsn: () => typedError<any, IpcError>(__RPC_INVOKE('get_ipsb_asn')),
-    probeDirectEgress: () =>
-      typedError<DirectEgress, IpcError>(__RPC_INVOKE('probe_direct_egress')),
     isAppimage: () =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_appimage')),
     getServiceInstallPrompt: () =>
@@ -304,6 +302,8 @@ export function createRpcClient(
       typedError<null, IpcError>(
         __RPC_INVOKE('unsubscribe_clash_connection_details', { id }),
       ),
+    probeDirectEgress: () =>
+      typedError<DirectEgress, IpcError>(__RPC_INVOKE('probe_direct_egress')),
     clearCoreLogs: () =>
       typedError<null, CoreLogError>(__RPC_INVOKE('clear_core_logs')),
     openLogSession: (source: LogSource, request: OpenLogs) =>
@@ -1763,6 +1763,7 @@ export type Dimensions = {
 }
 
 export type DirectEgress =
+  | { kind: 'disabled' }
   /**
    *  Nothing was probed: TUN mode captures the app's own requests and routes
    *  them by rule, so an echo could come back from a proxy exit.
@@ -2442,6 +2443,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       tray_menu_close_behavior?: TrayMenuCloseBehavior | null
       network_statistic_widget?: NetworkStatisticWidgetConfig | null
       traffic_retention?: TrafficRetention | null
+      enable_local_ip_probe?: boolean | null
       pac_url?: string | null
       enable_tray_text?: boolean | null
       enable_tray_traffic?: boolean | null
@@ -2495,6 +2497,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   tray_menu_close_behavior?: TrayMenuCloseBehavior | null
   network_statistic_widget?: NetworkStatisticWidgetConfig | null
   traffic_retention?: TrafficRetention | null
+  enable_local_ip_probe?: boolean | null
   pac_url?: string | null
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
@@ -2573,6 +2576,8 @@ export type NyanpasuAppConfig_Deserialize = {
   network_statistic_widget: NetworkStatisticWidgetConfig
   /**  How long recorded traffic is kept */
   traffic_retention?: TrafficRetention
+  /**  Allow public IP probes to locate LAN/local traffic sources. */
+  enable_local_ip_probe?: boolean
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
@@ -2668,6 +2673,8 @@ export type NyanpasuAppConfig_Serialize = {
   network_statistic_widget: NetworkStatisticWidgetConfig
   /**  How long recorded traffic is kept */
   traffic_retention: TrafficRetention
+  /**  Allow public IP probes to locate LAN/local traffic sources. */
+  enable_local_ip_probe: boolean
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI

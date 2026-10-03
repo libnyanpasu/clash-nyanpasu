@@ -16,6 +16,23 @@ deno task lint:frontend-boundaries
 deno task test:scripts
 ```
 
+## Nightly build eligibility
+
+Scheduled and manual nightly runs first execute
+`deno task check:nightly-changes`. The check compares the `pre-release` tag's
+tree with the run's checkout, excluding `docs/`, Markdown/reStructuredText
+files, `tests/` and `__tests__/` directories, and files named `*_test.*`,
+`*.test.*` or `*.spec.*`. Other changes, including core version manifests,
+dependencies, submodule revisions, resources, build scripts and workflows,
+trigger the six platform builds. A fully reverted change does not.
+
+If there are no build input changes, package builds, tag/release updates,
+uploads, updater publication, archive verification and Telegram notifications
+are skipped. The check reports its decision in the Actions summary. A missing
+`pre-release` tag allows the first build; Git failures fail the check. The tag
+is the existing nightly baseline and is moved after all package builds pass; if
+later publication steps fail, rerun those failed jobs to complete publication.
+
 ## Updater distribution
 
 `deno task updater` publishes the latest stable and beta feeds. The nightly feed

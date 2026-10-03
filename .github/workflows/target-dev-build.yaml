@@ -14,9 +14,34 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  check_changes:
+    name: Check Nightly Changes
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      should_build: ${{ steps.changes.outputs.should_build }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check changes since previous nightly
+        id: changes
+        run: deno task check:nightly-changes
+
   windows_amd64_build:
     name: Windows x86_64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
       portable: true
@@ -28,7 +53,8 @@ jobs:
 
   windows_aarch64_build:
     name: Windows aarch64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
       portable: true
@@ -40,7 +66,8 @@ jobs:
 
   linux_amd64_build:
     name: Linux amd64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: true
@@ -50,7 +77,8 @@ jobs:
 
   linux_aarch64_build:
     name: Linux aarch64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: true
@@ -60,7 +88,8 @@ jobs:
 
   macos_amd64_build:
     name: macOS amd64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-macos.yaml
     with:
       nightly: true
@@ -70,7 +99,8 @@ jobs:
 
   macos_aarch64_build:
     name: macOS aarch64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-macos.yaml
     with:
       nightly: true
@@ -126,9 +156,10 @@ jobs:
 
   verify_archive_uploads:
     name: Verify Archive Uploads
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu')) }}
+    if: ${{ always() && needs.check_changes.outputs.should_build == 'true' }}
     needs:
       [
+        check_changes,
         windows_amd64_build,
         windows_aarch64_build,
         linux_amd64_build,

@@ -22,6 +22,7 @@ import {
   type ConnectionMetadataFields_Serialize,
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { ruleLabel } from '../../_modules/traffic-filters'
 import { RelativeTimeCell } from './cells'
 import type { ConnectionRow } from './use-connection-rows'
 
@@ -169,6 +170,10 @@ export type ConnectionDetail = {
   // The connection is gone: a closed record, or a live connection's last
   // sample kept after it closed.
   closed: boolean
+  // The rule the connection matched, as the rules and traffic pages name it.
+  ruleLabel: string
+  // The row's id in the table that opened the dialog, to focus on return.
+  rowId: string
 }
 
 const isShown = (value: unknown) =>
@@ -177,6 +182,7 @@ const isShown = (value: unknown) =>
 export function activeConnectionDetail(
   row: ConnectionRow,
   closed: boolean,
+  rowId: string,
 ): ConnectionDetail {
   return {
     fields: [
@@ -196,11 +202,14 @@ export function activeConnectionDetail(
       ),
     ],
     closed,
+    ruleLabel: ruleLabel(row.rule, row.rulePayload),
+    rowId,
   }
 }
 
 export function closedConnectionDetail(
   row: ClosedConnection,
+  rowId: string,
 ): ConnectionDetail {
   const { dimensions } = row
 
@@ -223,6 +232,8 @@ export function closedConnectionDetail(
       ] satisfies DetailFields
     ).filter(([, value]) => isShown(value)),
     closed: true,
+    ruleLabel: ruleLabel(dimensions.rule.kind, dimensions.rule.payload),
+    rowId,
   }
 }
 
@@ -234,10 +245,14 @@ export const ConnectionDetailModal = memo(function ConnectionDetailModal({
   detail,
   onClose,
   onCloseConnection,
+  onLocateRule,
+  onViewRuleUsage,
 }: {
   detail?: ConnectionDetail
   onClose: () => void
   onCloseConnection?: () => Promise<unknown>
+  onLocateRule?: (detail: ConnectionDetail) => void
+  onViewRuleUsage?: (detail: ConnectionDetail) => void
 }) {
   const handleCloseConnection = useLockFn(async () => {
     // frist close the dialog to avoid showing stale data when the deletion is slow
@@ -297,6 +312,40 @@ export const ConnectionDetailModal = memo(function ConnectionDetailModal({
                 <Button onClick={handleCloseConnection}>
                   {m.connections_close_connection()}
                 </Button>
+              )}
+
+              {/* The footer runs in reverse: last here, the jumps sit apart at
+                  the start while closing stays at the end. A jump closes the
+                  dialog first, so it does not stay over the next page. */}
+              {(onLocateRule || onViewRuleUsage) && (
+                <div
+                  className="mr-auto flex gap-2"
+                  data-slot="connections-detail-jumps"
+                >
+                  {onLocateRule && (
+                    <Button
+                      variant="basic"
+                      onClick={() => {
+                        onClose()
+                        onLocateRule(detail)
+                      }}
+                    >
+                      {m.connections_locate_rule()}
+                    </Button>
+                  )}
+
+                  {onViewRuleUsage && (
+                    <Button
+                      variant="basic"
+                      onClick={() => {
+                        onClose()
+                        onViewRuleUsage(detail)
+                      }}
+                    >
+                      {m.connections_view_rule_usage()}
+                    </Button>
+                  )}
+                </div>
               )}
             </CardFooter>
           </Card>

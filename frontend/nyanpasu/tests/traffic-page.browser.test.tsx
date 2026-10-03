@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
@@ -188,7 +188,15 @@ function mockBackend(pages: Record<string, UsagePage> = {}) {
   })
 }
 
-function Page({ initial }: { initial?: Partial<TrafficSearch> }) {
+function Page({
+  initial,
+  onViewConnections,
+  toolbarStart,
+}: {
+  initial?: Partial<TrafficSearch>
+  onViewConnections?: () => void
+  toolbarStart?: ReactNode
+}) {
   const [search, setSearch] = useState(() =>
     trafficSearchSchema.parse(initial ?? {}),
   )
@@ -201,6 +209,8 @@ function Page({ initial }: { initial?: Partial<TrafficSearch> }) {
           onSearchChange={(update) =>
             setSearch((previous) => ({ ...previous, ...update }))
           }
+          onViewConnections={onViewConnections}
+          toolbarStart={toolbarStart}
         />
       </div>
     </TooltipProvider>
@@ -210,13 +220,14 @@ function Page({ initial }: { initial?: Partial<TrafficSearch> }) {
 async function open(
   onTestFinished: (fn: () => void) => void,
   initial?: Partial<TrafficSearch>,
+  props?: { onViewConnections?: () => void; toolbarStart?: ReactNode },
 ) {
   const queries = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   const view = await render(
     <QueryClientProvider client={queries}>
-      <Page initial={initial} />
+      <Page initial={initial} {...props} />
     </QueryClientProvider>,
   )
 
@@ -762,6 +773,43 @@ test('the header controls keep their names', async ({ onTestFinished }) => {
     .element(view.getByRole('combobox', { name: m.traffic_layers_label() }))
     .toBeInTheDocument()
   await expect.element(limitSelect(view)).toBeInTheDocument()
+})
+
+test('the toolbar shows the connections on demand and starts with its slot', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const onViewConnections = vi.fn()
+  const view = await open(onTestFinished, undefined, {
+    onViewConnections,
+    toolbarStart: <span data-testid="toolbar-start">back</span>,
+  })
+
+  await view.getByRole('button', { name: m.traffic_view_connections() }).click()
+  expect(onViewConnections).toHaveBeenCalledTimes(1)
+
+  // The slot leads the controls, before the scope.
+  const start = view.getByTestId('toolbar-start').element()
+  const scope = view
+    .getByRole('radiogroup', { name: m.traffic_scope_label() })
+    .element()
+  expect(start.closest('[data-slot=traffic-toolbar]')).not.toBeNull()
+  expect(start.parentElement!.firstElementChild).toBe(start)
+  expect(start.nextElementSibling).toBe(scope)
+})
+
+test('without a handler the toolbar has no connections button', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished)
+  await expect
+    .element(view.getByRole('button', { name: m.topology_pause() }))
+    .toBeInTheDocument()
+
+  expect(
+    document.querySelector('[data-slot=traffic-view-connections]'),
+  ).toBeNull()
 })
 
 test('the toolbar metric orders the rankings and the full list', async ({

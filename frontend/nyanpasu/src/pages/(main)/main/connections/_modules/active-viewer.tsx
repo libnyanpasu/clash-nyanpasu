@@ -17,7 +17,10 @@ import ConnectionsTable, {
   type ConnectionColumn,
   type RowProps,
 } from './connections-table'
-import TableRow, { ConnectionDetailModal } from './table-row'
+import TableRow, {
+  ConnectionDetailModal,
+  type ConnectionDetail,
+} from './table-row'
 import {
   sameTraffic,
   useActiveConnectionDetail,
@@ -35,12 +38,19 @@ const ActiveViewer = memo(function ActiveViewer({
   filters,
   settingsOpen,
   onSettingsOpenChange,
+  onLocateRule,
+  onViewRuleUsage,
+  focusRowId,
 }: {
   search: string
   proxy?: string | null
   filters: SearchFilter[]
   settingsOpen: boolean
   onSettingsOpenChange: (open: boolean) => void
+  onLocateRule?: (detail: ConnectionDetail) => void
+  onViewRuleUsage?: (detail: ConnectionDetail) => void
+  // The row to scroll to and highlight once it appears.
+  focusRowId?: string
 }) {
   const { connections, rows, loading, unavailable } = useActiveConnectionRows({
     search,
@@ -251,6 +261,7 @@ const ActiveViewer = memo(function ActiveViewer({
               ? ''
               : m.connections_empty_message()
         }
+        focusRowId={focusRowId}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
       />
@@ -260,6 +271,8 @@ const ActiveViewer = memo(function ActiveViewer({
           detail={detail}
           onClose={closeDetail}
           onCloseConnection={closeDetailConnection}
+          onLocateRule={onLocateRule}
+          onViewRuleUsage={onViewRuleUsage}
         />
       </RowsTickContext.Provider>
     </>

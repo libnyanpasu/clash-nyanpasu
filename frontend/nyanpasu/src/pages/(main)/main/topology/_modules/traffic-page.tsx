@@ -3,7 +3,7 @@ import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
 import DevicesRounded from '~icons/material-symbols/devices-rounded'
 import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { useMockTrafficNow } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
@@ -43,9 +43,14 @@ const RANKING_LIMIT = 5
 export default function TrafficPage({
   search,
   onSearchChange,
+  onViewConnections,
+  toolbarStart,
 }: {
   search: TrafficSearch
   onSearchChange: (update: Partial<TrafficSearch>) => void
+  /** Opens the connections this page's scope, range and filters select. */
+  onViewConnections?: () => void
+  toolbarStart?: ReactNode
 }) {
   const { range, scope, filters, view, layers, metric, limit } = search
 
@@ -161,6 +166,8 @@ export default function TrafficPage({
         labelOf={labelOf}
         onSearchChange={onSearchChange}
         onPausedChange={setPaused}
+        onViewConnections={onViewConnections}
+        start={toolbarStart}
       />
     </div>
   )

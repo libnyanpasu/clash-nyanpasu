@@ -13,6 +13,10 @@ import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import ActiveViewer from '../src/pages/(main)/main/connections/_modules/active-viewer'
 import ClosedViewer from '../src/pages/(main)/main/connections/_modules/closed-viewer'
 import { mockActiveConnections } from '../src/pages/(main)/main/connections/_modules/mock-connections'
+import {
+  closedConnectionDetail,
+  ConnectionDetailModal,
+} from '../src/pages/(main)/main/connections/_modules/table-row'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
@@ -157,4 +161,76 @@ test('the details of an active connection stay open after it closes', async ({
     .toContain(m.connections_tab_closed())
   expect(dialog()!.textContent).toContain(connection.id)
   expect(hasCloseButton()).toBe(false)
+})
+
+const closedMatch: ClosedConnection = {
+  id: 'm',
+  started_at: 1_000,
+  first_seen_at: 1_000,
+  closed_at: 2_000,
+  bytes: { upload: 0, download: 0 },
+  dimensions: {
+    process: '',
+    source: '192.168.1.2',
+    target: 'example.com',
+    protocol: 'tcp',
+    rule: { kind: 'Match', payload: '' },
+    chains: ['DIRECT'],
+  },
+}
+
+const buttonNamed = (name: string) =>
+  [...(dialog()?.querySelectorAll('button') ?? [])].find(
+    (button) => button.textContent === name,
+  )
+
+test('the details close and jump to the rule and its usage with the detail', async ({
+  onTestFinished,
+}) => {
+  // The dialog closes before the page changes, so it does not stay over it.
+  const order: string[] = []
+  const onClose = vi.fn(() => order.push('close'))
+  const onLocateRule = vi.fn(() => order.push('locate'))
+  const onViewRuleUsage = vi.fn(() => order.push('usage'))
+
+  render(
+    <ConnectionDetailModal
+      detail={closedConnectionDetail(closedMatch, '2000:m')}
+      onClose={onClose}
+      onLocateRule={onLocateRule}
+      onViewRuleUsage={onViewRuleUsage}
+    />,
+    onTestFinished,
+  )
+
+  await expect
+    .poll(() => buttonNamed(m.connections_locate_rule()))
+    .toBeDefined()
+
+  buttonNamed(m.connections_locate_rule())!.click()
+  buttonNamed(m.connections_view_rule_usage())!.click()
+
+  expect(onLocateRule).toHaveBeenCalledWith(
+    expect.objectContaining({ ruleLabel: 'Match', rowId: '2000:m' }),
+  )
+  expect(onViewRuleUsage).toHaveBeenCalledWith(
+    expect.objectContaining({ ruleLabel: 'Match', rowId: '2000:m' }),
+  )
+  expect(order).toEqual(['close', 'locate', 'close', 'usage'])
+})
+
+test('the details offer no jumps without their callbacks', async ({
+  onTestFinished,
+}) => {
+  render(
+    <ConnectionDetailModal
+      detail={closedConnectionDetail(closedMatch, '2000:m')}
+      onClose={() => {}}
+    />,
+    onTestFinished,
+  )
+
+  await expect.poll(() => dialog()).not.toBeNull()
+  expect(buttonNamed(m.connections_locate_rule())).toBeUndefined()
+  expect(buttonNamed(m.connections_view_rule_usage())).toBeUndefined()
 })

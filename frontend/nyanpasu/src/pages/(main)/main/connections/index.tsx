@@ -9,6 +9,10 @@ import {
 } from '@/components/providers/context-menu-provider'
 import { keepReturn } from '@/components/router/cross-navigation'
 import { ReturnButton } from '@/components/router/return-button'
+import {
+  useCrossNavigate,
+  useEntryFocus,
+} from '@/components/router/use-cross-navigate'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useDeleteClashConnections } from '@nyanpasu/query'
@@ -21,7 +25,11 @@ import AllViewer from './_modules/all-viewer'
 import ClosedViewer from './_modules/closed-viewer'
 import ConnectionsToolbar from './_modules/connections-toolbar'
 import ConnectionsStatusTabs from './_modules/status-tabs'
-import { type ConnectionsSelection } from './_modules/use-connection-rows'
+import type { ConnectionDetail } from './_modules/table-row'
+import {
+  useTabFocus,
+  type ConnectionsSelection,
+} from './_modules/use-connection-rows'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/connections/')({
@@ -82,6 +90,38 @@ function RouteComponent() {
 
   const [settingsOpen, setSettingsOpen] = useState(false)
 
+  const crossNavigate = useCrossNavigate()
+
+  // No proxy or search on the rules page, so nothing hides the rule.
+  const handleLocateRule = useCallback(
+    (detail: ConnectionDetail) =>
+      crossNavigate({
+        from: 'connections',
+        originFocus: detail.rowId,
+        targetFocus: detail.ruleLabel,
+        to: { to: '/main/rules', search: {} },
+      }),
+    [crossNavigate],
+  )
+
+  const handleViewRuleUsage = useCallback(
+    (detail: ConnectionDetail) =>
+      crossNavigate({
+        from: 'connections',
+        originFocus: detail.rowId,
+        to: {
+          to: '/main/topology',
+          search: { filters: [{ d: 'rule', v: detail.ruleLabel }] },
+        },
+      }),
+    [crossNavigate],
+  )
+
+  const entryFocus = useEntryFocus()
+
+  // The row a jump left from, highlighted when returning to it.
+  const focusRowId = useTabFocus(scope, entryFocus)
+
   const deleteConnections = useDeleteClashConnections()
 
   const handleCloseAllConnections = useLockFn(async () => {
@@ -110,6 +150,9 @@ function RouteComponent() {
             selection={selection}
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
+            onLocateRule={handleLocateRule}
+            onViewRuleUsage={handleViewRuleUsage}
+            focusRowId={focusRowId}
           />
         ) : scope === 'closed' ? (
           <ClosedViewer
@@ -118,6 +161,9 @@ function RouteComponent() {
             selection={selection}
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
+            onLocateRule={handleLocateRule}
+            onViewRuleUsage={handleViewRuleUsage}
+            focusRowId={focusRowId}
           />
         ) : (
           <ActiveViewer
@@ -126,6 +172,9 @@ function RouteComponent() {
             filters={filters}
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
+            onLocateRule={handleLocateRule}
+            onViewRuleUsage={handleViewRuleUsage}
+            focusRowId={focusRowId}
           />
         ))}
     </ScrollArea>

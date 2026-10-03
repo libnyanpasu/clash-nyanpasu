@@ -5,7 +5,7 @@ import {
   getWidgetConfig,
   normalizeWidgetConfigStorage,
   WidgetId,
-} from '../src/pages/(main)/main/dashboard/_modules/widget-config'
+} from '@/components/widgets/widget-config'
 
 test('missing, unsupported and malformed storage keep existing widget defaults', () => {
   for (const value of [null, [], {}, { version: 2, byInstance: {} }]) {
@@ -76,4 +76,116 @@ test('duplicate instances are independent and a mismatched type uses defaults', 
   expect(getWidgetConfig(storage, 'first', WidgetId.Memory)).toEqual(
     DEFAULT_WIDGET_CONFIGS[WidgetId.Memory],
   )
+})
+
+test('new references are validated and isolated while version 1 stays readable', () => {
+  const storage = normalizeWidgetConfigStorage({
+    version: 1,
+    byInstance: {
+      quota: {
+        type: WidgetId.SubscriptionQuota,
+        target: { kind: 'fixed', profileUid: 'remote-a' },
+        expiryWarningDays: 500,
+        quotaWarningPercent: 0,
+      },
+      broken: {
+        type: WidgetId.SubscriptionQuota,
+        target: { kind: 'fixed', profileUid: '' },
+        expiryWarningDays: '14',
+        showProgress: false,
+      },
+      providers: {
+        type: WidgetId.ProviderUpdates,
+        resources: [
+          { kind: 'proxy', name: 'same' },
+          { kind: 'rule', name: 'same' },
+          { kind: 'proxy', name: 'same' },
+        ],
+      },
+      report: {
+        type: WidgetId.OriginTraffic,
+        range: 'last_hour',
+        topN: 5,
+        profileUid: 'deleted-profile',
+        hideNames: true,
+      },
+      old: { type: WidgetId.TrafficDown, unit: 'bits' },
+    },
+  })
+  expect(
+    getWidgetConfig(storage, 'quota', WidgetId.SubscriptionQuota).target,
+  ).toEqual({ kind: 'fixed', profileUid: 'remote-a' })
+  expect(
+    getWidgetConfig(storage, 'quota', WidgetId.SubscriptionQuota),
+  ).toMatchObject({ expiryWarningDays: 365, quotaWarningPercent: 1 })
+  expect(
+    getWidgetConfig(storage, 'broken', WidgetId.SubscriptionQuota),
+  ).toEqual({
+    ...DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota],
+    showProgress: false,
+  })
+  expect(
+    getWidgetConfig(storage, 'providers', WidgetId.ProviderUpdates).resources,
+  ).toEqual([
+    { kind: 'proxy', name: 'same' },
+    { kind: 'rule', name: 'same' },
+  ])
+  expect(
+    getWidgetConfig(storage, 'report', WidgetId.OriginTraffic),
+  ).toMatchObject({
+    range: 'last_hour',
+    topN: 5,
+    profileUid: 'deleted-profile',
+    hideNames: true,
+  })
+  expect(getWidgetConfig(storage, 'old', WidgetId.TrafficDown).unit).toBe(
+    'bits',
+  )
+})
+
+test('numeric options clamp to their supported ranges and malformed values default per field', () => {
+  const storage = normalizeWidgetConfigStorage({
+    version: 1,
+    byInstance: {
+      active: {
+        type: WidgetId.ActiveConnections,
+        sort: 'speed',
+        topN: 100,
+        showProcess: false,
+        hideTargets: true,
+      },
+      resources: {
+        type: WidgetId.ProviderUpdates,
+        kinds: 'geo',
+        maxItems: 0,
+        resources: [{ kind: 'core', name: 'a' }],
+      },
+      history: { type: WidgetId.Memory, samples: 120 },
+      report: {
+        type: WidgetId.RecentTraffic,
+        range: 'today',
+        profileUid: 5,
+        showDirections: false,
+      },
+    },
+  })
+  expect(
+    getWidgetConfig(storage, 'active', WidgetId.ActiveConnections),
+  ).toEqual({
+    ...DEFAULT_WIDGET_CONFIGS[WidgetId.ActiveConnections],
+    topN: 20,
+    showProcess: false,
+    hideTargets: true,
+  })
+  expect(
+    getWidgetConfig(storage, 'resources', WidgetId.ProviderUpdates),
+  ).toEqual({
+    ...DEFAULT_WIDGET_CONFIGS[WidgetId.ProviderUpdates],
+    maxItems: 1,
+  })
+  expect(getWidgetConfig(storage, 'history', WidgetId.Memory).samples).toBe(32)
+  expect(getWidgetConfig(storage, 'report', WidgetId.RecentTraffic)).toEqual({
+    ...DEFAULT_WIDGET_CONFIGS[WidgetId.RecentTraffic],
+    showDirections: false,
+  })
 })

@@ -2,10 +2,10 @@ import AddRounded from '~icons/material-symbols/add-rounded'
 import DoneRounded from '~icons/material-symbols/done-rounded'
 import { AnimatePresence, motion } from 'motion/react'
 import { Button } from '@nyanpasu/ui/button'
+import { useDashboardContext } from '@/components/widgets/provider'
+import { WidgetConfigSaveStatus } from '@/components/widgets/widget-config-menu'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
-import { useDashboardContext } from './provider'
-import { WidgetConfigSaveStatus } from './widget-config-menu'
 
 export default function EditAction() {
   const {

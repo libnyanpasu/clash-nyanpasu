@@ -3,6 +3,7 @@ import { useState, type ComponentType, type SVGProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import { m } from '@/paraglide/messages'
+import { usageAmount, type UsageLabel } from '@/utils/traffic-usage'
 import type {
   Dimension,
   Metric,
@@ -12,7 +13,6 @@ import type {
 import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
 import { setFilter, toggleFilter, type SearchFilter } from './search'
-import { usageAmount, type UsageLabel } from './usage-label'
 
 function CountBadge({ count }: { count: number }) {
   return (

@@ -7,6 +7,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { useMockTrafficNow } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
+import { usageLabel } from '@/utils/traffic-usage'
 import { useProfile, useSetting, useTrafficReport } from '@nyanpasu/query'
 import { type Dimension, type ReportRequest } from '@nyanpasu/rpc/types'
 import { mockTrafficReport } from './mock-traffic'
@@ -23,7 +24,6 @@ import {
 import StatCards from './stat-cards'
 import TopologyView from './topology-view'
 import TrafficToolbar from './traffic-toolbar'
-import { usageLabel } from './usage-label'
 
 // One report serves the stat cards, every ranking card and the topology.
 const RANKINGS = [

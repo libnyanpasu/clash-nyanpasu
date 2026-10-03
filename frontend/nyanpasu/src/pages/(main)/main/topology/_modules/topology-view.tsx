@@ -13,6 +13,13 @@ import {
   SelectValue,
 } from '@nyanpasu/ui/select'
 import { m } from '@/paraglide/messages'
+import {
+  dimensionName,
+  largest,
+  usageAmount,
+  usageValue,
+  type UsageLabel,
+} from '@/utils/traffic-usage'
 import type {
   Dimension,
   Metric,
@@ -30,13 +37,6 @@ import {
   type SearchFilter,
 } from './search'
 import { usePageTransition } from './transition'
-import {
-  dimensionName,
-  largest,
-  usageAmount,
-  usageValue,
-  type UsageLabel,
-} from './usage-label'
 
 const tones = [
   'bg-primary-container text-on-primary-container',

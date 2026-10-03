@@ -27,6 +27,7 @@ export default defineConfig({
       },
       {
         plugins: [react()],
+        css: { postcss: path.resolve('frontend/nyanpasu') },
         resolve: {
           alias,
           dedupe: ['react', 'react-dom', '@tanstack/react-query'],

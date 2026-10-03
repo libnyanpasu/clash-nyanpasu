@@ -22,8 +22,6 @@ Start with the [root README](../../README.md#development) for running the app an
 setup, see the [Vitest guide](../frontend-testing.md).
 For package ownership, dependency directions, and source-only typechecking, see
 [Frontend packages](frontend-packages.md).
-For startup profiling and the Windows issue #5338 measurement protocol, see
-[Startup benchmark](startup-benchmark.md).
 
 ## Rules to keep in mind
 

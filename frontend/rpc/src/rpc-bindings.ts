@@ -237,6 +237,8 @@ export function createRpcClient(
         __RPC_INVOKE('query_traffic_usage_by_keys', { query, groupBy, keys }),
       ),
     queryTrafficClosedConnections: (
+      range: TrafficRange,
+      filters: TrafficFilter[],
       before: {
         closed_at: number
         id: string
@@ -244,7 +246,16 @@ export function createRpcClient(
       limit: number,
     ) =>
       typedError<ClosedPage, IpcError>(
-        __RPC_INVOKE('query_traffic_closed_connections', { before, limit }),
+        __RPC_INVOKE('query_traffic_closed_connections', {
+          range,
+          filters,
+          before,
+          limit,
+        }),
+      ),
+    queryTrafficActiveConnectionIds: (filters: TrafficFilter[]) =>
+      typedError<string[], IpcError>(
+        __RPC_INVOKE('query_traffic_active_connection_ids', { filters }),
       ),
     getAppUpdateState: () =>
       typedError<AppUpdateSnapshot, IpcError>(

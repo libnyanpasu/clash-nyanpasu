@@ -87,6 +87,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::query_traffic_usage,
             ipc::query_traffic_usage_by_keys,
             ipc::query_traffic_closed_connections,
+            ipc::query_traffic_active_connection_ids,
             ipc::get_app_update_state,
             ipc::get_release_channel,
             ipc::get_system_accent_color,

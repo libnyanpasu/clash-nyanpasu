@@ -264,6 +264,7 @@ impl TrafficStore for RedbTrafficStore {
         &self,
         before: Option<&ClosedCursor>,
         limit: usize,
+        selection: &ClosedSelection,
     ) -> TrafficResult<ClosedPage> {
         let limit = limit.clamp(1, MAX_CLOSED_PAGE);
         let txn = self.db.begin_read().map_err(storage)?;
@@ -276,22 +277,34 @@ impl TrafficStore for RedbTrafficStore {
         let newest_first = table
             .range::<(u64, &str)>((Bound::Unbounded, upper))
             .map_err(storage)?
-            .rev()
-            .take(limit);
-        for entry in newest_first {
+            .rev();
+        for (scanned, entry) in newest_first.enumerate() {
             let (_, value) = entry.map_err(storage)?;
-            connections.push(decode(value.value())?);
+            let conn: ClosedConnection = decode(value.value())?;
+            if selection.exhausted_at(conn.closed_at) {
+                break;
+            }
+            let cursor = conn.cursor();
+            if selection.matches(&conn) {
+                connections.push(conn);
+                if connections.len() == limit {
+                    return Ok(ClosedPage {
+                        connections,
+                        next: Some(cursor),
+                    });
+                }
+            }
+            if scanned + 1 == MAX_CLOSED_SCAN {
+                return Ok(ClosedPage {
+                    connections,
+                    next: Some(cursor),
+                });
+            }
         }
-
-        let next = if connections.len() == limit {
-            connections.last().map(|c| ClosedCursor {
-                closed_at: c.closed_at,
-                id: c.id.clone(),
-            })
-        } else {
-            None
-        };
-        Ok(ClosedPage { connections, next })
+        Ok(ClosedPage {
+            connections,
+            next: None,
+        })
     }
 
     fn closed_count(&self) -> TrafficResult<u64> {
@@ -567,9 +580,13 @@ mod tests {
         rows
     }
 
+    fn everything() -> ClosedSelection {
+        ClosedSelection::default()
+    }
+
     fn closed_ids(store: &RedbTrafficStore) -> Vec<String> {
         store
-            .closed_connections(None, usize::MAX)
+            .closed_connections(None, usize::MAX, &everything())
             .unwrap()
             .connections
             .into_iter()
@@ -930,7 +947,7 @@ mod tests {
             })
             .unwrap();
 
-        let first = store.closed_connections(None, 2).unwrap();
+        let first = store.closed_connections(None, 2, &everything()).unwrap();
         let ids = |page: &ClosedPage| {
             page.connections
                 .iter()
@@ -947,12 +964,101 @@ mod tests {
         );
 
         // Ties on closed_at fall back to the id, descending.
-        let second = store.closed_connections(first.next.as_ref(), 2).unwrap();
+        let second = store
+            .closed_connections(first.next.as_ref(), 2, &everything())
+            .unwrap();
         assert_eq!(ids(&second), ["c", "b"]);
 
-        let third = store.closed_connections(second.next.as_ref(), 2).unwrap();
+        let third = store
+            .closed_connections(second.next.as_ref(), 2, &everything())
+            .unwrap();
         assert_eq!(ids(&third), ["a"]);
         assert_eq!(third.next, None);
+    }
+
+    fn closed_with_rule(id: &str, closed_at: i64, rule: &str) -> ClosedConnection {
+        let mut conn = closed(id, closed_at);
+        conn.dimensions.rule.kind = rule.into();
+        conn
+    }
+
+    fn rule_is(rule: &str) -> Vec<TrafficFilter> {
+        vec![TrafficFilter {
+            dimension: Dimension::Rule,
+            value: rule.into(),
+        }]
+    }
+
+    fn page_ids(page: &ClosedPage) -> Vec<&str> {
+        page.connections.iter().map(|c| c.id.as_str()).collect()
+    }
+
+    #[test]
+    fn closed_connections_select_by_filters_and_since() {
+        let dir = TempDir::new().unwrap();
+        let store = open(&dir);
+        store
+            .flush(&FlushBatch {
+                closed: vec![
+                    closed_with_rule("a", 1_000, "X"),
+                    closed_with_rule("b", 2_000, "Y"),
+                    closed_with_rule("c", 3_000, "X"),
+                ],
+                ..batch()
+            })
+            .unwrap();
+        let select = |since_ms, filters| {
+            store
+                .closed_connections(None, 10, &ClosedSelection { since_ms, filters })
+                .unwrap()
+        };
+
+        let by_rule = select(None, rule_is("X"));
+        assert_eq!(page_ids(&by_rule), ["c", "a"]);
+        assert_eq!(by_rule.next, None);
+
+        let since = select(Some(2_000), Vec::new());
+        assert_eq!(page_ids(&since), ["c", "b"]);
+        assert_eq!(since.next, None);
+
+        let both = select(Some(2_000), rule_is("X"));
+        assert_eq!(page_ids(&both), ["c"]);
+        assert_eq!(both.next, None);
+    }
+
+    #[test]
+    fn a_sparse_filter_pages_by_the_scan_budget() {
+        let dir = TempDir::new().unwrap();
+        let store = open(&dir);
+        let mut rows = vec![closed_with_rule("match", 0, "X")];
+        rows.extend((1..=MAX_CLOSED_SCAN + 1).map(|i| closed_with_rule("other", i as i64, "Y")));
+        store
+            .flush(&FlushBatch {
+                closed: rows,
+                ..batch()
+            })
+            .unwrap();
+        let selection = ClosedSelection {
+            since_ms: None,
+            filters: rule_is("X"),
+        };
+
+        // Newest first, the budget ends on the MAX_CLOSED_SCAN-th row: closed at 2.
+        let first = store.closed_connections(None, 10, &selection).unwrap();
+        assert!(first.connections.is_empty());
+        assert_eq!(
+            first.next,
+            Some(ClosedCursor {
+                closed_at: 2,
+                id: "other".into()
+            })
+        );
+
+        let second = store
+            .closed_connections(first.next.as_ref(), 10, &selection)
+            .unwrap();
+        assert_eq!(page_ids(&second), ["match"]);
+        assert_eq!(second.next, None);
     }
 
     #[test]
@@ -975,8 +1081,10 @@ mod tests {
         let mut seen = Vec::new();
         let mut before = None;
         loop {
-            let stored = store.closed_connections(before.as_ref(), 2).unwrap();
-            let page = merge_closed_page(stored, &pending, before.as_ref(), 2);
+            let stored = store
+                .closed_connections(before.as_ref(), 2, &everything())
+                .unwrap();
+            let page = merge_closed_page(stored, &pending, before.as_ref(), 2, &everything());
             seen.extend(page.connections.iter().map(|c| c.id.clone()));
             match page.next {
                 Some(next) => before = Some(next),
@@ -998,8 +1106,8 @@ mod tests {
             .unwrap();
         let pending = vec![closed("c", 30), closed("d", 40)];
 
-        let stored = store.closed_connections(None, 2).unwrap();
-        let first = merge_closed_page(stored, &pending, None, 2);
+        let stored = store.closed_connections(None, 2, &everything()).unwrap();
+        let first = merge_closed_page(stored, &pending, None, 2, &everything());
         let ids = |page: &ClosedPage| {
             page.connections
                 .iter()
@@ -1016,8 +1124,10 @@ mod tests {
             })
             .unwrap();
         let before = first.next;
-        let stored = store.closed_connections(before.as_ref(), 2).unwrap();
-        let second = merge_closed_page(stored, &[], before.as_ref(), 2);
+        let stored = store
+            .closed_connections(before.as_ref(), 2, &everything())
+            .unwrap();
+        let second = merge_closed_page(stored, &[], before.as_ref(), 2, &everything());
         assert_eq!(ids(&second), ["b", "a"]);
     }
 
@@ -1032,11 +1142,13 @@ mod tests {
             })
             .unwrap();
 
-        let page = store.closed_connections(None, 0).unwrap();
+        let page = store.closed_connections(None, 0, &everything()).unwrap();
         assert_eq!(page.connections.len(), 1);
         assert_eq!(page.connections[0].id, "new");
 
-        let all = store.closed_connections(None, usize::MAX).unwrap();
+        let all = store
+            .closed_connections(None, usize::MAX, &everything())
+            .unwrap();
         assert_eq!(all.connections.len(), 2);
         assert_eq!(all.next, None);
         assert_eq!(all.connections[1].id, "old");
@@ -1047,7 +1159,7 @@ mod tests {
         };
         assert!(
             store
-                .closed_connections(Some(&cursor), 10)
+                .closed_connections(Some(&cursor), 10, &everything())
                 .unwrap()
                 .connections
                 .is_empty()

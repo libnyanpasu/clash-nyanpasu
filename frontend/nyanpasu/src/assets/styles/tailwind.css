@@ -257,3 +257,18 @@
     left: 107%;
   }
 }
+
+/*
+ * The item a page was opened or returned to (see focus-highlight.ts): held,
+ * then faded into the row's own background.
+ */
+@keyframes focus-highlight {
+  0%,
+  65% {
+    background-color: color-mix(
+      in oklab,
+      var(--color-primary) 12%,
+      transparent
+    );
+  }
+}

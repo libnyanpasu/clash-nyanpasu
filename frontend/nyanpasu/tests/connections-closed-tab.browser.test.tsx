@@ -4,7 +4,12 @@ import { expect, test, vi } from 'vitest'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
-import type { ClosedConnection, ClosedCursor } from '@nyanpasu/rpc/types'
+import type {
+  ClosedConnection,
+  ClosedCursor,
+  TrafficFilter,
+  TrafficRange,
+} from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import ClosedViewer from '../src/pages/(main)/main/connections/_modules/closed-viewer'
@@ -13,6 +18,8 @@ import { TestQueryProvider as QueryClientProvider } from './query-provider'
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
 }))
+
+const UNFILTERED = { filters: [] }
 
 const closed = (
   id: string,
@@ -74,8 +81,21 @@ test('lists closed connections and loads older pages at the end', async ({
     expect((args as { method: string }).method).toBe(
       'query_traffic_closed_connections',
     )
-    const { before } = (args as { params: { before: ClosedCursor | null } })
-      .params
+    const { range, filters, before, limit } = (
+      args as {
+        params: {
+          range: TrafficRange
+          filters: TrafficFilter[]
+          before: ClosedCursor | null
+          limit: number
+        }
+      }
+    ).params
+    expect({ range, filters, limit }).toEqual({
+      range: 'all',
+      filters: [],
+      limit: 200,
+    })
     requested.push(before)
     return before === null
       ? {
@@ -88,6 +108,7 @@ test('lists closed connections and loads older pages at the end', async ({
   const container = render(
     <ClosedViewer
       search=""
+      selection={UNFILTERED}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,
@@ -124,6 +145,7 @@ test('a search keeps loading older pages until it finds a match', async ({
   const container = render(
     <ClosedViewer
       search="older"
+      selection={UNFILTERED}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,
@@ -143,7 +165,12 @@ test('column settings hide a column and remember it', async ({
   }))
 
   const container = render(
-    <ClosedViewer search="" settingsOpen onSettingsOpenChange={() => {}} />,
+    <ClosedViewer
+      search=""
+      selection={UNFILTERED}
+      settingsOpen
+      onSettingsOpenChange={() => {}}
+    />,
     onTestFinished,
   )
 
@@ -176,6 +203,7 @@ test('an unavailable traffic history explains the empty table', async ({
   const container = render(
     <ClosedViewer
       search=""
+      selection={UNFILTERED}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,
@@ -196,6 +224,7 @@ test('the mock connections setting replaces the traffic history', async ({
   const container = render(
     <ClosedViewer
       search=""
+      selection={UNFILTERED}
       settingsOpen={false}
       onSettingsOpenChange={() => {}}
     />,

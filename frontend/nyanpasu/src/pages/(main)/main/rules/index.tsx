@@ -1,11 +1,24 @@
-import { memo, useDeferredValue, useMemo, useState } from 'react'
+import { memo, useCallback, useDeferredValue, useMemo } from 'react'
 import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import { keepReturn } from '@/components/router/cross-navigation'
+import { ReturnButton } from '@/components/router/return-button'
+import {
+  useCrossNavigate,
+  useEntryFocus,
+} from '@/components/router/use-cross-navigate'
 import { m } from '@/paraglide/messages'
-import { useClashProxies, useClashRules } from '@nyanpasu/query'
+import {
+  useClashProxies,
+  useClashRules,
+  useCurrentProfileUid,
+} from '@nyanpasu/query'
 import { type Bytes, type ClashRule } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { useFocusHighlight } from '../_modules/focus-highlight'
+import { ruleLabel } from '../_modules/traffic-filters'
+import { useSearchTerm } from '../_modules/use-search-term'
 import { rankByValue } from './_modules/rank-by-value'
 import {
   RULE_ROW_HEIGHT,
@@ -13,11 +26,7 @@ import {
   RulesHeader,
   type RuleSort,
 } from './_modules/rule-row'
-import {
-  ruleLabel,
-  useRuleStats,
-  type RuleLiveStats,
-} from './_modules/use-rule-stats'
+import { useRuleStats, type RuleLiveStats } from './_modules/use-rule-stats'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/rules/')({
@@ -47,6 +56,10 @@ const liveValue: Record<
 }
 
 const totalValue = (total: Bytes) => total.download + total.upload
+
+// Only the first of a label's rules has its stats and jumps, so a focus on
+// the label is that rule's.
+const focusKey = (entry: RuleEntry) => (entry.first ? entry.label : undefined)
 
 // Memoized so a keystroke's urgent render skips the list; it re-renders with
 // the deferred search term, or on its own stream and prop updates.
@@ -145,6 +158,49 @@ const Viewer = memo(function Viewer({
     overscan: 10,
   })
 
+  const crossNavigate = useCrossNavigate()
+
+  const profile = useCurrentProfileUid()
+
+  const handleViewConnections = useCallback(
+    (label: string) =>
+      crossNavigate({
+        from: 'rules',
+        originFocus: label,
+        to: {
+          to: '/main/connections',
+          search: { scope: 'active', filters: [{ d: 'rule', v: label }] },
+        },
+      }),
+    [crossNavigate],
+  )
+
+  // The same profile filter as the rule totals, so the page's total is the
+  // cell's.
+  const handleViewUsage = useCallback(
+    (label: string) =>
+      crossNavigate({
+        from: 'rules',
+        originFocus: label,
+        to: {
+          to: '/main/topology',
+          search: {
+            range: 'all',
+            scope: 'all',
+            filters: [
+              { d: 'profile', v: profile ?? '' },
+              { d: 'rule', v: label },
+            ],
+          },
+        },
+      }),
+    [crossNavigate, profile],
+  )
+
+  const focus = useEntryFocus()
+
+  const focusedLabel = useFocusHighlight(focus, items, focusKey, rowVirtualizer)
+
   return (
     <div
       className="relative mx-auto max-w-7xl"
@@ -163,10 +219,14 @@ const Viewer = memo(function Viewer({
             <RuleRow
               index={item.index}
               rule={item.rule}
+              label={item.label}
               live={item.first ? live.get(item.label) : undefined}
               total={item.first ? totals?.get(item.label) : undefined}
               icon={groupIcons.get(item.rule.proxy)}
               search={search}
+              focused={item.first && item.label === focusedLabel}
+              onViewConnections={item.first ? handleViewConnections : undefined}
+              onViewUsage={item.first ? handleViewUsage : undefined}
             />
           </div>
         )
@@ -176,13 +236,35 @@ const Viewer = memo(function Viewer({
 })
 
 function RouteComponent() {
-  const [search, setSearch] = useState('')
+  const { q, sort = 'index' } = IndexRoute.useSearch()
+
+  const navigate = IndexRoute.useNavigate()
+
+  const writeQuery = useCallback(
+    (next: string | undefined) =>
+      navigate({
+        search: (previous) => ({ ...previous, q: next }),
+        replace: true,
+        state: keepReturn,
+      }),
+    [navigate],
+  )
+
+  const [search, setSearch] = useSearchTerm(q, writeQuery)
 
   // Filtering and highlighting every rule is heavy; typing stays responsive
   // while the list catches up with the latest term.
   const deferredSearch = useDeferredValue(search)
 
-  const [sort, setSort] = useState<RuleSort>('index')
+  const handleSortChange = (next: RuleSort) =>
+    navigate({
+      search: (previous) => ({
+        ...previous,
+        sort: next === 'index' ? undefined : next,
+      }),
+      replace: true,
+      state: keepReturn,
+    })
 
   // Building the rule list and mounting its rows is the bulk of opening the
   // page. Router updates render synchronously, so the list mounts in a
@@ -194,7 +276,7 @@ function RouteComponent() {
     <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
       <div className="bg-mixed-background shrink-0">
         <div className="mx-auto max-w-7xl">
-          <RulesHeader sort={sort} onSortChange={setSort} />
+          <RulesHeader sort={sort} onSortChange={handleSortChange} />
         </div>
       </div>
 
@@ -203,14 +285,16 @@ function RouteComponent() {
       </ScrollArea>
 
       <div
-        className="bg-mixed-background flex h-16 shrink-0 items-center px-4"
+        className="bg-mixed-background @container flex h-16 shrink-0 items-center gap-3 px-4"
         data-slot="rules-search"
       >
+        <ReturnButton />
+
         <input
           type="text"
           className={cn(
             'bg-surface-variant dark:bg-surface-variant/30',
-            'h-10 w-full rounded-full px-4 pr-10 text-sm outline-none',
+            'h-10 min-w-0 flex-1 rounded-full px-4 pr-10 text-sm outline-none',
           )}
           data-slot="rules-search-input-field"
           placeholder={m.rules_search_placeholder()}

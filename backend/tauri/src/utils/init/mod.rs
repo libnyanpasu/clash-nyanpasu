@@ -8,13 +8,18 @@ use nyanpasu_core::format::Format;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use std::{
-    fs,
-    io::{BufReader, Write},
+    fs::{self, File},
+    io::{self, BufReader, Write},
     path::PathBuf,
+    process::{Child, Command, ExitStatus},
     sync::Arc,
+    thread::JoinHandle,
 };
 use tauri::utils::platform::current_exe;
 pub mod logging;
+
+#[cfg(test)]
+mod tests;
 
 /// The `migrate` subprocess exited unsuccessfully.
 #[derive(Debug, thiserror::Error)]
@@ -32,21 +37,25 @@ pub fn run_pending_migrations() -> Result<()> {
         .create(true)
         .truncate(true)
         .open(crate::utils::dirs::app_data_dir()?.join("migration.log"))?;
+    let mut command = Command::new(current_exe);
+    command.arg("migrate");
+    run_migration_command(command, file)
+}
+
+fn run_migration_command(mut command: Command, file: File) -> Result<()> {
     let file = Arc::new(parking_lot::Mutex::new(file));
     let (stdout_reader, stdout_writer) = os_pipe::pipe()?;
     let (stderr_reader, stderr_writer) = os_pipe::pipe()?;
     let errs = Arc::new(parking_lot::Mutex::new(String::new()));
-    let guard = Arc::new(parking_lot::RwLock::new(()));
-    let mut child = std::process::Command::new(current_exe)
-        .arg("migrate")
+    let mut child = command
         .stderr(stderr_writer)
         .stdout(stdout_writer)
         .spawn()?;
+    // Command owns the parent's write handles until dropped; readers need them closed for EOF.
+    drop(command);
     let file_ = file.clone();
-    let guard_ = guard.clone();
     let errs_ = errs.clone();
-    std::thread::spawn(move || {
-        let _l = guard_.read();
+    let stdout_thread = std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout_reader);
         let mut buf = Vec::new();
         loop {
@@ -67,9 +76,7 @@ pub fn run_pending_migrations() -> Result<()> {
         }
     });
     let errs_ = errs.clone();
-    let guard_ = guard.clone();
-    std::thread::spawn(move || {
-        let _l = guard_.read();
+    let stderr_thread = std::thread::spawn(move || {
         let mut reader = BufReader::new(stderr_reader);
         let mut buf = Vec::new();
         loop {
@@ -91,8 +98,7 @@ pub fn run_pending_migrations() -> Result<()> {
             }
         }
     });
-    let result = child.wait();
-    let _l = guard.write(); // Just for waiting the thread read all the output
+    let result = wait_for_migration_output(&mut child, [stdout_thread, stderr_thread]);
     let err = errs.lock();
     result
         .map_err(|e| anyhow!("Failed to wait for child: {:?}, errs: {}", e, err))
@@ -107,6 +113,21 @@ pub fn run_pending_migrations() -> Result<()> {
                 Ok(())
             }
         })
+}
+
+fn wait_for_migration_output(
+    child: &mut Child,
+    readers: [JoinHandle<()>; 2],
+) -> io::Result<ExitStatus> {
+    let result = child.wait();
+    // Join both readers before returning or resuming a reader's panic.
+    let reader_results = readers.map(JoinHandle::join);
+    for result in reader_results {
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+    result
 }
 
 /// Initialize all the config files

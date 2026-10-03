@@ -9,13 +9,7 @@ import {
   type ClashRule,
   type TrafficQuery,
 } from '@nyanpasu/rpc/types'
-
-/**
- * Identifies a rule the way a connection's `rule` / `rulePayload` and the
- * traffic store's rule key (`RuleKey::label`) do.
- */
-export const ruleLabel = (type: string, payload: string) =>
-  payload ? `${type},${payload}` : type
+import { ruleLabel } from '../../_modules/traffic-filters'
 
 export type RuleLiveStats = {
   connections: number

@@ -128,9 +128,6 @@ jobs:
         run: |
           pnpm prepare:release --linux
 
-      - name: Build UI
-        run: pnpm -F ui build
-
       # ===========================
       # GTK 图标修复步骤（适用于所有架构）
       # ===========================

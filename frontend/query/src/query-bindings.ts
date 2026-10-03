@@ -329,6 +329,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['queryTrafficClosedConnections', ...args],
         queryFn: () => commands.queryTrafficClosedConnections(...args),
       }),
+    queryTrafficActiveConnectionIds: (
+      ...args: Parameters<typeof commands.queryTrafficActiveConnectionIds>
+    ) =>
+      queryOptions({
+        queryKey: ['queryTrafficActiveConnectionIds', ...args],
+        queryFn: () => commands.queryTrafficActiveConnectionIds(...args),
+      }),
     getAppUpdateState: (
       ...args: Parameters<typeof commands.getAppUpdateState>
     ) =>

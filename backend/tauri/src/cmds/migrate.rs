@@ -186,11 +186,10 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
     drop(single_instance); // release single instance lock
 
     let app_path = current_exe()?;
-    thread::spawn(move || {
-        #[allow(clippy::zombie_processes)]
-        Command::new(app_path).spawn().unwrap();
-    });
-    thread::sleep(Duration::from_secs(5));
+    #[allow(clippy::zombie_processes)]
+    Command::new(app_path)
+        .spawn()
+        .context("failed to start application after migrating its home directory")?;
     Ok(())
 }
 

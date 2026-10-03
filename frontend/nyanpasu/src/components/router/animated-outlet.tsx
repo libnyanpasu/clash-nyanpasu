@@ -12,6 +12,7 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
+import { historyDirection } from './cross-navigation'
 
 type TransitionDirection = 1 | -1
 
@@ -185,18 +186,25 @@ export function AnimatedOutletPreset(props: ComponentProps<typeof motion.div>) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
+  const historyIndex = useRouterState({
+    select: (state) => state.location.state.__TSR_index,
+  })
   const nextMatchIndex = matches.findIndex((d) => d.id === match.id) + 1
   const nextMatch = matches[nextMatchIndex]
 
   const id = nextMatch ? nextMatch.id : ''
   const prevPathRef = useRef(pathname)
+  const prevHistoryIndexRef = useRef(historyIndex)
   const directionRef = useRef<TransitionDirection>(1)
 
   if (prevPathRef.current !== pathname) {
     const prevPath = prevPathRef.current
     const nextPath = pathname
 
-    if (nextPath.startsWith(`${prevPath}/`)) {
+    if (historyDirection(prevHistoryIndexRef.current, historyIndex) === -1) {
+      // A step back through history slides back, whatever the paths are.
+      directionRef.current = -1
+    } else if (nextPath.startsWith(`${prevPath}/`)) {
       directionRef.current = 1
     } else if (prevPath.startsWith(`${nextPath}/`)) {
       directionRef.current = -1
@@ -207,6 +215,8 @@ export function AnimatedOutletPreset(props: ComponentProps<typeof motion.div>) {
 
     prevPathRef.current = pathname
   }
+
+  prevHistoryIndexRef.current = historyIndex
 
   const direction = directionRef.current
   const selectedVariants = getDirectionalVariant(direction)

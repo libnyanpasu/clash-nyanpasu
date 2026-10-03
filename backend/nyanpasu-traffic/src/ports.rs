@@ -18,11 +18,14 @@ pub trait TrafficStore: Send + Sync + 'static {
     /// `batch.prune` names.
     fn flush(&self, batch: &FlushBatch) -> TrafficResult<Flushed>;
 
-    /// Newest first, strictly before `before`.
+    /// Up to `limit` connections that `selection` picks, newest first, strictly before `before`.
+    /// A page reads at most `MAX_CLOSED_SCAN` connections; one that stops there continues from
+    /// the last connection it read, even when none of them matched.
     fn closed_connections(
         &self,
         before: Option<&ClosedCursor>,
         limit: usize,
+        selection: &ClosedSelection,
     ) -> TrafficResult<ClosedPage>;
 
     fn closed_count(&self) -> TrafficResult<u64>;

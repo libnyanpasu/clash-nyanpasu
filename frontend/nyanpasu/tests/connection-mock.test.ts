@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
   mockActiveConnections,
+  mockActiveDimensions,
   mockClosedConnections,
 } from '../src/pages/(main)/main/connections/_modules/mock-connections.ts'
 
@@ -49,4 +50,19 @@ test('an active connection shows up as closed once it ends', () => {
 test('the same time gives the same connections', () => {
   expect(mockActiveConnections(now)).toEqual(mockActiveConnections(now))
   expect(mockClosedConnections(now)).toEqual(mockClosedConnections(now))
+})
+
+test('an active connection has the dimensions it is recorded with on close', () => {
+  const later = now + 15 * 60 * 1000
+  const closedLater = new Map(
+    mockClosedConnections(later).map((conn) => [conn.id, conn.dimensions]),
+  )
+  const ended = mockActiveConnections(now).filter((conn) =>
+    closedLater.has(conn.id),
+  )
+
+  expect(ended.length).toBeGreaterThan(0)
+  for (const conn of ended) {
+    expect(mockActiveDimensions(conn)).toEqual(closedLater.get(conn.id))
+  }
 })

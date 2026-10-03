@@ -255,19 +255,10 @@ export function createRpcClient(
       typedError<string[], IpcError>(
         __RPC_INVOKE('query_traffic_active_connection_ids', { filters }),
       ),
-    checkUpdate: () =>
-      typedError<
-        {
-          downloads: UpdateDownload[]
-          available: boolean
-          current_version: string
-          version: string
-          date: string | null
-          body: string | null
-          raw_json: any
-        } | null,
-        IpcError
-      >(__RPC_INVOKE('check_update')),
+    getAppUpdateState: () =>
+      typedError<AppUpdateSnapshot, IpcError>(
+        __RPC_INVOKE('get_app_update_state'),
+      ),
     getReleaseChannel: () =>
       typedError<ReleaseChannelInfo, IpcError>(
         __RPC_INVOKE('get_release_channel'),
@@ -291,6 +282,24 @@ export function createRpcClient(
     setReleaseChannel: (channel: ReleaseChannel) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('set_release_channel', { channel }),
+      ),
+    checkAppUpdate: () =>
+      typedError<AppUpdateSnapshot, IpcError>(__RPC_INVOKE('check_app_update')),
+    downloadAppUpdate: () =>
+      typedError<AppUpdateSnapshot, IpcError>(
+        __RPC_INVOKE('download_app_update'),
+      ),
+    cancelAppUpdateDownload: () =>
+      typedError<AppUpdateSnapshot, IpcError>(
+        __RPC_INVOKE('cancel_app_update_download'),
+      ),
+    installAppUpdate: () =>
+      typedError<AppUpdateSnapshot, IpcError>(
+        __RPC_INVOKE('install_app_update'),
+      ),
+    discardAppUpdatePackage: () =>
+      typedError<AppUpdateSnapshot, IpcError>(
+        __RPC_INVOKE('discard_app_update_package'),
       ),
     subscribeClashConnectionDetails: (
       onFrame: Channel<ClashConnectionDetails_Deserialize>,
@@ -489,18 +498,6 @@ export function createRpcClient(
       ),
     restartApplication: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
-    /**
-     *  Downloads the update `check_update` found, from the first of its sources
-     *  that succeeds, then installs it and restarts into the new version. It
-     *  returns only when it fails.
-     */
-    installUpdate: (
-      downloads: UpdateDownload[],
-      onEvent: Channel<UpdateDownloadEvent>,
-    ) =>
-      typedError<null, IpcError>(
-        __RPC_INVOKE('install_update', { downloads, onEvent }),
-      ),
     setTrayIcon: (mode: TrayIcon, path: string | null) =>
       typedError<null, IpcError>(__RPC_INVOKE('set_tray_icon', { mode, path })),
     openThat: (path: string) =>
@@ -549,6 +546,10 @@ export function createRpcClient(
   }
 
   const events = {
+    appUpdateStateChanged: makeEvent<AppUpdateStateChanged>(
+      transport.events,
+      'app-update-state-changed',
+    ),
     clashWsEvent: makeEvent<ClashWsEvent>(transport.events, 'clash-ws-event'),
     configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
       transport.events,
@@ -599,6 +600,41 @@ export function createRpcClient(
 export type RpcClient = ReturnType<typeof createRpcClient>
 
 /* Types */
+export type AppUpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'up_to_date'
+  | 'available'
+  | 'downloading'
+  | 'cancelling'
+  | 'cancelled'
+  | 'verifying'
+  | 'ready'
+  | 'installing'
+  | 'failed'
+
+export type AppUpdateRelease = {
+  version: string
+  date: string | null
+  body: string | null
+}
+
+export type AppUpdateSnapshot = {
+  revision: number
+  phase: AppUpdatePhase
+  release: AppUpdateRelease | null
+  downloaded: number
+  total: number | null
+  speed: number | null
+  source: UpdateSource | null
+  error: string | null
+  last_checked_at: string | null
+  supported: boolean
+  endpoints: string[]
+}
+
+export type AppUpdateStateChanged = AppUpdateSnapshot
+
 export type BreakConnectionStrategy = {
   /**  切换代理时中断连接 */
   on_proxy_change: ProxyChangeBreakMode
@@ -2436,6 +2472,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       max_log_files?: number | null
       max_log_file_size?: number | null
       enable_auto_check_update?: boolean | null
+      enable_auto_download_update?: boolean | null
       release_channel?: ReleaseChannel | null
       update_sources?: UpdateSource[] | null
       always_on_top?: boolean | null
@@ -2489,6 +2526,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   max_log_files?: number | null
   max_log_file_size?: number | null
   enable_auto_check_update?: boolean | null
+  enable_auto_download_update?: boolean | null
   release_channel?: ReleaseChannel | null
   update_sources?: UpdateSource[] | null
   tray_selector_mode?: ProxiesSelectorMode | null
@@ -2557,6 +2595,8 @@ export type NyanpasuAppConfig_Deserialize = {
   max_log_file_size?: number
   /**  Check update when app launch */
   enable_auto_check_update: boolean
+  /**  Download application updates automatically after they are found */
+  enable_auto_download_update?: boolean
   /**  None in older configurations means the channel of the installed build. */
   release_channel?: ReleaseChannel | null
   /**  Enabled application update package download sources, in priority order. */
@@ -2654,6 +2694,8 @@ export type NyanpasuAppConfig_Serialize = {
   max_log_file_size: number
   /**  Check update when app launch */
   enable_auto_check_update: boolean
+  /**  Download application updates automatically after they are found */
+  enable_auto_download_update: boolean
   /**  None in older configurations means the channel of the installed build. */
   release_channel: ReleaseChannel | null
   /**  Enabled application update package download sources, in priority order. */
@@ -4404,39 +4446,7 @@ export type TrayMenuMode = 'native' | 'webview'
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 
-/**  One route to the package `check_update` found. */
-export type UpdateDownload = {
-  source: UpdateSource
-  rid: number
-}
-
-/**  Download progress, in the shape of the updater plugin's own event. */
-export type UpdateDownloadEvent =
-  | {
-      event: 'Started'
-      data: {
-        contentLength: number | null
-      }
-    }
-  | {
-      event: 'Progress'
-      data: {
-        chunkLength: number
-      }
-    }
-  | { event: 'Finished' }
-
 export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast'
-
-export type UpdateWrapper = {
-  downloads: UpdateDownload[]
-  available: boolean
-  current_version: string
-  version: string
-  date: string | null
-  body: string | null
-  raw_json: any
-}
 
 export type UpdaterState =
   | 'idle'

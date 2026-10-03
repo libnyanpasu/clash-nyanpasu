@@ -1,6 +1,7 @@
 export * from './animated-item'
 export { default as AnimatedTabs } from './animated-tabs'
 export * from './animated-tabs'
+export * from './action-swap-text'
 export * from './button'
 export * from './card'
 export * from './circle'

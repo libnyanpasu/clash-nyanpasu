@@ -14,6 +14,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         // in the schema builder below and dispatch through call_rpc.
         .commands(collect_commands![unified_rpc::call_rpc])
         .events(collect_events![
+            crate::client::app_update::AppUpdateStateChanged,
             core::logs::CoreLogsChanged,
             core::clash::ws::ClashWsEvent,
             window::WindowMessageEvent,
@@ -86,7 +87,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::query_traffic_usage_by_keys,
             ipc::query_traffic_closed_connections,
             ipc::query_traffic_active_connection_ids,
-            ipc::check_update,
+            ipc::get_app_update_state,
             ipc::get_release_channel,
             ipc::get_system_accent_color,
         ],
@@ -96,6 +97,11 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::retry_configuration_runtime,
             ipc::retry_configuration_effect,
             ipc::set_release_channel,
+            ipc::check_app_update,
+            ipc::download_app_update,
+            ipc::cancel_app_update_download,
+            ipc::install_app_update,
+            ipc::discard_app_update_package,
             // Creating/releasing a detail receiver changes stream demand.
             ipc::subscribe_clash_connection_details,
             ipc::unsubscribe_clash_connection_details,
@@ -148,7 +154,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::select_proxy,
             ipc::update_proxy_provider,
             ipc::restart_application,
-            ipc::install_update,
             ipc::set_tray_icon,
             ipc::open_that,
             ipc::set_storage_item,
@@ -167,6 +172,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ],
     )
     .events(collect_events![
+        crate::client::app_update::AppUpdateStateChanged,
         core::logs::CoreLogsChanged,
         core::clash::ws::ClashWsEvent,
         window::WindowMessageEvent,
@@ -516,6 +522,20 @@ mod tests {
         assert!(mutations.contains("unsubscribeClashConnectionDetails:"));
         assert!(!queries.contains("setDebugHttpEnabled:"));
         assert!(mutations.contains("setDebugHttpEnabled:"));
+        assert!(queries.contains("getAppUpdateState:"));
+        for name in [
+            "checkAppUpdate:",
+            "downloadAppUpdate:",
+            "cancelAppUpdateDownload:",
+            "installAppUpdate:",
+            "discardAppUpdatePackage:",
+        ] {
+            assert!(!queries.contains(name), "{name} changes updater state");
+            assert!(mutations.contains(name));
+        }
+        assert!(generated.contains("appUpdateStateChanged:"));
+        assert!(!generated.contains("checkUpdate:"));
+        assert!(!generated.contains("installUpdate:"));
         assert!(!generated.contains("__TAURI_EVENT"));
         assert!(generated.contains("import type { Channel }"));
         assert!(!generated.contains("import { Channel }"));

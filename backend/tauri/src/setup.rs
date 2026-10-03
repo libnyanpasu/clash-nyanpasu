@@ -179,6 +179,20 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         storage,
         runtime_paths: runtime_paths.clone(),
         ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
+        app_update_backend_factory: Some(Arc::new({
+            let app_handle = app_handle.clone();
+            move |proxy_port| {
+                Arc::new(
+                    crate::client::app_update::adapters::TauriAppUpdateBackend::new(
+                        app_handle.clone(),
+                        proxy_port,
+                    ),
+                )
+            }
+        })),
+        app_update_event_sink: Some(Arc::new(
+            crate::client::app_update::adapters::TauriAppUpdateEventSink::new(app_handle.clone()),
+        )),
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),

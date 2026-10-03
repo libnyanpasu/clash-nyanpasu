@@ -24,6 +24,7 @@ pub struct RpcDependencies {
 }
 
 const EVENT_NAMES: &[&str] = &[
+    <crate::client::app_update::AppUpdateStateChanged as tauri_specta::Event>::NAME,
     <crate::core::clash::ws::ClashWsEvent as tauri_specta::Event>::NAME,
     <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
@@ -456,6 +457,18 @@ mod tests {
         );
         let app = rpc.router();
         tauri::async_runtime::block_on(async move {
+            for method in [
+                "get_app_update_state",
+                "check_app_update",
+                "download_app_update",
+                "cancel_app_update_download",
+                "install_app_update",
+                "discard_app_update_package",
+            ] {
+                let response = rpc_for_test_call(&app, method, serde_json::json!({}), None).await;
+                assert_eq!(response.0, StatusCode::NOT_IMPLEMENTED, "{method}");
+                assert_eq!(response.1["kind"], "unsupported", "{method}");
+            }
             let status =
                 rpc_for_test_call(&app, "get_core_log_status", serde_json::json!({}), None).await;
             assert_eq!(status.0, StatusCode::OK);

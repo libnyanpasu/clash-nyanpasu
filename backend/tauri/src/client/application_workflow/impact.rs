@@ -852,6 +852,12 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                field: "enable_auto_download_update",
+                mutate: |app| app.enable_auto_download_update = true,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "always_on_top",
                 mutate: |app| app.always_on_top = true,
                 impact: RuntimeImpact::None,

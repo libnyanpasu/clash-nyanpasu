@@ -54,6 +54,7 @@ pub struct ApplicationActorArgs {
     pub build_channel: nyanpasu_config::application::ReleaseChannel,
     /// Once cancelled, every write is refused.
     pub shutdown: CancellationToken,
+    pub settings_changes: tokio::sync::watch::Sender<NyanpasuAppConfig>,
 }
 
 pub struct ApplicationActorState {
@@ -61,6 +62,7 @@ pub struct ApplicationActorState {
     manager: PersistentStateManager<NyanpasuAppConfig>,
     build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,
+    settings_changes: tokio::sync::watch::Sender<NyanpasuAppConfig>,
 }
 
 #[derive(Debug)]
@@ -169,6 +171,7 @@ impl ApplicationActor {
                     .mutations
                     .effects()
                     .application_committed((&snapshot.state).into(), requested);
+                state.settings_changes.send_replace(snapshot.state.clone());
                 let (receipt, degradations) = state.mutations.committed(
                     operation,
                     "application",
@@ -209,6 +212,7 @@ impl Actor for ApplicationActor {
             manager: args.manager,
             build_channel: args.build_channel,
             shutdown: args.shutdown,
+            settings_changes: args.settings_changes,
         })
     }
 

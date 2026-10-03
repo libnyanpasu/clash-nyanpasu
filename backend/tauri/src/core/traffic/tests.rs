@@ -160,6 +160,15 @@ impl TrafficStore for FlakyStore {
     }
 }
 
+#[derive(Default)]
+struct FakeLocalSource(Mutex<super::LocalSourceIps>);
+
+impl super::LocalSourceLocation for FakeLocalSource {
+    fn addresses(&self) -> super::LocalSourceIps {
+        *self.0.lock().unwrap()
+    }
+}
+
 /// Everything the actor is injected with, except the frames' consumer.
 struct Env {
     _dir: TempDir,
@@ -169,6 +178,7 @@ struct Env {
     clock: Arc<FakeClock>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
     geo: watch::Sender<Option<Arc<nyanpasu_geodata::IpIndex>>>,
+    local_source: Arc<FakeLocalSource>,
 }
 
 impl Env {
@@ -189,6 +199,7 @@ impl Env {
                 clock: self.clock.clone(),
                 frames: self.frames.subscribe(),
                 geo: self.geo.subscribe(),
+                local_source: self.local_source.clone(),
             },
             shutdown.clone(),
             tasks,
@@ -234,6 +245,7 @@ impl Harness {
             clock: Arc::new(FakeClock(AtomicI64::new(2_000))),
             frames: watch::channel(None).0,
             geo: watch::channel(None).0,
+            local_source: Arc::new(FakeLocalSource::default()),
         };
         env.retention.keep_days(7);
         let shutdown = CancellationToken::new();
@@ -1453,6 +1465,47 @@ async fn pump_locates_regions_with_the_published_index() {
     assert_eq!(report.rankings[0].groups[0].key, "US");
 }
 
+#[tokio::test]
+async fn pump_maps_local_regions_without_changing_source_identity_or_usage() {
+    let h = Harness::new("p1").await;
+    let dat = crate::core::geo::fixtures::geoip_dat(&[("US", &["8.0.0.0/8"])]);
+    h.geo.send_replace(Some(Arc::new(
+        nyanpasu_geodata::IpIndex::from_geoip_dat(&dat).unwrap(),
+    )));
+    *h.local_source.0.lock().unwrap() = super::LocalSourceIps {
+        ipv4: Some("8.8.8.8".parse().unwrap()),
+        ipv6: None,
+    };
+    h.frames.send_replace(Some(raw_frame(
+        100,
+        200,
+        vec![connection(A, 100, 200, json!({"sourceIP":"192.168.1.2"}))],
+    )));
+    until(&h.client, |s| s.last_sample_at.is_some()).await;
+    let report = h
+        .report(request(
+            everything(),
+            &[Dimension::Source, Dimension::SourceRegion],
+        ))
+        .await;
+    assert_eq!(report.rankings[0].groups[0].key, "192.168.1.2");
+    assert_eq!(report.rankings[1].groups[0].key, "US");
+    assert_eq!(h.total(everything()).await, usage(100, 200, 1));
+
+    *h.local_source.0.lock().unwrap() = super::LocalSourceIps::default();
+    h.frames.send_replace(Some(raw_frame(
+        150,
+        260,
+        vec![connection(A, 150, 260, json!({"sourceIP":"192.168.1.2"}))],
+    )));
+    until(&h.client, |s| s.current_rate.is_some()).await;
+    let report = h
+        .report(request(everything(), &[Dimension::SourceRegion]))
+        .await;
+    assert_eq!(report.rankings[0].groups[0].key, "unknown");
+    assert_eq!(h.total(everything()).await, usage(150, 260, 1));
+}
+
 #[test]
 fn frame_from_snapshot_extracts_dimensions() {
     let connections = vec![
@@ -1491,7 +1544,13 @@ fn frame_from_snapshot_extracts_dimensions() {
         ),
     ];
     let raw = raw_frame(-1, 30, connections);
-    let frame = frame_from_snapshot(&raw, 7_000, Duration::from_millis(9), None);
+    let frame = frame_from_snapshot(
+        &raw,
+        7_000,
+        Duration::from_millis(9),
+        None,
+        super::LocalSourceIps::default(),
+    );
 
     assert_eq!(frame.instance_id, CORE);
     assert_eq!(frame.wall_ms, 7_000);
@@ -1561,7 +1620,13 @@ fn frame_from_snapshot_maps_the_inbound_and_the_regions() {
             with(json!({ "sourceGeoIP": [], "destinationGeoIP": null })),
         ],
     );
-    let frame = frame_from_snapshot(&raw, 0, Duration::ZERO, None);
+    let frame = frame_from_snapshot(
+        &raw,
+        0,
+        Duration::ZERO,
+        None,
+        super::LocalSourceIps::default(),
+    );
     let regions = |i: usize| {
         let d = &frame.connections[i].dimensions;
         (

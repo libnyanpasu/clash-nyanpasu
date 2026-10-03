@@ -15,7 +15,7 @@ use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
 
 use super::{
     geo::CountryLookup,
-    ports::{Clock, ProfileSelection, RetentionPolicy},
+    ports::{Clock, LocalSourceLocation, ProfileSelection, RetentionPolicy},
     source::frame_from_snapshot,
 };
 use crate::core::clash::ws::ClashConnectionsFrame;
@@ -62,6 +62,7 @@ pub struct TrafficArgs {
     pub frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
     /// The country index regions are looked up in; `None` until the core's database loads.
     pub geo: watch::Receiver<Option<Arc<IpIndex>>>,
+    pub local_source: Arc<dyn LocalSourceLocation>,
 }
 
 pub(super) struct TrafficActor;
@@ -97,6 +98,7 @@ impl Actor for TrafficActor {
             clock,
             frames,
             geo,
+            local_source,
         } = args;
         // An unreadable store must not start an empty session: the stored live connections would
         // be recorded again and the store diverge from what the session knows.
@@ -111,7 +113,7 @@ impl Actor for TrafficActor {
             session,
             collected_at: None,
             collection_due: true,
-            pump: tokio::spawn(pump(myself, frames, geo, clock.clone())),
+            pump: tokio::spawn(pump(myself, frames, geo, local_source, clock.clone())),
             clock,
         })
     }
@@ -352,6 +354,7 @@ async fn pump(
     actor: ActorRef<Message>,
     mut frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
     geo: watch::Receiver<Option<Arc<IpIndex>>>,
+    local_source: Arc<dyn LocalSourceLocation>,
     clock: Arc<dyn Clock>,
 ) {
     let origin = tokio::time::Instant::now();
@@ -373,6 +376,7 @@ async fn pump(
                             clock.now_ms(),
                             origin.elapsed(),
                             index.as_deref().map(|index| index as &dyn CountryLookup),
+                            local_source.addresses(),
                         );
                         call(&actor, |reply| Message::Observe(frame, reply)).await
                     }

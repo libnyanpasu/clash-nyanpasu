@@ -238,6 +238,8 @@
   "settings_nyanpasu_traffic_retention_90d": "90 days",
   "settings_nyanpasu_traffic_retention_forever": "Forever",
   "settings_nyanpasu_traffic_retention_hint": "Shortening this deletes records older than the new limit and cannot be undone. Records include the hosts you visited.",
+  "settings_nyanpasu_local_ip_probe_label": "Allow Local IP Detection",
+  "settings_nyanpasu_local_ip_probe_description": "When opening the traffic page, request your public IPv4/IPv6 addresses from DNSPod to locate LAN/local sources on the map. Disabled while TUN is enabled. Existing history is unchanged.",
   "settings_nyanpasu_network_statistic_widget_label": "Network Statistic Widget",
   "settings_nyanpasu_network_statistic_widget_disabled": "Disabled",
   "settings_nyanpasu_network_statistic_widget_large": "Detailed",

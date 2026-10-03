@@ -11,4 +11,4 @@ mod tests;
 
 pub use actor::TrafficArgs;
 pub use client::TrafficClient;
-pub use ports::{Clock, ProfileSelection, RetentionPolicy};
+pub use ports::{Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy};

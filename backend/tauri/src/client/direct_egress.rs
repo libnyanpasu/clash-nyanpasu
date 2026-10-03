@@ -10,6 +10,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DirectEgress {
+    Disabled,
     /// Nothing was probed: TUN mode captures the app's own requests and routes
     /// them by rule, so an echo could come back from a proxy exit.
     TunEnabled,

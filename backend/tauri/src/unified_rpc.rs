@@ -707,6 +707,71 @@ mod tests {
     }
 
     #[test]
+    fn direct_egress_http_requires_permission_and_runs_only_when_requested() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Probe(AtomicUsize);
+        #[async_trait::async_trait]
+        impl crate::client::DirectEgressProbe for Probe {
+            async fn ipv4(&self) -> Option<std::net::Ipv4Addr> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Some("203.0.113.7".parse().unwrap())
+            }
+            async fn ipv6(&self) -> Option<std::net::Ipv6Addr> {
+                None
+            }
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let probe = Arc::new(Probe(AtomicUsize::new(0)));
+        let mut args = crate::client::tests::test_client_args_with_endpoint(
+            &directory,
+            crate::client::tests::TestControlEndpoint::succeeding(),
+        );
+        args.direct_egress = probe.clone();
+        let rpc = UnifiedRpc::new(RpcDependencies {
+            client: NyanpasuClient::try_new_with_args(args).unwrap(),
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            events: EventBus::new(),
+        })
+        .unwrap();
+        let app = rpc.router();
+        tauri::async_runtime::block_on(async {
+            let (status, result) =
+                rpc_for_test_call(&app, "probe_direct_egress", serde_json::json!({}), None).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(result["kind"], "disabled");
+            assert_eq!(probe.0.load(Ordering::SeqCst), 0);
+            let (status, _) = rpc_for_test_call(
+                &app,
+                "patch_app_config",
+                serde_json::json!({"patch":{"enable_local_ip_probe":true}}),
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(probe.0.load(Ordering::SeqCst), 0);
+            let (status, result) =
+                rpc_for_test_call(&app, "probe_direct_egress", serde_json::json!({}), None).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(result["kind"], "probed");
+            assert_eq!(result["ipv4"], "203.0.113.7");
+            assert_eq!(probe.0.load(Ordering::SeqCst), 1);
+            let (status, _) = rpc_for_test_call(
+                &app,
+                "patch_app_config",
+                serde_json::json!({"patch":{"enable_local_ip_probe":false}}),
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            let (status, result) =
+                rpc_for_test_call(&app, "probe_direct_egress", serde_json::json!({}), None).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(result["kind"], "disabled");
+            assert_eq!(probe.0.load(Ordering::SeqCst), 1);
+        });
+    }
+
+    #[test]
     fn errors_preserve_domain_codes_and_operation_identity() {
         use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
         let id = OperationId::generate();

@@ -208,6 +208,8 @@
   "settings_nyanpasu_traffic_retention_90d": "90일",
   "settings_nyanpasu_traffic_retention_forever": "영구 보존",
   "settings_nyanpasu_traffic_retention_hint": "기간을 줄이면 새 기간을 넘은 트래픽 기록이 삭제되며 복구할 수 없습니다. 기록에는 방문한 호스트가 포함됩니다.",
+  "settings_nyanpasu_local_ip_probe_label": "로컬 IP 감지 허용",
+  "settings_nyanpasu_local_ip_probe_description": "트래픽 페이지를 열 때 DNSPod에서 공인 IPv4/IPv6 주소를 조회하여 지도에 LAN/로컬 출발지의 위치를 표시합니다. TUN이 활성화되면 감지하지 않습니다. 기존 기록은 변경되지 않습니다.",
   "settings_nyanpasu_network_statistic_widget_label": "네트워크 통계 위젯",
   "settings_nyanpasu_network_statistic_widget_disabled": "사용 안 함",
   "settings_nyanpasu_network_statistic_widget_large": "상세",

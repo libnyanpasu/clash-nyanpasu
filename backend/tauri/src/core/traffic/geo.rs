@@ -5,6 +5,8 @@ use clash_api::{ConfigEnum, ConnectionNetwork, DnsMode, api::ConnectionMetadataF
 use nyanpasu_geodata::IpIndex;
 use nyanpasu_traffic::{GeoBasis, normalize_region};
 
+use super::LocalSourceIps;
+
 const UNKNOWN: &str = "unknown";
 
 /// The exit the core's built-in direct outbound reports. A custom `type: direct` proxy has its
@@ -33,15 +35,48 @@ fn is_tcp(meta: &ConnectionMetadataFields) -> bool {
     )
 }
 
+/// Private, loopback and link-local addresses describe the local network, not a country.
+fn is_local(ip: IpAddr) -> bool {
+    match ip.to_canonical() {
+        IpAddr::V4(ip) => {
+            ip.is_private() || ip.is_loopback() || ip.is_link_local() || ip.is_unspecified()
+        }
+        IpAddr::V6(ip) => {
+            ip.is_unique_local()
+                || ip.is_loopback()
+                || ip.is_unicast_link_local()
+                || ip.is_unspecified()
+        }
+    }
+}
+
 pub(crate) fn locate_source(
     meta: &ConnectionMetadataFields,
     index: Option<&dyn CountryLookup>,
+    local: LocalSourceIps,
 ) -> String {
+    let source = meta.source_ip.as_deref().unwrap_or("");
+    let ip = address(meta.source_ip.as_ref()).map(|ip| ip.to_canonical());
+    let local_label = source.eq_ignore_ascii_case("local") || source.eq_ignore_ascii_case("lan");
+    let local_source = local_label || ip.is_some_and(is_local);
+    let ip = if local_source {
+        match ip {
+            Some(IpAddr::V6(_)) => local.ipv6.map(IpAddr::V6),
+            Some(IpAddr::V4(_)) => local.ipv4.map(IpAddr::V4),
+            None => local
+                .ipv4
+                .map(IpAddr::V4)
+                .or_else(|| local.ipv6.map(IpAddr::V6)),
+        }
+    } else {
+        ip
+    };
     match index {
-        Some(index) => address(meta.source_ip.as_ref())
+        Some(index) => ip
             .and_then(|ip| index.country(ip))
             .unwrap_or_else(|| UNKNOWN.to_owned()),
-        // Before the index loads, the core's codes are the only answer.
+        // The core's code describes the original address, never the substituted public IP.
+        None if local_source => UNKNOWN.to_owned(),
         None => normalize_region(meta.source_geo_ip.iter().flatten()),
     }
 }
@@ -131,7 +166,10 @@ pub(crate) mod tests {
             "destinationGeoIP": ["cn"],
         }));
 
-        assert_eq!(locate_source(&meta, Some(&countries)), "JP");
+        assert_eq!(
+            locate_source(&meta, Some(&countries), LocalSourceIps::default()),
+            "JP"
+        );
         // No host: whatever the exit, it dialed this address.
         assert_eq!(
             locate_destination(&meta, Some("Proxy"), Some(&countries)),
@@ -148,7 +186,10 @@ pub(crate) mod tests {
             "sourceGeoIP": ["cn"],
         }));
 
-        assert_eq!(locate_source(&meta, Some(&countries)), UNKNOWN);
+        assert_eq!(
+            locate_source(&meta, Some(&countries), LocalSourceIps::default()),
+            UNKNOWN
+        );
         assert_eq!(
             locate_destination(&meta, Some("DIRECT"), Some(&countries)),
             (UNKNOWN.to_owned(), None)
@@ -162,11 +203,94 @@ pub(crate) mod tests {
             "destinationGeoIP": ["google", "us"],
         }));
 
-        assert_eq!(locate_source(&meta, None), "CN");
+        assert_eq!(locate_source(&meta, None, LocalSourceIps::default()), "CN");
         assert_eq!(
             locate_destination(&meta, Some("Proxy"), None),
             ("US".to_owned(), Some(GeoBasis::Dialed))
         );
+    }
+
+    #[test]
+    fn local_sources_use_the_public_address_of_their_family() {
+        let countries = Countries::of(&[("203.0.113.7", "JP"), ("2001:db8::7", "US")]);
+        let local = LocalSourceIps {
+            ipv4: Some("203.0.113.7".parse().unwrap()),
+            ipv6: Some("2001:db8::7".parse().unwrap()),
+        };
+        for source in [
+            "127.0.0.1",
+            "127.7.8.9",
+            "10.0.0.1",
+            "172.16.0.1",
+            "172.31.255.254",
+            "192.168.1.2",
+            "169.254.1.2",
+            "0.0.0.0",
+            "::ffff:192.168.1.2",
+            "local",
+            "LAN",
+        ] {
+            let meta = meta(serde_json::json!({ "sourceIP": source }));
+            assert_eq!(
+                locate_source(&meta, Some(&countries), local),
+                "JP",
+                "{source}"
+            );
+        }
+        for source in ["::1", "::", "fc00::1", "fd12::7", "fe80::1"] {
+            let meta = meta(serde_json::json!({ "sourceIP": source }));
+            assert_eq!(
+                locate_source(&meta, Some(&countries), local),
+                "US",
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_mapping_requires_an_answer_and_an_index() {
+        let countries = Countries::of(&[("203.0.113.7", "JP")]);
+        let ipv4_only = LocalSourceIps {
+            ipv4: Some("203.0.113.7".parse().unwrap()),
+            ipv6: None,
+        };
+        for source in ["192.168.1.2", "local", "::1"] {
+            let meta = meta(serde_json::json!({ "sourceIP": source, "sourceGeoIP": ["cn"] }));
+            assert_eq!(
+                locate_source(&meta, Some(&countries), LocalSourceIps::default()),
+                UNKNOWN
+            );
+            assert_eq!(locate_source(&meta, None, ipv4_only), UNKNOWN);
+        }
+        let meta = meta(serde_json::json!({ "sourceIP": "::1" }));
+        assert_eq!(locate_source(&meta, Some(&countries), ipv4_only), UNKNOWN);
+    }
+
+    #[test]
+    fn public_and_invalid_sources_are_never_replaced() {
+        let countries = Countries::of(&[
+            ("8.8.8.8", "US"),
+            ("172.32.0.1", "DE"),
+            ("203.0.113.7", "JP"),
+        ]);
+        let local = LocalSourceIps {
+            ipv4: Some("203.0.113.7".parse().unwrap()),
+            ipv6: None,
+        };
+        for (source, expected) in [
+            ("8.8.8.8", "US"),
+            ("::ffff:8.8.8.8", "US"),
+            ("172.32.0.1", "DE"),
+            ("", UNKNOWN),
+            ("invalid", UNKNOWN),
+        ] {
+            let meta = meta(serde_json::json!({ "sourceIP": source }));
+            assert_eq!(
+                locate_source(&meta, Some(&countries), local),
+                expected,
+                "{source}"
+            );
+        }
     }
 
     /// The peer, the address the core resolved, and a proxy's entry each sit in their own country.

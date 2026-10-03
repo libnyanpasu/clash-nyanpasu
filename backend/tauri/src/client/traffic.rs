@@ -1,4 +1,7 @@
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    sync::RwLock,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use nyanpasu_config::{application::NyanpasuAppConfig, profile::Profiles};
 use nyanpasu_core::state::StateSnapshot;
@@ -8,7 +11,9 @@ use nyanpasu_traffic::{
 };
 
 use super::{ClientError, NyanpasuClient, Result};
-use crate::core::traffic::{Clock, ProfileSelection, RetentionPolicy, TrafficClient};
+use crate::core::traffic::{
+    Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
+};
 
 /// Reads the selected profile from the committed profiles state.
 pub(super) struct SelectedProfile(StateSnapshot<Profiles>);
@@ -42,6 +47,62 @@ impl SettingsRetention {
 impl RetentionPolicy for SettingsRetention {
     fn retention(&self) -> Option<Duration> {
         self.0.load().state.traffic_retention.duration()
+    }
+}
+
+/// The facade owns this cache; traffic reads immutable copies through its port.
+pub(super) struct LocalSourceCache {
+    application: StateSnapshot<NyanpasuAppConfig>,
+    clash: StateSnapshot<nyanpasu_config::clash::config::ClashConfig>,
+    addresses: RwLock<LocalSourceIps>,
+}
+
+impl LocalSourceCache {
+    pub(super) fn new(
+        application: StateSnapshot<NyanpasuAppConfig>,
+        clash: StateSnapshot<nyanpasu_config::clash::config::ClashConfig>,
+    ) -> Self {
+        Self {
+            application,
+            clash,
+            addresses: RwLock::new(LocalSourceIps::default()),
+        }
+    }
+
+    pub(super) fn set(&self, result: &super::DirectEgress) {
+        *self
+            .addresses
+            .write()
+            .expect("local source cache lock poisoned") = match result {
+            super::DirectEgress::Probed { ipv4, ipv6 } => LocalSourceIps {
+                ipv4: *ipv4,
+                ipv6: *ipv6,
+            },
+            _ => LocalSourceIps::default(),
+        };
+    }
+
+    pub(super) fn blocked(&self) -> Option<super::DirectEgress> {
+        if !self.application.load().state.enable_local_ip_probe {
+            Some(super::DirectEgress::Disabled)
+        } else if self.clash.load().state.enable_tun_mode {
+            Some(super::DirectEgress::TunEnabled)
+        } else {
+            None
+        }
+    }
+}
+
+impl LocalSourceLocation for LocalSourceCache {
+    fn addresses(&self) -> LocalSourceIps {
+        if self.blocked().is_some() {
+            LocalSourceIps::default()
+        } else {
+            *self
+                .addresses
+                .read()
+                .expect("local source cache lock poisoned")
+        }
     }
 }
 

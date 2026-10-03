@@ -238,6 +238,8 @@
   "settings_nyanpasu_traffic_retention_90d": "90 天",
   "settings_nyanpasu_traffic_retention_forever": "永久保留",
   "settings_nyanpasu_traffic_retention_hint": "缩短后，超出期限的流量记录会被删除，无法恢复；记录中包含访问过的主机",
+  "settings_nyanpasu_local_ip_probe_label": "允许探测本机 IP",
+  "settings_nyanpasu_local_ip_probe_description": "打开流量页面时，向 DNSPod 探测本机公网 IPv4/IPv6，用于地图中局域网和本地来源的定位。TUN 开启时不探测，不修改已有历史记录。",
   "settings_nyanpasu_network_statistic_widget_label": "网络悬浮窗",
   "settings_nyanpasu_network_statistic_widget_disabled": "禁用",
   "settings_nyanpasu_network_statistic_widget_large": "详细",

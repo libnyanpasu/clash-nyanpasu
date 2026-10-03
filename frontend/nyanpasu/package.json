@@ -28,7 +28,6 @@
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.12.0",
     "@uidotdev/usehooks": "2.4.1",
-    "@uiw/react-color": "2.10.3",
     "class-variance-authority": "0.7.1",
     "d3": "7.9.0",
     "date-fns": "4.4.0",

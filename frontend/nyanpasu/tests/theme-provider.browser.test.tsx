@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { createTheme, ThemeMode } from '@nyanpasu/theme'
 import {
   ExperimentalThemeProvider,
   useExperimentalThemeContext,
@@ -10,11 +11,12 @@ const settings = vi.hoisted(() => ({
   theme_mode: 'light' as string | undefined,
   theme_color: '#ff0000' as string | undefined,
 }))
+const upsert = vi.hoisted(() => vi.fn(async () => {}))
 // Like the real hook, every call returns a new object.
 vi.mock('@nyanpasu/query', () => ({
   useSetting: (key: keyof typeof settings) => ({
     value: settings[key],
-    upsert: async () => {},
+    upsert,
   }),
 }))
 const themes = vi.hoisted(() => ({ created: 0 }))
@@ -46,8 +48,10 @@ function Harness() {
     </ExperimentalThemeProvider>
   )
 }
+let context: ReturnType<typeof useExperimentalThemeContext> | undefined
 function Reader() {
-  palette = useExperimentalThemeContext().themePalette
+  context = useExperimentalThemeContext()
+  palette = context.themePalette
   return null
 }
 
@@ -103,4 +107,66 @@ test('the cached theme paints until the theme color loads', async ({
   rerender()
   await expect.poll(() => customStyle()).not.toBe(green)
   expect(localStorage.getItem(CSS_VARS_KEY)).toBe(JSON.stringify(customStyle()))
+})
+
+test('a color preview repaints without saving or caching it', async ({
+  onTestFinished,
+}) => {
+  localStorage.clear()
+  upsert.mockClear()
+  settings.theme_mode = 'light'
+  settings.theme_color = '#ff0000'
+  const view = await render(<Harness />)
+  onTestFinished(() => view.unmount())
+  const saved = createTheme('#ff0000').cssVars
+  const preview = createTheme('#0000ff').cssVars
+  await expect.poll(() => customStyle()).toBe(saved)
+  await expect
+    .poll(() => localStorage.getItem(CSS_VARS_KEY))
+    .toBe(JSON.stringify(saved))
+  const setItem = vi.spyOn(Storage.prototype, 'setItem')
+  onTestFinished(() => setItem.mockRestore())
+
+  context!.setThemePreview({ color: '#0000ff' })
+
+  await expect.poll(() => customStyle()).toBe(preview)
+  expect(context!.themeColor).toBe('#ff0000')
+  expect(setItem).not.toHaveBeenCalled()
+
+  context!.setThemePreview(null)
+
+  await expect.poll(() => customStyle()).toBe(saved)
+  // The frame that still paints the deferred preview color is not cached.
+  await expect
+    .poll(() => localStorage.getItem(CSS_VARS_KEY))
+    .toBe(JSON.stringify(saved))
+  expect(
+    setItem.mock.calls.some(([, value]) => value === JSON.stringify(preview)),
+  ).toBe(false)
+  expect(upsert).not.toHaveBeenCalled()
+})
+
+test('a mode preview switches the color scheme without saving it', async ({
+  onTestFinished,
+}) => {
+  upsert.mockClear()
+  settings.theme_mode = 'light'
+  settings.theme_color = '#ff0000'
+  const view = await render(<Harness />)
+  onTestFinished(() => view.unmount())
+  const root = document.documentElement
+  await expect.poll(() => root.classList.contains('light')).toBe(true)
+
+  context!.setThemePreview({ mode: ThemeMode.DARK })
+
+  await expect.poll(() => root.classList.contains('dark')).toBe(true)
+  expect(root.classList.contains('light')).toBe(false)
+  expect(context!.themeMode).toBe(ThemeMode.LIGHT)
+  expect(context!.currentThemeMode).toBe(ThemeMode.DARK)
+
+  context!.setThemePreview(null)
+
+  await expect.poll(() => root.classList.contains('light')).toBe(true)
+  expect(root.classList.contains('dark')).toBe(false)
+  expect(upsert).not.toHaveBeenCalled()
 })

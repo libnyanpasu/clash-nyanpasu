@@ -1,6 +1,11 @@
 # Core log storage
 
-Core subscriptions request `debug` independently of the configured kernel level. Nyanpasu filters saved records by level and literal, case-insensitive message text. Meow uses the same subscription level; its upstream debug feedback behavior is accepted.
+Core subscriptions follow the committed Clash configuration log level. A changed
+level reaches the streams actor as the `core_log_level` configuration effect, and
+the actor reopens only the logs socket at that level; a frame the replaced socket
+already queued is kept. `silent` closes the socket without deleting history. A
+reconnect uses the current level. Changing capture level does not alter the
+viewer's exact-level or literal, case-insensitive message filters.
 
 ## Current session
 

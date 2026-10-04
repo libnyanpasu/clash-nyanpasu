@@ -93,7 +93,7 @@ struct State {
     revision: u64,
     pending: BTreeMap<EffectKind, ApplicationEffect>,
     entries: BTreeMap<EffectKind, Entry>,
-    active: [Option<tokio::task::JoinHandle<()>>; 3],
+    active: [Option<tokio::task::JoinHandle<()>>; 4],
     status: watch::Sender<EffectsSnapshot>,
     shutdown: CancellationToken,
     retry_timer: Option<(tokio::time::Instant, WakeUp)>,
@@ -138,6 +138,7 @@ fn group(kind: EffectKind) -> usize {
         EffectKind::SystemProxy | EffectKind::ProxyGuard | EffectKind::AutoLaunch => 0,
         EffectKind::Hotkeys => 1,
         EffectKind::Locale | EffectKind::Logger | EffectKind::Widget | EffectKind::Tray => 2,
+        EffectKind::CoreLogLevel => 3,
     }
 }
 
@@ -270,7 +271,7 @@ impl State {
             self.publish();
             return;
         }
-        for index in 0..3 {
+        for index in 0..4 {
             if self.active[index].is_some() {
                 continue;
             }
@@ -336,7 +337,7 @@ impl Actor for EffectsActor {
             revision: 0,
             pending: BTreeMap::new(),
             entries: BTreeMap::new(),
-            active: [None, None, None],
+            active: [None, None, None, None],
             status: args.status,
             shutdown: args.dependencies.shutdown,
             retry_timer: None,

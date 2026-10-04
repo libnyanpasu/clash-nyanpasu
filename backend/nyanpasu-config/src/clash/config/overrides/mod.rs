@@ -88,6 +88,10 @@ impl ClashGuardOverrides {
         &self.secret
     }
 
+    pub fn log_level(&self) -> LogLevel {
+        self.log_level
+    }
+
     pub fn mode(&self) -> Mode {
         self.mode
     }

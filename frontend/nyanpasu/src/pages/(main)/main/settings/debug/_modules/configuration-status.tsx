@@ -54,6 +54,7 @@ function effectLabel(kind: EffectKind) {
     hotkeys: m.configuration_hotkeys,
     locale: m.header_settings_action_language,
     logger: m.settings_nyanpasu_app_log_level_label,
+    core_log_level: m.settings_clash_settings_log_level_label,
     widget: m.settings_nyanpasu_network_statistic_widget_label,
     tray: m.configuration_tray,
   }

@@ -23,7 +23,7 @@
     "@nyanpasu/utils": "workspace:^",
     "@paper-design/shaders-react": "0.0.81",
     "@tailwindcss/postcss": "4.3.3",
-    "@tanstack/react-table": "9.2.4",
+    "@tanstack/react-table": "9.2.5",
     "@tanstack/react-virtual": "3.14.13",
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.12.0",

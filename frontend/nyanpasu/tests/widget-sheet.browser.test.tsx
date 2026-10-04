@@ -42,7 +42,7 @@ vi.mock('@/components/widgets/consts', async (importOriginal) => {
   }
 })
 
-function Harness() {
+function Harness({ onPageAction }: { onPageAction: () => void }) {
   const { setOpenSheet } = useDashboardContext()
   const root = useDndGridRoot()
   const [clicks, setClicks] = useState(0)
@@ -55,7 +55,10 @@ function Harness() {
             <button onClick={() => setOpenSheet(true)}>Open library</button>
             <button
               data-testid="page-action"
-              onClick={() => setClicks((value) => value + 1)}
+              onClick={() => {
+                onPageAction()
+                setClicks((value) => value + 1)
+              }}
             >
               Page action
             </button>
@@ -81,6 +84,7 @@ function Harness() {
 }
 
 async function mount(onFinished: (callback: () => void) => void) {
+  const onPageAction = vi.fn()
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -112,7 +116,7 @@ async function mount(onFinished: (callback: () => void) => void) {
         <ContextMenuProvider>
           <div>
             <DndGridRoot>
-              <Harness />
+              <Harness onPageAction={onPageAction} />
             </DndGridRoot>
           </div>
         </ContextMenuProvider>
@@ -125,6 +129,8 @@ async function mount(onFinished: (callback: () => void) => void) {
     style.remove()
     document.body.style.pointerEvents = originalPointerEvents
   })
+
+  return onPageAction
 }
 
 test('closing a library opened by the context menu restores page clicks', async ({
@@ -150,7 +156,7 @@ test('closing a library opened by the context menu restores page clicks', async 
 test('dragging a source out closes the library and restores page clicks', async ({
   onTestFinished,
 }) => {
-  await mount(onTestFinished)
+  const onPageAction = await mount(onTestFinished)
   await userEvent.click(page.getByRole('button', { name: 'Open library' }))
   await expect.element(page.getByTestId('source-card')).toBeVisible()
   await expect
@@ -178,12 +184,17 @@ test('dragging a source out closes the library and restores page clicks', async 
   await expect
     .poll(
       async () => {
-        await userEvent.click(page.getByRole('button', { name: 'Page action' }))
-        return page.getByTestId('clicks').element().textContent
+        if (onPageAction.mock.calls.length === 0) {
+          await userEvent.click(
+            page.getByRole('button', { name: 'Page action' }),
+          )
+        }
+        return onPageAction.mock.calls.length
       },
-      { timeout: 1000 },
+      { timeout: 5000 },
     )
-    .toBe('1')
+    .toBe(1)
+  await expect.element(page.getByTestId('clicks')).toHaveTextContent('1')
 })
 
 test('repeated Escape and outside dismissal leave the page interactive', async ({
@@ -221,29 +232,57 @@ test('the drawer slides out and the overlay fades before unmounting', async ({
       return new DOMMatrix(getComputedStyle(drawer).transform).m42
     })
     .toBeLessThan(1)
+
+  const drawer = document.querySelector<HTMLElement>(
+    '[data-slot=drawer-content]',
+  )!
+  const overlay = document.querySelector<HTMLElement>(
+    '[data-slot=drawer-overlay]',
+  )!
+  const observed = {
+    closed: false,
+    inert: false,
+    hidden: false,
+    slide: false,
+    fade: false,
+  }
+  let frame = 0
+
+  // Observe inside browser frames before the remote click returns. The two
+  // animations can advance on different frames and finish before that round trip.
+  const observeExit = () => {
+    if (drawer.dataset.state === 'closed') {
+      observed.closed = true
+      observed.inert ||= drawer.inert
+      observed.hidden ||= drawer.getAttribute('aria-hidden') === 'true'
+      if (drawer.isConnected) {
+        observed.slide ||=
+          new DOMMatrix(getComputedStyle(drawer).transform).m42 > 1
+      }
+      if (overlay.isConnected) {
+        observed.fade ||= Number(getComputedStyle(overlay).opacity) < 1
+      }
+    }
+    if (drawer.isConnected || overlay.isConnected) {
+      frame = requestAnimationFrame(observeExit)
+    }
+  }
+  frame = requestAnimationFrame(observeExit)
+  onTestFinished(() => cancelAnimationFrame(frame))
+
   await userEvent.click(
     page.getByRole('button', {
       name: m.dashboard_widget_config_close_library(),
     }),
   )
-
-  const drawer = document.querySelector<HTMLElement>(
-    '[data-slot=drawer-content]',
-  )
-  const overlay = document.querySelector<HTMLElement>(
-    '[data-slot=drawer-overlay]',
-  )
-  expect(drawer).not.toBeNull()
-  expect(overlay).not.toBeNull()
-  expect(drawer?.dataset.state).toBe('closed')
-  expect(drawer?.inert).toBe(true)
-  expect(drawer?.getAttribute('aria-hidden')).toBe('true')
-  await expect
-    .poll(() => new DOMMatrix(getComputedStyle(drawer!).transform).m42)
-    .toBeGreaterThan(1)
-  expect(Number(getComputedStyle(overlay!).opacity)).toBeLessThan(1)
-  await expect.poll(() => drawer!.isConnected).toBe(false)
-  expect(overlay!.isConnected).toBe(false)
+  await expect.poll(() => drawer.isConnected || overlay.isConnected).toBe(false)
+  expect(observed).toEqual({
+    closed: true,
+    inert: true,
+    hidden: true,
+    slide: true,
+    fade: true,
+  })
   await expect.poll(() => document.body.style.pointerEvents).not.toBe('none')
   await userEvent.click(page.getByRole('button', { name: 'Page action' }))
   await expect.element(page.getByTestId('clicks')).toHaveTextContent('1')

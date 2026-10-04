@@ -1,5 +1,5 @@
-export type { ReleaseAsset, UpdaterPlatform } from "./sourceforge-mirrors.ts";
 import type { ReleaseAsset, UpdaterPlatform } from "./sourceforge-mirrors.ts";
+export type { ReleaseAsset, UpdaterPlatform } from "./sourceforge-mirrors.ts";
 
 export const UPDATER_TARGETS = [
   "win64",

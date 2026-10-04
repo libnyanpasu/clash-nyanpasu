@@ -3,7 +3,6 @@ import {
   allowedIaUploadUrl,
   digestFile,
   registerBuild,
-  runArchivePublish,
   streamUpload,
 } from "./internet-archive-upload.ts";
 

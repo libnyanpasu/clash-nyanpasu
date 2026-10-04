@@ -103,7 +103,7 @@ const requiredEnv = (name: string) => {
 };
 
 const delay = (milliseconds: number) =>
-  new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const retry = async <T>(
   operation: () => Promise<T>,

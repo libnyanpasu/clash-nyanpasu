@@ -19,6 +19,9 @@ jobs:
   backfill:
     name: Mirror ${{ inputs.release_tag }} to SourceForge
     runs-on: ubuntu-latest
+    concurrency:
+      group: storage-publication
+      cancel-in-progress: false
     steps:
       - name: Validate release tag
         shell: bash
@@ -73,7 +76,7 @@ jobs:
         run: deno task sourceforge:upload publication-manifest.json publication-reports/sourceforge-report.json
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
-          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
           SOURCEFORGE_CHANNEL: release
           SOURCEFORGE_BUILD_ID: ${{ inputs.release_tag }}
           SOURCEFORGE_RELEASE_TAG: ${{ inputs.release_tag }}

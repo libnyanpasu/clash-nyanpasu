@@ -38,6 +38,22 @@ jobs:
         id: changes
         run: deno task check:nightly-changes
 
+      - name: Check configured storage before package builds
+        if: ${{ steps.changes.outputs.should_build == 'true' && (vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '') }}
+        run: deno task storage:preflight
+        env:
+          SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+          SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
+          IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          IA_UPLOADER: ${{ secrets.IA_UPLOADER }}
+          ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+
   windows_amd64_build:
     name: Windows x86_64 Build
     needs: [check_changes]
@@ -252,7 +268,7 @@ jobs:
         env:
           SOURCEFORGE_PROJECT: ${{ needs.verify_sourceforge.outputs.sourceforge_project }}
           SOURCEFORGE_BUILD_ID: ${{ needs.verify_sourceforge.outputs.sourceforge_build_id }}
-          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
           SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
           SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
           IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}

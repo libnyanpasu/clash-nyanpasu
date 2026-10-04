@@ -35,6 +35,8 @@ on:
     secrets:
       SURGE_TOKEN:
         required: true
+      SOURCEFORGE_USERNAME:
+        required: false
       SOURCEFORGE_SSH_KEY:
         required: false
       SOURCEFORGE_KNOWN_HOSTS:
@@ -119,7 +121,7 @@ jobs:
         run: deno task sourceforge:web-publish manifest/site/updater ${{ inputs.nightly == true && 'nightly' || 'release' }} sourceforge-web-report.json
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
-          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
           SOURCEFORGE_BUILD_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
           SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}

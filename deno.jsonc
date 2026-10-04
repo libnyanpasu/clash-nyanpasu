@@ -180,6 +180,22 @@
     "lint:frontend-boundaries": {
       "description": "Check frontend workspace package exports and dependency boundaries",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/frontend/main.ts"
+    },
+    "storage:preflight": {
+      "description": "Check mirror configuration, archive authentication/database and SFTP connectivity without uploading",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/storage-preflight.ts"
+    },
+    "recover:central-publication": {
+      "description": "Restore original publication identity and validate retained build bytes",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/recover-central-publication.ts"
+    },
+    "storage:recover": {
+      "description": "Register, upload or verify selected retained storage targets without rebuilding",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/recover-storage.ts"
+    },
+    "archive:register": {
+      "description": "Register a retained IA manifest without uploading bytes",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/internet-archive-upload.ts --register-only"
     }
   }
 }

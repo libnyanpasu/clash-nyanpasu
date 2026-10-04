@@ -56,7 +56,7 @@ const parseOptions = (args: string[]) => {
   const options = new Map<string, string>();
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
-    if (key === "--verify-only") {
+    if (key === "--verify-only" || key === "--register-only") {
       options.set(key, "true");
       continue;
     }
@@ -68,6 +68,10 @@ const parseOptions = (args: string[]) => {
   const manifest = options.get("--manifest");
   const server = options.get("--server");
   const verifyOnly = options.get("--verify-only") === "true";
+  const registerOnly = options.get("--register-only") === "true";
+  if (verifyOnly && registerOnly) {
+    throw new Error("--verify-only and --register-only are mutually exclusive");
+  }
   const buildId = options.get("--build-id");
   if (!server || (verifyOnly ? !buildId : !manifest)) {
     throw new Error(
@@ -91,6 +95,7 @@ const parseOptions = (args: string[]) => {
     manifestPath: manifest ? resolve(manifest) : undefined,
     buildId,
     verifyOnly,
+    registerOnly,
     serverUrl: serverUrl.origin,
     reportPath: options.get("--report"),
   };
@@ -110,7 +115,9 @@ const retry = async <T>(
   label: string,
 ): Promise<T> => {
   let lastError: unknown;
+  let attempts = 0;
   for (let attempt = 0; attempt < RETRY_COUNT; attempt++) {
+    attempts++;
     try {
       return await operation();
     } catch (error) {
@@ -119,14 +126,22 @@ const retry = async <T>(
         typeof error === "object" && error !== null && "permanent" in error &&
         error.permanent === true
       ) break;
-      if (error instanceof Error && /HTTP 4\d\d/.test(error.message)) break;
+      if (
+        error instanceof Error && /HTTP 4\d\d/.test(error.message) &&
+        !/HTTP (408|429)/.test(error.message)
+      ) break;
       if (attempt + 1 === RETRY_COUNT) break;
       await delay(Math.min(1_000 * 2 ** attempt, 16_000));
     }
   }
-  throw new Error(`${label} failed after ${RETRY_COUNT} attempts`, {
-    cause: lastError,
-  });
+  throw new Error(
+    `${label} failed after ${attempts} attempt(s): ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+    {
+      cause: lastError,
+    },
+  );
 };
 
 export const digestFile = async (filePath: string) => {
@@ -229,7 +244,26 @@ const apiRequest = async (
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Archive API returned HTTP ${response.status}: ${detail}`);
+    const error = new Error(
+      `Archive API returned HTTP ${response.status}: ${detail}`,
+    );
+    if (
+      /no such (table|column)|must be configured|Server misconfigured/i.test(
+        detail,
+      )
+    ) {
+      throw Object.assign(error, { permanent: true });
+    }
+    throw error;
+  }
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    const detail = (await response.text()).slice(0, 2000);
+    throw Object.assign(
+      new Error(
+        `Archive API returned non-JSON HTTP ${response.status}: ${detail}`,
+      ),
+      { permanent: true },
+    );
   }
   return response;
 };
@@ -576,12 +610,16 @@ const createSanitizedManifestFile = async (manifest: PublishManifest) => {
   return { path, fileName: "artifact-manifest.json", ...digest };
 };
 
-const publish = async (manifestPath: string, serverUrl: string) => {
+const publish = async (
+  manifestPath: string,
+  serverUrl: string,
+  registerOnly = false,
+) => {
   const token = Deno.env.get("ARCHIVE_UPLOAD_TOKEN")?.trim() ||
     Deno.env.get("FILE_SERVER_TOKEN")?.trim() ||
     requiredEnv("UPLOAD_TOKEN");
-  const accessKey = requiredEnv("IA_ACCESS_KEY");
-  const secret = requiredEnv("IA_SECRET_KEY");
+  const accessKey = registerOnly ? "" : requiredEnv("IA_ACCESS_KEY");
+  const secret = registerOnly ? "" : requiredEnv("IA_SECRET_KEY");
   const itemPrefix = requiredEnv("IA_ITEM_PREFIX");
   const manifest = await validateManifest(
     manifestPath,
@@ -600,6 +638,18 @@ const publish = async (manifestPath: string, serverUrl: string) => {
     ...manifest,
     publishedAt: registered.publishedAt ?? manifest.publishedAt,
   };
+  if (registerOnly) {
+    return {
+      schemaVersion: 1 as const,
+      ...registered,
+      target: manifest.target ?? null,
+      channel: manifest.channel,
+      commit: manifest.commit,
+      folderPath: manifest.folderPath,
+      registrationOnly: true,
+      uploads: [],
+    };
+  }
 
   const sanitized = await createSanitizedManifestFile(registeredManifest);
   const uploads: Array<{ fileName: string; status: "uploaded" | "skipped" }> =
@@ -690,12 +740,17 @@ export const runArchivePublish = async (args: string[]): Promise<number> => {
     }
     const report = options.verifyOnly
       ? await reconcile(options.serverUrl, options.buildId!)
-      : await publish(options.manifestPath!, options.serverUrl);
+      : await publish(
+        options.manifestPath!,
+        options.serverUrl,
+        options.registerOnly,
+      );
     if (reportPath) {
       await Deno.writeTextFile(reportPath, JSON.stringify(report, null, 2));
     }
     console.log(JSON.stringify(report, null, 2));
     if (report.status === "failed") return 1;
+    if (options.registerOnly) return 0;
     return report.status === "ready" ? 0 : 2;
   } catch (error) {
     const failure = {

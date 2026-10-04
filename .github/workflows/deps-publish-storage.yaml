@@ -28,6 +28,8 @@ on:
         required: false
       IA_UPLOADER:
         required: false
+      SOURCEFORGE_USERNAME:
+        required: false
       SOURCEFORGE_SSH_KEY:
         required: false
       SOURCEFORGE_KNOWN_HOSTS:
@@ -38,6 +40,9 @@ jobs:
     name: Publish validated six-target inventory
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    concurrency:
+      group: storage-publication
+      cancel-in-progress: false
     outputs:
       publication_prepared: ${{ steps.prepare.outcome == 'success' }}
     permissions:
@@ -83,7 +88,7 @@ jobs:
         shell: bash
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
-          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
           SOURCEFORGE_CHANNEL: ${{ inputs.nightly == true && 'nightly' || 'release' }}
           SOURCEFORGE_BUILD_ID: ${{ inputs.nightly == true && format('{0}-{1}-{2}', github.run_id, github.run_attempt, github.sha) || inputs.tag }}
           SOURCEFORGE_RELEASE_TAG: ${{ inputs.nightly == false && inputs.tag || '' }}

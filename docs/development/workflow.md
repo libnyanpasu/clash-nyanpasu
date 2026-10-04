@@ -27,7 +27,7 @@ through `deno task`; keep its execution logic in the root task catalog.
 - Remove workflows only after checking reusable callers and automatic/manual entry points; lack of recent runs alone does not prove a workflow is unused.
 - Separate adjacent workflow steps with one blank line, keeping each step's explanatory comments after the separator.
 
-The repository currently keeps all 16 workflows. Every reusable workflow has a
+The repository currently keeps all 17 workflows. Every reusable workflow has a
 caller. The central-storage publisher is called by nightly and release workflows;
 the SourceForge release backfill is a manual entry point. Release publication and
 SourceForge backfills share one concurrency group so a backfill cannot race a newly
@@ -54,6 +54,7 @@ these YAML files.
 | `deps-update-tag.yaml`              | `[Reusable] Update Nightly Tag and Release`           | Move the nightly tag and update release metadata; called by nightly workflow, or dispatched manually.                |
 | `deps-upload-release-assets.yaml`   | `[Reusable] Upload Release Assets`                    | Upload artifacts from the current caller run to its release; called by nightly and release workflows.                |
 | `sourceforge-backfill-release.yaml` | `[Maintenance] Backfill SourceForge Release Mirror`   | Manually mirror an existing GitHub release to SourceForge; serialized with release publication.                      |
+| `storage-recovery.yaml`             | `[Maintenance] Debug and Recover Storage Publication` | Check storage or register, retransfer, and verify retained package artifacts without rebuilding.                     |
 
 ## Worktrees and resource reuse
 

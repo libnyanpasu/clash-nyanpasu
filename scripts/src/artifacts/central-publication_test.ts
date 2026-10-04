@@ -3,9 +3,144 @@ import {
   classifyPublicationArtifactDirectory,
   prepareCentralPublication,
 } from "./central-publication.ts";
+import { recoverCentralPublication } from "./recover-central-publication.ts";
 
 const commit = "a".repeat(40);
 const publishedAt = "2026-10-04T12:34:56.789Z";
+
+Deno.test("recovery preserves identities and timestamp across runners and refuses altered bytes", async () => {
+  const root = await Deno.makeTempDir();
+  const repository = "libnyanpasu/clash-nyanpasu";
+  const sourceRun = {
+    id: 123,
+    run_attempt: 2,
+    head_sha: commit,
+    status: "completed",
+    event: "workflow_dispatch",
+    path: ".github/workflows/target-dev-build.yaml",
+    repository: { full_name: repository },
+    head_repository: { full_name: repository },
+  };
+  try {
+    await fixture(`${root}/downloaded`);
+    const original = await prepareCentralPublication(
+      `${root}/downloaded`,
+      `${root}/original`,
+      {
+        channel: "nightly",
+        tag: null,
+        commit,
+        runId: "123",
+        attempt: "1",
+        itemPrefix: "nyanpasu",
+        publishedAt,
+      },
+    );
+    const recovered = await recoverCentralPublication(
+      sourceRun,
+      repository,
+      `${root}/downloaded`,
+      `${root}/original`,
+      `${root}/restored`,
+      "nyanpasu",
+    );
+    assertEquals(recovered.buildId, original.buildId);
+    assertEquals(recovered.publishedAt, publishedAt);
+    assertEquals(recovered.inventories, original.inventories);
+    const manifest = JSON.parse(
+      await Deno.readTextFile(recovered.manifests["windows-x86_64"] as string),
+    );
+    assertEquals(
+      manifest.artifacts.every((artifact: { path: string }) =>
+        artifact.path.startsWith(`${root}/restored/`)
+      ),
+      true,
+    );
+    await writeArtifact(
+      `${root}/downloaded`,
+      "Clash.Nyanpasu-windows-x86_64-portable",
+      "Clash.Nyanpasu_x64_portable.zip",
+      "different bytes",
+    );
+    await assertRejects(
+      () =>
+        recoverCentralPublication(
+          sourceRun,
+          repository,
+          `${root}/downloaded`,
+          `${root}/original`,
+          `${root}/altered`,
+          "nyanpasu",
+        ),
+      Error,
+      "differs from the original publication",
+    );
+    await assertRejects(
+      () =>
+        recoverCentralPublication(
+          sourceRun,
+          repository,
+          `${root}/downloaded`,
+          `${root}/original`,
+          `${root}/wrong-prefix`,
+          "other",
+        ),
+      Error,
+      "differs from the original publication",
+    );
+    await assertRejects(
+      () =>
+        recoverCentralPublication(
+          { ...sourceRun, head_sha: "b".repeat(40) },
+          repository,
+          `${root}/downloaded`,
+          `${root}/original`,
+          `${root}/wrong-sha`,
+          "nyanpasu",
+        ),
+      Error,
+      "does not match the source run",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("recovery rejects fork and non-publication runs before reading any files", async () => {
+  const repository = "libnyanpasu/clash-nyanpasu";
+  const sourceRun = {
+    id: 123,
+    run_attempt: 1,
+    head_sha: commit,
+    status: "completed",
+    event: "workflow_dispatch",
+    path: ".github/workflows/target-dev-build.yaml",
+    repository: { full_name: repository },
+    head_repository: { full_name: repository },
+  };
+  for (
+    const run of [
+      { ...sourceRun, head_repository: { full_name: "fork/clash-nyanpasu" } },
+      { ...sourceRun, path: ".github/workflows/ci.yml" },
+      { ...sourceRun, status: "in_progress" },
+      { ...sourceRun, event: "pull_request" },
+    ]
+  ) {
+    await assertRejects(
+      () =>
+        recoverCentralPublication(
+          run,
+          repository,
+          "missing",
+          "missing",
+          "missing",
+          "nyanpasu",
+        ),
+      Error,
+      "completed package publication in this repository",
+    );
+  }
+});
 
 async function writeArtifact(
   root: string,

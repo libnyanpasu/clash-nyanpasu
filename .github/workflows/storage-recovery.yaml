@@ -1,0 +1,150 @@
+name: '[Maintenance] Debug and Recover Storage Publication'
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Completed nightly/release run with retained artifacts and publication-reports-central'
+        required: true
+        type: string
+      mode:
+        description: 'Preflight only, IA registration only, upload and verify, or verification only'
+        required: true
+        type: choice
+        default: preflight
+        options: [preflight, register, upload, verify]
+      backend:
+        description: 'Storage backend to investigate or recover'
+        required: true
+        type: choice
+        default: both
+        options: [both, archive, sourceforge]
+      target:
+        description: 'Target to recover (all inventories are validated before any writes)'
+        required: true
+        type: choice
+        default: all
+        options:
+          [
+            all,
+            windows-x86_64,
+            windows-aarch64,
+            linux-x86_64,
+            linux-aarch64,
+            macos-x86_64,
+            macos-aarch64,
+          ]
+
+permissions:
+  actions: read
+  contents: read
+
+# Use the same writer lock as the original package publication.
+concurrency:
+  group: storage-publication
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: ${{ inputs.mode }} retained storage publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      SOURCEFORGE_PROJECT: ${{ inputs.backend != 'archive' && inputs.mode != 'register' && vars.SOURCEFORGE_PROJECT || '' }}
+      SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
+      SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+      SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
+      ORIGINAL_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX || 'sourceforge-only' }}
+      IA_ITEM_PREFIX: ${{ inputs.backend != 'sourceforge' && vars.IA_ITEM_PREFIX || '' }}
+      IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+      IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+      IA_UPLOADER: ${{ secrets.IA_UPLOADER }}
+      ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+      FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+      UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      RECOVERY_MODE: ${{ inputs.mode }}
+      RECOVERY_BACKEND: ${{ inputs.backend }}
+      RECOVERY_TARGET: ${{ inputs.target }}
+    steps:
+      - name: Checkout current recovery scripts
+        uses: actions/checkout@v7
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check selected backend configuration and connectivity
+        run: |
+          if [[ "$RECOVERY_BACKEND" != 'sourceforge' && -z "$IA_ITEM_PREFIX" ]]; then
+            echo 'IA_ITEM_PREFIX must be configured for the selected archive backend' >&2
+            exit 1
+          fi
+          if [[ "$RECOVERY_BACKEND" != 'archive' && "$RECOVERY_MODE" != 'register' && -z "$SOURCEFORGE_PROJECT" ]]; then
+            echo 'SOURCEFORGE_PROJECT must be configured for the selected SourceForge backend' >&2
+            exit 1
+          fi
+          if [[ "$RECOVERY_MODE" == 'register' && "$RECOVERY_BACKEND" == 'sourceforge' ]]; then
+            echo 'Registration-only mode requires the archive backend' >&2
+            exit 1
+          fi
+          deno task storage:preflight
+
+      - name: Read source run provenance
+        if: ${{ inputs.mode != 'preflight' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid source run ID' >&2; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > source-run.json
+
+      - name: Download retained finalized packages
+        if: ${{ inputs.mode != 'preflight' }}
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: Clash.Nyanpasu-*
+          path: downloaded-build-artifacts
+          merge-multiple: false
+
+      - name: Download original publication identity and manifests
+        if: ${{ inputs.mode != 'preflight' }}
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: publication-reports-central
+          path: previous-publication
+
+      - name: Recover original identity and compare every retained file hash
+        if: ${{ inputs.mode != 'preflight' }}
+        run: |
+          deno task recover:central-publication \
+            --source-run source-run.json \
+            --artifacts-dir downloaded-build-artifacts \
+            --previous-dir previous-publication/central-publication \
+            --output-dir central-publication \
+            --item-prefix "$ORIGINAL_ITEM_PREFIX"
+
+      - name: Run selected recovery operation
+        if: ${{ inputs.mode != 'preflight' }}
+        run: |
+          deno task storage:recover --mode "$RECOVERY_MODE" \
+            --backend "$RECOVERY_BACKEND" --target "$RECOVERY_TARGET" \
+            --publication-dir central-publication --reports-dir recovery-reports
+
+      - name: Retain recovery diagnostics and immutable inventories
+        if: ${{ always() && inputs.mode != 'preflight' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: storage-recovery-${{ inputs.source_run_id }}-${{ github.run_attempt }}
+          overwrite: true
+          path: |
+            recovery-reports/
+            central-publication/manifests/
+            central-publication/publication-context.json
+            source-run.json
+          if-no-files-found: warn

@@ -13,8 +13,40 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  storage_preflight:
+    name: Check Storage Configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check configured storage before package builds
+        if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
+        run: deno task storage:preflight
+        env:
+          SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+          SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
+          IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          IA_UPLOADER: ${{ secrets.IA_UPLOADER }}
+          ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+
   windows_build:
     name: Windows Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
       portable: true
@@ -26,6 +58,7 @@ jobs:
 
   windows_aarch64_build:
     name: Windows aarch64 Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
       portable: true
@@ -37,6 +70,7 @@ jobs:
 
   linux_build:
     name: Linux Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: false
@@ -46,6 +80,7 @@ jobs:
 
   linux_aarch64_build:
     name: Linux aarch64 Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: false
@@ -55,6 +90,7 @@ jobs:
 
   macos_amd64_build:
     name: macOS amd64 Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-macos.yaml
     with:
       nightly: false
@@ -64,6 +100,7 @@ jobs:
 
   macos_aarch64_build:
     name: macOS aarch64 Build
+    needs: [storage_preflight]
     uses: ./.github/workflows/deps-build-macos.yaml
     with:
       nightly: false

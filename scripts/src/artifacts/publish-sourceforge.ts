@@ -52,7 +52,7 @@ async function runSftp(
   knownHostsPath: string,
   batch: string,
 ): Promise<void> {
-  const username = env("SOURCEFORGE_USERNAME");
+  const username = env("SOURCEFORGE_USERNAME").trim();
   validateSourceforgeUsername(username);
   const command = new Deno.Command("sftp", {
     args: [
@@ -175,6 +175,8 @@ async function main(): Promise<void> {
     const channel = env("SOURCEFORGE_CHANNEL");
     const releaseTag = Deno.env.get("SOURCEFORGE_RELEASE_TAG") ?? "";
     validateSourceforgeProject(project);
+    // Configuration failures must occur before the transport retry loop.
+    validateSourceforgeUsername(env("SOURCEFORGE_USERNAME").trim());
     if (
       channel !== manifest.channel ||
       (channel !== "release" && channel !== "nightly")

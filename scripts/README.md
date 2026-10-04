@@ -59,7 +59,7 @@ validates the complete target set and unique asset names, then publishes the six
 target inventories to configured mirrors with one shared UTC timestamp. Setting
 `SOURCEFORGE_PROJECT` automatically connects FRS mirroring, Project Web manifest
 publication, and the compiled app fallback endpoint. It also requires the
-`SOURCEFORGE_USERNAME` variable and the `SOURCEFORGE_SSH_KEY` and
+`SOURCEFORGE_USERNAME` variable (or secret) and the `SOURCEFORGE_SSH_KEY` and
 `SOURCEFORGE_KNOWN_HOSTS` secrets. There are no separate enabled flags. The
 known-hosts value must cover both `frs.sourceforge.net` and
 `web.sourceforge.net` for FRS and Project Web. The publication workflow verifies
@@ -110,6 +110,54 @@ release or publish a new app feed.
 Repository variables are unset by default, so a fresh setup continues to publish
 GitHub Releases and Surge without pretending that either optional mirror is
 configured.
+
+### Debug and recover without rebuilding
+
+Configured storage is checked before nightly and release package builds. Run
+`deno task storage:preflight` locally with the same environment to check
+required configuration, archive authentication/database access, and SourceForge
+SFTP connectivity. The Archive API receives an invalid manifest and a lookup for
+an impossible build identity; no build or file is created. SFTP only lists the
+project directory. This does not prove IA S3 upload permission, Worker IA
+configuration, or SourceForge write permission.
+
+Use `[Maintenance] Debug and Recover Storage Publication` after correcting a
+configuration or deploying an uploader fix. For run `37233994404`, enter that
+value as `source_run_id`. Start with `mode=preflight`; then choose
+`mode=register`, `backend=archive`, and one target to reproduce archive
+registration without a large transfer. The retained report includes the actual
+HTTP error and retry count. Schema/configuration errors stop immediately;
+network failures retain bounded retries. Registration creates immutable index
+metadata, but uploads no package bytes. It is not an archive-completion check.
+
+Choose `mode=upload` and `backend=sourceforge`, `archive`, or `both` to
+retransfer one target or all six using current scripts. Choose `mode=verify` to
+recheck public SourceForge hashes or reconcile IA ingestion without reuploading
+bytes. Verification downloads SourceForge files to calculate SHA-256, so its
+transfer cost is proportional to the selected target inventory.
+
+Recovery downloads finalized, signed packages and `publication-reports-central`
+from the selected completed package run. It preserves the original run/attempt,
+commit, item identifiers, and publication timestamp, and rejects any differing
+file size/hash or metadata before writing remotely. It requires retained,
+unexpired GitHub artifacts and original manifests. Missing manifests fail
+closed; do not invent a new timestamp for an already registered build. A
+recovery report is saved separately from the original run, which continues to
+show its historical failure. SourceForge writers share a lock with normal
+publication and backfills.
+
+The workflow does not move tags, rebuild/sign packages, delete archives, or
+publish updater feeds. After recovering all targets, its artifact contains a
+verified `recovery-reports/sourceforge-mirrors.json`; use that complete metadata
+with the existing updater workflow only when it belongs to the current release.
+A partial target manifest must not replace the complete updater mirror
+inventory.
+
+For a locally retained manifest, registration alone is also available through
+`deno task archive:register --manifest <manifest.json>
+--server https://archive.nyanpasu.org --report <report.json>`.
+It requires the archive upload token and item prefix, but does not require IA S3
+credentials.
 
 The related Deno tasks are `prepare:central-publication`,
 `prepare:publication-manifest`, `sourceforge:upload`, `sourceforge:verify`,

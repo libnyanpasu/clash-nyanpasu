@@ -319,6 +319,7 @@
   "update_source_nyanpasu": "Nyanpasu 미러",
   "update_source_github": "GitHub 릴리스",
   "update_source_ghfast": "GHFast 미러",
+  "update_source_sourceforge": "SourceForge 미러",
   "profile_subscription_title": "구독",
   "profile_subscription_updated_at": "{updated}에 업데이트됨",
   "profile_subscription_next_update_at": "다음 예정 업데이트: {next}",

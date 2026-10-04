@@ -349,6 +349,7 @@
   "update_source_nyanpasu": "Nyanpasu mirror",
   "update_source_github": "GitHub Releases",
   "update_source_ghfast": "GHFast mirror",
+  "update_source_sourceforge": "SourceForge mirror",
   "profile_subscription_title": "Service status & quota",
   "profile_subscription_updated_at": "Updated {updated}",
   "profile_subscription_next_update_at": "Next scheduled update: {next}",

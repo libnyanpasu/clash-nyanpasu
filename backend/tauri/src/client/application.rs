@@ -264,6 +264,7 @@ mod tests {
         let (client, dir) = test_client().await;
         let selected = vec![
             UpdateSource::Ghfast,
+            UpdateSource::Sourceforge,
             UpdateSource::Github,
             UpdateSource::Nyanpasu,
         ];
@@ -278,6 +279,7 @@ mod tests {
             vec![],
             vec![UpdateSource::Github, UpdateSource::Github],
             vec![UpdateSource::Ghfast, UpdateSource::Ghfast],
+            vec![UpdateSource::Sourceforge, UpdateSource::Sourceforge],
         ] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.update_sources = Some(invalid.clone());

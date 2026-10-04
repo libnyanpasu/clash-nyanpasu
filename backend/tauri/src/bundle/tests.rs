@@ -178,7 +178,8 @@ fn update_download_urls_keep_the_artifact_and_selected_priority() {
                 UpdateSource::Nyanpasu,
             ],
         ] {
-            let resolved = update_download_urls(&announced, &sources).unwrap();
+            let resolved =
+                update_download_urls(&announced, &sources, &json!({}), "windows-x86_64").unwrap();
             assert_eq!(
                 resolved
                     .iter()
@@ -199,6 +200,7 @@ fn update_download_urls_keep_the_artifact_and_selected_priority() {
                         UpdateSource::Github => "github.com",
                         UpdateSource::Nyanpasu => "nyanpasu-script.majokeiko.com",
                         UpdateSource::Ghfast => "ghfast.top",
+                        UpdateSource::Sourceforge => unreachable!(),
                     })
                 );
             }
@@ -214,7 +216,13 @@ fn ghfast_download_keeps_escaped_paths_and_query_parameters() {
         "https://nyanpasu-script.majokeiko.com{path}?download=1"
     ))
     .unwrap();
-    let resolved = update_download_urls(&announced, &[UpdateSource::Ghfast]).unwrap();
+    let resolved = update_download_urls(
+        &announced,
+        &[UpdateSource::Ghfast],
+        &json!({}),
+        "windows-x86_64",
+    )
+    .unwrap();
     assert_eq!(
         resolved[0].1.as_str(),
         format!("https://ghfast.top/https://github.com{path}?download=1")
@@ -232,7 +240,7 @@ fn update_download_urls_reject_invalid_sources_and_unrecognized_artifacts() {
         vec![UpdateSource::Github, UpdateSource::Github],
         vec![UpdateSource::Ghfast, UpdateSource::Ghfast],
     ] {
-        assert!(update_download_urls(&valid, &invalid).is_err());
+        assert!(update_download_urls(&valid, &invalid, &json!({}), "windows-x86_64").is_err());
     }
     for invalid in [
         "http://github.com/libnyanpasu/clash-nyanpasu/releases/download/v2.0.0/app.zip",
@@ -240,8 +248,130 @@ fn update_download_urls_reject_invalid_sources_and_unrecognized_artifacts() {
         "https://github.com/someone/another-app/releases/download/v2.0.0/app.zip",
     ] {
         assert!(
-            update_download_urls(&url::Url::parse(invalid).unwrap(), &[UpdateSource::Github])
-                .is_err()
+            update_download_urls(
+                &url::Url::parse(invalid).unwrap(),
+                &[UpdateSource::Github],
+                &json!({}),
+                "windows-x86_64",
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn sourceforge_download_uses_only_explicit_immutable_platform_metadata() {
+    let announced = url::Url::parse(
+        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/pre-release/Clash%20Nyanpasu_2.0.0_x64-setup.nsis.zip",
+    )
+    .unwrap();
+    let raw_json = json!({
+        "platforms": {
+            "windows-x86_64": {
+                "project": "future-project",
+                "build_id": "123-2-0123456789abcdef",
+                "mirrors": {
+                    "sourceforge": "https://downloads.sourceforge.net/project/future-project/nightly/123-2-0123456789abcdef/Clash%20Nyanpasu_2.0.0_x64-setup.nsis.zip"
+                }
+            }
+        }
+    });
+    assert!(
+        sourceforge_download_url(&raw_json, "windows-x86_64", &announced)
+            .unwrap()
+            .is_some()
+    );
+    let resolved = update_download_urls(
+        &announced,
+        &[UpdateSource::Sourceforge, UpdateSource::Github],
+        &raw_json,
+        "windows-x86_64",
+    )
+    .unwrap();
+    assert_eq!(resolved[0].0, UpdateSource::Sourceforge);
+    assert_eq!(
+        resolved[0].1.as_str(),
+        "https://downloads.sourceforge.net/project/future-project/nightly/123-2-0123456789abcdef/Clash%20Nyanpasu_2.0.0_x64-setup.nsis.zip"
+    );
+    assert_eq!(resolved[1].0, UpdateSource::Github);
+    assert!(
+        update_download_urls(
+            &announced,
+            &[UpdateSource::Sourceforge],
+            &json!({ "platforms": { "windows-x86_64": {} } }),
+            "windows-x86_64",
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn sourceforge_download_rejects_untrusted_or_mutable_metadata() {
+    let announced = url::Url::parse(
+        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/pre-release/app.zip",
+    )
+    .unwrap();
+    for (project, build_id, url) in [
+        (
+            "project",
+            "build-1",
+            "https://example.com/project/project/nightly/build-1/app.zip",
+        ),
+        (
+            "project",
+            "build-1",
+            "https://downloads.sourceforge.net/project/other/nightly/build-1/app.zip",
+        ),
+        (
+            "project",
+            "build-1",
+            "https://downloads.sourceforge.net/project/project/nightly/other/app.zip",
+        ),
+        (
+            "project",
+            "build-1",
+            "https://downloads.sourceforge.net/project/project/nightly/build-1/other.zip",
+        ),
+        (
+            "project",
+            "build-1",
+            "https://downloads.sourceforge.net/project/project%2Fother/nightly/build-1/app.zip",
+        ),
+        (
+            "project",
+            "build-1",
+            "https://downloads.sourceforge.net/project/project/nightly/build%2F1/app.zip",
+        ),
+        (
+            "project",
+            "build-1",
+            "https://downloads.sourceforge.net/project/project/nightly/build-1/app%2Fother.zip",
+        ),
+        (
+            "project",
+            "latest",
+            "https://downloads.sourceforge.net/project/project/nightly/latest/app.zip",
+        ),
+    ] {
+        let raw_json = json!({
+            "platforms": {
+                "linux-x86_64": {
+                    "project": project,
+                    "build_id": build_id,
+                    "mirrors": { "sourceforge": url }
+                }
+            }
+        });
+        assert!(
+            update_download_urls(
+                &announced,
+                &[UpdateSource::Sourceforge, UpdateSource::Github],
+                &raw_json,
+                "linux-x86_64",
+            )
+            .unwrap()
+            .iter()
+            .all(|(source, _)| *source != UpdateSource::Sourceforge)
         );
     }
 }
@@ -250,7 +380,7 @@ fn update_download_urls_reject_invalid_sources_and_unrecognized_artifacts() {
 fn release_channel_selects_feeds_without_changing_fixed_target() {
     for channel in [Channel::Stable, Channel::Beta, Channel::Nightly] {
         let endpoints = update_endpoints(channel);
-        assert_eq!(endpoints.len(), 4);
+        assert!(endpoints.len() >= 4);
         let suffix = match channel {
             Channel::Stable => "",
             Channel::Beta => "-beta",
@@ -277,6 +407,61 @@ fn release_channel_selects_feeds_without_changing_fixed_target() {
             );
         }
     }
+}
+
+#[test]
+fn sourceforge_manifest_feed_is_optional_validated_and_appended_after_existing_feeds() {
+    for (channel, suffix) in [
+        (Channel::Stable, ""),
+        (Channel::Beta, "-beta"),
+        (Channel::Nightly, "-nightly"),
+    ] {
+        let base = update_endpoints_for_project(channel, None).unwrap();
+        let blank = update_endpoints_for_project(channel, Some("  ")).unwrap();
+        assert_eq!(blank, base);
+        let configured = update_endpoints_for_project(channel, Some("nyanpasu-project")).unwrap();
+        assert_eq!(&configured[..base.len()], base.as_slice());
+        assert_eq!(
+            configured.last().unwrap(),
+            &format!("https://nyanpasu-project.sourceforge.io/updater/update{suffix}.json")
+        );
+        for invalid in [
+            "../project",
+            "project/path",
+            "project.example",
+            "-project",
+            "project-",
+        ] {
+            assert!(update_endpoints_for_project(channel, Some(invalid)).is_err());
+        }
+    }
+}
+
+#[test]
+fn sourceforge_metadata_decodes_equivalent_url_path_components() {
+    let announced = url::Url::parse(
+        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/pre-release/Clash%20Nyanpasu+nightly.zip",
+    )
+    .unwrap();
+    let raw_json = json!({
+        "platforms": {
+            "linux-x86_64": {
+                "project": "nightly-project",
+                "build_id": "123-2-abcdef0123456789",
+                "mirrors": {
+                    "sourceforge": "https://downloads.sourceforge.net/project/nightly-project/nightly/123-2-abcdef0123456789/Clash%20Nyanpasu%2bnightly.zip"
+                }
+            }
+        }
+    });
+    let result = update_download_urls(
+        &announced,
+        &[UpdateSource::Sourceforge],
+        &raw_json,
+        "linux-x86_64",
+    )
+    .unwrap();
+    assert_eq!(result[0].0, UpdateSource::Sourceforge);
 }
 
 #[test]

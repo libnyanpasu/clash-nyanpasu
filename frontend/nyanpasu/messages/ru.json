@@ -319,6 +319,7 @@
   "update_source_nyanpasu": "Зеркало Nyanpasu",
   "update_source_github": "Релизы GitHub",
   "update_source_ghfast": "Зеркало GHFast",
+  "update_source_sourceforge": "Зеркало SourceForge",
   "profile_subscription_title": "Информация о подписке",
   "profile_subscription_updated_at": "Обновлено {updated}",
   "profile_subscription_next_update_at": "Следующее обновление: {next}",

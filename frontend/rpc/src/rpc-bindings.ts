@@ -4463,7 +4463,7 @@ export type TrayMenuMode = 'native' | 'webview'
 
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 
-export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast'
+export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast' | 'sourceforge'
 
 export type UpdaterState =
   | 'idle'

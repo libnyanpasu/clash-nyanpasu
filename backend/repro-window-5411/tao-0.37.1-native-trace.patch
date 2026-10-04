@@ -1,0 +1,289 @@
+diff --git a/src/platform_impl/windows/event_loop.rs b/src/platform_impl/windows/event_loop.rs
+index 2d88597..03156ac 100644
+--- a/src/platform_impl/windows/event_loop.rs
++++ b/src/platform_impl/windows/event_loop.rs
+@@ -861,6 +861,16 @@ pub(super) unsafe extern "system" fn public_window_callback<T: 'static>(
+   lparam: LPARAM,
+ ) -> LRESULT {
+   let userdata = util::GetWindowLongPtrW(window, GWL_USERDATA);
++  if matches!(msg, WM_NCCREATE | WM_CREATE | WM_NCCALCSIZE) {
++    util::trace_geometry_args(format_args!(
++      "hwnd={window:?} stage=callback_enter msg={msg:#x} wparam={} userdata={userdata}",
++      wparam.0,
++    ));
++    util::trace_geometry(window, "callback_enter");
++  }
++  if msg == WM_NCCALCSIZE {
++    util::trace_nccalc(window, wparam, lparam, "entry", None);
++  }
+   let userdata_ptr = match (userdata, msg) {
+     (0, WM_NCCREATE) => {
+       let createstruct = &mut *(lparam.0 as *mut CREATESTRUCTW);
+@@ -870,6 +880,7 @@ pub(super) unsafe extern "system" fn public_window_callback<T: 'static>(
+       return match unsafe { initdata.on_nccreate(window) } {
+         Some(userdata) => unsafe {
+           util::SetWindowLongPtrW(window, GWL_USERDATA, userdata);
++          util::trace_geometry(window, "WM_NCCREATE_userdata_installed");
+           DefWindowProcW(window, msg, wparam, lparam)
+         },
+         None => LRESULT(-1), // failed to create the window
+@@ -884,9 +895,22 @@ pub(super) unsafe extern "system" fn public_window_callback<T: 'static>(
+       let initdata = &mut *(initdata as *mut InitData<'_, T>);
+
+       initdata.on_create();
++      util::trace_geometry(window, "WM_CREATE_on_create_done");
+       return DefWindowProcW(window, msg, wparam, lparam);
+     },
+-    (0, _) => return DefWindowProcW(window, msg, wparam, lparam),
++    (0, _) => {
++      let result = DefWindowProcW(window, msg, wparam, lparam);
++      if msg == WM_NCCALCSIZE {
++        util::trace_nccalc(
++          window,
++          wparam,
++          lparam,
++          "exit_default_no_userdata",
++          Some(result),
++        );
++      }
++      return result;
++    }
+     _ => userdata as *mut WindowData<T>,
+   };
+
+@@ -2075,7 +2099,24 @@ unsafe fn public_window_callback_inner<T: 'static>(
+       let window_flags = userdata.window_state.lock().window_flags();
+       let is_fullscreen = userdata.window_state.lock().fullscreen.is_some();
+
++      util::trace_geometry_args(format_args!(
++        "hwnd={window:?} stage=nccalc_route depth={} flags={:#x} decorated={} shadow={} fullscreen={is_fullscreen}",
++        userdata.recurse_depth.get(), window_flags.bits(),
++        window_flags.contains(WindowFlags::MARKER_DECORATIONS),
++        window_flags.contains(WindowFlags::MARKER_UNDECORATED_SHADOW),
++      ));
+       if wparam == WPARAM(0) || window_flags.contains(WindowFlags::MARKER_DECORATIONS) {
++        util::trace_nccalc(
++          window,
++          wparam,
++          lparam,
++          if wparam == WPARAM(0) {
++            "route_default_false"
++          } else {
++            "route_default_decorated"
++          },
++          None,
++        );
+         result = ProcResult::DefWindowProc;
+       } else {
+         // adjust the maximized borderless window so it doesn't cover the taskbar
+@@ -2115,6 +2156,9 @@ unsafe fn public_window_callback_inner<T: 'static>(
+           let params = &mut *(lparam.0 as *mut NCCALCSIZE_PARAMS);
+
+           let insets = util::calculate_window_insets(window);
++          util::trace_geometry_args(format_args!(
++            "hwnd={window:?} stage=nccalc_shadow_insets insets={insets:?}"
++          ));
+
+           params.rgrc[0].left += insets.left;
+           params.rgrc[0].top += insets.top;
+@@ -2211,10 +2255,14 @@ unsafe fn public_window_callback_inner<T: 'static>(
+     .catch_unwind(callback)
+     .unwrap_or_else(|| result = ProcResult::Value(LRESULT(-1)));
+
+-  match result {
+-    ProcResult::DefWindowProc => DefWindowProcW(window, msg, wparam, lparam),
+-    ProcResult::Value(val) => val,
++  let (result, route) = match result {
++    ProcResult::DefWindowProc => (DefWindowProcW(window, msg, wparam, lparam), "exit_default"),
++    ProcResult::Value(val) => (val, "exit_custom"),
++  };
++  if msg == WM_NCCALCSIZE {
++    util::trace_nccalc(window, wparam, lparam, route, Some(result));
+   }
++  result
+ }
+
+ fn update_theme<T>(userdata: &WindowData<T>, window: HWND, from_settings_change_event: bool) {
+diff --git a/src/platform_impl/windows/util.rs b/src/platform_impl/windows/util.rs
+index 3535b00..dfa179b 100644
+--- a/src/platform_impl/windows/util.rs
++++ b/src/platform_impl/windows/util.rs
+@@ -21,7 +21,7 @@ use std::sync::LazyLock;
+ use windows::{
+   core::{BOOL, HRESULT, PCSTR, PCWSTR},
+   Win32::{
+-    Foundation::{COLORREF, FARPROC, HWND, LPARAM, POINT, RECT, WPARAM},
++    Foundation::{COLORREF, FARPROC, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+     Globalization::lstrlenW,
+     Graphics::Gdi::{ClientToScreen, InvalidateRgn, HMONITOR},
+     System::LibraryLoader::*,
+@@ -33,6 +33,48 @@ use windows::{
+   },
+ };
+
++pub(super) fn trace_geometry_args(args: std::fmt::Arguments<'_>) {
++  use std::io::Write;
++  // Diagnostic output must not panic across a Win32 callback if the pipe closes.
++  let _ = writeln!(std::io::stderr().lock(), "[tao-native-5411] {args}");
++}
++
++pub(super) fn trace_geometry(window: HWND, stage: &str) {
++  unsafe {
++    let mut outer = RECT::default();
++    let mut client = RECT::default();
++    let outer = GetWindowRect(window, &mut outer).ok().map(|_| outer);
++    let client = GetClientRect(window, &mut client).ok().map(|_| client);
++    trace_geometry_args(format_args!(
++      "hwnd={window:?} stage={stage} userdata={} style={:#x} ex_style={:#x} outer={outer:?} client={client:?}",
++      GetWindowLongPtrW(window, GWL_USERDATA),
++      GetWindowLongW(window, GWL_STYLE) as u32,
++      GetWindowLongW(window, GWL_EXSTYLE) as u32,
++    ));
++  }
++}
++
++// FALSE supplies a RECT; TRUE supplies NCCALCSIZE_PARAMS. Only observe the
++// proposed/new client rectangle, without changing either form or the old rects.
++pub(super) unsafe fn trace_nccalc(
++  window: HWND,
++  wparam: WPARAM,
++  lparam: LPARAM,
++  stage: &str,
++  result: Option<LRESULT>,
++) {
++  let rect = if wparam.0 == 0 {
++    *(lparam.0 as *const RECT)
++  } else {
++    (*(lparam.0 as *const NCCALCSIZE_PARAMS)).rgrc[0]
++  };
++  trace_geometry_args(format_args!(
++    "hwnd={window:?} message=WM_NCCALCSIZE stage={stage} wparam={} userdata={} rect={rect:?} result={result:?}",
++    wparam.0,
++    GetWindowLongPtrW(window, GWL_USERDATA),
++  ));
++}
++
+ pub fn has_flag<T>(bitset: T, flag: T) -> bool
+ where
+   T: Copy + PartialEq + BitAnd<T, Output = T>,
+diff --git a/src/platform_impl/windows/window.rs b/src/platform_impl/windows/window.rs
+index c92bcfa..d91a5c6 100644
+--- a/src/platform_impl/windows/window.rs
++++ b/src/platform_impl/windows/window.rs
+@@ -129,9 +129,15 @@ impl Window {
+     let window = self.window;
+     let window_state = Arc::clone(&self.window_state);
+     self.thread_executor.execute_in_thread(move || {
++      util::trace_geometry_args(format_args!(
++        "hwnd={:?} stage=set_visible requested={visible}",
++        window.hwnd()
++      ));
++      util::trace_geometry(window.hwnd(), "set_visible_before");
+       WindowState::set_window_flags(window_state.lock(), window.hwnd(), |f| {
+         f.set(WindowFlags::VISIBLE, visible)
+       });
++      util::trace_geometry(window.hwnd(), "set_visible_after");
+     });
+   }
+
+@@ -240,6 +246,12 @@ impl Window {
+     let (mut desired_width, mut desired_height) = size.to_physical::<i32>(scale_factor).into();
+
+     let window_flags = self.window_state.lock().window_flags;
++    util::trace_geometry_args(format_args!(
++      "hwnd={:?} stage=set_inner_size requested=({desired_width},{desired_height}) flags={:#x}",
++      self.hwnd(),
++      window_flags.bits(),
++    ));
++    util::trace_geometry(self.hwnd(), "set_inner_size_before");
+
+     // undecorated windows with shadows have hidden offsets
+     // we need to calculate them and account for them in new size
+@@ -257,6 +269,9 @@ impl Window {
+       let height_offset =
+         (window_rect.bottom - window_rect.top) - (client_rect.bottom - client_rect.top);
+
++      util::trace_geometry_args(format_args!(
++        "hwnd={hwnd:?} stage=set_inner_size_offsets width_offset={width_offset} height_offset={height_offset}"
++      ));
+       desired_width += width_offset;
+       desired_height += height_offset;
+     }
+@@ -269,12 +284,17 @@ impl Window {
+       });
+     });
+
++    util::trace_geometry_args(format_args!(
++      "hwnd={:?} stage=set_inner_size_native_input size=({desired_width},{desired_height})",
++      self.hwnd(),
++    ));
+     util::set_inner_size_physical(
+       self.hwnd(),
+       desired_width,
+       desired_height,
+       window_flags.contains(WindowFlags::MARKER_DECORATIONS),
+     );
++    util::trace_geometry(self.hwnd(), "set_inner_size_after");
+   }
+
+   #[inline]
+@@ -1120,7 +1140,9 @@ impl<T> InitData<'_, T> {
+         self.attributes.background_color,
+       );
+       let window_state = Arc::new(Mutex::new(window_state));
++      util::trace_geometry(window, "create_window_before_initial_flags");
+       WindowState::set_window_flags(window_state.lock(), window, |f| *f = self.window_flags);
++      util::trace_geometry(window, "create_window_after_initial_flags");
+       window_state
+     };
+
+@@ -1374,6 +1396,10 @@ unsafe fn init<T: 'static>(
+     window: None,
+   };
+
++  util::trace_geometry_args(format_args!(
++    "stage=CreateWindowExW size={adjusted_size:?} desired={clamped_size:?} flags={:#x} style={:#x} ex_style={:#x}",
++    window_flags.bits(), style.0, ex_style.0,
++  ));
+   let result = CreateWindowExW(
+     ex_style,
+     PCWSTR::from_raw(class_name.as_ptr()),
+@@ -1395,6 +1421,7 @@ unsafe fn init<T: 'static>(
+   }
+
+   let handle = result?;
++  util::trace_geometry(handle, "CreateWindowExW_returned");
+
+   super::dark_mode::allow_dark_mode_for_window(handle, true);
+
+diff --git a/src/platform_impl/windows/window_state.rs b/src/platform_impl/windows/window_state.rs
+index 4595b14..9e8356e 100644
+--- a/src/platform_impl/windows/window_state.rs
++++ b/src/platform_impl/windows/window_state.rs
+@@ -314,6 +314,12 @@ impl WindowFlags {
+     let new = new.mask();
+
+     let mut diff = old ^ new;
++    super::util::trace_geometry_args(format_args!(
++      "hwnd={window:?} stage=apply_diff old={:#x} new={:#x} diff={:#x}",
++      old.bits(),
++      new.bits(),
++      diff.bits(),
++    ));
+
+     if diff == WindowFlags::empty() {
+       return;
+@@ -442,7 +448,13 @@ impl WindowFlags {
+         }
+
+         // Refresh the window frame
++        super::util::trace_geometry_args(format_args!(
++          "hwnd={window:?} stage=apply_diff_frame_changed flags={:#x}",
++          flags.0
++        ));
++        super::util::trace_geometry(window, "apply_diff_before_frame_changed");
+         let _ = SetWindowPos(window, None, 0, 0, 0, 0, flags);
++        super::util::trace_geometry(window, "apply_diff_after_frame_changed");
+         SendMessageW(
+           window,
+           *event_loop::SET_RETAIN_STATE_ON_SIZE_MSG_ID,

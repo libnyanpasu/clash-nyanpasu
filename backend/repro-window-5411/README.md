@@ -126,10 +126,16 @@ that here isolates the behavior to a Tao-only call path without Tauri/Wry, but
 API usage and timing must still be assessed. The controls are experiments, not
 proposed application workarounds.
 
-This program records Tao API results/events, **not** raw `WM_NCCALCSIZE` messages.
-A Tao-only reproduction must be followed by instrumentation of Tao's window
-procedure to verify the precise native message sequence; these snapshots alone
-cannot distinguish the `wParam == FALSE` and missing-userdata paths.
+By default this program records Tao API results/events, **not** raw
+`WM_NCCALCSIZE` messages. The reported controls gave zero final deltas in builder-size
+and visible modes, but `+43` in all five deferred-restore cycles. Waiting for a
+creation-event batch did not resolve the hidden-window layout discrepancy.
+
+See [Native Tao traces](native-trace.md) for the next experiment: apply the included
+**diagnostic-only** patch to a pinned, separate Tao checkout and run a copied probe
+with local dependencies. It records native rectangle input/output and distinguishes
+`wParam == FALSE` from missing-userdata fallbacks. Neither application dependencies
+nor tracked lockfiles are changed. No upstream fix has been established yet.
 
 ## Compile checks from Linux
 

@@ -98,7 +98,7 @@ impl Proxies {
         providers_proxies: api::ProvidersProxiesRes,
     ) -> Result<Self> {
         let inner_proxies = inner_proxies.proxies;
-        // 1. filter out the Http or File type provider proxies
+        // 1. Include nodes from HTTP, File, and Inline providers.
         let providers_proxies: IndexMap<String, api::ProxyProviderItem> = {
             let records = providers_proxies.providers;
             records
@@ -106,7 +106,7 @@ impl Proxies {
                 .filter(|(_k, v)| {
                     matches!(
                         v.vehicle_type,
-                        api::VehicleType::Http | api::VehicleType::File
+                        api::VehicleType::Http | api::VehicleType::File | api::VehicleType::Inline
                     )
                 })
                 .collect()
@@ -241,6 +241,75 @@ mod tests {
         }
     }
 
+    #[test]
+    fn assembles_provider_owned_nodes_with_metadata_for_supported_vehicles() {
+        for vehicle_type in [
+            api::VehicleType::Http,
+            api::VehicleType::File,
+            api::VehicleType::Inline,
+        ] {
+            for proxy_type in ["Vless", "Trojan", "Hysteria2"] {
+                let inner_proxies = api::ProxiesRes {
+                    proxies: IndexMap::from([
+                        (
+                            "GLOBAL".into(),
+                            item("GLOBAL", "Selector", Some(vec!["PROXY"]), Some("PROXY")),
+                        ),
+                        ("DIRECT".into(), item("DIRECT", "Direct", None, None)),
+                        ("REJECT".into(), item("REJECT", "Reject", None, None)),
+                        (
+                            "PROXY".into(),
+                            item(
+                                "PROXY",
+                                "Selector",
+                                Some(vec!["provider-node"]),
+                                Some("provider-node"),
+                            ),
+                        ),
+                    ]),
+                };
+                let mut node = api::ProxyItem {
+                    name: "provider-node".into(),
+                    r#type: proxy_type.into(),
+                    udp: true,
+                    history: vec![api::ProxyItemHistory {
+                        time: "2026-10-04T08:00:00Z".into(),
+                        delay: 42,
+                    }],
+                    alive: Some(true),
+                    xudp: Some(true),
+                    tfo: Some(true),
+                    ..Default::default()
+                };
+                let providers_proxies = api::ProvidersProxiesRes {
+                    providers: IndexMap::from([(
+                        "provider".into(),
+                        api::ProxyProviderItem {
+                            name: "provider".into(),
+                            r#type: api::ProviderType::Proxy,
+                            proxies: vec![node.clone()],
+                            vehicle_type: vehicle_type.clone(),
+                            updated_at: None,
+                            subscription_info: None,
+                            test_url: None,
+                            expected_status: None,
+                        },
+                    )]),
+                };
+
+                let proxies = Proxies::from_responses(inner_proxies, providers_proxies).unwrap();
+                node.provider = Some("provider".into());
+
+                assert_eq!(proxies.groups[0].all, vec!["provider-node"]);
+                assert_eq!(
+                    serde_json::to_value(&proxies.nodes["provider-node"]).unwrap(),
+                    serde_json::to_value(&node).unwrap(),
+                    "metadata must be preserved for {vehicle_type:?} / {proxy_type}"
+                );
+            }
+        }
+    }
+
     /// A node shared by two groups is stored once in `nodes` (G7); group
     /// `all` keeps member names in order; a member absent from `/proxies`
     /// and from any provider falls back to the Unknown placeholder.
@@ -264,7 +333,7 @@ mod tests {
                     item(
                         "GroupA",
                         "Selector",
-                        Some(vec!["shared-node", "a-only"]),
+                        Some(vec!["shared-node", "provider-only", "a-only"]),
                         Some("shared-node"),
                     ),
                 ),
@@ -290,8 +359,11 @@ mod tests {
                 api::ProxyProviderItem {
                     name: "sub".into(),
                     r#type: api::ProviderType::Proxy,
-                    proxies: vec![item("provider-only", "Trojan", None, None)],
-                    vehicle_type: api::VehicleType::Http,
+                    proxies: vec![
+                        item("provider-only", "Trojan", None, None),
+                        item("shared-node", "ProviderIgnored", None, None),
+                    ],
+                    vehicle_type: api::VehicleType::Inline,
                     updated_at: None,
                     subscription_info: None,
                     test_url: None,
@@ -304,7 +376,7 @@ mod tests {
 
         let group_a = proxies.groups.iter().find(|g| g.name == "GroupA").unwrap();
         let group_b = proxies.groups.iter().find(|g| g.name == "GroupB").unwrap();
-        assert_eq!(group_a.all, vec!["shared-node", "a-only"]);
+        assert_eq!(group_a.all, vec!["shared-node", "provider-only", "a-only"]);
         assert_eq!(
             group_b.all,
             vec!["shared-node", "provider-only", "totally-unknown"]
@@ -315,6 +387,9 @@ mod tests {
         // of two groups.
         let serialized = serde_json::to_string(&proxies).unwrap();
         assert_eq!(serialized.matches("VmessSharedMarker").count(), 1);
+        assert_eq!(serialized.matches("Trojan").count(), 1);
+        assert_eq!(proxies.nodes["shared-node"].r#type, "VmessSharedMarker");
+        assert!(proxies.nodes["shared-node"].provider.is_none());
 
         let provider_node = &proxies.nodes["provider-only"];
         assert_eq!(provider_node.r#type, "Trojan");

@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
 import {
   guardReleaseMirrorUpload,
+  reserveSourceforgeArtifact,
   sourceforgeDownloadUrl,
   sourceforgeUploadBatch,
   sourceforgeWebUploadBatch,
@@ -195,6 +196,7 @@ Deno.test("release retry allows the same recorded target inventory", async () =>
     async () => {
       uploads++;
     },
+    async () => {},
   );
   assertEquals(uploads, 1);
 });
@@ -223,6 +225,7 @@ Deno.test("release retry rejects changed or extra bytes before SFTP upload", asy
           async () => {
             uploads++;
           },
+          async () => {},
         ),
       Error,
       "immutable",
@@ -244,6 +247,7 @@ Deno.test("release retry can repair a partial prior upload without replacing omi
     async () => {
       uploads++;
     },
+    async () => {},
   );
   assertEquals(uploads, 1);
 });
@@ -259,6 +263,7 @@ Deno.test("release upload proceeds without a sidecar but fails closed on lookup 
     async () => {
       uploads++;
     },
+    async () => {},
   );
   assertEquals(uploads, 1);
 
@@ -274,6 +279,7 @@ Deno.test("release upload proceeds without a sidecar but fails closed on lookup 
         async () => {
           uploads++;
         },
+        async () => {},
       ),
     Error,
     "GitHub API unavailable",
@@ -292,6 +298,7 @@ Deno.test("release backfill retries accept the exact complete cross-platform inv
     async () => {
       uploads++;
     },
+    async () => {},
   );
   assertEquals(uploads, 1);
 
@@ -308,9 +315,85 @@ Deno.test("release backfill retries accept the exact complete cross-platform inv
         async () => {
           uploads++;
         },
+        async () => {},
       ),
     Error,
     "immutable",
   );
   assertEquals(uploads, 1);
+});
+
+Deno.test("release reservations protect partial uploads before a GitHub sidecar exists", async () => {
+  let inventory: unknown;
+  let uploads = 0;
+  const publish = (
+    artifact: typeof releaseArtifacts[number],
+    failUpload = false,
+  ) =>
+    guardReleaseMirrorUpload(
+      "nyanpasu",
+      "v1.2.3",
+      { target: "windows-x86_64", artifacts: [artifact] },
+      async () => null,
+      async () => {
+        uploads++;
+        if (failUpload) {
+          throw new Error("SFTP interrupted after partial upload");
+        }
+      },
+      () =>
+        reserveSourceforgeArtifact(
+          artifact,
+          async () => {
+            if (inventory !== undefined) {
+              throw new Error("Claim already exists");
+            }
+            inventory = { ...artifact };
+          },
+          async () => inventory,
+        ),
+    );
+  await assertRejects(
+    () => publish(releaseArtifacts[0], true),
+    Error,
+    "interrupted",
+  );
+  await assertRejects(
+    () => publish({ ...releaseArtifacts[0], sha256: "f".repeat(64) }),
+    Error,
+    "immutable",
+  );
+  assertEquals(uploads, 1);
+  await publish(releaseArtifacts[0]);
+  assertEquals(uploads, 2);
+});
+
+Deno.test("incomplete or unreadable release reservations fail before uploading", async () => {
+  for (
+    const inventory of [null, {}, { ...releaseArtifacts[0], fileSize: 99 }]
+  ) {
+    await assertRejects(() =>
+      reserveSourceforgeArtifact(
+        releaseArtifacts[0],
+        async () => {
+          throw new Error("Claim already exists");
+        },
+        async () => inventory,
+      )
+    );
+  }
+  await assertRejects(
+    () =>
+      reserveSourceforgeArtifact(
+        releaseArtifacts[0],
+        async () => {
+          throw new Error("Connection lost during claim creation");
+        },
+        async () => {
+          throw new Error("Inventory unavailable");
+        },
+      ),
+    Error,
+    "Inventory unavailable",
+  );
 });

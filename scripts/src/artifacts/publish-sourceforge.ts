@@ -2,8 +2,12 @@ import * as path from "jsr:@std/path";
 import { Octokit } from "npm:octokit";
 import {
   guardReleaseMirrorUpload,
+  hashFile,
+  reserveSourceforgeArtifact,
+  sftpQuote,
   sourceforgeDownloadUrl,
   sourceforgeUploadBatch,
+  validateSourceforgeFilename,
   validateSourceforgeProject,
   validateSourceforgeUsername,
 } from "./sourceforge.ts";
@@ -280,6 +284,72 @@ async function main(): Promise<void> {
           manifest,
           () => loadPreviousReleaseMirror(releaseTag),
           upload,
+          async () => {
+            for (const artifact of manifest.artifacts) {
+              const actual = await hashFile(artifact.path);
+              if (
+                actual.fileSize !== artifact.fileSize ||
+                actual.sha256 !== artifact.sha256
+              ) {
+                throw new Error(
+                  `Local bytes do not match SourceForge inventory for ${artifact.fileName}`,
+                );
+              }
+            }
+            const remoteDir = `/home/frs/project/${project}/${remotePath}`;
+            const inventoryRoot = `${remoteDir}/.upload-inventory`;
+            for (const artifact of manifest.artifacts) {
+              validateSourceforgeFilename(artifact.fileName);
+              const inventoryDir = `${inventoryRoot}/${artifact.fileName}`;
+              const localInventory = path.join(tempDir, "inventory.json")
+                .replaceAll("\\", "/");
+              const existingInventory = path.join(
+                tempDir,
+                "existing-inventory.json",
+              ).replaceAll("\\", "/");
+              await Deno.writeTextFile(
+                localInventory,
+                JSON.stringify({
+                  fileName: artifact.fileName,
+                  fileSize: artifact.fileSize,
+                  sha256: artifact.sha256,
+                }),
+              );
+              await reserveSourceforgeArtifact(
+                artifact,
+                () =>
+                  runSftp(
+                    keyPath,
+                    knownHostsPath,
+                    [
+                      `-mkdir ${
+                        sftpQuote(`/home/frs/project/${project}/releases`)
+                      }`,
+                      `-mkdir ${sftpQuote(remoteDir)}`,
+                      `-mkdir ${sftpQuote(inventoryRoot)}`,
+                      // Unlike the parent directories, this mkdir must fail if the claim exists.
+                      `mkdir ${sftpQuote(inventoryDir)}`,
+                      `put ${sftpQuote(localInventory)} ${
+                        sftpQuote(`${inventoryDir}/inventory.json`)
+                      }`,
+                      "",
+                    ].join("\n"),
+                  ),
+                async () => {
+                  await runSftp(
+                    keyPath,
+                    knownHostsPath,
+                    `get ${sftpQuote(`${inventoryDir}/inventory.json`)} ${
+                      sftpQuote(existingInventory)
+                    }\n`,
+                  );
+                  return JSON.parse(
+                    await Deno.readTextFile(existingInventory),
+                  ) as unknown;
+                },
+              );
+            }
+          },
         );
       } else {
         await upload();

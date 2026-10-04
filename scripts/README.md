@@ -69,7 +69,15 @@ Release uploads also read the existing GitHub `sourceforge-mirrors.json` before
 writing to FRS. Recorded files must keep the same size, SHA-256 and mirror URL;
 lookup failures stop the upload. CI supplies `GITHUB_TOKEN` and
 `GITHUB_REPOSITORY` for this check. Manual release uploads require those values
-as well; a new release without a sidecar can still complete a partial upload.
+as well. Before uploading release bytes, the uploader also reserves each file
+using an exclusive SFTP directory under `releases/<tag>/.upload-inventory/` and
+records its size and SHA-256. Retries must match that write-once inventory even
+when a previous attempt failed before attaching the GitHub sidecar. Identical
+retries can finish partial uploads; conflicting bytes are rejected. Release and
+backfill workflows share a concurrency group to serialize their writers. If a
+connection fails between creating a reservation and saving its inventory, the
+uploader fails closed. Inspect the FRS file and reservation before repairing the
+missing or incomplete inventory; do not remove a claim for published bytes.
 
 Updater manifests are published on SourceForge Project Web using the same
 project and SSH values. The workflow stages each feed and renames it only after

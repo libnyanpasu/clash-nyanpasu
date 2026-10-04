@@ -9,7 +9,7 @@ on:
         type: string
 
 concurrency:
-  group: sourceforge-release-backfill-${{ inputs.release_tag }}
+  group: release-publication
   cancel-in-progress: false
 
 permissions:
@@ -100,6 +100,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: sourceforge-backfill-${{ inputs.release_tag }}
+          overwrite: true
           path: |
             publication-reports/
             verified-sourceforge-mirrors.json

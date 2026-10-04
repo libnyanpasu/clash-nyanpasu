@@ -118,12 +118,43 @@ export async function guardReleaseMirrorUpload(
   candidate: SourceforgeReleaseCandidate,
   loadPrevious: () => Promise<unknown | null>,
   upload: () => Promise<void>,
+  reserveArtifacts: () => Promise<void>,
 ): Promise<void> {
   const previous = await loadPrevious();
   if (previous !== null) {
     assertReleaseMirrorMatchesPrior(project, releaseTag, candidate, previous);
   }
+  await reserveArtifacts();
   await upload();
+}
+
+/** An exclusive remote directory reserves the intended bytes before any upload. */
+export async function reserveSourceforgeArtifact(
+  artifact: Pick<SourceforgeArtifact, "fileName" | "fileSize" | "sha256">,
+  createInventory: () => Promise<void>,
+  loadInventory: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await createInventory();
+  } catch {
+    // A failed claim may already exist; absent or unreadable inventories fail closed.
+    const value = await loadInventory();
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error(
+        `Invalid SourceForge upload inventory for ${artifact.fileName}`,
+      );
+    }
+    const previous = value as Record<string, unknown>;
+    if (
+      previous.fileName !== artifact.fileName ||
+      previous.fileSize !== artifact.fileSize ||
+      previous.sha256 !== artifact.sha256
+    ) {
+      throw new Error(
+        `SourceForge file inventory is immutable for ${artifact.fileName}`,
+      );
+    }
+  }
 }
 
 export function validateSourceforgeProject(project: string): void {

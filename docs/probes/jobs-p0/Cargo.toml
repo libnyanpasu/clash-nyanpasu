@@ -18,7 +18,7 @@ specta = { version = '=2.0.0-rc.25', features = ['derive', 'serde_json'] }
 specta-serde = '=0.0.12'
 specta-typescript = '=0.0.12'
 tempfile = '=3.27.0'
-tokio = { version = '=1.53.1', features = [
+tokio = { version = '=1.53.2', features = [
   'macros',
   'rt-multi-thread',
   'sync',

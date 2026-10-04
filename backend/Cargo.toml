@@ -66,7 +66,7 @@ thiserror = '2'
 snafu = '0.9'
 tracing = '0.1'
 boa_engine = { version = '0.22', features = ['annex-b'] }
-reqwest = { version = '0.12', default-features = false, features = [
+reqwest = { version = '0.13', default-features = false, features = [
   'charset',
   'http2',
   'system-proxy',

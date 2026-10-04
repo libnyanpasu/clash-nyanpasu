@@ -72,6 +72,7 @@ jobs:
       - name: Publish each target to SourceForge FRS
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         continue-on-error: true
+        id: sourceforge_publish
         shell: bash
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
@@ -83,14 +84,19 @@ jobs:
           SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
           SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
         run: |
+          failed=0
           for target in windows-x86_64 windows-aarch64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
             mkdir -p "publication-reports-central/$target"
-            deno task sourceforge:upload "central-publication/manifests/$target.json" "publication-reports-central/$target/sourceforge-report.json" || true
+            if ! deno task sourceforge:upload "central-publication/manifests/$target.json" "publication-reports-central/$target/sourceforge-report.json"; then
+              failed=1
+            fi
           done
+          exit "$failed"
 
       - name: Publish each target to Internet Archive
         if: ${{ vars.IA_ITEM_PREFIX != '' }}
         continue-on-error: true
+        id: archive_publish
         shell: bash
         env:
           IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
@@ -101,18 +107,32 @@ jobs:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         run: |
+          failed=0
           for target in windows-x86_64 windows-aarch64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
             mkdir -p "publication-reports-central/$target"
-            deno task archive:publish "central-publication/manifests/$target.json" https://archive.nyanpasu.org "publication-reports-central/$target/ia-report.json" || true
+            if deno task archive:publish "central-publication/manifests/$target.json" https://archive.nyanpasu.org "publication-reports-central/$target/ia-report.json"; then
+              status=0
+            else
+              status=$?
+            fi
+            if [[ "$status" -ne 0 && "$status" -ne 2 ]]; then
+              failed=1
+            fi
           done
+          exit "$failed"
 
       - name: Preserve central upload reports for independent gates
         if: ${{ always() && (vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '') }}
         uses: actions/upload-artifact@v7
         with:
           name: publication-reports-central
+          overwrite: true
           path: |
             publication-reports-central/
             central-publication/manifests/
             central-publication/publication-context.json
           if-no-files-found: warn
+
+      - name: Fail if any mirror target failed
+        if: ${{ always() && (steps.sourceforge_publish.outcome == 'failure' || steps.archive_publish.outcome == 'failure') }}
+        run: exit 1

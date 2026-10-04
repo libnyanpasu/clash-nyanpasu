@@ -7,12 +7,12 @@ import {
   DashboardProvider,
   useDashboardContext,
   useWidgetConfig,
-} from '@/pages/(main)/main/dashboard/_modules/provider'
+} from '@/components/widgets/provider'
 import {
   WidgetId,
   type WidgetConfigStorage,
-} from '@/pages/(main)/main/dashboard/_modules/widget-config'
-import WidgetItem from '@/pages/(main)/main/dashboard/_modules/widget-item'
+} from '@/components/widgets/widget-config'
+import WidgetItem from '@/components/widgets/widget-item'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { DndContext } from '@dnd-kit/core'
@@ -66,11 +66,21 @@ function ExampleWidget({ id }: { id: string }) {
   )
 }
 
+function MemoryWidget({ id }: { id: string }) {
+  const config = useWidgetConfig(id, WidgetId.Memory)
+  return (
+    <WidgetItem id={id} widgetType={WidgetId.Memory}>
+      <div data-testid={`value-${id}`}>{config.samples}</div>
+    </WidgetItem>
+  )
+}
+
 function mount(
   onTestFinished: (fn: () => void) => void,
   width = 6,
   nearBottom = false,
   overlay?: 'main' | 'sheet',
+  memoryWidget = false,
 ) {
   const container = document.createElement('div')
   document.body.append(container)
@@ -123,7 +133,11 @@ function mount(
           onResizeEnd: () => {},
         }}
       >
-        <ExampleWidget id="first" />
+        {memoryWidget ? (
+          <MemoryWidget id="first" />
+        ) : (
+          <ExampleWidget id="first" />
+        )}
         <ExampleWidget id="second" />
       </DndGridProvider>
     )
@@ -148,6 +162,49 @@ function mount(
 }
 
 const saved = () => JSON.parse(backend.value!) as WidgetConfigStorage
+
+test('number field saves multi-digit values on commit and restores them when reopened', async ({
+  onTestFinished,
+}) => {
+  const controls = mount(onTestFinished, 6, false, undefined, true)
+  await expect.poll(() => controls.loading).toBe(false)
+  controls.editing(true)
+  await page
+    .getByRole('button', { name: m.dashboard_widget_config_title() })
+    .nth(0)
+    .click()
+  const dialog = page.getByRole('dialog')
+  const input = dialog.getByRole('spinbutton', {
+    name: m.dashboard_widget_sparkline_config_samples(),
+  })
+  await expect.element(input).toHaveValue('32')
+  const writesBeforeEdit = backend.writes.length
+
+  await userEvent.clear(input)
+  await userEvent.type(input, '15')
+  await expect.element(input).toHaveValue('15')
+  await expect.element(input).toBeEnabled()
+  expect(backend.writes).toHaveLength(writesBeforeEdit)
+
+  await userEvent.keyboard('{Enter}')
+  await expect
+    .poll(() => saved().byInstance.first)
+    .toMatchObject({ type: WidgetId.Memory, samples: 15 })
+
+  await userEvent.keyboard('{Escape}')
+  await expect.element(dialog).not.toBeInTheDocument()
+  await page
+    .getByRole('button', { name: m.dashboard_widget_config_title() })
+    .nth(0)
+    .click()
+  await expect
+    .element(
+      page.getByRole('dialog').getByRole('spinbutton', {
+        name: m.dashboard_widget_sparkline_config_samples(),
+      }),
+    )
+    .toHaveValue('15')
+})
 
 test('bottom popover preserves focus, stays open and saves independent instance options across remount', async ({
   onTestFinished,
@@ -365,6 +422,34 @@ test('popover flips above the trigger near the viewport bottom', async ({
   expect(dialog.element().getBoundingClientRect().bottom).toBeLessThan(
     trigger.element().getBoundingClientRect().top,
   )
+})
+
+test('leaving edit mode disables an open widget config popover immediately', async ({
+  onTestFinished,
+}) => {
+  const controls = mount(onTestFinished)
+  await expect.poll(() => controls.loading).toBe(false)
+  controls.editing(true)
+  const trigger = page
+    .getByRole('button', { name: m.dashboard_widget_config_title() })
+    .nth(0)
+  await trigger.click()
+  const dialog = page.getByRole('dialog')
+  await expect.element(dialog).toBeVisible()
+  const dialogSurface = dialog.element()
+
+  controls.editing(false)
+  await expect.poll(() => dialogSurface.hasAttribute('inert')).toBe(true)
+  expect(dialogSurface.getAttribute('aria-hidden')).toBe('true')
+
+  controls.editing(true)
+  const reopenedTrigger = page
+    .getByRole('button', { name: m.dashboard_widget_config_title() })
+    .nth(0)
+  await expect.element(reopenedTrigger).toBeVisible()
+  await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+  await reopenedTrigger.click()
+  await expect.element(page.getByRole('dialog')).toBeVisible()
 })
 
 test('only config fields scroll when the popover height is constrained', async ({

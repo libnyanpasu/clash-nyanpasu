@@ -70,7 +70,7 @@
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/upload-build-artifacts.ts"
     },
     "verify:archive-uploads": {
-      "description": "Verify all nightly archive upload reports",
+      "description": "Verify all release or nightly archive upload reports",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/verify-upload-reports.ts"
     },
     "generate:manifest:latest-version": {

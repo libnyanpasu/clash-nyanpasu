@@ -13,6 +13,10 @@ import {
   useClashWSHistory,
   useClashWSStatus,
 } from './clash-ws-provider'
+import {
+  ConfigurationStatusProvider,
+  useConfigurationStatus,
+} from './configuration-status-provider'
 import { MutationProvider } from './mutation-provider'
 import { RpcProvider } from './rpc-provider'
 
@@ -23,6 +27,7 @@ export {
   useRpc,
 } from './rpc-provider'
 export { MutationProvider }
+export { ConfigurationStatusProvider, useConfigurationStatus }
 
 export type NyanpasuQueryProviderProps = PropsWithChildren<{
   rpc: RpcClient

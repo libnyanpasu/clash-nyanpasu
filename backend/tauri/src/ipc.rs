@@ -17,14 +17,13 @@ use crate::{
         resolve,
     },
 };
-use anyhow::Context;
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 use tray::icon::TrayIcon;
 
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
@@ -562,11 +561,11 @@ pub async fn get_ipsb_asn(
     Ok(wrapped)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
 pub async fn probe_direct_egress(client: State<'_, NyanpasuClient>) -> Result<DirectEgress> {
-    Ok(client.probe_direct_egress().await)
+    Ok(client.probe_direct_egress().await?)
 }
 
 // ---- typed configuration commands (thin adapters over NyanpasuClient) ----
@@ -1384,12 +1383,24 @@ pub async fn query_traffic_usage_by_keys(
 #[specta::specta]
 pub async fn query_traffic_closed_connections(
     client: tauri::State<'_, NyanpasuClient>,
+    range: nyanpasu_traffic::TrafficRange,
+    filters: Vec<nyanpasu_traffic::TrafficFilter>,
     before: Option<nyanpasu_traffic::ClosedCursor>,
     limit: usize,
 ) -> Result<nyanpasu_traffic::ClosedPage> {
     Ok(client
-        .query_traffic_closed_connections(before, limit)
+        .query_traffic_closed_connections(range, filters, before, limit)
         .await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn query_traffic_active_connection_ids(
+    client: tauri::State<'_, NyanpasuClient>,
+    filters: Vec<nyanpasu_traffic::TrafficFilter>,
+) -> Result<Vec<String>> {
+    Ok(client.query_traffic_active_connection_ids(filters).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1504,20 +1515,6 @@ pub async fn close_log_session(
         .await
 }
 
-#[derive(Default, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
-// TODO: a copied from updater metadata, and should be moved a separate updater module
-pub struct UpdateWrapper {
-    downloads: Vec<crate::utils::app_update::UpdateDownload>,
-    available: bool,
-    current_version: String,
-    version: String,
-    date: Option<String>,
-    body: Option<String>,
-    // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value).
-    #[specta(type = specta_typescript::Any)]
-    raw_json: serde_json::Value,
-}
-
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ReleaseChannelInfo {
     /// The feed update checks follow.
@@ -1549,101 +1546,55 @@ pub async fn set_release_channel(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn check_update(
-    webview: tauri::Webview,
+pub async fn get_app_update_state(
     client: State<'_, NyanpasuClient>,
-) -> Result<Option<UpdateWrapper>> {
-    use crate::utils::config::{get_self_proxy, get_system_proxy};
-    use tauri_plugin_updater::UpdaterExt;
-
-    let build_time = time::OffsetDateTime::parse(
-        crate::consts::BUILD_INFO.build_date,
-        &time::format_description::well_known::Rfc3339,
-    )
-    .context("failed to parse build time")?;
-    let channel = client.release_channel().await?;
-    let local = semver::Version::parse(crate::consts::BUILD_INFO.pkg_version)
-        .context("invalid application version")?;
-    let mut builder = webview
-        .updater_builder()
-        .endpoints(
-            crate::bundle::update_endpoints(channel)
-                .into_iter()
-                .map(|endpoint| endpoint.parse())
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .context("invalid update endpoint")?,
-        )
-        .context("failed to configure update endpoints")?
-        .version_comparator(move |_, remote| {
-            crate::bundle::is_newer_release(channel, &local, &remote, build_time)
-        })
-        // Windows only: the installer ends the process right after this hook,
-        // so the app shuts itself down here. This replaces the plugin's
-        // default hook, which only ran Tauri's own cleanup.
-        .on_before_exit({
-            let app_handle = webview.app_handle().clone();
-            move || {
-                crate::utils::exit::shutdown_before_exit_blocking(&app_handle);
-                app_handle.cleanup_before_exit();
-            }
-        });
-    // apply proxy
-    builder = builder.proxy(
-        get_self_proxy(client.clash_info().port)
-            .parse()
-            .context("failed to parse proxy")?,
-    );
-    if let Ok(Some(proxy)) = get_system_proxy() {
-        builder = builder.proxy(proxy.parse().context("failed to parse system proxy")?);
-    }
-    let updater = builder.build().context("failed to build updater")?;
-    let update = updater.check().await.context("failed to check update")?;
-    update
-        .map(|u| {
-            let downloads = client.update_download_urls(&u.download_url)?;
-            let mut wrapper = UpdateWrapper {
-                available: true,
-                current_version: u.current_version.clone(),
-                version: u.version.clone(),
-                date: u.date.and_then(|d| {
-                    d.format(&time::format_description::well_known::Rfc3339)
-                        .ok()
-                }),
-                body: u.body.clone(),
-                raw_json: u.raw_json.clone(),
-                ..Default::default()
-            };
-            wrapper.downloads = downloads
-                .into_iter()
-                .map(|(source, url)| {
-                    let mut download = u.clone();
-                    // A source changes only the download route; every attempt must verify
-                    // against the same release version, signature and public key.
-                    download.download_url = url;
-                    crate::utils::app_update::UpdateDownload {
-                        source,
-                        rid: webview.resources_table().add(download),
-                    }
-                })
-                .collect();
-            Ok(wrapper)
-        })
-        .transpose()
+) -> Result<crate::client::app_update::AppUpdateSnapshot> {
+    Ok(client.get_app_update_state().await?)
 }
 
-/// Downloads the update `check_update` found, from the first of its sources
-/// that succeeds, then installs it and restarts into the new version. It
-/// returns only when it fails.
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn install_update(
-    webview: tauri::Webview,
-    downloads: Vec<crate::utils::app_update::UpdateDownload>,
-    on_event: tauri::ipc::Channel<crate::utils::app_update::UpdateDownloadEvent>,
-) -> Result {
-    crate::utils::app_update::install(&webview, downloads, on_event).await?;
-    Ok(())
+pub async fn check_app_update(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::client::app_update::AppUpdateSnapshot> {
+    Ok(client.check_app_update().await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn download_app_update(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::client::app_update::AppUpdateSnapshot> {
+    Ok(client.download_app_update().await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn cancel_app_update_download(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::client::app_update::AppUpdateSnapshot> {
+    Ok(client.cancel_app_update_download().await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn install_app_update(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::client::app_update::AppUpdateSnapshot> {
+    Ok(client.install_app_update().await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn discard_app_update_package(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::client::app_update::AppUpdateSnapshot> {
+    Ok(client.discard_app_update_package().await?)
 }
 
 #[nyanpasu_macro::rpc]

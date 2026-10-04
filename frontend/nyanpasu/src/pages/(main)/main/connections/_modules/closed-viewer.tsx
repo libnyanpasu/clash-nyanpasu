@@ -1,11 +1,8 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
-import { useMockConnectionsNow } from '@/hooks/use-mock-connections'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatRelativeTime } from '@/utils/date'
 import parseTraffic from '@/utils/parse-traffic'
-import { searchableText } from '@/utils/searchable-text'
-import { useTrafficClosedConnections } from '@nyanpasu/query'
 import { type ClosedConnection } from '@nyanpasu/rpc/types'
 import {
   ChainCell,
@@ -19,83 +16,57 @@ import ConnectionsTable, {
   type ConnectionColumn,
   type RowProps,
 } from './connections-table'
-import { mockClosedConnections } from './mock-connections'
 import TableRow, {
   closedConnectionDetail,
   ConnectionDetailModal,
+  type ConnectionDetail,
 } from './table-row'
-
-// The store keys closed connections by both: a new core reuses ids.
-const closedConnectionId = (row: ClosedConnection) =>
-  `${row.closed_at}:${row.id}`
+import {
+  closedConnectionId,
+  processName,
+  useClosedConnectionRows,
+  type ConnectionsSelection,
+} from './use-connection-rows'
 
 // A closed record never changes, so a row keyed by it always shows the same.
 const sameRecord = () => true
 
-// The traffic history keeps the process path; the table shows its name.
-const processName = (process: string) => process.split('/').pop() || process
-
-// Closed connections of the current traffic session. Memoized like the active
-// view, so a keystroke's urgent render skips the table.
+// Closed connections of the selection. Memoized like the active view, so a
+// keystroke's urgent render skips the table.
 const ClosedViewer = memo(function ClosedViewer({
   search,
   proxy,
+  selection,
   settingsOpen,
   onSettingsOpenChange,
+  onLocateRule,
+  onViewRuleUsage,
+  focusRowId,
 }: {
   search: string
   proxy?: string | null
+  selection: ConnectionsSelection
   settingsOpen: boolean
   onSettingsOpenChange: (open: boolean) => void
+  onLocateRule?: (detail: ConnectionDetail) => void
+  onViewRuleUsage?: (detail: ConnectionDetail) => void
+  // The row to scroll to and highlight once it appears.
+  focusRowId?: string
 }) {
-  const {
-    data: history,
-    error,
-    hasNextPage,
-    isFetchingNextPage,
-    isFetchNextPageError,
-    fetchNextPage,
-  } = useTrafficClosedConnections()
-
-  const mockNow = useMockConnectionsNow()
-
-  // A closed record never changes, so its searchable text is built once and
-  // kept by row id: a poll that brings new records shifts the pages, which
-  // hands out the others as new objects.
-  const searchTexts = useRef(new Map<string, string>())
-
-  const data = useMemo(() => {
-    const byProxy = (
-      mockNow === null
-        ? (history?.pages ?? []).flatMap((page) => page.connections)
-        : mockClosedConnections(mockNow)
-    ).filter((conn) => (proxy ? conn.dimensions.chains.includes(proxy) : true))
-
-    if (!search) {
-      return byProxy
-    }
-
-    const term = search.toLowerCase()
-    const previous = searchTexts.current
-    const texts = new Map<string, string>()
-
-    const matched = byProxy.filter((conn) => {
-      const id = closedConnectionId(conn)
-      const text = previous.get(id) ?? searchableText(conn)
-      texts.set(id, text)
-      return text.includes(term)
-    })
-
-    searchTexts.current = texts
-
-    return matched
-  }, [history, mockNow, search, proxy])
+  const { rows, error, hasNextPage, onEndReached } = useClosedConnectionRows({
+    search,
+    proxy,
+    selection,
+  })
 
   // A closed record never changes, so the dialog keeps the row itself.
   const [detailRow, setDetailRow] = useState<ClosedConnection | null>(null)
 
   const detail = useMemo(
-    () => (detailRow === null ? undefined : closedConnectionDetail(detailRow)),
+    () =>
+      detailRow === null
+        ? undefined
+        : closedConnectionDetail(detailRow, closedConnectionId(detailRow)),
     [detailRow],
   )
 
@@ -107,13 +78,6 @@ const ClosedViewer = memo(function ClosedViewer({
     ),
     [],
   )
-
-  const handleEndReached = useCallback(() => {
-    // A failed page waits for the next poll instead of retrying in a loop.
-    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
-      fetchNextPage()
-    }
-  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage])
 
   const columns = useMemo(
     () =>
@@ -252,7 +216,7 @@ const ClosedViewer = memo(function ClosedViewer({
       <ConnectionsTable
         settingsKey="connections-columns-closed"
         columns={columns}
-        data={data}
+        data={rows}
         getRowId={closedConnectionId}
         renderRow={renderRow}
         isRowEqual={sameRecord}
@@ -263,13 +227,19 @@ const ClosedViewer = memo(function ClosedViewer({
               ? m.connections_closed_loading()
               : m.connections_empty_message()
         }
-        onEndReached={handleEndReached}
+        onEndReached={onEndReached}
+        focusRowId={focusRowId}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
       />
 
-      <RowsTickContext.Provider value={data}>
-        <ConnectionDetailModal detail={detail} onClose={closeDetail} />
+      <RowsTickContext.Provider value={rows}>
+        <ConnectionDetailModal
+          detail={detail}
+          onClose={closeDetail}
+          onLocateRule={onLocateRule}
+          onViewRuleUsage={onViewRuleUsage}
+        />
       </RowsTickContext.Provider>
     </>
   )

@@ -1,6 +1,6 @@
 {
   "name": "@nyanpasu/query",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@nyanpasu/rpc": "workspace:^",
-    "@tauri-apps/api": "2.12.0",
+    "@tauri-apps/api": "2.12.1",
     "es-toolkit": "1.52.0",
     "react-use": "17.6.1"
   },

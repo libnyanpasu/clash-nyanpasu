@@ -13,6 +13,13 @@ import {
   SelectValue,
 } from '@nyanpasu/ui/select'
 import { m } from '@/paraglide/messages'
+import {
+  dimensionName,
+  largest,
+  usageAmount,
+  usageValue,
+  type UsageLabel,
+} from '@/utils/traffic-usage'
 import type {
   Dimension,
   Metric,
@@ -20,6 +27,7 @@ import type {
   TopologyNode,
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { type SearchFilter } from '../../_modules/traffic-filters'
 import GeographyView from './geography-view'
 import {
   LAYER_TEMPLATES,
@@ -27,16 +35,8 @@ import {
   TEMPLATES,
   type LayerTemplate,
   type Limit,
-  type SearchFilter,
 } from './search'
 import { usePageTransition } from './transition'
-import {
-  dimensionName,
-  largest,
-  usageAmount,
-  usageValue,
-  type UsageLabel,
-} from './usage-label'
 
 const tones = [
   'bg-primary-container text-on-primary-container',

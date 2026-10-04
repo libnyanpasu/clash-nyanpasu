@@ -11,17 +11,22 @@ import {
   useSidebar,
 } from '@nyanpasu/ui/slider-sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+import { keepReturn } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { useIsMobileOrTablet } from '@nyanpasu/hooks'
 import { useClashRules } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import ProxyIcon from './_modules/proxy-icon'
+import { RULE_SORTS } from './_modules/rule-row'
 
 export const Route = createFileRoute('/(main)/main/rules')({
   component: RouteComponent,
   validateSearch: z.object({
     proxy: z.string().optional().nullable(),
+    q: z.string().optional(),
+    // The rule order is the default, so it is never written.
+    sort: z.enum(RULE_SORTS).exclude(['index']).optional(),
   }),
 })
 
@@ -68,10 +73,13 @@ const Item = ({
           asChild
         >
           <Link
+            from={Route.fullPath}
             to="."
-            search={{
+            search={(previous) => ({
+              ...previous,
               proxy: item,
-            }}
+            })}
+            state={keepReturn}
           >
             <div className="text-md grid size-6 shrink-0 place-content-center">
               {icon}

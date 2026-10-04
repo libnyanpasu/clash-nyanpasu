@@ -1,10 +1,10 @@
 import { motion } from 'motion/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import parseTraffic from '@/utils/parse-traffic'
+import { usageAmount, type UsageLabel } from '@/utils/traffic-usage'
 import type { Metric, Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { usePageTransition } from './transition'
-import { usageAmount, type UsageLabel } from './usage-label'
 
 const traffic = (bytes: number) => parseTraffic(bytes).join(' ')
 

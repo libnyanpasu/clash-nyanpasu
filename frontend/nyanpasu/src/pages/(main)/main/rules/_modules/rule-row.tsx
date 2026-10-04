@@ -2,14 +2,18 @@ import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded
 import ArrowForwardRounded from '~icons/material-symbols/arrow-forward-rounded'
 import { memo, type ReactNode } from 'react'
 import HighlightText from '@nyanpasu/ui/highlight-text'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { CacheImage } from '@/components/ui/image'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
 import type { Bytes, ClashRule } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { focusHighlightStyle } from '../../_modules/focus-highlight'
 import type { RuleLiveStats } from './use-rule-stats'
 
-export type RuleSort = 'index' | 'connections' | 'speed' | 'total'
+export const RULE_SORTS = ['index', 'connections', 'speed', 'total'] as const
+
+export type RuleSort = (typeof RULE_SORTS)[number]
 
 export const RULE_ROW_HEIGHT = 56
 
@@ -103,7 +107,43 @@ function Traffic({ value, rate }: { value: number; rate?: boolean }) {
   )
 }
 
-/** Download over upload, each prefixed with its direction. */
+/** A cell that jumps to the page showing what its number counts. */
+function ViewButton({
+  label,
+  slot,
+  onClick,
+  children,
+}: {
+  label: string
+  slot: string
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="hover:bg-primary/10 -mx-1 flex cursor-pointer rounded-md px-1"
+          data-slot={slot}
+          onClick={onClick}
+        >
+          {children}
+
+          {/* The number stays in the name; the action follows it. */}
+          <span className="sr-only">{label}</span>
+        </button>
+      </TooltipTrigger>
+
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/**
+ * Download over upload, each prefixed with its direction. Phrasing content
+ * only, as a jump button may hold it.
+ */
 function TrafficPair({
   download,
   upload,
@@ -114,7 +154,7 @@ function TrafficPair({
   rate?: boolean
 }) {
   return (
-    <div className="flex flex-col items-end text-xs leading-5 tabular-nums">
+    <span className="flex flex-col items-end text-xs leading-5 tabular-nums">
       <span className="whitespace-nowrap">
         <span className="text-outline mr-1">↓</span>
         <Traffic value={download} rate={rate} />
@@ -124,7 +164,7 @@ function TrafficPair({
         <span className="text-outline mr-1">↑</span>
         <Traffic value={upload} rate={rate} />
       </span>
-    </div>
+    </span>
   )
 }
 
@@ -133,8 +173,12 @@ export const RuleRow = memo(function RuleRow({
   rule,
   live,
   total,
+  label,
   icon,
   search,
+  focused,
+  onViewConnections,
+  onViewUsage,
 }: {
   /** 1-based position in the rule list. */
   index: number
@@ -142,11 +186,34 @@ export const RuleRow = memo(function RuleRow({
   live?: RuleLiveStats
   /** Session totals; undefined while unknown. */
   total?: Bytes
+  /** The rule's `ruleLabel`, passed back to the jump callbacks. */
+  label: string
   /** The target group's icon. */
   icon?: string | null
   search: string
+  /** Highlighted as the rule the page was opened or returned to. */
+  focused?: boolean
+  onViewConnections?: (label: string) => void
+  onViewUsage?: (label: string) => void
 }) {
   const active = !!live && live.connections > 0
+
+  const hasTotal = !!total && total.download + total.upload > 0
+
+  const badge = active && (
+    <span
+      className={cn(
+        'min-w-6 rounded-full px-2 text-center text-xs leading-6 font-medium tabular-nums',
+        'bg-primary-container text-on-primary-container',
+      )}
+    >
+      {live.connections.toLocaleString()}
+    </span>
+  )
+
+  const totalPair = hasTotal && (
+    <TrafficPair download={total.download} upload={total.upload} />
+  )
 
   return (
     <div
@@ -155,9 +222,13 @@ export const RuleRow = memo(function RuleRow({
         'border-outline-variant/25 border-b transition-colors',
         'hover:bg-primary/5',
       )}
-      style={{ height: RULE_ROW_HEIGHT }}
+      style={{
+        height: RULE_ROW_HEIGHT,
+        ...(focused && focusHighlightStyle),
+      }}
       data-slot="rules-row"
       data-active={active}
+      data-focused={focused}
     >
       <span
         className={cn(
@@ -205,14 +276,17 @@ export const RuleRow = memo(function RuleRow({
 
       <div className="flex justify-end">
         {active ? (
-          <span
-            className={cn(
-              'min-w-6 rounded-full px-2 text-center text-xs leading-6 font-medium tabular-nums',
-              'bg-primary-container text-on-primary-container',
-            )}
-          >
-            {live.connections.toLocaleString()}
-          </span>
+          onViewConnections ? (
+            <ViewButton
+              label={m.rules_view_connections()}
+              slot="rules-row-view-connections"
+              onClick={() => onViewConnections(label)}
+            >
+              {badge}
+            </ViewButton>
+          ) : (
+            badge
+          )
         ) : (
           <Placeholder />
         )}
@@ -231,8 +305,18 @@ export const RuleRow = memo(function RuleRow({
       </div>
 
       <div className="flex justify-end">
-        {total && total.download + total.upload > 0 ? (
-          <TrafficPair download={total.download} upload={total.upload} />
+        {hasTotal ? (
+          onViewUsage ? (
+            <ViewButton
+              label={m.rules_view_usage()}
+              slot="rules-row-view-usage"
+              onClick={() => onViewUsage(label)}
+            >
+              {totalPair}
+            </ViewButton>
+          ) : (
+            totalPair
+          )
         ) : (
           <Placeholder />
         )}

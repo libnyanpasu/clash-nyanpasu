@@ -1,5 +1,19 @@
 //! Consumer-owned ports for the traffic actor.
-use std::time::Duration;
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    time::Duration,
+};
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LocalSourceIps {
+    pub ipv4: Option<Ipv4Addr>,
+    pub ipv6: Option<Ipv6Addr>,
+}
+
+/// A nonblocking view of the permitted, caller-probed local public addresses.
+pub trait LocalSourceLocation: Send + Sync + 'static {
+    fn addresses(&self) -> LocalSourceIps;
+}
 
 /// The selected profile; labels the connections first seen while it is selected.
 #[cfg_attr(test, mockall::automock)]

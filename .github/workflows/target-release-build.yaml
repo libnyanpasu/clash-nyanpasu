@@ -16,6 +16,7 @@ jobs:
       portable: true
       nightly: false
       bundle-type: 'both'
+      arch: 'x86_64'
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 
@@ -35,6 +36,7 @@ jobs:
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: false
+      arch: 'x86_64'
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 
@@ -91,8 +93,42 @@ jobs:
   telegram:
     name: Send Release Message to Telegram
     if: startsWith(github.repository, 'libnyanpasu')
-    needs: [upload_release_assets]
+    needs: [upload_release_assets, verify_archive_uploads]
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:
       nightly: false
+      tag: ${{ github.event.release.tag_name }}
     secrets: inherit
+
+  verify_archive_uploads:
+    name: Verify Archive Uploads
+    if: ${{ always() }}
+    needs:
+      [
+        windows_build,
+        windows_aarch64_build,
+        linux_build,
+        linux_aarch64_build,
+        macos_amd64_build,
+        macos_aarch64_build,
+      ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Download upload diagnostics
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: upload-diagnostics-*
+          path: ./upload-diagnostics
+          merge-multiple: false
+
+      - name: Verify archive uploads
+        run: deno task verify:archive-uploads ./upload-diagnostics

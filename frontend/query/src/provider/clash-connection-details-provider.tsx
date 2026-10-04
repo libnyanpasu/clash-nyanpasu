@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type PropsWithChildren,
 } from 'react'
@@ -21,18 +22,28 @@ import { useRpc } from './rpc-provider'
 type Registrar = () => () => void
 
 const RegistrarContext = createContext<Registrar | null>(null)
-// `null` here means "no frame yet" (loading), never "no provider": that is
+type ConnectionDetailsState = {
+  frame: ClashConnectionDetails_Serialize | null
+  status: 'idle' | 'connecting' | 'connected' | 'error'
+  connectorState: ClashConnectionsConnectorState
+  error: unknown
+  retry: () => void
+}
+
+// `frame: null` means no frame yet, never "no provider": that is
 // `RegistrarContext`'s job, checked once in `useClashConnectionDetails`.
-const FrameContext = createContext<ClashConnectionDetails_Serialize | null>(
-  null,
-)
+const FrameContext = createContext<ConnectionDetailsState | null>(null)
 
-const useFrameValue = () => useContext(FrameContext)
+const useFrameValue = () => {
+  const value = useContext(FrameContext)
+  if (!value) throw new Error('Connection details must be within its provider')
+  return value
+}
 
-/** Latest connection-detail frame, or `null` before the first one arrives. */
+/** Latest detail frame plus the state of the shared detail subscription. */
 export const useClashConnectionDetails = () => {
   const registrar = useContext(RegistrarContext)
-  const frame = useFrameValue()
+  const { frame, status, connectorState, error, retry } = useFrameValue()
 
   useEffect(() => (registrar ? registrar() : undefined), [registrar])
 
@@ -42,7 +53,14 @@ export const useClashConnectionDetails = () => {
     )
   }
 
-  return { data: frame, isLoading: frame === null }
+  return {
+    data: frame,
+    isLoading: frame === null,
+    status,
+    connectorState,
+    error,
+    retry,
+  }
 }
 
 // Mirrors `ClashWSFreezeBoundary` (see clash-ws-provider.tsx): while frozen,
@@ -56,11 +74,11 @@ export const ClashConnectionDetailsFreezeBoundary = ({
   // Wrapped so a legitimately `null` (loading) frame can still be told apart
   // from "not currently capturing" (`captured === null`).
   const [captured, setCaptured] = useState<{
-    frame: ClashConnectionDetails_Serialize | null
+    value: ConnectionDetailsState
   } | null>(null)
 
   if (frozen && captured === null) {
-    setCaptured({ frame: live })
+    setCaptured({ value: live })
   } else if (!frozen && captured !== null) {
     setCaptured(null)
   }
@@ -69,7 +87,7 @@ export const ClashConnectionDetailsFreezeBoundary = ({
     // The render that starts freezing still sees `captured === null` (the
     // state update above only applies on the re-render), so it provides
     // `live`, which is the value being captured.
-    <FrameContext.Provider value={frozen && captured ? captured.frame : live}>
+    <FrameContext.Provider value={frozen && captured ? captured.value : live}>
       {children}
     </FrameContext.Provider>
   )
@@ -91,36 +109,77 @@ export const ClashConnectionDetailsProvider = ({
   const [frame, setFrame] = useState<ClashConnectionDetails_Serialize | null>(
     null,
   )
+  const [status, setStatus] = useState<ConnectionDetailsState['status']>('idle')
+  const [error, setError] = useState<unknown>(null)
+  const [retrySequence, setRetrySequence] = useState(0)
 
   const register = useCallback<Registrar>(() => {
     setSubscriberCount((count) => count + 1)
     return () => setSubscriberCount((count) => count - 1)
   }, [])
 
+  const retry = useCallback(() => {
+    setRetrySequence((sequence) => sequence + 1)
+  }, [])
+
   // The Rust side clears its own watch to `None` on disconnect, but the
   // forwarder only ever forwards `Some` frames, so a webview learns of a
   // disconnect only by watching the connector state itself, not the channel.
   useEffect(() => {
-    if (connectorState !== 'connected') setFrame(null)
+    if (connectorState !== 'connected') {
+      setFrame(null)
+      setStatus('idle')
+      setError(null)
+    }
   }, [connectorState])
 
   const hasSubscribers = subscriberCount > 0
 
   useEffect(() => {
-    if (!hasSubscribers) return
+    if (!hasSubscribers || connectorState !== 'connected') {
+      if (!hasSubscribers) {
+        setStatus('idle')
+        setError(null)
+      }
+      return
+    }
+
+    setStatus('connecting')
+    setError(null)
+    setFrame(null)
 
     if (!isTauri()) {
+      let disposed = false
       const source = new EventSource('/bridge/connection-details')
+      source.onopen = () => {
+        if (disposed) return
+        setStatus('connecting')
+        setError(null)
+      }
       source.onmessage = (event) => {
+        if (disposed) return
         try {
           setFrame(JSON.parse(event.data) as ClashConnectionDetails_Serialize)
+          setStatus('connected')
+          setError(null)
         } catch (error) {
           console.error('failed to decode connection details:', error)
+          setError(error)
+          setStatus('error')
         }
       }
+      source.onerror = (event) => {
+        if (disposed) return
+        setFrame(null)
+        setError(event)
+        setStatus('error')
+      }
       return () => {
+        disposed = true
         source.close()
         setFrame(null)
+        setStatus('idle')
+        setError(null)
       }
     }
 
@@ -129,7 +188,10 @@ export const ClashConnectionDetailsProvider = ({
 
     const channel = new Channel<ClashConnectionDetails_Serialize>()
     channel.onmessage = (data) => {
-      if (!disposed) setFrame(data)
+      if (disposed) return
+      setFrame(data)
+      setStatus('connected')
+      setError(null)
     }
     const unsubscribe = (id: SubscriptionId) => {
       rpc
@@ -157,36 +219,48 @@ export const ClashConnectionDetailsProvider = ({
         channel as unknown as Channel<ClashConnectionDetails_Deserialize>,
       )
       .then((result) => {
+        if (disposed) {
+          if (result.status === 'ok') unsubscribe(result.data)
+          return
+        }
         if (result.status === 'error') {
           console.error(
             'failed to subscribe to connection details:',
             result.error,
           )
-          return
-        }
-        if (disposed) {
-          // The last consumer unmounted before this resolved.
-          unsubscribe(result.data)
+          setError(result.error)
+          setStatus('error')
           return
         }
         subscriptionId = result.data
       })
       .catch((error: unknown) => {
         console.error('failed to subscribe to connection details:', error)
+        if (!disposed) {
+          setError(error)
+          setStatus('error')
+        }
       })
 
     return () => {
       disposed = true
       setFrame(null)
+      setStatus('idle')
+      setError(null)
       if (subscriptionId !== undefined) {
         unsubscribe(subscriptionId)
       }
     }
-  }, [hasSubscribers, rpc])
+  }, [connectorState, hasSubscribers, retrySequence, rpc])
+
+  const value = useMemo(
+    () => ({ frame, status, connectorState, error, retry }),
+    [connectorState, error, frame, retry, status],
+  )
 
   return (
     <RegistrarContext.Provider value={register}>
-      <FrameContext.Provider value={frame}>{children}</FrameContext.Provider>
+      <FrameContext.Provider value={value}>{children}</FrameContext.Provider>
     </RegistrarContext.Provider>
   )
 }

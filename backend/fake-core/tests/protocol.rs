@@ -375,7 +375,7 @@ fn apply_http_put_and_patch_configs_exact_paths_only() {
     let mut stream = connect_with_timeout(("127.0.0.1", http_port), SAFETY).expect("connect http");
     stream
         .write_all(
-            b"PUT /configs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"path\":\"x.yaml\"}",
+            b"PUT /configs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"path\":\"x.yaml\"}",
         )
         .expect("write put");
     let mut resp = String::new();

@@ -1,14 +1,19 @@
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    sync::RwLock,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use nyanpasu_config::{application::NyanpasuAppConfig, profile::Profiles};
 use nyanpasu_core::state::StateSnapshot;
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficQuery, TrafficReport,
-    TrafficSummary, UsageCursor, UsageGroup, UsagePage,
+    ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficFilter, TrafficQuery,
+    TrafficRange, TrafficReport, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
 };
 
 use super::{ClientError, NyanpasuClient, Result};
-use crate::core::traffic::{Clock, ProfileSelection, RetentionPolicy, TrafficClient};
+use crate::core::traffic::{
+    Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
+};
 
 /// Reads the selected profile from the committed profiles state.
 pub(super) struct SelectedProfile(StateSnapshot<Profiles>);
@@ -42,6 +47,62 @@ impl SettingsRetention {
 impl RetentionPolicy for SettingsRetention {
     fn retention(&self) -> Option<Duration> {
         self.0.load().state.traffic_retention.duration()
+    }
+}
+
+/// The facade owns this cache; traffic reads immutable copies through its port.
+pub(super) struct LocalSourceCache {
+    application: StateSnapshot<NyanpasuAppConfig>,
+    clash: StateSnapshot<nyanpasu_config::clash::config::ClashConfig>,
+    addresses: RwLock<LocalSourceIps>,
+}
+
+impl LocalSourceCache {
+    pub(super) fn new(
+        application: StateSnapshot<NyanpasuAppConfig>,
+        clash: StateSnapshot<nyanpasu_config::clash::config::ClashConfig>,
+    ) -> Self {
+        Self {
+            application,
+            clash,
+            addresses: RwLock::new(LocalSourceIps::default()),
+        }
+    }
+
+    pub(super) fn set(&self, result: &super::DirectEgress) {
+        *self
+            .addresses
+            .write()
+            .expect("local source cache lock poisoned") = match result {
+            super::DirectEgress::Probed { ipv4, ipv6 } => LocalSourceIps {
+                ipv4: *ipv4,
+                ipv6: *ipv6,
+            },
+            _ => LocalSourceIps::default(),
+        };
+    }
+
+    pub(super) fn blocked(&self) -> Option<super::DirectEgress> {
+        if !self.application.load().state.enable_local_ip_probe {
+            Some(super::DirectEgress::Disabled)
+        } else if self.clash.load().state.enable_tun_mode {
+            Some(super::DirectEgress::TunEnabled)
+        } else {
+            None
+        }
+    }
+}
+
+impl LocalSourceLocation for LocalSourceCache {
+    fn addresses(&self) -> LocalSourceIps {
+        if self.blocked().is_some() {
+            LocalSourceIps::default()
+        } else {
+            *self
+                .addresses
+                .read()
+                .expect("local source cache lock poisoned")
+        }
     }
 }
 
@@ -94,10 +155,21 @@ impl NyanpasuClient {
     }
     pub async fn query_traffic_closed_connections(
         &self,
+        range: TrafficRange,
+        filters: Vec<TrafficFilter>,
         before: Option<ClosedCursor>,
         limit: usize,
     ) -> Result<ClosedPage> {
-        Ok(self.traffic()?.closed_connections(before, limit).await?)
+        Ok(self
+            .traffic()?
+            .closed_connections(range, filters, before, limit)
+            .await?)
+    }
+    pub async fn query_traffic_active_connection_ids(
+        &self,
+        filters: Vec<TrafficFilter>,
+    ) -> Result<Vec<String>> {
+        Ok(self.traffic()?.active_connection_ids(filters).await?)
     }
 }
 
@@ -109,9 +181,9 @@ mod tests {
     };
 
     use nyanpasu_traffic::{
-        ActiveConnection, ClosedCursor, ClosedPage, Dimension, Dimensions, FlushBatch, Flushed,
-        Metric, RedbTrafficStore, ReportRequest, SessionMeta, Tier, TrafficError, TrafficQuery,
-        TrafficRange, TrafficResult, TrafficScope, TrafficStore, Usage,
+        ActiveConnection, ClosedCursor, ClosedPage, ClosedSelection, Dimension, Dimensions,
+        FlushBatch, Flushed, Metric, RedbTrafficStore, ReportRequest, SessionMeta, Tier,
+        TrafficError, TrafficQuery, TrafficRange, TrafficResult, TrafficScope, TrafficStore, Usage,
     };
     use tempfile::tempdir;
 
@@ -148,6 +220,7 @@ mod tests {
             &self,
             _: Option<&ClosedCursor>,
             _: usize,
+            _: &ClosedSelection,
         ) -> TrafficResult<ClosedPage> {
             unreachable!("recording is disabled")
         }
@@ -215,7 +288,15 @@ mod tests {
             );
             assert_eq!(
                 client
-                    .query_traffic_closed_connections(None, 10)
+                    .query_traffic_closed_connections(TrafficRange::All, Vec::new(), None, 10)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                unavailable
+            );
+            assert_eq!(
+                client
+                    .query_traffic_active_connection_ids(Vec::new())
                     .await
                     .unwrap_err()
                     .to_string(),

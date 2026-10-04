@@ -1,10 +1,7 @@
-//! A [`BoltLoadAdapter`] implemented on top of the project's existing reqwest 0.12
-//! client.
+//! A [`BoltLoadAdapter`] implemented on top of the project's reqwest client.
 //!
-//! We deliberately do **not** use bolt-load's bundled reqwest adapter: it targets
-//! reqwest 0.13 while this workspace pins 0.12. Implementing the adapter ourselves
-//! keeps a single reqwest / TLS dependency tree and lets us reuse the already
-//! configured proxy, user-agent and rustls client.
+//! The adapter reuses the configured proxy, user-agent and rustls client and
+//! classifies request failures for the download engine's retry policy.
 
 use std::sync::Arc;
 

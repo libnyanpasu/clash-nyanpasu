@@ -5,17 +5,17 @@ use std::{sync::Arc, time::Duration};
 
 use nyanpasu_geodata::IpIndex;
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, Dimension, Frame, Metric, Prune, ReportRequest, Row, Session, Tier,
-    TrafficError, TrafficQuery, TrafficReport, TrafficResult, TrafficScope, TrafficStore,
-    TrafficSummary, UsageCursor, UsageGroup, UsagePage, filter_rows, merge_closed_page, report,
-    usage_by_keys, usage_page,
+    ClosedCursor, ClosedPage, ClosedSelection, Dimension, Frame, Metric, Prune, ReportRequest, Row,
+    Session, Tier, TrafficError, TrafficFilter, TrafficQuery, TrafficRange, TrafficReport,
+    TrafficResult, TrafficScope, TrafficStore, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
+    check_filters, filter_rows, merge_closed_page, report, usage_by_keys, usage_page,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
 
 use super::{
     geo::CountryLookup,
-    ports::{Clock, ProfileSelection, RetentionPolicy},
+    ports::{Clock, LocalSourceLocation, ProfileSelection, RetentionPolicy},
     source::frame_from_snapshot,
 };
 use crate::core::clash::ws::ClashConnectionsFrame;
@@ -45,10 +45,13 @@ pub(super) enum Message {
         RpcReplyPort<TrafficResult<Vec<UsageGroup>>>,
     ),
     ClosedConnections(
+        TrafficRange,
+        Vec<TrafficFilter>,
         Option<ClosedCursor>,
         usize,
         RpcReplyPort<TrafficResult<ClosedPage>>,
     ),
+    ActiveIds(Vec<TrafficFilter>, RpcReplyPort<TrafficResult<Vec<String>>>),
 }
 
 pub struct TrafficArgs {
@@ -59,6 +62,7 @@ pub struct TrafficArgs {
     pub frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
     /// The country index regions are looked up in; `None` until the core's database loads.
     pub geo: watch::Receiver<Option<Arc<IpIndex>>>,
+    pub local_source: Arc<dyn LocalSourceLocation>,
 }
 
 pub(super) struct TrafficActor;
@@ -94,6 +98,7 @@ impl Actor for TrafficActor {
             clock,
             frames,
             geo,
+            local_source,
         } = args;
         // An unreadable store must not start an empty session: the stored live connections would
         // be recorded again and the store diverge from what the session knows.
@@ -108,7 +113,7 @@ impl Actor for TrafficActor {
             session,
             collected_at: None,
             collection_due: true,
-            pump: tokio::spawn(pump(myself, frames, geo, clock.clone())),
+            pump: tokio::spawn(pump(myself, frames, geo, local_source, clock.clone())),
             clock,
         })
     }
@@ -146,8 +151,15 @@ impl Actor for TrafficActor {
             Message::UsageByKeys(query, dimension, keys, reply) => {
                 let _ = reply.send(state.usage_by_keys(query, dimension, keys).await);
             }
-            Message::ClosedConnections(cursor, limit, reply) => {
-                let _ = reply.send(state.closed_connections(cursor, limit).await);
+            Message::ClosedConnections(range, filters, cursor, limit, reply) => {
+                let _ = reply.send(
+                    state
+                        .closed_connections(range, filters, cursor, limit)
+                        .await,
+                );
+            }
+            Message::ActiveIds(filters, reply) => {
+                let _ = reply.send(state.active_ids(&filters));
             }
         }
         Ok(())
@@ -255,14 +267,24 @@ impl State {
         .await
     }
 
+    /// A closed connection counts in the bucket of its close time, so the ones closed since the
+    /// range's first bucket began are exactly those a report over the range counts.
     async fn closed_connections(
         &self,
+        range: TrafficRange,
+        filters: Vec<TrafficFilter>,
         cursor: Option<ClosedCursor>,
         limit: usize,
     ) -> TrafficResult<ClosedPage> {
+        check_filters(&filters)?;
+        let selection = ClosedSelection {
+            since_ms: range.start_ms(self.clock.now_ms()),
+            filters,
+        };
         let before = cursor.clone();
+        let scan = selection.clone();
         let stored = blocking(&self.store, move |store| {
-            store.closed_connections(before.as_ref(), limit)
+            store.closed_connections(before.as_ref(), limit, &scan)
         })
         .await?;
         Ok(merge_closed_page(
@@ -270,7 +292,13 @@ impl State {
             self.session.pending_closed(),
             cursor.as_ref(),
             limit,
+            &selection,
         ))
+    }
+
+    fn active_ids(&self, filters: &[TrafficFilter]) -> TrafficResult<Vec<String>> {
+        check_filters(filters)?;
+        Ok(self.session.active_ids(filters))
     }
 
     /// Hands `f` the usage rows `query` selects by range and scope. Closed connections are what
@@ -326,6 +354,7 @@ async fn pump(
     actor: ActorRef<Message>,
     mut frames: watch::Receiver<Option<Arc<ClashConnectionsFrame>>>,
     geo: watch::Receiver<Option<Arc<IpIndex>>>,
+    local_source: Arc<dyn LocalSourceLocation>,
     clock: Arc<dyn Clock>,
 ) {
     let origin = tokio::time::Instant::now();
@@ -347,6 +376,7 @@ async fn pump(
                             clock.now_ms(),
                             origin.elapsed(),
                             index.as_deref().map(|index| index as &dyn CountryLookup),
+                            local_source.addresses(),
                         );
                         call(&actor, |reply| Message::Observe(frame, reply)).await
                     }

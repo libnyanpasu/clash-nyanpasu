@@ -8,10 +8,10 @@ use std::{
 };
 
 use nyanpasu_traffic::{
-    ActiveConnection, Bytes, ClosedCursor, ClosedPage, Dimension, Dimensions, FlushBatch, Flushed,
-    Frame, Metric, Rate, RedbTrafficStore, ReportRequest, RuleKey, Sample, SessionMeta, Tier,
-    TopologyRequest, TrafficError, TrafficFilter, TrafficQuery, TrafficRange, TrafficResult,
-    TrafficScope, TrafficStore, TrafficSummary, Usage, UsageGroup,
+    ActiveConnection, Bytes, ClosedCursor, ClosedPage, ClosedSelection, Dimension, Dimensions,
+    FlushBatch, Flushed, Frame, Metric, Rate, RedbTrafficStore, ReportRequest, RuleKey, Sample,
+    SessionMeta, Tier, TopologyRequest, TrafficError, TrafficFilter, TrafficQuery, TrafficRange,
+    TrafficResult, TrafficScope, TrafficStore, TrafficSummary, Usage, UsageGroup,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -136,8 +136,9 @@ impl TrafficStore for FlakyStore {
         &self,
         before: Option<&ClosedCursor>,
         limit: usize,
+        selection: &ClosedSelection,
     ) -> TrafficResult<ClosedPage> {
-        self.inner.closed_connections(before, limit)
+        self.inner.closed_connections(before, limit, selection)
     }
 
     fn closed_count(&self) -> TrafficResult<u64> {
@@ -159,6 +160,15 @@ impl TrafficStore for FlakyStore {
     }
 }
 
+#[derive(Default)]
+struct FakeLocalSource(Mutex<super::LocalSourceIps>);
+
+impl super::LocalSourceLocation for FakeLocalSource {
+    fn addresses(&self) -> super::LocalSourceIps {
+        *self.0.lock().unwrap()
+    }
+}
+
 /// Everything the actor is injected with, except the frames' consumer.
 struct Env {
     _dir: TempDir,
@@ -168,6 +178,7 @@ struct Env {
     clock: Arc<FakeClock>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
     geo: watch::Sender<Option<Arc<nyanpasu_geodata::IpIndex>>>,
+    local_source: Arc<FakeLocalSource>,
 }
 
 impl Env {
@@ -188,6 +199,7 @@ impl Env {
                 clock: self.clock.clone(),
                 frames: self.frames.subscribe(),
                 geo: self.geo.subscribe(),
+                local_source: self.local_source.clone(),
             },
             shutdown.clone(),
             tasks,
@@ -233,6 +245,7 @@ impl Harness {
             clock: Arc::new(FakeClock(AtomicI64::new(2_000))),
             frames: watch::channel(None).0,
             geo: watch::channel(None).0,
+            local_source: Arc::new(FakeLocalSource::default()),
         };
         env.retention.keep_days(7);
         let shutdown = CancellationToken::new();
@@ -552,6 +565,12 @@ async fn a_query_repeating_a_filter_dimension_is_refused_everywhere() {
             .await
             .unwrap_err(),
     );
+    refused(
+        h.client
+            .closed_connections(TrafficRange::All, repeated().filters, None, 10)
+            .await
+            .unwrap_err(),
+    );
 }
 
 #[tokio::test]
@@ -725,7 +744,7 @@ async fn a_failed_flush_is_retried_and_written_exactly_once() {
     assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
     assert!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .is_empty()
@@ -742,7 +761,7 @@ async fn a_failed_flush_is_retried_and_written_exactly_once() {
     );
     assert_eq!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .len(),
@@ -856,7 +875,7 @@ async fn shortening_the_retention_deletes_what_it_no_longer_covers() {
     assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
     assert!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .is_empty()
@@ -893,7 +912,7 @@ async fn keeping_everything_deletes_nothing() {
     );
     assert_eq!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .len(),
@@ -1259,10 +1278,14 @@ async fn closed_connections_appear_before_and_after_flush() {
     .await;
 
     // Not stored yet, but already listed ...
-    let pending = h.client.closed_connections(None, 10).await.unwrap();
+    let pending = h
+        .client
+        .closed_connections(TrafficRange::All, Vec::new(), None, 10)
+        .await
+        .unwrap();
     assert!(
         h.store
-            .closed_connections(None, 10)
+            .closed_connections(None, 10, &ClosedSelection::default())
             .unwrap()
             .connections
             .is_empty()
@@ -1272,7 +1295,11 @@ async fn closed_connections_appear_before_and_after_flush() {
 
     // ... and listed once more after the flush moves it to the store.
     h.client.flush().await.unwrap();
-    let page = h.client.closed_connections(None, 10).await.unwrap();
+    let page = h
+        .client
+        .closed_connections(TrafficRange::All, Vec::new(), None, 10)
+        .await
+        .unwrap();
     assert_eq!(page, pending);
     assert_eq!(h.client.summary().await.unwrap().closed_connections, 1);
     assert_eq!(page.next, None);
@@ -1288,6 +1315,85 @@ async fn closed_connections_appear_before_and_after_flush() {
             ..dims("curl")
         }
     );
+}
+
+#[tokio::test]
+async fn closed_connections_select_pending_and_stored_alike() {
+    let h = Harness::new("p1").await;
+    h.clock.set(10 * HOUR);
+    h.close_in_hour_by(5, "curl").await;
+    h.client.flush().await.unwrap();
+    h.close_in_hour_by(6, "wget").await;
+    // Pending: c6 (wget). Stored: c5 (curl).
+    let curl = vec![TrafficFilter {
+        dimension: Dimension::Process,
+        value: "curl".into(),
+    }];
+    let wget = vec![TrafficFilter {
+        dimension: Dimension::Process,
+        value: "wget".into(),
+    }];
+    let ids = |page: ClosedPage| {
+        page.connections
+            .into_iter()
+            .map(|c| c.id)
+            .collect::<Vec<_>>()
+    };
+    let select = async |range, filters| {
+        ids(h
+            .client
+            .closed_connections(range, filters, None, 10)
+            .await
+            .unwrap())
+    };
+
+    assert_eq!(select(TrafficRange::All, curl.clone()).await, ["c5"]);
+    assert_eq!(select(TrafficRange::All, wget.clone()).await, ["c6"]);
+    h.client.flush().await.unwrap();
+    assert_eq!(select(TrafficRange::All, curl.clone()).await, ["c5"]);
+    assert_eq!(select(TrafficRange::All, wget.clone()).await, ["c6"]);
+
+    // The last hour starts at 9h, after both closed.
+    assert!(select(TrafficRange::LastHour, Vec::new()).await.is_empty());
+    assert_eq!(
+        select(TrafficRange::Last6Hours, Vec::new()).await,
+        ["c6", "c5"]
+    );
+}
+
+#[tokio::test]
+async fn active_connection_ids_follow_the_filters() {
+    let h = Harness::new("p1").await;
+    h.observe(frame(
+        1_000,
+        0,
+        bytes(2, 2),
+        vec![sample("b", "wget", 1, 1), sample("a", "curl", 1, 1)],
+    ))
+    .await;
+    let filter = |value: &str| TrafficFilter {
+        dimension: Dimension::Process,
+        value: value.into(),
+    };
+
+    assert_eq!(
+        h.client
+            .active_connection_ids(vec![filter("curl")])
+            .await
+            .unwrap(),
+        ["a"]
+    );
+    assert_eq!(
+        h.client.active_connection_ids(Vec::new()).await.unwrap(),
+        ["a", "b"]
+    );
+    let error = h
+        .client
+        .active_connection_ids(vec![filter("curl"), filter("wget")])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.starts_with("invalid traffic request"), "{error}");
 }
 
 #[tokio::test]
@@ -1359,6 +1465,47 @@ async fn pump_locates_regions_with_the_published_index() {
     assert_eq!(report.rankings[0].groups[0].key, "US");
 }
 
+#[tokio::test]
+async fn pump_maps_local_regions_without_changing_source_identity_or_usage() {
+    let h = Harness::new("p1").await;
+    let dat = crate::core::geo::fixtures::geoip_dat(&[("US", &["8.0.0.0/8"])]);
+    h.geo.send_replace(Some(Arc::new(
+        nyanpasu_geodata::IpIndex::from_geoip_dat(&dat).unwrap(),
+    )));
+    *h.local_source.0.lock().unwrap() = super::LocalSourceIps {
+        ipv4: Some("8.8.8.8".parse().unwrap()),
+        ipv6: None,
+    };
+    h.frames.send_replace(Some(raw_frame(
+        100,
+        200,
+        vec![connection(A, 100, 200, json!({"sourceIP":"192.168.1.2"}))],
+    )));
+    until(&h.client, |s| s.last_sample_at.is_some()).await;
+    let report = h
+        .report(request(
+            everything(),
+            &[Dimension::Source, Dimension::SourceRegion],
+        ))
+        .await;
+    assert_eq!(report.rankings[0].groups[0].key, "192.168.1.2");
+    assert_eq!(report.rankings[1].groups[0].key, "US");
+    assert_eq!(h.total(everything()).await, usage(100, 200, 1));
+
+    *h.local_source.0.lock().unwrap() = super::LocalSourceIps::default();
+    h.frames.send_replace(Some(raw_frame(
+        150,
+        260,
+        vec![connection(A, 150, 260, json!({"sourceIP":"192.168.1.2"}))],
+    )));
+    until(&h.client, |s| s.current_rate.is_some()).await;
+    let report = h
+        .report(request(everything(), &[Dimension::SourceRegion]))
+        .await;
+    assert_eq!(report.rankings[0].groups[0].key, "unknown");
+    assert_eq!(h.total(everything()).await, usage(150, 260, 1));
+}
+
 #[test]
 fn frame_from_snapshot_extracts_dimensions() {
     let connections = vec![
@@ -1397,7 +1544,13 @@ fn frame_from_snapshot_extracts_dimensions() {
         ),
     ];
     let raw = raw_frame(-1, 30, connections);
-    let frame = frame_from_snapshot(&raw, 7_000, Duration::from_millis(9), None);
+    let frame = frame_from_snapshot(
+        &raw,
+        7_000,
+        Duration::from_millis(9),
+        None,
+        super::LocalSourceIps::default(),
+    );
 
     assert_eq!(frame.instance_id, CORE);
     assert_eq!(frame.wall_ms, 7_000);
@@ -1467,7 +1620,13 @@ fn frame_from_snapshot_maps_the_inbound_and_the_regions() {
             with(json!({ "sourceGeoIP": [], "destinationGeoIP": null })),
         ],
     );
-    let frame = frame_from_snapshot(&raw, 0, Duration::ZERO, None);
+    let frame = frame_from_snapshot(
+        &raw,
+        0,
+        Duration::ZERO,
+        None,
+        super::LocalSourceIps::default(),
+    );
     let regions = |i: usize| {
         let d = &frame.connections[i].dimensions;
         (

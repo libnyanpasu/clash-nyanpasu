@@ -11,10 +11,13 @@ export type ClashRulesProviderQuery = Record<
   ClashRulesProviderQueryItem
 >
 
-export const useClashRulesProvider = () => {
+export const useClashRulesProvider = (
+  options: { refetchInterval?: number | false; enabled?: boolean } = {},
+) => {
   const api = useQueryApi()
   const providersQuery = api.queries.clashApiGetProvidersRules()
   return useQuery({
+    ...options,
     queryKey: providersQuery.queryKey,
     queryFn: async (): Promise<ClashRulesProviderQuery> =>
       unwrapResult(await invokeQuery(providersQuery))?.providers ?? {},

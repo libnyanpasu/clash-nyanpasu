@@ -5,10 +5,15 @@ import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import worldMap from '@/assets/maps/world-map.json'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
+import {
+  largest,
+  regionName,
+  usageAmount,
+  usageValue,
+} from '@/utils/traffic-usage'
 import type { Metric, Topology, Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { usePageTransition } from './transition'
-import { largest, regionName, usageAmount, usageValue } from './usage-label'
 
 const centers: Readonly<Record<string, number[]>> = worldMap.centers
 const shapes: Readonly<Record<string, string>> = worldMap.countries

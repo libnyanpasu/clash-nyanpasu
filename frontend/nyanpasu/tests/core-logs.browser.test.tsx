@@ -255,6 +255,9 @@ test('Core upward history preserves the visible row and follow-latest returns to
   await expect
     .poll(() => Math.abs(rowTop() - top), { timeout: 5_000 })
     .toBeLessThan(2)
+  expect(view.container.querySelector('button')?.textContent).not.toBe(
+    m.logs_load_older(),
+  )
   viewport.scrollTop = 0
   await expect
     .element(view.getByText('record 181', { exact: true }))

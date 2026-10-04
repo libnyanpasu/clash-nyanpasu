@@ -279,6 +279,22 @@ impl Session {
             .collect()
     }
 
+    /// The ids of the live connections that satisfy every filter, sorted.
+    pub fn active_ids(&self, filters: &[TrafficFilter]) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .active
+            .values()
+            .filter(|conn| {
+                filters
+                    .iter()
+                    .all(|f| group_key(&conn.dimensions, f.dimension) == f.value)
+            })
+            .map(|conn| conn.id.clone())
+            .collect();
+        ids.sort_unstable();
+        ids
+    }
+
     /// `stored_closed` is how many closed connections the store holds.
     pub fn summary(&self, stored_closed: u64) -> TrafficSummary {
         TrafficSummary {
@@ -682,6 +698,32 @@ mod tests {
         assert_eq!(batch.active.len(), 1);
         assert_eq!(batch.active[0].id, "b");
         assert_eq!(session.summary(0).active_connections, 1);
+    }
+
+    #[test]
+    fn active_ids_are_the_matching_live_connections_sorted() {
+        let mut session = Session::new();
+        let wget = Sample {
+            dimensions: dims("wget"),
+            ..sample("b", 1, 1)
+        };
+        session.observe(
+            &frame(
+                INSTANCE,
+                1_000,
+                0,
+                bytes(3, 3),
+                vec![sample("c", 1, 1), wget, sample("a", 1, 1)],
+            ),
+            None,
+        );
+
+        let curl = [TrafficFilter {
+            dimension: Dimension::Process,
+            value: "curl".into(),
+        }];
+        assert_eq!(session.active_ids(&curl), ["a", "c"]);
+        assert_eq!(session.active_ids(&[]), ["a", "b", "c"]);
     }
 
     #[test]

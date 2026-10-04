@@ -62,17 +62,24 @@ test('switch updates only after server acknowledgement and shows its URL', async
   await toggle.click()
   await expect.element(toggle).toBeDisabled()
   await expect.element(toggle).not.toBeChecked()
-  acknowledge({
+  const enabledStatus = {
     status: 'ok',
     data: { enabled: true, url: 'http://127.0.0.1:12345' },
-  })
+  }
+  // Polling must observe the same server state that the mutation acknowledged.
+  backend.status.mockResolvedValue(enabledStatus)
+  acknowledge(enabledStatus)
   await expect.element(toggle).toBeChecked()
   await expect
     .element(view.getByRole('link'))
     .toHaveAttribute('href', 'http://127.0.0.1:12345')
-  backend.set.mockResolvedValue({
+  const disabledStatus = {
     status: 'ok',
     data: { enabled: false, url: null },
+  }
+  backend.set.mockImplementation(() => {
+    backend.status.mockResolvedValue(disabledStatus)
+    return Promise.resolve(disabledStatus)
   })
   await toggle.click()
   await expect.element(toggle).not.toBeChecked()

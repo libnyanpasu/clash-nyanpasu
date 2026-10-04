@@ -28,6 +28,7 @@ struct ApplicationClientInner {
     /// Committed state, read straight from the coordinator's store so a reader
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<NyanpasuAppConfig>,
+    settings_changes: tokio::sync::watch::Receiver<NyanpasuAppConfig>,
 }
 
 #[allow(dead_code)]
@@ -84,6 +85,8 @@ impl ApplicationClient {
         )
         .map_err(anyhow::Error::msg)?;
         let snapshot = manager.snapshot_handle();
+        let (settings_tx, settings_changes) =
+            tokio::sync::watch::channel(snapshot.load().state.clone());
         let actor_ref = Actor::spawn(
             None,
             ApplicationActor,
@@ -92,6 +95,7 @@ impl ApplicationClient {
                 mutations,
                 build_channel,
                 shutdown: shutdown.clone(),
+                settings_changes: settings_tx,
             },
         )
         .await
@@ -103,6 +107,7 @@ impl ApplicationClient {
             inner: Arc::new(ApplicationClientInner {
                 actor_ref,
                 snapshot,
+                settings_changes,
             }),
         })
     }
@@ -117,6 +122,13 @@ impl ApplicationClient {
     /// without holding a client that could write it.
     pub(crate) fn snapshot_handle(&self) -> StateSnapshot<NyanpasuAppConfig> {
         self.inner.snapshot.clone()
+    }
+
+    /// Receives committed application settings from their serial owner.
+    pub(crate) fn subscribe_settings_changes(
+        &self,
+    ) -> tokio::sync::watch::Receiver<NyanpasuAppConfig> {
+        self.inner.settings_changes.clone()
     }
 
     pub async fn patch(

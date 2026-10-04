@@ -9,11 +9,11 @@ on:
         type: boolean
         default: false
 
-      from-local:
-        description: 'Use per-build uploaded results instead of downloading from release'
+      tag:
+        description: 'Release tag (defaults to the package version)'
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: ''
 
   workflow_call:
     inputs:
@@ -23,11 +23,11 @@ on:
         type: boolean
         default: false
 
-      from-local:
-        description: 'Use per-build uploaded results instead of downloading from release'
+      tag:
+        description: 'Release tag (defaults to the package version)'
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: ''
 
 jobs:
   telegram:
@@ -37,40 +37,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: latest
-
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
 
-      - name: Download upload results
-        if: ${{ inputs.from-local == true }}
-        uses: actions/download-artifact@v8
-        continue-on-error: true
-        with:
-          pattern: upload-results-*
-          path: ./upload-results
-          merge-multiple: false
-
-      - name: Send Releases
+      - name: Send Release Notification
         run: |
           ARGS=""
-          if [ "${{ inputs.nightly }}" = "true" ]; then
-            ARGS="$ARGS --nightly"
-          fi
-          if [ "${{ inputs.from-local }}" = "true" ]; then
-            ARGS="$ARGS --from-local"
+          if [ "$NIGHTLY" = "true" ]; then
+            ARGS="--nightly"
           fi
           deno task telegram-notify $ARGS
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIGHTLY: ${{ inputs.nightly }}
+          RELEASE_TAG: ${{ inputs.tag }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
           TELEGRAM_TO: '@keikolog'
           TELEGRAM_TO_NIGHTLY: '@ClashNyanpasu'
           WORKFLOW_RUN_ID: ${{ github.run_id }}
-          UPLOAD_RESULTS_DIR: ./upload-results

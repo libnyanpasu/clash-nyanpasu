@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficQuery, TrafficReport,
-    TrafficSummary, UsageCursor, UsageGroup, UsagePage,
+    ClosedCursor, ClosedPage, Dimension, Metric, ReportRequest, TrafficFilter, TrafficQuery,
+    TrafficRange, TrafficReport, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -89,14 +89,25 @@ impl TrafficClient {
             .await??)
     }
 
-    /// Newest first, strictly before `before`, including what is not flushed yet.
+    /// The closed connections a report over `range` and `filters` counts, newest first, strictly
+    /// before `before`, including what is not flushed yet. A page may hold fewer than `limit`
+    /// connections, even none, and still continue.
     pub async fn closed_connections(
         &self,
+        range: TrafficRange,
+        filters: Vec<TrafficFilter>,
         before: Option<ClosedCursor>,
         limit: usize,
     ) -> Result<ClosedPage> {
         Ok(self
-            .call(|reply| Message::ClosedConnections(before, limit, reply))
+            .call(|reply| Message::ClosedConnections(range, filters, before, limit, reply))
+            .await??)
+    }
+
+    /// The ids of the live connections that satisfy every filter, sorted.
+    pub async fn active_connection_ids(&self, filters: Vec<TrafficFilter>) -> Result<Vec<String>> {
+        Ok(self
+            .call(|reply| Message::ActiveIds(filters, reply))
             .await??)
     }
 

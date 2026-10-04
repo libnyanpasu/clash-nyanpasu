@@ -88,8 +88,7 @@ colored = '3'
 clap = { version = '4.5.4', features = ['derive'] }
 
 # GUI Utilities
-rfd = { version = '0.15', default-features = false, features = [
-  'tokio',
+rfd = { version = '0.17', default-features = false, features = [
   'gtk3',
   'common-controls-v6',
 ] }  # cross platform dialog
@@ -103,9 +102,8 @@ tokio-tungstenite = '0.30'
 url = '2'
 mime = '0.3'
 reqwest = { workspace = true }
-# Parallel/concurrent download engine. We disable the bundled reqwest adapter
-# (it targets reqwest 0.13 while this workspace pins 0.12) and implement our own
-# BoltLoadAdapter over the existing reqwest 0.12 client in `core::download`.
+# Parallel/concurrent download engine. Our BoltLoadAdapter in `core::download`
+# reuses the configured reqwest client and classifies failures for retry.
 bolt-load = { version = '0.1', default-features = false, features = [
   'tokio',
   'serde',
@@ -141,7 +139,7 @@ percent-encoding = '2.3.1'
 uuid = '1.7.0'
 rand = '0.10'
 md-5 = '0.11.0'
-sha2 = '0.10'
+sha2 = '0.11'
 nanoid = '0.5.0'
 seahash = '4.1'
 

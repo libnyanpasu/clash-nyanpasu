@@ -1,23 +1,33 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import Check from '~icons/material-symbols/check-rounded'
-import { useCallback, useMemo, useState } from 'react'
+import BrightnessMediumRounded from '~icons/material-symbols/brightness-medium-rounded'
+import DarkModeRounded from '~icons/material-symbols/dark-mode-rounded'
+import LightModeRounded from '~icons/material-symbols/light-mode-rounded'
+import { useEffect, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
+  HctColorPicker,
+  HctColorPickerHexField,
+  HctColorPickerPreset,
+  HctColorPickerPresets,
+  HctColorPickerSlider,
+  HctColorPickerSliders,
+} from '@nyanpasu/ui/hct-color-picker'
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+} from '@nyanpasu/ui/popover'
+import {
+  SegmentedButton,
+  SegmentedButtonItem,
+} from '@nyanpasu/ui/segmented-button'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
 import { useSystemAccentColor } from '@nyanpasu/query'
-import { cn } from '@nyanpasu/utils'
-import { Hue } from '@uiw/react-color'
+import { ThemeMode } from '@nyanpasu/theme'
 import {
   ItemContainer,
   ItemLabel,
@@ -29,78 +39,106 @@ import {
 
 const PERSETS = ['#9e1e67', '#3d009e', '#00089e', '#066b9e', '#9e5a00']
 
-function hueToHex(hue: number) {
-  const h = ((hue % 360) + 360) % 360
-  const c = 1
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
-
-  let r = 0
-  let g = 0
-  let b = 0
-
-  if (h < 60) {
-    r = c
-    g = x
-  } else if (h < 120) {
-    r = x
-    g = c
-  } else if (h < 180) {
-    g = c
-    b = x
-  } else if (h < 240) {
-    g = x
-    b = c
-  } else if (h < 300) {
-    r = x
-    b = c
-  } else {
-    r = c
-    b = x
-  }
-
-  const toHex = (value: number) =>
-    Math.round(value * 255)
-      .toString(16)
-      .padStart(2, '0')
-
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
-}
+// The system accent color arrives as uppercase `#RRGGBB`; the picker emits
+// lowercase.
+const isSameColor = (a: string, b: string) =>
+  a.toLowerCase() === b.toLowerCase()
 
 export default function ThemeColorConfig() {
-  const { themeColor, setThemeColor } = useExperimentalThemeContext()
-
-  const handleThemeModeChange = useCallback(
-    (color: string) => {
-      setThemeColor(color)
-    },
-    [setThemeColor],
-  )
-
-  const [customHueColor, setCustomHueColor] = useState<number>(0)
-
-  const customColorHex = useMemo(
-    () => hueToHex(customHueColor),
-    [customHueColor],
-  )
-
-  const handleSubmit = useCallback(async () => {
-    if (!customColorHex) {
-      return
-    }
-
-    await setThemeColor(customColorHex)
-  }, [customColorHex, setThemeColor])
+  const { themeColor, themeMode, setThemeColor, setThemePreview } =
+    useExperimentalThemeContext()
 
   const { systemAccentColor } = useSystemAccentColor()
 
-  const isCustomColor =
-    !PERSETS.includes(themeColor) && themeColor !== systemAccentColor
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState(themeColor)
+  const [previewMode, setPreviewMode] = useState<ThemeMode>()
+  const [applying, setApplying] = useState(false)
+  const [closeWhenSaved, setCloseWhenSaved] = useState(false)
+
+  useEffect(() => {
+    setThemePreview(open ? { color: draft, mode: previewMode } : null)
+  }, [open, draft, previewMode, setThemePreview])
+
+  // Leaving the page with the panel open must not keep the preview.
+  useEffect(() => () => setThemePreview(null), [setThemePreview])
+
+  // `upsert` resolves before the saved value is refetched; closing (and so
+  // dropping the preview) any earlier would flash the old color.
+  useEffect(() => {
+    if (closeWhenSaved && isSameColor(themeColor, draft)) {
+      setCloseWhenSaved(false)
+      setOpen(false)
+    }
+  }, [closeWhenSaved, themeColor, draft])
+
+  const modes = [
+    {
+      value: ThemeMode.DARK,
+      label: m.settings_user_interface_theme_mode_dark(),
+      Icon: DarkModeRounded,
+    },
+    {
+      value: ThemeMode.SYSTEM,
+      label: m.settings_user_interface_theme_mode_system(),
+      Icon: BrightnessMediumRounded,
+    },
+    {
+      value: ThemeMode.LIGHT,
+      label: m.settings_user_interface_theme_mode_light(),
+      Icon: LightModeRounded,
+    },
+  ]
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    // Closing mid-save would drop the preview before the color is saved.
+    if (applying) {
+      return
+    }
+
+    if (nextOpen) {
+      setDraft(themeColor)
+      setPreviewMode(undefined)
+    }
+
+    setCloseWhenSaved(false)
+    setOpen(nextOpen)
+  }
+
+  const handleDraftChange = (color: string) => {
+    setDraft(color)
+    setCloseWhenSaved(false)
+  }
+
+  const handleModeChange = (value: string) => {
+    // Clicking the selected mode again deselects it; keep one selected.
+    if (value) {
+      setPreviewMode(value as ThemeMode)
+    }
+  }
+
+  const handleApply = async () => {
+    setApplying(true)
+
+    try {
+      await setThemeColor(draft)
+      setCloseWhenSaved(true)
+    } catch (error) {
+      message(`Update theme color failed!\n Error: ${formatError(error)}`, {
+        title: 'Error',
+        kind: 'error',
+        error,
+      })
+    } finally {
+      setApplying(false)
+    }
+  }
 
   return (
-    <SettingsCard data-slot="theme-color-config-card">
-      <DropdownMenu align="end">
-        <DropdownMenuTrigger asChild>
-          <SettingsCardContent data-slot="theme-mode-selector-trigger" asChild>
+    <SettingsCard className="relative" data-slot="theme-color-config-card">
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <PopoverTrigger asChild>
+          <SettingsCardContent data-slot="theme-color-config-trigger" asChild>
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
               <ItemContainer>
                 <ItemLabel>
@@ -125,101 +163,95 @@ export default function ThemeColorConfig() {
               </ItemContainer>
             </Button>
           </SettingsCardContent>
-        </DropdownMenuTrigger>
+        </PopoverTrigger>
 
-        <DropdownMenuContent sideOffset={-16} alignOffset={16}>
-          {PERSETS.map((value) => (
-            <DropdownMenuCheckboxItem
-              className="justify-start gap-5"
-              checked={themeColor === value}
-              key={value}
-              onSelect={() => handleThemeModeChange(value)}
+        {/* Must follow the trigger: Radix registers the trigger as the anchor
+            until it sees a custom one, so this registration has to run last. */}
+        <PopoverAnchor className="pointer-events-none absolute right-0 bottom-0 size-0" />
+
+        {/* A left placement makes Radix slide the panel vertically near the
+            window bottom instead of capping its height under the row. */}
+        <PopoverContent
+          side="left"
+          align="start"
+          sideOffset={0}
+          alignOffset={8}
+          sticky="always"
+          aria-label={m.settings_user_interface_theme_color_label()}
+          className="w-80"
+        >
+          <HctColorPicker
+            className="min-h-0 gap-3 overflow-y-auto p-4 *:shrink-0"
+            value={draft}
+            onValueChange={handleDraftChange}
+          >
+            <HctColorPickerPresets
+              aria-label={m.settings_user_interface_theme_color_presets()}
             >
-              <span
-                className="inline-block size-4 rounded-full"
-                data-slot="theme-color-config-colorful-select-preview"
-                style={{
-                  backgroundColor: value,
-                }}
-              />
+              {PERSETS.map((value) => (
+                <HctColorPickerPreset key={value} value={value} />
+              ))}
 
-              <span>{value}</span>
-            </DropdownMenuCheckboxItem>
-          ))}
-
-          {systemAccentColor && (
-            <DropdownMenuCheckboxItem
-              className="justify-start gap-5"
-              checked={themeColor === systemAccentColor}
-              onSelect={() => handleThemeModeChange(systemAccentColor)}
-            >
-              <span
-                className="inline-block size-4 rounded-full"
-                data-slot="theme-color-config-colorful-system-accent-preview"
-                style={{
-                  backgroundColor: systemAccentColor,
-                }}
-              />
-
-              <span>
-                {m.settings_user_interface_theme_color_system_accent()}
-              </span>
-            </DropdownMenuCheckboxItem>
-          )}
-
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger
-              className="group justify-start gap-4"
-              data-selected={String(isCustomColor)}
-            >
-              <Check
-                className={cn(
-                  'text-primary',
-                  'group-data-[selected=false]:opacity-0 group-data-[selected=true]:opacity-100',
-                )}
-              />
-
-              <span className="flex-1">
-                {m.settings_user_interface_theme_color_custom()}
-              </span>
-            </DropdownMenuSubTrigger>
-
-            <DropdownMenuSubContent>
-              <div className="w-60 space-y-2 overflow-hidden p-4">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-block size-4 rounded-full"
-                    data-slot="theme-color-config-colorful-custom-preview"
-                    style={{
-                      backgroundColor: customColorHex,
-                    }}
-                  />
-
-                  <span>{customColorHex ?? customHueColor}</span>
-                </div>
-
-                <Hue
-                  className="bg-inherit! [&>div:first-child]:rounded-full!"
-                  hue={customHueColor}
-                  onChange={(newHue) => {
-                    setCustomHueColor(newHue.h)
-                  }}
+              {systemAccentColor && (
+                <HctColorPickerPreset
+                  value={systemAccentColor}
+                  label={m.settings_user_interface_theme_color_system_accent()}
                 />
-              </div>
+              )}
+            </HctColorPickerPresets>
 
-              <DropdownMenuSeparator />
+            <HctColorPickerHexField
+              label={m.settings_user_interface_theme_color_hex_source()}
+            />
 
-              <DropdownMenuItem
-                className="justify-start"
-                onSelect={handleSubmit}
-              >
-                <Check className="size-5" />
-                <span>{m.common_submit()}</span>
-              </DropdownMenuItem>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <HctColorPickerSliders>
+              <HctColorPickerSlider
+                channel="hue"
+                label={m.settings_user_interface_theme_color_hue()}
+              />
+
+              <HctColorPickerSlider
+                channel="chroma"
+                label={m.settings_user_interface_theme_color_chroma()}
+              />
+
+              <HctColorPickerSlider
+                channel="tone"
+                label={m.settings_user_interface_theme_color_tone()}
+              />
+            </HctColorPickerSliders>
+
+            <SegmentedButton
+              data-slot="theme-color-config-mode-preview"
+              aria-label={m.settings_user_interface_theme_mode_label()}
+              value={previewMode ?? themeMode}
+              onValueChange={handleModeChange}
+            >
+              {modes.map(({ value, label, Icon }) => (
+                <SegmentedButtonItem
+                  key={value}
+                  value={value}
+                  aria-label={label}
+                  title={label}
+                >
+                  <Icon className="size-5" />
+                </SegmentedButtonItem>
+              ))}
+            </SegmentedButton>
+
+            <Button
+              data-slot="theme-color-config-apply"
+              className="self-end"
+              variant="flat"
+              disabled={applying || isSameColor(draft, themeColor)}
+              loading={applying}
+              onClick={handleApply}
+            >
+              {m.common_apply()}
+            </Button>
+          </HctColorPicker>
+        </PopoverContent>
+      </Popover>
     </SettingsCard>
   )
 }

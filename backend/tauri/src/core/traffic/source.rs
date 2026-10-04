@@ -4,7 +4,10 @@ use std::time::Duration;
 use clash_api::{ConfigEnum, Connection, ConnectionNetwork};
 use nyanpasu_traffic::{Bytes, Dimensions, Frame, RuleKey, Sample};
 
-use super::geo::{CountryLookup, locate_destination, locate_source};
+use super::{
+    LocalSourceIps,
+    geo::{CountryLookup, locate_destination, locate_source},
+};
 use crate::core::clash::ws::ClashConnectionsFrame;
 
 const UNKNOWN: &str = "unknown";
@@ -14,6 +17,7 @@ pub(crate) fn frame_from_snapshot(
     wall_ms: i64,
     mono: Duration,
     index: Option<&dyn CountryLookup>,
+    local_source: LocalSourceIps,
 ) -> Frame {
     let snapshot = &frame.snapshot;
     Frame {
@@ -25,17 +29,21 @@ pub(crate) fn frame_from_snapshot(
             .connections
             .iter()
             .flatten()
-            .map(|connection| sample(connection, index))
+            .map(|connection| sample(connection, index, local_source))
             .collect(),
     }
 }
 
-fn sample(connection: &Connection, index: Option<&dyn CountryLookup>) -> Sample {
+fn sample(
+    connection: &Connection,
+    index: Option<&dyn CountryLookup>,
+    local_source: LocalSourceIps,
+) -> Sample {
     Sample {
         id: connection.id.to_string(),
         started_at: connection.start.timestamp_millis(),
         counters: counters(connection.upload, connection.download),
-        dimensions: dimensions(connection, index),
+        dimensions: dimensions(connection, index, local_source),
     }
 }
 
@@ -47,7 +55,11 @@ fn counters(upload: i64, download: i64) -> Bytes {
     }
 }
 
-fn dimensions(connection: &Connection, index: Option<&dyn CountryLookup>) -> Dimensions {
+fn dimensions(
+    connection: &Connection,
+    index: Option<&dyn CountryLookup>,
+    local_source: LocalSourceIps,
+) -> Dimensions {
     let known = connection.metadata.as_ref().map(|meta| &meta.known);
     let process = known
         .and_then(|m| text(m.process_path.as_ref()))
@@ -83,11 +95,10 @@ fn dimensions(connection: &Connection, index: Option<&dyn CountryLookup>) -> Dim
         inbound: inbound.unwrap_or(UNKNOWN).to_owned(),
         // Labelled by the accounting session when it first sees the connection.
         profile: None,
-        // TODO(traffic-geo): a loopback or private source is this machine, so
-        // locate it at the address `NyanpasuClient::probe_direct_egress` reports,
-        // and leave it unknown on `TunEnabled` or no address. Wiring it waits
-        // on when to probe again: the app has no network-change signal yet.
-        source_region: known.map_or_else(|| UNKNOWN.to_owned(), |m| locate_source(m, index)),
+        source_region: known.map_or_else(
+            || UNKNOWN.to_owned(),
+            |m| locate_source(m, index, local_source),
+        ),
         destination_region,
         destination_basis,
     }

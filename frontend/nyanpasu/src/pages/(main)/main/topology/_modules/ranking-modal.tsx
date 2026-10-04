@@ -7,6 +7,7 @@ import {
   useMockTrafficSetting,
 } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
+import type { UsageLabel } from '@/utils/traffic-usage'
 import { useTrafficUsagePages } from '@nyanpasu/query'
 import {
   type Dimension,
@@ -17,7 +18,6 @@ import {
 import { mockTrafficGroups } from './mock-traffic'
 import Notice from './notice'
 import RankingRow from './ranking-row'
-import type { UsageLabel } from './usage-label'
 
 // The next page loads when the end of the list scrolls into view.
 function LoadMore({ onVisible }: { onVisible: () => void }) {

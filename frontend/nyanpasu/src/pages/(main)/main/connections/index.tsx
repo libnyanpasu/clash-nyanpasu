@@ -1,35 +1,82 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
-import ViewColumnRounded from '~icons/material-symbols/view-column-rounded'
-import { useDeferredValue, useState } from 'react'
-import { Button } from '@nyanpasu/ui/button'
+import { useCallback, useDeferredValue, useMemo, useState } from 'react'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
+import { keepReturn } from '@/components/router/cross-navigation'
+import { ReturnButton } from '@/components/router/return-button'
+import {
+  useCrossNavigate,
+  useEntryFocus,
+} from '@/components/router/use-cross-navigate'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useDeleteClashConnections } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
+import type { SearchFilter } from '../_modules/traffic-filters'
+import { useSearchTerm } from '../_modules/use-search-term'
 import ActiveViewer from './_modules/active-viewer'
+import AllViewer from './_modules/all-viewer'
 import ClosedViewer from './_modules/closed-viewer'
+import ConnectionsToolbar from './_modules/connections-toolbar'
 import ConnectionsStatusTabs from './_modules/status-tabs'
+import type { ConnectionDetail } from './_modules/table-row'
+import {
+  useTabFocus,
+  type ConnectionsSelection,
+} from './_modules/use-connection-rows'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/connections/')({
   component: RouteComponent,
 })
 
+const NO_FILTERS: SearchFilter[] = []
+
 function RouteComponent() {
-  const { proxy, status = 'active' } = IndexRoute.useSearch()
+  const {
+    proxy,
+    scope = 'active',
+    range,
+    filters = NO_FILTERS,
+    q,
+  } = IndexRoute.useSearch()
 
   const navigate = IndexRoute.useNavigate()
 
-  const [search, setSearch] = useState('')
+  // One object while the URL keeps it, so the memoized viewers skip renders.
+  const selection = useMemo<ConnectionsSelection>(
+    () => ({ range, filters }),
+    [range, filters],
+  )
+
+  const handleSelectionChange = (next: ConnectionsSelection) =>
+    navigate({
+      search: (previous) => ({
+        ...previous,
+        range: next.range,
+        filters: next.filters.length > 0 ? next.filters : undefined,
+      }),
+      replace: true,
+      state: keepReturn,
+    })
+
+  const writeQuery = useCallback(
+    (next: string | undefined) =>
+      navigate({
+        search: (previous) => ({ ...previous, q: next }),
+        replace: true,
+        state: keepReturn,
+      }),
+    [navigate],
+  )
+
+  const [search, setSearch] = useSearchTerm(q, writeQuery)
 
   // Filtering, highlighting and re-sorting every connection is heavy; typing
   // stays responsive while the table catches up with the latest term.
@@ -43,6 +90,38 @@ function RouteComponent() {
 
   const [settingsOpen, setSettingsOpen] = useState(false)
 
+  const crossNavigate = useCrossNavigate()
+
+  // No proxy or search on the rules page, so nothing hides the rule.
+  const handleLocateRule = useCallback(
+    (detail: ConnectionDetail) =>
+      crossNavigate({
+        from: 'connections',
+        originFocus: detail.rowId,
+        targetFocus: detail.ruleLabel,
+        to: { to: '/main/rules', search: {} },
+      }),
+    [crossNavigate],
+  )
+
+  const handleViewRuleUsage = useCallback(
+    (detail: ConnectionDetail) =>
+      crossNavigate({
+        from: 'connections',
+        originFocus: detail.rowId,
+        to: {
+          to: '/main/topology',
+          search: { filters: [{ d: 'rule', v: detail.ruleLabel }] },
+        },
+      }),
+    [crossNavigate],
+  )
+
+  const entryFocus = useEntryFocus()
+
+  // The row a jump left from, highlighted when returning to it.
+  const focusRowId = useTabFocus(scope, entryFocus)
+
   const deleteConnections = useDeleteClashConnections()
 
   const handleCloseAllConnections = useLockFn(async () => {
@@ -52,7 +131,7 @@ function RouteComponent() {
   // Keyed by tab so switching starts the other table at the top.
   const scrollArea = (
     <ScrollArea
-      key={status}
+      key={scope}
       className={cn(
         'min-h-0 flex-1',
         // Start the vertical scrollbar below the sticky h-9 table header;
@@ -64,19 +143,38 @@ function RouteComponent() {
       type="hover"
     >
       {showTable &&
-        (status === 'closed' ? (
+        (scope === 'all' ? (
+          <AllViewer
+            search={deferredSearch}
+            proxy={proxy}
+            selection={selection}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+            onLocateRule={handleLocateRule}
+            onViewRuleUsage={handleViewRuleUsage}
+            focusRowId={focusRowId}
+          />
+        ) : scope === 'closed' ? (
           <ClosedViewer
             search={deferredSearch}
             proxy={proxy}
+            selection={selection}
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
+            onLocateRule={handleLocateRule}
+            onViewRuleUsage={handleViewRuleUsage}
+            focusRowId={focusRowId}
           />
         ) : (
           <ActiveViewer
             search={deferredSearch}
             proxy={proxy}
+            filters={filters}
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
+            onLocateRule={handleLocateRule}
+            onViewRuleUsage={handleViewRuleUsage}
+            focusRowId={focusRowId}
           />
         ))}
     </ScrollArea>
@@ -84,7 +182,7 @@ function RouteComponent() {
 
   return (
     <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
-      {status === 'closed' ? (
+      {scope === 'closed' ? (
         scrollArea
       ) : (
         <RegisterContextMenu>
@@ -101,54 +199,27 @@ function RouteComponent() {
         </RegisterContextMenu>
       )}
 
-      <div
-        className="bg-mixed-background flex h-16 shrink-0 items-center gap-3 px-4"
-        data-slot="connections-toolbar"
-      >
-        <ConnectionsStatusTabs
-          value={status}
-          onValueChange={(next) =>
-            navigate({
-              search: (previous) => ({ ...previous, status: next }),
-            })
-          }
-        />
-
-        <input
-          type="text"
-          className={cn(
-            'bg-surface-variant dark:bg-surface-variant/30',
-            'h-10 min-w-0 flex-1 rounded-full px-4 text-sm outline-none',
-          )}
-          placeholder={m.connections_search_placeholder()}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button onClick={() => setSettingsOpen(true)} icon>
-              <ViewColumnRounded />
-            </Button>
-          </TooltipTrigger>
-
-          <TooltipContent>{m.connections_column_settings()}</TooltipContent>
-        </Tooltip>
-
-        {status === 'active' && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={handleCloseAllConnections} icon>
-                <CloseRounded />
-              </Button>
-            </TooltipTrigger>
-
-            <TooltipContent>
-              {m.connections_close_all_connections()}
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
+      <ConnectionsToolbar
+        start={<ReturnButton />}
+        tabs={
+          <ConnectionsStatusTabs
+            value={scope}
+            onValueChange={(next) =>
+              navigate({
+                search: (previous) => ({ ...previous, scope: next }),
+                state: keepReturn,
+              })
+            }
+            selection={selection}
+          />
+        }
+        selection={selection}
+        onSelectionChange={handleSelectionChange}
+        search={search}
+        onSearchChange={setSearch}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onCloseAll={scope === 'closed' ? undefined : handleCloseAllConnections}
+      />
     </div>
   )
 }

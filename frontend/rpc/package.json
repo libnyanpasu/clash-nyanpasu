@@ -1,6 +1,6 @@
 {
   "name": "@nyanpasu/rpc",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,6 +16,6 @@
     "./events": "./src/event-transport.ts"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.12.0"
+    "@tauri-apps/api": "2.12.1"
   }
 }

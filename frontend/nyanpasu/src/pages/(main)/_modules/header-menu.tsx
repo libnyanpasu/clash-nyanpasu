@@ -23,7 +23,7 @@ const MenuButton = ({ className, ...props }: ButtonProps) => {
 }
 
 const UpdateButton = () => {
-  const { hasNewVersion } = useNyanpasuUpdate()
+  const { hasNewVersion, isReady } = useNyanpasuUpdate()
 
   if (!hasNewVersion) {
     return null
@@ -38,7 +38,9 @@ const UpdateButton = () => {
             action: AboutAction.NEED_UPDATE,
           }}
         >
-          {m.header_new_version()}
+          {isReady
+            ? m.settings_about_update_ready_header()
+            : m.header_new_version()}
         </Link>
       </MenuButton>
 

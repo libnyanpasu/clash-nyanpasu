@@ -1,12 +1,12 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
 import EditRounded from '~icons/material-symbols/edit-rounded'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
 import {
   DndGrid,
   DndGridProvider,
   DndGridRoot,
-  hasOverlap,
   useDndGridRoot,
   type DndGridItemType,
   type GridSize,
@@ -16,10 +16,6 @@ import {
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import { m } from '@/paraglide/messages'
-import { DragOverlay } from '@dnd-kit/core'
-import { useKvStorage } from '@nyanpasu/query'
-import { createFileRoute } from '@tanstack/react-router'
 import {
   DashboardItem,
   DEFAULT_ITEMS,
@@ -27,8 +23,18 @@ import {
   LayoutStorage,
   RENDER_MAP,
   WIDGET_MIN_SIZE_MAP,
+  WIDGET_RECOMMENDED_SIZE_MAP,
   WidgetId,
-} from './_modules/consts'
+} from '@/components/widgets/consts'
+import { useDashboardContext } from '@/components/widgets/provider'
+import { WidgetDataCalibration } from '@/components/widgets/widget-data-calibration'
+import WidgetItem from '@/components/widgets/widget-item'
+import { normalizeDashboardItems } from '@/components/widgets/widget-layout'
+import { DashboardTrafficProvider } from '@/components/widgets/widget-traffic-provider'
+import { m } from '@/paraglide/messages'
+import { DragOverlay } from '@dnd-kit/core'
+import { useKvStorage } from '@nyanpasu/query'
+import { createFileRoute } from '@tanstack/react-router'
 import EditAction from './_modules/edit-action'
 import {
   adaptLayout,
@@ -36,19 +42,12 @@ import {
   findClosestStoredLayout,
   sizeKey,
 } from './_modules/layout-adapt'
-import { useDashboardContext } from './_modules/provider'
+import { placeWidget } from './_modules/widget-placement'
 import { WidgetSheet } from './_modules/widget-sheet'
 
 export const Route = createFileRoute('/(main)/main/dashboard/')({
   component: RouteComponent,
 })
-
-function normalizeItems(items: DndGridItemType<string>[]): DashboardItem[] {
-  return items.map((item) => ({
-    ...item,
-    type: (item as DashboardItem).type ?? (item.id as WidgetId),
-  }))
-}
 
 // Widgets declare these minimum sizes; they are known before any widget has
 // rendered.
@@ -60,10 +59,10 @@ const constraintsFor = (items: DashboardItem[]) =>
 function layoutForSize(storage: LayoutStorage, size: GridSize) {
   const bestLayout = findBestLayout(storage, size)
   if (bestLayout) {
-    return normalizeItems(bestLayout)
+    return normalizeDashboardItems(bestLayout)
   }
 
-  const base = normalizeItems(
+  const base = normalizeDashboardItems(
     findClosestStoredLayout(storage, size) ?? DEFAULT_ITEMS,
   )
 
@@ -135,7 +134,8 @@ function DashboardDragOverlay({
 }
 
 const WidgetRender = () => {
-  const { isEditing, setOpenSheet } = useDashboardContext()
+  const { isEditing, setOpenSheet, configLoading, configReadError } =
+    useDashboardContext()
 
   const [layoutStorage, setLayoutStorage, { isLoading: layoutLoading }] =
     useKvStorage<LayoutStorage>('dashboard-widgets', DEFAULT_LAYOUTS)
@@ -184,54 +184,60 @@ const WidgetRender = () => {
 
   const handleGridLayoutChange = useCallback(
     (newItems: DndGridItemType<string>[]) =>
-      handleLayoutChange(normalizeItems(newItems)),
+      handleLayoutChange(normalizeDashboardItems(newItems)),
     [handleLayoutChange],
   )
 
   const renderWidget = useCallback(
     (item: DndGridItemType<string>) => {
-      const WidgetComponent = RENDER_MAP[(item as DashboardItem).type]
+      const type = (item as DashboardItem).type
+      const WidgetComponent = RENDER_MAP[type]
+
+      if (configLoading || configReadError) {
+        return (
+          <WidgetItem
+            id={item.id}
+            widgetType={type}
+            {...WIDGET_MIN_SIZE_MAP[type]}
+            onCloseClick={handleCloseClick}
+          >
+            <Card className="size-full">
+              <CardContent
+                className="size-full justify-center text-sm"
+                role="status"
+              >
+                {configReadError
+                  ? m.dashboard_widget_config_load_failed()
+                  : m.dashboard_widget_config_loading()}
+              </CardContent>
+            </Card>
+          </WidgetItem>
+        )
+      }
 
       return <WidgetComponent id={item.id} onCloseClick={handleCloseClick} />
     },
-    [handleCloseClick],
+    [handleCloseClick, configLoading, configReadError],
   )
 
   const addWidgetFromSheet = useCallback(
     (widgetId: WidgetId) => {
-      const { minW, minH } = WIDGET_MIN_SIZE_MAP[widgetId]
       const { cols, rows } = gridSizeRef.current
       const current = displayItemsRef.current
       const instanceId = crypto.randomUUID()
+      const placement = placeWidget({
+        id: instanceId,
+        type: widgetId,
+        items: current,
+        cols,
+        rows,
+        minimum: WIDGET_MIN_SIZE_MAP[widgetId],
+        recommended: WIDGET_RECOMMENDED_SIZE_MAP[widgetId],
+      })
 
-      const findPlacement = (): DashboardItem => {
-        for (let y = 0; y <= rows; y++) {
-          for (let x = 0; x <= cols - minW; x++) {
-            const candidate: DashboardItem = {
-              id: instanceId,
-              type: widgetId,
-              x,
-              y,
-              w: minW,
-              h: minH,
-            }
-            if (!hasOverlap(current, instanceId, candidate)) {
-              return candidate
-            }
-          }
-        }
-        const maxY = current.reduce((m, i) => Math.max(m, i.y + i.h), 0)
-        return {
-          id: instanceId,
-          type: widgetId,
-          x: 0,
-          y: maxY,
-          w: minW,
-          h: minH,
-        }
+      if (placement) {
+        handleLayoutChange([...current, placement])
       }
-
-      handleLayoutChange([...current, findPlacement()])
     },
     [handleLayoutChange],
   )
@@ -242,18 +248,22 @@ const WidgetRender = () => {
         className="flex min-h-0 flex-1 flex-col p-4"
         data-slot="dashboard-widget-container"
       >
-        <DndGrid
-          gridId="main"
-          className="min-h-0 flex-1"
-          items={displayItems}
-          onLayoutChange={handleGridLayoutChange}
-          minCellSize={64}
-          onSizeChange={handleSizeChange}
-          gap={16}
-          disabled={!isEditing || layoutLoading}
-        >
-          {renderWidget}
-        </DndGrid>
+        <DashboardTrafficProvider items={displayItems}>
+          <WidgetDataCalibration items={displayItems} />
+
+          <DndGrid
+            gridId="main"
+            className="min-h-0 flex-1"
+            items={displayItems}
+            onLayoutChange={handleGridLayoutChange}
+            minCellSize={64}
+            onSizeChange={handleSizeChange}
+            gap={16}
+            disabled={!isEditing || layoutLoading}
+          >
+            {renderWidget}
+          </DndGrid>
+        </DashboardTrafficProvider>
       </div>
 
       <DashboardDragOverlay displayItems={displayItems} />

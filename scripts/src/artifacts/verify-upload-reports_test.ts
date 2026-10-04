@@ -25,7 +25,9 @@ Deno.test("archive upload verification reports failed and malformed uploads", ()
   assertEquals(issues, [
     "upload-diagnostics-windows-x86_64-standard: status is failure",
     "upload-diagnostics-windows-x86_64-standard: 1 upload failure(s)",
+    "upload-diagnostics-windows-x86_64-standard: HTTP 503",
     "upload-diagnostics-windows-x86_64-fixed-webview: 1 upload failure(s)",
+    "upload-diagnostics-windows-x86_64-fixed-webview: unexpected failure",
     "upload-diagnostics-windows-aarch64-standard: report is missing",
     ...[
       "upload-diagnostics-windows-aarch64-fixed-webview",
@@ -35,6 +37,22 @@ Deno.test("archive upload verification reports failed and malformed uploads", ()
       "upload-diagnostics-macos-aarch64",
     ].map((name) => `${name}: report is missing`),
   ]);
+});
+
+Deno.test("archive upload verification exposes the failed file and quota detail", () => {
+  const issues = inspectUploadReports({
+    "upload-diagnostics-macos-aarch64": {
+      status: "failure",
+      failures: [{
+        fileName: "nightly.dmg",
+        message: "upload init failed: 500 - quotaLimitReached",
+      }],
+    },
+  });
+  assertEquals(
+    issues.at(-1),
+    "upload-diagnostics-macos-aarch64: nightly.dmg: upload init failed: 500 - quotaLimitReached",
+  );
 });
 
 Deno.test("archive upload verification accepts all successful reports", () => {

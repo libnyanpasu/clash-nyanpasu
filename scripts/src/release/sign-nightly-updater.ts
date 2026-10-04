@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import * as path from "jsr:@std/path";
 import { globby } from "npm:globby";
 
@@ -16,11 +17,8 @@ async function main() {
 
   // Installer versions differ from the release version for Windows and RPM/DEB.
   // Bind updater signatures to the version compiled as NYANPASU_VERSION instead.
-  const tauriCli = path.fromFileUrl(
-    new URL(
-      "../../../node_modules/.pnpm/@tauri-apps+cli@2.12.0/node_modules/@tauri-apps/cli/tauri.js",
-      import.meta.url,
-    ),
+  const tauriCli = createRequire(import.meta.url).resolve(
+    "@tauri-apps/cli/tauri.js",
   );
   for (const archive of archives) {
     const result = await new Deno.Command("node", {

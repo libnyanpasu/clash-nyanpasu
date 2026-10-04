@@ -219,8 +219,8 @@ fn normalize_memory(sample: clash_api::Memory) -> Option<ClashWsMemory> {
     Some(ClashWsMemory { inuse, oslimit })
 }
 
-// Workers send at most one unacknowledged sample each. Lifecycle generations
-// fence queued messages, while the capability fences process/controller changes.
+// Workers send at most one unacknowledged sample each. The capability fences
+// queued messages across process/controller changes.
 #[derive(Debug)]
 enum Sample {
     Connections(clash_api::ConnectionsSnapshot),
@@ -241,7 +241,7 @@ enum Message {
     Snapshot(RpcReplyPort<ClashWsSnapshot>),
     Recording(ClashWsKind, bool, RpcReplyPort<ClashWsRecording>),
     Clear(ClashWsKind, RpcReplyPort<Result<()>>),
-    Deliver(u64, Box<Delivery>, RpcReplyPort<bool>),
+    Deliver(Box<Delivery>, RpcReplyPort<bool>),
 }
 struct Args {
     core: CoreClient,
@@ -258,7 +258,6 @@ struct State {
     task: Option<JoinHandle<()>>,
     lifecycle: Option<JoinHandle<()>>,
     log_session_active: bool,
-    generation: u64,
     api: Option<ApiClient>,
     status: ClashConnectionsConnectorState,
     sequence: u64,
@@ -338,7 +337,6 @@ impl State {
             task.abort();
             let _ = task.await;
         }
-        self.generation += 1;
         if let Some(task) = self.task.take() {
             task.abort();
             let _ = task.await;
@@ -448,19 +446,16 @@ impl State {
     }
 }
 
-async fn deliver(actor: &ActorRef<Message>, generation: u64, delivery: Delivery) -> bool {
+async fn deliver(actor: &ActorRef<Message>, delivery: Delivery) -> bool {
     matches!(
         actor
-            .call(
-                |reply| Message::Deliver(generation, Box::new(delivery), reply),
-                None
-            )
+            .call(|reply| Message::Deliver(Box::new(delivery), reply), None)
             .await,
         Ok(CallResult::Success(true))
     )
 }
 
-async fn run(actor: ActorRef<Message>, core: CoreClient, generation: u64) {
+async fn run(actor: ActorRef<Message>, core: CoreClient) {
     loop {
         let api = match core.api_client().await {
             Ok(api) => api,
@@ -473,7 +468,7 @@ async fn run(actor: ActorRef<Message>, core: CoreClient, generation: u64) {
                 continue;
             }
         };
-        if !deliver(&actor, generation, Delivery::Bind(api.clone())).await {
+        if !deliver(&actor, Delivery::Bind(api.clone())).await {
             if api.is_revoked() {
                 continue;
             }
@@ -487,7 +482,7 @@ async fn run(actor: ActorRef<Message>, core: CoreClient, generation: u64) {
             ClashWsKind::Traffic,
             ClashWsKind::Memory,
         ] {
-            streams.spawn(run_stream(actor.clone(), api.clone(), generation, kind));
+            streams.spawn(run_stream(actor.clone(), api.clone(), kind));
         }
         tokio::select! {
             _ = api.cancelled() => {},
@@ -502,19 +497,18 @@ async fn run(actor: ActorRef<Message>, core: CoreClient, generation: u64) {
         }
         streams.abort_all();
         while streams.join_next().await.is_some() {}
-        if !deliver(&actor, generation, Delivery::Invalidated).await {
+        if !deliver(&actor, Delivery::Invalidated).await {
             return;
         }
     }
 }
 
-async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, kind: ClashWsKind) {
+async fn run_stream(actor: ActorRef<Message>, api: ApiClient, kind: ClashWsKind) {
     let mut backoff = Duration::from_secs(1);
     loop {
         if kind == ClashWsKind::Connections
             && !deliver(
                 &actor,
-                generation,
                 Delivery::State(api.clone(), ClashConnectionsConnectorState::Connecting),
             )
             .await
@@ -528,7 +522,6 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, k
                         if kind == ClashWsKind::Connections
                             && !deliver(
                                 &actor,
-                                generation,
                                 Delivery::State(
                                     api.clone(),
                                     ClashConnectionsConnectorState::Connected,
@@ -544,7 +537,6 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, k
                                     backoff = Duration::from_secs(1);
                                     if !deliver(
                                         &actor,
-                                        generation,
                                         Delivery::Sample(api.clone(), Sample::$variant(sample)),
                                     )
                                     .await
@@ -558,7 +550,6 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, k
                                     if kind == ClashWsKind::Logs {
                                         let _ = deliver(
                                             &actor,
-                                            generation,
                                             Delivery::LogFailure(format!(
                                                 "{:#}",
                                                 anyhow::Error::new(error)
@@ -574,7 +565,6 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, k
                                     if kind == ClashWsKind::Logs {
                                         let _ = deliver(
                                             &actor,
-                                            generation,
                                             Delivery::LogFailure(format!("{error:#}")),
                                         )
                                         .await;
@@ -603,7 +593,6 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, generation: u64, k
         if kind == ClashWsKind::Connections
             && !deliver(
                 &actor,
-                generation,
                 Delivery::State(api.clone(), ClashConnectionsConnectorState::Disconnected),
             )
             .await
@@ -632,7 +621,6 @@ impl Actor for StreamsActor {
             task: None,
             lifecycle: None,
             log_session_active: false,
-            generation: 0,
             api: None,
             status: ClashConnectionsConnectorState::Disconnected,
             sequence: 0,
@@ -666,12 +654,7 @@ impl Actor for StreamsActor {
                             }
                         }
                     }));
-                    state.generation += 1;
-                    state.task = Some(tokio::spawn(run(
-                        actor,
-                        state.args.core.clone(),
-                        state.generation,
-                    )));
+                    state.task = Some(tokio::spawn(run(actor, state.args.core.clone())));
                 }
                 let _ = reply.send(());
             }
@@ -723,10 +706,8 @@ impl Actor for StreamsActor {
                 }
                 let _ = reply.send(result);
             }
-            Message::Deliver(generation, delivery, reply) => {
-                let mut accepted = !state.args.shutdown.is_cancelled()
-                    && state.task.is_some()
-                    && generation == state.generation;
+            Message::Deliver(delivery, reply) => {
+                let mut accepted = !state.args.shutdown.is_cancelled() && state.task.is_some();
                 if accepted {
                     match *delivery {
                         Delivery::Bind(api) => {
@@ -944,23 +925,16 @@ mod tests {
         client.start().await.unwrap();
         connected(&mut events).await;
         let old = core.api_client().await.unwrap();
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(old.clone(), sample(100))
-            )
-            .await
-        );
+        assert!(deliver(&client.0.actor, Delivery::Sample(old.clone(), sample(100))).await);
         endpoint
             .binding
             .send_modify(|binding| binding.as_mut().unwrap().instance_id = "replacement".into());
         let new = core.api_client().await.unwrap();
         assert!(!old.same_instance(&new));
-        assert!(!deliver(&client.0.actor, 1, Delivery::Sample(old, sample(200))).await);
+        assert!(!deliver(&client.0.actor, Delivery::Sample(old, sample(200))).await);
         connected(&mut events).await;
         assert!(client.snapshot().await.unwrap().connections.is_empty());
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(new, sample(300))).await);
+        assert!(deliver(&client.0.actor, Delivery::Sample(new, sample(300))).await);
         assert_eq!(
             client.snapshot().await.unwrap().connections[0].download_speed,
             0
@@ -988,7 +962,6 @@ mod tests {
             assert!(
                 deliver(
                     &client.0.actor,
-                    1,
                     Delivery::Sample(api.clone(), sample(total))
                 )
                 .await
@@ -1001,14 +974,7 @@ mod tests {
             .set_recording(ClashWsKind::Connections, false)
             .await
             .unwrap();
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(50))
-            )
-            .await
-        );
+        assert!(deliver(&client.0.actor, Delivery::Sample(api.clone(), sample(50))).await);
         assert_eq!(
             client
                 .snapshot()
@@ -1029,7 +995,7 @@ mod tests {
             .set_recording(ClashWsKind::Connections, true)
             .await
             .unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(60))).await);
+        assert!(deliver(&client.0.actor, Delivery::Sample(api, sample(60))).await);
         let new = client.snapshot().await.unwrap();
         assert!(new.sequence > snapshot.sequence);
         assert_eq!(new.connections.len(), 1);
@@ -1158,7 +1124,7 @@ mod tests {
         client.start().await.unwrap();
         connected(&mut events).await;
         let api = core.api_client().await.unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
+        assert!(deliver(&client.0.actor, Delivery::Sample(api, sample(100))).await);
 
         // Subscribing only now must still observe the untouched initial
         // value: nothing was ever published while no receiver existed (G2).
@@ -1184,7 +1150,7 @@ mod tests {
         client.start().await.unwrap();
         connected(&mut events).await;
         let api = core.api_client().await.unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
+        assert!(deliver(&client.0.actor, Delivery::Sample(api, sample(100))).await);
 
         let event = tokio::time::timeout(Duration::from_secs(3), async {
             loop {
@@ -1222,14 +1188,14 @@ mod tests {
         client.start().await.unwrap();
         connected(&mut events).await;
         let api = core.api_client().await.unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(100))).await);
+        assert!(deliver(&client.0.actor, Delivery::Sample(api, sample(100))).await);
         tokio::time::timeout(Duration::from_secs(3), details.changed())
             .await
             .unwrap()
             .unwrap();
         assert!(details.borrow().is_some());
 
-        assert!(deliver(&client.0.actor, 1, Delivery::Invalidated).await);
+        assert!(deliver(&client.0.actor, Delivery::Invalidated).await);
         tokio::time::timeout(Duration::from_secs(3), details.changed())
             .await
             .unwrap()
@@ -1259,14 +1225,7 @@ mod tests {
             .await
             .unwrap();
         let api = core.api_client().await.unwrap();
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(100))
-            )
-            .await
-        );
+        assert!(deliver(&client.0.actor, Delivery::Sample(api.clone(), sample(100))).await);
         tokio::time::timeout(Duration::from_secs(3), frames.changed())
             .await
             .unwrap()
@@ -1276,14 +1235,7 @@ mod tests {
         assert_eq!(frame.snapshot.download_total, 100);
 
         // A sample the live derivation drops is still a real core frame.
-        assert!(
-            deliver(
-                &client.0.actor,
-                1,
-                Delivery::Sample(api.clone(), sample(-1))
-            )
-            .await
-        );
+        assert!(deliver(&client.0.actor, Delivery::Sample(api.clone(), sample(-1))).await);
         tokio::time::timeout(Duration::from_secs(3), frames.changed())
             .await
             .unwrap()
@@ -1295,7 +1247,6 @@ mod tests {
         assert!(
             deliver(
                 &client.0.actor,
-                1,
                 Delivery::State(api.clone(), ClashConnectionsConnectorState::Disconnected)
             )
             .await
@@ -1306,14 +1257,14 @@ mod tests {
             .unwrap();
         assert!(frames.borrow_and_update().is_none());
 
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api, sample(200))).await);
+        assert!(deliver(&client.0.actor, Delivery::Sample(api, sample(200))).await);
         tokio::time::timeout(Duration::from_secs(3), frames.changed())
             .await
             .unwrap()
             .unwrap();
         assert!(frames.borrow_and_update().is_some());
 
-        assert!(deliver(&client.0.actor, 1, Delivery::Invalidated).await);
+        assert!(deliver(&client.0.actor, Delivery::Invalidated).await);
         tokio::time::timeout(Duration::from_secs(3), frames.changed())
             .await
             .unwrap()
@@ -1429,7 +1380,7 @@ mod tests {
                 payload: "x".repeat(70 * 1024),
             })
         };
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(api.clone(), sample())).await);
+        assert!(deliver(&client.0.actor, Delivery::Sample(api.clone(), sample())).await);
         let before = logs.status().await.unwrap();
         assert!(before.head.is_some());
         assert!(directory.path().join("current.redb").exists());
@@ -1438,7 +1389,7 @@ mod tests {
             .binding
             .send_modify(|binding| binding.as_mut().unwrap().secret = Some("changed".into()));
         let rebound = core.api_client().await.unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Bind(rebound)).await);
+        assert!(deliver(&client.0.actor, Delivery::Bind(rebound)).await);
         assert_eq!(logs.status().await.unwrap().generation, before.generation);
         assert_eq!(logs.status().await.unwrap().head, before.head);
         let mut changed = logs.subscribe();
@@ -1458,11 +1409,11 @@ mod tests {
         .await
         .unwrap();
         assert!(!directory.path().join("current.redb").exists());
-        assert!(!deliver(&client.0.actor, 1, Delivery::Sample(api, sample())).await);
+        assert!(!deliver(&client.0.actor, Delivery::Sample(api, sample())).await);
         endpoint.binding.send_replace(Some(replacement_binding));
         let replacement = core.api_client().await.unwrap();
-        assert!(deliver(&client.0.actor, 1, Delivery::Bind(replacement.clone())).await);
-        assert!(deliver(&client.0.actor, 1, Delivery::Sample(replacement, sample())).await);
+        assert!(deliver(&client.0.actor, Delivery::Bind(replacement.clone())).await);
+        assert!(deliver(&client.0.actor, Delivery::Sample(replacement, sample())).await);
         let current = logs.status().await.unwrap();
         assert!(current.head.is_some());
         // This notification may still refer to the displayed stopped state.

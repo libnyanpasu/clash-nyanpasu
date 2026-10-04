@@ -87,7 +87,7 @@ async fn cache_icon_inner(url: &str, self_proxy_port: u16) -> Result<(HeaderValu
     let outdated_time = now
         .checked_sub(CACHE_TIMEOUT)
         .expect("cache timeout is too long");
-    let cache_file = cache_dir.join(format!("{hash:x}.bin"));
+    let cache_file = cache_dir.join(format!("{}.bin", hex::encode(hash)));
     let meta = tokio::fs::metadata(&cache_file).await.ok();
     match meta {
         Some(meta) if meta.modified().is_ok_and(|t| t < outdated_time) => {

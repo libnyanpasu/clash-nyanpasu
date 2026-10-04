@@ -34,7 +34,13 @@ export function buildReleaseMessage(notification: ReleaseNotification): string {
       `https://github.com/libnyanpasu/clash-nyanpasu/actions/runs/${workflowRunId}`,
     );
   }
-  lines.push("", "Downloads:", "https://archive.nyanpasu.org/");
+  lines.push(
+    "",
+    "Downloads:",
+    `https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/${
+      encodeURIComponent(tag)
+    }`,
+  );
 
   return lines.join("\n");
 }
@@ -53,7 +59,8 @@ async function main(): Promise<void> {
   const pkg = JSON.parse(
     await Deno.readTextFile(path.join(WORKSPACE_ROOT, "package.json")),
   );
-  const tag = Deno.env.get("RELEASE_TAG") || `v${pkg.version}`;
+  const tag = Deno.env.get("RELEASE_TAG") ||
+    (nightly ? "pre-release" : `v${pkg.version}`);
   let gitShortHash = "";
   if (nightly) {
     const result = await new Deno.Command("git", {

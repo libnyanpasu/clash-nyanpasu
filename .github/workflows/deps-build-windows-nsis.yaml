@@ -74,6 +74,8 @@ jobs:
   build:
     runs-on: windows-latest
     env:
+      # Archive uploads are temporarily paused; packages are published on GitHub.
+      ARCHIVE_UPLOAD_ENABLED: 'false'
       # TODO: Remove after upgrading to a tauri-build release containing tauri-apps/tauri#15831.
       __CARGO_TEMPORARY_BUILD_DIR_NEW_LAYOUT_OPT_OUT: '1'
       NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
@@ -139,6 +141,7 @@ jobs:
         run: deno task test:windows-bundle
 
       - name: Set file server folder path
+        if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' }}
         shell: bash
         run: |
           if [ "$NIGHTLY" = "true" ]; then
@@ -201,7 +204,7 @@ jobs:
             ./*_portable.zip
 
       - name: Upload to file server
-        if: ${{ inputs.bundle-type != 'fixed-webview' }}
+        if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' && inputs.bundle-type != 'fixed-webview' }}
         shell: bash
         continue-on-error: true
         run: |
@@ -213,7 +216,7 @@ jobs:
           FOLDER_PATH: ${{ env.FOLDER_PATH }}
 
       - name: Upload file server diagnostics
-        if: ${{ inputs.bundle-type != 'fixed-webview' }}
+        if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' && inputs.bundle-type != 'fixed-webview' }}
         uses: actions/upload-artifact@v7
         with:
           name: upload-diagnostics-windows-${{ inputs.arch }}-standard
@@ -315,7 +318,7 @@ jobs:
             ./*_portable.zip
 
       - name: Upload to file server with fixed WebView
-        if: ${{ inputs.bundle-type != 'standard' }}
+        if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' && inputs.bundle-type != 'standard' }}
         shell: bash
         continue-on-error: true
         run: |
@@ -327,7 +330,7 @@ jobs:
           FOLDER_PATH: ${{ env.FOLDER_PATH }}
 
       - name: Upload file server diagnostics with fixed WebView
-        if: ${{ inputs.bundle-type != 'standard' }}
+        if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' && inputs.bundle-type != 'standard' }}
         uses: actions/upload-artifact@v7
         with:
           name: upload-diagnostics-windows-${{ inputs.arch }}-fixed-webview

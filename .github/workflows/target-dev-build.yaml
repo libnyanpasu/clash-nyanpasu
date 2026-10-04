@@ -148,15 +148,17 @@ jobs:
   telegram:
     name: Send Release Message to Telegram
     if: startsWith(github.repository, 'libnyanpasu')
-    needs: [update_tag, verify_archive_uploads]
+    needs: [upload_release_assets]
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:
       nightly: true
+      tag: 'pre-release'
     secrets: inherit
 
   verify_archive_uploads:
     name: Verify Archive Uploads
-    if: ${{ always() && needs.check_changes.outputs.should_build == 'true' }}
+    # Resume this gate together with the package archive upload steps.
+    if: ${{ false && always() && needs.check_changes.outputs.should_build == 'true' }}
     needs:
       [
         check_changes,

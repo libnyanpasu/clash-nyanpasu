@@ -54,12 +54,11 @@ complete set of archives.
 
 ## Archive uploads and Telegram notifications
 
-Package build jobs upload installers and portable bundles to
-`archive.nyanpasu.org` using `nightly/<short commit hash>` or
-`release/<release tag>` as `FOLDER_PATH`. Both publication workflows verify all
-platform upload reports before sending a Telegram notification. Failed uploads
-retain their HTTP error details in the job log and `upload-diagnostics-*`
-artifacts.
+Archive uploads and their diagnostic/verification steps are temporarily disabled
+in the package build and publication workflows. Installers and portable bundles
+are published only on GitHub Releases. The archive steps remain in the workflows
+with `ARCHIVE_UPLOAD_ENABLED: 'false'` in each build job and disabled
+verification conditions so they can be restored together later.
 
 If a report contains `quotaLimitReached` (sometimes wrapped in HTTP 500) or HTTP
 507, the archive's backing OneDrive storage has exhausted its quota. The
@@ -84,11 +83,12 @@ upload from the retained artifacts into its original `FOLDER_PATH`, or start a
 fresh nightly build. Avoid rebuilding all platforms merely to diagnose a storage
 quota error.
 
-Telegram notifications contain release/build information and the archive home
-link; notification jobs do not download or upload packages. To resend a release
-notification after the updated workflow is available on GitHub, manually run
+Telegram notifications contain release/build information and the corresponding
+GitHub Release download page (`pre-release` for nightly builds). Notifications
+wait for GitHub release assets to finish uploading; notification jobs do not
+download or upload packages. To resend a release notification after the updated
+workflow is available on GitHub, manually run
 `[Reusable] Notify Telegram of Releases` with `nightly: false` and the published
 `tag`, for example `v2.0.0-beta.1`. This sends only the notification to
-`@keikolog`; it does not rebuild packages or repair missing archive uploads.
-Re-running an older failed publication run uses that run's original workflow and
-scripts.
+`@keikolog`; it does not rebuild packages. Re-running an older failed
+publication run uses that run's original workflow and scripts.

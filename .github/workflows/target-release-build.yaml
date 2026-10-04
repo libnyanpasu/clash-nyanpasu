@@ -93,7 +93,7 @@ jobs:
   telegram:
     name: Send Release Message to Telegram
     if: startsWith(github.repository, 'libnyanpasu')
-    needs: [upload_release_assets, verify_archive_uploads]
+    needs: [upload_release_assets]
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:
       nightly: false
@@ -102,7 +102,8 @@ jobs:
 
   verify_archive_uploads:
     name: Verify Archive Uploads
-    if: ${{ always() }}
+    # Resume this gate together with the package archive upload steps.
+    if: ${{ false && always() }}
     needs:
       [
         windows_build,

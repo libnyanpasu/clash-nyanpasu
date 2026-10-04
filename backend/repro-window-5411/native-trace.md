@@ -20,7 +20,7 @@ The deferred result rules out merely waiting for the creation-event batch. The
 builder and visible results isolate first-show layout from the size setter. They
 do not establish an API requirement that a window must be shown before resizing.
 
-Two source paths need to be distinguished:
+The initial investigation needed to distinguish two source paths:
 
 1. `InitData::create_window` applies initial flags during `WM_NCCREATE`, before
    `GWL_USERDATA` is installed. `WindowFlags::apply_diff` can synchronously refresh
@@ -34,11 +34,13 @@ requires the FALSE-form rectangle to be converted from the proposed window area 
 the client area too. FALSE changes the valid-pixel preservation contract, not the
 need to calculate client geometry.
 
-Initial style retains `WS_CAPTION` for this top-level window. The default and
-custom calculations can therefore disagree. Native traces must identify which
-calculation last establishes the client rectangle before the builder returns.
-Do not assume that seeing an early no-userdata fallback alone proves the cause;
-a later calculation may overwrite its result.
+Initial style retains `WS_CAPTION` for this top-level window. The captured native
+logs confirm both fallbacks occur. The last FALSE-form calculation, after userdata
+installation, retains default top inset `45`; the first TRUE-form resize applies
+custom top inset `2`. The bottom inset stays `11`, explaining the `+43` delta.
+See [FALSE-form fix candidate](nccalcsize-fix.md) for the complete causal sequence
+and Windows validation steps. The diagnostic instructions below remain available
+for reproducing the original evidence.
 
 ## Prepare on Windows
 
@@ -144,7 +146,7 @@ write failures are ignored so a closed pipe does not panic across a Win32 callba
 ## Verification limits
 
 The patch applies to the pinned tag and passes Windows GNU target typechecking.
-Native runtime verification requires Windows. The hypotheses above remain
-hypotheses until the native message sequence is captured. A future fix must
-preserve both RECT forms and decorated, maximized, fullscreen, and DPI semantics;
-this diagnostic patch deliberately changes none of them.
+The captured Windows sequence confirms the layout mismatch; it does not by itself
+validate the candidate correction. That still requires native regression runs.
+A fix must preserve both RECT forms and decorated, maximized, fullscreen, and DPI
+semantics; this diagnostic patch deliberately changes none of them.

@@ -131,11 +131,16 @@ By default this program records Tao API results/events, **not** raw
 and visible modes, but `+43` in all five deferred-restore cycles. Waiting for a
 creation-event batch did not resolve the hidden-window layout discrepancy.
 
-See [Native Tao traces](native-trace.md) for the next experiment: apply the included
-**diagnostic-only** patch to a pinned, separate Tao checkout and run a copied probe
-with local dependencies. It records native rectangle input/output and distinguishes
-`wParam == FALSE` from missing-userdata fallbacks. Neither application dependencies
-nor tracked lockfiles are changed. No upstream fix has been established yet.
+[Native Tao traces](native-trace.md) recorded rectangle input/output using a
+**diagnostic-only** patch on a pinned, separate Tao checkout. Both fallback paths
+occurred: the FALSE-form default calculation after userdata installation left the
+final hidden layout with a `56`-pixel non-client height; the first TRUE-form resize
+used `13`. The setter's measured compensation accounts exactly for the `+43` delta.
+
+See [FALSE-form fix candidate](nccalcsize-fix.md) for the evidence and next Windows
+regression runs. The candidate changes Tao's rectangle handling, not application
+call order. Neither application dependencies nor tracked lockfiles are changed.
+The candidate has passed compile checks but is not yet runtime-verified.
 
 ## Compile checks from Linux
 

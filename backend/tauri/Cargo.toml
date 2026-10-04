@@ -88,8 +88,7 @@ colored = '3'
 clap = { version = '4.5.4', features = ['derive'] }
 
 # GUI Utilities
-rfd = { version = '0.15', default-features = false, features = [
-  'tokio',
+rfd = { version = '0.17', default-features = false, features = [
   'gtk3',
   'common-controls-v6',
 ] }  # cross platform dialog
@@ -141,7 +140,7 @@ percent-encoding = '2.3.1'
 uuid = '1.7.0'
 rand = '0.10'
 md-5 = '0.11.0'
-sha2 = '0.10'
+sha2 = '0.11'
 nanoid = '0.5.0'
 seahash = '4.1'
 

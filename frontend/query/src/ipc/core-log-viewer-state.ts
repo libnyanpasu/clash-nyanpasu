@@ -31,21 +31,28 @@ export function mergeCoreLogRows(
   status: CoreLogStatus,
   older = false,
 ) {
-  const merged = new Map<string, CoreLogRow>()
-  for (const row of [...current, ...incoming]) {
+  // Both the backend pages and retained previews are ordered by sequence.
+  const retained = (row: CoreLogRow) =>
+    row.id.generation === status.generation &&
+    status.first !== null &&
+    status.head !== null &&
+    row.id.sequence >= status.first.sequence &&
+    row.id.sequence <= status.head.sequence
+  const left = current.filter(retained)
+  const right = incoming.filter(retained)
+  const rows: CoreLogRow[] = []
+  let a = 0
+  let b = 0
+  while (a < left.length || b < right.length) {
     if (
-      row.id.generation !== status.generation ||
-      !status.first ||
-      !status.head ||
-      compareCoreLogCursors(row.id, status.first) < 0 ||
-      compareCoreLogCursors(row.id, status.head) > 0
-    )
-      continue
-    merged.set(coreLogRowKey(row.id), row)
+      b === right.length ||
+      (a < left.length && left[a].id.sequence <= right[b].id.sequence)
+    ) {
+      const row = left[a++]
+      if (b < right.length && row.id.sequence === right[b].id.sequence) b++
+      rows.push(row)
+    } else rows.push(right[b++])
   }
-  const rows = [...merged.values()].sort((a, b) =>
-    compareCoreLogCursors(a.id, b.id),
-  )
   let bytes = rows.reduce(
     (total, row) => total + estimateCoreLogRowBytes(row),
     0,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   CoreLogCursor,
@@ -26,6 +26,10 @@ const empty = (): View => ({
   loadingOlder: false,
   more: false,
 })
+const failure = (error: unknown): CoreLogError =>
+  typeof error === 'object' && error !== null && 'kind' in error
+    ? (error as CoreLogError)
+    : { kind: 'unavailable', message: String(error) }
 
 /** Page-local previews. Neither the query cache nor the global WS provider owns bodies. */
 export function useClashLogs(
@@ -45,16 +49,18 @@ export function useClashLogs(
 
   useEffect(() => {
     let disposed = false
+    let ready = false
     let busy = false
     let wake = false
     let epoch = 0
-    let generation: string | null = null
+    let loaded = false
+    let needsStatus = document.hidden
+    let status: CoreLogStatus | null = null
     let tail: CoreLogCursor | null = null
     let older: CoreLogCursor | null = null
     let requestOlder = false
     let more = false
     let rows: CoreLogRow[] = []
-    let timer: ReturnType<typeof setTimeout> | undefined
     let unlisten: (() => void) | undefined
     setView(empty())
 
@@ -64,29 +70,58 @@ export function useClashLogs(
       older = null
       more = false
       requestOlder = false
+      loaded = false
     }
-    const poll = async () => {
-      if (disposed) return
+    const publish = (error: CoreLogError | null = null) => {
+      const next = {
+        data: rows,
+        status,
+        error,
+        isLoading: !loaded,
+        loadingOlder: requestOlder,
+        more,
+      }
+      setView((value) =>
+        value.data === next.data &&
+        value.status === next.status &&
+        value.error === next.error &&
+        value.isLoading === next.isLoading &&
+        value.loadingOlder === next.loadingOlder &&
+        value.more === next.more
+          ? value
+          : next,
+      )
+    }
+    const acceptStatus = (next: CoreLogStatus) => {
+      if (status && next.version <= status.version) return false
+      if (status?.generation !== next.generation || !next.head) {
+        reset()
+        loaded = next.head === null
+      }
+      status = next
+      rows = mergeCoreLogRows(rows, [], next)
+      return true
+    }
+    const sync = async () => {
+      if (disposed || !ready) return
       if (busy) {
         wake = true
         return
       }
-      if (timer) clearTimeout(timer)
       busy = true
       const requestEpoch = epoch
-      let delay = 1000
       try {
-        const status = unwrapResult(await rpc.getCoreLogStatus())
-        if (disposed || epoch !== requestEpoch) return
-        if (generation !== status.generation) {
-          reset()
-          generation = status.generation
+        if (needsStatus) {
+          needsStatus = false
+          const next = unwrapResult(await rpc.getCoreLogStatus())
+          if (disposed || epoch !== requestEpoch) return
+          acceptStatus(next)
+          publish()
         }
-        rows = mergeCoreLogRows(rows, [], status)
-        if (!live.current && !requestOlder && tail) {
-          setView((value) => ({ ...value, data: rows, status }))
-          return
-        }
+        if (document.hidden) return
+        const hasNew =
+          status?.head && (!tail || status.head.sequence > tail.sequence)
+        if (loaded && !requestOlder && (!live.current || !hasNew)) return
         const direction =
           requestOlder && older ? 'before' : tail ? 'after' : 'latest'
         const page = unwrapResult(
@@ -99,7 +134,12 @@ export function useClashLogs(
           }),
         )
         if (disposed || epoch !== requestEpoch) return
-        generation = page.status.generation
+        acceptStatus(page.status)
+        // A clear event can arrive while the old generation's page is in flight.
+        if (page.status.generation !== status!.generation) {
+          wake = true
+          return
+        }
         if (direction === 'latest') {
           tail = page.status.head
           older = page.cursor
@@ -109,49 +149,54 @@ export function useClashLogs(
           more = page.more
           requestOlder = false
         } else {
-          tail = page.cursor ?? tail
-          if (page.more) delay = 25
+          tail = page.more ? page.cursor : page.status.head
+          if (page.more) wake = true
         }
         rows = mergeCoreLogRows(
           rows,
           page.rows,
-          page.status,
+          status!,
           direction === 'before',
         )
-        setView({
-          data: rows,
-          status: page.status,
-          error: null,
-          isLoading: false,
-          loadingOlder: false,
-          more,
-        })
+        loaded = true
+        publish()
       } catch (error) {
         if (disposed || epoch !== requestEpoch) return
-        const failure: CoreLogError =
-          typeof error === 'object' && error !== null && 'kind' in error
-            ? (error as CoreLogError)
-            : { kind: 'unavailable', message: String(error) }
-        if (failure.kind === 'cursor_expired') {
+        const problem = failure(error)
+        requestOlder = false
+        if (problem.kind === 'cursor_expired') {
           reset()
-          delay = 25
-          setView(empty())
+          wake = true
         } else {
-          requestOlder = false
-          setView((value) => ({
-            ...value,
-            error: failure,
-            isLoading: false,
-            loadingOlder: false,
-          }))
-          delay = 2000
+          loaded = true
         }
+        publish(problem.kind === 'cursor_expired' ? null : problem)
       } finally {
         busy = false
-        if (!disposed) {
-          if (wake) delay = 25
+        if (wake && !disposed) {
           wake = false
-          timer = setTimeout(() => poll(), delay)
+          sync()
+        }
+      }
+    }
+    const subscribe = async () => {
+      try {
+        const stop = await rpc.events.coreLogsChanged.listen(({ payload }) => {
+          if (disposed || !acceptStatus(payload.status)) return
+          publish()
+          sync()
+        })
+        if (disposed) {
+          stop()
+          return
+        }
+        unlisten = stop
+        ready = true
+        sync()
+      } catch (error) {
+        if (!disposed) {
+          loaded = true
+          publish(failure(error))
         }
       }
     }
@@ -159,8 +204,8 @@ export function useClashLogs(
       older: () => {
         if (!older || !more || requestOlder) return
         requestOlder = true
-        setView((value) => ({ ...value, loadingOlder: true }))
-        poll()
+        publish()
+        sync()
       },
       clear: async () => {
         epoch += 1
@@ -168,45 +213,36 @@ export function useClashLogs(
           unwrapResult(await rpc.clearCoreLogs())
           if (disposed) return
           reset()
-          setView(empty())
-          poll()
+          needsStatus = true
+          publish()
+          sync()
         } catch (error) {
-          if (!disposed)
-            setView((value) => ({ ...value, error: error as CoreLogError }))
+          if (!disposed) publish(failure(error))
           throw error
         }
       },
       retry: () => {
         epoch += 1
         reset()
-        setView(empty())
-        poll()
+        publish()
+        if (ready) sync()
+        else subscribe()
       },
     }
-    rpc.events.coreLogsChanged
-      .listen(() => poll())
-      .then((stop) => {
-        if (disposed) stop()
-        else unlisten = stop
-      })
-      .catch((error) => {
-        if (!disposed)
-          setView((value) => ({
-            ...value,
-            error: { kind: 'unavailable', message: String(error) },
-          }))
-      })
-    const stopResync = rpc.listenResync(poll)
+    const resync = () => {
+      needsStatus = true
+      sync()
+    }
+    const stopResync = rpc.listenResync(resync)
     const resume = () => {
-      if (!document.hidden) poll()
+      if (!document.hidden) resync()
     }
     window.addEventListener('focus', resume)
     document.addEventListener('visibilitychange', resume)
-    poll()
+    subscribe()
 
     return () => {
       disposed = true
-      if (timer) clearTimeout(timer)
       unlisten?.()
       stopResync()
       window.removeEventListener('focus', resume)
@@ -219,8 +255,10 @@ export function useClashLogs(
     }
   }, [rpc, level, keyword])
 
+  const wasFollowing = useRef(following)
   useEffect(() => {
-    if (following) controls.current.retry()
+    if (following && !wasFollowing.current) controls.current.retry()
+    wasFollowing.current = following
   }, [following])
 
   const detailBusy = useRef(false)
@@ -237,12 +275,12 @@ export function useClashLogs(
     },
     [rpc],
   )
+  const clean = useMemo(
+    () => ({ mutateAsync: () => controls.current.clear() }),
+    [],
+  )
+  const loadOlder = useCallback(() => controls.current.older(), [])
+  const retry = useCallback(() => controls.current.retry(), [])
 
-  return {
-    ...view,
-    clean: { mutateAsync: () => controls.current.clear() },
-    loadOlder: () => controls.current.older(),
-    retry: () => controls.current.retry(),
-    detail,
-  }
+  return { ...view, clean, loadOlder, retry, detail }
 }

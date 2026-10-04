@@ -33,9 +33,11 @@ cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features c
 
 ## Memory and queries
 
-The writer has a **1 MiB redb cache**. Records are committed in batches after **64 KiB or 250 ms**. Stream delivery awaits admission, avoiding a separate growing queue. WebSocket subscriptions use the transport's existing message and frame limits.
+The writer and each temporary shard reader have a **1 MiB redb cache**. Zstd contexts, query results and runtime training samples use additional bounded memory. Records are committed in batches after **64 KiB or 250 ms**. Stream delivery awaits admission, avoiding a separate growing queue. WebSocket subscriptions use the transport's existing message and frame limits.
 
 `query_core_logs` returns up to **200 preview rows / approximately 256 KiB**, with **4 KiB UTF-8 previews**. Level filtering uses an index. Keyword matching examines the complete stored message. Each call examines at most **2,000 candidates / 4 MiB** and advances its cursor over nonmatches without skipping a matching row excluded by the response budget. Cursors contain only generation and sequence. Rotation preserves the generation and increasing sequence. Evicted cursors return `CursorExpired`; evicted details return `RecordGone`. Clearing or changing sessions invalidates old cursors and details.
+
+The viewer subscribes before its initial query and consumes status events directly. It does not poll while idle or fetch bodies while hidden. Burst notifications share one in-flight query and one catch-up flag. Transport resync and visibility restoration refresh status; a retained cursor follows new records without another status RPC. Eviction trims paused or hidden previews, and stale in-flight generations cannot restore cleared rows. Sorted pages merge linearly while keeping unchanged row references and memoized row callbacks.
 
 The mounted viewer retains up to **500 previews / approximately 2 MiB of estimated data**. Complete records are loaded on demand, with one outstanding detail request. Unmounting releases previews and listeners. Pausing stops following but continues capture; session changes still invalidate paused windows. Log bodies are absent from shared snapshots, events and the global frontend provider.
 

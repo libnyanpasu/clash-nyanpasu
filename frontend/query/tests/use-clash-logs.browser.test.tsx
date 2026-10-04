@@ -13,26 +13,33 @@ const mocked = vi.hoisted(() => ({
   getCoreLogStatus: vi.fn(),
   getCoreLog: vi.fn(),
   clearCoreLogs: vi.fn(),
-  listeners: new Set<() => void>(),
+  listeners: new Set<(event: { payload: { status: CoreLogStatus } }) => void>(),
+  resync: new Set<() => void>(),
 }))
 vi.mock('../src/provider/rpc-provider', () => {
   const rpc = {
     ...mocked,
     events: {
       coreLogsChanged: {
-        listen: async (listener: () => void) => {
+        listen: async (
+          listener: (event: { payload: { status: CoreLogStatus } }) => void,
+        ) => {
           mocked.listeners.add(listener)
           return () => mocked.listeners.delete(listener)
         },
       },
     },
-    listenResync: () => () => {},
+    listenResync: (listener: () => void) => {
+      mocked.resync.add(listener)
+      return () => mocked.resync.delete(listener)
+    },
   }
   return { useRpc: () => rpc }
 })
 
 let generation: string
 let head: number
+let version: number
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data })
 const cursor = (sequence: number): CoreLogCursor => ({
   generation,
@@ -40,7 +47,7 @@ const cursor = (sequence: number): CoreLogCursor => ({
 })
 const status = (): CoreLogStatus => ({
   generation,
-  version: head,
+  version,
   first: head ? cursor(1) : null,
   head: head ? cursor(head) : null,
   bytes: head * 100,
@@ -63,14 +70,18 @@ const row = (sequence: number): CoreLogRow => ({
   },
 })
 const changed = () => {
-  for (const listener of mocked.listeners) listener()
+  version++
+  for (const listener of mocked.listeners)
+    listener({ payload: { status: status() } })
 }
 beforeEach(() => {
   vi.clearAllMocks()
   generation = 'first'
+  version = 1
   head = 3
   mocked.getCoreLogStatus.mockImplementation(async () => ok(status()))
   mocked.queryCoreLogs.mockImplementation(async (query: CoreLogQuery) => {
+    expect(mocked.listeners.size).toBeGreaterThan(0)
     const rows =
       query.direction === 'latest'
         ? [row(head)]
@@ -158,4 +169,139 @@ test('clearing in one mounted viewer invalidates the other viewer history', asyn
     .toBe('cleared')
   expect(second.result.current.data).toEqual([])
   expect(mocked.clearCoreLogs).toHaveBeenCalledOnce()
+})
+
+test('subscribes before its first query and stays idle without polling or changing references', async ({
+  onTestFinished,
+}) => {
+  const hook = await renderHook(() => useClashLogs())
+  onTestFinished(() => hook.unmount())
+  await expect.poll(() => hook.result.current.data.length).toBe(1)
+  expect(mocked.listeners.size).toBe(1)
+  expect(mocked.getCoreLogStatus).not.toHaveBeenCalled()
+  expect(mocked.queryCoreLogs).toHaveBeenCalledOnce()
+  const view = hook.result.current
+  for (const listener of mocked.listeners)
+    listener({ payload: { status: status() } })
+  vi.useFakeTimers()
+  try {
+    await vi.advanceTimersByTimeAsync(10000)
+  } finally {
+    vi.useRealTimers()
+  }
+  expect(mocked.queryCoreLogs).toHaveBeenCalledOnce()
+  expect(mocked.getCoreLogStatus).not.toHaveBeenCalled()
+  expect(hook.result.current).toBe(view)
+})
+
+test('coalesces a burst into one catch-up query without extra status RPCs', async ({
+  onTestFinished,
+}) => {
+  const hook = await renderHook(() => useClashLogs())
+  onTestFinished(() => hook.unmount())
+  await expect.poll(() => hook.result.current.data.length).toBe(1)
+  let finish!: () => void
+  mocked.queryCoreLogs.mockImplementationOnce(() => {
+    const page = {
+      rows: [row(head)],
+      cursor: cursor(head),
+      more: false,
+      status: status(),
+    }
+    return new Promise((resolve) => {
+      finish = () => resolve(ok(page))
+    })
+  })
+  head = 4
+  changed()
+  for (head = 5; head <= 103; head++) changed()
+  head = 103
+  expect(mocked.queryCoreLogs).toHaveBeenCalledTimes(2)
+  finish()
+  await expect
+    .poll(() => hook.result.current.data.at(-1)?.id.sequence)
+    .toBe(103)
+  expect(mocked.queryCoreLogs).toHaveBeenCalledTimes(3)
+  expect(mocked.getCoreLogStatus).not.toHaveBeenCalled()
+})
+
+test('hidden pages trim evicted previews without fetching bodies and resync when visible', async ({
+  onTestFinished,
+}) => {
+  const hook = await renderHook(() => useClashLogs())
+  const hidden = vi.spyOn(document, 'hidden', 'get')
+  onTestFinished(async () => {
+    hidden.mockRestore()
+    await hook.unmount()
+  })
+  await expect.poll(() => hook.result.current.data.length).toBe(1)
+  hidden.mockReturnValue(true)
+  head = 10
+  version++
+  for (const listener of mocked.listeners)
+    listener({ payload: { status: { ...status(), first: cursor(8) } } })
+  await expect.poll(() => hook.result.current.data.length).toBe(0)
+  expect(mocked.queryCoreLogs).toHaveBeenCalledOnce()
+  generation = 'cleared-while-hidden'
+  head = 0
+  changed()
+  await expect.poll(() => hook.result.current.isLoading).toBe(false)
+  expect(mocked.queryCoreLogs).toHaveBeenCalledOnce()
+  head = 10
+  changed()
+  hidden.mockReturnValue(false)
+  document.dispatchEvent(new Event('visibilitychange'))
+  await expect.poll(() => hook.result.current.data.at(-1)?.id.sequence).toBe(10)
+  expect(mocked.getCoreLogStatus).toHaveBeenCalledOnce()
+})
+
+test('an old in-flight page cannot restore records after a clear event', async ({
+  onTestFinished,
+}) => {
+  const hook = await renderHook(() => useClashLogs())
+  onTestFinished(() => hook.unmount())
+  await expect.poll(() => hook.result.current.data.length).toBe(1)
+  let finish!: () => void
+  mocked.queryCoreLogs.mockImplementationOnce(() => {
+    const page = {
+      rows: [row(head)],
+      cursor: cursor(head),
+      more: false,
+      status: status(),
+    }
+    return new Promise((resolve) => {
+      finish = () => resolve(ok(page))
+    })
+  })
+  head = 4
+  changed()
+  generation = 'replacement'
+  head = 1
+  changed()
+  finish()
+  await expect
+    .poll(() => hook.result.current.data.map((row) => row.id))
+    .toEqual([cursor(1)])
+  expect(hook.result.current.status?.generation).toBe('replacement')
+})
+
+test('transport resync and an expired cursor recover through a fresh page', async ({
+  onTestFinished,
+}) => {
+  const hook = await renderHook(() => useClashLogs())
+  onTestFinished(async () => {
+    await hook.unmount()
+    expect(mocked.resync.size).toBe(0)
+  })
+  await expect.poll(() => hook.result.current.data.length).toBe(1)
+  mocked.queryCoreLogs.mockResolvedValueOnce({
+    status: 'error',
+    error: { kind: 'cursor_expired' },
+  })
+  head = 20
+  version++
+  for (const listener of mocked.resync) listener()
+  await expect.poll(() => hook.result.current.data.at(-1)?.id.sequence).toBe(20)
+  expect(mocked.queryCoreLogs.mock.lastCall?.[0].direction).toBe('latest')
+  expect(mocked.getCoreLogStatus).toHaveBeenCalledOnce()
 })

@@ -56,6 +56,47 @@ test('edit controls animate in and become inert while exiting', async ({
   const screen = await render(<Scene />)
   onTestFinished(() => screen.unmount())
 
+  const exitStates = new Map<
+    Element,
+    {
+      connected: boolean
+      hidden: boolean
+      disabled: boolean
+      inert: boolean
+      pointerEvents: string
+    }
+  >()
+  let exiting = false
+  const nativeAnimate = Element.prototype.animate
+  // Keep the real animations, including ones that finish before an assertion
+  // resumes. DOM insertion can precede Motion's animation registration.
+  const animate = vi
+    .spyOn(Element.prototype, 'animate')
+    .mockImplementation(function (
+      this: Element,
+      ...args: Parameters<Element['animate']>
+    ) {
+      const animation = nativeAnimate.apply(this, args)
+      if (exiting) {
+        exitStates.set(this, {
+          connected: this.isConnected,
+          hidden: this.getAttribute('aria-hidden') === 'true',
+          disabled: this instanceof HTMLButtonElement && this.disabled,
+          inert: this instanceof HTMLElement && this.inert,
+          pointerEvents: getComputedStyle(this).pointerEvents,
+        })
+      }
+      return animation
+    })
+  onTestFinished(() => animate.mockRestore())
+  const hasControlAnimation = (element: Element) =>
+    animate.mock.results.some(
+      (result, index) =>
+        animate.mock.contexts[index] === element &&
+        result.type === 'return' &&
+        result.value.effect?.getComputedTiming().duration === 200,
+    )
+
   controls.setEditing(true)
   await expect
     .poll(() => document.querySelector('button[aria-label]'))
@@ -74,28 +115,30 @@ test('edit controls animate in and become inert while exiting', async ({
   expect(resize).not.toBeNull()
   expect(config).not.toBeNull()
   const configWrapper = config!.parentElement!
-  for (const control of [close!, resize!, configWrapper]) {
-    expect(control.getAnimations().length).toBeGreaterThan(0)
-    expect(
-      control
-        .getAnimations()
-        .some(
-          (animation) => animation.effect?.getComputedTiming().duration === 200,
-        ),
-    ).toBe(true)
-  }
+  const elements = [close!, resize!, configWrapper]
+  await expect.poll(() => elements.every(hasControlAnimation)).toBe(true)
 
+  animate.mockClear()
+  exiting = true
   controls.setEditing(false)
-  await expect.poll(() => close!.disabled).toBe(true)
-  expect(close!.getAttribute('aria-hidden')).toBe('true')
-  expect(resize!.getAttribute('aria-hidden')).toBe('true')
-  expect(getComputedStyle(resize!).pointerEvents).toBe('none')
-  expect(configWrapper.inert).toBe(true)
-  expect(close!.getAnimations().length).toBeGreaterThan(0)
-  expect(resize!.getAnimations().length).toBeGreaterThan(0)
-  expect(configWrapper.getAnimations().length).toBeGreaterThan(0)
+  await expect.poll(() => elements.every(hasControlAnimation)).toBe(true)
+  expect(exitStates.get(close!)).toMatchObject({
+    connected: true,
+    hidden: true,
+    disabled: true,
+  })
+  expect(exitStates.get(resize!)).toMatchObject({
+    connected: true,
+    hidden: true,
+    pointerEvents: 'none',
+  })
+  expect(exitStates.get(configWrapper)).toMatchObject({
+    connected: true,
+    hidden: true,
+    inert: true,
+  })
 
-  await expect.poll(() => close!.isConnected).toBe(false)
-  expect(resize!.isConnected).toBe(false)
-  expect(config!.isConnected).toBe(false)
+  await expect
+    .poll(() => elements.some((element) => element.isConnected))
+    .toBe(false)
 })

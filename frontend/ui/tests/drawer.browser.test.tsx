@@ -47,36 +47,40 @@ function Harness() {
   )
 }
 
-test('reopening during exit keeps one modal and eventually releases page clicks', async ({
-  onTestFinished,
-}) => {
-  const view = await render(<Harness />)
-  onTestFinished(() => view.unmount())
+// Three animated reopen cycles can exhaust the 15s browser test budget on CI,
+// leaving the final click with less than a second for its actionability checks.
+test(
+  'reopening during exit keeps one modal and eventually releases page clicks',
+  { timeout: 30_000 },
+  async ({ onTestFinished }) => {
+    const view = await render(<Harness />)
+    onTestFinished(() => view.unmount())
 
-  for (let reopen = 1; reopen <= 3; reopen++) {
-    await userEvent.click(
-      page.getByRole('button', { name: 'Close and reopen' }),
-    )
-    await expect
-      .element(page.getByTestId('reopens'))
-      .toHaveTextContent(String(reopen))
-    await expect
-      .element(page.getByRole('dialog'))
-      .toHaveAttribute('data-state', 'open')
-    expect(
-      document.querySelectorAll('[data-slot=drawer-content]'),
-    ).toHaveLength(1)
-    expect(
-      document.querySelectorAll('[data-slot=drawer-overlay]'),
-    ).toHaveLength(1)
-  }
+    for (let reopen = 1; reopen <= 3; reopen++) {
+      await userEvent.click(
+        page.getByRole('button', { name: 'Close and reopen' }),
+      )
+      await expect
+        .element(page.getByTestId('reopens'))
+        .toHaveTextContent(String(reopen))
+      await expect
+        .element(page.getByRole('dialog'))
+        .toHaveAttribute('data-state', 'open')
+      expect(
+        document.querySelectorAll('[data-slot=drawer-content]'),
+      ).toHaveLength(1)
+      expect(
+        document.querySelectorAll('[data-slot=drawer-overlay]'),
+      ).toHaveLength(1)
+    }
 
-  await userEvent.click(page.getByRole('button', { name: 'Close drawer' }))
-  await expect
-    .poll(() => document.querySelector('[data-slot=drawer-content]'))
-    .toBeNull()
-  expect(document.querySelector('[data-slot=drawer-overlay]')).toBeNull()
-  expect(document.body.style.pointerEvents).not.toBe('none')
-  await userEvent.click(page.getByRole('button', { name: 'Page action' }))
-  await expect.element(page.getByTestId('clicks')).toHaveTextContent('1')
-})
+    await userEvent.click(page.getByRole('button', { name: 'Close drawer' }))
+    await expect
+      .poll(() => document.querySelector('[data-slot=drawer-content]'))
+      .toBeNull()
+    expect(document.querySelector('[data-slot=drawer-overlay]')).toBeNull()
+    expect(document.body.style.pointerEvents).not.toBe('none')
+    await userEvent.click(page.getByRole('button', { name: 'Page action' }))
+    await expect.element(page.getByTestId('clicks')).toHaveTextContent('1')
+  },
+)

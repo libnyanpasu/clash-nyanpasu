@@ -1,9 +1,5 @@
 on:
   pull_request:
-    branches:
-      - main
-      - dev
-      - release-*
   push:
     branches:
       - main

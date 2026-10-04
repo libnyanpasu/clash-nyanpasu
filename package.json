@@ -71,7 +71,7 @@
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
-    "@tauri-apps/cli": "2.12.0",
+    "@tauri-apps/cli": "2.12.1",
     "@types/node": "24.19.1",
     "@vitejs/plugin-react": "6.1.1",
     "@vitest/browser-playwright": "5.0.3",
@@ -102,7 +102,7 @@
     "vite-plugin-svgr": "5.2.0",
     "vitest-browser-react": "2.3.0",
     "@tanstack/react-query": "5.104.1",
-    "@tauri-apps/api": "2.12.0",
+    "@tauri-apps/api": "2.12.1",
     "clsx": "2.1.1",
     "tailwind-merge": "3.7.0",
     "react-use": "17.6.1"

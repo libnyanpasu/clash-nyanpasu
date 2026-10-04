@@ -89,7 +89,6 @@ clap = { version = '4.5.4', features = ['derive'] }
 
 # GUI Utilities
 rfd = { version = '0.17', default-features = false, features = [
-  'tokio',
   'gtk3',
   'common-controls-v6',
 ] }  # cross platform dialog

@@ -72,7 +72,7 @@ reqwest = { version = '0.13', default-features = false, features = [
   'system-proxy',
   'json',
   'stream',
-  'rustls-tls',
+  'rustls',
 ] }
 tokio = { version = '1', features = ['full'] }
 test-log = { version = '0.2.16', features = ['trace'] }

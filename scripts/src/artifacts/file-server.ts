@@ -82,6 +82,32 @@ export interface ChunkedUploadOptions<T> {
 
 // --- upload functions ---
 
+class ArchiveQuotaError extends Error {
+  override name = "ArchiveQuotaError";
+}
+
+async function uploadResponseError(
+  operation: string,
+  response: Response,
+): Promise<Error> {
+  const body = await response.text();
+  const message =
+    `${operation} failed: ${response.status} ${response.statusText} - ${body}`;
+  // The archive can wrap upstream Graph JSON in an escaped detail string and
+  // return HTTP 500 instead of 507. Inspect the error code in either form.
+  const quotaExceeded = response.status === 507 ||
+    /"code"\s*:\s*"quotaLimitReached"/.test(body.replaceAll('\\"', '"'));
+  return quotaExceeded
+    ? new ArchiveQuotaError(
+      `${message}\nFree archive storage or increase its quota before retrying; immediate retries cannot resolve quotaLimitReached.`,
+    )
+    : new Error(message);
+}
+
+function isRetriableUploadError(error: unknown): boolean {
+  return !(error instanceof ArchiveQuotaError);
+}
+
 export async function initUploadSession(
   fileName: string,
   fileSize: number,
@@ -109,10 +135,7 @@ export async function initUploadSession(
   });
 
   if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(
-      `upload init failed: ${resp.status} ${resp.statusText} - ${body}`,
-    );
+    throw await uploadResponseError("upload init", resp);
   }
 
   const data = await resp.json() as Partial<InitResponse>;
@@ -150,10 +173,7 @@ export async function uploadChunk(
   });
 
   if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(
-      `chunk upload failed: ${resp.status} ${resp.statusText} - ${body}`,
-    );
+    throw await uploadResponseError("chunk upload", resp);
   }
 
   const data = await resp.json() as Partial<ChunkResponse>;
@@ -215,7 +235,10 @@ export async function performChunkedUpload<T>(
 
       const data = await retry(
         () => uploadChunkFn(buf.subarray(0, bytesRead), start, end, fileSize),
-        { maxAttempts: CHUNK_RETRY_ATTEMPTS },
+        {
+          maxAttempts: CHUNK_RETRY_ATTEMPTS,
+          isRetriable: isRetriableUploadError,
+        },
       );
 
       const now = Date.now();
@@ -307,6 +330,7 @@ export async function uploadAllFilesWithResults(
           () => uploadFile(filePath, token, folderPath),
           {
             maxAttempts: CHUNK_RETRY_ATTEMPTS,
+            isRetriable: isRetriableUploadError,
           },
         );
         results.push(result);

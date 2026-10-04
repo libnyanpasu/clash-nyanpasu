@@ -36,6 +36,19 @@ export function inspectUploadReports(
       issues.push(`${name}: failures field is missing or invalid`);
     } else if (uploadReport.failures.length > 0) {
       issues.push(`${name}: ${uploadReport.failures.length} upload failure(s)`);
+      for (const failure of uploadReport.failures) {
+        if (typeof failure === "string") {
+          issues.push(`${name}: ${failure}`);
+        } else if (
+          failure && typeof failure === "object" &&
+          typeof failure.message === "string"
+        ) {
+          const fileName = typeof failure.fileName === "string"
+            ? `${failure.fileName}: `
+            : "";
+          issues.push(`${name}: ${fileName}${failure.message}`);
+        }
+      }
     }
   }
   return issues;

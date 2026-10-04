@@ -18,7 +18,10 @@ async function writeArtifact(
   await Deno.writeTextFile(file, value);
 }
 
-async function fixture(root: string): Promise<void> {
+async function fixture(
+  root: string,
+  nsisDirectory = "bundle/nsis-updater",
+): Promise<void> {
   const directories = [
     "Clash.Nyanpasu-windows-x86_64-nsis-installer",
     "Clash.Nyanpasu-windows-x86_64-portable",
@@ -52,17 +55,17 @@ async function fixture(root: string): Promise<void> {
       const prefix = directory.includes("fixed-webview")
         ? `Clash.Nyanpasu_fixed-webview_${targetName}`
         : `Clash.Nyanpasu_${targetName}`;
-      const updaterPath = `bundle/nsis-updater/${prefix}-setup.exe`;
+      const updaterPath = `${nsisDirectory}/${prefix}-setup.exe`;
       await writeArtifact(root, directory, updaterPath);
       await writeArtifact(
         root,
         directory,
-        `bundle/nsis-updater/${prefix}.nsis.zip`,
+        `${nsisDirectory}/${prefix}.nsis.zip`,
       );
       await writeArtifact(
         root,
         directory,
-        `bundle/nsis-updater/${prefix}.nsis.zip.sig`,
+        `${nsisDirectory}/${prefix}.nsis.zip.sig`,
       );
     } else if (directory.includes("windows")) {
       await writeArtifact(
@@ -156,6 +159,42 @@ Deno.test("central preparation validates all targets, normalizes Windows names a
       ].sort(),
     );
     assertEquals(windows.folderPath, `nightly/77-2-${commit}`);
+  } finally {
+    await Deno.remove(temp, { recursive: true });
+  }
+});
+
+Deno.test("central preparation accepts NSIS setup installers without an updater executable", async () => {
+  const temp = await Deno.makeTempDir();
+  try {
+    const downloaded = `${temp}/downloaded`;
+    const output = `${temp}/central`;
+    await fixture(downloaded, "bundle/nsis");
+    await prepareCentralPublication(downloaded, output, {
+      channel: "nightly",
+      tag: null,
+      commit,
+      runId: "77",
+      attempt: "2",
+      itemPrefix: "mirror-test",
+      publishedAt,
+    });
+    for (const target of ["windows-x86_64", "windows-aarch64"]) {
+      const manifest = JSON.parse(
+        await Deno.readTextFile(`${output}/manifests/${target}.json`),
+      );
+      const names = manifest.artifacts.map((artifact: { fileName: string }) =>
+        artifact.fileName
+      );
+      assertEquals(
+        names.filter((name: string) => name.endsWith("-setup.exe")).length,
+        2,
+      );
+      assertEquals(
+        names.some((name: string) => name.endsWith("-updater.exe")),
+        false,
+      );
+    }
   } finally {
     await Deno.remove(temp, { recursive: true });
   }
@@ -289,7 +328,7 @@ Deno.test("central preparation requires the package file from every artifact cat
   const missingPackages = [
     [
       "Clash.Nyanpasu-windows-x86_64-nsis-installer",
-      "bundle/nsis-updater/Clash.Nyanpasu_x64-setup.exe",
+      "bundle/nsis/Clash.Nyanpasu_x64-setup.exe",
     ],
     [
       "Clash.Nyanpasu-windows-aarch64-portable",
@@ -308,7 +347,7 @@ Deno.test("central preparation requires the package file from every artifact cat
     const temp = await Deno.makeTempDir();
     try {
       const downloaded = `${temp}/downloaded`;
-      await fixture(downloaded);
+      await fixture(downloaded, "bundle/nsis");
       await Deno.remove(`${downloaded}/${directory}/${packageFile}`);
       await assertRejects(
         () =>

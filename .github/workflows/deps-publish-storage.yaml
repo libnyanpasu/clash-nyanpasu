@@ -11,6 +11,10 @@ on:
         description: 'Release tag or nightly pre-release tag'
         required: true
         type: string
+    outputs:
+      publication_prepared:
+        description: 'The complete inventory is ready for upload and report verification'
+        value: ${{ jobs.publish_storage.outputs.publication_prepared }}
     secrets:
       ARCHIVE_UPLOAD_TOKEN:
         required: false
@@ -34,6 +38,8 @@ jobs:
     name: Publish validated six-target inventory
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    outputs:
+      publication_prepared: ${{ steps.prepare.outcome == 'success' }}
     permissions:
       contents: read
     steps:
@@ -58,6 +64,7 @@ jobs:
           deno-version: v2.x
 
       - name: Validate six targets and prepare shared-timestamp manifests
+        id: prepare
         if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
         shell: bash
         env:

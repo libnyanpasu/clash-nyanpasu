@@ -124,7 +124,7 @@ jobs:
 
   verify_sourceforge:
     name: Verify SourceForge Mirror
-    if: ${{ always() }}
+    if: ${{ always() && (vars.SOURCEFORGE_PROJECT == '' || needs.publish_storage.outputs.publication_prepared == 'true') }}
     needs: [publish_storage]
     runs-on: ubuntu-latest
     outputs:
@@ -161,7 +161,7 @@ jobs:
 
   verify_archive_uploads:
     name: Verify IA Archive Upload Reports
-    if: ${{ always() && vars.IA_ITEM_PREFIX != '' }}
+    if: ${{ always() && needs.publish_storage.outputs.publication_prepared == 'true' && vars.IA_ITEM_PREFIX != '' }}
     needs: [publish_storage]
     runs-on: ubuntu-latest
     steps:

@@ -114,22 +114,28 @@ export async function prepareCentralPublication(
       byTarget.get(target)!.push({ path: sourcePath, fileName });
       directoryFiles.push(fileName);
     }
-    const requiredPackageExtension = entry.name.includes("windows")
-      ? entry.name.includes("nsis-installer") ? "-updater.exe" : "_portable.zip"
+    const requiredPackageExtensions = entry.name.includes("windows")
+      ? entry.name.includes("nsis-installer")
+        ? ["-setup.exe", "-updater.exe"]
+        : ["_portable.zip"]
       : entry.name.endsWith("-appimage")
-      ? ".AppImage"
+      ? [".AppImage"]
       : entry.name.endsWith("-deb")
-      ? ".deb"
+      ? [".deb"]
       : entry.name.endsWith("-rpm")
-      ? ".rpm"
-      : ".dmg";
+      ? [".rpm"]
+      : [".dmg"];
     if (
       !directoryFiles.some((fileName) =>
-        fileName.endsWith(requiredPackageExtension)
+        requiredPackageExtensions.some((extension) =>
+          fileName.endsWith(extension)
+        )
       )
     ) {
       throw new Error(
-        `Missing required package artifact in ${entry.name} (expected ${requiredPackageExtension})`,
+        `Missing required package artifact in ${entry.name} (expected ${
+          requiredPackageExtensions.join(" or ")
+        })`,
       );
     }
   }

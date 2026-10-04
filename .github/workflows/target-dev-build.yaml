@@ -175,7 +175,7 @@ jobs:
 
   verify_sourceforge:
     name: Verify SourceForge Mirror
-    if: ${{ always() && needs.check_changes.outputs.should_build == 'true' }}
+    if: ${{ always() && (vars.SOURCEFORGE_PROJECT == '' || needs.publish_storage.outputs.publication_prepared == 'true') && needs.check_changes.outputs.should_build == 'true' }}
     needs: [check_changes, publish_storage]
     runs-on: ubuntu-latest
     outputs:
@@ -214,7 +214,7 @@ jobs:
 
   verify_archive_uploads:
     name: Verify IA Archive Upload Reports
-    if: ${{ always() && vars.IA_ITEM_PREFIX != '' && needs.check_changes.outputs.should_build == 'true' }}
+    if: ${{ always() && needs.publish_storage.outputs.publication_prepared == 'true' && vars.IA_ITEM_PREFIX != '' && needs.check_changes.outputs.should_build == 'true' }}
     needs: [check_changes, publish_storage]
     runs-on: ubuntu-latest
     steps:

@@ -662,6 +662,56 @@ fn trained_dictionary_rotates_without_losing_old_records_and_clear_resets_it() {
     );
 }
 
+#[test]
+#[ignore = "compare storage size and query cost; run without other benchmarks"]
+fn storage_compression_benchmark() {
+    use nyanpasu_config::application::{CoreLogCompression, CoreLogSettings};
+    use std::time::Instant;
+
+    for compression in [
+        CoreLogCompression::None,
+        CoreLogCompression::Preset,
+        CoreLogCompression::Trained,
+    ] {
+        let directory = TempDir::new().unwrap();
+        let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+        store
+            .configure(CoreLogSettings {
+                compression,
+                ..Default::default()
+            })
+            .unwrap();
+        let records: Vec<_> = (0..10000).map(|number| {
+            let mut value = record(number, 0);
+            value.payload = format!("[TCP] 192.0.2.{}:{} --> example{}.test:443 match DomainSuffix(example.test) using Proxy[Example]", number % 250 + 1, number + 10000, number % 100);
+            PreparedCoreLog::new(&value).unwrap()
+        }).collect();
+        let start = Instant::now();
+        for batch in records.chunks(128) {
+            store.append(batch).unwrap();
+        }
+        let append = start.elapsed();
+        let start = Instant::now();
+        let mut request = query(CoreLogDirection::Latest, None);
+        let mut count = 0;
+        loop {
+            let page = store.query(request).unwrap();
+            count += page.rows.len();
+            if !page.more {
+                break;
+            }
+            request = query(CoreLogDirection::Before, page.cursor);
+        }
+        assert_eq!(count, records.len());
+        println!(
+            "{compression:?}: disk_bytes={} append_ms={} query_all_ms={}",
+            store.status().unwrap().bytes,
+            append.as_millis(),
+            start.elapsed().as_millis()
+        );
+    }
+}
+
 #[cfg(windows)]
 #[tokio::test]
 async fn a_locked_rotation_file_stops_writes_until_clear() {

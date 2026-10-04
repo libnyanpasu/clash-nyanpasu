@@ -1,8 +1,10 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
 import {
+  memo,
   useCallback,
   useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -45,7 +47,7 @@ export const Route = createFileRoute('/(main)/main/logs/')({
 })
 type CoreLogs = ReturnType<typeof useClashLogs>
 
-function CoreRecord({
+const CoreRecord = memo(function CoreRecord({
   row,
   detail,
   expanded,
@@ -55,15 +57,23 @@ function CoreRecord({
   row: CoreLogRow
   detail: (cursor: CoreLogCursor) => Promise<CoreLogRecord>
   expanded: boolean
-  onInspect: () => void
+  onInspect: (key: string) => void
   search: string
 }) {
   const loadRaw = useCallback(() => detail(row.id), [detail, row.id])
+  const inspect = useCallback(
+    () => onInspect(`${row.id.generation}:${row.id.sequence}`),
+    [onInspect, row.id],
+  )
+  const timeTitle = useMemo(
+    () => new Date(row.record.received_at).toLocaleString(),
+    [row.record.received_at],
+  )
 
   return (
     <LogRecord
       time={row.record.time || ''}
-      timeTitle={new Date(row.record.received_at).toLocaleString()}
+      timeTitle={timeTitle}
       level={row.record.type}
       message={row.record.payload}
       raw={row.record}
@@ -72,10 +82,10 @@ function CoreRecord({
       incomplete={row.truncated}
       incompleteTitle={m.logs_core_preview_truncated()}
       search={search}
-      onInspect={onInspect}
+      onInspect={inspect}
     />
   )
-}
+})
 
 function Viewer({
   logs,
@@ -88,9 +98,17 @@ function Viewer({
   following: boolean
   setFollowing: (value: boolean) => void
 }) {
+  const { loadOlder } = logs
   const rows = useDeferredValue(logs.data)
   const deferredSearch = useDeferredValue(search)
   const [inspected, setInspected] = useState<string | null>(null)
+  const inspect = useCallback(
+    (key: string) => {
+      setFollowing(false)
+      setInspected((current) => (current === key ? null : key))
+    },
+    [setFollowing],
+  )
   const { isBottom, scrollDirection, isTop } = useScrollArea()
   const { viewportRef } = useScrollAreaViewport()
   const anchor = useRef<{
@@ -175,10 +193,24 @@ function Viewer({
           firstId: rows[0]?.id,
         }
       setFollowing(false)
-      logs.loadOlder()
+      loadOlder()
     }, 100)
     return () => clearTimeout(timer)
-  }, [logs, rows, following, isTop, rowVirtualizer, viewportRef, setFollowing])
+  }, [
+    logs.isLoading,
+    logs.loadingOlder,
+    logs.error,
+    logs.status?.error,
+    logs.more,
+    logs.data,
+    loadOlder,
+    rows,
+    following,
+    isTop,
+    rowVirtualizer,
+    viewportRef,
+    setFollowing,
+  ])
 
   return (
     <div data-slot="core-logs-viewer">
@@ -211,10 +243,7 @@ function Viewer({
                   detail={logs.detail}
                   expanded={inspected === key}
                   search={deferredSearch}
-                  onInspect={() => {
-                    setFollowing(false)
-                    setInspected((current) => (current === key ? null : key))
-                  }}
+                  onInspect={inspect}
                 />
               </div>
             )

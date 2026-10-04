@@ -913,6 +913,16 @@ mod tests {
             &directory,
             crate::client::tests::TestControlEndpoint::succeeding(),
         );
+        // The browser fixture uses English accessible names on every host locale.
+        let config = nyanpasu_config::application::NyanpasuAppConfig {
+            language: nyanpasu_config::application::I18nLanguage::English,
+            ..Default::default()
+        };
+        std::fs::write(
+            args.paths.application_config_path(),
+            serde_yaml::to_string(&config).unwrap(),
+        )
+        .unwrap();
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {
@@ -945,14 +955,27 @@ mod tests {
         let routes = Arc::new(RpcHttpRoutes::default());
         args.http_routes = routes.clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
-            events: EventBus::new(),
+            events: events.clone(),
         })
         .unwrap();
         routes.install(&rpc).unwrap();
         tauri::async_runtime::block_on(async {
+            // The headless fixture has no Tauri event bridge; forward the real owner watch.
+            let mut logs = client.subscribe_core_logs();
+            let bridge = tokio::spawn(async move {
+                while logs.changed().await.is_ok() {
+                    let status = logs.borrow_and_update().clone();
+                    events.publish(
+                        <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
+                        serde_json::to_value(crate::core::logs::CoreLogsChanged { status })
+                            .unwrap(),
+                    );
+                }
+            });
             let url = client
                 .set_debug_http_enabled(true)
                 .await
@@ -972,6 +995,7 @@ mod tests {
             )
             .await;
             client.shutdown_debug_http().await.unwrap();
+            bridge.abort();
             let output = output.unwrap().unwrap();
             assert!(
                 output.status.success(),

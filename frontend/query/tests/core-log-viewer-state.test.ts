@@ -76,5 +76,6 @@ test('overlapping pages deduplicate and older navigation retains the earlier ran
   expect(merged).toHaveLength(500)
   expect(merged[0].id.sequence).toBe(1)
   expect(merged.at(-1)?.id.sequence).toBe(500)
+  expect(merged[200]).toBe(current[0])
   expect(mergeCoreLogRows(merged, [], status())).toBe(merged)
 })

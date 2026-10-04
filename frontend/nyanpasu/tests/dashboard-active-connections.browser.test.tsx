@@ -241,17 +241,15 @@ test('fits configured detail rows to the available height and hides configured t
   const list = card.querySelector(
     '[data-slot="widget-active-connections-list"]',
   )!
-  await expect.poll(() => list.querySelectorAll('li').length).toBeGreaterThan(0)
+  // The first render shows one row until the list height has been measured.
+  await expect
+    .poll(() =>
+      [...list.querySelectorAll('li')].map(
+        (row) => row.textContent?.match(/worker-[a-z]\.exe/)?.[0],
+      ),
+    )
+    .toEqual(['worker-z.exe', 'worker-a.exe', 'worker-b.exe', 'worker-c.exe'])
   expect(list.scrollHeight).toBeLessThanOrEqual(list.clientHeight)
-  const rows = [...list.querySelectorAll('li')].map(
-    (row) => row.textContent ?? '',
-  )
-  expect(rows.map((row) => row.match(/worker-[a-z]\.exe/)?.[0])).toEqual([
-    'worker-z.exe',
-    'worker-a.exe',
-    'worker-b.exe',
-    'worker-c.exe',
-  ])
   expect(card.textContent).toContain(
     m.dashboard_widget_active_connections_hidden_target(),
   )

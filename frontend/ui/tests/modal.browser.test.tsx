@@ -112,18 +112,34 @@ test('the dialog grows out of its trigger and shrinks back', async ({
     '[data-slot="modal-trigger-placeholder"]',
   )!
 
-  flushSync(() => controls.setOpen(true))
-  await nextFrame()
-  await nextFrame()
-  expect(translation(dialog()!)).toBeGreaterThan(50)
+  // Capture layout transforms as Motion applies them. Two frames can consume
+  // most of the animation on a busy runner, before the assertion resumes.
+  let openingTranslation = 0
+  let closingTranslation = 0
+  const observer = new MutationObserver(() => {
+    const content = dialog()
+    if (content) {
+      openingTranslation = Math.max(openingTranslation, translation(content))
+    }
+    closingTranslation = Math.max(closingTranslation, translation(placeholder))
+  })
+  observer.observe(document.body, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style'],
+  })
+  onTestFinished(() => observer.disconnect())
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-  expect(translation(dialog()!)).toBeLessThan(1)
+  flushSync(() => controls.setOpen(true))
+  await expect.poll(() => openingTranslation).toBeGreaterThan(50)
+
+  await expect.poll(() => translation(dialog()!)).toBeLessThan(1)
 
   // On close the dialog fades out while the trigger's placeholder takes
   // the shared layout back from the dialog's box.
+  closingTranslation = 0
   flushSync(() => controls.setOpen(false))
-  await nextFrame()
-  await nextFrame()
-  expect(translation(placeholder)).toBeGreaterThan(50)
+  await expect.poll(() => closingTranslation).toBeGreaterThan(50)
+  await expect.poll(() => translation(placeholder)).toBeLessThan(1)
+  await expect.poll(dialog).toBeNull()
 })

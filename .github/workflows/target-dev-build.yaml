@@ -7,16 +7,41 @@ on:
 
 concurrency:
   group: dev-build
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
 
 jobs:
+  check_changes:
+    name: Check Nightly Changes
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      should_build: ${{ steps.changes.outputs.should_build }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check changes since previous nightly
+        id: changes
+        run: deno task check:nightly-changes
+
   windows_amd64_build:
     name: Windows x86_64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
       portable: true
@@ -28,7 +53,8 @@ jobs:
 
   windows_aarch64_build:
     name: Windows aarch64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     with:
       portable: true
@@ -40,7 +66,8 @@ jobs:
 
   linux_amd64_build:
     name: Linux amd64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: true
@@ -50,7 +77,8 @@ jobs:
 
   linux_aarch64_build:
     name: Linux aarch64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-linux.yaml
     with:
       nightly: true
@@ -60,7 +88,8 @@ jobs:
 
   macos_amd64_build:
     name: macOS amd64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-macos.yaml
     with:
       nightly: true
@@ -70,11 +99,29 @@ jobs:
 
   macos_aarch64_build:
     name: macOS aarch64 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
+    needs: [check_changes]
+    if: ${{ needs.check_changes.outputs.should_build == 'true' }}
     uses: ./.github/workflows/deps-build-macos.yaml
     with:
       nightly: true
       aarch64: true
+      tag: 'pre-release'
+    secrets: inherit
+
+  publish_storage:
+    name: Publish Complete Build to Archive and Mirrors
+    needs:
+      [
+        windows_amd64_build,
+        windows_aarch64_build,
+        linux_amd64_build,
+        linux_aarch64_build,
+        macos_amd64_build,
+        macos_aarch64_build,
+      ]
+    uses: ./.github/workflows/deps-publish-storage.yaml
+    with:
+      nightly: true
       tag: 'pre-release'
     secrets: inherit
 
@@ -109,54 +156,111 @@ jobs:
 
   updater:
     name: Create Updater
-    needs: [upload_release_assets]
+    needs: [upload_release_assets, verify_sourceforge]
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: true
+      sourceforge_mirrors_json: ${{ needs.verify_sourceforge.outputs.sourceforge_mirrors_json }}
     secrets: inherit
 
   telegram:
     name: Send Release Message to Telegram
     if: startsWith(github.repository, 'libnyanpasu')
-    needs: [update_tag, verify_archive_uploads]
+    needs: [upload_release_assets]
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:
       nightly: true
+      tag: 'pre-release'
     secrets: inherit
 
-  verify_archive_uploads:
-    name: Verify Archive Uploads
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu')) }}
-    needs:
-      [
-        windows_amd64_build,
-        windows_aarch64_build,
-        linux_amd64_build,
-        linux_aarch64_build,
-        macos_amd64_build,
-        macos_aarch64_build,
-        update_tag,
-        delete_current_releases,
-        upload_release_assets,
-        updater,
-      ]
+  verify_sourceforge:
+    name: Verify SourceForge Mirror
+    if: ${{ always() && needs.check_changes.outputs.should_build == 'true' }}
+    needs: [check_changes, publish_storage]
     runs-on: ubuntu-latest
+    outputs:
+      sourceforge_mirrors_json: ${{ steps.verify.outputs.sourceforge_mirrors_json }}
+      sourceforge_build_id: ${{ steps.verify.outputs.sourceforge_build_id }}
+      sourceforge_project: ${{ steps.verify.outputs.sourceforge_project }}
+    steps:
+      - name: Checkout repository
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        uses: actions/checkout@v7
+      - name: Install Deno
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Download target publication reports
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: publication-reports-*
+          path: ./publication-reports
+          merge-multiple: false
+      - name: Verify complete mirror and public hashes
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        id: verify
+        run: >-
+          deno task sourceforge:verify ./publication-reports ./sourceforge-mirrors.json nightly
+          windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64
+      - name: Preserve verified mirror manifest
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: sourceforge-verified-mirrors
+          path: ./sourceforge-mirrors.json
+          if-no-files-found: error
 
+  verify_archive_uploads:
+    name: Verify IA Archive Upload Reports
+    if: ${{ always() && vars.IA_ITEM_PREFIX != '' && needs.check_changes.outputs.should_build == 'true' }}
+    needs: [check_changes, publish_storage]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-
-      - uses: denoland/setup-deno@v2
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
-      - name: Download upload diagnostics
+      - name: Download target publication reports
         uses: actions/download-artifact@v8
-        continue-on-error: true
         with:
-          pattern: upload-diagnostics-*
-          path: ./upload-diagnostics
+          pattern: publication-reports-*
+          path: ./publication-reports
           merge-multiple: false
+      - name: Verify complete uploads and report pending ingest
+        run: >-
+          deno task archive:verify-reports ./publication-reports
+          windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64
 
-      - name: Verify archive uploads
-        run: deno task verify:archive-uploads ./upload-diagnostics
+  cleanup_sourceforge_nightly:
+    name: Clean Previous SourceForge Nightlies
+    if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+    needs: [updater, verify_sourceforge]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Retain current build and defer cleanup until old archives are ready
+        run: deno task sourceforge:cleanup ./sourceforge-cleanup-report.json
+        env:
+          SOURCEFORGE_PROJECT: ${{ needs.verify_sourceforge.outputs.sourceforge_project }}
+          SOURCEFORGE_BUILD_ID: ${{ needs.verify_sourceforge.outputs.sourceforge_build_id }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+          SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
+          IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+      - name: Preserve cleanup report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: sourceforge-nightly-cleanup-report
+          path: ./sourceforge-cleanup-report.json
+          if-no-files-found: error

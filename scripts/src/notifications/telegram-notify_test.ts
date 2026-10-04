@@ -1,7 +1,7 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { buildReleaseMessage } from "./telegram-notify.ts";
 
-Deno.test("release notification links to archive and the published prerelease tag", () => {
+Deno.test("release notification downloads use the published GitHub prerelease tag", () => {
   const message = buildReleaseMessage({
     nightly: false,
     tag: "v2.0.0-beta.1",
@@ -16,12 +16,12 @@ Deno.test("release notification links to archive and the published prerelease ta
       "https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/v2.0.0-beta.1",
       "",
       "Downloads:",
-      "https://archive.nyanpasu.org/",
+      "https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/v2.0.0-beta.1",
     ].join("\n"),
   );
 });
 
-Deno.test("nightly notification links to its run and archive without listing artifacts", () => {
+Deno.test("nightly notification links to its run and GitHub release without listing artifacts", () => {
   const message = buildReleaseMessage({
     nightly: true,
     tag: "pre-release",
@@ -30,8 +30,11 @@ Deno.test("nightly notification links to its run and archive without listing art
   });
   assertStringIncludes(message, "Nightly Build 6088e57");
   assertStringIncludes(message, "actions/runs/37150990990");
-  assertStringIncludes(message, "Downloads:\nhttps://archive.nyanpasu.org/");
-  assertEquals(message.includes("releases/tag/"), false);
+  assertStringIncludes(
+    message,
+    "Downloads:\nhttps://github.com/libnyanpasu/clash-nyanpasu/releases/tag/pre-release",
+  );
+  assertEquals(message.includes("archive.nyanpasu.org"), false);
   assertEquals(message.length < 4096, true);
 });
 
@@ -42,5 +45,8 @@ Deno.test("manual nightly notification can omit a workflow run", () => {
     gitShortHash: "6088e57",
   });
   assertEquals(message.includes("GitHub Actions:"), false);
-  assertStringIncludes(message, "https://archive.nyanpasu.org/");
+  assertStringIncludes(
+    message,
+    "https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/pre-release",
+  );
 });

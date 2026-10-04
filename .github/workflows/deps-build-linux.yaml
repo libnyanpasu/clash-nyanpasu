@@ -41,6 +41,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-26.04
+    env:
+      # Archive uploads are temporarily paused; packages are published on GitHub.
+      ARCHIVE_UPLOAD_ENABLED: 'false'
 
     steps:
       - name: Checkout repository
@@ -159,6 +162,7 @@ jobs:
         if: ${{ inputs.arch == 'x86_64' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NYANPASU_SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
@@ -172,6 +176,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NYANPASU_SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
@@ -224,6 +229,7 @@ jobs:
             ./backend/target/**/*.rpm.sha256
 
       - name: Set file server folder path
+        if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' }}
         shell: bash
         run: |
           if [ "$NIGHTLY" = "true" ]; then
@@ -237,6 +243,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
 
       - name: Upload to file server
+        if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' }}
         shell: bash
         continue-on-error: true
         run: |
@@ -256,6 +263,7 @@ jobs:
           FOLDER_PATH: ${{ env.FOLDER_PATH }}
 
       - name: Upload file server diagnostics
+        if: ${{ env.ARCHIVE_UPLOAD_ENABLED == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: upload-diagnostics-linux-${{ inputs.arch }}

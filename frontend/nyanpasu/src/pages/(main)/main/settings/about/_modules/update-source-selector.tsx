@@ -18,12 +18,13 @@ import {
   SettingsCardHeader,
 } from '../../_modules/settings-card'
 
-const SOURCES: UpdateSource[] = ['nyanpasu', 'github', 'ghfast']
+const SOURCES: UpdateSource[] = ['nyanpasu', 'github', 'ghfast', 'sourceforge']
 
 const SOURCE_HOSTS: Record<UpdateSource, string> = {
-  nyanpasu: 'nyanpasu-script.majokeiko.com',
+  nyanpasu: 'majokeiko.com',
   github: 'github.com',
   ghfast: 'ghfast.top',
+  sourceforge: 'sourceforge.net',
 }
 
 // Without a drag handle, the default mouse activation requires a press-and-hold.
@@ -181,6 +182,7 @@ function UpdateSourceSelectorControls() {
     nyanpasu: m.update_source_nyanpasu(),
     github: m.update_source_github(),
     ghfast: m.update_source_ghfast(),
+    sourceforge: m.update_source_sourceforge(),
   }
 
   return (

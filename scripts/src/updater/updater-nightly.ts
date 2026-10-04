@@ -8,6 +8,11 @@ import {
   collectUpdaterPlatforms,
   UPDATER_TARGETS,
 } from "./updater-platforms.ts";
+import {
+  attachNightlySourceforgeMirrors,
+  mapUpdaterPlatformUrls,
+  parseSourceforgeMirrorManifest,
+} from "./sourceforge-mirrors.ts";
 
 const GITHUB_PROXY = "https://nyanpasu-script.majokeiko.com/";
 const UPDATE_TAG_NAME = "updater";
@@ -121,15 +126,31 @@ async function resolveUpdater() {
 
   consola.info(`latest pre-release short hash: ${shortHash}`);
 
+  const collectedPlatforms = await collectUpdaterPlatforms(
+    latestPreRelease.assets,
+    getSignature,
+    `${tauriNightly.version}-alpha+${shortHash}`,
+  );
+  const sourceforgeJson = Deno.env.get("SOURCEFORGE_MIRRORS_JSON")?.trim();
+  const sourceforgeManifest = sourceforgeJson
+    ? parseSourceforgeMirrorManifest(sourceforgeJson)
+    : undefined;
+  const sourceforgeMirrors = sourceforgeManifest
+    ? attachNightlySourceforgeMirrors(
+      collectedPlatforms,
+      latestPreRelease.assets,
+      sourceforgeManifest,
+      Deno.env.get("GITHUB_SHA") ?? "",
+      shortHash,
+      Deno.env.get("GITHUB_RUN_ID") ?? "",
+      Deno.env.get("GITHUB_RUN_ATTEMPT") ?? "",
+    )
+    : collectedPlatforms;
   const updateData = {
     name: `v${tauriNightly.version}-alpha+${shortHash}`,
     notes: "Nightly build. Full changes see commit history.",
-    pub_date: new Date().toISOString(),
-    platforms: await collectUpdaterPlatforms(
-      latestPreRelease.assets,
-      getSignature,
-      `${tauriNightly.version}-alpha+${shortHash}`,
-    ),
+    pub_date: sourceforgeManifest?.publishedAt ?? new Date().toISOString(),
+    platforms: sourceforgeMirrors,
   };
 
   consola.info(updateData);
@@ -139,17 +160,10 @@ async function resolveUpdater() {
     }
   }
 
-  const updateDataNew = JSON.parse(
-    JSON.stringify(updateData),
-  ) as typeof updateData;
-  Object.entries(updateDataNew.platforms).forEach(([key, value]) => {
-    if (value.url) {
-      updateDataNew.platforms[key as keyof typeof updateData.platforms].url =
-        getGithubUrl(value.url);
-    } else {
-      consola.error(`updateDataNew.platforms.${key} is null`);
-    }
-  });
+  const updateDataNew = {
+    ...updateData,
+    platforms: mapUpdaterPlatformUrls(updateData.platforms, getGithubUrl),
+  };
 
   consola.debug("update updater files...");
   let updateRelease: {

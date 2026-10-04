@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
 
+concurrency:
+  group: release-publication
+  cancel-in-progress: false
+
 env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
@@ -67,6 +71,23 @@ jobs:
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 
+  publish_storage:
+    name: Publish Complete Build to Archive and Mirrors
+    needs:
+      [
+        windows_build,
+        windows_aarch64_build,
+        linux_build,
+        linux_aarch64_build,
+        macos_amd64_build,
+        macos_aarch64_build,
+      ]
+    uses: ./.github/workflows/deps-publish-storage.yaml
+    with:
+      nightly: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
   upload_release_assets:
     name: Upload Release Assets
     needs:
@@ -84,51 +105,79 @@ jobs:
 
   updater:
     name: Create Updater
-    needs: [upload_release_assets]
+    needs: [upload_release_assets, verify_sourceforge]
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: false
+      sourceforge_mirrors_json: ${{ needs.verify_sourceforge.outputs.sourceforge_mirrors_json }}
     secrets: inherit
 
   telegram:
     name: Send Release Message to Telegram
     if: startsWith(github.repository, 'libnyanpasu')
-    needs: [upload_release_assets, verify_archive_uploads]
+    needs: [upload_release_assets]
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:
       nightly: false
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 
-  verify_archive_uploads:
-    name: Verify Archive Uploads
+  verify_sourceforge:
+    name: Verify SourceForge Mirror
     if: ${{ always() }}
-    needs:
-      [
-        windows_build,
-        windows_aarch64_build,
-        linux_build,
-        linux_aarch64_build,
-        macos_amd64_build,
-        macos_aarch64_build,
-      ]
+    needs: [publish_storage]
     runs-on: ubuntu-latest
+    outputs:
+      sourceforge_mirrors_json: ${{ steps.verify.outputs.sourceforge_mirrors_json }}
+    steps:
+      - name: Checkout repository
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        uses: actions/checkout@v7
+      - name: Install Deno
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Download target publication reports
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: publication-reports-*
+          path: ./publication-reports
+          merge-multiple: false
+      - name: Verify complete mirror and public hashes
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        id: verify
+        run: >-
+          deno task sourceforge:verify ./publication-reports ./sourceforge-mirrors.json release
+          windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64
+      - name: Preserve verified mirror manifest
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: sourceforge-verified-mirrors
+          path: ./sourceforge-mirrors.json
+          if-no-files-found: error
 
+  verify_archive_uploads:
+    name: Verify IA Archive Upload Reports
+    if: ${{ always() && vars.IA_ITEM_PREFIX != '' }}
+    needs: [publish_storage]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-
-      - uses: denoland/setup-deno@v2
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
-      - name: Download upload diagnostics
+      - name: Download target publication reports
         uses: actions/download-artifact@v8
-        continue-on-error: true
         with:
-          pattern: upload-diagnostics-*
-          path: ./upload-diagnostics
+          pattern: publication-reports-*
+          path: ./publication-reports
           merge-multiple: false
-
-      - name: Verify archive uploads
-        run: deno task verify:archive-uploads ./upload-diagnostics
+      - name: Verify complete uploads and report pending ingest
+        run: >-
+          deno task archive:verify-reports ./publication-reports
+          windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64

@@ -103,6 +103,33 @@ test('enables GHFast, saves its priority, and restores it when reopened', async 
     .toBeChecked()
 })
 
+test('enables SourceForge without changing the default source priority', async ({
+  onTestFinished,
+}) => {
+  backend.sources = ['nyanpasu', 'github']
+  backend.busy = false
+  backend.save.mockResolvedValue(undefined)
+  const view = await render(
+    <TooltipProvider>
+      <UpdateSourceSelector />
+    </TooltipProvider>,
+  )
+  onTestFinished(async () => {
+    await view.unmount()
+    vi.clearAllMocks()
+  })
+
+  const sourceforge = view.getByRole('switch', {
+    name: m.update_source_sourceforge(),
+  })
+  await expect.element(sourceforge).not.toBeChecked()
+  await sourceforge.click()
+  await expect.element(sourceforge).toBeChecked()
+  await expect
+    .poll(() => backend.save.mock.lastCall)
+    .toEqual([['nyanpasu', 'github', 'sourceforge']])
+})
+
 test('reorders enabled sources with the keyboard drag handle', async ({
   onTestFinished,
 }) => {

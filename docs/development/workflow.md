@@ -27,28 +27,33 @@ through `deno task`; keep its execution logic in the root task catalog.
 - Remove workflows only after checking reusable callers and automatic/manual entry points; lack of recent runs alone does not prove a workflow is unused.
 - Separate adjacent workflow steps with one blank line, keeping each step's explanatory comments after the separator.
 
-The repository currently keeps all 14 workflows. Every reusable workflow has a
-caller. The manifest maintenance workflow updates both `main` and the still
+The repository currently keeps all 16 workflows. Every reusable workflow has a
+caller. The central-storage publisher is called by nightly and release workflows;
+the SourceForge release backfill is a manual entry point. Release publication and
+SourceForge backfills share one concurrency group so a backfill cannot race a newly
+published release. The manifest maintenance workflow updates both `main` and the still
 maintained v1 `dev` branch; a failure in one branch does not make the other job
 redundant. GitHub-generated Copilot workflows are managed by GitHub rather than
 these YAML files.
 
-| File under `.github/workflows/`   | Display name                                          | Purpose / entry point                                                                                                |
-| --------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml`                          | `[CI] Lint, Build, and Test`                          | Lint, build, and test pushes and pull requests.                                                                      |
-| `daily.yml`                       | `[Maintenance] Update Core Version Manifests`         | Scheduled or manual refresh of core versions on main and v1/dev.                                                     |
-| `stale.yml`                       | `[Maintenance] Close Stale Issues and Pull Requests`  | Scheduled or manual stale issue and pull request maintenance.                                                        |
-| `publish.yml`                     | `[Release] Prepare Version and Draft Release`         | Manual version bump, tag, and draft release creation; publishing the draft starts package builds.                    |
-| `target-dev-build.yaml`           | `[Release] Build and Publish Nightly`                 | Scheduled or manual nightly builds and publication across six OS/architecture targets.                               |
-| `target-release-build.yaml`       | `[Release] Build and Publish Release Packages`        | Build and publish packages when a stable or prerelease release is published.                                         |
-| `deps-build-linux.yaml`           | `[Reusable] Build Linux Packages`                     | Linux artifacts; called by nightly and release workflows, or dispatched manually.                                    |
-| `deps-build-macos.yaml`           | `[Reusable] Build macOS Packages`                     | macOS artifacts; called by nightly and release workflows, or dispatched manually.                                    |
-| `deps-build-windows-nsis.yaml`    | `[Reusable] Build Windows NSIS and Portable Packages` | Windows installers and optional portable artifacts; called by nightly and release workflows, or dispatched manually. |
-| `deps-create-updater.yaml`        | `[Reusable] Publish Updater Manifests`                | App updater feeds on GitHub and Surge; called by nightly and release workflows, or dispatched manually.              |
-| `deps-delete-releases.yaml`       | `[Reusable] Clear Release Assets`                     | Clear assets on the existing nightly release; called by nightly workflow, or dispatched manually.                    |
-| `deps-message-telegram.yaml`      | `[Reusable] Notify Telegram of Releases`              | Release notifications; called by nightly and release workflows, or dispatched manually.                              |
-| `deps-update-tag.yaml`            | `[Reusable] Update Nightly Tag and Release`           | Move the nightly tag and update release metadata; called by nightly workflow, or dispatched manually.                |
-| `deps-upload-release-assets.yaml` | `[Reusable] Upload Release Assets`                    | Upload artifacts from the current caller run to its release; called by nightly and release workflows.                |
+| File under `.github/workflows/`     | Display name                                          | Purpose / entry point                                                                                                |
+| ----------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`                            | `[CI] Lint, Build, and Test`                          | Lint, build, and test pushes and pull requests.                                                                      |
+| `daily.yml`                         | `[Maintenance] Update Core Version Manifests`         | Scheduled or manual refresh of core versions on main and v1/dev.                                                     |
+| `stale.yml`                         | `[Maintenance] Close Stale Issues and Pull Requests`  | Scheduled or manual stale issue and pull request maintenance.                                                        |
+| `publish.yml`                       | `[Release] Prepare Version and Draft Release`         | Manual version bump, tag, and draft release creation; publishing the draft starts package builds.                    |
+| `target-dev-build.yaml`             | `[Release] Build and Publish Nightly`                 | Scheduled or manual nightly builds and publication across six OS/architecture targets.                               |
+| `target-release-build.yaml`         | `[Release] Build and Publish Release Packages`        | Build and publish packages when a stable or prerelease release is published.                                         |
+| `deps-build-linux.yaml`             | `[Reusable] Build Linux Packages`                     | Linux artifacts; called by nightly and release workflows, or dispatched manually.                                    |
+| `deps-build-macos.yaml`             | `[Reusable] Build macOS Packages`                     | macOS artifacts; called by nightly and release workflows, or dispatched manually.                                    |
+| `deps-build-windows-nsis.yaml`      | `[Reusable] Build Windows NSIS and Portable Packages` | Windows installers and optional portable artifacts; called by nightly and release workflows, or dispatched manually. |
+| `deps-create-updater.yaml`          | `[Reusable] Publish Updater Manifests`                | App updater feeds on GitHub and Surge; called by nightly and release workflows, or dispatched manually.              |
+| `deps-delete-releases.yaml`         | `[Reusable] Clear Release Assets`                     | Clear assets on the existing nightly release; called by nightly workflow, or dispatched manually.                    |
+| `deps-message-telegram.yaml`        | `[Reusable] Notify Telegram of Releases`              | Release notifications; called by nightly and release workflows, or dispatched manually.                              |
+| `deps-publish-storage.yaml`         | `[Reusable] Publish Central Storage Mirrors`          | Publish six-target build inventories to SourceForge and Internet Archive; called by nightly and release workflows.   |
+| `deps-update-tag.yaml`              | `[Reusable] Update Nightly Tag and Release`           | Move the nightly tag and update release metadata; called by nightly workflow, or dispatched manually.                |
+| `deps-upload-release-assets.yaml`   | `[Reusable] Upload Release Assets`                    | Upload artifacts from the current caller run to its release; called by nightly and release workflows.                |
+| `sourceforge-backfill-release.yaml` | `[Maintenance] Backfill SourceForge Release Mirror`   | Manually mirror an existing GitHub release to SourceForge; serialized with release publication.                      |
 
 ## Worktrees and resource reuse
 

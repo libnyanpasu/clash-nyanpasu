@@ -7,6 +7,7 @@ pub enum UpdateSource {
     Nyanpasu,
     Github,
     Ghfast,
+    Sourceforge,
 }
 
 pub fn default_update_sources() -> Vec<UpdateSource> {

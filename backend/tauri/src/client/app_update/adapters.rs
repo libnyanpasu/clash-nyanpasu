@@ -85,15 +85,19 @@ impl AppUpdateBackend for TauriAppUpdateBackend {
                 "{:?}|{}|{}|{}|{:?}",
                 channel, update.target, update.version, update.signature, update.date,
             );
-            let candidates =
-                crate::bundle::update_download_urls(&update.download_url, &settings.sources)?
-                    .into_iter()
-                    .map(|(source, url)| {
-                        let mut candidate = update.clone();
-                        candidate.download_url = url;
-                        (source, candidate)
-                    })
-                    .collect::<Vec<_>>();
+            let candidates = crate::bundle::update_download_urls(
+                &update.download_url,
+                &settings.sources,
+                &update.raw_json,
+                &update.target,
+            )?
+            .into_iter()
+            .map(|(source, url)| {
+                let mut candidate = update.clone();
+                candidate.download_url = url;
+                (source, candidate)
+            })
+            .collect::<Vec<_>>();
             Ok(Some(PreparedAppUpdate {
                 identity,
                 release: AppUpdateRelease {
@@ -243,6 +247,7 @@ mod tests {
     async fn signature_or_download_failure_tries_the_next_source_in_order() {
         let candidates = [
             (UpdateSource::Nyanpasu, Err("signature failure")),
+            (UpdateSource::Sourceforge, Err("404 not found")),
             (UpdateSource::Ghfast, Ok(vec![1, 2, 3])),
             (UpdateSource::Github, Ok(vec![4])),
         ];
@@ -257,7 +262,14 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(attempts, [UpdateSource::Nyanpasu, UpdateSource::Ghfast]);
+        assert_eq!(
+            attempts,
+            [
+                UpdateSource::Nyanpasu,
+                UpdateSource::Sourceforge,
+                UpdateSource::Ghfast
+            ]
+        );
         assert_eq!(source, UpdateSource::Ghfast);
         assert_eq!(bytes, [1, 2, 3]);
     }

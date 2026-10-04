@@ -27,11 +27,11 @@
     },
     "test:release": {
       "description": "Test release preparation, publishing, finalization, and channel selection",
-      "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/publish_test.ts scripts/src/release/prepare-release_test.ts scripts/src/release/finalize-linux-release_test.ts scripts/src/updater/release-channel_test.ts"
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/check-nightly-changes_test.ts scripts/src/release/publish_test.ts scripts/src/release/prepare-release_test.ts scripts/src/release/finalize-linux-release_test.ts scripts/src/updater/release-channel_test.ts"
     },
     "test:updater": {
-      "description": "Test updater platform manifests, release channels, and signing",
-      "command": "deno test --config scripts/deno.jsonc -A scripts/src/updater/updater-platforms_test.ts scripts/src/updater/release-channel_test.ts scripts/src/release/sign-nightly-updater_test.ts"
+      "description": "Test updater platform manifests, SourceForge mirrors, release channels, and signing",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/updater/updater-platforms_test.ts scripts/src/updater/sourceforge-mirrors_test.ts scripts/src/updater/release-channel_test.ts scripts/src/release/sign-nightly-updater_test.ts"
     },
     "test:windows-bundle": {
       "description": "Test Windows portable bundle generation",
@@ -73,6 +73,42 @@
       "description": "Verify all release or nightly archive upload reports",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/verify-upload-reports.ts"
     },
+    "prepare:publication-manifest": {
+      "description": "Hash finalized target artifacts into an archive and mirror manifest",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/prepare-publish-manifest.ts"
+    },
+    "prepare:central-publication": {
+      "description": "Validate all six downloaded build targets and hash centralized publication inventories",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/prepare-central-publication.ts"
+    },
+    "archive:publish": {
+      "description": "Register and upload a target build directly to Internet Archive",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/publish-internet-archive.ts"
+    },
+    "archive:verify": {
+      "description": "Reconcile delayed Internet Archive ingest through the archive API",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/internet-archive-upload.ts --verify-only"
+    },
+    "sourceforge:upload": {
+      "description": "Upload a target's finalized artifacts to SourceForge FRS",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/publish-sourceforge.ts"
+    },
+    "sourceforge:web-publish": {
+      "description": "Publish and verify SourceForge Project Web updater manifests",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/publish-sourceforge-web.ts"
+    },
+    "sourceforge:cleanup": {
+      "description": "Retain the promoted nightly SourceForge build and remove older managed builds",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/cleanup-sourceforge-nightly.ts"
+    },
+    "sourceforge:verify": {
+      "description": "Verify all SourceForge target reports and public asset hashes",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/verify-sourceforge-mirror.ts"
+    },
+    "archive:verify-reports": {
+      "description": "Verify Internet Archive target upload and ingest reports",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/verify-ia-reports.ts"
+    },
     "generate:manifest:latest-version": {
       "description": "Resolve and write the latest core versions to the manifest",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/manifest/generate-latest-version.ts"
@@ -104,6 +140,10 @@
     "updater:nightly": {
       "description": "Generate and upload nightly updater metadata",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/updater/updater-nightly.ts"
+    },
+    "check:nightly-changes": {
+      "description": "Check whether build inputs changed since the previous nightly tag",
+      "command": "deno run --config scripts/deno.jsonc --allow-run=git --allow-read --allow-write --allow-env=GITHUB_OUTPUT,GITHUB_STEP_SUMMARY scripts/src/release/check-nightly-changes.ts"
     },
     "prepare:nightly": {
       "description": "Prepare the Tauri configuration for a nightly build",

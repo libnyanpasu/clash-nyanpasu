@@ -1,0 +1,107 @@
+name: '[Maintenance] Backfill SourceForge Release Mirror'
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing published GitHub Release tag to mirror'
+        required: true
+        type: string
+
+concurrency:
+  group: release-publication
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    name: Mirror ${{ inputs.release_tag }} to SourceForge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ ]]; then
+            echo "Invalid release tag" >&2
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Download assets from the selected GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          mkdir -p release-assets publication-reports
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir release-assets
+          rm -f release-assets/sourceforge-mirrors.json
+          test -n "$(find release-assets -maxdepth 1 -type f -print -quit)"
+
+      - name: Prepare immutable SourceForge publication manifest
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
+        run: |
+          if [[ ! "$SOURCEFORGE_PROJECT" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+            echo "SOURCEFORGE_PROJECT must be configured with the registered project slug" >&2
+            exit 1
+          fi
+          deno task prepare:publication-manifest \
+            --channel release \
+            --target release-backfill \
+            --build-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}-release-backfill" \
+            --item-prefix "${IA_ITEM_PREFIX:-sourceforge-backfill}" \
+            --commit "$GITHUB_SHA" \
+            --tag "$RELEASE_TAG" \
+            --folder "release/$RELEASE_TAG" \
+            --output publication-manifest.json \
+            --pattern 'release-assets/*'
+
+      - name: Upload the complete release inventory to SourceForge
+        run: deno task sourceforge:upload publication-manifest.json publication-reports/sourceforge-report.json
+        env:
+          SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_CHANNEL: release
+          SOURCEFORGE_BUILD_ID: ${{ inputs.release_tag }}
+          SOURCEFORGE_RELEASE_TAG: ${{ inputs.release_tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+          SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
+
+      - name: Verify every public release asset by SHA-256
+        run: deno task sourceforge:verify publication-reports verified-sourceforge-mirrors.json release release-backfill
+        env:
+          SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
+
+      - name: Attach verified mirror metadata to the existing GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          cp verified-sourceforge-mirrors.json sourceforge-mirrors.json
+          gh release upload "$RELEASE_TAG" sourceforge-mirrors.json --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Upload backfill report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sourceforge-backfill-${{ inputs.release_tag }}
+          overwrite: true
+          path: |
+            publication-reports/
+            verified-sourceforge-mirrors.json
+          if-no-files-found: warn

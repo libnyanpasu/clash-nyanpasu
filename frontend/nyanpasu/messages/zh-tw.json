@@ -349,6 +349,7 @@
   "update_source_nyanpasu": "Nyanpasu 鏡像",
   "update_source_github": "GitHub Releases",
   "update_source_ghfast": "GHFast 鏡像",
+  "update_source_sourceforge": "SourceForge 鏡像",
   "profile_subscription_title": "服務狀態與額度",
   "profile_subscription_updated_at": "{updated}更新",
   "profile_subscription_next_update_at": "下次更新時間：{next}",

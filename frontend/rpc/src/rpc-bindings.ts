@@ -1513,6 +1513,8 @@ export type CoreInfos_Serialize = {
   detail?: CoreStateDetail | null
 }
 
+export type CoreLogCompression = 'none' | 'preset' | 'trained'
+
 export type CoreLogCursor = {
   generation: string
   sequence: number
@@ -1564,6 +1566,7 @@ export type CoreLogRow = {
 export type CoreLogSettings = {
   shard_size_mib?: number
   max_size_mib?: number
+  compression?: CoreLogCompression
 }
 
 export type CoreLogSource = {

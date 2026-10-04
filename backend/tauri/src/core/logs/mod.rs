@@ -1,4 +1,5 @@
 mod actor;
+mod codec;
 mod model;
 mod ports;
 mod redb;

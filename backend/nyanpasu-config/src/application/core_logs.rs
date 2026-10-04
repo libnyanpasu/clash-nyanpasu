@@ -1,12 +1,22 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CoreLogCompression {
+    None,
+    #[default]
+    Preset,
+    Trained,
+}
+
 /// Current-session Core log retention, read when the application starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(default)]
 pub struct CoreLogSettings {
     pub shard_size_mib: u32,
     pub max_size_mib: u32,
+    pub compression: CoreLogCompression,
 }
 
 impl Default for CoreLogSettings {
@@ -14,6 +24,7 @@ impl Default for CoreLogSettings {
         Self {
             shard_size_mib: 16,
             max_size_mib: 64,
+            compression: CoreLogCompression::default(),
         }
     }
 }

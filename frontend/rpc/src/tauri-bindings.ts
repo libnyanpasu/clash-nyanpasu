@@ -409,6 +409,7 @@ export type EffectFailureCode =
 export type EffectKind =
   | 'locale'
   | 'logger'
+  | 'core_log_level'
   | 'auto_launch'
   | 'system_proxy'
   | 'proxy_guard'

@@ -8,7 +8,10 @@ use nyanpasu_config::{
         ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig,
         ProxiesSelectorMode, TrayMenuMode,
     },
-    clash::config::{ClashConfig, overrides::Mode},
+    clash::config::{
+        ClashConfig,
+        overrides::{LogLevel, Mode},
+    },
     runtime::executor::ResolvedPortBindings,
 };
 use struct_patch::Patch;
@@ -51,6 +54,7 @@ pub struct ApplicationEffectFields {
 pub struct ClashEffectFields {
     pub mode: Mode,
     pub enable_tun_mode: bool,
+    pub log_level: LogLevel,
 }
 
 /// The application owner's slice: what it hands the effects owner after a
@@ -85,6 +89,7 @@ impl From<&ClashConfig> for ClashEffectFields {
         Self {
             mode: clash.overrides.mode(),
             enable_tun_mode: clash.enable_tun_mode,
+            log_level: clash.overrides.log_level(),
         }
     }
 }
@@ -117,6 +122,7 @@ impl ApplicationEffectInputs {
                 max_files: app.max_log_files,
                 max_file_size: app.max_log_file_size,
             },
+            core_log_level: self.clash.log_level,
             auto_launch: app.enable_auto_launch,
             system_proxy: SystemProxyDesired {
                 enabled: app.enable_system_proxy,
@@ -171,6 +177,7 @@ impl ApplicationEffectInputs {
 pub enum EffectKind {
     Locale,
     Logger,
+    CoreLogLevel,
     AutoLaunch,
     SystemProxy,
     ProxyGuard,
@@ -252,6 +259,8 @@ pub struct TrayView {
 struct ApplicationDesired {
     locale: I18nLanguage,
     logger: LoggerDesired,
+    /// The level the Core logs are captured at.
+    core_log_level: LogLevel,
     auto_launch: bool,
     system_proxy: SystemProxyDesired,
     /// Split from `system_proxy` on purpose: changing only the interval must
@@ -282,6 +291,7 @@ impl ApplicationDesired {
 pub enum ApplicationEffect {
     Locale(I18nLanguage),
     Logger(LoggerDesired),
+    CoreLogLevel(LogLevel),
     AutoLaunch(bool),
     SystemProxy(SystemProxyDesired),
     ProxyGuard(ProxyGuardDesired),
@@ -295,6 +305,7 @@ impl ApplicationEffect {
         match self {
             Self::Locale(_) => EffectKind::Locale,
             Self::Logger(_) => EffectKind::Logger,
+            Self::CoreLogLevel(_) => EffectKind::CoreLogLevel,
             Self::AutoLaunch(_) => EffectKind::AutoLaunch,
             Self::SystemProxy(_) => EffectKind::SystemProxy,
             Self::ProxyGuard(_) => EffectKind::ProxyGuard,
@@ -349,6 +360,7 @@ impl ApplicationEffectPlan {
         let ApplicationDesiredChanges {
             locale,
             logger,
+            core_log_level,
             auto_launch,
             system_proxy,
             proxy_guard,
@@ -362,6 +374,7 @@ impl ApplicationEffectPlan {
         let mut effects = Vec::new();
         effects.extend(locale.map(ApplicationEffect::Locale));
         effects.extend(logger.map(ApplicationEffect::Logger));
+        effects.extend(core_log_level.map(ApplicationEffect::CoreLogLevel));
         effects.extend(auto_launch.map(ApplicationEffect::AutoLaunch));
         effects.extend(system_proxy.map(ApplicationEffect::SystemProxy));
         effects.extend(proxy_guard.map(ApplicationEffect::ProxyGuard));
@@ -421,6 +434,7 @@ mod tests {
             clash: ClashEffectFields {
                 mode: Mode::Rule,
                 enable_tun_mode: false,
+                log_level: LogLevel::Info,
             },
             ports: Some(ResolvedPortBindings {
                 mixed_port: 7890,
@@ -625,6 +639,20 @@ mod tests {
     }
 
     #[test]
+    fn core_log_level_change_produces_only_its_effect() {
+        let before = inputs();
+        let mut after = inputs();
+        after.clash.log_level = LogLevel::Silent;
+
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+
+        assert_eq!(
+            plan.effects(),
+            [ApplicationEffect::CoreLogLevel(LogLevel::Silent)]
+        );
+    }
+
+    #[test]
     fn widget_change_produces_widget_effect() {
         let before = inputs();
         let mut after = inputs();
@@ -701,6 +729,7 @@ mod tests {
             vec![
                 EffectKind::Locale,
                 EffectKind::Logger,
+                EffectKind::CoreLogLevel,
                 EffectKind::AutoLaunch,
                 EffectKind::SystemProxy,
                 EffectKind::ProxyGuard,

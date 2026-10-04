@@ -2,6 +2,7 @@
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
+use nyanpasu_config::clash::config::overrides::LogLevel;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -219,6 +220,15 @@ fn normalize_memory(sample: clash_api::Memory) -> Option<ClashWsMemory> {
     Some(ClashWsMemory { inuse, oslimit })
 }
 
+/// One socket worker; the logs socket subscribes at the capture level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stream {
+    Connections,
+    Logs(clash_api::LogLevel),
+    Traffic,
+    Memory,
+}
+
 // Workers send at most one unacknowledged sample each. The capability fences
 // queued messages across process/controller changes.
 #[derive(Debug)]
@@ -242,10 +252,13 @@ enum Message {
     Recording(ClashWsKind, bool, RpcReplyPort<ClashWsRecording>),
     Clear(ClashWsKind, RpcReplyPort<Result<()>>),
     Deliver(Box<Delivery>, RpcReplyPort<bool>),
+    SetLogLevel(LogLevel, RpcReplyPort<()>),
 }
 struct Args {
     core: CoreClient,
     logs: crate::core::logs::CoreLogsClient,
+    /// The capture level, replaced by `SetLogLevel`.
+    log_level: LogLevel,
     shutdown: CancellationToken,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
@@ -257,6 +270,8 @@ struct State {
     args: Args,
     task: Option<JoinHandle<()>>,
     lifecycle: Option<JoinHandle<()>>,
+    /// The logs socket, restarted on its own when the capture level changes.
+    logs: Option<JoinHandle<()>>,
     log_session_active: bool,
     api: Option<ApiClient>,
     status: ClashConnectionsConnectorState,
@@ -272,6 +287,9 @@ impl Drop for State {
             task.abort();
         }
         if let Some(task) = self.lifecycle.take() {
+            task.abort();
+        }
+        if let Some(task) = self.logs.take() {
             task.abort();
         }
     }
@@ -300,6 +318,9 @@ impl State {
         self.emit(ClashWsUpdate::StateChanged(status));
     }
     fn reset(&mut self) {
+        if let Some(task) = self.logs.take() {
+            task.abort();
+        }
         self.api = None;
         self.history = ClashWsHistory::default();
         self.previous = None;
@@ -325,6 +346,20 @@ impl State {
                     instance_id: api.instance_id().to_owned(),
                     snapshot,
                 })));
+        }
+    }
+    /// Reopens only the logs socket, at the current level of the bound API.
+    /// A frame the replaced socket already queued is still a record the core
+    /// emitted, so it is not fenced.
+    fn restart_logs(&mut self, actor: &ActorRef<Message>) {
+        if let Some(task) = self.logs.take() {
+            task.abort();
+        }
+        if let Some(api) = self.api.clone()
+            && self.args.log_level != LogLevel::Silent
+        {
+            let stream = Stream::Logs(subscription_level(self.args.log_level));
+            self.logs = Some(tokio::spawn(run_stream(actor.clone(), api, stream)));
         }
     }
     fn accepts(&self, api: &ApiClient) -> bool {
@@ -476,12 +511,8 @@ async fn run(actor: ActorRef<Message>, core: CoreClient) {
         }
         // JoinSet owns all socket/retry tasks and aborts them when this worker is dropped.
         let mut streams = tokio::task::JoinSet::new();
-        for kind in [
-            ClashWsKind::Connections,
-            ClashWsKind::Logs,
-            ClashWsKind::Traffic,
-            ClashWsKind::Memory,
-        ] {
+        // The actor owns the logs socket, which it restarts on its own.
+        for kind in [Stream::Connections, Stream::Traffic, Stream::Memory] {
             streams.spawn(run_stream(actor.clone(), api.clone(), kind));
         }
         tokio::select! {
@@ -503,10 +534,20 @@ async fn run(actor: ActorRef<Message>, core: CoreClient) {
     }
 }
 
-async fn run_stream(actor: ActorRef<Message>, api: ApiClient, kind: ClashWsKind) {
+fn subscription_level(level: LogLevel) -> clash_api::LogLevel {
+    match level {
+        LogLevel::Silent => clash_api::LogLevel::Silent,
+        LogLevel::Error => clash_api::LogLevel::Error,
+        LogLevel::Warning => clash_api::LogLevel::Warning,
+        LogLevel::Info => clash_api::LogLevel::Info,
+        LogLevel::Debug => clash_api::LogLevel::Debug,
+    }
+}
+
+async fn run_stream(actor: ActorRef<Message>, api: ApiClient, kind: Stream) {
     let mut backoff = Duration::from_secs(1);
     loop {
-        if kind == ClashWsKind::Connections
+        if kind == Stream::Connections
             && !deliver(
                 &actor,
                 Delivery::State(api.clone(), ClashConnectionsConnectorState::Connecting),
@@ -519,7 +560,7 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, kind: ClashWsKind)
             ($open:expr, $variant:ident) => {{
                 match $open.await {
                     Ok(mut stream) => {
-                        if kind == ClashWsKind::Connections
+                        if kind == Stream::Connections
                             && !deliver(
                                 &actor,
                                 Delivery::State(
@@ -547,7 +588,7 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, kind: ClashWsKind)
                                 Err(
                                     error @ ApiError::Protocol(clash_api::Error::Decode { .. }),
                                 ) => {
-                                    if kind == ClashWsKind::Logs {
+                                    if matches!(kind, Stream::Logs(_)) {
                                         let _ = deliver(
                                             &actor,
                                             Delivery::LogFailure(format!(
@@ -578,12 +619,12 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, kind: ClashWsKind)
             }};
         }
         match kind {
-            ClashWsKind::Connections => consume!(api.connections_ws(), Connections),
-            ClashWsKind::Logs => consume!(api.logs_ws(), Log),
-            ClashWsKind::Traffic => consume!(api.traffic_ws(), Traffic),
-            ClashWsKind::Memory => consume!(api.memory_ws(), Memory),
+            Stream::Connections => consume!(api.connections_ws(), Connections),
+            Stream::Logs(level) => consume!(api.logs_ws(level), Log),
+            Stream::Traffic => consume!(api.traffic_ws(), Traffic),
+            Stream::Memory => consume!(api.memory_ws(), Memory),
         }
-        if kind == ClashWsKind::Connections
+        if kind == Stream::Connections
             && !deliver(
                 &actor,
                 Delivery::State(api.clone(), ClashConnectionsConnectorState::Disconnected),
@@ -613,6 +654,7 @@ impl Actor for StreamsActor {
             args,
             task: None,
             lifecycle: None,
+            logs: None,
             log_session_active: false,
             api: None,
             status: ClashConnectionsConnectorState::Disconnected,
@@ -721,6 +763,7 @@ impl Actor for StreamsActor {
                                 }
                                 state.log_session_active = true;
                                 state.api = Some(api);
+                                state.restart_logs(&actor);
                             }
                         }
                         Delivery::State(api, status) => {
@@ -747,6 +790,13 @@ impl Actor for StreamsActor {
                     }
                 }
                 let _ = reply.send(accepted);
+            }
+            Message::SetLogLevel(level, reply) => {
+                if state.args.log_level != level {
+                    state.args.log_level = level;
+                    state.restart_logs(&actor);
+                }
+                let _ = reply.send(());
             }
         }
         Ok(())
@@ -781,6 +831,7 @@ impl StreamsClient {
     pub async fn spawn(
         core: CoreClient,
         logs: crate::core::logs::CoreLogsClient,
+        log_level: LogLevel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> Result<Self> {
@@ -794,6 +845,7 @@ impl StreamsClient {
             Args {
                 core,
                 logs: logs.clone(),
+                log_level,
                 shutdown: shutdown.clone(),
                 connections: connections.clone(),
                 events: events.clone(),
@@ -830,6 +882,10 @@ impl StreamsClient {
     }
     pub async fn start(&self) -> Result<()> {
         self.call(Message::Start).await
+    }
+    /// Returns once the logs socket follows `level`.
+    pub async fn set_log_level(&self, level: LogLevel) -> Result<()> {
+        self.call(|reply| Message::SetLogLevel(level, reply)).await
     }
     pub async fn snapshot(&self) -> Result<ClashWsSnapshot> {
         self.call(Message::Snapshot).await
@@ -909,6 +965,7 @@ mod tests {
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
         )
@@ -942,6 +999,7 @@ mod tests {
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
         )
@@ -996,6 +1054,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn level_changes_reopen_only_the_logs_socket() {
+        use axum::extract::{Path, Query, State as AxumState};
+        use tokio::sync::mpsc;
+        type Events = mpsc::UnboundedSender<(String, String)>;
+        async fn next(
+            received: &mut mpsc::UnboundedReceiver<(String, String)>,
+            count: usize,
+        ) -> Vec<(String, String)> {
+            let mut events = Vec::new();
+            for _ in 0..count {
+                events.push(
+                    tokio::time::timeout(Duration::from_secs(3), received.recv())
+                        .await
+                        .unwrap()
+                        .unwrap(),
+                );
+            }
+            events.sort();
+            events
+        }
+        async fn stream(
+            Path(kind): Path<String>,
+            Query(query): Query<std::collections::HashMap<String, String>>,
+            AxumState(events): AxumState<Events>,
+            ws: WebSocketUpgrade,
+        ) -> impl IntoResponse {
+            let level = query.get("level").cloned().unwrap_or_default();
+            ws.on_upgrade(move |mut socket| async move {
+                let _ = events.send((kind.clone(), level.clone()));
+                while let Some(Ok(_)) = socket.recv().await {}
+                let _ = events.send((format!("{kind} closed"), level));
+            })
+        }
+        let (events, mut received) = mpsc::unbounded_channel();
+        let (url, server) = server(
+            Router::new()
+                .route("/{kind}", get(stream))
+                .with_state(events),
+        )
+        .await;
+        let pair = |kind: &str, level: &str| (kind.to_owned(), level.to_owned());
+        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let client = StreamsClient::spawn(
+            core,
+            crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Info,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+        client.start().await.unwrap();
+        assert_eq!(
+            next(&mut received, 4).await,
+            [
+                pair("connections", ""),
+                pair("logs", "info"),
+                pair("memory", ""),
+                pair("traffic", "")
+            ]
+        );
+
+        client.set_log_level(LogLevel::Error).await.unwrap();
+        assert_eq!(
+            next(&mut received, 2).await,
+            [pair("logs", "error"), pair("logs closed", "info")]
+        );
+        // An unchanged level keeps the socket; silent closes it and opens none.
+        client.set_log_level(LogLevel::Error).await.unwrap();
+        client.set_log_level(LogLevel::Silent).await.unwrap();
+        assert_eq!(next(&mut received, 1).await, [pair("logs closed", "error")]);
+        client.set_log_level(LogLevel::Debug).await.unwrap();
+        assert_eq!(next(&mut received, 1).await, [pair("logs", "debug")]);
+        assert!(received.try_recv().is_err());
+        drop(client);
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn all_typed_workers_publish_and_actor_drop_releases_every_socket() {
         use axum::extract::{Path, Query, State as AxumState, ws::Message as Frame};
         use tokio::sync::mpsc;
@@ -1034,6 +1171,7 @@ mod tests {
         let client = StreamsClient::spawn(
             core,
             crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
         )
@@ -1108,6 +1246,7 @@ mod tests {
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
         )
@@ -1133,6 +1272,7 @@ mod tests {
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
         )
@@ -1171,6 +1311,7 @@ mod tests {
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
         )
@@ -1204,6 +1345,7 @@ mod tests {
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
         )
@@ -1360,9 +1502,15 @@ mod tests {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let endpoint = endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
-        let client = StreamsClient::spawn(core.clone(), logs.clone(), token.clone(), &tasks)
-            .await
-            .unwrap();
+        let client = StreamsClient::spawn(
+            core.clone(),
+            logs.clone(),
+            LogLevel::Debug,
+            token.clone(),
+            &tasks,
+        )
+        .await
+        .unwrap();
         let mut events = client.subscribe_ws();
         client.start().await.unwrap();
         connected(&mut events).await;

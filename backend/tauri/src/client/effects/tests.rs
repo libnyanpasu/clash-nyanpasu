@@ -356,14 +356,14 @@ async fn independent_graphs_and_shutdown_admission() {
     assert!(a.calls.lock().unwrap().is_empty());
     right.publish_full(None);
     wait(&right, |s| {
-        s.effects.len() == 8
+        s.effects.len() == 9
             && s.effects
                 .iter()
                 .map(|e| &e.status)
                 .all(|s| s.health == EffectHealth::Healthy)
     })
     .await;
-    assert_eq!(b.calls.lock().unwrap().len(), 3);
+    assert_eq!(b.calls.lock().unwrap().len(), 4);
     right_shutdown.run().await;
 }
 
@@ -871,4 +871,59 @@ async fn the_shutdown_awaits_running_groups_and_starts_no_new_one() {
         started,
         "no group started after the cancel"
     );
+}
+
+#[tokio::test]
+async fn core_log_level_reaches_only_the_streams_owner() {
+    use nyanpasu_config::clash::config::overrides::LogLevel;
+    let port = Arc::new(Port::default());
+    let core = crate::core::actor_v2::CoreClient::spawn(
+        crate::core::actor_v2::api::tests::endpoint("http://127.0.0.1:9".into()),
+    )
+    .await
+    .unwrap();
+    let streams = crate::core::clash::ws::StreamsClient::spawn(
+        core,
+        crate::core::logs::CoreLogsClient::test_client().await,
+        LogLevel::Info,
+        CancellationToken::new(),
+        &TaskTracker::new(),
+    )
+    .await
+    .unwrap();
+    let effects = super::executor::CoreLogCaptureEffects::new(port.clone(), streams);
+    let locale = ApplicationEffect::Locale(I18nLanguage::Russian);
+
+    let revision = EffectRevision::new(1);
+    let statuses = effects
+        .apply(
+            revision,
+            ApplicationEffectPlan::from_effects(vec![
+                locale.clone(),
+                ApplicationEffect::CoreLogLevel(LogLevel::Error),
+            ]),
+        )
+        .await;
+    assert_eq!(*port.calls.lock().unwrap(), [(revision, vec![locale])]);
+    assert_eq!(
+        statuses
+            .iter()
+            .map(|status| (status.kind, status.health.clone()))
+            .collect::<Vec<_>>(),
+        [
+            (EffectKind::Locale, EffectHealth::Healthy),
+            (EffectKind::CoreLogLevel, EffectHealth::Healthy)
+        ]
+    );
+
+    let statuses = effects
+        .apply(
+            EffectRevision::new(2),
+            ApplicationEffectPlan::from_effects(vec![ApplicationEffect::CoreLogLevel(
+                LogLevel::Silent,
+            )]),
+        )
+        .await;
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(port.calls.lock().unwrap().len(), 1);
 }

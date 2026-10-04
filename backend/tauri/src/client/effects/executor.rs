@@ -1,5 +1,6 @@
-//! The single implementation of [`ApplicationEffectsPort`]: it fans one plan
-//! out to the owner of each effect.
+//! The implementation of [`ApplicationEffectsPort`]: it fans one plan out to
+//! the owner of each effect. Inside the client, [`CoreLogCaptureEffects`] adds
+//! the one owner the client spawns itself.
 //!
 //! The fan-out is by capability, not by lookup — there is no `get::<T>()` here,
 //! so the facade keeps one dependency and this stays a dispatcher rather than a
@@ -18,16 +19,19 @@ use super::{
     ports::ApplicationEffectsPort,
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
-use crate::client::{
-    hotkey::{
-        HotkeyClient,
-        error::InvalidBindingsSnafu,
-        ports::{AcceleratorValidator, HotkeyBindings},
+use crate::{
+    client::{
+        hotkey::{
+            HotkeyClient,
+            error::InvalidBindingsSnafu,
+            ports::{AcceleratorValidator, HotkeyBindings},
+        },
+        system_proxy::SystemProxyClient,
+        ui_effects::ports::{
+            LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController,
+        },
     },
-    system_proxy::SystemProxyClient,
-    ui_effects::ports::{
-        LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController,
-    },
+    core::clash::ws::StreamsClient,
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
 
@@ -196,6 +200,9 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
             let status = match effect {
                 ApplicationEffect::Locale(language) => self.apply_locale(revision, *language),
                 ApplicationEffect::Logger(desired) => self.apply_logger(revision, desired),
+                ApplicationEffect::CoreLogLevel(_) => {
+                    unreachable!("CoreLogCaptureEffects applies the Core log level")
+                }
                 ApplicationEffect::AutoLaunch(_)
                 | ApplicationEffect::SystemProxy(_)
                 | ApplicationEffect::ProxyGuard(_) => {
@@ -229,6 +236,58 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                 }
             };
             statuses.push(status);
+        }
+        statuses
+    }
+}
+
+/// Applies the Core log capture level and hands every other effect to the
+/// executor. The client spawns the streams owner after the composition root has
+/// built the executor, so the client wraps the executor instead of joining it.
+pub(crate) struct CoreLogCaptureEffects {
+    executor: Arc<dyn ApplicationEffectsPort>,
+    streams: StreamsClient,
+}
+
+impl CoreLogCaptureEffects {
+    pub(crate) fn new(executor: Arc<dyn ApplicationEffectsPort>, streams: StreamsClient) -> Self {
+        Self { executor, streams }
+    }
+}
+
+#[async_trait::async_trait]
+impl ApplicationEffectsPort for CoreLogCaptureEffects {
+    async fn apply(
+        &self,
+        revision: EffectRevision,
+        plan: ApplicationEffectPlan,
+    ) -> Vec<EffectStatus> {
+        let mut level = None;
+        let mut others = Vec::new();
+        for effect in plan.effects() {
+            match effect {
+                ApplicationEffect::CoreLogLevel(desired) => level = Some(*desired),
+                effect => others.push(effect.clone()),
+            }
+        }
+        let mut statuses = if others.is_empty() {
+            Vec::new()
+        } else {
+            self.executor
+                .apply(revision, ApplicationEffectPlan::from_effects(others))
+                .await
+        };
+        if let Some(level) = level {
+            statuses.push(match self.streams.set_log_level(level).await {
+                Ok(()) => healthy(EffectKind::CoreLogLevel, revision),
+                Err(error) => degraded(
+                    EffectKind::CoreLogLevel,
+                    revision,
+                    EffectFailureCode::EffectOwnerSilent,
+                    format!("{error:#}"),
+                    false,
+                ),
+            });
         }
         statuses
     }

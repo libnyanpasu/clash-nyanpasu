@@ -423,6 +423,15 @@ impl NyanpasuClient {
         let core_logs =
             crate::core::logs::CoreLogsClient::spawn(logging.core, shutdown.child_token(), &tasks)
                 .await?;
+        // Before the effects owner, which hands it the capture level.
+        let streams = crate::core::clash::ws::StreamsClient::spawn(
+            core_v2.clone(),
+            core_logs.clone(),
+            clash_config.snapshot().state.overrides.log_level(),
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await?;
         let app_logs = nyanpasu_logging::LogsClient::start(logging.files, logging.clock).await?;
         // The log client exposes no actor cell, so a tracked task stops it.
         tasks.spawn({
@@ -437,7 +446,10 @@ impl NyanpasuClient {
         let service_logs = logging.service;
         let effects = effects::actor::EffectsClient::spawn(
             effects::actor::EffectsArgs {
-                port: effects,
+                port: Arc::new(effects::executor::CoreLogCaptureEffects::new(
+                    effects,
+                    streams.clone(),
+                )),
                 ui: ui_sink,
                 initial: effects::plan::ApplicationEffectInputs::project(
                     &application.snapshot().state,
@@ -550,13 +562,6 @@ impl NyanpasuClient {
         });
         let proxies = crate::core::proxies::ProxiesClient::spawn(
             core_v2.clone(),
-            shutdown.child_token(),
-            &tasks,
-        )
-        .await?;
-        let streams = crate::core::clash::ws::StreamsClient::spawn(
-            core_v2.clone(),
-            core_logs.clone(),
             shutdown.child_token(),
             &tasks,
         )

@@ -46,7 +46,7 @@ async function fixture(root: string): Promise<void> {
       : directory.includes("linux-aarch64")
       ? "arm64"
       : directory.includes("macOS-amd64")
-      ? "x64"
+      ? "x86_64"
       : "aarch64";
     if (directory.includes("windows") && directory.includes("nsis")) {
       const prefix = directory.includes("fixed-webview")
@@ -73,6 +73,7 @@ async function fixture(root: string): Promise<void> {
         }${targetName}_portable.zip`,
       );
     } else if (directory.includes("linux") && directory.endsWith("appimage")) {
+      await writeArtifact(root, directory, "Clash.Nyanpasu.AppImage");
       await writeArtifact(root, directory, "Clash.Nyanpasu.AppImage.tar.gz");
       await writeArtifact(
         root,
@@ -88,6 +89,7 @@ async function fixture(root: string): Promise<void> {
         }`,
       );
     } else {
+      await writeArtifact(root, directory, `Clash.Nyanpasu_${targetName}.dmg`);
       const archive = `Clash.Nyanpasu_${targetName}.app.tar.gz`;
       await writeArtifact(root, directory, archive);
       await writeArtifact(root, directory, `${archive}.sig`);
@@ -272,6 +274,55 @@ Deno.test("central preparation rejects missing updater archives and signature pa
         missingArchive
           ? "Missing required updater archives"
           : "Missing signature files",
+      );
+      assertEquals(
+        await Deno.stat(`${temp}/output`).then(() => true, () => false),
+        false,
+      );
+    } finally {
+      await Deno.remove(temp, { recursive: true });
+    }
+  }
+});
+
+Deno.test("central preparation requires the package file from every artifact category", async () => {
+  const missingPackages = [
+    [
+      "Clash.Nyanpasu-windows-x86_64-nsis-installer",
+      "bundle/nsis-updater/Clash.Nyanpasu_x64-setup.exe",
+    ],
+    [
+      "Clash.Nyanpasu-windows-aarch64-portable",
+      "Clash.Nyanpasu_arm64_portable.zip",
+    ],
+    [
+      "Clash.Nyanpasu-linux-x86_64-appimage",
+      "Clash.Nyanpasu.AppImage",
+    ],
+    ["Clash.Nyanpasu-linux-x86_64-deb", "Clash.Nyanpasu_amd64.deb"],
+    ["Clash.Nyanpasu-linux-aarch64-rpm", "Clash.Nyanpasu_arm64.rpm"],
+    ["Clash.Nyanpasu-macOS-amd64", "Clash.Nyanpasu_x86_64.dmg"],
+  ];
+
+  for (const [directory, packageFile] of missingPackages) {
+    const temp = await Deno.makeTempDir();
+    try {
+      const downloaded = `${temp}/downloaded`;
+      await fixture(downloaded);
+      await Deno.remove(`${downloaded}/${directory}/${packageFile}`);
+      await assertRejects(
+        () =>
+          prepareCentralPublication(downloaded, `${temp}/output`, {
+            channel: "nightly",
+            tag: null,
+            commit,
+            runId: "77",
+            attempt: "2",
+            itemPrefix: "mirror-test",
+            publishedAt,
+          }),
+        Error,
+        `Missing required package artifact in ${directory}`,
       );
       assertEquals(
         await Deno.stat(`${temp}/output`).then(() => true, () => false),

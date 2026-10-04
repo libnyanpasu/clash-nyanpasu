@@ -94,6 +94,7 @@ export async function prepareCentralPublication(
     if (!target) continue;
     artifactDirectories.add(entry.name);
     const artifactDir = path.join(inputRoot, entry.name);
+    const directoryFiles: string[] = [];
     for (const sourcePath of await filesUnder(artifactDir)) {
       const relative = path.relative(artifactDir, sourcePath);
       const segments = relative.split(path.SEPARATOR);
@@ -111,6 +112,25 @@ export async function prepareCentralPublication(
       }
       names.set(fileName, sourcePath);
       byTarget.get(target)!.push({ path: sourcePath, fileName });
+      directoryFiles.push(fileName);
+    }
+    const requiredPackageExtension = entry.name.includes("windows")
+      ? entry.name.includes("nsis-installer") ? "-updater.exe" : "_portable.zip"
+      : entry.name.endsWith("-appimage")
+      ? ".AppImage"
+      : entry.name.endsWith("-deb")
+      ? ".deb"
+      : entry.name.endsWith("-rpm")
+      ? ".rpm"
+      : ".dmg";
+    if (
+      !directoryFiles.some((fileName) =>
+        fileName.endsWith(requiredPackageExtension)
+      )
+    ) {
+      throw new Error(
+        `Missing required package artifact in ${entry.name} (expected ${requiredPackageExtension})`,
+      );
     }
   }
 

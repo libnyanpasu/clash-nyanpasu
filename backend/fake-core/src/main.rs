@@ -28,7 +28,7 @@ use fake_core::{
 };
 use std::{
     env,
-    io::{Read, Write},
+    io::{BufRead, BufReader, Error, ErrorKind, Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
     process::ExitCode,
     sync::{
@@ -272,38 +272,58 @@ fn serve_http(listener: TcpListener, status: u16, body: String, stop: Arc<Atomic
     }
 }
 
+fn read_http_request(stream: impl Read) -> std::io::Result<String> {
+    let mut reader = BufReader::new(stream);
+    let mut first_line = String::new();
+    reader.read_line(&mut first_line)?;
+    let mut header_bytes = first_line.len();
+    let mut content_length = 0;
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let read = reader.read_line(&mut line)?;
+        if read == 0 {
+            return Err(Error::new(
+                ErrorKind::UnexpectedEof,
+                "incomplete HTTP headers",
+            ));
+        }
+        header_bytes += read;
+        if header_bytes > 8192 {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "HTTP headers exceed 8192 bytes",
+            ));
+        }
+        if line == "\r\n" {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':')
+            && name.eq_ignore_ascii_case("content-length")
+        {
+            content_length = value
+                .trim()
+                .parse::<u64>()
+                .map_err(|err| Error::new(ErrorKind::InvalidData, err))?;
+        }
+    }
+
+    // Closing with an unread request body can send RST even after shutting down
+    // the write half. Consume Content-Length before returning a response.
+    let consumed = std::io::copy(&mut reader.take(content_length), &mut std::io::sink())?;
+    if consumed != content_length {
+        return Err(Error::new(ErrorKind::UnexpectedEof, "incomplete HTTP body"));
+    }
+    Ok(first_line.trim_end().to_owned())
+}
+
 fn handle_http_client(mut stream: TcpStream, status: u16, body: &str) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
     stream.set_write_timeout(Some(Duration::from_secs(2)))?;
 
-    let mut buf = [0u8; 8192];
-    let mut collected = Vec::new();
-    loop {
-        match stream.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                collected.extend_from_slice(&buf[..n]);
-                if collected.windows(4).any(|w| w == b"\r\n\r\n") {
-                    break;
-                }
-                if collected.len() >= 8192 {
-                    break;
-                }
-            }
-            Err(err)
-                if err.kind() == std::io::ErrorKind::WouldBlock
-                    || err.kind() == std::io::ErrorKind::TimedOut =>
-            {
-                break;
-            }
-            Err(err) => return Err(err),
-        }
-    }
-
-    let request = String::from_utf8_lossy(&collected);
-    let first_line = request.lines().next().unwrap_or("");
+    let first_line = read_http_request(&mut stream)?;
     // Status-injection only for exact /configs — not prefix paths.
-    let is_apply = is_exact_configs_apply(first_line);
+    let is_apply = is_exact_configs_apply(&first_line);
 
     let (code, reason) = if is_apply {
         (
@@ -328,10 +348,7 @@ fn handle_http_client(mut stream: TcpStream, status: u16, body: &str) -> std::io
     );
     stream.write_all(response.as_bytes())?;
     stream.flush()?;
-    // Shutdown write half so the client sees a clean FIN (EOF) on its read
-    // side before the socket is dropped.  Without this, macOS may send a
-    // RST when the drop closes the socket, which races with read_to_string
-    // and causes ConnectionReset (error 54).
+    // The request is fully consumed, so the client can observe a clean EOF.
     stream.shutdown(Shutdown::Write)?;
     Ok(())
 }
@@ -362,4 +379,43 @@ fn env_optional_u16(key: &str) -> Result<Option<u16>, String> {
 fn env_u16_or(key: &str, default: u16) -> Result<u16, String> {
     let raw = env_var_os_string(key)?;
     parse_env_u16_or(key, raw.as_deref(), default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_http_request;
+    use std::io::{Cursor, ErrorKind, Read};
+
+    #[test]
+    fn http_request_consumes_the_body_before_responding() {
+        let body = "x".repeat(32 * 1024);
+        let request = format!(
+            "PUT /configs HTTP/1.1\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        let mut stream = Cursor::new(request.as_bytes());
+        assert_eq!(
+            read_http_request(&mut stream).unwrap(),
+            "PUT /configs HTTP/1.1"
+        );
+        assert_eq!(stream.position(), request.len() as u64);
+    }
+
+    #[test]
+    fn http_request_rejects_a_truncated_body() {
+        let request = b"PATCH /configs HTTP/1.1\r\nContent-Length: 3\r\n\r\n{}";
+        let error = read_http_request(request.as_slice()).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn http_request_consumes_a_body_delivered_separately_from_headers() {
+        let headers = Cursor::new(b"PATCH /configs HTTP/1.1\r\nContent-Length: 2\r\n\r\n");
+        let mut body = Cursor::new(b"{}");
+        assert_eq!(
+            read_http_request(headers.chain(&mut body)).unwrap(),
+            "PATCH /configs HTTP/1.1"
+        );
+        assert_eq!(body.position(), 2);
+    }
 }

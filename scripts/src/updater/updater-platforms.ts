@@ -1,12 +1,5 @@
-export interface ReleaseAsset {
-  name: string;
-  browser_download_url: string;
-}
-
-export interface UpdaterPlatform {
-  signature: string;
-  url: string;
-}
+export type { ReleaseAsset, UpdaterPlatform } from "./sourceforge-mirrors.ts";
+import type { ReleaseAsset, UpdaterPlatform } from "./sourceforge-mirrors.ts";
 
 export const UPDATER_TARGETS = [
   "win64",

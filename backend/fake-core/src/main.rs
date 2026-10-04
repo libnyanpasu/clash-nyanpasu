@@ -318,6 +318,9 @@ fn read_http_request(stream: impl Read) -> std::io::Result<String> {
 }
 
 fn handle_http_client(mut stream: TcpStream, status: u16, body: &str) -> std::io::Result<()> {
+    // macOS inherits the listener's nonblocking mode; request reads must instead
+    // wait for data up to the socket deadline, including between body fragments.
+    stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
     stream.set_write_timeout(Some(Duration::from_secs(2)))?;
 
@@ -383,8 +386,36 @@ fn env_u16_or(key: &str, default: u16) -> Result<u16, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::read_http_request;
-    use std::io::{Cursor, ErrorKind, Read};
+    use super::{handle_http_client, read_http_request};
+    use std::{
+        io::{Cursor, ErrorKind, Read},
+        net::{TcpListener, TcpStream},
+        time::{Duration, Instant},
+    };
+
+    #[test]
+    fn http_client_waits_for_its_deadline_on_an_inherited_nonblocking_stream() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        // Force macOS accept semantics on every platform. Keep the peer open
+        // without data so only the handler's real read deadline can finish it.
+        stream.set_nonblocking(true).unwrap();
+
+        let started = Instant::now();
+        let error = handle_http_client(stream, 204, "").unwrap_err();
+        assert!(matches!(
+            error.kind(),
+            ErrorKind::WouldBlock | ErrorKind::TimedOut
+        ));
+        // Allow platform timer rounding while distinguishing the two-second
+        // socket deadline from an immediate nonblocking read failure.
+        assert!(
+            started.elapsed() >= Duration::from_secs(1),
+            "a nonblocking read returned before the configured socket deadline"
+        );
+        drop(client);
+    }
 
     #[test]
     fn http_request_consumes_the_body_before_responding() {

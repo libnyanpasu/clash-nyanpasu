@@ -664,6 +664,12 @@ mod tests {
                 impact: RuntimeImpact::Reconcile,
                 owners: &[],
             },
+            AppCase {
+                field: "core_logs",
+                mutate: |app| app.core_logs.max_size_mib = 128,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
             // Peripheral owners.
             AppCase {
                 field: "language",

@@ -28,8 +28,8 @@ fn record(number: usize, size: usize) -> CoreLogRecord {
         payload: format!("{number:012} {}", "x".repeat(size)),
     }
 }
-fn encoded(number: usize, size: usize) -> Vec<u8> {
-    serde_json::to_vec(&record(number, size)).unwrap()
+fn encoded(number: usize, size: usize) -> PreparedCoreLog {
+    PreparedCoreLog::new(&record(number, size)).unwrap()
 }
 fn query(direction: CoreLogDirection, cursor: Option<CoreLogCursor>) -> CoreLogQuery {
     CoreLogQuery {
@@ -47,7 +47,13 @@ struct TestStore {
     _directory: TempDir,
 }
 impl CoreLogStore for TestStore {
-    fn append(&mut self, records: &[Vec<u8>]) -> CoreLogResult<()> {
+    fn configure(
+        &mut self,
+        settings: nyanpasu_config::application::CoreLogSettings,
+    ) -> CoreLogResult<()> {
+        self.inner.configure(settings)
+    }
+    fn append(&mut self, records: &[PreparedCoreLog]) -> CoreLogResult<()> {
         self.inner.append(records)
     }
     fn query(&mut self, request: CoreLogQuery) -> CoreLogResult<CoreLogPage> {
@@ -72,6 +78,7 @@ impl CoreLogsClient {
         };
         let client = Self::spawn(
             Box::new(store),
+            Default::default(),
             CancellationToken::new(),
             &TaskTracker::new(),
         )
@@ -95,6 +102,7 @@ async fn actor_memory_under_sustained_capture() {
     let tasks = TaskTracker::new();
     let client = CoreLogsClient::spawn(
         Box::new(RedbCoreLogStore::open(directory.path().into()).unwrap()),
+        Default::default(),
         shutdown.clone(),
         &tasks,
     )
@@ -144,7 +152,7 @@ async fn actor_memory_under_sustained_capture() {
 }
 
 #[test]
-fn one_database_keeps_all_records_until_clear_and_startup_discards_old_history() {
+fn shards_keep_records_under_budget_until_clear_and_startup_discards_history() {
     let directory = TempDir::new().unwrap();
     let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
     for first in (0..10000).step_by(40) {
@@ -159,7 +167,7 @@ fn one_database_keeps_all_records_until_clear_and_startup_discards_old_history()
     let status = store.status().unwrap();
     assert_eq!(status.first.as_ref().unwrap().sequence, 1);
     assert_eq!(status.head.as_ref().unwrap().sequence, 10000);
-    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
+    assert!(std::fs::read_dir(directory.path()).unwrap().count() >= 2);
     let mut request = query(CoreLogDirection::Latest, None);
     let mut ids = Vec::new();
     loop {
@@ -198,6 +206,7 @@ async fn oversized_metadata_is_discarded_without_poisoning_the_pending_batch() {
     let tasks = TaskTracker::new();
     let client = CoreLogsClient::spawn(
         Box::new(RedbCoreLogStore::open(directory.path().into()).unwrap()),
+        Default::default(),
         shutdown.clone(),
         &tasks,
     )
@@ -230,7 +239,7 @@ fn response_budget_does_not_skip_rows_and_details_keep_the_complete_utf8_record(
             .map(|n| {
                 let mut record = record(n, 0);
                 record.payload = "猫".repeat(3000);
-                serde_json::to_vec(&record).unwrap()
+                PreparedCoreLog::new(&record).unwrap()
             })
             .collect();
         store.append(&batch).unwrap();
@@ -309,9 +318,7 @@ fn directory_owner_and_invalid_requests_are_rejected() {
         CoreLogError::InvalidRequest
     );
     assert_eq!(
-        store
-            .append(&[vec![0; model::MAX_RECORD_BYTES + 1]])
-            .unwrap_err(),
+        PreparedCoreLog::new(&record(0, model::MAX_RECORD_BYTES + 1)).unwrap_err(),
         CoreLogError::TooLarge
     );
 }
@@ -341,7 +348,13 @@ struct FailingStore {
     attempts: Arc<AtomicUsize>,
 }
 impl CoreLogStore for FailingStore {
-    fn append(&mut self, records: &[Vec<u8>]) -> CoreLogResult<()> {
+    fn configure(
+        &mut self,
+        settings: nyanpasu_config::application::CoreLogSettings,
+    ) -> CoreLogResult<()> {
+        self.inner.configure(settings)
+    }
+    fn append(&mut self, records: &[PreparedCoreLog]) -> CoreLogResult<()> {
         self.attempts.fetch_add(1, Ordering::SeqCst);
         if self.fail.load(Ordering::SeqCst) {
             return Err(CoreLogError::Unavailable("disk full".into()));
@@ -377,19 +390,26 @@ async fn write_failure_stops_capture_without_replay_until_explicit_clear() {
     };
     let token = CancellationToken::new();
     let tasks = TaskTracker::new();
-    let logs = CoreLogsClient::spawn(Box::new(store), token.clone(), &tasks)
+    let logs = CoreLogsClient::spawn(Box::new(store), Default::default(), token.clone(), &tasks)
         .await
         .unwrap();
     logs.set_instance(Some("instance".into())).await.unwrap();
     logs.append(record(1, 32)).await.unwrap();
     assert!(logs.flush().await.is_err());
+    tokio::time::pause();
+    let published = logs.subscribe();
+    let failed_version = published.borrow().version;
+    assert!(published.borrow().error.is_some());
     for number in 2..102 {
         assert!(logs.append(record(number, 32)).await.is_err());
     }
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     assert_eq!(logs.status().await.unwrap().discarded, 101);
+    assert_eq!(published.borrow().version, failed_version);
     fail.store(false, Ordering::SeqCst);
     logs.flush().await.unwrap();
+    assert_eq!(published.borrow().discarded, 101);
+    assert_eq!(published.borrow().version, failed_version + 1);
     let page = logs
         .query(query(CoreLogDirection::Latest, None))
         .await
@@ -424,6 +444,7 @@ async fn crash_writer_child() {
     };
     let logs = CoreLogsClient::spawn(
         Box::new(RedbCoreLogStore::open(directory.into()).unwrap()),
+        Default::default(),
         CancellationToken::new(),
         &TaskTracker::new(),
     )
@@ -465,6 +486,7 @@ async fn session_changes_delete_committed_and_pending_logs_but_reconnect_preserv
     let tasks = TaskTracker::new();
     let logs = CoreLogsClient::spawn(
         Box::new(RedbCoreLogStore::open(directory.path().into()).unwrap()),
+        Default::default(),
         token.clone(),
         &tasks,
     )
@@ -522,4 +544,112 @@ async fn session_changes_delete_committed_and_pending_logs_but_reconnect_preserv
     tasks.close();
     tasks.wait().await;
     assert!(!directory.path().join("current.redb").exists());
+}
+
+#[test]
+fn rotation_evicts_oldest_files_and_paginates_every_retained_record() {
+    use nyanpasu_config::application::CoreLogSettings;
+    let directory = TempDir::new().unwrap();
+    let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    let settings = CoreLogSettings {
+        shard_size_mib: 4,
+        max_size_mib: 12,
+    };
+    store.configure(settings).unwrap();
+    store.append(&[encoded(0, 64 * 1024)]).unwrap();
+    let first = store.status().unwrap();
+    for number in 1..500 {
+        store.append(&[encoded(number, 64 * 1024)]).unwrap();
+        assert!(store.status().unwrap().bytes <= settings.max_bytes());
+    }
+    let status = store.status().unwrap();
+    assert_eq!(status.generation, first.generation);
+    assert!(status.first.as_ref().unwrap().sequence > 1);
+    assert_eq!(status.head.as_ref().unwrap().sequence, 500);
+    assert_eq!(
+        store.detail(first.head.clone().unwrap()).unwrap_err(),
+        CoreLogError::RecordGone
+    );
+    assert_eq!(
+        store
+            .query(query(CoreLogDirection::After, first.head))
+            .unwrap_err(),
+        CoreLogError::CursorExpired
+    );
+    let retained_start = status.first.as_ref().unwrap().sequence;
+    let mut request = query(CoreLogDirection::Latest, None);
+    let mut ids = Vec::new();
+    loop {
+        let page = store.query(request).unwrap();
+        ids.extend(page.rows.iter().map(|row| row.id.sequence));
+        if !page.more {
+            break;
+        }
+        request = query(CoreLogDirection::Before, page.cursor);
+    }
+    ids.sort_unstable();
+    assert_eq!(ids, (retained_start..=500).collect::<Vec<_>>());
+    let mut request = query(CoreLogDirection::After, status.first.clone());
+    let mut forwards = Vec::new();
+    loop {
+        let page = store.query(request).unwrap();
+        forwards.extend(page.rows.iter().map(|row| row.id.sequence));
+        if !page.more {
+            break;
+        }
+        request = query(CoreLogDirection::After, page.cursor);
+    }
+    assert_eq!(forwards, (retained_start + 1..=500).collect::<Vec<_>>());
+    store.clear().unwrap();
+    assert_eq!(store.status().unwrap().bytes, 0);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn empty_flush_does_not_publish_another_version() {
+    let logs = CoreLogsClient::test_client().await;
+    logs.append(record(0, BATCH_BYTES)).await.unwrap();
+    let status = logs.status().await.unwrap();
+    logs.flush().await.unwrap();
+    assert_eq!(logs.status().await.unwrap(), status);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_locked_rotation_file_stops_writes_until_clear() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let directory = TempDir::new().unwrap();
+    let logs = CoreLogsClient::spawn(
+        Box::new(RedbCoreLogStore::open(directory.path().into()).unwrap()),
+        nyanpasu_config::application::CoreLogSettings {
+            shard_size_mib: 4,
+            max_size_mib: 8,
+        },
+        CancellationToken::new(),
+        &TaskTracker::new(),
+    )
+    .await
+    .unwrap();
+    logs.set_instance(Some("instance".into())).await.unwrap();
+    logs.append(record(0, 700 * 1024)).await.unwrap();
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(3)
+        .open(directory.path().join("current.redb"))
+        .unwrap();
+    let mut failed = false;
+    for number in 1..20 {
+        if logs.append(record(number, 700 * 1024)).await.is_err() {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    let head = logs.status().await.unwrap().head;
+    assert!(logs.append(record(99, 16)).await.is_err());
+    assert_eq!(logs.status().await.unwrap().head, head);
+    drop(held);
+    logs.clear().await.unwrap();
+    logs.append(record(100, BATCH_BYTES)).await.unwrap();
+    assert!(logs.status().await.unwrap().error.is_none());
 }

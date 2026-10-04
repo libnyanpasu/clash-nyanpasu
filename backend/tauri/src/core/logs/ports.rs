@@ -1,9 +1,11 @@
 use super::model::*;
+use nyanpasu_config::application::CoreLogSettings;
 
 /// Synchronous infrastructure operations run on a blocking thread. The actor
 /// transfers this owner into that thread and awaits its return for each command.
 pub trait CoreLogStore: Send + 'static {
-    fn append(&mut self, records: &[Vec<u8>]) -> CoreLogResult<()>;
+    fn configure(&mut self, settings: CoreLogSettings) -> CoreLogResult<()>;
+    fn append(&mut self, records: &[PreparedCoreLog]) -> CoreLogResult<()>;
     fn query(&mut self, query: CoreLogQuery) -> CoreLogResult<CoreLogPage>;
     fn detail(&mut self, cursor: CoreLogCursor) -> CoreLogResult<CoreLogRecord>;
     fn clear(&mut self) -> CoreLogResult<()>;
@@ -13,7 +15,10 @@ pub trait CoreLogStore: Send + 'static {
 pub struct UnavailableCoreLogStore(pub String);
 
 impl CoreLogStore for UnavailableCoreLogStore {
-    fn append(&mut self, _: &[Vec<u8>]) -> CoreLogResult<()> {
+    fn configure(&mut self, _: CoreLogSettings) -> CoreLogResult<()> {
+        Err(CoreLogError::Unavailable(self.0.clone()))
+    }
+    fn append(&mut self, _: &[PreparedCoreLog]) -> CoreLogResult<()> {
         Err(CoreLogError::Unavailable(self.0.clone()))
     }
     fn query(&mut self, _: CoreLogQuery) -> CoreLogResult<CoreLogPage> {

@@ -127,6 +127,11 @@ impl ApplicationActor {
     ) -> Result<ApplicationSnapshot, ConfigError> {
         state.mutations.ensure_ready()?;
         Self::validate_channel(state, &mut next)?;
+        next.core_logs
+            .validate()
+            .map_err(|reason| ConfigError::InvalidCoreLogs {
+                reason: reason.into(),
+            })?;
         nyanpasu_config::application::validate_update_sources(&next.update_sources).map_err(
             |reason| ConfigError::InvalidUpdateSources {
                 reason: reason.into(),

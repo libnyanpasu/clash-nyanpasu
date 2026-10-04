@@ -1111,6 +1111,7 @@ export type ConfigError =
   /**  A nightly build keeps its channel. */
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
   | { kind: 'invalid_update_sources'; reason: string }
+  | { kind: 'invalid_core_logs'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'workflow_not_ready' }
   | { kind: 'shutting_down'; domain: ConfigDomain }
@@ -1557,6 +1558,12 @@ export type CoreLogRow = {
   id: CoreLogCursor
   record: CoreLogRecord
   truncated: boolean
+}
+
+/**  Current-session Core log retention, read when the application starts. */
+export type CoreLogSettings = {
+  shard_size_mib?: number
+  max_size_mib?: number
 }
 
 export type CoreLogSource = {
@@ -2454,6 +2461,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
   | ({
       app_singleton_port?: number | null
       app_log_level?: LoggingLevel_Deserialize | null
+      core_logs?: CoreLogSettings | null
       language?: I18nLanguage_Deserialize | null
       theme_mode?: ThemeMode | null
       traffic_graph?: boolean | null
@@ -2506,6 +2514,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
 export type NyanpasuAppConfigPatch_Serialize = {
   app_singleton_port?: number | null
   app_log_level?: LoggingLevel_Serialize | null
+  core_logs?: CoreLogSettings | null
   language?: I18nLanguage_Serialize | null
   theme_mode?: ThemeMode | null
   traffic_graph?: boolean | null
@@ -2552,6 +2561,8 @@ export type NyanpasuAppConfig_Deserialize = {
    *  silent | error | warn | info | debug | trace
    */
   app_log_level: LoggingLevel_Deserialize
+  /**  Core log disk settings, applied on application startup. */
+  core_logs?: CoreLogSettings
   language: I18nLanguage_Deserialize
   /**  `light` or `dark` or `system` */
   theme_mode: ThemeMode
@@ -2651,6 +2662,8 @@ export type NyanpasuAppConfig_Serialize = {
    *  silent | error | warn | info | debug | trace
    */
   app_log_level: LoggingLevel_Serialize
+  /**  Core log disk settings, applied on application startup. */
+  core_logs: CoreLogSettings
   language: I18nLanguage_Serialize
   /**  `light` or `dark` or `system` */
   theme_mode: ThemeMode

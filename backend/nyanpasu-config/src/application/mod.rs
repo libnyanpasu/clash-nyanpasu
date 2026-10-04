@@ -5,12 +5,14 @@ use struct_patch::Patch;
 use url::Url;
 
 mod clash_core;
+mod core_logs;
 mod i18n;
 mod logging;
 mod traffic;
 mod update;
 mod widget;
 pub use clash_core::*;
+pub use core_logs::*;
 pub use i18n::*;
 pub use logging::*;
 pub use traffic::*;
@@ -94,6 +96,10 @@ pub struct NyanpasuAppConfig {
     /// app log level
     /// silent | error | warn | info | debug | trace
     pub app_log_level: LoggingLevel,
+
+    /// Core log disk settings, applied on application startup.
+    #[serde(default)]
+    pub core_logs: CoreLogSettings,
 
     // i18n
     pub language: I18nLanguage,
@@ -243,6 +249,7 @@ impl Default for NyanpasuAppConfig {
         Self {
             app_singleton_port: 0,
             app_log_level: LoggingLevel::default(),
+            core_logs: CoreLogSettings::default(),
             language: default_i18n_language(),
             theme_mode: ThemeMode::System,
             traffic_graph: true,

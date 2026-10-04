@@ -916,7 +916,7 @@ mod tests {
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {
-                    serde_json::to_vec(&crate::core::logs::CoreLogRecord {
+                    crate::core::logs::PreparedCoreLog::new(&crate::core::logs::CoreLogRecord {
                         source: crate::core::logs::CoreLogSource {
                             capture: "http-fixture".into(),
                             instance_id: "instance".into(),

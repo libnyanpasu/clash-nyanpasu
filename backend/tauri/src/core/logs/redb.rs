@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     fs::{self, File, OpenOptions},
     ops::Bound,
     path::PathBuf,
@@ -8,12 +9,20 @@ use anyhow::{Context, Result, bail, ensure};
 use redb::{Database, ReadableDatabase, TableDefinition};
 
 use super::{model::*, ports::CoreLogStore};
+use nyanpasu_config::application::CoreLogSettings;
 
 const LOGS: TableDefinition<u64, &[u8]> = TableDefinition::new("logs");
 const LEVELS: TableDefinition<(u8, u64), u8> = TableDefinition::new("levels");
 const CACHE_BYTES: usize = 1024 * 1024;
 
-/// The actor owns one lazily opened database for the current Core session.
+struct Shard {
+    path: PathBuf,
+    first: u64,
+    head: u64,
+    bytes: u64,
+}
+
+/// Only the active shard stays open; sealed shards are opened for a query.
 pub struct RedbCoreLogStore {
     directory: PathBuf,
     database: Option<Database>,
@@ -21,6 +30,8 @@ pub struct RedbCoreLogStore {
     _lock: File,
     generation: String,
     head: u64,
+    settings: CoreLogSettings,
+    shards: VecDeque<Shard>,
 }
 
 fn map_error(error: anyhow::Error) -> CoreLogError {
@@ -63,6 +74,8 @@ impl RedbCoreLogStore {
             _lock: lock,
             generation: uuid::Uuid::new_v4().to_string(),
             head: 0,
+            settings: CoreLogSettings::default(),
+            shards: VecDeque::new(),
         })
     }
 
@@ -73,52 +86,97 @@ impl RedbCoreLogStore {
         }
     }
 
-    fn current_status(&self) -> Result<CoreLogStatus> {
-        let bytes = match fs::metadata(self.directory.join("current.redb")) {
-            Ok(metadata) => metadata.len(),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
-            Err(error) => return Err(error.into()),
-        };
-        Ok(CoreLogStatus {
+    fn current_status(&self) -> CoreLogStatus {
+        CoreLogStatus {
             generation: self.generation.clone(),
-            first: (self.head > 0).then(|| self.cursor(1)),
-            head: (self.head > 0).then(|| self.cursor(self.head)),
-            bytes,
+            first: self.shards.front().map(|shard| self.cursor(shard.first)),
+            head: self.shards.back().map(|shard| self.cursor(shard.head)),
+            bytes: self.shards.iter().map(|shard| shard.bytes).sum(),
             ..Default::default()
-        })
+        }
     }
 
-    fn append_batch(&mut self, records: &[Vec<u8>]) -> Result<()> {
+    fn database_builder() -> redb::Builder {
+        let mut builder = Database::builder();
+        builder.set_cache_size(CACHE_BYTES);
+        builder
+    }
+
+    fn rotate(&mut self) -> Result<()> {
+        drop(self.database.take());
+        if let Some(shard) = self.shards.back_mut() {
+            let path = self
+                .directory
+                .join(format!("{}.{:020}.redb", self.generation, shard.first));
+            fs::rename(&shard.path, &path)?;
+            shard.path = path;
+        }
+        Ok(())
+    }
+
+    fn evict(&mut self) -> Result<()> {
+        let mut bytes: u64 = self.shards.iter().map(|shard| shard.bytes).sum();
+        while bytes > self.settings.max_bytes() {
+            let shard = self
+                .shards
+                .front()
+                .expect("a nonempty store exceeds its budget");
+            if self.shards.len() == 1 {
+                drop(self.database.take());
+            }
+            fs::remove_file(&shard.path)?;
+            bytes -= shard.bytes;
+            self.shards.pop_front();
+        }
+        Ok(())
+    }
+
+    fn append_batch(&mut self, records: &[PreparedCoreLog]) -> Result<()> {
         if records.is_empty() {
             return Ok(());
         }
+        if self
+            .shards
+            .back()
+            .is_some_and(|shard| shard.bytes >= self.settings.shard_bytes())
+        {
+            self.rotate()?;
+        }
         if self.database.is_none() {
-            let mut builder = Database::builder();
-            builder.set_cache_size(CACHE_BYTES);
-            self.database = Some(builder.create(self.directory.join("current.redb"))?);
+            let path = self.directory.join("current.redb");
+            self.database = Some(Self::database_builder().create(&path)?);
+            self.shards.push_back(Shard {
+                path,
+                first: self.head + 1,
+                head: self.head,
+                bytes: 0,
+            });
         }
         let transaction = self.database.as_ref().unwrap().begin_write()?;
         let mut last = self.head;
         {
             let mut logs = transaction.open_table(LOGS)?;
             let mut levels = transaction.open_table(LEVELS)?;
-            for bytes in records {
-                ensure!(bytes.len() <= MAX_RECORD_BYTES, CoreLogError::TooLarge);
-                let record: CoreLogRecord = serde_json::from_slice(bytes)?;
-                ensure!(record.metadata_fits(), CoreLogError::TooLarge);
-                last = last.checked_add(1).context("Core log sequence exhausted")?;
-                logs.insert(last, bytes.as_slice())?;
-                levels.insert((level_code(&record.log_type), last), 0)?;
+            for record in records {
+                last += 1;
+                logs.insert(last, record.bytes.as_slice())?;
+                levels.insert((record.level, last), 0)?;
             }
         }
         transaction.commit()?;
         self.head = last;
-        Ok(())
+        let shard = self.shards.back_mut().unwrap();
+        shard.head = last;
+        shard.bytes = fs::metadata(&shard.path)?.len();
+        self.evict()
     }
 
     fn validate_cursor(&self, cursor: &CoreLogCursor) -> Result<()> {
         if cursor.generation != self.generation
-            || cursor.sequence == 0
+            || self
+                .shards
+                .front()
+                .is_none_or(|shard| cursor.sequence < shard.first)
             || cursor.sequence > self.head
         {
             bail!(CoreLogError::CursorExpired);
@@ -138,7 +196,7 @@ impl RedbCoreLogStore {
         if let Some(cursor) = &query.cursor {
             self.validate_cursor(cursor)?;
         }
-        let status = self.current_status()?;
+        let status = self.current_status();
         let mut page = CoreLogPage {
             rows: Vec::new(),
             cursor: query.cursor.clone(),
@@ -151,14 +209,30 @@ impl RedbCoreLogStore {
         let mut scanned = 0;
         let mut scan_bytes = 0;
         let mut response_bytes = 4096;
-        let Some(database) = &self.database else {
-            return Ok(page);
+        let shards: Box<dyn Iterator<Item = &Shard>> = if backwards {
+            Box::new(self.shards.iter().rev())
+        } else {
+            Box::new(self.shards.iter())
         };
-        if self.head == 0 {
-            return Ok(page);
-        }
-        let transaction = database.begin_read()?;
-        {
+        for shard in shards {
+            if query.cursor.as_ref().is_some_and(|cursor| {
+                if backwards {
+                    shard.first >= cursor.sequence
+                } else {
+                    shard.head <= cursor.sequence
+                }
+            }) {
+                continue;
+            }
+            let opened;
+            let database =
+                if shard.path == self.directory.join("current.redb") && self.database.is_some() {
+                    self.database.as_ref().unwrap()
+                } else {
+                    opened = Self::database_builder().open(&shard.path)?;
+                    &opened
+                };
+            let transaction = database.begin_read()?;
             let logs = transaction.open_table(LOGS)?;
             let mut consume = |sequence: u64, bytes: &[u8]| -> Result<bool> {
                 ensure!(
@@ -166,11 +240,6 @@ impl RedbCoreLogStore {
                     "Core log record exceeds its size limit"
                 );
                 let cursor = self.cursor(sequence);
-                if let Some(bound) = &query.cursor
-                    && (backwards && cursor >= *bound || !backwards && cursor <= *bound)
-                {
-                    return Ok(false);
-                }
                 if scanned >= MAX_SCAN_ROWS || scan_bytes + bytes.len() > MAX_SCAN_BYTES {
                     page.more = true;
                     return Ok(true);
@@ -251,6 +320,9 @@ impl RedbCoreLogStore {
                     }
                 }
             }
+            if page.more {
+                break;
+            }
         }
         if backwards {
             page.rows.reverse();
@@ -261,7 +333,19 @@ impl RedbCoreLogStore {
     fn detail_record(&self, cursor: CoreLogCursor) -> Result<CoreLogRecord> {
         self.validate_cursor(&cursor)
             .map_err(|_| CoreLogError::RecordGone)?;
-        let database = self.database.as_ref().ok_or(CoreLogError::RecordGone)?;
+        let shard = self
+            .shards
+            .iter()
+            .find(|shard| cursor.sequence >= shard.first && cursor.sequence <= shard.head)
+            .ok_or(CoreLogError::RecordGone)?;
+        let opened;
+        let database =
+            if shard.path == self.directory.join("current.redb") && self.database.is_some() {
+                self.database.as_ref().unwrap()
+            } else {
+                opened = Self::database_builder().open(&shard.path)?;
+                &opened
+            };
         let transaction = database.begin_read()?;
         let table = transaction.open_table(LOGS)?;
         let value = table
@@ -277,18 +361,25 @@ impl RedbCoreLogStore {
     fn clear_store(&mut self) -> Result<()> {
         // All transactions end within their store call, before releasing this handle.
         drop(self.database.take());
+        while let Some(shard) = self.shards.front() {
+            fs::remove_file(&shard.path)?;
+            self.shards.pop_front();
+        }
         self.generation = uuid::Uuid::new_v4().to_string();
         self.head = 0;
-        match fs::remove_file(self.directory.join("current.redb")) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error.into()),
-        }
+        Ok(())
     }
 }
 
 impl CoreLogStore for RedbCoreLogStore {
-    fn append(&mut self, records: &[Vec<u8>]) -> CoreLogResult<()> {
+    fn configure(&mut self, settings: CoreLogSettings) -> CoreLogResult<()> {
+        settings
+            .validate()
+            .map_err(|reason| CoreLogError::Unavailable(reason.into()))?;
+        self.settings = settings;
+        Ok(())
+    }
+    fn append(&mut self, records: &[PreparedCoreLog]) -> CoreLogResult<()> {
         self.append_batch(records).map_err(map_error)
     }
     fn query(&mut self, query: CoreLogQuery) -> CoreLogResult<CoreLogPage> {
@@ -301,6 +392,6 @@ impl CoreLogStore for RedbCoreLogStore {
         self.clear_store().map_err(map_error)
     }
     fn status(&mut self) -> CoreLogResult<CoreLogStatus> {
-        self.current_status().map_err(map_error)
+        Ok(self.current_status())
     }
 }

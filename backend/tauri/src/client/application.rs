@@ -84,6 +84,13 @@ impl ApplicationClient {
             &manager.snapshot_handle().load().state.update_sources,
         )
         .map_err(anyhow::Error::msg)?;
+        manager
+            .snapshot_handle()
+            .load()
+            .state
+            .core_logs
+            .validate()
+            .map_err(anyhow::Error::msg)?;
         let snapshot = manager.snapshot_handle();
         let (settings_tx, settings_changes) =
             tokio::sync::watch::channel(snapshot.load().state.clone());

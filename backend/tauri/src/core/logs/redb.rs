@@ -5,14 +5,19 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, bail};
 use redb::{Database, ReadableDatabase, TableDefinition};
 
-use super::{model::*, ports::CoreLogStore};
+use super::{
+    codec::{LogDecoder, LogEncoder, original_size},
+    model::*,
+    ports::CoreLogStore,
+};
 use nyanpasu_config::application::CoreLogSettings;
 
 const LOGS: TableDefinition<u64, &[u8]> = TableDefinition::new("logs");
 const LEVELS: TableDefinition<(u8, u64), u8> = TableDefinition::new("levels");
+const DICTIONARY: TableDefinition<u8, &[u8]> = TableDefinition::new("dictionary");
 const CACHE_BYTES: usize = 1024 * 1024;
 
 struct Shard {
@@ -32,6 +37,7 @@ pub struct RedbCoreLogStore {
     head: u64,
     settings: CoreLogSettings,
     shards: VecDeque<Shard>,
+    encoder: LogEncoder,
 }
 
 fn map_error(error: anyhow::Error) -> CoreLogError {
@@ -76,6 +82,7 @@ impl RedbCoreLogStore {
             head: 0,
             settings: CoreLogSettings::default(),
             shards: VecDeque::new(),
+            encoder: LogEncoder::new(CoreLogSettings::default().compression)?,
         })
     }
 
@@ -135,14 +142,16 @@ impl RedbCoreLogStore {
         if records.is_empty() {
             return Ok(());
         }
-        if self
-            .shards
-            .back()
-            .is_some_and(|shard| shard.bytes >= self.settings.shard_bytes())
+        if self.database.is_some()
+            && self
+                .shards
+                .back()
+                .is_some_and(|shard| shard.bytes >= self.settings.shard_bytes())
         {
             self.rotate()?;
         }
-        if self.database.is_none() {
+        let creating = self.database.is_none();
+        if creating {
             let path = self.directory.join("current.redb");
             self.database = Some(Self::database_builder().create(&path)?);
             self.shards.push_back(Shard {
@@ -155,11 +164,17 @@ impl RedbCoreLogStore {
         let transaction = self.database.as_ref().unwrap().begin_write()?;
         let mut last = self.head;
         {
+            if creating {
+                transaction
+                    .open_table(DICTIONARY)?
+                    .insert(0, self.encoder.dictionary())?;
+            }
             let mut logs = transaction.open_table(LOGS)?;
             let mut levels = transaction.open_table(LEVELS)?;
             for record in records {
                 last += 1;
-                logs.insert(last, record.bytes.as_slice())?;
+                let encoded = self.encoder.encode(&record.bytes)?;
+                logs.insert(last, encoded.as_slice())?;
                 levels.insert((record.level, last), 0)?;
             }
         }
@@ -168,7 +183,11 @@ impl RedbCoreLogStore {
         let shard = self.shards.back_mut().unwrap();
         shard.head = last;
         shard.bytes = fs::metadata(&shard.path)?.len();
-        self.evict()
+        self.evict()?;
+        if self.encoder.train()? {
+            self.rotate()?;
+        }
+        Ok(())
     }
 
     fn validate_cursor(&self, cursor: &CoreLogCursor) -> Result<()> {
@@ -233,18 +252,18 @@ impl RedbCoreLogStore {
                     &opened
                 };
             let transaction = database.begin_read()?;
+            let dictionary = transaction.open_table(DICTIONARY)?;
+            let dictionary = dictionary.get(0)?.context("Core log dictionary missing")?;
+            let mut decoder = LogDecoder::new(dictionary.value())?;
             let logs = transaction.open_table(LOGS)?;
             let mut consume = |sequence: u64, bytes: &[u8]| -> Result<bool> {
-                ensure!(
-                    bytes.len() <= MAX_RECORD_BYTES,
-                    "Core log record exceeds its size limit"
-                );
+                let length = original_size(bytes)?;
                 let cursor = self.cursor(sequence);
-                if scanned >= MAX_SCAN_ROWS || scan_bytes + bytes.len() > MAX_SCAN_BYTES {
+                if scanned >= MAX_SCAN_ROWS || scan_bytes + length > MAX_SCAN_BYTES {
                     page.more = true;
                     return Ok(true);
                 }
-                let mut record: CoreLogRecord = serde_json::from_slice(bytes)?;
+                let mut record: CoreLogRecord = serde_json::from_slice(&decoder.decode(bytes)?)?;
                 let matches = level
                     .as_ref()
                     .is_none_or(|level| normalize_level(&record.log_type) == *level)
@@ -265,7 +284,7 @@ impl RedbCoreLogStore {
                     page.rows.push(row);
                 }
                 scanned += 1;
-                scan_bytes += bytes.len();
+                scan_bytes += length;
                 page.cursor = Some(cursor);
                 Ok(false)
             };
@@ -351,11 +370,10 @@ impl RedbCoreLogStore {
         let value = table
             .get(cursor.sequence)?
             .ok_or(CoreLogError::RecordGone)?;
-        ensure!(
-            value.value().len() <= MAX_RECORD_BYTES,
-            "Core log record exceeds its size limit"
-        );
-        Ok(serde_json::from_slice(value.value())?)
+        let dictionary = transaction.open_table(DICTIONARY)?;
+        let dictionary = dictionary.get(0)?.context("Core log dictionary missing")?;
+        let mut decoder = LogDecoder::new(dictionary.value())?;
+        Ok(serde_json::from_slice(&decoder.decode(value.value())?)?)
     }
 
     fn clear_store(&mut self) -> Result<()> {
@@ -367,6 +385,7 @@ impl RedbCoreLogStore {
         }
         self.generation = uuid::Uuid::new_v4().to_string();
         self.head = 0;
+        self.encoder = LogEncoder::new(self.settings.compression)?;
         Ok(())
     }
 }
@@ -376,6 +395,7 @@ impl CoreLogStore for RedbCoreLogStore {
         settings
             .validate()
             .map_err(|reason| CoreLogError::Unavailable(reason.into()))?;
+        self.encoder = LogEncoder::new(settings.compression).map_err(CoreLogError::from)?;
         self.settings = settings;
         Ok(())
     }

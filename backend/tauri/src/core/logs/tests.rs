@@ -554,6 +554,7 @@ fn rotation_evicts_oldest_files_and_paginates_every_retained_record() {
     let settings = CoreLogSettings {
         shard_size_mib: 4,
         max_size_mib: 12,
+        compression: nyanpasu_config::application::CoreLogCompression::None,
     };
     store.configure(settings).unwrap();
     store.append(&[encoded(0, 64 * 1024)]).unwrap();
@@ -614,6 +615,53 @@ async fn empty_flush_does_not_publish_another_version() {
     assert_eq!(logs.status().await.unwrap(), status);
 }
 
+#[test]
+fn trained_dictionary_rotates_without_losing_old_records_and_clear_resets_it() {
+    let directory = TempDir::new().unwrap();
+    let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    store
+        .configure(nyanpasu_config::application::CoreLogSettings {
+            compression: nyanpasu_config::application::CoreLogCompression::Trained,
+            ..Default::default()
+        })
+        .unwrap();
+    let mut first = None;
+    for number in 0..1600 {
+        store.append(&[encoded(number, 2048)]).unwrap();
+        if number == 0 {
+            first = store.status().unwrap().head;
+        }
+    }
+    // Training seals the preset shard even though compression keeps it below 16 MiB.
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 3);
+    assert_eq!(store.detail(first.unwrap()).unwrap().received_at, 0);
+    let head = store.status().unwrap().head.unwrap();
+    assert_eq!(store.detail(head.clone()).unwrap().received_at, 1599);
+    let mut request = query(CoreLogDirection::Latest, None);
+    let mut count = 0;
+    loop {
+        let page = store.query(request).unwrap();
+        count += page.rows.len();
+        if !page.more {
+            break;
+        }
+        request = query(CoreLogDirection::Before, page.cursor);
+    }
+    assert_eq!(count, 1600);
+    store.clear().unwrap();
+    assert_eq!(store.detail(head).unwrap_err(), CoreLogError::RecordGone);
+    store.append(&[encoded(0, 2048)]).unwrap();
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
+    assert_eq!(
+        store
+            .query(query(CoreLogDirection::Latest, None))
+            .unwrap()
+            .rows
+            .len(),
+        1
+    );
+}
+
 #[cfg(windows)]
 #[tokio::test]
 async fn a_locked_rotation_file_stops_writes_until_clear() {
@@ -624,6 +672,7 @@ async fn a_locked_rotation_file_stops_writes_until_clear() {
         nyanpasu_config::application::CoreLogSettings {
             shard_size_mib: 4,
             max_size_mib: 8,
+            compression: nyanpasu_config::application::CoreLogCompression::None,
         },
         CancellationToken::new(),
         &TaskTracker::new(),

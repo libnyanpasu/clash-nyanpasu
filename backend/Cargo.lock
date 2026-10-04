@@ -2062,6 +2062,7 @@ dependencies = [
  "winreg 0.56.0",
  "zip 8.6.0",
  "zip-extensions",
+ "zstd 0.14.0",
 ]
 
 [[package]]

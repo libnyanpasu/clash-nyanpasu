@@ -9,13 +9,27 @@ viewer's exact-level or literal, case-insensitive message filters.
 
 ## Current session
 
-The composition root opens `RedbCoreLogStore` in `<app logs directory>/core` and injects it into `CoreLogsActor`. The actor owns one lazily created active `current.redb` file and sealed shards. Records are JSON values with capture and kernel instance metadata, receipt time, level and complete message. The actor validates and serializes each admitted record once; the store uses its prepared level index without decoding it again.
+The composition root opens `RedbCoreLogStore` in `<app logs directory>/core` and injects it into `CoreLogsActor`. The actor owns one lazily created active `current.redb` file and sealed shards. Records contain JSON with capture and kernel instance metadata, receipt time, level and complete message. The actor validates and serializes each admitted record once; the store uses its prepared level index without decoding it again.
 
 Application configuration `core_logs` defaults to `shard_size_mib: 16` and `max_size_mib: 64`. These settings apply on application startup. A shard must be at least 4 MiB and the total budget at least twice its size. The store rotates at the shard threshold and evicts oldest files using actual redb file sizes, including indexes. One bounded transaction may exceed a threshold temporarily; eviction finishes before the next write. Only the active database remains open between calls. Sealed databases open on demand with the same bounded cache. There is no persisted manifest or cross-session recovery.
 
 Application startup removes the previous session's file, including remnants of the earlier shard implementation. Binding a new kernel instance clears committed and pending records before admitting its samples. A confirmed stopped state deletes all session files. Ordinary socket reconnects, controller changes and configuration updates for the same instance preserve logs. An unavailable endpoint alone does not prove the kernel stopped. Application shutdown deletes its session files; an abrupt exit leaves a file that the next startup removes.
 
 All transactions and file operations run serially through the log actor on a blocking thread. Clearing closes the database before deleting the file, changes the in-memory history generation and publishes status to all windows. The next write creates a new database. A directory ownership lock protects deletion and lazy creation from another application process.
+
+## Compression
+
+`core_logs.compression` accepts `none`, `preset` (default), or `trained`, applied at application startup. Each record has an independent versioned envelope with encoding and original length. Zstd level 3 reuses the writer context; messages that do not shrink use raw envelopes. Each shard stores its immutable dictionary in redb, so detail and page queries can decode both older and newer shards independently.
+
+The bundled 32 KiB dictionary is trained exclusively on synthetic TCP, UDP, DNS and configuration messages using reserved example addresses and names. Runtime mode starts with this preset and collects at most 2 MiB of samples, capped at 16 KiB per record. It trains once on the existing blocking storage call, releases the samples, and starts a new shard on success. Training failure keeps the preset without retries. Clearing ends the samples and dictionary lifecycle. Dictionary contents in runtime mode may contain log text and are deleted with their shard; compression is not encryption.
+
+Decode allocation and scan budgets use original sizes. Malformed envelopes, oversized lengths and length mismatches fail before returning records. Record preview and complete-message search behavior are unchanged.
+
+To regenerate the preset with the locked Zstd version:
+
+```sh
+cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features core::logs::codec::tests::regenerate_preset_dictionary -- --exact --ignored
+```
 
 ## Memory and queries
 

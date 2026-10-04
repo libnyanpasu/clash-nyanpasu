@@ -1,0 +1,11 @@
+[package]
+name = 'tao-window-repro-5411'
+version = '0.1.0'
+edition = '2024'
+publish = false
+
+# Keep the reproducer independent of Tauri and the application dependency graph.
+[workspace]
+
+[target.'cfg(windows)'.dependencies]
+tao = { version = '=0.37.1', default-features = false }

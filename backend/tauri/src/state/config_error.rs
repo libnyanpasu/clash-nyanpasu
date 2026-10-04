@@ -27,6 +27,8 @@ pub enum ConfigError {
     LeaveNightlyChannel { to: ReleaseChannel },
     #[snafu(display("the update source selection is invalid: {reason}"))]
     InvalidUpdateSources { reason: String },
+    #[snafu(display("invalid core log settings: {reason}"))]
+    InvalidCoreLogs { reason: String },
     #[snafu(display("the hotkey list is invalid"))]
     ValidateHotkeys { source: HotkeyParseError },
     #[snafu(context(false), display("the application workflow is not ready"))]

@@ -68,6 +68,29 @@ impl CoreLogRecord {
     }
 }
 
+/// An admitted record: JSON and its index key are computed only once.
+#[derive(Debug)]
+pub struct PreparedCoreLog {
+    pub(super) bytes: Vec<u8>,
+    pub(super) level: u8,
+}
+
+impl PreparedCoreLog {
+    pub fn new(record: &CoreLogRecord) -> CoreLogResult<Self> {
+        if !record.metadata_fits() {
+            return Err(CoreLogError::TooLarge);
+        }
+        let bytes = serde_json::to_vec(record).map_err(anyhow::Error::new)?;
+        if bytes.len() > MAX_RECORD_BYTES {
+            return Err(CoreLogError::TooLarge);
+        }
+        Ok(Self {
+            bytes,
+            level: level_code(&record.log_type),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct CoreLogRow {
     pub id: CoreLogCursor,

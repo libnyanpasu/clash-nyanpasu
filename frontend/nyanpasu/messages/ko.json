@@ -938,6 +938,7 @@
   "error_config_shutting_down": "앱을 종료하는 중입니다",
   "error_config_owner_stopped": "설정 서비스가 실행 중이 아닙니다",
   "error_config_invalid_update_sources": "업데이트 소스는 하나 이상 지정하고 중복 없이 선택해야 합니다: {reason}",
+  "error_config_invalid_core_logs": "잘못된 코어 로그 설정: {reason}",
   "error_config_version_conflict": "그동안 설정이 변경되었습니다. 다시 시도하세요",
   "error_config_persist_session_state": "창 상태를 저장할 수 없습니다",
   "error_config_session_state_stopped": "창 상태 서비스가 실행 중이 아닙니다",

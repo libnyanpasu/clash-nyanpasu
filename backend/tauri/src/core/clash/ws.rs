@@ -1494,6 +1494,7 @@ mod tests {
         let tasks = TaskTracker::new();
         let logs = crate::core::logs::CoreLogsClient::spawn(
             Box::new(crate::core::logs::RedbCoreLogStore::open(directory.path().into()).unwrap()),
+            Default::default(),
             token.clone(),
             &tasks,
         )

@@ -5,6 +5,7 @@ use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{model::*, ports::CoreLogStore};
+use nyanpasu_config::application::CoreLogSettings;
 
 const FLUSH_INTERVAL: Duration = Duration::from_millis(250);
 
@@ -21,6 +22,7 @@ enum Message {
     FlushNow(RpcReplyPort<CoreLogResult<()>>),
 }
 struct Args {
+    settings: CoreLogSettings,
     store: Box<dyn CoreLogStore>,
     shutdown: CancellationToken,
     changed: watch::Sender<CoreLogStatus>,
@@ -32,7 +34,7 @@ struct State {
     status: CoreLogStatus,
     instance: Option<String>,
     failed: bool,
-    pending: Vec<Vec<u8>>,
+    pending: Vec<PreparedCoreLog>,
     pending_bytes: usize,
     timer: Option<JoinHandle<()>>,
 }
@@ -78,8 +80,19 @@ impl State {
         }));
     }
 
+    fn discard(&mut self, actor: &ActorRef<Message>) {
+        self.status.discarded = self.status.discarded.saturating_add(1);
+        self.schedule(actor);
+    }
+
     async fn flush(&mut self) -> CoreLogResult<()> {
+        if let Some(timer) = self.timer.take() {
+            timer.abort();
+        }
         if self.pending.is_empty() {
+            if *self.changed.borrow() != self.status {
+                self.publish();
+            }
             return Ok(());
         }
         let records = std::mem::take(&mut self.pending);
@@ -109,8 +122,10 @@ impl State {
         }
         self.pending.clear();
         self.pending_bytes = 0;
-        let result = self.blocking(|store| store.clear()).await;
-        match self.blocking(|store| store.status()).await {
+        let (result, status) = self
+            .blocking(|store| Ok((store.clear(), store.status())))
+            .await?;
+        match status {
             Ok(mut status) => {
                 status.version = self.status.version;
                 self.status = status;
@@ -136,8 +151,7 @@ impl State {
             ));
         }
         if self.failed {
-            self.status.discarded = self.status.discarded.saturating_add(1);
-            self.schedule(actor);
+            self.discard(actor);
             return Err(CoreLogError::Unavailable(
                 self.status
                     .error
@@ -145,26 +159,26 @@ impl State {
                     .unwrap_or_else(|| "Core log storage unavailable".into()),
             ));
         }
-        let bytes = serde_json::to_vec(&record)
-            .map_err(|error| CoreLogError::Unavailable(error.to_string()))?;
-        if bytes.len() > MAX_RECORD_BYTES || !record.metadata_fits() {
-            self.status.discarded = self.status.discarded.saturating_add(1);
-            self.schedule(actor);
-            return Err(CoreLogError::TooLarge);
-        }
+        let record = match PreparedCoreLog::new(&record) {
+            Ok(record) => record,
+            Err(error) => {
+                self.discard(actor);
+                return Err(error);
+            }
+        };
         if !self.pending.is_empty()
-            && self.pending_bytes + bytes.len() > BATCH_BYTES
+            && self.pending_bytes + record.bytes.len() > BATCH_BYTES
             && let Err(error) = self.flush().await
         {
-            self.status.discarded = self.status.discarded.saturating_add(1);
-            self.schedule(actor);
+            self.discard(actor);
             return Err(error);
         }
-        self.pending_bytes += bytes.len();
-        self.pending.push(bytes);
-        self.schedule(actor);
+        self.pending_bytes += record.bytes.len();
+        self.pending.push(record);
         if self.pending_bytes >= BATCH_BYTES {
             self.flush().await?;
+        } else {
+            self.schedule(actor);
         }
         Ok(())
     }
@@ -193,7 +207,10 @@ impl Actor for CoreLogsActor {
             timer: None,
         };
         state.status = state
-            .blocking(|store| store.status())
+            .blocking(move |store| {
+                store.configure(args.settings)?;
+                store.status()
+            })
             .await
             .unwrap_or_else(|error| CoreLogStatus {
                 error: Some(error.to_string()),
@@ -218,18 +235,13 @@ impl Actor for CoreLogsActor {
                 let _ = reply.send(state.append(&actor, record).await);
             }
             Message::Discard(error, reply) => {
-                state.status.discarded = state.status.discarded.saturating_add(1);
                 state.status.error = Some(error);
-                state.schedule(&actor);
+                state.discard(&actor);
                 let _ = reply.send(());
             }
             Message::Flush => {
                 state.timer = None;
-                if state.pending.is_empty() {
-                    state.publish();
-                } else {
-                    let _ = state.flush().await;
-                }
+                let _ = state.flush().await;
             }
             Message::Query(query, reply) => {
                 let result =
@@ -301,6 +313,7 @@ impl Drop for Inner {
 impl CoreLogsClient {
     pub async fn spawn(
         store: Box<dyn CoreLogStore>,
+        settings: CoreLogSettings,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
@@ -310,6 +323,7 @@ impl CoreLogsClient {
             CoreLogsActor,
             Args {
                 store,
+                settings,
                 shutdown: shutdown.clone(),
                 changed: changed.clone(),
             },

@@ -420,9 +420,13 @@ impl NyanpasuClient {
                 }
             }
         });
-        let core_logs =
-            crate::core::logs::CoreLogsClient::spawn(logging.core, shutdown.child_token(), &tasks)
-                .await?;
+        let core_logs = crate::core::logs::CoreLogsClient::spawn(
+            logging.core,
+            application.snapshot().state.core_logs,
+            shutdown.child_token(),
+            &tasks,
+        )
+        .await?;
         // Before the effects owner, which hands it the capture level.
         let streams = crate::core::clash::ws::StreamsClient::spawn(
             core_v2.clone(),

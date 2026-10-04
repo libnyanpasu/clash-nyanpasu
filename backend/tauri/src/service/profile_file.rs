@@ -2042,7 +2042,7 @@ impl SubscriptionFetcher for ProfileFileService {
         use backon::Retryable;
 
         let mut builder = reqwest::ClientBuilder::new()
-            .use_rustls_tls()
+            .tls_backend_rustls()
             .no_proxy()
             .timeout(self.http_timeout);
 

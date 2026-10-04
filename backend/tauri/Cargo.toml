@@ -102,9 +102,8 @@ tokio-tungstenite = '0.30'
 url = '2'
 mime = '0.3'
 reqwest = { workspace = true }
-# Parallel/concurrent download engine. We disable the bundled reqwest adapter
-# (it targets reqwest 0.13 while this workspace pins 0.12) and implement our own
-# BoltLoadAdapter over the existing reqwest 0.12 client in `core::download`.
+# Parallel/concurrent download engine. Our BoltLoadAdapter in `core::download`
+# reuses the configured reqwest client and classifies failures for retry.
 bolt-load = { version = '0.1', default-features = false, features = [
   'tokio',
   'serde',

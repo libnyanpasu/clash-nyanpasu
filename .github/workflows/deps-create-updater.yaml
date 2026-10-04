@@ -12,6 +12,11 @@ on:
         description: 'Release Body'
         required: false
         type: string
+      sourceforge_mirrors_json:
+        description: 'Verified SourceForge mirror metadata'
+        required: false
+        type: string
+        default: ''
   workflow_call:
     inputs:
       nightly:
@@ -23,9 +28,17 @@ on:
         description: 'Release Body'
         required: false
         type: string
+      sourceforge_mirrors_json:
+        description: 'Verified SourceForge mirror metadata'
+        required: false
+        type: string
     secrets:
       SURGE_TOKEN:
         required: true
+      SOURCEFORGE_SSH_KEY:
+        required: false
+      SOURCEFORGE_KNOWN_HOSTS:
+        required: false
 
 jobs:
   updater:
@@ -74,12 +87,14 @@ jobs:
         run: pnpm updater:nightly
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCEFORGE_MIRRORS_JSON: ${{ inputs.sourceforge_mirrors_json }}
 
       - name: Update Stable and Beta Updaters
         if: ${{ inputs.nightly == false }}
         run: pnpm updater
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCEFORGE_MIRRORS_JSON: ${{ inputs.sourceforge_mirrors_json }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_BODY: ${{ inputs.release_body || github.event.release.body }}
 
@@ -98,3 +113,21 @@ jobs:
           surge manifest/site nyanpasu.surge.sh
         env:
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+
+      - name: Publish updater manifests to SourceForge Project Web
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        run: deno task sourceforge:web-publish manifest/site/updater ${{ inputs.nightly == true && 'nightly' || 'release' }} sourceforge-web-report.json
+        env:
+          SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_BUILD_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+          SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
+
+      - name: Preserve SourceForge manifest publication report
+        if: ${{ always() && vars.SOURCEFORGE_PROJECT != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: sourceforge-web-publication-report
+          path: sourceforge-web-report.json
+          if-no-files-found: warn

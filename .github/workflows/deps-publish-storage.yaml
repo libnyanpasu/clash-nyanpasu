@@ -1,0 +1,118 @@
+name: '[Reusable] Publish Central Storage Mirrors'
+
+on:
+  workflow_call:
+    inputs:
+      nightly:
+        description: 'Publish the nightly package inventory'
+        required: true
+        type: boolean
+      tag:
+        description: 'Release tag or nightly pre-release tag'
+        required: true
+        type: string
+    secrets:
+      ARCHIVE_UPLOAD_TOKEN:
+        required: false
+      FILE_SERVER_TOKEN:
+        required: false
+      UPLOAD_TOKEN:
+        required: false
+      IA_ACCESS_KEY:
+        required: false
+      IA_SECRET_KEY:
+        required: false
+      IA_UPLOADER:
+        required: false
+      SOURCEFORGE_SSH_KEY:
+        required: false
+      SOURCEFORGE_KNOWN_HOSTS:
+        required: false
+
+jobs:
+  publish_storage:
+    name: Publish validated six-target inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Create report directory
+        run: mkdir -p publication-reports-central
+
+      - name: Download all finalized GitHub build artifacts
+        if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: Clash.Nyanpasu-*
+          path: downloaded-build-artifacts
+          merge-multiple: false
+
+      - name: Install Deno
+        if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Validate six targets and prepare shared-timestamp manifests
+        if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
+        shell: bash
+        env:
+          IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          CHANNEL='${{ inputs.nightly == true && 'nightly' || 'release' }}'
+          ARGS=(--channel "$CHANNEL" --artifacts-dir downloaded-build-artifacts --output-dir central-publication --commit "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --item-prefix "${IA_ITEM_PREFIX:-sourceforge-only}")
+          if [[ "$CHANNEL" == 'release' ]]; then ARGS+=(--tag "$RELEASE_TAG"); fi
+          deno task prepare:central-publication "${ARGS[@]}"
+
+      - name: Publish each target to SourceForge FRS
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
+          SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME }}
+          SOURCEFORGE_CHANNEL: ${{ inputs.nightly == true && 'nightly' || 'release' }}
+          SOURCEFORGE_BUILD_ID: ${{ inputs.nightly == true && format('{0}-{1}-{2}', github.run_id, github.run_attempt, github.sha) || inputs.tag }}
+          SOURCEFORGE_RELEASE_TAG: ${{ inputs.nightly == false && inputs.tag || '' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
+          SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
+        run: |
+          for target in windows-x86_64 windows-aarch64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
+            mkdir -p "publication-reports-central/$target"
+            deno task sourceforge:upload "central-publication/manifests/$target.json" "publication-reports-central/$target/sourceforge-report.json" || true
+          done
+
+      - name: Publish each target to Internet Archive
+        if: ${{ vars.IA_ITEM_PREFIX != '' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
+          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
+          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
+          IA_UPLOADER: ${{ secrets.IA_UPLOADER }}
+          ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+        run: |
+          for target in windows-x86_64 windows-aarch64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
+            mkdir -p "publication-reports-central/$target"
+            deno task archive:publish "central-publication/manifests/$target.json" https://archive.nyanpasu.org "publication-reports-central/$target/ia-report.json" || true
+          done
+
+      - name: Preserve central upload reports for independent gates
+        if: ${{ always() && (vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: publication-reports-central
+          path: |
+            publication-reports-central/
+            central-publication/manifests/
+            central-publication/publication-context.json
+          if-no-files-found: warn

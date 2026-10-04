@@ -76,6 +76,7 @@ jobs:
     env:
       # Archive uploads are temporarily paused; packages are published on GitHub.
       ARCHIVE_UPLOAD_ENABLED: 'false'
+      NYANPASU_SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
       # TODO: Remove after upgrading to a tauri-build release containing tauri-apps/tauri#15831.
       __CARGO_TEMPORARY_BUILD_DIR_NEW_LAYOUT_OPT_OUT: '1'
       NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
@@ -287,8 +288,8 @@ jobs:
 
           foreach ($file in $files) {
             echo "Renaming $file"
-            $newname = $file.FullName -replace $arch, "fixed-webview-$arch"
-            Rename-Item -Path $file -NewName $newname
+            $newname = $file.Name -replace $arch, "fixed-webview-$arch"
+            Rename-Item -LiteralPath $file.FullName -NewName $newname
           }
 
       - name: Portable Bundle with fixed WebView

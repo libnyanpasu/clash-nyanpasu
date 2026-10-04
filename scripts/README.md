@@ -39,26 +39,85 @@ later publication steps fail, rerun those failed jobs to complete publication.
 is published by `deno task updater:nightly`. The release workflow copies these
 manifests to `nyanpasu.surge.sh`. Surge currently hosts manifests only; package
 downloads use the sources selected in the app's About settings: Nyanpasu, GitHub
-Releases, or GHFast. GHFast is optional and does not change saved source order.
-Its URLs prefix the complete GitHub URL with `https://ghfast.top/`; Nyanpasu
-uses the GitHub path without its host. Every package source retains the same
-release signature and updater public key.
+Releases, GHFast, or SourceForge. GHFast and SourceForge are optional and do not
+change saved source order. Its URLs prefix the complete GitHub URL with
+`https://ghfast.top/`; Nyanpasu uses the GitHub path without its host. Every
+package source retains the same release signature and updater public key.
 
-Surge's [deployment API](https://surge.sh/docs/api/deploys) documents a 450 MB
-project limit. Hosting only the archives referenced by a manifest avoids keeping
-historical releases, but does not guarantee that a complete current release
-fits. For example, on 2026-10-02 the nightly feed referenced seven distinct
-archives totalling about 1.285 GB. Mirroring all of them would require separate
-sites or another storage provider. The existing manifest site cannot host that
-complete set of archives.
+The SourceForge web site is a separate, optional manifest host. Its manifests
+are published as static JSON at `https://<project>.sourceforge.io/updater/`;
+binary files stay on SourceForge FRS under immutable
+`nightly/<run>-<attempt>-<sha>` or `releases/<tag>` directories. The app
+receives the Project Web endpoint at build time only when that host is enabled.
+Surge and GitHub feeds remain available independently.
 
-## Archive uploads and Telegram notifications
+## Binary mirrors and archive uploads
 
-Archive uploads and their diagnostic/verification steps are temporarily disabled
-in the package build and publication workflows. Installers and portable bundles
-are published only on GitHub Releases. The archive steps remain in the workflows
-with `ARCHIVE_UPLOAD_ENABLED: 'false'` in each build job and disabled
-verification conditions so they can be restored together later.
+GitHub Releases remain the primary publisher. After all six platform builds
+finish, the central storage workflow downloads their finalized GitHub artifacts,
+validates the complete target set and unique asset names, then publishes the six
+target inventories to configured mirrors with one shared UTC timestamp. Setting
+`SOURCEFORGE_PROJECT` automatically connects FRS mirroring, Project Web manifest
+publication, and the compiled app fallback endpoint. It also requires the
+`SOURCEFORGE_USERNAME` variable and the `SOURCEFORGE_SSH_KEY` and
+`SOURCEFORGE_KNOWN_HOSTS` secrets. There are no separate enabled flags. The
+known-hosts value must cover both `frs.sourceforge.net` and
+`web.sourceforge.net` for FRS and Project Web. The publication workflow verifies
+every public file's size and SHA-256 before promoting mirror metadata.
+
+Release uploads also read the existing GitHub `sourceforge-mirrors.json` before
+writing to FRS. Recorded files must keep the same size, SHA-256 and mirror URL;
+lookup failures stop the upload. CI supplies `GITHUB_TOKEN` and
+`GITHUB_REPOSITORY` for this check. Manual release uploads require those values
+as well; a new release without a sidecar can still complete a partial upload.
+
+Updater manifests are published on SourceForge Project Web using the same
+project and SSH values. The workflow stages each feed and renames it only after
+all files have uploaded; it verifies the public JSON before the nightly cleanup
+job can run. It only adds `updater/index.html` when that file is absent.
+
+Setting `IA_ITEM_PREFIX` automatically connects Internet Archive archiving.
+Configure `IA_ITEM_PREFIX` as a repository variable. The uploader lives in this
+repository and runs from the same checkout as the publication workflow.
+Configure `IA_ACCESS_KEY`, `IA_SECRET_KEY`, `IA_UPLOADER` and the existing
+`FILE_SERVER_TOKEN` secrets. `IA_UPLOADER` must exactly match the value sent as
+IA `metadata.uploader` (often the account email, not the public username).
+Configure the Archive Hub Worker with the same `IA_ITEM_PREFIX` and
+`IA_UPLOADER`, then apply migration `0003` and deploy the Worker before adding
+the CI `IA_ITEM_PREFIX` variable. Archive ingest may remain pending after a
+successful byte upload; that status is reported separately and does not hold up
+SourceForge or updater-feed publication. To reconcile a pending item after IA
+ingest, use the main repository's
+`deno task archive:verify --build-id <target-build-id>
+--server https://archive.nyanpasu.org --report <report.json>`.
+Old nightly FRS directories are pruned only after manifest publication succeeds
+and the corresponding IA archive builds report ready. Release directories are
+retained indefinitely.
+
+Use `[Maintenance] Backfill SourceForge Release Mirror` with an existing
+published release tag to mirror its current GitHub assets and attach verified
+`sourceforge-mirrors.json` metadata to that release. It does not rebuild the
+release or publish a new app feed.
+
+Repository variables are unset by default, so a fresh setup continues to publish
+GitHub Releases and Surge without pretending that either optional mirror is
+configured.
+
+The related Deno tasks are `prepare:central-publication`,
+`prepare:publication-manifest`, `sourceforge:upload`, `sourceforge:verify`,
+`sourceforge:web-publish`, `sourceforge:cleanup`, `archive:publish`,
+`archive:verify-reports` and `archive:verify`. `archive:publish` calls the local
+IA uploader; `nyanpasu-file-list` only provides registration, verification,
+indexing and download routes. `sourceforge:verify` writes the compact mirror
+manifest consumed by the updater task, while `sourceforge:cleanup` accepts only
+full run/attempt/SHA nightly directory names and never scans or deletes release
+paths.
+
+## Legacy OneDrive upload diagnostics
+
+These diagnostics apply to historical OneDrive publication runs and the legacy
+upload tools. Current publication workflows keep OneDrive package uploads
+disabled.
 
 If a report contains `quotaLimitReached` (sometimes wrapped in HTTP 500) or HTTP
 507, the archive's backing OneDrive storage has exhausted its quota. The
@@ -77,11 +136,13 @@ See Microsoft's
 
 GitHub Actions package artifacts and GitHub Release publication are independent
 of archive verification and remain fallback downloads when their steps
-succeeded. Re-running only `Verify Archive Uploads` rechecks the same reports;
-it does not upload missing files. After capacity is restored, retry the affected
-upload from the retained artifacts into its original `FOLDER_PATH`, or start a
-fresh nightly build. Avoid rebuilding all platforms merely to diagnose a storage
-quota error.
+succeeded. Re-running a historical `Verify Archive Uploads` job rechecks the
+same reports; it does not upload missing files. After capacity is restored,
+retry the affected upload from the retained artifacts into its original
+`FOLDER_PATH`, or start a fresh nightly build. Avoid rebuilding all platforms
+merely to diagnose a storage quota error.
+
+## Telegram notifications
 
 Telegram notifications contain release/build information and the corresponding
 GitHub Release download page (`pre-release` for nightly builds). Notifications

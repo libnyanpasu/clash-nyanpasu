@@ -562,13 +562,6 @@ async fn run_stream(actor: ActorRef<Message>, api: ApiClient, kind: ClashWsKind)
                                 Err(ApiError::Stale) => break,
                                 Err(error) => {
                                     let error = anyhow::Error::new(error);
-                                    if kind == ClashWsKind::Logs {
-                                        let _ = deliver(
-                                            &actor,
-                                            Delivery::LogFailure(format!("{error:#}")),
-                                        )
-                                        .await;
-                                    }
                                     tracing::warn!(?kind, "Clash stream failed: {:#}", error);
                                     break;
                                 }

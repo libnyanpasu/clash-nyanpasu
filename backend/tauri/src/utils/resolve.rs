@@ -152,11 +152,20 @@ fn set_window_controls_pos(
 pub fn resolve_setup(app: &mut App) {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-    #[cfg(target_os = "macos")]
+    #[cfg(any(windows, target_os = "macos"))]
     let ready_app_handle = app.app_handle().clone();
     WindowReadyEvent::listen(app, move |event| {
         let label = &event.payload.label;
         tracing::debug!("Window '{}' is ready", label);
+        #[cfg(windows)]
+        if label == crate::consts::MAIN_WINDOW_LABEL {
+            let handle = ready_app_handle.clone();
+            log_err!(ready_app_handle.run_on_main_thread(move || {
+                if let Some(window) = handle.get_webview_window(crate::consts::MAIN_WINDOW_LABEL) {
+                    crate::window::log_main_window_geometry(&window, "frontend_ready_after_show");
+                }
+            }));
+        }
         #[cfg(target_os = "macos")]
         if label == crate::consts::MAIN_WINDOW_LABEL {
             log_err!(ready_app_handle.run_on_main_thread(|| {

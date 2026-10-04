@@ -15,6 +15,45 @@ use std::{collections::HashMap, sync::Mutex};
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
+#[cfg(windows)]
+pub(crate) fn log_main_window_geometry(window: &tauri::WebviewWindow, stage: &str) {
+    if window.label() != crate::consts::MAIN_WINDOW_LABEL {
+        return;
+    }
+
+    let inner_size = window.inner_size();
+    let outer_size = window.outer_size();
+    let non_client_size =
+        inner_size
+            .as_ref()
+            .ok()
+            .zip(outer_size.as_ref().ok())
+            .map(|(inner, outer)| {
+                (
+                    i64::from(outer.width) - i64::from(inner.width),
+                    i64::from(outer.height) - i64::from(inner.height),
+                )
+            });
+
+    tracing::info!(
+        stage,
+        label = window.label(),
+        hwnd = ?window.hwnd(),
+        ?inner_size,
+        ?outer_size,
+        ?non_client_size,
+        outer_position = ?window.outer_position(),
+        scale_factor = ?window.scale_factor(),
+        monitor = ?window.current_monitor(),
+        visible = ?window.is_visible(),
+        minimized = ?window.is_minimized(),
+        maximized = ?window.is_maximized(),
+        fullscreen = ?window.is_fullscreen(),
+        decorated = ?window.is_decorated(),
+        "[window-geometry-5411] snapshot (sizes and position are physical pixels)"
+    );
+}
+
 /// Window configuration options
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -468,9 +507,13 @@ pub trait AppWindow {
             // Singleton window already exists - try to focus it
             if let Some(window) = app_handle.get_webview_window(base_label) {
                 tracing::debug!("{} window is already opened, try to focus it", base_label);
+                #[cfg(windows)]
+                log_main_window_geometry(&window, "existing_window_before_show");
                 trace_err!(window.unminimize(), "set win unminimize");
                 trace_err!(window.show(), "set win visible");
                 trace_err!(window.set_focus(), "set win focus");
+                #[cfg(windows)]
+                log_main_window_geometry(&window, "existing_window_show_submitted");
             }
             return Ok(WindowCreateResult::existing(base_label.to_string()));
         };
@@ -507,6 +550,16 @@ pub trait AppWindow {
         }
 
         let win_state = &self.get_window_state(app_handle);
+        #[cfg(windows)]
+        if base_label == crate::consts::MAIN_WINDOW_LABEL {
+            tracing::info!(
+                saved_state = ?win_state,
+                default_logical_size = ?config.default_size,
+                min_logical_size = ?config.min_size,
+                visible_on_create = config.visible_on_create,
+                "[window-geometry-5411] create requested (saved geometry is physical; saved state uses an initial 800x800 logical window at 0,0)"
+            );
+        }
         match win_state {
             Some(_) => {
                 builder = builder.inner_size(800., 800.).position(0., 0.);
@@ -577,6 +630,30 @@ pub trait AppWindow {
             Ok(win) => {
                 use tauri::{PhysicalPosition, PhysicalSize};
 
+                #[cfg(windows)]
+                if base_label == crate::consts::MAIN_WINDOW_LABEL {
+                    let diagnostic_handle = app_handle.clone();
+                    win.on_window_event(move |event| {
+                        if matches!(
+                            event,
+                            tauri::WindowEvent::Resized(_)
+                                | tauri::WindowEvent::ScaleFactorChanged { .. }
+                                | tauri::WindowEvent::Focused(_)
+                                | tauri::WindowEvent::CloseRequested { .. }
+                                | tauri::WindowEvent::Destroyed
+                        ) {
+                            tracing::info!(?event, "[window-geometry-5411] native event");
+                            if !matches!(event, tauri::WindowEvent::Destroyed)
+                                && let Some(window) = diagnostic_handle
+                                    .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
+                            {
+                                log_main_window_geometry(&window, "native_event");
+                            }
+                        }
+                    });
+                    log_main_window_geometry(&win, "created_before_restore");
+                }
+
                 if win_state.is_some() {
                     let state = win_state.as_ref().unwrap();
                     let _ = win.set_position(PhysicalPosition {
@@ -597,7 +674,25 @@ pub trait AppWindow {
                             height = min_h_physical;
                         }
                     }
-                    let _ = win.set_size(PhysicalSize { width, height });
+                    #[cfg(windows)]
+                    if base_label == crate::consts::MAIN_WINDOW_LABEL {
+                        log_main_window_geometry(&win, "before_restore_size");
+                        tracing::info!(
+                            width,
+                            height,
+                            "[window-geometry-5411] restore size requested (physical client size)"
+                        );
+                    }
+                    let restore_result = win.set_size(PhysicalSize { width, height });
+                    #[cfg(windows)]
+                    if base_label == crate::consts::MAIN_WINDOW_LABEL {
+                        tracing::info!(
+                            result = ?restore_result,
+                            "[window-geometry-5411] restore size submitted (not a resize acknowledgement)"
+                        );
+                        log_main_window_geometry(&win, "restore_size_submitted");
+                    }
+                    let _ = restore_result;
                 }
 
                 if let Some(state) = win_state {
@@ -609,7 +704,10 @@ pub trait AppWindow {
                     }
                 }
                 #[cfg(windows)]
-                trace_err!(win.set_shadow(true), "set win shadow");
+                {
+                    trace_err!(win.set_shadow(true), "set win shadow");
+                    log_main_window_geometry(&win, "shadow_submitted");
+                }
                 log::trace!("try to calculate the monitor size");
                 let center = (|| -> Result<bool> {
                     let center;
@@ -669,6 +767,9 @@ pub trait AppWindow {
                         }
                     }
                 });
+
+                #[cfg(windows)]
+                log_main_window_geometry(&win, "creation_finished");
 
                 Ok(WindowCreateResult::new(label))
             }
@@ -794,6 +895,8 @@ pub trait AppWindow {
         let win = app_handle
             .get_webview_window(self.label())
             .ok_or(anyhow::anyhow!("failed to get window"))?;
+        #[cfg(windows)]
+        log_main_window_geometry(&win, "before_capture");
         if win.is_minimized()? {
             return Ok(None);
         }
@@ -834,6 +937,14 @@ pub trait AppWindow {
             }
             None => None,
         };
+
+        #[cfg(windows)]
+        if self.label() == crate::consts::MAIN_WINDOW_LABEL {
+            tracing::info!(
+                captured_state = ?state,
+                "[window-geometry-5411] captured state (physical geometry passed to session state)"
+            );
+        }
 
         Ok(state)
     }

@@ -210,6 +210,18 @@ function basenameFromUrl(value: string): string {
   return decodeURIComponent(segment);
 }
 
+function sourceforgeAssetName(
+  fileName: string,
+  assets: SourceforgeMirrorManifest["assets"],
+): string {
+  if (assets[fileName]) return fileName;
+  const spacedProductName = fileName.replace(
+    /^Clash\.Nyanpasu(?=[_.-])/,
+    "Clash Nyanpasu",
+  );
+  return assets[spacedProductName] ? spacedProductName : fileName;
+}
+
 /** Attach only mirrors whose binaries and signature files belong to this exact release. */
 function attachMirrorsToPlatforms(
   platforms: Record<string, UpdaterPlatform>,
@@ -223,8 +235,13 @@ function attachMirrorsToPlatforms(
   for (const [target, platform] of Object.entries(platforms)) {
     const fileName = basenameFromUrl(platform.url);
     const signatureName = `${fileName}.sig`;
-    const mirror = manifest.assets[fileName];
-    const signatureMirror = manifest.assets[signatureName];
+    const mirrorName = sourceforgeAssetName(fileName, manifest.assets);
+    const signatureMirrorName = sourceforgeAssetName(
+      signatureName,
+      manifest.assets,
+    );
+    const mirror = manifest.assets[mirrorName];
+    const signatureMirror = manifest.assets[signatureMirrorName];
     const githubAsset = githubAssets.get(fileName);
     const githubSignature = githubAssets.get(signatureName);
     if (!mirror || !signatureMirror || !githubAsset || !githubSignature) {

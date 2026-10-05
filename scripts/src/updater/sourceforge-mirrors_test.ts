@@ -35,7 +35,7 @@ function manifest(
         `https://downloads.sourceforge.net/project/${project}/${remotePath}/${
           encodeURIComponent(name)
         }`,
-      fileSize: index === 0 ? 123 : 20,
+      fileSize: name.endsWith(".sig") ? 20 : 123,
       sha256: String(index + 1).repeat(64),
     }])),
   });
@@ -145,6 +145,66 @@ Deno.test("release mirrors require the selected tag, matching assets, sizes, and
     Error,
     "size differs",
   );
+});
+
+Deno.test("release mirrors match product-name variants across storage feeds", () => {
+  const names = [
+    "Clash Nyanpasu_x64-setup.nsis.zip",
+    "Clash Nyanpasu_x64-setup.nsis.zip.sig",
+    "Clash Nyanpasu_amd64.AppImage.tar.gz",
+    "Clash Nyanpasu_amd64.AppImage.tar.gz.sig",
+    "Clash Nyanpasu.aarch64.app.tar.gz",
+    "Clash Nyanpasu.aarch64.app.tar.gz.sig",
+  ];
+  const mirror = manifest(tag, "release", names);
+  const platforms: Record<string, { url: string; signature: string }> = {};
+  const releaseAssets = names.filter((name) => !name.endsWith(".sig")).flatMap(
+    (mirrorName) => {
+      const githubName = mirrorName.replace(
+        /^Clash Nyanpasu(?=[_.-])/,
+        "Clash.Nyanpasu",
+      );
+      const githubUrl =
+        `https://github.com/owner/repo/releases/download/${tag}/${githubName}`;
+      platforms[
+        githubName.includes("aarch64.app")
+          ? "darwin-aarch64"
+          : githubName.includes("AppImage")
+          ? "linux"
+          : "win64"
+      ] = { url: githubUrl, signature: "signed" };
+      return [
+        { name: githubName, browser_download_url: githubUrl, size: 123 },
+        {
+          name: `${githubName}.sig`,
+          browser_download_url: `${githubUrl}.sig`,
+          size: 20,
+        },
+      ];
+    },
+  );
+  const mapped = attachSourceforgeMirrors(
+    platforms,
+    releaseAssets,
+    mirror,
+    tag,
+  );
+
+  for (const mirrorName of names.filter((name) => !name.endsWith(".sig"))) {
+    const githubName = mirrorName.replace(
+      /^Clash Nyanpasu(?=[_.-])/,
+      "Clash.Nyanpasu",
+    );
+    const target = githubName.includes("aarch64.app")
+      ? "darwin-aarch64"
+      : githubName.includes("AppImage")
+      ? "linux"
+      : "win64";
+    assertEquals(
+      mapped[target].mirrors?.sourceforge,
+      mirror.assets[mirrorName].url,
+    );
+  }
 });
 
 Deno.test("nightly mirrors bind the complete commit identity to the announced hash", () => {

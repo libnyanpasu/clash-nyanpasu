@@ -127,9 +127,9 @@ enum Slice {
     Application(Box<ApplicationEffectFields>),
     Clash(ClashEffectFields),
     Ports(Option<ResolvedPortBindings>),
-    /// No effect reads the profiles: their commit only asks for a tray
-    /// refresh.
-    Profiles,
+    /// No effect reads profile data or tray icon files; this only requests a
+    /// partial tray refresh from the latest desired state.
+    TrayRefresh,
 }
 
 fn group(kind: EffectKind) -> usize {
@@ -363,7 +363,7 @@ impl Actor for EffectsActor {
                     Slice::Application(app) => inputs.app = *app,
                     Slice::Clash(clash) => inputs.clash = clash,
                     Slice::Ports(ports) => inputs.ports = ports,
-                    Slice::Profiles => {}
+                    Slice::TrayRefresh => {}
                 }
                 let changed: Vec<_> = ApplicationEffectPlan::diff(&state.desired, &inputs)
                     .effects()
@@ -529,6 +529,18 @@ impl EffectsClient {
             .ok()
             .context(EffectsStoppedSnafu)
     }
+
+    pub fn request_tray_refresh(&self) -> Result<(), EffectsError> {
+        self.actor
+            .cast(Message::Publish {
+                slice: Slice::TrayRefresh,
+                refresh: true,
+                full: false,
+                requested: Vec::new(),
+            })
+            .ok()
+            .context(EffectsStoppedSnafu)
+    }
     pub fn snapshot(&self) -> EffectsSnapshot {
         self.status.borrow().clone()
     }
@@ -592,7 +604,7 @@ impl CommitNotifications for EffectsClient {
     }
 
     fn profiles_committed(&self) {
-        self.publish(Slice::Profiles, true, false, Vec::new());
+        self.publish(Slice::TrayRefresh, true, false, Vec::new());
     }
 
     fn runtime_bound(&self, ports: Option<ResolvedPortBindings>, refresh: bool) {

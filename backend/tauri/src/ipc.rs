@@ -1315,7 +1315,7 @@ pub async fn set_tray_icon(
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_icon_from_bytes(
-    refresh: State<'_, crate::core::tray::TrayIconRefresh>,
+    client: State<'_, NyanpasuClient>,
     mode: TrayIcon,
     bytes_base64: String,
 ) -> Result {
@@ -1331,7 +1331,7 @@ pub async fn set_tray_icon_from_bytes(
     }
     crate::core::tray::icon::set_icon_from_bytes(mode, &bytes)?;
     crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode))?;
-    refresh.refresh()?;
+    client.request_tray_refresh()?;
     Ok(())
 }
 

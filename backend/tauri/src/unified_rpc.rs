@@ -22,7 +22,6 @@ pub struct RpcDependencies {
     pub client: NyanpasuClient,
     pub storage: Storage,
     pub events: EventBus,
-    pub tray_icon_refresh: crate::core::tray::TrayIconRefresh,
 }
 
 const EVENT_NAMES: &[&str] = &[
@@ -483,7 +482,6 @@ mod tests {
             client,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             events: events.clone(),
-            tray_icon_refresh: crate::core::tray::TrayIconRefresh::new(|| Ok(())),
         })
         .unwrap();
         assert!(rpc.command_names().contains(&"get_debug_http_status"));
@@ -816,7 +814,6 @@ mod tests {
             client: NyanpasuClient::try_new_with_args(args).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             events: EventBus::new(),
-            tray_icon_refresh: crate::core::tray::TrayIconRefresh::new(|| Ok(())),
         })
         .unwrap();
         let app = rpc.router();
@@ -935,7 +932,6 @@ mod tests {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             events: EventBus::new(),
-            tray_icon_refresh: crate::core::tray::TrayIconRefresh::new(|| Ok(())),
         })
         .unwrap();
         routes.install(&rpc).unwrap();
@@ -1048,7 +1044,6 @@ mod tests {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             events: events.clone(),
-            tray_icon_refresh: crate::core::tray::TrayIconRefresh::new(|| Ok(())),
         })
         .unwrap();
         routes.install(&rpc).unwrap();

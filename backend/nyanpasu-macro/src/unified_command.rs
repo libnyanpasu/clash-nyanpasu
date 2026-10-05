@@ -95,8 +95,6 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 http_args.push(quote!(&dependencies.client));
             } else if state_name.as_deref() == Some("Storage") {
                 http_args.push(quote!(&dependencies.storage));
-            } else if state_name.as_deref() == Some("TrayIconRefresh") {
-                http_args.push(quote!(&dependencies.tray_icon_refresh));
             } else {
                 http_supported = false;
             }
@@ -343,7 +341,7 @@ fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
             return false;
         }
         if is_state(&argument.ty) {
-            if !["NyanpasuClient", "Storage", "TrayIconRefresh"]
+            if !["NyanpasuClient", "Storage"]
                 .iter()
                 .any(|name| is_state_of(&argument.ty, name))
             {

@@ -18,6 +18,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -225,9 +226,15 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
 
   const [open, setOpen] = useState(false)
 
+  const [selectionRects, setSelectionRects] = useState<
+    Array<{ left: number; top: number; width: number; height: number }>
+  >([])
+
   const registryRef = useRef(new Map<Element, () => ReactNode>())
 
   const lastRightClickTargetRef = useRef<Element | null>(null)
+  const rightClickSelectionRef = useRef('')
+  const rightClickRangeRef = useRef<Range | null>(null)
 
   // Capture the right-clicked element before the context menu opens.
   // Use pointerdown (button === 2) instead of contextmenu so the target is
@@ -236,11 +243,89 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
     const handler = (e: PointerEvent) => {
       if (e.button === 2) {
         lastRightClickTargetRef.current = e.target as Element
+        const selection = window.getSelection()
+        rightClickSelectionRef.current = selection?.toString() ?? ''
+        rightClickRangeRef.current =
+          selection && selection.rangeCount > 0
+            ? selection.getRangeAt(0).cloneRange()
+            : null
       }
     }
     document.addEventListener('pointerdown', handler, true)
     return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
+
+  useEffect(() => {
+    if (!open || !rightClickRangeRef.current) {
+      return
+    }
+
+    const updateSelectionRects = () => {
+      const range = rightClickRangeRef.current
+      if (!range) {
+        return
+      }
+
+      const textNodes: Text[] = []
+      if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) {
+        textNodes.push(range.commonAncestorContainer as Text)
+      } else {
+        const walker = document.createTreeWalker(
+          range.commonAncestorContainer,
+          NodeFilter.SHOW_TEXT,
+        )
+        let node = walker.nextNode()
+        while (node) {
+          textNodes.push(node as Text)
+          node = walker.nextNode()
+        }
+      }
+
+      const rects: Array<{
+        left: number
+        top: number
+        width: number
+        height: number
+      }> = []
+
+      for (const node of textNodes) {
+        if (!range.intersectsNode(node)) {
+          continue
+        }
+
+        const nodeRange = document.createRange()
+        const start = range.startContainer === node ? range.startOffset : 0
+        const end =
+          range.endContainer === node
+            ? range.endOffset
+            : (node.textContent?.length ?? 0)
+        if (start >= end) {
+          continue
+        }
+
+        nodeRange.setStart(node, start)
+        nodeRange.setEnd(node, end)
+        rects.push(
+          ...Array.from(
+            nodeRange.getClientRects(),
+            ({ left, top, width, height }) => ({ left, top, width, height }),
+          ),
+        )
+      }
+
+      setSelectionRects(rects)
+    }
+
+    updateSelectionRects()
+
+    window.addEventListener('resize', updateSelectionRects)
+    window.addEventListener('scroll', updateSelectionRects, true)
+
+    return () => {
+      window.removeEventListener('resize', updateSelectionRects)
+      window.removeEventListener('scroll', updateSelectionRects, true)
+    }
+  }, [open])
 
   const registerElement = useCallback(
     (el: Element, getChildren: () => ReactNode) => {
@@ -256,32 +341,38 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen)
 
-    if (nextOpen) {
-      const selection = window.getSelection()
-      setHasSelection(!!selection && selection.toString().length > 0)
-
-      const active = document.activeElement
-      setEditable(isEditable(active))
-      targetRef.current = active
-
-      // Traverse up the DOM from the right-clicked element to find registered children.
-      let el: Element | null = lastRightClickTargetRef.current
-      let found: ReactNode = null
-      while (el) {
-        const getter = registryRef.current.get(el)
-        if (getter) {
-          found = getter()
-          break
-        }
-        el = el.parentElement
-      }
-      setCustomChildren(found)
+    if (!nextOpen) {
+      rightClickSelectionRef.current = ''
+      rightClickRangeRef.current = null
+      setSelectionRects([])
+      return
     }
+
+    const selection = window.getSelection()
+    const selectedText = selection?.toString() || rightClickSelectionRef.current
+    rightClickSelectionRef.current = selectedText
+    setHasSelection(selectedText.length > 0)
+
+    const active = document.activeElement
+    setEditable(isEditable(active))
+    targetRef.current = active
+
+    // Traverse up the DOM from the right-clicked element to find registered children.
+    let el: Element | null = lastRightClickTargetRef.current
+    let found: ReactNode = null
+    while (el) {
+      const getter = registryRef.current.get(el)
+      if (getter) {
+        found = getter()
+        break
+      }
+      el = el.parentElement
+    }
+    setCustomChildren(found)
   }, [])
 
   const handleCopy = useCallback(async () => {
-    const selection = window.getSelection()
-    const text = selection?.toString() ?? ''
+    const text = rightClickSelectionRef.current
 
     if (!text) {
       return
@@ -292,7 +383,8 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
 
   const handleCut = useCallback(async () => {
     const selection = window.getSelection()
-    const text = selection?.toString() ?? ''
+    const text = rightClickSelectionRef.current
+    const range = rightClickRangeRef.current
 
     if (!text || !editable) {
       return
@@ -324,8 +416,11 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
       return
     }
 
-    if (el instanceof HTMLElement && el.isContentEditable && selection) {
-      selection.deleteFromDocument()
+    if (el instanceof HTMLElement && el.isContentEditable && range) {
+      range.deleteContents()
+      range.collapse(true)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
     }
   }, [editable])
 
@@ -419,6 +514,29 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      {selectionRects.length > 0 &&
+        createPortal(
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0"
+            style={{ zIndex: 49 }}
+          >
+            {selectionRects.map((rect) => (
+              <div
+                key={`${rect.left}:${rect.top}:${rect.width}:${rect.height}`}
+                className="absolute rounded-[1px]"
+                style={{
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                  backgroundColor: 'rgb(59 130 246 / 38%)',
+                }}
+              />
+            ))}
+          </div>,
+          document.body,
+        )}
     </ContextMenuRegistryContext.Provider>
   )
 }

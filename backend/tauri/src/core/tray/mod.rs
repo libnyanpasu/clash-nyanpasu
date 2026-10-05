@@ -47,10 +47,10 @@ pub struct TrayState<R: Runtime> {
     /// actor: menu calls have to run on the main thread, which only takes
     /// closures, and this queue is what keeps one drain at a time there.
     queue: Mutex<TrayQueue>,
-    /// What the tray displays: the menu, its proxy selections and the node
-    /// behind each proxy item id, as one record that only a complete
-    /// publication replaces. Any failure after the live menu may have changed
-    /// leaves it unknown until a rebuild completes.
+    /// What the tray displays: the menu and its proxy selections, as one
+    /// record that only a complete publication replaces. Any failure after
+    /// the live menu may have changed leaves it unknown until a rebuild
+    /// completes.
     display: Mutex<TrayDisplay<Attached<R>>>,
 }
 

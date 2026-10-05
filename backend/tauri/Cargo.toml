@@ -78,7 +78,6 @@ specta-serde = '0.0.12'
 # Data Structures
 dashmap = '6'
 indexmap = { version = '2.2.3', features = ['serde'] }
-bimap = '0.6.3'
 rustc-hash = '2.1'
 
 # Terminal Utilities

@@ -95,14 +95,14 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 http_args.push(quote!(&dependencies.client));
             } else if state_name.as_deref() == Some("Storage") {
                 http_args.push(quote!(&dependencies.storage));
+            } else if state_name.as_deref() == Some("TrayIconRefresh") {
+                http_args.push(quote!(&dependencies.tray_icon_refresh));
             } else {
                 http_supported = false;
             }
         } else if is_context_type(&argument.ty, "AppHandle") {
             wrapper_args.push(quote!(#ident));
-            http_args.push(quote!(dependencies.app_handle.clone().ok_or_else(
-                || { crate::unified_rpc::RpcError::unsupported(stringify!(#name)) }
-            )?));
+            http_supported = false;
         } else if options.owner && is_context_type(&argument.ty, "Window") {
             *argument.ty = syn::parse_quote!(crate::unified_rpc::RpcOwner);
             wrapper_args.push(quote!(crate::unified_rpc::RpcOwner::desktop(#ident.label())));
@@ -343,14 +343,14 @@ fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
             return false;
         }
         if is_state(&argument.ty) {
-            if !["NyanpasuClient", "Storage"]
+            if !["NyanpasuClient", "Storage", "TrayIconRefresh"]
                 .iter()
                 .any(|name| is_state_of(&argument.ty, name))
             {
                 return false;
             }
         } else if is_context_type(&argument.ty, "AppHandle") {
-            continue;
+            return false;
         } else if owner && is_context_type(&argument.ty, "Window") {
             continue;
         } else if contains_reference(&argument.ty) || is_tauri_context(&argument.ty) {
@@ -519,6 +519,10 @@ mod tests {
             ),
             (
                 "#[nyanpasu_macro::rpc(http)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
+                false,
+            ),
+            (
+                "#[nyanpasu_macro::rpc(http)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
                 false,
             ),
         ] {

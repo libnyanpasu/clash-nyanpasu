@@ -33,7 +33,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         collect_commands![
             ipc::get_debug_http_status,
             // Read-only commands
-            ipc::get_logs_archive,
             ipc::read_clipboard_text,
             ipc::query_core_logs,
             ipc::get_core_log,

@@ -16,8 +16,6 @@ export function createRpcClient(
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('get_debug_http_status'),
       ),
-    getLogsArchive: () =>
-      typedError<LogsArchive, IpcError>(__RPC_INVOKE('get_logs_archive')),
     readClipboardText: () =>
       typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
@@ -422,9 +420,9 @@ export function createRpcClient(
     updateCore: (coreType: ClashCore_Deserialize) =>
       typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
     collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
-    setTrayIconFromBytes: (mode: TrayIcon, bytes: number[]) =>
+    setTrayIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
       typedError<null, IpcError>(
-        __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytes }),
+        __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytesBase64 }),
       ),
     /**
      *  Rebuild-only command: there is no prior state commit, so a failure is a
@@ -2480,11 +2478,6 @@ export type LoggingLevel_Deserialize =
 
 export type LoggingLevel_Serialize =
   'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
-
-export type LogsArchive = {
-  fileName: string
-  bytes: number[]
-}
 
 /**  A path relative to the application-managed profile directory. */
 export type ManagedProfilePath = string

@@ -2,16 +2,27 @@ use super::{config::NyanpasuReqwestProxyExt, dirs::app_logs_dir};
 use anyhow::Result;
 use chrono::Local;
 use glob::glob;
-use std::{io::Cursor, path::Path, time::Duration};
+use std::{
+    io::{Seek, Write},
+    path::Path,
+    time::Duration,
+};
 use url::Url;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
 pub fn collect_logs(target_path: &Path) -> Result<()> {
-    std::fs::write(target_path, collect_logs_bytes()?)?;
+    let file = std::fs::File::create(target_path)?;
+    collect_logs_to(file)?;
     Ok(())
 }
 
-pub fn collect_logs_bytes() -> Result<Vec<u8>> {
+pub fn collect_logs_tempfile() -> Result<tempfile::NamedTempFile> {
+    let file = tempfile::NamedTempFile::new()?;
+    collect_logs_to(file.reopen()?)?;
+    Ok(file)
+}
+
+fn collect_logs_to<W: Write + Seek>(writer: W) -> Result<W> {
     let logs_dir = app_logs_dir()?;
     let now = Local::now().format("%Y-%m-%d");
     let globstr = format!(
@@ -26,14 +37,14 @@ pub fn collect_logs_bytes() -> Result<Vec<u8>> {
             paths.push(path)
         }
     }
-    let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
+    let mut zip = ZipWriter::new(writer);
     for path in paths {
         let file_name = path.file_name().unwrap().to_str().unwrap();
         zip.start_file(file_name, SimpleFileOptions::default())?;
         let mut file = std::fs::File::open(path)?;
         std::io::copy(&mut file, &mut zip)?;
     }
-    Ok(zip.finish()?.into_inner())
+    Ok(zip.finish()?)
 }
 
 // TODO: 添加自定义 User-Agent 等配置，说白了就是重构一下 prfitem 的那坨代码

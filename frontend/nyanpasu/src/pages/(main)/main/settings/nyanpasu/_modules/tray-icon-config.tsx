@@ -49,10 +49,17 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
       if (selected.type === 'path') {
         await invokeMutation(setTrayIcon, [mode, selected.path])
       } else {
-        const bytes = Array.from(
-          new Uint8Array(await selected.file.arrayBuffer()),
-        )
-        await invokeMutation(mutations.setTrayIconFromBytes, [mode, bytes])
+        const bytes = new Uint8Array(await selected.file.arrayBuffer())
+        let binary = ''
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(
+            ...bytes.subarray(offset, offset + 0x8000),
+          )
+        }
+        await invokeMutation(mutations.setTrayIconFromBytes, [
+          mode,
+          btoa(binary),
+        ])
       }
       await isIconSet.refetch()
       setIconVersion((prev) => prev + 1)

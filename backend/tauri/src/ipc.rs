@@ -193,7 +193,7 @@ pub struct FileDialogFilter {
     pub extensions: Vec<String>,
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn read_clipboard_text(app_handle: AppHandle) -> Result<String> {
@@ -203,7 +203,7 @@ pub async fn read_clipboard_text(app_handle: AppHandle) -> Result<String> {
         .map_err(|error| error.to_string())?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn write_clipboard_text(app_handle: AppHandle, text: String) -> Result {
@@ -214,7 +214,7 @@ pub async fn write_clipboard_text(app_handle: AppHandle, text: String) -> Result
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn show_native_notification(
@@ -230,7 +230,7 @@ pub async fn show_native_notification(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn show_native_message_dialog(
@@ -283,7 +283,7 @@ pub async fn show_native_message_dialog(
         .map_err(Into::into)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn ask_native_dialog(
@@ -315,7 +315,7 @@ pub async fn ask_native_dialog(
         .map_err(Into::into)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn open_native_file_dialog(
@@ -987,22 +987,6 @@ pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Re
     )?)
 }
 
-#[nyanpasu_macro::rpc(http)]
-#[tauri::command]
-#[specta::specta]
-pub async fn get_logs_archive() -> Result<LogsArchive> {
-    let file_name = format!("{}-log.zip", Local::now().format("%Y-%m-%d"));
-    let bytes = candy::collect_logs_bytes()?;
-    Ok(LogsArchive { file_name, bytes })
-}
-
-#[derive(Debug, Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct LogsArchive {
-    file_name: String,
-    bytes: Vec<u8>,
-}
-
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
@@ -1311,7 +1295,7 @@ pub mod uwp {
     }
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_icon(
@@ -1331,13 +1315,23 @@ pub async fn set_tray_icon(
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_icon_from_bytes(
-    app_handle: tauri::AppHandle,
+    refresh: State<'_, crate::core::tray::TrayIconRefresh>,
     mode: TrayIcon,
-    bytes: Vec<u8>,
+    bytes_base64: String,
 ) -> Result {
+    const MAX_ICON_BYTES: usize = 1024 * 1024;
+    if bytes_base64.len() > MAX_ICON_BYTES.div_ceil(3) * 4 {
+        return Err("Tray icon image exceeds the 1 MiB limit".to_owned().into());
+    }
+    let bytes = BASE64_STANDARD
+        .decode(bytes_base64)
+        .map_err(anyhow::Error::from)?;
+    if bytes.len() > MAX_ICON_BYTES {
+        return Err("Tray icon image exceeds the 1 MiB limit".to_owned().into());
+    }
     crate::core::tray::icon::set_icon_from_bytes(mode, &bytes)?;
     crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode))?;
-    crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART)?;
+    refresh.refresh()?;
     Ok(())
 }
 

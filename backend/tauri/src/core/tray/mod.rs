@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::ControlFlow};
+use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
 
 use crate::{
     client::{NyanpasuClient, effects::plan::TrayView, hotkey::ports::HotkeyAction},
@@ -88,6 +88,19 @@ fn tray_view<R: Runtime>(app_handle: &AppHandle<R>) -> Option<TrayView> {
 }
 
 pub struct Tray {}
+
+#[derive(Clone)]
+pub struct TrayIconRefresh(Arc<dyn Fn() -> tauri::Result<()> + Send + Sync>);
+
+impl TrayIconRefresh {
+    pub fn new(refresh: impl Fn() -> tauri::Result<()> + Send + Sync + 'static) -> Self {
+        Self(Arc::new(refresh))
+    }
+
+    pub fn refresh(&self) -> tauri::Result<()> {
+        (self.0)()
+    }
+}
 
 const TRAY_ID: &str = "main-tray";
 

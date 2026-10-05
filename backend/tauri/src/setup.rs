@@ -219,7 +219,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     app.manage(crate::window::WindowRegistry::default());
     app.manage(crate::utils::resolve::TrayMenuWindowController::default());
-    forward_actor_events(app_handle, client.clone(), &shutdown, &tasks);
+    forward_actor_events(app_handle.clone(), client.clone(), &shutdown, &tasks);
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
@@ -238,6 +238,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
+    let tray_app_handle = app_handle.clone();
+    app.manage(crate::core::tray::TrayIconRefresh::new(move || {
+        crate::core::tray::Tray::request(&tray_app_handle, crate::core::tray::TrayWork::PART)
+    }));
     app.manage(client);
 
     Ok(())
@@ -250,7 +254,7 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<crate::core::storage::Storage>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
-        app_handle: Some(app.app_handle().clone()),
+        tray_icon_refresh: (*app.state::<crate::core::tray::TrayIconRefresh>()).clone(),
     };
     let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies)?;
     app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()

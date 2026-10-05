@@ -13,11 +13,6 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getDebugHttpStatus', ...args],
         queryFn: () => commands.getDebugHttpStatus(...args),
       }),
-    getLogsArchive: (...args: Parameters<typeof commands.getLogsArchive>) =>
-      queryOptions({
-        queryKey: ['getLogsArchive', ...args],
-        queryFn: () => commands.getLogsArchive(...args),
-      }),
     readClipboardText: (
       ...args: Parameters<typeof commands.readClipboardText>
     ) =>

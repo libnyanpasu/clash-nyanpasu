@@ -70,7 +70,7 @@ writing to FRS. Recorded files must keep the same size, SHA-256 and mirror URL;
 lookup failures stop the upload. CI supplies `GITHUB_TOKEN` and
 `GITHUB_REPOSITORY` for this check. Manual release uploads require those values
 as well. Before uploading release bytes, the uploader also reserves each file
-using an exclusive SFTP directory under `releases/<tag>/.upload-inventory/` and
+using an exclusive SFTP directory under `releases/<tag>/upload-inventory/` and
 records its size and SHA-256. Retries must match that write-once inventory even
 when a previous attempt failed before attaching the GitHub sidecar. Identical
 retries can finish partial uploads; conflicting bytes are rejected. Release and
@@ -91,117 +91,81 @@ must not start with `.`. An unreadable reservation fails closed and reports both
 its creation error and its read error; do not remove the reservation to bypass
 an immutable-byte conflict.
 
-Nightly and release builds first validate the complete six-target inventory and
-retain its original publication timestamp. SourceForge and IA then publish in
-separate jobs, each with its own `storage-publication-<backend>` writer lock and
-report artifact. Both jobs download the original signed build artifacts and use
-the shared timestamp; no additional package bundle is uploaded between jobs.
-Updater publication waits for verified SourceForge hashes and does not wait for
-IA. Normal SourceForge publication delegates public hashing to that independent
-verification job instead of downloading the inventory twice.
+Nightly and release builds validate all six target inventories before storage
+writes. SourceForge and Telegram publish in separate jobs with independent
+writer locks. GitHub updater generation starts after GitHub asset upload and
+does not wait for storage. A subsequent updater job attaches only verified
+SourceForge metadata and publishes those feeds to SourceForge Project Web.
+SourceForge preflight errors are reported without blocking package builds or the
+GitHub updater.
 
-Both backends process at most two targets simultaneously. Each IA target creates
-its item with the manifest first, then uploads at most two package files at a
-time (four concurrent transfers across targets). The independent SourceForge
-public SHA-256 verification job downloads at most four files simultaneously;
-manual recovery can run two such target verifications concurrently. Failed tasks
-are collected after the other queued targets finish, preserving their reports.
+All finalized packages, updater bundles and signatures are uploaded as documents
+to `@ClashNyanpasu` using the historical MTProto/GramJS approach. Configure
+`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_TOKEN` and an archive
+registration token (`ARCHIVE_UPLOAD_TOKEN`, `FILE_SERVER_TOKEN` or
+`UPLOAD_TOKEN`). The bot must be allowed to post documents to the channel.
+Documents upload sequentially with four concurrent part workers per file. No Bot
+API download URL or token is exposed. The archive lists Telegram files and
+redirects `/bin/:id` to the corresponding
+`https://t.me/ClashNyanpasu/<message-id>` post. This is a Telegram message link;
+users download the document through Telegram.
 
-Setting `IA_ITEM_PREFIX` automatically connects Internet Archive archiving.
-Configure `IA_ITEM_PREFIX` as a repository variable. The uploader lives in this
-repository and runs from the same checkout as the publication workflow.
-Configure `IA_ACCESS_KEY`, `IA_SECRET_KEY`, `IA_UPLOADER` and the existing
-`FILE_SERVER_TOKEN` secrets. `IA_UPLOADER` must exactly match the value sent as
-IA `metadata.uploader` (often the account email, not the public username).
-Configure the Archive Hub Worker with the same `IA_ITEM_PREFIX` and
-`IA_UPLOADER`, then apply migration `0003` and deploy the Worker before adding
-the CI `IA_ITEM_PREFIX` variable. Archive ingest may remain pending after a
-successful byte upload; that status is reported separately and does not hold up
-SourceForge or updater-feed publication. To reconcile a pending item after IA
-ingest, use the main repository's
-`deno task archive:verify --build-id <target-build-id>
---server https://archive.nyanpasu.org --report <report.json>`.
-Old nightly FRS directories are pruned only after manifest publication succeeds
-and the corresponding IA archive builds report ready. Release directories are
-retained indefinitely.
+Deploy `nyanpasu-file-list` migration `0004_add_telegram_storage.sql` and its
+Telegram-aware routes before enabling this uploader. Old IA and OneDrive rows
+remain readable; matching IA copies are hidden when their Telegram replacement
+is indexed. New builds no longer upload to IA, and IA credentials are not
+required by release/nightly publication. Historical IA tools remain available
+for already published data. The retained item prefix only preserves old manifest
+identities during recovery; it does not enable IA publication.
 
-Use `[Maintenance] Backfill SourceForge Release Mirror` with an existing
-published release tag to mirror its current GitHub assets and attach verified
-`sourceforge-mirrors.json` metadata to that release. It does not rebuild the
-release or publish a new app feed.
-
-Repository variables are unset by default, so a fresh setup continues to publish
-GitHub Releases and Surge without pretending that either optional mirror is
-configured.
+SourceForge processes two targets concurrently and public verification checks
+four files concurrently. Normal publication hashes the mirror once in its
+independent verification job. Nightly cleanup requires archived copies of all
+six targets (Telegram, or legacy ready IA entries) before deleting an old SF
+folder. Missing credentials or archives retain the folder. Releases are never
+pruned.
 
 ### Debug and recover without rebuilding
 
-Configured storage is checked before nightly and release package builds. Run
-`deno task storage:preflight` locally with the same environment to check
-required configuration, archive authentication/database access, and SourceForge
-SFTP connectivity. The Archive API receives an invalid manifest and a lookup for
-an impossible build identity; no build or file is created. SFTP only lists the
-project directory. This does not prove IA S3 upload permission, Worker IA
-configuration, or SourceForge write permission.
+Use `[Maintenance] Debug and Recover Storage Publication` with the completed
+package run id and `backend=telegram`, `sourceforge` or `both`. `mode=upload`
+uses retained signed packages without rebuilding. The six-target inventory,
+original run/attempt/commit/timestamp and every size/hash are checked before any
+remote write. `mode=preflight` checks configuration, archive auth/database
+access and optional SourceForge SFTP connectivity without posting documents.
 
-Use `[Maintenance] Debug and Recover Storage Publication` after correcting a
-configuration or deploying an uploader fix. For run `37233994404`, enter that
-value as `source_run_id`. Start with `mode=preflight`; then choose
-`mode=register`, `backend=archive`, and one target to reproduce archive
-registration without a large transfer. The retained report includes the actual
-HTTP error and retry count. Schema/configuration errors stop immediately;
-network failures retain bounded retries. Registration creates immutable index
-metadata, but uploads no package bytes. It is not an archive-completion check.
+Telegram checkpoints each uploaded document's message id, document id, size and
+hashes in `telegram-report.json`. For subsequent recovery, set
+`telegram_report_run_id` to the run containing that report; the default is the
+original source run. Recovery checks saved messages and skips already uploaded
+documents. `mode=register` retries archive indexing from saved receipts without
+uploading bytes; `mode=verify` checks saved channel messages without uploading
+or registering. If the first Telegram transfer has no report, use `mode=upload`.
+The report remains available even if later uploads or archive registration fail.
+An expired or conflicting receipt fails closed rather than posting a duplicate.
 
-IA uploads require `curl` (available on the Ubuntu Actions runner). Each target,
-registration, file, HTTP response, and retry is logged. Active transfers report
-curl's progress every 30 seconds. Connections have a 15-second deadline;
-transfer speeds below 1 KiB/s for 90 seconds abort, and each request has a
-30-minute overall limit. Uploads attempt at most three times. Redirects remain
-manual and restricted to IA S3 hosts; credentials are passed through stdin
-rather than process arguments or temporary files. Recovery skips previously
-indexed files only when their size and MD5 match the original publication.
+For the failed release run `37342393456`, choose that `source_run_id`,
+`mode=upload`, `backend=telegram`, `target=all` after deploying the archive
+change and pushing the main repository changes. This transfers its existing
+signed packages to the channel. Recovery does not publish updater feeds:
+manually run `[Reusable] Publish Updater Manifests` with `nightly=false` to
+regenerate the GitHub/Surge feeds; pass verified SF metadata only after SF
+recovery succeeds. Re-running an old release job uses its original SHA, not
+these new scripts.
 
-Choose `mode=upload` and `backend=sourceforge`, `archive`, or `both` to
-retransfer one target or all six using current scripts. Selecting `both` runs
-the backends in separate jobs with independent locks and report artifacts.
-Choose `mode=verify` to recheck public SourceForge hashes or reconcile IA
-ingestion without reuploading bytes. Verification downloads SourceForge files to
-calculate SHA-256, so its transfer cost is proportional to the selected target
-inventory.
+Locally, use
+`deno task telegram:publish --publication-dir <dir> --report
+<report.json>`; an
+existing report is reused and must belong to the same inventory. Add
+`--target <target>`, `--register-only` or `--verify-only` for scoped recovery.
+SF-only recovery verifies public hashes and saves a complete
+`recovery-reports/sourceforge-mirrors.json` for the updater workflow. Partial
+mirror metadata must not replace the complete six-target mirror inventory.
 
-Recovery downloads finalized, signed packages and `publication-reports-central`
-from the selected completed package run. It preserves the original run/attempt,
-commit, item identifiers, and publication timestamp, and rejects any differing
-file size/hash or metadata before writing remotely. It requires retained,
-unexpired GitHub artifacts and original manifests. Missing manifests fail
-closed; do not invent a new timestamp for an already registered build. A
-recovery report is saved separately from the original run, which continues to
-show its historical failure. SourceForge writers share a lock with normal
-publication and backfills.
-
-The workflow does not move tags, rebuild/sign packages, delete archives, or
-publish updater feeds. After recovering all targets, its artifact contains a
-verified `recovery-reports/sourceforge-mirrors.json`; use that complete metadata
-with the existing updater workflow only when it belongs to the current release.
-A partial target manifest must not replace the complete updater mirror
-inventory.
-
-For a locally retained manifest, registration alone is also available through
-`deno task archive:register --manifest <manifest.json>
---server https://archive.nyanpasu.org --report <report.json>`.
-It requires the archive upload token and item prefix, but does not require IA S3
-credentials.
-
-The related Deno tasks are `prepare:central-publication`,
-`prepare:publication-manifest`, `sourceforge:upload`, `sourceforge:verify`,
-`sourceforge:web-publish`, `sourceforge:cleanup`, `archive:publish`,
-`archive:verify-reports` and `archive:verify`. `archive:publish` calls the local
-IA uploader; `nyanpasu-file-list` only provides registration, verification,
-indexing and download routes. `sourceforge:verify` writes the compact mirror
-manifest consumed by the updater task, while `sourceforge:cleanup` accepts only
-full run/attempt/SHA nightly directory names and never scans or deletes release
-paths.
+Use `[Maintenance] Backfill SourceForge Release Mirror` for an existing
+published release tag when Actions artifacts are no longer retained. It
+downloads GitHub release assets, verifies SF bytes and attaches mirror metadata;
+it does not rebuild packages or publish an updater feed.
 
 ## Legacy OneDrive upload diagnostics
 
@@ -236,10 +200,11 @@ merely to diagnose a storage quota error.
 
 Telegram notifications contain release/build information and the corresponding
 GitHub Release download page (`pre-release` for nightly builds). Notifications
-wait for GitHub release assets to finish uploading; notification jobs do not
-download or upload packages. To resend a release notification after the updated
-workflow is available on GitHub, manually run
-`[Reusable] Notify Telegram of Releases` with `nightly: false` and the published
-`tag`, for example `v2.0.0-beta.1`. This sends only the notification to
-`@keikolog`; it does not rebuild packages. Re-running an older failed
-publication run uses that run's original workflow and scripts.
+are available through manual dispatch; normal release/nightly jobs upload files
+through `telegram:publish`. The manual notification does not download or upload
+packages. To resend a release notification after the updated workflow is
+available on GitHub, manually run `[Reusable] Notify Telegram of Releases` with
+`nightly: false` and the published `tag`, for example `v2.0.0-beta.1`. This
+sends only the notification to `@keikolog`; it does not rebuild packages.
+Re-running an older failed publication run uses that run's original workflow and
+scripts.

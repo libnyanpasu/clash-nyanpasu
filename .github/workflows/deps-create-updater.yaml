@@ -23,7 +23,6 @@ on:
         description: 'Nightly'
         required: true
         type: boolean
-        default: false
       release_body:
         description: 'Release Body'
         required: false
@@ -74,9 +73,6 @@ jobs:
         with:
           run_install: false
 
-      - name: Pnpm install
-        run: pnpm i
-
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -86,14 +82,14 @@ jobs:
 
       - name: Update Nightly Updater
         if: ${{ inputs.nightly == true }}
-        run: pnpm updater:nightly
+        run: deno task updater:nightly
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SOURCEFORGE_MIRRORS_JSON: ${{ inputs.sourceforge_mirrors_json }}
 
       - name: Update Stable and Beta Updaters
         if: ${{ inputs.nightly == false }}
-        run: pnpm updater
+        run: deno task updater
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SOURCEFORGE_MIRRORS_JSON: ${{ inputs.sourceforge_mirrors_json }}
@@ -117,7 +113,7 @@ jobs:
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
 
       - name: Publish updater manifests to SourceForge Project Web
-        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' && inputs.sourceforge_mirrors_json != '' }}
         run: deno task sourceforge:web-publish manifest/site/updater ${{ inputs.nightly == true && 'nightly' || 'release' }} sourceforge-web-report.json
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
@@ -127,7 +123,7 @@ jobs:
           SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
 
       - name: Preserve SourceForge manifest publication report
-        if: ${{ always() && vars.SOURCEFORGE_PROJECT != '' }}
+        if: ${{ always() && vars.SOURCEFORGE_PROJECT != '' && inputs.sourceforge_mirrors_json != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: sourceforge-web-publication-report

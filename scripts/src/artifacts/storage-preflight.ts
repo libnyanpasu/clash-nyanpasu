@@ -14,6 +14,7 @@ export function storageConfiguration(
   };
   const sourceforge = get("SOURCEFORGE_PROJECT")?.trim() || null;
   const archive = get("IA_ITEM_PREFIX")?.trim() || null;
+  const telegram = get("TELEGRAM_TO")?.trim() || null;
   if (sourceforge) {
     validateSourceforgeProject(sourceforge);
     validateSourceforgeUsername(required("SOURCEFORGE_USERNAME"));
@@ -31,7 +32,19 @@ export function storageConfiguration(
     required("IA_UPLOADER");
     if (!token) throw new Error("An archive upload token is required");
   }
-  return { sourceforge, archive, token };
+  if (telegram) {
+    if (telegram !== "@ClashNyanpasu") {
+      throw new Error("Unexpected Telegram publication channel");
+    }
+    const id = Number(required("TELEGRAM_API_ID"));
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error("Invalid TELEGRAM_API_ID");
+    }
+    required("TELEGRAM_API_HASH");
+    required("TELEGRAM_TOKEN");
+    if (!token) throw new Error("An archive upload token is required");
+  }
+  return { sourceforge, archive, telegram, token };
 }
 
 export async function probeArchiveApi(token: string, fetcher = fetch) {
@@ -133,7 +146,9 @@ async function probeSourceforge(project: string) {
 
 if (import.meta.main) {
   const configuration = storageConfiguration((name) => Deno.env.get(name));
-  if (configuration.archive) await probeArchiveApi(configuration.token!);
+  if (configuration.archive || configuration.telegram) {
+    await probeArchiveApi(configuration.token!);
+  }
   if (configuration.sourceforge) {
     await probeSourceforge(configuration.sourceforge);
   }

@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       backend:
-        description: 'Prepare the shared inventory, or publish sourceforge/archive independently'
+        description: 'Prepare the shared inventory, or publish sourceforge/telegram independently'
         required: true
         type: string
       published_at:
@@ -27,17 +27,17 @@ on:
         description: 'The complete inventory is ready for upload and report verification'
         value: ${{ jobs.publish_storage.outputs.publication_prepared }}
     secrets:
+      TELEGRAM_API_ID:
+        required: false
+      TELEGRAM_API_HASH:
+        required: false
+      TELEGRAM_TOKEN:
+        required: false
       ARCHIVE_UPLOAD_TOKEN:
         required: false
       FILE_SERVER_TOKEN:
         required: false
       UPLOAD_TOKEN:
-        required: false
-      IA_ACCESS_KEY:
-        required: false
-      IA_SECRET_KEY:
-        required: false
-      IA_UPLOADER:
         required: false
       SOURCEFORGE_USERNAME:
         required: false
@@ -58,6 +58,7 @@ jobs:
       publication_prepared: ${{ steps.prepare.outcome == 'success' }}
       published_at: ${{ steps.prepare.outputs.published_at }}
     permissions:
+      actions: read
       contents: read
     steps:
       - name: Checkout repository
@@ -68,7 +69,7 @@ jobs:
           STORAGE_BACKEND: ${{ inputs.backend }}
           PUBLISHED_AT: ${{ inputs.published_at }}
         run: |
-          case "$STORAGE_BACKEND" in prepare|sourceforge|archive) ;; *) exit 1 ;; esac
+          case "$STORAGE_BACKEND" in prepare|sourceforge|telegram) ;; *) exit 1 ;; esac
           if [[ "$STORAGE_BACKEND" != 'prepare' && -z "$PUBLISHED_AT" ]]; then
             echo 'Backend publication requires the preparation timestamp' >&2
             exit 1
@@ -78,7 +79,6 @@ jobs:
         run: mkdir -p publication-reports-central
 
       - name: Download all finalized GitHub build artifacts
-        if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/download-artifact@v8
         with:
           pattern: Clash.Nyanpasu-*
@@ -86,14 +86,12 @@ jobs:
           merge-multiple: false
 
       - name: Install Deno
-        if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
 
       - name: Validate six targets and prepare shared-timestamp manifests
         id: prepare
-        if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
         shell: bash
         env:
           IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
@@ -106,25 +104,55 @@ jobs:
           if [[ -n "$PUBLISHED_AT" ]]; then ARGS+=(--published-at "$PUBLISHED_AT"); fi
           deno task prepare:central-publication "${ARGS[@]}"
 
+      - name: Restore receipts before retrying a Telegram publication job
+        if: ${{ inputs.backend == 'telegram' && github.run_attempt > 1 }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate --slurp --jq '[.[] | .artifacts[] | select(.name == "publication-reports-telegram")] | length')
+          if [[ "$count" != '0' ]]; then
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name publication-reports-telegram --dir previous-telegram
+            mapfile -t reports < <(find previous-telegram -name telegram-report.json -type f)
+            [[ "${#reports[@]}" == '1' ]] || exit 1
+            cp "${reports[0]}" publication-reports-central/telegram-report.json
+          fi
+
+      - name: Check Telegram publication configuration
+        if: ${{ inputs.backend == 'telegram' }}
+        run: deno task storage:preflight
+        env:
+          TELEGRAM_TO: '@ClashNyanpasu'
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+
       - name: Publish selected backend with bounded target concurrency
         if: ${{ inputs.backend != 'prepare' }}
         id: publish
         continue-on-error: true
         env:
           STORAGE_BACKEND: ${{ inputs.backend }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TO: '@ClashNyanpasu'
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
           SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
           SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
-          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
-          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
-          IA_UPLOADER: ${{ secrets.IA_UPLOADER }}
           ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
         run: |
+          if [[ "$STORAGE_BACKEND" == 'telegram' ]]; then
+            deno task telegram:publish --publication-dir central-publication --report publication-reports-central/telegram-report.json
+            exit 0
+          fi
           ARGS=(--mode upload --backend "$STORAGE_BACKEND" --target all --publication-dir central-publication --reports-dir publication-reports-central)
           if [[ "$STORAGE_BACKEND" == 'sourceforge' ]]; then
             ARGS+=(--defer-sourceforge-verification)
@@ -132,7 +160,7 @@ jobs:
           deno task storage:recover "${ARGS[@]}"
 
       - name: Preserve central upload reports for independent gates
-        if: ${{ always() && (vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '') }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.backend == 'prepare' && 'publication-reports-central' || format('publication-reports-{0}', inputs.backend) }}

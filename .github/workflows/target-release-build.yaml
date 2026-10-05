@@ -29,20 +29,14 @@ jobs:
           deno-version: v2.x
 
       - name: Check configured storage before package builds
-        if: ${{ vars.IA_ITEM_PREFIX != '' || vars.SOURCEFORGE_PROJECT != '' }}
+        if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
+        continue-on-error: true
         run: deno task storage:preflight
         env:
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
           SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
           SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
-          IA_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX }}
-          IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
-          IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
-          IA_UPLOADER: ${{ secrets.IA_UPLOADER }}
-          ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
-          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
-          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
 
   windows_build:
     name: Windows Build
@@ -138,18 +132,6 @@ jobs:
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 
-  publish_archive:
-    name: Publish Internet Archive
-    needs: [publish_storage]
-    if: ${{ needs.publish_storage.outputs.publication_prepared == 'true' && vars.IA_ITEM_PREFIX != '' }}
-    uses: ./.github/workflows/deps-publish-storage.yaml
-    with:
-      backend: archive
-      published_at: ${{ needs.publish_storage.outputs.published_at }}
-      nightly: false
-      tag: ${{ github.event.release.tag_name }}
-    secrets: inherit
-
   upload_release_assets:
     name: Upload Release Assets
     needs:
@@ -167,10 +149,16 @@ jobs:
 
   updater:
     name: Create Updater
-    needs: [upload_release_assets, verify_sourceforge]
-    # A recovered mirror verification must not inherit storage publication's
-    # failure once the release packages and verified mirrors are ready.
-    if: ${{ !cancelled() && needs.upload_release_assets.result == 'success' && needs.verify_sourceforge.result == 'success' }}
+    needs: [upload_release_assets]
+    uses: ./.github/workflows/deps-create-updater.yaml
+    with:
+      nightly: false
+    secrets: inherit
+
+  updater_sourceforge:
+    name: Publish Verified SourceForge Updater
+    needs: [updater, verify_sourceforge]
+    if: ${{ !cancelled() && needs.updater.result == 'success' && needs.verify_sourceforge.result == 'success' && needs.verify_sourceforge.outputs.sourceforge_mirrors_json != '' }}
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: false
@@ -178,11 +166,13 @@ jobs:
     secrets: inherit
 
   telegram:
-    name: Send Release Message to Telegram
-    if: startsWith(github.repository, 'libnyanpasu')
-    needs: [upload_release_assets]
-    uses: ./.github/workflows/deps-message-telegram.yaml
+    name: Publish Files to Telegram
+    if: ${{ startsWith(github.repository, 'libnyanpasu') && needs.publish_storage.outputs.publication_prepared == 'true' }}
+    needs: [publish_storage]
+    uses: ./.github/workflows/deps-publish-storage.yaml
     with:
+      backend: telegram
+      published_at: ${{ needs.publish_storage.outputs.published_at }}
       nightly: false
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
@@ -223,26 +213,3 @@ jobs:
           name: sourceforge-verified-mirrors
           path: ./sourceforge-mirrors.json
           if-no-files-found: error
-
-  verify_archive_uploads:
-    name: Verify IA Archive Upload Reports
-    if: ${{ always() && needs.publish_storage.outputs.publication_prepared == 'true' && vars.IA_ITEM_PREFIX != '' }}
-    needs: [publish_storage, publish_archive]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - name: Download target publication reports
-        uses: actions/download-artifact@v8
-        with:
-          name: publication-reports-archive
-          path: ./publication-reports
-          merge-multiple: false
-      - name: Verify complete uploads and report pending ingest
-        run: >-
-          deno task archive:verify-reports ./publication-reports
-          windows-x86_64,windows-aarch64,linux-x86_64,linux-aarch64,macos-x86_64,macos-aarch64

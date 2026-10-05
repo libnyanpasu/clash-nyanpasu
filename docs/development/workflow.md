@@ -27,16 +27,17 @@ through `deno task`; keep its execution logic in the root task catalog.
 - Remove workflows only after checking reusable callers and automatic/manual entry points; lack of recent runs alone does not prove a workflow is unused.
 - Separate adjacent workflow steps with one blank line, keeping each step's explanatory comments after the separator.
 
-The repository currently keeps all 17 workflows. Every reusable workflow has a
-caller. The central-storage publisher is called by nightly and release workflows;
+The repository currently keeps all 17 workflows. Reusable workflows have callers or a manual
+entry point. The central-storage publisher is called by nightly and release workflows;
 the SourceForge release backfill is a manual entry point. Release publication and
 SourceForge backfills share one concurrency group so a backfill cannot race a newly
 published release. Central storage first prepares the complete six-target inventory;
-SourceForge and Internet Archive then run as independent jobs with the original
+SourceForge and Telegram then run as independent jobs with the original
 publication timestamp. Normal publication, recovery and backfill writers use the
-backend-specific `storage-publication-sourceforge` or `storage-publication-archive`
-lock. The SourceForge verification gate alone controls mirror-backed updater
-publication; Internet Archive ingestion does not block it. The manifest maintenance workflow updates both `main` and the still
+backend-specific `storage-publication-sourceforge` or `storage-publication-telegram`
+lock. GitHub updater generation runs directly after release asset upload, independently
+of both storage jobs. A second updater job attaches verified SourceForge metadata
+only after the base updater and mirror verification succeed. The manifest maintenance workflow updates both `main` and the still
 maintained v1 `dev` branch; a failure in one branch does not make the other job
 redundant. GitHub-generated Copilot workflows are managed by GitHub rather than
 these YAML files.
@@ -54,8 +55,8 @@ these YAML files.
 | `deps-build-windows-nsis.yaml`      | `[Reusable] Build Windows NSIS and Portable Packages` | Windows installers and optional portable artifacts; called by nightly and release workflows, or dispatched manually. |
 | `deps-create-updater.yaml`          | `[Reusable] Publish Updater Manifests`                | App updater feeds on GitHub and Surge; called by nightly and release workflows, or dispatched manually.              |
 | `deps-delete-releases.yaml`         | `[Reusable] Clear Release Assets`                     | Clear assets on the existing nightly release; called by nightly workflow, or dispatched manually.                    |
-| `deps-message-telegram.yaml`        | `[Reusable] Notify Telegram of Releases`              | Release notifications; called by nightly and release workflows, or dispatched manually.                              |
-| `deps-publish-storage.yaml`         | `[Reusable] Publish Central Storage Mirrors`          | Publish six-target build inventories to SourceForge and Internet Archive; called by nightly and release workflows.   |
+| `deps-message-telegram.yaml`        | `[Reusable] Notify Telegram of Releases`              | Manual release notification resend; normal builds publish files through central storage.                             |
+| `deps-publish-storage.yaml`         | `[Reusable] Publish Central Storage Mirrors`          | Publish six-target build inventories to SourceForge and Telegram; called by nightly and release workflows.           |
 | `deps-update-tag.yaml`              | `[Reusable] Update Nightly Tag and Release`           | Move the nightly tag and update release metadata; called by nightly workflow, or dispatched manually.                |
 | `deps-upload-release-assets.yaml`   | `[Reusable] Upload Release Assets`                    | Upload artifacts from the current caller run to its release; called by nightly and release workflows.                |
 | `sourceforge-backfill-release.yaml` | `[Maintenance] Backfill SourceForge Release Mirror`   | Manually mirror an existing GitHub release to SourceForge; serialized with release publication.                      |

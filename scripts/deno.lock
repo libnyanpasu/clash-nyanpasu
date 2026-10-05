@@ -33,6 +33,7 @@
     "npm:prettier@3.9.9": "3.9.9",
     "npm:semver@*": "7.7.4",
     "npm:telegram@*": "2.26.22",
+    "npm:telegram@2.26.22": "2.26.22",
     "npm:zod@*": "4.3.6"
   },
   "jsr": {

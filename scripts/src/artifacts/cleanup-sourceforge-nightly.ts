@@ -88,7 +88,10 @@ export async function archiveReadyTargets(
   const missing: string[] = [];
   for (const target of EXPECTED_TARGETS) {
     const targetBuildId = `${globalBuildId}-${target}`;
-    if (!await isArchiveBuildReady(targetBuildId, token, fetcher)) {
+    if (
+      !await isArchiveBuildReady(`tg-${targetBuildId}`, token, fetcher) &&
+      !await isArchiveBuildReady(targetBuildId, token, fetcher)
+    ) {
       missing.push(target);
     }
   }
@@ -225,13 +228,13 @@ async function main(): Promise<void> {
       report.status = "skipped-stale";
     } else {
       for (const directory of cleanupTargets) {
-        if (Deno.env.get("IA_ITEM_PREFIX")?.trim()) {
+        {
           const token = Deno.env.get("ARCHIVE_UPLOAD_TOKEN") ||
             Deno.env.get("FILE_SERVER_TOKEN") || Deno.env.get("UPLOAD_TOKEN");
           if (!token) {
             report.retained.push({
               buildId: directory,
-              reason: "Internet Archive verification token is not configured",
+              reason: "Archive verification token is not configured",
             });
             continue;
           }
@@ -239,7 +242,7 @@ async function main(): Promise<void> {
           if (!archive.ready) {
             report.retained.push({
               buildId: directory,
-              reason: `Internet Archive targets are not ready: ${
+              reason: `Archive targets are not ready: ${
                 archive.missing.join(", ")
               }`,
             });

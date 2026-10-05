@@ -2,7 +2,6 @@ import { parseArgs } from "jsr:@std/cli@1/parse-args";
 import * as path from "jsr:@std/path";
 import { CENTRAL_PUBLICATION_TARGETS } from "./central-publication.ts";
 import { runPublicationTasks } from "./publication-concurrency.ts";
-import { runArchivePublish } from "./internet-archive-upload.ts";
 import { sourceforgeDownloadUrl } from "./sourceforge.ts";
 import { verifySourceforgeMirror } from "./verify-sourceforge-mirror.ts";
 
@@ -13,17 +12,17 @@ if (import.meta.main) {
   });
   if (
     !["register", "upload", "verify"].includes(args.mode ?? "") ||
-    !["both", "archive", "sourceforge"].includes(args.backend ?? "") ||
+    !["both", "telegram", "sourceforge"].includes(args.backend ?? "") ||
     !args["publication-dir"] || !args["reports-dir"] ||
     (args.target !== "all" &&
       !CENTRAL_PUBLICATION_TARGETS.some((target) => target === args.target))
   ) {
     throw new Error(
-      "Expected --mode register|upload|verify --backend both|archive|sourceforge --target all|<target> --publication-dir <dir> --reports-dir <dir>",
+      "Expected --mode register|upload|verify --backend both|telegram|sourceforge --target all|<target> --publication-dir <dir> --reports-dir <dir>",
     );
   }
   if (args.mode === "register" && args.backend === "sourceforge") {
-    throw new Error("Registration-only mode requires the archive backend");
+    throw new Error("Registration-only mode requires the Telegram backend");
   }
   if (
     args["defer-sourceforge-verification"] &&
@@ -65,7 +64,7 @@ if (import.meta.main) {
       const manifest = JSON.parse(await Deno.readTextFile(manifestPath));
       const reports = path.resolve(reportsDir, target);
       await Deno.mkdir(reports, { recursive: true });
-      if (args.backend !== "archive" && args.mode !== "register") {
+      if (args.backend !== "telegram" && args.mode !== "register") {
         try {
           if (args.mode === "upload") {
             const result = await new Deno.Command("deno", {
@@ -149,19 +148,6 @@ if (import.meta.main) {
           failures++;
         }
       }
-      if (args.backend !== "sourceforge") {
-        const status = await runArchivePublish([
-          ...(args.mode === "verify"
-            ? ["--verify-only", "--build-id", manifest.buildId]
-            : ["--manifest", manifestPath]),
-          ...(args.mode === "register" ? ["--register-only"] : []),
-          "--server",
-          "https://archive.nyanpasu.org",
-          "--report",
-          path.join(reports, "ia-report.json"),
-        ]);
-        if (status !== 0 && status !== 2) failures++;
-      }
     },
   );
   for (const result of results) {
@@ -175,6 +161,25 @@ if (import.meta.main) {
       path.join(reportsDir, "sourceforge-mirrors.json"),
       JSON.stringify(sourceforgeMirror, null, 2),
     );
+  }
+  if (args.backend !== "sourceforge") {
+    const result = await new Deno.Command("deno", {
+      args: [
+        "task",
+        "telegram:publish",
+        "--publication-dir",
+        publicationDir,
+        "--report",
+        path.join(reportsDir, "telegram-report.json"),
+        "--target",
+        args.target!,
+        ...(args.mode === "register" ? ["--register-only"] : []),
+        ...(args.mode === "verify" ? ["--verify-only"] : []),
+      ],
+      stdout: "inherit",
+      stderr: "inherit",
+    }).output();
+    if (!result.success) failures++;
   }
   if (failures) {
     throw new Error(

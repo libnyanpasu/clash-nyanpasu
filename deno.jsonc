@@ -57,6 +57,10 @@
       "description": "Upload the macOS updater to GitHub Releases",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/upload-macos-updater.ts"
     },
+    "telegram:publish": {
+      "description": "Upload finalized six-target artifacts to the Telegram channel using MTProto",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/publish-telegram.ts"
+    },
     "telegram-notify": {
       "description": "Send a Telegram notification for releases or nightly builds",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/notifications/telegram-notify.ts"

@@ -5,6 +5,7 @@ Deno.test("disabled storage needs no credentials; enabled storage rejects missin
   assertEquals(storageConfiguration(() => undefined), {
     sourceforge: null,
     archive: null,
+    telegram: null,
     token: undefined,
   });
   assertThrows(
@@ -38,6 +39,36 @@ Deno.test("archive preflight probes auth and database without registering files"
     "https://archive.nyanpasu.org/archive/builds",
     "https://archive.nyanpasu.org/archive/builds/storage-preflight",
   ]);
+});
+
+Deno.test("Telegram preflight requires MTProto credentials and indexing auth without IA credentials", () => {
+  const values: Record<string, string> = {
+    TELEGRAM_TO: "@ClashNyanpasu",
+    TELEGRAM_API_ID: "123",
+    TELEGRAM_API_HASH: "hash",
+    TELEGRAM_TOKEN: "bot-token",
+    FILE_SERVER_TOKEN: "index-token",
+  };
+  const configuration = storageConfiguration((key) => values[key]);
+  assertEquals(configuration.telegram, "@ClashNyanpasu");
+  assertEquals(configuration.archive, null);
+  assertEquals(configuration.token, "index-token");
+  assertThrows(
+    () =>
+      storageConfiguration((key) =>
+        key === "TELEGRAM_API_ID" ? "invalid" : values[key]
+      ),
+    Error,
+    "Invalid TELEGRAM_API_ID",
+  );
+  assertThrows(
+    () =>
+      storageConfiguration((key) =>
+        key === "FILE_SERVER_TOKEN" ? undefined : values[key]
+      ),
+    Error,
+    "archive upload token",
+  );
 });
 
 Deno.test("archive preflight surfaces authentication and database failures", async () => {

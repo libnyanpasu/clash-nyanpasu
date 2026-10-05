@@ -7,8 +7,12 @@ on:
         description: 'Completed nightly/release run with retained artifacts and publication-reports-central'
         required: true
         type: string
+      telegram_report_run_id:
+        description: 'Run containing saved Telegram receipts (defaults to source_run_id)'
+        required: false
+        type: string
       mode:
-        description: 'Preflight only, IA registration only, upload and verify, or verification only'
+        description: 'Preflight only, Telegram registration only, upload and verify, or verification only'
         required: true
         type: choice
         default: preflight
@@ -18,7 +22,7 @@ on:
         required: true
         type: choice
         default: both
-        options: [both, archive, sourceforge]
+        options: [both, telegram, sourceforge]
       target:
         description: 'Target to recover (all inventories are validated before any writes)'
         required: true
@@ -47,23 +51,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        backend: ${{ fromJSON(inputs.backend == 'both' && inputs.mode != 'register' && '["sourceforge","archive"]' || inputs.backend == 'sourceforge' && '["sourceforge"]' || '["archive"]') }}
+        backend: ${{ fromJSON(inputs.backend == 'both' && inputs.mode != 'register' && '["sourceforge","telegram"]' || inputs.backend == 'sourceforge' && '["sourceforge"]' || '["telegram"]') }}
     concurrency:
       group: storage-publication-${{ matrix.backend }}
       cancel-in-progress: false
     env:
-      SOURCEFORGE_PROJECT: ${{ matrix.backend != 'archive' && inputs.mode != 'register' && vars.SOURCEFORGE_PROJECT || '' }}
+      SOURCEFORGE_PROJECT: ${{ matrix.backend != 'telegram' && inputs.mode != 'register' && vars.SOURCEFORGE_PROJECT || '' }}
       SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
       SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
       SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
       ORIGINAL_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX || 'sourceforge-only' }}
-      IA_ITEM_PREFIX: ${{ matrix.backend != 'sourceforge' && vars.IA_ITEM_PREFIX || '' }}
-      IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
-      IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
-      IA_UPLOADER: ${{ secrets.IA_UPLOADER }}
       ARCHIVE_UPLOAD_TOKEN: ${{ secrets.ARCHIVE_UPLOAD_TOKEN }}
       FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
       UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_TO: ${{ matrix.backend == 'telegram' && '@ClashNyanpasu' || '' }}
+      TELEGRAM_REPORT_RUN_ID: ${{ inputs.telegram_report_run_id || inputs.source_run_id }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SOURCE_RUN_ID: ${{ inputs.source_run_id }}
       RECOVERY_MODE: ${{ inputs.mode }}
@@ -80,16 +85,8 @@ jobs:
 
       - name: Check selected backend configuration and connectivity
         run: |
-          if [[ "$RECOVERY_BACKEND" != 'sourceforge' && -z "$IA_ITEM_PREFIX" ]]; then
-            echo 'IA_ITEM_PREFIX must be configured for the selected archive backend' >&2
-            exit 1
-          fi
-          if [[ "$RECOVERY_BACKEND" != 'archive' && "$RECOVERY_MODE" != 'register' && -z "$SOURCEFORGE_PROJECT" ]]; then
-            echo 'SOURCEFORGE_PROJECT must be configured for the selected SourceForge backend' >&2
-            exit 1
-          fi
-          if [[ "$RECOVERY_MODE" == 'register' && "$RECOVERY_BACKEND" == 'sourceforge' ]]; then
-            echo 'Registration-only mode requires the archive backend' >&2
+          if [[ "$RECOVERY_BACKEND" == 'sourceforge' && -z "$SOURCEFORGE_PROJECT" ]]; then
+            echo 'SOURCEFORGE_PROJECT must be configured for SourceForge recovery' >&2
             exit 1
           fi
           deno task storage:preflight
@@ -130,6 +127,28 @@ jobs:
             --previous-dir previous-publication/central-publication \
             --output-dir central-publication \
             --item-prefix "$ORIGINAL_ITEM_PREFIX"
+
+      - name: Restore saved Telegram upload receipts
+        if: ${{ inputs.mode != 'preflight' && matrix.backend == 'telegram' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPLICIT_RECEIPT_RUN: ${{ inputs.telegram_report_run_id }}
+        run: |
+          [[ "$TELEGRAM_REPORT_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
+          count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TELEGRAM_REPORT_RUN_ID/artifacts" --paginate --slurp --jq '[.[] | .artifacts[] | select((.name | contains("telegram")))] | length')
+          if [[ "$count" == '0' ]]; then
+            if [[ -n "$EXPLICIT_RECEIPT_RUN" || "$RECOVERY_MODE" != 'upload' ]]; then
+              echo 'Saved Telegram receipts are required for this operation' >&2
+              exit 1
+            fi
+            echo 'No previous Telegram upload receipts; starting the first transfer'
+          else
+            gh run download "$TELEGRAM_REPORT_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern '*telegram*' --dir previous-telegram
+            mapfile -t reports < <(find previous-telegram -name telegram-report.json -type f)
+            [[ "${#reports[@]}" == '1' ]] || { echo 'Expected exactly one Telegram receipt report' >&2; exit 1; }
+            mkdir -p recovery-reports
+            cp "${reports[0]}" recovery-reports/telegram-report.json
+          fi
 
       - name: Run selected recovery operation
         if: ${{ inputs.mode != 'preflight' }}

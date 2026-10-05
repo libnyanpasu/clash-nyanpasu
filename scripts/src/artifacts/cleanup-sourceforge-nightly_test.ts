@@ -21,7 +21,7 @@ Deno.test("SourceForge cleanup only recognizes immutable managed nightly IDs", (
   );
 });
 
-Deno.test("nightly cleanup requires every IA target to be ready before deleting an old folder", async () => {
+Deno.test("nightly cleanup requires every archived target to be ready before deleting an old folder", async () => {
   const allReady = await archiveReadyTargets(
     currentBuild,
     "token",
@@ -43,6 +43,22 @@ Deno.test("nightly cleanup requires every IA target to be ready before deleting 
   );
   assertEquals(pending.ready, false);
   assertEquals(pending.missing.length, 6);
+
+  const requests: string[] = [];
+  const legacy = await archiveReadyTargets(
+    currentBuild,
+    "token",
+    async (input) => {
+      const buildId = String(input).split("/").at(-1)!;
+      requests.push(buildId);
+      return buildId.startsWith("tg-")
+        ? new Response(null, { status: 404 })
+        : Response.json({ buildId, status: "ready" });
+    },
+  );
+  assertEquals(legacy.ready, true);
+  assertEquals(requests.length, 12);
+  assertEquals(requests[0], `tg-${currentBuild}-windows-x86_64`);
 });
 
 Deno.test("nightly cleanup retains the promoted newest build and removes older managed builds", () => {

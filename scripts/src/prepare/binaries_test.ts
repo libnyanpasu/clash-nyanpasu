@@ -59,6 +59,22 @@ function mapping(prefix: string): ArchMapping {
   ) as ArchMapping;
 }
 
+function meowMapping(): ArchMapping {
+  const targets: Record<SupportedArch, string> = {
+    "windows-x86_64": "x86_64-pc-windows-msvc.zip",
+    "windows-arm64": "aarch64-pc-windows-msvc.zip",
+    "linux-aarch64": "aarch64-unknown-linux-musl.tar.gz",
+    "linux-amd64": "x86_64-unknown-linux-musl.tar.gz",
+    "darwin-arm64": "aarch64-apple-darwin.tar.gz",
+    "darwin-x64": "x86_64-apple-darwin.tar.gz",
+  };
+  return Object.fromEntries(
+    Object.entries(targets).map((
+      [arch, target],
+    ) => [arch, `meow-{}-${target}`]),
+  ) as ArchMapping;
+}
+
 function versionManifest(): VersionManifest {
   return {
     manifest_version: 1,
@@ -68,7 +84,8 @@ function versionManifest(): VersionManifest {
       clash_rs: "clash-rs-v1",
       clash_premium: "2026-10-01",
       clash_rs_alpha: "clash-rs-alpha-v1",
-      meow: "meow-v1",
+      meow: "v0.22.0",
+      meow_alpha: "alpha-v1",
     },
     arch_template: {
       mihomo: mapping("mihomo"),
@@ -76,8 +93,12 @@ function versionManifest(): VersionManifest {
       clash_rs: mapping("clash-rs"),
       clash_premium: mapping("clash"),
       clash_rs_alpha: mapping("clash-rs-alpha"),
-      meow: mapping("meow"),
+      meow: meowMapping(),
+      meow_alpha: meowMapping(),
     },
+    meow_alpha_sha256: Object.fromEntries(
+      platforms.map(({ label }) => [label, "a".repeat(64)]),
+    ) as Record<SupportedArch, string>,
     updated_at: "2026-10-01",
   };
 }
@@ -122,11 +143,39 @@ Deno.test("stable binary resolvers map assets for all supported platforms", () =
 
     const meow = binary.meow();
     assertEquals(meow.targetFile, `meow-${host}${executableSuffix}`);
-    assertEquals(meow.exeFile, `meow-${label}-meow-v1`);
+    assertEquals(
+      meow.exeFile,
+      platform === "win32"
+        ? "meow.exe"
+        : `meow-v0.22.0-${
+          host.replace("-unknown-linux-gnu", "-unknown-linux-musl")
+        }/meow`,
+    );
+    const stableAsset = meowMapping()[label].replace("{}", "v0.22.0");
     assertEquals(
       meow.downloadURL,
-      `https://github.com/madeye/meow-rs/releases/download/meow-v1/meow-${label}-meow-v1`,
+      `https://github.com/meow-rs/meow-rs/releases/download/v0.22.0/${stableAsset}`,
     );
+
+    const meowAlpha = binary.meowAlpha();
+    assertEquals(meowAlpha.name, "meow-alpha");
+    assertEquals(meowAlpha.version, "alpha-v1");
+    assertEquals(meowAlpha.targetFile, `meow-alpha-${host}${executableSuffix}`);
+    assertEquals(
+      meowAlpha.exeFile,
+      platform === "win32"
+        ? "meow.exe"
+        : `meow-alpha-v1-${
+          host.replace("-unknown-linux-gnu", "-unknown-linux-musl")
+        }/meow`,
+    );
+    const alphaAsset = meowMapping()[label].replace("{}", "alpha-v1");
+    assertEquals(meowAlpha.tmpFile, alphaAsset);
+    assertEquals(
+      meowAlpha.downloadURL,
+      `https://github.com/meow-rs/meow-rs/releases/download/Prerelease-Alpha/${alphaAsset}`,
+    );
+    assertEquals(meowAlpha.sha256, "a".repeat(64));
   }
 });
 

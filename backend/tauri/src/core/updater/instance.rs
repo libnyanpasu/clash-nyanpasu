@@ -164,12 +164,17 @@ impl UpdaterBackend for HttpUpdaterBackend {
         let source = prepared_dir.join(&filename);
         let extraction_staging = staging.clone();
         let extraction_source = source.clone();
+        let expected_archive_binary = match core_type {
+            ClashCore::Meow => Some(format!("meow{}", std::env::consts::EXE_SUFFIX)),
+            _ => None,
+        };
         // A blocking extraction cannot be aborted midway. It owns staging until
         // completion, and the shutdown waits for it.
         tokio::task::spawn_blocking(move || {
             extract_core(
                 extraction_staging.path().join(&artifact),
                 &artifact,
+                expected_archive_binary.as_deref(),
                 extraction_source,
             )
         })
@@ -189,21 +194,56 @@ impl UpdaterBackend for HttpUpdaterBackend {
     }
 }
 
-fn extract_core(archive_path: PathBuf, artifact: &str, destination: PathBuf) -> anyhow::Result<()> {
+fn extract_core(
+    archive_path: PathBuf,
+    artifact: &str,
+    expected_archive_binary: Option<&str>,
+    destination: PathBuf,
+) -> anyhow::Result<()> {
     let mut source = std::fs::File::open(archive_path)?;
-    let mut output = std::fs::File::create(&destination)?;
     if artifact.ends_with(".gz") {
-        std::io::copy(&mut flate2::read::GzDecoder::new(source), &mut output)?;
+        if artifact.ends_with(".tar.gz") {
+            let decoder = flate2::read::GzDecoder::new(source);
+            let mut archive = tar::Archive::new(decoder);
+            let expected = expected_archive_binary.map(|name| {
+                name.strip_suffix(std::env::consts::EXE_SUFFIX)
+                    .unwrap_or(name)
+            });
+            let mut found = false;
+            for entry in archive.entries()? {
+                let mut entry = entry?;
+                if !entry.header().entry_type().is_file() {
+                    continue;
+                }
+                let path = entry.path()?;
+                if path.file_name().and_then(|name| name.to_str()) == expected {
+                    let mut output = std::fs::File::create(&destination)?;
+                    std::io::copy(&mut entry, &mut output)?;
+                    found = true;
+                    break;
+                }
+            }
+            anyhow::ensure!(found, "failed to find core file in a tar.gz archive");
+        } else {
+            let mut output = std::fs::File::create(&destination)?;
+            std::io::copy(&mut flate2::read::GzDecoder::new(source), &mut output)?;
+        }
     } else if artifact.ends_with(".zip") {
         let mut archive = zip::ZipArchive::new(source)?;
         let mut found = false;
         for index in 0..archive.len() {
             let mut file = archive.by_index(index)?;
-            if !file.is_dir()
-                && ["mihomo", "clash", "meow"]
-                    .iter()
-                    .any(|name| file.name().contains(name))
-            {
+            let matches = expected_archive_binary.map_or_else(
+                || {
+                    file.name().ends_with(".exe")
+                        && ["mihomo", "clash", "meow"]
+                            .iter()
+                            .any(|name| file.name().contains(name))
+                },
+                |expected| file.name().rsplit('/').next() == Some(expected),
+            );
+            if !file.is_dir() && matches {
+                let mut output = std::fs::File::create(&destination)?;
                 std::io::copy(&mut file, &mut output)?;
                 found = true;
                 break;
@@ -211,6 +251,7 @@ fn extract_core(archive_path: PathBuf, artifact: &str, destination: PathBuf) -> 
         }
         anyhow::ensure!(found, "failed to find core file in a zip archive");
     } else {
+        let mut output = std::fs::File::create(&destination)?;
         std::io::copy(&mut source, &mut output)?;
     }
     #[cfg(target_family = "unix")]
@@ -402,7 +443,7 @@ mod tests {
         let prepared_dir = dir.path().join("prepared");
         std::fs::create_dir(&prepared_dir).unwrap();
         let destination = prepared_dir.join(&filename);
-        extract_core(archive.clone(), &filename, destination.clone()).unwrap();
+        extract_core(archive.clone(), &filename, None, destination.clone()).unwrap();
         assert_eq!(std::fs::read(archive).unwrap(), b"raw core binary");
         assert_eq!(std::fs::read(destination).unwrap(), b"raw core binary");
     }
@@ -418,7 +459,7 @@ mod tests {
         encoder.write_all(b"core binary").unwrap();
         encoder.finish().unwrap();
         let destination = dir.path().join("core");
-        extract_core(archive, "core.gz", destination.clone()).unwrap();
+        extract_core(archive, "core.gz", None, destination.clone()).unwrap();
         assert_eq!(std::fs::read(&destination).unwrap(), b"core binary");
         #[cfg(target_family = "unix")]
         assert_eq!(
@@ -436,7 +477,7 @@ mod tests {
             .add_directory("mihomo/", zip::write::SimpleFileOptions::default())
             .unwrap();
         writer.finish().unwrap();
-        let error = extract_core(archive, "core.zip", dir.path().join("core")).unwrap_err();
+        let error = extract_core(archive, "core.zip", None, dir.path().join("core")).unwrap_err();
         assert!(error.to_string().contains("failed to find core file"));
     }
 
@@ -446,13 +487,85 @@ mod tests {
         let archive = dir.path().join("core.zip");
         let mut writer = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
         writer
-            .start_file("nested/mihomo", zip::write::SimpleFileOptions::default())
+            .start_file(
+                "nested/mihomo.exe",
+                zip::write::SimpleFileOptions::default(),
+            )
             .unwrap();
         writer.write_all(b"core binary").unwrap();
         writer.finish().unwrap();
         let destination = dir.path().join("core");
-        extract_core(archive, "core.zip", destination.clone()).unwrap();
+        extract_core(archive, "core.zip", None, destination.clone()).unwrap();
         assert_eq!(std::fs::read(destination).unwrap(), b"core binary");
         assert!(!dir.path().join("nested").exists());
+    }
+
+    #[test]
+    fn tar_gz_selects_the_exact_meow_executable_instead_of_readme() {
+        let dir = TempDir::new().unwrap();
+        let archive_path = dir.path().join("meow.tar.gz");
+        let encoder = flate2::write::GzEncoder::new(
+            std::fs::File::create(&archive_path).unwrap(),
+            flate2::Compression::default(),
+        );
+        let mut archive = tar::Builder::new(encoder);
+        let mut readme = tar::Header::new_gnu();
+        readme.set_size(b"Meow setup instructions".len() as u64);
+        readme.set_mode(0o644);
+        readme.set_cksum();
+        archive
+            .append_data(
+                &mut readme,
+                "README-meow.md",
+                &b"Meow setup instructions"[..],
+            )
+            .unwrap();
+        let mut binary = tar::Header::new_gnu();
+        binary.set_size(b"meow executable".len() as u64);
+        binary.set_mode(0o755);
+        binary.set_cksum();
+        archive
+            .append_data(&mut binary, "release/meow", &b"meow executable"[..])
+            .unwrap();
+        archive.into_inner().unwrap().finish().unwrap();
+
+        let destination = dir.path().join("meow-alpha");
+        extract_core(
+            archive_path,
+            "meow-alpha-3c27aca-aarch64-apple-darwin.tar.gz",
+            Some("meow"),
+            destination.clone(),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(destination).unwrap(), b"meow executable");
+    }
+
+    #[test]
+    fn meow_zip_selects_the_exact_executable_member() {
+        let dir = TempDir::new().unwrap();
+        let archive_path = dir.path().join("meow.zip");
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&archive_path).unwrap());
+        archive
+            .start_file(
+                "README-meow.exe.txt",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        archive.write_all(b"documentation").unwrap();
+        archive
+            .start_file("release/meow.exe", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"meow executable").unwrap();
+        archive.finish().unwrap();
+
+        let destination = dir.path().join("meow-alpha.exe");
+        extract_core(
+            archive_path,
+            "meow-alpha-3c27aca-x86_64-pc-windows-msvc.zip",
+            Some("meow.exe"),
+            destination.clone(),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(destination).unwrap(), b"meow executable");
     }
 }

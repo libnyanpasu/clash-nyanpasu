@@ -43,7 +43,7 @@ pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> Stri
             format!("zhongfly/Clash-premium-backup/releases/download/{tag}/{artifact}")
         }
         CoreTypeMeta::Meow(tag) => {
-            format!("madeye/meow-rs/releases/download/{tag}/{artifact}")
+            format!("meow-rs/meow-rs/releases/download/{tag}/{artifact}")
         }
     }
 }

@@ -38,47 +38,13 @@
 - [Q&A Convention](https://nyanpasu.org/others/issues)
 - [How To Ask Questions](https://nyanpasu.org/others/how-to-ask)
 
-## Development
-
-Before making changes, read the [development standards](docs/development/README.md) for architecture, unified RPC, Rust and TypeScript code style, repository scripts, testing, worktree setup, and commit rules. These requirements apply to all contributors and are also reflected in [AGENTS.md](AGENTS.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution setup.
-
-### Configure your development environment
-
-You should install Rust, Node.js and Deno 2 (for repository automation), see [here](https://v2.tauri.app/start/prerequisites/) for more details.
-
-Clash Nyanpasu uses the pnpm package manager. See [here](https://pnpm.io/installation) for installation instructions. Then, install Node.js packages.
-
-```shell
-pnpm i
-```
-
-### Download the Clash binary & other dependencies
-
-```shell
-# force update to latest version
-# deno task prepare:check --force
-
-deno task prepare:check
-```
-
-### Run dev
-
-```shell
-pnpm dev
-
-# run it in another way if app instance exists
-pnpm dev:diff
-```
-
-### Build application
-
-```shell
-pnpm build
-```
-
 ## Contributions
 
-Issue and PR welcome!
+Issues and PRs are welcome!
+
+If you want to submit an issue, please use the [existing issue template](https://github.com/libnyanpasu/clash-nyanpasu/issues/new/choose) and write the issue description yourself as a sign of respect for us.
+
+If you want to submit a PR, please read and follow the guidelines in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Acknowledgement
 

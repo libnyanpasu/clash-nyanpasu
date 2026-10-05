@@ -37,7 +37,22 @@ import {
   SettingsCardContent,
 } from '../../_modules/settings-card'
 
-const PERSETS = ['#9e1e67', '#3d009e', '#00089e', '#066b9e', '#9e5a00']
+const PERSETS = [
+  '#fa89af',
+  '#FF8998',
+  '#F585D3',
+  '#D490FF',
+  '#B89CFF',
+  '#3d009e',
+  '#00089e',
+  '#066b9e',
+  '#3e64a7',
+  '#4CC4E1',
+  '#33ccbb',
+  '#61cb93',
+  '#f3a81e',
+  '#ff9565',
+]
 
 // The system accent color arrives as uppercase `#RRGGBB`; the picker emits
 // lowercase.
@@ -178,7 +193,7 @@ export default function ThemeColorConfig() {
           alignOffset={8}
           sticky="always"
           aria-label={m.settings_user_interface_theme_color_label()}
-          className="w-80"
+          className="w-78"
         >
           <HctColorPicker
             className="min-h-0 gap-3 overflow-y-auto p-4 *:shrink-0"

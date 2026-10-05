@@ -9,7 +9,7 @@ import {
 export { hexFromArgb } from '@material/material-color-utilities'
 export type { Theme } from '@material/material-color-utilities'
 
-export const DEFAULT_COLOR = '#1867C0'
+export const DEFAULT_COLOR = '#3e64a7'
 
 export enum ThemeMode {
   LIGHT = 'light',

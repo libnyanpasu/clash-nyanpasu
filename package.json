@@ -73,7 +73,7 @@
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.12.1",
     "@types/node": "24.19.1",
-    "@vitejs/plugin-react": "6.1.1",
+    "@vitejs/plugin-react": "6.1.2",
     "@vitest/browser-playwright": "5.0.3",
     "knip": "6.39.0",
     "lint-staged": "17.6.0",

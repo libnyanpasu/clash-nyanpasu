@@ -1,7 +1,11 @@
 //! Instance-bound Clash API capability. The protocol client never escapes this
 //! adapter: clones share revocation and every operation checks the applied binding.
 
-use std::{future::Future, time::Duration};
+use std::{
+    future::Future,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use clash_api::{Delay, DelayQuery, ProviderName, ProxyName, Version};
 use nyanpasu_ipc::api::{core::v2::CoreApiConnection, status::CoreControllerInfo};
@@ -21,6 +25,14 @@ pub enum ApiError {
     Protocol(#[from] clash_api::Error),
 }
 
+/// One read of the proxy view. `groups` is the core's own group list, or `None`
+/// when the instance offers none and groups must be inferred from `proxies`.
+pub(crate) struct ProxySnapshot {
+    pub proxies: clash_api::IndexMap<ProxyName, clash_api::Proxy>,
+    pub providers: clash_api::IndexMap<ProviderName, clash_api::ProxyProvider>,
+    pub groups: Option<clash_api::IndexMap<ProxyName, clash_api::Proxy>>,
+}
+
 /// Shared, permanently revocable capability; it cannot be rebound to a new core.
 #[derive(Clone)]
 pub struct ApiClient {
@@ -28,6 +40,10 @@ pub struct ApiClient {
     binding: CoreApiConnection,
     endpoint: EndpointHandle,
     revoked: CancellationToken,
+    /// Whether this instance serves `/group`, settled by its first conclusive
+    /// answer. The client never outlives its instance, so the result is bound
+    /// to that core and its version.
+    group_list: Arc<OnceLock<bool>>,
 }
 
 impl std::fmt::Debug for ApiClient {
@@ -58,6 +74,7 @@ impl ApiClient {
             binding,
             endpoint,
             revoked: CancellationToken::new(),
+            group_list: Arc::default(),
         })
     }
 
@@ -149,19 +166,44 @@ impl ApiClient {
         Ok(ApiStream::new(self.clone(), stream))
     }
 
-    pub async fn proxy_snapshot(
-        &self,
-    ) -> Result<
-        (
-            indexmap::IndexMap<clash_api::ProxyName, clash_api::Proxy>,
-            indexmap::IndexMap<clash_api::ProviderName, clash_api::ProxyProvider>,
-        ),
-        ApiError,
-    > {
+    pub(crate) async fn proxy_snapshot(&self) -> Result<ProxySnapshot, ApiError> {
         self.execute(async {
-            tokio::try_join!(self.client.proxies(), self.client.proxy_providers())
+            let (proxies, providers, groups) = tokio::try_join!(
+                self.client.proxies(),
+                self.client.proxy_providers(),
+                async { Ok(self.group_list().await) },
+            )?;
+            Ok(ProxySnapshot {
+                proxies,
+                providers,
+                groups,
+            })
         })
         .await
+    }
+
+    // Any failure falls back to inference for this read. Only a missing route
+    // settles the probe; other errors may pass, so the next read asks again.
+    async fn group_list(&self) -> Option<clash_api::IndexMap<ProxyName, clash_api::Proxy>> {
+        if self.group_list.get() == Some(&false) {
+            return None;
+        }
+        match self.client.groups().await {
+            Ok(groups) => {
+                let _ = self.group_list.set(true);
+                Some(groups)
+            }
+            Err(error) => {
+                if error
+                    .status()
+                    .is_some_and(|status| matches!(status.as_u16(), 404 | 405))
+                {
+                    let _ = self.group_list.set(false);
+                }
+                tracing::debug!(%error, "proxy group list unavailable; inferring groups");
+                None
+            }
+        }
     }
 
     pub async fn select_proxy(
@@ -829,5 +871,86 @@ mod stream_tests {
                 .unwrap();
             server.abort();
         }
+    }
+}
+
+#[cfg(test)]
+mod proxy_snapshot_tests {
+    use super::{
+        tests::{endpoint, server},
+        *,
+    };
+    use crate::core::actor_v2::CoreClient;
+    use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::get};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn router(
+        group: impl Fn(usize) -> axum::response::Response + Clone + Send + Sync + 'static,
+    ) -> (Router, Arc<AtomicUsize>) {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let counter = reads.clone();
+        let router = Router::new()
+            .route(
+                "/proxies",
+                get(|| async { Json(serde_json::json!({"proxies":{}})) }),
+            )
+            .route(
+                "/providers/proxies",
+                get(|| async { Json(serde_json::json!({"providers":{}})) }),
+            )
+            .route(
+                "/group",
+                get(move || {
+                    let response = group(counter.fetch_add(1, Ordering::SeqCst));
+                    async move { response }
+                }),
+            );
+        (router, reads)
+    }
+
+    #[tokio::test]
+    async fn missing_group_route_is_probed_once_per_instance() {
+        let (router, reads) = router(|_| StatusCode::NOT_FOUND.into_response());
+        let (url, server) = server(router).await;
+        let endpoint = endpoint(url);
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let api = core.api_client().await.unwrap();
+        for _ in 0..2 {
+            assert!(api.proxy_snapshot().await.unwrap().groups.is_none());
+        }
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+
+        endpoint.binding.send_modify(|binding| {
+            binding.as_mut().unwrap().instance_id = "second-process".into();
+        });
+        let api = core.api_client().await.unwrap();
+        assert!(api.proxy_snapshot().await.unwrap().groups.is_none());
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        core.shutdown().await.unwrap();
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn transient_group_failures_fall_back_until_the_list_answers() {
+        let (router, reads) = router(|attempt| match attempt {
+            0 => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            1 => Json(serde_json::json!({"proxies":{
+                "Meow": {"name":"Meow","type":"Selector","udp":true,"history":[],"all":[]}
+            }}))
+            .into_response(),
+            _ => StatusCode::NOT_FOUND.into_response(),
+        });
+        let (url, server) = server(router).await;
+        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let api = core.api_client().await.unwrap();
+        assert!(api.proxy_snapshot().await.unwrap().groups.is_none());
+        let groups = api.proxy_snapshot().await.unwrap().groups.unwrap();
+        assert!(groups.contains_key(&ProxyName::from("Meow")));
+        // A later failure no longer changes what the instance supports.
+        assert!(api.proxy_snapshot().await.unwrap().groups.is_none());
+        assert!(api.proxy_snapshot().await.unwrap().groups.is_none());
+        assert_eq!(reads.load(Ordering::SeqCst), 4);
+        core.shutdown().await.unwrap();
+        server.abort();
     }
 }

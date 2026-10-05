@@ -93,11 +93,30 @@ fn resolve_proxy(
 }
 
 impl Proxies {
+    /// `group_list` is the core's own group list; `None` infers groups from
+    /// every `/proxies` record with members.
     pub fn from_responses(
         inner_proxies: api::ProxiesRes,
         providers_proxies: api::ProvidersProxiesRes,
+        group_list: Option<IndexMap<String, api::ProxyItem>>,
     ) -> Result<Self> {
-        let inner_proxies = inner_proxies.proxies;
+        let mut inner_proxies = inner_proxies.proxies;
+        // A listed group replaces its /proxies record, so one group never
+        // mixes the members of one read with the selection of the other.
+        let mut group_records = match group_list {
+            Some(groups) => {
+                for (name, group) in &groups {
+                    inner_proxies.insert(name.clone(), group.clone());
+                }
+                groups
+            }
+            None => inner_proxies
+                .iter()
+                .filter(|(_, proxy)| proxy.all.is_some())
+                .map(|(name, proxy)| (name.clone(), proxy.clone()))
+                .collect(),
+        };
+        let global = group_records.swap_remove("GLOBAL");
         // 1. Include nodes from HTTP, File, and Inline providers.
         let providers_proxies: IndexMap<String, api::ProxyProviderItem> = {
             let records = providers_proxies.providers;
@@ -118,7 +137,6 @@ impl Proxies {
         let provider_map = provider_proxy_map(&providers_proxies);
         let generate_item = |name: &str| resolve_proxy(name, &inner_proxies, &provider_map);
 
-        let global = inner_proxies.get("GLOBAL");
         inner_proxies
             .get("DIRECT")
             .ok_or(anyhow::anyhow!("DIRECT is missing in /proxies"))?; // It should be always exists
@@ -126,71 +144,40 @@ impl Proxies {
             .get("REJECT")
             .ok_or(anyhow::anyhow!("REJECT is missing in /proxies"))?; // It should be always exists
 
-        // 3. every /proxies entry is a node; group members not already
+        // 3. GLOBAL only orders the groups it lists, never decides which
+        // groups exist; the rest follow by name.
+        let mut ordered = Vec::with_capacity(group_records.len());
+        if let Some(names) = global.as_ref().and_then(|group| group.all.as_ref()) {
+            for name in names {
+                if let Some(group) = group_records.swap_remove(name) {
+                    ordered.push(group);
+                }
+            }
+        }
+        let mut remaining: Vec<_> = group_records.into_values().collect();
+        remaining.sort_by(|a, b| a.name.cmp(&b.name));
+        ordered.extend(remaining);
+
+        // 4. every /proxies entry is a node; group members not already
         // covered by it (provider-owned nodes) are resolved and added once
         // (a node shared by several groups still has a single entry).
         let mut nodes = inner_proxies.clone();
-        let collect_members = |names: &[String], nodes: &mut IndexMap<String, api::ProxyItem>| {
-            for name in names {
+        let mut convert = |record: api::ProxyItem| {
+            let all = record.all.clone().unwrap_or_default();
+            for name in &all {
                 nodes
                     .entry(name.clone())
                     .or_insert_with(|| generate_item(name));
             }
-        };
-
-        // 4. generate the proxies groups
-        let groups: Vec<ProxyGroupItem> = match global {
-            Some(api::ProxyItem { all: Some(all), .. }) => {
-                let all = all.clone();
-                all.into_iter()
-                    .filter(|name| {
-                        matches!(
-                            inner_proxies.get(name),
-                            Some(api::ProxyItem { all: Some(_), .. })
-                        )
-                    })
-                    .map(|name| {
-                        let item = inner_proxies
-                            .get(&name)
-                            .unwrap_or(&api::ProxyItem::default())
-                            .clone();
-                        let item_all = item.all.clone().unwrap_or_default();
-                        collect_members(&item_all, &mut nodes);
-                        let mut item: ProxyGroupItem = item.into();
-                        item.all = item_all;
-                        item
-                    })
-                    .collect()
-            }
-            _ => {
-                let mut groups: Vec<ProxyGroupItem> = inner_proxies
-                    .clone()
-                    .into_values()
-                    .filter(|v| v.name == "GLOBAL" && v.all.is_some())
-                    .map(|v| {
-                        let all = v.all.clone().unwrap_or_default();
-                        collect_members(&all, &mut nodes);
-                        let mut item: ProxyGroupItem = v.clone().into();
-                        item.all = all;
-                        item
-                    })
-                    .collect();
-                groups.sort_by_key(|a| std::cmp::Reverse(a.name.to_lowercase()));
-                groups
-            }
-        };
-
-        // 5. generate the global
-        let global: Option<ProxyGroupItem> = global.map(|v| {
-            let all = v.all.clone().unwrap_or_default();
-            collect_members(&all, &mut nodes);
-            let mut item: ProxyGroupItem = v.clone().into();
+            let mut item: ProxyGroupItem = record.into();
             item.all = all;
             item
-        });
+        };
+        let groups = ordered.into_iter().map(&mut convert).collect();
+        let global = global.map(&mut convert).unwrap_or_default();
 
         Ok(Proxies {
-            global: global.unwrap_or_default(),
+            global,
             groups,
             nodes,
         })
@@ -297,7 +284,8 @@ mod tests {
                     )]),
                 };
 
-                let proxies = Proxies::from_responses(inner_proxies, providers_proxies).unwrap();
+                let proxies =
+                    Proxies::from_responses(inner_proxies, providers_proxies, None).unwrap();
                 node.provider = Some("provider".into());
 
                 assert_eq!(proxies.groups[0].all, vec!["provider-node"]);
@@ -372,7 +360,7 @@ mod tests {
             )]),
         };
 
-        let proxies = Proxies::from_responses(inner_proxies, providers_proxies).unwrap();
+        let proxies = Proxies::from_responses(inner_proxies, providers_proxies, None).unwrap();
 
         let group_a = proxies.groups.iter().find(|g| g.name == "GroupA").unwrap();
         let group_b = proxies.groups.iter().find(|g| g.name == "GroupB").unwrap();
@@ -398,5 +386,95 @@ mod tests {
         let unknown_node = &proxies.nodes["totally-unknown"];
         assert_eq!(unknown_node.r#type, "Unknown");
         assert!(unknown_node.history.is_empty());
+    }
+
+    fn records(groups: &[api::ProxyItem]) -> api::ProxiesRes {
+        let mut proxies = IndexMap::from([
+            ("DIRECT".into(), item("DIRECT", "Direct", None, None)),
+            ("REJECT".into(), item("REJECT", "Reject", None, None)),
+        ]);
+        proxies.extend(
+            groups
+                .iter()
+                .map(|group| (group.name.clone(), group.clone())),
+        );
+        api::ProxiesRes { proxies }
+    }
+
+    fn assemble(raw: &[api::ProxyItem], listed: Option<&[api::ProxyItem]>) -> Proxies {
+        let listed = listed.map(|groups| {
+            groups
+                .iter()
+                .map(|group| (group.name.clone(), group.clone()))
+                .collect()
+        });
+        let providers = api::ProvidersProxiesRes {
+            providers: IndexMap::new(),
+        };
+        Proxies::from_responses(records(raw), providers, listed).unwrap()
+    }
+
+    fn names(proxies: &Proxies) -> Vec<&str> {
+        proxies.groups.iter().map(|g| g.name.as_str()).collect()
+    }
+
+    #[test]
+    fn listed_groups_decide_membership_and_replace_proxy_records() {
+        let old = item("Foo", "Selector", Some(vec!["DIRECT"]), Some("DIRECT"));
+        let listed = item("Foo", "LoadBalance", Some(vec!["Bar", "missing"]), None);
+        let bar = item("Bar", "FutureGroup", Some(vec![]), None);
+        let extra = item("extra", "Selector", Some(vec![]), None);
+        let result = assemble(&[old, extra], Some(&[listed, bar]));
+        assert_eq!(names(&result), ["Bar", "Foo"]);
+        assert_eq!(result.nodes["Foo"].r#type, "LoadBalance");
+        assert_eq!(result.nodes["missing"].r#type, "Unknown");
+        assert!(result.nodes.contains_key("extra"));
+    }
+
+    #[test]
+    fn an_empty_group_list_is_not_replaced_by_inference() {
+        let raw = [
+            item("GLOBAL", "Selector", Some(vec!["Foo"]), None),
+            item("Foo", "Selector", Some(vec![]), None),
+        ];
+        let result = assemble(&raw, Some(&[]));
+        assert!(result.groups.is_empty());
+        assert!(result.global.name.is_empty());
+        assert!(result.nodes.contains_key("Foo"));
+    }
+
+    #[test]
+    fn global_only_orders_groups_whether_listed_or_inferred() {
+        let foo = item("Foo", "Selector", Some(vec!["Bar", "Foo"]), None);
+        let bar = item("Bar", "UnknownGroup", Some(vec![]), None);
+        let lower = item("global", "Fallback", Some(vec!["Foo"]), None);
+        let global = item(
+            "GLOBAL",
+            "Selector",
+            Some(vec!["Foo", "Foo", "DIRECT", "missing", "GLOBAL"]),
+            None,
+        );
+        for listed in [false, true] {
+            for has_global in [false, true] {
+                let mut groups = vec![foo.clone(), bar.clone(), lower.clone()];
+                if has_global {
+                    groups.push(global.clone());
+                }
+                for reverse in [false, true] {
+                    if reverse {
+                        groups.reverse();
+                    }
+                    let result = assemble(&groups, listed.then_some(groups.as_slice()));
+                    let expected = if has_global {
+                        ["Foo", "Bar", "global"]
+                    } else {
+                        ["Bar", "Foo", "global"]
+                    };
+                    assert_eq!(names(&result), expected);
+                    assert_eq!(result.global.name.is_empty(), !has_global);
+                    assert_eq!(result.nodes["Foo"].all.as_ref().unwrap(), &["Bar", "Foo"]);
+                }
+            }
+        }
     }
 }

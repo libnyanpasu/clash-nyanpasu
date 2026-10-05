@@ -1,0 +1,378 @@
+{
+  "date": "2026-10-05",
+  "workspace_commit": "3b942c760c74df0a7fa832dc455c3a15b676cb3b",
+  "runtime_commit": "889901cb57b1b1753354c2b7b0a442569601e417",
+  "input_report_sha256": "559F724035E02FDACEC959C224075CFB34CC9273143F5D9D8233D12E64BDB476",
+  "scratch": "G:\\Programs\\output\\proxy-core-audit-20261005-32ba416d",
+  "source_repositories": [
+    {
+      "operation": "clone",
+      "commit": "0cf7ed5f6a99a6ea6d62afd9188963657f796d4c",
+      "branch": "master",
+      "path": "G:\\Programs\\Rust\\clash-rs",
+      "name": "clash-rs"
+    },
+    {
+      "commit": "3c27aca92d64c7194c6b590e529da46465fbb7eb",
+      "branch": "main",
+      "before": "7b20befaf6fe578ddc55ea774071c423ea18ba80",
+      "name": "meow-rs",
+      "operation": "fetch tags and fast-forward",
+      "path": "G:\\Programs\\Rust\\meow-rs"
+    },
+    {
+      "commit": "88dcbf7f1614a67c3b36b848ee3592dfa92ada36",
+      "branch": "Meta",
+      "name": "mihomo",
+      "operation": "clone and switch to Meta",
+      "alpha": "9f053c49075de076d83d3e5918241e410f7e9adf",
+      "path": "G:\\Programs\\Go\\mihomo"
+    }
+  ],
+  "probe_scope": "17 distinct GET paths per core; existing sidecar builds; no delay or mutation endpoints invoked",
+  "binary_results": [
+    {
+      "binary": "G:\\Programs\\Rust\\clash-nyanpasu\\backend\\tauri\\sidecar\\mihomo-x86_64-pc-windows-msvc.exe",
+      "responses": [
+        {
+          "status": 200,
+          "body": "{\"meta\":true,\"version\":\"v1.19.30\"}\n",
+          "path": "/version"
+        },
+        {
+          "status": 404,
+          "body": "404 page not found\n",
+          "path": "/proxy/group"
+        },
+        {
+          "status": 200,
+          "body": "{\"proxies\":[{\"alive\":true,\"all\":[\"A\",\"Foo\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"GLOBAL\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"group\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"DIRECT\",\"provider-node\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Bar\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false}]}\n",
+          "path": "/group"
+        },
+        {
+          "status": 200,
+          "body": "{\"proxies\":[{\"alive\":true,\"all\":[\"DIRECT\",\"provider-node\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Bar\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"Foo\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"GLOBAL\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"group\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false}]}\n",
+          "path": "/group/"
+        },
+        {
+          "status": 200,
+          "body": "{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false}\n",
+          "path": "/group/Foo"
+        },
+        {
+          "status": 200,
+          "body": "{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false}\n",
+          "path": "/group/Foo/"
+        },
+        {
+          "status": 404,
+          "body": "404 page not found\n",
+          "path": "/api/proxy-groups"
+        },
+        {
+          "status": 404,
+          "body": "404 page not found\n",
+          "path": "/api/proxy-groups/"
+        },
+        {
+          "status": 404,
+          "body": "404 page not found\n",
+          "path": "/api/proxy-groups/Foo"
+        },
+        {
+          "status": 200,
+          "body": "{\"proxies\":{\"A\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"719e0d9c-2e21-4ae4-aac7-7feb69354a83\",\"interface\":\"\",\"mptcp\":false,\"name\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false},\"Bar\":{\"alive\":true,\"all\":[\"DIRECT\",\"provider-node\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Bar\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false},\"COMPATIBLE\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"ba734665-4910-4674-ae45-ecef5025301f\",\"interface\":\"\",\"mptcp\":false,\"name\":\"COMPATIBLE\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Compatible\",\"udp\":true,\"uot\":false,\"xudp\":false},\"DIRECT\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false},\"Foo\":{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},\"GLOBAL\":{\"alive\":true,\"all\":[\"A\",\"Foo\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"GLOBAL\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},\"PASS\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"00000000-0000-0000-0000-000000000000\",\"interface\":\"\",\"mptcp\":false,\"name\":\"PASS\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Pass\",\"udp\":true,\"uot\":false,\"xudp\":false},\"PASS-RULE\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"00000000-0000-0000-0000-000000000000\",\"interface\":\"\",\"mptcp\":false,\"name\":\"PASS-RULE\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"PassRule\",\"udp\":true,\"uot\":false,\"xudp\":false},\"REJECT\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"b5e303ee-db47-40c7-95a1-221e98a71079\",\"interface\":\"\",\"mptcp\":false,\"name\":\"REJECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Reject\",\"udp\":true,\"uot\":false,\"xudp\":false},\"REJECT-DROP\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6b61d39c-a6d4-44c4-bea3-c143ea58f4b0\",\"interface\":\"\",\"mptcp\":false,\"name\":\"REJECT-DROP\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"RejectDrop\",\"udp\":true,\"uot\":false,\"xudp\":false},\"group\":{\"alive\":true,\"all\":[\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"group\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false}}}\n",
+          "path": "/proxies"
+        },
+        {
+          "status": 200,
+          "body": "{\"proxies\":{\"A\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"719e0d9c-2e21-4ae4-aac7-7feb69354a83\",\"interface\":\"\",\"mptcp\":false,\"name\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false},\"Bar\":{\"alive\":true,\"all\":[\"DIRECT\",\"provider-node\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Bar\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false},\"COMPATIBLE\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"ba734665-4910-4674-ae45-ecef5025301f\",\"interface\":\"\",\"mptcp\":false,\"name\":\"COMPATIBLE\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Compatible\",\"udp\":true,\"uot\":false,\"xudp\":false},\"DIRECT\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false},\"Foo\":{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},\"GLOBAL\":{\"alive\":true,\"all\":[\"A\",\"Foo\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"GLOBAL\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},\"PASS\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"00000000-0000-0000-0000-000000000000\",\"interface\":\"\",\"mptcp\":false,\"name\":\"PASS\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Pass\",\"udp\":true,\"uot\":false,\"xudp\":false},\"PASS-RULE\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"00000000-0000-0000-0000-000000000000\",\"interface\":\"\",\"mptcp\":false,\"name\":\"PASS-RULE\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"PassRule\",\"udp\":true,\"uot\":false,\"xudp\":false},\"REJECT\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"b5e303ee-db47-40c7-95a1-221e98a71079\",\"interface\":\"\",\"mptcp\":false,\"name\":\"REJECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Reject\",\"udp\":true,\"uot\":false,\"xudp\":false},\"REJECT-DROP\":{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6b61d39c-a6d4-44c4-bea3-c143ea58f4b0\",\"interface\":\"\",\"mptcp\":false,\"name\":\"REJECT-DROP\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"RejectDrop\",\"udp\":true,\"uot\":false,\"xudp\":false},\"group\":{\"alive\":true,\"all\":[\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"group\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false}}}\n",
+          "path": "/proxies/"
+        },
+        {
+          "status": 200,
+          "body": "{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false}\n",
+          "path": "/proxies/Foo"
+        },
+        {
+          "status": 200,
+          "body": "{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false}\n",
+          "path": "/proxies/Foo/"
+        },
+        {
+          "status": 200,
+          "body": "{\"alive\":true,\"all\":[\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"group\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false}\n",
+          "path": "/proxies/group"
+        },
+        {
+          "status": 404,
+          "body": "{\"message\":\"Resource not found\"}\n",
+          "path": "/proxies/groups"
+        },
+        {
+          "status": 200,
+          "body": "{\"providers\":{\"Bar\":{\"name\":\"Bar\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false}],\"testUrl\":\"https://www.gstatic.com/generate_204\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"Foo\":{\"name\":\"Foo\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"719e0d9c-2e21-4ae4-aac7-7feb69354a83\",\"interface\":\"\",\"mptcp\":false,\"name\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false}],\"testUrl\":\"https://www.gstatic.com/generate_204\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"GLOBAL\":{\"name\":\"GLOBAL\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"719e0d9c-2e21-4ae4-aac7-7feb69354a83\",\"interface\":\"\",\"mptcp\":false,\"name\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false}],\"testUrl\":\"https://www.gstatic.com/generate_204\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"default\":{\"name\":\"default\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false},{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"b5e303ee-db47-40c7-95a1-221e98a71079\",\"interface\":\"\",\"mptcp\":false,\"name\":\"REJECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Reject\",\"udp\":true,\"uot\":false,\"xudp\":false},{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"719e0d9c-2e21-4ae4-aac7-7feb69354a83\",\"interface\":\"\",\"mptcp\":false,\"name\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"Foo\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"GLOBAL\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"DIRECT\",\"provider-node\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Bar\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"group\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false}],\"testUrl\":\"\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"group\":{\"name\":\"group\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false}],\"testUrl\":\"https://www.gstatic.com/generate_204\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"sample\":{\"name\":\"sample\",\"type\":\"Proxy\",\"vehicleType\":\"File\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"cdec51a1-0d36-4a57-a7d2-2eafd234edf5\",\"interface\":\"\",\"mptcp\":false,\"name\":\"provider-node\",\"provider-name\":\"sample\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false}],\"testUrl\":\"\",\"expectedStatus\":\"*\",\"updatedAt\":\"2026-10-05T10:50:05.1343172+08:00\"}}}\n",
+          "path": "/providers/proxies"
+        },
+        {
+          "status": 200,
+          "body": "{\"providers\":{\"Bar\":{\"name\":\"Bar\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false}],\"testUrl\":\"https://www.gstatic.com/generate_204\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"Foo\":{\"name\":\"Foo\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"719e0d9c-2e21-4ae4-aac7-7feb69354a83\",\"interface\":\"\",\"mptcp\":false,\"name\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false}],\"testUrl\":\"https://www.gstatic.com/generate_204\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"GLOBAL\":{\"name\":\"GLOBAL\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"719e0d9c-2e21-4ae4-aac7-7feb69354a83\",\"interface\":\"\",\"mptcp\":false,\"name\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false}],\"testUrl\":\"https://www.gstatic.com/generate_204\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"default\":{\"name\":\"default\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false},{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"b5e303ee-db47-40c7-95a1-221e98a71079\",\"interface\":\"\",\"mptcp\":false,\"name\":\"REJECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Reject\",\"udp\":true,\"uot\":false,\"xudp\":false},{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"719e0d9c-2e21-4ae4-aac7-7feb69354a83\",\"interface\":\"\",\"mptcp\":false,\"name\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"Foo\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"GLOBAL\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Foo\",\"now\":\"A\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":false,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"DIRECT\",\"provider-node\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"Bar\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false},{\"alive\":true,\"all\":[\"DIRECT\"],\"dialer-proxy\":\"\",\"emptyFallback\":\"COMPATIBLE\",\"extra\":{},\"hidden\":false,\"history\":[],\"icon\":\"\",\"interface\":\"\",\"mptcp\":false,\"name\":\"group\",\"now\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"testUrl\":\"\",\"tfo\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"xudp\":false}],\"testUrl\":\"\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"group\":{\"name\":\"group\",\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"6f5fbfc7-67b6-4572-a80c-1aa8d3cb00b8\",\"interface\":\"\",\"mptcp\":false,\"name\":\"DIRECT\",\"provider-name\":\"\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Direct\",\"udp\":true,\"uot\":false,\"xudp\":false}],\"testUrl\":\"https://www.gstatic.com/generate_204\",\"expectedStatus\":\"*\",\"updatedAt\":\"0001-01-01T00:00:00Z\"},\"sample\":{\"name\":\"sample\",\"type\":\"Proxy\",\"vehicleType\":\"File\",\"proxies\":[{\"alive\":true,\"dialer-proxy\":\"\",\"extra\":{},\"history\":[],\"id\":\"cdec51a1-0d36-4a57-a7d2-2eafd234edf5\",\"interface\":\"\",\"mptcp\":false,\"name\":\"provider-node\",\"provider-name\":\"sample\",\"routing-mark\":0,\"smux\":false,\"tfo\":false,\"type\":\"Socks5\",\"udp\":false,\"uot\":false,\"xudp\":false}],\"testUrl\":\"\",\"expectedStatus\":\"*\",\"updatedAt\":\"2026-10-05T10:50:05.1343172+08:00\"}}}\n",
+          "path": "/providers/proxies/"
+        }
+      ],
+      "sha256": "B37011CD25192F1E7A7151B19A209DF01F08C3DA936BE9E90155F94137740892",
+      "audited_at": "2026-10-05T10:51:17.9711629+08:00",
+      "core": "mihomo",
+      "config": "port: 0\nsocks-port: 0\nmixed-port: 0\nallow-lan: false\nbind-address: 127.0.0.1\nexternal-controller: 127.0.0.1:28761\nsecret: audit-local-only\nmode: rule\nlog-level: warning\nipv6: false\ngeo-auto-update: false\nprofile:\n  store-selected: false\ndns:\n  enable: false\ntun:\n  enable: false\nproxies:\n  - {name: A, type: socks5, server: 127.0.0.1, port: 1}\nproxy-providers:\n  sample:\n    type: file\n    path: 'G:/Programs/output/proxy-core-audit-20261005-32ba416d/mihomo/provider.yaml'\n    health-check:\n      enable: false\nproxy-groups:\n  - {name: GLOBAL, type: select, proxies: [A, Foo]}\n  - {name: Foo, type: select, proxies: [A, DIRECT]}\n  - {name: Bar, type: select, proxies: [DIRECT], use: [sample]}\n  - {name: group, type: select, proxies: [DIRECT]}\nrules:\n  - MATCH,Foo\r\n"
+    },
+    {
+      "binary": "G:\\Programs\\Rust\\clash-nyanpasu\\backend\\tauri\\sidecar\\meow-x86_64-pc-windows-msvc.exe",
+      "responses": [
+        {
+          "status": 200,
+          "body": "{\"version\":\"v0.21.2\",\"meta\":true}",
+          "path": "/version"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/proxy/group"
+        },
+        {
+          "status": 200,
+          "body": "{\"proxies\":{\"group\":{\"name\":\"group\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":true,\"all\":[\"DIRECT\"],\"now\":\"DIRECT\"},\"GLOBAL\":{\"name\":\"GLOBAL\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":false,\"all\":[\"A\",\"Foo\"],\"now\":\"A\"},\"Foo\":{\"name\":\"Foo\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":false,\"all\":[\"A\",\"DIRECT\"],\"now\":\"A\"},\"Bar\":{\"name\":\"Bar\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":true,\"all\":[\"DIRECT\",\"provider-node\"],\"now\":\"DIRECT\"}}}",
+          "path": "/group"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/group/"
+        },
+        {
+          "status": 200,
+          "body": "{\"name\":\"Foo\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":false,\"all\":[\"A\",\"DIRECT\"],\"now\":\"A\"}",
+          "path": "/group/Foo"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/group/Foo/"
+        },
+        {
+          "status": 200,
+          "body": "[{\"name\":\"GLOBAL\",\"type\":\"select\",\"proxies\":[\"A\",\"Foo\"],\"now\":\"A\",\"url\":null,\"interval\":null,\"tolerance\":null},{\"name\":\"Foo\",\"type\":\"select\",\"proxies\":[\"A\",\"DIRECT\"],\"now\":\"A\",\"url\":null,\"interval\":null,\"tolerance\":null},{\"name\":\"Bar\",\"type\":\"select\",\"proxies\":[\"DIRECT\",\"provider-node\"],\"now\":\"DIRECT\",\"url\":null,\"interval\":null,\"tolerance\":null},{\"name\":\"group\",\"type\":\"select\",\"proxies\":[\"DIRECT\"],\"now\":\"DIRECT\",\"url\":null,\"interval\":null,\"tolerance\":null}]",
+          "path": "/api/proxy-groups"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/api/proxy-groups/"
+        },
+        {
+          "status": 405,
+          "body": "",
+          "path": "/api/proxy-groups/Foo"
+        },
+        {
+          "status": 200,
+          "body": "{\"proxies\":{\"GLOBAL\":{\"name\":\"GLOBAL\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":false,\"all\":[\"A\",\"Foo\"],\"now\":\"A\"},\"A\":{\"name\":\"A\",\"type\":\"Socks5\",\"alive\":true,\"history\":[],\"udp\":false},\"REJECT\":{\"name\":\"REJECT\",\"type\":\"Reject\",\"alive\":true,\"history\":[],\"udp\":true},\"REJECT-DROP\":{\"name\":\"REJECT-DROP\",\"type\":\"RejectDrop\",\"alive\":true,\"history\":[],\"udp\":true},\"Foo\":{\"name\":\"Foo\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":false,\"all\":[\"A\",\"DIRECT\"],\"now\":\"A\"},\"Bar\":{\"name\":\"Bar\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":true,\"all\":[\"DIRECT\",\"provider-node\"],\"now\":\"DIRECT\"},\"DIRECT\":{\"name\":\"DIRECT\",\"type\":\"Direct\",\"alive\":true,\"history\":[],\"udp\":true},\"group\":{\"name\":\"group\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":true,\"all\":[\"DIRECT\"],\"now\":\"DIRECT\"}}}",
+          "path": "/proxies"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/proxies/"
+        },
+        {
+          "status": 200,
+          "body": "{\"name\":\"Foo\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":false,\"all\":[\"A\",\"DIRECT\"],\"now\":\"A\"}",
+          "path": "/proxies/Foo"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/proxies/Foo/"
+        },
+        {
+          "status": 200,
+          "body": "{\"name\":\"group\",\"type\":\"Selector\",\"alive\":true,\"history\":[],\"udp\":true,\"all\":[\"DIRECT\"],\"now\":\"DIRECT\"}",
+          "path": "/proxies/group"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/proxies/groups"
+        },
+        {
+          "status": 200,
+          "body": "{\"providers\":{\"sample\":{\"expectedStatus\":\"\",\"name\":\"sample\",\"proxies\":[{\"alive\":true,\"history\":[],\"name\":\"provider-node\",\"type\":\"Socks5\",\"udp\":false}],\"testUrl\":\"\",\"type\":\"Proxy\",\"updatedAt\":\"2026-10-05T02:51:18Z\",\"vehicleType\":\"File\"}}}",
+          "path": "/providers/proxies"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/providers/proxies/"
+        }
+      ],
+      "sha256": "789038A0CFEEB35E9AC72AB4C94495A652B326DFFBB88FBBE6BFDA86C77C7D89",
+      "audited_at": "2026-10-05T10:51:19.3091478+08:00",
+      "core": "meow",
+      "config": "port: 0\nsocks-port: 0\nmixed-port: 0\nallow-lan: false\nbind-address: 127.0.0.1\nexternal-controller: 127.0.0.1:28762\nsecret: audit-local-only\nmode: rule\nlog-level: warning\nipv6: false\ngeo-auto-update: false\nprofile:\n  store-selected: false\ndns:\n  enable: false\ntun:\n  enable: false\nproxies:\n  - {name: A, type: socks5, server: 127.0.0.1, port: 1}\nproxy-providers:\n  sample:\n    type: file\n    path: 'G:/Programs/output/proxy-core-audit-20261005-32ba416d/meow/provider.yaml'\n    health-check:\n      enable: false\nproxy-groups:\n  - {name: GLOBAL, type: select, proxies: [A, Foo]}\n  - {name: Foo, type: select, proxies: [A, DIRECT]}\n  - {name: Bar, type: select, proxies: [DIRECT], use: [sample]}\n  - {name: group, type: select, proxies: [DIRECT]}\nrules:\n  - MATCH,Foo\r\n"
+    },
+    {
+      "binary": "G:\\Programs\\Rust\\clash-nyanpasu\\backend\\tauri\\sidecar\\clash-rs-x86_64-pc-windows-msvc.exe",
+      "responses": [
+        {
+          "status": 200,
+          "body": "{\"meta\":false,\"version\":\"0.10.8\"}",
+          "path": "/version"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/proxy/group"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/group"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/group/"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/group/Foo"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/group/Foo/"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/api/proxy-groups"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/api/proxy-groups/"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/api/proxy-groups/Foo"
+        },
+        {
+          "status": 200,
+          "body": "{\"proxies\":{\"DIRECT\":{\"history\":[],\"type\":\"Direct\",\"mptcp\":false,\"uot\":false,\"xudp\":false,\"tfo\":false,\"interface\":\"\",\"dialer-proxy\":\"\",\"routing-mark\":0,\"alive\":true,\"provider-name\":\"\",\"id\":\"a5b4c67a-3097-5672-8ed8-48633a2507ff\",\"smux\":false,\"extra\":{},\"name\":\"DIRECT\",\"udp\":true},\"REJECT\":{\"extra\":{},\"mptcp\":false,\"id\":\"d3928019-051a-573f-acea-bdad4fad3d07\",\"name\":\"REJECT\",\"uot\":false,\"history\":[],\"interface\":\"\",\"dialer-proxy\":\"\",\"routing-mark\":0,\"provider-name\":\"\",\"type\":\"Reject\",\"xudp\":false,\"alive\":true,\"udp\":false,\"tfo\":false,\"smux\":false},\"GLOBAL\":{\"smux\":false,\"mptcp\":false,\"now\":\"DIRECT\",\"type\":\"Selector\",\"icon\":\"\",\"interface\":\"\",\"tfo\":false,\"history\":[],\"provider-name\":\"\",\"hidden\":false,\"extra\":{},\"udp\":true,\"id\":\"edb0d724-2d1a-5f3a-93b3-7df85a904e22\",\"dialer-proxy\":\"\",\"routing-mark\":0,\"alive\":true,\"uot\":false,\"xudp\":false,\"testUrl\":\"\",\"all\":[\"DIRECT\",\"REJECT\",\"A\",\"GLOBAL\",\"Foo\",\"Bar\",\"group\",\"provider-node\"],\"name\":\"GLOBAL\"},\"A\":{\"id\":\"8482b9be-7643-5b1c-9a02-8fc4a9cec74f\",\"history\":[],\"type\":\"Socks5\",\"tfo\":false,\"mptcp\":false,\"udp\":true,\"server\":\"127.0.0.1\",\"dialer-proxy\":\"\",\"alive\":true,\"port\":1,\"smux\":false,\"name\":\"A\",\"provider-name\":\"\",\"extra\":{},\"xudp\":false,\"interface\":\"\",\"uot\":false,\"routing-mark\":0},\"group\":{\"xudp\":false,\"tfo\":false,\"extra\":{},\"alive\":true,\"hidden\":false,\"udp\":true,\"history\":[],\"name\":\"group\",\"interface\":\"\",\"routing-mark\":0,\"all\":[\"DIRECT\"],\"testUrl\":\"\",\"uot\":false,\"type\":\"Selector\",\"provider-name\":\"\",\"mptcp\":false,\"smux\":false,\"id\":\"902952aa-01e0-50f7-b732-bbb74b318b53\",\"now\":\"DIRECT\",\"dialer-proxy\":\"\",\"icon\":\"\"},\"Foo\":{\"smux\":false,\"history\":[],\"icon\":\"\",\"alive\":true,\"interface\":\"\",\"mptcp\":false,\"now\":\"A\",\"all\":[\"A\",\"DIRECT\"],\"uot\":false,\"xudp\":false,\"provider-name\":\"\",\"name\":\"Foo\",\"routing-mark\":0,\"dialer-proxy\":\"\",\"id\":\"fccada92-bd05-567e-8f0a-4a900f1a9c2d\",\"extra\":{},\"tfo\":false,\"type\":\"Selector\",\"hidden\":false,\"testUrl\":\"\",\"udp\":true},\"Bar\":{\"hidden\":false,\"history\":[],\"testUrl\":\"\",\"udp\":true,\"mptcp\":false,\"smux\":false,\"extra\":{},\"all\":[\"DIRECT\",\"provider-node\"],\"id\":\"5cf1cd2e-975f-58e1-a8b5-1e4fedcb83d9\",\"interface\":\"\",\"dialer-proxy\":\"\",\"uot\":false,\"routing-mark\":0,\"type\":\"Selector\",\"xudp\":false,\"now\":\"DIRECT\",\"alive\":true,\"name\":\"Bar\",\"icon\":\"\",\"tfo\":false,\"provider-name\":\"\"}}}",
+          "path": "/proxies"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/proxies/"
+        },
+        {
+          "status": 200,
+          "body": "{\"alive\":true,\"all\":[\"A\",\"DIRECT\"],\"interface\":\"\",\"xudp\":false,\"id\":\"fccada92-bd05-567e-8f0a-4a900f1a9c2d\",\"name\":\"Foo\",\"type\":\"Selector\",\"mptcp\":false,\"hidden\":false,\"testUrl\":\"\",\"smux\":false,\"provider-name\":\"\",\"extra\":{},\"udp\":true,\"dialer-proxy\":\"\",\"tfo\":false,\"uot\":false,\"now\":\"A\",\"history\":[],\"routing-mark\":0,\"icon\":\"\"}",
+          "path": "/proxies/Foo"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/proxies/Foo/"
+        },
+        {
+          "status": 200,
+          "body": "{\"routing-mark\":0,\"udp\":true,\"xudp\":false,\"extra\":{},\"id\":\"902952aa-01e0-50f7-b732-bbb74b318b53\",\"mptcp\":false,\"type\":\"Selector\",\"history\":[],\"alive\":true,\"dialer-proxy\":\"\",\"now\":\"DIRECT\",\"uot\":false,\"testUrl\":\"\",\"smux\":false,\"hidden\":false,\"interface\":\"\",\"provider-name\":\"\",\"name\":\"group\",\"all\":[\"DIRECT\"],\"tfo\":false,\"icon\":\"\"}",
+          "path": "/proxies/group"
+        },
+        {
+          "status": 404,
+          "body": "proxy groups not found",
+          "path": "/proxies/groups"
+        },
+        {
+          "status": 200,
+          "body": "{\"providers\":{\"Bar\":{\"name\":\"Bar\",\"vehicleType\":\"Compatible\",\"proxies\":[{\"type\":\"Direct\",\"routing-mark\":0,\"mptcp\":false,\"id\":\"a5b4c67a-3097-5672-8ed8-48633a2507ff\",\"history\":[],\"dialer-proxy\":\"\",\"interface\":\"\",\"provider-name\":\"\",\"extra\":{},\"udp\":true,\"smux\":false,\"tfo\":false,\"name\":\"DIRECT\",\"uot\":false,\"alive\":true,\"xudp\":false}],\"type\":\"Proxy\"},\"group\":{\"vehicleType\":\"Compatible\",\"proxies\":[{\"extra\":{},\"xudp\":false,\"id\":\"a5b4c67a-3097-5672-8ed8-48633a2507ff\",\"routing-mark\":0,\"type\":\"Direct\",\"mptcp\":false,\"provider-name\":\"\",\"tfo\":false,\"history\":[],\"alive\":true,\"name\":\"DIRECT\",\"interface\":\"\",\"smux\":false,\"uot\":false,\"dialer-proxy\":\"\",\"udp\":true}],\"type\":\"Proxy\",\"name\":\"group\"},\"default\":{\"name\":\"GLOBAL\",\"proxies\":[{\"tfo\":false,\"dialer-proxy\":\"\",\"alive\":true,\"provider-name\":\"\",\"extra\":{},\"id\":\"a5b4c67a-3097-5672-8ed8-48633a2507ff\",\"routing-mark\":0,\"mptcp\":false,\"name\":\"DIRECT\",\"uot\":false,\"udp\":true,\"interface\":\"\",\"type\":\"Direct\",\"history\":[],\"xudp\":false,\"smux\":false},{\"name\":\"REJECT\",\"routing-mark\":0,\"history\":[],\"udp\":false,\"xudp\":false,\"extra\":{},\"smux\":false,\"uot\":false,\"tfo\":false,\"provider-name\":\"\",\"mptcp\":false,\"interface\":\"\",\"id\":\"d3928019-051a-573f-acea-bdad4fad3d07\",\"type\":\"Reject\",\"dialer-proxy\":\"\",\"alive\":true},{\"server\":\"127.0.0.1\",\"udp\":true,\"dialer-proxy\":\"\",\"interface\":\"\",\"extra\":{},\"provider-name\":\"\",\"type\":\"Socks5\",\"tfo\":false,\"mptcp\":false,\"id\":\"8482b9be-7643-5b1c-9a02-8fc4a9cec74f\",\"name\":\"A\",\"history\":[],\"alive\":true,\"xudp\":false,\"smux\":false,\"routing-mark\":0,\"uot\":false,\"port\":1},{\"alive\":true,\"all\":[\"A\",\"Foo\"],\"routing-mark\":0,\"provider-name\":\"\",\"uot\":false,\"name\":\"GLOBAL\",\"icon\":\"\",\"history\":[],\"hidden\":false,\"now\":\"A\",\"type\":\"Selector\",\"id\":\"edb0d724-2d1a-5f3a-93b3-7df85a904e22\",\"mptcp\":false,\"xudp\":false,\"udp\":true,\"dialer-proxy\":\"\",\"extra\":{},\"testUrl\":\"\",\"interface\":\"\",\"tfo\":false,\"smux\":false},{\"name\":\"Foo\",\"uot\":false,\"routing-mark\":0,\"now\":\"A\",\"tfo\":false,\"testUrl\":\"\",\"provider-name\":\"\",\"mptcp\":false,\"icon\":\"\",\"udp\":true,\"smux\":false,\"xudp\":false,\"hidden\":false,\"alive\":true,\"interface\":\"\",\"dialer-proxy\":\"\",\"id\":\"fccada92-bd05-567e-8f0a-4a900f1a9c2d\",\"history\":[],\"all\":[\"A\",\"DIRECT\"],\"type\":\"Selector\",\"extra\":{}},{\"icon\":\"\",\"now\":\"DIRECT\",\"hidden\":false,\"mptcp\":false,\"type\":\"Selector\",\"udp\":true,\"uot\":false,\"routing-mark\":0,\"alive\":true,\"tfo\":false,\"history\":[],\"interface\":\"\",\"smux\":false,\"provider-name\":\"\",\"extra\":{},\"all\":[\"DIRECT\",\"provider-node\"],\"xudp\":false,\"testUrl\":\"\",\"name\":\"Bar\",\"dialer-proxy\":\"\",\"id\":\"5cf1cd2e-975f-58e1-a8b5-1e4fedcb83d9\"},{\"all\":[\"DIRECT\"],\"id\":\"902952aa-01e0-50f7-b732-bbb74b318b53\",\"mptcp\":false,\"extra\":{},\"tfo\":false,\"now\":\"DIRECT\",\"uot\":false,\"interface\":\"\",\"alive\":true,\"name\":\"group\",\"icon\":\"\",\"smux\":false,\"provider-name\":\"\",\"testUrl\":\"\",\"dialer-proxy\":\"\",\"routing-mark\":0,\"type\":\"Selector\",\"xudp\":false,\"udp\":true,\"hidden\":false,\"history\":[]}],\"vehicleType\":\"Compatible\",\"type\":\"Proxy\"},\"Foo\":{\"proxies\":[{\"smux\":false,\"provider-name\":\"\",\"routing-mark\":0,\"type\":\"Socks5\",\"dialer-proxy\":\"\",\"extra\":{},\"interface\":\"\",\"alive\":true,\"mptcp\":false,\"port\":1,\"id\":\"8482b9be-7643-5b1c-9a02-8fc4a9cec74f\",\"history\":[],\"server\":\"127.0.0.1\",\"xudp\":false,\"udp\":true,\"tfo\":false,\"uot\":false,\"name\":\"A\"},{\"name\":\"DIRECT\",\"dialer-proxy\":\"\",\"smux\":false,\"uot\":false,\"alive\":true,\"type\":\"Direct\",\"tfo\":false,\"provider-name\":\"\",\"interface\":\"\",\"udp\":true,\"extra\":{},\"id\":\"a5b4c67a-3097-5672-8ed8-48633a2507ff\",\"xudp\":false,\"mptcp\":false,\"routing-mark\":0,\"history\":[]}],\"type\":\"Proxy\",\"vehicleType\":\"Compatible\",\"name\":\"Foo\"},\"sample\":{\"type\":\"Proxy\",\"updatedAt\":\"2026-10-05T02:50:07.971166900Z\",\"proxies\":[{\"history\":[],\"routing-mark\":0,\"type\":\"Socks5\",\"udp\":true,\"mptcp\":false,\"id\":\"f7f429ed-d019-5f83-a38b-bc241eb24a77\",\"uot\":false,\"provider-name\":\"\",\"interface\":\"\",\"extra\":{},\"server\":\"127.0.0.1\",\"tfo\":false,\"name\":\"provider-node\",\"alive\":true,\"xudp\":false,\"dialer-proxy\":\"\",\"smux\":false,\"port\":1}],\"name\":\"sample\",\"vehicleType\":\"File\"},\"GLOBAL\":{\"vehicleType\":\"Compatible\",\"name\":\"GLOBAL\",\"proxies\":[{\"smux\":false,\"type\":\"Socks5\",\"port\":1,\"mptcp\":false,\"name\":\"A\",\"routing-mark\":0,\"server\":\"127.0.0.1\",\"provider-name\":\"\",\"xudp\":false,\"alive\":true,\"history\":[],\"tfo\":false,\"dialer-proxy\":\"\",\"extra\":{},\"uot\":false,\"udp\":true,\"id\":\"8482b9be-7643-5b1c-9a02-8fc4a9cec74f\",\"interface\":\"\"},{\"testUrl\":\"\",\"smux\":false,\"history\":[],\"mptcp\":false,\"xudp\":false,\"type\":\"Selector\",\"interface\":\"\",\"all\":[\"A\",\"DIRECT\"],\"uot\":false,\"id\":\"fccada92-bd05-567e-8f0a-4a900f1a9c2d\",\"alive\":true,\"now\":\"A\",\"hidden\":false,\"provider-name\":\"\",\"icon\":\"\",\"tfo\":false,\"name\":\"Foo\",\"dialer-proxy\":\"\",\"routing-mark\":0,\"extra\":{},\"udp\":true}],\"type\":\"Proxy\"}}}",
+          "path": "/providers/proxies"
+        },
+        {
+          "status": 404,
+          "body": "",
+          "path": "/providers/proxies/"
+        }
+      ],
+      "sha256": "894063ED649DAF8E52551BAB27EF73E8D6016E6E4AFA77182FF02CC22241CDE6",
+      "audited_at": "2026-10-05T10:51:20.6637799+08:00",
+      "core": "clash-rs",
+      "config": "port: 0\nsocks-port: 0\nmixed-port: 0\nallow-lan: false\nbind-address: 127.0.0.1\nexternal-controller: 127.0.0.1:28763\nsecret: audit-local-only\nmode: rule\nlog-level: warning\nipv6: false\ngeo-auto-update: false\nprofile:\n  store-selected: false\ndns:\n  enable: false\ntun:\n  enable: false\nproxies:\n  - {name: A, type: socks5, server: 127.0.0.1, port: 1}\nproxy-providers:\n  sample:\n    type: file\n    path: 'G:/Programs/output/proxy-core-audit-20261005-32ba416d/clash-rs/provider.yaml'\n    health-check:\n      enable: false\n      url: http://127.0.0.1:1/\n      interval: 0\nproxy-groups:\n  - {name: GLOBAL, type: select, proxies: [A, Foo]}\n  - {name: Foo, type: select, proxies: [A, DIRECT]}\n  - {name: Bar, type: select, proxies: [DIRECT], use: [sample]}\n  - {name: group, type: select, proxies: [DIRECT]}\nrules:\n  - MATCH,Foo\r\n\r\n"
+    }
+  ],
+  "algorithm_model_checks": [
+    {
+      "passed": true,
+      "proposed": ["Foo", "Bar", "group"],
+      "current": ["Foo"],
+      "kind": "PowerShell model of discovery only, not execution of Rust application",
+      "case": "mihomo captured registry"
+    },
+    {
+      "passed": true,
+      "proposed": ["Bar", "Foo", "group"],
+      "current": [],
+      "case": "mihomo synthetic missing GLOBAL"
+    },
+    {
+      "proposed": ["Foo", "Bar", "group"],
+      "passed": true,
+      "case": "mihomo reversed JSON object key order"
+    },
+    {
+      "passed": true,
+      "proposed": ["Foo", "Bar", "group"],
+      "current": ["Foo"],
+      "kind": "PowerShell model of discovery only, not execution of Rust application",
+      "case": "meow captured registry"
+    },
+    {
+      "passed": true,
+      "proposed": ["Bar", "Foo", "group"],
+      "current": [],
+      "case": "meow synthetic missing GLOBAL"
+    },
+    {
+      "proposed": ["Foo", "Bar", "group"],
+      "passed": true,
+      "case": "meow reversed JSON object key order"
+    },
+    {
+      "passed": true,
+      "proposed": ["Foo", "Bar", "group"],
+      "current": ["GLOBAL", "Foo", "Bar", "group"],
+      "kind": "PowerShell model of discovery only, not execution of Rust application",
+      "case": "clash-rs captured registry"
+    },
+    {
+      "passed": true,
+      "proposed": ["Bar", "Foo", "group"],
+      "current": [],
+      "case": "clash-rs synthetic missing GLOBAL"
+    },
+    {
+      "proposed": ["Foo", "Bar", "group"],
+      "passed": true,
+      "case": "clash-rs reversed JSON object key order"
+    },
+    {
+      "proposed": ["Foo", "Empty"],
+      "passed": true,
+      "case": "empty group, duplicate ordering hint, missing member, leaf member, GLOBAL self reference"
+    }
+  ]
+}

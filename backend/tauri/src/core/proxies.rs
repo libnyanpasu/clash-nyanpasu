@@ -106,22 +106,21 @@ impl State {
         api: ApiClient,
     ) -> Result<Arc<Snapshot>> {
         let result = async {
-            let (proxies, providers) = api.proxy_snapshot().await?;
+            let response = api.proxy_snapshot().await?;
+            let groups = response.groups.map(proxy_items);
             let proxies = api::ProxiesRes {
-                proxies: proxies
-                    .into_iter()
-                    .map(|(name, proxy)| (name.as_str().to_owned(), proxy_item(proxy)))
-                    .collect(),
+                proxies: proxy_items(response.proxies),
             };
             let providers = api::ProvidersProxiesRes {
-                providers: providers
+                providers: response
+                    .providers
                     .into_iter()
                     .map(|(name, provider)| {
                         Ok((name.as_str().to_owned(), provider_item(provider)?))
                     })
                     .collect::<Result<_>>()?,
             };
-            let proxies = Proxies::from_responses(proxies, providers.clone())?;
+            let proxies = Proxies::from_responses(proxies, providers.clone(), groups)?;
             let fingerprint = serde_json::to_vec(&(&proxies, &providers))?;
             anyhow::ensure!(
                 !api.is_revoked(),
@@ -434,6 +433,15 @@ impl ProxiesClient {
     }
 }
 
+fn proxy_items(
+    proxies: clash_api::IndexMap<clash_api::ProxyName, clash_api::Proxy>,
+) -> clash_api::IndexMap<String, api::ProxyItem> {
+    proxies
+        .into_iter()
+        .map(|(name, proxy)| (name.as_str().to_owned(), proxy_item(proxy)))
+        .collect()
+}
+
 fn proxy_item(proxy: clash_api::Proxy) -> api::ProxyItem {
     api::ProxyItem {
         name: proxy.name.as_str().to_owned(),
@@ -532,6 +540,7 @@ mod tests {
         release: Notify,
         calls: Mutex<Vec<&'static str>>,
         selected: Mutex<String>,
+        group_list: Mutex<Option<serde_json::Value>>,
     }
     async fn proxies(HttpState(f): HttpState<Arc<Fixture>>) -> Response {
         f.reads.fetch_add(1, Ordering::SeqCst);
@@ -556,6 +565,12 @@ mod tests {
         proxies[GROUP]["all"] = serde_json::json!([NODE, "DIRECT"]);
         proxies[GROUP]["now"] = serde_json::json!(f.selected.lock().unwrap().clone());
         Json(serde_json::json!({"proxies":proxies})).into_response()
+    }
+    async fn groups(HttpState(f): HttpState<Arc<Fixture>>) -> Response {
+        match f.group_list.lock().unwrap().clone() {
+            Some(list) => Json(list).into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        }
     }
     async fn providers() -> Json<serde_json::Value> {
         Json(
@@ -632,10 +647,11 @@ mod tests {
     ) {
         let fixture = Arc::new(Fixture::default());
         let router = Router::new()
-            .route("/proxies/", get(proxies))
-            .route("/providers/proxies/", get(providers))
-            .route("/proxies/{group}/", put(select))
-            .route("/providers/proxies/{name}/", put(update))
+            .route("/group", get(groups))
+            .route("/proxies", get(proxies))
+            .route("/providers/proxies", get(providers))
+            .route("/proxies/{group}", put(select))
+            .route("/providers/proxies/{name}", put(update))
             .route("/connections", get(connections).delete(close))
             .route("/connections/{id}", delete(close_one))
             .with_state(fixture.clone());
@@ -889,6 +905,20 @@ mod tests {
                 .unwrap()
                 .is_err()
         );
+        server.abort();
+    }
+    #[tokio::test]
+    async fn listed_groups_reach_the_published_snapshot() {
+        let (client, core, _, fixture, server) = setup().await;
+        *fixture.group_list.lock().unwrap() = Some(serde_json::json!({"proxies":[
+            {"name":"listed", "type":"LoadBalance", "udp":true, "history":[], "all":[NODE]}
+        ]}));
+        let proxies = client.get(true).await.unwrap();
+        assert_eq!(proxies.groups.len(), 1);
+        assert_eq!(proxies.groups[0].name, "listed");
+        assert_eq!(proxies.nodes[NODE].provider.as_deref(), Some(PROVIDER));
+        client.stop_for_test().await.unwrap();
+        core.shutdown().await.unwrap();
         server.abort();
     }
 }

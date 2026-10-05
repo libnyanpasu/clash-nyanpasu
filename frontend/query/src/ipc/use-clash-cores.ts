@@ -23,6 +23,7 @@ export type ClashCoresDetail = {
   name: string
   currentVersion: string
   latestVersion?: string
+  versionReadError?: boolean
 }
 
 export const useClashCores = () => {
@@ -60,6 +61,7 @@ export const useClashCores = () => {
             result[key as ClashCore_Serialize] = {
               name: ClashCores[key as ClashCore_Serialize],
               currentVersion: 'N/A',
+              versionReadError: true,
             }
           }
           return result

@@ -16,7 +16,9 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import {
+  canUpdateCoreVersion,
   ClashCoresDetail,
+  hasNewerCoreVersion,
   useClashCores,
   useDeleteClashConnections,
   useSetting,
@@ -176,9 +178,20 @@ const CoreItem = ({
 
   const isSelected = core === currentCore
 
-  const haveNewVersion = item.latestVersion
-    ? item.latestVersion !== item.currentVersion
-    : false
+  const haveNewVersion = hasNewerCoreVersion(
+    core,
+    item.currentVersion,
+    item.latestVersion,
+  )
+  const canUpdate = canUpdateCoreVersion(
+    core,
+    item.currentVersion,
+    item.latestVersion,
+    item.versionReadError,
+  )
+  const updateActionLabel = item.versionReadError
+    ? m.settings_clash_core_manager_card_reinstall_core()
+    : m.settings_clash_core_manager_card_click_to_update()
 
   const {
     task: updateCoreTask,
@@ -218,6 +231,10 @@ const CoreItem = ({
         <TextMarquee className="text-sm">
           {updateCoreTask.isPending && updaterStateLabel ? (
             <span className="text-emerald-700">{updaterStateLabel}</span>
+          ) : item.versionReadError ? (
+            <span className="text-error">
+              {m.settings_clash_core_manager_card_version_read_error()}
+            </span>
           ) : haveNewVersion ? (
             <p className="flex items-center gap-1">
               <span>{item.currentVersion}</span>
@@ -230,7 +247,7 @@ const CoreItem = ({
         </TextMarquee>
       </div>
 
-      {haveNewVersion && (
+      {canUpdate && (
         <div className="m-2">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -238,6 +255,7 @@ const CoreItem = ({
                 className="size-8"
                 variant="stroked"
                 icon
+                aria-label={updateActionLabel}
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -252,9 +270,7 @@ const CoreItem = ({
               </Button>
             </TooltipTrigger>
 
-            <TooltipContent>
-              {m.settings_clash_core_manager_card_click_to_update()}
-            </TooltipContent>
+            <TooltipContent>{updateActionLabel}</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -348,9 +364,20 @@ export default function CoreManagerCard() {
 
   const loadingMessage = m.settings_clash_core_manager_card_loading()
 
-  const haveNewVersion = currentCore?.latestVersion
-    ? currentCore.latestVersion !== currentCore.currentVersion
-    : false
+  const haveNewVersion = hasNewerCoreVersion(
+    currentCoreKey,
+    currentCore?.currentVersion,
+    currentCore?.latestVersion,
+  )
+  const canUpdate = canUpdateCoreVersion(
+    currentCoreKey,
+    currentCore?.currentVersion,
+    currentCore?.latestVersion,
+    currentCore?.versionReadError,
+  )
+  const updateActionLabel = currentCore?.versionReadError
+    ? m.settings_clash_core_manager_card_reinstall_core()
+    : m.settings_clash_core_manager_card_click_to_update()
 
   const currentCoreUpdate = useCoreUpdateTask(currentCoreKey, currentCore)
 
@@ -404,6 +431,10 @@ export default function CoreManagerCard() {
                 <span className="text-emerald-700">
                   {currentCoreUpdate.stateLabel}
                 </span>
+              ) : currentCore?.versionReadError ? (
+                <span className="text-error">
+                  {m.settings_clash_core_manager_card_version_read_error()}
+                </span>
               ) : haveNewVersion ? (
                 <>
                   <span>{currentCore?.currentVersion}</span>
@@ -419,12 +450,13 @@ export default function CoreManagerCard() {
           </div>
 
           <div className="relative mr-2 flex items-center gap-3">
-            {haveNewVersion && (
+            {canUpdate && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="stroked"
                     icon
+                    aria-label={updateActionLabel}
                     onClick={() => currentCoreUpdate.task.execute()}
                     loading={currentCoreUpdate.task.isPending}
                   >
@@ -432,9 +464,7 @@ export default function CoreManagerCard() {
                   </Button>
                 </TooltipTrigger>
 
-                <TooltipContent>
-                  {m.settings_clash_core_manager_card_click_to_update()}
-                </TooltipContent>
+                <TooltipContent>{updateActionLabel}</TooltipContent>
               </Tooltip>
             )}
 

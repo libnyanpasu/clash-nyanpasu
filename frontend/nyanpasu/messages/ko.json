@@ -194,6 +194,8 @@
   "settings_clash_core_manager_card_replacing": "교체 중...",
   "settings_clash_core_manager_card_restarting": "재시작 중...",
   "settings_clash_core_manager_card_done": "완료",
+  "settings_clash_core_manager_card_version_read_error": "코어 버전을 읽을 수 없습니다",
+  "settings_clash_core_manager_card_reinstall_core": "코어 다시 설치",
   "settings_debug_utils_open_config_directory": "설정 디렉터리 열기",
   "settings_debug_utils_open_data_directory": "데이터 디렉터리 열기",
   "settings_debug_utils_open_core_directory": "코어 디렉터리 열기",

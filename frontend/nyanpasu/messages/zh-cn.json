@@ -224,6 +224,8 @@
   "settings_clash_core_manager_card_replacing": "替换中...",
   "settings_clash_core_manager_card_restarting": "重启中...",
   "settings_clash_core_manager_card_done": "完成",
+  "settings_clash_core_manager_card_version_read_error": "无法读取内核版本",
+  "settings_clash_core_manager_card_reinstall_core": "重新安装内核",
   "settings_debug_utils_open_config_directory": "打开配置路径",
   "settings_debug_utils_open_data_directory": "打开数据路径",
   "settings_debug_utils_open_core_directory": "打开内核路径",

@@ -224,6 +224,8 @@
   "settings_clash_core_manager_card_replacing": "Replacing...",
   "settings_clash_core_manager_card_restarting": "Restarting...",
   "settings_clash_core_manager_card_done": "Done",
+  "settings_clash_core_manager_card_version_read_error": "Could not read core version",
+  "settings_clash_core_manager_card_reinstall_core": "Reinstall core",
   "settings_debug_utils_open_config_directory": "Open Config Directory",
   "settings_debug_utils_open_data_directory": "Open Data Directory",
   "settings_debug_utils_open_core_directory": "Open Core Directory",

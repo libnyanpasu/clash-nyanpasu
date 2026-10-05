@@ -194,6 +194,8 @@
   "settings_clash_core_manager_card_replacing": "Замена...",
   "settings_clash_core_manager_card_restarting": "Перезапуск...",
   "settings_clash_core_manager_card_done": "Готово",
+  "settings_clash_core_manager_card_version_read_error": "Не удалось прочитать версию ядра",
+  "settings_clash_core_manager_card_reinstall_core": "Переустановить ядро",
   "settings_debug_utils_open_config_directory": "Открыть конфигурационную директорию",
   "settings_debug_utils_open_data_directory": "Открыть директорию данных",
   "settings_debug_utils_open_core_directory": "Открыть директорию ядра",

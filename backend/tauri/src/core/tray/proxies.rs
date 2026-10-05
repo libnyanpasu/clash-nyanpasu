@@ -47,7 +47,7 @@ fn to_tray_proxies(mode: Mode, raw_proxies: &Proxies) -> TrayProxies {
             };
             tray_proxies.insert(global.name.clone(), item);
         }
-        for raw_group in raw_proxies.groups.iter() {
+        for raw_group in raw_proxies.groups.iter().filter(|group| !group.hidden) {
             let group = TrayProxyItem {
                 current: raw_group.now.clone(),
                 all: raw_group.all.clone(),
@@ -513,6 +513,7 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::clash::proxies::ProxyGroupItem;
 
     fn selecting(current: Option<&str>) -> TrayProxies {
         TrayProxies::from([(
@@ -540,8 +541,6 @@ mod tests {
     }
 
     fn sample_proxies() -> Proxies {
-        use crate::core::clash::proxies::ProxyGroupItem;
-
         Proxies {
             global: ProxyGroupItem {
                 name: "GLOBAL".into(),
@@ -600,5 +599,24 @@ mod tests {
             tray.keys().map(String::as_str).collect::<Vec<_>>(),
             ["GroupA"]
         );
+    }
+
+    /// The page filters hidden groups out; the tray must not list them
+    /// either, while GLOBAL itself always stays in Global mode.
+    #[test]
+    fn hidden_groups_stay_out_of_the_tray() {
+        let mut proxies = sample_proxies();
+        proxies.global.hidden = true;
+        proxies.groups.push(ProxyGroupItem {
+            name: "Hidden".into(),
+            r#type: "Selector".into(),
+            all: vec!["node-a".into()],
+            hidden: true,
+            ..Default::default()
+        });
+        for mode in [Mode::Global, Mode::Rule, Mode::Script] {
+            assert!(!to_tray_proxies(mode, &proxies).contains_key("Hidden"));
+        }
+        assert!(to_tray_proxies(Mode::Global, &proxies).contains_key("GLOBAL"));
     }
 }

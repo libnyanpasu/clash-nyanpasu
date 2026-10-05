@@ -3562,25 +3562,27 @@ export type Proxies = Proxies_Serialize | Proxies_Deserialize
 export type ProxiesSelectorMode = 'hidden' | 'normal' | 'submenu'
 
 export type Proxies_Deserialize = {
-  global: ProxyGroupItem_Deserialize
-  groups: ProxyGroupItem_Deserialize[]
+  /**  The core's GLOBAL group; `None` when the core has none. */
+  global: ProxyGroup | null
+  groups: ProxyGroup[]
   /**
    *  Every `/proxies` entry plus every provider-owned node referenced by a
    *  group, keyed by name. A node that belongs to several groups still has
    *  exactly one entry here; groups reference it by name in `all`.
    */
-  nodes: { [key in string]: ProxyItem_Deserialize }
+  nodes: { [key in ProxyName]: Proxy_Deserialize }
 }
 
 export type Proxies_Serialize = {
-  global: ProxyGroupItem_Serialize
-  groups: ProxyGroupItem_Serialize[]
+  /**  The core's GLOBAL group; `None` when the core has none. */
+  global: ProxyGroup | null
+  groups: ProxyGroup[]
   /**
    *  Every `/proxies` entry plus every provider-owned node referenced by a
    *  group, keyed by name. A node that belongs to several groups still has
    *  exactly one entry here; groups reference it by name in `all`.
    */
-  nodes: { [key in string]: ProxyItem_Serialize }
+  nodes: { [key in ProxyName]: Proxy_Serialize }
 }
 
 /**  Common proxy fields with optional core-specific and group metadata. */
@@ -3598,75 +3600,38 @@ export type ProxyExtra = {
   history: DelayHistory[]
 }
 
-export type ProxyGroupItem =
-  ProxyGroupItem_Serialize | ProxyGroupItem_Deserialize
-
-export type ProxyGroupItem_Deserialize = {
-  name: string
-  type: string
-  udp: boolean
-  history: ProxyItemHistory[]
-  all: string[]
-  now: string | null
-  provider: string | null
-  alive: boolean | null
-  xudp: boolean | null
-  tfo: boolean | null
-  icon: string | null
-  hidden?: boolean
-}
-
-export type ProxyGroupItem_Serialize = {
-  name: string
-  type: string
-  udp: boolean
-  history: ProxyItemHistory[]
-  all: string[]
-  now: string | null
-  provider: string | null
-  alive: boolean | null
-  xudp?: boolean | null
-  tfo?: boolean | null
-  icon?: string | null
+/**  A group's meaning, derived from its record in `Proxies::nodes`. */
+export type ProxyGroup = {
+  name: ProxyName
+  type: ProxyGroupKind
+  /**  Member names; look each node up in `Proxies::nodes`. */
+  all: ProxyName[]
+  now: ProxyName | null
+  /**  The member a user pinned; `None` while the core selects on its own. */
+  fixed: ProxyName | null
   hidden: boolean
-}
-
-export type ProxyItem = ProxyItem_Serialize | ProxyItem_Deserialize
-
-export type ProxyItemHistory = {
-  time: string
-  delay: number
-}
-
-export type ProxyItem_Deserialize = {
-  name: string
-  type: string
-  udp: boolean
-  history: ProxyItemHistory[]
-  all: string[] | null
-  now: string | null
-  provider: string | null
-  alive: boolean | null
-  xudp: boolean | null
-  tfo: boolean | null
   icon: string | null
-  hidden?: boolean
+  capabilities: ProxyGroupCapabilities
 }
 
-export type ProxyItem_Serialize = {
-  name: string
-  type: string
-  udp: boolean
-  history: ProxyItemHistory[]
-  all: string[] | null
-  now: string | null
-  provider: string | null
-  alive: boolean | null
-  xudp?: boolean | null
-  tfo?: boolean | null
-  icon?: string | null
-  hidden: boolean
+/**  What the running core lets a user do with a group. */
+export type ProxyGroupCapabilities = {
+  /**  `PUT /proxies/{group}` chooses a member. */
+  select: boolean
+  /**  `DELETE /proxies/{group}` returns a pinned group to automatic selection. */
+  clearFixed: boolean
 }
+
+/**  A group's `type`, as the core reports it. */
+export type ProxyGroupKind =
+  | 'Selector'
+  | 'URLTest'
+  | 'Fallback'
+  | 'LoadBalance'
+  | 'Relay'
+  | 'Smart'
+  /**  A type this build does not know, kept verbatim. */
+  | string
 
 export type ProxyName = string
 

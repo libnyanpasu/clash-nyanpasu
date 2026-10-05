@@ -157,15 +157,15 @@ impl<M: Clone> TrayDisplay<M> {
 
 #[cfg(test)]
 mod tests {
-    use super::{super::proxies::TrayProxyItem, *};
+    use super::{super::proxies::TrayGroup, *};
 
     fn selecting(proxy: &str) -> TrayProxies {
         TrayProxies::from([(
             "Proxy".to_owned(),
-            TrayProxyItem {
-                current: Some(proxy.to_owned()),
+            TrayGroup {
+                now: Some(proxy.to_owned()),
                 all: vec!["a".to_owned(), "b".to_owned()],
-                r#type: "Selector".to_owned(),
+                selectable: true,
             },
         )])
     }

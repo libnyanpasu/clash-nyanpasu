@@ -13,10 +13,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     actor_v2::{CoreClient, api::ApiClient},
-    clash::{
-        api,
-        proxies::{Proxies, proxy_items},
-    },
+    clash::proxies::Proxies,
 };
 
 struct Snapshot {
@@ -111,11 +108,8 @@ impl State {
     ) -> Result<Arc<Snapshot>> {
         let result = async {
             let response = api.proxy_snapshot().await?;
-            let groups = response.groups.map(proxy_items);
-            let proxies = api::ProxiesRes {
-                proxies: proxy_items(response.proxies),
-            };
-            let proxies = Proxies::from_responses(proxies, &response.providers, groups)?;
+            let proxies =
+                Proxies::from_responses(response.proxies, &response.providers, response.groups)?;
             let providers = response.providers;
             let fingerprint = serde_json::to_vec(&(&proxies, &providers))?;
             anyhow::ensure!(
@@ -440,6 +434,7 @@ mod tests {
         response::{IntoResponse, Response},
         routing::{delete, get, put},
     };
+    use clash_api::ProxyName;
     use std::sync::{
         Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -591,8 +586,11 @@ mod tests {
     async fn cache_ttl_and_provider_metadata_are_shared() {
         let (client, _core, _, fixture, server) = setup().await;
         let proxies = client.get(false).await.unwrap();
-        assert_eq!(proxies.groups[0].all[0], NODE);
-        assert_eq!(proxies.nodes[NODE].provider.as_deref(), Some(PROVIDER));
+        assert_eq!(proxies.groups[0].all[0].as_str(), NODE);
+        assert_eq!(
+            proxies.nodes[&ProxyName::from(NODE)].provider.as_deref(),
+            Some(PROVIDER)
+        );
         let providers = client.providers().await.unwrap();
         let info = providers[&clash_api::ProviderName::from(PROVIDER)]
             .subscription_info
@@ -624,7 +622,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(*fixture.calls.lock().unwrap(), ["select", "close", "read"]);
-        assert_eq!(client.snapshot().groups[0].now.as_deref(), Some(NODE));
+        assert_eq!(
+            client.snapshot().groups[0]
+                .now
+                .as_ref()
+                .map(ProxyName::as_str),
+            Some(NODE)
+        );
         fixture.calls.lock().unwrap().clear();
         client
             .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::Off)
@@ -837,8 +841,11 @@ mod tests {
         ]}));
         let proxies = client.get(true).await.unwrap();
         assert_eq!(proxies.groups.len(), 1);
-        assert_eq!(proxies.groups[0].name, "listed");
-        assert_eq!(proxies.nodes[NODE].provider.as_deref(), Some(PROVIDER));
+        assert_eq!(proxies.groups[0].name.as_str(), "listed");
+        assert_eq!(
+            proxies.nodes[&ProxyName::from(NODE)].provider.as_deref(),
+            Some(PROVIDER)
+        );
         client.stop_for_test().await.unwrap();
         core.shutdown().await.unwrap();
         server.abort();

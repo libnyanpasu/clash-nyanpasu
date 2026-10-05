@@ -1,9 +1,6 @@
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
-import type {
-  Proxies_Serialize,
-  ProxyGroupItem_Serialize,
-} from '@nyanpasu/rpc/types'
+import type { Proxies_Serialize, ProxyGroup } from '@nyanpasu/rpc/types'
 import DelayChip from './delay-chip'
 import { getGroupSelectedDelay } from './group-delay'
 
@@ -11,7 +8,7 @@ export default function GroupSummary({
   group,
   proxies,
 }: {
-  group: ProxyGroupItem_Serialize
+  group: ProxyGroup
   proxies: Proxies_Serialize
 }) {
   const delay = getGroupSelectedDelay(group, proxies)

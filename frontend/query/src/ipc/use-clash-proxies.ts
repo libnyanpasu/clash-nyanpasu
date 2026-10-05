@@ -1,10 +1,10 @@
 import { useCallback } from 'react'
 import { unwrapResult } from '@nyanpasu/rpc'
 import type {
+  DelayHistory,
   Proxies_Serialize,
-  ProxyGroupItem_Serialize,
-  ProxyItem_Serialize,
-  ProxyItemHistory,
+  Proxy_Serialize,
+  ProxyGroup,
 } from '@nyanpasu/rpc/types'
 import {
   useMutation,
@@ -23,9 +23,9 @@ export type ClashDelayOptions = {
 // Query data stays plain JSON: functions in it would defeat structural
 // sharing, so every refetch would hand every group and node a new identity.
 // Actions are returned by the hook instead.
-export type ClashProxiesQueryProxyItem = ProxyItem_Serialize
+export type ClashProxiesQueryProxyItem = Proxy_Serialize
 
-export type ClashProxiesQueryGroupItem = ProxyGroupItem_Serialize
+export type ClashProxiesQueryGroupItem = ProxyGroup
 
 export type ClashProxiesQuery = Proxies_Serialize
 
@@ -38,7 +38,7 @@ const withDelaySample = (
   history: [
     ...node.history,
     { time: new Date().toISOString(), delay },
-  ] satisfies ProxyItemHistory[],
+  ] satisfies DelayHistory[],
 })
 
 export const useClashProxies = () => {

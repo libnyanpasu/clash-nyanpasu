@@ -68,42 +68,6 @@ pub struct ProvidersRulesRes {
     pub providers: IndexMap<String, RuleProviderItem>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct ProxiesRes {
-    #[serde(default)]
-    pub proxies: IndexMap<String, ProxyItem>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Default, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct ProxyItemHistory {
-    pub time: String,
-    pub delay: i64,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Default, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct ProxyItem {
-    pub name: String,
-    pub r#type: String, // TODO: 考虑改成枚举
-    pub udp: bool,
-    pub history: Vec<ProxyItemHistory>,
-    pub all: Option<Vec<String>>,
-    pub now: Option<String>, // 当前选中的代理
-    pub provider: Option<String>,
-    pub alive: Option<bool>, // Mihomo Or Premium Only
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub xudp: Option<bool>, // Mihomo Only
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tfo: Option<bool>, // Mihomo Only
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>, // Mihomo Only
-    #[serde(default)]
-    pub hidden: bool, // Mihomo Only
-                             // extra: {}, // Mihomo Only
-}
-
 /// 缩短clash的日志
 #[instrument]
 pub fn parse_log(log: String) -> String {

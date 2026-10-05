@@ -2,13 +2,17 @@ import { ReactElement } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
-import { ProxyItemHistory } from '@nyanpasu/rpc/types'
+import type { DelayHistory as DelayHistorySample } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import DelayChip from './delay-chip'
 
 const HISTORY_LIMIT = 10
 
-export function DelayHistoryBar({ history }: { history: ProxyItemHistory[] }) {
+export function DelayHistoryBar({
+  history,
+}: {
+  history: DelayHistorySample[]
+}) {
   return (
     <span
       className="flex h-1 w-12 shrink-0 gap-px overflow-hidden rounded-full"
@@ -31,7 +35,7 @@ export function DelayHistoryBar({ history }: { history: ProxyItemHistory[] }) {
 
 // Rendered only while the tooltip is open, so closed tooltips on a node grid
 // do no history formatting when their node re-renders.
-function DelayHistoryContent({ history }: { history: ProxyItemHistory[] }) {
+function DelayHistoryContent({ history }: { history: DelayHistorySample[] }) {
   const recent = history.slice(-HISTORY_LIMIT).reverse()
   const formatTime = (time: string) => {
     const date = new Date(time)
@@ -77,7 +81,7 @@ export default function DelayHistory({
   history = [],
   children,
 }: {
-  history?: ProxyItemHistory[]
+  history?: DelayHistorySample[]
   children: ReactElement
 }) {
   return (

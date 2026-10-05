@@ -68,7 +68,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-legacy": "8.2.3",
-    "@vitejs/plugin-react": "6.1.1",
+    "@vitejs/plugin-react": "6.1.2",
     "change-case": "5.4.4",
     "clsx": "2.1.1",
     "core-js": "3.50.0",

@@ -145,6 +145,7 @@ Project rules:
 - A panic means the code reached a state it must not reach, so it interrupts execution. Do not write `catch_unwind` in production code, and do not turn a panicking task's `JoinError` into an ordinary error.
 - Run UI-thread work through the injected `MainThreadExecutor`; clients and actors do not call Tauri's main-thread APIs themselves.
 - Notifications flow downstream only, one domain's slice from that domain's serial owner. An owner never reads or forwards a sibling domain's snapshot, so dependencies form a tree, not a graph.
+- Preserve the source and intent of actor messages, event variants, and notification slices. If two sources share downstream handling, keep their distinct variants and handle them together; do not rename or reuse an existing source's variant to represent a new trigger.
 
 If a mature ractor actor client already exists for a capability, use it instead of adding a new global singleton, raw channel loop, or direct Tauri-coupled service call.
 

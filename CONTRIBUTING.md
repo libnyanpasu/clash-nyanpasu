@@ -18,8 +18,10 @@ Before submitting code, please follow these rules:
 | JavaScript / TypeScript | Oxlint, Prettier, Stylelint |
 | Rust                    | Clippy, Rustfmt             |
 
-- ⚠️ **Ensure there are no style errors before committing**
-- ❌ **Do not use `git commit -n` or skip checks**, CI will automatically enforce style validation
+> [!WARNING]
+>
+> - ⚠️ **Ensure there are no style errors before committing**
+> - ❌ **Do not use `git commit -n` or skip checks**, CI will automatically enforce style validation
 
 ### 2. Submission Requirements
 
@@ -45,6 +47,7 @@ To ensure the project runs correctly locally, the following dependencies are req
 | ------- | -------- | ----------------------------------------------------------- | --------------------------------------------- |
 | Rust    | ≥ 1.78   | [Official Install](https://www.rust-lang.org/tools/install) | Stable version; use MSVC toolchain on Windows |
 | Node.js | ≥ 20 LTS | [Official Site](https://nodejs.org/)                        | Install LTS or Latest version                 |
+| Deno    | Latest   | [Official Site](https://deno.com/)                          | For repository automation                     |
 | pnpm    | ≥ 9      | [Official Documentation](https://pnpm.io/)                  | Node.js package manager                       |
 | git     | Latest   | [Official Site](https://git-scm.com/)                       | Version control                               |
 
@@ -75,6 +78,7 @@ Before starting development, install Deno 2 for repository automation, initializ
 pnpm i
 ```
 
+> [!TIP]
 > This installs all frontend dependencies including UI components, toolchains, and testing tools.
 
 ### 2. Download Core & Resource Files
@@ -83,15 +87,16 @@ pnpm i
 deno task prepare:check
 ```
 
-> This command downloads binaries like `sidecar` and `resource` to ensure the project runs properly
-
 If files are missing or you want to force update:
 
 ```
 deno task prepare:check --force
 ```
 
-💡 **Tip**: Configure terminal proxy if network issues occur
+> [!TIP]
+>
+> - This command downloads binaries like `sidecar` and `resource` to ensure the project runs properly
+> - Configure terminal proxy if network issues occur
 
 ---
 
@@ -105,6 +110,7 @@ The project provides two types of development instances:
 pnpm dev:diff
 ```
 
+> [!TIP]
 > Suitable for daily development and debugging; changes do not affect the release version
 
 ### 2. Release-Like Development Instance
@@ -113,9 +119,14 @@ pnpm dev:diff
 pnpm dev
 ```
 
+> [!TIP]
 > Behaves similarly to the official release; useful to test overall functionality
 
----
+### 3. Build application
+
+```shell
+pnpm build
+```
 
 ## 5. Commit Code & Create PR
 
@@ -131,7 +142,8 @@ git pull origin main
 git checkout -b feature/my-feature
 ```
 
-> ⚠️ Avoid developing directly on `main`
+> [!WARNING]
+> Avoid developing directly on `main` branch
 
 ### 3. Pre-Commit Checks
 
@@ -155,9 +167,7 @@ git push origin feature/my-feature
 - Briefly describe the feature or changes
 - Link related Issue if available
 
----
-
-💡 **Tips**:
-
-- Keep each commit focused on a single feature or issue; avoid large, messy commits
-- PR descriptions should be clear so reviewers immediately understand the changes
+> [!TIP]
+>
+> - Keep each commit focused on a single feature or issue; avoid large, messy commits
+> - PR descriptions should be clear so reviewers immediately understand the changes

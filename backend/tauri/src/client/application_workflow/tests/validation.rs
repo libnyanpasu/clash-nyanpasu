@@ -68,7 +68,7 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         Arc::new(super::super::adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
-            scripts: crate::enhance::ScriptDirs::under(dir.path()),
+            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
         }),
         Arc::new(SessionPortResolver::default()),
     );

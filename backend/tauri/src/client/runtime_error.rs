@@ -23,8 +23,8 @@ use crate::{
         actor_v2::{endpoint::ExecutionHost, local_host::CoreSpecError},
         service::control::ServiceCommandError,
     },
-    enhance::RuntimeBuildError,
 };
+use nyanpasu_application::enhance::RuntimeBuildError;
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.
 /// It is the only place a `CoreError` is unpacked for the frontend.

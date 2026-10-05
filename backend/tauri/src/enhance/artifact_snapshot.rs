@@ -14,10 +14,11 @@ use nyanpasu_config::{
 use serde_yaml::Mapping;
 use snafu::{OptionExt, ResultExt};
 
-use crate::enhance::{
-    ConfigNotMappingSnafu, Logs, PostProcessingOutput, RuntimeBuildError,
-    SerializeFinalConfigSnafu, builtin_transforms_for,
+use nyanpasu_application::enhance::{
+    ConfigNotMappingSnafu, RuntimeBuildError, SerializeFinalConfigSnafu, builtin_transforms_for,
 };
+
+use crate::enhance::{Logs, PostProcessingOutput};
 
 fn span(level: StepLogLevel) -> crate::enhance::utils::LogSpan {
     use crate::enhance::utils::LogSpan;

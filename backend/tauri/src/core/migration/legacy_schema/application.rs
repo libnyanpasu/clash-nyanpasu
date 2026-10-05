@@ -2,7 +2,7 @@ use super::verge::{self as legacy_app, IVerge};
 use nyanpasu_config::application::{
     NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
 };
-use nyanpasu_egui::widget::StatisticWidgetVariant;
+use nyanpasu_helper::StatisticWidgetVariant;
 
 pub(super) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<NyanpasuAppConfig> {
     let mut next = NyanpasuAppConfig::default();

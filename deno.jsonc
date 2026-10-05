@@ -57,6 +57,14 @@
       "description": "Check the architecture migration gate against its snapshot",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/architecture-ledger/main.ts --mode=gate"
     },
+    "lint:backend-boundaries": {
+      "description": "Reject GUI, Tauri and reverse platform dependencies in neutral backend crates",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/architecture-ledger/backend-boundaries.ts"
+    },
+    "test:backend-musl": {
+      "description": "Build neutral backend tests with musl in Docker and run them in ImmortalWrt or a supplied OpenWrt rootfs",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/testing/test-backend-musl.ts"
+    },
     "upload-macos-updater": {
       "description": "Upload the macOS updater to GitHub Releases",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/upload-macos-updater.ts"

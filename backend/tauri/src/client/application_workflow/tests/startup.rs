@@ -406,7 +406,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let builder = Arc::new(adapters::FsRuntimeBuildAdapter {
         profiles_dir: dir.path().join("profiles"),
         paths: paths.clone(),
-        scripts: crate::enhance::ScriptDirs::under(dir.path()),
+        scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
     });
     let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(

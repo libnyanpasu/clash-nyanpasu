@@ -1908,9 +1908,6 @@ dependencies = [
  "axum",
  "backon",
  "base64 0.23.1",
- "boa_engine",
- "boa_runtime",
- "boa_utils",
  "bolt-load",
  "bytes",
  "camino",
@@ -1948,22 +1945,24 @@ dependencies = [
  "md-5",
  "memmap2",
  "mime",
- "mlua",
  "mockall",
  "nanoid",
  "nix 0.31.3",
  "notify",
  "notify-debouncer-full",
+ "nyanpasu-application",
  "nyanpasu-config",
  "nyanpasu-core",
  "nyanpasu-core-manager",
  "nyanpasu-egui",
  "nyanpasu-geodata",
+ "nyanpasu-helper",
  "nyanpasu-ipc",
  "nyanpasu-jobs",
  "nyanpasu-logging",
  "nyanpasu-macro",
  "nyanpasu-panics",
+ "nyanpasu-platform",
  "nyanpasu-traffic",
  "nyanpasu-utils",
  "objc2 0.6.4",
@@ -1973,12 +1972,6 @@ dependencies = [
  "oneshot",
  "open",
  "os_pipe",
- "oxc_allocator",
- "oxc_ast",
- "oxc_ast_visit",
- "oxc_parser",
- "oxc_span",
- "oxc_syntax",
  "parking_lot",
  "percent-encoding",
  "postcard",
@@ -6544,6 +6537,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-application"
+version = "0.1.0"
+dependencies = [
+ "nyanpasu-config",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
+ "snafu",
+ "specta",
+ "strum",
+]
+
+[[package]]
 name = "nyanpasu-config"
 version = "0.1.0"
 dependencies = [
@@ -6555,7 +6561,6 @@ dependencies = [
  "indexmap 2.14.2",
  "json-patch",
  "language-tags",
- "nyanpasu-egui",
  "nyanpasu-helper",
  "nyanpasu-utils",
  "port_scanner",
@@ -6652,6 +6657,7 @@ dependencies = [
  "humansize",
  "image",
  "ipc-channel",
+ "nyanpasu-helper",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
@@ -6684,7 +6690,10 @@ dependencies = [
 name = "nyanpasu-helper"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "language-tags",
+ "serde",
+ "specta",
  "sys-locale",
  "thiserror 2.0.21",
 ]
@@ -6765,6 +6774,35 @@ name = "nyanpasu-panics"
 version = "0.1.0"
 dependencies = [
  "scopeguard",
+ "tracing",
+]
+
+[[package]]
+name = "nyanpasu-platform"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "boa_engine",
+ "boa_runtime",
+ "boa_utils",
+ "dunce",
+ "indexmap 2.14.2",
+ "mlua",
+ "nyanpasu-application",
+ "nyanpasu-config",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_ast_visit",
+ "oxc_parser",
+ "oxc_span",
+ "oxc_syntax",
+ "serde_json",
+ "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
+ "tempfile",
+ "test-log",
+ "thiserror 2.0.21",
+ "tokio",
  "tracing",
 ]
 

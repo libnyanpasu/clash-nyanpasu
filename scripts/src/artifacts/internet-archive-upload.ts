@@ -1,5 +1,9 @@
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { request as httpsRequest } from "node:https";
 import { basename, dirname, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 
 interface PublishArtifact {
   path: string;
@@ -472,6 +476,54 @@ export const allowedIaUploadUrl = (value: string, itemIdentifier?: string) => {
     url.port === "" && allowedHost;
 };
 
+// Deno fetch removes Content-Length for ReadableStream bodies. IA S3 requires
+// a fixed length, so use the HTTP client while retaining bounded file streaming.
+export const uploadFileRequest = async (
+  filePath: string,
+  url: URL,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+  sendRequest = httpsRequest,
+): Promise<Response> => {
+  const request = sendRequest(url, {
+    method: "PUT",
+    headers,
+    signal,
+    agent: false,
+  });
+  const response = new Promise<Response>((resolve, reject) => {
+    request.on("error", reject);
+    request.on("response", async (incoming) => {
+      try {
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of incoming) chunks.push(chunk);
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(incoming.headers)) {
+          if (value !== undefined) {
+            for (const entry of Array.isArray(value) ? value : [value]) {
+              responseHeaders.append(name, entry);
+            }
+          }
+        }
+        const status = incoming.statusCode!;
+        resolve(
+          new Response(status === 204 ? null : Buffer.concat(chunks), {
+            status,
+            headers: responseHeaders,
+          }),
+        );
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+  const [result] = await Promise.all([
+    response,
+    pipeline(createReadStream(filePath), request, { signal }),
+  ]);
+  return result;
+};
+
 export const streamUpload = async (
   filePath: string,
   destination: URL,
@@ -480,46 +532,31 @@ export const streamUpload = async (
   secret: string,
   firstFile: boolean,
   manifest: PublishManifest,
+  upload = uploadFileRequest,
 ) => {
   let url = destination;
   for (let redirects = 0; redirects <= 3; redirects++) {
     if (!allowedIaUploadUrl(url.href, manifest.itemIdentifier)) {
       throw new Error("IA upload redirected to a non-IA S3 host");
     }
-    const file = await Deno.open(filePath, { read: true });
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "PUT",
-        redirect: "manual",
-        headers: {
-          Authorization: `LOW ${accessKey}:${secret}`,
-          "content-type": "application/octet-stream",
-          "content-length": String(fileSize),
-          "x-archive-queue-derive": "0",
-          ...(firstFile
-            ? {
-              "x-archive-auto-make-bucket": "1",
-              "x-archive-meta-mediatype": "software",
-              "x-archive-meta-title": `Clash Nyanpasu ${manifest.channel} ${
-                manifest.tag ?? manifest.commit
-              }`,
-              "x-archive-meta-source": IA_SOURCE,
-              "x-archive-meta-homepage": IA_HOMEPAGE,
-              "x-archive-meta-licenseurl": IA_LICENSE_URL,
-            }
-            : {}),
-        },
-        body: file.readable,
-        signal: AbortSignal.timeout(30 * 60_000),
-      });
-    } finally {
-      try {
-        file.close();
-      } catch {
-        // Fetch may have drained and closed the Deno file stream already.
-      }
-    }
+    const response = await upload(filePath, url, {
+      Authorization: `LOW ${accessKey}:${secret}`,
+      "content-type": "application/octet-stream",
+      "content-length": String(fileSize),
+      "x-archive-queue-derive": "0",
+      ...(firstFile
+        ? {
+          "x-archive-auto-make-bucket": "1",
+          "x-archive-meta-mediatype": "software",
+          "x-archive-meta-title": `Clash Nyanpasu ${manifest.channel} ${
+            manifest.tag ?? manifest.commit
+          }`,
+          "x-archive-meta-source": IA_SOURCE,
+          "x-archive-meta-homepage": IA_HOMEPAGE,
+          "x-archive-meta-licenseurl": IA_LICENSE_URL,
+        }
+        : {}),
+    }, AbortSignal.timeout(30 * 60_000));
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       await response.body?.cancel();

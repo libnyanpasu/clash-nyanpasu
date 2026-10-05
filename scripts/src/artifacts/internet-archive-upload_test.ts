@@ -1,3 +1,4 @@
+import { request as httpRequest } from "node:http";
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   allowedIaUploadUrl,
@@ -5,6 +6,7 @@ import {
   registerBuild,
   runArchivePublish,
   streamUpload,
+  uploadFileRequest,
 } from "./internet-archive-upload.ts";
 
 for (
@@ -204,12 +206,16 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
   );
 
   const path = await Deno.makeTempFile();
-  const originalFetch = globalThis.fetch;
   let fetchCount = 0;
   try {
     await Deno.writeTextFile(path, "stream payload");
-    globalThis.fetch = async (_input, init) => {
+    const upload = async (
+      filePath: string,
+      _url: URL,
+      headers: Record<string, string>,
+    ) => {
       fetchCount++;
+      const init = { headers, body: (await Deno.open(filePath)).readable };
       assertEquals(
         new Headers(init?.headers).get("authorization"),
         "LOW test-access:test-secret",
@@ -256,6 +262,7 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
             folderPath: "nightly/test",
             artifacts: [],
           },
+          upload,
         ),
       Error,
       "non-IA S3 host",
@@ -266,7 +273,6 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
       "redirect destination must be rejected before a second credentialed request",
     );
   } finally {
-    globalThis.fetch = originalFetch;
     await Deno.remove(path);
   }
 });
@@ -364,5 +370,160 @@ Deno.test("runner reports missing credentials with exit status 1 without externa
     assertEquals(report.buildId, "missing-token-fixture");
   } finally {
     await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("IA streaming PUT sends Content-Length on the wire", async () => {
+  const path = await Deno.makeTempFile();
+  const payload = new Uint8Array(2 * 1024 * 1024 + 17).fill(97);
+  const controller = new AbortController();
+  let length: string | null = null;
+  let transferEncoding: string | null = null;
+  let received = new Uint8Array();
+  const server = Deno.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    signal: controller.signal,
+    onListen() {},
+  }, async (request) => {
+    length = request.headers.get("content-length");
+    transferEncoding = request.headers.get("transfer-encoding");
+    received = new Uint8Array(await request.arrayBuffer());
+    return new Response(null, { status: length ? 201 : 411 });
+  });
+  try {
+    await Deno.writeFile(path, payload);
+    await streamUpload(
+      path,
+      new URL("https://s3.us.archive.org/test-item/file.zip"),
+      payload.length,
+      "test-access",
+      "test-secret",
+      false,
+      {
+        schemaVersion: 1,
+        buildId: "test-build",
+        itemIdentifier: "test-item",
+        channel: "nightly",
+        commit: "a".repeat(40),
+        tag: null,
+        folderPath: "nightly/test",
+        artifacts: [],
+      },
+      (filePath, _url, headers, signal) =>
+        uploadFileRequest(
+          filePath,
+          new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
+          headers,
+          signal,
+          httpRequest,
+        ),
+    );
+    assertEquals(length, String(payload.length));
+    assertEquals(transferEncoding, null);
+    assertEquals(received, payload);
+  } finally {
+    controller.abort();
+    await server.finished;
+    await Deno.remove(path);
+  }
+});
+
+Deno.test("IA redirected PUT reopens the file and retains length and metadata", async () => {
+  const path = await Deno.makeTempFile();
+  const controller = new AbortController();
+  const requests: {
+    length: string | null;
+    payload: string;
+    bucket: string | null;
+  }[] = [];
+  const server = Deno.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    signal: controller.signal,
+    onListen() {},
+  }, async (request) => {
+    requests.push({
+      length: request.headers.get("content-length"),
+      payload: await request.text(),
+      bucket: request.headers.get("x-archive-auto-make-bucket"),
+    });
+    return requests.length === 1
+      ? new Response(null, {
+        status: 307,
+        headers: {
+          location: "https://test-item.s3.us.archive.org/test-item/file.zip",
+        },
+      })
+      : new Response(null, { status: 204 });
+  });
+  try {
+    await Deno.writeTextFile(path, "redirect payload");
+    await streamUpload(
+      path,
+      new URL("https://s3.us.archive.org/test-item/file.zip"),
+      16,
+      "test-access",
+      "test-secret",
+      true,
+      {
+        schemaVersion: 1,
+        buildId: "test-build",
+        itemIdentifier: "test-item",
+        channel: "nightly",
+        commit: "a".repeat(40),
+        tag: null,
+        folderPath: "nightly/test",
+        artifacts: [],
+      },
+      (filePath, _url, headers, signal) =>
+        uploadFileRequest(
+          filePath,
+          new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
+          headers,
+          signal,
+          httpRequest,
+        ),
+    );
+    assertEquals(
+      requests,
+      Array(2).fill({ length: "16", payload: "redirect payload", bucket: "1" }),
+    );
+  } finally {
+    controller.abort();
+    await server.finished;
+    await Deno.remove(path);
+  }
+});
+
+Deno.test("IA HTTP transport retains error bodies and sends empty files with length zero", async () => {
+  const path = await Deno.makeTempFile();
+  const controller = new AbortController();
+  let length: string | null = null;
+  const server = Deno.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    signal: controller.signal,
+    onListen() {},
+  }, async (request) => {
+    length = request.headers.get("content-length");
+    await request.arrayBuffer();
+    return new Response("permission denied", { status: 403 });
+  });
+  try {
+    const response = await uploadFileRequest(
+      path,
+      new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
+      { "content-length": "0" },
+      controller.signal,
+      httpRequest,
+    );
+    assertEquals(length, "0");
+    assertEquals(response.status, 403);
+    assertEquals(await response.text(), "permission denied");
+  } finally {
+    controller.abort();
+    await server.finished;
+    await Deno.remove(path);
   }
 });

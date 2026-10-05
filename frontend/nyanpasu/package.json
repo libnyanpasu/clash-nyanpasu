@@ -71,7 +71,7 @@
     "filesize": "11.0.25",
     "meta-json-schema": "1.19.31",
     "monaco-yaml": "5.5.1",
-    "nanoid": "6.0.1",
+    "nanoid": "6.0.2",
     "postcss-selector-parser": "7.1.6",
     "shiki": "4.5.0",
     "unplugin-auto-import": "21.1.0",

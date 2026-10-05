@@ -888,6 +888,10 @@ impl NyanpasuClient {
         self.inner.effects.retry_now(kind)
     }
 
+    pub fn request_tray_refresh(&self) -> std::result::Result<(), effects::error::EffectsError> {
+        self.inner.effects.request_tray_refresh()
+    }
+
     pub async fn save_main_window_geometry(
         &self,
         geometry: nyanpasu_config::state::window::WindowState,

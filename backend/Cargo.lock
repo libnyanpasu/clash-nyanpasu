@@ -1987,7 +1987,6 @@ dependencies = [
  "oxc_syntax",
  "parking_lot",
  "percent-encoding",
- "port_scanner",
  "postcard",
  "pretty_assertions",
  "ractor",

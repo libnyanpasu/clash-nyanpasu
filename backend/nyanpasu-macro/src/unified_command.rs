@@ -347,6 +347,8 @@ fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
             {
                 return false;
             }
+        } else if is_context_type(&argument.ty, "AppHandle") {
+            return false;
         } else if owner && is_context_type(&argument.ty, "Window") {
             continue;
         } else if contains_reference(&argument.ty) || is_tauri_context(&argument.ty) {
@@ -515,6 +517,10 @@ mod tests {
             ),
             (
                 "#[nyanpasu_macro::rpc(http)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
+                false,
+            ),
+            (
+                "#[nyanpasu_macro::rpc(http)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
                 false,
             ),
         ] {

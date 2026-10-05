@@ -17,6 +17,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { formatError, sleep } from '@/utils'
+import { writeClipboardText } from '@/utils/clipboard'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
@@ -25,7 +26,6 @@ import {
   useClashInfo,
   useRuntimeProfile,
 } from '@nyanpasu/query'
-import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   ItemContainer,
   ItemLabel,
@@ -98,7 +98,7 @@ export default function CoreSecretConfig() {
     }
 
     try {
-      await writeText(data.secret)
+      await writeClipboardText(data.secret)
 
       message(m.settings_clash_settings_core_secret_copied(), {
         title: 'Success',

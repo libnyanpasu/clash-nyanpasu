@@ -9,9 +9,9 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, KeyboardSensor, PointerSensor } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { useLockFn } from '@nyanpasu/hooks'
+import { isBrowser } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import { type UpdateSource } from '@nyanpasu/rpc/types'
-import { isTauri } from '@tauri-apps/api/core'
 import {
   SettingsCard,
   SettingsCardContent,
@@ -127,7 +127,7 @@ function FixedSource({
 }
 
 export default function UpdateSourceSelector() {
-  if (!isTauri()) {
+  if (isBrowser()) {
     return (
       <SettingsCard data-slot="about-package-source-card">
         <SettingsCardHeader>

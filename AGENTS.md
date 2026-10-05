@@ -145,6 +145,7 @@ Project rules:
 - A panic means the code reached a state it must not reach, so it interrupts execution. Do not write `catch_unwind` in production code, and do not turn a panicking task's `JoinError` into an ordinary error.
 - Run UI-thread work through the injected `MainThreadExecutor`; clients and actors do not call Tauri's main-thread APIs themselves.
 - Notifications flow downstream only, one domain's slice from that domain's serial owner. An owner never reads or forwards a sibling domain's snapshot, so dependencies form a tree, not a graph.
+- Preserve the source and intent of actor messages, event variants, and notification slices. If two sources share downstream handling, keep their distinct variants and handle them together; do not rename or reuse an existing source's variant to represent a new trigger.
 
 If a mature ractor actor client already exists for a capability, use it instead of adding a new global singleton, raw channel loop, or direct Tauri-coupled service call.
 
@@ -437,6 +438,7 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 ### Declare capabilities and preserve transport semantics
 
 - HTTP access is explicit opt-in via `rpc(http)`, not inferred authorization from a compatible signature. Review the operation's effects before enabling it. Desktop OS operations, arbitrary outbound URL diagnostics, and desktop-only server controls stay desktop-only unless deliberately adapted and reviewed.
+- Never inject `AppHandle` into an HTTP-enabled RPC command or add it to `RpcDependencies`; doing so grants the handler every capability reachable from the app. Route shared side effects through `NyanpasuClient` and the existing typed client or actor message that owns them. Do not add a one-off managed Tauri closure when an existing actor path already performs the operation. `EventBus` and `rpc.events` carry notifications from backend to frontend; they are not an inbound command channel.
 - Shared operations receive explicit dependencies and call `NyanpasuClient`. Assemble `RpcDependencies`, routers, and server adapters in the composition root. The facade must not accept `axum::Router` or expose transport infrastructure; avoid strong reference cycles between the server/router and client.
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
 - Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.

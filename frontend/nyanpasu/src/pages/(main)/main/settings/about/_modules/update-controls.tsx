@@ -20,7 +20,7 @@ import { commands } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@tauri-apps/api/core'
+import { isTauri } from '@nyanpasu/platform'
 import {
   SettingsCardContent,
   SettingsCardFooter,

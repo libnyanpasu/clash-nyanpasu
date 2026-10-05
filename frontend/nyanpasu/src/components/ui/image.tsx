@@ -1,6 +1,5 @@
-import { useMemo } from 'react'
 import { LazyImage, type LazyImageProps } from '@nyanpasu/ui/lazy-image'
-import { useServerPort } from '@nyanpasu/query'
+import { useCachedIcon, useTrayIcon } from '@nyanpasu/query'
 
 type SharedImageProps = Omit<LazyImageProps, 'src'>
 
@@ -10,21 +9,17 @@ export function CacheImage({
 }: SharedImageProps & {
   icon: string
 }) {
-  const serverPort = useServerPort()
-
   const src = icon.trim().startsWith('<svg')
     ? `data:image/svg+xml;base64,${btoa(icon)}`
     : icon
+  const query = useCachedIcon(src.startsWith('http') ? src : null)
 
-  const cachedUrl = useMemo(() => {
-    if (!src.startsWith('http')) {
-      return src
-    }
-
-    return `http://localhost:${serverPort}/cache/icon?url=${btoa(src)}`
-  }, [src, serverPort])
-
-  return <LazyImage src={cachedUrl} {...props} />
+  return (
+    <LazyImage
+      src={src.startsWith('http') ? query.data?.data_url : src}
+      {...props}
+    />
+  )
 }
 
 export function TrayImage({
@@ -35,9 +30,7 @@ export function TrayImage({
   mode: 'system_proxy' | 'tun' | 'normal'
   version?: number
 }) {
-  const serverPort = useServerPort()
+  const query = useTrayIcon(mode, version)
 
-  const src = `http://localhost:${serverPort}/tray/icon?mode=${mode}${version !== undefined ? `&v=${version}` : ''}`
-
-  return <LazyImage src={src} {...props} />
+  return <LazyImage src={query.data?.data_url} {...props} />
 }

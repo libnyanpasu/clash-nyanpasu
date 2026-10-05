@@ -10,11 +10,8 @@ import {
   useRef,
   useState,
 } from 'react'
-import { getClientSystem } from '@nyanpasu/platform'
+import { isWindows } from '@nyanpasu/platform'
 import { cn } from '@nyanpasu/utils'
-import { readTextFile } from '@tauri-apps/plugin-fs'
-
-const isWin = getClientSystem() === 'windows'
 
 const FileDropZoneContext = createContext<{
   isDragging: boolean
@@ -121,7 +118,8 @@ export function FileDropZone({
 
   const [fileName, setFileName] = useState<string | null>(
     value
-      ? ((isWin ? value.split('\\').at(-1) : value.split('/').at(-1)) ?? null)
+      ? ((isWindows ? value.split('\\').at(-1) : value.split('/').at(-1)) ??
+          null)
       : null,
   )
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -129,35 +127,22 @@ export function FileDropZone({
   // Update fileName when value changes
   useEffect(() => {
     if (value) {
-      const name = isWin ? value.split('\\').at(-1) : value.split('/').at(-1)
+      const name = isWindows
+        ? value.split('\\').at(-1)
+        : value.split('/').at(-1)
       setFileName(name || null)
     } else {
       setFileName(null)
     }
   }, [value])
 
-  const handleFile = async (filePath: string, file?: File) => {
+  const handleFile = async (filePath: string, file: File) => {
     if (disabled) return
 
     try {
       setIsLoading(true)
 
-      let content: string
-
-      // If file object is provided (from drag & drop), use FileReader
-      // Otherwise, use Tauri's readTextFile API
-      if (file) {
-        content = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = (e) => {
-            resolve(e.target?.result as string)
-          }
-          reader.onerror = reject
-          reader.readAsText(file)
-        })
-      } else {
-        content = await readTextFile(filePath)
-      }
+      const content = await file.text()
 
       // Read file content if callback is provided
       if (onFileRead) {
@@ -170,7 +155,7 @@ export function FileDropZone({
       // Extract file name
       const name =
         file?.name ||
-        (isWin ? filePath.split('\\').at(-1) : filePath.split('/').at(-1))
+        (isWindows ? filePath.split('\\').at(-1) : filePath.split('/').at(-1))
       setFileName(name || null)
     } catch (error) {
       console.error('Failed to read file:', error)
@@ -224,14 +209,7 @@ export function FileDropZone({
     const filePath = (file as File & { path?: string }).path as
       string | undefined
 
-    if (filePath) {
-      // File path is available (Tauri native drag & drop)
-      await handleFile(filePath, file)
-    } else {
-      // Fallback: use file name as identifier and read content via FileReader
-      // Note: In this case, we use the file name as the path identifier
-      await handleFile(file.name, file)
-    }
+    await handleFile(filePath ?? file.name, file)
   }
 
   const handleClick = () => {
@@ -252,13 +230,7 @@ export function FileDropZone({
     const filePath = (file as File & { path?: string }).path as
       string | undefined
 
-    if (filePath) {
-      // File path is available (Tauri file dialog)
-      await handleFile(filePath)
-    } else {
-      // Fallback: use file name and read via FileReader
-      await handleFile(file.name, file)
-    }
+    await handleFile(filePath ?? file.name, file)
 
     // Reset input
     if (fileInputRef.current) {

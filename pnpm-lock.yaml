@@ -443,18 +443,6 @@ importers:
       '@tanstack/router-plugin':
         specifier: 1.168.42
         version: 1.168.42(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(rolldown@1.2.11)(supports-color@10.2.2)(vite@8.3.2(@types/node@24.19.1)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.0))
-      '@tauri-apps/plugin-clipboard-manager':
-        specifier: 2.4.1
-        version: 2.4.1
-      '@tauri-apps/plugin-dialog':
-        specifier: 2.8.1
-        version: 2.8.1
-      '@tauri-apps/plugin-fs':
-        specifier: 2.6.0
-        version: 2.6.0
-      '@tauri-apps/plugin-notification':
-        specifier: 2.5.1
-        version: 2.5.1
       '@types/d3':
         specifier: 7.4.3
         version: 7.4.3
@@ -3363,9 +3351,6 @@ packages:
     resolution: {integrity: sha512-uhOeFyxLcU41HzvrxsGpiWdcMbScY1EDgbZ5K7DVRMYInbLYWAC0EA/kx9wXAoSM8q82bUG2hRl8+EAjE6XAbA==}
     engines: {node: '>=20.19'}
 
-  '@tauri-apps/api@2.12.0':
-    resolution: {integrity: sha512-fUSxFX8VABYe9W9K5ROdEaKVkNUFRcMSRofjruvaxztXA+I0XnQHcYHF8m/a6iExRUxsUf0HsFWhPBuH9IgzJw==}
-
   '@tauri-apps/api@2.12.1':
     resolution: {integrity: sha512-DeyFHa3wynpyoqTDikDEDGTJIq4LQ5USfolQGRmGIWT6JMADyxZBTDa5cAdT3tDg73rUXufPaCwN7aXBos4OnQ==}
 
@@ -3444,18 +3429,6 @@ packages:
     resolution: {integrity: sha512-kEDEiGzG+yAc5FeLxtXpES/VN+F2C8H0r4gDVtfRLKxT9np9101d9REG/Kgo2lr0hKi0IpDsODiHnU3+naOmLg==}
     engines: {node: '>= 10'}
     hasBin: true
-
-  '@tauri-apps/plugin-clipboard-manager@2.4.1':
-    resolution: {integrity: sha512-5Q9hWWnsE7UF1xABWHpRwqGiyORrP9o/rJift/7V8woP/kSVF21W+bP9G7ch8Qd7pneDWUMk6hkfpLpjcC/4Ag==}
-
-  '@tauri-apps/plugin-dialog@2.8.1':
-    resolution: {integrity: sha512-/DtE3B62JgpYuWFL5ATXM6KOXUq7pca7cJWOgSqULhZsgyjLk0PWKek1dbRDvhNBW6flNsOfWphsKnb+738Dmw==}
-
-  '@tauri-apps/plugin-fs@2.6.0':
-    resolution: {integrity: sha512-MhBAZ4rryd+h9fijd/GWDfArqiAeGI0ZNduV4wuRyUVI6wDZ+oDBY7atqtoXKDwlTUVSvpvmWJAY0ehQd/v6Uw==}
-
-  '@tauri-apps/plugin-notification@2.5.1':
-    resolution: {integrity: sha512-i0nD48YsLov18siENevC3X7SmJpQE1cImq+JUsjrUPdu73J8cTIOyNIS8H0qxftFAc1k2w6s1E74DoFE02Jirw==}
 
   '@tombi-toml/wasm-lib@1.5.8':
     resolution: {integrity: sha512-YR+yPlhnA9RaFnmZCfxLdC6xKm+NcNHu9ZyOHS6dEU47E2dhcZghENUWBHfczZ1Ml3c+p/jSwCRMwoebHwSTXQ==}
@@ -9226,8 +9199,6 @@ snapshots:
 
   '@tanstack/virtual-file-routes@1.162.0': {}
 
-  '@tauri-apps/api@2.12.0': {}
-
   '@tauri-apps/api@2.12.1': {}
 
   '@tauri-apps/cli-darwin-arm64@2.12.1':
@@ -9276,22 +9247,6 @@ snapshots:
       '@tauri-apps/cli-win32-arm64-msvc': 2.12.1
       '@tauri-apps/cli-win32-ia32-msvc': 2.12.1
       '@tauri-apps/cli-win32-x64-msvc': 2.12.1
-
-  '@tauri-apps/plugin-clipboard-manager@2.4.1':
-    dependencies:
-      '@tauri-apps/api': 2.12.0
-
-  '@tauri-apps/plugin-dialog@2.8.1':
-    dependencies:
-      '@tauri-apps/api': 2.12.0
-
-  '@tauri-apps/plugin-fs@2.6.0':
-    dependencies:
-      '@tauri-apps/api': 2.12.1
-
-  '@tauri-apps/plugin-notification@2.5.1':
-    dependencies:
-      '@tauri-apps/api': 2.12.0
 
   '@tombi-toml/wasm-lib@1.5.8': {}
 

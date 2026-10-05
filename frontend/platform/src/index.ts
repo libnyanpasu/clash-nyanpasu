@@ -1,6 +1,44 @@
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
+export { isTauri }
+
+export const isBrowser = () => typeof window !== 'undefined' && !isTauri()
+
+export type WebNotificationOptions = {
+  title: string
+  body?: string
+}
+
+export async function showWebNotification({
+  title,
+  body,
+}: WebNotificationOptions): Promise<void> {
+  if (typeof window === 'undefined') return
+  const fallback = () => window.alert(body ? `${title}: ${body}` : title)
+  if (!('Notification' in window)) {
+    fallback()
+    return
+  }
+
+  try {
+    const permission =
+      Notification.permission === 'default'
+        ? await Notification.requestPermission()
+        : Notification.permission
+    if (permission === 'granted') {
+      const notification = new Notification(title, { body })
+      notification.addEventListener('click', () => window.focus(), {
+        once: true,
+      })
+      return
+    }
+  } catch {
+    // Fall back to a blocking message when browser notifications are unavailable.
+  }
+  fallback()
+}
+
 type Platform =
   | 'aix'
   | 'android'

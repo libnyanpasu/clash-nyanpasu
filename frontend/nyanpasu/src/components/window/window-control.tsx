@@ -8,9 +8,9 @@ import { AnimatePresence, motion } from 'motion/react'
 import { ComponentProps, useCallback } from 'react'
 import { Button, ButtonProps } from '@nyanpasu/ui/button'
 import useWindowMaximized from '@/hooks/use-window-maximized'
+import { isTauri } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
-import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = isTauri() ? getCurrentWebviewWindow() : null

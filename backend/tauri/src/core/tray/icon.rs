@@ -123,9 +123,19 @@ pub fn set_icon(mode: TrayIcon, path: Option<PathBuf>) -> anyhow::Result<()> {
             std::fs::remove_file(tray_icons_path(mode.as_str())?)?;
         }
     }
+    refresh_icon(mode);
+    Ok(())
+}
+
+pub fn set_icon_from_bytes(mode: TrayIcon, bytes: &[u8]) -> anyhow::Result<()> {
+    image::load_from_memory(bytes)?.save(tray_icons_path(mode.as_str())?)?;
+    refresh_icon(mode);
+    Ok(())
+}
+
+fn refresh_icon(mode: TrayIcon) {
     let factor = crate::utils::help::get_max_scale_factor();
     resize_image(mode, factor);
-    Ok(())
 }
 
 pub fn on_scale_factor_changed(scale_factor: f64) {

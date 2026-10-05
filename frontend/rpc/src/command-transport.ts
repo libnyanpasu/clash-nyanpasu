@@ -1,4 +1,5 @@
 /* oxlint-disable no-throw-literal -- tauri-specta wraps string rejections in its Result return */
+import { isTauri } from '@tauri-apps/api/core'
 import { commands as tauriCommands } from './tauri-bindings'
 
 export interface RpcCommandTransport {
@@ -31,18 +32,11 @@ async function invokeHttpCommand<T>(
   method: string,
   params: Record<string, unknown> = {},
 ): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(rpcPath, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ method, params }),
-    })
-  } catch (error) {
-    throw new Error(
-      error instanceof Error ? error.message : 'RPC request failed',
-    )
-  }
+  const response = await fetch(rpcPath, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ method, params }),
+  })
 
   let body: unknown
   try {
@@ -65,7 +59,7 @@ async function invokeHttpCommand<T>(
 export function createCommandTransport(): RpcCommandTransport {
   return {
     async invoke<T>(method: string, params: Record<string, unknown> = {}) {
-      if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+      if (!isTauri()) {
         return invokeHttpCommand<T>(method, params)
       }
       const result = await tauriCommands.callRpc(method, params)

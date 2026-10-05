@@ -9,8 +9,8 @@ import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { formatEnvInfos } from '@/utils'
 import { useLockFn } from '@nyanpasu/hooks'
+import { isBrowser, isTauri } from '@nyanpasu/platform'
 import { Link } from '@tanstack/react-router'
-import { isTauri } from '@tauri-apps/api/core'
 
 async function openHelpLink(url: string) {
   if (isTauri()) return rpc.openThat(url)
@@ -69,6 +69,13 @@ const IssuesItem = () => {
 
 const CollectLogItem = () => {
   const handleClick = useLockFn(async () => {
+    if (isBrowser()) {
+      const anchor = document.createElement('a')
+      anchor.href = '/bridge/logs/archive'
+      anchor.click()
+      return
+    }
+
     await rpc.collectLogs()
   })
 

@@ -18,9 +18,9 @@ import {
   FileDropZonePlaceholder,
 } from '@/components/ui/file-drop-zone'
 import { m } from '@/paraglide/messages'
+import { pickFile } from '@/utils/file-picker'
 import { isConfigItem, useProfile } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
-import { open } from '@tauri-apps/plugin-dialog'
 import AnimatedErrorItem from '../../_modules/error-item'
 import { ACCEPT_EXTENSIONS, type FormValues } from './create-profile-schema'
 
@@ -221,7 +221,7 @@ export const LocalFileField = ({ disabled }: { disabled: boolean }) => {
 }
 
 export const ExternalFileField = ({ disabled }: { disabled: boolean }) => {
-  const { control } = useFormContext<FormValues>()
+  const { control, setValue } = useFormContext<FormValues>()
   const kind = useWatch({ control, name: 'kind' })
   const mode = useWatch({ control, name: 'externalMode' })
 
@@ -249,21 +249,23 @@ export const ExternalFileField = ({ disabled }: { disabled: boolean }) => {
                 className="shrink-0"
                 disabled={disabled}
                 onClick={async () => {
-                  const selected = await open({
-                    directory: false,
-                    multiple: false,
-                    filters: [
-                      {
-                        name: 'Profile',
-                        extensions: ACCEPT_EXTENSIONS[kind].map((ext) =>
-                          ext.slice(1),
-                        ),
-                      },
-                    ],
-                  })
+                  const selected = await pickFile(null, [
+                    {
+                      name: 'Profile',
+                      extensions: ACCEPT_EXTENSIONS[kind].map((ext) =>
+                        ext.slice(1),
+                      ),
+                    },
+                  ])
 
-                  if (typeof selected === 'string') {
-                    field.onChange(selected)
+                  if (selected?.type === 'path') {
+                    field.onChange(selected.path)
+                  } else if (selected?.type === 'file') {
+                    const content = await selected.file.text()
+                    setValue('source', 'local')
+                    setValue('fileName', selected.file.name)
+                    setValue('fileContent', content)
+                    field.onChange('')
                   }
                 }}
               >

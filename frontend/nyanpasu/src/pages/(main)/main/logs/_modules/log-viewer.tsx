@@ -8,6 +8,7 @@ import { memo, useEffect, useId, useState, type ReactNode } from 'react'
 import { Button, buttonVariants } from '@nyanpasu/ui/button'
 import HighlightText from '@nyanpasu/ui/highlight-text'
 import { m } from '@/paraglide/messages'
+import { writeClipboardText } from '@/utils/clipboard'
 import { cn } from '@nyanpasu/utils'
 import LogJson from './log-json'
 import LogLevelBadge from './log-level-badge'
@@ -222,7 +223,7 @@ export const LogRecord = memo(function LogRecord({
                     : typeof value === 'string'
                       ? value
                       : JSON.stringify(value, null, 2)
-                await navigator.clipboard.writeText(text)
+                await writeClipboardText(text)
                 setCopied(true)
                 setCopyError(false)
               } catch {

@@ -4,6 +4,7 @@ use std::{collections::HashMap, convert::Infallible, future::Future, pin::Pin, s
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::{Query, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response, Sse, sse::Event},
@@ -258,6 +259,7 @@ impl UnifiedRpc {
     pub fn router(self) -> Router {
         Router::new()
             .route("/bridge/rpc", post(http_call))
+            .route("/bridge/logs/archive", get(http_logs_archive))
             .route("/bridge/events", get(http_events))
             .route("/bridge/connection-details", get(http_connection_details))
             .with_state(self)
@@ -285,6 +287,44 @@ impl UnifiedRpc {
             .ok_or_else(|| RpcError::unknown_method(method))?;
         (handler.1)(app, window, webview, params).await
     }
+}
+
+async fn http_logs_archive() -> Result<Response, (StatusCode, Json<RpcError>)> {
+    let archive = tokio::task::spawn_blocking(crate::utils::candy::collect_logs_tempfile)
+        .await
+        .map_err(RpcError::application)
+        .map_err(http_rpc_error)?
+        .map_err(|error| RpcError::new("application_error", error.to_string()))
+        .map_err(http_rpc_error)?;
+    let file = tokio::fs::File::open(archive.path())
+        .await
+        .map_err(RpcError::application)
+        .map_err(http_rpc_error)?;
+    let body = stream::try_unfold((file, archive), |(mut file, _archive)| async move {
+        use tokio::io::AsyncReadExt;
+
+        let mut bytes = vec![0; 64 * 1024];
+        let count = file.read(&mut bytes).await?;
+        if count == 0 {
+            return Ok::<_, std::io::Error>(None);
+        }
+        bytes.truncate(count);
+        Ok(Some((bytes, (file, _archive))))
+    });
+    let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
+    Response::builder()
+        .header("content-type", "application/zip")
+        .header(
+            "content-disposition",
+            format!("attachment; filename=\"{file_name}\""),
+        )
+        .body(Body::from_stream(body))
+        .map_err(RpcError::application)
+        .map_err(http_rpc_error)
+}
+
+fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
+    (error.status(), Json(error))
 }
 
 // Subscribe only while a page consumes full connection details. Dropping the
@@ -458,6 +498,13 @@ mod tests {
         let app = rpc.router();
         tauri::async_runtime::block_on(async move {
             for method in [
+                "read_clipboard_text",
+                "write_clipboard_text",
+                "show_native_notification",
+                "show_native_message_dialog",
+                "ask_native_dialog",
+                "open_native_file_dialog",
+                "set_tray_icon",
                 "get_app_update_state",
                 "check_app_update",
                 "download_app_update",

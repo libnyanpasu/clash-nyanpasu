@@ -8,12 +8,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { TrayImage } from '@/components/ui/image'
 import { m } from '@/paraglide/messages'
 import { mutations, queries } from '@/services/rpc'
+import { pickFile } from '@/utils/file-picker'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { invokeMutation, unwrapQueryOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { useQuery } from '@tanstack/react-query'
-import { open } from '@tauri-apps/plugin-dialog'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 enum TrayIconMode {
@@ -35,26 +35,32 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
 
   const handleChangeIcon = useLockFn(async () => {
     try {
-      const selected = await open({
-        directory: false,
-        multiple: false,
-        filters: [
-          {
-            name: 'Images',
-            extensions: ['png', 'jpg', 'jpeg', 'bmp', 'ico'],
-          },
-        ],
-      })
+      const selected = await pickFile(null, [
+        {
+          name: 'Images',
+          extensions: ['png', 'jpg', 'jpeg', 'bmp', 'ico'],
+        },
+      ])
 
-      if (Array.isArray(selected)) {
-        throw new Error('Not Support')
-      } else if (selected === null) {
-        return null
-      }
+      if (!selected) return null
 
       setIsLoading(true)
 
-      await invokeMutation(setTrayIcon, [mode, selected])
+      if (selected.type === 'path') {
+        await invokeMutation(setTrayIcon, [mode, selected.path])
+      } else {
+        const bytes = new Uint8Array(await selected.file.arrayBuffer())
+        let binary = ''
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(
+            ...bytes.subarray(offset, offset + 0x8000),
+          )
+        }
+        await invokeMutation(mutations.setTrayIconFromBytes, [
+          mode,
+          btoa(binary),
+        ])
+      }
       await isIconSet.refetch()
       setIconVersion((prev) => prev + 1)
 

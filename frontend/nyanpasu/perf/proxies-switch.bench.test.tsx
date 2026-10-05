@@ -66,7 +66,8 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
     useClashProxies: () => clashProxies,
     useProxyMode: () => proxyMode,
     useClashConnections: () => connections,
-    useServerPort: () => 0,
+    useCachedIcon: () => ({ data: undefined }),
+    useTrayIcon: () => ({ data: undefined }),
   }
 })
 

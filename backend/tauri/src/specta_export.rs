@@ -33,6 +33,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         collect_commands![
             ipc::get_debug_http_status,
             // Read-only commands
+            ipc::read_clipboard_text,
             ipc::query_core_logs,
             ipc::get_core_log,
             ipc::get_core_log_status,
@@ -69,7 +70,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::is_portable,
             ipc::get_proxies,
             ipc::collect_envs,
-            ipc::get_server_port,
+            ipc::get_cached_icon,
+            ipc::get_tray_icon,
             ipc::is_tray_icon_set,
             ipc::get_core_status,
             ipc::url_delay_test,
@@ -92,6 +94,11 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_system_accent_color,
         ],
         collect_commands![
+            ipc::write_clipboard_text,
+            ipc::show_native_notification,
+            ipc::show_native_message_dialog,
+            ipc::ask_native_dialog,
+            ipc::open_native_file_dialog,
             ipc::set_debug_http_enabled,
             ipc::get_configuration_status,
             ipc::retry_configuration_runtime,
@@ -130,6 +137,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::uwp::invoke_uwp_tool,
             ipc::update_core,
             ipc::collect_logs,
+            ipc::set_tray_icon_from_bytes,
             ipc::enhance_profiles,
             ipc::import_profile,
             ipc::take_pending_deep_links,

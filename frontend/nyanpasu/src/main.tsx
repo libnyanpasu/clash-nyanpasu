@@ -13,16 +13,14 @@ import '@nyanpasu/theme/styles/theme.css'
 import './assets/styles/index.css'
 import './assets/styles/tailwind.css'
 import { routeTree } from './route-tree.gen'
+// installs error reporting before the app runs
+import { reactRootErrorOptions } from './services/error-reporting'
 // manually import language utils, inject paraglide custom strategy
 import '@/utils/language'
 
 if (!window.ResizeObserver) {
   window.ResizeObserver = ResizeObserver
 }
-
-window.addEventListener('error', (event) => {
-  console.error(event)
-})
 
 // prepare dark mode class on root element before React hydration to avoid FOUC
 document.documentElement.classList.toggle(
@@ -45,7 +43,7 @@ declare module '@tanstack/react-router' {
 
 const container = document.getElementById('root')!
 
-createRoot(container).render(
+createRoot(container, reactRootErrorOptions).render(
   <React.StrictMode>
     <RouterProvider router={router} />
   </React.StrictMode>,

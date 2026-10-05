@@ -77,6 +77,44 @@ try {
   assert.equal(result.error.data.domain_error, "unsupported");
   assert.equal(result.domainError.data.domain_error.kind.domain, "profiles");
   assert.equal(typeof result.domainError.data.domain_error.detail, "string");
+  if (Deno.env.get("NYANPASU_HTTP_FRONTEND_EVENT_FIXTURE") === "1") {
+    // The debug page's test buttons; the page batches them into
+    // report_frontend_events.
+    const expected = [
+      "console warning",
+      "console error",
+      "uncaught error",
+      "unhandled rejection",
+    ];
+    const seen = new Set<string>();
+    const reported = new Promise<void>((resolve, reject) => {
+      page.on("response", (response) => {
+        const body = response.request().postData() ?? "";
+        if (
+          !response.url().endsWith("/bridge/rpc") ||
+          !body.includes("report_frontend_events")
+        ) return;
+        if (response.status() !== 200) {
+          reject(new Error(`report_frontend_events: ${response.status()}`));
+        }
+        for (const name of expected) {
+          if (body.includes(`error reporting test: ${name}`)) seen.add(name);
+        }
+        if (seen.size === expected.length) resolve();
+      });
+    });
+    for (
+      const name of [
+        "console.warn",
+        "console.error",
+        "Uncaught Error",
+        "Unhandled Rejection",
+      ]
+    ) {
+      await page.getByRole("button", { name, exact: true }).click();
+    }
+    await reported;
+  }
   if (Deno.env.get("NYANPASU_HTTP_CORE_LOG_FIXTURE") === "1") {
     const call = async (
       method: string,
@@ -130,7 +168,8 @@ try {
     await other.close();
   }
   assert.deepEqual(
-    errors,
+    // The debug page's error reporting buttons throw on purpose.
+    errors.filter((error) => !error.includes("error reporting test")),
     [],
     "Browser page must not call unavailable Tauri APIs",
   );

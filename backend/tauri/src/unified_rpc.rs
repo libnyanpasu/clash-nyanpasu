@@ -975,6 +975,20 @@ mod tests {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
             ))),
         });
+        use crate::client::frontend_events::{FrontendLogSink, SanitizedEvent};
+        #[derive(Default)]
+        struct RecordingSink(std::sync::Mutex<Vec<(String, SanitizedEvent)>>);
+        impl FrontendLogSink for RecordingSink {
+            fn write(&self, owner: &str, event: &SanitizedEvent) {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((owner.to_string(), event.clone()));
+            }
+            fn dropped(&self, _: &str, _: u32) {}
+        }
+        let frontend_events = Arc::new(RecordingSink::default());
+        args.logging.frontend = frontend_events.clone();
         let routes = Arc::new(RpcHttpRoutes::default());
         args.http_routes = routes.clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
@@ -1010,6 +1024,7 @@ mod tests {
                 std::time::Duration::from_secs(60),
                 tokio::process::Command::new("deno")
                     .env("NYANPASU_HTTP_CORE_LOG_FIXTURE", "1")
+                    .env("NYANPASU_HTTP_FRONTEND_EVENT_FIXTURE", "1")
                     .args(["task", "test:http-ui"])
                     .current_dir(repository)
                     .arg(&url)
@@ -1026,6 +1041,40 @@ mod tests {
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             );
+            let reported = frontend_events.0.lock().unwrap();
+            let fixture: Vec<_> = reported
+                .iter()
+                .filter(|(_, event)| event.event.message.contains("error reporting test"))
+                .collect();
+            use crate::client::frontend_events::{FrontendEventKind, FrontendEventLevel};
+            let kinds: Vec<_> = fixture
+                .iter()
+                .map(|(_, event)| (event.event.kind, event.event.level))
+                .collect();
+            for expected in [
+                (FrontendEventKind::Console, FrontendEventLevel::Warning),
+                (FrontendEventKind::Console, FrontendEventLevel::Error),
+                (FrontendEventKind::UncaughtError, FrontendEventLevel::Error),
+                (
+                    FrontendEventKind::UnhandledRejection,
+                    FrontendEventLevel::Error,
+                ),
+            ] {
+                assert!(kinds.contains(&expected), "{expected:?} in {reported:?}");
+            }
+            for (owner, event) in &fixture {
+                assert!(!owner.is_empty());
+                assert_eq!(event.event.route, "/main/settings/debug");
+            }
+            let console_error = fixture
+                .iter()
+                .map(|(_, event)| &event.event)
+                .find(|event| event.message.contains("console error"))
+                .unwrap();
+            assert_eq!(console_error.error_name.as_deref(), Some("Error"));
+            assert!(console_error.stack.is_some());
+            assert_eq!(console_error.causes.len(), 1);
+            assert!(console_error.causes[0].message.contains("root cause"));
         });
     }
 }

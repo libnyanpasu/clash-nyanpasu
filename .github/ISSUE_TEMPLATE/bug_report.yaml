@@ -1,7 +1,5 @@
-# thanks https://github.com/Ehviewer-Overhauled/Ehviewer templates.
-
-name: Bug 反馈 / Bug report
-description: 提交一个问题报告 / Create a bug report
+name: 🐞 Bug report
+description: Create a bug report
 labels:
   - 'T: Bug'
   - 'S: Untriaged'
@@ -9,154 +7,89 @@ body:
   - type: markdown
     attributes:
       value: |
-        提交问题报告前，还请首先完成文末的自查步骤。
+        Thanks for taking the time to fill out this issue. Please write a concise and appropriate title for this issue in the title field, and then fill out the form below step by step.
+        _Contents marked with an asterisk (*) are required._
 
-        Please finish verify steps which list in the end first before create bug report.
+  - type: checkboxes
+    id: check
+    attributes:
+      label: Self-review steps
+      description: Review the following items carefully and confirm each one. Issues where the actual situation does not match the required items may be closed.
+      options:
+        - label: I realize that if I do not carefully review these steps and write the issue description thoroughly, my issue may be closed.
+          required: true
+        - label: I searched on [Issue list](https://github.com/libnyanpasu/clash-nyanpasu/issues) and [Discussions](https://github.com/libnyanpasu/clash-nyanpasu/discussions), no duplicate or related open contents has been found.
+          required: true
+        - label: I ensure that this issue contains only one bug topic. If there are multiple topics, I will create separate issues for each one.
+          required: true
+        - label: I read and understood the contents of [Q&A Convention](https://nyanpasu.org/others/issues/) and [FAQ](https://nyanpasu.org/others/faq/).
+          required: true
+        - label: I tried the latest Beta / Nightly version, but this bug has not been fixed.
+          required: true
+        - label: I agree to follow the [Code of Conduct](https://github.com/libnyanpasu/clash-nyanpasu/blob/main/CODE_OF_CONDUCT.md).
+          required: true
+        - label: I want to submit a pull request to resolve this issue.
+          required: false
 
   - type: textarea
     id: reproduce
     attributes:
-      label: 复现步骤 / Step to reproduce
-      description: |
-        请在此处写下复现的方式，并携带错误日志，必要情况请带上截图/录屏。
-        Please write down the reproduction steps here and include the error log. If necessary, please provide screenshots or recordings.
+      label: Step to reproduce
+      description: Please write down the reproduction steps here.
       placeholder: |
         1. 
         2.
         3.
-        [录屏] / [Screen recording]
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: 预期行为 / Expected behavior
-      description: |
-        在此处说明正常情况下应用的预期行为。
-        Describe what should happened here.
-      placeholder: |
-        它应该 XXX……
-        It should be ...
+      label: Expected behavior
+      description: Describe what should happened here.
+      placeholder: It should be ...
     validations:
       required: true
 
   - type: textarea
     id: actual
     attributes:
-      label: 实际行为 / Actual behavior
-      description: |
-        在此处描绘应用的实际行为，最好附上截图。
-        Describe what actually happened here, screenshots is better.
-      placeholder: |
-        实际上它 XXX……
-        Actually it ...
-        [截图] / [Screenshots]
+      label: Actual behavior
+      description: Describe what actually happened here.
+      placeholder: Actually it ...
     validations:
       required: true
 
   - type: textarea
-    id: log
+    id: env_infos
     attributes:
-      label: 应用日志 / App logs
-      description: |
-        请确保您已移除所有敏感信息，并确保你的日志等级为 `Trace` 或 `Debug`。请参考 [FAQ - 日志目录](https://nyanpasu.org/zh-cn/others/faq.html#_2-clash-nyanpasu-%E5%BA%94%E7%94%A8-%E6%97%A5%E8%AE%B0%E7%9B%AE%E5%BD%95%E5%9C%A8%E5%93%AA%E9%87%8C)  
-        如果您可以打开主界面，可以在设置页的“日志目录”旁找到“收集日志”按钮，点击即可收集日志。（1.5.0 不可用）
-        如果日志过长，请使用 [Gist](https://gist.github.com/) 或 [Hastebin](https://hastebin.com/) 并附上链接。
-        Please make sure you have removed all sensitive information and your log level is `Trace` or `Debug`. Please refer to [FAQ - Logs directory](https://nyanpasu.org/others/faq.html#_2-where-is-the-clash-nyanpasu-application-logs-directory)
-        If you can open the main interface, you can find the "Collect logs" button next to the "Open Logs Dir" in the settings page, click to collect the logs. (Not available in 1.5.0)
-        If the log is too long, please use [Gist](https://gist.github.com/) or [Hastebin](https://hastebin.com/) and provide the link.
+      label: Environment information
+      description: Provide your environment information here — operating system version, Clash Nyanpasu version, Clash core, and its version, etc.
       placeholder: |
-        填写一个链接、一个代码块或一个压缩文件
-        Should be a link, a code block or a archive file
+        You can enter the above information manually,
+        or click the “Help” → “Report issue” button in the toolbar of the Nyanpasu desktop view to open a new page that automatically fills in more detailed information.
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: more
     attributes:
-      label: 备注 / Addition details
-      description: |
-        在此处写下其他您想说的内容。
-        Describe addition details here.
-      placeholder: |
-        其他有用的信息与附件
-        Additional details and attachments
+      label: Additional details
+      description: Describe additional details here.
+      placeholder: Additional details and attachments, such as screenshots, videos, etc.
     validations:
       required: false
+
   - type: textarea
-    id: env_infos
+    id: log
     attributes:
-      label: 环境信息 / Environment information
+      label: App logs
       description: |
-        请在此处提供您的环境信息，例如操作系统、Clash Nyanpasu 版本号、Clash 内核及其版本号等。
-        Please provide your environment information here, such as operating system, Clash Nyanpasu version number, Clash core and its version number, etc.
-      placeholder: |
-        此处应由 Nyanpasu 设置页面的反馈按钮自动填写。如果是老版本，请手动填写。
-        This should be automatically filled in by the feedback button on the Nyanpasu settings page. If it is an old version, please fill it in manually.
+        If you are not sure whether you should provide logs, leave this field blank. Maintainers will decide whether to ask you for logs based on the situation.
+        If you want to provide logs, make sure you have removed all sensitive information and that the log level is set to `Trace` or `Debug`. See [FAQ - Config/Log Dir](https://nyanpasu.org/others/faq/#2-where-is-the-clash-nyanpasu-configlogs-directory).
+        If the logs are too long, you can use [Gist](https://gist.github.com/) or [Hastebin](https://hastebin.com/) and provide a link.
+        You can also generate a log archive by clicking “Help” → “Collect logs” in the toolbar of the Nyanpasu desktop view, then drag it here after reviewing the logs and removing any sensitive information.
+      placeholder: Should be a link, a code block, or an archive file — if available.
     validations:
-      required: true
-  # - type: input
-  #   id: version
-  #   attributes:
-  #     label: Clash Nyanpasu 版本号 / Clash Nyanpasu version
-  #     description: |
-  #       您可以在 **设置 - Nyanpasu 版本** 或在 **托盘 - 更多** 中找到版本号。
-  #       You can find the version number in **Settings - Nyanpasu Version** or **Tray - More**.
-  #     placeholder: 1.5.0
-  #   validations:
-  #     required: true
-
-  # - type: input
-  #   id: core-version
-  #   attributes:
-  #     label: Clash 核心及其版本号 / Clash core and version
-  #     description: |
-  #       您可以在 **设置 - Clash 内核** 中找到内核及其版本号。
-  #       You can find the core and its version number in **Settings - Clash Core**.
-  #     placeholder: v1.18.1 Meta
-  #   validations:
-  #     required: true
-  # - type: input
-  #   id: pre-release
-  #   attributes:
-  #     label: 是否为 Pre-release / Is pre-release version
-  #     description: |
-  #       是否为 Pre-release 下载的应用，若是则填写对应的 commit hash。
-  #       Is this an app downloaded from Pre-release? If so, please fill in the corresponding commit hash.
-  #     placeholder: 26f05a0
-  #   validations:
-  #     required: true
-
-  # - type: input
-  #   id: system
-  #   attributes:
-  #     label: 操作系统及版本 / OS version
-  #     description: 操作系统 + 版本号 / OS + version number
-  #     placeholder: Windows 11, macOS 14
-  #   validations:
-  #     required: true
-
-  - type: checkboxes
-    id: check
-    attributes:
-      label: 自查步骤 / Verify steps
-      description: |
-        请确认您已经遵守所有必选项。
-        Please ensure you have obtained all needed options.
-      options:
-        - label: 如果您有足够的时间和能力，并愿意为此提交 PR，请勾上此复选框 / Pull request is welcome. Check this if you want to start a pull request
-          required: false
-        - label: 您已知悉如果没有提供正确的系统信息，以及日志，您的 Issue 会直接被关闭 / You have known that if you don't provide correct system information and logs, your issue will be closed directly
-          required: true
-        - label: 您已仔细查看并知情 [Q&A](https://nyanpasu.org/zh-cn/others/issues) 和 [FAQ](https://nyanpasu.org/zh-cn/others/faq) 中的内容 / You have read and understood the contents of [Q&A](https://nyanpasu.org/others/issues) and [FAQ](https://nyanpasu.org/others/faq)
-          required: true
-
-        - label: 您已搜索过 [Issue Tracker](https://github.com/libnyanpasu/clash-nyanpasu/issues)，没有找到类似内容 / I have searched on [Issue Tracker](https://github.com/libnyanpasu/clash-nyanpasu/issues), No duplicate or related open issue has been found
-          required: true
-
-        - label: 您确保这个 Issue 只提及一个问题。如果您有多个问题报告，烦请发起多个 Issue / Ensure there is only one bug report in this issue. Please make multiply issue for multiply bugs
-          required: true
-
-        - label: 您确保已使用最新 Pre-release 版本测试，并且该问题在最新 Pre-release 版本中并未解决 / This bug have not solved in latest Pre-release version
-          required: true
+      required: false

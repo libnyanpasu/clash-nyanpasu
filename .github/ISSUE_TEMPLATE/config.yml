@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 所有其他问题 / All other questions
+  - name: 💬 All other questions / 所有其他问题
     url: https://github.com/libnyanpasu/clash-nyanpasu/discussions
-    about: 转到 Discussions / Turn to discussions
+    about: Turn to discussions / 转到 Discussions

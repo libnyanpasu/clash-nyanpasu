@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     client::effects::plan::TrayView,
-    core::clash::proxies::{Proxies, ProxyGroup, ProxyGroupKind},
+    core::clash::proxies::{Proxies, ProxyGroup},
     log_err,
 };
 use indexmap::IndexMap;
@@ -46,10 +46,7 @@ impl TrayGroup {
                 .iter()
                 .map(|name| name.as_str().to_owned())
                 .collect(),
-            selectable: matches!(
-                group.kind,
-                ProxyGroupKind::Selector | ProxyGroupKind::Fallback
-            ),
+            selectable: group.capabilities.select,
         }
     }
 }
@@ -523,7 +520,7 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::clash::proxies::ProxyGroupCapabilities;
+    use crate::core::clash::proxies::{ProxyGroupCapabilities, ProxyGroupKind};
 
     fn selecting(now: Option<&str>) -> TrayProxies {
         TrayProxies::from([(
@@ -636,5 +633,23 @@ mod tests {
         let mut locked = selecting(Some("a"));
         locked["Proxy"].selectable = false;
         assert_eq!(diff_proxies(&open, &locked), TrayUpdateType::Full);
+    }
+
+    /// Mihomo pins a URLTest group on selection, while Clash-rs rejects
+    /// selecting a Fallback group; the tray follows what the core reports.
+    #[test]
+    fn only_groups_the_core_lets_a_user_select_are_selectable() {
+        let mut proxies = sample_proxies();
+        let mut pinnable = group("Auto", &["node-a"], "node-a");
+        pinnable.kind = ProxyGroupKind::UrlTest;
+        pinnable.capabilities.select = true;
+        let mut automatic = group("Fallback", &["node-a"], "node-a");
+        automatic.kind = ProxyGroupKind::Fallback;
+        automatic.capabilities.select = false;
+        proxies.groups = vec![pinnable, automatic];
+
+        let tray = to_tray_proxies(Mode::Rule, &proxies);
+        assert!(tray["Auto"].selectable);
+        assert!(!tray["Fallback"].selectable);
     }
 }

@@ -664,7 +664,7 @@ pub(crate) fn wire_core_type_to_kind(
             Some(CoreKind::ClashRust)
         }
         CoreType::Clash(ClashCoreType::ClashPremium) => Some(CoreKind::ClashPremium),
-        CoreType::Clash(ClashCoreType::Meow) => Some(CoreKind::Meow),
+        CoreType::Clash(ClashCoreType::Meow | ClashCoreType::MeowAlpha) => Some(CoreKind::Meow),
         CoreType::SingBox => None,
     }
 }

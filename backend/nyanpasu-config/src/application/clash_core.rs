@@ -34,6 +34,8 @@ pub enum ClashCore {
     ClashRsAlpha,
     #[serde(rename = "meow")]
     Meow,
+    #[serde(rename = "meow-alpha")]
+    MeowAlpha,
 }
 
 impl ClashCore {
@@ -47,6 +49,7 @@ impl ClashCore {
             ClashCore::MihomoAlpha => "mihomo-alpha",
             ClashCore::ClashRsAlpha => "clash-rs-alpha",
             ClashCore::Meow => "meow",
+            ClashCore::MeowAlpha => "meow-alpha",
         }
     }
 }
@@ -81,6 +84,9 @@ impl From<&ClashCore> for nyanpasu_utils::core::CoreType {
             ClashCore::Meow => {
                 nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::Meow)
             }
+            ClashCore::MeowAlpha => nyanpasu_utils::core::CoreType::Clash(
+                nyanpasu_utils::core::ClashCoreType::MeowAlpha,
+            ),
         }
     }
 }
@@ -101,6 +107,7 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
                 nyanpasu_utils::core::ClashCoreType::Mihomo => Ok(ClashCore::Mihomo),
                 nyanpasu_utils::core::ClashCoreType::MihomoAlpha => Ok(ClashCore::MihomoAlpha),
                 nyanpasu_utils::core::ClashCoreType::Meow => Ok(ClashCore::Meow),
+                nyanpasu_utils::core::ClashCoreType::MeowAlpha => Ok(ClashCore::MeowAlpha),
             },
             _ => Err(UnsupportedCoreTypeError(core.clone())),
         }
@@ -122,10 +129,22 @@ mod tests {
             (ClashCore::MihomoAlpha, "mihomo-alpha"),
             (ClashCore::ClashRsAlpha, "clash-rs-alpha"),
             (ClashCore::Meow, "meow"),
+            (ClashCore::MeowAlpha, "meow-alpha"),
         ];
         assert_eq!(cases.len(), enumflags2::BitFlags::<ClashCore>::all().len());
         for (core, name) in cases {
             assert_eq!(core.binary_name(), name, "{core:?}");
         }
+    }
+
+    #[test]
+    fn meow_alpha_keeps_its_runtime_wire_identity() {
+        let core = ClashCore::MeowAlpha;
+        let runtime_type = nyanpasu_utils::core::CoreType::from(&core);
+        assert_eq!(
+            runtime_type,
+            nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::MeowAlpha)
+        );
+        assert_eq!(ClashCore::try_from(&runtime_type).unwrap(), core);
     }
 }

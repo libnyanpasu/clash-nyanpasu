@@ -1879,7 +1879,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clash-api"
-version = "1.0.0-rc.10"
+version = "1.0.0-rc.11"
 dependencies = [
  "backon",
  "chrono",
@@ -6586,7 +6586,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-manager"
-version = "1.0.0-rc.10"
+version = "1.0.0-rc.11"
 dependencies = [
  "camino",
  "chrono",
@@ -6613,7 +6613,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-metadata"
-version = "1.0.0-rc.10"
+version = "1.0.0-rc.11"
 dependencies = [
  "constcat",
  "enumset",
@@ -6674,7 +6674,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "2.0.0-rc.10"
+version = "2.0.0-rc.11"
 dependencies = [
  "anyhow",
  "derive_builder",
@@ -6699,7 +6699,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-jobs"
-version = "0.1.1-rc.4"
+version = "0.1.1-rc.5"
 dependencies = [
  "futures-util",
  "jiff",
@@ -6719,7 +6719,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-logging"
-version = "0.1.1-rc.6"
+version = "0.1.1-rc.7"
 dependencies = [
  "chrono",
  "file-id",
@@ -6798,7 +6798,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-windows-security"
-version = "0.1.1-rc.5"
+version = "0.1.1-rc.6"
 dependencies = [
  "anyhow",
  "windows 0.62.2",

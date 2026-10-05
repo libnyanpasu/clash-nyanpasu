@@ -1,11 +1,13 @@
 use std::{
-    path::PathBuf,
+    io::Read,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use specta::Type;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
@@ -129,6 +131,19 @@ impl UpdaterBackend for HttpUpdaterBackend {
     ) -> anyhow::Result<PreparedCoreBinary> {
         let staging = Arc::new(TempDir::new()?);
         let mut url = url::Url::parse("https://github.com")?;
+        let alpha_identity = match &tag {
+            CoreTypeMeta::MeowAlpha { version, sha256 } => Some((version.clone(), sha256.clone())),
+            _ => None,
+        };
+        let meow_version = match &tag {
+            CoreTypeMeta::Meow(version) if core_type == ClashCore::Meow => {
+                Some((core_type, version.to_string()))
+            }
+            CoreTypeMeta::MeowAlpha { version, .. } if core_type == ClashCore::MeowAlpha => {
+                Some((core_type, version.to_string()))
+            }
+            _ => None,
+        };
         url.set_path(&shared::get_download_path(tag, &artifact));
         let url = parse_gh_url(&mirror, url.as_str())?;
         let session =
@@ -153,6 +168,14 @@ impl UpdaterBackend for HttpUpdaterBackend {
                 () = shutdown.cancelled() => anyhow::bail!("updater shut down"),
             }
         }
+        if let Some((_, expected_digest)) = &alpha_identity {
+            let archive_path = staging.path().join(&artifact);
+            let expected_digest = expected_digest.clone();
+            crate::utils::blocking::join(
+                tokio::task::spawn_blocking(move || verify_sha256(&archive_path, &expected_digest))
+                    .await,
+            )?;
+        }
         progress.report(UpdaterState::Decompressing, None);
         let filename = format!(
             "{}{}",
@@ -165,7 +188,9 @@ impl UpdaterBackend for HttpUpdaterBackend {
         let extraction_staging = staging.clone();
         let extraction_source = source.clone();
         let expected_archive_binary = match core_type {
-            ClashCore::Meow => Some(format!("meow{}", std::env::consts::EXE_SUFFIX)),
+            ClashCore::Meow | ClashCore::MeowAlpha => {
+                Some(format!("meow{}", std::env::consts::EXE_SUFFIX))
+            }
             _ => None,
         };
         // A blocking extraction cannot be aborted midway. It owns staging until
@@ -183,6 +208,15 @@ impl UpdaterBackend for HttpUpdaterBackend {
             Ok(panic) => std::panic::resume_unwind(panic),
             Err(error) => error,
         })??;
+        if let Some((core, expected_version)) = meow_version {
+            let output = tokio::process::Command::new(&source)
+                .arg("-v")
+                .output()
+                .await?;
+            anyhow::ensure!(output.status.success(), "Meow version probe failed");
+            let banner = String::from_utf8_lossy(&output.stdout);
+            verify_meow_version(core, &expected_version, &banner)?;
+        }
         progress.report(UpdaterState::Replacing, None);
         Ok(PreparedCoreBinary {
             target: core_type,
@@ -256,6 +290,50 @@ fn extract_core(
     }
     #[cfg(target_family = "unix")]
     std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o755))?;
+    Ok(())
+}
+
+fn verify_sha256(path: &Path, expected: &str) -> anyhow::Result<()> {
+    let mut file = std::fs::File::open(path)?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    let actual = hex::encode(digest.finalize());
+    anyhow::ensure!(
+        actual.eq_ignore_ascii_case(expected),
+        "Meow Alpha archive SHA-256 did not match the release manifest"
+    );
+    Ok(())
+}
+
+fn verify_meow_version(core: ClashCore, expected: &str, banner: &str) -> anyhow::Result<()> {
+    let parsed = crate::client::core_version::parse_version(core, banner)?;
+    let actual = semver::Version::parse(parsed.strip_prefix('v').unwrap_or(&parsed))?;
+    match core {
+        ClashCore::Meow => {
+            let expected = semver::Version::parse(expected.strip_prefix('v').unwrap_or(expected))?;
+            anyhow::ensure!(
+                actual == expected,
+                "Meow binary version did not match the release tag"
+            );
+        }
+        ClashCore::MeowAlpha => {
+            let sha = expected
+                .strip_prefix("alpha-")
+                .ok_or_else(|| anyhow::anyhow!("invalid Meow Alpha version identity"))?;
+            anyhow::ensure!(
+                actual.build.as_str().eq_ignore_ascii_case(sha),
+                "Meow Alpha binary version did not match the release commit"
+            );
+        }
+        _ => anyhow::bail!("unsupported Meow core version verification"),
+    }
     Ok(())
 }
 
@@ -538,6 +616,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!(std::fs::read(destination).unwrap(), b"meow executable");
+    }
+
+    #[test]
+    fn alpha_archive_digest_must_match_the_manifest() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("asset.tar.gz");
+        std::fs::write(&archive, b"hello").unwrap();
+        verify_sha256(
+            &archive,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        )
+        .unwrap();
+        assert!(verify_sha256(&archive, &"0".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn meow_versions_are_verified_before_replacement() {
+        verify_meow_version(ClashCore::Meow, "v0.22.0", "meow version 0.22.0").unwrap();
+        verify_meow_version(
+            ClashCore::MeowAlpha,
+            "alpha-3c27aca",
+            "meow version 0.22.0-alpha+3c27aca",
+        )
+        .unwrap();
+        assert!(
+            verify_meow_version(
+                ClashCore::MeowAlpha,
+                "alpha-3c27aca",
+                "meow version 0.22.0-alpha+deadbee",
+            )
+            .is_err()
+        );
+        assert!(verify_meow_version(ClashCore::Meow, "v0.22.0", "not a version").is_err());
     }
 
     #[test]

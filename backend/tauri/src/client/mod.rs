@@ -187,7 +187,8 @@ fn runtime_core_spec(
         | nyanpasu_config::application::ClashCore::ClashRsAlpha => CoreKind::ClashRust,
         nyanpasu_config::application::ClashCore::Mihomo
         | nyanpasu_config::application::ClashCore::MihomoAlpha => CoreKind::Mihomo,
-        nyanpasu_config::application::ClashCore::Meow => CoreKind::Meow,
+        nyanpasu_config::application::ClashCore::Meow
+        | nyanpasu_config::application::ClashCore::MeowAlpha => CoreKind::Meow,
     };
     Ok(nyanpasu_core_manager::CoreSpec {
         kind,

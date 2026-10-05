@@ -127,8 +127,9 @@ enum Slice {
     Application(Box<ApplicationEffectFields>),
     Clash(ClashEffectFields),
     Ports(Option<ResolvedPortBindings>),
-    /// No effect reads profile data or tray icon files; this only requests a
-    /// partial tray refresh from the latest desired state.
+    /// A profile commit does not change effect inputs, but refreshes the tray.
+    Profiles,
+    /// An explicit request to redraw the tray after an external icon change.
     TrayRefresh,
 }
 
@@ -363,7 +364,7 @@ impl Actor for EffectsActor {
                     Slice::Application(app) => inputs.app = *app,
                     Slice::Clash(clash) => inputs.clash = clash,
                     Slice::Ports(ports) => inputs.ports = ports,
-                    Slice::TrayRefresh => {}
+                    Slice::Profiles | Slice::TrayRefresh => {}
                 }
                 let changed: Vec<_> = ApplicationEffectPlan::diff(&state.desired, &inputs)
                     .effects()
@@ -604,7 +605,7 @@ impl CommitNotifications for EffectsClient {
     }
 
     fn profiles_committed(&self) {
-        self.publish(Slice::TrayRefresh, true, false, Vec::new());
+        self.publish(Slice::Profiles, true, false, Vec::new());
     }
 
     fn runtime_bound(&self, ports: Option<ResolvedPortBindings>, refresh: bool) {

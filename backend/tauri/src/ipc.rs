@@ -26,7 +26,12 @@ use storage::{StorageOperationError, WebStorage};
 use tauri::{AppHandle, State};
 use tray::icon::TrayIcon;
 
-use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_dialog::{
+    DialogExt, FileDialogBuilder, MessageDialogButtons as TauriDialogButtons,
+    MessageDialogKind as TauriDialogKind, MessageDialogResult as TauriDialogResult,
+};
+use tauri_plugin_notification::NotificationExt;
 
 impl std::fmt::Display for IpcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -150,6 +155,197 @@ unknown_domain!(
 );
 
 type Result<T = ()> = StdResult<T, IpcError>;
+
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeDialogKind {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum NativeDialogButtons {
+    Ok,
+    OkCancel,
+    YesNo,
+    YesNoCancel,
+    OkCustom {
+        ok: String,
+    },
+    OkCancelCustom {
+        ok: String,
+        cancel: String,
+    },
+    YesNoCancelCustom {
+        yes: String,
+        no: String,
+        cancel: String,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FileDialogFilter {
+    pub name: String,
+    pub extensions: Vec<String>,
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn read_clipboard_text(app_handle: AppHandle) -> Result<String> {
+    Ok(app_handle
+        .clipboard()
+        .read_text()
+        .map_err(|error| error.to_string())?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn write_clipboard_text(app_handle: AppHandle, text: String) -> Result {
+    app_handle
+        .clipboard()
+        .write_text(text)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn show_native_notification(
+    app_handle: AppHandle,
+    title: String,
+    body: Option<String>,
+) -> Result {
+    let mut notification = app_handle.notification().builder().title(title);
+    if let Some(body) = body {
+        notification = notification.body(body);
+    }
+    notification.show().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn show_native_message_dialog(
+    app_handle: AppHandle,
+    message: String,
+    title: Option<String>,
+    kind: NativeDialogKind,
+    buttons: NativeDialogButtons,
+) -> Result<String> {
+    let kind = match kind {
+        NativeDialogKind::Info => TauriDialogKind::Info,
+        NativeDialogKind::Warning => TauriDialogKind::Warning,
+        NativeDialogKind::Error => TauriDialogKind::Error,
+    };
+    let buttons = match buttons {
+        NativeDialogButtons::Ok => TauriDialogButtons::Ok,
+        NativeDialogButtons::OkCancel => TauriDialogButtons::OkCancel,
+        NativeDialogButtons::YesNo => TauriDialogButtons::YesNo,
+        NativeDialogButtons::YesNoCancel => TauriDialogButtons::YesNoCancel,
+        NativeDialogButtons::OkCustom { ok } => TauriDialogButtons::OkCustom(ok),
+        NativeDialogButtons::OkCancelCustom { ok, cancel } => {
+            TauriDialogButtons::OkCancelCustom(ok, cancel)
+        }
+        NativeDialogButtons::YesNoCancelCustom { yes, no, cancel } => {
+            TauriDialogButtons::YesNoCancelCustom(yes, no, cancel)
+        }
+    };
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let mut dialog = app_handle
+        .dialog()
+        .message(message)
+        .kind(kind)
+        .buttons(buttons);
+    if let Some(title) = title {
+        dialog = dialog.title(title);
+    }
+    dialog.show_with_result(move |result| {
+        let result = match result {
+            TauriDialogResult::Yes => "Yes".to_owned(),
+            TauriDialogResult::No => "No".to_owned(),
+            TauriDialogResult::Ok => "Ok".to_owned(),
+            TauriDialogResult::Cancel => "Cancel".to_owned(),
+            TauriDialogResult::Custom(label) => label,
+        };
+        let _ = sender.send(result);
+    });
+    receiver
+        .await
+        .map_err(|error| error.to_string())
+        .map_err(Into::into)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn ask_native_dialog(
+    app_handle: AppHandle,
+    message: String,
+    title: Option<String>,
+    kind: NativeDialogKind,
+) -> Result<bool> {
+    let kind = match kind {
+        NativeDialogKind::Info => TauriDialogKind::Info,
+        NativeDialogKind::Warning => TauriDialogKind::Warning,
+        NativeDialogKind::Error => TauriDialogKind::Error,
+    };
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let mut dialog = app_handle
+        .dialog()
+        .message(message)
+        .kind(kind)
+        .buttons(TauriDialogButtons::YesNo);
+    if let Some(title) = title {
+        dialog = dialog.title(title);
+    }
+    dialog.show(move |confirmed| {
+        let _ = sender.send(confirmed);
+    });
+    receiver
+        .await
+        .map_err(|error| error.to_string())
+        .map_err(Into::into)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn open_native_file_dialog(
+    app_handle: AppHandle,
+    title: Option<String>,
+    filters: Vec<FileDialogFilter>,
+) -> Result<Option<String>> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let mut dialog = app_handle.dialog().file();
+    if let Some(title) = title {
+        dialog = dialog.set_title(title);
+    }
+    for filter in filters {
+        let extensions = filter
+            .extensions
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        dialog = dialog.add_filter(filter.name, &extensions);
+    }
+    dialog.pick_file(move |selected| {
+        let path = selected
+            .and_then(|selected| selected.into_path().ok())
+            .map(|path| path.to_string_lossy().into_owned());
+        let _ = sender.send(path);
+    });
+    receiver
+        .await
+        .map_err(|error| error.to_string())
+        .map_err(Into::into)
+}
 
 // TODO: remove this struct use Sysproxy
 #[derive(specta::Type, serde::Serialize)]
@@ -790,6 +986,22 @@ pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Re
     )?)
 }
 
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_logs_archive() -> Result<LogsArchive> {
+    let file_name = format!("{}-log.zip", Local::now().format("%Y-%m-%d"));
+    let bytes = candy::collect_logs_bytes()?;
+    Ok(LogsArchive { file_name, bytes })
+}
+
+#[derive(Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LogsArchive {
+    file_name: String,
+    bytes: Vec<u8>,
+}
+
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
@@ -1079,7 +1291,7 @@ pub mod uwp {
     }
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_icon(
@@ -1092,6 +1304,20 @@ pub async fn set_tray_icon(
     // tray is queued.
     (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode)))?;
     (crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART))?;
+    Ok(())
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn set_tray_icon_from_bytes(
+    app_handle: tauri::AppHandle,
+    mode: TrayIcon,
+    bytes: Vec<u8>,
+) -> Result {
+    crate::core::tray::icon::set_icon_from_bytes(mode, &bytes)?;
+    crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode))?;
+    crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART)?;
     Ok(())
 }
 

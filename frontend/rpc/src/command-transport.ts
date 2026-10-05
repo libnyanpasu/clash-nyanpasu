@@ -32,18 +32,11 @@ async function invokeHttpCommand<T>(
   method: string,
   params: Record<string, unknown> = {},
 ): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(rpcPath, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ method, params }),
-    })
-  } catch (error) {
-    throw new Error(
-      error instanceof Error ? error.message : 'RPC request failed',
-    )
-  }
+  const response = await fetch(rpcPath, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ method, params }),
+  })
 
   let body: unknown
   try {

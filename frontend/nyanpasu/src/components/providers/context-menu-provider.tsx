@@ -27,7 +27,7 @@ import {
   ContextMenuTrigger,
 } from '@nyanpasu/ui/context-menu'
 import { m } from '@/paraglide/messages'
-import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
+import { readClipboardText, writeClipboardText } from '@/utils/clipboard'
 
 type ContextMenuRegistryValue = {
   registerElement: (el: Element, getChildren: () => ReactNode) => void
@@ -287,7 +287,7 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
       return
     }
 
-    await writeText(text)
+    await writeClipboardText(text)
   }, [])
 
   const handleCut = useCallback(async () => {
@@ -298,7 +298,7 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
       return
     }
 
-    await writeText(text)
+    await writeClipboardText(text)
 
     const el = targetRef.current
 
@@ -331,7 +331,7 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
 
   const handlePaste = useCallback(async () => {
     try {
-      const text = await readText()
+      const text = await readClipboardText()
       const el = targetRef.current
 
       if (el && isEditable(el)) {

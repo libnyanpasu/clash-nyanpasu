@@ -13,6 +13,18 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getDebugHttpStatus', ...args],
         queryFn: () => commands.getDebugHttpStatus(...args),
       }),
+    getLogsArchive: (...args: Parameters<typeof commands.getLogsArchive>) =>
+      queryOptions({
+        queryKey: ['getLogsArchive', ...args],
+        queryFn: () => commands.getLogsArchive(...args),
+      }),
+    readClipboardText: (
+      ...args: Parameters<typeof commands.readClipboardText>
+    ) =>
+      queryOptions({
+        queryKey: ['readClipboardText', ...args],
+        queryFn: () => commands.readClipboardText(...args),
+      }),
     queryCoreLogs: (...args: Parameters<typeof commands.queryCoreLogs>) =>
       queryOptions({
         queryKey: ['queryCoreLogs', ...args],
@@ -352,6 +364,32 @@ export function createQueryBindings(rpc: RpcClient) {
       }),
   }
   const mutations = {
+    writeClipboardText: mutationOptions({
+      mutationKey: ['writeClipboardText'],
+      mutationFn: (input: Parameters<typeof commands.writeClipboardText>) =>
+        commands.writeClipboardText(...input),
+    }),
+    showNativeNotification: mutationOptions({
+      mutationKey: ['showNativeNotification'],
+      mutationFn: (input: Parameters<typeof commands.showNativeNotification>) =>
+        commands.showNativeNotification(...input),
+    }),
+    showNativeMessageDialog: mutationOptions({
+      mutationKey: ['showNativeMessageDialog'],
+      mutationFn: (
+        input: Parameters<typeof commands.showNativeMessageDialog>,
+      ) => commands.showNativeMessageDialog(...input),
+    }),
+    askNativeDialog: mutationOptions({
+      mutationKey: ['askNativeDialog'],
+      mutationFn: (input: Parameters<typeof commands.askNativeDialog>) =>
+        commands.askNativeDialog(...input),
+    }),
+    openNativeFileDialog: mutationOptions({
+      mutationKey: ['openNativeFileDialog'],
+      mutationFn: (input: Parameters<typeof commands.openNativeFileDialog>) =>
+        commands.openNativeFileDialog(...input),
+    }),
     setDebugHttpEnabled: mutationOptions({
       mutationKey: ['setDebugHttpEnabled'],
       mutationFn: (input: Parameters<typeof commands.setDebugHttpEnabled>) =>
@@ -539,6 +577,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['collectLogs'],
       mutationFn: (input: Parameters<typeof commands.collectLogs>) =>
         commands.collectLogs(...input),
+    }),
+    setTrayIconFromBytes: mutationOptions({
+      mutationKey: ['setTrayIconFromBytes'],
+      mutationFn: (input: Parameters<typeof commands.setTrayIconFromBytes>) =>
+        commands.setTrayIconFromBytes(...input),
     }),
     enhanceProfiles: mutationOptions({
       mutationKey: ['enhanceProfiles'],

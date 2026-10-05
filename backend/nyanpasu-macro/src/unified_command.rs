@@ -100,7 +100,9 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             }
         } else if is_context_type(&argument.ty, "AppHandle") {
             wrapper_args.push(quote!(#ident));
-            http_supported = false;
+            http_args.push(quote!(dependencies.app_handle.clone().ok_or_else(
+                || { crate::unified_rpc::RpcError::unsupported(stringify!(#name)) }
+            )?));
         } else if options.owner && is_context_type(&argument.ty, "Window") {
             *argument.ty = syn::parse_quote!(crate::unified_rpc::RpcOwner);
             wrapper_args.push(quote!(crate::unified_rpc::RpcOwner::desktop(#ident.label())));
@@ -347,6 +349,8 @@ fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
             {
                 return false;
             }
+        } else if is_context_type(&argument.ty, "AppHandle") {
+            continue;
         } else if owner && is_context_type(&argument.ty, "Window") {
             continue;
         } else if contains_reference(&argument.ty) || is_tauri_context(&argument.ty) {

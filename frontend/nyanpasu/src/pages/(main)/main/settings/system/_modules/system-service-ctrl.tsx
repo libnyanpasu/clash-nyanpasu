@@ -13,13 +13,13 @@ import {
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
+import { writeClipboardText } from '@/utils/clipboard'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { isWindows } from '@nyanpasu/platform'
 import { useCoreDir, useServicePrompt, useSystemService } from '@nyanpasu/query'
 import { unwrapResult } from '@nyanpasu/rpc'
 import { cn } from '@nyanpasu/utils'
-import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   SettingsCard,
   SettingsCardAnimatedItem,
@@ -257,7 +257,7 @@ const ServicePromptButton = () => {
       return
     }
 
-    await writeText(userOperationCommands)
+    await writeClipboardText(userOperationCommands)
   })
 
   return (

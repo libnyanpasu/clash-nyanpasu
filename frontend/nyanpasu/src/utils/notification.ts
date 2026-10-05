@@ -1,33 +1,15 @@
 import { m } from '@/paraglide/messages'
 import { commands } from '@/services/rpc'
-import { isBrowser } from '@nyanpasu/platform'
+import { writeClipboardText } from '@/utils/clipboard'
+import { isBrowser, showWebNotification } from '@nyanpasu/platform'
 import { isIpcError, unwrapResult } from '@nyanpasu/rpc'
-import { writeText } from '@tauri-apps/plugin-clipboard-manager'
-import {
-  MessageDialogOptions,
-  message as tauriMessage,
-} from '@tauri-apps/plugin-dialog'
-import {
-  isPermissionGranted,
-  Options,
-  requestPermission,
-  sendNotification,
-} from '@tauri-apps/plugin-notification'
+import type {
+  IpcError,
+  NativeDialogButtons,
+  NativeDialogKind,
+} from '@nyanpasu/rpc/types'
 import { formatError } from './index'
 import { profileDialogLabel, profileMessageParts } from './profile-label'
-
-let permissionGranted: boolean | null = null
-
-const checkPermission = async () => {
-  if (permissionGranted == null) {
-    permissionGranted = await isPermissionGranted()
-  }
-  if (!permissionGranted) {
-    const permission = await requestPermission()
-    permissionGranted = permission === 'granted'
-  }
-  return permissionGranted
-}
 
 export type NotificationOptions = {
   title: string
@@ -38,82 +20,177 @@ export type NotificationOptions = {
 export enum NotificationType {
   Success = 'success',
   Info = 'info',
-  // Warn = "warn",
   Error = 'error',
 }
 
-export const notification = async ({
-  title,
-  body,
-  type = NotificationType.Info,
-}: NotificationOptions) => {
+export const notification = async ({ title, body }: NotificationOptions) => {
   if (!title) {
     throw new Error('missing message argument!')
   }
   if (isBrowser()) {
-    window.alert(body ? `${title}: ${body}` : title)
+    await showWebNotification({ title, body })
     return
   }
-  const permissionGranted = WIN_PORTABLE || (await checkPermission())
-  if (WIN_PORTABLE || !permissionGranted) {
-    await tauriMessage(body ? `${title}: ${body}` : title, {
+  if (WIN_PORTABLE) {
+    await message(body ? `${title}: ${body}` : title, {
       title: 'Clash Nyanpasu',
-      kind: type === NotificationType.Error ? 'error' : 'info',
     })
     return
   }
-  const options: Options = {
-    title,
-  }
-  if (body) options.body = body
-  sendNotification(options)
+
+  unwrapResult(await commands.showNativeNotification(title, body ?? null))
 }
 
-export type MessageOptions = MessageDialogOptions & {
-  /** The caught error; a failed command adds a "copy error details" button. */
+type MessageButtons =
+  | 'Ok'
+  | 'OkCancel'
+  | 'YesNo'
+  | 'YesNoCancel'
+  | { ok?: string; cancel?: string; yes?: string; no?: string }
+
+export type MessageOptions = {
+  title?: string
+  kind?: NativeDialogKind
+  buttons?: MessageButtons
+  okLabel?: string
+  /** The caught error; a failed command adds a copy-details button. */
   error?: unknown
+}
+
+const nativeButtons = (
+  buttons: MessageButtons | undefined,
+  okLabel: string | undefined,
+  cancelLabel: string,
+): NativeDialogButtons => {
+  if (typeof buttons === 'string') {
+    const types = {
+      Ok: 'ok',
+      OkCancel: 'ok_cancel',
+      YesNo: 'yes_no',
+      YesNoCancel: 'yes_no_cancel',
+    } as const
+    return { type: types[buttons] }
+  }
+  if (buttons?.yes && buttons.no) {
+    return {
+      type: 'yes_no_cancel_custom',
+      yes: buttons.yes,
+      no: buttons.no,
+      cancel: buttons.cancel ?? cancelLabel,
+    }
+  }
+  if (buttons?.ok && buttons.cancel) {
+    return {
+      type: 'ok_cancel_custom',
+      ok: buttons.ok,
+      cancel: buttons.cancel,
+    }
+  }
+  if (buttons?.ok ?? okLabel) {
+    return { type: 'ok_custom', ok: buttons?.ok ?? okLabel! }
+  }
+  if (buttons?.cancel) {
+    return {
+      type: 'ok_cancel_custom',
+      ok: 'Ok',
+      cancel: buttons.cancel,
+    }
+  }
+  return { type: buttons?.yes ? 'yes_no' : 'ok' }
+}
+
+export const ask = async (
+  value: string,
+  options?: string | Pick<MessageOptions, 'title' | 'kind'>,
+) => {
+  if (isBrowser()) return window.confirm(value)
+
+  const title = typeof options === 'string' ? options : (options?.title ?? null)
+  const kind = typeof options === 'string' ? 'info' : (options?.kind ?? 'info')
+  return unwrapResult(await commands.askNativeDialog(value, title, kind))
 }
 
 export const message = async (
   value: string,
   options?: string | MessageOptions | undefined,
 ) => {
-  if (isBrowser()) {
-    window.alert(value)
-    return
-  }
-  if (typeof options === 'object') {
-    const { error, ...dialog } = options
-    if (isIpcError(error)) {
-      const parts = profileMessageParts((label) => formatError(error, label))
-      if (parts.some((part) => typeof part !== 'string')) {
-        try {
-          const profiles = unwrapResult(await commands.getProfiles())
-          const lookup = new Map(
-            profiles.items.map((profile) => [profile.uid, profile]),
-          )
-          value = value.replace(formatError(error), () =>
-            formatError(error, (id) => profileDialogLabel(lookup, id)),
-          )
-        } catch {
-          // A failed name lookup must not hide the original command failure.
-        }
+  const dialog = typeof options === 'object' ? options : undefined
+  const error = dialog?.error
+  if (isIpcError(error)) {
+    const parts = profileMessageParts((label) => formatError(error, label))
+    if (parts.some((part) => typeof part !== 'string')) {
+      try {
+        const profiles = unwrapResult(await commands.getProfiles())
+        const lookup = new Map(
+          profiles.items.map((profile) => [profile.uid, profile]),
+        )
+        value = value.replace(formatError(error), () =>
+          formatError(error, (id) => profileDialogLabel(lookup, id)),
+        )
+      } catch {
+        // A failed name lookup must not hide the original command failure.
       }
     }
-    const copyLabel = m.common_copy_error_details()
-    const result = await tauriMessage(value, {
-      ...dialog,
-      ...(isIpcError(error) && {
-        buttons: { ok: copyLabel, cancel: m.common_close() },
-      }),
-      title: dialog.title
-        ? `Clash Nyanpasu - ${dialog.title}`
-        : 'Clash Nyanpasu',
-    })
-    if (isIpcError(error) && result === copyLabel) {
-      await writeText(error.detail)
-    }
-  } else {
-    await tauriMessage(value, options)
   }
+
+  if (isBrowser()) {
+    window.alert(value)
+    if (
+      isIpcError(error) &&
+      window.confirm(`${m.common_copy_error_details()}?`)
+    ) {
+      await writeClipboardText(error.detail)
+    }
+    return
+  }
+
+  const copyLabel = m.common_copy_error_details()
+  const buttons = nativeButtons(
+    dialog?.buttons,
+    dialog?.okLabel,
+    m.common_close(),
+  )
+  if (isIpcError(error)) {
+    return showErrorMessage(value, dialog, copyLabel, error)
+  }
+
+  const title =
+    typeof options === 'string'
+      ? options
+      : dialog?.title
+        ? `Clash Nyanpasu - ${dialog.title}`
+        : 'Clash Nyanpasu'
+  unwrapResult(
+    await commands.showNativeMessageDialog(
+      value,
+      title,
+      dialog?.kind ?? 'info',
+      buttons,
+    ),
+  )
+}
+
+const showErrorMessage = async (
+  value: string,
+  dialog: MessageOptions | undefined,
+  copyLabel: string,
+  error: IpcError,
+) => {
+  const title = dialog?.title
+    ? `Clash Nyanpasu - ${dialog.title}`
+    : 'Clash Nyanpasu'
+  const buttons: NativeDialogButtons = {
+    type: 'ok_cancel_custom',
+    ok: copyLabel,
+    cancel: m.common_close(),
+  }
+  const result = unwrapResult(
+    await commands.showNativeMessageDialog(
+      value,
+      title,
+      dialog?.kind ?? 'info',
+      buttons,
+    ),
+  )
+  if (result === copyLabel) await writeClipboardText(error.detail)
 }

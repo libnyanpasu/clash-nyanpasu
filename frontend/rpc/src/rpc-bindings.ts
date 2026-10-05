@@ -16,6 +16,10 @@ export function createRpcClient(
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('get_debug_http_status'),
       ),
+    getLogsArchive: () =>
+      typedError<LogsArchive, IpcError>(__RPC_INVOKE('get_logs_archive')),
+    readClipboardText: () =>
+      typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
       typedError<CoreLogPage, CoreLogError>(
         __RPC_INVOKE('query_core_logs', { query }),
@@ -267,6 +271,40 @@ export function createRpcClient(
       typedError<string | null, IpcError>(
         __RPC_INVOKE('get_system_accent_color'),
       ),
+    writeClipboardText: (text: string) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('write_clipboard_text', { text }),
+      ),
+    showNativeNotification: (title: string, body: string | null) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('show_native_notification', { title, body }),
+      ),
+    showNativeMessageDialog: (
+      message: string,
+      title: string | null,
+      kind: NativeDialogKind,
+      buttons: NativeDialogButtons,
+    ) =>
+      typedError<string, IpcError>(
+        __RPC_INVOKE('show_native_message_dialog', {
+          message,
+          title,
+          kind,
+          buttons,
+        }),
+      ),
+    askNativeDialog: (
+      message: string,
+      title: string | null,
+      kind: NativeDialogKind,
+    ) =>
+      typedError<boolean, IpcError>(
+        __RPC_INVOKE('ask_native_dialog', { message, title, kind }),
+      ),
+    openNativeFileDialog: (title: string | null, filters: FileDialogFilter[]) =>
+      typedError<string | null, IpcError>(
+        __RPC_INVOKE('open_native_file_dialog', { title, filters }),
+      ),
     setDebugHttpEnabled: (enabled: boolean) =>
       typedError<DebugHttpStatus, IpcError>(
         __RPC_INVOKE('set_debug_http_enabled', { enabled }),
@@ -382,6 +420,10 @@ export function createRpcClient(
     updateCore: (coreType: ClashCore_Deserialize) =>
       typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
     collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
+    setTrayIconFromBytes: (mode: TrayIcon, bytes: number[]) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytes }),
+      ),
     /**
      *  Rebuild-only command: there is no prior state commit, so a failure is a
      *  plain error — the committed/degraded model (spec §6.2) does not apply.
@@ -2037,6 +2079,11 @@ export type FileConfig_Serialize = {
   transforms?: ProfileId[]
 }
 
+export type FileDialogFilter = {
+  name: string
+  extensions: string[]
+}
+
 export type Filter = {
   levels: Level[]
   target: string | null
@@ -2428,6 +2475,11 @@ export type LoggingLevel_Deserialize =
 export type LoggingLevel_Serialize =
   'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
 
+export type LogsArchive = {
+  fileName: string
+  bytes: number[]
+}
+
 /**  A path relative to the application-managed profile directory. */
 export type ManagedProfilePath = string
 
@@ -2488,6 +2540,17 @@ export type MutationOutcome<T> =
       notifications_pending: boolean
       degradations: Degradation[]
     }
+
+export type NativeDialogButtons =
+  | { type: 'ok' }
+  | { type: 'ok_cancel' }
+  | { type: 'yes_no' }
+  | { type: 'yes_no_cancel' }
+  | { type: 'ok_custom'; ok: string }
+  | { type: 'ok_cancel_custom'; ok: string; cancel: string }
+  | { type: 'yes_no_cancel_custom'; yes: string; no: string; cancel: string }
+
+export type NativeDialogKind = 'info' | 'warning' | 'error'
 
 export type NetworkStatisticWidgetConfig =
   { kind: 'disabled' } | { kind: 'enabled'; value: StatisticWidgetVariant }

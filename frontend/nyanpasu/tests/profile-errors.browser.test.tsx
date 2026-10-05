@@ -41,8 +41,7 @@ const items: ProfileItem_Serialize[] = [
 beforeEach(() => vi.stubGlobal('isTauri', true))
 afterEach(() => vi.unstubAllGlobals())
 
-const dialog = vi.hoisted(() => vi.fn().mockResolvedValue('Close'))
-vi.mock('@tauri-apps/plugin-dialog', () => ({ message: dialog }))
+const dialog = vi.hoisted(() => vi.fn())
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),
 }))
@@ -137,8 +136,13 @@ test('a rejected profile returns console output and transform reports with names
 test('native error dialogs resolve names without losing the caller title or logs', async () => {
   mockIPC((command, args) => {
     expect(command).toBe('call_rpc')
-    expect((args as { method: string }).method).toBe('get_profiles')
-    return { items, current: 'p1', global_transforms: [] }
+    const { method, params } = args as { method: string; params: unknown }
+    if (method === 'get_profiles') {
+      return { items, current: 'p1', global_transforms: [] }
+    }
+    expect(method).toBe('show_native_message_dialog')
+    dialog((params as { message: string }).message)
+    return 'Close'
   })
   await message(`Activation failed\n${formatError(error)}`, {
     kind: 'error',
@@ -151,8 +155,13 @@ test('native error dialogs resolve names without losing the caller title or logs
 })
 
 test('a failed name lookup still shows the original failure and logs', async () => {
-  mockIPC(() => {
-    throw new Error('profiles unavailable')
+  mockIPC((command, args) => {
+    expect(command).toBe('call_rpc')
+    const { method, params } = args as { method: string; params: unknown }
+    if (method === 'get_profiles') throw new Error('profiles unavailable')
+    expect(method).toBe('show_native_message_dialog')
+    dialog((params as { message: string }).message)
+    return 'Close'
   })
   const text = formatError(error)
   await message(text, { kind: 'error', error })

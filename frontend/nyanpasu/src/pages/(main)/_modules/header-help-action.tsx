@@ -9,7 +9,8 @@ import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { formatEnvInfos } from '@/utils'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@nyanpasu/platform'
+import { isBrowser, isTauri } from '@nyanpasu/platform'
+import { unwrapResult } from '@nyanpasu/rpc'
 import { Link } from '@tanstack/react-router'
 
 async function openHelpLink(url: string) {
@@ -69,6 +70,19 @@ const IssuesItem = () => {
 
 const CollectLogItem = () => {
   const handleClick = useLockFn(async () => {
+    if (isBrowser()) {
+      const archive = unwrapResult(await rpc.getLogsArchive())
+      const url = URL.createObjectURL(
+        new Blob([new Uint8Array(archive.bytes)], { type: 'application/zip' }),
+      )
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = archive.fileName
+      anchor.click()
+      URL.revokeObjectURL(url)
+      return
+    }
+
     await rpc.collectLogs()
   })
 

@@ -21,6 +21,7 @@ pub struct RpcDependencies {
     pub client: NyanpasuClient,
     pub storage: Storage,
     pub events: EventBus,
+    pub app_handle: Option<tauri::AppHandle>,
 }
 
 const EVENT_NAMES: &[&str] = &[
@@ -442,6 +443,7 @@ mod tests {
             client,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             events: events.clone(),
+            app_handle: None,
         })
         .unwrap();
         assert!(rpc.command_names().contains(&"get_debug_http_status"));
@@ -767,6 +769,7 @@ mod tests {
             client: NyanpasuClient::try_new_with_args(args).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             events: EventBus::new(),
+            app_handle: None,
         })
         .unwrap();
         let app = rpc.router();
@@ -885,6 +888,7 @@ mod tests {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             events: EventBus::new(),
+            app_handle: None,
         })
         .unwrap();
         routes.install(&rpc).unwrap();
@@ -997,6 +1001,7 @@ mod tests {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             events: events.clone(),
+            app_handle: None,
         })
         .unwrap();
         routes.install(&rpc).unwrap();

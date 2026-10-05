@@ -73,8 +73,6 @@
     "os:allow-locale",
     "os:allow-hostname",
     "process:allow-restart",
-    "process:allow-exit",
-    "clipboard-manager:allow-read-text",
-    "clipboard-manager:allow-write-text"
+    "process:allow-exit"
   ]
 }

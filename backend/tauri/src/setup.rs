@@ -260,6 +260,7 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<crate::core::storage::Storage>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
+        app_handle: Some(app.app_handle().clone()),
     };
     let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies)?;
     app.state::<Arc<crate::unified_rpc::RpcHttpRoutes>>()

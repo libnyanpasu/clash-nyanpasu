@@ -1,0 +1,93 @@
+name: 🐞 Bug 反馈
+description: 提交一个问题报告
+labels:
+  - 'T: Bug'
+  - 'S: Untriaged'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你抽时间填写这份 issue。请先为这个 issue 拟一个简练、得体的标题，填入标题框，然后依次填写下面的表单。
+        _带 * 的内容为必填项。_
+
+  - type: checkboxes
+    id: check
+    attributes:
+      label: 自查步骤
+      description: 请认真检查并逐项确认以下内容。实际情况与必选项不符的 issue 可能会被关闭。
+      options:
+        - label: 我知悉，如果没有认真检查这些步骤，没有认真撰写 issue 的话，我的 Issue 可能会被关闭。
+          required: true
+        - label: 我已搜索过 [Issue 列表](https://github.com/libnyanpasu/clash-nyanpasu/issues)和[讨论区](https://github.com/libnyanpasu/clash-nyanpasu/discussions)，没有找到类似内容。
+          required: true
+        - label: 我已确保这个 issue 只提及一个问题。如果我有多个问题报告，我会分别提交。
+          required: true
+        - label: 我已仔细阅读并知情[问答公约](https://nyanpasu.org/zh-cn/others/issues/)和[常见问题](https://nyanpasu.org/zh-cn/others/faq/)中的内容。
+          required: true
+        - label: 我已使用最新测试版 (Beta) / 每夜版 (Nightly) 测试，问题并未解决。
+          required: true
+        - label: 我同意遵守项目的[行为准则](https://github.com/libnyanpasu/clash-nyanpasu/blob/main/CODE_OF_CONDUCT_zh.md)。
+          required: true
+        - label: 我会尝试提交一个 PR 以解决这个 issue。
+          required: false
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 请在此处写下复现的方式，并携带错误日志。
+      placeholder: |
+        1. 
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      description: 在此处说明正常情况下应用的预期行为。
+      placeholder: 它应该 XXX……
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 在此处描绘应用的实际行为。
+      placeholder: 实际上它 XXX……
+    validations:
+      required: true
+
+  - type: textarea
+    id: env_infos
+    attributes:
+      label: 环境信息
+      description: 请在此处提供你的环境信息 — 操作系统版本、Clash Nyanpasu 版本、Clash 内核及其版本等。
+      placeholder: 你可以手动填写上述信息，或者在 Nyanpasu 桌面视图的工具栏中点击「帮助 → 报告问题」按钮打开新页面，以自动填入更详细的信息。
+    validations:
+      required: true
+
+  - type: textarea
+    id: more
+    attributes:
+      label: 附加内容
+      description: 在此处写下其他你想说的内容。
+      placeholder: 其他有用的信息与附件，例如截图、视频等。
+    validations:
+      required: false
+
+  - type: textarea
+    id: log
+    attributes:
+      label: 应用日志
+      description: |
+        如果你不确定是否应提供日志，请留空。维护者会根据具体情况决定是否向你索要日志。
+        如果你想提供日志，请确保已删除所有敏感信息，并且日志级别设置为 `Trace` 或 `Debug`。请参阅[常见问题 - 配置/日志目录](https://nyanpasu.org/zh-cn/others/faq/#2-clash-nyanpasu-%E9%85%8D%E7%BD%AE%E6%97%A5%E5%BF%97%E7%9B%AE%E5%BD%95%E5%9C%A8%E5%93%AA%E9%87%8C)。
+        如果日志过长，你可以使用 [GitHub Gist](https://gist.github.com/) 或 [Hastebin](https://hastebin.com/)，并提供链接。
+        你也可以通过 Nyanpasu 桌面视图工具栏的「帮助 → 收集日志」以获取一份日志压缩包，检查并删除其中日志的敏感信息后拖曳到此处。
+      placeholder: 如果可用，填写一个链接、一个代码块或一个压缩文件
+    validations:
+      required: false

@@ -1,6 +1,6 @@
 use super::{
     Tray, TrayState, TrayWork,
-    display::{Paint, ProxyItem, ProxySection, Shown},
+    display::{Paint, ProxySection, Shown},
 };
 use crate::{
     client::effects::plan::TrayView,
@@ -16,12 +16,27 @@ use tracing_attributes::instrument;
 
 type GroupName = String;
 type ProxyName = String;
-/// Maps each proxy node to the id of its menu item.
-// TODO: use Cow<str> instead of String
-pub(super) type ProxyItemIds = bimap::BiMap<(GroupName, ProxyName), usize>;
 type FromProxy = ProxyName;
 type ToProxy = ProxyName;
 type ProxySelectAction = (GroupName, FromProxy, ToProxy);
+
+const NODE_ITEM_ID_PREFIX: &str = "proxy_node:";
+const GROUP_MENU_ID_PREFIX: &str = "proxy_group:";
+
+/// A node item's id names its group and node, so a click needs no lookup.
+fn node_item_id(group: &str, node: &str) -> String {
+    format!("{NODE_ITEM_ID_PREFIX}{}", serde_json::json!([group, node]))
+}
+
+fn group_menu_id(group: &str) -> String {
+    format!("{GROUP_MENU_ID_PREFIX}{group}")
+}
+
+/// The group and node an id names; `None` for any other menu item.
+fn parse_node_item_id(id: &str) -> Option<(String, String)> {
+    serde_json::from_str(id.strip_prefix(NODE_ITEM_ID_PREFIX)?).ok()
+}
+
 #[derive(Debug, PartialEq)]
 pub(super) enum TrayUpdateType {
     None,
@@ -183,8 +198,7 @@ pub fn setup_proxies(app_handle: &AppHandle) {
 
 mod platform_impl {
     use super::{
-        GroupName, Paint, ProxyItemIds, ProxyName, ProxySection, ProxySelectAction, Shown,
-        TrayGroup,
+        Paint, ProxySection, ProxySelectAction, Shown, TrayGroup, group_menu_id, node_item_id,
     };
     use crate::{client::effects::plan::TrayView, core::tray::TrayState};
     use nyanpasu_config::application::ProxiesSelectorMode;
@@ -192,19 +206,19 @@ mod platform_impl {
     use tauri::{
         AppHandle, Manager, Runtime,
         menu::{
-            CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, MenuItemKind, Submenu,
-            SubmenuBuilder,
+            CheckMenuItem, CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, MenuItemKind,
+            Submenu, SubmenuBuilder,
         },
     };
     use tracing::warn;
 
     pub fn generate_group_selector<R: Runtime>(
         app_handle: &AppHandle<R>,
-        item_ids: &mut ProxyItemIds,
         group_name: &str,
         group: &TrayGroup,
     ) -> anyhow::Result<Submenu<R>> {
-        let mut group_menu = SubmenuBuilder::new(app_handle, group_name);
+        let mut group_menu =
+            SubmenuBuilder::with_id(app_handle, group_menu_id(group_name), group_name);
         if group.all.is_empty() {
             group_menu = group_menu.item(
                 &MenuItemBuilder::new(t!("tray.no_proxies"))
@@ -214,11 +228,8 @@ mod platform_impl {
             return Ok(group_menu.build()?);
         }
         for item in group.all.iter() {
-            let key = (group_name.to_string(), item.to_string());
-            let id = item_ids.len();
-            item_ids.insert(key, id);
             let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone())
-                .id(format!("proxy_node_{id}"))
+                .id(node_item_id(group_name, item))
                 .checked(false);
             if let Some(now) = group.now.clone()
                 && now == item.as_str()
@@ -235,13 +246,12 @@ mod platform_impl {
         Ok(group_menu.build()?)
     }
 
-    /// The selector items, with the node behind each of their ids.
+    /// The selector items.
     pub fn generate_selectors<R: Runtime>(
         app_handle: &AppHandle<R>,
         proxies: &super::TrayProxies,
-    ) -> anyhow::Result<(Vec<MenuItemKind<R>>, ProxyItemIds)> {
+    ) -> anyhow::Result<Vec<MenuItemKind<R>>> {
         let mut items = Vec::new();
-        let mut item_ids = ProxyItemIds::new();
         if proxies.is_empty() {
             items.push(MenuItemKind::MenuItem(
                 MenuItemBuilder::new(t!("tray.no_proxies"))
@@ -249,13 +259,13 @@ mod platform_impl {
                     .enabled(false)
                     .build(app_handle)?,
             ));
-            return Ok((items, item_ids));
+            return Ok(items);
         }
         for (group, item) in proxies.iter() {
-            let group_menu = generate_group_selector(app_handle, &mut item_ids, group, item)?;
+            let group_menu = generate_group_selector(app_handle, group, item)?;
             items.push(MenuItemKind::Submenu(group_menu));
         }
-        Ok((items, item_ids))
+        Ok(items)
     }
 
     /// Adds the proxy section, returned apart so that it is recorded only
@@ -275,7 +285,7 @@ mod platform_impl {
             .state::<crate::client::NyanpasuClient>()
             .proxies_snapshot();
         let tray_proxies = super::to_tray_proxies(view.part.mode, &proxies);
-        let (items, item_ids) = generate_selectors::<R>(app_handle, &tray_proxies)?;
+        let items = generate_selectors::<R>(app_handle, &tray_proxies)?;
         match selector_mode {
             ProxiesSelectorMode::Normal => {
                 for item in items {
@@ -298,9 +308,29 @@ mod platform_impl {
             menu,
             ProxySection {
                 proxies: tray_proxies,
-                item_ids,
             },
         ))
+    }
+
+    /// The check item of `node` in `group`'s submenu. Tauri's `get` searches
+    /// direct children only, so this walks down by id.
+    fn find_node_item<R: Runtime>(
+        menu: &Menu<R>,
+        group: &str,
+        node: &str,
+    ) -> Option<CheckMenuItem<R>> {
+        let group_id = group_menu_id(group);
+        // Normal mode lists the groups at the top; Submenu mode nests them in `select_proxy`.
+        let group_menu = menu.get(group_id.as_str()).or_else(|| {
+            menu.get("select_proxy")?
+                .as_submenu()?
+                .get(group_id.as_str())
+        })?;
+        group_menu
+            .as_submenu()?
+            .get(node_item_id(group, node).as_str())?
+            .as_check_menuitem()
+            .cloned()
     }
 
     /// Only the proxy reconcile step calls this, so no rebuild can replace
@@ -316,101 +346,8 @@ mod platform_impl {
         };
         let menu = attached.menu;
         let mut shown = Shown::Whole;
-        // comment it just because we could not get the access to the menu item via the id
-        // If the tauri team fixes this issue, we could use the following code to update the tray item
-        // let item_ids = app_handle.state::<TrayState<tauri::Wry>>().item_ids.lock();
         for action in actions {
-            //     #[cfg(not(target_os = "linux"))]
-            //     {
-            //         tracing::debug!("update selected proxies: {:?}", action);
-            //         let from_id = match item_ids.get_by_left(&(action.0.clone(), action.1.clone())) {
-            //             Some(id) => *id,
-            //             None => {
-            //                 warn!("from item not found: {:?}", action);
-            //                 continue;
-            //             }
-            //         };
-            //         let from_id = format!("proxy_node_{}", from_id);
-
-            //         let to_id = match item_ids.get_by_left(&(action.0.clone(), action.2.clone())) {
-            //             Some(id) => *id,
-            //             None => {
-            //                 warn!("to item not found: {:?}", action);
-            //                 continue;
-            //             }
-            //         };
-            //         let to_id = format!("proxy_node_{}", to_id);
-
-            //         match menu.get(&from_id) {
-            //             Some(item) => match item.kind() {
-            //                 MenuItemKind::Check(item) => {
-            //                     if item.is_checked().is_ok_and(|x| x) {
-            //                         let _ = item.set_checked(false);
-            //                     }
-            //                 }
-            //                 MenuItemKind::MenuItem(item) => {
-            //                     let _ = item.set_text(action.1.clone());
-            //                 }
-            //                 _ => {
-            //                     warn!("failed to deselect, item is not a check item: {}", from_id);
-            //                 }
-            //             },
-            //             None => {
-            //                 warn!("failed to deselect, item not found: {}", from_id);
-            //             }
-            //         }
-            //         match menu.get(&to_id) {
-            //             Some(item) => match item.kind() {
-            //                 MenuItemKind::Check(item) => {
-            //                     if item.is_checked().is_ok_and(|x| !x) {
-            //                         let _ = item.set_checked(true);
-            //                     }
-            //                 }
-            //                 MenuItemKind::MenuItem(item) => {
-            //                     let _ = item.set_text(action.2.clone());
-            //                 }
-            //                 _ => {
-            //                     warn!("failed to select, item is not a check item: {}", to_id);
-            //                 }
-            //             },
-            //             None => {
-            //                 warn!("failed to select, item not found: {}", to_id);
-            //             }
-            //         }
-            //     }
-            // }
-
-            // here is a fucking workaround for id getter
-            #[inline]
-            fn find_check_item<R: Runtime>(
-                menu: &Menu<R>,
-                group: GroupName,
-                proxy: ProxyName,
-            ) -> Option<tauri::menu::CheckMenuItem<R>> {
-                menu.items()
-                    .ok()
-                    .and_then(|items| {
-                        items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group) || submenu.id() == "select_proxy"))
-                    })
-                    .and_then(|submenu| {
-                        let submenu = submenu.as_submenu_unchecked();
-                        if submenu.id() == "select_proxy" {
-                            submenu.items().ok().and_then(|items| {
-                                items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group)))
-                            })
-                            .and_then(|submenu| {
-                                submenu.as_submenu_unchecked().items().ok()
-                            })
-                        } else {
-                            submenu.items().ok()
-                        }
-                    })
-                    .and_then(|items| {
-                        items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Check(item) if item.text().is_ok_and(|text| text == proxy)))
-                    }).map(|item| item.as_check_menuitem_unchecked().clone())
-            }
-
-            let from_item = find_check_item(&menu, action.0.clone(), action.1.clone());
+            let from_item = find_node_item(&menu, &action.0, &action.1);
             match from_item {
                 Some(item) => {
                     if let Err(error) = item.set_checked(false) {
@@ -427,7 +364,7 @@ mod platform_impl {
                 }
             }
 
-            let to_item = find_check_item(&menu, action.0.clone(), action.2.clone());
+            let to_item = find_node_item(&menu, &action.0, &action.2);
             match to_item {
                 Some(item) => {
                     if let Err(error) = item.set_checked(true) {
@@ -470,33 +407,11 @@ impl<R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'_, 
 
 #[instrument]
 pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
-    if !event.starts_with("proxy_node_") {
-        return; // bypass non-select event
-    }
-    let node_id = event.split('_').next_back().unwrap(); // safe to unwrap
-    let node_id = match node_id.parse::<usize>() {
-        Ok(id) => id,
-        Err(e) => {
-            error!("parse node id failed: {:?}", e);
-            return;
+    let Some((group, name)) = parse_node_item_id(event) else {
+        if event.starts_with(NODE_ITEM_ID_PREFIX) {
+            error!("malformed proxy item id: {event}");
         }
-    };
-
-    let item = app_handle
-        .state::<TrayState<tauri::Wry>>()
-        .display
-        .lock()
-        .proxy_item(node_id);
-    let (group, name) = match item {
-        ProxyItem::Node { group, name } => (group, name),
-        ProxyItem::NotInMenu => {
-            error!("node id not found: {}", node_id);
-            return;
-        }
-        ProxyItem::Unknown => {
-            warn!("ignored proxy item {node_id}: the tray menu is unknown until it is rebuilt");
-            return;
-        }
+        return; // not a proxy item
     };
 
     let client = app_handle
@@ -651,5 +566,50 @@ mod tests {
         let tray = to_tray_proxies(Mode::Rule, &proxies);
         assert!(tray["Auto"].selectable);
         assert!(!tray["Fallback"].selectable);
+    }
+
+    #[test]
+    fn node_item_ids_round_trip() {
+        let names = [
+            "Proxy",
+            "a:b",
+            "q\"uote",
+            "back\\slash",
+            "com,ma",
+            "[bracket]",
+            "sp ace",
+            "\u{1F680}",
+            "",
+        ];
+        for group in names {
+            for node in names {
+                assert_eq!(
+                    parse_node_item_id(&node_item_id(group, node)),
+                    Some((group.to_owned(), node.to_owned())),
+                    "{group:?} / {node:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn node_item_ids_are_distinct() {
+        assert_ne!(node_item_id("a:b", "c"), node_item_id("a", "b:c"));
+        assert_ne!(node_item_id("a\",\"b", "c"), node_item_id("a", "b\",\"c"));
+    }
+
+    #[test]
+    fn other_menu_ids_are_not_node_items() {
+        for id in [
+            "rule_mode",
+            "select_proxy",
+            "no_proxies",
+            "quit",
+            group_menu_id("Proxy").as_str(),
+            "proxy_node_3",
+            "proxy_node:not json",
+        ] {
+            assert_eq!(parse_node_item_id(id), None, "{id:?}");
+        }
     }
 }

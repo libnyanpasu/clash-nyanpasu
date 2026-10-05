@@ -5,6 +5,7 @@ use crate::client::runtime::{
     Degradation, DegradationPhase, DegradationReason, InterruptFailure, MutationOutcome,
 };
 use anyhow::{Context, Result};
+use clash_api::{IndexMap, ProviderName, ProxyProvider};
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::{sync::watch, time::Instant};
@@ -12,13 +13,16 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     actor_v2::{CoreClient, api::ApiClient},
-    clash::{api, proxies::Proxies},
+    clash::{
+        api,
+        proxies::{Proxies, proxy_items},
+    },
 };
 
 struct Snapshot {
     api: ApiClient,
     proxies: Proxies,
-    providers: api::ProvidersProxiesRes,
+    providers: IndexMap<ProviderName, ProxyProvider>,
     fetched: Instant,
     fingerprint: Vec<u8>,
 }
@@ -111,16 +115,8 @@ impl State {
             let proxies = api::ProxiesRes {
                 proxies: proxy_items(response.proxies),
             };
-            let providers = api::ProvidersProxiesRes {
-                providers: response
-                    .providers
-                    .into_iter()
-                    .map(|(name, provider)| {
-                        Ok((name.as_str().to_owned(), provider_item(provider)?))
-                    })
-                    .collect::<Result<_>>()?,
-            };
-            let proxies = Proxies::from_responses(proxies, providers.clone(), groups)?;
+            let proxies = Proxies::from_responses(proxies, &response.providers, groups)?;
+            let providers = response.providers;
             let fingerprint = serde_json::to_vec(&(&proxies, &providers))?;
             anyhow::ensure!(
                 !api.is_revoked(),
@@ -385,7 +381,7 @@ impl ProxiesClient {
         );
         Ok(snapshot.proxies.clone())
     }
-    pub async fn providers(&self) -> Result<api::ProvidersProxiesRes> {
+    pub async fn providers(&self) -> Result<IndexMap<ProviderName, ProxyProvider>> {
         let snapshot = self
             .call(|reply| Message::Read {
                 force: false,
@@ -431,79 +427,6 @@ impl ProxiesClient {
     pub fn subscribe(&self) -> watch::Receiver<()> {
         self.0.changes.clone()
     }
-}
-
-fn proxy_items(
-    proxies: clash_api::IndexMap<clash_api::ProxyName, clash_api::Proxy>,
-) -> clash_api::IndexMap<String, api::ProxyItem> {
-    proxies
-        .into_iter()
-        .map(|(name, proxy)| (name.as_str().to_owned(), proxy_item(proxy)))
-        .collect()
-}
-
-fn proxy_item(proxy: clash_api::Proxy) -> api::ProxyItem {
-    api::ProxyItem {
-        name: proxy.name.as_str().to_owned(),
-        r#type: proxy.proxy_type,
-        udp: proxy.udp,
-        history: proxy
-            .history
-            .into_iter()
-            .map(|item| api::ProxyItemHistory {
-                time: item.time.to_rfc3339(),
-                delay: item.delay,
-            })
-            .collect(),
-        all: proxy.all.map(|items| {
-            items
-                .into_iter()
-                .map(|name| name.as_str().to_owned())
-                .collect()
-        }),
-        now: proxy.now.map(|name| name.as_str().to_owned()),
-        provider: proxy
-            .provider
-            .filter(|name| !name.is_empty())
-            .or_else(|| proxy.provider_name.filter(|name| !name.is_empty())),
-        alive: proxy.alive,
-        xudp: proxy.xudp,
-        tfo: proxy.tfo,
-        icon: proxy.icon,
-        hidden: proxy.hidden.unwrap_or(false),
-    }
-}
-fn provider_item(provider: clash_api::ProxyProvider) -> Result<api::ProxyProviderItem> {
-    Ok(api::ProxyProviderItem {
-        name: provider.name.as_str().to_owned(),
-        r#type: match provider.provider_type {
-            clash_api::ProviderType::Proxy => api::ProviderType::Proxy,
-            clash_api::ProviderType::Rule => api::ProviderType::Rule,
-            clash_api::ProviderType::Unknown(value) => api::ProviderType::Unknown(value),
-        },
-        vehicle_type: match provider.vehicle_type {
-            clash_api::VehicleType::Http => api::VehicleType::Http,
-            clash_api::VehicleType::File => api::VehicleType::File,
-            clash_api::VehicleType::Compatible => api::VehicleType::Compatible,
-            clash_api::VehicleType::Inline => api::VehicleType::Inline,
-            clash_api::VehicleType::Unknown(value) => api::VehicleType::Unknown(value),
-        },
-        proxies: provider.proxies.into_iter().map(proxy_item).collect(),
-        updated_at: provider.updated_at.map(|date| date.to_rfc3339()),
-        test_url: provider.test_url,
-        expected_status: provider.expected_status,
-        subscription_info: provider
-            .subscription_info
-            .map(|info| -> Result<_> {
-                Ok(api::SubscriptionInfo {
-                    upload: info.upload.try_into()?,
-                    download: info.download.try_into()?,
-                    total: info.total.try_into()?,
-                    expire: info.expire.try_into()?,
-                })
-            })
-            .transpose()?,
-    })
 }
 
 #[cfg(test)]
@@ -574,7 +497,7 @@ mod tests {
     }
     async fn providers() -> Json<serde_json::Value> {
         Json(
-            serde_json::json!({"providers":{PROVIDER:{"name":PROVIDER,"type":"Proxy","vehicleType":"HTTP", "proxies":[{"name":NODE,"type":"Vless","udp":true,"history":[]}], "subscriptionInfo":{"Expire":42}}}}),
+            serde_json::json!({"providers":{PROVIDER:{"name":PROVIDER,"type":"Proxy","vehicleType":"HTTP", "proxies":[{"name":NODE,"type":"Vless","udp":true,"history":[]}], "subscriptionInfo":{"Expire":42,"Upload":-1}}}}),
         )
     }
     async fn select(
@@ -670,13 +593,12 @@ mod tests {
         let proxies = client.get(false).await.unwrap();
         assert_eq!(proxies.groups[0].all[0], NODE);
         assert_eq!(proxies.nodes[NODE].provider.as_deref(), Some(PROVIDER));
-        assert_eq!(
-            client.providers().await.unwrap().providers[PROVIDER]
-                .subscription_info
-                .unwrap()
-                .expire,
-            42
-        );
+        let providers = client.providers().await.unwrap();
+        let info = providers[&clash_api::ProviderName::from(PROVIDER)]
+            .subscription_info
+            .as_ref()
+            .unwrap();
+        assert_eq!((info.expire, info.upload), (42, -1));
         client.get(false).await.unwrap();
         assert_eq!(fixture.reads.load(Ordering::SeqCst), 1);
         tokio::time::pause();

@@ -9,23 +9,14 @@ export const useProxiesSubscription = (data: ClashProxiesProviderQueryItem) => {
     let total = 0
     let used = 0
 
-    const hasSubscriptionInfo =
-      'subscriptionInfo' in data && data.subscriptionInfo !== undefined
+    // A provider without a subscription header reports null usage.
+    const subscriptionInfo = data.subscriptionInfo
+    const hasSubscriptionInfo = subscriptionInfo != null
 
     if (hasSubscriptionInfo) {
-      const subscriptionInfo = data.subscriptionInfo as Record<
-        string,
-        number | undefined
-      >
+      total = subscriptionInfo.Total
 
-      const download =
-        subscriptionInfo.download ?? subscriptionInfo.Download ?? 0
-      const upload = subscriptionInfo.upload ?? subscriptionInfo.Upload ?? 0
-      const t = subscriptionInfo.total ?? subscriptionInfo.Total ?? 0
-
-      total = t
-
-      used = download + upload
+      used = subscriptionInfo.Download + subscriptionInfo.Upload
 
       if (total > 0) {
         progress = clampPercentage((used / total) * 100)

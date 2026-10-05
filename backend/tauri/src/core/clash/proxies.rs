@@ -3,6 +3,7 @@
 /// TODO: add a diff algorithm to reduce the data transfer, and the rerendering of the tray menu.
 use super::api;
 use anyhow::Result;
+use clash_api::{ProviderName, ProxyProvider, VehicleType};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -60,14 +61,64 @@ pub struct Proxies {
     pub nodes: IndexMap<String, api::ProxyItem>,
 }
 
+pub(crate) fn proxy_items(
+    proxies: clash_api::IndexMap<clash_api::ProxyName, clash_api::Proxy>,
+) -> clash_api::IndexMap<String, api::ProxyItem> {
+    proxies
+        .into_iter()
+        .map(|(name, proxy)| (name.as_str().to_owned(), proxy_item(proxy)))
+        .collect()
+}
+
+pub(crate) fn proxy_item(proxy: clash_api::Proxy) -> api::ProxyItem {
+    api::ProxyItem {
+        name: proxy.name.as_str().to_owned(),
+        r#type: proxy.proxy_type,
+        udp: proxy.udp,
+        history: proxy
+            .history
+            .into_iter()
+            .map(|item| api::ProxyItemHistory {
+                time: item.time.to_rfc3339(),
+                delay: item.delay,
+            })
+            .collect(),
+        all: proxy.all.map(|items| {
+            items
+                .into_iter()
+                .map(|name| name.as_str().to_owned())
+                .collect()
+        }),
+        now: proxy.now.map(|name| name.as_str().to_owned()),
+        provider: proxy
+            .provider
+            .filter(|name| !name.is_empty())
+            .or_else(|| proxy.provider_name.filter(|name| !name.is_empty())),
+        alive: proxy.alive,
+        xudp: proxy.xudp,
+        tfo: proxy.tfo,
+        icon: proxy.icon,
+        hidden: proxy.hidden.unwrap_or(false),
+    }
+}
+
+/// Every proxy of an HTTP, File, or Inline provider by name, tagged with its
+/// provider. Mihomo 1.19.28 no longer includes these nodes in /proxies, so
+/// their metadata must come from /providers/proxies.
 fn provider_proxy_map(
-    providers: &IndexMap<String, api::ProxyProviderItem>,
+    providers: &IndexMap<ProviderName, ProxyProvider>,
 ) -> IndexMap<String, api::ProxyItem> {
     let mut proxies = IndexMap::new();
     for (provider, record) in providers {
+        if !matches!(
+            record.vehicle_type,
+            VehicleType::Http | VehicleType::File | VehicleType::Inline
+        ) {
+            continue;
+        }
         for proxy in &record.proxies {
-            let mut proxy = proxy.clone();
-            proxy.provider = Some(provider.clone());
+            let mut proxy = proxy_item(proxy.clone());
+            proxy.provider = Some(provider.as_str().to_owned());
             proxies.insert(proxy.name.clone(), proxy);
         }
     }
@@ -97,7 +148,7 @@ impl Proxies {
     /// every `/proxies` record with members.
     pub fn from_responses(
         inner_proxies: api::ProxiesRes,
-        providers_proxies: api::ProvidersProxiesRes,
+        providers: &IndexMap<ProviderName, ProxyProvider>,
         group_list: Option<IndexMap<String, api::ProxyItem>>,
     ) -> Result<Self> {
         let mut inner_proxies = inner_proxies.proxies;
@@ -117,24 +168,8 @@ impl Proxies {
                 .collect(),
         };
         let global = group_records.swap_remove("GLOBAL");
-        // 1. Include nodes from HTTP, File, and Inline providers.
-        let providers_proxies: IndexMap<String, api::ProxyProviderItem> = {
-            let records = providers_proxies.providers;
-            records
-                .into_iter()
-                .filter(|(_k, v)| {
-                    matches!(
-                        v.vehicle_type,
-                        api::VehicleType::Http | api::VehicleType::File | api::VehicleType::Inline
-                    )
-                })
-                .collect()
-        };
-
-        // 2. Map every provider-owned proxy by name. Mihomo 1.19.28 no longer
-        // includes these nodes in /proxies, so their metadata must come from
-        // /providers/proxies.
-        let provider_map = provider_proxy_map(&providers_proxies);
+        // 1. Map every provider-owned proxy by name.
+        let provider_map = provider_proxy_map(providers);
         let generate_item = |name: &str| resolve_proxy(name, &inner_proxies, &provider_map);
 
         inner_proxies
@@ -144,7 +179,7 @@ impl Proxies {
             .get("REJECT")
             .ok_or(anyhow::anyhow!("REJECT is missing in /proxies"))?; // It should be always exists
 
-        // 3. GLOBAL only orders the groups it lists, never decides which
+        // 2. GLOBAL only orders the groups it lists, never decides which
         // groups exist; the rest follow by name.
         let mut ordered = Vec::with_capacity(group_records.len());
         if let Some(names) = global.as_ref().and_then(|group| group.all.as_ref()) {
@@ -158,7 +193,7 @@ impl Proxies {
         remaining.sort_by(|a, b| a.name.cmp(&b.name));
         ordered.extend(remaining);
 
-        // 4. every /proxies entry is a node; group members not already
+        // 3. every /proxies entry is a node; group members not already
         // covered by it (provider-owned nodes) are resolved and added once
         // (a node shared by several groups still has a single entry).
         let mut nodes = inner_proxies.clone();
@@ -188,26 +223,27 @@ impl Proxies {
 mod tests {
     use super::*;
 
+    use clash_api::{ProviderName, ProxyProvider};
+    use serde_json::json;
+
+    fn provider(
+        key: &str,
+        vehicle: &str,
+        proxies: serde_json::Value,
+    ) -> (ProviderName, ProxyProvider) {
+        let provider = serde_json::from_value(json!({
+            "name": key, "type": "Proxy", "vehicleType": vehicle, "proxies": proxies
+        }))
+        .unwrap();
+        (ProviderName::from(key), provider)
+    }
+
     #[test]
     fn resolves_provider_owned_proxy_with_metadata() {
-        let node = api::ProxyItem {
-            name: "provider-node".into(),
-            r#type: "Vless".into(),
-            udp: true,
-            ..Default::default()
-        };
-        let providers = IndexMap::from([(
-            "subscription".into(),
-            api::ProxyProviderItem {
-                name: "subscription".into(),
-                r#type: api::ProviderType::Proxy,
-                proxies: vec![node],
-                vehicle_type: api::VehicleType::Http,
-                updated_at: None,
-                subscription_info: None,
-                test_url: None,
-                expected_status: None,
-            },
+        let providers = IndexMap::from([provider(
+            "subscription",
+            "HTTP",
+            json!([{"name": "provider-node", "type": "Vless", "udp": true, "history": []}]),
         )]);
 
         let provider_proxies = provider_proxy_map(&providers);
@@ -230,11 +266,7 @@ mod tests {
 
     #[test]
     fn assembles_provider_owned_nodes_with_metadata_for_supported_vehicles() {
-        for vehicle_type in [
-            api::VehicleType::Http,
-            api::VehicleType::File,
-            api::VehicleType::Inline,
-        ] {
+        for vehicle_type in ["HTTP", "File", "Inline"] {
             for proxy_type in ["Vless", "Trojan", "Hysteria2"] {
                 let inner_proxies = api::ProxiesRes {
                     proxies: IndexMap::from([
@@ -255,44 +287,24 @@ mod tests {
                         ),
                     ]),
                 };
-                let mut node = api::ProxyItem {
-                    name: "provider-node".into(),
-                    r#type: proxy_type.into(),
-                    udp: true,
-                    history: vec![api::ProxyItemHistory {
-                        time: "2026-10-04T08:00:00Z".into(),
-                        delay: 42,
-                    }],
-                    alive: Some(true),
-                    xudp: Some(true),
-                    tfo: Some(true),
-                    ..Default::default()
-                };
-                let providers_proxies = api::ProvidersProxiesRes {
-                    providers: IndexMap::from([(
-                        "provider".into(),
-                        api::ProxyProviderItem {
-                            name: "provider".into(),
-                            r#type: api::ProviderType::Proxy,
-                            proxies: vec![node.clone()],
-                            vehicle_type: vehicle_type.clone(),
-                            updated_at: None,
-                            subscription_info: None,
-                            test_url: None,
-                            expected_status: None,
-                        },
-                    )]),
-                };
+                let node: clash_api::Proxy = serde_json::from_value(json!({
+                    "name": "provider-node", "type": proxy_type, "udp": true,
+                    "history": [{"time": "2026-10-04T08:00:00Z", "delay": 42}],
+                    "alive": true, "xudp": true, "tfo": true
+                }))
+                .unwrap();
+                let providers =
+                    IndexMap::from([provider("provider", vehicle_type, json!([node.clone()]))]);
 
-                let proxies =
-                    Proxies::from_responses(inner_proxies, providers_proxies, None).unwrap();
-                node.provider = Some("provider".into());
+                let proxies = Proxies::from_responses(inner_proxies, &providers, None).unwrap();
+                let mut expected = proxy_item(node);
+                expected.provider = Some("provider".into());
 
                 assert_eq!(proxies.groups[0].all, vec!["provider-node"]);
                 assert_eq!(
                     serde_json::to_value(&proxies.nodes["provider-node"]).unwrap(),
-                    serde_json::to_value(&node).unwrap(),
-                    "metadata must be preserved for {vehicle_type:?} / {proxy_type}"
+                    serde_json::to_value(&expected).unwrap(),
+                    "metadata must be preserved for {vehicle_type} / {proxy_type}"
                 );
             }
         }
@@ -341,26 +353,16 @@ mod tests {
                 ("a-only".to_string(), item("a-only", "Vmess", None, None)),
             ]),
         };
-        let providers_proxies = api::ProvidersProxiesRes {
-            providers: IndexMap::from([(
-                "sub".to_string(),
-                api::ProxyProviderItem {
-                    name: "sub".into(),
-                    r#type: api::ProviderType::Proxy,
-                    proxies: vec![
-                        item("provider-only", "Trojan", None, None),
-                        item("shared-node", "ProviderIgnored", None, None),
-                    ],
-                    vehicle_type: api::VehicleType::Inline,
-                    updated_at: None,
-                    subscription_info: None,
-                    test_url: None,
-                    expected_status: None,
-                },
-            )]),
-        };
+        let providers = IndexMap::from([provider(
+            "sub",
+            "Inline",
+            json!([
+                {"name": "provider-only", "type": "Trojan", "udp": false, "history": []},
+                {"name": "shared-node", "type": "ProviderIgnored", "udp": false, "history": []}
+            ]),
+        )]);
 
-        let proxies = Proxies::from_responses(inner_proxies, providers_proxies, None).unwrap();
+        let proxies = Proxies::from_responses(inner_proxies, &providers, None).unwrap();
 
         let group_a = proxies.groups.iter().find(|g| g.name == "GroupA").unwrap();
         let group_b = proxies.groups.iter().find(|g| g.name == "GroupB").unwrap();
@@ -408,10 +410,7 @@ mod tests {
                 .map(|group| (group.name.clone(), group.clone()))
                 .collect()
         });
-        let providers = api::ProvidersProxiesRes {
-            providers: IndexMap::new(),
-        };
-        Proxies::from_responses(records(raw), providers, listed).unwrap()
+        Proxies::from_responses(records(raw), &IndexMap::new(), listed).unwrap()
     }
 
     fn names(proxies: &Proxies) -> Vec<&str> {

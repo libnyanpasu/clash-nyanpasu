@@ -41,21 +41,19 @@ test('a proxies event refreshes only mounted provider views, without re-renderin
       if (method !== 'clash_api_get_providers_proxies') return null
       providerFetches += 1
       return {
-        providers: {
-          sub: {
-            name: 'sub',
-            type: 'Proxy',
-            vehicleType: 'HTTP',
-            updatedAt: '2026-09-30T00:00:00Z',
-            // Only the delay history changes between fetches.
-            proxies: [
-              {
-                name: 'a',
-                type: 'Shadowsocks',
-                history: [{ delay: providerFetches }],
-              },
-            ],
-          },
+        sub: {
+          name: 'sub',
+          type: 'Proxy',
+          vehicleType: 'HTTP',
+          updatedAt: '2026-09-30T00:00:00Z',
+          // Only the delay history changes between fetches.
+          proxies: [
+            {
+              name: 'a',
+              type: 'Shadowsocks',
+              history: [{ delay: providerFetches }],
+            },
+          ],
         },
       }
     },

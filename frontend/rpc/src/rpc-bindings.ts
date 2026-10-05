@@ -88,7 +88,7 @@ export function createRpcClient(
       provider: string | null,
       url: string | null,
     ) =>
-      typedError<DelayRes, IpcError>(
+      typedError<Delay, IpcError>(
         __RPC_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
       ),
     clashApiGetConfigs: () =>
@@ -104,11 +104,11 @@ export function createRpcClient(
         __RPC_INVOKE('clash_api_get_providers_rules'),
       ),
     clashApiGetGroupDelay: (group: string, url: string | null) =>
-      typedError<{ [key in string]: number }, IpcError>(
+      typedError<{ [key in ProxyName]: number }, IpcError>(
         __RPC_INVOKE('clash_api_get_group_delay', { group, url }),
       ),
     clashApiGetProvidersProxies: () =>
-      typedError<ProvidersProxiesRes_Serialize, IpcError>(
+      typedError<{ [key in ProviderName]: ProxyProvider_Serialize }, IpcError>(
         __RPC_INVOKE('clash_api_get_providers_proxies'),
       ),
     fetchLatestCoreVersions: () =>
@@ -1761,7 +1761,12 @@ export type DegradationReason =
       cause: ProfilesError
     }
 
-export type DelayRes = {
+export type Delay = {
+  delay: number
+}
+
+export type DelayHistory = {
+  time: string
   delay: number
 }
 
@@ -3544,18 +3549,9 @@ export type ProfilesError =
   | { kind: 'blocking_task_cancelled' }
   | { kind: 'shutting_down' }
 
+export type ProviderName = string
+
 export type ProviderType = 'Proxy' | 'Rule' | string
-
-export type ProvidersProxiesRes =
-  ProvidersProxiesRes_Serialize | ProvidersProxiesRes_Deserialize
-
-export type ProvidersProxiesRes_Deserialize = {
-  providers?: { [key in string]: ProxyProviderItem_Deserialize }
-}
-
-export type ProvidersProxiesRes_Serialize = {
-  providers: { [key in string]: ProxyProviderItem_Serialize }
-}
 
 export type ProvidersRulesRes = {
   providers: { [key in string]: RuleProviderItem }
@@ -3587,12 +3583,20 @@ export type Proxies_Serialize = {
   nodes: { [key in string]: ProxyItem_Serialize }
 }
 
+/**  Common proxy fields with optional core-specific and group metadata. */
+export type Proxy = Proxy_Serialize | Proxy_Deserialize
+
 export type ProxyChangeBreakMode =
   | 'off'
   /**  仅中断当前使用的代理组的连接 */
   | 'proxy_group'
   /**  中断所有连接 */
   | 'all'
+
+export type ProxyExtra = {
+  alive: boolean
+  history: DelayHistory[]
+}
 
 export type ProxyGroupItem =
   ProxyGroupItem_Serialize | ProxyGroupItem_Deserialize
@@ -3664,29 +3668,88 @@ export type ProxyItem_Serialize = {
   hidden: boolean
 }
 
-export type ProxyProviderItem =
-  ProxyProviderItem_Serialize | ProxyProviderItem_Deserialize
+export type ProxyName = string
 
-export type ProxyProviderItem_Deserialize = {
-  name: string
+export type ProxyProvider = ProxyProvider_Serialize | ProxyProvider_Deserialize
+
+export type ProxyProvider_Deserialize = {
+  name: ProviderName
   type: ProviderType
-  proxies: ProxyItem_Deserialize[]
   vehicleType: VehicleType
-  updatedAt: string | null
-  subscriptionInfo: SubscriptionInfo_Deserialize | null
+  proxies: Proxy_Deserialize[]
   testUrl: string | null
   expectedStatus: string | null
+  updatedAt?: string | null
+  subscriptionInfo?: SubscriptionInfo_Deserialize | null
 }
 
-export type ProxyProviderItem_Serialize = {
-  name: string
+export type ProxyProvider_Serialize = {
+  name: ProviderName
   type: ProviderType
-  proxies: ProxyItem_Serialize[]
   vehicleType: VehicleType
-  updatedAt?: string | null
-  subscriptionInfo?: SubscriptionInfo_Serialize | null
+  proxies: Proxy_Serialize[]
+  testUrl: string | null
+  expectedStatus: string | null
+  updatedAt: string | null
+  subscriptionInfo: SubscriptionInfo_Serialize | null
+}
+
+/**  Common proxy fields with optional core-specific and group metadata. */
+export type Proxy_Deserialize = {
+  name: ProxyName
+  type: string
+  history: DelayHistory[]
+  extra?: { [key in string]: ProxyExtra } | null
+  alive?: boolean | null
+  udp: boolean
+  uot?: boolean | null
+  xudp?: boolean | null
+  tfo?: boolean | null
+  mptcp?: boolean | null
+  smux?: boolean | null
+  interface?: string | null
+  'routing-mark'?: number | null
+  'provider-name'?: string | null
+  'dialer-proxy'?: string | null
+  id?: string | null
+  now?: ProxyName | null
+  all?: ProxyName[] | null
   testUrl?: string | null
   expectedStatus?: string | null
+  fixed?: ProxyName | null
+  hidden?: boolean | null
+  icon?: string | null
+  emptyFallback?: ProxyName | null
+  provider?: string | null
+}
+
+/**  Common proxy fields with optional core-specific and group metadata. */
+export type Proxy_Serialize = {
+  name: ProxyName
+  type: string
+  history: DelayHistory[]
+  extra?: { [key in string]: ProxyExtra } | null
+  alive?: boolean | null
+  udp: boolean
+  uot?: boolean | null
+  xudp?: boolean | null
+  tfo?: boolean | null
+  mptcp?: boolean | null
+  smux?: boolean | null
+  interface?: string | null
+  'routing-mark'?: number | null
+  'provider-name'?: string | null
+  'dialer-proxy'?: string | null
+  id: string | null
+  now: ProxyName | null
+  all: ProxyName[] | null
+  testUrl: string | null
+  expectedStatus: string | null
+  fixed: ProxyName | null
+  hidden: boolean | null
+  icon: string | null
+  emptyFallback: ProxyName | null
+  provider: string | null
 }
 
 /**  A failure of publishing the derived runtime config file. */
@@ -4347,32 +4410,32 @@ export type SubscriptionInfo =
 
 export type SubscriptionInfo_Deserialize =
   | {
-      upload?: number
+      Upload?: number
     }
   | ({
-      Upload?: number
+      upload?: number
     } & {
-      download?: number
-    })
-  | ({
       Download?: number
-    } & {
-      total?: number
     })
   | ({
-      Total?: number
+      download?: number
     } & {
-      expire?: number
+      Total?: number
+    })
+  | ({
+      total?: number
+    } & {
+      Expire?: number
     })
   | {
-      Expire?: number
+      expire?: number
     }
 
 export type SubscriptionInfo_Serialize = {
-  upload: number
-  download: number
-  total: number
-  expire: number
+  Upload: number
+  Download: number
+  Total: number
+  Expire: number
 }
 
 /**

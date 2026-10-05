@@ -1,9 +1,5 @@
-import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { request as httpsRequest } from "node:https";
 import { basename, dirname, resolve } from "node:path";
-import { pipeline } from "node:stream/promises";
 
 interface PublishArtifact {
   path: string;
@@ -117,10 +113,11 @@ const delay = (milliseconds: number) =>
 const retry = async <T>(
   operation: () => Promise<T>,
   label: string,
+  maxAttempts = RETRY_COUNT,
 ): Promise<T> => {
   let lastError: unknown;
   let attempts = 0;
-  for (let attempt = 0; attempt < RETRY_COUNT; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attempts++;
     try {
       return await operation();
@@ -134,7 +131,12 @@ const retry = async <T>(
         error instanceof Error && /HTTP 4\d\d/.test(error.message) &&
         !/HTTP (408|429)/.test(error.message)
       ) break;
-      if (attempt + 1 === RETRY_COUNT) break;
+      if (attempt + 1 === maxAttempts) break;
+      console.warn(
+        `[archive] ${label}: attempt ${attempts}/${maxAttempts} failed: ${
+          error instanceof Error ? error.message : String(error)
+        }; retrying`,
+      );
       await delay(Math.min(1_000 * 2 ** attempt, 16_000));
     }
   }
@@ -371,6 +373,7 @@ const reconcile = async (serverUrl: string, buildId: string) => {
   const token = Deno.env.get("ARCHIVE_UPLOAD_TOKEN")?.trim() ||
     Deno.env.get("FILE_SERVER_TOKEN")?.trim() ||
     requiredEnv("UPLOAD_TOKEN");
+  console.log(`[archive] Verifying ${buildId}`);
   const verification = await verifyRemoteBuild(serverUrl, token, buildId);
   return {
     schemaVersion: 1 as const,
@@ -476,52 +479,142 @@ export const allowedIaUploadUrl = (value: string, itemIdentifier?: string) => {
     url.port === "" && allowedHost;
 };
 
-// Deno fetch removes Content-Length for ReadableStream bodies. IA S3 requires
-// a fixed length, so use the HTTP client while retaining bounded file streaming.
+// IA S3 requires fixed-length streaming and may redirect before consuming the
+// body. curl handles both without buffering package bytes in JavaScript.
 export const uploadFileRequest = async (
   filePath: string,
   url: URL,
   headers: Record<string, string>,
   signal: AbortSignal,
-  sendRequest = httpsRequest,
+  idleTimeoutMs = 90_000,
 ): Promise<Response> => {
-  const request = sendRequest(url, {
-    method: "PUT",
-    headers,
-    signal,
-    agent: false,
-  });
-  const response = new Promise<Response>((resolve, reject) => {
-    request.on("error", reject);
-    request.on("response", async (incoming) => {
-      try {
-        const chunks: Uint8Array[] = [];
-        for await (const chunk of incoming) chunks.push(chunk);
-        const responseHeaders = new Headers();
-        for (const [name, value] of Object.entries(incoming.headers)) {
-          if (value !== undefined) {
-            for (const entry of Array.isArray(value) ? value : [value]) {
-              responseHeaders.append(name, entry);
-            }
-          }
-        }
-        const status = incoming.statusCode!;
-        resolve(
-          new Response(status === 204 ? null : Buffer.concat(chunks), {
-            status,
-            headers: responseHeaders,
-          }),
+  const directory = await Deno.makeTempDir({ prefix: "ia-upload-" });
+  const headerPath = `${directory}/headers`;
+  const bodyPath = `${directory}/body`;
+  // Keep credentials out of command arguments and temporary files.
+  const quote = (value: string) => {
+    if (/[\r\n\0]/.test(value)) throw new Error("Invalid IA upload header");
+    return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  };
+  let progress: ReturnType<typeof setInterval> | undefined;
+  let child: Deno.ChildProcess | undefined;
+  try {
+    const configuration = Object.entries(headers).map(([name, value]) =>
+      `header = ${quote(`${name}: ${value}`)}`
+    ).join("\n");
+    child = new Deno.Command("curl", {
+      args: [
+        "--disable",
+        "--config",
+        "-",
+        "--http1.1",
+        "--request",
+        "PUT",
+        "--upload-file",
+        filePath,
+        "--connect-timeout",
+        "15",
+        "--speed-limit",
+        "1024",
+        "--speed-time",
+        String(Math.max(1, Math.ceil(idleTimeoutMs / 1000))),
+        "--max-time",
+        "1800",
+        "--dump-header",
+        headerPath,
+        "--output",
+        bodyPath,
+        "--write-out",
+        "%{http_code}",
+        url.href,
+      ],
+      signal,
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    const started = Date.now();
+    let lastProgress = "connecting";
+    let stderr = "";
+    const readStderr = (async () => {
+      for await (
+        const chunk of child!.stderr.pipeThrough(new TextDecoderStream())
+      ) {
+        stderr = (stderr + chunk).slice(-16_384);
+        const lines = chunk.split(/[\r\n]/).map((line) => line.trim()).filter(
+          Boolean,
         );
-      } catch (error) {
-        reject(error);
+        lastProgress = lines.at(-1) ?? lastProgress;
       }
-    });
-  });
-  const [result] = await Promise.all([
-    response,
-    pipeline(createReadStream(filePath), request, { signal }),
-  ]);
-  return result;
+    })();
+    progress = setInterval(() => {
+      console.log(
+        `[archive] ${basename(filePath)}: ${
+          Math.round((Date.now() - started) / 1000)
+        }s elapsed; curl: ${lastProgress}`,
+      );
+    }, 30_000);
+    console.log(
+      `[archive] PUT ${url.hostname}${url.pathname}, ${
+        headers["content-length"]
+      } bytes`,
+    );
+    const writeConfiguration = (async () => {
+      const writer = child!.stdin.getWriter();
+      try {
+        await writer.write(new TextEncoder().encode(configuration + "\n"));
+      } finally {
+        await writer.close();
+      }
+    })();
+    const [status, statusText] = await Promise.all([
+      child.status,
+      new Response(child.stdout).text(),
+      readStderr,
+      writeConfiguration,
+    ]);
+    if (!status.success) {
+      throw new Error(
+        `IA upload transport failed (curl ${status.code}): ${stderr.trim()}`,
+      );
+    }
+    // curl does not follow redirects; streamUpload validates each destination.
+    const responseHeaders = new Headers();
+    const blocks = (await Deno.readTextFile(headerPath)).trim().split(
+      /\r?\n\r?\n/,
+    );
+    for (const line of blocks.at(-1)!.split(/\r?\n/).slice(1)) {
+      const colon = line.indexOf(":");
+      if (colon > 0) {
+        responseHeaders.append(
+          line.slice(0, colon),
+          line.slice(colon + 1).trim(),
+        );
+      }
+    }
+    const responseStatus = Number(statusText);
+    console.log(
+      `[archive] PUT response HTTP ${responseStatus}, ${
+        Math.round((Date.now() - started) / 1000)
+      }s elapsed`,
+    );
+    return new Response(
+      responseStatus === 204 ? null : await Deno.readFile(bodyPath),
+      {
+        status: responseStatus,
+        headers: responseHeaders,
+      },
+    );
+  } finally {
+    if (progress !== undefined) clearInterval(progress);
+    if (child) {
+      try {
+        child.kill("SIGTERM");
+      } catch { /* The process may already have exited. */ }
+      await child.status;
+    }
+    await Deno.remove(directory, { recursive: true });
+  }
 };
 
 export const streamUpload = async (
@@ -583,29 +676,35 @@ export const streamUpload = async (
   throw new Error("Too many IA upload redirects");
 };
 
-const uploadOne = async (
+export const uploadOne = async (
   itemIdentifier: string,
   file: { path: string; fileName: string; fileSize: number; md5: string },
   accessKey: string,
   secret: string,
   firstFile: boolean,
   manifest: PublishManifest,
+  upload = streamUpload,
 ) => {
-  if (
-    await retry(
-      () => skipIfAlreadyUploaded(itemIdentifier, file.fileName, file),
-      `IA metadata check for ${file.fileName}`,
-    )
-  ) return "skipped" as const;
   const destination = new URL(
     `${encodeURIComponent(itemIdentifier)}/${
       encodeURIComponent(file.fileName)
     }`,
     `${IA_S3_ORIGIN}/`,
   );
-  await retry(
-    () =>
-      streamUpload(
+  return await retry(
+    async () => {
+      // A timed-out response can still mean IA stored the entire file. Recheck
+      // on every attempt before sending those immutable bytes again.
+      console.log(
+        `[archive] Checking ${
+          manifest.target ?? manifest.buildId
+        }/${file.fileName} (${file.fileSize} bytes)`,
+      );
+      if (await skipIfAlreadyUploaded(itemIdentifier, file.fileName, file)) {
+        console.log(`[archive] Skipped matching file ${file.fileName}`);
+        return "skipped" as const;
+      }
+      await upload(
         file.path,
         destination,
         file.fileSize,
@@ -613,10 +712,13 @@ const uploadOne = async (
         secret,
         firstFile,
         manifest,
-      ),
+      );
+      console.log(`[archive] Uploaded ${file.fileName}`);
+      return "uploaded" as const;
+    },
     `IA upload for ${file.fileName}`,
+    3,
   );
-  return "uploaded" as const;
 };
 
 const createSanitizedManifestFile = async (manifest: PublishManifest) => {
@@ -665,7 +767,9 @@ const publish = async (
   if (!manifest.itemIdentifier.startsWith(`${itemPrefix}-`)) {
     throw new Error("itemIdentifier is outside IA_ITEM_PREFIX");
   }
+  console.log(`[archive] Registering ${manifest.target ?? manifest.buildId}`);
   const registered = await registerBuild(serverUrl, token, manifest);
+  console.log(`[archive] Registration complete: ${registered.status}`);
   if (registered.status === "failed") {
     throw new Error(
       `Build registration is failed: ${registered.diagnostics.join("; ")}`,
@@ -720,6 +824,7 @@ const publish = async (
     await Deno.remove(sanitized.path).catch(() => undefined);
   }
 
+  console.log(`[archive] Verifying ${registeredManifest.buildId}`);
   const verification = await verifyRemoteBuild(
     serverUrl,
     token,

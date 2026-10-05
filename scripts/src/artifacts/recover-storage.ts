@@ -36,7 +36,12 @@ if (import.meta.main) {
   let sourceforgeMirror:
     | Awaited<ReturnType<typeof verifySourceforgeMirror>>
     | undefined;
-  for (const target of targets) {
+  for (const [index, target] of targets.entries()) {
+    console.log(
+      `[storage] ${args.mode} ${args.backend} target ${target} (${
+        index + 1
+      }/${targets.length})`,
+    );
     const manifestPath = path.resolve(
       args["publication-dir"],
       "manifests",

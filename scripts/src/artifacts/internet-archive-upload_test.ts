@@ -1,4 +1,4 @@
-import { request as httpRequest } from "node:http";
+import { createServer } from "node:http";
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   allowedIaUploadUrl,
@@ -7,6 +7,7 @@ import {
   runArchivePublish,
   streamUpload,
   uploadFileRequest,
+  uploadOne,
 } from "./internet-archive-upload.ts";
 
 for (
@@ -416,7 +417,6 @@ Deno.test("IA streaming PUT sends Content-Length on the wire", async () => {
           new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
           headers,
           signal,
-          httpRequest,
         ),
     );
     assertEquals(length, String(payload.length));
@@ -482,7 +482,6 @@ Deno.test("IA redirected PUT reopens the file and retains length and metadata", 
           new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
           headers,
           signal,
-          httpRequest,
         ),
     );
     assertEquals(
@@ -516,7 +515,6 @@ Deno.test("IA HTTP transport retains error bodies and sends empty files with len
       new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
       { "content-length": "0" },
       controller.signal,
-      httpRequest,
     );
     assertEquals(length, "0");
     assertEquals(response.status, 403);
@@ -525,5 +523,140 @@ Deno.test("IA HTTP transport retains error bodies and sends empty files with len
     controller.abort();
     await server.finished;
     await Deno.remove(path);
+  }
+});
+
+Deno.test("IA early redirect stops sending a large request body", async () => {
+  const path = await Deno.makeTempFile();
+  await Deno.writeFile(path, new Uint8Array(32 * 1024 * 1024));
+  const server = createServer((_request, response) => {
+    response.writeHead(307, {
+      location: "https://test-item.s3.us.archive.org/file",
+    });
+    response.end("redirect");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address() as { port: number };
+    const response = await uploadFileRequest(
+      path,
+      new URL(`http://127.0.0.1:${address.port}/file`),
+      { "content-length": String(32 * 1024 * 1024) },
+      AbortSignal.timeout(1000),
+    );
+    assertEquals(response.status, 307);
+    assertEquals(await response.text(), "redirect");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+    await Deno.remove(path);
+  }
+});
+
+Deno.test("IA upload abort terminates curl while waiting for a response", async () => {
+  const path = await Deno.makeTempFile();
+  const controller = new AbortController();
+  const server = createServer((request, _response) => {
+    request.resume();
+    request.on("end", () => controller.abort());
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address() as { port: number };
+    await assertRejects(() =>
+      uploadFileRequest(
+        path,
+        new URL(`http://127.0.0.1:${address.port}/file`),
+        { "content-length": "0" },
+        controller.signal,
+      )
+    );
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+    await Deno.remove(path);
+  }
+});
+
+Deno.test("IA low-speed timeout stops a stalled response without the overall deadline", async () => {
+  const path = await Deno.makeTempFile();
+  const server = createServer((request, _response) => request.resume());
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address() as { port: number };
+    await assertRejects(
+      () =>
+        uploadFileRequest(
+          path,
+          new URL(`http://127.0.0.1:${address.port}/file`),
+          { "content-length": "0" },
+          AbortSignal.timeout(10_000),
+          1000,
+        ),
+      Error,
+      "curl 28",
+    );
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+    await Deno.remove(path);
+  }
+});
+
+Deno.test("IA retry skips bytes stored before an upload response timed out", async () => {
+  const originalFetch = globalThis.fetch;
+  const uploader = Deno.env.get("IA_UPLOADER");
+  let metadataCalls = 0;
+  let uploads = 0;
+  try {
+    Deno.env.set("IA_UPLOADER", "test-uploader");
+    globalThis.fetch = () => {
+      metadataCalls++;
+      return Promise.resolve(Response.json(
+        metadataCalls === 1 ? {} : {
+          metadata: { identifier: "test-item", uploader: "test-uploader" },
+          files: [{ name: "file.zip", size: "14", md5: "test-md5" }],
+        },
+      ));
+    };
+    const result = await uploadOne(
+      "test-item",
+      {
+        path: "unused",
+        fileName: "file.zip",
+        fileSize: 14,
+        md5: "test-md5",
+      },
+      "test-access",
+      "test-secret",
+      false,
+      {
+        schemaVersion: 1,
+        buildId: "test-build",
+        itemIdentifier: "test-item",
+        channel: "nightly",
+        commit: "a".repeat(40),
+        tag: null,
+        folderPath: "nightly/test",
+        artifacts: [],
+      },
+      () => {
+        uploads++;
+        return Promise.reject(new Error("upload response timed out"));
+      },
+    );
+    assertEquals(result, "skipped");
+    assertEquals(uploads, 1);
+    assertEquals(metadataCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (uploader === undefined) Deno.env.delete("IA_UPLOADER");
+    else Deno.env.set("IA_UPLOADER", uploader);
   }
 });

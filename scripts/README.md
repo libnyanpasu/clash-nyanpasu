@@ -130,6 +130,15 @@ HTTP error and retry count. Schema/configuration errors stop immediately;
 network failures retain bounded retries. Registration creates immutable index
 metadata, but uploads no package bytes. It is not an archive-completion check.
 
+IA uploads require `curl` (available on the Ubuntu Actions runner). Each target,
+registration, file, HTTP response, and retry is logged. Active transfers report
+curl's progress every 30 seconds. Connections have a 15-second deadline;
+transfer speeds below 1 KiB/s for 90 seconds abort, and each request has a
+30-minute overall limit. Uploads attempt at most three times. Redirects remain
+manual and restricted to IA S3 hosts; credentials are passed through stdin
+rather than process arguments or temporary files. Recovery skips previously
+indexed files only when their size and MD5 match the original publication.
+
 Choose `mode=upload` and `backend=sourceforge`, `archive`, or `both` to
 retransfer one target or all six using current scripts. Choose `mode=verify` to
 recheck public SourceForge hashes or reconcile IA ingestion without reuploading

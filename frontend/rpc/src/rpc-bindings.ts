@@ -327,6 +327,10 @@ export function createRpcClient(
       typedError<null, LogError>(
         __RPC_INVOKE('close_log_session', { source, session }),
       ),
+    reportFrontendEvents: (batch: FrontendEventBatch) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('report_frontend_events', { batch }),
+      ),
     flushSystemDnsCache: () =>
       typedError<null, IpcError>(__RPC_INVOKE('flush_system_dns_cache')),
     openAppConfigDir: () =>
@@ -2040,6 +2044,51 @@ export type Filter = {
   to_ms: number | null
   text: string | null
 }
+
+export type FrontendErrorCause = {
+  name: string | null
+  message: string
+  stack: string | null
+}
+
+export type FrontendEvent = {
+  kind: FrontendEventKind
+  level: FrontendEventLevel
+  message: string
+  error_name: string | null
+  stack: string | null
+  /**  The `error.cause` chain, outermost first. */
+  causes: FrontendErrorCause[]
+  /**  React's component stack, for the `react_*` kinds. */
+  component_stack: string | null
+  fingerprint: string
+  /**  How often the fingerprint occurred within the frontend's dedupe window. */
+  count: number
+  /**
+   *  Client clock, Unix milliseconds. The log line's own timestamp is when
+   *  the backend wrote it.
+   */
+  first_seen_ms: number | null
+  last_seen_ms: number | null
+  /**  The route path, without query parameters. */
+  route: string
+}
+
+export type FrontendEventBatch = {
+  events: FrontendEvent[]
+  /**  Events the frontend dropped since its previous batch. */
+  dropped: number
+}
+
+export type FrontendEventKind =
+  | 'console'
+  | 'uncaught_error'
+  | 'unhandled_rejection'
+  | 'react_uncaught'
+  | 'react_caught'
+  | 'react_recoverable'
+
+export type FrontendEventLevel = 'warning' | 'error'
 
 /**  What the address a destination was located by is to the outbound. */
 export type GeoBasis =

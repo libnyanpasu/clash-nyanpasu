@@ -443,6 +443,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.closeLogSession>) =>
         commands.closeLogSession(...input),
     }),
+    reportFrontendEvents: mutationOptions({
+      mutationKey: ['reportFrontendEvents'],
+      mutationFn: (input: Parameters<typeof commands.reportFrontendEvents>) =>
+        commands.reportFrontendEvents(...input),
+    }),
     flushSystemDnsCache: mutationOptions({
       mutationKey: ['flushSystemDnsCache'],
       mutationFn: (input: Parameters<typeof commands.flushSystemDnsCache>) =>

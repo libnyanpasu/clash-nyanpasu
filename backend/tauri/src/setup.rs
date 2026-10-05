@@ -174,6 +174,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             )),
             clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
             service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
+            frontend: Arc::new(crate::client::frontend_events::TracingFrontendLogSink),
         },
         paths,
         storage,

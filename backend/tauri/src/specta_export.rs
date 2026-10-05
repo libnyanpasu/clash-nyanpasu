@@ -111,6 +111,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::open_log_session,
             ipc::query_logs,
             ipc::close_log_session,
+            ipc::report_frontend_events,
             ipc::flush_system_dns_cache,
             ipc::open_app_config_dir,
             ipc::open_app_data_dir,

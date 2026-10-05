@@ -1552,6 +1552,17 @@ pub async fn close_log_session(
         .close_log_session(source, window.label().to_string(), session)
         .await
 }
+#[nyanpasu_macro::rpc(http, owner)]
+#[tauri::command]
+#[specta::specta]
+pub fn report_frontend_events(
+    window: tauri::Window,
+    client: tauri::State<'_, NyanpasuClient>,
+    batch: crate::client::frontend_events::FrontendEventBatch,
+) -> Result {
+    client.report_frontend_events(window.label(), batch);
+    Ok(())
+}
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ReleaseChannelInfo {

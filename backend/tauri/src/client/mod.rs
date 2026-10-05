@@ -453,6 +453,7 @@ impl NyanpasuClient {
                 port: Arc::new(effects::executor::CoreLogCaptureEffects::new(
                     effects,
                     streams.clone(),
+                    core_logs.clone(),
                 )),
                 ui: ui_sink,
                 initial: effects::plan::ApplicationEffectInputs::project(

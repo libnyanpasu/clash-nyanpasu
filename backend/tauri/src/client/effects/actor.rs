@@ -138,7 +138,8 @@ fn group(kind: EffectKind) -> usize {
         EffectKind::SystemProxy | EffectKind::ProxyGuard | EffectKind::AutoLaunch => 0,
         EffectKind::Hotkeys => 1,
         EffectKind::Locale | EffectKind::Logger | EffectKind::Widget | EffectKind::Tray => 2,
-        EffectKind::CoreLogLevel => 3,
+        // One owner: the client's wrapper applies both to the Core log owners.
+        EffectKind::CoreLogLevel | EffectKind::CoreLogStorage => 3,
     }
 }
 

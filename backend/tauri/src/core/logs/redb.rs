@@ -376,6 +376,24 @@ impl RedbCoreLogStore {
         Ok(serde_json::from_slice(&decoder.decode(value.value())?)?)
     }
 
+    /// Takes effect mid-session. A new compression mode seals the active shard,
+    /// because a shard decodes with the one dictionary it was created with; an
+    /// unchanged mode keeps the encoder and any dictionary it trained. A smaller
+    /// budget evicts the oldest shards at once; a new shard size applies from
+    /// the next write. The settings are kept even when sealing or eviction
+    /// fails, so the clear that recovers the store starts under them.
+    fn apply_settings(&mut self, settings: CoreLogSettings) -> Result<()> {
+        let reencode = settings.compression != self.settings.compression;
+        if reencode {
+            self.encoder = LogEncoder::new(settings.compression)?;
+        }
+        self.settings = settings;
+        if reencode && self.database.is_some() {
+            self.rotate()?;
+        }
+        self.evict()
+    }
+
     fn clear_store(&mut self) -> Result<()> {
         // All transactions end within their store call, before releasing this handle.
         drop(self.database.take());
@@ -395,9 +413,7 @@ impl CoreLogStore for RedbCoreLogStore {
         settings
             .validate()
             .map_err(|reason| CoreLogError::Unavailable(reason.into()))?;
-        self.encoder = LogEncoder::new(settings.compression).map_err(CoreLogError::from)?;
-        self.settings = settings;
-        Ok(())
+        self.apply_settings(settings).map_err(map_error)
     }
     fn append(&mut self, records: &[PreparedCoreLog]) -> CoreLogResult<()> {
         self.append_batch(records).map_err(map_error)

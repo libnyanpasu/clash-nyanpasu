@@ -356,7 +356,7 @@ async fn independent_graphs_and_shutdown_admission() {
     assert!(a.calls.lock().unwrap().is_empty());
     right.publish_full(None);
     wait(&right, |s| {
-        s.effects.len() == 9
+        s.effects.len() == 10
             && s.effects
                 .iter()
                 .map(|e| &e.status)
@@ -882,16 +882,17 @@ async fn core_log_level_reaches_only_the_streams_owner() {
     )
     .await
     .unwrap();
+    let core_logs = crate::core::logs::CoreLogsClient::test_client().await;
     let streams = crate::core::clash::ws::StreamsClient::spawn(
         core,
-        crate::core::logs::CoreLogsClient::test_client().await,
+        core_logs.clone(),
         LogLevel::Info,
         CancellationToken::new(),
         &TaskTracker::new(),
     )
     .await
     .unwrap();
-    let effects = super::executor::CoreLogCaptureEffects::new(port.clone(), streams);
+    let effects = super::executor::CoreLogCaptureEffects::new(port.clone(), streams, core_logs);
     let locale = ApplicationEffect::Locale(I18nLanguage::Russian);
 
     let revision = EffectRevision::new(1);
@@ -926,4 +927,32 @@ async fn core_log_level_reaches_only_the_streams_owner() {
         .await;
     assert_eq!(statuses.len(), 1);
     assert_eq!(port.calls.lock().unwrap().len(), 1);
+
+    let mut settings = nyanpasu_config::application::CoreLogSettings::default();
+    settings.compression = nyanpasu_config::application::CoreLogCompression::Trained;
+    let statuses = effects
+        .apply(
+            EffectRevision::new(3),
+            ApplicationEffectPlan::from_effects(vec![ApplicationEffect::CoreLogStorage(settings)]),
+        )
+        .await;
+    assert_eq!(statuses[0].kind, EffectKind::CoreLogStorage);
+    assert_eq!(statuses[0].health, EffectHealth::Healthy);
+    assert_eq!(port.calls.lock().unwrap().len(), 1);
+
+    settings.shard_size_mib = 0;
+    let statuses = effects
+        .apply(
+            EffectRevision::new(4),
+            ApplicationEffectPlan::from_effects(vec![ApplicationEffect::CoreLogStorage(settings)]),
+        )
+        .await;
+    assert!(matches!(
+        statuses[0].health,
+        EffectHealth::Degraded {
+            code: EffectFailureCode::CoreLogStorageFailed,
+            retryable: false,
+            ..
+        }
+    ));
 }

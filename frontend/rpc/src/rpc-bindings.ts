@@ -1562,7 +1562,10 @@ export type CoreLogRow = {
   truncated: boolean
 }
 
-/**  Current-session Core log retention, read when the application starts. */
+/**
+ *  Current-session Core log rotation and compression, applied as soon as it is
+ *  committed.
+ */
 export type CoreLogSettings = {
   shard_size_mib?: number
   max_size_mib?: number
@@ -1869,6 +1872,7 @@ export type EffectFailureCode =
   | 'hotkey_shut_down'
   | 'hotkey_stopped'
   | 'logger_refresh_failed'
+  | 'core_log_storage_failed'
   | 'widget_unavailable'
   | 'widget_apply_failed'
   | 'tray_refresh_failed'
@@ -1893,6 +1897,7 @@ export type EffectKind =
   | 'locale'
   | 'logger'
   | 'core_log_level'
+  | 'core_log_storage'
   | 'auto_launch'
   | 'system_proxy'
   | 'proxy_guard'
@@ -2564,7 +2569,7 @@ export type NyanpasuAppConfig_Deserialize = {
    *  silent | error | warn | info | debug | trace
    */
   app_log_level: LoggingLevel_Deserialize
-  /**  Core log disk settings, applied on application startup. */
+  /**  Core log disk settings, applied as soon as they are committed. */
   core_logs?: CoreLogSettings
   language: I18nLanguage_Deserialize
   /**  `light` or `dark` or `system` */
@@ -2665,7 +2670,7 @@ export type NyanpasuAppConfig_Serialize = {
    *  silent | error | warn | info | debug | trace
    */
   app_log_level: LoggingLevel_Serialize
-  /**  Core log disk settings, applied on application startup. */
+  /**  Core log disk settings, applied as soon as they are committed. */
   core_logs: CoreLogSettings
   language: I18nLanguage_Serialize
   /**  `light` or `dark` or `system` */

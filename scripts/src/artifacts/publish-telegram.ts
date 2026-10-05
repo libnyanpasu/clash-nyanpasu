@@ -113,7 +113,7 @@ async function main() {
             artifact.path,
           ),
           forceDocument: true,
-          workers: 4,
+          workers: 8,
           caption: `Clash Nyanpasu ${
             target.channel === "release"
               ? target.tag

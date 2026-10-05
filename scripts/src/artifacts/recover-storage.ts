@@ -49,7 +49,7 @@ if (import.meta.main) {
     | undefined;
   const results = await runPublicationTasks(
     targets,
-    2,
+    args.mode === "upload" ? 6 : 2,
     async (target, index) => {
       console.log(
         `[storage] ${args.mode} ${args.backend} target ${target} (${

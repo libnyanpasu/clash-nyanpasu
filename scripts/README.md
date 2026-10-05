@@ -104,8 +104,8 @@ to `@ClashNyanpasu` using the historical MTProto/GramJS approach. Configure
 `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_TOKEN` and an archive
 registration token (`ARCHIVE_UPLOAD_TOKEN`, `FILE_SERVER_TOKEN` or
 `UPLOAD_TOKEN`). The bot must be allowed to post documents to the channel.
-Documents upload sequentially with four concurrent part workers per file. No Bot
-API download URL or token is exposed. The archive lists Telegram files and
+Documents upload sequentially with eight concurrent part workers per file. No
+Bot API download URL or token is exposed. The archive lists Telegram files and
 redirects `/bin/:id` to the corresponding
 `https://t.me/ClashNyanpasu/<message-id>` post. This is a Telegram message link;
 users download the document through Telegram.
@@ -118,12 +118,11 @@ required by release/nightly publication. Historical IA tools remain available
 for already published data. The retained item prefix only preserves old manifest
 identities during recovery; it does not enable IA publication.
 
-SourceForge processes two targets concurrently and public verification checks
-four files concurrently. Normal publication hashes the mirror once in its
-independent verification job. Nightly cleanup requires archived copies of all
-six targets (Telegram, or legacy ready IA entries) before deleting an old SF
-folder. Missing credentials or archives retain the folder. Releases are never
-pruned.
+SourceForge uploads six targets concurrently and public verification checks four
+files concurrently. Normal publication hashes the mirror once in its independent
+verification job. Nightly cleanup requires archived copies of all six targets
+(Telegram, or legacy ready IA entries) before deleting an old SF folder. Missing
+credentials or archives retain the folder. Releases are never pruned.
 
 ### Debug and recover without rebuilding
 

@@ -35,7 +35,10 @@ nyanpasu-core-manager = { workspace = true }
 clash-api = { workspace = true }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-core = { path = '../nyanpasu-core' }
+nyanpasu-helper = { path = '../nyanpasu-helper' }
 nyanpasu-config = { path = '../nyanpasu-config' }
+nyanpasu-application = { path = '../nyanpasu-application' }
+nyanpasu-platform = { path = '../nyanpasu-platform' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
 nyanpasu-egui = { path = '../nyanpasu-egui' }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
@@ -187,29 +190,6 @@ tracing-test = { workspace = true }
 image = '0.25.5'
 fast_image_resize = '6'
 display-info = '0.5.0'  # should be removed after upgrading to tauri v2
-
-# OXC (The Oxidation Compiler)
-# We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = '0.153'
-oxc_allocator = '0.153'
-oxc_span = '0.153'
-oxc_ast = '0.153'
-oxc_syntax = '0.153'
-oxc_ast_visit = '0.153'
-
-# Lua Integration
-mlua = { version = '0.12', features = [
-  'lua54',
-  'async',
-  'serialize',
-  'vendored',
-  'error-send',
-] }
-
-# JavaScript Integration
-boa_utils = { path = '../boa_utils' }
-boa_engine = { workspace = true, features = ['annex-b'] }
-boa_runtime = { version = '0.22', default-features = false, features = ['url'] }
 
 # Tauri Dependencies
 tauri = { version = '2.4', features = [

@@ -15,10 +15,9 @@ use nyanpasu_config::{
     runtime::executor::ResolvedPortBindings,
 };
 
-use super::{
-    EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, ScriptDirs,
-    golden_support::{composition, file_config, overlay},
-};
+use super::golden_support::{composition, file_config, overlay};
+use nyanpasu_application::enhance::{RuntimeBuildInput, RuntimeBuilder};
+use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 
 const SUB_A: &str =
     "proxies:\n  - name: a1\n    type: ss\n    server: a.example.com\n    port: 443\n";

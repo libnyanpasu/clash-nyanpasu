@@ -418,7 +418,7 @@ mod tests {
         },
         runtime::executor::ResolvedPortBindings,
     };
-    use nyanpasu_egui::widget::StatisticWidgetVariant;
+    use nyanpasu_helper::StatisticWidgetVariant;
 
     fn inputs() -> ApplicationEffectInputs {
         ApplicationEffectInputs {

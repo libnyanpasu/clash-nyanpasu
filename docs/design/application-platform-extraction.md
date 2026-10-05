@@ -165,6 +165,31 @@ finished phase until integrated, built and tested against the shared services.
 
 ## Compatibility, verification and commits
 
+### Implemented first slice
+
+`nyanpasu-application` owns RuntimeBuilder, runtime build inputs/errors and script
+descriptors. `nyanpasu-platform` owns filesystem profile reads, Boa/JavaScript,
+Lua and the concrete script runner. The desktop workflow calls these crates
+directly; the old host implementations have been removed. Desktop artifact/log
+projection remains in the host. The configuration widget wire enum now lives in
+the neutral helper crate, removing the transitive egui dependency from config.
+
+Verification includes seven application tests, 49 platform unit tests, a real
+filesystem/Boa/RuntimeBuilder integration test and four desktop runtime goldens.
+The backend dependency gate checks transitive production/build dependencies on
+all targets. `deno task test:backend-musl arm64` and `amd64` build the same shared
+tests in Docker and run their binaries in ImmortalWrt rootfs containers; this is
+a test harness, not an OpenWrt daemon or package acceptance test.
+The aarch64 run passed all 57 shared tests in the ImmortalWrt 24.10.4 rootfs.
+The harness checks the actual rootfs musl loader because its ARM image tag
+currently publishes amd64 Docker metadata. Builder architecture stays explicit.
+
+The next actor slice is the existing CoreActor/CoreClient and its API lease,
+with local/service endpoints implemented in platform, plus persistent session
+state with host-independent actor construction. Profile transactions, application
+workflow, facade composition and RPC registration still belong to the desktop
+host until their whole dependency paths can be moved.
+
 Do not change profile schema, generated frontend bindings or desktop RPC names
 merely because code moves to a crate. Pure type movement must preserve names and
 wire shape. Generated bindings are regenerated only through their existing export

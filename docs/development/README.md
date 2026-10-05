@@ -7,15 +7,16 @@ retain their operational checklist and section numbers.
 
 ## Choose a guide
 
-| When you are working on                                              | Read                                             |
-| -------------------------------------------------------------------- | ------------------------------------------------ |
-| Services, state ownership, dependency injection, or legacy migration | [Architecture and ownership](architecture.md)    |
-| Commands, frontend backend calls, HTTP capabilities, or events       | [Unified RPC](rpc.md)                            |
-| Tests, mocks, verification, or final review                          | [Testing and review](testing.md)                 |
-| Worktree selection, build prerequisites, or commits                  | [Development workflow](workflow.md)              |
-| Repository scripts, Deno tasks, tool dependencies and script layout  | [Repository scripts](scripts.md)                 |
-| Rust style and current formatter/lint behavior                       | [Rust code style](rust.md)                       |
-| TypeScript, React structure, constants, slots, or UI composition     | [TypeScript and React code style](typescript.md) |
+| When you are working on                                                | Read                                             |
+| ---------------------------------------------------------------------- | ------------------------------------------------ |
+| Services, state ownership, dependency injection, or legacy migration   | [Architecture and ownership](architecture.md)    |
+| Backend crate extraction and application/platform dependency direction | [Backend packages](backend-packages.md)          |
+| Commands, frontend backend calls, HTTP capabilities, or events         | [Unified RPC](rpc.md)                            |
+| Tests, mocks, verification, or final review                            | [Testing and review](testing.md)                 |
+| Worktree selection, build prerequisites, or commits                    | [Development workflow](workflow.md)              |
+| Repository scripts, Deno tasks, tool dependencies and script layout    | [Repository scripts](scripts.md)                 |
+| Rust style and current formatter/lint behavior                         | [Rust code style](rust.md)                       |
+| TypeScript, React structure, constants, slots, or UI composition       | [TypeScript and React code style](typescript.md) |
 
 Start with the [root README](../../README.md#development) for running the app and
 [CONTRIBUTING.md](../../CONTRIBUTING.md) for contribution setup. For frontend test

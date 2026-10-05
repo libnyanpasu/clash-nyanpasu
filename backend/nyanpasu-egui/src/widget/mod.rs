@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 pub use network_statistic_large::NyanpasuNetworkStatisticLargeWidget;
 pub use network_statistic_small::NyanpasuNetworkStatisticSmallWidget;
+pub use nyanpasu_helper::StatisticWidgetVariant;
 
 #[allow(dead_code)]
 fn get_window_state_path() -> std::io::Result<PathBuf> {
@@ -43,32 +44,6 @@ fn set_application_activation_policy() {
 // ) -> std::io::Result<Receiver<WidgetEvent<T>>> {
 //     let (tx, rx) = mpsc::channel();
 // }
-
-#[derive(
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    specta::Type,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    clap::ValueEnum,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum StatisticWidgetVariant {
-    Large,
-    Small,
-}
-
-impl std::fmt::Display for StatisticWidgetVariant {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StatisticWidgetVariant::Large => write!(f, "large"),
-            StatisticWidgetVariant::Small => write!(f, "small"),
-        }
-    }
-}
 
 pub fn start_statistic_widget(size: StatisticWidgetVariant) -> eframe::Result {
     match size {

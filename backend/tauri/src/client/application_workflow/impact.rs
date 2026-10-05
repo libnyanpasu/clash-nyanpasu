@@ -564,7 +564,7 @@ mod tests {
         },
         runtime::executor::ResolvedPortBindings,
     };
-    use nyanpasu_egui::widget::StatisticWidgetVariant;
+    use nyanpasu_helper::StatisticWidgetVariant;
     use struct_patch::Patch as _;
 
     use crate::{

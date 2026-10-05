@@ -13,7 +13,7 @@ use nyanpasu_config::{
 use tracing::Instrument;
 
 use super::{RunnerManager, ScriptDirs, create_lua_context, ordered_map};
-use crate::enhance::{ScriptType, chain::ScriptWrapper};
+use nyanpasu_application::enhance::{ScriptType, ScriptWrapper};
 
 pub struct EnhanceScriptRunner {
     runtime: tokio::runtime::Runtime,

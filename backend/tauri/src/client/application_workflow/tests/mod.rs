@@ -100,13 +100,14 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_application::enhance::RuntimeBuildError>
+    {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
-            return Err(crate::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(nyanpasu_application::enhance::RuntimeBuildError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
@@ -361,7 +362,7 @@ async fn workflow_graph_with_clients(
         delegate: adapters::FsRuntimeBuildAdapter {
             profiles_dir: dir.path().join("profiles"),
             paths,
-            scripts: crate::enhance::ScriptDirs::under(dir.path()),
+            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),

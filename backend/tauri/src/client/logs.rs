@@ -16,6 +16,7 @@ pub struct LoggingSetup {
     pub files: Arc<dyn LogFiles>,
     pub clock: Arc<dyn Clock>,
     pub service: Arc<dyn ServiceLogsPort>,
+    pub frontend: Arc<dyn super::frontend_events::FrontendLogSink>,
 }
 #[async_trait]
 pub trait ServiceLogsPort: Send + Sync + 'static {
@@ -144,5 +145,6 @@ pub(crate) fn test_setup(directory: std::path::PathBuf) -> LoggingSetup {
         files: Arc::new(FsLogFiles::new(directory, "clash-nyanpasu".into())),
         clock: Arc::new(MonotonicClock::default()),
         service: Arc::new(Unavailable),
+        frontend: Arc::new(super::frontend_events::TracingFrontendLogSink),
     }
 }

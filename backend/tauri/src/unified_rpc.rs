@@ -605,6 +605,29 @@ mod tests {
             .await;
             assert_eq!(close.0, StatusCode::OK);
             assert!(close.1.is_null());
+            let report = rpc_for_test_call(
+                &app,
+                "report_frontend_events",
+                serde_json::json!({"batch":{"events":[{
+                    "kind":"unhandled_rejection", "level":"error", "message":"boom",
+                    "error_name":null, "stack":null, "causes":[], "component_stack":null,
+                    "fingerprint":"x", "count":1, "first_seen_ms":0, "last_seen_ms":0,
+                    "route":"/main/dashboard"
+                }], "dropped":0}}),
+                Some(&cookie),
+            )
+            .await;
+            assert_eq!(report.0, StatusCode::OK, "{:?}", report.1);
+            assert!(report.1.is_null());
+            let malformed = rpc_for_test_call(
+                &app,
+                "report_frontend_events",
+                serde_json::json!({"batch":{"events":[{"kind":"unknown"}], "dropped":0}}),
+                Some(&cookie),
+            )
+            .await;
+            assert_eq!(malformed.0, StatusCode::BAD_REQUEST);
+            assert_eq!(malformed.1["kind"], "invalid_params");
             let set = app.clone().oneshot(Request::post("/bridge/rpc")
             .header("content-type", "application/json")
             .body(Body::from(r#"{"method":"set_storage_item","params":{"key":"theme","value":"dark"}}"#)).unwrap())

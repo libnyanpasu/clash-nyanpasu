@@ -17,6 +17,7 @@ use crate::{
         resolve,
     },
 };
+use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
@@ -1261,11 +1262,30 @@ pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[derive(Serialize, specta::Type)]
+pub struct IconData {
+    pub data_url: String,
+}
+
+#[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn get_server_port(port: State<'_, crate::server::ServerPort>) -> Result<u16> {
-    Ok(port.0)
+pub async fn get_cached_icon(client: State<'_, NyanpasuClient>, url: String) -> Result<IconData> {
+    let (mime, bytes) =
+        crate::service::icon::get_cached_icon(&url, client.clash_info().port).await?;
+    Ok(IconData {
+        data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
+    })
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_tray_icon(mode: TrayIcon) -> Result<IconData> {
+    let bytes = crate::core::tray::icon::get_raw_icon(mode);
+    Ok(IconData {
+        data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
+    })
 }
 
 #[cfg(not(windows))]

@@ -112,7 +112,6 @@ bolt-load = { version = '0.1', default-features = false, features = [
 # the CancellationToken type required by bolt-load's TaskBuilder
 smol-cancellation-token = '0.1'
 urlencoding = '2.1'
-port_scanner = '0.1.5'
 sysproxy = { workspace = true }
 
 # Serialization

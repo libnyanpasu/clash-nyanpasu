@@ -233,10 +233,15 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['collectEnvs', ...args],
         queryFn: () => commands.collectEnvs(...args),
       }),
-    getServerPort: (...args: Parameters<typeof commands.getServerPort>) =>
+    getCachedIcon: (...args: Parameters<typeof commands.getCachedIcon>) =>
       queryOptions({
-        queryKey: ['getServerPort', ...args],
-        queryFn: () => commands.getServerPort(...args),
+        queryKey: ['getCachedIcon', ...args],
+        queryFn: () => commands.getCachedIcon(...args),
+      }),
+    getTrayIcon: (...args: Parameters<typeof commands.getTrayIcon>) =>
+      queryOptions({
+        queryKey: ['getTrayIcon', ...args],
+        queryFn: () => commands.getTrayIcon(...args),
       }),
     isTrayIconSet: (...args: Parameters<typeof commands.isTrayIconSet>) =>
       queryOptions({

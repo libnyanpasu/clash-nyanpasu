@@ -170,8 +170,10 @@ export function createRpcClient(
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
     collectEnvs: () =>
       typedError<EnvInfo, IpcError>(__RPC_INVOKE('collect_envs')),
-    getServerPort: () =>
-      typedError<number, IpcError>(__RPC_INVOKE('get_server_port')),
+    getCachedIcon: (url: string) =>
+      typedError<IconData, IpcError>(__RPC_INVOKE('get_cached_icon', { url })),
+    getTrayIcon: (mode: TrayIcon) =>
+      typedError<IconData, IpcError>(__RPC_INVOKE('get_tray_icon', { mode })),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
     getCoreStatus: () =>
@@ -2227,6 +2229,10 @@ export type I18nLanguage_Deserialize =
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
+
+export type IconData = {
+  data_url: string
+}
 
 /**  A failure of installing a downloaded core binary over the installed one. */
 export type InstallCoreBinaryError =

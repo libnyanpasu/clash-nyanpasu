@@ -377,7 +377,9 @@ export default function TopologyView({
                         onFocus={() => setHovered(node.id)}
                         onBlur={() => setHovered(undefined)}
                         className={cn(
-                          'absolute h-14 rounded-2xl px-3 text-left outline-none',
+                          // A button centers its content by itself, but the
+                          // merged node is a div: center both explicitly.
+                          'absolute flex h-14 flex-col justify-center rounded-2xl px-3 text-left outline-none',
                           merged
                             ? 'cursor-default'
                             : 'focus-visible:ring-primary ring-offset-surface cursor-pointer focus-visible:ring-2 focus-visible:ring-offset-2',

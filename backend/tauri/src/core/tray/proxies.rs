@@ -36,13 +36,16 @@ pub(super) type TrayProxies = IndexMap<String, TrayProxyItem>;
 fn to_tray_proxies(mode: Mode, raw_proxies: &Proxies) -> TrayProxies {
     let mut tray_proxies = TrayProxies::new();
     if matches!(mode, Mode::Global | Mode::Rule | Mode::Script) {
-        if mode == Mode::Global {
-            let global = TrayProxyItem {
-                current: raw_proxies.global.now.clone(),
-                all: raw_proxies.global.all.clone(),
-                r#type: "Selector".to_string(),
+        // The core looks groups up by their exact, case-sensitive name; a
+        // core without GLOBAL leaves `global` with an empty one.
+        let global = &raw_proxies.global;
+        if mode == Mode::Global && !global.name.is_empty() {
+            let item = TrayProxyItem {
+                current: global.now.clone(),
+                all: global.all.clone(),
+                r#type: global.r#type.clone(),
             };
-            tray_proxies.insert("global".to_owned(), global);
+            tray_proxies.insert(global.name.clone(), item);
         }
         for raw_group in raw_proxies.groups.iter() {
             let group = TrayProxyItem {
@@ -566,13 +569,36 @@ mod tests {
         let proxies = sample_proxies();
 
         let global_mode = to_tray_proxies(Mode::Global, &proxies);
-        assert!(global_mode.contains_key("global"));
+        assert!(global_mode.contains_key("GLOBAL"));
+        assert!(!global_mode.contains_key("global"));
         assert!(global_mode.contains_key("GroupA"));
-        assert_eq!(global_mode["global"].all, vec!["GroupA".to_owned()]);
+        assert_eq!(global_mode["GLOBAL"].all, vec!["GroupA".to_owned()]);
 
         let rule_mode = to_tray_proxies(Mode::Rule, &proxies);
         assert!(!rule_mode.contains_key("global"));
         assert!(rule_mode.contains_key("GroupA"));
         assert_eq!(rule_mode["GroupA"].all, vec!["node-a".to_owned()]);
+    }
+
+    /// The core looks a group up by its exact, case-sensitive name, so the
+    /// tray must select "GLOBAL", never a lowercase alias; a core without
+    /// GLOBAL gets no entry.
+    #[test]
+    fn global_mode_selects_global_by_its_real_name() {
+        let mut proxies = sample_proxies();
+        proxies.global.r#type = "Fallback".into();
+        let tray = to_tray_proxies(Mode::Global, &proxies);
+        assert_eq!(
+            tray.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["GLOBAL", "GroupA"]
+        );
+        assert_eq!(tray["GLOBAL"].r#type, "Fallback");
+
+        proxies.global = Default::default();
+        let tray = to_tray_proxies(Mode::Global, &proxies);
+        assert_eq!(
+            tray.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["GroupA"]
+        );
     }
 }

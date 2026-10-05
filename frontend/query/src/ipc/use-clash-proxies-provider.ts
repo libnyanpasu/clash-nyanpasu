@@ -1,5 +1,5 @@
 import { unwrapResult } from '@nyanpasu/rpc'
-import { type ProxyProviderItem_Serialize } from '@nyanpasu/rpc/types'
+import { type ProxyProvider_Serialize } from '@nyanpasu/rpc/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 import { invokeMutation, invokeQuery } from './query-options'
@@ -9,7 +9,7 @@ import { invokeMutation, invokeQuery } from './query-options'
  * its delay history, which changes on every health check.
  */
 export type ClashProxiesProviderQueryItem = Pick<
-  ProxyProviderItem_Serialize,
+  ProxyProvider_Serialize,
   'name' | 'type' | 'vehicleType' | 'updatedAt' | 'subscriptionInfo'
 > & {
   proxyCount: number
@@ -33,10 +33,8 @@ export const useClashProxiesProvider = (
 
       if (!result) return {} as ClashProxiesProviderQuery
 
-      const { providers } = result
-
       return Object.fromEntries(
-        Object.entries(providers)
+        Object.entries(result)
           .filter(([, value]) =>
             ['http', 'file'].includes(value.vehicleType.toLowerCase()),
           )

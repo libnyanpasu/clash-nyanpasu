@@ -1,11 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use clash_api::{DelayQuery, ProviderName, ProxyName};
-use indexmap::IndexMap;
+use clash_api::{Delay, DelayQuery, IndexMap, ProviderName, ProxyName, ProxyProvider};
 
 use crate::core::clash::api::{
-    ClashConfig, ClashRule, ClashVersion, DelayRes, ProvidersRulesRes, RuleProviderItem, RulesRes,
+    ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes, RuleProviderItem, RulesRes,
 };
 
 use super::NyanpasuClient;
@@ -24,7 +23,7 @@ impl NyanpasuClient {
     pub async fn refresh_proxies(&self) -> Result<crate::core::clash::proxies::Proxies> {
         self.inner.proxies.get(true).await
     }
-    pub async fn proxy_providers(&self) -> Result<crate::core::clash::api::ProvidersProxiesRes> {
+    pub async fn proxy_providers(&self) -> Result<IndexMap<ProviderName, ProxyProvider>> {
         self.inner.proxies.providers().await
     }
     pub async fn select_proxy(
@@ -112,38 +111,31 @@ impl NyanpasuClient {
         name: String,
         provider: Option<String>,
         url: Option<String>,
-    ) -> Result<DelayRes> {
+    ) -> Result<Delay> {
         let query = delay_query(url)?;
         let provider = provider.map(ProviderName::new);
-        let delay = self
+        Ok(self
             .inner
             .core_api
             .api_client()
             .await?
             .proxy_delay(&ProxyName::new(name), provider.as_ref(), &query)
-            .await?;
-        Ok(DelayRes {
-            delay: u64::from(delay.delay),
-        })
+            .await?)
     }
 
     pub async fn group_delay(
         &self,
         group: String,
         url: Option<String>,
-    ) -> Result<IndexMap<String, u32>> {
+    ) -> Result<IndexMap<ProxyName, u16>> {
         let query = delay_query(url)?;
-        let delays = self
+        Ok(self
             .inner
             .core_api
             .api_client()
             .await?
             .group_delay(&ProxyName::new(group), &query)
-            .await?;
-        Ok(delays
-            .into_iter()
-            .map(|(name, delay)| (name.as_str().to_owned(), u32::from(delay)))
-            .collect())
+            .await?)
     }
 
     pub async fn close_clash_connections(&self, id: Option<String>) -> Result<()> {

@@ -72,13 +72,11 @@ function createRpc() {
           return { items: backend.profiles, valid: [], current: null } as T
         case 'clash_api_get_providers_proxies':
           return {
-            providers: {
-              SharedName: {
-                name: 'SharedName',
-                type: 'Proxy',
-                proxies: [],
-                vehicleType: 'HTTP',
-              },
+            SharedName: {
+              name: 'SharedName',
+              type: 'Proxy',
+              proxies: [],
+              vehicleType: 'HTTP',
             },
           } as T
         case 'clash_api_get_providers_rules':

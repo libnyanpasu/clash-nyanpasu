@@ -25,8 +25,10 @@ const ProxyButton = ({
   nodes: Record<string, ClashProxiesQueryProxyItem>
 }) => {
   const currentDelay = useMemo(() => {
-    if (proxy.history.length > 0) {
-      return proxy.history[proxy.history.length - 1].delay
+    const history = nodes[proxy.name]?.history ?? []
+
+    if (history.length > 0) {
+      return history[history.length - 1].delay
     }
 
     if (proxy.now) {
@@ -38,7 +40,7 @@ const ProxyButton = ({
     }
 
     return -1
-  }, [proxy.history, proxy.now, nodes])
+  }, [proxy.name, proxy.now, nodes])
 
   return (
     <ActionButton disableClose asChild>

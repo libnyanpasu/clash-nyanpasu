@@ -2,7 +2,11 @@ use super::{
     Tray, TrayState, TrayWork,
     display::{Paint, ProxyItem, ProxySection, Shown},
 };
-use crate::{client::effects::plan::TrayView, core::clash::proxies::Proxies, log_err};
+use crate::{
+    client::effects::plan::TrayView,
+    core::clash::proxies::{Proxies, ProxyGroup},
+    log_err,
+};
 use indexmap::IndexMap;
 use nyanpasu_config::{application::ProxiesSelectorMode, clash::config::overrides::Mode};
 use std::ops::ControlFlow;
@@ -25,35 +29,41 @@ pub(super) enum TrayUpdateType {
     Part(Vec<ProxySelectAction>),
 }
 
-pub(super) struct TrayProxyItem {
-    pub(super) current: Option<String>,
+pub(super) struct TrayGroup {
+    pub(super) now: Option<String>,
     pub(super) all: Vec<String>,
-    pub(super) r#type: String, // TODO: 转成枚举
+    /// Whether the core accepts choosing one of `all`.
+    pub(super) selectable: bool,
 }
-pub(super) type TrayProxies = IndexMap<String, TrayProxyItem>;
+pub(super) type TrayProxies = IndexMap<String, TrayGroup>;
 
-/// Convert raw proxies to tray proxies
-fn to_tray_proxies(mode: Mode, raw_proxies: &Proxies) -> TrayProxies {
-    let mut tray_proxies = TrayProxies::new();
-    if matches!(mode, Mode::Global | Mode::Rule | Mode::Script) {
-        if mode == Mode::Global {
-            let global = TrayProxyItem {
-                current: raw_proxies.global.now.clone(),
-                all: raw_proxies.global.all.clone(),
-                r#type: "Selector".to_string(),
-            };
-            tray_proxies.insert("global".to_owned(), global);
-        }
-        for raw_group in raw_proxies.groups.iter() {
-            let group = TrayProxyItem {
-                current: raw_group.now.clone(),
-                all: raw_group.all.clone(),
-                r#type: raw_group.r#type.clone(),
-            };
-            tray_proxies.insert(raw_group.name.to_owned(), group);
+impl TrayGroup {
+    fn of(group: &ProxyGroup) -> Self {
+        Self {
+            now: group.now.as_ref().map(|name| name.as_str().to_owned()),
+            all: group
+                .all
+                .iter()
+                .map(|name| name.as_str().to_owned())
+                .collect(),
+            selectable: group.capabilities.select,
         }
     }
-    tray_proxies
+}
+
+/// The groups the tray lists, keyed by each group's real name.
+fn to_tray_proxies(mode: Mode, proxies: &Proxies) -> TrayProxies {
+    if !matches!(mode, Mode::Global | Mode::Rule | Mode::Script) {
+        return TrayProxies::new();
+    }
+    // GLOBAL stays in Global mode even when hidden, as on the page.
+    let global = proxies.global.as_ref().filter(|_| mode == Mode::Global);
+    let groups = proxies.groups.iter().filter(|group| !group.hidden);
+    global
+        .into_iter()
+        .chain(groups)
+        .map(|group| (group.name.as_str().to_owned(), TrayGroup::of(group)))
+        .collect()
 }
 
 pub(super) fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies) -> TrayUpdateType {
@@ -78,8 +88,8 @@ pub(super) fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies)
     for (group, item) in new_proxies.iter() {
         let old_item = old_proxies.get(group).unwrap(); // safe to unwrap
 
-        // check if the length of all list is different
-        if item.all.len() != old_item.all.len() {
+        // check if the length of all list or the selectability is different
+        if item.all.len() != old_item.all.len() || item.selectable != old_item.selectable {
             return TrayUpdateType::Full;
         }
 
@@ -94,10 +104,10 @@ pub(super) fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies)
             return TrayUpdateType::Full;
         }
         // then diff the current
-        if item.current != old_item.current {
+        if item.now != old_item.now {
             // A selection that appears or disappears has no pair of items to
             // switch between, so only a rebuild shows it.
-            let (Some(from), Some(to)) = (&old_item.current, &item.current) else {
+            let (Some(from), Some(to)) = (&old_item.now, &item.now) else {
                 return TrayUpdateType::Full;
             };
             actions.push((group.clone(), from.clone(), to.clone()));
@@ -174,7 +184,7 @@ pub fn setup_proxies(app_handle: &AppHandle) {
 mod platform_impl {
     use super::{
         GroupName, Paint, ProxyItemIds, ProxyName, ProxySection, ProxySelectAction, Shown,
-        TrayProxyItem,
+        TrayGroup,
     };
     use crate::{client::effects::plan::TrayView, core::tray::TrayState};
     use nyanpasu_config::application::ProxiesSelectorMode;
@@ -192,7 +202,7 @@ mod platform_impl {
         app_handle: &AppHandle<R>,
         item_ids: &mut ProxyItemIds,
         group_name: &str,
-        group: &TrayProxyItem,
+        group: &TrayGroup,
     ) -> anyhow::Result<Submenu<R>> {
         let mut group_menu = SubmenuBuilder::new(app_handle, group_name);
         if group.all.is_empty() {
@@ -210,13 +220,13 @@ mod platform_impl {
             let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone())
                 .id(format!("proxy_node_{id}"))
                 .checked(false);
-            if let Some(now) = group.current.clone()
+            if let Some(now) = group.now.clone()
                 && now == item.as_str()
             {
                 sub_item_builder = sub_item_builder.checked(true);
             }
 
-            if !matches!(group.r#type.as_str(), "Selector" | "Fallback") {
+            if !group.selectable {
                 sub_item_builder = sub_item_builder.enabled(false);
             }
 
@@ -510,14 +520,15 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::clash::proxies::{ProxyGroupCapabilities, ProxyGroupKind};
 
-    fn selecting(current: Option<&str>) -> TrayProxies {
+    fn selecting(now: Option<&str>) -> TrayProxies {
         TrayProxies::from([(
             "Proxy".to_owned(),
-            TrayProxyItem {
-                current: current.map(str::to_owned),
+            TrayGroup {
+                now: now.map(str::to_owned),
                 all: vec!["a".to_owned(), "b".to_owned()],
-                r#type: "Selector".to_owned(),
+                selectable: true,
             },
         )])
     }
@@ -536,24 +547,26 @@ mod tests {
         assert_eq!(diff_proxies(&none, &none), TrayUpdateType::None);
     }
 
-    fn sample_proxies() -> Proxies {
-        use crate::core::clash::proxies::ProxyGroupItem;
-
-        Proxies {
-            global: ProxyGroupItem {
-                name: "GLOBAL".into(),
-                r#type: "Selector".into(),
-                now: Some("GroupA".into()),
-                all: vec!["GroupA".into()],
-                ..Default::default()
+    fn group(name: &str, all: &[&str], now: &str) -> ProxyGroup {
+        ProxyGroup {
+            name: name.into(),
+            kind: ProxyGroupKind::Selector,
+            all: all.iter().map(|&member| member.into()).collect(),
+            now: Some(now.into()),
+            fixed: None,
+            hidden: false,
+            icon: None,
+            capabilities: ProxyGroupCapabilities {
+                select: true,
+                clear_fixed: false,
             },
-            groups: vec![ProxyGroupItem {
-                name: "GroupA".into(),
-                r#type: "Selector".into(),
-                now: Some("node-a".into()),
-                all: vec!["node-a".into()],
-                ..Default::default()
-            }],
+        }
+    }
+
+    fn sample_proxies() -> Proxies {
+        Proxies {
+            global: Some(group("GLOBAL", &["GroupA"], "GroupA")),
+            groups: vec![group("GroupA", &["node-a"], "node-a")],
             ..Default::default()
         }
     }
@@ -566,13 +579,77 @@ mod tests {
         let proxies = sample_proxies();
 
         let global_mode = to_tray_proxies(Mode::Global, &proxies);
-        assert!(global_mode.contains_key("global"));
+        assert!(global_mode.contains_key("GLOBAL"));
+        assert!(!global_mode.contains_key("global"));
         assert!(global_mode.contains_key("GroupA"));
-        assert_eq!(global_mode["global"].all, vec!["GroupA".to_owned()]);
+        assert_eq!(global_mode["GLOBAL"].all, vec!["GroupA".to_owned()]);
 
         let rule_mode = to_tray_proxies(Mode::Rule, &proxies);
         assert!(!rule_mode.contains_key("global"));
         assert!(rule_mode.contains_key("GroupA"));
         assert_eq!(rule_mode["GroupA"].all, vec!["node-a".to_owned()]);
+    }
+
+    /// The core looks a group up by its exact, case-sensitive name, so the
+    /// tray must select "GLOBAL", never a lowercase alias; a core without
+    /// GLOBAL gets no entry.
+    #[test]
+    fn global_mode_selects_global_by_its_real_name() {
+        let mut proxies = sample_proxies();
+        let tray = to_tray_proxies(Mode::Global, &proxies);
+        assert_eq!(
+            tray.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["GLOBAL", "GroupA"]
+        );
+
+        proxies.global = None;
+        let tray = to_tray_proxies(Mode::Global, &proxies);
+        assert_eq!(
+            tray.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["GroupA"]
+        );
+    }
+
+    /// The page filters hidden groups out; the tray must not list them
+    /// either, while GLOBAL itself always stays in Global mode.
+    #[test]
+    fn hidden_groups_stay_out_of_the_tray() {
+        let mut proxies = sample_proxies();
+        proxies.global.as_mut().unwrap().hidden = true;
+        let mut hidden = group("Hidden", &["node-a"], "node-a");
+        hidden.hidden = true;
+        proxies.groups.push(hidden);
+        for mode in [Mode::Global, Mode::Rule, Mode::Script] {
+            assert!(!to_tray_proxies(mode, &proxies).contains_key("Hidden"));
+        }
+        assert!(to_tray_proxies(Mode::Global, &proxies).contains_key("GLOBAL"));
+    }
+
+    /// Enabling or disabling items changes the menu's structure, which only
+    /// a rebuild shows.
+    #[test]
+    fn a_selectability_change_needs_a_rebuild() {
+        let open = selecting(Some("a"));
+        let mut locked = selecting(Some("a"));
+        locked["Proxy"].selectable = false;
+        assert_eq!(diff_proxies(&open, &locked), TrayUpdateType::Full);
+    }
+
+    /// Mihomo pins a URLTest group on selection, while Clash-rs rejects
+    /// selecting a Fallback group; the tray follows what the core reports.
+    #[test]
+    fn only_groups_the_core_lets_a_user_select_are_selectable() {
+        let mut proxies = sample_proxies();
+        let mut pinnable = group("Auto", &["node-a"], "node-a");
+        pinnable.kind = ProxyGroupKind::UrlTest;
+        pinnable.capabilities.select = true;
+        let mut automatic = group("Fallback", &["node-a"], "node-a");
+        automatic.kind = ProxyGroupKind::Fallback;
+        automatic.capabilities.select = false;
+        proxies.groups = vec![pinnable, automatic];
+
+        let tray = to_tray_proxies(Mode::Rule, &proxies);
+        assert!(tray["Auto"].selectable);
+        assert!(!tray["Fallback"].selectable);
     }
 }

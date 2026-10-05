@@ -73,7 +73,7 @@ function RouteComponent() {
 
   const currentGroup = useMemo<ClashProxiesQueryGroupItem | undefined>(() => {
     if (proxyMode.global) {
-      return proxies?.global
+      return proxies?.global ?? undefined
     }
 
     return proxies?.groups.find((group) => group.name === proxyGroupName)

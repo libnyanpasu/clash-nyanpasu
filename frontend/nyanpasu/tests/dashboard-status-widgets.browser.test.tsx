@@ -58,15 +58,13 @@ function createRpcHarness() {
           throw new Error('proxy provider read failed')
         }
         return {
-          providers: {
-            'Proxy A': {
-              name: 'Proxy A',
-              type: 'Proxy',
-              vehicleType: 'HTTP',
-              updatedAt: null,
-              subscriptionInfo: null,
-              proxies: [],
-            },
+          'Proxy A': {
+            name: 'Proxy A',
+            type: 'Proxy',
+            vehicleType: 'HTTP',
+            updatedAt: null,
+            subscriptionInfo: null,
+            proxies: [],
           },
         } as T
       case 'clash_api_get_providers_rules':

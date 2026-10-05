@@ -2,8 +2,8 @@ import { expect, test, vi, type TestContext } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
 import {
   type Proxies_Serialize,
-  type ProxyGroupItem_Serialize,
-  type ProxyItem_Serialize,
+  type Proxy_Serialize,
+  type ProxyGroup,
 } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import {
@@ -13,23 +13,32 @@ import {
 import { createQueryBindings } from '../src/query-bindings'
 import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 
-const node = (name: string): ProxyItem_Serialize => ({
+const node = (name: string): Proxy_Serialize => ({
   name,
   type: 'Direct',
   udp: false,
-  all: null,
-  now: null,
-  provider: null,
-  alive: null,
-  hidden: false,
   history: [{ time: '2026-09-10T00:00:00Z', delay: 42 }],
+  id: null,
+  now: null,
+  all: null,
+  testUrl: null,
+  expectedStatus: null,
+  fixed: null,
+  hidden: null,
+  icon: null,
+  emptyFallback: null,
+  provider: null,
 })
 
-const group = (name: string): ProxyGroupItem_Serialize => ({
-  ...node(name),
+const group = (name: string): ProxyGroup => ({
+  name,
   type: 'Selector',
-  now: 'tested',
   all: ['tested', 'other'],
+  now: 'tested',
+  fixed: null,
+  hidden: false,
+  icon: null,
+  capabilities: { select: true, clearFixed: false },
 })
 
 function makeSnapshot(): Proxies_Serialize {

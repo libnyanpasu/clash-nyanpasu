@@ -1038,7 +1038,7 @@ pub async fn clash_api_get_proxy_delay(
     name: String,
     provider: Option<String>,
     url: Option<String>,
-) -> Result<clash::api::DelayRes> {
+) -> Result<clash_api::Delay> {
     Ok(client.proxy_delay(name, provider, url).await?)
 }
 
@@ -1105,7 +1105,7 @@ pub async fn clash_api_get_group_delay(
     client: State<'_, NyanpasuClient>,
     group: String,
     url: Option<String>,
-) -> Result<IndexMap<String, u32>> {
+) -> Result<IndexMap<clash_api::ProxyName, u16>> {
     Ok(client.group_delay(group, url).await?)
 }
 
@@ -1114,7 +1114,7 @@ pub async fn clash_api_get_group_delay(
 #[specta::specta]
 pub async fn clash_api_get_providers_proxies(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::ProvidersProxiesRes> {
+) -> Result<IndexMap<clash_api::ProviderName, clash_api::ProxyProvider>> {
     Ok(client.proxy_providers().await?)
 }
 

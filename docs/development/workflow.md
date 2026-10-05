@@ -31,7 +31,12 @@ The repository currently keeps all 17 workflows. Every reusable workflow has a
 caller. The central-storage publisher is called by nightly and release workflows;
 the SourceForge release backfill is a manual entry point. Release publication and
 SourceForge backfills share one concurrency group so a backfill cannot race a newly
-published release. The manifest maintenance workflow updates both `main` and the still
+published release. Central storage first prepares the complete six-target inventory;
+SourceForge and Internet Archive then run as independent jobs with the original
+publication timestamp. Normal publication, recovery and backfill writers use the
+backend-specific `storage-publication-sourceforge` or `storage-publication-archive`
+lock. The SourceForge verification gate alone controls mirror-backed updater
+publication; Internet Archive ingestion does not block it. The manifest maintenance workflow updates both `main` and the still
 maintained v1 `dev` branch; a failure in one branch does not make the other job
 redundant. GitHub-generated Copilot workflows are managed by GitHub rather than
 these YAML files.

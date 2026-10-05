@@ -84,6 +84,22 @@ project and SSH values. The workflow stages each feed and renames it only after
 all files have uploaded; it verifies the public JSON before the nightly cleanup
 job can run. It only adds `updater/index.html` when that file is absent.
 
+Nightly and release builds first validate the complete six-target inventory and
+retain its original publication timestamp. SourceForge and IA then publish in
+separate jobs, each with its own `storage-publication-<backend>` writer lock and
+report artifact. Both jobs download the original signed build artifacts and use
+the shared timestamp; no additional package bundle is uploaded between jobs.
+Updater publication waits for verified SourceForge hashes and does not wait for
+IA. Normal SourceForge publication delegates public hashing to that independent
+verification job instead of downloading the inventory twice.
+
+Both backends process at most two targets simultaneously. Each IA target creates
+its item with the manifest first, then uploads at most two package files at a
+time (four concurrent transfers across targets). The independent SourceForge
+public SHA-256 verification job downloads at most four files simultaneously;
+manual recovery can run two such target verifications concurrently. Failed tasks
+are collected after the other queued targets finish, preserving their reports.
+
 Setting `IA_ITEM_PREFIX` automatically connects Internet Archive archiving.
 Configure `IA_ITEM_PREFIX` as a repository variable. The uploader lives in this
 repository and runs from the same checkout as the publication workflow.
@@ -140,10 +156,12 @@ rather than process arguments or temporary files. Recovery skips previously
 indexed files only when their size and MD5 match the original publication.
 
 Choose `mode=upload` and `backend=sourceforge`, `archive`, or `both` to
-retransfer one target or all six using current scripts. Choose `mode=verify` to
-recheck public SourceForge hashes or reconcile IA ingestion without reuploading
-bytes. Verification downloads SourceForge files to calculate SHA-256, so its
-transfer cost is proportional to the selected target inventory.
+retransfer one target or all six using current scripts. Selecting `both` runs
+the backends in separate jobs with independent locks and report artifacts.
+Choose `mode=verify` to recheck public SourceForge hashes or reconcile IA
+ingestion without reuploading bytes. Verification downloads SourceForge files to
+calculate SHA-256, so its transfer cost is proportional to the selected target
+inventory.
 
 Recovery downloads finalized, signed packages and `publication-reports-central`
 from the selected completed package run. It preserves the original run/attempt,

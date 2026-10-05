@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename, dirname, resolve } from "node:path";
+import { runPublicationTasks } from "./publication-concurrency.ts";
 
 interface PublishArtifact {
   path: string;
@@ -807,8 +808,10 @@ const publish = async (
         registeredManifest,
       ),
     });
-    for (const artifact of manifest.artifacts) {
-      uploads.push({
+    const results = await runPublicationTasks(
+      manifest.artifacts,
+      2,
+      async (artifact) => ({
         fileName: artifact.fileName,
         status: await uploadOne(
           registeredManifest.itemIdentifier,
@@ -818,8 +821,22 @@ const publish = async (
           false,
           registeredManifest,
         ),
-      });
+      }),
+    );
+    const errors: string[] = [];
+    for (const [index, result] of results.entries()) {
+      if (result.status === "fulfilled") uploads.push(result.value);
+      else {
+        errors.push(
+          `${manifest.artifacts[index].fileName}: ${
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason)
+          }`,
+        );
+      }
     }
+    if (errors.length) throw new Error(errors.join("; "));
   } finally {
     await Deno.remove(sanitized.path).catch(() => undefined);
   }

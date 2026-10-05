@@ -39,23 +39,25 @@ permissions:
   actions: read
   contents: read
 
-# Use the same writer lock as the original package publication.
-concurrency:
-  group: storage-publication
-  cancel-in-progress: false
-
 jobs:
   recover:
-    name: ${{ inputs.mode }} retained storage publication
+    name: ${{ inputs.mode }} retained ${{ matrix.backend }} publication
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: ${{ fromJSON(inputs.backend == 'both' && inputs.mode != 'register' && '["sourceforge","archive"]' || inputs.backend == 'sourceforge' && '["sourceforge"]' || '["archive"]') }}
+    concurrency:
+      group: storage-publication-${{ matrix.backend }}
+      cancel-in-progress: false
     env:
-      SOURCEFORGE_PROJECT: ${{ inputs.backend != 'archive' && inputs.mode != 'register' && vars.SOURCEFORGE_PROJECT || '' }}
+      SOURCEFORGE_PROJECT: ${{ matrix.backend != 'archive' && inputs.mode != 'register' && vars.SOURCEFORGE_PROJECT || '' }}
       SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
       SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}
       SOURCEFORGE_KNOWN_HOSTS: ${{ secrets.SOURCEFORGE_KNOWN_HOSTS }}
       ORIGINAL_ITEM_PREFIX: ${{ vars.IA_ITEM_PREFIX || 'sourceforge-only' }}
-      IA_ITEM_PREFIX: ${{ inputs.backend != 'sourceforge' && vars.IA_ITEM_PREFIX || '' }}
+      IA_ITEM_PREFIX: ${{ matrix.backend != 'sourceforge' && vars.IA_ITEM_PREFIX || '' }}
       IA_ACCESS_KEY: ${{ secrets.IA_ACCESS_KEY }}
       IA_SECRET_KEY: ${{ secrets.IA_SECRET_KEY }}
       IA_UPLOADER: ${{ secrets.IA_UPLOADER }}
@@ -65,7 +67,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SOURCE_RUN_ID: ${{ inputs.source_run_id }}
       RECOVERY_MODE: ${{ inputs.mode }}
-      RECOVERY_BACKEND: ${{ inputs.backend }}
+      RECOVERY_BACKEND: ${{ matrix.backend }}
       RECOVERY_TARGET: ${{ inputs.target }}
     steps:
       - name: Checkout current recovery scripts
@@ -140,7 +142,7 @@ jobs:
         if: ${{ always() && inputs.mode != 'preflight' }}
         uses: actions/upload-artifact@v7
         with:
-          name: storage-recovery-${{ inputs.source_run_id }}-${{ github.run_attempt }}
+          name: storage-recovery-${{ inputs.source_run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}
           overwrite: true
           path: |
             recovery-reports/

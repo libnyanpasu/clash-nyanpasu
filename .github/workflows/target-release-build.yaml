@@ -109,7 +109,7 @@ jobs:
     secrets: inherit
 
   publish_storage:
-    name: Publish Complete Build to Archive and Mirrors
+    name: Prepare Complete Storage Inventory
     needs:
       [
         windows_build,
@@ -121,6 +121,31 @@ jobs:
       ]
     uses: ./.github/workflows/deps-publish-storage.yaml
     with:
+      backend: prepare
+      nightly: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  publish_sourceforge:
+    name: Publish SourceForge Mirror
+    needs: [publish_storage]
+    if: ${{ needs.publish_storage.outputs.publication_prepared == 'true' && vars.SOURCEFORGE_PROJECT != '' }}
+    uses: ./.github/workflows/deps-publish-storage.yaml
+    with:
+      backend: sourceforge
+      published_at: ${{ needs.publish_storage.outputs.published_at }}
+      nightly: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  publish_archive:
+    name: Publish Internet Archive
+    needs: [publish_storage]
+    if: ${{ needs.publish_storage.outputs.publication_prepared == 'true' && vars.IA_ITEM_PREFIX != '' }}
+    uses: ./.github/workflows/deps-publish-storage.yaml
+    with:
+      backend: archive
+      published_at: ${{ needs.publish_storage.outputs.published_at }}
       nightly: false
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
@@ -165,7 +190,7 @@ jobs:
   verify_sourceforge:
     name: Verify SourceForge Mirror
     if: ${{ always() && (vars.SOURCEFORGE_PROJECT == '' || needs.publish_storage.outputs.publication_prepared == 'true') }}
-    needs: [publish_storage]
+    needs: [publish_storage, publish_sourceforge]
     runs-on: ubuntu-latest
     outputs:
       sourceforge_mirrors_json: ${{ steps.verify.outputs.sourceforge_mirrors_json }}
@@ -182,7 +207,7 @@ jobs:
         if: ${{ vars.SOURCEFORGE_PROJECT != '' }}
         uses: actions/download-artifact@v8
         with:
-          pattern: publication-reports-*
+          name: publication-reports-sourceforge
           path: ./publication-reports
           merge-multiple: false
       - name: Verify complete mirror and public hashes
@@ -202,7 +227,7 @@ jobs:
   verify_archive_uploads:
     name: Verify IA Archive Upload Reports
     if: ${{ always() && needs.publish_storage.outputs.publication_prepared == 'true' && vars.IA_ITEM_PREFIX != '' }}
-    needs: [publish_storage]
+    needs: [publish_storage, publish_archive]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -214,7 +239,7 @@ jobs:
       - name: Download target publication reports
         uses: actions/download-artifact@v8
         with:
-          pattern: publication-reports-*
+          name: publication-reports-archive
           path: ./publication-reports
           merge-multiple: false
       - name: Verify complete uploads and report pending ingest

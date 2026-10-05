@@ -20,7 +20,7 @@ jobs:
     name: Mirror ${{ inputs.release_tag }} to SourceForge
     runs-on: ubuntu-latest
     concurrency:
-      group: storage-publication
+      group: storage-publication-sourceforge
       cancel-in-progress: false
     steps:
       - name: Validate release tag

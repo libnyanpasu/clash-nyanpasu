@@ -12,6 +12,7 @@ async function main(): Promise<void> {
       "attempt",
       "tag",
       "item-prefix",
+      "published-at",
     ],
   });
   const required = (value: string | undefined, name: string): string => {
@@ -32,8 +33,16 @@ async function main(): Promise<void> {
       runId: required(args["run-id"], "run-id"),
       attempt: required(args.attempt, "attempt"),
       itemPrefix: args["item-prefix"] ?? "sourceforge-only",
+      publishedAt: args["published-at"],
     },
   );
+  if (Deno.env.get("GITHUB_OUTPUT")) {
+    await Deno.writeTextFile(
+      Deno.env.get("GITHUB_OUTPUT")!,
+      `published_at=${context.publishedAt}\n`,
+      { append: true },
+    );
+  }
   console.log(
     `Prepared ${context.targets.length} target inventories at ${context.publishedAt}`,
   );

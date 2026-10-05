@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import * as path from "jsr:@std/path";
+import { runPublicationTasks } from "./publication-concurrency.ts";
 import {
   validateSourceforgeFilename,
   validateSourceforgeRemotePath,
@@ -287,15 +288,32 @@ export async function verifySourceforgeMirror(
     string,
     { url: string; fileSize: number; sha256: string }
   > = {};
-  for (const report of reports) {
-    for (const artifact of report.artifacts) {
+  const artifacts = reports.flatMap((report) => report.artifacts);
+  const results = await runPublicationTasks(
+    artifacts,
+    4,
+    async (artifact) => {
       await verifyPublicSourceforgeArtifact(artifact, options);
-      assets[artifact.fileName] = {
-        url: artifact.url,
-        fileSize: artifact.fileSize,
-        sha256: artifact.sha256,
-      };
-    }
+    },
+  );
+  const failed = results.filter((result): result is PromiseRejectedResult =>
+    result.status === "rejected"
+  );
+  if (failed.length) {
+    throw new Error(
+      failed.map((result) =>
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason)
+      ).join("; "),
+    );
+  }
+  for (const artifact of artifacts) {
+    assets[artifact.fileName] = {
+      url: artifact.url,
+      fileSize: artifact.fileSize,
+      sha256: artifact.sha256,
+    };
   }
   return {
     schemaVersion: 1,

@@ -69,6 +69,44 @@ Deno.test("complete same-build reports stream through public SHA-256 verificatio
   );
 });
 
+Deno.test("public mirror verification bounds transfers and drains after a hash failure", async () => {
+  const reports = Array.from({ length: 6 }, (_, i) => report(`target-${i}`));
+  const release = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  let active = 0;
+  let maximum = 0;
+  let requests = 0;
+  const verification = verifySourceforgeMirror(
+    reports,
+    reports.map((item) => item.target),
+    "nightly",
+    {
+      fetcher: (async (input) => {
+        requests++;
+        active++;
+        maximum = Math.max(maximum, active);
+        if (requests === 4) started.resolve();
+        await release.promise;
+        active--;
+        return new Response(
+          String(input).includes("target-0")
+            ? new Uint8Array(bytes.length)
+            : bytes,
+          { headers: { "content-type": "application/zip" } },
+        );
+      }) as typeof fetch,
+      attempts: 1,
+    },
+  );
+  const rejected = assertRejects(() => verification);
+  await started.promise;
+  assertEquals(requests, 4);
+  release.resolve();
+  await rejected;
+  assertEquals(maximum, 4);
+  assertEquals(requests, 6);
+});
+
 Deno.test("reject missing, duplicate, unexpected and empty target reports", () => {
   for (
     const reports of [

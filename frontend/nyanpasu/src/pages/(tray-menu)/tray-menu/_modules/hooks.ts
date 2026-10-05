@@ -1,6 +1,6 @@
 import { useLockFn } from '@nyanpasu/hooks'
+import { isTauri } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
-import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = isTauri() ? getCurrentWebviewWindow() : null

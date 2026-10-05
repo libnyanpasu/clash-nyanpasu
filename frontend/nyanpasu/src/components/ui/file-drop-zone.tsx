@@ -10,11 +10,9 @@ import {
   useRef,
   useState,
 } from 'react'
-import { getClientSystem } from '@nyanpasu/platform'
+import { isWindows } from '@nyanpasu/platform'
 import { cn } from '@nyanpasu/utils'
 import { readTextFile } from '@tauri-apps/plugin-fs'
-
-const isWin = getClientSystem() === 'windows'
 
 const FileDropZoneContext = createContext<{
   isDragging: boolean
@@ -121,7 +119,8 @@ export function FileDropZone({
 
   const [fileName, setFileName] = useState<string | null>(
     value
-      ? ((isWin ? value.split('\\').at(-1) : value.split('/').at(-1)) ?? null)
+      ? ((isWindows ? value.split('\\').at(-1) : value.split('/').at(-1)) ??
+          null)
       : null,
   )
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -129,7 +128,9 @@ export function FileDropZone({
   // Update fileName when value changes
   useEffect(() => {
     if (value) {
-      const name = isWin ? value.split('\\').at(-1) : value.split('/').at(-1)
+      const name = isWindows
+        ? value.split('\\').at(-1)
+        : value.split('/').at(-1)
       setFileName(name || null)
     } else {
       setFileName(null)
@@ -170,7 +171,7 @@ export function FileDropZone({
       // Extract file name
       const name =
         file?.name ||
-        (isWin ? filePath.split('\\').at(-1) : filePath.split('/').at(-1))
+        (isWindows ? filePath.split('\\').at(-1) : filePath.split('/').at(-1))
       setFileName(name || null)
     } catch (error) {
       console.error('Failed to read file:', error)

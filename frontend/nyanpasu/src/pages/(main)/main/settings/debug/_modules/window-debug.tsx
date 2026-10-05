@@ -1,7 +1,7 @@
 import { Button } from '@nyanpasu/ui/button'
 import { rpc } from '@/services/rpc'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@tauri-apps/api/core'
+import { isTauri } from '@nyanpasu/platform'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import {
   SettingsCard,

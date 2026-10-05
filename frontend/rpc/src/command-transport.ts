@@ -1,4 +1,5 @@
 /* oxlint-disable no-throw-literal -- tauri-specta wraps string rejections in its Result return */
+import { isTauri } from '@tauri-apps/api/core'
 import { commands as tauriCommands } from './tauri-bindings'
 
 export interface RpcCommandTransport {
@@ -65,7 +66,7 @@ async function invokeHttpCommand<T>(
 export function createCommandTransport(): RpcCommandTransport {
   return {
     async invoke<T>(method: string, params: Record<string, unknown> = {}) {
-      if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+      if (!isTauri()) {
         return invokeHttpCommand<T>(method, params)
       }
       const result = await tauriCommands.callRpc(method, params)

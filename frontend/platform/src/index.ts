@@ -1,6 +1,10 @@
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
+export { isTauri }
+
+export const isBrowser = () => typeof window !== 'undefined' && !isTauri()
+
 type Platform =
   | 'aix'
   | 'android'

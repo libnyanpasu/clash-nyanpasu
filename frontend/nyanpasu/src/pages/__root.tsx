@@ -12,6 +12,7 @@ import { formatError } from '@/utils'
 import { degradationReasonMessage } from '@/utils/ipc-error'
 import { message } from '@/utils/notification'
 import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
+import { isBrowser, isTauri } from '@nyanpasu/platform'
 import { NyanpasuQueryProvider, useSettings } from '@nyanpasu/query'
 import { type Degradation, type DegradationPhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
@@ -21,7 +22,6 @@ import {
   Outlet,
   redirect,
 } from '@tanstack/react-router'
-import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = isTauri() ? getCurrentWebviewWindow() : null
@@ -83,7 +83,7 @@ const TanStackRouterDevtools = import.meta.env.PROD
 
 export const Route = createRootRoute({
   beforeLoad: ({ location }) => {
-    if (!isTauri() && location.pathname === '/') {
+    if (isBrowser() && location.pathname === '/') {
       throw redirect({ to: '/main/dashboard' })
     }
   },

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Switch } from '@nyanpasu/ui/switch'
 import { rpc } from '@/services/rpc'
+import { isTauri } from '@nyanpasu/platform'
 import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { isTauri } from '@tauri-apps/api/core'
 import {
   ItemContainer,
   ItemLabel,

@@ -1,7 +1,7 @@
 import { m } from '@/paraglide/messages'
 import { commands } from '@/services/rpc'
+import { isBrowser } from '@nyanpasu/platform'
 import { isIpcError, unwrapResult } from '@nyanpasu/rpc'
-import { isTauri } from '@tauri-apps/api/core'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   MessageDialogOptions,
@@ -50,7 +50,7 @@ export const notification = async ({
   if (!title) {
     throw new Error('missing message argument!')
   }
-  if (!isTauri()) {
+  if (isBrowser()) {
     window.alert(body ? `${title}: ${body}` : title)
     return
   }
@@ -78,7 +78,7 @@ export const message = async (
   value: string,
   options?: string | MessageOptions | undefined,
 ) => {
-  if (!isTauri()) {
+  if (isBrowser()) {
     window.alert(value)
     return
   }

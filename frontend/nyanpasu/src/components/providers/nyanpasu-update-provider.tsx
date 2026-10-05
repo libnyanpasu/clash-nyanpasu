@@ -1,7 +1,7 @@
 import { createContext, PropsWithChildren, use } from 'react'
+import { isTauri } from '@nyanpasu/platform'
 import { useAppUpdate } from '@nyanpasu/query'
 import packageJson from '@root/package.json'
-import { isTauri } from '@tauri-apps/api/core'
 
 const NyanpasuUpdateContext = createContext<
   | (ReturnType<typeof useAppUpdate> & {

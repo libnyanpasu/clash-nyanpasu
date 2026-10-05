@@ -1,3 +1,4 @@
+import { isTauri } from '@tauri-apps/api/core'
 import {
   createCommandTransport,
   type RpcCommandTransport,
@@ -15,11 +16,10 @@ export type RpcTransport = {
 
 /** Creates fresh adapters; event connection state belongs to this result. */
 export function createDefaultRpcTransport(): RpcTransport {
-  const isTauri =
-    typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-
   return {
     commands: createCommandTransport(),
-    events: isTauri ? createTauriEventTransport() : createHttpEventTransport(),
+    events: isTauri()
+      ? createTauriEventTransport()
+      : createHttpEventTransport(),
   }
 }

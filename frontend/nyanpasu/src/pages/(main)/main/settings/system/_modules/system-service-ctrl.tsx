@@ -15,7 +15,7 @@ import { rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { OS } from '@nyanpasu/platform'
+import { isWindows } from '@nyanpasu/platform'
 import { useCoreDir, useServicePrompt, useSystemService } from '@nyanpasu/query'
 import { unwrapResult } from '@nyanpasu/rpc'
 import { cn } from '@nyanpasu/utils'
@@ -247,7 +247,7 @@ const ServicePromptButton = () => {
     } else if (systemService?.status) {
       const operation = systemService?.status === 'running' ? 'stop' : 'start'
 
-      return `cd "${coreDir}"\n${OS !== 'windows' ? 'sudo ' : ''}./nyanpasu-service ${operation}`
+      return `cd "${coreDir}"\n${!isWindows ? 'sudo ' : ''}./nyanpasu-service ${operation}`
     }
     return ''
   }, [systemService?.status, serviceInstallPrompt, coreDir])

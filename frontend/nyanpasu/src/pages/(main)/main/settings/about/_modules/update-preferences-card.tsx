@@ -2,8 +2,8 @@ import { SwitchItem } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
+import { isBrowser } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
-import { isTauri } from '@tauri-apps/api/core'
 import {
   SettingsCard,
   SettingsCardContent,
@@ -12,7 +12,7 @@ import {
 import ReleaseChannelPreference from './release-channel-preference'
 
 export default function UpdatePreferencesCard() {
-  if (!isTauri()) {
+  if (isBrowser()) {
     return (
       <SettingsCard data-slot="about-update-preferences-card">
         <SettingsCardHeader>

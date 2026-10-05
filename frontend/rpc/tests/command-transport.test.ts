@@ -7,7 +7,10 @@ import {
 } from '../src'
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
-vi.mock('@tauri-apps/api/core', () => ({ invoke }))
+vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@tauri-apps/api/core')>()),
+  invoke,
+}))
 
 afterEach(() => {
   vi.unstubAllGlobals()

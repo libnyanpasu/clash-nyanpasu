@@ -980,11 +980,11 @@ pub async fn fetch_latest_core_versions(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
-    Ok(snafu::ResultExt::context(
-        resolve::resolve_core_version(&app_handle, &core_type).await,
-        crate::client::runtime_error::ReadCoreVersionSnafu,
-    )?)
+pub async fn get_core_version(
+    client: State<'_, NyanpasuClient>,
+    core_type: ClashCore,
+) -> Result<String> {
+    Ok(client.get_core_version(core_type).await?)
 }
 
 #[nyanpasu_macro::rpc]

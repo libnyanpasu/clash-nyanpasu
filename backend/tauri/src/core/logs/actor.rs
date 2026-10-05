@@ -16,6 +16,7 @@ enum Message {
     Query(CoreLogQuery, RpcReplyPort<CoreLogResult<CoreLogPage>>),
     Detail(CoreLogCursor, RpcReplyPort<CoreLogResult<CoreLogRecord>>),
     Clear(RpcReplyPort<CoreLogResult<()>>),
+    Configure(CoreLogSettings, RpcReplyPort<CoreLogResult<()>>),
     SetInstance(Option<String>, RpcReplyPort<CoreLogResult<()>>),
     Status(RpcReplyPort<CoreLogStatus>),
     #[cfg(test)]
@@ -134,6 +135,31 @@ impl State {
         }
         self.failed = result.is_err();
         if let Err(error) = &result {
+            self.status.error = Some(error.to_string());
+        }
+        self.publish();
+        result
+    }
+
+    /// Records still pending are encoded at their flush, under the new settings.
+    async fn configure(&mut self, settings: CoreLogSettings) -> CoreLogResult<()> {
+        // Rejected before the store sees it, so it leaves storage untouched.
+        settings
+            .validate()
+            .map_err(|reason| CoreLogError::Unavailable(reason.into()))?;
+        let (result, status) = self
+            .blocking(move |store| Ok((store.configure(settings), store.status())))
+            .await?;
+        if let Ok(mut status) = status {
+            status.version = self.status.version;
+            status.discarded = self.status.discarded;
+            status.error = self.status.error.take();
+            self.status = status;
+        }
+        // A failed rotation or eviction leaves the shards as uncertain as a
+        // failed commit, so it stops writes the same way.
+        if let Err(error) = &result {
+            self.failed = true;
             self.status.error = Some(error.to_string());
         }
         self.publish();
@@ -265,6 +291,9 @@ impl Actor for CoreLogsActor {
             Message::Clear(reply) => {
                 let _ = reply.send(state.clear().await);
             }
+            Message::Configure(settings, reply) => {
+                let _ = reply.send(state.configure(settings).await);
+            }
             Message::SetInstance(instance, reply) => {
                 let result = if state.instance != instance {
                     state.instance = instance;
@@ -358,6 +387,10 @@ impl CoreLogsClient {
     }
     pub async fn clear(&self) -> CoreLogResult<()> {
         self.call(Message::Clear).await?
+    }
+    pub async fn configure(&self, settings: CoreLogSettings) -> CoreLogResult<()> {
+        self.call(|reply| Message::Configure(settings, reply))
+            .await?
     }
     pub(crate) async fn set_instance(&self, instance: Option<String>) -> CoreLogResult<()> {
         self.call(|reply| Message::SetInstance(instance, reply))

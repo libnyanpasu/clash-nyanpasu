@@ -668,7 +668,7 @@ mod tests {
                 field: "core_logs",
                 mutate: |app| app.core_logs.max_size_mib = 128,
                 impact: RuntimeImpact::None,
-                owners: &[],
+                owners: &[EffectKind::CoreLogStorage],
             },
             // Peripheral owners.
             AppCase {

@@ -10,7 +10,8 @@ pub enum CoreLogCompression {
     Trained,
 }
 
-/// Current-session Core log retention, read when the application starts.
+/// Current-session Core log rotation and compression, applied as soon as it is
+/// committed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(default)]
 pub struct CoreLogSettings {

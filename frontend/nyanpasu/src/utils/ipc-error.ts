@@ -670,6 +670,8 @@ export function effectFailureMessage(code: EffectFailureCode): string {
       return m.effect_failure_hotkey_stopped()
     case 'logger_refresh_failed':
       return m.effect_failure_logger_refresh_failed()
+    case 'core_log_storage_failed':
+      return m.effect_failure_core_log_storage_failed()
     case 'widget_unavailable':
       return m.effect_failure_widget_unavailable()
     case 'widget_apply_failed':

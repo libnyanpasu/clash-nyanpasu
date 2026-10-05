@@ -1,6 +1,6 @@
 //! The implementation of [`ApplicationEffectsPort`]: it fans one plan out to
 //! the owner of each effect. Inside the client, [`CoreLogCaptureEffects`] adds
-//! the one owner the client spawns itself.
+//! the Core log owners the client spawns itself.
 //!
 //! The fan-out is by capability, not by lookup — there is no `get::<T>()` here,
 //! so the facade keeps one dependency and this stays a dispatcher rather than a
@@ -31,7 +31,7 @@ use crate::{
             LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController,
         },
     },
-    core::clash::ws::StreamsClient,
+    core::{clash::ws::StreamsClient, logs::CoreLogsClient},
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
 
@@ -200,8 +200,8 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
             let status = match effect {
                 ApplicationEffect::Locale(language) => self.apply_locale(revision, *language),
                 ApplicationEffect::Logger(desired) => self.apply_logger(revision, desired),
-                ApplicationEffect::CoreLogLevel(_) => {
-                    unreachable!("CoreLogCaptureEffects applies the Core log level")
+                ApplicationEffect::CoreLogLevel(_) | ApplicationEffect::CoreLogStorage(_) => {
+                    unreachable!("CoreLogCaptureEffects applies the Core log effects")
                 }
                 ApplicationEffect::AutoLaunch(_)
                 | ApplicationEffect::SystemProxy(_)
@@ -241,17 +241,27 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
     }
 }
 
-/// Applies the Core log capture level and hands every other effect to the
-/// executor. The client spawns the streams owner after the composition root has
-/// built the executor, so the client wraps the executor instead of joining it.
+/// Applies the Core log capture level and storage settings and hands every
+/// other effect to the executor. The client spawns the Core log owners after
+/// the composition root has built the executor, so the client wraps the
+/// executor instead of joining it.
 pub(crate) struct CoreLogCaptureEffects {
     executor: Arc<dyn ApplicationEffectsPort>,
     streams: StreamsClient,
+    storage: CoreLogsClient,
 }
 
 impl CoreLogCaptureEffects {
-    pub(crate) fn new(executor: Arc<dyn ApplicationEffectsPort>, streams: StreamsClient) -> Self {
-        Self { executor, streams }
+    pub(crate) fn new(
+        executor: Arc<dyn ApplicationEffectsPort>,
+        streams: StreamsClient,
+        storage: CoreLogsClient,
+    ) -> Self {
+        Self {
+            executor,
+            streams,
+            storage,
+        }
     }
 }
 
@@ -263,10 +273,12 @@ impl ApplicationEffectsPort for CoreLogCaptureEffects {
         plan: ApplicationEffectPlan,
     ) -> Vec<EffectStatus> {
         let mut level = None;
+        let mut storage = None;
         let mut others = Vec::new();
         for effect in plan.effects() {
             match effect {
                 ApplicationEffect::CoreLogLevel(desired) => level = Some(*desired),
+                ApplicationEffect::CoreLogStorage(desired) => storage = Some(*desired),
                 effect => others.push(effect.clone()),
             }
         }
@@ -285,6 +297,21 @@ impl ApplicationEffectsPort for CoreLogCaptureEffects {
                     revision,
                     EffectFailureCode::EffectOwnerSilent,
                     format!("{error:#}"),
+                    false,
+                ),
+            });
+        }
+        if let Some(settings) = storage {
+            statuses.push(match self.storage.configure(settings).await {
+                Ok(()) => healthy(EffectKind::CoreLogStorage, revision),
+                // Not retryable: a failure stops storage until it is cleared or
+                // a new Core session starts, and the store already holds the
+                // committed settings those resets run under.
+                Err(error) => degraded(
+                    EffectKind::CoreLogStorage,
+                    revision,
+                    EffectFailureCode::CoreLogStorageFailed,
+                    error.to_string(),
                     false,
                 ),
             });

@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use nyanpasu_config::{
     application::{
-        ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig,
-        ProxiesSelectorMode, TrayMenuMode,
+        ClashCore, CoreLogSettings, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig,
+        NyanpasuAppConfig, ProxiesSelectorMode, TrayMenuMode,
     },
     clash::config::{
         ClashConfig,
@@ -42,6 +42,7 @@ pub struct ApplicationEffectFields {
     pub app_log_level: LoggingLevel,
     pub max_log_files: usize,
     pub max_log_file_size: u64,
+    pub core_logs: CoreLogSettings,
     pub tray_selector_mode: ProxiesSelectorMode,
     pub tray_menu_mode: TrayMenuMode,
     pub enable_tray_text: bool,
@@ -73,6 +74,7 @@ impl From<&NyanpasuAppConfig> for ApplicationEffectFields {
             app_log_level: app.app_log_level.clone(),
             max_log_files: app.max_log_files,
             max_log_file_size: app.max_log_file_size,
+            core_logs: app.core_logs,
             tray_selector_mode: app.tray_selector_mode,
             tray_menu_mode: app.tray_menu_mode,
             enable_tray_text: app.enable_tray_text,
@@ -123,6 +125,7 @@ impl ApplicationEffectInputs {
                 max_file_size: app.max_log_file_size,
             },
             core_log_level: self.clash.log_level,
+            core_log_storage: app.core_logs,
             auto_launch: app.enable_auto_launch,
             system_proxy: SystemProxyDesired {
                 enabled: app.enable_system_proxy,
@@ -178,6 +181,7 @@ pub enum EffectKind {
     Locale,
     Logger,
     CoreLogLevel,
+    CoreLogStorage,
     AutoLaunch,
     SystemProxy,
     ProxyGuard,
@@ -261,6 +265,8 @@ struct ApplicationDesired {
     logger: LoggerDesired,
     /// The level the Core logs are captured at.
     core_log_level: LogLevel,
+    /// Rotation and compression of the stored Core logs.
+    core_log_storage: CoreLogSettings,
     auto_launch: bool,
     system_proxy: SystemProxyDesired,
     /// Split from `system_proxy` on purpose: changing only the interval must
@@ -292,6 +298,7 @@ pub enum ApplicationEffect {
     Locale(I18nLanguage),
     Logger(LoggerDesired),
     CoreLogLevel(LogLevel),
+    CoreLogStorage(CoreLogSettings),
     AutoLaunch(bool),
     SystemProxy(SystemProxyDesired),
     ProxyGuard(ProxyGuardDesired),
@@ -306,6 +313,7 @@ impl ApplicationEffect {
             Self::Locale(_) => EffectKind::Locale,
             Self::Logger(_) => EffectKind::Logger,
             Self::CoreLogLevel(_) => EffectKind::CoreLogLevel,
+            Self::CoreLogStorage(_) => EffectKind::CoreLogStorage,
             Self::AutoLaunch(_) => EffectKind::AutoLaunch,
             Self::SystemProxy(_) => EffectKind::SystemProxy,
             Self::ProxyGuard(_) => EffectKind::ProxyGuard,
@@ -361,6 +369,7 @@ impl ApplicationEffectPlan {
             locale,
             logger,
             core_log_level,
+            core_log_storage,
             auto_launch,
             system_proxy,
             proxy_guard,
@@ -375,6 +384,7 @@ impl ApplicationEffectPlan {
         effects.extend(locale.map(ApplicationEffect::Locale));
         effects.extend(logger.map(ApplicationEffect::Logger));
         effects.extend(core_log_level.map(ApplicationEffect::CoreLogLevel));
+        effects.extend(core_log_storage.map(ApplicationEffect::CoreLogStorage));
         effects.extend(auto_launch.map(ApplicationEffect::AutoLaunch));
         effects.extend(system_proxy.map(ApplicationEffect::SystemProxy));
         effects.extend(proxy_guard.map(ApplicationEffect::ProxyGuard));
@@ -424,6 +434,7 @@ mod tests {
                 app_log_level: LoggingLevel::Info,
                 max_log_files: 7,
                 max_log_file_size: 10,
+                core_logs: CoreLogSettings::default(),
                 tray_selector_mode: ProxiesSelectorMode::Normal,
                 tray_menu_mode: TrayMenuMode::Native,
                 enable_tray_text: false,
@@ -653,6 +664,20 @@ mod tests {
     }
 
     #[test]
+    fn core_log_storage_change_produces_only_its_effect() {
+        let before = inputs();
+        let mut after = inputs();
+        after.app.core_logs.compression = nyanpasu_config::application::CoreLogCompression::None;
+
+        let plan = ApplicationEffectPlan::diff(&before, &after);
+
+        assert_eq!(
+            plan.effects(),
+            [ApplicationEffect::CoreLogStorage(after.app.core_logs)]
+        );
+    }
+
+    #[test]
     fn widget_change_produces_widget_effect() {
         let before = inputs();
         let mut after = inputs();
@@ -730,6 +755,7 @@ mod tests {
                 EffectKind::Locale,
                 EffectKind::Logger,
                 EffectKind::CoreLogLevel,
+                EffectKind::CoreLogStorage,
                 EffectKind::AutoLaunch,
                 EffectKind::SystemProxy,
                 EffectKind::ProxyGuard,
@@ -969,6 +995,9 @@ pub(crate) fn requested_owners(
         || patch.max_log_file_size.is_some()
     {
         kinds.push(EffectKind::Logger);
+    }
+    if patch.core_logs.is_some() {
+        kinds.push(EffectKind::CoreLogStorage);
     }
     if patch.network_statistic_widget.is_some() {
         kinds.push(EffectKind::Widget);

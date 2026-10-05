@@ -97,7 +97,7 @@ pub struct NyanpasuAppConfig {
     /// silent | error | warn | info | debug | trace
     pub app_log_level: LoggingLevel,
 
-    /// Core log disk settings, applied on application startup.
+    /// Core log disk settings, applied as soon as they are committed.
     #[serde(default)]
     pub core_logs: CoreLogSettings,
 

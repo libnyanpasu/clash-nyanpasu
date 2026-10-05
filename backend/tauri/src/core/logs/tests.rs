@@ -606,6 +606,50 @@ fn rotation_evicts_oldest_files_and_paginates_every_retained_record() {
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }
 
+#[test]
+fn reconfiguring_mid_session_keeps_records_decodable_and_applies_the_new_budget() {
+    use nyanpasu_config::application::{CoreLogCompression, CoreLogSettings};
+    let directory = TempDir::new().unwrap();
+    let files = || std::fs::read_dir(directory.path()).unwrap().count();
+    let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    let mut settings = CoreLogSettings {
+        shard_size_mib: 4,
+        max_size_mib: 64,
+        compression: CoreLogCompression::None,
+    };
+    store.configure(settings).unwrap();
+    for number in 0..200 {
+        store.append(&[encoded(number, 64 * 1024)]).unwrap();
+    }
+    let raw = store.status().unwrap();
+    let shards = files();
+
+    // Replaying the same settings, as the startup reconcile does, changes nothing.
+    store.configure(settings).unwrap();
+    assert_eq!(files(), shards);
+
+    // A new mode seals the raw shard and the next write starts a compressed one.
+    settings.compression = CoreLogCompression::Preset;
+    store.configure(settings).unwrap();
+    assert!(!directory.path().join("current.redb").exists());
+    store.append(&[encoded(200, 64 * 1024)]).unwrap();
+    assert_eq!(files(), shards + 1);
+    let head = store.status().unwrap().head.unwrap();
+    assert_eq!(store.detail(head).unwrap().received_at, 200);
+    assert_eq!(
+        store.detail(raw.head.clone().unwrap()).unwrap().received_at,
+        199
+    );
+
+    // A smaller budget evicts the oldest shards before the next write.
+    settings.max_size_mib = 8;
+    store.configure(settings).unwrap();
+    let shrunk = store.status().unwrap();
+    assert!(shrunk.bytes <= settings.max_bytes());
+    assert!(shrunk.first.unwrap().sequence > raw.first.unwrap().sequence);
+    assert_eq!(shrunk.head.unwrap().sequence, 201);
+}
+
 #[tokio::test]
 async fn empty_flush_does_not_publish_another_version() {
     let logs = CoreLogsClient::test_client().await;

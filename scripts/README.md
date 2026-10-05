@@ -84,6 +84,13 @@ project and SSH values. The workflow stages each feed and renames it only after
 all files have uploaded; it verifies the public JSON before the nightly cleanup
 job can run. It only adds `updater/index.html` when that file is absent.
 
+Release files reserve their immutable size/SHA-256 inventory under
+`releases/<tag>/upload-inventory/<filename>/inventory.json` before uploading.
+SourceForge forbids dot-prefixed file and directory names, so this directory
+must not start with `.`. An unreadable reservation fails closed and reports both
+its creation error and its read error; do not remove the reservation to bypass
+an immutable-byte conflict.
+
 Nightly and release builds first validate the complete six-target inventory and
 retain its original publication timestamp. SourceForge and IA then publish in
 separate jobs, each with its own `storage-publication-<backend>` writer lock and

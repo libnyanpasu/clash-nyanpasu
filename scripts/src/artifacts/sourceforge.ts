@@ -136,9 +136,21 @@ export async function reserveSourceforgeArtifact(
 ): Promise<void> {
   try {
     await createInventory();
-  } catch {
+  } catch (creationError) {
     // A failed claim may already exist; absent or unreadable inventories fail closed.
-    const value = await loadInventory();
+    let value: unknown;
+    try {
+      value = await loadInventory();
+    } catch (readError) {
+      const message = (error: unknown) =>
+        error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Could not reserve SourceForge artifact ${artifact.fileName}: creation failed: ${
+          message(creationError)
+        }; existing inventory read failed: ${message(readError)}`,
+        { cause: new AggregateError([creationError, readError]) },
+      );
+    }
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       throw new Error(
         `Invalid SourceForge upload inventory for ${artifact.fileName}`,
@@ -232,6 +244,34 @@ export function sourceforgeUploadBatch(
     }),
     "",
   ].join("\n");
+}
+
+export function sourceforgeReservationBatch(
+  project: string,
+  remotePath: string,
+  fileName: string,
+  localInventory: string,
+): { batch: string; inventoryPath: string } {
+  validateSourceforgeProject(project);
+  validateSourceforgeRemotePath(remotePath);
+  validateSourceforgeFilename(fileName);
+  const remoteDir = `/home/frs/project/${project}/${remotePath}`;
+  const inventoryRoot = `${remoteDir}/upload-inventory`;
+  const inventoryDir = `${inventoryRoot}/${fileName}`;
+  const batch = [
+    `-mkdir ${
+      sftpQuote(`/home/frs/project/${project}/${remotePath.split("/")[0]}`)
+    }`,
+    `-mkdir ${sftpQuote(remoteDir)}`,
+    `-mkdir ${sftpQuote(inventoryRoot)}`,
+    // The artifact directory is an exclusive claim, unlike shared parent directories.
+    `mkdir ${sftpQuote(inventoryDir)}`,
+    `put ${sftpQuote(localInventory)} ${
+      sftpQuote(`${inventoryDir}/inventory.json`)
+    }`,
+    "",
+  ].join("\n");
+  return { batch, inventoryPath: `${inventoryDir}/inventory.json` };
 }
 
 export function sourceforgeWebUploadBatch(

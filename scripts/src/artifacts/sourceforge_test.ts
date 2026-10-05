@@ -3,6 +3,7 @@ import {
   guardReleaseMirrorUpload,
   reserveSourceforgeArtifact,
   sourceforgeDownloadUrl,
+  sourceforgeReservationBatch,
   sourceforgeUploadBatch,
   sourceforgeWebUploadBatch,
   validateSourceforgeFilename,
@@ -396,4 +397,63 @@ Deno.test("incomplete or unreadable release reservations fail before uploading",
     Error,
     "Inventory unavailable",
   );
+});
+
+Deno.test("release reservations use SF-compatible directories and exclusive artifact claims", () => {
+  const { batch, inventoryPath } = sourceforgeReservationBatch(
+    "nyanpasu",
+    "releases/v1.2.3",
+    "Clash Nyanpasu.zip",
+    "/tmp/inventory.json",
+  );
+  const mkdirs = batch.trim().split("\n").filter((line) =>
+    /^-?mkdir /.test(line)
+  );
+  for (const line of mkdirs) {
+    const directory = JSON.parse(line.slice(line.indexOf(" ") + 1)) as string;
+    for (const segment of directory.split("/").filter(Boolean)) {
+      validateSourceforgeFilename(segment);
+    }
+  }
+  assertEquals(
+    inventoryPath,
+    "/home/frs/project/nyanpasu/releases/v1.2.3/upload-inventory/Clash Nyanpasu.zip/inventory.json",
+  );
+  assertEquals(mkdirs.length, 4);
+  assertEquals(
+    mkdirs[2],
+    '-mkdir "/home/frs/project/nyanpasu/releases/v1.2.3/upload-inventory"',
+  );
+  assertEquals(
+    mkdirs[3],
+    'mkdir "/home/frs/project/nyanpasu/releases/v1.2.3/upload-inventory/Clash Nyanpasu.zip"',
+  );
+  assertEquals(
+    batch.includes('/upload-inventory/Clash Nyanpasu.zip/inventory.json"'),
+    true,
+  );
+});
+
+Deno.test("unreadable SF reservations retain creation and read failures", async () => {
+  const creationError = new Error("SF rejected dot-prefixed directory");
+  const readError = new Error("Inventory unavailable");
+  const error = await assertRejects(
+    () =>
+      reserveSourceforgeArtifact(
+        releaseArtifacts[0],
+        async () => {
+          throw creationError;
+        },
+        async () => {
+          throw readError;
+        },
+      ),
+    Error,
+    "SF rejected dot-prefixed directory",
+  );
+  assertEquals(error.message.includes("Inventory unavailable"), true);
+  assertEquals((error.cause as AggregateError).errors, [
+    creationError,
+    readError,
+  ]);
 });

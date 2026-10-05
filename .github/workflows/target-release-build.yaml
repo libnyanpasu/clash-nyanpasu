@@ -143,6 +143,9 @@ jobs:
   updater:
     name: Create Updater
     needs: [upload_release_assets, verify_sourceforge]
+    # A recovered mirror verification must not inherit storage publication's
+    # failure once the release packages and verified mirrors are ready.
+    if: ${{ !cancelled() && needs.upload_release_assets.result == 'success' && needs.verify_sourceforge.result == 'success' }}
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: false

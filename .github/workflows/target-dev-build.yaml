@@ -173,6 +173,9 @@ jobs:
   updater:
     name: Create Updater
     needs: [upload_release_assets, verify_sourceforge]
+    # Mirror verification can succeed after storage publication fails. Do not
+    # leave the old signatures pointing at newly replaced nightly packages.
+    if: ${{ !cancelled() && needs.upload_release_assets.result == 'success' && needs.verify_sourceforge.result == 'success' }}
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: true

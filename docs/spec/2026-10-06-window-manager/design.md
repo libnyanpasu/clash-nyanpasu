@@ -2,9 +2,9 @@
 
 **日期：** 2026-10-06
 
-**状态：** 设计已确认（2026-10-06，§8 全部决策已定），按本 spec 实施。
+**状态：** 已实现（2026-10-06），四个 draft PR：#5646、#5647、#5648、#5649，见 §7。本文按最终实现更新；起初的边沿触发设计经多轮评审被电平触发设计取代，见 §9。
 
-**基线：** main `e2a5e45a9`；Tauri 2.12.1，tauri-runtime-wry 2.12.1。
+**基线：** 起草于 main `e2a5e45a9`，实现基于 main `e53f874e7`；Tauri 2.12.1，tauri-runtime-wry 2.12.1。
 
 **需求：**
 
@@ -22,25 +22,26 @@
 - tauri-runtime-wry 2.12.1 `src/lib.rs` 的 `is_window_transparent` 分支（:4308、:4470）。
 - [tauri v3.0.0-alpha.0 发布说明](https://github.com/tauri-apps/tauri/releases/tag/tauri-v3.0.0-alpha.0)（#15985，2026-10-06 抓取）。
 - [docs.rs `tauri-runtime-cef` 3.0.0-alpha.5](https://docs.rs/tauri-runtime-cef/latest/tauri_runtime_cef/)，以及其中的 `WebviewWindowBuilderCefExt`（2026-10-06 抓取）。
-- 本 spec §2 引用的仓库代码与提交。
+- tauri-runtime-wry 2.12.1 `src/lib.rs`：`send_user_message` 在主线程上内联执行（:263）；窗口的 `close` 与 `destroy` 一律经 `proxy.send_event` 排队（:2120–2134）；窗口监听器在持有该窗口监听器列表的 `Mutex` 时被调用（:4228、:4364）。
+- 本 spec §2 引用的仓库代码与提交（行号为起草时的 main，实现后已变）。
 
 **权威顺序：** 当前 AGENTS.md 与 development guides > 本 spec。
 
 ## 1. 决策与范围
 
-1. 新增 `WindowManager`，取代 `WindowRegistry`，同时负责窗口登记、创建、显示、ready 和销毁。窗口的 Tauri 操作只由它发起。它属于 GUI crate 的 adapter，用一把锁保护窗口表，不是 actor，也不进入 `NyanpasuClient`。
+1. 新增 `WindowManager`，取代 `WindowRegistry`，同时负责窗口登记、创建、显示、隐藏、ready 和销毁。窗口的 Tauri 操作只由它发起。它属于 GUI crate 的 adapter，用一把锁保护窗口表，不是 actor，也不进入 `NyanpasuClient`。窗口表只记事实（已建好、已 ready、应显示），原生窗口的状态由一个幂等的 `apply` 按事实收敛，结果与事件到达的顺序无关（§3.2–§3.4）。
 2. 所有窗口都以隐藏状态创建。前端准备好后调用新的 RPC mutation `report_window_ready`，后端据此显示窗口。删除 `WindowReadyEvent` 和 `WindowConfig.visible_on_create`；前端不再自己调用 `show`、`unminimize` 和 `setFocus`。
-3. 窗口未 ready 时，打开请求只记下“ready 后显示”，不提前显示白屏或空窗口。窗口已 ready 时直接显示。
-4. 兜底计时器从“只在启动时、只管主窗口”改为每个新建窗口一份：10 秒内没有 ready 就强制显示并记录警告。ready 或销毁时取消计时器。这一条需要审核确认，见 §8-1。
+3. 窗口未 ready 时，打开请求只把窗口记为“应显示”，不提前显示白屏或空窗口；ready 到达后由 `apply` 显示。窗口已 ready 时，打开请求触发的 `apply` 直接显示并聚焦。
+4. 兜底计时器从“只在启动时、只管主窗口”改为每个新建窗口一份：10 秒内没有 ready 就按已 ready 处理并记录警告。ready 或销毁时取消计时器。见 §3.5、§8-1。
 5. 去掉 Windows 的 `.transparent(true)`，同时删除只有 Linux 读取、却没有任何窗口设置过的 `WindowConfig.transparent`。macOS 本来就不透明，不变。
-6. macOS 也走这套流程。Dock 图标的显示与隐藏，从 `resolve_setup` 的 ready 监听和 `lib.rs` 的 `CloseRequested` 分支移到 `WindowManager` 的显示与关闭路径里。
+6. macOS 也走这套流程。Dock 图标的显示与隐藏，从 `resolve_setup` 的 ready 监听和 `lib.rs` 的 `CloseRequested` 分支移到 `apply` 的显示路径和窗口种类的 `on_dismissed` 钩子里。
 7. 顺带收拢几处与窗口生命周期直接相关的临时做法：
    - 三个创建窗口的命令里“开线程、睡 10 ms、再 `run_on_main_thread`”的写法；
    - Windows 上创建窗口后“开线程、睡 100 ms，再关闭滑动导航”的写法；
    - 托盘菜单的 750/250 ms 焦点宽限期，以及前端两处“等服务端应用”的 300 ms 和导入对话框的 150 ms（§2.5、§3.10）。
 8. 新增关闭模式 `WindowCloseBehavior { Destroy, Hide }`：
    - 全局设定一个值，主窗口、编辑器、托盘菜单各自可以选择“继承全局”、“销毁”或“隐藏”；
-   - 所有关闭路径统一在 `CloseRequested` 处按该窗口的有效模式处理；
+   - 所有关闭路径（标题栏、前端按钮、热键、托盘菜单失焦）都只做一件事：把窗口记为“不再应显示”。`apply` 对不再应显示的窗口，按有效模式销毁或隐藏；
    - 现有的 `tray_menu_close_behavior` 并入新设定，通过配置迁移转换。
    - 默认值：全部为销毁（托盘菜单也继承全局）。已有配置里显式保存的托盘菜单设定由迁移保留。见 §3.8。
 9. 不变：
@@ -97,7 +98,7 @@
 - 编辑器 `css/index.tsx:57`、`:70`；
 - 编辑器 `profile/index.tsx:74`、`:102`。
 
-Tauri 的 `Window::close` 与用户点击关闭按钮一样，会先发出 `CloseRequested`，可以被拦截（`tauri-2.12.1/src/window/mod.rs:1890`）。`destroy` 则不发事件。因此全部关闭路径都可以在 `CloseRequested` 一处统一处理。
+Tauri 的 `Window::close` 与用户点击关闭按钮一样，会先发出 `CloseRequested`，可以被拦截（`tauri-2.12.1/src/window/mod.rs:1890`）。`destroy` 则不发事件。起草时的设想是全部关闭路径都在 `CloseRequested` 一处统一处理；实现时发现管理层自己调用原生 `close()` 会带来排序问题，改为“关闭只改事实”，见 §3.3。
 
 热键切换（`hotkey/adapters.rs:194-197`）用“窗口是否存在”判断开关，窗口改为隐藏后，这个判据不再成立。
 
@@ -113,7 +114,7 @@ Tauri 的 `Window::close` 与用户点击关闭按钮一样，会先发出 `Clos
 | 位置                                                                             | 延时            | 等的是什么                               | 处理                          |
 | -------------------------------------------------------------------------------- | --------------- | ---------------------------------------- | ----------------------------- |
 | `ipc.rs:1906`、`:1922`、`:1960`                                                  | 10 ms           | 让同步命令先返回，避免在命令里建窗死锁   | 改为 async 命令（§3.6）       |
-| `window.rs:705`                                                                  | 100 ms          | WebView2 controller 创建完成             | 改为首次 ready 时设置（§3.4） |
+| `window.rs:705`                                                                  | 100 ms          | WebView2 controller 创建完成             | 改为首次 ready 时设置（§3.3） |
 | `resolve.rs:23-24`，`TrayMenuFocus`                                              | 750 ms / 250 ms | 托盘点击后，Windows shell 的焦点抖动结束 | 见 §3.10                      |
 | `web-ui/_modules/core-secret-config.tsx:73`、`external-controller-config.tsx:62` | 300 ms          | “等服务端应用”                           | 见 §3.10                      |
 | `profiles/$type/_modules/import-button.tsx:29`                                   | 150 ms          | 路由切换动画结束后再打开对话框           | 见 §3.10                      |
@@ -136,8 +137,8 @@ Tauri 的 `Window::close` 与用户点击关闭按钮一样，会先发出 `Clos
 | 文件         | 内容                                                                                |
 | ------------ | ----------------------------------------------------------------------------------- |
 | `mod.rs`     | `AppWindow`、`WindowConfig`、URL 参数工具、`WindowMessageEvent`（现有内容迁入）     |
-| `table.rs`   | 纯数据的窗口表 `WindowTable`：label 分配与生命周期状态，不依赖 Tauri                |
-| `manager.rs` | `WindowManager`：持有 `Mutex<WindowTable>` 与 `AppHandle`，执行 Tauri 窗口操作      |
+| `table.rs`   | 纯数据的窗口表 `WindowTable`：label 分配与窗口的事实，不依赖 Tauri                  |
+| `manager.rs` | `WindowManager`：持有 `Mutex<WindowTable>` 与 `AppHandle`，排队并执行 `apply`       |
 | `kinds.rs`   | `MainWindow`、`EditorWindow`、`TrayMenuWindow` 及托盘菜单定位，从 `resolve.rs` 迁入 |
 | `macos.rs`   | 红绿灯定位（现有 `window::macos` 迁入）                                             |
 | `engine.rs`  | 与 webview 引擎绑定的代码：浏览器参数、滑动导航（§3.9）                             |
@@ -146,100 +147,86 @@ Tauri 的 `Window::close` 与用户点击关闭按钮一样，会先发出 `Clos
 
 ### 3.2 窗口表（`table.rs`，纯逻辑）
 
+窗口表只记事实，不记“发生过什么”。每个条目：
+
 ```rust
-/// Where a window is in its life. Visibility after ready is the OS's,
-/// read from the window; the table does not mirror it.
-enum Phase {
-    /// Built hidden; the webview has not reported ready. Every open asks
-    /// for the window, so it shows once ready.
-    Loading,
-    Ready,
-}
-
-struct Entry {
+struct Entry<H> {
     base_label: String,
-    phase: Phase,
+    built: bool,          // 原生窗口已建好（隐藏）
+    ready: bool,          // webview 报告了 ready，或兜底计时器到期
+    wanted: bool,         // 应当显示：每次打开置真，每次关闭置假
+    setup_pending: bool,  // 首次 ready 还没处理，需要已建好的窗口
+    watchdog: Option<AbortHandle>,
+    hooks: H,             // 窗口种类的钩子，表保存并原样交还
 }
+```
 
-#[derive(Default)]
-pub struct WindowTable {
-    entries: HashMap<String, Entry>,
-}
+不变量：原生窗口展示 ⇔ `built && ready && wanted`；不再 `wanted` 时，窗口被销毁，或在已展示时被隐藏。
 
-pub enum Admission {
-    /// Build a new window under this label.
-    Create(String),
-    /// A singleton instance exists and has reported ready: show it now.
-    ShowExisting(String),
-    /// A singleton instance is still loading; it shows when ready.
-    Pending(String),
-}
+事件只改事实，然后排一次 `apply`（§3.3）。`facts(label)` 只对已建好的条目返回事实，并取走 `setup_pending`；`Facts::actions(presented)` 是纯函数，给出 `first_ready`、`show`（`ready && wanted`）、`retire`（`!wanted`）和 `dismiss`（`!wanted && presented`）。`presented` 由 `apply` 读原生窗口得到：可见，或已最小化（macOS 的 `isVisible` 对最小化窗口为假，其他平台把最小化窗口算作可见）。
 
-pub enum ReadyOutcome {
-    /// First ready of a loading window: reveal it.
-    Reveal,
-    /// Ready again, e.g. after a page reload: nothing to do.
-    AlreadyReady,
-    /// No window under this label was created through the table.
-    Unknown,
-}
+主要接口：`open(base, singleton, hooks) -> Opened { Build(label) | Existing(label) }`、`built`、`ready`、`unwant`、`wanted`、`facts`、`set_watchdog`、`remove`、`instances`。表带泛型 `H`，所以不出现 Tauri 类型。
 
-impl WindowTable {
-    pub fn admit(&mut self, base_label: &str, singleton: bool) -> Admission;
-    pub fn ready(&mut self, label: &str) -> ReadyOutcome;
-    pub fn remove(&mut self, label: &str);
-    pub fn is_ready(&self, label: &str) -> bool;
+- label 规则与旧 `WindowInstances::generate_label` 一致：单例用基础 label，非单例取 `base-N` 中最小的空闲编号。
+- 新窗口在 `build` **之前**登记（`wanted` 为真），所以 ready 一定晚于登记；即使 ready 早于 `build` 返回，也只是先记下 `ready`，`apply` 等窗口建好再处理。
+- 关闭模式为隐藏时，`open` 先选同一 base 下“已建好且不再应显示”的实例，再考虑新建（§3.8）。
+- 窗口收到 `Destroyed`，或 `build` 失败时 `remove`；不再在创建前清理“已不存在窗口的记录”。
+
+### 3.3 `WindowManager`（`manager.rs`）
+
+组合根在 `setup.rs` 处 `app.manage(WindowManager::new(app_handle))`，替代 `WindowRegistry`。公开操作：
+
+```rust
+impl WindowManager {
+    pub fn open<K: AppWindow>(&self, kind: &K, params: Option<WindowParams>) -> Result<String>;
+    pub fn report_ready(&self, label: &str);
+    pub fn close(&self, label: &str);   // 只把窗口记为不再应显示
+    pub fn is_wanted(&self, label: &str) -> bool;
     pub fn instances(&self, base_label: &str) -> Vec<String>;
 }
 ```
 
-- `admit` 分配 label 的规则与现有 `WindowInstances::generate_label` 一致：单例用基础 label，非单例取 `base-N` 中最小的空闲编号。单例窗口未 ready 时再次请求打开，返回 `Pending`，不会提前显示：它 ready 后反正会显示。
-- 新窗口在调用 `build` **之前**以 `Loading` 状态登记，所以 ready 一定晚于登记。即使 ready 早于 `build` 返回到达，由锁保证顺序。
-- `build` 失败或收到 `WindowEvent::Destroyed` 时调用 `remove`。现有“创建前清理已不存在窗口的记录”（`window.rs:452-462`）改为依赖 `Destroyed`，并保留创建失败时的 `remove`。
+事件与它们设置的事实：
 
-### 3.3 `WindowManager`（`manager.rs`）
+| 事件                                                                   | 效果                                                                                                                                                                                                      |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open`，窗口已存在                                                     | `wanted = true`，并总是排 `apply`，所以已显示的窗口会被聚焦                                                                                                                                               |
+| `open`，窗口不存在                                                     | 登记（`wanted = true`）并在调用线程上构建。命令、托盘与热键都在异步运行时上构建，因为 Windows 上从主线程的事件处理里建窗会死锁；启动时的首次 `open` 在 `setup` 回调里进行（事件循环尚未运行），与以前相同 |
+| 构建完成（几何、居中、阴影、devtools、红绿灯、`kind.on_created` 之后） | `built = true`；窗口尚未 ready 时启动兜底计时器                                                                                                                                                           |
+| 前端 ready 报告                                                        | 首次：`ready = true`，`setup_pending = true`，停止计时器                                                                                                                                                  |
+| 兜底计时器到期                                                         | 与 ready 报告相同，并记录警告                                                                                                                                                                             |
+| `manager.close`、用户的 `CloseRequested`、托盘菜单失焦                 | `wanted = false`                                                                                                                                                                                          |
+| `Destroyed`                                                            | 移除条目，停止计时器                                                                                                                                                                                      |
 
-组合根在 `setup.rs:227` 处 `app.manage(WindowManager::new(app_handle))`，替代 `WindowRegistry`。公开操作：
+只有事实确实变了才排 `apply`（`open` 除外）。
 
-```rust
-impl WindowManager {
-    /// Opens a window of this kind: builds it hidden, or shows the existing
-    /// singleton once it is ready.
-    pub fn open(&self, kind: &dyn AppWindow, params: Option<WindowParams>) -> Result<String>;
-    /// The frontend of `label` has rendered; reveals it on the first call.
-    pub fn report_ready(&self, label: &str);
-    /// Asks the window to close; its close behavior decides what that means.
-    pub fn close(&self, label: &str);
-    /// Whether the window exists and is shown. A hidden window is not open.
-    pub fn is_visible(&self, label: &str) -> bool;
-}
-```
+**`apply(label)`**（`manager.rs`）总是在主线程运行，读取当时的事实，所以排队它的是哪些事件、顺序如何都无关紧要；为一个已消失或已被同名窗口取代的 label 排的 `apply` 只会看到现有条目自己的事实。步骤：
 
-`open` 的步骤：
+1. 条目缺失或窗口未建好：返回，待处理的事实留着。
+2. `first_ready`：调用 `engine::on_first_ready`（§3.9）。
+3. `ready && wanted`：`unminimize`、`show`、`set_focus`；macOS 且为主窗口时先显示 Dock 图标。
+4. 否则若不再 `wanted`：窗口已展示（`presented`）时先调用窗口种类的 `on_dismissed` 钩子（主窗口保存几何，macOS 下隐藏 Dock 图标），然后按有效模式销毁，或在已展示时隐藏（§3.8）。
 
-1. 先在 `table.instances(base_label)` 中找已 ready、但被隐藏的实例。找到就复用它，走 §3.4 的显示流程；只有关闭模式为隐藏时才会出现这种实例（§3.8）。
-2. 没有可复用的实例时调用 `table.admit`。`ShowExisting` 走 §3.4 的显示流程；`Pending` 直接返回。
-3. `Create`：沿用现有 `create_with_params` 的构建代码，但固定 `.visible(false)`，并删除 `.transparent(true)`。几何恢复、居中、阴影、开发版 devtools、macOS 红绿灯都放在 `build` 之后执行，与现在相同。
-4. 为该窗口注册一个 `on_window_event`，处理以下事件：
-   - `Destroyed`：调用 `table.remove`，并取消兜底计时器；
-   - `CloseRequested`：先执行窗口种类的关闭钩子，即主窗口保存几何（现 `lib.rs:371`）、macOS 下主窗口隐藏 Dock 图标（现 `lib.rs:373`）；然后按 §3.8 的有效关闭模式处理。
-5. 启动兜底计时器，见 §3.5。
+两条规则来自 tauri-runtime-wry 2.12.1 的源码：
 
-托盘菜单定位需要在显示前设置位置。`show_tray_menu_window` 改为：先 `open`，再对窗口 `set_position`。窗口已 ready 时立即显示；仍在加载时只更新位置，ready 后由 §3.4 显示。
+- **管理层永远不调用原生 `close()`。** `close()` 与 `destroy()` 都经 `proxy.send_event` 排队，即使在主线程上也是（`src/lib.rs:2120–2134`）。排队的 `close()` 之后会作为一个 `CloseRequested` 回来，与用户的关闭无法区分，会覆盖更晚的 `open`（打开、关闭、再打开）。所以管理层的输出只有 `show`、`hide`、`destroy`，`destroy` 不发 `CloseRequested`。
+- **`apply` 总是排队，不内联运行。** `run_on_main_thread`、`show`、`hide` 在主线程上内联执行（`:263`），而窗口监听器在持有该窗口监听器列表的 `Mutex` 时被调用（`:4228`、`:4364`）。从监听器里内联运行 `apply` 会在持锁时再派发同一窗口的事件。所以排队用 `tauri::async_runtime::spawn` 再 `run_on_main_thread`。`apply` 与 `CloseRequested` 处理都在主线程，彼此串行；`apply` 在读事实时才决定做什么，所以“先显示后隐藏”和“先隐藏后跳过显示”都以隐藏收场。持有表的锁只用于读写事实，不会在持锁时调用 Tauri 或排 `apply`。
 
-### 3.4 显示流程（ready 与再次打开共用）
+**`CloseRequested`**（标题栏、Alt+F4、前端的 `close()`）在两种模式下都被 `prevent_close`，并等同于 `manager.close`；`WindowManager` 状态缺失时不拦截。`on_window_event` 仍用于窗口种类的其他事件（托盘菜单的焦点）。
 
-`report_ready` 收到 `Reveal`，或 `open` 收到 `ShowExisting` 时，依次执行：
+**窗口种类的钩子**用一个对象安全的 `WindowHooks` 在条目里保存（对 `AppWindow` 的 blanket impl）：`on_dismissed`，以及按窗口种类决定关闭后销毁还是隐藏的钩子。第一阶段（#5647）里它是 `hides_on_close(&NyanpasuAppConfig)`，托盘菜单按旧的 `tray_menu_close_behavior` 回答，其他种类为否；#5649 把它换成 `close_override(&WindowCloseSettings)`（§3.8）。`apply` 在运行时才读配置，所以设定改动不需要 effect。
 
-1. 仅限首次 ready：调用 `engine::on_first_ready`。在 Windows 上，它关闭 WebView2 的滑动导航，代码从 `window.rs:707-716` 迁来。此时 webview 一定已创建，所以删除开线程睡 100 ms 的写法。
-2. 仅限 macOS 且仅限主窗口：在主线程调用 `dock::macos::show_dock_icon()`，它会把激活策略设为 Regular 并激活应用。
-3. 依次调用 `unminimize`、`show`、`set_focus`。
+托盘菜单定位需要在显示前完成。`TrayMenuWindow` 带着光标位置，在 `on_created` 钩子里为新窗口定位，早于“已建好”这一事实；已存在的窗口则在 `open` 之前先 `set_position`，以免在旧位置闪现。
+
+### 3.4 热键切换
+
+热键切换只读 `is_wanted(main)`：为真则 `close`，否则 `open`。它在异步一侧运行并被等待，所以连按两次不会交错；加载中的窗口也算 `wanted`，所以连按两次以关闭收场。`exit.rs` 保存几何的条件是“主窗口存在”，隐藏的主窗口仍保存它的几何。
 
 ### 3.5 兜底计时器
 
-`open` 新建窗口时，用 `tauri::async_runtime::spawn` 起一个任务：睡 10 秒，然后对该 label 调用 `report_ready`，并记录 `warn`。任务的 `JoinHandle` 存进 `Entry`，`ready` 或 `remove` 时调用 `abort`。这样窗口销毁后同名窗口重建，旧计时器也不会误触发，不需要另加代次编号。
+窗口建好且尚未 ready 时，用 `tauri::async_runtime::spawn` 起一个任务：睡 10 秒，然后按 ready 报告处理并记录 `warn`。任务的 `AbortHandle` 存进条目，`ready` 或 `remove` 时 `abort`；条目已 ready 或已消失时 `set_watchdog` 拒绝存放，由调用方终止任务。起初设计里给计时器配的任务号检查已去掉，接受下面的残留风险（§9）。
 
-`resolve.rs:228-251` 的 `spawn_window_ready_timeout` 删除。
+`resolve.rs` 里的 `spawn_window_ready_timeout` 已删除。
 
 ### 3.6 RPC 与前端
 
@@ -251,18 +238,18 @@ impl WindowManager {
 #[specta::specta]
 pub async fn report_window_ready(
     windows: State<'_, WindowManager>,
-    webview: WebviewWindow,
+    webview: Webview,
 ) -> Result<()> {
     windows.report_ready(webview.label());
     Ok(())
 }
 ```
 
-label 取自调用方的 webview，不接受前端传入，前端无法替其他窗口报告 ready。宏已支持注入 `WebviewWindow`（`nyanpasu-macro/src/unified_command.rs:109-110`、`:198-201`）。
+label 取自调用方的 webview，不接受前端传入，前端无法替其他窗口报告 ready。参数类型是 `Webview` 而不是 `WebviewWindow`：宏识别两者，但生成的处理函数传入的是 `::tauri::Webview`（`nyanpasu-macro/src/unified_command.rs:198-201`），声明为 `WebviewWindow` 会类型不符。
 
-`create_main_window`、`create_debug_tray_menu_window`、`create_editor_window` 改为 `async` 命令，直接调用 `WindowManager`，删除开线程睡 10 ms 的写法。
+`create_main_window`、`create_debug_tray_menu_window`、`create_editor_window` 改为 `async` 命令，直接调用 `WindowManager`，删除开线程睡 10 ms 的写法。托盘的点击处理与热键切换同样不在主线程上建窗：托盘处理 `spawn` 到异步运行时，热键切换在异步一侧运行并被等待。
 
-前端 `__root.tsx` 的 `WindowReveal` 改为 `WindowReadyReporter`：在 Tauri 环境中，设置查询结束（成功或失败）后，每次页面加载只调用一次 `rpc.reportWindowReady()`。错误边界 `Catch` 渲染时也调用一次，让出错的窗口立即可见，而不是等 10 秒兜底。
+前端 `__root.tsx` 的 `WindowReveal` 改为 `WindowReadyReporter`：在 Tauri 环境中，设置查询结束（成功或失败）后，每次页面加载调用一次 `rpc.reportWindowReady()`，失败只记 `console.error`。错误边界 `Catch` 渲染时也调用一次，让出错的窗口立即可见，而不是等 10 秒兜底；重复的 ready 对后端是空操作。
 
 删除的部分：
 
@@ -277,7 +264,7 @@ label 取自调用方的 webview，不接受前端传入，前端无法替其他
 ### 3.7 macOS
 
 - `resolve_setup` 中 `set_activation_policy(Accessory)` 保持不变。
-- Dock 图标随主窗口显示而出现（§3.4 第 2 步），随主窗口 `CloseRequested` 而隐藏（§3.3 第 3 步）。这与现有行为一致，只是改由 `WindowManager` 负责。
+- Dock 图标随主窗口显示而出现（`apply` 的显示步骤），随主窗口被销毁或隐藏而消失（`on_dismissed`）。这与现有行为一致，只是改由 `WindowManager` 负责。最小化的窗口在 macOS 上 `isVisible` 为假，所以 `apply` 以“可见或已最小化”判定是否已展示，否则热键关闭最小化的主窗口会漏掉 `on_dismissed` 和隐藏。隐藏（`orderOut`）是否同时移除 Dock 里的最小化缩略图未能验证，列入 macOS 冒烟清单。
 - `RunEvent::Reopen` 改为调用 `WindowManager::open(&MainWindow, None)`。
 - 隐藏的 `WKWebView` 仍会加载和执行脚本，现有隐藏创建主窗口的流程已经依赖这一点，所以 ready 可以在窗口显示之前到达。
 
@@ -331,11 +318,12 @@ pub struct WindowCloseSettings {
 
 - 用 `#[derive(Default)]`：`global: Destroy`，三个窗口均为 `Inherit`。也就是说，新安装的托盘菜单默认销毁，与之前默认隐藏不同；已有配置文件会显式写有 `tray_menu_close_behavior`，迁移后保留原值。
 - `NyanpasuAppConfig` 新增字段 `window_close: WindowCloseSettings`，删除 `tray_menu_close_behavior` 与 `TrayMenuCloseBehavior`。
-- struct-patch 对嵌套字段整值替换，前端每次提交整个 `window_close` 对象。
-- 改动不影响运行时，`impact.rs:872-876` 的用例按 `RuntimeImpact::None` 改写。`WindowManager` 在每次关闭时读取 `app_config_snapshot()`，所以设定改动不需要 effect。
+- `WindowCloseSettings` 派生 `Patch`，`window_close` 字段用 `#[patch(nesting)]`，与 `ClashConfig.mixed_port` 相同。补丁只写出要改的子字段，合并发生在串行的配置所有者里，所以两次改不同字段的编辑（来自同一页面或两个页面）不会互相覆盖。没有为此新增 RPC。生成的序列化形式的补丁类型要求嵌套补丁，所以 `useSettings` 的补丁类型写作 `Partial<NyanpasuAppConfigPatch_Serialize>`。
+- `window_close` 带 `#[serde(default)]`：旧版本写出的文件没有这个键，缺少默认值会让它们加载失败。
+- 改动不影响运行时，`impact.rs` 的用例按 `RuntimeImpact::None` 改写；补丁只涉及已具名的字段，`window_close` 不触发任何 effect。`apply` 在运行时读取 `app_config_snapshot()`，所以设定改动不需要 effect。
 - “继承全局”用显式的 `Inherit` 变体，而不是 `Option`。这样 YAML 和前端下拉框里都能看到这个选项，也避开 struct-patch 对 `Option` 字段的双层包装。
 
-窗口种类通过 `AppWindow` 新增的方法取用自己的设定：
+窗口种类通过 `AppWindow` 的方法（并经 `WindowHooks` 暴露给 `apply`）取用自己的设定：
 
 ```rust
 fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
@@ -345,38 +333,39 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 
 #### 关闭处理
 
-`WindowManager` 在 `CloseRequested` 中计算有效模式 `kind.close_override(&settings).resolve(settings.global)`：
+`apply` 对不再应显示的窗口计算有效模式 `kind.close_override(&settings).resolve(settings.global)`：
 
-- `Destroy`：不拦截，窗口照常销毁，随后收到 `Destroyed`，从表中移除。
-- `Hide`：调用 `api.prevent_close()`，再调用 `hide()`。窗口仍以 `Ready` 状态留在表中，下次 `open` 时按 §3.3 第 1 步复用。
+- `Destroy`：调用 `destroy()`，随后收到 `Destroyed`，从表中移除。
+- `Hide`：窗口已展示时调用 `hide()`。窗口仍以已建好、已 ready、不再 `wanted` 的状态留在表里，下次 `open` 时被优先选中并重新显示（§3.2）。
 
-关闭钩子（保存几何、macOS 隐藏 Dock 图标）在两种模式下都执行。
+`on_dismissed`（保存几何、macOS 隐藏 Dock 图标）在两种模式下都在窗口已展示时执行。
 
-关闭入口统一为 `close`：
+所有关闭入口都收敛为“窗口不再应显示”：
 
-- 后端托盘菜单失焦处理（`resolve.rs:493-505`）不再读设定，直接调用 `close`。
-- 前端托盘菜单的点击处理（`hooks.ts`）不再读设定，统一为：先 `hide()` 以立即消失，再执行动作，最后 `close()`。动作的 IPC 在窗口销毁之前已经发出，原注释要防止的问题依然被避免；在隐藏模式下，最后的 `close()` 等于对已隐藏的窗口再隐藏一次。
-- 其他前端入口原本就调用 `close()`，不需要改。
+- 托盘菜单失焦处理不再读设定，直接调用 `close`。
+- 前端托盘菜单的点击处理（`hooks.ts`）不再读设定：先执行动作，最后 `close()`。动作的 IPC 在窗口可能被销毁之前发出；不先 `hide()`，因为隐藏会让菜单失焦，后端会随即关闭它。菜单在动作执行期间保持可见，这一取舍已接受。
+- 其他前端入口原本就调用 `close()`，它与标题栏、Alt+F4 一样是用户的关闭，经 `CloseRequested` 变成同一件事。
 
-热键切换改为：`is_visible(main)` 为真时 `close`，否则 `open`。`exit.rs:235-237` 保存几何的条件改为“主窗口存在”，隐藏的主窗口仍保存它的几何。
+热键切换见 §3.4。
 
-退出应用时，Tauri 直接销毁窗口，不经过 `CloseRequested`（需在冒烟测试中确认），所以隐藏模式不会阻止退出。
+退出应用时，Tauri 直接销毁窗口，不经过 `CloseRequested`，所以隐藏模式不会阻止退出。
 
 #### 配置迁移
 
-在 `core/migration/modules/app_config.rs` 新增步骤 `app_config/window_close`，revision 为 5：
+应用真正读写的配置文件是 `application.yaml`（`ApplicationClient`），不是 `nyanpasu-config.yaml`：后者是 2.0 前的遗留文件，只作为 `typed_config` 迁移的输入，`app_config` 模块只改它。`app_config` 是冻结的启发式模块（`migration/mod.rs` 的 `ModuleKind` 说明，`registry.rs` 的冻结测试），不能再加步骤。所以：
 
-- 如果存在 `tray_menu_close_behavior`，就写入 `window_close`，其中 `tray_menu` 按 `hide → hide`、`close → destroy` 转换，其余字段取默认值，然后删除旧键。
-- `detect_baseline` 增加对应的 `needs_window_close_migration`。
-- legacy 1.x 迁移（`legacy_schema/application.rs:111-115`）改为写入 `next.window_close.tray_menu`。
+- #5646 新增 Document 类型的迁移模块 `application`，管理 `application.yaml`，并像 `profiles.yaml`（#5364）一样盖章：应用经 `StampedYamlFormat` 读写；`unstamped_ceiling` 为 0；`typed_config` 创建文件时直接盖在模块当前的 revision，所以新装和 1.x 转换的结果落在正确的 revision，没有“头部 revision 却没有戳”的窗口。#5646 本身没有步骤。
+- #5649 加入步骤 `application/window_close`（revision 1）：如果存在 `tray_menu_close_behavior`，就写入 `window_close.tray_menu`，按 `hide → hide`、`close → destroy` 转换，其余字段取默认值，删除旧键，与盖戳在同一次原子写入里完成。未知的旧值使步骤失败。
+- legacy 1.x 迁移（`legacy_schema/application.rs`）改为写入 `next.window_close.tray_menu`。
 
 #### 设置界面
 
-设置页 `settings/nyanpasu` 中的 `TrayMenuCloseBehaviorSelector` 换成“窗口关闭方式”卡片：
+设置页 `settings/nyanpasu` 中的 `TrayMenuCloseBehaviorSelector` 换成独立的“窗口关闭方式”区块（`WindowCloseBehaviorCard`），标题用 `settings_nyanpasu_window_close`：
 
 - 一项全局选择：销毁 / 隐藏；
 - 主窗口、编辑器、托盘菜单各一项：跟随全局（括号中显示解析后的值）/ 销毁 / 隐藏。托盘菜单一项仍然只在 WebView 托盘模式下显示。
-- 说明文案写明取舍：隐藏保留 webview，再次打开更快，但占用内存。
+- 说明文案写明取舍：隐藏保留 webview，再次打开更快，但占用内存；设定在窗口下次关闭时生效。
+- 每个选项调用 `useSetting('window_close').upsert({ main: 'hide' })`，只带改动的子字段（嵌套补丁，见上）。卡片里没有锁、重新拉取或禁用状态。
 - 五种语言都新增 i18n key，删除 `settings_nyanpasu_tray_menu_close_behavior*`，并运行 paraglide compile。
 
 ### 3.9 为 CEF runtime 预留
@@ -397,6 +386,8 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 本次不升级到 Tauri 3，也不引入 CEF。下面的约束只是让以后的切换局限在少数几处。
 
 #### 现有代码中与 runtime 绑定的点
+
+（行号为起草时的 `window.rs` 与 `resolve.rs`，实现后这些代码已迁到 `window/` 目录。）
 
 | 位置                                                          | 绑定内容                                            | 切换到 CEF 时                                                                                  |
 | ------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -438,15 +429,15 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 
 ### 3.11 调用方迁移
 
-| 调用方                                         | 改为                                                                                                           |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `core/tray/mod.rs:525`、`:554` 打开窗口        | `WindowManager::open(&MainWindow, None)`                                                                       |
-| `core/tray/mod.rs:564` 托盘菜单                | `kinds::show_tray_menu_window`（§3.3）                                                                         |
-| `client/hotkey/adapters.rs:194-197` 切换主窗口 | `is_visible` / `close` / `open`（§3.8）                                                                        |
-| `lib.rs:337`、`:344` 深链                      | `open(&MainWindow, None)`                                                                                      |
-| `lib.rs:363-385` 主窗口事件                    | 关闭钩子移入 `WindowManager`；`ScaleFactorChanged`（托盘）与 `connection_details::cancel_for_webview` 留在原处 |
-| `utils/exit.rs:235-237`                        | 主窗口存在即保存几何（§3.8）                                                                                   |
-| `resolve.rs:218-221` 启动创建                  | `open(&MainWindow, None)`                                                                                      |
+| 调用方                                         | 改为                                                                                                                    |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `core/tray/mod.rs:525`、`:554` 打开窗口        | `WindowManager::open(&MainWindow, None)`                                                                                |
+| `core/tray/mod.rs:564` 托盘菜单                | `kinds::show_tray_menu_window`（§3.3）                                                                                  |
+| `client/hotkey/adapters.rs:194-197` 切换主窗口 | `is_wanted` / `close` / `open`（§3.4）                                                                                  |
+| `lib.rs:337`、`:344` 深链                      | `open(&MainWindow, None)`                                                                                               |
+| `lib.rs:363-385` 主窗口事件                    | 关闭钩子移入窗口种类的 `on_dismissed`；`ScaleFactorChanged`（托盘）与 `connection_details::cancel_for_webview` 留在原处 |
+| `utils/exit.rs:235-237`                        | 主窗口存在即保存几何（§3.4）                                                                                            |
+| `resolve.rs:218-221` 启动创建                  | `open(&MainWindow, None)`                                                                                               |
 
 ## 4. 去掉透明后的预期与风险
 
@@ -460,25 +451,25 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 
 ## 5. 测试
 
-`table.rs` 的纯单元测试，现有两条 label 测试一并迁入：
+`table.rs` 的纯单元测试（不依赖 Tauri，不用 sleep）：
 
-- 新建窗口登记为 `Loading`；首次 `ready` 返回 `Reveal`，第二次返回 `AlreadyReady`。
-- 未登记的 label 收到 `ready` 时返回 `Unknown`。
-- 单例窗口：加载中再次 `admit` 返回 `Pending`，ready 后再 `admit` 返回 `ShowExisting`。
-- 非单例窗口取最小的空闲编号；`remove` 之后同一 label 重新以 `Loading` 登记。
+- 排序无关性：用一个带“已排队但未运行的 `apply`”和假原生窗口（不存在、隐藏、展示、最小化）的模型，枚举 built、ready（两次，即兜底计时器）、open、close（两次，即用户的关闭与托盘失焦）、minimize 的所有不同顺序，并在每个位置选择是否运行一次排队的 `apply`，最后清空队列。断言：原生窗口展示当且仅当 `built && ready && wanted`；`on_dismissed` 恰好在被展示的窗口退场时执行；首次 ready 的处理恰好一次。
+- 为被取代的 label 排的 `apply` 不会显示尚未建好或尚未 ready 的新条目；先关闭再打开，在 `apply` 运行前以 `wanted` 收场且不退场。
+- 最小化的窗口像展示的窗口一样被通知 `on_dismissed`，从未展示的不会。
+- 建好之前的关闭，在建好后得到处理；销毁再重建同一 label 从空白事实开始；热键切换跟随 `wanted`；单例只打开一次，非单例取最小空闲编号。
+- 隐藏模式：`open` 优先选不再应显示的已建好实例，都在应显示时才新建。
+- 兜底计时器：`ready`、`remove` 停止已存放的计时器；已 ready 或已消失的窗口不接受计时器。
 
-`window_close.rs`：`WindowCloseOverride::resolve` 的三种取值，以及 `WindowCloseSettings::default()` 全部解析为销毁。
+`window_close.rs`：`WindowCloseOverride::resolve` 的三种取值，`WindowCloseSettings::default()` 全部解析为销毁，嵌套补丁只改它列出的字段。`ApplicationClient` 的测试：两次改不同字段的 `window_close` 补丁合并，且不开启运行时事务（回执没有操作号）。
 
-迁移步骤 `app_config/window_close`：
+迁移：
 
-- `tray_menu_close_behavior: close` 转为 `window_close.tray_menu: destroy`，`hide` 转为 `hide`；
-- 旧键被删除；
-- 没有旧键的配置不触发迁移；
-- legacy 1.x fixture 的期望结果同步更新。
+- `application` 模块：新装得到盖了戳的文件且不跑步骤；2.0.x 未盖戳的文件被转换并盖戳；盖在 revision 0 的文件从戳继续迁移；状态文件丢失时用戳代替探测；丢失戳的文件被拒绝；1.x 转换的旧托盘选择带入新配置。
+- `application/window_close`：`close → destroy`、`hide → hide`，旧键被删除，没有旧键的配置不变，未知值被拒绝。
 
 `WindowManager` 直接操作 Tauri 窗口，不写依赖 Tauri 运行时的测试，由 §6 的冒烟测试覆盖。
 
-前端：如果现有测试覆盖了 `__root`，就在其 mock 下断言 `reportWindowReady` 每次加载只调用一次；否则不为此新增测试。
+前端：现有测试不覆盖 `__root`，没有为 `reportWindowReady` 新增测试。
 
 ## 6. 冒烟测试
 
@@ -498,33 +489,29 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
     - 单独把主窗口设为销毁，其他窗口继承隐藏，两者互不影响。
     - 隐藏模式下，热键能正确切换主窗口。
     - 主窗口隐藏后退出应用，能正常退出。
-    - 用 2.0.x 的配置启动，`tray_menu_close_behavior` 被正确迁移。
+    - 用 2.0.x 的配置启动，`tray_menu_close_behavior` 被正确迁移，`application.yaml` 被盖戳。
+    - 热键连按两次（含加载期间）以窗口关闭或隐藏收场；打开后立即关闭再打开，窗口保持打开。
 
 macOS 需要你在本机测试，我无法在 macOS 上运行：
 
 - 冷启动后 Dock 图标出现；关闭主窗口后 Dock 图标消失；点 Dock 图标重新打开主窗口。销毁和隐藏两种模式各测一次。
-- 红绿灯位置，以及全屏的进入和退出。
+- 最小化的主窗口被热键关闭：几何被保存、Dock 图标消失；隐藏模式下 Dock 里的最小化缩略图是否随 `hide()` 消失（未能验证）。
+- 红绿灯位置，以及全屏的进入和退出。红绿灯现在经 `run_on_main_thread` 在建窗之后设置，因为命令可能在任意线程建窗。
 
 Linux：启动、托盘打开、编辑器窗口各测一次，看有无回归。
 
-## 7. 提交拆分
+## 7. 提交拆分与 PR
 
-分两个 PR，均基于 main。PR A 是窗口管理（提交 1–7），PR B 是窗口以外的延时（提交 8–9）。每个提交单独可构建：
+实现最终分成四个 draft PR（起初计划的两个 PR 与 9 个提交因下列原因调整）：
 
-1. `refactor(window): let a window manager own the window lifecycle`
-   - 建立 `window/` 目录、`WindowTable`、`WindowManager`；
-   - 新增 `report_window_ready`，前端同步改用；
-   - 删除 `WindowReadyEvent`、`visible_on_create` 和启动兜底；
-   - 迁移全部调用方，重新生成绑定。
-   - 前后端在同一提交中改，因为单独改任何一边，窗口都不会被显示。
-2. `refactor(window): create windows from async commands`：删除三个创建窗口命令中开线程睡 10 ms 的写法。
-3. `refactor(window): disable swipe navigation once the webview is ready`：删除开线程睡 100 ms 的写法。`engine.rs` 在第 1 个提交中建立，浏览器参数从那时起就放在这个文件里。
-4. `perf(window): stop making windows transparent`：删除 Windows 的 `.transparent(true)` 和 `WindowConfig.transparent`。
-5. `feat(config): replace the tray menu close behavior with window close settings`：新增配置类型和迁移步骤，同步修改 legacy 迁移；后端仍只对托盘菜单应用该设定，行为不变。
-6. `feat(window): let each window close by destroying or hiding`：`WindowManager` 拦截 `CloseRequested`，复用隐藏的窗口；修改热键切换和托盘菜单关闭入口；替换设置界面与 i18n，重新生成绑定。
-7. `fix(tray): respond to a tray click once, on release`：只在松开时响应，删除托盘菜单的焦点宽限期（§3.10）。
-8. `refactor(settings): stop waiting for the core after patching the controller`：删除两处 `sleep(300)`，前提是已确认 mutation 会等待应用完成（§3.10）。
-9. `refactor(profiles): open the import dialog when the transition ends`：仅在找到可靠的完成信号时提交（§3.10）。
+| PR    | 分支                         | 内容                                                                                                                                                                              |
+| ----- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #5646 | `feat/application-document`  | 1 个提交：`application.yaml` 作为盖戳的 Document 迁移模块（§3.8）                                                                                                                 |
+| #5647 | `refactor/window-manager`    | 5 个提交：窗口管理层与 `report_window_ready`；async 创建窗口命令；首次 ready 时关闭滑动导航；去掉透明；托盘只在松开时响应（§3.10）                                                |
+| #5648 | `refactor/delay-workarounds` | 1 个提交：删除两处 `sleep(300)`（已确认 mutation 在运行时应用并发布产物之后才返回）。导入按钮的 150 ms 未改：等的是 `AnimatedOutlet` 里约 0.35 s 的路由滑动，没有可等待的完成信号 |
+| #5649 | `feat/window-close-modes`    | 叠在 #5647 上并带着 #5646 的提交：关闭模式（配置类型与嵌套补丁、`application/window_close` 迁移、`close_override`、设置区块与 i18n、隐藏实例复用）合为一个提交                    |
+
+调整的原因：`app_config` 迁移模块已冻结，需要先把 `application.yaml` 变成盖戳的 Document 模块（#5646）；起初的“配置提交”与“关闭模式提交”单独看，前者让设置界面提供了后端尚不理会的选项，所以合并为一个提交；#5647 单独合入也必须自洽，所以托盘菜单的旧设定在第一个提交里就经 `hides_on_close` 走管理层。
 
 ## 8. 决策（2026-10-06 已定）
 
@@ -536,3 +523,33 @@ Linux：启动、托盘打开、编辑器窗口各测一次，看有无回归。
 6. **设定改动对已隐藏窗口的影响：** 下次关闭时才生效。
 7. **隐藏模式下复用编辑器的状态：** 不处理。
 8. **CEF 预留的范围：** 只落实 §3.9 的约束 1–4，入口分流只作记录。
+
+实施期间追加的决定（用户裁定）：
+
+9. **迁移放进新的 `application` Document 模块**（§3.8），而不是 `app_config` 的 revision 5；先单独做 #5646。
+10. **生命周期改为电平触发的事实表加幂等 `apply`**（§3.2–§3.4），取代起初的边沿触发设计（§9）。
+11. **设置区块用嵌套补丁，不新增 RPC**（§3.8）。
+
+## 9. 实现状态、偏差与已接受的风险
+
+**状态：** 已实现，见 §7。冒烟测试（§6）由人在开发版上执行；macOS 与 Linux 未在本地编译或运行。
+
+**相对本 spec 初稿的偏差：**
+
+- `report_window_ready` 的参数是 `Webview`，不是 `WebviewWindow`（§3.6）。
+- `WindowManager::open` 对窗口种类是泛型 `open<K: AppWindow>`，不是 `&dyn AppWindow`：`AppWindow` 要求 `Clone + Send + Sync`，管理层把一个克隆放进窗口事件监听器，并把对象安全的 `WindowHooks` 存在条目里。
+- `AppWindow` 新增 `on_created`（构建后、可显示之前完成设置，例如托盘菜单定位）和 `on_dismissed`（窗口退场前的通知）；`WindowTable` 带泛型 `H`。
+- 管理层永远不调用原生 `close()`；`CloseRequested` 在两种模式下都被拦截并转成“不再应显示”（§3.3）。
+- 迁移走 `application` Document 模块，不是 `app_config` revision 5（§3.8）。
+- 设置区块是嵌套补丁，没有新增 RPC；卡片是独立区块（§3.8）。
+- 托盘点击与热键切换不再在主线程上建窗（§3.6）。
+- 提交与 PR 的拆分（§7）。
+
+**已接受的残留风险：**
+
+- **F2**：窗口建好时按 label 处理；一个仍隐藏的窗口，在“事件到达与处理”的间隙里被销毁，且同名窗口被重建，可能被处理两次。除管理层之外没有谁会关闭一个隐藏的窗口，所以不为它引入代次令牌。
+- **过期的兜底计时器**：没能及时停止的计时器任务如果在同名窗口重建之后触发，最多让新窗口提前显示，仅是外观问题。
+- **过期的 ready 报告**：被销毁的 webview 在其 label 被复用后发来的 ready 会被接受，因为 `report_window_ready` 标识的是窗口而不是它的化身。
+- **销毁模式下，已排队的 `destroy()` 与 `Destroyed` 之间的打开会丢失**：窗口只有约一次事件循环的长度，再按一次即可。不在 `Destroyed` 时重建，因为应用退出也会销毁窗口。
+
+**评审历史（简记）：** 起初的版本是边沿触发的窗口表（`Phase`、`Admission`、`ReadyOutcome`、`close_pending`、任务号、`keep_hidden` 等），评审多轮都在其上发现事件顺序问题，每次修补都多一个标志或结果。2026-10-06 改为现在的电平触发模型：只记事实，`apply` 幂等并读取当时的事实，再按 tauri-runtime-wry 的源码约束去掉原生 `close()` 并让 `apply` 总是排队。之后又收紧了三点：托盘菜单的失焦在第一个提交里就经管理层、最小化窗口也算已展示、以及用带排队的模型测试代替“每个事件后立刻应用”的排序测试。

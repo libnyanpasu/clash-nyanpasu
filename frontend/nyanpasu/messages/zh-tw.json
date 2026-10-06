@@ -667,6 +667,8 @@
   "providers_info_title": "提供者資訊",
   "providers_subscription_title": "服務狀態與額度",
   "providers_update_provider": "更新",
+  "providers_healthcheck_provider": "健康檢查",
+  "providers_healthcheck_failed_message": "{name} 健康檢查失敗",
   "dashboard_context_menu_edit_widgets": "編輯小工具",
   "dashboard_context_menu_add_widgets": "新增小工具",
   "dashboard_widget_traffic_download": "下載流量",

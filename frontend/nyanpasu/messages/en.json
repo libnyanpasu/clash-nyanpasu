@@ -667,6 +667,8 @@
   "providers_info_title": "Provider information",
   "providers_subscription_title": "Service status & quota",
   "providers_update_provider": "Update",
+  "providers_healthcheck_provider": "Health Check",
+  "providers_healthcheck_failed_message": "Health check failed for {name}",
   "dashboard_context_menu_edit_widgets": "Edit Widgets",
   "dashboard_context_menu_add_widgets": "Add Widgets",
   "dashboard_widget_traffic_upload": "Upload",

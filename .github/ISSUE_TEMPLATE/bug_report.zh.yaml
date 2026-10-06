@@ -35,7 +35,7 @@ body:
     id: reproduce
     attributes:
       label: 复现步骤
-      description: 请在此处写下复现的方式，并携带错误日志。
+      description: 请在此处写下复现的方式。
       placeholder: |
         1. 
         2.

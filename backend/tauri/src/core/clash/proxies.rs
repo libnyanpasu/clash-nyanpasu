@@ -517,11 +517,13 @@ mod tests {
         let cases = [
             ("Selector", None, (true, false)),
             ("Selector", Some(""), (true, false)),
+            ("Selector", Some("a"), (true, false)),
             ("URLTest", None, (false, false)),
             ("URLTest", Some(""), (true, true)),
             ("URLTest", Some("a"), (true, true)),
             ("Fallback", None, (false, false)),
             ("Fallback", Some(""), (true, true)),
+            ("Fallback", Some("a"), (true, true)),
             ("LoadBalance", None, (false, false)),
             ("Relay", None, (false, false)),
             ("Smart", None, (false, false)),

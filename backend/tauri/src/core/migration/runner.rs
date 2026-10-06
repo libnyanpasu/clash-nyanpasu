@@ -1579,26 +1579,32 @@ mod tests {
         .map(|stamp| stamp.schema_revision)
     }
 
-    /// The typed files of a 2.0.x install, whose `application.yaml` was written
-    /// before stamps.
-    fn seed_typed_files(case: &LegacyCase, stamped: bool) {
-        use nyanpasu_core::format::Format as _;
-
-        let mut application = Vec::new();
-        if stamped {
-            crate::core::migration::modules::application::ApplicationFormat::default()
-                .serialize(
-                    &mut application,
-                    &nyanpasu_config::application::NyanpasuAppConfig::default(),
-                    None,
-                )
-                .unwrap();
-        } else {
-            application =
-                serde_yaml::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
-                    .unwrap()
-                    .into_bytes();
+    /// The typed files of a 2.0.x install. `settings` are set on top of the
+    /// default application config, which is written with the stamp it had, if
+    /// any.
+    fn seed_typed_files(case: &LegacyCase, stamp: Option<u64>, settings: &str) {
+        let mut config = serde_yaml::Mapping::new();
+        if let Some(revision) = stamp {
+            config.insert(
+                "_nyanpasu".into(),
+                serde_yaml::from_str(&format!(
+                    "document: application
+schema_revision: {revision}
+"
+                ))
+                .unwrap(),
+            );
         }
+        // A 2.0.x file predates the setting this build added.
+        let mut defaults: serde_yaml::Mapping = serde_yaml::from_str(
+            &serde_yaml::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
+                .unwrap(),
+        )
+        .unwrap();
+        defaults.remove("window_close");
+        config.extend(defaults);
+        config.extend(serde_yaml::from_str::<serde_yaml::Mapping>(settings).unwrap());
+        let application = serde_yaml::to_string(&config).unwrap();
         std::fs::write(case.ctx.application_config_path(), application).unwrap();
         std::fs::write(
             case.ctx.session_state_path(),
@@ -1616,32 +1622,34 @@ mod tests {
         runner.store.module_state("application")
     }
 
+    fn assert_application_loads(case: &LegacyCase) {
+        use nyanpasu_core::format::Format as _;
+
+        let _: nyanpasu_config::application::NyanpasuAppConfig =
+            crate::core::migration::modules::application::ApplicationFormat::default()
+                .deserialize(std::fs::File::open(case.ctx.application_config_path()).unwrap())
+                .unwrap();
+    }
+
     #[test]
     fn a_fresh_install_gets_a_stamped_application_config() {
         let case = LegacyCase::empty();
 
         let mut runner = case.runner();
-        // No file yet, so the module starts at head: nothing may run on a file
+        // No file yet, so the module starts at head: no step may run on a file
         // that `typed_config` is about to create at head.
-        assert_eq!(
-            application_state(&runner),
-            ModuleState {
-                applied_revision: 0,
-                baseline_revision: 0,
-                stamped: false,
-            }
-        );
+        assert_eq!(application_state(&runner), at_revision(1, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(0));
+        assert_eq!(application_stamp(&case), Some(1));
+        assert_eq!(
+            runner.store.task_state("application/window_close"),
+            None,
+            "nothing to convert in a file created at head"
+        );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert!(state.module_state("application").stamped);
-        let _: nyanpasu_config::application::NyanpasuAppConfig = {
-            use nyanpasu_core::format::Format as _;
-            crate::core::migration::modules::application::ApplicationFormat::default()
-                .deserialize(std::fs::File::open(case.ctx.application_config_path()).unwrap())
-                .unwrap()
-        };
+        assert_eq!(state.module_state("application"), at_revision(1, true));
+        assert_application_loads(&case);
     }
 
     #[test]
@@ -1650,50 +1658,105 @@ mod tests {
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(0));
+        assert_eq!(application_stamp(&case), Some(1));
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("application").applied_revision, 0);
-        assert!(state.module_state("application").stamped);
+        assert_eq!(state.module_state("application"), at_revision(1, true));
+        assert_application_loads(&case);
     }
 
     #[test]
-    fn an_application_config_from_2_0_is_stamped_without_changing_content() {
+    fn a_legacy_tray_menu_choice_is_carried_into_the_converted_config() {
         let case = LegacyCase::empty();
-        seed_typed_files(&case, false);
-        let before = application_config_payload(&case);
+        std::fs::write(
+            case.ctx.nyanpasu_config_path(),
+            "tray_menu_close_behavior: close
+",
+        )
+        .unwrap();
+
+        case.runner().run_pending().unwrap();
+
+        let window_close = application_config_payload(&case)
+            .get("window_close")
+            .cloned()
+            .unwrap();
+        assert_eq!(
+            window_close["tray_menu"],
+            serde_yaml::Value::from("destroy")
+        );
+        assert_application_loads(&case);
+    }
+
+    #[test]
+    fn an_application_config_from_2_0_is_converted_and_stamped() {
+        let case = LegacyCase::empty();
+        seed_typed_files(
+            &case,
+            None,
+            "language: en
+tray_menu_close_behavior: hide
+",
+        );
 
         let mut runner = case.runner();
-        assert_eq!(
-            application_state(&runner),
-            ModuleState {
-                applied_revision: 0,
-                baseline_revision: 0,
-                stamped: false,
-            }
-        );
+        assert_eq!(application_state(&runner), at_revision(0, false));
         runner.run_pending().unwrap();
 
-        assert_eq!(application_stamp(&case), Some(0));
-        assert_eq!(application_config_payload(&case), before);
+        assert_eq!(application_stamp(&case), Some(1));
+        let payload = application_config_payload(&case);
+        assert!(!payload.contains_key("tray_menu_close_behavior"));
+        assert_eq!(payload["window_close"]["tray_menu"], "hide");
+        assert_eq!(payload["language"], "en");
+        assert_application_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert!(state.module_state("application").stamped);
+        assert_eq!(
+            state.task_state("application/window_close"),
+            Some(MigrationState::Completed)
+        );
+        assert_eq!(
+            state.module_state("application"),
+            ModuleState {
+                applied_revision: 1,
+                baseline_revision: 0,
+                stamped: true,
+            }
+        );
+    }
+
+    #[test]
+    fn a_config_written_at_stamp_0_is_migrated_from_its_stamp() {
+        let case = LegacyCase::empty();
+        seed_typed_files(
+            &case,
+            Some(0),
+            "tray_menu_close_behavior: close
+",
+        );
+
+        let mut runner = case.runner();
+        assert_eq!(application_state(&runner), at_revision(0, true));
+        runner.run_pending().unwrap();
+
+        assert_eq!(application_stamp(&case), Some(1));
+        assert_eq!(
+            application_config_payload(&case)["window_close"]["tray_menu"],
+            "destroy"
+        );
     }
 
     #[test]
     fn the_application_stamp_replaces_detection_when_the_state_is_lost() {
         let case = LegacyCase::empty();
-        seed_typed_files(&case, true);
+        seed_typed_files(
+            &case,
+            Some(1),
+            "language: en
+",
+        );
         let before = std::fs::read_to_string(case.ctx.application_config_path()).unwrap();
 
         let mut runner = case.runner();
-        assert_eq!(
-            application_state(&runner),
-            ModuleState {
-                applied_revision: 0,
-                baseline_revision: 0,
-                stamped: true,
-            }
-        );
+        assert_eq!(application_state(&runner), at_revision(1, true));
         runner.run_pending().unwrap();
 
         assert_eq!(
@@ -1705,11 +1768,16 @@ mod tests {
     #[test]
     fn an_application_config_that_lost_its_stamp_is_refused() {
         let case = LegacyCase::empty();
-        seed_typed_files(&case, false);
+        seed_typed_files(
+            &case,
+            None,
+            "language: en
+",
+        );
         let mut store = MigrationStore::default();
         store
             .modules
-            .insert("application".to_string(), at_revision(0, true));
+            .insert("application".to_string(), at_revision(1, true));
         store.flush_atomic(&case.ctx.state_path()).unwrap();
 
         let error = format!(

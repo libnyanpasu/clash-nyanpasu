@@ -1,6 +1,7 @@
 use super::verge::{self as legacy_app, IVerge};
 use nyanpasu_config::application::{
     NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
+    WindowCloseOverride,
 };
 use nyanpasu_egui::widget::StatisticWidgetVariant;
 
@@ -108,10 +109,11 @@ pub(super) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<Nyanpas
     {
         next.tray_menu_mode = value;
     }
-    if let Some(value) = &legacy.tray_menu_close_behavior
-        && let Ok(value) = super::yaml_convert(value)
-    {
-        next.tray_menu_close_behavior = value;
+    if let Some(value) = &legacy.tray_menu_close_behavior {
+        next.window_close.tray_menu = match value {
+            legacy_app::TrayMenuCloseBehavior::Hide => WindowCloseOverride::Hide,
+            legacy_app::TrayMenuCloseBehavior::Close => WindowCloseOverride::Destroy,
+        };
     }
 
     Ok(next)

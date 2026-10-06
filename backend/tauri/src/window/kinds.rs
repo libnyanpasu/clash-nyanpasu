@@ -8,7 +8,7 @@ use super::{
 use crate::client::NyanpasuClient;
 use anyhow::Result;
 use nyanpasu_config::{
-    application::{NyanpasuAppConfig, TrayMenuCloseBehavior},
+    application::{WindowCloseOverride, WindowCloseSettings},
     state::window::WindowState,
 };
 use std::collections::HashMap;
@@ -106,6 +106,10 @@ impl AppWindow for MainWindow {
         app_handle
             .try_state::<NyanpasuClient>()?
             .main_window_geometry()
+    }
+
+    fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
+        settings.main
     }
 
     fn on_dismissed(&self, window: &WebviewWindow) {
@@ -241,6 +245,10 @@ impl AppWindow for EditorWindow {
         // EditorWindow does not remember window state
         None
     }
+
+    fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
+        settings.editor
+    }
 }
 
 pub async fn save_main_window_state_async(
@@ -303,8 +311,8 @@ impl AppWindow for TrayMenuWindow {
         None
     }
 
-    fn hides_on_close(&self, config: &NyanpasuAppConfig) -> bool {
-        config.tray_menu_close_behavior == TrayMenuCloseBehavior::Hide
+    fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
+        settings.tray_menu
     }
 
     fn on_created(&self, window: &WebviewWindow) {
@@ -313,7 +321,7 @@ impl AppWindow for TrayMenuWindow {
         }
     }
 
-    /// Hides or closes the menu on focus loss, as [`TrayMenuFocus`] decides.
+    /// Closes the menu on focus loss, as [`TrayMenuFocus`] decides.
     fn on_window_event(&self, window: &WebviewWindow, event: &WindowEvent) {
         match event {
             WindowEvent::Focused(true) => {

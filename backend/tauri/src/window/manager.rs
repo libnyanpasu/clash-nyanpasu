@@ -8,6 +8,7 @@ use super::{
 };
 use crate::{log_err, trace_err};
 use anyhow::Result;
+use nyanpasu_config::application::WindowCloseBehavior;
 use parking_lot::Mutex;
 use std::{sync::Arc, time::Duration};
 use tauri::{AppHandle, Manager, WebviewWindow, WindowEvent};
@@ -426,14 +427,20 @@ fn apply(handle: &AppHandle, label: &str) {
         if actions.dismiss {
             facts.hooks.on_dismissed(&window);
         }
-        let config = handle
+        let settings = handle
             .try_state::<crate::client::NyanpasuClient>()
-            .map(|client| client.app_config_snapshot())
+            .map(|client| client.app_config_snapshot().window_close)
             .unwrap_or_default();
-        if !facts.hooks.hides_on_close(&config) {
-            trace_err!(window.destroy(), "destroy window");
-        } else if actions.dismiss {
-            trace_err!(window.hide(), "hide window");
+        match facts
+            .hooks
+            .close_override(&settings)
+            .resolve(settings.global)
+        {
+            WindowCloseBehavior::Destroy => trace_err!(window.destroy(), "destroy window"),
+            WindowCloseBehavior::Hide if actions.dismiss => {
+                trace_err!(window.hide(), "hide window");
+            }
+            WindowCloseBehavior::Hide => {}
         }
     }
 }

@@ -414,6 +414,30 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn window_close_patches_merge_by_field_and_reach_no_runtime() {
+        use nyanpasu_config::application::{WindowCloseBehavior, WindowCloseOverride};
+        let (client, _dir) = test_client().await;
+        let mut first = NyanpasuAppConfig::new_empty_patch();
+        first.window_close.global = Some(WindowCloseBehavior::Hide);
+        client.patch(first).await.unwrap();
+
+        let mut second = NyanpasuAppConfig::new_empty_patch();
+        second.window_close.tray_menu = Some(WindowCloseOverride::Hide);
+        let snapshot = client.patch(second).await.unwrap();
+
+        assert_eq!(
+            snapshot.state.window_close.global,
+            WindowCloseBehavior::Hide
+        );
+        assert_eq!(
+            snapshot.state.window_close.tray_menu,
+            WindowCloseOverride::Hide
+        );
+        // No runtime transaction was opened for it.
+        assert_eq!(snapshot.receipt.unwrap().operation_id, None);
+    }
+
+    #[tokio::test]
     async fn release_channel_migrates_old_beta_config_and_keeps_explicit_stable() {
         use crate::bundle::Channel;
         let dir = tempdir().unwrap();

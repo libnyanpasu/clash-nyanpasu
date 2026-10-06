@@ -6,7 +6,10 @@ use crate::{
     utils::{
         help,
         proxy_env::{self, CopyEnvOption},
-        resolve,
+    },
+    window::{
+        WindowManager,
+        kinds::{MainWindow, show_tray_menu_window},
     },
 };
 use anyhow::Result;
@@ -19,7 +22,7 @@ use rust_i18n::t;
 use tauri::{
     AppHandle, Manager, Runtime,
     menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder},
-    tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
 };
 use tracing_attributes::instrument;
 
@@ -522,7 +525,14 @@ impl Tray {
             "direct_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeDirect),
             "script_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeScript),
 
-            "open_window" => resolve::create_window(app_handle),
+            "open_window" => {
+                // Not on the main thread: building a window from a main-thread
+                // handler can deadlock on Windows.
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    log_err!(app_handle.state::<WindowManager>().open(&MainWindow, None));
+                });
+            }
             "system_proxy" => dispatch_action(app_handle, HotkeyAction::ToggleSystemProxy),
             "tun_mode" => dispatch_action(app_handle, HotkeyAction::ToggleTunMode),
             "copy_env_sh" => copy_clash_env(app_handle, CopyEnvOption::Shell),
@@ -547,23 +557,32 @@ impl Tray {
 
     pub fn on_system_tray_event(tray_icon: &TrayIcon, event: TrayIconEvent) {
         match event {
+            // A click arrives once on press and once on release; act on release.
             TrayIconEvent::Click {
                 button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
                 ..
             } => {
-                resolve::create_window(tray_icon.app_handle());
+                let app_handle = tray_icon.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    log_err!(app_handle.state::<WindowManager>().open(&MainWindow, None));
+                });
             }
             TrayIconEvent::Click {
                 button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
                 position,
                 ..
             } if tray_view(tray_icon.app_handle())
                 .is_some_and(|view| view.menu.menu_mode == TrayMenuMode::Webview) =>
             {
-                log_err!(
-                    resolve::show_tray_menu_window(tray_icon.app_handle(), position),
-                    "failed to show webview tray menu"
-                );
+                let app_handle = tray_icon.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    log_err!(
+                        show_tray_menu_window(&app_handle, position),
+                        "failed to show webview tray menu"
+                    );
+                });
             }
             // In Native mode the system shows the attached menu automatically
             _ => {}

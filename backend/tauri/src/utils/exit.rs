@@ -232,9 +232,12 @@ fn request_shutdown(app_handle: &AppHandle) -> Option<NyanpasuClient> {
     let client = app_handle
         .try_state::<NyanpasuClient>()
         .map(|state| state.inner().clone())?;
-    if super::resolve::is_window_open(app_handle) {
+    if app_handle
+        .get_webview_window(crate::consts::MAIN_WINDOW_LABEL)
+        .is_some()
+    {
         crate::log_err!(
-            super::resolve::save_window_state(app_handle),
+            crate::window::kinds::save_window_state(app_handle),
             "failed to queue the final main window geometry"
         );
     }

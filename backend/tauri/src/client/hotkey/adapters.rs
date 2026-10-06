@@ -4,13 +4,14 @@
 use std::{str::FromStr, sync::Arc};
 
 use snafu::{ResultExt as _, ensure};
+use tauri::Manager as _;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use super::ports::{
     AcceleratorValidator, HotkeyAction, HotkeyActionSink, HotkeyParseError, MissingSuperKeySnafu,
     RegisterShortcutSnafu, ReleaseAllShortcutsSnafu, ReleaseShortcutSnafu, RunShortcutWorkSnafu,
-    ShortcutError, ShortcutRegistrar, ToggleDashboardSnafu, UnsupportedAcceleratorSnafu,
-    WindowControl, WindowError, has_super_key,
+    ShortcutError, ShortcutRegistrar, UnsupportedAcceleratorSnafu, WindowControl, WindowError,
+    has_super_key,
 };
 use crate::client::MainThreadExecutor;
 
@@ -167,37 +168,33 @@ impl HotkeyActionSink for ChannelActionSink {
     }
 }
 
-/// The dashboard window, through the existing window helpers.
+/// The dashboard window, through the window manager.
 pub struct TauriWindowControl {
     app_handle: tauri::AppHandle,
-    main_thread: Arc<dyn MainThreadExecutor>,
 }
 
 impl TauriWindowControl {
-    pub fn new(app_handle: tauri::AppHandle, main_thread: Arc<dyn MainThreadExecutor>) -> Self {
-        Self {
-            app_handle,
-            main_thread,
-        }
+    pub fn new(app_handle: tauri::AppHandle) -> Self {
+        Self { app_handle }
     }
 }
 
 #[async_trait::async_trait]
 impl WindowControl for TauriWindowControl {
+    /// Awaited by the hotkey pump, so two quick presses cannot interleave into
+    /// a no-op. Not on the main thread: building a window from a main-thread
+    /// handler can deadlock on Windows.
     async fn toggle_dashboard(&self) -> Result<(), WindowError> {
-        let app_handle = self.app_handle.clone();
-        // Window work belongs on the main thread; the caller is the hotkey
-        // pump, which runs on the async runtime. Awaited so two quick presses
-        // cannot interleave into a no-op.
-        self.main_thread
-            .run(move || {
-                if crate::utils::resolve::is_window_open(&app_handle) {
-                    crate::utils::resolve::close_window(&app_handle);
-                } else {
-                    crate::utils::resolve::create_window(&app_handle);
-                }
+        let windows = self.app_handle.state::<crate::window::WindowManager>();
+        if windows.is_wanted(crate::consts::MAIN_WINDOW_LABEL) {
+            windows.close(crate::consts::MAIN_WINDOW_LABEL);
+            return Ok(());
+        }
+        windows
+            .open(&crate::window::kinds::MainWindow, None)
+            .map(drop)
+            .map_err(|error| WindowError::ToggleDashboard {
+                source: error.into_boxed_dyn_error(),
             })
-            .await
-            .context(ToggleDashboardSnafu)
     }
 }

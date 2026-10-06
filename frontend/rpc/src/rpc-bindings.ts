@@ -586,6 +586,12 @@ export function createRpcClient(
       typedError<null, IpcError>(
         __RPC_INVOKE('create_editor_window', { windowType, uid }),
       ),
+    /**
+     *  The calling window has rendered. Its label comes from the invoking webview,
+     *  so a window can only report itself.
+     */
+    reportWindowReady: () =>
+      typedError<null, IpcError>(__RPC_INVOKE('report_window_ready')),
     copyClashEnv: (envType: CopyEnvOption) =>
       __RPC_INVOKE<void>('copy_clash_env', { envType }),
     quitApplication: () => __RPC_INVOKE<void>('quit_application'),
@@ -624,10 +630,6 @@ export function createRpcClient(
     windowMessageEvent: makeEvent<WindowMessageEvent>(
       transport.events,
       'window-message-event',
-    ),
-    windowReadyEvent: makeEvent<WindowReadyEvent>(
-      transport.events,
-      'window-ready-event',
     ),
   }
 
@@ -4677,15 +4679,6 @@ export type WindowMessageEvent = {
   event: string
   /**  Message payload */
   payload: any
-}
-
-/**
- *  Event emitted by the frontend when a window's webview is ready and visible.
- *  Carries the window label so the backend can handle per-window logic.
- *  Event name: `window-ready-event`
- */
-export type WindowReadyEvent = {
-  label: string
 }
 
 /* Tauri Specta runtime */

@@ -16,6 +16,10 @@ use crate::{
         proxy_env::{self, CopyEnvOption},
         resolve,
     },
+    window::{
+        WindowManager,
+        kinds::{self, EditorWindow, EditorWindowType, MainWindow},
+    },
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
@@ -24,7 +28,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Webview};
 use tray::icon::TrayIcon;
 
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -1891,7 +1895,7 @@ pub async fn discard_app_update_package(
 #[specta::specta]
 pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()> {
     if label == crate::consts::MAIN_WINDOW_LABEL {
-        resolve::save_main_window_state_async(&app_handle, true).await?;
+        kinds::save_main_window_state_async(&app_handle, true).await?;
     }
     Ok(())
 }
@@ -1899,32 +1903,16 @@ pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Res
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn create_main_window(app_handle: AppHandle) -> Result<()> {
-    // Spawn window creation to avoid blocking
-    std::thread::spawn(move || {
-        // Small delay to let the IPC return first
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let handle_inner = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            resolve::create_main_window(&handle_inner);
-        });
-    });
+pub async fn create_main_window(windows: State<'_, WindowManager>) -> Result<()> {
+    windows.open(&MainWindow, None)?;
     Ok(())
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
-    // Spawn window creation to avoid blocking
-    std::thread::spawn(move || {
-        // Small delay to let the IPC return first
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let handle_inner = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            let _ = resolve::create_debug_tray_menu_window(&handle_inner);
-        });
-    });
+pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
+    kinds::create_debug_tray_menu_window(&app_handle)?;
     Ok(())
 }
 
@@ -1949,20 +1937,26 @@ pub fn quit_application(app_handle: AppHandle) {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn create_editor_window(
-    app_handle: AppHandle,
-    window_type: resolve::EditorWindowType,
+pub async fn create_editor_window(
+    windows: State<'_, WindowManager>,
+    window_type: EditorWindowType,
     uid: Option<String>,
 ) -> Result<()> {
-    // Spawn window creation to avoid blocking
-    std::thread::spawn(move || {
-        // Small delay to let the IPC return first
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let handle_inner = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            let _ = resolve::create_editor_window(&handle_inner, window_type, uid.as_deref());
-        });
-    });
+    let (window, params) = EditorWindow::for_type(window_type, uid.as_deref())?;
+    windows.open(&window, params)?;
+    Ok(())
+}
+
+/// The calling window has rendered. Its label comes from the invoking webview,
+/// so a window can only report itself.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn report_window_ready(
+    windows: State<'_, WindowManager>,
+    webview: Webview,
+) -> Result<()> {
+    windows.report_ready(webview.label());
     Ok(())
 }
 

@@ -336,14 +336,23 @@ pub fn run() -> std::io::Result<()> {
             if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
                 queue_deep_link(&handle, url.to_string());
-                resolve::create_window(&handle.clone());
+                log_err!(
+                    handle
+                        .state::<window::WindowManager>()
+                        .open(&window::kinds::MainWindow, None)
+                );
             }
             // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
             log_err!(tauri_plugin_deep_link::register(
                 &["clash-nyanpasu", "clash"],
                 move |request| {
                     log::info!(target: "app", "scheme request received: {:?}", request);
-                    resolve::create_window(&handle.clone()); // create window if not exists
+                    // create window if not exists
+                    log_err!(
+                        handle
+                            .state::<window::WindowManager>()
+                            .open(&window::kinds::MainWindow, None)
+                    );
                     queue_deep_link(&handle, request);
                 }
             ));
@@ -368,12 +377,6 @@ pub fn run() -> std::io::Result<()> {
                     tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                         core::tray::on_scale_factor_changed(*scale_factor);
                     }
-                    tauri::WindowEvent::CloseRequested { .. } => {
-                        log::debug!(target: "app", "window close requested");
-                        let _ = resolve::save_window_state(app_handle);
-                        #[cfg(target_os = "macos")]
-                        crate::utils::dock::macos::hide_dock_icon();
-                    }
                     tauri::WindowEvent::Destroyed => {
                         log::debug!(target: "app", "window destroyed");
                     }
@@ -388,7 +391,11 @@ pub fn run() -> std::io::Result<()> {
         }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
-            resolve::create_window(app_handle);
+            log_err!(
+                app_handle
+                    .state::<window::WindowManager>()
+                    .open(&window::kinds::MainWindow, None)
+            );
         }
         _ => {}
     });

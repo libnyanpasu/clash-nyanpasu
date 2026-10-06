@@ -17,6 +17,8 @@ struct Entry<H> {
     ready: bool,
     /// The window should be shown. Every open sets it, and a close clears it.
     wanted: bool,
+    /// The webview's first ready is not yet acted on. It needs the built window.
+    setup_pending: bool,
     /// The fallback that marks a window ready when its webview never reports.
     watchdog: Option<AbortHandle>,
     /// What the kind of window does when it is applied.
@@ -60,6 +62,8 @@ pub enum Opened {
 pub struct Facts<H> {
     pub ready: bool,
     pub wanted: bool,
+    /// Set the webview up: its first ready is not yet acted on.
+    pub setup: bool,
     pub hooks: H,
 }
 
@@ -67,6 +71,7 @@ pub struct Facts<H> {
 /// ready and wanted, and gone, or hidden, when it is not wanted.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Actions {
+    pub first_ready: bool,
     pub show: bool,
     /// The window is not wanted: it goes away, or is hidden if it is presented.
     pub retire: bool,
@@ -81,6 +86,7 @@ impl<H> Facts<H> {
     /// visible.
     pub fn actions(&self, presented: bool) -> Actions {
         Actions {
+            first_ready: self.setup,
             show: self.ready && self.wanted,
             retire: !self.wanted,
             dismiss: !self.wanted && presented,
@@ -118,6 +124,7 @@ impl<H: Clone> WindowTable<H> {
                 built: false,
                 ready: false,
                 wanted: true,
+                setup_pending: false,
                 watchdog: None,
                 hooks,
             },
@@ -142,6 +149,7 @@ impl<H: Clone> WindowTable<H> {
             return Some(false);
         }
         entry.ready = true;
+        entry.setup_pending = true;
         entry.stop_watchdog();
         Some(true)
     }
@@ -173,6 +181,7 @@ impl<H: Clone> WindowTable<H> {
         Some(Facts {
             ready: entry.ready,
             wanted: entry.wanted,
+            setup: std::mem::take(&mut entry.setup_pending),
             hooks: entry.hooks.clone(),
         })
     }
@@ -272,6 +281,7 @@ mod tests {
         queued: u32,
         dismissed: u32,
         presented_retired: u32,
+        setups: u32,
     }
 
     impl Model {
@@ -287,6 +297,7 @@ mod tests {
                 queued: 0,
                 dismissed: 0,
                 presented_retired: 0,
+                setups: 0,
             }
         }
 
@@ -333,6 +344,7 @@ mod tests {
             };
             let presented = self.native.presented();
             let actions = facts.actions(presented);
+            self.setups += u32::from(actions.first_ready);
             if actions.show {
                 self.native = Native::Shown;
             } else if actions.retire {
@@ -385,6 +397,7 @@ mod tests {
                 let case = format!("{order:?} {drains:b}");
                 assert_eq!(model.native.presented(), built && ready && wanted, "{case}");
                 assert_eq!(model.dismissed, model.presented_retired, "{case}");
+                assert_eq!(model.setups, 1, "{case}");
             }
         }
     }

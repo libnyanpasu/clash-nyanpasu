@@ -315,9 +315,6 @@ impl WindowManager {
             );
         }
 
-        #[cfg(target_os = "windows")]
-        engine::on_created(app_handle, label.to_string());
-
         kind.on_created(&win);
 
         // The window is built and set up, so it can be acted on from now on.
@@ -415,6 +412,10 @@ fn apply(handle: &AppHandle, label: &str) {
     };
     let presented = window.is_visible().unwrap_or(false) || window.is_minimized().unwrap_or(false);
     let actions = facts.actions(presented);
+
+    if actions.first_ready {
+        engine::on_first_ready(&window);
+    }
 
     if actions.show {
         #[cfg(target_os = "macos")]

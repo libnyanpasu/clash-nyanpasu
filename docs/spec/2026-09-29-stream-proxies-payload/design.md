@@ -217,7 +217,7 @@ impl ConnectionRates {
 > 实现更新：下面的独立 Tauri command 声明已被 UnifiedRpc 迁移取代。
 > 订阅和退订必须使用 `#[nyanpasu_macro::rpc(owner)]`、登记为 mutation，
 > 前端经 `rpc` 调用；只有明细帧仍走 Channel。桌面退订校验调用者归属，
-> 浏览器使用专用 SSE 适配层。当前要求见 [Unified RPC 规范](../../../development/rpc.md#connection-detail-streams)。
+> 浏览器使用专用 SSE 适配层。当前要求见 [Unified RPC 规范](../../development/rpc.md#connection-detail-streams)。
 
 新增适配模块（放在 `core/clash/` 的 Tauri 边界，与现有 `StreamEventBridge` 同层）：
 

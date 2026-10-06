@@ -915,7 +915,7 @@ git commit -m "feat(tauri): add external symlink/mirror watchers to profiles act
 - [ ] **Step 3**:
 
 ```bash
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record T05 contract addenda (refresh protocol, watchers)"
 ```
 

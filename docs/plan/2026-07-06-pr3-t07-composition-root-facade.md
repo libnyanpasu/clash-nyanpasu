@@ -1325,7 +1325,7 @@ git commit -m "refactor(tauri): switch composition root and generate callers to 
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T07 卡尾部追加执行修正)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T07 卡尾部追加执行修正)
 
 - [ ] **Step 1: 台账 grep**
 
@@ -1352,7 +1352,7 @@ Expected: 相对 T07 起点(先在起点 commit 上跑一次记基数)**恰好 +
 - [ ] **Step 3: Commit**
 
 ```powershell
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record T07 execution addenda in task card"
 ```
 

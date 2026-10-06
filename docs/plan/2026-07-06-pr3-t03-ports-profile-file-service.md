@@ -715,7 +715,7 @@ git commit -m "feat(tauri): implement subscription fetcher with legacy download 
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T03 卡 Interfaces — Produces 段)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T03 卡 Interfaces — Produces 段)
 
 - [ ] **Step 1: 按实际落地更新 T03 卡**
 
@@ -727,7 +727,7 @@ git commit -m "feat(tauri): implement subscription fetcher with legacy download 
 - [ ] **Step 2: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record T03 contract addenda (fetcher signature, filename)"
 ```
 

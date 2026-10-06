@@ -2,7 +2,7 @@
 
 **日期：** 2026-10-05
 
-**状态：** 已按 [审计报告](../../../audit/2026-10-05-pr5596-runtime441-audit.md) 修订为实例级运行时探测；runtime PR [#441](https://github.com/libnyanpasu/nyanpasu-runtime/pull/441)，应用 PR 等待 runtime 发布。
+**状态：** 已按 [审计报告](../../audit/2026-10-05-pr5596-runtime441-audit.md) 修订为实例级运行时探测；runtime PR [#441](https://github.com/libnyanpasu/nyanpasu-runtime/pull/441)，应用 PR 等待 runtime 发布。
 
 **调查基线：** `3b942c760c74df0a7fa832dc455c3a15b676cb3b`；实现基线为 `def0dbf2716ff972255be47924401b60db7d482c`。
 
@@ -10,7 +10,7 @@
 
 **需求：** group 相关接口可用时，使用内核返回的可靠组集合；不可用时从 proxies 推断。能力与运行中的内核绑定，且只探测一次。
 
-**依据：** [接口调查](../../../audit/2026-10-05-proxy-core-api-report.md)、[算法重构报告](../../../audit/2026-10-05-issue-5112-proxy-algorithm-report.md)、[原始证据](../../../audit/2026-10-05-proxy-core-api-evidence.json)、[issue 5112](https://github.com/libnyanpasu/clash-nyanpasu/issues/5112)。
+**依据：** [接口调查](../../audit/2026-10-05-proxy-core-api-report.md)、[算法重构报告](../../audit/2026-10-05-issue-5112-proxy-algorithm-report.md)、[原始证据](../../audit/2026-10-05-proxy-core-api-evidence.json)、[issue 5112](https://github.com/libnyanpasu/clash-nyanpasu/issues/5112)。
 
 **权威顺序：** 当前 AGENTS.md 与 development guides > 本 spec > 后续实施计划。调查报告中的后续扩展不自动扩大本 spec 范围。
 

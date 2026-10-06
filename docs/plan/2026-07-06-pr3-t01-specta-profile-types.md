@@ -273,7 +273,7 @@ git commit -m "ci: enforce typescript bindings freshness in test_unit"
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T01 卡 Produces 段)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T01 卡 Produces 段)
 
 - [ ] **Step 1: 用 bindings.ts 实际导出的类型名清单替换 T01 卡 Produces 段的预测性描述**
 
@@ -282,7 +282,7 @@ git commit -m "ci: enforce typescript bindings freshness in test_unit"
 - [ ] **Step 2: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record actual TS export names on T01 card"
 ```
 

@@ -12,7 +12,7 @@
 
 ## 1. 决策与范围
 
-1. 目的地是**现有应用日志**：`tracing` → JSON 行 → `<app logs>/clash-nyanpasu_*.log`（[logging.rs](../../../../backend/tauri/src/utils/init/logging.rs)）。不新增存储、不新增 redb、不新增独立文件。前端事件因此自动获得现有的轮转/保留策略（`max_files`、`max_file_size`）和应用日志查看器（`LogSource::App`）。
+1. 目的地是**现有应用日志**：`tracing` → JSON 行 → `<app logs>/clash-nyanpasu_*.log`（[logging.rs](../../../backend/tauri/src/utils/init/logging.rs)）。不新增存储、不新增 redb、不新增独立文件。前端事件因此自动获得现有的轮转/保留策略（`max_files`、`max_file_size`）和应用日志查看器（`LogSource::App`）。
 2. 事件**只落本地**。不向 Sentry SaaS 或任何外部服务发送，不引入 DSN 配置、不引入遥测开关。
 3. 新增一个 Unified RPC mutation `report_frontend_events`，桌面与 HTTP（浏览器 UI）两种传输都可用；调用方身份取自注入的 `RpcOwner`，不信任客户端自报。
 4. 后端是**无状态**的：纯服务做校验与截断，经一个窄的 `FrontendLogSink` 端口写日志。不新增 actor、不新增后端限流状态。限流、去重、批量在前端完成；后端只做单请求上限，磁盘总量由现有轮转兜底。

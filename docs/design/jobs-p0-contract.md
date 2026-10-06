@@ -4,7 +4,7 @@
 
 日期：2026-09-07。应用基线：`f30d52211890f4e2c77aca6ccd9ee2689684b850`（#5220）；已从远端核对并快进文档 worktree。该提交的 runtime gitlink 为 `9dbe16c`。本轮未修改应用或 runtime 生产代码。
 
-本文优先于 [初步设计](jobs-subsystem.md)中的“暂定”内容。阶段进度见 [实施计划](../plan/2026-09-07-jobs-subsystem-plan.md)；可运行验证见 [P0 probe](../probes/jobs-p0/README.md)。
+本文优先于 [初步设计](jobs-subsystem.md)中的“暂定”内容。阶段进度见 [实施计划](../plan/2026-09-07-jobs-subsystem-plan.md)；可运行验证见 [P0 probe](../probe/jobs-p0/README.md)。
 
 ## 1. 决策摘要
 

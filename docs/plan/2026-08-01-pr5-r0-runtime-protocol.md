@@ -19,7 +19,7 @@ nyanpasu-core-manager      nyanpasu-ipc
 
 **Tech Stack:** Rust nightly(`rust-toolchain.toml` 为浮动 `channel = "nightly"`)、serde、specta、thiserror。
 
-**Spec:** `docs/superpowers/specs/2026-08-01-pr5-core-actor/design.md` §4.1「复用 runtime 类型」+ `task.md` §R0。
+**Spec:** `docs/spec/2026-08-01-pr5-core-actor/design.md` §4.1「复用 runtime 类型」+ `task.md` §R0。
 （注:该目录下两文件的内容与文件名曾互换,leader 已于 2026-08-01 修正 —— 现在 `design.md` = 设计正文、`task.md` = 任务清单,本行引用按修正后的文件名。）
 
 ---
@@ -151,7 +151,7 @@ nyanpasu-core-manager      nyanpasu-ipc
 
 ### D4 — `R.error_kind` 字段类型**不变**,仍是 `Option<Cow<'a, str>>`
 
-这是前向兼容的关键。若改成 `Option<CoreErrorKind>`:一个**更新的 service** 发来老 client 不认识的 kind(P3 会新增),会让**整个 envelope 解码失败**,而不是丢一个字段 —— 正是 `docs/superpowers/specs/2026-07-30-ipc-protocol-evolution-report.md:129` 拒绝动 `ResponseCode` 枚举的那个失败模式。app 通过 auto-update 让 daemon 版本 ≥ GUI 版本是常态,「新 service + 老 client」真实存在。
+这是前向兼容的关键。若改成 `Option<CoreErrorKind>`:一个**更新的 service** 发来老 client 不认识的 kind(P3 会新增),会让**整个 envelope 解码失败**,而不是丢一个字段 —— 正是 `docs/spec/2026-07-30-ipc-protocol-evolution-report.md:129` 拒绝动 `ResponseCode` 枚举的那个失败模式。app 通过 auto-update 让 daemon 版本 ≥ GUI 版本是常态,「新 service + 老 client」真实存在。
 
 同理 `ClientError::Server.error_kind` 保持 `Option<String>`(原始字符串不丢),typed 访问通过新增的 `ClientError::core_error_kind()` 访问器提供。
 

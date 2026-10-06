@@ -3,7 +3,7 @@
 **日期:** 2026-07-12
 **状态:** 已批准(brainstorming 会话逐节确认);**2026-07-12 按外部审计(GPT-Pro)修订 r2**——处置记录见 §12
 **范围基线:** main @ `fbb72905b`(r2 修订:原基线 `40183093b` 之后 main 合入 #4923 韩语 locale 与 #4928 i18n 同步;实施前先 rebase,见 plan Task 0)
-**上游依据:** `docs/design/actor-migration-roadmap.md` §4.6;PR-3 复审挂账(`docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` §6)
+**上游依据:** `docs/design/actor-migration-roadmap.md` §4.6;PR-3 复审挂账(`docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` §6)
 
 ---
 
@@ -336,7 +336,7 @@ IPC `patch_clash_config` 顺序改为:
 ## 13. PR-4S addendum — decisions corrected after PR-4 merge
 
 **Date:** 2026-07-18
-**Authority:** `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/design.md` (PR-4S) supersedes the PR-4 decisions listed below where they conflict.
+**Authority:** `docs/spec/2026-07-13-pr4s-actor-migration-stabilization/design.md` (PR-4S) supersedes the PR-4 decisions listed below where they conflict.
 **Scope of this addendum:** documentation only. It records how PR-4S corrected PR-4. It does **not** declare PR-4S complete (S10 smoke/review-thread/CI-ledger closeout may still be open).
 
 PR-4 delivered the right migration direction (pure runtime derivation, checked promote, facade-held read model, committed/degraded mutations) but several correctness boundaries were incomplete. PR-4S stabilizes those boundaries **before** PR-5 CoreActor work.
@@ -364,6 +364,6 @@ PR-4 delivered the right migration direction (pure runtime derivation, checked p
 
 ### Evidence / disposition siblings
 
-- `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/smoke-evidence.md`
-- `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/review-disposition.md`
-- `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/residual-ledger.md`
+- `docs/spec/2026-07-13-pr4s-actor-migration-stabilization/smoke-evidence.md`
+- `docs/spec/2026-07-13-pr4s-actor-migration-stabilization/review-disposition.md`
+- `docs/spec/2026-07-13-pr4s-actor-migration-stabilization/residual-ledger.md`

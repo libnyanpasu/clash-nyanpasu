@@ -1,7 +1,7 @@
 # PR-6 实施计划：effects / system proxy / hotkey / UI 副作用
 
 **日期：** 2026-09-12
-**设计：** [`docs/superpowers/specs/2026-09-12-pr6-application-effects/design.md`](../specs/2026-09-12-pr6-application-effects/design.md)
+**设计：** [`docs/spec/2026-09-12-pr6-application-effects/design.md`](../spec/2026-09-12-pr6-application-effects/design.md)
 **基线：** `main @ 31967446d`
 **交付形态：** 五条堆叠分支，后一条基于前一条
 

@@ -644,7 +644,7 @@ Expected: 全绿。
 按「契约修正」1–4 更新 T06 卡(RuntimeBuildInput 实名、RuntimeBuildError、阻塞上下文要求 → 同步 T07 卡 Consumes、怪癖忠实移植记录)。
 
 ```bash
-git add backend/tauri/tests backend/tauri/src/enhance docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add backend/tauri/tests backend/tauri/src/enhance docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "test(tauri): add runtime builder golden suite against legacy semantics"
 ```
 

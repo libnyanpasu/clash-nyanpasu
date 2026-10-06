@@ -458,7 +458,7 @@ git commit -m "feat(tauri)!: switch profile ipc surface to domain commands (13 t
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T08 卡尾部 + T07 卡 Produces 表)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T08 卡尾部 + T07 卡 Produces 表)
 
 - [ ] **Step 1: T07 卡 Produces 方法表补一行**
 
@@ -481,7 +481,7 @@ git commit -m "feat(tauri)!: switch profile ipc surface to domain commands (13 t
 - [ ] **Step 3: Commit**
 
 ```powershell
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record T08 execution addenda in task card"
 ```
 

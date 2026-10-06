@@ -2,7 +2,7 @@
 
 **日期：** 2026-10-01
 **基线：** `main @ 70a5853ce`（含 #5477–#5479 流量记录、#5486 已结束连接标签页、#5487 规则流量）
-**来源：** 拓扑页需求讨论（2026-10-01）；调研见 [`2026-09-16-traffic-topology-research.md`](../../reports/2026-09-16-traffic-topology-research.md)
+**来源：** 拓扑页需求讨论（2026-10-01）；调研见 [`2026-09-16-traffic-topology-research.md`](../../report/2026-09-16-traffic-topology-research.md)
 **范围：** `nyanpasu-traffic` 存储与查询模型重做；`TrafficActor` / `TrafficClient` / `NyanpasuClient` / IPC 接口调整；新增保留期限设置；拓扑页改为基于后端数据的"流量"分析页；规则页与连接页"已结束"标签页随接口迁移。
 **不在范围：** 见 §10。
 **权威顺序：** `AGENTS.md` > `docs/design/actor-migration-roadmap.md` > 本设计 > `task.md`

@@ -370,7 +370,7 @@ impl RuntimeBuilder {
 - `RuntimeArtifact.step_logs` 能还原旧 `postprocessing_output` 消费需求
 - 纯度断言:`runtime_builder.rs` 无 `Config::` / `tauri::` import(D12 取数不在本卡——输入全部显式传参)
 
-**单独 plan 时读**: design §8/§19、图 13.2、D7/D12;`backend/nyanpasu-config/src/runtime/executor/`(实物:`mod.rs`/`ports.rs`/`artifact.rs`;`tests/{golden,parity}.rs` fixtures 可复用);`docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md` §19 勘误;`enhance/mod.rs:22-104`、`enhance/chain.rs:59-160`(旧语义源)。
+**单独 plan 时读**: design §8/§19、图 13.2、D7/D12;`backend/nyanpasu-config/src/runtime/executor/`(实物:`mod.rs`/`ports.rs`/`artifact.rs`;`tests/{golden,parity}.rs` fixtures 可复用);`docs/spec/2026-07-04-runtime-pipeline-executor-design.md` §19 勘误;`enhance/mod.rs:22-104`、`enhance/chain.rs:59-160`(旧语义源)。
 
 ---
 
@@ -770,6 +770,6 @@ design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则
 
 **2026-07-12 用户决策与处置(PR-4 落地):**
 
-- **C-M2(后半):** 已落地——变更类 profile IPC 返回 `RebuildOutcome`(committed/degraded);ack-based rollback 记为 post-PR-7 方向。见 `docs/superpowers/specs/2026-07-12-pr4-runtime-derivation-cleanup-design.md` §6.2。
+- **C-M2(后半):** 已落地——变更类 profile IPC 返回 `RebuildOutcome`(committed/degraded);ack-based rollback 记为 post-PR-7 方向。见 `docs/spec/2026-07-12-pr4-runtime-derivation-cleanup-design.md` §6.2。
 - **C-M5:** 已落地——`run_core_inner` 的 `Config::clash().reload()` 删除(重启=应用当前 draft)。
 - **C-M4(后半)勘误:** 端口生命周期编排改挂 **PR-5**(编排需控制核心启停时序,属 CoreActor 职责),已登记进 roadmap §4.7 任务 ⑦ 与验收。

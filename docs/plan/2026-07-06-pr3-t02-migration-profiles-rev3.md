@@ -1259,7 +1259,7 @@ git commit -m "test(migration): pin 1.6.1 fixture to clean-schema terminal shape
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T02 卡「规则清单」段)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T02 卡「规则清单」段)
 
 - [ ] **Step 1: 把本 plan 侦察发现的两条 spec 补遗追记进 T02 卡规则清单**
 
@@ -1271,7 +1271,7 @@ git commit -m "test(migration): pin 1.6.1 fixture to clean-schema terminal shape
 - [ ] **Step 2: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record T02 mapping rule addenda (symlinks, option defaults)"
 ```
 

@@ -1,6 +1,6 @@
 # Tauri 调用点 Profile 迁移指南
 
-**状态：** 已实施——作为**历史设计材料**保留（实施于 PR-3 T07–T11,本地 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`,未推送）。正文按撰写时(实施前)的口径原样保留:文中「本期/后期/本指南不完成」均指**规划期**框架,所列"未完成"工作现已全部由 T07–T11 落地;个别建议已被执行期决策取代(见文内标注)。实施实录与判据取证以 `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T08/T11 为准。  
+**状态：** 已实施——作为**历史设计材料**保留（实施于 PR-3 T07–T11,本地 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`,未推送）。正文按撰写时(实施前)的口径原样保留:文中「本期/后期/本指南不完成」均指**规划期**框架,所列"未完成"工作现已全部由 T07–T11 落地;个别建议已被执行期决策取代(见文内标注)。实施实录与判据取证以 `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T08/T11 为准。  
 **范围：** `backend/tauri` 中所有 Profile 相关 IPC 命令的现状分析与迁移映射（实施前快照）
 
 ---

@@ -4,7 +4,7 @@
 >
 > **基线**：`refactor/tcc-t11-cleanup@fb7de1b06`（PR #5389；栈 #5385–#5389 均未合并），`backend/nyanpasu-runtime@f5b581fad`。锁定版本：ractor 0.16.5、tokio-util 0.7.19、tauri 2.11.5、tauri-runtime-wry 2.11.4、tauri-plugin-global-shortcut 2.3.2、atomicwrites 0.4.4。
 >
-> **与评审稿的关系**：本文取代 `docs/reviews/2026-09-27-workflow-lifecycle-simplification-plan.md`。评审稿的方向保留，任务顺序、PR 切分和若干裁定以本文为准。
+> **与评审稿的关系**：本文取代 `docs/review/2026-09-27-workflow-lifecycle-simplification-plan.md`。评审稿的方向保留，任务顺序、PR 切分和若干裁定以本文为准。
 >
 > **行号约定**：文中行号均为基线行号，路径未加前缀时相对 `backend/tauri/src/`。实施时按符号重新定位，不机械套用行号。
 >
@@ -253,7 +253,7 @@ impl dyn MainThreadExecutor {
 ### P1-1 `docs(plan): plan the workflow and lifecycle simplification`
 
 - 新增本文件。
-- 评审稿 `docs/reviews/2026-09-27-workflow-lifecycle-simplification-plan.md` 目前未入库，作为输入一并入库（Q-I），并在顶部加一行，指向本文。
+- 评审稿 `docs/review/2026-09-27-workflow-lifecycle-simplification-plan.md` 目前未入库，作为输入一并入库（Q-I），并在顶部加一行，指向本文。
 
 ### P1-2 `docs(agents): scope deadlines to network IO and state the ownership rules`
 
@@ -861,9 +861,9 @@ nyanpasu-core 的最小改动：让 `replace_if_version_with_participant` 的 pa
 | roadmap `:68`                                                                                                               | 事务占用保持到权威决定和必要结算完成                                                                                | 仍然有效，现在由单个 handler await 实现                     |
 | `docs/plan/2026-09-14-application-workflow-selective-tcc-v2.md:3,337,342,368-372,374-398,789-824,832,938,970-975,1020,1025` | 按 OperationId 定位事务、有界准入、§5.5 预算、图 13 的调用方超时分支、§11.3 的有序退出、图 12 的“超时 / panic”、V24 | 本计划：V19 由单一 handler 从结构上满足；V24 作废           |
 | `docs/plan/2026-09-25-tcc-t10-implementation.md:11,50-54,60,74,76-81,101`                                                   | 单飞有序关闭、R21 的 panic、lifecycle 命令 panic、关停行为差异、会挂住的测试                                        | L2-2、U5                                                    |
-| `docs/superpowers/specs/2026-09-25-tcc-t10-lifecycle/design.md:36,226,271,308,311,460-569,795`                              | 有序关闭、`catch_unwind` 分支、调用方预算、决定等待超时、panic 标志、§5 期限、R42                                   | L2-2、L3-1、L3-2                                            |
+| `docs/spec/2026-09-25-tcc-t10-lifecycle/design.md:36,226,271,308,311,460-569,795`                                           | 有序关闭、`catch_unwind` 分支、调用方预算、决定等待超时、panic 标志、§5 期限、R42                                   | L2-2、L3-1、L3-2                                            |
 | `docs/plan/2026-09-25-tcc-t11-implementation.md:49-50,64`                                                                   | 保留的 fencing：准入 FIFO、context、准入预算；等待超时的错误文字                                                    | L3-1 / L3-2（隔离门保留）                                   |
-| `docs/superpowers/specs/2026-09-12-pr6-application-effects/design.md:599`                                                   | `SYSTEM_PROXY_RPC_TIMEOUT` / restore 5 s                                                                            | P1-12 / L2-2                                                |
+| `docs/spec/2026-09-12-pr6-application-effects/design.md:599`                                                                | `SYSTEM_PROXY_RPC_TIMEOUT` / restore 5 s                                                                            | P1-12 / L2-2                                                |
 | `docs/plan/2026-09-13-runtime-apply-options.md:65-216`                                                                      | 有界队列、tracked task、panic / uncertain 测试                                                                      | L3-2                                                        |
 | `docs/roadmap/2026-09-09-tracked-config-and-snapshot-store.md:35,59,149,202`                                                | 沿用 CoreClient 的有限超时；消费者阻塞或 panic 不影响核心事务                                                       | 分别重新评估：IPC 期限仍然有效；panic 隔离已被 U5 取代      |
 

@@ -156,7 +156,7 @@ git commit -m "refactor(tauri)!: delete legacy profiles config module"
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T10 卡尾部)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T10 卡尾部)
 
 - [ ] **Step 1: 回写执行修正块**
 
@@ -173,7 +173,7 @@ git commit -m "refactor(tauri)!: delete legacy profiles config module"
 Run: 全部 §16 判据 grep + `cargo build` + `cargo test`(全绿)。
 
 ```powershell
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record T10 execution addenda in task card"
 ```
 

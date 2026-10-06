@@ -41,7 +41,7 @@ the same change only if it restates that rule.
 `CLAUDE.md` imports `AGENTS.md`, so the same instructions apply there. Neither human
 nor agent documentation should introduce a separate architectural exception.
 
-The documents under `docs/plan/`, `docs/superpowers/`, and `docs/reviews/` record
+The documents under `docs/spec/`, `docs/plan/`, `docs/report/`, and `docs/review/` record
 historical proposals and decisions. Use these guides and `AGENTS.md` for current
 rules; older plans may contain superseded timeout or lifecycle policies. The actor
 migration is complete; the [actor migration roadmap](../design/actor-migration-roadmap.md)

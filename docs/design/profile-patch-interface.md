@@ -1,6 +1,6 @@
 # Profile Patch 接口分析
 
-**本文对应设计 spec §5（`docs/superpowers/specs/2026-06-28-nyanpasu-config-profiles-type-migration-design.md`），是交付文档 #2。**
+**本文对应设计 spec §5（`docs/spec/2026-06-28-nyanpasu-config-profiles-type-migration-design.md`），是交付文档 #2。**
 
 ---
 

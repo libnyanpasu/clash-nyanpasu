@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024 (tauri crate `clash-nyanpasu`, lib `clash_nyanpasu_lib`), clash-api `1.0.0-rc.10` (submodule, read-only here), ractor, specta / unified RPC, React 19, TanStack Query, Vitest (node `unit` + Playwright `browser` projects).
 
-**Spec:** `docs/superpowers/specs/2026-10-05-proxies-api-unification/design.md`
+**Spec:** `docs/spec/2026-10-05-proxies-api-unification/design.md`
 
 ## Global Constraints
 

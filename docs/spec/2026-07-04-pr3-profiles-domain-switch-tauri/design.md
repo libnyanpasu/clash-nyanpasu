@@ -10,7 +10,7 @@
   - `docs/design/profile-patch-interface.md` — 分层 patch 接口 + 事务流程(已实施)
   - `docs/design/profile-tauri-migration-guide.md` — 逐命令迁移指南(下文以「guide §N」引用)
   - `docs/design/profile-snapshot-store-migration.md` — snapshot store v2(PR-3-pre①)
-  - `docs/superpowers/specs/2026-06-27-three-stateactors-nyanpasu-config-design.md` — PR-2b 蓝图(超时策略/边界规则沿用)
+  - `docs/spec/2026-06-27-three-stateactors-nyanpasu-config-design.md` — PR-2b 蓝图(超时策略/边界规则沿用)
 
 ---
 

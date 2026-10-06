@@ -43,7 +43,7 @@ Out of scope (record, do not implement): the `nyanpasu-runtime` submodule marker
 
 ### Task 1: Typed configuration IPC (backend, additive + renames)
 
-Branch `refactor/typed-config-ipc` (create from `main @ 4f59ca781`). The plan document itself is committed first on this branch as `docs: plan the legacy interface cleanup stack` (already written at `docs/superpowers/plans/2026-09-25-legacy-interface-cleanup.md`).
+Branch `refactor/typed-config-ipc` (create from `main @ 4f59ca781`). The plan document itself is committed first on this branch as `docs: plan the legacy interface cleanup stack` (already written at `docs/plan/2026-09-25-legacy-interface-cleanup.md`).
 
 Context: the frontend reads and writes all settings through the legacy `get_verge_config`/`patch_verge_config` IPC (`IVerge`). `NyanpasuClient` already has typed `get_app_config`, `patch_app_config`, `get_clash_config`, `patch_clash_config`, `patch_runtime_overrides` (`backend/tauri/src/client/mod.rs` ~469–730) but none is exposed as IPC. The existing IPC `patch_clash_config` (`backend/tauri/src/ipc.rs` ~451) actually patches runtime overrides via a whitelisted `PatchRuntimeConfig` DTO and silently drops unknown fields such as `secret`/`external-controller`. `get_clash_info` (`ipc.rs` ~321) reads `Config::clash().latest().get_client_info()`.
 
@@ -130,7 +130,7 @@ Acceptance: Global Constraint 4 checks (migration tests included); `rg -n "Prepa
 
 ### Task 5: T10 lifecycle design (document only)
 
-Branch `feat/tcc-startup-shutdown` (create from the L2 head). Output: `docs/superpowers/specs/2026-09-25-tcc-t10-lifecycle/design.md`, committed as `docs(tcc): design the T10 startup and shutdown lifecycle`. No code changes.
+Branch `feat/tcc-startup-shutdown` (create from the L2 head). Output: `docs/spec/2026-09-25-tcc-t10-lifecycle/design.md`, committed as `docs(tcc): design the T10 startup and shutdown lifecycle`. No code changes.
 
 Context: TCC plan §11 and T10. Current state (main @ 4f59ca781):
 

@@ -1,6 +1,6 @@
 # TCC T10：启动、后台源、恢复与关闭生命周期设计
 
-> **已被取代（2026-09-28）：** 下列内容已被 [Workflow 与生命周期精简计划](../../../plan/2026-09-28-workflow-lifecycle-simplification.md) 取代；正文作为历史保留，不再改写。
+> **已被取代（2026-09-28）：** 下列内容已被 [Workflow 与生命周期精简计划](../../plan/2026-09-28-workflow-lifecycle-simplification.md) 取代；正文作为历史保留，不再改写。
 >
 > - §0.1 第 8 条与 §5 的单飞有序关闭（截止时间、先发请求再等待确认、结构化报告、`begin_terminate`）：改为根 CancellationToken 加各 owner 自行收尾（精简计划 §3.4，L2-2 `be09913ff`）。
 > - §1.11 中 tracked task 与 `catch_unwind` 分支交还两个槽、panic 后槽保持 panic 时刻的内容：Runtime 的 actor handler 直接 await 整条命令，panic 不再捕获（精简计划 U5，L3-2 `74b8621cc`）。
@@ -9,7 +9,7 @@
 > - §12 R42 所说的 100 ms 决定窗口：`decision_wait` 已删除（L3-1）。
 
 日期：2026-09-25（修订 5：codex 评审 1–3、CCG 评审 1 的 L3a 与 L3b，见 §12）
-提交路径：`docs/superpowers/specs/2026-09-25-tcc-t10-lifecycle/design.md`（由 leader 提交）
+提交路径：`docs/spec/2026-09-25-tcc-t10-lifecycle/design.md`（由 leader 提交）
 代码基线：`main @ 4f59ca781`（只读核对）；实施基线为 L2 head（`refactor/remove-legacy-config`）。文中行号均指 `4f59ca781`，Task 6a/6b/7 开工前在分支上复核（Ruling R5）。
 依据：TCC v2 计划 §2、§8–§11、§12 T10/T11、§13 V31/V33/V35–V37；`2026-09-24-tcc-t{6,7,8,9}-implementation.md` 与 T6–T9 review 记录；`AGENTS.md` §5–§13；Task 5 brief。
 

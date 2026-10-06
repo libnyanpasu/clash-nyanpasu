@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust(tauri crate + nyanpasu-core SimpleStateManager + atomicwrites + mockall)、tauri-specta 绑定、React/TS(react-query MutationCache、paraglide i18n)。
 
-**Spec:** `docs/superpowers/specs/2026-07-12-pr4-runtime-derivation-cleanup-design.md`(已批准;r2 审计修订版,处置记录见其 §12)。
+**Spec:** `docs/spec/2026-07-12-pr4-runtime-derivation-cleanup-design.md`(已批准;r2 审计修订版,处置记录见其 §12)。
 
 ## Global Constraints
 
@@ -1973,8 +1973,8 @@ git commit -m "feat(ui): surface committed-but-degraded rebuilds via global muta
 **Files:**
 
 - Modify: `docs/design/actor-migration-roadmap.md`(§4.6 重写、§4.0 图、§4.7 任务/契约/时序图、§2.4、§5、§6)
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`
-- Modify: `docs/superpowers/specs/2026-07-12-pr4-runtime-derivation-cleanup-design.md`(§6.2 括注勘误)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`
+- Modify: `docs/spec/2026-07-12-pr4-runtime-derivation-cleanup-design.md`(§6.2 括注勘误)
 
 - [ ] **Step 1: roadmap §4.6 整节重写**(:537-542 正文全部替换——不得只追加状态行,否则「保存完整 RuntimeArtifact」与「只保存 RuntimeState」两套互斥架构并存):
 
@@ -1985,7 +1985,7 @@ git commit -m "feat(ui): surface committed-but-degraded rebuilds via global muta
 
 **可执行任务:** ① 存放点 = facade 持有 `SimpleStateManager<Option<RuntimeState>>`——**改判(2026-07-12,PR-4 spec D4/§12):不保存完整 `RuntimeArtifact`**,重建时一次派生只读 `RuntimeState { config, exists_keys, postprocessing_output }`;graph / step_logs **明确放弃**(YAGNI:无现实消费者,四读 IPC 与 PR-5 核心消费只需产物与读模型;图谱/诊断需求出现时 post-PR-5 再引入),`client.rebuild_running_config()` 统一重建入口;② `clash-config.yaml` 降级为「产物」:唯一候选文件 → 核心二进制 check(与 builder 同源的显式 target core)→ atomicwrites 晋升 → 发布 manager——产物与发布状态任何时刻只含已检查配置;③ 四条 IPC(`get_runtime_config/yaml/exists/postprocessing_output`)改读 facade manager,wire 保形;④ `feat::patch_clash` 的 runtime 内存 patch 删除,四字段并入 rebuild 输入,IPC 层 API-first + 失败补偿(spec D6);⑤ 重建/换核/legacy 更新统一 `rebuild_gate` 事务域:`change_core` 编排迁 facade(强回滚),legacy 成对调用改组合桥操作(spec D7);⑥ 删 `Config::runtime()`、`IRuntime`、`Config::generate()`/`generate_file()`。
 **验证:** `grep "Config::runtime\(\)"` 零命中;`enhance_profiles` IPC 行为不变;check 失败时产物与 manager 双双保旧。
-**状态:** ✅ 已实施(2026-07,分支 `refactor/pr4-runtime-derivation`,PR 号合并后回填)。详见 `docs/superpowers/specs/2026-07-12-pr4-runtime-derivation-cleanup-design.md`。
+**状态:** ✅ 已实施(2026-07,分支 `refactor/pr4-runtime-derivation`,PR 号合并后回填)。详见 `docs/spec/2026-07-12-pr4-runtime-derivation-cleanup-design.md`。
 ```
 
 - [ ] **Step 2: roadmap §4.0 端态图两节点修正**
@@ -2044,7 +2044,7 @@ PR-4 已清偿 runtime draft 写入;残余仅 `CoreManager` check/apply/restart 
 ```markdown
 **2026-07-12 用户决策与处置(PR-4 落地):**
 
-- **C-M2(后半):** 已落地——变更类 profile IPC 返回 `RebuildOutcome`(committed/degraded);ack-based rollback 记为 post-PR-7 方向。见 `docs/superpowers/specs/2026-07-12-pr4-runtime-derivation-cleanup-design.md` §6.2。
+- **C-M2(后半):** 已落地——变更类 profile IPC 返回 `RebuildOutcome`(committed/degraded);ack-based rollback 记为 post-PR-7 方向。见 `docs/spec/2026-07-12-pr4-runtime-derivation-cleanup-design.md` §6.2。
 - **C-M5:** 已落地——`run_core_inner` 的 `Config::clash().reload()` 删除(重启=应用当前 draft)。
 - **C-M4(后半)勘误:** 端口生命周期编排改挂 **PR-5**(编排需控制核心启停时序,属 CoreActor 职责),已登记进 roadmap §4.7 任务 ⑦ 与验收。
 ```
@@ -2077,7 +2077,7 @@ git status --short                                                            # 
 - [ ] **Step 10: Commit + push**
 
 ```bash
-git add docs/design/actor-migration-roadmap.md "docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md" docs/superpowers/specs/2026-07-12-pr4-runtime-derivation-cleanup-design.md
+git add docs/design/actor-migration-roadmap.md "docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md" docs/spec/2026-07-12-pr4-runtime-derivation-cleanup-design.md
 git commit -m "docs: PR-4 closeout — roadmap 4.6 rewritten to RuntimeState read model, C-M4 registered under PR-5, ledger re-enumerated"
 git push https://github.com/libnyanpasu/clash-nyanpasu.git refactor/pr4-runtime-derivation
 ```

@@ -4,7 +4,7 @@
 
 **Goal:** 在 `nyanpasu-config` 内落地纯 runtime pipeline executor：给定已验证 `Profiles` 快照 + 注入 ports，执行 clean-design §7.1–7.5 五种处理顺序与最终阶段，产出 `RuntimeArtifact{final_config, graph, step_logs, applied_fields}`；`backend/tauri/**` 提交面零改动。
 
-**Architecture:** 权威设计 = `docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md`（下称 **spec**，语义决策一律以其为准，本计划只做落地拆分）。先做 snapshot tag 受控扩展（spec §8.2），再自底向上：ports/类型骨架 → Overlay 指令集 → 三 BuiltinStep 纯函数 → 五顺序编排与录制 → golden/失效/parity 测试 → roadmap 勘误回写。行为基线 = 旧 `backend/tauri/src/enhance/`（spec §4.3 十七步实测），故意差异封闭于 spec §13 台账（15 条）。并行执行协调文件：`.claude/plan/runtime-pipeline-executor-parallel.md`（波次调度、worktree/合并协议、任务卡）。
+**Architecture:** 权威设计 = `docs/spec/2026-07-04-runtime-pipeline-executor-design.md`（下称 **spec**，语义决策一律以其为准，本计划只做落地拆分）。先做 snapshot tag 受控扩展（spec §8.2），再自底向上：ports/类型骨架 → Overlay 指令集 → 三 BuiltinStep 纯函数 → 五顺序编排与录制 → golden/失效/parity 测试 → roadmap 勘误回写。行为基线 = 旧 `backend/tauri/src/enhance/`（spec §4.3 十七步实测），故意差异封闭于 spec §13 台账（15 条）。并行执行协调文件：`.claude/plan/runtime-pipeline-executor-parallel.md`（波次调度、worktree/合并协议、任务卡）。
 
 **Tech Stack:** Rust、serde / serde_json / serde_yaml_ng（含 `Value::apply_merge`，已核实 fork 保留）、indexmap、thiserror、specta、既有 `runtime::{snapshot, value}`。**不新增任何依赖**。
 
@@ -48,7 +48,7 @@
 - `tests/{mod,support}.rs` 与全部空测试 stub `tests/{overlay,builtin,compose,orders,golden,invalidation,parity}.rs` —— **全部由 Task 2 一次性创建**；`tests/mod.rs` 自 Task 2 起全量声明所有测试模块，此后**冻结**（Task 3–8 只填充各自 stub，不再改 `tests/mod.rs`）
 - `tests/fixtures/{sub_a.yaml,sub_b.yaml}` —— Task 2 创建（共享 fixture，Task 6/8 只读消费）；其余 `tests/fixtures/*.yaml` 由 Task 6/8 给出全文
 
-文档（Task 9）：`docs/design/actor-migration-roadmap.md`、`docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md`。
+文档（Task 9）：`docs/design/actor-migration-roadmap.md`、`docs/spec/2026-07-04-runtime-pipeline-executor-design.md`。
 
 **关键 import 路径**（已核实）：`crate::profile::*`（mod.rs 全量重导出）；guard/tun 类型**无**顶层重导出，必须 `crate::clash::config::overrides::ClashGuardOverrides`、`crate::clash::config::tun_stack::TunStack`。
 
@@ -954,7 +954,7 @@ pub(super) fn deep_merge_value(existing: Option<&ConfigValue>, data: &ConfigValu
 
 ```rust
 //! Pure runtime pipeline executor: the "execution half" of the runtime
-//! snapshot store (spec: docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md).
+//! snapshot store (spec: docs/spec/2026-07-04-runtime-pipeline-executor-design.md).
 
 mod artifact;
 mod builtin;
@@ -3857,14 +3857,14 @@ git commit -m "test(nyanpasu-config): add legacy enhance parity fixtures"
 **Files:**
 
 - Modify: `docs/design/actor-migration-roadmap.md`（§4.4 末尾追加勘误块）
-- Modify: `docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md`（状态行 + §19 落实标注）
+- Modify: `docs/spec/2026-07-04-runtime-pipeline-executor-design.md`（状态行 + §19 落实标注）
 
 - [ ] **Step 1: roadmap §4.4 表格后追加**
 
 在 `| T3p.6 | 测试:五顺序 golden 测试(对照 clean-design §6.1 YAML 示例)、与失效机制的集成(\`invalidate_profile\` → FullCurrent 重建)、**与旧 \`enhance()\` 行为对照 fixtures**(同输入产出等价配置,防语义漂移——tauri 迁移指南 §7.4 列为最高风险) | \`cargo test -p nyanpasu-config\` 全绿 |` 行之后追加：
 
 ```markdown
-> **勘误(2026-07-04,executor 设计定稿,详见 `docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md` §19):**
+> **勘误(2026-07-04,executor 设计定稿,详见 `docs/spec/2026-07-04-runtime-pipeline-executor-design.md` §19):**
 > ① T3p.1 的 `ScriptRunner` 单 `run` 方法不够——Overlay `filter__` 内嵌 per-item Lua,需另加 `eval_item_predicate`/`eval_item_expr` 两方法;
 > ② T3p.2 「六变体」实为**八变体**:新增 `BareRoot` 与 `BuiltinTransform`,且 `GlobalTransform`/`BuiltinStep` 的 `selected_profile_id` Option 化(bare 模式);
 > ③ T3p.5 所称 `get_runtime_exists_keys` 实名 `get_runtime_exists`(`ipc.rs:433-436`);
@@ -3877,7 +3877,7 @@ git commit -m "test(nyanpasu-config): add legacy enhance parity fixtures"
 `- **状态**: 设计稿（待批准；批准后按 writing-plans 拆实施计划）` 改为：
 
 ```markdown
-- **状态**: 已批准；实施计划：`docs/superpowers/plans/2026-07-04-runtime-pipeline-executor.md`
+- **状态**: 已批准；实施计划：`docs/plan/2026-07-04-runtime-pipeline-executor.md`
 ```
 
 并在 spec 文末追加实施勘误小节（若 Task 3 Step 4 的 `merge.rs` 复核产生 §7.3 表修正，一并写入）：
@@ -3904,7 +3904,7 @@ git status --short
 Expected: 测试全绿；grep 零命中（成功判据 #7）；工作区仅剩本计划各 task 的已提交内容，`backend/tauri` 干净。
 
 ```bash
-git add docs/design/actor-migration-roadmap.md docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md
+git add docs/design/actor-migration-roadmap.md docs/spec/2026-07-04-runtime-pipeline-executor-design.md
 git commit -m "docs: record runtime executor roadmap errata and spec status"
 ```
 

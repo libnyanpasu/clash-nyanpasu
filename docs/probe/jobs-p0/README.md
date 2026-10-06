@@ -7,9 +7,9 @@
 从仓库根目录执行：
 
 ```sh
-cargo test --manifest-path docs/probes/jobs-p0/Cargo.toml --locked
-cargo clippy --manifest-path docs/probes/jobs-p0/Cargo.toml --locked --all-targets -- -D warnings
-cargo fmt --manifest-path docs/probes/jobs-p0/Cargo.toml --check
+cargo test --manifest-path docs/probe/jobs-p0/Cargo.toml --locked
+cargo clippy --manifest-path docs/probe/jobs-p0/Cargo.toml --locked --all-targets -- -D warnings
+cargo fmt --manifest-path docs/probe/jobs-p0/Cargo.toml --check
 ```
 
 首次运行需要下载 Cargo.lock 中的依赖。产物仅写入此工程自己的 `target/`。遵循仓库 Rust toolchain；资源受限时可设置 `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0`。

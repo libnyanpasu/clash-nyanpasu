@@ -1,7 +1,7 @@
 # PR-3-pre② — Runtime Pipeline Executor 设计（纯执行半，nyanpasu-config）
 
 - **日期**: 2026-07-04
-- **状态**: 已批准；实施计划：`docs/superpowers/plans/2026-07-04-runtime-pipeline-executor.md`
+- **状态**: 已批准；实施计划：`docs/plan/2026-07-04-runtime-pipeline-executor.md`
 - **作者**: Jonson Petard（design task with Claude）
 - **上游依据**: `docs/design/actor-migration-roadmap.md` §4.4（T3p.1–T3p.6，修正 C5：executor 是 PR-3 的硬前置）
 - **规范语义来源**: `docs/design/profile-composition-clean-design.md` §6.1 / §7.1–7.5 / §18

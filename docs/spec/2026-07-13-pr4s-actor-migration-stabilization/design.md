@@ -536,7 +536,7 @@ pub struct Degradation {
 ### 6.13 S09 fake-core process matrix
 
 - **test-only package** `backend/fake-core`（workspace member；tauri **dev-dependency**；`publish = false`；**never packaged** as production sidecar/resource）。
-- **协议权威：** argv shapes、`FAKE_CORE_*` env、TCP READY/RELEASE barrier、HTTP apply 注入、binary discovery/prebuild 与 `ScopedChild` RAII 细节以 [`backend/fake-core/README.md`](../../../../backend/fake-core/README.md) 为准。设计层 disposition：
+- **协议权威：** argv shapes、`FAKE_CORE_*` env、TCP READY/RELEASE barrier、HTTP apply 注入、binary discovery/prebuild 与 `ScopedChild` RAII 细节以 [`backend/fake-core/README.md`](../../../backend/fake-core/README.md) 为准。设计层 disposition：
   - 使用 **real core argv**（check / mihomo / clash-rs / premium），**不是**早期 illustrative CLI flags（`--check-ok/--start-fail/--apply-fail` 等）；
   - 行为仅由 env 注入；parent/child 以 TCP READY/RELEASE 定序（禁止 sleep 作为主协议）；无 barrier 且无 immediate start-exit → fail-fast；
   - exact `PUT /configs` 与 `PATCH /configs` 状态注入；严格 env 解析；RAII child reap。
@@ -652,7 +652,7 @@ CI grep/deny：
 - 动态 hold/http 端口（含 ephemeral `0` + READY 回报）；
 - exact `PUT /configs` / `PATCH /configs` 状态注入；
 - `ScopedChild` + parent-owned `ReadyBarrier`；
-- prebuild / cross-crate discovery：见 [`backend/fake-core/README.md`](../../../../backend/fake-core/README.md)。
+- prebuild / cross-crate discovery：见 [`backend/fake-core/README.md`](../../../backend/fake-core/README.md)。
 
 用于验证真实进程边界与 lifecycle lease/path isolation，而不是只验证 mock 调用顺序。S10 三平台 smoke 仍独立于本 matrix。
 

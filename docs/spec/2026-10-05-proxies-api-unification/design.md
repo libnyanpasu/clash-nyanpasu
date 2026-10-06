@@ -10,7 +10,7 @@
 
 **需求：** 代理、provider 与测速结果统一使用 clash-api 的类型，删除应用侧的有损重复定义；在后端纯函数中生成组语义层（组类型、规范化后的固定选择、可选与可解除固定能力），使托盘与前端读取同一份语义；顺带修复托盘 Global 模式无法选择节点、托盘显示 hidden 组两个问题。
 
-**依据：** 代理页组类型横向调研（2026-10-05，仓库外文档，含 Clash-rs 0.10.8 与 Meow v0.21.2 的接口实测对照）、[代理组内核接口核查报告](../../../audit/2026-10-05-proxy-core-api-report.md)、[代理组发现 spec](../2026-10-05-proxy-group-discovery/design.md)、mihomo `hub/route/proxies.go`（`findProxyByName` 与 `unfixedProxy`）。
+**依据：** 代理页组类型横向调研（2026-10-05，仓库外文档，含 Clash-rs 0.10.8 与 Meow v0.21.2 的接口实测对照）、[代理组内核接口核查报告](../../audit/2026-10-05-proxy-core-api-report.md)、[代理组发现 spec](../2026-10-05-proxy-group-discovery/design.md)、mihomo `hub/route/proxies.go`（`findProxyByName` 与 `unfixedProxy`）。
 
 **权威顺序：** 当前 AGENTS.md 与 development guides > 本 spec > 后续实施计划。
 

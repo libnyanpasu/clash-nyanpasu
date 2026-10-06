@@ -2,9 +2,9 @@
 
 关联设计：`design.md`（同目录）
 
-> **2026-09-10 状态入口**：本任务卡为历史存档。当前控制面下沉实现、rc.5 接线、daemon 恢复及待人工 Service/DNS 验收见 [PR-5 收尾台账](../../../audit/2026-09-10-pr5-closeout.md)。
+> **2026-09-10 状态入口**：本任务卡为历史存档。当前控制面下沉实现、rc.5 接线、daemon 恢复及待人工 Service/DNS 验收见 [PR-5 收尾台账](../../audit/2026-09-10-pr5-closeout.md)。
 
-> **⚠️ 方向变更（2026-08-12）**：本文件 §0 第 1/3 条约束与 PR-5a / PR-5b / PR-5c 三张卡片描述的 GUI `CoreActor` 所有权形态，已被控制面下沉方向取代，规范见 [`2026-08-12-core-actor-v2-app-integration.md`](../../../design/2026-08-12-core-actor-v2-app-integration.md)、[`2026-08-08-core-manager-control-plane-runtime-backend-design.md`](../../../design/2026-08-08-core-manager-control-plane-runtime-backend-design.md) 与 [`2026-08-12-core-actor-audit-verification.md`](../../../audit/2026-08-12-core-actor-audit-verification.md)。R0 与 PR-5-pre 两张卡片不受影响，仍是当前唯一权威实施范围；下方卡片内容保留存档，不再更新。
+> **⚠️ 方向变更（2026-08-12）**：本文件 §0 第 1/3 条约束与 PR-5a / PR-5b / PR-5c 三张卡片描述的 GUI `CoreActor` 所有权形态，已被控制面下沉方向取代，规范见 [`2026-08-12-core-actor-v2-app-integration.md`](../../design/2026-08-12-core-actor-v2-app-integration.md)、[`2026-08-08-core-manager-control-plane-runtime-backend-design.md`](../../design/2026-08-08-core-manager-control-plane-runtime-backend-design.md) 与 [`2026-08-12-core-actor-audit-verification.md`](../../audit/2026-08-12-core-actor-audit-verification.md)。R0 与 PR-5-pre 两张卡片不受影响，仍是当前唯一权威实施范围；下方卡片内容保留存档，不再更新。
 
 ## 0. 全局约束
 
@@ -39,7 +39,7 @@
 > **leader 裁定 D1=A（2026-08-02）**：上面第一条只切 `nyanpasu-utils` / `nyanpasu-ipc` 两条 path 依赖。
 > `nyanpasu-core-manager` / `nyanpasu-core-metadata`（以及 `clash-api`）推迟到 **PR-5a 的首个真实消费者**再加 workspace 条目。
 > 理由：无人引用的 `[workspace.dependencies]` 条目不会进入 Cargo.lock 解析图，属死文本（CLAUDE.md §2）；`nyanpasu-core-metadata` 本就随 ipc v2 **传递**进 lock；且这样能让依赖与体积增量完全可归因于这一次切换。
-> 这是对该行"四个 crate"措辞的**有意偏离**，已记录在案。实施计划：`docs/superpowers/plans/2026-08-01-pr5-pre.md`。
+> 这是对该行"四个 crate"措辞的**有意偏离**，已记录在案。实施计划：`docs/plan/2026-08-01-pr5-pre.md`。
 
 ### P2 — ServiceCompat
 

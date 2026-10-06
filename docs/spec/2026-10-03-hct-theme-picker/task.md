@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19、Tailwind v4、`@material/material-color-utilities@0.4.0`、Radix Popover / ToggleGroup（经 `@nyanpasu/ui` 包装）、Vitest Browser Mode（Chromium）、Paraglide。
 
-**Spec:** `docs/superpowers/specs/2026-10-03-hct-theme-picker/design.md`（同目录，先读）
+**Spec:** `docs/spec/2026-10-03-hct-theme-picker/design.md`（同目录，先读）
 
 **Worktree:** `/Users/a632079/Programs/clash-nyanpasu-hct-picker`，分支 `feat/hct-color-picker`。所有命令都在 worktree 根目录执行。
 

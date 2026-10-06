@@ -1,12 +1,12 @@
 # Issue 5112 代理组发现与快照算法重构建议
 
-> 本报告保留调查基线的接口与问题描述；文中的“当前”指调查时的代码。后续实现、能力边界及验收结果见 [代理组发现 spec](../superpowers/specs/2026-10-05-proxy-group-discovery/design.md)。
+> 本报告保留调查基线的接口与问题描述；文中的“当前”指调查时的代码。后续实现、能力边界及验收结果见 [代理组发现 spec](../spec/2026-10-05-proxy-group-discovery/design.md)。
 
 建议保留现有 ProxiesActor 作为快照所有者，把组发现、排序、成员解析和确定化处理集中到纯转换逻辑：**group 列表可用时由内核返回的组集合决定有哪些组，不可用时才从 proxies 推断。GLOBAL 只提供排序提示，provider 响应补成员记录。** 复用现有 Feature/EnumSet 控制能力；支持时增加一次 `/group` 读取，不新增 actor。
 
 本文汇总 [issue 5112](https://github.com/libnyanpasu/clash-nyanpasu/issues/5112) 的背景、三内核接口核查、Mihomo 内部实现和重构建议，作为后续实施的主报告；建议尚未实现。[原接口核查报告](2026-10-05-proxy-core-api-report.md) 保留完整路径状态码与历史调查记录，原始响应、测试配置、二进制 SHA-256 和模型检查保存在 [证据文件](2026-10-05-proxy-core-api-evidence.json)。
 
-按用户最终要求，本文已将原先“全部从 proxies 发现”的建议修订为 group 优先。具体能力传递、错误降级与验收标准见 [代理组发现 spec](../superpowers/specs/2026-10-05-proxy-group-discovery/design.md)。provider 冲突治理、可选 GLOBAL 等超出该 spec 首次实施范围的建议，保留为独立后续工作。
+按用户最终要求，本文已将原先“全部从 proxies 发现”的建议修订为 group 优先。具体能力传递、错误降级与验收标准见 [代理组发现 spec](../spec/2026-10-05-proxy-group-discovery/design.md)。provider 冲突治理、可选 GLOBAL 等超出该 spec 首次实施范围的建议，保留为独立后续工作。
 
 ## 以项目 clash-api 定义为接口基准
 

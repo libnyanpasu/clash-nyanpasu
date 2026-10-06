@@ -111,7 +111,7 @@ Get-ChildItem backend/tauri/src -Recurse -Include *.rs | Select-String -Pattern 
 
 - Modify: `docs/design/actor-migration-roadmap.md`(§2.1 PR-3 状态行 → 已实施;§5 台账 B8 登记 T07 注释块清单)
 - Modify: profiles 迁移 guide(状态行标注「已实施」;文件名以 docs/ 现场为准)
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T11 卡执行修正块,含契约修正 1–3 实测结果)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T11 卡执行修正块,含契约修正 1–3 实测结果)
 
 - [ ] **Step 1: 文档三处更新**(内容按上表;roadmap B8 行引用判据 7 的枚举)。
 - [ ] **Step 2: PR 描述汇编**——判据 1–8 checklist(命令+输出摘录)、BC 清单(命令面 13→16、current 单值、chain→transforms、import 命名、save 参数收紧、advice 面、连接中断挂全 rebuild[用户决策])、台账枚举、评审待办(codex T05/T06 评审延期项)。

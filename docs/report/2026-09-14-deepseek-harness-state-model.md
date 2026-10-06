@@ -2,7 +2,7 @@
 
 日期：2026-09-14
 分析对象：`deepseek-ai/deepseek-harness` master（2026-09-14 浅克隆；引用格式 `包路径:行号`）
-关联计划：`docs/superpowers/plans/2026-09-14-application-workflow-tcc.md`（下称「计划 v1」）
+关联计划：`docs/plan/2026-09-14-application-workflow-tcc.md`（下称「计划 v1」）
 参考对话：ChatGPT「解释状态事务实现」两轮（结论已逐条与源码核对；核对差异见 §1.7）
 
 ## 0. 结论

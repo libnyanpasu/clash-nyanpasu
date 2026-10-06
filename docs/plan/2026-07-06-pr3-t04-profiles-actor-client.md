@@ -1205,7 +1205,7 @@ git commit -m "feat(tauri): complete profiles actor synchronous write protocol"
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T04 卡)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T04 卡)
 
 - [ ] **Step 1: 全量回归**
 
@@ -1217,7 +1217,7 @@ Expected: 全绿(clippy 无新警告)。
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record T04 contract addenda (args, warnings, affects rules)"
 ```
 

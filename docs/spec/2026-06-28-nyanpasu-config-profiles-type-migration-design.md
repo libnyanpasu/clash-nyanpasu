@@ -154,13 +154,13 @@ clone 当前 Profiles → 应用修改 → validate → 计算 scheduler/watcher
 
 ## 9. 交付物与落盘位置
 
-| 交付物                | 路径                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| 设计 spec(本文件)     | `docs/superpowers/specs/2026-06-28-nyanpasu-config-profiles-type-migration-design.md` |
-| 文档 #1 迁移指南      | `docs/design/profile-tauri-migration-guide.md`                                        |
-| 文档 #2 patch 接口    | `docs/design/profile-patch-interface.md`                                              |
-| 文档 #3 snapshot 迁移 | `docs/design/profile-snapshot-store-migration.md`                                     |
-| 代码                  | `nyanpasu-config/src/profile/**`、`nyanpasu-config/src/runtime/snapshot.rs`           |
+| 交付物                | 路径                                                                        |
+| --------------------- | --------------------------------------------------------------------------- |
+| 设计 spec(本文件)     | `docs/spec/2026-06-28-nyanpasu-config-profiles-type-migration-design.md`    |
+| 文档 #1 迁移指南      | `docs/design/profile-tauri-migration-guide.md`                              |
+| 文档 #2 patch 接口    | `docs/design/profile-patch-interface.md`                                    |
+| 文档 #3 snapshot 迁移 | `docs/design/profile-snapshot-store-migration.md`                           |
+| 代码                  | `nyanpasu-config/src/profile/**`、`nyanpasu-config/src/runtime/snapshot.rs` |
 
 ---
 

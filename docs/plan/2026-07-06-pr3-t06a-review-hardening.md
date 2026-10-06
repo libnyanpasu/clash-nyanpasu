@@ -483,7 +483,7 @@ git commit -m "test(tauri): add RuntimeBuilder golden snapshot suite"
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T06A 卡尾部)
+- Modify: `docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md`(T06A 卡尾部)
 
 - [ ] **Step 1: 在 T06A 卡「单独 plan 时读」行之后追加执行修正块**
 
@@ -498,7 +498,7 @@ git commit -m "test(tauri): add RuntimeBuilder golden snapshot suite"
 - [ ] **Step 2: Commit**
 
 ```powershell
-git add docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
+git add docs/spec/2026-07-04-pr3-profiles-domain-switch-tauri/task.md
 git commit -m "docs(pr3): record T06A execution addenda in task card"
 ```
 

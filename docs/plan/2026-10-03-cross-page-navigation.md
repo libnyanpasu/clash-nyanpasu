@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust (`nyanpasu-traffic`, ractor `TrafficActor`, unified RPC + specta), React 19, TanStack Router 1.170 / Query / Table / Virtual, zod, Paraglide, Vitest (node + browser).
 
-**Spec:** `docs/superpowers/specs/2026-10-03-cross-page-navigation/design.md`
+**Spec:** `docs/spec/2026-10-03-cross-page-navigation/design.md`
 
 ## Global Constraints
 

@@ -1,53 +1,39 @@
-use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
-use nyanpasu_core::state::{PersistentStateManager, VersionedState};
+use nyanpasu_config::state::{PersistentState, PersistentStatePatch, window::WindowLabel};
+use nyanpasu_core::state::PersistentStateManager;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::ResultExt as _;
 use struct_patch::Patch;
 
-use crate::state::config_error::{ConfigError, PersistSessionStateSnafu};
+use super::{SessionStateError, client::SessionStateSnapshot, error::PersistSessionStateSnafu};
 
-#[derive(Debug, Clone)]
-pub struct SessionStateSnapshot {
-    pub state: PersistentState,
-    pub version: u64,
-}
-
-impl SessionStateSnapshot {
-    pub(crate) fn from_versioned(versioned: &VersionedState<PersistentState>) -> Self {
-        Self {
-            state: versioned.state.clone(),
-            version: *versioned.version.as_ref(),
-        }
-    }
-}
-
-pub struct SessionStateActorArgs {
+pub(super) struct SessionStateActorArgs {
     pub manager: PersistentStateManager<PersistentState>,
+    pub main_window_label: WindowLabel,
 }
 
-pub struct SessionStateActorState {
+pub(super) struct SessionStateActorState {
     manager: PersistentStateManager<PersistentState>,
+    main_window_label: WindowLabel,
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
-pub enum SessionStateActorMessage {
+pub(super) enum SessionStateActorMessage {
     SaveMainWindow {
         geometry: nyanpasu_config::state::window::WindowState,
         /// `None` for a queued save: nobody waits, so a failure is logged.
-        reply: Option<RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>>,
+        reply: Option<RpcReplyPort<Result<SessionStateSnapshot, SessionStateError>>>,
     },
     Patch {
         patch: PersistentStatePatch,
-        reply: RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>,
+        reply: RpcReplyPort<Result<SessionStateSnapshot, SessionStateError>>,
     },
     Replace {
         state: PersistentState,
-        reply: RpcReplyPort<Result<SessionStateSnapshot, ConfigError>>,
+        reply: RpcReplyPort<Result<SessionStateSnapshot, SessionStateError>>,
     },
 }
 
-pub struct SessionStateActor;
+pub(super) struct SessionStateActor;
 
 impl SessionStateActor {
     fn snapshot(state: &SessionStateActorState) -> SessionStateSnapshot {
@@ -57,7 +43,7 @@ impl SessionStateActor {
     async fn commit(
         state: &mut SessionStateActorState,
         next: PersistentState,
-    ) -> Result<SessionStateSnapshot, ConfigError> {
+    ) -> Result<SessionStateSnapshot, SessionStateError> {
         state
             .manager
             .upsert(next)
@@ -79,6 +65,7 @@ impl Actor for SessionStateActor {
     ) -> Result<Self::State, ActorProcessingErr> {
         Ok(SessionStateActorState {
             manager: args.manager,
+            main_window_label: args.main_window_label,
         })
     }
 
@@ -91,10 +78,8 @@ impl Actor for SessionStateActor {
         match message {
             SessionStateActorMessage::SaveMainWindow { geometry, reply } => {
                 let mut next = Self::snapshot(state).state;
-                next.window_state.insert(
-                    nyanpasu_config::state::window::WindowLabel("main".into()),
-                    geometry,
-                );
+                next.window_state
+                    .insert(state.main_window_label.clone(), geometry);
                 let result = Self::commit(state, next).await;
                 match reply {
                     Some(reply) => {

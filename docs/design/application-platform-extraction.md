@@ -180,7 +180,8 @@ The backend dependency gate checks transitive production/build dependencies on
 all targets. `deno task test:backend-musl arm64` and `amd64` build the same shared
 tests in Docker and run their binaries in ImmortalWrt rootfs containers; this is
 a test harness, not an OpenWrt daemon or package acceptance test.
-The aarch64 run passed all 57 shared tests in the ImmortalWrt 24.10.4 rootfs.
+The aarch64 and x86_64 runs passed all 57 shared tests in their ImmortalWrt
+24.10.4 rootfs containers.
 The harness checks the actual rootfs musl loader because its ARM image tag
 currently publishes amd64 Docker metadata. Builder architecture stays explicit.
 
@@ -189,6 +190,17 @@ with local/service endpoints implemented in platform, plus persistent session
 state with host-independent actor construction. Profile transactions, application
 workflow, facade composition and RPC registration still belong to the desktop
 host until their whole dependency paths can be moved.
+
+The independent session-state slice now uses
+`nyanpasu_application::session_state::SessionStateClient` in the desktop host.
+Platform opens the persistent manager; application receives it and the
+host-provided window label, root cancellation token and task tracker. The old
+desktop session actor/client have been removed. Calls accepted before shutdown
+drain to completion; new requests fail once cancellation is observed. Desktop
+maps shared errors to its original ConfigError variants before IPC serialization.
+
+The subsequent full transaction path is detailed in
+[Shared application facade and profile transaction extraction](application-transaction-extraction.md).
 
 Do not change profile schema, generated frontend bindings or desktop RPC names
 merely because code moves to a crate. Pure type movement must preserve names and

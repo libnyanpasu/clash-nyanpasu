@@ -10,6 +10,13 @@ authors.workspace = true
 name = 'nyanpasu_application'
 
 [dependencies]
+nyanpasu-core = { path = '../nyanpasu-core' }
+anyhow = '1'
+ractor = '0.16'
+struct-patch = '0.14'
+tokio = { workspace = true, features = ['full'] }
+tokio-util = { version = '0.7', features = ['rt'] }
+tracing = { workspace = true }
 nyanpasu-config = { path = '../nyanpasu-config' }
 
 serde = { version = '1', features = ['derive'] }
@@ -21,4 +28,6 @@ snafu = { workspace = true }
 strum = { version = '0.28', features = ['derive'] }
 
 [dev-dependencies]
+camino = '1'
+tempfile = '3'
 serde_json = { version = '1', features = ['preserve_order'] }

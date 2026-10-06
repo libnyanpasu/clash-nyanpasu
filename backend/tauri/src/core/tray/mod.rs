@@ -22,7 +22,7 @@ use rust_i18n::t;
 use tauri::{
     AppHandle, Manager, Runtime,
     menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder},
-    tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
 };
 use tracing_attributes::instrument;
 
@@ -557,8 +557,10 @@ impl Tray {
 
     pub fn on_system_tray_event(tray_icon: &TrayIcon, event: TrayIconEvent) {
         match event {
+            // A click arrives once on press and once on release; act on release.
             TrayIconEvent::Click {
                 button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
                 ..
             } => {
                 let app_handle = tray_icon.app_handle().clone();
@@ -568,6 +570,7 @@ impl Tray {
             }
             TrayIconEvent::Click {
                 button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
                 position,
                 ..
             } if tray_view(tray_icon.app_handle())

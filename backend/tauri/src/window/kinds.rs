@@ -11,17 +11,11 @@ use nyanpasu_config::{
     application::{NyanpasuAppConfig, TrayMenuCloseBehavior},
     state::window::WindowState,
 };
-use std::{
-    collections::HashMap,
-    time::{Duration, Instant},
-};
+use std::collections::HashMap;
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
-const TRAY_MENU_SHOW_BLUR_GRACE: Duration = Duration::from_millis(750);
-const TRAY_MENU_FOCUS_BLUR_GRACE: Duration = Duration::from_millis(250);
-
-/// Decides when the webview tray menu is dismissed on focus loss. The caller
-/// passes the time in, so the rules hold without a window.
+/// Decides when the webview tray menu is dismissed on focus loss, from the
+/// window's focus events alone.
 #[derive(Debug, Default)]
 struct TrayMenuFocus {
     /// Set for the debug menu window, which stays open on focus loss.
@@ -30,39 +24,26 @@ struct TrayMenuFocus {
     /// Prevents spurious Focused(false) events during window creation from triggering
     /// hide/close before the user has ever seen the window.
     ready: bool,
-    /// Ignore focus-loss events until this instant.
-    ///
-    /// Windows can emit Focused(true) immediately followed by Focused(false) while
-    /// the shell is still finishing the tray right-click interaction. Without a
-    /// short guard window, the webview tray menu flashes and is hidden/closed
-    /// before it can be used.
-    ignore_blur_until: Option<Instant>,
 }
 
 impl TrayMenuFocus {
     /// The menu was shown at the cursor.
-    fn shown(&mut self, now: Instant) {
+    fn shown(&mut self) {
         self.persistent = false;
         self.ready = false;
-        self.ignore_blur_until = Some(now + TRAY_MENU_SHOW_BLUR_GRACE);
     }
 
     /// The debug menu window was opened.
-    fn shown_persistent(&mut self, now: Instant) {
+    fn shown_persistent(&mut self) {
         self.persistent = true;
-        self.ignore_blur_until = Some(now + TRAY_MENU_SHOW_BLUR_GRACE);
     }
 
-    fn focused(&mut self, now: Instant) {
+    fn focused(&mut self) {
         self.ready = true;
-        self.ignore_blur_until = Some(now + TRAY_MENU_FOCUS_BLUR_GRACE);
     }
 
     /// Whether this focus loss dismisses the menu.
-    fn blurred(&mut self, now: Instant) -> bool {
-        if self.ignore_blur_until.is_some_and(|until| now < until) {
-            return false;
-        }
+    fn blurred(&mut self) -> bool {
         if !self.persistent && self.ready {
             self.ready = false;
             return true;
@@ -80,19 +61,19 @@ pub struct TrayMenuWindowController {
 
 impl TrayMenuWindowController {
     fn shown(&self) {
-        self.focus.lock().shown(Instant::now());
+        self.focus.lock().shown();
     }
 
     fn shown_persistent(&self) {
-        self.focus.lock().shown_persistent(Instant::now());
+        self.focus.lock().shown_persistent();
     }
 
     fn focused(&self) {
-        self.focus.lock().focused(Instant::now());
+        self.focus.lock().focused();
     }
 
     fn blurred(&self) -> bool {
-        self.focus.lock().blurred(Instant::now())
+        self.focus.lock().blurred()
     }
 }
 
@@ -474,69 +455,43 @@ fn place_tray_menu_window(win: &WebviewWindow, cursor: PhysicalPosition<f64>) {
 mod tests {
     use super::*;
 
-    fn ms(millis: u64) -> Duration {
-        Duration::from_millis(millis)
-    }
-
     #[test]
     fn a_blur_before_the_first_focus_keeps_the_menu() {
-        let t0 = Instant::now();
         let mut focus = TrayMenuFocus::default();
-        focus.shown(t0);
-        assert!(!focus.blurred(t0 + ms(10)), "within the show grace");
-        assert!(!focus.blurred(t0 + ms(1000)), "never focused");
+        focus.shown();
+        assert!(!focus.blurred(), "never focused");
     }
 
     #[test]
-    fn a_blur_right_after_focus_is_ignored_until_the_grace_ends() {
-        let t0 = Instant::now();
+    fn a_blur_after_focus_dismisses_the_menu() {
         let mut focus = TrayMenuFocus::default();
-        focus.shown(t0);
-        focus.focused(t0 + ms(5));
-        assert!(!focus.blurred(t0 + ms(6)), "the shell's focus flicker");
-        assert!(!focus.blurred(t0 + ms(254)));
-        assert!(focus.blurred(t0 + ms(255)));
-    }
-
-    #[test]
-    fn a_focus_shortly_after_showing_shortens_the_grace() {
-        let t0 = Instant::now();
-        let mut focus = TrayMenuFocus::default();
-        focus.shown(t0);
-        focus.focused(t0 + ms(100));
-        assert!(
-            focus.blurred(t0 + ms(400)),
-            "the focus grace replaces the show grace"
-        );
+        focus.shown();
+        focus.focused();
+        assert!(focus.blurred());
     }
 
     #[test]
     fn a_dismissal_waits_for_the_next_focus() {
-        let t0 = Instant::now();
         let mut focus = TrayMenuFocus::default();
-        focus.shown(t0);
-        focus.focused(t0 + ms(10));
-        assert!(focus.blurred(t0 + ms(1000)));
-        assert!(!focus.blurred(t0 + ms(1001)));
+        focus.shown();
+        focus.focused();
+        assert!(focus.blurred());
+        assert!(!focus.blurred());
 
-        focus.focused(t0 + ms(2000));
-        assert!(focus.blurred(t0 + ms(3000)));
+        focus.focused();
+        assert!(focus.blurred());
     }
 
     #[test]
     fn the_debug_menu_stays_open_until_shown_normally() {
-        let t0 = Instant::now();
         let mut focus = TrayMenuFocus::default();
-        focus.shown_persistent(t0);
-        focus.focused(t0 + ms(10));
-        assert!(!focus.blurred(t0 + ms(1000)));
+        focus.shown_persistent();
+        focus.focused();
+        assert!(!focus.blurred());
 
-        focus.shown(t0 + ms(2000));
-        assert!(
-            !focus.blurred(t0 + ms(3000)),
-            "showing again waits for a new focus"
-        );
-        focus.focused(t0 + ms(3000));
-        assert!(focus.blurred(t0 + ms(4000)));
+        focus.shown();
+        assert!(!focus.blurred(), "showing again waits for a new focus");
+        focus.focused();
+        assert!(focus.blurred());
     }
 }

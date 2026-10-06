@@ -1147,8 +1147,8 @@ fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
             .runtime()
             .promoted
             .unwrap();
-        assert_eq!(applied.config["mode"].as_str(), Some("global"));
-        assert_eq!(applied.config["ipv6"].as_bool(), Some(true));
+        assert_eq!(applied.config()["mode"].as_str(), Some("global"));
+        assert_eq!(applied.config()["ipv6"].as_bool(), Some(true));
         assert_eq!(applied.revision.get(), 3);
         assert_eq!(endpoint.submissions(), 2);
     });
@@ -1445,7 +1445,7 @@ fn an_override_patch_submits_once_and_notifies_the_ui() {
                 .runtime()
                 .promoted
                 .unwrap()
-                .config["mode"]
+                .config()["mode"]
                 .as_str(),
             Some("global")
         );

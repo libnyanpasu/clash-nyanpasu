@@ -588,7 +588,6 @@ function buildRuntimeMessage(
       ].join('\n\n')
     case 'serialize_final_config':
     case 'config_not_mapping':
-    case 'serialize_runtime_config':
       return m.error_runtime_render_runtime_config()
   }
 }

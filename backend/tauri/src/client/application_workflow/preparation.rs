@@ -15,9 +15,7 @@ use crate::{
     client::{
         core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
         runtime::PublishRuntimeError,
-        runtime_error::{
-            BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError, SerializeRuntimeConfigSnafu,
-        },
+        runtime_error::{BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError},
     },
     core::actor_v2::{intent::RuntimeIntentBuilder, local_host::CoreSpecError},
 };
@@ -136,8 +134,8 @@ impl RuntimePreparation {
         // Serialized once, here: the check and the reconcile both consume this
         // value, so "same bytes" holds by construction rather than by
         // convention.
-        let intent = RuntimeIntentBuilder::build(core_type, &snapshot.config, local_ipc)
-            .context(SerializeRuntimeConfigSnafu)?;
+        let intent =
+            RuntimeIntentBuilder::build(core_type, snapshot.config_text.clone(), local_ipc);
         Ok(PreparedRuntime {
             snapshot,
             intent: Arc::new(intent),

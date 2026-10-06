@@ -7,6 +7,8 @@
 //! enhance pipeline (already pure); the bridge stage composes the two. This
 //! type owns the portable half: the to-be-committed text and its digest.
 
+use std::sync::Arc;
+
 use nyanpasu_core_manager::payload_digest;
 use nyanpasu_utils::core::CoreType;
 
@@ -22,7 +24,7 @@ pub struct RuntimeIntent {
     pub local_ipc: nyanpasu_core_manager::LocalIpcSettings,
     pub core_type: CoreType,
     /// The full runtime config document, serialized.
-    pub config_text: String,
+    pub config_text: Arc<str>,
     /// [`payload_digest`] of `config_text` — the change identity the daemon
     /// verifies on receipt.
     pub digest: String,
@@ -35,17 +37,16 @@ impl RuntimeIntentBuilder {
     /// digest included.
     pub fn build(
         core_type: CoreType,
-        document: &serde_yaml::Mapping,
+        config_text: Arc<str>,
         local_ipc: nyanpasu_core_manager::LocalIpcSettings,
-    ) -> Result<RuntimeIntent, serde_yaml::Error> {
-        let config_text = serde_yaml::to_string(document)?;
+    ) -> RuntimeIntent {
         let digest = payload_digest(config_text.as_bytes());
-        Ok(RuntimeIntent {
+        RuntimeIntent {
             local_ipc,
             core_type,
             config_text,
             digest,
-        })
+        }
     }
 }
 
@@ -60,21 +61,15 @@ mod tests {
             keep_http_controller: true,
         }
     }
-    fn document() -> serde_yaml::Mapping {
-        let mut document = serde_yaml::Mapping::new();
-        document.insert(
-            serde_yaml::Value::String("external-controller".into()),
-            serde_yaml::Value::String("127.0.0.1:9090".into()),
-        );
-        document
+    fn document() -> Arc<str> {
+        Arc::from("external-controller: 127.0.0.1:9090\n")
     }
 
     #[test]
     fn the_same_inputs_produce_the_same_intent() {
         let core_type = CoreType::Clash(ClashCoreType::Mihomo);
-        let first =
-            RuntimeIntentBuilder::build(core_type.clone(), &document(), test_settings()).unwrap();
-        let second = RuntimeIntentBuilder::build(core_type, &document(), test_settings()).unwrap();
+        let first = RuntimeIntentBuilder::build(core_type.clone(), document(), test_settings());
+        let second = RuntimeIntentBuilder::build(core_type, document(), test_settings());
         assert_eq!(first, second);
         assert_eq!(first.digest, payload_digest(first.config_text.as_bytes()));
     }
@@ -82,14 +77,9 @@ mod tests {
     #[test]
     fn a_document_change_changes_the_digest() {
         let core_type = CoreType::Clash(ClashCoreType::Mihomo);
-        let base =
-            RuntimeIntentBuilder::build(core_type.clone(), &document(), test_settings()).unwrap();
-        let mut changed = document();
-        changed.insert(
-            serde_yaml::Value::String("mixed-port".into()),
-            serde_yaml::Value::Number(7890.into()),
-        );
-        let next = RuntimeIntentBuilder::build(core_type, &changed, test_settings()).unwrap();
+        let base = RuntimeIntentBuilder::build(core_type.clone(), document(), test_settings());
+        let changed = Arc::from(format!("{}mixed-port: 7890\n", document()));
+        let next = RuntimeIntentBuilder::build(core_type, changed, test_settings());
         assert_ne!(base.digest, next.digest);
     }
 }

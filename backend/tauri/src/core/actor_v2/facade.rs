@@ -480,7 +480,7 @@ impl CoreFacade {
                 command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
                     core: core_spec,
                     config: ConfigInput::Inline {
-                        bytes: intent.config_text.clone().into_bytes(),
+                        bytes: intent.config_text.as_bytes().to_vec(),
                         expected_digest: Some(intent.digest.clone()),
                     },
                     options: InstanceOptions {
@@ -1145,13 +1145,14 @@ mod tests {
     fn intent(document: &serde_yaml::Mapping) -> super::RuntimeIntent {
         super::super::intent::RuntimeIntentBuilder::build(
             (&ClashCore::Mihomo).into(),
-            document,
+            serde_yaml::to_string(document)
+                .expect("the fixture document serializes")
+                .into(),
             nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
                 keep_http_controller: true,
             },
         )
-        .expect("the fixture document serializes")
     }
 
     #[tokio::test]

@@ -11,8 +11,7 @@ use nyanpasu_config::{
         snapshot::SnapshotNodeKey,
     },
 };
-use serde_yaml::Mapping;
-use snafu::{OptionExt, ResultExt};
+use snafu::{ResultExt, ensure};
 
 use nyanpasu_application::enhance::{
     ConfigNotMappingSnafu, RuntimeBuildError, SerializeFinalConfigSnafu, builtin_transforms_for,
@@ -99,8 +98,12 @@ pub fn runtime_snapshot_data_from_artifact(
     core: ClashCore,
     builtin_enabled: bool,
 ) -> Result<crate::client::runtime::RuntimeSnapshotData, RuntimeBuildError> {
-    let value = serde_yaml::to_value(&*artifact.final_config).context(SerializeFinalConfigSnafu)?;
-    let config: Mapping = value.as_mapping().cloned().context(ConfigNotMappingSnafu)?;
+    ensure!(
+        artifact.final_config.as_object_arc().is_some(),
+        ConfigNotMappingSnafu
+    );
+    let config_text =
+        serde_yaml::to_string(&*artifact.final_config).context(SerializeFinalConfigSnafu)?;
     let exists_keys: Vec<String> = artifact.applied_fields.iter().cloned().collect();
     let builtin_names: Vec<String> = if builtin_enabled {
         builtin_transforms_for(core)
@@ -112,7 +115,7 @@ pub fn runtime_snapshot_data_from_artifact(
     };
     let postprocessing_output = map_postprocessing(&artifact.step_logs, profiles, &builtin_names);
     Ok(crate::client::runtime::RuntimeSnapshotData {
-        config,
+        config_text: config_text.into(),
         exists_keys,
         inspection: std::sync::Arc::new(crate::client::runtime_inspection::RuntimeInspectionData {
             graph: artifact.graph,

@@ -3963,7 +3963,6 @@ export type RuntimeBuildError =
     }
   | { kind: 'serialize_final_config' }
   | { kind: 'config_not_mapping' }
-  | { kind: 'serialize_runtime_config' }
 
 export type RuntimeBuildLog = {
   tag: OperatorTag

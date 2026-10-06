@@ -623,7 +623,7 @@ impl CoreLifecycleWorkflow {
         // inspection is diagnostic and may never arrive (C3).
         let receipt = Arc::new(runtime::RuntimeApplyReceipt {
             revision: snapshot.revision,
-            config_text: Arc::from(intent.config_text.as_str()),
+            config_text: intent.config_text.clone(),
             config_digest: intent.digest.clone(),
             target_core: snapshot.target_core,
             core_spec: spec,

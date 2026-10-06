@@ -13,12 +13,15 @@
 - 每个窗口的生命周期都由窗口管理层负责，包括前端 ready 后才显示窗口。
 - macOS 同样使用这套机制。
 - 支持窗口关闭模式：销毁或隐藏。每个窗口可以单独设定，也可以继承全局设定。
+- 架构上为将来切换到 Tauri 3 的 CEF runtime 做准备，但本次不切换。
 
 **依据：**
 
 - [Tauri splashscreen 示例](https://v2.tauri.app/learn/splashscreen/)（2026-10-06 抓取）。
 - Tauri 2.12.1 `src/webview/webview_window.rs`：`build` 的已知问题注释（:56-59、:113-116）、`transparent`（:1146）、`background_color`（:1248）。
 - tauri-runtime-wry 2.12.1 `src/lib.rs` 的 `is_window_transparent` 分支（:4308、:4470）。
+- [tauri v3.0.0-alpha.0 发布说明](https://github.com/tauri-apps/tauri/releases/tag/tauri-v3.0.0-alpha.0)（#15985，2026-10-06 抓取）。
+- [docs.rs `tauri-runtime-cef` 3.0.0-alpha.5](https://docs.rs/tauri-runtime-cef/latest/tauri_runtime_cef/)，以及其中的 `WebviewWindowBuilderCefExt`（2026-10-06 抓取）。
 - 本 spec §2 引用的仓库代码与提交。
 
 **权威顺序：** 当前 AGENTS.md 与 development guides > 本 spec。
@@ -115,6 +118,7 @@ Tauri 的 `Window::close` 与用户点击关闭按钮一样，会先发出 `Clos
 | `manager.rs` | `WindowManager`：持有 `Mutex<WindowTable>` 与 `AppHandle`，执行 Tauri 窗口操作      |
 | `kinds.rs`   | `MainWindow`、`EditorWindow`、`TrayMenuWindow` 及托盘菜单定位，从 `resolve.rs` 迁入 |
 | `macos.rs`   | 红绿灯定位（现有 `window::macos` 迁入）                                             |
+| `engine.rs`  | 与 webview 引擎绑定的代码：浏览器参数、滑动导航（§3.9）                             |
 
 `resolve.rs` 中 `create_window`、`close_window`、`is_window_open`、`create_editor_window` 等窗口入口删除，调用方改为直接调用 `WindowManager`，不留转发函数。`TrayMenuWindowController` 原样随 `kinds.rs` 迁移。
 
@@ -205,7 +209,7 @@ impl WindowManager {
 
 `report_ready` 收到 `Reveal`，或 `open` 收到 `ShowExisting` 时，依次执行：
 
-1. 仅限 Windows 且仅限首次 ready：关闭 WebView2 的滑动导航，代码从 `window.rs:707-716` 迁来。此时 webview 一定已创建，所以删除开线程睡 100 ms 的写法。
+1. 仅限首次 ready：调用 `engine::on_first_ready`。在 Windows 上，它关闭 WebView2 的滑动导航，代码从 `window.rs:707-716` 迁来。此时 webview 一定已创建，所以删除开线程睡 100 ms 的写法。
 2. 仅限 macOS 且仅限主窗口：在主线程调用 `dock::macos::show_dock_icon()`，它会把激活策略设为 Regular 并激活应用。
 3. 依次调用 `unminimize`、`show`、`set_focus`。
 
@@ -353,7 +357,47 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 - 说明文案写明取舍：隐藏保留 webview，再次打开更快，但占用内存。
 - 五种语言都新增 i18n key，删除 `settings_nyanpasu_tray_menu_close_behavior*`，并运行 paraglide compile。
 
-### 3.9 调用方迁移
+### 3.9 为 CEF runtime 预留
+
+#### Tauri 3 alpha 的现状
+
+以下事实来自一手来源：
+
+- 从 v3.0.0-alpha.0 起，webview runtime 不再由 `tauri` crate 的 Cargo feature 选择。应用直接依赖 `tauri-runtime-wry` 或 `tauri-runtime-cef`，在 `tauri::Builder::runtime` 处选定。`AppHandle`、`Window`、`Webview` 的默认类型参数改为 `tauri::DynRuntime`。
+- runtime 专属 API 从 `tauri` 移到各 runtime crate 的扩展 trait 中：
+  - wry：`AppHandleWryExt`、`WebviewWryExt`、`WebviewWindowBuilderWryExt` 等；
+  - CEF：`WebviewCefExt`、`WebviewWindowBuilderCefExt` 等。
+  - `with_webview` 拿到的平台 webview 改为通过 `PlatformWebview::downcast_ref` 取得具体类型。
+- `tauri-runtime-cef` 3.0.0-alpha.5 的 `WebviewWindowBuilderCefExt` 提供 `browser_runtime_style`、`on_frame_event`、`on_console_message`、`allow_chrome_commands`、`with_browser_settings`。CEF 的非浏览器进程（renderer、GPU 等）会重新执行同一个可执行文件，由 `#[cef_entry_point]` 在入口处分流。
+
+以下内容只有单一的二手来源，置信度低：CEF runtime 目前主要在 Linux X11 上验证过，Windows 与 macOS 仍在打磨。
+
+本次不升级到 Tauri 3，也不引入 CEF。下面的约束只是让以后的切换局限在少数几处。
+
+#### 现有代码中与 runtime 绑定的点
+
+| 位置                                                          | 绑定内容                                            | 切换到 CEF 时                                                                                  |
+| ------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `window.rs:544` `additional_browser_args`                     | WebView2 的命令行 feature 开关                      | 改由 CEF 的命令行开关或 `with_browser_settings` 提供；两者的开关含义不同，需逐项核对           |
+| `window.rs:707-716` `with_webview` + `ICoreWebView2Settings6` | 直接调用 WebView2 COM 关闭滑动导航                  | CEF 没有 WebView2，需要换成 CEF 侧的等价做法或去掉                                             |
+| `window.rs:842-1103` macOS 红绿灯                             | 用 `ns_window()` 取 `NSWindow`，并替换它的 delegate | CEF 在 macOS 上的窗口层级与 delegate 归属尚未确认，需要重新验证                                |
+| 8 个文件共 35 处 `tauri::Wry` / `Wry>`                        | 显式写死 runtime 类型                               | v3 中改为默认的 `DynRuntime` 或泛型                                                            |
+| `lib.rs:128-188` `run()` 开头                                 | Tauri 之前运行命令行解析、单例检测、配置迁移        | CEF 子进程会重新执行这里；必须在所有这些之前分流，否则子进程会撞上单例锁并退出，或者重复跑迁移 |
+
+#### 本次落实的约束
+
+1. **ready 协议不依赖 webview 引擎：** ready 由前端主动调用 `report_window_ready`（§3.6），不使用 `on_page_load` 等由引擎上报的加载事件。这类事件在 WebView2、WKWebView、CEF 之间的触发时机并不一致。
+2. **引擎专属代码集中到一处：** 新增 `window/engine.rs`，只放与 webview 引擎绑定的代码：
+   - `configure_builder(builder)`：附加浏览器参数；
+   - `on_first_ready(&window)`：关闭滑动导航。
+
+   `WindowManager` 和各窗口种类只调用这两个函数。将来切换 runtime 时，只需按 runtime 改写这个文件。macOS 红绿灯代码绑定的是窗口层而不是 webview，留在 `window/macos.rs`，在上表中登记即可。
+
+3. **新代码不写 `tauri::Wry`：** `window/` 下的新代码一律使用默认类型参数的 `AppHandle`、`WebviewWindow`。迁入 `window/` 的代码顺带去掉显式的 `Wry`，即 `window.rs:924`、`:929` 与 `resolve.rs:486` 三处。其余文件中的 `Wry` 不在本次范围内。
+4. **透明去掉之后**，就不必再依赖各 runtime 对透明窗口的不同实现（§4）。
+5. **入口分流点只记录，不实施：** 切换 CEF 的前置条件是，在 `run()` 的最开头，即 `Profilers` 和命令行解析之前，加入 CEF helper 分流。本次不改 `run()`，只把这一点写进本 spec，作为将来迁移的检查项。
+
+### 3.10 调用方迁移
 
 | 调用方                                         | 改为                                                                                                           |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -435,7 +479,7 @@ Linux：启动、托盘打开、编辑器窗口各测一次，看有无回归。
    - 迁移全部调用方，重新生成绑定。
    - 前后端在同一提交中改，因为单独改任何一边，窗口都不会被显示。
 2. `refactor(window): create windows from async commands`：删除三个创建窗口命令中开线程睡 10 ms 的写法。
-3. `refactor(window): disable swipe navigation once the webview is ready`：删除开线程睡 100 ms 的写法。
+3. `refactor(window): disable swipe navigation once the webview is ready`：删除开线程睡 100 ms 的写法。`engine.rs` 在第 1 个提交中建立，浏览器参数从那时起就放在这个文件里。
 4. `perf(window): stop making windows transparent`：删除 Windows 的 `.transparent(true)` 和 `WindowConfig.transparent`。
 5. `feat(config): replace the tray menu close behavior with window close settings`：新增配置类型和迁移步骤，同步修改 legacy 迁移；后端仍只对托盘菜单应用该设定，行为不变。
 6. `feat(window): let each window close by destroying or hiding`：`WindowManager` 拦截 `CloseRequested`，复用隐藏的窗口；修改热键切换和托盘菜单关闭入口；替换设置界面与 i18n，重新生成绑定。
@@ -449,3 +493,4 @@ Linux：启动、托盘打开、编辑器窗口各测一次，看有无回归。
 5. **关闭模式的默认值：** 推荐全局为销毁、托盘菜单为隐藏，与现有行为一致，即 §3.8 的方案。如果希望主窗口默认隐藏，再次打开会更快，但窗口关闭后 WebView2 的内存不会释放，抵消了内存优化的收益。
 6. **设定改动对已隐藏窗口的影响：** 推荐新设定在下次关闭时才生效，已隐藏的窗口保持隐藏，直到再次打开并关闭。另一个方案是提交设定后立即销毁那些有效模式变为销毁的隐藏窗口，这需要增加一个 UI effect。
 7. **隐藏模式下复用编辑器的状态：** 复用的编辑器会保留上次的页面状态，包括未保存的修改。另外，后端的状态变更事件只发给主窗口（`client/event_sink.rs:53-58`），隐藏期间别处修改的 profile 不会刷新到编辑器里。推荐本次不处理，在设置说明中注明；如果你希望再次打开时内容是最新的，需要编辑器在显示时重新拉取数据。
+8. **CEF 预留的范围：** 推荐只落实 §3.9 的约束 1–4，入口分流只作记录。另一个方案是现在就把 `run()` 开头那些运行在 Tauri 之前的工作挪到一个可以分流的入口函数后面。这会碰到单例检测、迁移、深链等启动路径，超出窗口管理的范围，更适合放在升级 Tauri 3 的 spec 里做。

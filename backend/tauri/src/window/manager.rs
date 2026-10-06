@@ -179,7 +179,7 @@ impl WindowManager {
         let builder = engine::configure_builder(builder);
 
         #[cfg(windows)]
-        let win_res = builder.decorations(false).transparent(true).build();
+        let win_res = builder.decorations(false).build();
 
         #[cfg(target_os = "macos")]
         let win_res = {
@@ -198,11 +198,7 @@ impl WindowManager {
         #[cfg(target_os = "linux")]
         let win_res = {
             let decorations = config.decorations.unwrap_or(true);
-            let transparent = config.transparent.unwrap_or(false);
-            builder
-                .decorations(decorations)
-                .transparent(transparent)
-                .build()
+            builder.decorations(decorations).build()
         };
 
         let win = match win_res {

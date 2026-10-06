@@ -47,8 +47,6 @@ pub struct WindowConfig {
     pub always_on_top: Option<bool>,
     /// Whether to use decorations (None = use platform default)
     pub decorations: Option<bool>,
-    /// Whether the window is transparent (None = use platform default)
-    pub transparent: Option<bool>,
     /// Whether to skip taskbar
     pub skip_taskbar: bool,
 }
@@ -64,7 +62,6 @@ impl Default for WindowConfig {
             resizable: true,
             always_on_top: None,
             decorations: None,
-            transparent: None,
             skip_taskbar: false,
         }
     }

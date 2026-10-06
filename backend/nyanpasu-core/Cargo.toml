@@ -20,8 +20,12 @@ atomicwrites = '0.4.4'
 camino = { version = '1.1.9', features = ['serde1'] }
 fs-err = { workspace = true }
 serde_yaml_ng = { workspace = true }
+specta = { version = '2.0.0-rc.25', features = ['derive', 'indexmap'] }
+clash-api = { workspace = true }
+uuid = '1'
 
 [dev-dependencies]
+serde_json = '1'
 tokio = { workspace = true, features = ['full', 'test-util'] }
 tempfile = '3'
 # Currently exercised only by the gxhash smoke test below. Every distributed

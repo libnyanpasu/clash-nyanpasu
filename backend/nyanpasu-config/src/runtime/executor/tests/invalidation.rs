@@ -77,7 +77,7 @@ fn contributor_change_triggers_full_rebuild_with_stable_anchors() {
             .graph
             .nodes
             .iter()
-            .map(|node| node.key.clone())
+            .map(|node| node.tag.node_key())
             .collect()
     };
     assert_eq!(keys(&before), keys(&after));

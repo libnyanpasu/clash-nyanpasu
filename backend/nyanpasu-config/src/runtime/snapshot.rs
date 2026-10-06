@@ -28,6 +28,7 @@ pub type NodeId = usize;
 
 /// Upper bound on snapshot-tree depth, guarding the recursive materializer
 /// against stack overflow when fed an untrusted (deserialized) graph.
+#[cfg(any(test, feature = "snapshot-persistence"))]
 const MAX_MATERIALIZE_DEPTH: usize = 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -233,7 +234,10 @@ pub enum SnapshotBaseline {
     Independent,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+/// A fully materialized node: the equivalence reference for the stored graph's
+/// per-node restore.
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConfigSnapshotState<C> {
     pub snapshot: ConfigSnapshot,
     pub baseline: SnapshotBaseline,
@@ -244,90 +248,13 @@ pub struct ConfigSnapshotState<C> {
     pub next: Option<Vec<C>>,
 }
 
-impl<C> ConfigSnapshotState<C> {
-    pub fn new(
-        snapshot: ConfigSnapshot,
-        tag: OperatorTag,
-        baseline: SnapshotBaseline,
-        next: Option<Vec<C>>,
-    ) -> Self {
-        let key = tag.node_key();
-        Self {
-            snapshot,
-            baseline,
-            tag,
-            key,
-            next,
-        }
-    }
-}
-
-/// Front-end facing graph: every node carries a fully materialized config.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+/// Every node carries a fully materialized config; the equivalence reference
+/// for [`StoredConfigSnapshotsGraph::restore`].
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConfigSnapshotsGraph {
     pub nodes: Vec<ConfigSnapshotState<Idx>>,
     pub root_id: Idx,
-}
-
-impl ConfigSnapshotsGraph {
-    /// Append one materialized transition using the same patch semantics as the
-    /// recorder. Validate a candidate before replacing the graph: errors are atomic.
-    pub fn append_transition(
-        &mut self,
-        parent: Idx,
-        tag: OperatorTag,
-        config: serde_json::Value,
-    ) -> Result<Idx, SnapshotBuildError> {
-        let previous = self
-            .nodes
-            .get(parent as usize)
-            .ok_or(SnapshotBuildError::MissingChild {
-                parent_id: parent as usize,
-                child_id: parent as usize,
-            })?;
-        let fields =
-            changed_fields_from_patch(&json_patch::diff(&previous.snapshot.config, &config));
-        let id = Idx::try_from(self.nodes.len()).map_err(|_| SnapshotBuildError::IdOverflow {
-            node_id: self.nodes.len(),
-        })?;
-        let mut candidate = self.clone();
-        candidate.nodes[parent as usize]
-            .next
-            .get_or_insert_default()
-            .push(id);
-        candidate.nodes.push(ConfigSnapshotState::new(
-            ConfigSnapshot::new(config, fields),
-            tag,
-            SnapshotBaseline::Parent,
-            None,
-        ));
-        validate_tree_links(
-            candidate.root_id,
-            candidate
-                .nodes
-                .iter()
-                .map(|node| (node.baseline, node.next.as_deref().unwrap_or(&[]))),
-        )?;
-        *self = candidate;
-        Ok(id)
-    }
-
-    /// The comparison parent, excluding an independent branch's attachment point.
-    pub fn comparison_parent(&self, node_id: Idx) -> Option<Idx> {
-        let node = self.nodes.get(node_id as usize)?;
-        if node.baseline == SnapshotBaseline::Independent {
-            return None;
-        }
-        self.nodes
-            .iter()
-            .position(|parent| {
-                parent
-                    .next
-                    .as_ref()
-                    .is_some_and(|children| children.contains(&node_id))
-            })
-            .map(|id| id as Idx)
-    }
 }
 
 /// Storage payload: keyframe (`Full`) or relative `Delta` against the parent node.
@@ -625,6 +552,7 @@ impl ConfigSnapshotsBuilder {
         self.into_compact_u32_graph()
     }
 
+    #[cfg(test)]
     pub fn build(self) -> Result<ConfigSnapshotsGraph, SnapshotBuildError> {
         self.build_stored()?.materialize()
     }
@@ -931,6 +859,7 @@ impl StoredConfigSnapshotsGraph {
 
     /// Materializes every node into a fully expanded [`ConfigSnapshotsGraph`],
     /// applying deltas against their parents while walking the tree.
+    #[cfg(test)]
     pub fn materialize(&self) -> Result<ConfigSnapshotsGraph, SnapshotBuildError> {
         self.validate_tree_shape()?;
         let mut nodes = vec![None; self.nodes.len()];
@@ -952,6 +881,7 @@ impl StoredConfigSnapshotsGraph {
         })
     }
 
+    #[cfg(test)]
     fn materialize_node(
         &self,
         id: Idx,
@@ -1021,6 +951,7 @@ impl StoredConfigSnapshotsGraph {
     /// tree: valid child ids, no self-loops, no multi-parent edges, every node
     /// reachable from the root, depth within [`MAX_MATERIALIZE_DEPTH`], an
     /// independent root, and no independent node carrying a delta payload.
+    #[cfg(any(test, feature = "snapshot-persistence"))]
     pub(crate) fn validate_tree_shape(&self) -> Result<(), SnapshotBuildError> {
         for (node_id, node) in self.nodes.iter().enumerate() {
             if node.baseline == SnapshotBaseline::Independent
@@ -1229,6 +1160,7 @@ pub mod persistence {
     }
 }
 
+#[cfg(any(test, feature = "snapshot-persistence"))]
 fn validate_tree_links<'a>(
     root_id: Idx,
     links: impl IntoIterator<Item = (SnapshotBaseline, &'a [Idx])>,
@@ -1338,63 +1270,6 @@ mod tests {
         profile::ScriptRuntime,
         runtime::value::{ConfigValue, PathSegment},
     };
-
-    #[test]
-    fn appended_transitions_match_recorder_diff_semantics() {
-        let before = json!({"tun": {"enable": false}, "items": [1, 2]});
-        for after in [
-            before.clone(),
-            json!({"tun": {"enable": true}, "items": [1, 3, 4]}),
-        ] {
-            let tag = OperatorTag::BuiltinStep {
-                selected_profile_id: None,
-                step: BuiltinStepKind::CoreController,
-            };
-            let mut builder =
-                ConfigSnapshotsBuilder::new_root(value(before.clone()), OperatorTag::BareRoot);
-            let mut graph =
-                ConfigSnapshotsBuilder::new_root(value(before.clone()), OperatorTag::BareRoot)
-                    .build()
-                    .unwrap();
-            builder.push(tag.clone(), value(after.clone())).unwrap();
-            let expected = builder.build().unwrap();
-            let id = graph.append_transition(graph.root_id, tag, after).unwrap();
-            assert_eq!(graph, expected);
-            if graph.nodes[id as usize].snapshot.config == before {
-                assert!(graph.nodes[id as usize].snapshot.changed_fields.is_none());
-            } else {
-                let fields = graph.nodes[id as usize]
-                    .snapshot
-                    .changed_fields
-                    .as_ref()
-                    .unwrap();
-                assert!(fields.contains("tun.enable"));
-                assert!(fields.iter().any(|field| field.starts_with("items.")));
-            }
-        }
-    }
-
-    #[test]
-    fn invalid_transition_leaves_the_graph_unchanged() {
-        let mut graph = ConfigSnapshotsBuilder::new_root(value(json!({})), OperatorTag::BareRoot)
-            .build()
-            .unwrap();
-        let original = graph.clone();
-        assert!(
-            graph
-                .append_transition(99, OperatorTag::BareRoot, json!({"x": 1}))
-                .is_err()
-        );
-        assert_eq!(graph, original);
-        graph.nodes[0].next = Some(vec![0]);
-        let invalid = graph.clone();
-        assert!(
-            graph
-                .append_transition(0, OperatorTag::BareRoot, json!({"x": 1}))
-                .is_err()
-        );
-        assert_eq!(graph, invalid);
-    }
 
     fn value(value: serde_json::Value) -> Arc<ConfigValue> {
         Arc::new(ConfigValue::try_from(value).unwrap())

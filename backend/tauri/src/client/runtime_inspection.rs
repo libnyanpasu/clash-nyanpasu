@@ -1,7 +1,15 @@
 //! Read-only projections of one immutable, promoted pipeline build.
-use nyanpasu_config::runtime::{
-    executor::{StepLog, StepLogEntry},
-    snapshot::{ConfigSnapshotsGraph, OperatorTag, SnapshotDiffHunk},
+use std::sync::Arc;
+
+use nyanpasu_config::{
+    profile::ProfileId,
+    runtime::{
+        executor::{StepLog, StepLogEntry},
+        snapshot::{
+            BuiltinStepKind, Idx, OperatorTag, SnapshotBuildError, SnapshotDiffHunk,
+            StoredConfigSnapshotsGraph, changed_fields_between,
+        },
+    },
 };
 use serde::Serialize;
 use snafu::{OptionExt, ResultExt, ensure};
@@ -17,8 +25,22 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeInspectionData {
-    pub graph: ConfigSnapshotsGraph,
+    pub graph: StoredConfigSnapshotsGraph,
     pub step_logs: Vec<StepLog>,
+}
+
+/// The configuration the core reported running for an applied build, viewed
+/// as the finalizing node's child. It stays outside the build's graph, so
+/// stamping a build never copies the graph.
+#[derive(Debug)]
+pub(crate) struct EffectiveInspection {
+    pub config: nyanpasu_ipc::api::core::v2::CoreEffectiveConfig,
+    pub host: (crate::core::actor_v2::endpoint::ExecutionHost, u64),
+    /// The finalizing node the effective document is compared against.
+    parent: Idx,
+    tag: OperatorTag,
+    /// Computed once when stamped, against the finalizing node.
+    changed_fields: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -63,7 +85,6 @@ impl RuntimeSnapshot {
         host: crate::core::actor_v2::endpoint::ExecutionHost,
         generation: u64,
     ) -> anyhow::Result<Self> {
-        use nyanpasu_config::runtime::snapshot::BuiltinStepKind;
         let binding = self
             .applied_binding
             .as_ref()
@@ -73,89 +94,96 @@ impl RuntimeSnapshot {
                 && (binding.host, binding.generation) == (host, generation),
             "effective snapshot does not match the applied build"
         );
-        let mut inspection = self.inspection.as_ref().clone();
-        let parent = inspection
-            .graph
-            .nodes
-            .iter()
-            .position(|node| {
-                matches!(
-                    node.tag,
-                    OperatorTag::BuiltinStep {
-                        step: BuiltinStepKind::Finalizing,
-                        ..
-                    }
-                )
-            })
+        let graph = &self.inspection.graph;
+        let (parent, selected_profile_id) = self
+            .finalizing_node()
             .ok_or_else(|| anyhow::anyhow!("runtime graph has no finalizing node"))?;
-        let selected_profile_id = match &inspection.graph.nodes[parent].tag {
-            OperatorTag::BuiltinStep {
-                selected_profile_id,
-                ..
-            } => selected_profile_id.clone(),
-            _ => unreachable!(),
-        };
-        let value: serde_yaml::Value = serde_yaml::from_str(&effective.config)?;
-        let config = serde_json::to_value(value)?;
-        inspection.graph.append_transition(
-            parent as u32,
-            OperatorTag::BuiltinStep {
+        let config = document_json(&effective.config)?;
+        let changed_fields = changed_fields_between(&graph.restore(parent)?, &config)
+            .map(|fields| fields.into_iter().collect());
+        let mut snapshot = self.clone();
+        snapshot.inspection_id = nanoid::nanoid!();
+        snapshot.effective = Some(Arc::new(EffectiveInspection {
+            config: effective,
+            host: (host, generation),
+            parent,
+            tag: OperatorTag::BuiltinStep {
                 selected_profile_id,
                 step: BuiltinStepKind::CoreController,
             },
-            config,
-        )?;
-        let mut snapshot = self.clone();
-        snapshot.inspection_id = nanoid::nanoid!();
-        snapshot.inspection = std::sync::Arc::new(inspection);
-        snapshot.effective = Some(effective);
-        snapshot.effective_host = Some((host, generation));
+            changed_fields,
+        }));
         Ok(snapshot)
     }
 
-    /// The same build with the controller step taken back off.
+    /// The same build without the core's view of it.
     ///
-    /// [`RuntimeSnapshot::with_effective_config`] *appends* the effective
-    /// document as a child of the finalizing node, so stamping a snapshot that
-    /// already carries one would inspect the same build twice. A verified
-    /// restore is exactly that case: the document is the one this build
-    /// produced, and only the instance running it has moved, so the controller
-    /// step has to come off before it can be taken again.
-    ///
-    /// Nothing is appended after that step, so it is always the last node and
-    /// dropping it leaves every other node's index — and therefore every link —
-    /// where it was. A build that was never stamped is returned unchanged.
+    /// A verified restore stamps a build that already carries an effective
+    /// view: the document is the one this build produced, and only the
+    /// instance running it has moved. Taking the old view off gives the new
+    /// stamp a fresh inspection id. A build that was never stamped is returned
+    /// unchanged.
     pub(crate) fn without_effective_config(&self) -> Self {
-        use nyanpasu_config::runtime::snapshot::BuiltinStepKind;
         let mut snapshot = self.clone();
-        if self.effective.is_none() {
-            return snapshot;
+        if snapshot.effective.take().is_some() {
+            snapshot.inspection_id = nanoid::nanoid!();
         }
-        snapshot.effective = None;
-        snapshot.effective_host = None;
-        snapshot.inspection_id = nanoid::nanoid!();
-        let mut inspection = self.inspection.as_ref().clone();
-        let last = inspection.graph.nodes.len().saturating_sub(1);
-        if !matches!(
-            inspection.graph.nodes.get(last).map(|node| &node.tag),
-            Some(OperatorTag::BuiltinStep {
-                step: BuiltinStepKind::CoreController,
-                ..
-            })
-        ) {
-            return snapshot;
-        }
-        inspection.graph.nodes.truncate(last);
-        for node in &mut inspection.graph.nodes {
-            if let Some(next) = node.next.as_mut() {
-                next.retain(|child| *child as usize != last);
-            }
-        }
-        snapshot.inspection = std::sync::Arc::new(inspection);
         snapshot
     }
 
+    /// The node whose config is the built document, with its selected profile.
+    fn finalizing_node(&self) -> Option<(Idx, Option<ProfileId>)> {
+        self.inspection
+            .graph
+            .nodes
+            .iter()
+            .enumerate()
+            .find_map(|(id, node)| match &node.tag {
+                OperatorTag::BuiltinStep {
+                    selected_profile_id,
+                    step: BuiltinStepKind::Finalizing,
+                } => Some((id as Idx, selected_profile_id.clone())),
+                _ => None,
+            })
+    }
+
+    fn has_logs(&self, tag: &OperatorTag) -> bool {
+        let key = tag.node_key();
+        self.inspection
+            .step_logs
+            .iter()
+            .any(|log| log.key == key && !log.entries.is_empty())
+    }
+
     fn inspection_summary(&self) -> RuntimeInspection {
+        let graph = &self.inspection.graph;
+        let mut nodes: Vec<_> = graph
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(id, node)| RuntimeInspectionNode {
+                id: id as u32,
+                has_logs: self.has_logs(&node.tag),
+                tag: node.tag.clone(),
+                next: node.next.clone().unwrap_or_default(),
+                changed_fields: node
+                    .changed_fields
+                    .as_ref()
+                    .map(|fields| fields.iter().cloned().collect()),
+            })
+            .collect();
+        // The core's view is projected as the finalizing node's last child.
+        if let Some(effective) = &self.effective {
+            let id = nodes.len() as u32;
+            nodes[effective.parent as usize].next.push(id);
+            nodes.push(RuntimeInspectionNode {
+                id,
+                has_logs: self.has_logs(&effective.tag),
+                tag: effective.tag.clone(),
+                next: Vec::new(),
+                changed_fields: effective.changed_fields.clone(),
+            });
+        }
         RuntimeInspection {
             snapshot_id: self.inspection_id.clone(),
             applied: false,
@@ -163,7 +191,7 @@ impl RuntimeSnapshot {
             effective_revision: self
                 .effective
                 .as_ref()
-                .map(|effective| effective.revision.clone())
+                .map(|effective| effective.config.revision.clone())
                 .or_else(|| {
                     self.applied_binding
                         .as_ref()
@@ -171,29 +199,8 @@ impl RuntimeSnapshot {
                 }),
             revision: self.revision.get().to_string(),
             target_core: self.target_core.to_string(),
-            root_id: self.inspection.graph.root_id,
-            nodes: self
-                .inspection
-                .graph
-                .nodes
-                .iter()
-                .enumerate()
-                .map(|(id, node)| RuntimeInspectionNode {
-                    id: id as u32,
-                    has_logs: self
-                        .inspection
-                        .step_logs
-                        .iter()
-                        .any(|log| log.key == node.key && !log.entries.is_empty()),
-                    tag: node.tag.clone(),
-                    next: node.next.clone().unwrap_or_default(),
-                    changed_fields: node
-                        .snapshot
-                        .changed_fields
-                        .as_ref()
-                        .map(|fields| fields.iter().cloned().collect()),
-                })
-                .collect(),
+            root_id: graph.root_id,
+            nodes,
         }
     }
 
@@ -206,29 +213,32 @@ impl RuntimeSnapshot {
             self.inspection_id == snapshot_id,
             RuntimeSnapshotChangedSnafu
         );
-        let node = self
-            .inspection
-            .graph
-            .nodes
-            .get(node_id as usize)
-            .context(RuntimeNodeNotFoundSnafu { node_id })?;
-        let yaml = serde_yaml::to_string(&redact_config(node.snapshot.config.clone()))
-            .context(SerializeRuntimeConfigSnafu)?;
+        let graph = &self.inspection.graph;
+        let (tag, config, parent) = match &self.effective {
+            Some(effective) if node_id as usize == graph.nodes.len() => (
+                &effective.tag,
+                document_json(&effective.config.config)?,
+                Some((effective.parent, restored(graph.restore(effective.parent)))),
+            ),
+            _ => {
+                let node = graph
+                    .nodes
+                    .get(node_id as usize)
+                    .context(RuntimeNodeNotFoundSnafu { node_id })?;
+                let (config, parent) = restored(graph.restore_with_parent(node_id));
+                (&node.tag, config, parent)
+            }
+        };
+        let yaml =
+            serde_yaml::to_string(&redact_config(config)).context(SerializeRuntimeConfigSnafu)?;
+        let key = tag.node_key();
         Ok(RuntimeInspectionContent {
-            diff: self
-                .inspection
-                .graph
-                .comparison_parent(node_id)
-                .map(|parent_id| -> Result<_, RuntimeError> {
+            diff: parent
+                .map(|(parent_id, parent)| -> Result<_, RuntimeError> {
                     Ok(RuntimeInspectionDiff {
                         parent_id,
                         hunks: nyanpasu_config::runtime::snapshot::ConfigSnapshot::new_unchanged(
-                            redact_config(
-                                self.inspection.graph.nodes[parent_id as usize]
-                                    .snapshot
-                                    .config
-                                    .clone(),
-                            ),
+                            redact_config(parent),
                         )
                         .diff_yaml_to(&yaml)
                         .context(SerializeRuntimeConfigSnafu)?,
@@ -240,11 +250,24 @@ impl RuntimeSnapshot {
                 .inspection
                 .step_logs
                 .iter()
-                .filter(|log| log.key == node.key)
+                .filter(|log| log.key == key)
                 .flat_map(|log| log.entries.iter().cloned())
                 .collect(),
         })
     }
+}
+
+/// The core's YAML document as the JSON nodes are compared in.
+fn document_json(config: &str) -> Result<serde_json::Value, RuntimeError> {
+    let value: serde_yaml::Value =
+        serde_yaml::from_str(config).context(SerializeRuntimeConfigSnafu)?;
+    serde_json::to_value(value).context(ConvertRuntimeConfigSnafu)
+}
+
+/// The executor validated the graph and checked every delta's replay while
+/// recording it, so a recorded node always restores.
+fn restored<T>(result: Result<T, SnapshotBuildError>) -> T {
+    result.expect("a recorded runtime graph restores every node")
 }
 
 impl NyanpasuClient {
@@ -284,7 +307,7 @@ impl NyanpasuClient {
             return;
         }
         match pending.with_effective_config(effective, binding.host, binding.generation) {
-            Ok(snapshot) => store.applied(&pending.inspection_id, std::sync::Arc::new(snapshot)),
+            Ok(snapshot) => store.applied(&pending.inspection_id, Arc::new(snapshot)),
             Err(error) => tracing::warn!(%error, "effective inspection recovery failed"),
         }
     }
@@ -295,9 +318,9 @@ impl NyanpasuClient {
             let before = self.inner.core_api.status();
             let current = self.inner.core_api.effective_config().await.ok().flatten();
             let after = self.inner.core_api.status();
-            summary.applied = snapshot.effective_host == Some((before.host, before.generation))
+            summary.applied = effective.host == (before.host, before.generation)
                 && (before.host, before.generation) == (after.host, after.generation)
-                && current.is_some_and(|current| current.revision == effective.revision);
+                && current.is_some_and(|current| current.revision == effective.config.revision);
         }
         summary
     }
@@ -394,9 +417,9 @@ pub(crate) mod tests {
             ),
             OperatorTag::BareRoot,
         )
-        .build()
+        .build_stored()
         .unwrap();
-        let key = graph.nodes[0].key.clone();
+        let key = graph.nodes[0].tag.node_key();
         RuntimeInspectionData {
             graph,
             step_logs: vec![StepLog {
@@ -441,7 +464,7 @@ pub(crate) mod tests {
         generated.config =
             serde_yaml::from_str("external-controller: 127.0.0.1:9090\nsecret: private\n").unwrap();
         generated.inspection = Arc::new(RuntimeInspectionData {
-            graph: graph.build().unwrap(),
+            graph: graph.build_stored().unwrap(),
             step_logs: vec![],
         });
         let effective = nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
@@ -470,8 +493,28 @@ pub(crate) mod tests {
             generated.config, applied.config,
             "next rebuild must use the original source"
         );
-        assert_eq!(generated.inspection.graph.nodes.len(), 2);
-        assert_eq!(applied.inspection.graph.nodes.len(), 3);
+        assert!(
+            Arc::ptr_eq(&generated.inspection, &applied.inspection),
+            "stamping must not copy the build's graph"
+        );
+        let summary = applied.inspection_summary();
+        assert_eq!(summary.nodes.len(), 3);
+        assert_eq!(summary.nodes[1].next, [2]);
+        assert_eq!(
+            summary.nodes[2].changed_fields,
+            Some(vec![
+                "external-controller-unix".to_string(),
+                "external-controller".to_string()
+            ])
+        );
+        let unstamped = applied.without_effective_config();
+        assert_ne!(unstamped.inspection_id, applied.inspection_id);
+        assert_eq!(unstamped.inspection_summary().nodes.len(), 2);
+        assert!(
+            unstamped
+                .inspection_content(&unstamped.inspection_id, 2)
+                .is_err()
+        );
         let node = applied
             .inspection_content(&applied.inspection_id, 2)
             .unwrap();
@@ -506,7 +549,7 @@ pub(crate) mod tests {
         candidate.inspection_id = "new-failed-build".into();
         candidate.applied_binding = None;
         store.generated(Arc::new(candidate));
-        let mut effective = applied.effective.clone().unwrap();
+        let mut effective = applied.effective.as_ref().unwrap().config.clone();
         assert!(
             next.with_effective_config(
                 effective.clone(),
@@ -602,7 +645,7 @@ pub(crate) mod tests {
             .unwrap();
         let mut snapshot = snapshot();
         snapshot.inspection = Arc::new(RuntimeInspectionData {
-            graph: builder.build().unwrap(),
+            graph: builder.build_stored().unwrap(),
             step_logs: Vec::new(),
         });
         let summary = snapshot.inspection_summary();

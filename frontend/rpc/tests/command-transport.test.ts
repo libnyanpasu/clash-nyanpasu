@@ -20,6 +20,7 @@ afterEach(() => {
 describe('rpc command facade', () => {
   it('uses Tauri IPC for generated commands in the desktop app', async () => {
     vi.stubGlobal('window', { __TAURI_INTERNALS__: {} })
+    vi.stubGlobal('isTauri', true)
     invoke.mockResolvedValue({ items: [] })
 
     const rpc = createRpcClient()
@@ -117,6 +118,7 @@ describe('rpc command facade', () => {
         'window',
         transport === 'desktop' ? { __TAURI_INTERNALS__: {} } : {},
       )
+      vi.stubGlobal('isTauri', transport === 'desktop')
       const coreError = {
         kind: 'application_error',
         message: 'pending',
@@ -162,6 +164,7 @@ it.each(['desktop', 'http'])(
       'window',
       transport === 'desktop' ? { __TAURI_INTERNALS__: {} } : {},
     )
+    vi.stubGlobal('isTauri', transport === 'desktop')
     const domainError = {
       kind: {
         domain: 'profiles',

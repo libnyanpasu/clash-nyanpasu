@@ -348,6 +348,9 @@ pub struct StoredConfigSnapshotState<C> {
     pub snapshot: StoredConfigSnapshot,
     pub tag: OperatorTag,
     pub baseline: SnapshotBaseline,
+    /// The fields changed against the parent, recorded from the patch computed
+    /// while encoding. `None` means unchanged or an independent branch root.
+    pub changed_fields: Option<IndexSet<ConfigField>>,
     pub next: Option<Vec<C>>,
 }
 
@@ -356,18 +359,21 @@ impl<C> StoredConfigSnapshotState<C> {
         snapshot: StoredConfigSnapshot,
         tag: OperatorTag,
         baseline: SnapshotBaseline,
+        changed_fields: Option<IndexSet<ConfigField>>,
         next: Option<Vec<C>>,
     ) -> Self {
         Self {
             snapshot,
             tag,
             baseline,
+            changed_fields,
             next,
         }
     }
 }
 
-/// Storage graph: keyframe/delta encoded, no redundant edge list.
+/// Storage graph: keyframe/delta encoded, no redundant edge list. Node configs
+/// are restored on demand rather than kept expanded.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredConfigSnapshotsGraph {
     pub nodes: Vec<StoredConfigSnapshotState<Idx>>,
@@ -396,40 +402,57 @@ impl Default for KeyframePolicy {
 }
 
 impl KeyframePolicy {
-    fn encode(&self, parent: &ConfigValue, current: Arc<ConfigValue>) -> SnapshotPayload {
+    /// Chooses the payload and records the changed fields from the same patch,
+    /// whichever payload is chosen.
+    fn encode(
+        &self,
+        parent: &ConfigValue,
+        current: Arc<ConfigValue>,
+    ) -> (SnapshotPayload, Option<IndexSet<ConfigField>>) {
         let mut parent_json = parent.to_json();
         let current_json = current.to_json();
         let patch = json_patch::diff(&parent_json, &current_json);
+        let changed_fields = changed_fields_from_patch(&patch);
         let patch_len = serialized_len(&patch);
         let full_len = serialized_len(&current_json).max(1);
 
         if (patch_len as f32) > (full_len as f32 * self.delta_to_full_ratio) {
-            return SnapshotPayload::Full(current);
+            return (SnapshotPayload::Full(current), changed_fields);
         }
-        // JSON Patch ignores object order, and remove uses swap_remove.
-        // Keep a keyframe if replay would misrepresent the executor's YAML.
-        if json_patch::patch(&mut parent_json, &patch).is_err()
-            || !same_object_order(&parent_json, &current_json)
+        // JSON Patch ignores object order and the sign of zero, and remove uses
+        // swap_remove. Keep a keyframe if replay would misrepresent the
+        // executor's YAML.
+        let payload = if json_patch::patch(&mut parent_json, &patch).is_err()
+            || !same_representation(&parent_json, &current_json)
         {
             SnapshotPayload::Full(current)
         } else {
             SnapshotPayload::Delta(patch)
-        }
+        };
+        (payload, changed_fields)
     }
 }
 
-fn same_object_order(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+/// Equality that also holds object order and float bits, so a replay that
+/// passes it serializes exactly like the recorded value.
+fn same_representation(left: &serde_json::Value, right: &serde_json::Value) -> bool {
     match (left, right) {
         (serde_json::Value::Object(left), serde_json::Value::Object(right)) => {
             left.len() == right.len()
                 && left
                     .iter()
                     .zip(right)
-                    .all(|((lk, lv), (rk, rv))| lk == rk && same_object_order(lv, rv))
+                    .all(|((lk, lv), (rk, rv))| lk == rk && same_representation(lv, rv))
         }
         (serde_json::Value::Array(left), serde_json::Value::Array(right)) => {
             left.len() == right.len()
-                && left.iter().zip(right).all(|(l, r)| same_object_order(l, r))
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(l, r)| same_representation(l, r))
+        }
+        (serde_json::Value::Number(left), serde_json::Value::Number(right)) => {
+            left == right && left.as_f64().map(f64::to_bits) == right.as_f64().map(f64::to_bits)
         }
         _ => left == right,
     }
@@ -496,6 +519,7 @@ impl ConfigSnapshotsBuilder {
             },
             tag,
             baseline: SnapshotBaseline::Independent,
+            changed_fields: None,
             next: None,
         };
 
@@ -534,8 +558,8 @@ impl ConfigSnapshotsBuilder {
             .slab
             .get(parent_id)
             .ok_or(SnapshotBuildError::MissingRoot { root_id: parent_id })?;
-        let payload = self.keyframe_policy.encode(&parent.full, value.clone());
-        let id = self.insert_child(parent_id, tag, value, SnapshotBaseline::Parent, payload);
+        let (payload, changed_fields) = self.keyframe_policy.encode(&parent.full, value.clone());
+        let id = self.insert_child(parent_id, tag, value, payload, changed_fields);
         self.current_id = id;
         Ok(id)
     }
@@ -563,6 +587,7 @@ impl ConfigSnapshotsBuilder {
             if old_id == branch.root_id {
                 state.baseline = SnapshotBaseline::Independent;
                 state.snapshot.payload = SnapshotPayload::Full(node.full.clone());
+                state.changed_fields = None;
             }
 
             let new_id = self.slab.insert(BuilderNode {
@@ -609,15 +634,16 @@ impl ConfigSnapshotsBuilder {
         parent_id: NodeId,
         tag: OperatorTag,
         current: Arc<ConfigValue>,
-        baseline: SnapshotBaseline,
         payload: SnapshotPayload,
+        changed_fields: Option<IndexSet<ConfigField>>,
     ) -> NodeId {
         let id = self.slab.insert(BuilderNode {
             full: current,
             state: StoredConfigSnapshotState {
                 snapshot: StoredConfigSnapshot { payload },
                 tag,
-                baseline,
+                baseline: SnapshotBaseline::Parent,
+                changed_fields,
                 next: None,
             },
             parent_id: Some(parent_id),
@@ -652,6 +678,7 @@ impl ConfigSnapshotsBuilder {
                 snapshot: state.snapshot,
                 tag: state.tag,
                 baseline: state.baseline,
+                changed_fields: state.changed_fields,
                 next,
             },
         }
@@ -807,6 +834,7 @@ impl ConfigSnapshotsBuilder {
                 snapshot: builder_node.state.snapshot.clone(),
                 tag: builder_node.state.tag.clone(),
                 baseline: builder_node.state.baseline,
+                changed_fields: builder_node.state.changed_fields.clone(),
                 next,
             });
         }
@@ -816,6 +844,91 @@ impl ConfigSnapshotsBuilder {
 }
 
 impl StoredConfigSnapshotsGraph {
+    /// The comparison parent, excluding an independent branch's attachment point.
+    pub fn comparison_parent(&self, node_id: Idx) -> Option<Idx> {
+        let node = self.nodes.get(node_id as usize)?;
+        if node.baseline == SnapshotBaseline::Independent {
+            return None;
+        }
+        self.nodes
+            .iter()
+            .position(|parent| {
+                parent
+                    .next
+                    .as_ref()
+                    .is_some_and(|children| children.contains(&node_id))
+            })
+            .map(|id| id as Idx)
+    }
+
+    /// Restores one node's config: the nearest keyframe on its parent chain
+    /// with the deltas below it replayed in order. Siblings are not expanded
+    /// and nothing is cached.
+    pub fn restore(&self, node_id: Idx) -> Result<serde_json::Value, SnapshotBuildError> {
+        let mut deltas = Vec::new();
+        let mut cursor = node_id;
+        let mut config = loop {
+            match &self.node(cursor)?.snapshot.payload {
+                SnapshotPayload::Full(value) => break value.to_json(),
+                SnapshotPayload::Delta(patch) => {
+                    // A valid tree reaches a keyframe within `nodes.len()` steps.
+                    if deltas.len() == self.nodes.len() {
+                        return Err(SnapshotBuildError::Cycle {
+                            node_id: cursor as usize,
+                        });
+                    }
+                    deltas.push(patch);
+                    cursor = self.delta_parent(cursor)?;
+                }
+            }
+        };
+        for patch in deltas.into_iter().rev() {
+            json_patch::patch(&mut config, patch)?;
+        }
+        Ok(config)
+    }
+
+    /// Restores a node together with its comparison parent, sharing one replay
+    /// of the parent chain.
+    pub fn restore_with_parent(
+        &self,
+        node_id: Idx,
+    ) -> Result<(serde_json::Value, Option<(Idx, serde_json::Value)>), SnapshotBuildError> {
+        let Some(parent_id) = self.comparison_parent(node_id) else {
+            return Ok((self.restore(node_id)?, None));
+        };
+        let parent = self.restore(parent_id)?;
+        let config = match &self.node(node_id)?.snapshot.payload {
+            SnapshotPayload::Full(value) => value.to_json(),
+            SnapshotPayload::Delta(patch) => {
+                let mut config = parent.clone();
+                json_patch::patch(&mut config, patch)?;
+                config
+            }
+        };
+        Ok((config, Some((parent_id, parent))))
+    }
+
+    fn node(&self, node_id: Idx) -> Result<&StoredConfigSnapshotState<Idx>, SnapshotBuildError> {
+        let index = node_id as usize;
+        self.nodes
+            .get(index)
+            .ok_or(SnapshotBuildError::MissingChild {
+                parent_id: index,
+                child_id: index,
+            })
+    }
+
+    /// The node a delta payload is encoded against.
+    fn delta_parent(&self, node_id: Idx) -> Result<Idx, SnapshotBuildError> {
+        let index = node_id as usize;
+        if self.node(node_id)?.baseline == SnapshotBaseline::Independent {
+            return Err(SnapshotBuildError::IndependentDelta { node_id: index });
+        }
+        self.comparison_parent(node_id)
+            .ok_or(SnapshotBuildError::MissingRoot { root_id: index })
+    }
+
     /// Materializes every node into a fully expanded [`ConfigSnapshotsGraph`],
     /// applying deltas against their parents while walking the tree.
     pub fn materialize(&self) -> Result<ConfigSnapshotsGraph, SnapshotBuildError> {
@@ -953,6 +1066,14 @@ pub fn changed_fields_from_patch(patch: &Patch) -> Option<IndexSet<ConfigField>>
     (!fields.is_empty()).then_some(fields)
 }
 
+/// The changed dot-paths between two configs, with the recorder's semantics.
+pub fn changed_fields_between(
+    before: &serde_json::Value,
+    after: &serde_json::Value,
+) -> Option<IndexSet<ConfigField>> {
+    changed_fields_from_patch(&json_patch::diff(before, after))
+}
+
 /// Converts an RFC 6901 JSON pointer into a dot-separated field path.
 pub fn json_pointer_to_dot_path(pointer: &str) -> ConfigField {
     if pointer.is_empty() {
@@ -993,9 +1114,24 @@ fn decode_json_pointer_token(token: &str) -> String {
     decoded
 }
 
+/// The serialized JSON length, counted without buffering the bytes.
 fn serialized_len<T: Serialize>(value: &T) -> usize {
-    serde_json::to_vec(value)
-        .map(|value| value.len())
+    struct Counter(usize);
+
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut counter = Counter(0);
+    serde_json::to_writer(&mut counter, value)
+        .map(|()| counter.0)
         .unwrap_or(usize::MAX)
 }
 
@@ -1030,7 +1166,7 @@ pub mod persistence {
 
     use super::StoredConfigSnapshotsGraph;
 
-    pub const SNAPSHOT_ARCHIVE_VERSION: u16 = 2;
+    pub const SNAPSHOT_ARCHIVE_VERSION: u16 = 3;
     /// Decompression ceiling, guarding against zstd decompression bombs.
     const MAX_ARCHIVE_DECODED_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -1161,6 +1297,34 @@ fn validate_tree_links<'a>(
     }
 
     Ok(())
+}
+
+/// Every node restores to its materialized config and records the
+/// materialized `changed_fields`; its comparison parent restores alongside it.
+#[cfg(test)]
+pub(crate) fn assert_restore_matches_materialize(stored: &StoredConfigSnapshotsGraph) {
+    let materialized = stored.materialize().unwrap();
+    for (id, (node, expected)) in stored.nodes.iter().zip(&materialized.nodes).enumerate() {
+        let id = id as Idx;
+        let (config, parent) = stored.restore_with_parent(id).unwrap();
+        assert_eq!(
+            serde_json::to_string(&config).unwrap(),
+            serde_json::to_string(&expected.snapshot.config).unwrap(),
+            "node {id} config, order included"
+        );
+        assert_eq!(stored.restore(id).unwrap(), config, "node {id} restore");
+        assert_eq!(
+            node.changed_fields, expected.snapshot.changed_fields,
+            "node {id} changed fields"
+        );
+        let expected_parent = stored.comparison_parent(id).map(|parent| {
+            (
+                parent,
+                materialized.nodes[parent as usize].snapshot.config.clone(),
+            )
+        });
+        assert_eq!(parent, expected_parent, "node {id} comparison parent");
+    }
 }
 
 #[cfg(test)]
@@ -1324,6 +1488,7 @@ mod tests {
             },
             tag,
             baseline,
+            changed_fields: None,
             next,
         }
     }
@@ -1400,12 +1565,43 @@ mod tests {
                     current.clone(),
                 )
                 .unwrap();
-            let graph = builder.build().unwrap();
+            let stored = builder.build_stored().unwrap();
+            assert_restore_matches_materialize(&stored);
+            let graph = stored.materialize().unwrap();
             assert_eq!(
                 serde_json::to_string(&graph.nodes[1].snapshot.config).unwrap(),
                 serde_json::to_string(&current.to_json()).unwrap(),
             );
         }
+    }
+
+    /// `0.0 == -0.0`, so the patch records no change; the keyframe keeps the
+    /// sign that the product serializes.
+    #[test]
+    fn restore_keeps_the_sign_of_zero() {
+        let current = value(json!({ "extra": -0.0 }));
+        let mut builder = ConfigSnapshotsBuilder::new_root_with_keyframe_policy(
+            value(json!({ "extra": 0.0 })),
+            OperatorTag::BareRoot,
+            KeyframePolicy {
+                delta_to_full_ratio: 10.0,
+            },
+        );
+        builder
+            .push(
+                builtin_step("primary", BuiltinStepKind::Finalizing),
+                current.clone(),
+            )
+            .unwrap();
+        let stored = builder.build_stored().unwrap();
+        assert!(matches!(
+            stored.nodes[1].snapshot.payload,
+            SnapshotPayload::Full(_)
+        ));
+        assert_eq!(
+            serde_json::to_string(&stored.restore(1).unwrap()).unwrap(),
+            serde_json::to_string(&current.to_json()).unwrap()
+        );
     }
 
     #[test]
@@ -1417,7 +1613,7 @@ mod tests {
         };
 
         assert!(matches!(
-            policy.encode(&parent, current),
+            policy.encode(&parent, current).0,
             SnapshotPayload::Full(_)
         ));
     }
@@ -1442,13 +1638,11 @@ mod tests {
         builder
             .push(builtin_step("primary", BuiltinStepKind::Finalizing), config)
             .unwrap();
-        let graph = builder.build().unwrap();
+        let graph = builder.build_stored().unwrap();
         assert_eq!(graph.comparison_parent(graph.root_id), None);
         assert_eq!(graph.comparison_parent(1), Some(graph.root_id));
-        assert_eq!(
-            graph.nodes[1].snapshot.config,
-            graph.nodes[0].snapshot.config
-        );
+        assert_eq!(graph.nodes[1].changed_fields, None);
+        assert_eq!(graph.restore(1).unwrap(), graph.restore(0).unwrap());
     }
 
     #[test]
@@ -1895,6 +2089,7 @@ mod tests {
             .unwrap();
 
         let stored = builder.build_stored().unwrap();
+        assert_restore_matches_materialize(&stored);
         assert_eq!(
             stored.nodes[root_id].next.as_deref(),
             Some(&[base_root as Idx, contributor_0_root as Idx, extend_0 as Idx][..])
@@ -2034,6 +2229,8 @@ mod tests {
             SnapshotPayload::Full(_)
         ));
 
+        assert_eq!(stored.nodes[branch_root].changed_fields, None);
+        assert_restore_matches_materialize(&stored);
         let materialized = stored.materialize().unwrap();
         assert!(
             materialized.nodes[branch_root]
@@ -2053,6 +2250,7 @@ mod tests {
                 },
                 tag: selected_file_root("primary"),
                 baseline: SnapshotBaseline::Independent,
+                changed_fields: None,
                 next: None,
             }],
             root_id: 0,
@@ -2069,7 +2267,7 @@ mod tests {
 
     #[cfg(feature = "snapshot-persistence")]
     #[test]
-    fn storage_contract_archive_v2_round_trip_and_decode_failures() {
+    fn storage_contract_archive_round_trip_and_decode_failures() {
         let root = value(json!({ "a": 1 }));
         let graph = ConfigSnapshotsBuilder::new_root(root, selected_file_root("primary"))
             .build_stored()
@@ -2095,7 +2293,7 @@ mod tests {
             persistence::decode_archive(&v1_bytes),
             Err(persistence::SnapshotPersistError::UnsupportedVersion {
                 found: 1,
-                expected: 2,
+                expected: 3,
             })
         ));
 
@@ -2207,5 +2405,55 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn restore_matches_materialize_for_delta_chains_and_keyframes() {
+        let steps = [
+            (
+                builtin_step("primary", BuiltinStepKind::WhitelistFieldFilter),
+                json!({ "mode": "rule", "rules": ["a"], "dns": { "enable": false } }),
+            ),
+            (
+                builtin_step("primary", BuiltinStepKind::GuardOverrides),
+                json!({ "mode": "global", "rules": ["a"], "dns": { "enable": false } }),
+            ),
+            (
+                OperatorTag::BuiltinTransform {
+                    selected_profile_id: Some(pid("primary")),
+                    name: "config_fixer".to_string(),
+                    step_index: 0,
+                },
+                json!({ "mode": "global", "rules": ["a", "b"], "dns": { "enable": false } }),
+            ),
+            (
+                builtin_step("primary", BuiltinStepKind::Finalizing),
+                json!({ "mode": "global", "rules": ["a", "b"], "dns": { "enable": true } }),
+            ),
+        ];
+        // 10.0 keeps every faithful patch as a delta; 0.0 forces parent-relative keyframes.
+        for (ratio, delta) in [(10.0, true), (0.0, false)] {
+            let mut builder = ConfigSnapshotsBuilder::new_root_with_keyframe_policy(
+                value(json!({ "mode": "rule", "rules": ["a"], "dns": { "enable": false } })),
+                selected_file_root("primary"),
+                KeyframePolicy {
+                    delta_to_full_ratio: ratio,
+                },
+            );
+            for (tag, config) in &steps {
+                builder.push(tag.clone(), value(config.clone())).unwrap();
+            }
+            let stored = builder.build_stored().unwrap();
+            assert!(stored.nodes.iter().skip(1).all(|node| {
+                node.baseline == SnapshotBaseline::Parent
+                    && matches!(node.snapshot.payload, SnapshotPayload::Delta(_)) == delta
+            }));
+            assert_eq!(stored.nodes[1].changed_fields, None);
+            assert_eq!(
+                stored.nodes[4].changed_fields,
+                Some(IndexSet::from(["dns.enable".to_string()]))
+            );
+            assert_restore_matches_materialize(&stored);
+        }
     }
 }

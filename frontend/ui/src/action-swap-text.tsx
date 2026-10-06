@@ -1,28 +1,31 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ComponentProps } from 'react'
+import { ComponentProps, ReactNode } from 'react'
 import { cn } from '@nyanpasu/utils'
 
-export type ActionSwapTextProps = Omit<ComponentProps<'div'>, 'children'> & {
-  value: string | null
+export type ActionSwapProps = Omit<ComponentProps<'div'>, 'children'> & {
+  /** Changing the key rolls the current children out and the next ones in. */
+  contentKey: string | null
+  children: ReactNode
 }
 
-export function ActionSwapText({
+export function ActionSwap({
   className,
-  value,
+  contentKey,
+  children,
   ...props
-}: ActionSwapTextProps) {
+}: ActionSwapProps) {
   const reduceMotion = useReducedMotion()
 
   return (
     <div
+      data-slot="action-swap"
       {...props}
       className={cn('grid overflow-hidden', className)}
-      data-slot="action-swap-text"
     >
       <AnimatePresence mode="popLayout" initial={false}>
-        {value != null && (
-          <motion.span
-            key={value}
+        {contentKey != null && (
+          <motion.div
+            key={contentKey}
             className="col-start-1 row-start-1"
             initial={{
               opacity: 0,
@@ -41,10 +44,31 @@ export function ActionSwapText({
                 : { duration: 0.18, ease: 'easeOut' }
             }
           >
-            {value}
-          </motion.span>
+            {children}
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+export type ActionSwapTextProps = Omit<ComponentProps<'div'>, 'children'> & {
+  value: string | null
+}
+
+export function ActionSwapText({
+  className,
+  value,
+  ...props
+}: ActionSwapTextProps) {
+  return (
+    <ActionSwap
+      {...props}
+      className={className}
+      contentKey={value}
+      data-slot="action-swap-text"
+    >
+      {value}
+    </ActionSwap>
   )
 }

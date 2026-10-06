@@ -1,9 +1,12 @@
-import ArrowDownwardAltRounded from '~icons/material-symbols/arrow-downward-alt-rounded'
-import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-rounded'
 import KeepOffRounded from '~icons/material-symbols/keep-off-rounded'
 import KeepRounded from '~icons/material-symbols/keep-rounded'
-import { filesize } from 'filesize'
-import { useCallback, useDeferredValue, useMemo } from 'react'
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  type Transition,
+} from 'motion/react'
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
@@ -23,10 +26,14 @@ import {
 } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useGroupTrafficSpeed } from '../_modules/hooks'
 import { useSearchTerm } from '../../_modules/use-search-term'
 import DelayTestButton from './_modules/delay-test-button'
 import GroupHeader from './_modules/group-header'
+import {
+  GroupMeta,
+  GroupStatus,
+  GroupTrafficSpeed,
+} from './_modules/group-meta'
 import {
   DEFAULT_NODE_VIEW,
   NODE_VIEW_KV_KEY,
@@ -37,6 +44,7 @@ import {
 import {
   HideUnavailableButton,
   LocateCurrentNodeButton,
+  NodeSearchOverlay,
   NoMatchingNodes,
   SearchNodesButton,
   SortNodesButton,
@@ -51,38 +59,6 @@ export const Route = createFileRoute('/(main)/main/proxies/group/$name')({
 // p-1. A fixed size spares the virtualizer measuring each mounted card, which
 // forced a layout and a second render every time a group opened.
 const NODE_ITEM_HEIGHT = 64
-
-// Subscribes to connection samples on its own so each sample re-renders only
-// this label, not the node grid.
-function GroupTrafficSpeed({ groupName }: { groupName?: string }) {
-  const speed = useGroupTrafficSpeed(groupName)
-
-  return (
-    <>
-      <div className="flex items-center">
-        <ArrowDownwardAltRounded className="size-6" />
-
-        <span className="text-sm">
-          {filesize(speed.download, {
-            standard: 'iec',
-          })}
-          /s
-        </span>
-      </div>
-
-      <div className="flex items-center">
-        <ArrowUpwardAltRounded className="size-6" />
-
-        <span className="text-sm">
-          {filesize(speed.upload, {
-            standard: 'iec',
-          })}
-          /s
-        </span>
-      </div>
-    </>
-  )
-}
 
 function RouteComponent() {
   const { name: proxyGroupName } = Route.useParams()
@@ -255,6 +231,76 @@ function RouteComponent() {
 
   const { viewportRef } = useScrollAreaViewport()
 
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  const headerRef = useRef<HTMLDivElement>(null)
+
+  // Where the search icon sits across the header row, as a 0..1 fraction, so
+  // the narrow overlay can unfold from that point out to both sides.
+  const [searchOrigin, setSearchOrigin] = useState(0.5)
+
+  // The overlay starts after the back button so it never covers it.
+  const [searchOverlayLeft, setSearchOverlayLeft] = useState(0)
+
+  const reduceMotion = useReducedMotion()
+
+  const headerFade: Transition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.2, ease: 'easeOut' }
+
+  // Collapsed to a hairline at the search icon, the overlay unfolds both ways.
+  const searchOverlayClip = `inset(0% ${(1 - searchOrigin) * 100}% 0% ${
+    searchOrigin * 100
+  }%)`
+
+  // Below this width the header gives the whole row to an opened search
+  // instead of squeezing the title, its status and the actions.
+  const narrowHeader = useContainerBreakpointValue(
+    viewportRef,
+    { xs: true, sm: false },
+    false,
+  )
+
+  const handleSearchOpenChange = useCallback((open: boolean) => {
+    setSearchOpen(open)
+
+    if (!open) {
+      return
+    }
+
+    const header = headerRef.current
+    const button = header?.querySelector(
+      '[data-slot="proxies-node-search-button"]',
+    )
+    const row = header?.querySelector('[data-slot="proxies-group-header-row"]')
+
+    if (!button || !row) {
+      return
+    }
+
+    const rowRect = row.getBoundingClientRect()
+
+    if (rowRect.width === 0) {
+      return
+    }
+
+    const buttonRect = button.getBoundingClientRect()
+    const back = header?.querySelector(
+      '[data-slot="proxies-group-back-button"]',
+    )
+    const overlayLeft = back
+      ? back.getBoundingClientRect().right - rowRect.left
+      : 0
+    const overlayWidth = rowRect.width - overlayLeft
+    const center = buttonRect.left + buttonRect.width / 2 - rowRect.left
+
+    setSearchOverlayLeft(overlayLeft)
+
+    setSearchOrigin(
+      overlayWidth > 0 ? Math.min(Math.max(center / overlayWidth, 0), 1) : 0.5,
+    )
+  }, [])
+
   // define the number of lanes based on the container breakpoint
   const lanes = useContainerBreakpointValue(
     viewportRef,
@@ -300,86 +346,100 @@ function RouteComponent() {
 
   return (
     <>
-      <GroupHeader>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <div className="flex max-w-full min-w-0 flex-col gap-1">
-            <div className="truncate" title={currentGroup?.name}>
+      <GroupHeader ref={headerRef}>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          {currentGroup && groupStatus ? (
+            <GroupMeta
+              name={currentGroup.name}
+              status={
+                <GroupStatus
+                  available={groupStatus.available}
+                  total={groupStatus.total}
+                  chain={groupStatus.chain}
+                />
+              }
+              speed={<GroupTrafficSpeed groupName={currentGroup.name} />}
+              speedCompact={
+                <GroupTrafficSpeed
+                  groupName={currentGroup.name}
+                  only="fastest"
+                />
+              }
+            />
+          ) : (
+            <span className="min-w-0 truncate font-medium">
               {currentGroup?.name}
+            </span>
+          )}
+
+          {currentGroup?.fixed && (
+            <div
+              className="text-on-surface-variant flex min-w-0 items-center gap-1 text-xs"
+              title={currentGroup.fixed}
+              data-slot="proxies-group-fixed"
+            >
+              <KeepRounded className="size-3.5 shrink-0" />
+              <span className="shrink-0">{m.proxies_group_fixed_label()}</span>
+              <span className="truncate">{currentGroup.fixed}</span>
             </div>
-
-            {groupStatus && (
-              <div
-                className="text-on-surface-variant flex min-w-0 items-center gap-1 text-xs"
-                data-slot="proxies-group-status"
-              >
-                <span className="shrink-0">
-                  {m.proxies_group_available({
-                    available: groupStatus.available,
-                    total: groupStatus.total,
-                  })}
-                </span>
-
-                {groupStatus.chain.length > 0 && (
-                  <>
-                    <span className="shrink-0">·</span>
-                    <span
-                      className="truncate"
-                      title={groupStatus.chain.join(' › ')}
-                    >
-                      {groupStatus.chain.join(' › ')}
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-
-            {currentGroup?.fixed && (
-              <div
-                className="text-on-surface-variant flex min-w-0 items-center gap-1 text-xs"
-                title={currentGroup.fixed}
-                data-slot="proxies-group-fixed"
-              >
-                <KeepRounded className="size-3.5 shrink-0" />
-                <span className="shrink-0">
-                  {m.proxies_group_fixed_label()}
-                </span>
-                <span className="truncate">{currentGroup.fixed}</span>
-              </div>
-            )}
-          </div>
-
-          <GroupTrafficSpeed groupName={currentGroup?.name} />
+          )}
         </div>
 
-        <div className="flex-1" />
+        <div className="flex shrink-0 items-center gap-1">
+          <SearchNodesButton
+            open={narrowHeader ? false : searchOpen}
+            onOpenChange={handleSearchOpenChange}
+            search={search}
+            onSearchChange={setSearch}
+          />
 
-        <SearchNodesButton search={search} onSearchChange={setSearch} />
+          {currentGroup?.fixed && currentGroup.capabilities.clearFixed && (
+            <Button
+              variant="stroked"
+              className="flex h-8 shrink-0 items-center gap-1 px-3 text-sm"
+              onClick={handleClearFixed}
+              data-slot="proxies-group-clear-fixed-button"
+            >
+              <KeepOffRounded className="size-4" />
+              <span>{m.proxies_group_clear_fixed_button()}</span>
+            </Button>
+          )}
 
-        {currentGroup?.fixed && currentGroup.capabilities.clearFixed && (
-          <Button
-            variant="stroked"
-            className="flex h-8 shrink-0 items-center gap-1 px-3 text-sm"
-            onClick={handleClearFixed}
-            data-slot="proxies-group-clear-fixed-button"
-          >
-            <KeepOffRounded className="size-4" />
-            <span>{m.proxies_group_clear_fixed_button()}</span>
-          </Button>
-        )}
+          <SortNodesButton view={storedView} onViewChange={handleViewChange} />
 
-        <SortNodesButton view={storedView} onViewChange={handleViewChange} />
+          <HideUnavailableButton
+            pressed={storedView.hideUnavailable}
+            onPressedChange={(hideUnavailable) =>
+              handleViewChange({ ...storedView, hideUnavailable })
+            }
+          />
 
-        <HideUnavailableButton
-          pressed={storedView.hideUnavailable}
-          onPressedChange={(hideUnavailable) =>
-            handleViewChange({ ...storedView, hideUnavailable })
-          }
-        />
+          <LocateCurrentNodeButton
+            disabled={currentIndex === -1}
+            onLocate={handleScrollToCurrentNode}
+          />
+        </div>
 
-        <LocateCurrentNodeButton
-          disabled={currentIndex === -1}
-          onLocate={handleScrollToCurrentNode}
-        />
+        <AnimatePresence initial={false}>
+          {narrowHeader && searchOpen && (
+            <motion.div
+              key="proxies-search-overlay"
+              className="bg-mixed-background absolute inset-y-0 right-0 z-20 flex items-center px-1"
+              data-slot="proxies-node-search-overlay"
+              style={{ left: searchOverlayLeft }}
+              initial={{ clipPath: searchOverlayClip, opacity: 0.4 }}
+              animate={{ clipPath: 'inset(0% 0% 0% 0%)', opacity: 1 }}
+              exit={{ clipPath: searchOverlayClip, opacity: 0.4 }}
+              transition={headerFade}
+            >
+              <NodeSearchOverlay
+                search={search}
+                onSearchChange={setSearch}
+                onClose={() => setSearchOpen(false)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </GroupHeader>
 
       {noMatch ? (

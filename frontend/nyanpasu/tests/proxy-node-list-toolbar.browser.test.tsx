@@ -6,6 +6,7 @@ import { type NodeView } from '@/pages/(main)/main/proxies/group/_modules/node-l
 import {
   HideUnavailableButton,
   LocateCurrentNodeButton,
+  NodeSearchOverlay,
   NoMatchingNodes,
   SearchNodesButton,
   SortNodesButton,
@@ -16,8 +17,11 @@ async function renderSearch({ initial = '' }: { initial?: string } = {}) {
   const onSearchChange = vi.fn()
   function Harness() {
     const [search, setSearch] = useState(initial)
+    const [open, setOpen] = useState(false)
     return (
       <SearchNodesButton
+        open={open}
+        onOpenChange={setOpen}
         search={search}
         onSearchChange={(next) => {
           onSearchChange(next)
@@ -56,6 +60,41 @@ test('searching opens from an icon and the clear button empties it', async () =>
     .click()
   expect(onSearchChange).toHaveBeenLastCalledWith('')
   await expect.element(searchbox).toHaveValue('')
+})
+
+test('an open search shows the field instead of the icon', async () => {
+  const screen = await render(
+    <TooltipProvider>
+      <SearchNodesButton
+        open
+        search=""
+        onSearchChange={() => {}}
+        onOpenChange={() => {}}
+      />
+    </TooltipProvider>,
+  )
+
+  await expect.element(screen.getByRole('searchbox')).toBeVisible()
+  expect(
+    screen.container.querySelector('[data-slot="proxies-node-search-button"]'),
+  ).toBeNull()
+})
+
+test('the overlay search closes from its close button', async () => {
+  const onClose = vi.fn()
+  const screen = await render(
+    <TooltipProvider>
+      <NodeSearchOverlay
+        search=""
+        onSearchChange={() => {}}
+        onClose={onClose}
+      />
+    </TooltipProvider>,
+  )
+
+  await expect.element(screen.getByRole('searchbox')).toBeVisible()
+  await screen.getByRole('button', { name: m.common_close() }).click()
+  expect(onClose).toHaveBeenCalled()
 })
 
 test('the sort menu checks the current sort and picks another', async () => {

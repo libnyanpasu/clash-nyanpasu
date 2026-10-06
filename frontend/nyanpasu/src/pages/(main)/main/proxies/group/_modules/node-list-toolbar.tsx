@@ -1,3 +1,4 @@
+import CloseRounded from '~icons/material-symbols/close-rounded'
 import Radar from '~icons/material-symbols/radar'
 import SearchRounded from '~icons/material-symbols/search-rounded'
 import SortRounded from '~icons/material-symbols/sort-rounded'
@@ -8,7 +9,6 @@ import {
   useReducedMotion,
   type Transition,
 } from 'motion/react'
-import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
@@ -20,6 +20,7 @@ import {
 import { SearchField } from '@nyanpasu/ui/search-field'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
+import { cn } from '@nyanpasu/utils'
 import { NODE_SORTS, type NodeSort, type NodeView } from './node-list'
 
 const SORT_LABELS = {
@@ -28,15 +29,92 @@ const SORT_LABELS = {
   delay: m.proxies_node_sort_delay,
 } satisfies Record<NodeSort, () => string>
 
-export function SearchNodesButton({
+export function NodeSearchField({
   search,
   onSearchChange,
+  onRequestClose,
+  className,
+  autoFocus,
 }: {
   search: string
   onSearchChange: (search: string) => void
+  onRequestClose: () => void
+  className?: string
+  autoFocus?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  return (
+    <SearchField
+      className={cn('h-8 min-w-0 overflow-hidden', className)}
+      autoFocus={autoFocus}
+      placeholder={m.proxies_node_search_placeholder()}
+      clearLabel={m.proxies_node_search_clear()}
+      value={search}
+      onValueChange={onSearchChange}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !search) {
+          onRequestClose()
+        }
+      }}
+      onBlur={() => {
+        if (!search) {
+          onRequestClose()
+        }
+      }}
+      data-slot="proxies-node-search-field"
+    />
+  )
+}
 
+/** Search field with an explicit close action, for the narrow overlay. */
+export function NodeSearchOverlay({
+  search,
+  onSearchChange,
+  onClose,
+}: {
+  search: string
+  onSearchChange: (search: string) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="flex w-full min-w-0 items-center gap-1">
+      <NodeSearchField
+        autoFocus
+        className="min-w-0 flex-1"
+        search={search}
+        onSearchChange={onSearchChange}
+        onRequestClose={onClose}
+      />
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            icon
+            className="size-8 shrink-0"
+            aria-label={m.common_close()}
+            onClick={onClose}
+            data-slot="proxies-node-search-close"
+          >
+            <CloseRounded className="size-4" />
+          </Button>
+        </TooltipTrigger>
+
+        <TooltipContent>{m.common_close()}</TooltipContent>
+      </Tooltip>
+    </div>
+  )
+}
+
+export function SearchNodesButton({
+  search,
+  onSearchChange,
+  open,
+  onOpenChange,
+}: {
+  search: string
+  onSearchChange: (search: string) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const reduceMotion = useReducedMotion()
 
   const transition: Transition = reduceMotion
@@ -48,30 +126,18 @@ export function SearchNodesButton({
       {open ? (
         <motion.div
           key="field"
-          className="h-8 shrink-0"
+          className="h-8 min-w-0 shrink-0"
           initial={{ width: 0, opacity: 0 }}
           animate={{ width: '12rem', opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
         >
-          <SearchField
-            className="h-8 w-full overflow-hidden"
+          <NodeSearchField
             autoFocus
-            placeholder={m.proxies_node_search_placeholder()}
-            clearLabel={m.proxies_node_search_clear()}
-            value={search}
-            onValueChange={onSearchChange}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && !search) {
-                setOpen(false)
-              }
-            }}
-            onBlur={() => {
-              if (!search) {
-                setOpen(false)
-              }
-            }}
-            data-slot="proxies-node-search-field"
+            className="w-full"
+            search={search}
+            onSearchChange={onSearchChange}
+            onRequestClose={() => onOpenChange(false)}
           />
         </motion.div>
       ) : (
@@ -88,7 +154,7 @@ export function SearchNodesButton({
                 icon
                 className="size-8 shrink-0"
                 aria-label={m.proxies_node_search_placeholder()}
-                onClick={() => setOpen(true)}
+                onClick={() => onOpenChange(true)}
                 data-slot="proxies-node-search-button"
               >
                 <SearchRounded className="size-4" />

@@ -1,6 +1,6 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
@@ -17,6 +17,10 @@ import AllViewer, {
 import { mockActiveConnections } from '../src/pages/(main)/main/connections/_modules/mock-connections'
 import type { ConnectionRow } from '../src/pages/(main)/main/connections/_modules/use-connection-rows'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
+
+// Generated commands take the desktop IPC path that `mockIPC` serves.
+beforeEach(() => vi.stubGlobal('isTauri', true))
+afterEach(() => vi.unstubAllGlobals())
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ isMinimized: async () => false }),

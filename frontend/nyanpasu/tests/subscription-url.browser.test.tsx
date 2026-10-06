@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ProfileQuickImport from '@/pages/(main)/main/profiles/_modules/profile-quick-import'
@@ -10,6 +10,10 @@ import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
+
+// Generated commands take the desktop IPC path that `mockIPC` serves.
+beforeEach(() => vi.stubGlobal('isTauri', true))
+afterEach(() => vi.unstubAllGlobals())
 
 const notifications = vi.hoisted(() => ({ message: vi.fn() }))
 vi.mock('@/utils/notification', () => notifications)

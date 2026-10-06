@@ -60,6 +60,17 @@ with a fresh QueryClient for each test. Mock infrastructure at the IPC boundary;
 do not replace mutation lifecycle callbacks or query-cache behavior under test.
 Unexpected IPC commands should fail the test.
 
+`mockIPC` installs only `__TAURI_INTERNALS__`, while the RPC client detects the
+desktop app with `isTauri()`, which reads `globalThis.isTauri`. A test that serves
+commands through `mockIPC` must also `vi.stubGlobal('isTauri', true)` and restore it
+with `vi.unstubAllGlobals()`; set it in `vi.hoisted` when a module selects its
+transport at import time. When changing how the frontend detects its environment,
+search the tests that simulate the old signal and update them in the same change.
+
+Do not hard-code product data that is expected to change, such as presets or
+default values. Take the value from its source of truth or have the test supply its
+own data, so a product change does not surface as an unrelated locator timeout.
+
 Use asynchronous assertions or explicit completion promises instead of sleeps.
 Disable unrelated retries, control refetch responses, unmount components and clear
 query caches after each test. Restore mocks and timers even on failure. The delay

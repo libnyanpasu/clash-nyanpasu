@@ -12,6 +12,11 @@ and verify the fix. For refactors, verify behavior before and after. For multi-s
 work, pair each step with a check. Explain material tradeoffs and blockers rather
 than preserving an undocumented compatibility layer.
 
+Do not merge a pull request or push to `main` while a CI check is red, even when
+only one platform fails; a Windows-only failure is a failure, not platform noise.
+When `main` turns red, fix it before landing further changes. Failures that pile up
+on a red branch are hard to separate, and an earlier failure can hide a later one.
+
 ## Repository scripts
 
 Follow [Repository scripts](scripts.md) for the source layout, Deno configuration

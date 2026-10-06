@@ -35,7 +35,7 @@
     "lint:clippy": "cargo clippy --manifest-path ./backend/Cargo.toml --all-targets --all-features",
     "lint:rustfmt": "cargo fmt --manifest-path ./backend/Cargo.toml --all -- --check",
     "knip": "knip",
-    "test": "run-p test:scripts test:backend test:frontend",
+    "test": "run-p --continue-on-error test:scripts test:backend test:frontend",
     "test:architecture-ledger": "deno task test:architecture-ledger",
     "test:release": "deno task test:release",
     "test:updater": "deno task test:updater",

@@ -99,6 +99,9 @@ pub struct ClientSetupArgs {
     /// for the storage commands.
     pub storage: Storage,
     pub runtime_paths: RuntimePaths,
+    /// Resolves the core binary a [`ClashCore`](nyanpasu_config::application::ClashCore)
+    /// selects; production looks it up on disk, tests substitute a fixed spec.
+    pub core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
     pub ui_sink: Arc<dyn UiEventSink>,
     /// Built after the active proxy-port source exists in the composition root.
     pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -161,6 +164,7 @@ async fn new_typed_config_clients(
     Ok((application, session_state, clash_config))
 }
 
+/// The fixed core spec tests inject in place of the on-disk lookup.
 #[cfg(test)]
 fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
@@ -255,6 +259,7 @@ impl NyanpasuClient {
             paths,
             storage,
             runtime_paths,
+            core_specs,
             ui_sink,
             app_update_backend_factory,
             app_update_event_sink,
@@ -342,6 +347,7 @@ impl NyanpasuClient {
             backup_paths,
             storage,
             runtime_paths,
+            core_specs,
             script_dirs,
             ui_sink,
             app_update_backend_factory,
@@ -381,6 +387,7 @@ impl NyanpasuClient {
         paths: ResolvedPaths,
         storage: Storage,
         runtime_paths: RuntimePaths,
+        core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
         script_dirs: crate::enhance::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -459,14 +466,6 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
-        #[cfg(not(test))]
-        let core_specs: Arc<application_workflow::adapters::CoreSpecResolver> = {
-            let resolver = paths.resolver().clone();
-            Arc::new(move |core| crate::core::actor_v2::local_host::core_spec(core, &resolver))
-        };
-        #[cfg(test)]
-        let core_specs: Arc<application_workflow::adapters::CoreSpecResolver> =
-            Arc::new(runtime_core_spec);
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
                 notifications: Arc::new(effects.clone()),
@@ -2427,6 +2426,7 @@ pub(crate) mod tests {
                 dir.path().join("data"),
             ))
             .unwrap(),
+            Arc::new(runtime_core_spec),
             crate::enhance::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
@@ -2908,6 +2908,7 @@ pub(crate) mod tests {
             paths,
             storage,
             runtime_paths,
+            core_specs: Arc::new(runtime_core_spec),
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             app_update_backend_factory: None,
             app_update_event_sink: None,
@@ -3253,6 +3254,7 @@ pub(crate) mod tests {
             backup_paths,
             storage,
             RuntimePaths::from_resolver(&paths).unwrap(),
+            Arc::new(runtime_core_spec),
             crate::enhance::ScriptDirs::from_resolver(&paths),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
@@ -3420,6 +3422,7 @@ pub(crate) mod tests {
             paths,
             storage,
             runtime_paths,
+            core_specs: Arc::new(runtime_core_spec),
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             app_update_backend_factory: None,
             app_update_event_sink: None,
@@ -4395,6 +4398,7 @@ pub(crate) mod tests {
                     dir.path().join("data"),
                 ))
                 .unwrap(),
+                Arc::new(runtime_core_spec),
                 crate::enhance::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
                 None,

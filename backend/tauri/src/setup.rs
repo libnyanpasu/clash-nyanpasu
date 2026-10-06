@@ -186,6 +186,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
             frontend: Arc::new(crate::client::frontend_events::TracingFrontendLogSink),
         },
+        core_specs: {
+            let resolver = paths.resolver().clone();
+            Arc::new(move |core| crate::core::actor_v2::local_host::core_spec(core, &resolver))
+        },
         paths,
         storage,
         runtime_paths: runtime_paths.clone(),

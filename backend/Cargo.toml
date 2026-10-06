@@ -89,3 +89,11 @@ panic = 'unwind'
 codegen-units = 1
 lto = true
 opt-level = 's'
+
+# Release code with line tables, so heap profilers can resolve allocation
+# stacks to source lines. Codegen units only change inlining and layout, not
+# what the program allocates, so the profile keeps Cargo's parallel default.
+[profile.profiling]
+inherits = 'release'
+debug = 'line-tables-only'
+codegen-units = 16

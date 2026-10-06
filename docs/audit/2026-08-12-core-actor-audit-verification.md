@@ -5,7 +5,7 @@
 - **复核基线**：同一提交 `2a247cca248cf0d4ec9d3e3b46bf7ead9118c200`；submodule `nyanpasu-runtime` @ v2.0.0-rc.1
 - **关联输入**：
   - `docs/design/2026-08-08-core-manager-control-plane-runtime-backend-design.md`（控制面目标架构，用户指定的迭代方向）
-  - `docs/superpowers/plans/2026-08-04-pr5d-v8-pr5e-v2-review-findings.md`（PR-5d v8 / PR-5e v2 对抗审结果）
+  - `docs/plan/2026-08-04-pr5d-v8-pr5e-v2-review-findings.md`（PR-5d v8 / PR-5e v2 对抗审结果）
 - **用户裁定（2026-08-12）**：认同审计对当前设计的驳斥；BC 不是约束；CoreManager 须处理一切边界情况；每个操作事务化；check→change 改为直接 change，check 由 CoreManager 内部触发，失败经 `error_kind` 返回。
 - **结论**：**审计的全部关键事实断言经逐条源码核实成立**；三个 P0 结构性指控成立；另有两处审计未写到的加重情节。方向按审计 + 2026-08-08 设计文档执行，app 侧集成设计见 `docs/design/2026-08-12-core-actor-v2-app-integration.md`。
 

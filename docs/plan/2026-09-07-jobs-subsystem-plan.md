@@ -27,7 +27,7 @@
 
 ### P0：冻结边界（已完成）
 
-交付：[实施契约与验证结论](../design/jobs-p0-contract.md)、[独立验证工程](../probes/jobs-p0/README.md)。13 项测试覆盖 cron/DST、Tokio 生命周期、redb 事务和游标、Specta DTO、日志过滤；这些是依赖能力验证，生产状态机及故障注入仍由后续阶段实现。
+交付：[实施契约与验证结论](../design/jobs-p0-contract.md)、[独立验证工程](../probe/jobs-p0/README.md)。13 项测试覆盖 cron/DST、Tokio 生命周期、redb 事务和游标、Specta DTO、日志过滤；这些是依赖能力验证，生产状态机及故障注入仍由后续阶段实现。
 
 - 复核主线的 tasks、Profiles、storage、logger/bootstrap，以及 `refresh_profile → after_commit` 调用链；记录基线提交。
 - 确定 crate 放置、表/数据库所有权、composition root 启动及关闭顺序。journal 通过窄存储端口注入，不依赖 Tauri Storage 包装。

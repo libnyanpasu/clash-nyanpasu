@@ -213,5 +213,5 @@ backend/fake-core/
 ## Related documentation
 
 - [DESIGN.md](DESIGN.md) — goals, lifecycle, threat model, S09/S10 ownership
-- PR-4S: `docs/superpowers/specs/2026-07-13-pr4s-actor-migration-stabilization/`
+- PR-4S: `docs/spec/2026-07-13-pr4s-actor-migration-stabilization/`
 - Consumer adapter: `backend/tauri/src/client/process_core_bridge.rs` (`cfg(test)` only)

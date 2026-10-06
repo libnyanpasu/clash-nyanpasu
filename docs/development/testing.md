@@ -50,13 +50,25 @@ checks need the build prerequisites described in [workflow](workflow.md). See th
 and [Windows bundle testing](../testing/windows-bundle.md) for packaged validation.
 Tests must use temporary or injected paths rather than real user configuration.
 
+## Profile memory and startup
+
+`pnpm build:profiling` builds the frontend and the application with the `profiling`
+Cargo profile: release code generation plus line tables, so heap profilers resolve
+allocation stacks to source lines. It skips bundling; run the application from
+`backend/target/profiling/` directly (`Clash Nyanpasu.exe` on Windows, next to its
+PDB and the sidecars). The
+[memory profiling spec](../spec/2026-10-06-memory-profiling/design.md) describes the
+measurement conditions and the analysis tools for each platform.
+
 ## Review before submitting
 
 - Each changed line supports the request; assumptions and success criteria are clear.
 - Services have an explicit role and injected dependencies, without new mutable global state.
 - Actors keep ownership private, use their mailbox for serialization, and avoid RPC cycles.
 - Tauri and infrastructure remain behind adapters; `NyanpasuClient` stays a facade.
-- Legacy bridges explain their blocker and removal condition.
+- No new Tauri dependency enters `NyanpasuClient`, typed clients, actors, or pure services
+  ([core and frontend separation](architecture.md#core-and-frontend-separation)).
+- Compatibility layers explain their blocker and removal condition.
 - Shared RPC changes preserve capability restrictions, owner isolation, errors, and events on both transports.
 - Tests use pure values, injection, or boundary fakes and verify meaningful behavior.
 - Relevant checks pass, generated bindings are current, and remaining limitations are documented.

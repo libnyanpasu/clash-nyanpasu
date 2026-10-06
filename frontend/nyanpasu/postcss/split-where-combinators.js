@@ -8,7 +8,7 @@ import selectorParser from 'postcss-selector-parser'
 // subject against every element, and a positional subject such as
 // `:not(:last-child)` (Tailwind's space-* and divide-* utilities) then flags
 // every parent, so each append restyles the previous last child's whole
-// subtree. See docs/reviews/2026-09-30-webkit-positional-selector-style-invalidation.md.
+// subtree. See docs/review/2026-09-30-webkit-positional-selector-style-invalidation.md.
 
 /** @param {import('postcss-selector-parser').Selector} selector */
 function splitAtLastCombinator(selector) {

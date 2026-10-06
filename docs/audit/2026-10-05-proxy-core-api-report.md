@@ -1,6 +1,6 @@
 # Clash-rs Meow Mihomo 代理组接口核查报告
 
-> 本报告保留调查基线的接口与问题描述；文中的“当前”指调查时的代码。后续实现、能力边界及验收结果见 [代理组发现 spec](../superpowers/specs/2026-10-05-proxy-group-discovery/design.md)。
+> 本报告保留调查基线的接口与问题描述；文中的“当前”指调查时的代码。后续实现、能力边界及验收结果见 [代理组发现 spec](../spec/2026-10-05-proxy-group-discovery/design.md)。
 
 本报告依据项目 **clash-api 1.0.0-rc.9 的现有方法和 DTO**，对照三个上游的实现及 `C:\Users\a6320\Downloads\REPORT.md` 复核兼容性。已确认：Mihomo 的组列表可由现有 `Client::groups()` 的数组契约表达；Meow 的组列表是 map；Clash-rs 在核查版本中没有组列表 GET。`GLOBAL.all` 是成员关系，不应作为组全集。
 
@@ -172,6 +172,6 @@ issue 中提到的 DTO 风险已有变化：当前 `Proxy` 的 `extra/alive/uot/
 
 复用 nyanpasu-core-metadata 的 Feature/EnumSet 和版本策略控制组列表能力。能力与格式绑定实际运行实例；接口 404、临时故障和协议异常不能混为永久不支持。仍读取 proxies 和 providers 补节点，支持列表时会增加第三个 GET；无尾斜杠适配是三核读取的前提。
 
-Meow 管理扩展不能替代运行时组集合，测速和写操作也不用于能力探测。实施契约与失败规则见 [代理组发现 spec](../superpowers/specs/2026-10-05-proxy-group-discovery/design.md)，完整动机和 Mihomo 内部分析见 [算法重构报告](2026-10-05-issue-5112-proxy-algorithm-report.md)。
+Meow 管理扩展不能替代运行时组集合，测速和写操作也不用于能力探测。实施契约与失败规则见 [代理组发现 spec](../spec/2026-10-05-proxy-group-discovery/design.md)，完整动机和 Mihomo 内部分析见 [算法重构报告](2026-10-05-issue-5112-proxy-algorithm-report.md)。
 
 本轮完成源码与版本核查、隔离 HTTP 探测、调用链核对及证据保存。未修改应用算法、未编译最新内核、未运行上游完整测试套件。已有 10 项模型检查针对 proxies 推断与排序，不能作为新 group 优先策略已经实现或通过测试的证明。

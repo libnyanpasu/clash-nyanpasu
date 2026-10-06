@@ -1,0 +1,60 @@
+name: ✨ 功能请求
+description: 提出一个功能建议
+labels:
+  - 'T: Feature'
+  - 'S: Untriaged'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你抽时间填写这份 issue。请先为这个 issue 拟一个简练、得体的标题，填入标题框，然后依次填写下面的表单。
+        _带 * 的内容为必填项。_
+
+  - type: checkboxes
+    id: check
+    attributes:
+      label: 自查步骤
+      description: 请认真检查并逐项确认以下内容。实际情况与必选项不符的 issue 可能会被关闭。
+      options:
+        - label: 我知悉，如果没有认真检查这些步骤，没有认真撰写 issue 的话，我的 Issue 可能会被关闭。
+          required: true
+        - label: 我已搜索过 [Issue 列表](https://github.com/libnyanpasu/clash-nyanpasu/issues)和[讨论区](https://github.com/libnyanpasu/clash-nyanpasu/discussions)，没有找到类似内容。
+          required: true
+        - label: 我已确保这个 issue 只提及一个功能。如果我有多个功能请求，我会分别提交。
+          required: true
+        - label: 我已仔细阅读并知情[问答公约](https://nyanpasu.org/zh-cn/others/issues/)和[常见问题](https://nyanpasu.org/zh-cn/others/faq/)中的内容。
+          required: true
+        - label: 我已使用最新测试版 (Beta) / 每夜版 (Nightly) 测试，功能并未实现。
+          required: true
+        - label: 我同意遵守项目的[行为准则](https://github.com/libnyanpasu/clash-nyanpasu/blob/main/CODE_OF_CONDUCT_zh.md)。
+          required: true
+        - label: 我会尝试提交一个 PR 以解决这个 issue。
+          required: false
+
+  - type: textarea
+    id: request
+    attributes:
+      label: 需求
+      description: 在此处描述您的需求。这通常会是一个您想要的功能。
+      placeholder: 我需要 XXX 功能……
+    validations:
+      required: true
+
+  - type: textarea
+    id: impl
+    attributes:
+      label: 建议实现
+      description: 在此处表述您建议的实现方式。如有可能，界面类功能请求还请尽量在「附加内容」部分附上图示。
+      placeholder: |
+        建议在 XX 处添加 XX……
+    validations:
+      required: true
+
+  - type: textarea
+    id: more
+    attributes:
+      label: 附加内容
+      description: 在此处写下其他你想说的内容。
+      placeholder: 其他有用的信息与附件，例如截图、视频等。
+    validations:
+      required: false

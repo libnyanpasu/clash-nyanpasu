@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
+import * as path from "jsr:@std/path";
 import {
   classifyPublicationArtifactDirectory,
   prepareCentralPublication,
@@ -52,7 +53,9 @@ Deno.test("recovery preserves identities and timestamp across runners and refuse
     );
     assertEquals(
       manifest.artifacts.every((artifact: { path: string }) =>
-        artifact.path.startsWith(`${root}/restored/`)
+        path.normalize(artifact.path).startsWith(
+          path.join(root, "restored", path.SEPARATOR),
+        )
       ),
       true,
     );

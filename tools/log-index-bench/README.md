@@ -78,7 +78,7 @@ algorithm and timestamp correctness.
 
 These limits bound inputs and retained structures rather than claiming an exact RSS
 cap. The final actor measurements and remaining native acceptance checks are in
-`../../docs/superpowers/reports/2026-09-11-session-scoped-logs.md`.
+`../../docs/report/2026-09-11-session-scoped-logs.md`.
 The workload used for algorithm correctness must include duplicate timestamps,
 clock rollback, escaped JSON, malformed records and incomplete trailing lines;
 the frozen full-layout comparison intentionally does not repair its old query

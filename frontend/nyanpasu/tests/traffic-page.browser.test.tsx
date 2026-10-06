@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -29,6 +29,10 @@ import {
 } from '../src/pages/(main)/main/topology/_modules/search'
 import TrafficPage from '../src/pages/(main)/main/topology/_modules/traffic-page'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
+
+// Generated commands take the desktop IPC path that `mockIPC` serves.
+beforeEach(() => vi.stubGlobal('isTauri', true))
+afterEach(() => vi.unstubAllGlobals())
 
 const backend = vi.hoisted(() => ({
   retention: '7d',

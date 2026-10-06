@@ -76,7 +76,7 @@
 - 本计划状态行指向 T6–T11 记录。
 - [`legacy-iverge-call-network.md`](../architecture/legacy-iverge-call-network.md) 顶部加历史横幅，正文不改。
 - T10 设计 §3 补记：`commit_file_first` 的全部错误，包括 persist IO 和版本冲突，都归入 `*_rejected`。
-- R33：本计划 §15 要求设计文档不再与失败策略矛盾。[PR-6 effect 设计](../superpowers/specs/2026-09-12-pr6-application-effects/design.md) 与 [runtime apply options 计划](2026-09-13-runtime-apply-options.md) 顶部加了带日期的状态横幅：冲突处以本计划 §2 与 roadmap §1.3 的失败矩阵为准（关键 runtime 失败可以拒绝；外围效果在提交后执行，绝不回滚源配置），并指向本计划与 T10 设计。正文未改写。
+- R33：本计划 §15 要求设计文档不再与失败策略矛盾。[PR-6 effect 设计](../spec/2026-09-12-pr6-application-effects/design.md) 与 [runtime apply options 计划](2026-09-13-runtime-apply-options.md) 顶部加了带日期的状态横幅：冲突处以本计划 §2 与 roadmap §1.3 的失败矩阵为准（关键 runtime 失败可以拒绝；外围效果在提交后执行，绝不回滚源配置），并指向本计划与 T10 设计。正文未改写。
 - `AGENTS.md` §9 保持不变。那份清单用于识别 legacy 写法，不代表这些符号仍然存在；旧分支和历史 diff 里仍会遇到它们。`CLAUDE.md` 只 `@AGENTS.md`，无需同步。
 
 ## 验证记录

@@ -1,14 +1,12 @@
 //! What the tray displays, kept as one record that only a complete
 //! publication replaces.
 
-use super::proxies::{ProxyItemIds, TrayProxies, TrayUpdateType, diff_proxies};
+use super::proxies::{TrayProxies, TrayUpdateType, diff_proxies};
 
-/// The proxy section of a built menu: the groups and selections it shows and
-/// the node behind each of its item ids.
+/// The proxy section of a built menu: the groups and selections it shows.
 #[derive(Default)]
 pub(super) struct ProxySection {
     pub(super) proxies: TrayProxies,
-    pub(super) item_ids: ProxyItemIds,
 }
 
 /// A published menu, as the tray displays it. `M` is the menu the tray icon
@@ -17,6 +15,9 @@ pub(super) struct Published<M> {
     /// `None` until the first build attaches one.
     attached: Option<M>,
     section: ProxySection,
+    /// Nodes whose checkmark the platform menu flipped on a click, which the
+    /// next proxy repaint sets back from the selection.
+    toggled: Vec<(String, String)>,
 }
 
 /// What the tray displays.
@@ -25,9 +26,9 @@ pub(super) enum TrayDisplay<M> {
     /// every step.
     Known(Published<M>),
     /// A failure after the live menu may have changed left what it shows
-    /// unknown. Nothing is resolved against it or diffed with it, and the
-    /// next update rebuilds. `attached` is the menu object the icon still
-    /// holds, which a Linux rebuild refills.
+    /// unknown. Nothing is diffed with it, and the next update rebuilds.
+    /// `attached` is the menu object the icon still holds, which a Linux
+    /// rebuild refills.
     Unknown { attached: Option<M> },
 }
 
@@ -50,18 +51,6 @@ pub(super) enum Shown {
     Partly,
 }
 
-/// A clicked proxy item, resolved against what the tray displays.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) enum ProxyItem {
-    Node {
-        group: String,
-        name: String,
-    },
-    NotInMenu,
-    /// The menu is unknown, so no id is resolved against any map.
-    Unknown,
-}
-
 /// What a repaint may paint.
 pub(super) enum Paint<M> {
     Menu(M),
@@ -77,6 +66,7 @@ impl<M: Clone> TrayDisplay<M> {
         Self::Known(Published {
             attached: None,
             section: ProxySection::default(),
+            toggled: Vec::new(),
         })
     }
 
@@ -95,18 +85,47 @@ impl<M: Clone> TrayDisplay<M> {
                 *self = Self::Known(Published {
                     attached: Some(attached),
                     section,
+                    toggled: Vec::new(),
                 });
             }
             Publication::Interrupted { attached } => *self = Self::Unknown { attached },
         }
     }
 
+    /// A click flipped the checkmark of `node` in `group` before the core
+    /// answered. An unknown menu is rebuilt by the next update anyway.
+    pub(super) fn clicked(&mut self, group: String, node: String) {
+        if let Self::Known(published) = self {
+            let click = (group, node);
+            if !published.toggled.contains(&click) {
+                published.toggled.push(click);
+            }
+        }
+    }
+
     /// How to bring the proxy section up to `current`.
     pub(super) fn update_to(&self, current: &TrayProxies) -> TrayUpdateType {
-        match self {
-            Self::Known(published) => diff_proxies(&published.section.proxies, current),
-            Self::Unknown { .. } => TrayUpdateType::Full,
+        let Self::Known(published) = self else {
+            return TrayUpdateType::Full;
+        };
+        let update = diff_proxies(&published.section.proxies, current);
+        if published.toggled.is_empty() {
+            return update;
         }
+        let mut actions = match update {
+            TrayUpdateType::Full => return TrayUpdateType::Full,
+            TrayUpdateType::Part(actions) => actions,
+            TrayUpdateType::None => Vec::new(),
+        };
+        // Unchecks the clicked node and checks the selected one, which is
+        // the clicked node itself when the click hit the selection.
+        for (group, node) in &published.toggled {
+            let Some(now) = current.get(group).and_then(|group| group.now.clone()) else {
+                return TrayUpdateType::Full;
+            };
+            actions.push((group.clone(), node.clone(), now));
+        }
+        TrayUpdateType::Part(actions)
     }
 
     pub(super) fn paint(&self) -> Paint<M> {
@@ -131,6 +150,7 @@ impl<M: Clone> TrayDisplay<M> {
             Shown::Whole => {
                 if let Some(proxies) = proxies {
                     published.section.proxies = proxies;
+                    published.toggled.clear();
                 }
             }
             Shown::Partly => {
@@ -138,19 +158,6 @@ impl<M: Clone> TrayDisplay<M> {
                     attached: published.attached.take(),
                 }
             }
-        }
-    }
-
-    pub(super) fn proxy_item(&self, id: usize) -> ProxyItem {
-        match self {
-            Self::Known(published) => published.section.item_ids.get_by_right(&id).map_or(
-                ProxyItem::NotInMenu,
-                |(group, name)| ProxyItem::Node {
-                    group: group.clone(),
-                    name: name.clone(),
-                },
-            ),
-            Self::Unknown { .. } => ProxyItem::Unknown,
         }
     }
 }
@@ -170,20 +177,9 @@ mod tests {
         )])
     }
 
-    /// A section whose item 0 is `node` of group Proxy.
-    fn section(selected: &str, node: &str) -> ProxySection {
-        let mut item_ids = ProxyItemIds::new();
-        item_ids.insert(("Proxy".to_owned(), node.to_owned()), 0);
+    fn section(selected: &str) -> ProxySection {
         ProxySection {
             proxies: selecting(selected),
-            item_ids,
-        }
-    }
-
-    fn node(name: &str) -> ProxyItem {
-        ProxyItem::Node {
-            group: "Proxy".to_owned(),
-            name: name.to_owned(),
         }
     }
 
@@ -191,12 +187,12 @@ mod tests {
         TrayUpdateType::Part(vec![("Proxy".to_owned(), from.to_owned(), to.to_owned())])
     }
 
-    /// The menu "old" is published, showing `a` with item 0 for node `a`.
+    /// The menu "old" is published, showing `a`.
     fn known() -> TrayDisplay<&'static str> {
         let mut display = TrayDisplay::new();
         display.published(Publication::Complete {
             attached: "old",
-            section: section("a", "a"),
+            section: section("a"),
         });
         display
     }
@@ -204,7 +200,6 @@ mod tests {
     fn assert_unknown(display: &TrayDisplay<&'static str>, attached: Option<&'static str>) {
         assert!(matches!(display, TrayDisplay::Unknown { .. }));
         assert_eq!(display.attached(), attached);
-        assert_eq!(display.proxy_item(0), ProxyItem::Unknown);
         assert_eq!(display.update_to(&selecting("a")), TrayUpdateType::Full);
         assert!(matches!(display.paint(), Paint::Unknown));
     }
@@ -213,7 +208,6 @@ mod tests {
     fn nothing_is_displayed_before_the_first_build() {
         let display = TrayDisplay::<&str>::new();
         assert!(matches!(display.paint(), Paint::NotBuilt));
-        assert_eq!(display.proxy_item(0), ProxyItem::NotInMenu);
         assert_eq!(display.update_to(&TrayProxies::new()), TrayUpdateType::None);
         assert_eq!(display.update_to(&selecting("a")), TrayUpdateType::Full);
     }
@@ -222,7 +216,6 @@ mod tests {
     fn a_complete_publication_replaces_the_record_whole() {
         let display = known();
         assert!(matches!(display.paint(), Paint::Menu("old")));
-        assert_eq!(display.proxy_item(0), node("a"));
         assert_eq!(display.update_to(&selecting("a")), TrayUpdateType::None);
         assert_eq!(display.update_to(&selecting("b")), switching("a", "b"));
     }
@@ -234,7 +227,6 @@ mod tests {
         let mut display = known();
         display.published(Publication::NotStarted);
         assert!(matches!(display.paint(), Paint::Menu("old")));
-        assert_eq!(display.proxy_item(0), node("a"));
         assert_eq!(display.update_to(&selecting("b")), switching("a", "b"));
     }
 
@@ -250,7 +242,7 @@ mod tests {
 
     /// Linux refills the menu object it holds in place; some items could not
     /// be replaced and the publication returned early. The object stays the
-    /// one to refill, but neither map describes what it shows.
+    /// one to refill, but the record no longer describes what it shows.
     #[test]
     fn a_partial_linux_refill_leaves_the_menu_unknown() {
         let mut display = known();
@@ -275,23 +267,9 @@ mod tests {
         let mut display = known();
         display.repainted(Some(selecting("b")), Shown::Whole);
         assert_eq!(display.update_to(&selecting("b")), TrayUpdateType::None);
-        assert_eq!(display.proxy_item(0), node("a"));
 
         display.repainted(None, Shown::Whole);
         assert_eq!(display.update_to(&selecting("b")), TrayUpdateType::None);
-    }
-
-    /// While the menu is unknown, a click is never resolved: not against the
-    /// map of the menu it replaced, nor against a candidate's.
-    #[test]
-    fn a_click_while_unknown_is_not_resolved() {
-        let mut display = known();
-        display.repainted(None, Shown::Partly);
-        assert_eq!(display.proxy_item(0), ProxyItem::Unknown);
-        display.published(Publication::NotStarted);
-        assert_eq!(display.proxy_item(0), ProxyItem::Unknown);
-        display.repainted(Some(selecting("b")), Shown::Whole);
-        assert_eq!(display.proxy_item(0), ProxyItem::Unknown);
     }
 
     #[test]
@@ -302,10 +280,101 @@ mod tests {
         });
         display.published(Publication::Complete {
             attached: "new",
-            section: section("b", "b"),
+            section: section("b"),
         });
         assert!(matches!(display.paint(), Paint::Menu("new")));
-        assert_eq!(display.proxy_item(0), node("b"));
         assert_eq!(display.update_to(&selecting("b")), TrayUpdateType::None);
+    }
+
+    fn part(actions: &[(&str, &str, &str)]) -> TrayUpdateType {
+        TrayUpdateType::Part(
+            actions
+                .iter()
+                .map(|(group, from, to)| (group.to_string(), from.to_string(), to.to_string()))
+                .collect(),
+        )
+    }
+
+    /// The platform flipped the clicked item before the core answered.
+    #[test]
+    fn a_clicked_other_node_is_set_back_to_the_selection() {
+        let mut display = known();
+        display.clicked("Proxy".into(), "b".into());
+        assert_eq!(
+            display.update_to(&selecting("a")),
+            part(&[("Proxy", "b", "a")])
+        );
+    }
+
+    #[test]
+    fn a_click_on_the_selected_node_checks_it_again() {
+        let mut display = known();
+        display.clicked("Proxy".into(), "a".into());
+        assert_eq!(
+            display.update_to(&selecting("a")),
+            part(&[("Proxy", "a", "a")])
+        );
+    }
+
+    #[test]
+    fn a_click_rides_along_with_a_selection_change() {
+        let mut display = known();
+        display.clicked("Proxy".into(), "b".into());
+        assert_eq!(
+            display.update_to(&selecting("b")),
+            part(&[("Proxy", "a", "b"), ("Proxy", "b", "b")])
+        );
+    }
+
+    #[test]
+    fn a_whole_proxy_repaint_forgets_the_clicks() {
+        let mut display = known();
+        display.clicked("Proxy".into(), "b".into());
+        display.repainted(None, Shown::Whole);
+        assert_eq!(
+            display.update_to(&selecting("a")),
+            part(&[("Proxy", "b", "a")])
+        );
+
+        display.repainted(Some(selecting("a")), Shown::Whole);
+        assert_eq!(display.update_to(&selecting("a")), TrayUpdateType::None);
+    }
+
+    #[test]
+    fn a_complete_publication_starts_without_clicks() {
+        let mut display = known();
+        display.clicked("Proxy".into(), "b".into());
+        display.published(Publication::Complete {
+            attached: "new",
+            section: section("a"),
+        });
+        assert_eq!(display.update_to(&selecting("a")), TrayUpdateType::None);
+    }
+
+    #[test]
+    fn a_clicked_group_without_a_selection_needs_a_rebuild() {
+        let unselected = || {
+            TrayProxies::from([(
+                "Proxy".to_owned(),
+                TrayGroup {
+                    now: None,
+                    all: vec!["a".to_owned(), "b".to_owned()],
+                    selectable: true,
+                },
+            )])
+        };
+        let mut display = TrayDisplay::new();
+        display.published(Publication::Complete {
+            attached: "old",
+            section: ProxySection {
+                proxies: unselected(),
+            },
+        });
+        display.clicked("Proxy".into(), "b".into());
+        assert_eq!(display.update_to(&unselected()), TrayUpdateType::Full);
+
+        let mut display = TrayDisplay::<&str>::new();
+        display.clicked("Proxy".into(), "b".into());
+        assert_eq!(display.update_to(&TrayProxies::new()), TrayUpdateType::Full);
     }
 }

@@ -1,5 +1,5 @@
 //! Pure runtime pipeline executor: the "execution half" of the runtime
-//! snapshot store (spec: docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md).
+//! snapshot store (spec: docs/spec/2026-07-04-runtime-pipeline-executor-design.md).
 
 mod artifact;
 mod builtin;

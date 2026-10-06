@@ -1,9 +1,13 @@
 import { createRoot } from 'react-dom/client'
-import { expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useSystemAccentColor, useSystemProxy } from '@nyanpasu/query'
 import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
+
+// Generated commands take the desktop IPC path that `mockIPC` serves.
+beforeEach(() => vi.stubGlobal('isTauri', true))
+afterEach(() => vi.unstubAllGlobals())
 
 test('polling an unchanged system proxy and accent color does not re-render', async ({
   onTestFinished,

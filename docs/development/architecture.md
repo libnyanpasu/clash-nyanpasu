@@ -1,7 +1,9 @@
 # Architecture and ownership
 
-These rules apply to all contributors. The migration replaces global services and
-Tauri-coupled business logic with explicit dependencies and serial state owners.
+These rules apply to all contributors. Application services use explicit
+dependencies and serial state owners; global services and Tauri-coupled business
+logic have been removed. The current goal is to move the application core out of
+the Tauri GUI ([Core and frontend separation](#core-and-frontend-separation)).
 For the development workflow, start with the [guide](README.md).
 
 ## Target architecture
@@ -27,6 +29,49 @@ Use these terms consistently:
 - **Adapter / port**: a narrow trait and concrete boundary implementation for infrastructure such as Tauri, filesystem, OS APIs, process spawning, HTTP, logging sinks, or storage.
 
 `NyanpasuClient` is the application facade. The application bootstrap / supervisor is the composition root. It constructs concrete services, spawns actors, wires dependencies, and returns a ready-to-use `NyanpasuClient`.
+
+## Core and frontend separation
+
+The actor/dependency-injection migration is complete. The current architectural
+goal is to separate the application core from the Tauri GUI:
+
+```text
+Tauri GUI (backend/tauri)      nyanpasu-cli (planned)      mobile shells (later)
+  window / tray / webview        terminal adapters           platform adapters
+  Tauri IPC, HTTP RPC
+            \                         |                          /
+             +------ build the core with concrete adapters ------+
+                                      |
+                       backend/nyanpasu-core
+                         NyanpasuClient, typed clients, actors,
+                         pure services, port traits, state machinery
+```
+
+`NyanpasuClient` currently lives in `backend/tauri/src/client/` together with the
+actors, services, and ports it depends on. It moves into `backend/nyanpasu-core`,
+which already holds the GUI-independent state transaction machinery. Each frontend
+then supplies its concrete adapters and composes the core; the core never depends on
+a frontend. This split is the prerequisite for mobile support.
+
+Rules while the split is in progress:
+
+- Do not add `tauri` dependencies to `NyanpasuClient`, typed clients, actors, or pure
+  services: no `AppHandle`, `tauri::State`, `tauri::async_runtime`, Tauri events,
+  windows, or tray handles. Use `tokio` directly and add a port trait for anything
+  the frontend must provide.
+- Port traits are owned by the core; the Tauri implementations of them stay in the
+  GUI crate. Capabilities that a CLI or mobile frontend may not have (windows, tray,
+  webview events, dialogs, main-thread execution) are reached only through ports.
+- RPC commands, the Tauri IPC transport, and the HTTP server are transport adapters
+  over `NyanpasuClient`; keep business orchestration out of them so they stay thin.
+- Move code bottom-up: a module moves into `nyanpasu-core` once its dependencies are
+  Tauri-free. Update callers to the new path; do not leave re-export shims in the
+  Tauri crate.
+- Tests of moved code construct the client or service graph with fake adapters and
+  must not need the Tauri runtime.
+- The architecture-ledger gate scans only `backend/tauri/src/` for statics today
+  (`STATIC_GATE_PREFIX` in `scripts/src/architecture-ledger/policy.ts`). Extend it to
+  `backend/nyanpasu-core/` before application code moves there.
 
 ## Actor model and ownership
 
@@ -79,13 +124,7 @@ static SERVICE: Lazy<Service>
 
 Exceptions are allowed only for immutable constants, static lookup tables, feature flags, or values that are truly process-wide and have no lifecycle, no mutable state, and no dependency graph.
 
-If an existing `::global()` service must still be used during migration, isolate it at the edge of a migration step and add an explicit comment:
-
-```rust
-// TODO(actor-migration): temporary bridge to the legacy global service.
-// Reason: <why full migration is blocked>.
-// Remove when: <service-name> is injected through NyanpasuClient.
-```
+Allowed statics are listed in `scripts/src/architecture-ledger/policy.ts`, and `deno task lint:architecture-ledger` rejects new ones.
 
 ### Prefer explicit construction
 
@@ -130,7 +169,7 @@ Business logic must not depend directly on Tauri types such as `AppHandle`, `Win
 
 ## Choosing a service
 
-Before adding or migrating a service, classify it as an actor service, pure service, or adapter/port.
+Before adding or moving a service, classify it as an actor service, pure service, or adapter/port.
 
 ### Use an actor service when the service:
 
@@ -215,68 +254,34 @@ Adapter rules:
 - Prefer mockable traits for tests.
 - Prefer traits owned by the consuming crate/module when that improves boundary clarity.
 
-## Migrating legacy globals
+## Legacy globals
 
-If you see patterns such as:
-
-```rust
-Config::global()
-Config::verge()
-Config::clash()
-Config::profiles()
-Config::runtime()
-CoreManager::global()
-Sysopt::global()
-Hotkey::global()
-Logger::global()
-Handle::global()
-ProxiesGuard::global()
-UpdaterManager::global()
-WindowManager::global()
-consts::app_handle()
-```
-
-prefer replacing the call path with one of:
-
-```rust
-client.some_domain_operation(...).await?;
-state_client.some_state_operation(...).await?;
-core_client.some_core_operation(...).await?;
-system_proxy_client.some_system_operation(...).await?;
-service.method(...)?;
-```
-
-Do not add a new wrapper that simply hides the global unless full migration is blocked. If blocked, document it:
-
-```rust
-// TODO(actor-migration): temporary bridge to <legacy global>.
-// Reason: <specific blocker>.
-// Remove when: <specific migration step>.
-```
+The legacy `::global()` services (`Config::global()`, `CoreManager::global()`,
+`Handle::global()`, and the rest) have been removed. Do not reintroduce them or a
+wrapper that hides equivalent process-wide mutable state; add the operation to
+`NyanpasuClient`, a typed client, or a pure service instead.
 
 ## State and configuration
 
-Configuration must be migrated before dependent services whenever possible.
+State changes follow this order:
 
-Preferred direction:
-
-1. Move state ownership into `StateActor` or a state manager owned by `StateActor`.
+1. Keep state ownership in `StateActor` or a state manager owned by `StateActor`.
 2. Keep schema and patch operations in pure services or domain types.
 3. Generate runtime config from snapshots rather than mutating runtime globals.
 4. Commit state first, then trigger side effects through actor messages. A Required participant (the runtime) is a vote before the commit, not a side effect; this rule covers ordinary side effects.
 5. Report post-commit side-effect failures as degraded results instead of silently rolling back persisted state.
 
-Avoid preserving old global configuration APIs. Prefer a migratable breaking change that updates callers to the new injected client/service API.
+Prefer a migratable breaking change that updates callers over preserving an old configuration API.
 
 ## Compatibility policy
 
-When refactoring or migrating services:
+When refactoring or moving services (including into `nyanpasu-core`):
 
 - Prefer fully migrating callers to the new injected/actor/pure-service API.
 - Prefer migratable breaking changes over compatibility layers.
 - Do not add a compatibility layer simply to avoid updating call sites.
 - Add a compatibility or migration layer only when a full migration is not currently possible due to cyclic dependencies, public API constraints, external plugin behavior, large cross-cutting risk, platform limitation, or staged release requirements.
-- Every compatibility layer must be explicitly marked with `TODO(actor-migration)` or `FIXME(actor-migration)` and must explain the reason and removal condition.
+- Every compatibility layer must be explicitly marked with `TODO(actor-migration)` or `FIXME(actor-migration)` and must explain the reason and removal condition. The marker keeps its historical name because `deno task lint:architecture-ledger` counts it.
 - New code must not call compatibility APIs unless the call site is itself part of a documented migration step.
 
 Do this:

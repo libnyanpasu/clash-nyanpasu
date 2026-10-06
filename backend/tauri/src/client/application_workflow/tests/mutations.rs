@@ -331,8 +331,7 @@ pub(super) async fn fixture_from(
     let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
         dir.path(),
         dir.path().join("data"),
-    ))
-    .unwrap();
+    ));
     let builder = Arc::new(ParkingBuilder {
         delegate: adapters::FsRuntimeBuildAdapter {
             core_specs: Arc::new(crate::client::runtime_core_spec),

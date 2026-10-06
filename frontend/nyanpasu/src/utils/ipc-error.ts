@@ -438,9 +438,7 @@ export function runtimeErrorMessage(
     case 'resolve_port':
       return portMessage(error.source.field, error.source.source)
     case 'resolve_core_binary':
-      return error.source.kind === 'find_core_binary'
-        ? m.error_runtime_find_core_binary({ core: error.source.core })
-        : m.error_runtime_path_not_utf8({ path: error.source.path })
+      return m.error_runtime_find_core_binary({ core: error.source.core })
     case 'install_core_binary':
       return installCoreBinaryMessage(error.source)
     case 'prepare_service_install_prompt':

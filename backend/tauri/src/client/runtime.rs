@@ -374,17 +374,12 @@ pub struct RuntimePaths {
 }
 
 impl RuntimePaths {
-    pub fn from_resolver(paths: &PathResolver) -> anyhow::Result<Self> {
-        let runtime_dir = utf8_path(
-            paths
-                .app_config_dir()
-                .join(RUNTIME_CONFIG_DIR)
-                .into_std_path_buf(),
-        )?;
-        Ok(Self {
+    pub fn from_resolver(paths: &PathResolver) -> Self {
+        let runtime_dir = paths.app_config_dir().join(RUNTIME_CONFIG_DIR);
+        Self {
             product: runtime_dir.join(RUNTIME_CONFIG),
             candidate_dir: runtime_dir.join(".candidates"),
-        })
+        }
     }
 
     #[allow(dead_code)]
@@ -550,11 +545,6 @@ fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
 #[cfg(not(any(unix, windows)))]
 fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
-}
-
-fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
-    Utf8PathBuf::from_path_buf(path)
-        .map_err(|path| anyhow::anyhow!("runtime path is not UTF-8: {}", path.display()))
 }
 
 /// A source commit and its critical runtime result. Peripheral owners settle separately.
@@ -1033,7 +1023,7 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let resolver =
             crate::client::tests::test_paths(dir.path().join("config"), dir.path().join("data"));
-        let paths = RuntimePaths::from_resolver(&resolver).unwrap();
+        let paths = RuntimePaths::from_resolver(&resolver);
         assert_eq!(
             paths.product(),
             Utf8PathBuf::from_path_buf(

@@ -57,7 +57,6 @@ use crate::{
     },
 };
 use anyhow::Context as _;
-use camino::Utf8PathBuf;
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
@@ -140,22 +139,18 @@ async fn new_typed_config_clients(
     let application = ApplicationClient::new(
         mutations.clone(),
         build_channel,
-        utf8_path(paths.application_config_path().into_std_path_buf())?,
+        paths.application_config_path(),
         shutdown.child_token(),
         tasks,
     )
     .await?;
 
-    let session_state = SessionStateClient::new(
-        utf8_path(paths.session_state_path().into_std_path_buf())?,
-        shutdown.child_token(),
-        tasks,
-    )
-    .await?;
+    let session_state =
+        SessionStateClient::new(paths.session_state_path(), shutdown.child_token(), tasks).await?;
 
     let clash_config = ClashConfigClient::new(
         mutations.clone(),
-        utf8_path(paths.clash_config_path().into_std_path_buf())?,
+        paths.clash_config_path(),
         shutdown.child_token(),
         tasks,
     )
@@ -281,7 +276,7 @@ impl NyanpasuClient {
         let backup_paths = paths.clone();
         let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
         let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
-        let profiles_path = utf8_path(paths.profiles_path().into_std_path_buf())?;
+        let profiles_path = paths.profiles_path();
         let runtime_paths_for_setup = runtime_paths.clone();
         let jobs_for_setup = jobs.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
@@ -1295,11 +1290,6 @@ impl NyanpasuClient {
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
         self.inner.application_workflow.runtime().promoted
     }
-}
-
-fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
-    Utf8PathBuf::from_path_buf(path)
-        .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
 }
 
 #[async_trait::async_trait]
@@ -2424,7 +2414,7 @@ pub(crate) mod tests {
             PathBuf::new(),
             backup_paths,
             storage,
-            RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))).unwrap(),
+            RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
             Arc::new(runtime_core_spec),
             crate::enhance::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -2878,7 +2868,7 @@ pub(crate) mod tests {
     ) -> ClientSetupArgs {
         let (paths, storage) = test_backup_deps(dir);
         seed_test_clash_config(paths.clash_config_path());
-        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let runtime_paths = RuntimePaths::from_resolver(&paths);
         let (shutdown, tasks) = (
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -3253,7 +3243,7 @@ pub(crate) mod tests {
             PathBuf::new(),
             backup_paths,
             storage,
-            RuntimePaths::from_resolver(&paths).unwrap(),
+            RuntimePaths::from_resolver(&paths),
             Arc::new(runtime_core_spec),
             crate::enhance::ScriptDirs::from_resolver(&paths),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -3393,7 +3383,7 @@ pub(crate) mod tests {
     fn try_new_with_args_constructs_typed_config_facade() {
         let dir = tempdir().expect("tempdir should be created");
         let (paths, storage) = test_backup_deps(&dir);
-        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let runtime_paths = RuntimePaths::from_resolver(&paths);
         let (shutdown, tasks) = (
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -3473,7 +3463,7 @@ pub(crate) mod tests {
 
     /// The runtime paths every test client is built with.
     pub(crate) fn test_runtime_paths(dir: &TempDir) -> RuntimePaths {
-        RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))).unwrap()
+        RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data")))
     }
 
     #[test]
@@ -4402,8 +4392,7 @@ pub(crate) mod tests {
                 PathBuf::new(),
                 backup_paths,
                 storage,
-                RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data")))
-                    .unwrap(),
+                RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
                 Arc::new(runtime_core_spec),
                 crate::enhance::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),

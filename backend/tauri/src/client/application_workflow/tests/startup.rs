@@ -396,8 +396,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
         dir.path(),
         dir.path().join("data"),
-    ))
-    .unwrap();
+    ));
     let ports = Arc::new(SessionPortResolver::new(
         runtime::RuntimeSnapshotStore::default(),
     ));

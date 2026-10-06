@@ -32,7 +32,6 @@ use crate::{
     utils::init::logging::ReloadSignal,
 };
 use anyhow::Context;
-use camino::Utf8PathBuf;
 use nyanpasu_traffic::{RedbTrafficStore, TrafficStore};
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -92,7 +91,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     // For the desktop commands that need a path.
     app.manage(paths.clone());
-    let runtime_paths = RuntimePaths::from_resolver(&paths)?;
+    let runtime_paths = RuntimePaths::from_resolver(&paths);
     // TODO(ipc-timeout): nyanpasu_ipc::Client sets no request timeout. Remove the
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
@@ -354,10 +353,8 @@ fn build_application_effects(
     let auto_launch = AutoLaunchConfig::resolve(appimage)
         .and_then(AutoLaunchBackend::new)
         .context("Failed to resolve the auto-launch registration")?;
-    let pac = HttpPacBackend::new(utf8_path(
-        paths.cache_dir().join("pac.js").into_std_path_buf(),
-    )?)
-    .context("Failed to build the PAC backend")?;
+    let pac = HttpPacBackend::new(paths.cache_dir().join("pac.js"))
+        .context("Failed to build the PAC backend")?;
 
     let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(
         SystemProxyArgs {
@@ -439,11 +436,6 @@ fn forward_actor_events(
             let _ = crate::core::actor_v2::ServiceStatusChangedEvent(status).emit(&app_handle);
         }
     }));
-}
-
-fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
-    Utf8PathBuf::from_path_buf(path)
-        .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
 }
 
 fn debug_http_frontend(

@@ -6540,13 +6540,22 @@ dependencies = [
 name = "nyanpasu-application"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "camino",
  "nyanpasu-config",
+ "nyanpasu-core",
+ "ractor",
  "serde",
  "serde_json",
  "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
  "snafu",
  "specta",
+ "struct-patch",
  "strum",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -6786,11 +6795,13 @@ dependencies = [
  "boa_engine",
  "boa_runtime",
  "boa_utils",
+ "camino",
  "dunce",
  "indexmap 2.14.2",
  "mlua",
  "nyanpasu-application",
  "nyanpasu-config",
+ "nyanpasu-core",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",

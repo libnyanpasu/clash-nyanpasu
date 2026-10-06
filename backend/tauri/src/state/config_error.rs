@@ -84,3 +84,39 @@ impl ConfigError {
         }
     }
 }
+
+impl From<nyanpasu_application::session_state::SessionStateError> for ConfigError {
+    fn from(error: nyanpasu_application::session_state::SessionStateError) -> Self {
+        match error {
+            nyanpasu_application::session_state::SessionStateError::PersistSessionState {
+                source,
+            } => Self::PersistSessionState { source },
+            nyanpasu_application::session_state::SessionStateError::SessionStateStopped => {
+                Self::SessionStateStopped
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nyanpasu_application::session_state::SessionStateError;
+
+    use super::*;
+
+    #[test]
+    fn shared_session_failures_preserve_desktop_wire_errors() {
+        let stopped = ConfigError::from(SessionStateError::SessionStateStopped);
+        assert_eq!(
+            serde_json::to_value(stopped).unwrap(),
+            serde_json::json!({"kind": "session_state_stopped"})
+        );
+        let persistence = ConfigError::from(SessionStateError::PersistSessionState {
+            source: UpsertError::WriteConfig(anyhow::anyhow!("private storage detail")),
+        });
+        assert_eq!(
+            serde_json::to_value(persistence).unwrap(),
+            serde_json::json!({"kind": "persist_session_state"})
+        );
+    }
+}

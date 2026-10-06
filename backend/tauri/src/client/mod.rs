@@ -24,16 +24,12 @@ pub mod runtime;
 pub mod runtime_error;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
-mod session_state;
 mod system_dns;
 pub mod system_proxy;
 mod traffic;
 pub mod ui_effects;
 
-use self::{
-    application::ApplicationClient, clash_config::ClashConfigClient,
-    session_state::SessionStateClient,
-};
+use self::{application::ApplicationClient, clash_config::ClashConfigClient};
 use crate::{
     core::{
         actor_v2::{
@@ -58,6 +54,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
+use nyanpasu_application::session_state::SessionStateClient;
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
@@ -144,7 +141,9 @@ async fn new_typed_config_clients(
     .await?;
 
     let session_state = SessionStateClient::new(
-        utf8_path(paths.session_state_path())?,
+        nyanpasu_platform::session_state::open_manager(utf8_path(paths.session_state_path())?)
+            .await?,
+        nyanpasu_config::state::window::WindowLabel(crate::consts::MAIN_WINDOW_LABEL.into()),
         shutdown.child_token(),
         tasks,
     )
@@ -897,7 +896,12 @@ impl NyanpasuClient {
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> Result<runtime::MutationOutcome<()>> {
-        let snapshot = self.inner.session_state.save_main_window(geometry).await?;
+        let snapshot = self
+            .inner
+            .session_state
+            .save_main_window(geometry)
+            .await
+            .map_err(crate::state::config_error::ConfigError::from)?;
         Ok(
             runtime::MutationOutcome::from_parts((), Vec::new()).with_commit(
                 runtime::CommitReceipt {
@@ -915,7 +919,10 @@ impl NyanpasuClient {
         &self,
         geometry: nyanpasu_config::state::window::WindowState,
     ) -> Result<()> {
-        self.inner.session_state.queue_main_window_save(geometry)?;
+        self.inner
+            .session_state
+            .queue_main_window_save(geometry)
+            .map_err(crate::state::config_error::ConfigError::from)?;
         Ok(())
     }
 
@@ -2236,7 +2243,13 @@ pub(crate) mod tests {
         .await
         .expect("application client should be created");
         let session_state = SessionStateClient::new(
-            temp_config_path(dir, "session-state.yaml"),
+            nyanpasu_platform::session_state::open_manager(temp_config_path(
+                dir,
+                "session-state.yaml",
+            ))
+            .await
+            .unwrap(),
+            nyanpasu_config::state::window::WindowLabel(crate::consts::MAIN_WINDOW_LABEL.into()),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )
@@ -2572,7 +2585,13 @@ pub(crate) mod tests {
         .await
         .expect("application client should be created");
         let session_state = SessionStateClient::new(
-            temp_config_path(&dir, "session-state.yaml"),
+            nyanpasu_platform::session_state::open_manager(temp_config_path(
+                &dir,
+                "session-state.yaml",
+            ))
+            .await
+            .unwrap(),
+            nyanpasu_config::state::window::WindowLabel(crate::consts::MAIN_WINDOW_LABEL.into()),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )

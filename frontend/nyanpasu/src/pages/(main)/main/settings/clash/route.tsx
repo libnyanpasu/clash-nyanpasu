@@ -16,6 +16,7 @@ import ExpandIncludeAllSwitch from './_modules/expand-include-all-switch'
 import FieldFilterCard from './_modules/field-filter-card'
 import FieldFilterSwitch from './_modules/field-filter-switch'
 import IPv6Switch from './_modules/ipv6-switch'
+import LatencyTestConfig from './_modules/latency-test-config'
 import LogLevelSelector from './_modules/log-level-selector'
 import {
   MixedPortConfig,
@@ -107,6 +108,22 @@ const FieldFilterSettings = () => {
   )
 }
 
+const LatencyTestSettings = () => {
+  return (
+    <div data-slot="latency-test-settings-container">
+      <SettingsLabel>{m.settings_clash_latency_test_label()}</SettingsLabel>
+
+      <SettingsGroup>
+        <SettingsCard>
+          <SettingsCardContent>
+            <LatencyTestConfig />
+          </SettingsCardContent>
+        </SettingsCard>
+      </SettingsGroup>
+    </div>
+  )
+}
+
 function RouteComponent() {
   // Route changes render synchronously and this page is long, so the sections
   // below the first screen mount in a deferred render right after the page
@@ -129,6 +146,8 @@ function RouteComponent() {
             <CoreManagerSettings />
 
             <FieldFilterSettings />
+
+            <LatencyTestSettings />
           </>
         )}
       </div>

@@ -9,3 +9,6 @@ export const BREAKPOINT_VALUES = {
 } as const satisfies Record<Breakpoint, number>
 
 export const BREAKPOINT_ORDER = ['xs', 'sm', 'md', 'lg', 'xl'] as const
+
+/** The URL latency tests use when no default test URL is configured. */
+export const DEFAULT_LATENCY_TEST_URL = 'http://www.gstatic.com/generate_204'

@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn required_min_never_exceeds_the_bundled_daemon_version() {
         const MANIFEST: &str =
-            include_str!("../../../../nyanpasu-runtime/nyanpasu_service/Cargo.toml");
+            include_str!("../../../nyanpasu-runtime/nyanpasu_service/Cargo.toml");
 
         let bundled = parse_package_version(MANIFEST);
 

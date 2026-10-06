@@ -22,6 +22,7 @@ use futures::future::BoxFuture;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::sync::watch;
 
+use nyanpasu_core::service::ServiceCompat;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use nyanpasu_ipc::{
     api::status::CoreStateDetail,
@@ -29,9 +30,8 @@ use nyanpasu_ipc::{
 };
 
 use super::endpoint::EndpointHandle;
-use crate::core::service::{
-    compat::ServiceCompat,
-    control::{ServiceCommandError, StillRunningSnafu, TaskCancelledSnafu, TimedOutSnafu},
+use crate::core::service::control::{
+    ServiceCommandError, StillRunningSnafu, TaskCancelledSnafu, TimedOutSnafu,
 };
 
 /// Elevated daemon mechanics behind one narrow boundary. `probe` reports

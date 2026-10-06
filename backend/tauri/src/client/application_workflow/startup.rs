@@ -1045,10 +1045,10 @@ impl ApplicationWorkflow {
 mod tests {
     use std::borrow::Cow;
 
+    use nyanpasu_core::service::ServiceCompat;
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, RuntimeInfos, StatusResBody};
 
     use super::*;
-    use crate::core::service::compat::ServiceCompat;
 
     const INSTANCE_CONFIG_DIR: &str = "/nyanpasu/config";
 

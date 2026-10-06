@@ -1387,7 +1387,7 @@ pub mod service {
         pub version: std::borrow::Cow<'static, str>,
         pub status: nyanpasu_ipc::types::ServiceStatus,
         pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
-        pub compat: crate::core::service::compat::ServiceCompat,
+        pub compat: nyanpasu_core::service::ServiceCompat,
         pub phase: crate::core::actor_v2::service_actor::ServicePhase,
         pub restart_attempts: u8,
     }

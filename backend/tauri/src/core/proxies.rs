@@ -1,5 +1,5 @@
 //! Actor-owned proxy cache shared by IPC and tray adapters.
-use std::{sync::Arc, time::Duration};
+use std::{hash::Hasher, sync::Arc, time::Duration};
 
 use crate::client::runtime::{
     Degradation, DegradationPhase, DegradationReason, InterruptFailure, MutationOutcome,
@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use clash_api::{IndexMap, ProviderName, ProxyProvider};
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use seahash::SeaHasher;
 use tokio::{sync::watch, time::Instant};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -21,7 +22,7 @@ struct Snapshot {
     proxies: Proxies,
     providers: IndexMap<ProviderName, ProxyProvider>,
     fetched: Instant,
-    fingerprint: Vec<u8>,
+    fingerprint: u64,
 }
 
 enum Message {
@@ -111,7 +112,9 @@ impl State {
             let proxies =
                 Proxies::from_responses(response.proxies, &response.providers, response.groups)?;
             let providers = response.providers;
-            let fingerprint = serde_json::to_vec(&(&proxies, &providers))?;
+            // Hash the same JSON representation without retaining its serialized bytes.
+            let mut fingerprint = SeaHasher::new();
+            serde_json::to_writer(&mut fingerprint, &(&proxies, &providers))?;
             anyhow::ensure!(
                 !api.is_revoked(),
                 "core instance retired during proxy assembly"
@@ -121,7 +124,7 @@ impl State {
                 proxies,
                 providers,
                 fetched: Instant::now(),
-                fingerprint,
+                fingerprint: fingerprint.finish(),
             }))
         }
         .await;
@@ -496,6 +499,7 @@ mod tests {
         release: Notify,
         calls: Mutex<Vec<&'static str>>,
         selected: Mutex<String>,
+        subscription_expire: AtomicUsize,
         group_list: Mutex<Option<serde_json::Value>>,
     }
     async fn proxies(HttpState(f): HttpState<Arc<Fixture>>) -> Response {
@@ -528,9 +532,9 @@ mod tests {
             None => StatusCode::NOT_FOUND.into_response(),
         }
     }
-    async fn providers() -> Json<serde_json::Value> {
+    async fn providers(HttpState(f): HttpState<Arc<Fixture>>) -> Json<serde_json::Value> {
         Json(
-            serde_json::json!({"providers":{PROVIDER:{"name":PROVIDER,"type":"Proxy","vehicleType":"HTTP", "proxies":[{"name":NODE,"type":"Vless","udp":true,"history":[]}], "subscriptionInfo":{"Expire":42,"Upload":-1}}}}),
+            serde_json::json!({"providers":{PROVIDER:{"name":PROVIDER,"type":"Proxy","vehicleType":"HTTP", "proxies":[{"name":NODE,"type":"Vless","udp":true,"history":[]}], "subscriptionInfo":{"Expire":f.subscription_expire.load(Ordering::SeqCst),"Upload":-1}}}}),
         )
     }
     async fn select(
@@ -601,7 +605,10 @@ mod tests {
         Arc<Fixture>,
         tokio::task::JoinHandle<()>,
     ) {
-        let fixture = Arc::new(Fixture::default());
+        let fixture = Arc::new(Fixture {
+            subscription_expire: AtomicUsize::new(42),
+            ..Fixture::default()
+        });
         let router = Router::new()
             .route("/group", get(groups))
             .route("/proxies", get(proxies))
@@ -648,6 +655,43 @@ mod tests {
             2,
             "unchanged refresh must renew freshness"
         );
+        server.abort();
+    }
+    #[tokio::test]
+    async fn refresh_notifies_only_when_proxies_or_providers_change() {
+        let (client, core, _, fixture, server) = setup().await;
+        let mut changes = client.subscribe();
+
+        client.get(true).await.unwrap();
+        assert!(changes.has_changed().unwrap());
+        changes.borrow_and_update();
+
+        client.get(true).await.unwrap();
+        assert!(!changes.has_changed().unwrap());
+
+        *fixture.selected.lock().unwrap() = NODE.into();
+        client.get(true).await.unwrap();
+        assert!(changes.has_changed().unwrap());
+        changes.borrow_and_update();
+
+        client.get(true).await.unwrap();
+        assert!(!changes.has_changed().unwrap());
+
+        let proxies_before = serde_json::to_value(client.snapshot()).unwrap();
+        fixture.subscription_expire.store(43, Ordering::SeqCst);
+        client.get(true).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(client.snapshot()).unwrap(),
+            proxies_before
+        );
+        assert!(changes.has_changed().unwrap());
+        changes.borrow_and_update();
+
+        client.get(true).await.unwrap();
+        assert!(!changes.has_changed().unwrap());
+
+        client.stop_for_test().await.unwrap();
+        core.shutdown().await.unwrap();
         server.abort();
     }
     #[tokio::test]

@@ -13,7 +13,7 @@ import {
   ModalTrigger,
 } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
-import { formatError, sleep } from '@/utils'
+import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
   formatControllerAddress,
@@ -58,8 +58,6 @@ export default function ExternalControllerConfig() {
         })
         await refetch()
 
-        // Wait for the server to apply
-        await sleep(300)
         await runtimeProfile.refetch()
 
         setOpen(false)

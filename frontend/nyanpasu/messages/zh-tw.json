@@ -1048,6 +1048,7 @@
   "error_config_owner_stopped": "設定服務未執行",
   "error_config_invalid_update_sources": "更新來源必須至少包含一個來源且不能重複：{reason}",
   "error_config_invalid_core_logs": "核心日誌設定無效：{reason}",
+  "error_config_invalid_latency_timeout": "延遲測試逾時設定無效：{reason}",
   "error_config_version_conflict": "設定在此期間已發生變化，請重試",
   "error_config_persist_session_state": "無法儲存視窗狀態",
   "error_config_session_state_stopped": "視窗狀態服務未執行",

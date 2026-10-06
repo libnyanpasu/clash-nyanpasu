@@ -11,6 +11,8 @@ const pinned: ProxyGroup = {
   all: ['a'],
   now: 'a',
   fixed: 'a',
+  testUrl: null,
+  expectedStatus: null,
   hidden: false,
   icon: null,
   capabilities: { select: true, clearFixed: true },

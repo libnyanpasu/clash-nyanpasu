@@ -1048,6 +1048,7 @@
   "error_config_owner_stopped": "设置服务未运行",
   "error_config_invalid_update_sources": "更新来源必须至少包含一个来源且不能重复：{reason}",
   "error_config_invalid_core_logs": "内核日志设置无效：{reason}",
+  "error_config_invalid_latency_timeout": "延迟测试超时设置无效：{reason}",
   "error_config_version_conflict": "设置在此期间已发生变化，请重试",
   "error_config_persist_session_state": "无法保存窗口状态",
   "error_config_session_state_stopped": "窗口状态服务未运行",

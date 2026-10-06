@@ -962,6 +962,7 @@
   "error_config_owner_stopped": "Служба настроек не запущена",
   "error_config_invalid_update_sources": "Нужно указать хотя бы один источник обновлений без повторов: {reason}",
   "error_config_invalid_core_logs": "Неверные настройки журнала ядра: {reason}",
+  "error_config_invalid_latency_timeout": "Неверный тайм-аут проверки задержки: {reason}",
   "error_config_version_conflict": "Настройки изменились, попробуйте ещё раз",
   "error_config_persist_session_state": "Не удалось сохранить состояние окна",
   "error_config_session_state_stopped": "Служба состояния окна не запущена",

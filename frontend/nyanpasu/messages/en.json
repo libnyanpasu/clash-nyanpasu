@@ -1048,6 +1048,7 @@
   "error_config_owner_stopped": "The settings service is not running",
   "error_config_invalid_update_sources": "Update sources must include at least one source without duplicates: {reason}",
   "error_config_invalid_core_logs": "Invalid Core log settings: {reason}",
+  "error_config_invalid_latency_timeout": "Invalid latency test timeout: {reason}",
   "error_config_version_conflict": "The settings changed in the meantime, please try again",
   "error_config_persist_session_state": "Could not save the window state",
   "error_config_session_state_stopped": "The window state service is not running",

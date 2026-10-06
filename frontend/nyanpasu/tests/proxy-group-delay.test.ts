@@ -38,6 +38,8 @@ const group = (
   all,
   now,
   fixed: null,
+  testUrl: null,
+  expectedStatus: null,
   hidden: false,
   icon: null,
   capabilities: { select: true, clearFixed: false },

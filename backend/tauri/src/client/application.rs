@@ -317,6 +317,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn latency_timeout_outside_range_is_rejected() {
+        let (client, _dir) = test_client().await;
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.default_latency_timeout_ms = Some(500);
+        assert!(matches!(
+            client.patch(patch).await,
+            Err(ConfigError::InvalidLatencyTimeout { .. })
+        ));
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.default_latency_timeout_ms = Some(8000);
+        assert_eq!(
+            client
+                .patch(patch)
+                .await
+                .unwrap()
+                .state
+                .default_latency_timeout_ms,
+            8000
+        );
+    }
+
+    #[tokio::test]
     async fn release_channel_persists_and_non_nightly_builds_can_leave_nightly() {
         use crate::bundle::Channel;
         let (client, dir) = test_client().await;

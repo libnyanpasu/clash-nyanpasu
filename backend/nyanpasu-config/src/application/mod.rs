@@ -147,6 +147,10 @@ pub struct NyanpasuAppConfig {
     /// 默认的延迟测试连接
     pub default_latency_test: String,
 
+    /// Latency test timeout in milliseconds.
+    #[serde(default = "default_latency_timeout_ms")]
+    pub default_latency_timeout_ms: u64,
+
     /// 是否使用内部的脚本支持，默认为真
     pub enable_builtin_enhanced: bool,
 
@@ -235,6 +239,23 @@ pub struct NyanpasuAppConfig {
     pub enable_macos_colored_icons: bool,
 }
 
+/// The latency test timeout a fresh or upgraded install starts with.
+pub const DEFAULT_LATENCY_TIMEOUT_MS: u64 = 5000;
+
+fn default_latency_timeout_ms() -> u64 {
+    DEFAULT_LATENCY_TIMEOUT_MS
+}
+
+/// A latency test waits between one and thirty seconds: Mihomo parses a single-node
+/// timeout as int16 milliseconds and the API adapter bounds every call.
+pub fn validate_latency_timeout(timeout_ms: u64) -> Result<(), &'static str> {
+    if (1000..=30000).contains(&timeout_ms) {
+        Ok(())
+    } else {
+        Err("the latency test timeout must be between 1 and 30 seconds")
+    }
+}
+
 fn default_max_log_file_size() -> u64 {
     10
 }
@@ -261,6 +282,7 @@ impl Default for NyanpasuAppConfig {
             core: ClashCore::default(),
             hotkeys: Vec::new(),
             default_latency_test: "http://www.gstatic.com/generate_204".into(),
+            default_latency_timeout_ms: default_latency_timeout_ms(),
             enable_builtin_enhanced: true,
             proxy_layout_column: 0,
             max_log_files: 7,
@@ -290,6 +312,25 @@ impl Default for NyanpasuAppConfig {
 mod patch_tests {
     use super::*;
     use struct_patch::Status;
+
+    #[test]
+    fn latency_timeout_defaults_when_missing_and_is_bounded() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("default_latency_timeout_ms");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            config.default_latency_timeout_ms,
+            DEFAULT_LATENCY_TIMEOUT_MS
+        );
+
+        assert!(validate_latency_timeout(1000).is_ok());
+        assert!(validate_latency_timeout(30000).is_ok());
+        assert!(validate_latency_timeout(999).is_err());
+        assert!(validate_latency_timeout(30001).is_err());
+    }
 
     #[test]
     fn local_ip_probe_requires_opt_in_and_can_be_patched() {

@@ -556,6 +556,8 @@ mod tests {
             all: all.iter().map(|&member| member.into()).collect(),
             now: Some(now.into()),
             fixed: None,
+            test_url: None,
+            expected_status: None,
             hidden: false,
             icon: None,
             capabilities: ProxyGroupCapabilities {

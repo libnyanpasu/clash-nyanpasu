@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use clash_api::{Delay, DelayQuery, IndexMap, ProviderName, ProxyName, ProxyProvider};
+use clash_api::{
+    Delay, DelayQuery, ExpectedStatus, IndexMap, ProviderName, ProxyName, ProxyProvider,
+};
+use nyanpasu_config::application::NyanpasuAppConfig;
 
 use crate::core::clash::api::{
     ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes, RuleProviderItem, RulesRes,
@@ -9,11 +12,28 @@ use crate::core::clash::api::{
 
 use super::NyanpasuClient;
 
-fn delay_query(url: Option<String>) -> Result<DelayQuery> {
+/// Used only when the app config's default test URL is empty too.
+const FALLBACK_LATENCY_TEST_URL: &str = "http://www.gstatic.com/generate_204";
+
+/// A test's URL is the caller's, else the app's default; its timeout is
+/// always the app's.
+fn delay_query(
+    url: Option<String>,
+    expected: Option<String>,
+    app: &NyanpasuAppConfig,
+) -> Result<DelayQuery> {
     let url = url
         .filter(|url| !url.is_empty())
-        .unwrap_or_else(|| "http://www.gstatic.com/generate_204".into());
-    Ok(DelayQuery::new(url.parse()?, Duration::from_secs(10))?)
+        .or_else(|| Some(app.default_latency_test.clone()).filter(|url| !url.is_empty()))
+        .unwrap_or_else(|| FALLBACK_LATENCY_TEST_URL.into());
+    let query = DelayQuery::new(
+        url.parse()?,
+        Duration::from_millis(app.default_latency_timeout_ms),
+    )?;
+    Ok(match expected.filter(|expected| !expected.is_empty()) {
+        Some(expected) => query.with_expected(ExpectedStatus::new(expected)?),
+        None => query,
+    })
 }
 
 impl NyanpasuClient {
@@ -122,8 +142,9 @@ impl NyanpasuClient {
         name: String,
         provider: Option<String>,
         url: Option<String>,
+        expected: Option<String>,
     ) -> Result<Delay> {
-        let query = delay_query(url)?;
+        let query = delay_query(url, expected, &self.get_app_config().await?)?;
         let provider = provider.map(ProviderName::new);
         Ok(self
             .inner
@@ -138,8 +159,9 @@ impl NyanpasuClient {
         &self,
         group: String,
         url: Option<String>,
+        expected: Option<String>,
     ) -> Result<IndexMap<ProxyName, u16>> {
-        let query = delay_query(url)?;
+        let query = delay_query(url, expected, &self.get_app_config().await?)?;
         Ok(self
             .inner
             .core_api
@@ -194,6 +216,42 @@ fn config_item(config: clash_api::RuntimeConfig) -> Result<ClashConfig> {
 #[cfg(test)]
 mod tests {
     use super::rule_provider_item;
+
+    #[test]
+    fn a_delay_query_falls_back_to_the_app_default_then_gstatic() {
+        use nyanpasu_config::application::NyanpasuAppConfig;
+        let mut app = NyanpasuAppConfig {
+            default_latency_test: "https://cp.cloudflare.com/generate_204".into(),
+            default_latency_timeout_ms: 3000,
+            ..Default::default()
+        };
+
+        let query = super::delay_query(Some("https://example.com/".into()), None, &app).unwrap();
+        assert_eq!(query.url.as_str(), "https://example.com/");
+        assert_eq!(query.timeout, std::time::Duration::from_millis(3000));
+        assert!(query.expected.is_none());
+
+        let query = super::delay_query(Some(String::new()), None, &app).unwrap();
+        assert_eq!(query.url.as_str(), "https://cp.cloudflare.com/generate_204");
+
+        app.default_latency_test.clear();
+        let query = super::delay_query(None, None, &app).unwrap();
+        assert_eq!(query.url.as_str(), "http://www.gstatic.com/generate_204");
+    }
+
+    #[test]
+    fn a_delay_query_validates_the_expected_status() {
+        let app = nyanpasu_config::application::NyanpasuAppConfig::default();
+        let query = super::delay_query(None, Some("200-299".into()), &app).unwrap();
+        assert_eq!(query.expected.unwrap().as_str(), "200-299");
+        assert!(
+            super::delay_query(None, Some(String::new()), &app)
+                .unwrap()
+                .expected
+                .is_none()
+        );
+        assert!(super::delay_query(None, Some("not a status".into()), &app).is_err());
+    }
 
     #[test]
     fn config_dto_preserves_absence_unknown_modes_and_valid_port_bounds() {

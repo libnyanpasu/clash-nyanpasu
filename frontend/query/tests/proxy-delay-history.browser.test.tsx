@@ -36,6 +36,8 @@ const group = (name: string): ProxyGroup => ({
   all: ['tested', 'other'],
   now: 'tested',
   fixed: null,
+  testUrl: null,
+  expectedStatus: null,
   hidden: false,
   icon: null,
   capabilities: { select: true, clearFixed: false },
@@ -90,6 +92,7 @@ async function setup(
   expect(testRpc.invoke).toHaveBeenCalledWith('clash_api_get_group_delay', {
     group: 'group',
     url: null,
+    expected: null,
   })
   expect(vi.getTimerCount()).toBe(0)
   // A polling refetch must not silently overwrite the response being asserted.
@@ -163,6 +166,7 @@ test('single node delay only replaces that node, keeping sibling identity', asyn
     name: 'tested',
     provider: null,
     url: null,
+    expected: null,
   })
   expect(data().nodes.tested.history.map(({ delay }) => delay)).toEqual([
     42, 100,
@@ -178,6 +182,8 @@ function makePinnedSnapshot(): Proxies_Serialize {
         ...group('group'),
         type: 'URLTest',
         fixed: 'tested',
+        testUrl: null,
+        expectedStatus: null,
         capabilities: { select: true, clearFixed: true },
       },
     ],
@@ -271,11 +277,13 @@ test('a pinned group tests its members one by one and never the group', async ({
     name: 'tested',
     provider: null,
     url: null,
+    expected: null,
   })
   expect(invoke).toHaveBeenCalledWith('clash_api_get_proxy_delay', {
     name: 'other',
     provider: 'sub',
     url: null,
+    expected: null,
   })
   expect(groupDelayCalls(invoke)).toHaveLength(0)
   expect(data().nodes.tested.history.map(({ delay }) => delay)).toEqual([
@@ -303,6 +311,7 @@ test('a pin newer than the cached snapshot still tests members one by one', asyn
     name: 'other',
     provider: 'sub',
     url: null,
+    expected: null,
   })
   expect(groupDelayCalls(invoke)).toHaveLength(0)
 })

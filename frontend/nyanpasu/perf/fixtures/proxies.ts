@@ -61,6 +61,8 @@ export function createProxiesFixture({
         all: names,
         now: names[(g * 37) % nodes],
         fixed: null,
+        testUrl: null,
+        expectedStatus: null,
         hidden: false,
         icon: null,
         capabilities: { select: true, clearFixed: false },

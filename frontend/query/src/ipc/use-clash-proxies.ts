@@ -145,6 +145,7 @@ export const useClashProxies = () => {
             name,
             provider,
             options?.url ?? null,
+            null,
           ),
         ),
       )
@@ -194,7 +195,9 @@ export const useClashProxies = () => {
       if (!target?.fixed) {
         return (
           unwrapResult(
-            await invokeQuery(api.queries.clashApiGetGroupDelay(group, url)),
+            await invokeQuery(
+              api.queries.clashApiGetGroupDelay(group, url, null),
+            ),
           ) ?? {}
         )
       }
@@ -211,6 +214,7 @@ export const useClashProxies = () => {
                   name,
                   data.nodes[name]?.provider ?? null,
                   url,
+                  null,
                 ),
               ),
             )

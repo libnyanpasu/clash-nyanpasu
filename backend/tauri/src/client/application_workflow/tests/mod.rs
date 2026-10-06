@@ -100,14 +100,13 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_application::enhance::RuntimeBuildError>
-    {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, super::error::RuntimePreparationError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
-            return Err(nyanpasu_application::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(super::error::RuntimePreparationError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)

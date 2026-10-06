@@ -109,8 +109,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_application::enhance::RuntimeBuildError>
-    {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, super::super::error::RuntimePreparationError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();

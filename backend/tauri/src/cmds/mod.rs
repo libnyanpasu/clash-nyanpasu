@@ -166,3 +166,28 @@ fn print_version_info() {
     println!("╰{:─^width$}╯", "", width = header_width);
     std::process::exit(0);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn statistic_widget_cli_accepts_the_config_variants() {
+        for (argument, expected) in [
+            ("large", StatisticWidgetVariant::Large),
+            ("small", StatisticWidgetVariant::Small),
+        ] {
+            let cli = Cli::try_parse_from(["clash-nyanpasu", "statistic-widget", argument])
+                .expect("the widget process argument must parse");
+            let Some(Commands::StatisticWidget { variant }) = cli.command else {
+                panic!("expected the statistic-widget command");
+            };
+            assert_eq!(variant, expected);
+        }
+    }
+
+    #[test]
+    fn statistic_widget_cli_rejects_unknown_variants() {
+        assert!(Cli::try_parse_from(["clash-nyanpasu", "statistic-widget", "medium"]).is_err());
+    }
+}

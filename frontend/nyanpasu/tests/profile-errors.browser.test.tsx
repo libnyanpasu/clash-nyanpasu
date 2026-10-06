@@ -66,43 +66,49 @@ const error: IpcError = {
           {
             kind: 'build_runtime',
             source: {
-              kind: 'transforms_failed',
-              failures: [
-                { kind: 'profile', id: 't1' },
-                { kind: 'builtin', name: 'config_fixer' },
-              ],
-              logs: [
-                {
-                  tag: {
-                    kind: 'scoped_transform',
-                    data: {
-                      host_profile_id: 'p1',
-                      transform_profile_id: 't1',
-                      role: { kind: 'selected' },
-                      step_index: 0,
-                      transform_kind: { type: 'script', runtime: 'javascript' },
+              kind: 'build_artifact',
+              source: {
+                kind: 'transforms_failed',
+                failures: [
+                  { kind: 'profile', id: 't1' },
+                  { kind: 'builtin', name: 'config_fixer' },
+                ],
+                logs: [
+                  {
+                    tag: {
+                      kind: 'scoped_transform',
+                      data: {
+                        host_profile_id: 'p1',
+                        transform_profile_id: 't1',
+                        role: { kind: 'selected' },
+                        step_index: 0,
+                        transform_kind: {
+                          type: 'script',
+                          runtime: 'javascript',
+                        },
+                      },
                     },
+                    entries: [
+                      { level: 'log', message: 'before failure' },
+                      {
+                        level: 'error',
+                        message: 'Error: rejected\n  at main (main.js:2)',
+                      },
+                    ],
                   },
-                  entries: [
-                    { level: 'log', message: 'before failure' },
-                    {
-                      level: 'error',
-                      message: 'Error: rejected\n  at main (main.js:2)',
+                  {
+                    tag: {
+                      kind: 'builtin_transform',
+                      data: {
+                        name: 'config_fixer',
+                        step_index: 0,
+                        selected_profile_id: 'p1',
+                      },
                     },
-                  ],
-                },
-                {
-                  tag: {
-                    kind: 'builtin_transform',
-                    data: {
-                      name: 'config_fixer',
-                      step_index: 0,
-                      selected_profile_id: 'p1',
-                    },
+                    entries: [{ level: 'error', message: 'builtin failed' }],
                   },
-                  entries: [{ level: 'error', message: 'builtin failed' }],
-                },
-              ],
+                ],
+              },
             },
           },
         ],
@@ -176,11 +182,14 @@ test('profile parse failures keep the diagnostic and resolve the profile name', 
       error: {
         kind: 'build_runtime',
         source: {
-          kind: 'run_pipeline',
+          kind: 'build_artifact',
           source: {
-            kind: 'parse_profile',
-            profile: 'p1',
-            message: 'invalid YAML at line 3',
+            kind: 'run_pipeline',
+            source: {
+              kind: 'parse_profile',
+              profile: 'p1',
+              message: 'invalid YAML at line 3',
+            },
           },
         },
       },

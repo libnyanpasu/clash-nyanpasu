@@ -13,8 +13,10 @@ use nyanpasu_config::{
 };
 use snafu::{ResultExt, ensure};
 
-use nyanpasu_application::enhance::{
-    ConfigNotMappingSnafu, RuntimeBuildError, SerializeFinalConfigSnafu, builtin_transforms_for,
+use nyanpasu_application::enhance::builtin_transforms_for;
+
+use crate::client::application_workflow::error::{
+    ConfigNotMappingSnafu, RuntimePreparationError, SerializeFinalConfigSnafu,
 };
 
 use crate::enhance::{Logs, PostProcessingOutput};
@@ -97,7 +99,7 @@ pub fn runtime_snapshot_data_from_artifact(
     profiles: &Profiles,
     core: ClashCore,
     builtin_enabled: bool,
-) -> Result<crate::client::runtime::RuntimeSnapshotData, RuntimeBuildError> {
+) -> Result<crate::client::runtime::RuntimeSnapshotData, RuntimePreparationError> {
     ensure!(
         artifact.final_config.as_object_arc().is_some(),
         ConfigNotMappingSnafu

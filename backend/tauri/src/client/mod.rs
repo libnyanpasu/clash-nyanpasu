@@ -3589,7 +3589,7 @@ pub(crate) mod tests {
             .await
             .unwrap();
         let config: serde_yaml::Mapping = serde_yaml::from_str(&content.yaml).unwrap();
-        let mut expected = client.promoted_runtime().await.unwrap().config.clone();
+        let mut expected = client.promoted_runtime().await.unwrap().config();
         assert_ne!(
             expected.get("secret").and_then(serde_yaml::Value::as_str),
             Some("<redacted>")
@@ -3732,7 +3732,7 @@ pub(crate) mod tests {
                 .promoted_runtime()
                 .await
                 .expect("promoted runtime stored after rebuild");
-            assert!(promoted.config.get("mixed-port").is_some());
+            assert!(promoted.config().get("mixed-port").is_some());
             assert!(
                 !promoted.exists_keys.is_empty(),
                 "guard overrides must register applied fields"
@@ -4818,7 +4818,7 @@ pub(crate) mod tests {
             let runtime = client.promoted_runtime().await.unwrap();
             assert_eq!(
                 runtime
-                    .config
+                    .config()
                     .get("proxies")
                     .and_then(serde_yaml::Value::as_sequence)
                     .and_then(|items| items.first())

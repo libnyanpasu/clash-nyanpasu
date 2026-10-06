@@ -51,11 +51,6 @@ pub enum RuntimeBuildError {
     },
     #[snafu(display("the final config is not a mapping"))]
     ConfigNotMapping,
-    #[snafu(display("could not render the runtime config"))]
-    SerializeRuntimeConfig {
-        #[serde(skip)]
-        source: serde_yaml::Error,
-    },
 }
 
 pub struct RuntimeBuildInput {

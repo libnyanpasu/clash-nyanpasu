@@ -1402,7 +1402,7 @@ impl ApplicationWorkflow {
                         &RuntimeIntent {
                             local_ipc: receipt.local_ipc,
                             core_type: (&receipt.target_core).into(),
-                            config_text: receipt.config_text.to_string(),
+                            config_text: receipt.config_text.clone(),
                             digest: receipt.config_digest.clone(),
                         },
                         receipt.core_spec.clone(),

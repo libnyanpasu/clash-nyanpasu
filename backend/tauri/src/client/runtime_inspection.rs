@@ -147,6 +147,16 @@ impl RuntimeSnapshot {
             })
     }
 
+    /// The built document as JSON, restored from the graph rather than
+    /// re-parsed from `config_text`, so the view keeps the converter's
+    /// semantics instead of acquiring the YAML parser's limits.
+    fn config_json(&self) -> serde_json::Value {
+        let (finalizing, _) = self
+            .finalizing_node()
+            .expect("every runtime build ends with a finalizing node");
+        restored(self.inspection.graph.restore(finalizing))
+    }
+
     fn has_logs(&self, tag: &OperatorTag) -> bool {
         let key = tag.node_key();
         self.inspection
@@ -348,10 +358,7 @@ impl NyanpasuClient {
         let Some(state) = self.promoted_runtime().await else {
             return Ok(None);
         };
-        let yaml = serde_yaml::to_value(&state.config).context(SerializeRuntimeConfigSnafu)?;
-        Ok(Some(
-            serde_json::to_value(&yaml).context(ConvertRuntimeConfigSnafu)?,
-        ))
+        Ok(Some(state.config_json()))
     }
 
     /// The promoted runtime configuration as YAML text.
@@ -360,7 +367,7 @@ impl NyanpasuClient {
             .promoted_runtime()
             .await
             .context(NoRuntimeConfigSnafu)?;
-        serde_yaml::to_string(&state.config).context(SerializeRuntimeConfigSnafu)
+        Ok(state.config_text.to_string())
     }
 }
 
@@ -433,9 +440,8 @@ pub(crate) mod tests {
         RuntimeSnapshot::from_data(
             RuntimeRevisionAllocator::new().allocate(),
             ClashCore::default(),
-            Arc::from(&b"mode: rule\n"[..]),
             RuntimeSnapshotData {
-                config: serde_yaml::Mapping::new(),
+                config_text: Arc::from("mode: rule\n"),
                 exists_keys: Vec::new(),
                 postprocessing_output: PostProcessingOutput::default(),
                 inspection: Arc::new(inspection_data()),
@@ -461,8 +467,7 @@ pub(crate) mod tests {
             )
             .unwrap();
         let mut generated = snapshot();
-        generated.config =
-            serde_yaml::from_str("external-controller: 127.0.0.1:9090\nsecret: private\n").unwrap();
+        generated.config_text = Arc::from("external-controller: 127.0.0.1:9090\nsecret: private\n");
         generated.inspection = Arc::new(RuntimeInspectionData {
             graph: graph.build_stored().unwrap(),
             step_logs: vec![],
@@ -490,7 +495,7 @@ pub(crate) mod tests {
             )
             .unwrap();
         assert_eq!(
-            generated.config, applied.config,
+            generated.config_text, applied.config_text,
             "next rebuild must use the original source"
         );
         assert!(
@@ -584,6 +589,89 @@ pub(crate) mod tests {
             store.read().applied.unwrap().applied_binding,
             next.applied_binding
         );
+    }
+
+    /// The JSON view is the built document itself; nesting deeper than the
+    /// YAML parser accepts must not make it unavailable.
+    #[test]
+    fn config_json_is_the_finalizing_document_at_any_depth() {
+        let mut nested = serde_json::json!("leaf");
+        for _ in 0..200 {
+            nested = serde_json::json!({ "inner": nested });
+        }
+        let document = serde_json::json!({ "mode": "rule", "extra": nested });
+        let root = Arc::new(serde_json::from_value::<ConfigValue>(document.clone()).unwrap());
+        let mut graph = ConfigSnapshotsBuilder::new_root(
+            Arc::new(serde_json::from_value(serde_json::json!({"mode": "rule"})).unwrap()),
+            OperatorTag::BareRoot,
+        );
+        graph
+            .push(
+                OperatorTag::BuiltinStep {
+                    selected_profile_id: None,
+                    step: BuiltinStepKind::Finalizing,
+                },
+                root,
+            )
+            .unwrap();
+        let mut snapshot = snapshot();
+        snapshot.inspection = Arc::new(RuntimeInspectionData {
+            graph: graph.build_stored().unwrap(),
+            step_logs: vec![],
+        });
+        assert_eq!(snapshot.config_json(), document);
+    }
+
+    /// A snapshot is cloned on every apply; no clone may copy a document.
+    #[test]
+    fn cloning_a_stamped_snapshot_shares_every_document() {
+        let value = Arc::new(
+            serde_json::from_value::<ConfigValue>(serde_json::json!({"mode": "rule"})).unwrap(),
+        );
+        let mut graph = ConfigSnapshotsBuilder::new_root(value.clone(), OperatorTag::BareRoot);
+        graph
+            .push(
+                OperatorTag::BuiltinStep {
+                    selected_profile_id: None,
+                    step: BuiltinStepKind::Finalizing,
+                },
+                value,
+            )
+            .unwrap();
+        let mut generated = snapshot();
+        generated.inspection = Arc::new(RuntimeInspectionData {
+            graph: graph.build_stored().unwrap(),
+            step_logs: vec![],
+        });
+        let revision = nyanpasu_ipc::api::status::ConfigRevisionInfo {
+            epoch: 1,
+            generation: 1,
+            source_hash: "source".into(),
+            effective_hash: "effective".into(),
+        };
+        generated.applied_binding = Some(crate::core::actor_v2::facade::AppliedConfigBinding {
+            revision: revision.clone(),
+            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            generation: 1,
+        });
+        let stamped = generated
+            .with_effective_config(
+                nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
+                    instance_id: "instance-1".into(),
+                    revision,
+                    config: "mode: global\n".into(),
+                },
+                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                1,
+            )
+            .unwrap();
+        let copy = stamped.clone();
+        assert!(Arc::ptr_eq(&copy.config_text, &stamped.config_text));
+        assert!(Arc::ptr_eq(&copy.inspection, &stamped.inspection));
+        assert!(Arc::ptr_eq(
+            copy.effective.as_ref().unwrap(),
+            stamped.effective.as_ref().unwrap()
+        ));
     }
 
     #[test]

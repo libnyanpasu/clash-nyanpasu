@@ -975,7 +975,7 @@ async fn a_second_domain_is_admitted_only_after_the_first_commits_and_reads_it()
         ClashCore::ClashRs,
         "the second mutation built against the application the first committed"
     );
-    assert_eq!(published.config["mode"].as_str(), Some("global"));
+    assert_eq!(published.config()["mode"].as_str(), Some("global"));
     drop(clash);
 }
 
@@ -1018,7 +1018,7 @@ async fn a_lost_commit_notification_is_resolved_by_the_authoritative_decision() 
             .read()
             .promoted
             .expect("confirm publishes the product")
-            .config["mode"]
+            .config()["mode"]
             .as_str(),
         Some("global")
     );
@@ -1235,14 +1235,14 @@ async fn a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt(
         if commit {
             assert!(matches!(result, Ok(ReplaceIfVersionResult::Replaced)));
             assert_eq!(receipt.conclusion, MutationConclusion::Confirmed);
-            assert_eq!(promoted.config["mode"].as_str(), Some("global"));
+            assert_eq!(promoted.config()["mode"].as_str(), Some("global"));
         } else {
             assert!(
                 matches!(result, Err(ReplaceIfVersionError::LocalWrite(_))),
                 "{result:?}"
             );
             assert_eq!(receipt.conclusion, MutationConclusion::Cancelled);
-            assert_eq!(promoted.config["mode"].as_str(), Some("direct"));
+            assert_eq!(promoted.config()["mode"].as_str(), Some("direct"));
             assert_eq!(
                 f.store
                     .last_confirmed_runtime_receipt()
@@ -1511,7 +1511,7 @@ async fn closing_keeps_an_undecided_transaction_and_still_rejects_new_ones() {
             .read()
             .promoted
             .expect("the confirm still publishes")
-            .config["mode"]
+            .config()["mode"]
             .as_str(),
         Some("global")
     );

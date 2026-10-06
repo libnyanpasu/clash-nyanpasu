@@ -37,6 +37,7 @@ const ProxiesNavigateItem = memo(function ProxiesNavigateItem({
         params={{
           name: group.name,
         }}
+        search={(previous) => ({ q: previous.q })}
       >
         <div className="flex w-full min-w-0 items-center gap-2.5">
           {group.icon && (

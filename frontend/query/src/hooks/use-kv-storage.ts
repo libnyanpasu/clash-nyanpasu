@@ -54,8 +54,8 @@ export interface UseKvStorageOptions<T> {
  *   wins unless a newer write or event overtakes that read.
  * - Listens for `StorageValueChangedEvent` so all open windows stay in sync.
  * - Writing calls the generated `api.mutations.setStorageItem` binding and
- *   optimistically updates local
- *   state; the subsequent backend event confirms the change.
+ *   optimistically updates local state; the subsequent backend event confirms
+ *   the change. Writes from one hook instance reach the backend in call order.
  * - The setter returns whether the mutation was confirmed. Failed writes keep
  *   the optimistic value available for a consumer to display and retry.
  */
@@ -96,6 +96,9 @@ export function useKvStorage<T>(
   const pendingWritesRef = useRef<Set<string>>(new Set())
   const revisionRef = useRef(0)
   const activeWritesRef = useRef(0)
+  // Backend writes of this instance run one after another so an older value
+  // cannot reach storage after a newer one.
+  const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve())
 
   const applyMigrate = useCallback((raw: unknown): T => {
     return migrateRef.current ? migrateRef.current(raw) : (raw as T)
@@ -254,11 +257,15 @@ export function useKvStorage<T>(
       setValueState(resolved)
       setLocalCache(key, resolved)
 
+      const previousWrite = writeQueueRef.current
+      const write = (async () => {
+        await previousWrite
+        return invokeMutation(api.mutations.setStorageItem, [key, serialized])
+      })()
+      writeQueueRef.current = write.catch(() => {})
+
       try {
-        const result = await invokeMutation(api.mutations.setStorageItem, [
-          key,
-          serialized,
-        ])
+        const result = await write
         if (result.status === 'error') {
           throw result.error
         }

@@ -15,7 +15,7 @@ import { ProfileType } from '../profiles/_modules/consts'
 import ProxiesNavigate from './_modules/proxies-navigate'
 
 const searchSchema = z.object({
-  searchQuery: z.string().optional().nullable(),
+  q: z.string().optional(),
 })
 
 export const Route = createFileRoute('/(main)/main/proxies')({

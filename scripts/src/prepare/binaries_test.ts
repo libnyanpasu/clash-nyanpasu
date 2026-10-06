@@ -96,9 +96,6 @@ function versionManifest(): VersionManifest {
       meow: meowMapping(),
       meow_alpha: meowMapping(),
     },
-    meow_alpha_sha256: Object.fromEntries(
-      platforms.map(({ label }) => [label, "a".repeat(64)]),
-    ) as Record<SupportedArch, string>,
     updated_at: "2026-10-01",
   };
 }
@@ -175,7 +172,6 @@ Deno.test("stable binary resolvers map assets for all supported platforms", () =
       meowAlpha.downloadURL,
       `https://github.com/meow-rs/meow-rs/releases/download/Prerelease-Alpha/${alphaAsset}`,
     );
-    assertEquals(meowAlpha.sha256, "a".repeat(64));
   }
 });
 

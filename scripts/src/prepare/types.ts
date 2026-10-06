@@ -15,7 +15,6 @@ export interface BinInfo {
   exeFile: string;
   tmpFile: string;
   downloadURL: string;
-  sha256?: string;
 }
 
 export interface VersionManifest {
@@ -38,7 +37,6 @@ export interface VersionManifest {
     meow: ArchMapping;
     meow_alpha: ArchMapping;
   };
-  meow_alpha_sha256: Record<SupportedArch, string>;
   updated_at: string;
 }
 

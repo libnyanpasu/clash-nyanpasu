@@ -160,27 +160,23 @@ async fn settled_report(client: &UpdaterClient, id: usize) -> UpdaterSummary {
 }
 
 #[test]
-fn meow_alpha_manifest_uses_asset_sha_and_validates_its_digest() {
+fn meow_alpha_manifest_resolves_release_identity() {
     let mut manifest = ManifestVersion::default();
     manifest.latest.meow_alpha = "alpha-3c27aca".into();
     let arch = get_arch().unwrap().to_string();
     manifest
         .arch_template
         .meow_alpha
-        .insert(arch.clone(), "meow-{}-target.tar.gz".into());
-    manifest
-        .meow_alpha_sha256
-        .insert(arch.clone(), "a".repeat(64));
+        .insert(arch, "meow-{}-target.tar.gz".into());
 
     let (artifact, metadata) = manifest.get_matches(&ClashCore::MeowAlpha).unwrap();
     assert_eq!(artifact, "meow-alpha-3c27aca-target.tar.gz");
     assert!(matches!(
         metadata,
-        CoreTypeMeta::MeowAlpha { version, sha256 }
-            if version == "alpha-3c27aca" && sha256 == "a".repeat(64)
+        CoreTypeMeta::MeowAlpha(version) if version == "alpha-3c27aca"
     ));
 
-    manifest.meow_alpha_sha256.insert(arch, "invalid".into());
+    manifest.latest.meow_alpha = "not-an-alpha-commit".into();
     assert!(manifest.get_matches(&ClashCore::MeowAlpha).is_none());
 }
 

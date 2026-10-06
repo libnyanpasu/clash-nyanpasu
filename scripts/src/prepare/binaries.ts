@@ -204,7 +204,6 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
         : `${assetName.replace(/\.tar\.gz$/, "")}/meow`,
       tmpFile: assetName,
       downloadURL: `${URL_PREFIX}/${assetName}`,
-      sha256: versionManifest.meow_alpha_sha256[mappedArch],
     };
   }
 

@@ -16,12 +16,10 @@ export type LatestVersionResolver = Promise<{
   name: string;
   version: string;
   archMapping: ArchMapping;
-  sha256ByArch?: Record<SupportedArch, string>;
 }>;
 
 export interface GitHubReleaseAsset {
   name: string;
-  digest?: string | null;
 }
 
 export interface GitHubRelease {
@@ -235,7 +233,6 @@ export function resolveMeowAlphaRelease(release: GitHubRelease) {
     throw new Error("unexpected meow-rs alpha release metadata");
   }
 
-  const sha256ByArch = {} as Record<SupportedArch, string>;
   let commitSha: string | undefined;
 
   for (
@@ -252,10 +249,8 @@ export function resolveMeowAlphaRelease(release: GitHubRelease) {
       throw new Error(`expected exactly one meow-rs alpha asset for ${arch}`);
     }
 
-    const asset = matches[0];
-    const assetSha = asset.name.match(matcher)?.[1];
-    const digest = asset.digest?.match(/^sha256:([a-f0-9]{64})$/)?.[1];
-    if (!assetSha || !digest) {
+    const assetSha = matches[0].name.match(matcher)?.[1];
+    if (!assetSha) {
       throw new Error(`meow-rs alpha asset for ${arch} has invalid metadata`);
     }
     if (commitSha && assetSha !== commitSha) {
@@ -263,10 +258,9 @@ export function resolveMeowAlphaRelease(release: GitHubRelease) {
     }
 
     commitSha = assetSha;
-    sha256ByArch[arch] = digest;
   }
 
-  if (!commitSha || Object.keys(sha256ByArch).length !== 6) {
+  if (!commitSha) {
     throw new Error("incomplete meow-rs alpha release assets");
   }
 
@@ -274,7 +268,6 @@ export function resolveMeowAlphaRelease(release: GitHubRelease) {
     name: "meow_alpha",
     version: `alpha-${commitSha}`,
     archMapping: MEOW_ALPHA_ARCH_MAPPING,
-    sha256ByArch,
   };
 }
 

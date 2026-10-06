@@ -142,7 +142,7 @@ export async function resolveSidecar(
   binInfo: BinInfo | Promise<BinInfo>,
   options?: ResolveOptions,
 ): Promise<ResolveInfo> {
-  const { name, version, targetFile, tmpFile, exeFile, downloadURL, sha256 } =
+  const { name, version, targetFile, tmpFile, exeFile, downloadURL } =
     await binInfo;
   const sidecarPath = path.join(context.sidecarDir, targetFile);
   const versionStampPath = `${sidecarPath}.version`;
@@ -176,9 +176,6 @@ export async function resolveSidecar(
   try {
     let size: number;
     let speed: number | undefined;
-    if (name === "meow-alpha" && !sha256) {
-      throw new Error("missing expected SHA-256 for meow-alpha");
-    }
     if (!(await exists(tempFile))) {
       const result = await downloadFile(
         downloadURL,
@@ -190,21 +187,6 @@ export async function resolveSidecar(
       speed = result.speed;
     } else {
       size = (await Deno.stat(tempFile)).size;
-    }
-
-    if (sha256) {
-      if (!/^[a-f0-9]{64}$/.test(sha256)) {
-        throw new Error(`invalid expected SHA-256 for ${name}`);
-      }
-      const bytes = await Deno.readFile(tempFile);
-      const digest = await crypto.subtle.digest("SHA-256", bytes);
-      const actual = Array.from(
-        new Uint8Array(digest),
-        (byte) => byte.toString(16).padStart(2, "0"),
-      ).join("");
-      if (actual !== sha256) {
-        throw new Error(`SHA-256 mismatch for ${name}: ${actual}`);
-      }
     }
 
     const isMeow = name === "meow" || name === "meow-alpha";

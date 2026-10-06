@@ -23,8 +23,6 @@ pub struct ManifestVersion {
     manifest_version: u64,
     latest: ManifestVersionLatest,
     arch_template: ArchTemplate,
-    #[serde(default)]
-    meow_alpha_sha256: HashMap<String, String>,
     updated_at: String,
 }
 
@@ -59,7 +57,6 @@ impl Default for ManifestVersion {
             manifest_version: 0,
             latest: ManifestVersionLatest::default(),
             arch_template: ArchTemplate::default(),
-            meow_alpha_sha256: HashMap::default(),
             updated_at: "".to_string(),
         }
     }
@@ -138,20 +135,13 @@ impl ManifestVersion {
                 {
                     return None;
                 }
-                let sha256 = self.meow_alpha_sha256.get(arch)?;
-                if sha256.len() != 64 || !sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                    return None;
-                }
                 Some((
                     self.arch_template
                         .meow_alpha
                         .get(arch)?
                         .clone()
                         .replace("{}", &self.latest.meow_alpha),
-                    CoreTypeMeta::MeowAlpha {
-                        version: self.latest.meow_alpha.clone(),
-                        sha256: sha256.clone(),
-                    },
+                    CoreTypeMeta::MeowAlpha(self.latest.meow_alpha.clone()),
                 ))
             }
         }

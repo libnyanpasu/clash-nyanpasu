@@ -10,7 +10,6 @@ import {
   resolveMeowAlpha,
   resolveMihomo,
   resolveMihomoAlpha,
-  type SupportedArch,
 } from "./manifest.ts";
 import { colorize, consola } from "../shared/logger.ts";
 
@@ -35,7 +34,6 @@ interface ManifestVersion {
   manifest_version: number;
   latest: Record<SupportedCore, string>;
   arch_template: Record<SupportedCore, ArchMapping>;
-  meow_alpha_sha256: Record<SupportedArch, string>;
   updated_at?: string;
 }
 
@@ -62,19 +60,11 @@ const manifest: ManifestVersion = {
   manifest_version: MANIFEST_VERSION,
   latest: {} as Record<SupportedCore, string>,
   arch_template: {} as Record<SupportedCore, ArchMapping>,
-  meow_alpha_sha256: {} as ManifestVersion["meow_alpha_sha256"],
 };
 
 for (const result of results) {
   manifest.latest[result.name as SupportedCore] = result.version;
   manifest.arch_template[result.name as SupportedCore] = result.archMapping;
-  if (result.name === "meow_alpha" && result.sha256ByArch) {
-    manifest.meow_alpha_sha256 = result.sha256ByArch;
-  }
-}
-
-if (Object.keys(manifest.meow_alpha_sha256).length !== 6) {
-  throw new Error("meow-rs alpha release is missing platform SHA-256 digests");
 }
 
 await ensureDir(MANIFEST_DIR);

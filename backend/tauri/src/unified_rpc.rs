@@ -988,11 +988,15 @@ mod tests {
             language: nyanpasu_config::application::I18nLanguage::English,
             ..Default::default()
         };
-        std::fs::write(
-            args.paths.application_config_path(),
-            serde_yaml::to_string(&config).unwrap(),
+        let mut application = Vec::new();
+        nyanpasu_core::format::Format::serialize(
+            &crate::core::migration::modules::application::ApplicationFormat::default(),
+            &mut application,
+            &config,
+            None,
         )
         .unwrap();
+        std::fs::write(args.paths.application_config_path(), application).unwrap();
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {

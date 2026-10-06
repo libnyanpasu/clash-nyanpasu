@@ -940,7 +940,7 @@ mod tests {
     fn store_at_head() -> MigrationStore {
         let mut store = MigrationStore::default();
         for module in registry::modules() {
-            let head = module.steps().last().unwrap().revision();
+            let head = head_revision(module);
             store.modules.insert(
                 module.module().to_string(),
                 ModuleState {
@@ -1560,6 +1560,164 @@ mod tests {
         assert_eq!(after, before);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
         assert!(state.module_state("profiles").stamped);
+    }
+
+    fn application_config_payload(case: &LegacyCase) -> serde_yaml::Mapping {
+        nyanpasu_core::format::inspect(
+            &std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
+        )
+        .unwrap()
+        .into_payload()
+    }
+
+    fn application_stamp(case: &LegacyCase) -> Option<u64> {
+        nyanpasu_core::format::inspect(
+            &std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
+        )
+        .unwrap()
+        .stamp()
+        .map(|stamp| stamp.schema_revision)
+    }
+
+    /// The typed files of a 2.0.x install, whose `application.yaml` was written
+    /// before stamps.
+    fn seed_typed_files(case: &LegacyCase, stamped: bool) {
+        use nyanpasu_core::format::Format as _;
+
+        let mut application = Vec::new();
+        if stamped {
+            crate::core::migration::modules::application::ApplicationFormat::default()
+                .serialize(
+                    &mut application,
+                    &nyanpasu_config::application::NyanpasuAppConfig::default(),
+                    None,
+                )
+                .unwrap();
+        } else {
+            application =
+                serde_yaml::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
+                    .unwrap()
+                    .into_bytes();
+        }
+        std::fs::write(case.ctx.application_config_path(), application).unwrap();
+        std::fs::write(
+            case.ctx.session_state_path(),
+            serde_yaml::to_string(&nyanpasu_config::state::PersistentState::default()).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            case.ctx.clash_config_path(),
+            serde_yaml::to_string(&nyanpasu_config::clash::config::ClashConfig::default()).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn application_state(runner: &Runner) -> ModuleState {
+        runner.store.module_state("application")
+    }
+
+    #[test]
+    fn a_fresh_install_gets_a_stamped_application_config() {
+        let case = LegacyCase::empty();
+
+        let mut runner = case.runner();
+        // No file yet, so the module starts at head: nothing may run on a file
+        // that `typed_config` is about to create at head.
+        assert_eq!(
+            application_state(&runner),
+            ModuleState {
+                applied_revision: 0,
+                baseline_revision: 0,
+                stamped: false,
+            }
+        );
+        runner.run_pending().unwrap();
+
+        assert_eq!(application_stamp(&case), Some(0));
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert!(state.module_state("application").stamped);
+        let _: nyanpasu_config::application::NyanpasuAppConfig = {
+            use nyanpasu_core::format::Format as _;
+            crate::core::migration::modules::application::ApplicationFormat::default()
+                .deserialize(std::fs::File::open(case.ctx.application_config_path()).unwrap())
+                .unwrap()
+        };
+    }
+
+    #[test]
+    fn a_1_6_1_install_converts_into_a_stamped_application_config() {
+        let case = LegacyCase::new();
+
+        case.runner().run_pending().unwrap();
+
+        assert_eq!(application_stamp(&case), Some(0));
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert_eq!(state.module_state("application").applied_revision, 0);
+        assert!(state.module_state("application").stamped);
+    }
+
+    #[test]
+    fn an_application_config_from_2_0_is_stamped_without_changing_content() {
+        let case = LegacyCase::empty();
+        seed_typed_files(&case, false);
+        let before = application_config_payload(&case);
+
+        let mut runner = case.runner();
+        assert_eq!(
+            application_state(&runner),
+            ModuleState {
+                applied_revision: 0,
+                baseline_revision: 0,
+                stamped: false,
+            }
+        );
+        runner.run_pending().unwrap();
+
+        assert_eq!(application_stamp(&case), Some(0));
+        assert_eq!(application_config_payload(&case), before);
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert!(state.module_state("application").stamped);
+    }
+
+    #[test]
+    fn the_application_stamp_replaces_detection_when_the_state_is_lost() {
+        let case = LegacyCase::empty();
+        seed_typed_files(&case, true);
+        let before = std::fs::read_to_string(case.ctx.application_config_path()).unwrap();
+
+        let mut runner = case.runner();
+        assert_eq!(
+            application_state(&runner),
+            ModuleState {
+                applied_revision: 0,
+                baseline_revision: 0,
+                stamped: true,
+            }
+        );
+        runner.run_pending().unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn an_application_config_that_lost_its_stamp_is_refused() {
+        let case = LegacyCase::empty();
+        seed_typed_files(&case, false);
+        let mut store = MigrationStore::default();
+        store
+            .modules
+            .insert("application".to_string(), at_revision(0, true));
+        store.flush_atomic(&case.ctx.state_path()).unwrap();
+
+        let error = format!(
+            "{:#}",
+            Runner::with_context(TEST_VERSION.clone(), false, case.ctx.clone()).unwrap_err()
+        );
+
+        assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
     }
 
     /// A config dir holding a real 1.6.1 install, which every module still has

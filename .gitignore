@@ -22,6 +22,10 @@ manifest/site/updater/*
 !manifest/site/updater/.gitkeep
 /backend/tauri/gen/*
 
+# Rust compiler ICE dumps (rustc-ice-<timestamp>.txt) written next to the crate
+# that panicked; they are never source.
+rustc-ice-*.txt
+
 # AI agent tooling — exclude local/session state, keep shared docs & config
 # (CLAUDE.md / AGENTS.md and .claude shared config stay tracked;
 #  .serena manages its own cache via .serena/.gitignore)

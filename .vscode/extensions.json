@@ -10,6 +10,6 @@
     "stylelint.vscode-stylelint",
     "bradlc.vscode-tailwindcss",
     "oxc.oxc-vscode",
-    "tamasfe.even-better-toml"
+    "tombi-toml.tombi"
   ]
 }

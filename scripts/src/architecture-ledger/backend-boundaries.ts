@@ -33,6 +33,7 @@ export async function main(): Promise<number> {
       args: [
         "tree",
         "--locked",
+        "--all-features",
         "--manifest-path",
         "backend/Cargo.toml",
         "--package",

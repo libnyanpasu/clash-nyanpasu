@@ -27,6 +27,7 @@
     "lint:oxlint": "oxlint .",
     "lint:deno": "deno task lint:deno",
     "lint:architecture-ledger": "deno task lint:architecture-ledger",
+    "lint:backend-boundaries": "deno task lint:backend-boundaries",
     "architecture-ledger": "deno task architecture-ledger",
     "lint:styles": "stylelint --cache --allow-empty-input \"**/*.css\"",
     "lint:ts": "pnpm -r --filter './frontend/*' typecheck && pnpm lint:ts:node && pnpm lint:ts:perf && pnpm lint:ts:tests",

@@ -193,6 +193,10 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     "NET_STAT_WIDGET_FLATTEN",
     "LANGUAGE_CASE",
   ]),
+  // No steps yet, so no version constant either.
+  ...migrationModuleStatics("application", []).filter(
+    (entry) => entry.name !== "VERSION_2_0_0",
+  ),
   ...migrationModuleStatics("profiles", [
     "NULL_VALUE",
     "SCRIPT_NEWTYPE",

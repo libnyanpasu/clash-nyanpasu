@@ -4,6 +4,7 @@ use crate::{
         mutation::ConfigDomain,
         policy::CommandClass,
     },
+    core::migration::modules::application::ApplicationFormat,
     state::{
         config_error::{
             ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
@@ -49,7 +50,7 @@ impl ApplicationSnapshot {
 
 pub struct ApplicationActorArgs {
     pub(crate) mutations: MutationCoordinator,
-    pub manager: PersistentStateManager<NyanpasuAppConfig>,
+    pub manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     /// The channel of the installed build; only a nightly build is held to it.
     pub build_channel: nyanpasu_config::application::ReleaseChannel,
     /// Once cancelled, every write is refused.
@@ -59,7 +60,7 @@ pub struct ApplicationActorArgs {
 
 pub struct ApplicationActorState {
     mutations: MutationCoordinator,
-    manager: PersistentStateManager<NyanpasuAppConfig>,
+    manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,
     settings_changes: tokio::sync::watch::Sender<NyanpasuAppConfig>,

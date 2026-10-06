@@ -2183,6 +2183,17 @@ pub(crate) mod tests {
         Utf8PathBuf::from_path_buf(dir.path().join(file_name)).expect("temp path should be UTF-8")
     }
 
+    /// The stamped file the application loads.
+    fn write_application_config(path: &std::path::Path, config: &NyanpasuAppConfig) {
+        use nyanpasu_core::format::Format as _;
+
+        let mut content = Vec::new();
+        crate::core::migration::modules::application::ApplicationFormat::default()
+            .serialize(&mut content, config, None)
+            .unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+
     /// Restores a directory's unix mode on drop so tempdir cleanup stays reliable
     /// after permission-poison tests.
     #[cfg(unix)]
@@ -2550,13 +2561,15 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        let mut manager =
-            nyanpasu_core::state::PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
-                .config_path(temp_config_path(&dir, "application.yaml"))
-                .assemble()
-                .from_state(NyanpasuAppConfig::default())
-                .await
-                .expect("application manager should initialize");
+        let mut manager = nyanpasu_core::state::PersistentStateManagerSetup::<
+            NyanpasuAppConfig,
+            crate::core::migration::modules::application::ApplicationFormat,
+        >::builder()
+        .config_path(temp_config_path(&dir, "application.yaml"))
+        .assemble()
+        .from_state(NyanpasuAppConfig::default())
+        .await
+        .expect("application manager should initialize");
         manager.add_subscriber(Box::new(ParkedPrepare {
             entered: entered.clone(),
             release: release.clone(),
@@ -3035,11 +3048,7 @@ pub(crate) mod tests {
                 enable_service_mode: true,
                 ..Default::default()
             };
-            std::fs::write(
-                args.paths.application_config_path(),
-                serde_yaml::to_string(&seed).unwrap(),
-            )
-            .unwrap();
+            write_application_config(&args.paths.application_config_path(), &seed);
         }
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         if !service_seed {
@@ -3774,11 +3783,7 @@ pub(crate) mod tests {
             enable_service_mode: true,
             ..Default::default()
         };
-        std::fs::write(
-            args.paths.application_config_path(),
-            serde_yaml::to_string(&seed).unwrap(),
-        )
-        .unwrap();
+        write_application_config(&args.paths.application_config_path(), &seed);
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         tauri::async_runtime::block_on(async {
             let report = client.startup_reconcile().await;

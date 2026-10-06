@@ -35,9 +35,11 @@ import {
   type NodeView,
 } from './_modules/node-list'
 import {
+  HideUnavailableButton,
   LocateCurrentNodeButton,
   NodeListToolbar,
   NoMatchingNodes,
+  SortNodesButton,
 } from './_modules/node-list-toolbar'
 import ProxyNodeButton from './_modules/proxy-node-button'
 
@@ -299,14 +301,7 @@ function RouteComponent() {
   return (
     <>
       <GroupHeader
-        bottom={
-          <NodeListToolbar
-            search={search}
-            onSearchChange={setSearch}
-            view={storedView}
-            onViewChange={handleViewChange}
-          />
-        }
+        bottom={<NodeListToolbar search={search} onSearchChange={setSearch} />}
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <div className="flex max-w-full min-w-0 flex-col gap-1">
@@ -371,6 +366,15 @@ function RouteComponent() {
             <span>{m.proxies_group_clear_fixed_button()}</span>
           </Button>
         )}
+
+        <SortNodesButton view={storedView} onViewChange={handleViewChange} />
+
+        <HideUnavailableButton
+          pressed={storedView.hideUnavailable}
+          onPressedChange={(hideUnavailable) =>
+            handleViewChange({ ...storedView, hideUnavailable })
+          }
+        />
 
         <LocateCurrentNodeButton
           disabled={currentIndex === -1}

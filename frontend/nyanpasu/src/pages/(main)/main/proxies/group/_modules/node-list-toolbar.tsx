@@ -1,7 +1,7 @@
 import Radar from '~icons/material-symbols/radar'
 import SortRounded from '~icons/material-symbols/sort-rounded'
+import VisibilityOffRounded from '~icons/material-symbols/visibility-off-rounded'
 import { Button } from '@nyanpasu/ui/button'
-import { FilterChip } from '@nyanpasu/ui/chip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,13 +23,9 @@ const SORT_LABELS = {
 export function NodeListToolbar({
   search,
   onSearchChange,
-  view,
-  onViewChange,
 }: {
   search: string
   onSearchChange: (search: string) => void
-  view: NodeView
-  onViewChange: (view: NodeView) => void
 }) {
   return (
     <div
@@ -44,52 +40,78 @@ export function NodeListToolbar({
         value={search}
         onValueChange={onSearchChange}
       />
-
-      <DropdownMenu align="end">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                icon
-                className="size-10 shrink-0"
-                aria-label={m.proxies_node_sort_label()}
-                data-slot="proxies-node-sort-button"
-              >
-                <SortRounded className="size-5" />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-
-          <TooltipContent>{m.proxies_node_sort_label()}</TooltipContent>
-        </Tooltip>
-
-        <DropdownMenuContent>
-          <DropdownMenuRadioGroup
-            value={view.sort}
-            onValueChange={(sort) =>
-              onViewChange({ ...view, sort: sort as NodeSort })
-            }
-          >
-            {NODE_SORTS.map((sort) => (
-              <DropdownMenuRadioItem key={sort} value={sort}>
-                {SORT_LABELS[sort]()}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <FilterChip
-        className="shrink-0"
-        pressed={view.hideUnavailable}
-        onPressedChange={(hideUnavailable) =>
-          onViewChange({ ...view, hideUnavailable })
-        }
-        data-slot="proxies-node-hide-unavailable"
-      >
-        {m.proxies_node_hide_unavailable()}
-      </FilterChip>
     </div>
+  )
+}
+
+export function SortNodesButton({
+  view,
+  onViewChange,
+}: {
+  view: NodeView
+  onViewChange: (view: NodeView) => void
+}) {
+  return (
+    <DropdownMenu align="end">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              icon
+              className="size-8 shrink-0"
+              aria-label={m.proxies_node_sort_label()}
+              data-slot="proxies-node-sort-button"
+            >
+              <SortRounded className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+
+        <TooltipContent>{m.proxies_node_sort_label()}</TooltipContent>
+      </Tooltip>
+
+      <DropdownMenuContent>
+        <DropdownMenuRadioGroup
+          value={view.sort}
+          onValueChange={(sort) =>
+            onViewChange({ ...view, sort: sort as NodeSort })
+          }
+        >
+          {NODE_SORTS.map((sort) => (
+            <DropdownMenuRadioItem key={sort} value={sort}>
+              {SORT_LABELS[sort]()}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+export function HideUnavailableButton({
+  pressed,
+  onPressedChange,
+}: {
+  pressed: boolean
+  onPressedChange: (pressed: boolean) => void
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          icon
+          className="aria-pressed:bg-secondary-container aria-pressed:text-on-secondary-container size-8 shrink-0"
+          aria-label={m.proxies_node_hide_unavailable()}
+          aria-pressed={pressed}
+          onClick={() => onPressedChange(!pressed)}
+          data-slot="proxies-node-hide-unavailable"
+        >
+          <VisibilityOffRounded className="size-4" />
+        </Button>
+      </TooltipTrigger>
+
+      <TooltipContent>{m.proxies_node_hide_unavailable()}</TooltipContent>
+    </Tooltip>
   )
 }
 

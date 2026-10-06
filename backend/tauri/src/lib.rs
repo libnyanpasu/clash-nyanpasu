@@ -126,6 +126,10 @@ fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> std::io::Result<()> {
+    // Nothing before the logger reaches a trace, so its share is logged.
+    let started = std::time::Instant::now();
+    let mut profilers = utils::profiling::Profilers::default();
+    profilers.start_heap();
     // share the tauri async runtime to nyanpasu-utils
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
@@ -186,7 +190,12 @@ pub fn run() -> std::io::Result<()> {
     }
 
     let (logger_reload, jobs_capture) =
-        init::logging::init().expect("failed to initialize logging");
+        init::logging::init(&mut profilers).expect("failed to initialize logging");
+    tracing::info!(
+        pre_logging_ms = started.elapsed().as_millis(),
+        "logging initialized"
+    );
+    let prepare_span = tracing::info_span!("prepare_app").entered();
     crate::log_err!(init::init_config());
 
     // Until setup hands over an app handle, a panic can only end the process.
@@ -342,10 +351,15 @@ pub fn run() -> std::io::Result<()> {
     let app = builder
         .build(context)
         .expect("error while running tauri application");
-    app.run(|app_handle, e| match e {
+    drop(prepare_span);
+    app.run(move |app_handle, e| match e {
         tauri::RunEvent::ExitRequested { api, code, .. } => {
+            if code.is_some() {
+                profilers.finish_heap();
+            }
             utils::exit::on_exit_requested(app_handle, code, &api);
         }
+        tauri::RunEvent::Exit => profilers.finish(),
         tauri::RunEvent::WindowEvent { label, event, .. } => {
             if label == "main" {
                 match &event {

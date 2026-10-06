@@ -2,7 +2,7 @@
 
 **日期：** 2026-10-06
 
-**状态：** 草案，待确认 §8 的决策项；未实施。
+**状态：** §8 已决策。阶段 1（#5622）、阶段 2 与阶段 4 第二层（dhat）已实施；阶段 3 未启动，§6.1–§6.3 的原生工具流程尚未实测。
 
 **调查基线：** `main@db8965898`（`docs: route agent rules to guides and set the core/GUI split goal (#5618)`）；实测对象为本机已安装的 Clash Nyanpasu 2.0.1（Windows 11，双 1920×1080 屏）。
 
@@ -89,9 +89,9 @@
 
 **未核实（实施前需验证）：**
 
-- MSVC 下 `debug = "line-tables-only"` 能否生成可被 WPA 解析出 Rust 函数与行号的 PDB（预期可以，未实测）。
-- tauri `app.run` 退出时是否经 `std::process::exit` 结束进程，导致 `run()` 内局部变量（包括 `FlushGuard`）不被 drop。§4 的设计按"不会 drop"处理，结论无论哪种都安全。
-- 以 `--profile profiling` 构建时，tauri-build 是否像 `target/debug/` 那样把 sidecar 复制到 `target/profiling/`。
+- MSVC 下 `debug = "line-tables-only"` 生成的 PDB 能否被 WPA 解析出 Rust 函数与行号（PDB 中已确认有 `clash_nyanpasu_lib::…` 符号与源文件路径，WPA 未实测）。
+- ~~tauri `app.run` 退出时是否经 `std::process::exit` 结束进程~~：是。tao 0.37 的 `EventLoop::run` 在 Windows、macOS、Linux 上都在事件循环结束后调用 `process::exit`，此前 tauri 2.12 把 `LoopDestroyed` 作为 `RunEvent::Exit` 交给 `app.run` 的回调；`run()` 的局部变量不会 drop（§4.2）。
+- ~~sidecar 是否复制到 `target/profiling/`~~：是（#5622 实测）。
 - `xctrace record --template Allocations` 的确切参数（检索结果互相矛盾、无来源，未采用）。
 - 启用 hardened runtime 的已签名 macOS 应用能否被 `malloc_history` / `heap` 附加。本地 `cargo build` 产物未签名，预计不受影响。
 - bytehound 当前的维护状态；glibc 多 arena 对 RSS 的具体影响（`MALLOC_ARENA_MAX`）。检索结果无来源，未采用。
@@ -104,11 +104,13 @@
 [profile.profiling]
 inherits = 'release'
 debug = 'line-tables-only'
+codegen-units = 16
 ```
 
-- 继承 release 的 `lto`、`codegen-units = 1`、`opt-level = 's'`，测到的就是发布产物的代码与布局；只额外生成行号表，供回溯符号化。
+- 继承 release 的 `lto`、`opt-level = 's'`，额外生成行号表，供回溯符号化。
+- `codegen-units = 16`（Cargo 默认值）而不是 release 的 1：codegen 单元数只影响内联与代码布局，不改变程序分配什么，换来并行编译。
 - 不改 `strip`：release 默认 `"none"`。
-- 构建入口：先确认 `backend/tauri/tmp/dist` 存在（`pnpm web:build`），再执行 `cargo build --profile profiling -p clash-nyanpasu`。在 `deno.jsonc` 中登记一个具名 task（如 `build:profiling`），外部调用一律走 task。
+- 构建入口：`pnpm build:profiling`（`package.json` 中的 `tauri build --no-bundle -- --profile profiling`，与 `build:debug` 等构建脚本一致），它先构建前端。
 - 产物不打包、不签名、不发布。
 
 **验证：** 产物位于 `target/profiling/`；Windows 上同目录有 PDB，WPA 能把 heap 调用栈解析到 `clash_nyanpasu::…`；与同一 commit 的 release 构建相比，稳态私有工作集差异在测量噪声内（只多了调试信息，不应改变运行时内存）。
@@ -117,24 +119,26 @@ debug = 'line-tables-only'
 
 ### 4.1 接入
 
-- `backend/tauri/Cargo.toml` 新增可选依赖 `tracing-chrome = { version = '0.7', optional = true }` 和 feature `trace-chrome = ['dep:tracing-chrome']`。
-- 在 `logging::init()` 组装 registry 时，`cfg(feature = "trace-chrome")` 下额外 `.with(chrome_layer.with_filter(..))`。layer 使用独立的 per-layer filter，**不受**用户日志级别 reload 影响：bootstrap 期间用户级别尚未加载，且剖析需要 trace 级 span。
+- `backend/tauri/Cargo.toml` 新增可选依赖 `tracing-chrome = { version = '0.7', optional = true }` 和 feature `trace-chrome = ['dep:tracing-chrome']`；构建用 `pnpm build:profiling --features trace-chrome`。
+- `utils::profiling::Profilers` 持有各剖析器。`logging::init(&mut Profilers)` 组装 registry 时 `.with(profilers.trace_layer(&log_dir))`：开启 feature 时返回带 per-layer filter 的 chrome layer，否则返回 `None`，`logging.rs` 本身不出现 `cfg`。filter 是独立的 `Targets`（`clash_nyanpasu`、`nyanpasu` 前缀，info 级），**不受**用户日志级别 reload 影响：bootstrap 期间用户级别尚未加载。只取 info 级，是为了让长时间运行时 debug/trace 事件不撑大文件；span 默认就是 info 级。
 - 输出路径：feature 开启时写入 `<app logs>/trace-<启动时间>.json`。不新增环境变量开关：编译了 feature 就意味着要剖析。
 - `TraceStyle::Async`：actor 启动与 `.instrument()` 的 future 会在 tokio worker 之间迁移，`Threaded` 会产生无效轨迹（文档要求同线程进出）。
 - `include_args(true)`：span 字段（profile 名、actor 名）对归因有用；体积在 bootstrap 范围内可以接受。
 
 ### 4.2 `FlushGuard` 的生命周期
 
-`FlushGuard` drop 时才 join 写线程。`logging::init()` 把它与 reload sender 一起返回；由组合根持有，在 `utils::exit` 的收尾路径（现有关闭流程完成之后、进程退出之前）显式 drop。不能交给日志 reload 线程持有：那个线程最终 `park()` 永不返回，guard 永远不会 drop。不新增 static，也不新增全局 shutdown 阶段。
+`FlushGuard` drop 时才 join 写线程。它存进 `run()` 的局部 `Profilers`，`Profilers` 被 move 进 `app.run` 的回调，在 `RunEvent::Exit`（关闭流程完成、tauri 清理与 `process::exit` 之前）由 `Profilers::finish` drop。不能交给日志 reload 线程持有：那个线程最终 `park()` 永不返回，guard 永远不会 drop。不新增 static，也不新增全局 shutdown 阶段，`utils::exit` 不变。
+
+panic 路径（`install_panic_hook` 中直接 `process::exit(1)`）不经过 `RunEvent::Exit`，文件不完整；剖析只针对正常退出。
 
 ### 4.3 bootstrap span
 
 现有 span 不足以覆盖启动过程（§2.1）。只在以下阶段添加 `info_span!`，每个阶段一个，不做细粒度插桩：
 
-1. `logging::init` 之后到 `tauri::Builder` 构建完成（配置加载 `init_config`、specta transport 构建）；
-2. `setup::setup` 整体，以及其中组合根构建 `NyanpasuClient`、各 actor spawn 的阶段边界；
-3. `resolve::resolve_setup`、首个窗口创建 `resolve::create_window`；
-4. 内核首次启动到 ready（已有的 core lifecycle 路径上，若已有 span 则复用）。
+1. `prepare_app`：`logging::init` 之后到 `tauri::Builder::build` 返回（配置加载 `init_config`、specta transport 构建）；
+2. `setup`（`#[instrument]`），其中 `spawn_core_actors`、`spawn_effect_owners`（jobs 与 effect owner）、`build_client`、`setup_widget`；
+3. `resolve_setup`（`#[instrument]`），其中已有的 `create_window` span；
+4. `startup_reconcile`：`resolve_setup` 中阻塞等待首次 startup reconcile（内核首次启动到 ready）。
 
 `logging::init()` 之前的阶段（命令行解析、单例检测、迁移）不进入 tracing。`run()` 入口记一个 `Instant`，logging 初始化后发一条 `pre_logging_ms` 字段的 event 作为补偿；不为此提前初始化 logging（会改变迁移阶段的日志行为，超出范围）。
 
@@ -202,6 +206,19 @@ Rust 的 `System` allocator 在 macOS 上就是 libmalloc，以下工具都能�
 
 `#[global_allocator]` 放在 `backend/tauri/src/main.rs`（binary crate），`cfg(feature = ...)` 守卫，并在 architecture-ledger 的 static allowlist 中以 `external` 类别登记（理由："Rust 语言要求 global allocator 是 static；只在剖析 feature 下编译"）。
 
+已按方案 A 实施（feature `dhat-heap`）：
+
+- `run()` 入口 `Profilers::start_heap()` 启动 `dhat::Profiler`，输出 `<app logs>/dhat-heap-<启动时间>.json`。
+- **在第一个带退出码的 `ExitRequested` 时写出**（`Profilers::finish_heap()`），而不是在 `RunEvent::Exit`：dhat 的 t-end 是写出时刻仍存活的分配，退出请求时刻就是用户看到的稳态；等关闭流程跑完，各 owner 已释放内存，t-end 只剩残留。t-gmax（峰值）不受影响。
+- 只覆盖经 Rust global allocator 的分配；WebView2、系统 DLL、注入 DLL 的分配仍靠 §6.1–§6.3。
+
+**冒烟实测（2026-10-06，Windows，`--features verge-dev,trace-chrome,dhat-heap` 的 profiling 构建，dev 配置、本地内核、窗口打开，运行约 70 s 后经关机消息退出）：**
+
+- trace 文件可解析，§4.3 各阶段齐全：`prepare_app` 41 ms，`setup` 230 ms（其中 `spawn_core_actors` 178 ms），`resolve_setup` 5.3 s（其中 `startup_reconcile` 4.8 s、`create_window` 0.4 s），`pre_logging_ms` 888。dhat 同时开启，所有时长都被放大，只能看比例。
+- dhat 文件 15 MB：t-gmax 26.3 MiB，t-end 16.3 MiB，栈帧解析到源文件与行号（顺带证明 profiling profile 的行号表可用）。t-end 最大的分配点是日志 appender 的 3.9 MiB 缓冲，以及运行时配置快照的多份克隆。
+- 写出 dhat 文件耗时约 227 s，期间应用无响应；关闭流程本身不到 1 s。
+- 用 dev 身份（`verge-dev`）构建，是为了与已安装的应用分开数据目录和单实例锁，不影响正在使用的实例。
+
 **验证：** 开启 feature 后启动到稳态再正常退出，产物能被对应 viewer 打开，且包含 `clash_nyanpasu` 帧；不开 feature 时 ledger 计数不变。
 
 ## 7. 后续：内存 bench（不在本 spec 范围）
@@ -215,14 +232,16 @@ Rust 的 `System` allocator 在 macOS 上就是 libmalloc，以下工具都能�
 
 ## 8. 待确认的决策
 
-1. 阶段 4 第二层选 A（dhat，推荐）、B（tracy），还是暂不做、只用 OS 原生工具？
-2. 阶段 2 的 trace 文件放 `<app logs>/`（推荐：与应用日志一起被现有清理策略覆盖），还是工作目录？
-3. 阶段 1 的 profiling 构建是否需要 CI 产物（推荐：不需要，本地构建即可）？
+2026-10-06 已决策：
+
+1. 阶段 4 第二层选 A（dhat）。
+2. trace 与 dhat 文件放 `<app logs>/`。更正：原推荐理由"被现有清理策略覆盖"不成立，flexi_logger 的 `Cleanup::KeepLogFiles` 只清理 `clash-nyanpasu_*` 文件，剖析文件需要手动删除；日志查看器同样只列出这些文件，不会列出剖析文件。
+3. profiling 构建不需要 CI 产物（#5622 未加）。
 
 ## 9. 实施顺序与检查
 
 ```text
-1. profiling profile + deno task      -> verify: target/profiling/ 产物 + WPA 符号化 Rust 帧
+1. profiling profile + pnpm 脚本      -> verify: target/profiling/ 产物 + WPA 符号化 Rust 帧
 2. trace-chrome feature + bootstrap span -> verify: Perfetto 中 §4.3 各阶段可见；默认构建依赖树不变
 3. Windows §6.1 第 1、2 步实测          -> verify: 30 MB 块归属确认；40 MB heap 按调用栈归属到组件
 4. 第二层 allocator feature（按 §8.1）   -> verify: viewer 可读；ledger 已登记

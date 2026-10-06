@@ -41,6 +41,7 @@ const RESTART_BUDGET: u8 = 3;
 /// Bound to `tauri::Wry` rather than generic over the runtime: the window
 /// helpers the hotkey adapter drives are themselves written against the
 /// concrete handle, and this is the only runtime the app is ever built with.
+#[tracing::instrument(skip_all)]
 pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app: &M,
     bundle_metadata: crate::bundle::BundleMetadata,
@@ -98,6 +99,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let service_binary = paths
         .service_binary_path()
         .context("Failed to locate the service binary")?;
+    let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
@@ -117,12 +119,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 .context("Failed to spawn service actor")?;
         anyhow::Ok((core, service))
     })?;
+    drop(span);
     // The sink end of the hotkey channel goes into the actor; the receiving end
     // is pumped into the facade once the client exists. See `hotkey_action_pump`.
     let (hotkey_tx, hotkey_rx) = tokio::sync::mpsc::unbounded_channel();
     // One instance behind both the system proxy actor and the client's own
     // read of the OS settings.
     let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
+    let span = tracing::info_span!("spawn_effect_owners").entered();
     let jobs = tauri::async_runtime::block_on(crate::client::jobs::start(
         paths.jobs_path(),
         jobs_capture,
@@ -140,6 +144,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         &shutdown,
         &tasks,
     )?;
+    drop(span);
     let traffic_store = open_traffic_store(&paths);
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
@@ -152,6 +157,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths.app_data_dir().to_owned(),
         paths.cache_dir().join("geodata"),
     ));
+    let span = tracing::info_span!("build_client").entered();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
         http_frontend: Some(debug_http_frontend(&app_handle)?),
@@ -209,6 +215,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         tasks: tasks.clone(),
     })
     .context("Failed to setup nyanpasu client")?;
+    drop(span);
     // The tray menu and the first window render with the process locale, so
     // the configured language replaces the system default before either exists.
     RustI18nLocaleSink.set_locale(client.app_config_snapshot().language);
@@ -229,6 +236,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // widget controller, so the controller is built empty and filled here, in
     // the one place that has both. Its desired configuration arrives with the
     // startup effect reconcile like every other effect.
+    let span = tracing::info_span!("setup_widget").entered();
     let widget_manager = tauri::async_runtime::block_on(crate::widget::setup(
         client.subscribe_clash_connections(),
         shutdown.child_token(),
@@ -238,6 +246,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     widget_controller
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
+    drop(span);
     app.manage(client);
 
     Ok(())

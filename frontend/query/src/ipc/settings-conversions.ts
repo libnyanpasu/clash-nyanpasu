@@ -1,8 +1,6 @@
 import type {
-  BreakConnectionStrategy,
   ExternalControllerStrategy,
   NetworkStatisticWidgetConfig,
-  ProxyChangeBreakMode,
   StatisticWidgetVariant,
 } from '@nyanpasu/rpc/types'
 
@@ -96,11 +94,3 @@ export const formatControllerAddress = (
 
   return `${host}:${controller.port.start_port}`
 }
-
-/** Any mode but `off` counts as breaking connections on a proxy change. */
-export const breaksOnProxyChange = (strategy: BreakConnectionStrategy) =>
-  strategy.on_proxy_change !== 'off'
-
-/** The mode the proxy-change switch selects: on breaks all connections. */
-export const proxyChangeBreakMode = (enabled: boolean): ProxyChangeBreakMode =>
-  enabled ? 'all' : 'off'

@@ -5,7 +5,7 @@ import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
 import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
 import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
-import BreakWhenProxyChangeSwitch from './_modules/break-when-proxy-change-switch'
+import BreakWhenProxyChangeSelector from './_modules/break-when-proxy-change-selector'
 import EnableBuiltinEnhancedSwitch from './_modules/enable-builtin-enhanced-switch'
 import HotkeyManager from './_modules/hotket-manager'
 import LocalIpProbeSwitch from './_modules/local-ip-probe-switch'
@@ -70,7 +70,7 @@ const EnhanceSettings = () => {
       <SettingsLabel>{m.settings_nyanpasu_enhance_label()}</SettingsLabel>
 
       <SettingsGroup>
-        <BreakWhenProxyChangeSwitch />
+        <BreakWhenProxyChangeSelector />
 
         <BreakWhenProfileChangeSwitch />
 

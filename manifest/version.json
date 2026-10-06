@@ -6,7 +6,8 @@
     "clash_rs": "v0.10.10",
     "clash_premium": "2023-09-05-gdcc8d87",
     "clash_rs_alpha": "0.10.10-alpha+sha.36eec77",
-    "meow": "v0.22.0"
+    "meow": "v0.22.0",
+    "meow_alpha": "alpha-3c27aca"
   },
   "arch_template": {
     "mihomo": {
@@ -50,6 +51,14 @@
       "darwin-x64": "clash-rs-x86_64-apple-darwin"
     },
     "meow": {
+      "windows-x86_64": "meow-{}-x86_64-pc-windows-msvc.zip",
+      "windows-arm64": "meow-{}-aarch64-pc-windows-msvc.zip",
+      "linux-aarch64": "meow-{}-aarch64-unknown-linux-musl.tar.gz",
+      "linux-amd64": "meow-{}-x86_64-unknown-linux-musl.tar.gz",
+      "darwin-arm64": "meow-{}-aarch64-apple-darwin.tar.gz",
+      "darwin-x64": "meow-{}-x86_64-apple-darwin.tar.gz"
+    },
+    "meow_alpha": {
       "windows-x86_64": "meow-{}-x86_64-pc-windows-msvc.zip",
       "windows-arm64": "meow-{}-aarch64-pc-windows-msvc.zip",
       "linux-aarch64": "meow-{}-aarch64-unknown-linux-musl.tar.gz",

@@ -94,7 +94,13 @@ export type ClashConnectionsSummary = {
 }
 
 export type ClashCoreType =
-  'mihomo' | 'mihomo-alpha' | 'clash-rs' | 'clash-rs-alpha' | 'clash' | 'meow'
+  | 'mihomo'
+  | 'mihomo-alpha'
+  | 'clash-rs'
+  | 'clash-rs-alpha'
+  | 'clash'
+  | 'meow'
+  | 'meow-alpha'
 
 export type ClashWsEvent = {
   sequence: number

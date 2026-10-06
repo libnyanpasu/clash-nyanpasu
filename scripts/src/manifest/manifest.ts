@@ -18,6 +18,16 @@ export type LatestVersionResolver = Promise<{
   archMapping: ArchMapping;
 }>;
 
+export interface GitHubReleaseAsset {
+  name: string;
+}
+
+export interface GitHubRelease {
+  tag_name: string;
+  prerelease: boolean;
+  assets: GitHubReleaseAsset[];
+}
+
 // === GitHub API helpers ===
 
 const GITHUB_API_HEADERS = {
@@ -191,7 +201,7 @@ export const resolveClashPremium = async (): LatestVersionResolver => {
 };
 
 export const resolveMeow = async (): LatestVersionResolver => {
-  const version = await getLatestRelease("madeye", "meow-rs");
+  const version = await getLatestRelease("meow-rs", "meow-rs");
   consola.debug(`meow-rs latest release: ${version}`);
 
   const archMapping: ArchMapping = {
@@ -204,4 +214,66 @@ export const resolveMeow = async (): LatestVersionResolver => {
   };
 
   return { name: "meow", version, archMapping };
+};
+
+const MEOW_ALPHA_RELEASE_URL =
+  "https://api.github.com/repos/meow-rs/meow-rs/releases/tags/Prerelease-Alpha";
+
+const MEOW_ALPHA_ARCH_MAPPING: ArchMapping = {
+  "windows-x86_64": "meow-{}-x86_64-pc-windows-msvc.zip",
+  "windows-arm64": "meow-{}-aarch64-pc-windows-msvc.zip",
+  "linux-aarch64": "meow-{}-aarch64-unknown-linux-musl.tar.gz",
+  "linux-amd64": "meow-{}-x86_64-unknown-linux-musl.tar.gz",
+  "darwin-arm64": "meow-{}-aarch64-apple-darwin.tar.gz",
+  "darwin-x64": "meow-{}-x86_64-apple-darwin.tar.gz",
+};
+
+export function resolveMeowAlphaRelease(release: GitHubRelease) {
+  if (release.tag_name !== "Prerelease-Alpha" || !release.prerelease) {
+    throw new Error("unexpected meow-rs alpha release metadata");
+  }
+
+  let commitSha: string | undefined;
+
+  for (
+    const [arch, template] of Object.entries(MEOW_ALPHA_ARCH_MAPPING) as Array<
+      [SupportedArch, string]
+    >
+  ) {
+    const [prefix, suffix] = template.split("{}");
+    const matcher = new RegExp(
+      `^${escapeRegExp(prefix)}alpha-([a-f0-9]{7,40})${escapeRegExp(suffix)}$`,
+    );
+    const matches = release.assets.filter((asset) => matcher.test(asset.name));
+    if (matches.length !== 1) {
+      throw new Error(`expected exactly one meow-rs alpha asset for ${arch}`);
+    }
+
+    const assetSha = matches[0].name.match(matcher)?.[1];
+    if (!assetSha) {
+      throw new Error(`meow-rs alpha asset for ${arch} has invalid metadata`);
+    }
+    if (commitSha && assetSha !== commitSha) {
+      throw new Error("meow-rs alpha assets do not belong to the same commit");
+    }
+
+    commitSha = assetSha;
+  }
+
+  if (!commitSha) {
+    throw new Error("incomplete meow-rs alpha release assets");
+  }
+
+  return {
+    name: "meow_alpha",
+    version: `alpha-${commitSha}`,
+    archMapping: MEOW_ALPHA_ARCH_MAPPING,
+  };
+}
+
+export const resolveMeowAlpha = async (): LatestVersionResolver => {
+  const release = await githubFetch<GitHubRelease>(MEOW_ALPHA_RELEASE_URL);
+  const result = resolveMeowAlphaRelease(release);
+  consola.debug(`meow-rs alpha release: ${result.version}`);
+  return result;
 };

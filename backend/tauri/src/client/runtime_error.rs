@@ -15,6 +15,7 @@ use crate::{
     client::{
         application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
         core_lifecycle::ports::InstallCoreBinaryError,
+        core_version::CoreVersionError,
         ports::PortResolveError,
         runtime::PublishRuntimeError,
     },
@@ -23,7 +24,6 @@ use crate::{
         service::control::ServiceCommandError,
     },
     enhance::RuntimeBuildError,
-    utils::resolve::CoreVersionError,
 };
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.

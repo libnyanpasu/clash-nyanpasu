@@ -15,6 +15,7 @@ import {
   gunzipFile,
 } from "./download.ts";
 import type { DebugLog } from "./download.ts";
+import { normalizeArch, normalizePlatform } from "./platform.ts";
 
 export interface ResourceResolverOptions {
   resourcesDir: string;
@@ -23,6 +24,7 @@ export interface ResourceResolverOptions {
   platform: string;
   arch: string;
   debugLog?: DebugLog;
+  runMeowVersion?: (executablePath: string) => Promise<string>;
 }
 
 export async function resolveResource(
@@ -62,6 +64,79 @@ async function readVersionStamp(stampPath: string): Promise<string | null> {
   }
 }
 
+function hasExecutableFormat(bytes: Uint8Array, platform: string): boolean {
+  if (platform === "win32") return bytes[0] === 0x4d && bytes[1] === 0x5a;
+  if (platform === "linux") {
+    return bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c &&
+      bytes[3] === 0x46;
+  }
+  if (platform === "darwin") {
+    const magic = Array.from(bytes.slice(0, 4)).map((byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("");
+    return ["cffaedfe", "cefaedfe", "feedfacf", "feedface", "cafebabe"]
+      .includes(magic);
+  }
+  return false;
+}
+
+export function assertMeowVersion(
+  output: string,
+  expectedVersion: string,
+): void {
+  const actualVersion = output.trim().split(/\s+/).at(-1);
+  if (!actualVersion) throw new Error("meow -v returned no version");
+
+  if (expectedVersion.startsWith("alpha-")) {
+    const expectedSha = expectedVersion.slice("alpha-".length);
+    if (!actualVersion.endsWith(`-alpha+${expectedSha}`)) {
+      throw new Error(`unexpected Meow alpha version: ${actualVersion}`);
+    }
+  } else if (
+    actualVersion.replace(/^v/, "") !== expectedVersion.replace(/^v/, "")
+  ) {
+    throw new Error(`unexpected Meow version: ${actualVersion}`);
+  }
+}
+
+async function verifyMeowExecutable(
+  executablePath: string,
+  platform: string,
+  arch: string,
+  version: string,
+  runVersion = runMeowVersion,
+): Promise<void> {
+  const bytes = await Deno.readFile(executablePath);
+  if (!hasExecutableFormat(bytes, platform)) {
+    throw new Error(`invalid ${platform} executable format for Meow`);
+  }
+
+  if (
+    platform !== normalizePlatform(Deno.build.os) ||
+    arch !== normalizeArch(Deno.build.arch)
+  ) {
+    return;
+  }
+
+  const output = (await runVersion(executablePath)).trim();
+  if (!output) throw new Error("meow -v returned no version");
+  assertMeowVersion(output, version);
+}
+
+async function runMeowVersion(executablePath: string): Promise<string> {
+  const result = await new Deno.Command(executablePath, {
+    args: ["-v"],
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const output = new TextDecoder().decode(result.stdout).trim();
+  if (result.code !== 0 || !output) {
+    const stderr = new TextDecoder().decode(result.stderr).trim();
+    throw new Error(`meow -v failed (${result.code}): ${stderr}`);
+  }
+  return output;
+}
+
 export async function resolveSidecar(
   context: ResourceResolverOptions,
   binInfo: BinInfo | Promise<BinInfo>,
@@ -75,9 +150,11 @@ export async function resolveSidecar(
 
   await ensureDir(context.sidecarDir);
 
-  // nyanpasu-service's cached target is only trusted alongside a matching
-  // version stamp written after successful materialization.
-  const cachedTargetIsValid = name === "nyanpasu-service"
+  // These cached targets are only trusted alongside a matching version stamp
+  // written after successful materialization.
+  const needsVersionStamp = ["nyanpasu-service", "meow", "meow-alpha"]
+    .includes(name);
+  const cachedTargetIsValid = needsVersionStamp
     ? (await exists(sidecarPath)) &&
       (await readVersionStamp(versionStampPath)) === version
     : await exists(sidecarPath);
@@ -112,13 +189,14 @@ export async function resolveSidecar(
       size = (await Deno.stat(tempFile)).size;
     }
 
+    const isMeow = name === "meow" || name === "meow-alpha";
     if (tmpFile.endsWith(".zip")) {
       const extractedExe = await extractZip(tempFile, tempDir, name, debugLog);
       await Deno.rename(extractedExe, tempExe);
-      await Deno.rename(tempExe, sidecarPath);
+      if (!isMeow) await Deno.rename(tempExe, sidecarPath);
     } else if (tmpFile.endsWith(".tar.gz")) {
       await extractTarGz(tempFile, tempDir);
-      await Deno.rename(tempExe, sidecarPath);
+      if (!isMeow) await Deno.rename(tempExe, sidecarPath);
     } else if (tmpFile.endsWith(".gz")) {
       await gunzipFile(tempFile, sidecarPath);
       await Deno.chmod(sidecarPath, 0o755);
@@ -127,17 +205,34 @@ export async function resolveSidecar(
       if (context.platform !== "win32") await Deno.chmod(sidecarPath, 0o755);
     }
 
-    if (name === "nyanpasu-service" && version) {
+    if (isMeow) {
+      if (context.platform !== "win32") {
+        await Deno.chmod(tempExe, 0o755);
+      }
+      if (!version) throw new Error(`missing version for ${name}`);
+      await verifyMeowExecutable(
+        tempExe,
+        context.platform,
+        context.arch,
+        version,
+        context.runMeowVersion,
+      );
+      await Deno.rename(tempExe, sidecarPath);
+    }
+
+    if (needsVersionStamp && version) {
       await Deno.writeTextFile(versionStampPath, version);
     }
 
     debugLog(`resolve ${name} finished`);
     return { file: targetFile, version, size, speed, cached: false };
   } catch (err) {
-    try {
-      await Deno.remove(sidecarPath);
-    } catch {
-      // ignore
+    if (!needsVersionStamp) {
+      try {
+        await Deno.remove(sidecarPath);
+      } catch {
+        // ignore
+      }
     }
     throw err;
   } finally {

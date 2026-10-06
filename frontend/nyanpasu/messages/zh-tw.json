@@ -224,6 +224,8 @@
   "settings_clash_core_manager_card_replacing": "取代中...",
   "settings_clash_core_manager_card_restarting": "重啟中...",
   "settings_clash_core_manager_card_done": "完成",
+  "settings_clash_core_manager_card_version_read_error": "無法讀取核心版本",
+  "settings_clash_core_manager_card_reinstall_core": "重新安裝核心",
   "settings_debug_utils_open_config_directory": "開啟設定路徑",
   "settings_debug_utils_open_data_directory": "開啟資料路徑",
   "settings_debug_utils_open_core_directory": "開啟核心路徑",

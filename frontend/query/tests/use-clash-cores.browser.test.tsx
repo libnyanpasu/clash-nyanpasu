@@ -72,3 +72,31 @@ test('one core version is read alone and refetched with the others', async ({
     .poll(() => hook.result.current.cores.query.data?.mihomo.currentVersion)
     .toBe('v2.0.0')
 })
+
+test('a failed core version read stays unavailable without looking up to date', async ({
+  onTestFinished,
+}) => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  testRpc = createTestRpc({
+    get_core_version: async () => {
+      throw new Error('sidecar could not run')
+    },
+  })
+  onTestFinished(() => {
+    client.clear()
+    testRpc.rpc.dispose()
+    testRpc.invoke.mockReset()
+  })
+  const hook = await renderHook(() => useClashCores().query, {
+    wrapper: rpcWrapper(testRpc.rpc, client),
+  })
+  onTestFinished(() => hook.unmount())
+
+  await expect.poll(() => hook.result.current.isSuccess).toBe(true)
+  expect(hook.result.current.data?.mihomo).toMatchObject({
+    currentVersion: 'N/A',
+    versionReadError: true,
+  })
+})

@@ -4,7 +4,7 @@ import Clash from '@/assets/image/core/clash.png'
 import Meow from '@/assets/image/core/meow.png'
 import { ClashCore } from '@nyanpasu/rpc/types'
 
-export default function useCoreIcon(core?: ClashCore | null) {
+export default function useCoreIcon(core?: ClashCore | 'meow-alpha' | null) {
   switch (core) {
     case 'clash':
       return Clash
@@ -12,6 +12,7 @@ export default function useCoreIcon(core?: ClashCore | null) {
     case 'clash-rs-alpha':
       return ClashRs
     case 'meow':
+    case 'meow-alpha':
       return Meow
     case 'mihomo':
     case 'mihomo-alpha':

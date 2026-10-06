@@ -65,7 +65,12 @@ pub struct RuntimeBuildInput {
     pub resolved_ports: ResolvedPortBindings,
 }
 
-const MIHOMO_FAMILY: &[ClashCore] = &[ClashCore::Mihomo, ClashCore::MihomoAlpha, ClashCore::Meow];
+const MIHOMO_FAMILY: &[ClashCore] = &[
+    ClashCore::Mihomo,
+    ClashCore::MihomoAlpha,
+    ClashCore::Meow,
+    ClashCore::MeowAlpha,
+];
 const ALL_CORES: &[ClashCore] = &[
     ClashCore::ClashPremium,
     ClashCore::ClashRs,
@@ -73,6 +78,7 @@ const ALL_CORES: &[ClashCore] = &[
     ClashCore::MihomoAlpha,
     ClashCore::ClashRsAlpha,
     ClashCore::Meow,
+    ClashCore::MeowAlpha,
 ];
 // Legacy quirk preserved (chain.rs:174): clash_rs_comp never gated in ClashRsAlpha.
 const CLASH_RS_ONLY: &[ClashCore] = &[ClashCore::ClashRs];

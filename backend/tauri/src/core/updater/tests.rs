@@ -159,6 +159,27 @@ async fn settled_report(client: &UpdaterClient, id: usize) -> UpdaterSummary {
     .unwrap()
 }
 
+#[test]
+fn meow_alpha_manifest_resolves_release_identity() {
+    let mut manifest = ManifestVersion::default();
+    manifest.latest.meow_alpha = "alpha-3c27aca".into();
+    let arch = get_arch().unwrap().to_string();
+    manifest
+        .arch_template
+        .meow_alpha
+        .insert(arch, "meow-{}-target.tar.gz".into());
+
+    let (artifact, metadata) = manifest.get_matches(&ClashCore::MeowAlpha).unwrap();
+    assert_eq!(artifact, "meow-alpha-3c27aca-target.tar.gz");
+    assert!(matches!(
+        metadata,
+        CoreTypeMeta::MeowAlpha(version) if version == "alpha-3c27aca"
+    ));
+
+    manifest.latest.meow_alpha = "not-an-alpha-commit".into();
+    assert!(manifest.get_matches(&ClashCore::MeowAlpha).is_none());
+}
+
 #[tokio::test]
 async fn concurrent_fetches_coalesce_and_queries_remain_responsive() {
     let (client, backend, mut events, shutdown) = setup().await;

@@ -178,6 +178,16 @@ async function main(args = parseArgs(Deno.args, {
       retry: 5,
     },
     {
+      name: "meow-alpha",
+      version: versionManifest.latest.meow_alpha,
+      func: (onProgress) =>
+        resolveSidecar(resourceContext, binary.meowAlpha(), {
+          force,
+          onProgress,
+        }),
+      retry: 5,
+    },
+    {
       name: "wintun",
       func: (onProgress) =>
         resolveWintun(resourceContext, force ?? false, onProgress),

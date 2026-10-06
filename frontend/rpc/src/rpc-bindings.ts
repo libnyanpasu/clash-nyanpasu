@@ -898,7 +898,13 @@ export type ClashControlChannel = 'prefer_ipc' | 'http_only'
 export type ClashCore = ClashCore_Serialize | ClashCore_Deserialize
 
 export type ClashCoreType =
-  'mihomo' | 'mihomo-alpha' | 'clash-rs' | 'clash-rs-alpha' | 'clash' | 'meow'
+  | 'mihomo'
+  | 'mihomo-alpha'
+  | 'clash-rs'
+  | 'clash-rs-alpha'
+  | 'clash'
+  | 'meow'
+  | 'meow-alpha'
 
 export type ClashCore_Deserialize =
   | 'clash'
@@ -909,9 +915,16 @@ export type ClashCore_Deserialize =
   | 'mihomo-alpha'
   | 'clash-rs-alpha'
   | 'meow'
+  | 'meow-alpha'
 
 export type ClashCore_Serialize =
-  'clash' | 'clash-rs' | 'mihomo' | 'mihomo-alpha' | 'clash-rs-alpha' | 'meow'
+  | 'clash'
+  | 'clash-rs'
+  | 'mihomo'
+  | 'mihomo-alpha'
+  | 'clash-rs-alpha'
+  | 'meow'
+  | 'meow-alpha'
 
 export type ClashGuardOverrides = {
   'log-level': LogLevel
@@ -1739,7 +1752,6 @@ export type CoreStatusInfo = {
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
-/**  A failure of asking a core binary for its version. */
 export type CoreVersionError =
   | { kind: 'run_core_version'; core: string }
   | { kind: 'core_version_exit'; core: string }
@@ -2494,6 +2506,7 @@ export type ManifestVersionLatest = {
   clash_rs_alpha: string
   clash_premium: string
   meow: string
+  meow_alpha?: string
 }
 
 /**  What the materialization port was doing when it failed. */

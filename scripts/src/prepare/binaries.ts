@@ -62,9 +62,16 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
   };
 
   const meowManifest: ClashManifest = {
-    URL_PREFIX: "https://github.com/madeye/meow-rs/releases/download/",
+    URL_PREFIX: "https://github.com/meow-rs/meow-rs/releases/download/",
     VERSION: versionManifest.latest.meow,
     ARCH_MAPPING: versionManifest.arch_template.meow,
+  };
+
+  const meowAlphaManifest: ClashManifest = {
+    URL_PREFIX:
+      "https://github.com/meow-rs/meow-rs/releases/download/Prerelease-Alpha",
+    VERSION: versionManifest.latest.meow_alpha,
+    ARCH_MAPPING: versionManifest.arch_template.meow_alpha,
   };
 
   function targetName(name: string): string {
@@ -176,9 +183,27 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
       name: "meow",
       version: VERSION,
       targetFile: targetName("meow"),
-      exeFile: assetName,
+      exeFile: platform === "win32"
+        ? "meow.exe"
+        : `${assetName.replace(/\.tar\.gz$/, "")}/meow`,
       tmpFile: assetName,
       downloadURL: `${URL_PREFIX}${VERSION}/${assetName}`,
+    };
+  }
+
+  function getMeowAlphaInfo(): BinInfo {
+    const { URL_PREFIX, VERSION, ARCH_MAPPING } = meowAlphaManifest;
+    const mappedArch = mapArch(platform, arch);
+    const assetName = ARCH_MAPPING[mappedArch].replace("{}", VERSION!);
+    return {
+      name: "meow-alpha",
+      version: VERSION,
+      targetFile: targetName("meow-alpha"),
+      exeFile: platform === "win32"
+        ? "meow.exe"
+        : `${assetName.replace(/\.tar\.gz$/, "")}/meow`,
+      tmpFile: assetName,
+      downloadURL: `${URL_PREFIX}/${assetName}`,
     };
   }
 
@@ -220,6 +245,7 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
     clashRs: getClashRustInfo,
     clashRsAlpha: getClashRustAlphaInfo,
     meow: getMeowInfo,
+    meowAlpha: getMeowAlphaInfo,
     nyanpasuService: getNyanpasuServiceInfo,
   };
 }

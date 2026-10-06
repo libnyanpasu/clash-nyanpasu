@@ -29,6 +29,10 @@
       "description": "Test release preparation, publishing, finalization, and channel selection",
       "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/check-nightly-changes_test.ts scripts/src/release/publish_test.ts scripts/src/release/prepare-release_test.ts scripts/src/release/finalize-linux-release_test.ts scripts/src/updater/release-channel_test.ts"
     },
+    "test:manifest": {
+      "description": "Test core version manifest resolution and Meow asset integrity metadata",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/manifest scripts/src/prepare/binaries_test.ts scripts/src/prepare/resources_test.ts"
+    },
     "test:updater": {
       "description": "Test updater platform manifests, SourceForge mirrors, and release channels",
       "command": "deno test --config scripts/deno.jsonc -A scripts/src/updater/updater-platforms_test.ts scripts/src/updater/sourceforge-mirrors_test.ts scripts/src/updater/release-channel_test.ts"

@@ -9,6 +9,7 @@ mod clash_streams;
 pub mod configuration_status;
 pub mod convergence;
 pub mod core_lifecycle;
+pub mod core_version;
 mod direct_egress;
 pub(crate) mod effects;
 mod error;
@@ -110,6 +111,7 @@ pub struct ClientSetupArgs {
     pub geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+    pub core_versions: Arc<dyn core_version::CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
@@ -185,7 +187,8 @@ fn runtime_core_spec(
         | nyanpasu_config::application::ClashCore::ClashRsAlpha => CoreKind::ClashRust,
         nyanpasu_config::application::ClashCore::Mihomo
         | nyanpasu_config::application::ClashCore::MihomoAlpha => CoreKind::Mihomo,
-        nyanpasu_config::application::ClashCore::Meow => CoreKind::Meow,
+        nyanpasu_config::application::ClashCore::Meow
+        | nyanpasu_config::application::ClashCore::MeowAlpha => CoreKind::Meow,
     };
     Ok(nyanpasu_core_manager::CoreSpec {
         kind,
@@ -235,6 +238,7 @@ struct NyanpasuClientInner {
     streams: crate::core::clash::ws::StreamsClient,
     traffic: Option<crate::core::traffic::TrafficClient>,
     updater: crate::core::updater::UpdaterClient,
+    core_versions: Arc<dyn core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
@@ -275,6 +279,7 @@ impl NyanpasuClient {
             geo_index,
             os_proxy,
             binary_installer,
+            core_versions,
             effects,
             window,
             accelerators,
@@ -363,6 +368,7 @@ impl NyanpasuClient {
             geo_index,
             os_proxy,
             binary_installer,
+            core_versions,
             effects,
             window,
             accelerators,
@@ -402,6 +408,7 @@ impl NyanpasuClient {
         geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+        core_versions: Arc<dyn core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
@@ -642,6 +649,7 @@ impl NyanpasuClient {
                 streams,
                 traffic,
                 updater,
+                core_versions,
                 app_updater,
                 system_dns,
                 direct_egress,
@@ -812,6 +820,16 @@ impl NyanpasuClient {
 
     pub async fn uninstall_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.uninstall_service().await
+    }
+
+    pub async fn get_core_version(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> std::result::Result<String, RuntimeError> {
+        snafu::ResultExt::context(
+            self.inner.core_versions.read(core).await,
+            runtime_error::ReadCoreVersionSnafu,
+        )
     }
 
     pub async fn fetch_latest_core_versions(
@@ -2439,6 +2457,7 @@ pub(crate) mod tests {
             geo_index,
             os_proxy,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            Arc::new(core_version::MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -2874,6 +2893,42 @@ pub(crate) mod tests {
         assert_eq!(client.inner.local_source.addresses().ipv4, None);
     }
 
+    #[test]
+    fn core_version_reads_use_the_injected_port_and_keep_domain_errors() {
+        let dir = tempdir().unwrap();
+        let mut reader = core_version::MockCoreVersionReader::new();
+        reader
+            .expect_read()
+            .withf(|core| *core == nyanpasu_config::application::ClashCore::Meow)
+            .times(1)
+            .returning(|_| Ok("0.22.0".to_owned()));
+        reader
+            .expect_read()
+            .withf(|core| *core == nyanpasu_config::application::ClashCore::ClashRs)
+            .times(1)
+            .returning(|core| Err(core_version::CoreVersionError::CoreVersionNotReported { core }));
+        let mut args = test_client_args_with_endpoint(&dir, Arc::new(IdleEndpoint));
+        args.core_versions = Arc::new(reader);
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        tauri::async_runtime::block_on(async {
+            assert_eq!(
+                client
+                    .get_core_version(nyanpasu_config::application::ClashCore::Meow)
+                    .await
+                    .unwrap(),
+                "0.22.0"
+            );
+            assert!(matches!(
+                client
+                    .get_core_version(nyanpasu_config::application::ClashCore::ClashRs)
+                    .await,
+                Err(RuntimeError::ReadCoreVersion {
+                    source: core_version::CoreVersionError::CoreVersionNotReported { .. }
+                })
+            ));
+        });
+    }
+
     pub(crate) fn test_client_args_with_endpoint(
         dir: &TempDir,
         endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
@@ -2919,6 +2974,7 @@ pub(crate) mod tests {
             geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
@@ -3265,6 +3321,7 @@ pub(crate) mod tests {
             Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            Arc::new(core_version::MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -3431,6 +3488,7 @@ pub(crate) mod tests {
             geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
@@ -4407,6 +4465,7 @@ pub(crate) mod tests {
                 Arc::new(crate::core::geo::NoopCountryIndexSource),
                 Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+                Arc::new(core_version::MockCoreVersionReader::new()),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),

@@ -127,6 +127,7 @@ semver = '1.0'
 
 # Compression & Encoding
 flate2 = '1.0'
+tar = '0.4'
 zip = '8.0.0'
 zip-extensions = '0.14.0'
 base64 = '0.23'

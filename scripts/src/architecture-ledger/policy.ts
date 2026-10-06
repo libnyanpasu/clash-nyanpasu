@@ -79,7 +79,7 @@ export const STATIC_ITEM_RE =
 export const STATIC_GATE_PREFIX = "backend/tauri/src/";
 
 /**
- * Why a static may exist (AGENTS.md §7):
+ * Why a static may exist (docs/development/architecture.md):
  * - `immutable`: a constant or lookup table, initialized at most once and
  *   never written afterwards;
  * - `external`: a global that an OS or third-party API imposes;

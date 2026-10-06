@@ -56,7 +56,9 @@ Tests must use temporary or injected paths rather than real user configuration.
 - Services have an explicit role and injected dependencies, without new mutable global state.
 - Actors keep ownership private, use their mailbox for serialization, and avoid RPC cycles.
 - Tauri and infrastructure remain behind adapters; `NyanpasuClient` stays a facade.
-- Legacy bridges explain their blocker and removal condition.
+- No new Tauri dependency enters `NyanpasuClient`, typed clients, actors, or pure services
+  ([core and frontend separation](architecture.md#core-and-frontend-separation)).
+- Compatibility layers explain their blocker and removal condition.
 - Shared RPC changes preserve capability restrictions, owner isolation, errors, and events on both transports.
 - Tests use pure values, injection, or boundary fakes and verify meaningful behavior.
 - Relevant checks pass, generated bindings are current, and remaining limitations are documented.

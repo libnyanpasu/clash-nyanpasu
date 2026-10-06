@@ -2,7 +2,9 @@
 
 **日期：** 2026-07-13
 **状态修订：** 2026-09-10（PR-5 实施状态按当前主干更新；历史阶段设计正文保留）；2026-09-26（§1.3 换为选择性 TCC；PR-6/PR-7 状态、§11 指标说明、§12 证据与 residual 台账）
-**状态：** Implementing。PR-4S / S10 已完成；**PR-5 控制面下沉及 C/D-switch 已合并，daemon 故障恢复由本次变更补齐；Service 冒烟与 macOS DNS 实机验收待维护者执行，尚未完整关闭。** 当前证据、发布版本及人工清单见 [PR-5 收尾台账](../audit/2026-09-10-pr5-closeout.md)。PR-6 主体已合并；PR-7a/7b 与 TCC T10/T11 已在本地 stacked 分支交付、待合并（§2、§12.1）。整条 actor migration 未宣告完成：维护者实机 smoke 与三平台 CI 未完成（§12.2）。
+**状态：** Completed（2026-10-06）。actor/DI 迁移已完成，`::global()` 服务已全部移除；本文件仅作历史记录。当前架构规则见 [Architecture and ownership](../development/architecture.md)，后续目标为 core/GUI 拆分（同文档 Core and frontend separation 一节）。
+
+**完成前的最后状态（历史）：** Implementing。PR-4S / S10 已完成；**PR-5 控制面下沉及 C/D-switch 已合并，daemon 故障恢复由本次变更补齐；Service 冒烟与 macOS DNS 实机验收待维护者执行，尚未完整关闭。** 当前证据、发布版本及人工清单见 [PR-5 收尾台账](../audit/2026-09-10-pr5-closeout.md)。PR-6 主体已合并；PR-7a/7b 与 TCC T10/T11 已在本地 stacked 分支交付、待合并（§2、§12.1）。整条 actor migration 未宣告完成：维护者实机 smoke 与三平台 CI 未完成（§12.2）。
 
 **范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；已包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease` / 统一 lifecycle mutex / change_core lease span / updater stop-swap-restart；S05 Applied-based patch compensation 工作区已验证；S06 prepared mirrors / three-domain saga 工作区已验证；S07 profile materialization transactions / durable `Profiles.revision` / import fetch-before-commit / startup+periodic reconcile 工作区已验证；S08 `MutationOutcome` wire / Specta / frontend / import 终态协议 工作区已验证；S09 instance-owned `RebuildCoordinator` + test-only `fake-core` process matrix 工作区已验证）
 **取代：** `actor-migration-roadmap.md` v2  

@@ -1,9 +1,13 @@
 import { createRoot } from 'react-dom/client'
-import { expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import { useCurrentProfile } from '../src/pages/(editor)/editor/_modules/hooks'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
+
+// Generated commands take the desktop IPC path that `mockIPC` serves.
+beforeEach(() => vi.stubGlobal('isTauri', true))
+afterEach(() => vi.unstubAllGlobals())
 
 test('the editor model path survives a profiles refetch', async ({
   onTestFinished,

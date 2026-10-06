@@ -126,8 +126,8 @@ test('dragging, typing and presets preview the theme without saving it', async (
   await hex.fill('#00ff00')
   await expect.poll(customStyle).toBe(createTheme('#00ff00').cssVars)
 
-  await view.getByRole('radio', { name: '#9e1e67' }).click()
-  await expect.poll(customStyle).toBe(createTheme('#9e1e67').cssVars)
+  await view.getByRole('radio', { name: '#3d009e' }).click()
+  await expect.poll(customStyle).toBe(createTheme('#3d009e').cssVars)
 
   expect(backend.save).not.toHaveBeenCalled()
 })

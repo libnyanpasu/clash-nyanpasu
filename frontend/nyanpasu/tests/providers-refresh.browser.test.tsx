@@ -10,7 +10,7 @@ import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 // Client construction selects the desktop event adapter for this test.
 vi.hoisted(() => {
-  Object.assign(window, { __TAURI_INTERNALS__: {} })
+  Object.assign(window, { __TAURI_INTERNALS__: {}, isTauri: true })
 })
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 300))

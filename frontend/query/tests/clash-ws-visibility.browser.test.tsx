@@ -12,7 +12,7 @@ import { RpcProvider } from '../src/provider/rpc-provider'
 
 // The interface picks the Tauri event transport at import time.
 vi.hoisted(() => {
-  Object.assign(window, { __TAURI_INTERNALS__: {} })
+  Object.assign(window, { __TAURI_INTERNALS__: {}, isTauri: true })
 })
 
 const snapshot: ClashWsSnapshot = {

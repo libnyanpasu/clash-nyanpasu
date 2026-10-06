@@ -38,10 +38,10 @@ pub struct ScriptDirs {
 }
 
 impl ScriptDirs {
-    pub fn from_resolver(paths: &nyanpasu_paths::ResolvedPaths) -> Self {
+    pub fn from_resolver(paths: &nyanpasu_paths::PathResolver) -> Self {
         Self {
-            scripts: paths.scripts_dir(),
-            cache: paths.cache_dir(),
+            scripts: paths.scripts_dir().into_std_path_buf(),
+            cache: paths.cache_dir().into_std_path_buf(),
         }
     }
 

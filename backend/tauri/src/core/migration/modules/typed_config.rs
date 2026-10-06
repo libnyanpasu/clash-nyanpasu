@@ -47,7 +47,7 @@ impl ModuleMigrator for TypedConfigMigrator {
             TypedFileState::All => None,
             TypedFileState::None if applied >= SPLIT_LEGACY_CONFIG.revision() => Some(format!(
                 "application.yaml and session-state.yaml are missing from {}",
-                ctx.paths().app_config_dir().display()
+                ctx.paths().app_config_dir()
             )),
             TypedFileState::NeedsClashRepair if applied >= REPAIR_CLASH_CONFIG_PATH.revision() => {
                 Some(format!(
@@ -153,8 +153,10 @@ impl MigrationStep for RepairClashConfigPath {
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let previous_typed_path = ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE);
         let clash_config = if previous_typed_path.exists() {
-            read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&previous_typed_path)
-                .context("failed to read previous typed clash config")?
+            read_yaml::<nyanpasu_config::clash::config::ClashConfig>(
+                previous_typed_path.as_std_path(),
+            )
+            .context("failed to read previous typed clash config")?
         } else if has_legacy_inputs(ctx)? {
             let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
             let legacy_clash = read_legacy_clash_inputs(ctx)?;
@@ -609,7 +611,10 @@ mod tests {
             ..ClashConfig::default()
         };
         write_yaml(
-            &ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE),
+            ctx.paths()
+                .app_config_dir()
+                .join(PREVIOUS_TYPED_CLASH_FILE)
+                .as_std_path(),
             &previous,
         );
 

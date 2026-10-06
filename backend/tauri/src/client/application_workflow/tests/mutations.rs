@@ -328,9 +328,10 @@ pub(super) async fn fixture_from(
     .await;
     let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default()).await;
 
-    let paths = runtime::RuntimePaths::from_resolver(
-        &nyanpasu_paths::ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data")),
-    )
+    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+        dir.path(),
+        dir.path().join("data"),
+    ))
     .unwrap();
     let builder = Arc::new(ParkingBuilder {
         delegate: adapters::FsRuntimeBuildAdapter {

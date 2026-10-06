@@ -481,7 +481,7 @@ mod tests {
             b"{\"level\":\"INFO\",\"fields\":{\"message\":\"rpc log\"}}\n",
         )
         .unwrap();
-        let paths = args.paths.resolver().clone();
+        let paths = args.paths.clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
@@ -817,7 +817,7 @@ mod tests {
             crate::client::tests::TestControlEndpoint::succeeding(),
         );
         args.direct_egress = probe.clone();
-        let paths = args.paths.resolver().clone();
+        let paths = args.paths.clone();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: NyanpasuClient::try_new_with_args(args).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
@@ -936,7 +936,7 @@ mod tests {
         args.http_frontend = Some(Frontend::Embedded(Arc::new(Assets)));
         let routes = Arc::new(RpcHttpRoutes::default());
         args.http_routes = routes.clone();
-        let paths = args.paths.resolver().clone();
+        let paths = args.paths.clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
@@ -1049,7 +1049,7 @@ mod tests {
         args.logging.frontend = frontend_events.clone();
         let routes = Arc::new(RpcHttpRoutes::default());
         args.http_routes = routes.clone();
-        let paths = args.paths.resolver().clone();
+        let paths = args.paths.clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {

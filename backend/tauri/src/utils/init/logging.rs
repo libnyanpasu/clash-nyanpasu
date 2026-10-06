@@ -95,7 +95,7 @@ pub fn init(
     paths: &PathResolver,
 ) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
     let jobs = crate::client::jobs::capture();
-    let log_dir = paths.logs_dir().unwrap();
+    let log_dir = paths.app_logs_dir();
     if !log_dir.exists() {
         let _ = fs::create_dir_all(&log_dir);
     }
@@ -110,7 +110,7 @@ pub fn init(
     let (filter, filter_handle) = reload::Layer::new(app_filter(log_level));
 
     // register the logger
-    let (appender, _guard) = get_file_appender(log_dir.clone(), log_rotation)?;
+    let (appender, _guard) = get_file_appender(log_dir.clone().into_std_path_buf(), log_rotation)?;
     let (file_layer, file_handle) = reload::Layer::new(
         fmt::layer()
             .json()
@@ -135,14 +135,14 @@ pub fn init(
             // (such as the startup effect replaying the defaults) keeps the
             // current one.
             if let Some(rotation) = signal.1.filter(|r| *r != current_rotation) {
-                let (appender, guard) = match get_file_appender(paths.logs_dir().unwrap(), rotation)
-                {
-                    Ok(x) => x,
-                    Err(e) => {
-                        error!("failed to create file appender: {}", e);
-                        continue;
-                    }
-                };
+                let (appender, guard) =
+                    match get_file_appender(paths.app_logs_dir().into_std_path_buf(), rotation) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            error!("failed to create file appender: {}", e);
+                            continue;
+                        }
+                    };
                 if let Err(e) = file_handle.modify(|layer| *layer.writer_mut() = appender) {
                     error!("failed to modify file appender: {}", e);
                     continue;
@@ -174,7 +174,7 @@ pub fn init(
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(filter))
         .with(jobs.layer())
-        .with(profilers.trace_layer(&log_dir));
+        .with(profilers.trace_layer(log_dir.as_std_path()));
 
     log_tracer::LogTracer::init()?;
     tracing::subscriber::set_global_default(subscriber)

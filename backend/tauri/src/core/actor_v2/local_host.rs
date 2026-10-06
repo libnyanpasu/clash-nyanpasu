@@ -10,16 +10,16 @@ use nyanpasu_core_manager::{
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 
-use nyanpasu_paths::ResolvedPaths;
+use nyanpasu_paths::PathResolver;
 
-pub async fn build(paths: &ResolvedPaths) -> Result<CoreControl> {
+pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
-        runtime_dir: Some(to_utf8(runtime_root.join("control"))?),
+        runtime_dir: Some(to_utf8(runtime_root.join("control").into_std_path_buf())?),
         local_ipc_policy: LocalIpcPolicy::Disable,
         ..ManagerOptions::default()
     };
-    let working_dir = to_utf8(paths.app_data_dir().to_owned())?;
+    let working_dir = to_utf8(paths.app_data_dir().as_std_path().to_owned())?;
     let config_path = paths.application_config_path();
     let config_path = if config_path.try_exists()? {
         config_path
@@ -29,7 +29,7 @@ pub async fn build(paths: &ResolvedPaths) -> Result<CoreControl> {
     let native_store = Arc::new(FsNativeStore::new(
         working_dir.clone(),
         StoreOwner::current(),
-        legacy_kind(&config_path)?,
+        legacy_kind(config_path.as_std_path())?,
     ));
     let manager = CoreManager::builder(options).native_store(native_store);
 
@@ -41,7 +41,7 @@ pub async fn build(paths: &ResolvedPaths) -> Result<CoreControl> {
     ));
 
     let manager = manager.build().await?;
-    let source_dir = to_utf8(runtime_root.join("staging"))?;
+    let source_dir = to_utf8(runtime_root.join("staging").into_std_path_buf())?;
 
     Ok(CoreControl::spawn(
         manager,
@@ -73,7 +73,9 @@ pub fn core_spec(
     paths: &nyanpasu_paths::PathResolver,
 ) -> Result<CoreSpec, CoreSpecError> {
     core_spec_with(core, |core| {
-        paths.find_binary_path(core.get_executable_name())
+        paths
+            .find_binary_path(core.get_executable_name())
+            .map(Utf8PathBuf::into_std_path_buf)
     })
 }
 
@@ -117,7 +119,7 @@ mod tests {
     async fn the_local_host_spawns_under_a_temp_root() {
         let root = tempfile::TempDir::new().unwrap();
         let paths =
-            ResolvedPaths::with_base_dirs(root.path().join("config"), root.path().join("data"));
+            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
 
         let control = build(&paths).await.unwrap();
 
@@ -128,7 +130,7 @@ mod tests {
     #[tokio::test]
     async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths = ResolvedPaths::with_base_dirs(root.path().to_owned(), root.path().join("data"));
+        let paths = crate::client::tests::test_paths(root.path(), root.path().join("data"));
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 

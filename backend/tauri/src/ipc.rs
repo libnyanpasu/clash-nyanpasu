@@ -889,8 +889,7 @@ pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result
 #[tauri::command]
 #[specta::specta]
 pub fn open_app_config_dir(paths: State<'_, PathResolver>) -> Result<()> {
-    let config_dir = (paths.config_dir())?;
-    (crate::utils::open::that(config_dir))?;
+    (crate::utils::open::that(paths.app_config_dir()))?;
     Ok(())
 }
 
@@ -898,8 +897,7 @@ pub fn open_app_config_dir(paths: State<'_, PathResolver>) -> Result<()> {
 #[tauri::command]
 #[specta::specta]
 pub fn open_app_data_dir(paths: State<'_, PathResolver>) -> Result<()> {
-    let data_dir = (paths.data_dir())?;
-    (crate::utils::open::that(data_dir))?;
+    (crate::utils::open::that(paths.app_data_dir()))?;
     Ok(())
 }
 
@@ -956,8 +954,7 @@ pub fn get_core_dir() -> Result<String> {
 #[tauri::command]
 #[specta::specta]
 pub fn open_logs_dir(paths: State<'_, PathResolver>) -> Result<()> {
-    let log_dir = (paths.logs_dir())?;
-    (crate::utils::open::that(log_dir))?;
+    (crate::utils::open::that(paths.app_logs_dir()))?;
     Ok(())
 }
 
@@ -1159,7 +1156,7 @@ pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: Stri
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn collect_envs<'a>(paths: State<'_, PathResolver>) -> Result<EnvInfo<'a>> {
+pub fn collect_envs(paths: State<'_, PathResolver>) -> Result<EnvInfo<'static>> {
     Ok((crate::utils::collect::collect_envs(paths))?)
 }
 
@@ -1178,33 +1175,35 @@ pub fn is_appimage() -> Result<bool> {
     Ok(*crate::consts::IS_APPIMAGE)
 }
 
+#[cfg(windows)]
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn get_custom_app_dir(paths: State<'_, PathResolver>) -> Result<Option<String>> {
-    match paths.custom_config_dir() {
-        Ok(Some(path)) => Ok(Some(path.to_string_lossy().to_string())),
+pub fn get_custom_app_dir() -> Result<Option<String>> {
+    match nyanpasu_paths::registry::custom_config_dir(crate::host_paths::APP_NAME) {
+        Ok(Some(path)) => Ok(Some(path.into_string())),
         Ok(None) => Ok(None),
-        Err(err) => Err(IpcError::from(err)),
+        Err(err) => Err(IpcError::from(anyhow::Error::from(err))),
     }
+}
+
+#[cfg(not(windows))]
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub fn get_custom_app_dir() -> Result<Option<String>> {
+    Ok(None)
 }
 
 #[cfg(windows)]
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn set_custom_app_dir(
-    app_handle: tauri::AppHandle,
-    paths: State<'_, PathResolver>,
-    path: String,
-) -> Result {
+pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> Result {
     use crate::utils::{self, dialog::migrate_dialog};
     use rust_i18n::t;
-    use std::path::PathBuf;
 
     let path_str = path.clone();
-    let path = PathBuf::from(path);
-    let paths = paths.clone();
 
     // show a dialog to ask whether to migrate the data
     let res =
@@ -1226,7 +1225,10 @@ pub async fn set_custom_app_dir(
                 ).spawn().unwrap().wait()?;
                 utils::help::quit_application(&app_handle);
             } else {
-                paths.set_custom_config_dir(&path)?;
+                nyanpasu_paths::registry::set_custom_config_dir(
+                    crate::host_paths::APP_NAME,
+                    camino::Utf8Path::new(&path_str),
+                )?;
             }
             Ok::<_, anyhow::Error>(())
         })
@@ -1285,14 +1287,14 @@ pub async fn set_custom_app_dir(_path: String) -> Result {
 pub mod uwp {
     use super::Result;
     use crate::core::win_uwp;
-    use nyanpasu_paths::ResolvedPaths;
-    use tauri::State;
 
     #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
-    pub async fn invoke_uwp_tool(paths: State<'_, ResolvedPaths>) -> Result {
-        (win_uwp::invoke_uwptools(paths.app_resources_dir()?).await)?;
+    pub async fn invoke_uwp_tool(app_handle: tauri::AppHandle) -> Result {
+        let resources_dir = (crate::utils::init::bundled_resources_dir(&app_handle))
+            .map_err(anyhow::Error::from)?;
+        (win_uwp::invoke_uwptools(&resources_dir).await)?;
         Ok(())
     }
 }
@@ -1343,7 +1345,7 @@ pub async fn set_tray_icon_from_bytes(
 #[tauri::command]
 #[specta::specta]
 pub async fn is_tray_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> {
-    let icon_path = (crate::core::tray::icon::tray_icons_path(paths, mode.as_str()))?;
+    let icon_path = crate::core::tray::icon::tray_icons_path(paths, mode.as_str());
     Ok(tokio::fs::metadata(icon_path).await.is_ok())
 }
 
@@ -1442,10 +1444,13 @@ pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Resul
     use snafu::ResultExt;
 
     let args = async {
-        let data_dir = paths.data_dir().context(ResolveServiceDirsSnafu)?;
-        let config_dir = paths.config_dir().context(ResolveServiceDirsSnafu)?;
-        let app_dir = paths.install_dir().context(ResolveServiceDirsSnafu)?;
-        get_service_install_args(&data_dir, &config_dir, &app_dir).await
+        let app_dir = paths.app_install_dir().context(ResolveServiceDirsSnafu)?;
+        get_service_install_args(
+            paths.app_data_dir().as_std_path(),
+            paths.app_config_dir().as_std_path(),
+            app_dir.as_std_path(),
+        )
+        .await
     }
     .await
     .context(crate::client::runtime_error::PrepareServiceInstallPromptSnafu)?

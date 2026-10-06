@@ -1,21 +1,16 @@
-use crate::PathResolver;
-use anyhow::Result;
-use std::path::PathBuf;
+use crate::{DiscoverError, HostInputs, Root, suggested};
+use camino::Utf8PathBuf;
 
-impl PathResolver {
-    pub(super) fn platform_config_dir(&self) -> Result<PathBuf> {
-        nyanpasu_utils::dirs::suggest_config_dir(self.directory_name()?)
-            .ok_or_else(|| anyhow::anyhow!("failed to get the app config dir"))
-    }
-
-    pub(super) fn platform_data_dir(&self) -> Result<PathBuf> {
-        nyanpasu_utils::dirs::suggest_data_dir(self.directory_name()?)
-            .ok_or_else(|| anyhow::anyhow!("failed to get the app data dir"))
-    }
-
-    pub fn custom_config_dir(&self) -> Result<Option<PathBuf>> {
-        Ok(None)
-    }
+/// The OS defaults. There is no portable layout off Windows.
+pub(super) fn base_dirs(inputs: &HostInputs) -> Result<(Utf8PathBuf, Utf8PathBuf), DiscoverError> {
+    let name = directory_name(&inputs.app_name);
+    Ok((
+        suggested(
+            Root::Config,
+            nyanpasu_utils::dirs::suggest_config_dir(&name),
+        )?,
+        suggested(Root::Data, nyanpasu_utils::dirs::suggest_data_dir(&name))?,
+    ))
 }
 
 pub(super) fn executable_name(name: &str) -> String {

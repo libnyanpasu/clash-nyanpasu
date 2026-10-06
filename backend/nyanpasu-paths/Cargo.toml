@@ -6,13 +6,14 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-anyhow = '1'
+camino = '1.1.9'
+convert_case = '0.12'
 dunce = '1.0.4'
 fs-err = { workspace = true }
 fs_extra = '1.3'
-nyanpasu-utils = { workspace = true }
-convert_case = '0.12'
 log = '0.4'
+nyanpasu-utils = { workspace = true }
+snafu = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = '0.56'

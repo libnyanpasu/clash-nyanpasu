@@ -8,7 +8,7 @@ use crate::core::backup::{
     StorageSource,
 };
 use anyhow::{Context, bail};
-use nyanpasu_paths::ResolvedPaths;
+use nyanpasu_paths::PathResolver;
 use semver::Version;
 use time::OffsetDateTime;
 
@@ -23,11 +23,11 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn with_target(target: Version, paths: ResolvedPaths, force: bool) -> anyhow::Result<Self> {
+    pub fn with_target(target: Version, paths: PathResolver, force: bool) -> anyhow::Result<Self> {
         Self::with_context(target, force, Ctx::from_paths(paths))
     }
 
-    pub fn with_paths(paths: ResolvedPaths, force: bool) -> anyhow::Result<Self> {
+    pub fn with_paths(paths: PathResolver, force: bool) -> anyhow::Result<Self> {
         Self::with_context(current_version()?, force, Ctx::from_paths(paths))
     }
 
@@ -120,9 +120,11 @@ impl Runner {
             .context("failed to persist successful migration state")?;
 
         let backups_dir = self.ctx.paths().backups_dir();
-        if let Err(error) =
-            backup::prune_backups(&backups_dir, MIGRATION_PREFIX, KEEP_MIGRATION_BACKUPS)
-        {
+        if let Err(error) = backup::prune_backups(
+            backups_dir.as_std_path(),
+            MIGRATION_PREFIX,
+            KEEP_MIGRATION_BACKUPS,
+        ) {
             eprintln!("Failed to prune old migration backups: {error:#}");
         }
         Ok(())
@@ -163,13 +165,11 @@ impl Runner {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(true),
             Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to read {}", config_dir.display()));
+                return Err(error).with_context(|| format!("failed to read {config_dir}"));
             }
         };
         for entry in entries {
-            let entry =
-                entry.with_context(|| format!("failed to read {}", config_dir.display()))?;
+            let entry = entry.with_context(|| format!("failed to read {config_dir}"))?;
             if entry.file_name() != STORE_FILE_NAME {
                 return Ok(false);
             }
@@ -1590,7 +1590,7 @@ mod tests {
         }
 
         fn backups_dir(&self) -> std::path::PathBuf {
-            self.ctx.paths().backups_dir()
+            self.ctx.paths().backups_dir().into_std_path_buf()
         }
 
         fn backups(&self, prefix: &str) -> Vec<String> {

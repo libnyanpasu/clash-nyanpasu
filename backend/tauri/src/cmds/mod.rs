@@ -76,6 +76,8 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
                 std::process::Command::new(path).args(args).spawn().unwrap();
             }
             Commands::Collect => {
+                // The core binaries are looked up in the data dir, which the command creates.
+                nyanpasu_paths::create_dir_all(paths.app_data_dir()).unwrap();
                 let envs = crate::utils::collect::collect_envs(paths).unwrap();
                 println!("{envs:#?}");
             }

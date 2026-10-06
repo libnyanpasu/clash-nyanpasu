@@ -3,9 +3,8 @@ use crate::client::{
     effects::status::failure_text,
     ui_effects::ports::{
         ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
-        MissingWidgetSenderSnafu, ResolveStatePathSnafu, ShutdownBeforeConnectSnafu,
-        ShuttingDownSnafu, SpawnWidgetSnafu, StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu,
-        WidgetError, WidgetExitedSnafu,
+        MissingWidgetSenderSnafu, ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu,
+        StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
     },
 };
 
@@ -426,9 +425,7 @@ impl WidgetHost for ProcessWidgetHost {
         tracing::debug!("Spawning widget process for {}...", variant);
         let widget_win_state_path = self
             .paths
-            .data_dir()
-            .map_err(anyhow::Error::into)
-            .context(ResolveStatePathSnafu)?
+            .app_data_dir()
             .join(format!("widget_{variant}.state"));
         let child = tokio::process::Command::new(current_exe)
             .arg("statistic-widget")

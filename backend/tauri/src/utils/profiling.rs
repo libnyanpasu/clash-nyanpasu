@@ -31,12 +31,12 @@ impl Profilers {
     /// allocations are recorded only from here on.
     #[cfg(feature = "dhat-heap")]
     pub fn start_heap(&mut self, paths: &nyanpasu_paths::PathResolver) {
-        let dir = paths
-            .logs_dir()
+        let dir = paths.app_logs_dir();
+        nyanpasu_paths::create_dir_all(&dir)
             .expect("the heap profile is written to the logs directory");
         self.heap = Some(
             dhat::Profiler::builder()
-                .file_name(output_file(&dir, "dhat-heap"))
+                .file_name(output_file(dir.as_std_path(), "dhat-heap"))
                 .build(),
         );
     }

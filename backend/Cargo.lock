@@ -6771,13 +6771,14 @@ dependencies = [
 name = "nyanpasu-paths"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "camino",
  "convert_case",
  "dunce",
  "fs-err",
  "fs_extra",
  "log",
  "nyanpasu-utils",
+ "snafu",
  "tempfile",
  "winreg 0.56.0",
 ]

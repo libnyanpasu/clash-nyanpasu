@@ -112,10 +112,6 @@ pub enum WidgetError {
     LocateExecutable { source: std::io::Error },
     #[snafu(display("could not create the widget's IPC server"))]
     CreateIpcServer { source: WidgetIpcError },
-    #[snafu(display("could not resolve the widget's state path"))]
-    ResolveStatePath {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
     #[snafu(display("could not hand the app's output to the widget"))]
     DuplicateStdio { source: std::io::Error },
     #[snafu(display("could not spawn the {variant} widget"))]

@@ -27,10 +27,9 @@ pub struct MigrateOpts {
 ///
 /// The `app_config_dir` would create a new dir while access it.
 fn is_fresh_install_instance(paths: &PathResolver) -> bool {
-    paths
-        .config_dir()
+    nyanpasu_paths::create_dir_all(paths.app_config_dir())
         .ok()
-        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .and_then(|()| std::fs::read_dir(paths.app_config_dir()).ok())
         .is_some_and(|entry| {
             let dirs = entry.collect::<Vec<Result<_, _>>>();
             dirs.is_empty()
@@ -65,8 +64,9 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
         }),
     };
     let mut runner = paths
-        .resolve_paths(None)
-        .and_then(|paths| Runner::with_target(target, paths, args.force))
+        .create_base_dirs()
+        .map_err(anyhow::Error::from)
+        .and_then(|()| Runner::with_target(target, paths.clone(), args.force))
         .unwrap_or_else(|error| {
             eprintln!("Failed to initialize migration runner: {error:#}");
             std::process::exit(1);
@@ -140,7 +140,8 @@ pub fn migrate_home_dir_handler(target_path: &str, paths: &PathResolver) -> anyh
         std::process::exit(1);
     }
 
-    let current_home_dir = paths.config_dir()?;
+    nyanpasu_paths::create_dir_all(paths.app_config_dir())?;
+    let current_home_dir = paths.app_config_dir().as_std_path().to_owned();
     let target_home_dir = PathBuf::from_str(target_path)?;
 
     // 1. waiting for app exited
@@ -187,7 +188,10 @@ pub fn migrate_home_dir_handler(target_path: &str, paths: &PathResolver) -> anyh
 
     // 3. do config migrate and update the registry.
     utils::init::do_config_migration(&current_home_dir, &target_home_dir)?;
-    paths.set_custom_config_dir(target_home_dir.as_path())?;
+    nyanpasu_paths::registry::set_custom_config_dir(
+        crate::host_paths::APP_NAME,
+        camino::Utf8Path::new(target_path),
+    )?;
     println!("migration finished. starting application...");
     drop(single_instance); // release single instance lock
 

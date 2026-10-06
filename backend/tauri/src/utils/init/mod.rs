@@ -2,7 +2,7 @@ use crate::core::migration::modules::profiles::ProfilesFormat;
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
 use nyanpasu_core::format::Format;
-use nyanpasu_paths::{PathResolver, ResolvedPaths};
+use nyanpasu_paths::PathResolver;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use std::{
@@ -34,7 +34,7 @@ pub fn run_pending_migrations(paths: &PathResolver) -> Result<()> {
         .write(true)
         .create(true)
         .truncate(true)
-        .open(paths.data_dir()?.join("migration.log"))?;
+        .open(paths.app_data_dir().join("migration.log"))?;
     let mut command = Command::new(current_exe);
     command.arg("migrate");
     run_migration_command(command, file)
@@ -154,35 +154,30 @@ pub fn init_config(paths: &PathResolver) -> Result<()> {
     //     }
     // }
 
-    crate::log_err!(paths.profiles_dir().map(|profiles_dir| {
-        if !profiles_dir.exists() {
-            let _ = fs::create_dir_all(&profiles_dir);
-        }
-    }));
-
-    crate::log_err!(paths.profiles_path().map(|path| {
-        if !path.exists() {
-            // Stamped like every later write, since the app refuses to load
-            // an unstamped profiles.yaml.
-            let mut content = Vec::new();
-            ProfilesFormat::default().serialize(
-                &mut content,
-                &nyanpasu_config::profile::Profiles::default(),
-                Some("# Clash Nyanpasu"),
-            )?;
-            fs::write(&path, content)
-                .with_context(|| format!("failed to save file \"{}\"", path.display()))?;
-        }
-        <Result<()>>::Ok(())
-    }));
+    let path = paths.profiles_path();
+    if !path.exists() {
+        // Stamped like every later write, since the app refuses to load
+        // an unstamped profiles.yaml.
+        let mut content = Vec::new();
+        ProfilesFormat::default().serialize(
+            &mut content,
+            &nyanpasu_config::profile::Profiles::default(),
+            Some("# Clash Nyanpasu"),
+        )?;
+        fs::write(&path, content).with_context(|| format!("failed to save file \"{path}\""))?;
+    }
 
     Ok(())
 }
 
+/// The bundled `resources` dir, which only Tauri can locate.
+pub fn bundled_resources_dir(manager: &impl tauri::Manager<tauri::Wry>) -> tauri::Result<PathBuf> {
+    Ok(manager.path().resource_dir()?.join("resources"))
+}
+
 /// initialize app resources
-pub fn init_resources(paths: &ResolvedPaths) -> Result<()> {
-    let app_dir = paths.app_data_dir();
-    let res_dir = paths.app_resources_dir()?;
+pub fn init_resources(app_dir: &Path, res_dir: Option<&Path>) -> Result<()> {
+    let res_dir = res_dir.ok_or_else(|| anyhow!("the bundled resources dir is unknown"))?;
 
     if !app_dir.exists() {
         let _ = fs::create_dir_all(app_dir);
@@ -316,8 +311,11 @@ fn config_hash(config_dir: &Path) -> String {
 
 pub fn check_singleton(paths: &PathResolver) -> Result<Option<single_instance::SingleInstance>> {
     // The config dir is created first, as the lock file and the hash fallback live in it.
-    let config_dir = paths.config_dir()?;
-    let placeholder = single_instance_placeholder(crate::host_paths::APP_NAME, &config_dir);
+    nyanpasu_paths::create_dir_all(paths.app_config_dir())?;
+    let placeholder = single_instance_placeholder(
+        crate::host_paths::APP_NAME,
+        paths.app_config_dir().as_std_path(),
+    );
     for i in 0..5 {
         let instance = single_instance::SingleInstance::new(&placeholder)
             .context("failed to create single instance")?;

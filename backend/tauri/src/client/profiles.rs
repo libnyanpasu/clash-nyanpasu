@@ -408,7 +408,6 @@ mod tests {
         ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
     use nyanpasu_core::state::ReplaceIfVersionError;
-    use nyanpasu_paths::ResolvedPaths;
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
 
@@ -839,10 +838,7 @@ mod tests {
     async fn refresh_downloads_writes_and_commits_subscription() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -1452,10 +1448,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
@@ -1506,10 +1499,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
@@ -1545,10 +1535,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
@@ -1585,10 +1572,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = std::sync::Arc::new(ProfileFileService::new(
             paths,
             std::sync::Arc::new(NoProxyPort),
@@ -1750,10 +1734,7 @@ mod tests {
     async fn add_generates_uid_canonical_path_and_writes_initial_file() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2543,10 +2524,7 @@ mod tests {
     async fn add_success_leaves_no_materialization_staging_leftovers() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2584,10 +2562,7 @@ mod tests {
     async fn refresh_persist_failure_restores_previous_materialized_bytes() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -2673,10 +2648,7 @@ mod tests {
     async fn delete_unreferenced_managed_profile_removes_file() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -3101,10 +3073,7 @@ mod tests {
     async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = ResolvedPaths::with_base_dirs(
-            config_dir.path().to_path_buf(),
-            data_dir.path().to_path_buf(),
-        );
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
         let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -4414,10 +4383,7 @@ mod tests {
             let target = target_dir.path().join("external.yaml");
             std::fs::write(&target, "proxies: []\n").unwrap();
             let fs = Arc::new(ProfileFileService::new(
-                ResolvedPaths::with_base_dirs(
-                    config_dir.path().to_path_buf(),
-                    data_dir.path().to_path_buf(),
-                ),
+                crate::client::tests::test_paths(config_dir.path(), data_dir.path()),
                 Arc::new(NoProxyPort),
             ));
             let client = ProfilesClient::new(

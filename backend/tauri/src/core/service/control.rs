@@ -1,3 +1,4 @@
+use nyanpasu_paths::InstallDirError;
 use runas::Command as RunasCommand;
 use serde::Serialize;
 use snafu::{ResultExt, Snafu, ensure};
@@ -35,10 +36,6 @@ impl std::fmt::Display for ServiceCommand {
     }
 }
 
-fn boxed(error: anyhow::Error) -> Box<dyn std::error::Error + Send + Sync> {
-    error.into()
-}
-
 #[cfg(windows)]
 type UserError = std::io::Error;
 #[cfg(not(windows))]
@@ -57,9 +54,9 @@ pub enum ServiceCommandError {
     },
     #[snafu(display("could not resolve the application directories: {source}"))]
     ResolveServiceDirs {
-        #[snafu(source(from(anyhow::Error, boxed)))]
+        #[snafu(source(from(InstallDirError, Box::new)))]
         #[serde(skip)]
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<InstallDirError>,
     },
     #[snafu(display("could not run the service {command} command: {source}"))]
     RunElevated {

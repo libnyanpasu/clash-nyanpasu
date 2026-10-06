@@ -1,4 +1,4 @@
-use nyanpasu_paths::ResolvedPaths;
+use nyanpasu_paths::PathResolver;
 mod app_lifecycle;
 pub mod app_update;
 mod application;
@@ -94,7 +94,7 @@ pub struct ClientSetupArgs {
     pub logging: logs::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
-    pub paths: ResolvedPaths,
+    pub paths: PathResolver,
     /// Opened by the composition root, which also manages the same instance
     /// for the storage commands.
     pub storage: Storage,
@@ -133,21 +133,21 @@ pub struct NyanpasuClient {
 async fn new_typed_config_clients(
     mutations: crate::state::mutation::MutationCoordinator,
     build_channel: crate::bundle::Channel,
-    paths: ResolvedPaths,
+    paths: PathResolver,
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
 ) -> anyhow::Result<(ApplicationClient, SessionStateClient, ClashConfigClient)> {
     let application = ApplicationClient::new(
         mutations.clone(),
         build_channel,
-        utf8_path(paths.application_config_path())?,
+        utf8_path(paths.application_config_path().into_std_path_buf())?,
         shutdown.child_token(),
         tasks,
     )
     .await?;
 
     let session_state = SessionStateClient::new(
-        utf8_path(paths.session_state_path())?,
+        utf8_path(paths.session_state_path().into_std_path_buf())?,
         shutdown.child_token(),
         tasks,
     )
@@ -155,7 +155,7 @@ async fn new_typed_config_clients(
 
     let clash_config = ClashConfigClient::new(
         mutations.clone(),
-        utf8_path(paths.clash_config_path())?,
+        utf8_path(paths.clash_config_path().into_std_path_buf())?,
         shutdown.child_token(),
         tasks,
     )
@@ -221,7 +221,7 @@ struct NyanpasuClientInner {
     fs: Arc<dyn ProfileFsPort>,
     ports: Arc<SessionPortResolver>,
     profiles_dir: PathBuf,
-    paths: ResolvedPaths,
+    paths: PathResolver,
     storage: Storage,
     application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
@@ -277,11 +277,11 @@ impl NyanpasuClient {
             shutdown,
             tasks,
         } = args;
-        let profiles_dir = paths.app_profiles_dir();
+        let profiles_dir = paths.app_profiles_dir().into_std_path_buf();
         let backup_paths = paths.clone();
-        let instance_config_dir = paths.app_config_dir().to_path_buf();
+        let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
         let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
-        let profiles_path = utf8_path(paths.profiles_path())?;
+        let profiles_path = utf8_path(paths.profiles_path().into_std_path_buf())?;
         let runtime_paths_for_setup = runtime_paths.clone();
         let jobs_for_setup = jobs.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
@@ -384,7 +384,7 @@ impl NyanpasuClient {
         ports: Arc<SessionPortResolver>,
         profiles_dir: PathBuf,
         instance_config_dir: PathBuf,
-        paths: ResolvedPaths,
+        paths: PathResolver,
         storage: Storage,
         runtime_paths: RuntimePaths,
         core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
@@ -728,9 +728,11 @@ impl NyanpasuClient {
                     kind: BackupKind::Manual,
                     now: time::OffsetDateTime::now_utc(),
                 })?;
-                if let Err(error) =
-                    backup::prune_backups(&paths.backups_dir(), MANUAL_PREFIX, KEEP_MANUAL_BACKUPS)
-                {
+                if let Err(error) = backup::prune_backups(
+                    paths.backups_dir().as_std_path(),
+                    MANUAL_PREFIX,
+                    KEEP_MANUAL_BACKUPS,
+                ) {
                     tracing::warn!(%error, "failed to prune old manual backups");
                 }
                 Ok(info)
@@ -741,7 +743,7 @@ impl NyanpasuClient {
 
     /// `<data>/backups`, created when it does not exist yet.
     pub fn backups_dir(&self) -> std::io::Result<PathBuf> {
-        let dir = self.inner.paths.backups_dir();
+        let dir = self.inner.paths.backups_dir().into_std_path_buf();
         std::fs::create_dir_all(&dir)?;
         Ok(dir)
     }
@@ -2209,10 +2211,10 @@ pub(crate) mod tests {
 
     /// Seeds `path` with [`test_clash_config`], which the clash config client
     /// then loads instead of creating the default.
-    fn test_backup_deps(dir: &TempDir) -> (ResolvedPaths, Storage) {
-        let paths = ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"));
+    fn test_backup_deps(dir: &TempDir) -> (PathResolver, Storage) {
+        let paths = test_paths(dir.path(), dir.path().join("data"));
         std::fs::create_dir_all(paths.app_data_dir()).unwrap();
-        let storage = Storage::try_new(&paths.storage_path()).unwrap();
+        let storage = Storage::try_new(paths.storage_path().as_std_path()).unwrap();
         (paths, storage)
     }
 
@@ -2287,7 +2289,7 @@ pub(crate) mod tests {
         use crate::client::logs::LogSource;
         use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
         let dir = tempdir().unwrap();
-        let paths = ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let paths = test_paths(dir.path(), dir.path().join("data"));
         std::fs::create_dir_all(paths.app_logs_dir()).unwrap();
         std::fs::write(
             paths
@@ -2407,8 +2409,9 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logs::test_setup(
-                ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"))
-                    .app_logs_dir(),
+                test_paths(dir.path(), dir.path().join("data"))
+                    .app_logs_dir()
+                    .into_std_path_buf(),
             ),
             profiles.jobs(),
             application,
@@ -2421,11 +2424,7 @@ pub(crate) mod tests {
             PathBuf::new(),
             backup_paths,
             storage,
-            RuntimePaths::from_resolver(&ResolvedPaths::with_base_dirs(
-                dir.path().into(),
-                dir.path().join("data"),
-            ))
-            .unwrap(),
+            RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))).unwrap(),
             Arc::new(runtime_core_spec),
             crate::enhance::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
@@ -2902,7 +2901,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
-            logging: logs::test_setup(paths.app_logs_dir()),
+            logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
@@ -3015,9 +3014,9 @@ pub(crate) mod tests {
                 endpoint: service_endpoint,
                 calls: calls.clone(),
                 stopped: std::sync::atomic::AtomicBool::new(false),
-                installed_for: args.paths.app_config_dir().to_path_buf(),
+                installed_for: args.paths.app_config_dir().as_std_path().to_path_buf(),
             },
-            application_config: args.paths.application_config_path(),
+            application_config: args.paths.application_config_path().into_std_path_buf(),
         });
         let (core_v2, service) = std::thread::spawn(move || {
             tauri::async_runtime::block_on(async {
@@ -3212,7 +3211,7 @@ pub(crate) mod tests {
         fetcher: Arc<dyn SubscriptionFetcher>,
     ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
-        let paths = ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let paths = test_paths(dir.path(), dir.path().join("data"));
         let ports = Arc::new(SessionPortResolver::default());
         let file_service = Arc::new(ProfileFileService::new(
             paths.clone(),
@@ -3239,8 +3238,9 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logs::test_setup(
-                ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"))
-                    .app_logs_dir(),
+                test_paths(dir.path(), dir.path().join("data"))
+                    .app_logs_dir()
+                    .into_std_path_buf(),
             ),
             profiles.jobs(),
             application,
@@ -3249,7 +3249,7 @@ pub(crate) mod tests {
             profiles,
             file_service.clone() as Arc<dyn ProfileFsPort>,
             ports,
-            paths.app_profiles_dir(),
+            paths.app_profiles_dir().into_std_path_buf(),
             PathBuf::new(),
             backup_paths,
             storage,
@@ -3374,7 +3374,7 @@ pub(crate) mod tests {
             drop(session_state);
             drop(clash_config);
 
-            let paths = ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"));
+            let paths = test_paths(dir.path(), dir.path().join("data"));
             let (loaded, _session_state, _clash_config) = new_typed_config_clients(
                 crate::state::mutation::MutationCoordinator::isolated(),
                 crate::bundle::Channel::Stable,
@@ -3416,7 +3416,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
-            logging: logs::test_setup(paths.app_logs_dir()),
+            logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
@@ -3459,13 +3459,21 @@ pub(crate) mod tests {
         });
     }
 
+    /// A resolver rooted at `config` and `data`, for tests that do not run from an installed
+    /// executable.
+    pub(crate) fn test_paths(
+        config: impl AsRef<std::path::Path>,
+        data: impl AsRef<std::path::Path>,
+    ) -> PathResolver {
+        let utf8 = |path: &std::path::Path| {
+            Utf8PathBuf::from_path_buf(path.to_owned()).expect("test directories are UTF-8")
+        };
+        PathResolver::with_base_dirs(utf8(config.as_ref()), utf8(data.as_ref()))
+    }
+
     /// The runtime paths every test client is built with.
     pub(crate) fn test_runtime_paths(dir: &TempDir) -> RuntimePaths {
-        RuntimePaths::from_resolver(&ResolvedPaths::with_base_dirs(
-            dir.path().into(),
-            dir.path().join("data"),
-        ))
-        .unwrap()
+        RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))).unwrap()
     }
 
     #[test]
@@ -4379,8 +4387,9 @@ pub(crate) mod tests {
                     release_channel: crate::bundle::Channel::Stable,
                 },
                 logs::test_setup(
-                    ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"))
-                        .app_logs_dir(),
+                    test_paths(dir.path(), dir.path().join("data"))
+                        .app_logs_dir()
+                        .into_std_path_buf(),
                 ),
                 profiles.jobs(),
                 application,
@@ -4393,11 +4402,8 @@ pub(crate) mod tests {
                 PathBuf::new(),
                 backup_paths,
                 storage,
-                RuntimePaths::from_resolver(&ResolvedPaths::with_base_dirs(
-                    dir.path().into(),
-                    dir.path().join("data"),
-                ))
-                .unwrap(),
+                RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data")))
+                    .unwrap(),
                 Arc::new(runtime_core_spec),
                 crate::enhance::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),

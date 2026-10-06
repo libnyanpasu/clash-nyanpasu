@@ -344,9 +344,10 @@ async fn workflow_graph_with_clients(
     )
     .await
     .unwrap();
-    let paths = runtime::RuntimePaths::from_resolver(
-        &nyanpasu_paths::ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data")),
-    )
+    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+        dir.path(),
+        dir.path().join("data"),
+    ))
     .unwrap();
     let validator_paths = paths.clone();
     let core_for_validator = core.clone();

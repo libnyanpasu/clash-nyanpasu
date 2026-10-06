@@ -393,9 +393,10 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     .await;
     let clash = manager(temp_path(&dir, "clash-config.yaml"), setup.clash).await;
     let profiles = manager(temp_path(&dir, "profiles.yaml"), Profiles::default()).await;
-    let paths = runtime::RuntimePaths::from_resolver(
-        &nyanpasu_paths::ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data")),
-    )
+    let paths = runtime::RuntimePaths::from_resolver(&crate::client::tests::test_paths(
+        dir.path(),
+        dir.path().join("data"),
+    ))
     .unwrap();
     let ports = Arc::new(SessionPortResolver::new(
         runtime::RuntimeSnapshotStore::default(),

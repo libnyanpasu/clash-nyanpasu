@@ -25,13 +25,9 @@ pub fn collect_logs_tempfile(
 }
 
 fn collect_logs_to<W: Write + Seek>(writer: W, paths: &nyanpasu_paths::PathResolver) -> Result<W> {
-    let logs_dir = paths.logs_dir()?;
+    let logs_dir = paths.app_logs_dir();
     let now = Local::now().format("%Y-%m-%d");
-    let globstr = format!(
-        "{}/clash-nyanpasu_{}_*.log",
-        logs_dir.to_str().unwrap(),
-        now
-    );
+    let globstr = format!("{}/clash-nyanpasu_{}_*.log", logs_dir, now);
     let mut paths = Vec::new();
     for entry in glob(&globstr)? {
         {

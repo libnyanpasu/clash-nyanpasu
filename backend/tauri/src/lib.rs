@@ -130,7 +130,14 @@ pub fn run() -> std::io::Result<()> {
     // Nothing before the logger reaches a trace, so its share is logged.
     let started = std::time::Instant::now();
     // The one resolver: every later stage is given it, none looks the directories up again.
-    let paths = host_paths::resolver();
+    // Every stage needs both roots, so a host that has none ends the process here.
+    let paths = host_paths::discover().unwrap_or_else(|error| {
+        utils::dialog::panic_dialog(&format!(
+            "Failed to resolve the application directories: {}",
+            snafu::Report::from_error(&error)
+        ));
+        std::process::exit(1);
+    });
     let mut profilers = utils::profiling::Profilers::default();
     #[cfg(feature = "dhat-heap")]
     profilers.start_heap(&paths);
@@ -179,6 +186,15 @@ pub fn run() -> std::io::Result<()> {
     // Use system locale as default
     rust_i18n::set_locale(utils::help::detect_system_i18n_key());
 
+    // Past the single-instance lock, which a losing process never reaches, so it creates nothing.
+    if let Err(error) = paths.create_base_dirs() {
+        utils::dialog::panic_dialog(&format!(
+            "Failed to create the application directories: {}",
+            snafu::Report::from_error(&error)
+        ));
+        std::process::exit(1);
+    }
+
     if single_instance_result
         .as_ref()
         .is_ok_and(|instance| instance.is_some())
@@ -188,10 +204,7 @@ pub fn run() -> std::io::Result<()> {
             .downcast_ref::<init::MigrationChildFailed>()
             .is_some_and(|failed| failed.status.code() == Some(BACKUP_FAILED_EXIT_CODE));
         let message = format!("Failed to finish migration event: {e}");
-        match paths.resolve_paths(None) {
-            Ok(paths) => utils::dialog::migration_failed_dialog(&message, &paths, backup_failed),
-            Err(_) => utils::dialog::panic_dialog(&message),
-        }
+        utils::dialog::migration_failed_dialog(&message, &paths, backup_failed);
         std::process::exit(1);
     }
 
@@ -273,13 +286,13 @@ pub fn run() -> std::io::Result<()> {
 
     let mut context = tauri::generate_context!();
     let executable_dir = paths
-        .install_dir()
-        .expect("failed to locate the application directory");
-    let metadata =
-        bundle::BundleMetadata::resolve(cfg!(windows), context.config(), &executable_dir)
-            .expect("failed to resolve bundle metadata");
+        .app_install_dir()
+        .expect("failed to locate the application directory")
+        .as_std_path();
+    let metadata = bundle::BundleMetadata::resolve(cfg!(windows), context.config(), executable_dir)
+        .expect("failed to resolve bundle metadata");
     let updater = metadata
-        .setup(context.config_mut(), &executable_dir)
+        .setup(context.config_mut(), executable_dir)
         .expect("failed to configure bundle startup");
 
     #[allow(unused_mut)]

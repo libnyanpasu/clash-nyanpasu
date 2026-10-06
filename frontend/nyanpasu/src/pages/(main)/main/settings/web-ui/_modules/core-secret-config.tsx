@@ -16,7 +16,7 @@ import {
 } from '@nyanpasu/ui/modal'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import { formatError, sleep } from '@/utils'
+import { formatError } from '@/utils'
 import { writeClipboardText } from '@/utils/clipboard'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -70,8 +70,6 @@ export default function CoreSecretConfig() {
         })
         await refetch()
 
-        // Wait for the server to apply
-        await sleep(300)
         await runtimeProfile.refetch()
 
         setOpen(false)

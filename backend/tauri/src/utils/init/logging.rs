@@ -1,4 +1,7 @@
-use crate::{client::ui_effects::ports::LogRotation, utils::dirs};
+use crate::{
+    client::ui_effects::ports::LogRotation,
+    utils::{dirs, profiling::Profilers},
+};
 use anyhow::{Result, anyhow};
 use flexi_logger::{
     Age, Cleanup, Criterion, FileSpec, Naming,
@@ -13,7 +16,7 @@ use std::{
     thread,
 };
 use tracing::error;
-use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
+use tracing_appender::non_blocking::{NonBlocking, NonBlockingBuilder, WorkerGuard};
 use tracing_log::log_tracer;
 use tracing_subscriber::{EnvFilter, Layer as _, filter, fmt, layer::SubscriberExt, reload};
 
@@ -55,7 +58,9 @@ fn file_log_writer(
 
 fn get_file_appender(rotation: LogRotation) -> Result<(NonBlocking, FileAppenderGuard)> {
     let (writer, handle) = file_log_writer(dirs::app_logs_dir().unwrap(), rotation)?;
-    let (appender, worker) = tracing_appender::non_blocking(writer);
+    let (appender, worker) = NonBlockingBuilder::default()
+        .buffered_lines_limit(4096)
+        .finish(writer);
     Ok((
         appender,
         FileAppenderGuard {
@@ -82,8 +87,11 @@ fn app_filter(level: LoggingLevel) -> EnvFilter {
         .add_directive(format!("clash_nyanpasu={level}").parse().unwrap())
 }
 
-/// initial instance global logger, returning the channel that reloads it
-pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
+/// initial instance global logger, returning the channel that reloads it; the
+/// trace profiler, when compiled in, joins the subscriber here
+pub fn init(
+    profilers: &mut Profilers,
+) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
     let jobs = crate::client::jobs::capture();
     let log_dir = dirs::app_logs_dir().unwrap();
     if !log_dir.exists() {
@@ -161,7 +169,8 @@ pub fn init() -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(filter))
-        .with(jobs.layer());
+        .with(jobs.layer())
+        .with(profilers.trace_layer(&log_dir));
 
     log_tracer::LogTracer::init()?;
     tracing::subscriber::set_global_default(subscriber)

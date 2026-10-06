@@ -60,6 +60,27 @@ PDB and the sidecars). The
 [memory profiling spec](../spec/2026-10-06-memory-profiling/design.md) describes the
 measurement conditions and the analysis tools for each platform.
 
+Two features compile profilers into the application; add them to the build with
+`pnpm build:profiling --features <feature>`. Each writes its file to the
+application's logs directory, which log rotation does not clean up, and finishes it
+only when the application quits normally, for example from the tray menu.
+
+- `trace-chrome` records the application's own spans and info-level events from the
+  moment logging starts to `trace-<time>.json`; open it in
+  [Perfetto](https://ui.perfetto.dev). The startup stages are `prepare_app`, `setup`
+  (with `spawn_core_actors`, `spawn_effect_owners`, `build_client`, and
+  `setup_widget`), and `resolve_setup` (with `startup_reconcile` and
+  `create_window`). The time spent before logging starts is logged as
+  `pre_logging_ms`.
+- `dhat-heap` makes dhat the global allocator and writes `dhat-heap-<time>.json`
+  when you quit: the allocations live at that moment and at the heap's peak, with
+  their call stacks; open it in the
+  [DHAT viewer](https://nnethercote.github.io/dh_view/dh_view.html). It sees only
+  allocations made through the Rust allocator, and it slows each one down, most of
+  all on Windows, where writing the file also takes minutes, during which the
+  application does not respond. Memory that WebView2, system libraries, or injected
+  DLLs allocate needs the operating system's tools.
+
 ## Review before submitting
 
 - Each changed line supports the request; assumptions and success criteria are clear.

@@ -1432,11 +1432,18 @@ pub mod uwp {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt() -> Result<String> {
-    let args = snafu::ResultExt::context(
-        crate::core::service::control::get_service_install_args(&crate::host_paths::resolver())
-            .await,
-        crate::client::runtime_error::PrepareServiceInstallPromptSnafu,
-    )?
+    use crate::core::service::control::{ResolveServiceDirsSnafu, get_service_install_args};
+    use snafu::ResultExt;
+
+    let paths = crate::host_paths::resolver();
+    let args = async {
+        let data_dir = paths.data_dir().context(ResolveServiceDirsSnafu)?;
+        let config_dir = paths.config_dir().context(ResolveServiceDirsSnafu)?;
+        let app_dir = paths.install_dir().context(ResolveServiceDirsSnafu)?;
+        get_service_install_args(&data_dir, &config_dir, &app_dir).await
+    }
+    .await
+    .context(crate::client::runtime_error::PrepareServiceInstallPromptSnafu)?
     .into_iter()
     .map(|arg| {
         #[cfg(unix)]

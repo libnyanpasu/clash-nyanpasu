@@ -1,7 +1,4 @@
-use crate::{
-    HostInputs, PathResolver,
-    service::{ServicePathError, ServiceUpdatePaths},
-};
+use crate::{HostInputs, PathResolver};
 use anyhow::Result;
 use std::{
     io::ErrorKind,
@@ -106,17 +103,6 @@ impl PathResolver {
             .current_user_sid()
             .unwrap_or_else(|_| config_hash(&config));
         Ok(format!("Local\\{}-{}", self.host()?.app_name, sid))
-    }
-    pub(super) async fn service_user(&self) -> Result<String, ServicePathError> {
-        nyanpasu_utils::os::get_current_user_sid()
-            .await
-            .map_err(ServicePathError::User)
-    }
-    pub async fn service_update_paths(&self) -> Result<ServiceUpdatePaths, ServicePathError> {
-        Ok(ServiceUpdatePaths {
-            user: None,
-            data_dir: None,
-        })
     }
 }
 

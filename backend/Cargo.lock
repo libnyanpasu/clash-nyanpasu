@@ -6779,8 +6779,6 @@ dependencies = [
  "log",
  "nyanpasu-utils",
  "tempfile",
- "thiserror 2.0.21",
- "whoami",
  "winreg 0.56.0",
 ]
 

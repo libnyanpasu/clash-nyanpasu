@@ -1,7 +1,4 @@
-use crate::{
-    PathResolver,
-    service::{ServicePathError, ServiceUpdatePaths},
-};
+use crate::PathResolver;
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -26,19 +23,6 @@ impl PathResolver {
             .join("instance.lock")
             .to_string_lossy()
             .to_string())
-    }
-
-    pub(super) async fn service_user(&self) -> Result<String, ServicePathError> {
-        whoami::username().map_err(ServicePathError::User)
-    }
-
-    pub async fn service_update_paths(&self) -> Result<ServiceUpdatePaths, ServicePathError> {
-        let user = self.service_user().await?;
-        let data_dir = self.data_dir().map_err(ServicePathError::Directories)?;
-        Ok(ServiceUpdatePaths {
-            user: Some(user),
-            data_dir: Some(data_dir),
-        })
     }
 }
 

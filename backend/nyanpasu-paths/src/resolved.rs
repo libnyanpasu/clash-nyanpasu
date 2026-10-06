@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 /// Fixed directory values for application owners. This is a snapshot produced by
-/// the resolver, not a second platform-discovery service.
+/// the resolver, not a second platform-discovery layer.
 #[derive(Debug, Clone)]
 pub struct ResolvedPaths {
     config_dir: PathBuf,
@@ -45,11 +45,6 @@ impl ResolvedPaths {
     }
     pub fn app_install_dir(&self) -> Result<PathBuf> {
         self.resolver.install_dir()
-    }
-    pub fn service_binary_path(&self) -> Result<PathBuf> {
-        Ok(self
-            .app_install_dir()?
-            .join(format!("nyanpasu-service{}", std::env::consts::EXE_SUFFIX)))
     }
     pub fn app_resources_dir(&self) -> Result<&Path> {
         self.resources_dir
@@ -131,19 +126,5 @@ mod tests {
     #[test]
     fn explicit_roots_know_no_bundle_resources() {
         assert!(resolver().app_resources_dir().is_err());
-    }
-    #[test]
-    fn the_service_binary_sits_next_to_the_executable() {
-        let dir = tempfile::tempdir().unwrap();
-        let r = resolver().with_install_dir(dir.path().to_owned());
-        let binary = r.service_binary_path().unwrap();
-        assert_eq!(
-            binary.parent(),
-            Some(r.app_install_dir().unwrap().as_path())
-        );
-        assert_eq!(
-            binary.file_name().unwrap().to_str(),
-            Some(format!("nyanpasu-service{}", std::env::consts::EXE_SUFFIX).as_str())
-        );
     }
 }

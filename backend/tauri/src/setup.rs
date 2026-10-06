@@ -99,9 +99,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context("Failed to build the service IPC client")?;
-    let service_binary = paths
-        .service_binary_path()
-        .context("Failed to locate the service binary")?;
+    let service_binary = crate::core::service::control::service_binary(
+        &paths
+            .app_install_dir()
+            .context("Failed to locate the service binary")?,
+    );
     let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
@@ -114,7 +116,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
                 service_ipc.clone(),
                 service_binary,
-                paths.resolver().clone(),
+                paths.clone(),
             ),
         );
         let service =

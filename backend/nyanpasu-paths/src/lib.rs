@@ -19,7 +19,6 @@ mod platform;
 #[cfg(not(windows))]
 #[path = "unix.rs"]
 mod platform;
-pub mod service;
 
 #[cfg(all(test, windows))]
 mod windows_tests;

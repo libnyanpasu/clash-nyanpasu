@@ -1,11 +1,11 @@
-use nyanpasu_paths::{
-    PathResolver,
-    service::{ServicePathError, UserError},
-};
 use runas::Command as RunasCommand;
 use serde::Serialize;
 use snafu::{ResultExt, Snafu, ensure};
-use std::{ffi::OsString, path::Path, process::ExitStatus};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    process::ExitStatus,
+};
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
@@ -38,6 +38,11 @@ impl std::fmt::Display for ServiceCommand {
 fn boxed(error: anyhow::Error) -> Box<dyn std::error::Error + Send + Sync> {
     error.into()
 }
+
+#[cfg(windows)]
+type UserError = std::io::Error;
+#[cfg(not(windows))]
+type UserError = whoami::Error;
 
 /// A failure of running or querying the system service, including the bounds
 /// the service actor puts on every call.
@@ -123,25 +128,31 @@ fn signal(status: &ExitStatus) -> Option<i32> {
     }
 }
 
-impl From<ServicePathError> for ServiceCommandError {
-    fn from(error: ServicePathError) -> Self {
-        match error {
-            ServicePathError::User(source) => Self::ResolveServiceUser { source },
-            ServicePathError::Directories(source) => Self::ResolveServiceDirs {
-                source: boxed(source),
-            },
-        }
-    }
+/// The service binary's name, without the platform's executable suffix.
+const SERVICE_BINARY: &str = "nyanpasu-service";
+
+/// The `nyanpasu-service` binary, shipped next to the executable.
+pub fn service_binary(install_dir: &Path) -> PathBuf {
+    install_dir.join(format!("{SERVICE_BINARY}{}", std::env::consts::EXE_SUFFIX))
 }
 
 pub async fn get_service_install_args(
-    paths: &PathResolver,
+    data_dir: &Path,
+    config_dir: &Path,
+    app_dir: &Path,
 ) -> Result<Vec<OsString>, ServiceCommandError> {
-    let inputs = paths.service_install_paths().await?;
-    let user = inputs.user;
-    let data_dir = inputs.data_dir;
-    let config_dir = inputs.config_dir;
-    let app_dir = inputs.install_dir;
+    let user = {
+        #[cfg(windows)]
+        {
+            nyanpasu_utils::os::get_current_user_sid()
+                .await
+                .context(ResolveServiceUserSnafu)?
+        }
+        #[cfg(not(windows))]
+        {
+            whoami::username().context(ResolveServiceUserSnafu)?
+        }
+    };
 
     let args: Vec<OsString> = vec![
         "install".into(),
@@ -207,24 +218,31 @@ async fn run_elevated(
 
 pub async fn install_service(
     service_binary: &Path,
-    paths: &PathResolver,
+    data_dir: &Path,
+    config_dir: &Path,
+    app_dir: &Path,
 ) -> Result<(), ServiceCommandError> {
-    let args = get_service_install_args(paths).await?;
+    let args = get_service_install_args(data_dir, config_dir, app_dir).await?;
     run_elevated(ServiceCommand::Install, service_binary, args).await
 }
 
 pub async fn update_service(
     service_binary: &Path,
-    paths: &PathResolver,
+    data_dir: &Path,
 ) -> Result<(), ServiceCommandError> {
-    let inputs = paths.service_update_paths().await?;
-    let mut args = vec!["update".into()];
-    if let Some(user) = inputs.user {
-        args.extend(["--user".into(), user.into()]);
-    }
-    if let Some(data_dir) = inputs.data_dir {
-        args.extend(["--nyanpasu-data-dir".into(), data_dir.into()]);
-    }
+    #[cfg(unix)]
+    let args = vec![
+        "update".into(),
+        "--user".into(),
+        whoami::username().context(ResolveServiceUserSnafu)?.into(),
+        "--nyanpasu-data-dir".into(),
+        data_dir.into(),
+    ];
+    #[cfg(windows)]
+    let args = {
+        let _ = data_dir;
+        vec!["update".into()]
+    };
     run_elevated(ServiceCommand::Update, service_binary, args).await
 }
 
@@ -297,6 +315,19 @@ mod tests {
             })
         );
         assert!(error.to_string().contains("install"), "{error}");
+    }
+
+    #[test]
+    fn the_service_binary_sits_next_to_the_executable() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let binary = service_binary(dir.path());
+
+        assert_eq!(binary.parent(), Some(dir.path()));
+        assert_eq!(
+            binary.file_name().unwrap().to_str(),
+            Some(format!("nyanpasu-service{}", std::env::consts::EXE_SUFFIX).as_str())
+        );
     }
 
     #[test]

@@ -179,6 +179,7 @@ tracing-error = '0.2'
 tracing-log = { version = '0.2' }
 tracing-appender = { version = '0.2', features = ['parking_lot'] }
 flexi_logger = { version = '0.31', default-features = false }
+tracing-chrome = { version = '0.7', optional = true }
 test-log = { workspace = true }
 tracing-test = { workspace = true }
 
@@ -308,6 +309,9 @@ verge-dev = []
 default-meta = []
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']
+# Writes a Chrome trace of the app's spans to the logs directory; see
+# docs/development/testing.md#profile-memory-and-startup.
+trace-chrome = ['dep:tracing-chrome']
 # nyanpasu-config turns on struct-patch's `nesting`, and the `Patch` derives in
 # this crate emit `cfg(feature = "nesting")`, so it must be on here too.
 nesting = ['nyanpasu-config/nesting']

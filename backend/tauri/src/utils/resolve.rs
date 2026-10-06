@@ -149,6 +149,7 @@ fn set_window_controls_pos(
 }
 
 /// handle something when start app
+#[tracing_attributes::instrument(skip_all)]
 pub fn resolve_setup(app: &mut App) {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -175,7 +176,8 @@ pub fn resolve_setup(app: &mut App) {
         // TODO(startup): resolve_setup needs restructuring; startup_reconcile
         // should not block setup. See
         // docs/plan/2026-09-28-workflow-lifecycle-simplification.md §9.
-        let report = tauri::async_runtime::block_on(client.startup_reconcile());
+        let report = tracing::info_span!("startup_reconcile")
+            .in_scope(|| tauri::async_runtime::block_on(client.startup_reconcile()));
         if let Some(observation) = &report.observation {
             log::info!(
                 target: "app",

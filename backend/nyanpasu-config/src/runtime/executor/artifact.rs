@@ -6,7 +6,7 @@ use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 
 use crate::runtime::{
-    snapshot::{ConfigSnapshotsGraph, SnapshotNodeKey},
+    snapshot::{SnapshotNodeKey, StoredConfigSnapshotsGraph},
     value::ConfigValue,
 };
 
@@ -56,7 +56,7 @@ pub struct StepLog {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeArtifact {
     pub final_config: Arc<ConfigValue>,
-    pub graph: ConfigSnapshotsGraph,
+    pub graph: StoredConfigSnapshotsGraph,
     pub step_logs: Vec<StepLog>,
     pub applied_fields: IndexSet<String>,
     /// Execution failures that the legacy lenient pipeline passed through.

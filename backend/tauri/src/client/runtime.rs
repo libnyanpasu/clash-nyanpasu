@@ -65,8 +65,7 @@ pub(crate) struct RuntimeSnapshotData {
 pub struct RuntimeSnapshot {
     pub(crate) inspection_id: String,
     pub(crate) applied_binding: Option<crate::core::actor_v2::facade::AppliedConfigBinding>,
-    pub(crate) effective_host: Option<(crate::core::actor_v2::endpoint::ExecutionHost, u64)>,
-    pub(crate) effective: Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>,
+    pub(crate) effective: Option<Arc<super::runtime_inspection::EffectiveInspection>>,
     pub revision: RuntimeRevision,
     pub target_core: ClashCore,
     pub product_sha256: [u8; 32],
@@ -89,7 +88,6 @@ impl RuntimeSnapshot {
             inspection_id: nanoid::nanoid!(),
             applied_binding: None,
             effective: None,
-            effective_host: None,
             revision,
             target_core,
             product_sha256,

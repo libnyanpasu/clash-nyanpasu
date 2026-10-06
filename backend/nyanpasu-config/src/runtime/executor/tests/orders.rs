@@ -180,6 +180,7 @@ fn composition_with_base_matches_recording_contract() {
     assert_eq!(config["rules"], json!(["r1"]));
     assert!(config.get("extra").is_none());
 
+    crate::runtime::snapshot::assert_restore_matches_materialize(&artifact.graph);
     // 图形状（对齐 snapshot.rs composition 测试期望形态）。
     let nodes = &artifact.graph.nodes;
     let root = artifact.graph.root_id as usize;
@@ -239,7 +240,7 @@ fn composition_without_base_starts_from_clean_seed() {
         OperatorTag::CompositionRoot { base: None, .. }
     ));
     assert_eq!(
-        artifact.graph.nodes[root].snapshot.config,
+        artifact.graph.restore(root as u32).unwrap(),
         json!({ "proxies": [] })
     );
     let final_config = artifact.final_config.to_json();
@@ -316,11 +317,11 @@ fn script_transform_failure_is_lenient_with_anchored_error_log() {
 
     // 透传：scoped 节点值 == root 值。
     assert_eq!(
-        artifact.graph.nodes[1].snapshot.config,
-        artifact.graph.nodes[0].snapshot.config
+        artifact.graph.restore(1).unwrap(),
+        artifact.graph.restore(0).unwrap()
     );
     // error 日志锚定在该 ScopedTransform 节点键上。
-    let scoped_key = artifact.graph.nodes[1].key.clone();
+    let scoped_key = artifact.graph.nodes[1].tag.node_key();
     let log = artifact
         .step_logs
         .iter()

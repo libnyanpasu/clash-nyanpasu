@@ -369,7 +369,7 @@ pub fn execute(
     // order.
     applied_fields.retain(|key| builtin::known_fields().any(|field| field == key));
 
-    let graph = builder.build()?;
+    let graph = builder.build_stored()?;
     let transform_failures = logs.failures.clone();
     Ok(RuntimeArtifact {
         final_config: working,

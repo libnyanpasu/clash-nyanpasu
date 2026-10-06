@@ -153,7 +153,7 @@ impl RuntimeBuilder {
                     .graph
                     .nodes
                     .iter()
-                    .find(|node| node.key == log.key)
+                    .find(|node| node.tag.node_key() == log.key)
                     .expect("executor logs must belong to a snapshot node")
                     .tag
                     .clone(),

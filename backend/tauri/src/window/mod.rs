@@ -20,7 +20,10 @@ pub use manager::WindowManager;
 
 use crate::trace_err;
 use anyhow::Result;
-use nyanpasu_config::{application::NyanpasuAppConfig, state::window::WindowState};
+use nyanpasu_config::{
+    application::{WindowCloseOverride, WindowCloseSettings},
+    state::window::WindowState,
+};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
@@ -295,7 +298,7 @@ pub fn broadcast_to_all_windows(
 pub trait WindowHooks: Send + Sync + 'static {
     fn on_dismissed(&self, window: &WebviewWindow);
 
-    fn hides_on_close(&self, config: &NyanpasuAppConfig) -> bool;
+    fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 }
 
 impl<K: AppWindow> WindowHooks for K {
@@ -303,8 +306,8 @@ impl<K: AppWindow> WindowHooks for K {
         AppWindow::on_dismissed(self, window);
     }
 
-    fn hides_on_close(&self, config: &NyanpasuAppConfig) -> bool {
-        AppWindow::hides_on_close(self, config)
+    fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
+        AppWindow::close_override(self, settings)
     }
 }
 
@@ -333,6 +336,9 @@ pub trait AppWindow: Clone + Send + Sync + 'static {
     /// The geometry to restore the window with, if it remembers one.
     fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState>;
 
+    /// Which of the settings governs how this kind of window closes.
+    fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
+
     /// Finishes setting up a window just built, before it can be shown.
     fn on_created(&self, _window: &WebviewWindow) {}
 
@@ -342,12 +348,6 @@ pub trait AppWindow: Clone + Send + Sync + 'static {
     /// The window is about to go away or be hidden after being shown, whether
     /// the user closed it or the app did.
     fn on_dismissed(&self, _window: &WebviewWindow) {}
-
-    /// Whether closing the window hides it, keeping its webview, rather than
-    /// destroying it.
-    fn hides_on_close(&self, _config: &NyanpasuAppConfig) -> bool {
-        false
-    }
 
     /// Send a message to another window
     fn send_message(

@@ -106,6 +106,13 @@ const useTypedConfigField = <
 }
 
 /**
+ * A patch of the application config. The serialize form of the generated type
+ * requires the nested patches, which a patch that does not touch them leaves
+ * out.
+ */
+type AppConfigPatch = Partial<NyanpasuAppConfigPatch_Serialize>
+
+/**
  * The application config (`NyanpasuAppConfig`).
  *
  * @example
@@ -117,10 +124,10 @@ const useTypedConfigField = <
  */
 export const useSettings = () => {
   const api = useQueryApi()
-  return useTypedConfig<
-    NyanpasuAppConfig_Serialize,
-    NyanpasuAppConfigPatch_Serialize
-  >(api.queries.getAppConfig(), api.mutations.patchAppConfig)
+  return useTypedConfig<NyanpasuAppConfig_Serialize, AppConfigPatch>(
+    api.queries.getAppConfig(),
+    api.mutations.patchAppConfig,
+  )
 }
 
 /**
@@ -132,8 +139,7 @@ export const useSettings = () => {
  * ```
  */
 export const useSetting = <
-  K extends keyof NyanpasuAppConfig_Serialize &
-    keyof NyanpasuAppConfigPatch_Serialize,
+  K extends keyof NyanpasuAppConfig_Serialize & keyof AppConfigPatch,
 >(
   key: K,
 ) => {

@@ -104,6 +104,16 @@ impl<H: Clone> WindowTable<H> {
     pub fn open(&mut self, base_label: &str, singleton: bool, hooks: H) -> Opened {
         let instances = self.instances(base_label);
 
+        // A window that a close left hidden is brought back instead of
+        // building another.
+        if let Some(label) = instances.iter().find(|label| {
+            let entry = &self.entries[*label];
+            entry.built && !entry.wanted
+        }) {
+            self.entries.get_mut(label).expect("listed").wanted = true;
+            return Opened::Existing(label.clone());
+        }
+
         if singleton && let Some(label) = instances.first() {
             self.entries.get_mut(label).expect("listed").wanted = true;
             return Opened::Existing(label.clone());
@@ -536,6 +546,28 @@ mod tests {
             Opened::Build("editor-1".into())
         );
         assert_eq!(table.instances("editor").len(), 3);
+    }
+
+    #[test]
+    fn a_window_a_close_left_hidden_is_opened_again_before_another_is_built() {
+        let mut table = WindowTable::default();
+        let first = built_window(&mut table, "editor", false);
+        let second = built_window(&mut table, "editor", false);
+        table.ready(&first);
+        table.ready(&second);
+        table.unwant(&second);
+
+        assert_eq!(
+            table.open("editor", false, ()),
+            Opened::Existing(second.clone())
+        );
+        assert!(table.wanted(&second));
+
+        // Both are wanted now, so a new window is built.
+        assert_eq!(
+            table.open("editor", false, ()),
+            Opened::Build("editor-2".into())
+        );
     }
 
     async fn never() {

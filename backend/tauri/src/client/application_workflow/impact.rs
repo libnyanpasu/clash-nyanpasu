@@ -544,7 +544,7 @@ mod tests {
     use nyanpasu_config::{
         application::{
             ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig,
-            ProxiesSelectorMode, ThemeMode, TrayMenuCloseBehavior, TrayMenuMode,
+            ProxiesSelectorMode, ThemeMode, TrayMenuMode, WindowCloseBehavior, WindowCloseSettings,
         },
         clash::config::{
             ClashConfigPatch,
@@ -870,8 +870,13 @@ mod tests {
                 owners: &[],
             },
             AppCase {
-                field: "tray_menu_close_behavior",
-                mutate: |app| app.tray_menu_close_behavior = TrayMenuCloseBehavior::Close,
+                field: "window_close",
+                mutate: |app| {
+                    app.window_close = WindowCloseSettings {
+                        global: WindowCloseBehavior::Hide,
+                        ..WindowCloseSettings::default()
+                    }
+                },
                 impact: RuntimeImpact::None,
                 owners: &[],
             },

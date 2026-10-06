@@ -557,6 +557,7 @@
   "profile_import_local_file_size_label": "文件大小: {size}",
   "proxies_group_delay_test_title": "延迟测试",
   "proxies_group_delay_test_pending_title": "正在测试中……",
+  "proxies_select_failed_message": "无法在 {group} 中选择 {name}",
   "proxies_group_empty_message": "没有找到任何代理组，请尝试切换配置",
   "proxies_group_direct_message": "直连模式，当前流量不经过代理",
   "proxies_group_empty_button_text": "切换到配置页面",

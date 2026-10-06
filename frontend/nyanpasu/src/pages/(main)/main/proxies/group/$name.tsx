@@ -5,6 +5,8 @@ import { filesize } from 'filesize'
 import { useCallback, useDeferredValue, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import { m } from '@/paraglide/messages'
+import { message } from '@/utils/notification'
 import { useContainerBreakpointValue } from '@nyanpasu/hooks'
 import {
   ClashProxiesQueryGroupItem,
@@ -81,10 +83,24 @@ function RouteComponent() {
 
   const groupName = currentGroup?.name
 
+  const selectable = currentGroup?.capabilities.select ?? false
+
   const handleSelectProxy = useCallback(
     async (proxy: ClashProxiesQueryProxyItem) => {
-      if (groupName) {
+      if (!groupName) {
+        return
+      }
+
+      try {
         await selectProxy(groupName, proxy.name)
+      } catch (error) {
+        message(
+          m.proxies_select_failed_message({
+            group: groupName,
+            name: proxy.name,
+          }),
+          { kind: 'error', error },
+        )
       }
     },
     [groupName, selectProxy],
@@ -199,6 +215,7 @@ function RouteComponent() {
               >
                 <ProxyNodeButton
                   proxy={proxy}
+                  selectable={selectable}
                   onSelect={handleSelectProxy}
                   onDelayTest={handleDelayTest}
                 />

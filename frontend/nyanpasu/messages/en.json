@@ -557,6 +557,7 @@
   "profile_import_local_file_size_label": "File size: {size}",
   "proxies_group_delay_test_title": "Latency Test",
   "proxies_group_delay_test_pending_title": "Testing…",
+  "proxies_select_failed_message": "Failed to select {name} in {group}",
   "proxies_group_empty_message": "No proxy groups found, please try switching profiles",
   "proxies_group_direct_message": "Direct mode, current traffic is not going through proxy",
   "proxies_group_empty_button_text": "Switch to profiles",

@@ -33,15 +33,22 @@ function FeatureChip({
 // across refetches, so only nodes whose data changed re-render.
 export default memo(function ProxyNodeButton({
   proxy,
+  selectable,
   onSelect,
   onDelayTest,
   ...props
 }: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'onSelect'> & {
   proxy: ClashProxiesQueryProxyItem
+  selectable: boolean
   onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
   onDelayTest: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
 }) {
   const handleSelectProxy = useLockFn(async () => {
+    // The core picks this group's member on its own.
+    if (!selectable) {
+      return
+    }
+
     await onSelect(proxy)
   })
 
@@ -90,7 +97,13 @@ export default memo(function ProxyNodeButton({
           'group-data-[active=false]:shadow-none',
           'group-data-[active=false]:hover:shadow-none',
           'group-data-[active=false]:hover:bg-surface-variant/30',
+          'data-[selectable=false]:cursor-default',
+          'data-[selectable=false]:hover:before:bg-transparent',
         )}
+        data-selectable={String(selectable)}
+        // Not `disabled`: the card holds the latency control, which must stay
+        // clickable.
+        aria-disabled={!selectable}
         onClick={handleSelectProxy}
         {...props}
       >

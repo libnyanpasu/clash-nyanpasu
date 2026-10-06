@@ -47,9 +47,11 @@ const DelayTestButton = () => {
 
 const ProxyButton = ({
   proxy,
+  selectable,
   onSelect,
 }: {
   proxy: ClashProxiesQueryProxyItem
+  selectable: boolean
   onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
 }) => {
   const currentDelay = useMemo(() => {
@@ -65,7 +67,13 @@ const ProxyButton = ({
   })
 
   return (
-    <ActionButton className="w-full" onClick={handleClick}>
+    <ActionButton
+      className="w-full data-[selectable=false]:cursor-default"
+      data-selectable={String(selectable)}
+      // The core picks this group's member on its own.
+      disabled={!selectable}
+      onClick={handleClick}
+    >
       <TextMarquee className="min-w-0 flex-1">{proxy.name}</TextMarquee>
 
       {currentDelay > 0 && <DelayChip delay={currentDelay} />}
@@ -92,8 +100,16 @@ function RouteComponent() {
   }, [proxies, proxyGroupName, proxyMode])
 
   const handleSelectProxy = async (proxy: ClashProxiesQueryProxyItem) => {
-    if (currentGroup) {
+    if (!currentGroup) {
+      return
+    }
+
+    try {
       await selectProxy(currentGroup.name, proxy.name)
+    } catch (error) {
+      // A dialog would take focus and dismiss the tray menu; the frontend
+      // error reporter records this in the application log.
+      console.error('[tray-menu] failed to select proxy', error)
     }
   }
 
@@ -149,7 +165,11 @@ function RouteComponent() {
               data-slot="proxies-virtual-item"
               data-active={String(name === currentGroup?.now)}
             >
-              <ProxyButton proxy={proxy} onSelect={handleSelectProxy} />
+              <ProxyButton
+                proxy={proxy}
+                selectable={currentGroup?.capabilities.select ?? false}
+                onSelect={handleSelectProxy}
+              />
             </div>
           )
         })}

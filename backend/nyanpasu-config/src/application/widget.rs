@@ -1,4 +1,4 @@
-use nyanpasu_egui::widget::StatisticWidgetVariant;
+use nyanpasu_helper::StatisticWidgetVariant;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 

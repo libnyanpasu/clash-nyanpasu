@@ -290,7 +290,8 @@ impl NyanpasuClient {
         let profiles_dir = paths.app_profiles_dir();
         let backup_paths = paths.clone();
         let instance_config_dir = paths.app_config_dir().to_path_buf();
-        let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
+        let script_dirs =
+            nyanpasu_platform::enhance::ScriptDirs::new(paths.scripts_dir(), paths.cache_dir());
         let profiles_path = utf8_path(paths.profiles_path())?;
         let runtime_paths_for_setup = runtime_paths.clone();
         let jobs_for_setup = jobs.clone();
@@ -397,7 +398,7 @@ impl NyanpasuClient {
         paths: PathResolver,
         storage: Storage,
         runtime_paths: RuntimePaths,
-        script_dirs: crate::enhance::ScriptDirs,
+        script_dirs: nyanpasu_platform::enhance::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
         app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
@@ -2457,7 +2458,7 @@ pub(crate) mod tests {
                 dir.path().join("data"),
             ))
             .unwrap(),
-            crate::enhance::ScriptDirs::under(dir.path()),
+            nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -3319,7 +3320,7 @@ pub(crate) mod tests {
             backup_paths,
             storage,
             RuntimePaths::from_resolver(&paths).unwrap(),
-            crate::enhance::ScriptDirs::from_resolver(&paths),
+            nyanpasu_platform::enhance::ScriptDirs::new(paths.scripts_dir(), paths.cache_dir()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -4459,7 +4460,7 @@ pub(crate) mod tests {
                     dir.path().join("data"),
                 ))
                 .unwrap(),
-                crate::enhance::ScriptDirs::under(dir.path()),
+                nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
                 None,
                 None,

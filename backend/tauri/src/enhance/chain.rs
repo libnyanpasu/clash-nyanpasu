@@ -1,6 +1,5 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use strum::EnumString;
 
 use super::Logs;
 
@@ -14,32 +13,4 @@ pub struct PostProcessingOutput {
     /// 根据配置进行的分析建议
     pub advice: Logs,
     // TODO: 增加 Meta 信息
-}
-
-type Data = String;
-
-#[derive(Debug, Clone)]
-pub struct ScriptWrapper(pub ScriptType, pub Data);
-
-#[derive(
-    Debug,
-    EnumString,
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-    Default,
-    Eq,
-    PartialEq,
-    Hash,
-    specta::Type,
-)]
-#[strum(serialize_all = "snake_case")]
-pub enum ScriptType {
-    #[default]
-    #[serde(rename = "javascript")]
-    #[strum(serialize = "javascript")]
-    JavaScript,
-    #[serde(rename = "lua")]
-    Lua,
 }

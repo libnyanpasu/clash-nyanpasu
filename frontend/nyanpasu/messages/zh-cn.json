@@ -577,6 +577,7 @@
   "proxies_node_no_match": "没有匹配的节点",
   "proxies_locate_current_node": "定位当前节点",
   "proxies_node_view_save_failed": "无法保存节点视图",
+  "proxies_group_available": "可用 {available}/{total}",
   "proxies_group_empty_message": "没有找到任何代理组，请尝试切换配置",
   "proxies_group_direct_message": "直连模式，当前流量不经过代理",
   "proxies_group_empty_button_text": "切换到配置页面",

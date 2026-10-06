@@ -13,11 +13,13 @@ import {
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
   groupTestUrl,
-  memberDelay,
+  memberState,
+  resolveChain,
   useClashProxies,
   useKvStorage,
   useProxyMode,
   useSetting,
+  type MemberState,
 } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -145,6 +147,45 @@ function RouteComponent() {
     [testUrl, currentGroup?.expectedStatus],
   )
 
+  // Each member's delay, history and, for a nested group, the node it
+  // resolves to, computed once per snapshot rather than in every card.
+  const memberStates = useMemo(() => {
+    const states = new Map<string, MemberState>()
+
+    if (!currentGroup || !proxies) {
+      return states
+    }
+
+    for (const name of currentGroup.all) {
+      states.set(
+        name,
+        memberState(name, currentGroup, proxies, defaultUrl ?? ''),
+      )
+    }
+
+    return states
+  }, [currentGroup, proxies, defaultUrl])
+
+  const groupStatus = useMemo(() => {
+    if (!currentGroup || !proxies) {
+      return undefined
+    }
+
+    let available = 0
+
+    for (const { delay } of memberStates.values()) {
+      if ((delay ?? 0) > 0) {
+        available += 1
+      }
+    }
+
+    return {
+      available,
+      total: currentGroup.all.length,
+      chain: resolveChain(currentGroup.name, proxies).path,
+    }
+  }, [currentGroup, proxies, memberStates])
+
   const members = useMemo(
     () =>
       currentGroup && proxies
@@ -153,11 +194,10 @@ function RouteComponent() {
             proxies,
             query: deferredSearch,
             view: storedView,
-            delayOf: (name) =>
-              memberDelay(name, currentGroup, proxies, defaultUrl ?? ''),
+            delayOf: (name) => memberStates.get(name)?.delay,
           })
         : [],
-    [currentGroup, proxies, deferredSearch, storedView, defaultUrl],
+    [currentGroup, proxies, deferredSearch, storedView, memberStates],
   )
 
   // HighlightText marks one substring, so a query of several terms marks
@@ -274,6 +314,32 @@ function RouteComponent() {
               {currentGroup?.name}
             </div>
 
+            {groupStatus && (
+              <div
+                className="text-on-surface-variant flex min-w-0 items-center gap-1 text-xs"
+                data-slot="proxies-group-status"
+              >
+                <span className="shrink-0">
+                  {m.proxies_group_available({
+                    available: groupStatus.available,
+                    total: groupStatus.total,
+                  })}
+                </span>
+
+                {groupStatus.chain.length > 0 && (
+                  <>
+                    <span className="shrink-0">·</span>
+                    <span
+                      className="truncate"
+                      title={groupStatus.chain.join(' › ')}
+                    >
+                      {groupStatus.chain.join(' › ')}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+
             {currentGroup?.fixed && (
               <div
                 className="text-on-surface-variant flex min-w-0 items-center gap-1 text-xs"
@@ -327,8 +393,9 @@ function RouteComponent() {
             virtualItems.map((virtualItem) => {
               const name = members[virtualItem.index]
               const proxy = name ? proxies?.nodes[name] : undefined
+              const state = name ? memberStates.get(name) : undefined
 
-              if (!proxy) {
+              if (!proxy || !state) {
                 return null
               }
 
@@ -352,7 +419,9 @@ function RouteComponent() {
                     fixed={name === currentGroup?.fixed}
                     onSelect={handleSelectProxy}
                     onDelayTest={handleDelayTest}
-                    testUrl={testUrl}
+                    history={state.history}
+                    delay={state.delay}
+                    leaf={state.leaf}
                     searchText={searchText}
                   />
                 </div>

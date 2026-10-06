@@ -547,6 +547,7 @@
   "proxies_node_no_match": "일치하는 노드 없음",
   "proxies_locate_current_node": "현재 노드 찾기",
   "proxies_node_view_save_failed": "노드 보기를 저장하지 못했습니다",
+  "proxies_group_available": "사용 가능 {available}/{total}",
   "proxies_group_empty_message": "프록시 그룹이 없습니다. 프로필을 전환해 보세요",
   "proxies_group_direct_message": "다이렉트 모드입니다. 현재 트래픽은 프록시를 거치지 않습니다",
   "proxies_group_empty_button_text": "프로필로 전환",

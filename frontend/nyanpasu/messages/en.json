@@ -577,6 +577,7 @@
   "proxies_node_no_match": "No matching nodes",
   "proxies_locate_current_node": "Locate current node",
   "proxies_node_view_save_failed": "Could not save the node view",
+  "proxies_group_available": "Available {available}/{total}",
   "proxies_group_empty_message": "No proxy groups found, please try switching profiles",
   "proxies_group_direct_message": "Direct mode, current traffic is not going through proxy",
   "proxies_group_empty_button_text": "Switch to profiles",

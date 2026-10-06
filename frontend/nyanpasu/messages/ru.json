@@ -547,6 +547,7 @@
   "proxies_node_no_match": "Нет подходящих узлов",
   "proxies_locate_current_node": "Найти текущий узел",
   "proxies_node_view_save_failed": "Не удалось сохранить вид узлов",
+  "proxies_group_available": "Доступно {available}/{total}",
   "proxies_group_empty_message": "Не найдено ни одной группы прокси, пожалуйста, попробуйте переключить профили",
   "proxies_group_direct_message": "Прямой режим, текущий трафик не проходит через прокси",
   "proxies_group_empty_button_text": "Перейти к профилям",

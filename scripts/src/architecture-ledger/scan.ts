@@ -17,7 +17,7 @@ import {
   MIGRATION_MARKER_RE,
   SERVICE_GLOBAL_RE,
   STATIC_ALLOWLIST,
-  STATIC_GATE_PREFIX,
+  STATIC_GATE_PREFIXES,
   STATIC_ITEM_RE,
   STATIC_KEYWORD_RE,
   staticAllowlistKey,
@@ -325,7 +325,7 @@ export function scanFile(
     }
   }
 
-  if (relPath.startsWith(STATIC_GATE_PREFIX)) {
+  if (STATIC_GATE_PREFIXES.some((prefix) => relPath.startsWith(prefix))) {
     const statics = findStatics(codeLines);
     const sameName = new Map<string, number>();
     for (const { name } of statics) {

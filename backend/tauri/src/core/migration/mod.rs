@@ -1,4 +1,4 @@
-use crate::utils::path::PathResolver;
+use nyanpasu_paths::ResolvedPaths;
 use semver::Version;
 use std::path::PathBuf;
 
@@ -44,30 +44,23 @@ impl std::fmt::Display for MigrationAdvice {
 
 #[derive(Debug, Clone)]
 pub struct Ctx {
-    paths: PathResolver,
+    paths: ResolvedPaths,
 }
 
 impl Ctx {
-    pub fn from_app_dirs() -> anyhow::Result<Self> {
-        // Migrations never read the bundled resources.
-        Ok(Self {
-            paths: PathResolver::from_env(None)?,
-        })
-    }
-
-    pub fn from_paths(paths: PathResolver) -> Self {
+    pub fn from_paths(paths: ResolvedPaths) -> Self {
         Self { paths }
     }
 
     #[cfg(test)]
     pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         Self {
-            paths: PathResolver::with_base_dirs(app_config_dir, app_data_dir),
+            paths: ResolvedPaths::with_base_dirs(app_config_dir, app_data_dir),
         }
     }
 
     /// The underlying path resolver, the single source of truth for app paths.
-    pub fn paths(&self) -> &PathResolver {
+    pub fn paths(&self) -> &ResolvedPaths {
         &self.paths
     }
 

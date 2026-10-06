@@ -2,8 +2,6 @@
 //! snapshot handle; writes go through the actor with no RPC timeout.
 
 use crate::state::mutation::MutationCoordinator;
-#[cfg(test)]
-use crate::state::profiles::RefreshOrigin;
 
 use std::{sync::Arc, time::Duration};
 
@@ -314,7 +312,7 @@ impl ProfilesClient {
             |reply| ProfilesActorMessage::RefreshRemote {
                 uid,
                 patch,
-                origin: RefreshOrigin::Manual,
+                origin: crate::state::profiles::RefreshOrigin::Manual,
                 reply: Some(reply),
             },
             None,
@@ -392,6 +390,7 @@ mod tests {
         state::{
             mutation::CommitAborted,
             profiles::{
+                RefreshOrigin,
                 error::{MaterializationOperation, ProfileFileError, SubscriptionFetchError},
                 ports::{
                     CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
@@ -401,7 +400,6 @@ mod tests {
                 },
             },
         },
-        utils::path::PathResolver,
     };
     use nyanpasu_config::profile::{
         ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
@@ -410,6 +408,7 @@ mod tests {
         ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
     use nyanpasu_core::state::ReplaceIfVersionError;
+    use nyanpasu_paths::ResolvedPaths;
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
 
@@ -840,7 +839,7 @@ mod tests {
     async fn refresh_downloads_writes_and_commits_subscription() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -1453,7 +1452,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -1507,7 +1506,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -1546,7 +1545,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -1586,7 +1585,7 @@ mod tests {
         let target_dir = tempdir().unwrap();
         let target_path = target_dir.path().join("external.yaml");
         std::fs::write(&target_path, "proxies: []\n").unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -1751,7 +1750,7 @@ mod tests {
     async fn add_generates_uid_canonical_path_and_writes_initial_file() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -2544,7 +2543,7 @@ mod tests {
     async fn add_success_leaves_no_materialization_staging_leftovers() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -2585,7 +2584,7 @@ mod tests {
     async fn refresh_persist_failure_restores_previous_materialized_bytes() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -2674,7 +2673,7 @@ mod tests {
     async fn delete_unreferenced_managed_profile_removes_file() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -3102,7 +3101,7 @@ mod tests {
     async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
-        let paths = PathResolver::with_base_dirs(
+        let paths = ResolvedPaths::with_base_dirs(
             config_dir.path().to_path_buf(),
             data_dir.path().to_path_buf(),
         );
@@ -4415,7 +4414,7 @@ mod tests {
             let target = target_dir.path().join("external.yaml");
             std::fs::write(&target, "proxies: []\n").unwrap();
             let fs = Arc::new(ProfileFileService::new(
-                PathResolver::with_base_dirs(
+                ResolvedPaths::with_base_dirs(
                     config_dir.path().to_path_buf(),
                     data_dir.path().to_path_buf(),
                 ),

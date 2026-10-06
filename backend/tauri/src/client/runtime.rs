@@ -2,6 +2,8 @@
 //! rebuild, plus the product/candidate config file locations. Runtime is a
 //! pure derivation — there is no writable runtime state anywhere else.
 
+use nyanpasu_paths::ResolvedPaths;
+
 use std::{
     fs::OpenOptions,
     io::Write,
@@ -22,7 +24,6 @@ use crate::{
     core::actor_v2::api::ApiError,
     enhance::PostProcessingOutput,
     state::profiles::{ErrorPath, ProfilesError},
-    utils::path::PathResolver,
 };
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
@@ -373,7 +374,7 @@ pub struct RuntimePaths {
 }
 
 impl RuntimePaths {
-    pub fn from_resolver(paths: &PathResolver) -> anyhow::Result<Self> {
+    pub fn from_resolver(paths: &ResolvedPaths) -> anyhow::Result<Self> {
         let runtime_dir = utf8_path(paths.app_config_dir().join(RUNTIME_CONFIG_DIR))?;
         Ok(Self {
             product: runtime_dir.join(RUNTIME_CONFIG),
@@ -1026,7 +1027,7 @@ pub(crate) mod tests {
     fn runtime_paths_are_derived_from_injected_config_root() {
         let dir = tempfile::tempdir().unwrap();
         let resolver =
-            PathResolver::with_base_dirs(dir.path().join("config"), dir.path().join("data"));
+            ResolvedPaths::with_base_dirs(dir.path().join("config"), dir.path().join("data"));
         let paths = RuntimePaths::from_resolver(&resolver).unwrap();
         assert_eq!(
             paths.product(),

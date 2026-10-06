@@ -1232,7 +1232,7 @@ items:
         state
             .flush_atomic(&config_dir.join("migration-state.yaml"))
             .unwrap();
-        let paths = crate::utils::path::PathResolver::with_base_dirs(config_dir, data_dir);
+        let paths = nyanpasu_paths::ResolvedPaths::with_base_dirs(config_dir, data_dir);
         let mut runner = crate::core::migration::Runner::with_paths(paths, false).unwrap();
 
         assert_eq!(

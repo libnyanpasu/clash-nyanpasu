@@ -1,6 +1,8 @@
 //! Profile filesystem, materialization transactions, and subscription fetches
 //! over injected paths/network state. Tauri-free and legacy-Config-free.
 
+use nyanpasu_paths::ResolvedPaths;
+
 use std::{
     collections::HashSet,
     io::Write,
@@ -18,17 +20,14 @@ use sha2::{Digest, Sha256};
 use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
-use crate::{
-    state::profiles::{
-        error::*,
-        ports::{
-            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-            MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
-            ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
-            ProfileMaterializationPort, SubscriptionFetcher,
-        },
+use crate::state::profiles::{
+    error::*,
+    ports::{
+        CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+        MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
+        ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
+        SubscriptionFetcher,
     },
-    utils::path::PathResolver,
 };
 
 type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
@@ -44,13 +43,13 @@ pub trait SelfProxyPortSource: Send + Sync + 'static {
 }
 
 pub struct ProfileFileService {
-    paths: PathResolver,
+    paths: ResolvedPaths,
     self_proxy_port: Arc<dyn SelfProxyPortSource>,
     http_timeout: Duration,
 }
 
 impl ProfileFileService {
-    pub fn new(paths: PathResolver, self_proxy_port: Arc<dyn SelfProxyPortSource>) -> Self {
+    pub fn new(paths: ResolvedPaths, self_proxy_port: Arc<dyn SelfProxyPortSource>) -> Self {
         Self {
             paths,
             self_proxy_port,
@@ -2272,7 +2271,7 @@ mod tests {
         self_proxy_port: Arc<dyn SelfProxyPortSource>,
     ) -> (tempfile::TempDir, ProfileFileService) {
         let temp = tempfile::tempdir().unwrap();
-        let paths = crate::utils::path::PathResolver::with_base_dirs(
+        let paths = nyanpasu_paths::ResolvedPaths::with_base_dirs(
             temp.path().join("config"),
             temp.path().join("data"),
         );

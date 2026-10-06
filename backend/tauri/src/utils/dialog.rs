@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::utils::path::PathResolver;
+use nyanpasu_paths::ResolvedPaths;
 use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use rust_i18n::t;
 
@@ -18,7 +18,7 @@ pub fn panic_dialog(msg: &str) {
 /// Opening the backups dir or the log keeps the dialog up. `backup_failed` means
 /// the pre-migration backup failed, so no file was modified and there is
 /// nothing to restore.
-pub fn migration_failed_dialog(error: &str, paths: &PathResolver, backup_failed: bool) {
+pub fn migration_failed_dialog(error: &str, paths: &ResolvedPaths, backup_failed: bool) {
     let backups_dir = paths.backups_dir();
     let log_path = paths.app_data_dir().join("migration.log");
     let open_backups = t!("dialog.migration_failed.open_backups").to_string();

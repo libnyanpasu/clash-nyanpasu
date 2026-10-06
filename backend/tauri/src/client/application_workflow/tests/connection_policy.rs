@@ -931,6 +931,7 @@ impl RecordingBuilder {
     fn new(f: &Fixture, fail_build: bool, fail_publish: bool) -> Arc<Self> {
         Arc::new(Self {
             delegate: super::adapters::FsRuntimeBuildAdapter {
+                core_specs: Arc::new(crate::client::runtime_core_spec),
                 profiles_dir: f.client.inner.profiles_dir.clone(),
                 paths: crate::client::tests::test_runtime_paths(&f._dir),
                 scripts: crate::enhance::ScriptDirs::under(f._dir.path()),

@@ -38,7 +38,7 @@ pub struct ScriptDirs {
 }
 
 impl ScriptDirs {
-    pub fn from_resolver(paths: &crate::utils::path::PathResolver) -> Self {
+    pub fn from_resolver(paths: &nyanpasu_paths::ResolvedPaths) -> Self {
         Self {
             scripts: paths.scripts_dir(),
             cache: paths.cache_dir(),

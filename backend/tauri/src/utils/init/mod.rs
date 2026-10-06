@@ -1,10 +1,8 @@
-use crate::{
-    core::migration::modules::profiles::ProfilesFormat,
-    utils::{dirs, path::PathResolver},
-};
+use crate::core::migration::modules::profiles::ProfilesFormat;
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
 use nyanpasu_core::format::Format;
+use nyanpasu_paths::ResolvedPaths;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use std::{
@@ -36,7 +34,11 @@ pub fn run_pending_migrations() -> Result<()> {
         .write(true)
         .create(true)
         .truncate(true)
-        .open(crate::utils::dirs::app_data_dir()?.join("migration.log"))?;
+        .open(
+            crate::host_paths::resolver()
+                .data_dir()?
+                .join("migration.log"),
+        )?;
     let mut command = Command::new(current_exe);
     command.arg("migrate");
     run_migration_command(command, file)
@@ -156,13 +158,17 @@ pub fn init_config() -> Result<()> {
     //     }
     // }
 
-    crate::log_err!(dirs::app_profiles_dir().map(|profiles_dir| {
-        if !profiles_dir.exists() {
-            let _ = fs::create_dir_all(&profiles_dir);
-        }
-    }));
+    crate::log_err!(
+        crate::host_paths::resolver()
+            .profiles_dir()
+            .map(|profiles_dir| {
+                if !profiles_dir.exists() {
+                    let _ = fs::create_dir_all(&profiles_dir);
+                }
+            })
+    );
 
-    crate::log_err!(dirs::profiles_path().map(|path| {
+    crate::log_err!(crate::host_paths::resolver().profiles_path().map(|path| {
         if !path.exists() {
             // Stamped like every later write, since the app refuses to load
             // an unstamped profiles.yaml.
@@ -182,7 +188,7 @@ pub fn init_config() -> Result<()> {
 }
 
 /// initialize app resources
-pub fn init_resources(paths: &PathResolver) -> Result<()> {
+pub fn init_resources(paths: &ResolvedPaths) -> Result<()> {
     let app_dir = paths.app_data_dir();
     let res_dir = paths.app_resources_dir()?;
 
@@ -240,7 +246,7 @@ pub fn init_resources(paths: &PathResolver) -> Result<()> {
 }
 
 pub fn check_singleton() -> Result<Option<single_instance::SingleInstance>> {
-    let placeholder = super::dirs::get_single_instance_placeholder()?;
+    let placeholder = crate::host_paths::resolver().single_instance_placeholder()?;
     for i in 0..5 {
         let instance = single_instance::SingleInstance::new(&placeholder)
             .context("failed to create single instance")?;

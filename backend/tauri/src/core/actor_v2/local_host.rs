@@ -10,9 +10,9 @@ use nyanpasu_core_manager::{
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 
-use crate::utils::path::PathResolver;
+use nyanpasu_paths::ResolvedPaths;
 
-pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
+pub async fn build(paths: &ResolvedPaths) -> Result<CoreControl> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
         runtime_dir: Some(to_utf8(runtime_root.join("control"))?),
@@ -68,8 +68,13 @@ pub enum CoreSpecError {
     },
 }
 
-pub fn core_spec(core: &ClashCore) -> Result<CoreSpec, CoreSpecError> {
-    core_spec_with(core, crate::core::find_binary_path)
+pub fn core_spec(
+    core: &ClashCore,
+    paths: &nyanpasu_paths::PathResolver,
+) -> Result<CoreSpec, CoreSpecError> {
+    core_spec_with(core, |core| {
+        paths.find_binary_path(core.get_executable_name())
+    })
 }
 
 fn core_spec_with(
@@ -112,7 +117,7 @@ mod tests {
     async fn the_local_host_spawns_under_a_temp_root() {
         let root = tempfile::TempDir::new().unwrap();
         let paths =
-            PathResolver::with_base_dirs(root.path().join("config"), root.path().join("data"));
+            ResolvedPaths::with_base_dirs(root.path().join("config"), root.path().join("data"));
 
         let control = build(&paths).await.unwrap();
 
@@ -123,7 +128,7 @@ mod tests {
     #[tokio::test]
     async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths = PathResolver::with_base_dirs(root.path().to_owned(), root.path().join("data"));
+        let paths = ResolvedPaths::with_base_dirs(root.path().to_owned(), root.path().join("data"));
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 

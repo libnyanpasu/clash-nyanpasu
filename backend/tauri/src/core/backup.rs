@@ -4,10 +4,9 @@
 //! the request, so migrations and [`NyanpasuClient`](crate::client::NyanpasuClient)
 //! share it.
 
-use crate::{
-    core::storage::{Storage, StorageOperationError},
-    utils::path::PathResolver,
-};
+use nyanpasu_paths::ResolvedPaths;
+
+use crate::core::storage::{Storage, StorageOperationError};
 use semver::Version;
 use serde::Serialize;
 use std::{
@@ -66,7 +65,7 @@ pub enum StorageSource<'a> {
 }
 
 pub struct BackupRequest<'a> {
-    pub paths: &'a PathResolver,
+    pub paths: &'a ResolvedPaths,
     pub storage: StorageSource<'a>,
     pub kind: BackupKind<'a>,
     pub now: OffsetDateTime,
@@ -237,7 +236,7 @@ fn write_backup(req: &BackupRequest<'_>, partial: &Path) -> Result<(), BackupErr
 /// Data-dir paths that sit inside the config dir when both are the same tree.
 /// None of them is config: the backups themselves, the stores redb keeps
 /// locked, and runtime data the backup does not cover.
-fn skipped_paths(paths: &PathResolver) -> Vec<PathBuf> {
+fn skipped_paths(paths: &ResolvedPaths) -> Vec<PathBuf> {
     vec![
         paths.backups_dir(),
         paths.storage_path(),
@@ -367,8 +366,8 @@ mod tests {
         OffsetDateTime::from_unix_timestamp(NOW).unwrap()
     }
 
-    fn paths(root: &Path) -> PathResolver {
-        PathResolver::with_base_dirs(root.join("config"), root.join("data"))
+    fn paths(root: &Path) -> ResolvedPaths {
+        ResolvedPaths::with_base_dirs(root.join("config"), root.join("data"))
     }
 
     fn write(path: &Path, content: &str) {
@@ -376,7 +375,7 @@ mod tests {
         fs::write(path, content).unwrap();
     }
 
-    fn manual<'a>(paths: &'a PathResolver, storage: StorageSource<'a>) -> BackupRequest<'a> {
+    fn manual<'a>(paths: &'a ResolvedPaths, storage: StorageSource<'a>) -> BackupRequest<'a> {
         BackupRequest {
             paths,
             storage,
@@ -495,7 +494,7 @@ mod tests {
     fn a_data_dir_inside_the_config_dir_does_not_copy_the_backups() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
-        let paths = PathResolver::with_base_dirs(config.clone(), config.clone());
+        let paths = ResolvedPaths::with_base_dirs(config.clone(), config.clone());
         write(&paths.profiles_path(), "profiles");
         write(&paths.storage_path(), "db");
         write(&paths.app_logs_dir().join("app.log"), "log");

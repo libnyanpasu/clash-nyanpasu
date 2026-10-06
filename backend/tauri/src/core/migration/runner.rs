@@ -3,14 +3,12 @@ use super::{
     ModuleKind, ModuleMigrator, StepCheck, current_version, fs, registry,
     store::{MigrationStore, ModuleState, STORE_FILE_NAME},
 };
-use crate::{
-    core::backup::{
-        self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
-        StorageSource,
-    },
-    utils::path::PathResolver,
+use crate::core::backup::{
+    self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
+    StorageSource,
 };
 use anyhow::{Context, bail};
+use nyanpasu_paths::ResolvedPaths;
 use semver::Version;
 use time::OffsetDateTime;
 
@@ -24,22 +22,12 @@ pub struct Runner {
     backup: Option<BackupInfo>,
 }
 
-impl Default for Runner {
-    fn default() -> Self {
-        Self::new(false).expect("failed to create migration runner")
-    }
-}
-
 impl Runner {
-    pub fn new(force: bool) -> anyhow::Result<Self> {
-        Self::with_target(current_version()?, force)
+    pub fn with_target(target: Version, paths: ResolvedPaths, force: bool) -> anyhow::Result<Self> {
+        Self::with_context(target, force, Ctx::from_paths(paths))
     }
 
-    pub fn with_target(target: Version, force: bool) -> anyhow::Result<Self> {
-        Self::with_context(target, force, Ctx::from_app_dirs()?)
-    }
-
-    pub fn with_paths(paths: PathResolver, force: bool) -> anyhow::Result<Self> {
+    pub fn with_paths(paths: ResolvedPaths, force: bool) -> anyhow::Result<Self> {
         Self::with_context(current_version()?, force, Ctx::from_paths(paths))
     }
 
@@ -786,7 +774,7 @@ mod tests {
 
         // Hotkeys left the legacy config file and ended up in the typed
         // application config, with nothing stranded in KV storage.
-        let storage = Storage::try_new(&data_dir.join(crate::utils::dirs::STORAGE_DB)).unwrap();
+        let storage = Storage::try_new(&data_dir.join(nyanpasu_paths::STORAGE_DB)).unwrap();
         let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap();
         assert_eq!(hotkeys, None);
 

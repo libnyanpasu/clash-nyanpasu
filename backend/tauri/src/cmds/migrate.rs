@@ -26,7 +26,8 @@ pub struct MigrateOpts {
 ///
 /// The `app_config_dir` would create a new dir while access it.
 fn is_fresh_install_instance() -> bool {
-    crate::utils::dirs::app_config_dir()
+    crate::host_paths::resolver()
+        .config_dir()
         .ok()
         .and_then(|dir| std::fs::read_dir(dir).ok())
         .is_some_and(|entry| {
@@ -62,10 +63,13 @@ pub fn parse(args: &MigrateOpts) {
             std::process::exit(1);
         }),
     };
-    let mut runner = Runner::with_target(target, args.force).unwrap_or_else(|error| {
-        eprintln!("Failed to initialize migration runner: {error:#}");
-        std::process::exit(1);
-    });
+    let mut runner = crate::host_paths::resolver()
+        .resolve_paths(None)
+        .and_then(|paths| Runner::with_target(target, paths, args.force))
+        .unwrap_or_else(|error| {
+            eprintln!("Failed to initialize migration runner: {error:#}");
+            std::process::exit(1);
+        });
 
     if args.list {
         println!("Available migrations:\n");
@@ -121,7 +125,7 @@ pub fn parse(args: &MigrateOpts) {
 
 #[cfg(target_os = "windows")]
 pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
-    use crate::utils::{self, dirs};
+    use crate::utils;
     use anyhow::Context;
     use deelevate::{PrivilegeLevel, Token};
     use std::{borrow::Cow, path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
@@ -135,12 +139,12 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    let current_home_dir = dirs::app_config_dir()?;
+    let current_home_dir = crate::host_paths::resolver().config_dir()?;
     let target_home_dir = PathBuf::from_str(target_path)?;
 
     // 1. waiting for app exited
     println!("waiting for app exited.");
-    let placeholder = dirs::get_single_instance_placeholder()?;
+    let placeholder = crate::host_paths::resolver().single_instance_placeholder()?;
     let mut single_instance: single_instance::SingleInstance;
     loop {
         single_instance = single_instance::SingleInstance::new(&placeholder)
@@ -181,7 +185,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 
     // 3. do config migrate and update the registry.
     utils::init::do_config_migration(&current_home_dir, &target_home_dir)?;
-    utils::winreg::set_app_dir(target_home_dir.as_path())?;
+    crate::host_paths::resolver().set_custom_config_dir(target_home_dir.as_path())?;
     println!("migration finished. starting application...");
     drop(single_instance); // release single instance lock
 

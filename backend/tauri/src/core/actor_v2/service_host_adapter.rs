@@ -15,13 +15,19 @@ use crate::core::service::control::ServiceCommandError;
 pub struct OsServiceHostAdapter {
     client: nyanpasu_ipc::client::Client,
     service_binary: PathBuf,
+    paths: nyanpasu_paths::PathResolver,
 }
 
 impl OsServiceHostAdapter {
-    pub fn new(client: nyanpasu_ipc::client::Client, service_binary: PathBuf) -> Self {
+    pub fn new(
+        client: nyanpasu_ipc::client::Client,
+        service_binary: PathBuf,
+        paths: nyanpasu_paths::PathResolver,
+    ) -> Self {
         Self {
             client,
             service_binary,
+            paths,
         }
     }
 }
@@ -33,7 +39,7 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
     }
 
     async fn install(&self) -> Result<(), ServiceCommandError> {
-        crate::core::service::control::install_service(&self.service_binary).await
+        crate::core::service::control::install_service(&self.service_binary, &self.paths).await
     }
 
     async fn uninstall(&self) -> Result<(), ServiceCommandError> {
@@ -49,7 +55,7 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
     }
 
     async fn update(&self) -> Result<(), ServiceCommandError> {
-        crate::core::service::control::update_service(&self.service_binary).await
+        crate::core::service::control::update_service(&self.service_binary, &self.paths).await
     }
 
     fn endpoint(&self) -> EndpointHandle {

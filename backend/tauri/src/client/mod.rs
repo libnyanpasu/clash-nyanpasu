@@ -1,3 +1,4 @@
+use nyanpasu_paths::ResolvedPaths;
 mod app_lifecycle;
 pub mod app_update;
 mod application;
@@ -54,7 +55,6 @@ use crate::{
         ReorderOp,
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
     },
-    utils::path::PathResolver,
 };
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
@@ -94,7 +94,7 @@ pub struct ClientSetupArgs {
     pub logging: logs::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
-    pub paths: PathResolver,
+    pub paths: ResolvedPaths,
     /// Opened by the composition root, which also manages the same instance
     /// for the storage commands.
     pub storage: Storage,
@@ -130,7 +130,7 @@ pub struct NyanpasuClient {
 async fn new_typed_config_clients(
     mutations: crate::state::mutation::MutationCoordinator,
     build_channel: crate::bundle::Channel,
-    paths: PathResolver,
+    paths: ResolvedPaths,
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
 ) -> anyhow::Result<(ApplicationClient, SessionStateClient, ClashConfigClient)> {
@@ -159,16 +159,6 @@ async fn new_typed_config_clients(
     .await?;
 
     Ok((application, session_state, clash_config))
-}
-
-#[cfg(not(test))]
-fn runtime_core_spec(
-    core: &nyanpasu_config::application::ClashCore,
-) -> std::result::Result<
-    nyanpasu_core_manager::CoreSpec,
-    crate::core::actor_v2::local_host::CoreSpecError,
-> {
-    crate::core::actor_v2::local_host::core_spec(core)
 }
 
 #[cfg(test)]
@@ -227,7 +217,7 @@ struct NyanpasuClientInner {
     fs: Arc<dyn ProfileFsPort>,
     ports: Arc<SessionPortResolver>,
     profiles_dir: PathBuf,
-    paths: PathResolver,
+    paths: ResolvedPaths,
     storage: Storage,
     application_workflow: application_workflow::ApplicationWorkflowClient,
     core_api: CoreClientV2,
@@ -388,7 +378,7 @@ impl NyanpasuClient {
         ports: Arc<SessionPortResolver>,
         profiles_dir: PathBuf,
         instance_config_dir: PathBuf,
-        paths: PathResolver,
+        paths: ResolvedPaths,
         storage: Storage,
         runtime_paths: RuntimePaths,
         script_dirs: crate::enhance::ScriptDirs,
@@ -469,6 +459,14 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        #[cfg(not(test))]
+        let core_specs: Arc<application_workflow::adapters::CoreSpecResolver> = {
+            let resolver = paths.resolver().clone();
+            Arc::new(move |core| crate::core::actor_v2::local_host::core_spec(core, &resolver))
+        };
+        #[cfg(test)]
+        let core_specs: Arc<application_workflow::adapters::CoreSpecResolver> =
+            Arc::new(runtime_core_spec);
         let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
             application_workflow::ApplicationWorkflowArgs {
                 notifications: Arc::new(effects.clone()),
@@ -479,6 +477,7 @@ impl NyanpasuClient {
                 service,
                 builder: Arc::new(application_workflow::adapters::FsRuntimeBuildAdapter {
                     profiles_dir: profiles_dir.clone(),
+                    core_specs,
                     paths: runtime_paths.clone(),
                     scripts: script_dirs,
                 }),
@@ -2211,8 +2210,8 @@ pub(crate) mod tests {
 
     /// Seeds `path` with [`test_clash_config`], which the clash config client
     /// then loads instead of creating the default.
-    fn test_backup_deps(dir: &TempDir) -> (PathResolver, Storage) {
-        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+    fn test_backup_deps(dir: &TempDir) -> (ResolvedPaths, Storage) {
+        let paths = ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"));
         std::fs::create_dir_all(paths.app_data_dir()).unwrap();
         let storage = Storage::try_new(&paths.storage_path()).unwrap();
         (paths, storage)
@@ -2289,7 +2288,7 @@ pub(crate) mod tests {
         use crate::client::logs::LogSource;
         use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
         let dir = tempdir().unwrap();
-        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let paths = ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"));
         std::fs::create_dir_all(paths.app_logs_dir()).unwrap();
         std::fs::write(
             paths
@@ -2409,7 +2408,7 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logs::test_setup(
-                PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
+                ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"))
                     .app_logs_dir(),
             ),
             profiles.jobs(),
@@ -2423,7 +2422,7 @@ pub(crate) mod tests {
             PathBuf::new(),
             backup_paths,
             storage,
-            RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
+            RuntimePaths::from_resolver(&ResolvedPaths::with_base_dirs(
                 dir.path().into(),
                 dir.path().join("data"),
             ))
@@ -3212,7 +3211,7 @@ pub(crate) mod tests {
         fetcher: Arc<dyn SubscriptionFetcher>,
     ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
-        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let paths = ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"));
         let ports = Arc::new(SessionPortResolver::default());
         let file_service = Arc::new(ProfileFileService::new(
             paths.clone(),
@@ -3239,7 +3238,7 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logs::test_setup(
-                PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
+                ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"))
                     .app_logs_dir(),
             ),
             profiles.jobs(),
@@ -3373,7 +3372,7 @@ pub(crate) mod tests {
             drop(session_state);
             drop(clash_config);
 
-            let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+            let paths = ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"));
             let (loaded, _session_state, _clash_config) = new_typed_config_clients(
                 crate::state::mutation::MutationCoordinator::isolated(),
                 crate::bundle::Channel::Stable,
@@ -3459,7 +3458,7 @@ pub(crate) mod tests {
 
     /// The runtime paths every test client is built with.
     pub(crate) fn test_runtime_paths(dir: &TempDir) -> RuntimePaths {
-        RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
+        RuntimePaths::from_resolver(&ResolvedPaths::with_base_dirs(
             dir.path().into(),
             dir.path().join("data"),
         ))
@@ -4377,7 +4376,7 @@ pub(crate) mod tests {
                     release_channel: crate::bundle::Channel::Stable,
                 },
                 logs::test_setup(
-                    PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
+                    ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data"))
                         .app_logs_dir(),
                 ),
                 profiles.jobs(),
@@ -4391,7 +4390,7 @@ pub(crate) mod tests {
                 PathBuf::new(),
                 backup_paths,
                 storage,
-                RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
+                RuntimePaths::from_resolver(&ResolvedPaths::with_base_dirs(
                     dir.path().into(),
                     dir.path().join("data"),
                 ))

@@ -1,4 +1,5 @@
 //! Setup logic for the app
+use nyanpasu_paths::ResolvedPaths;
 use std::sync::Arc;
 
 use crate::{
@@ -28,7 +29,7 @@ use crate::{
             ports::LocaleSink,
         },
     },
-    utils::{init::logging::ReloadSignal, path::PathResolver},
+    utils::init::logging::ReloadSignal,
 };
 use anyhow::Context;
 use camino::Utf8PathBuf;
@@ -82,7 +83,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok()
         .map(|dir| dir.join("resources"));
-    let paths = PathResolver::from_env(resources_dir).context("Failed to resolve app paths")?;
+    let paths = crate::host_paths::resolver()
+        .resolve_paths(resources_dir)
+        .context("Failed to resolve app paths")?;
     let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
         .context("Failed to setup config migrations")?;
     migrations
@@ -111,6 +114,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
                 service_ipc.clone(),
                 service_binary,
+                paths.resolver().clone(),
             ),
         );
         let service =
@@ -270,7 +274,7 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
 /// Recording is optional, so a store that cannot be opened disables it rather
 /// than failing the launch. The history holds browsing targets, hence the
 /// owner-only directory.
-fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStore>> {
+fn open_traffic_store(paths: &ResolvedPaths) -> Option<Arc<dyn TrafficStore>> {
     let dir = paths.app_data_dir().join("traffic");
     let open = || -> anyhow::Result<RedbTrafficStore> {
         std::fs::create_dir_all(&dir)?;
@@ -317,7 +321,7 @@ fn build_application_effects(
     app_handle: &tauri::AppHandle,
     main_thread: Arc<dyn MainThreadExecutor>,
     os_proxy: Arc<dyn OsProxyPort>,
-    paths: &PathResolver,
+    paths: &ResolvedPaths,
     hotkey_tx: tokio::sync::mpsc::UnboundedSender<HotkeyAction>,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
     shutdown: &CancellationToken,

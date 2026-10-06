@@ -31,7 +31,8 @@ impl Profilers {
     /// allocations are recorded only from here on.
     #[cfg(feature = "dhat-heap")]
     pub fn start_heap(&mut self) {
-        let dir = crate::utils::dirs::app_logs_dir()
+        let dir = crate::host_paths::resolver()
+            .logs_dir()
             .expect("the heap profile is written to the logs directory");
         self.heap = Some(
             dhat::Profiler::builder()

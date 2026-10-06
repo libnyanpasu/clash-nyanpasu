@@ -1,4 +1,7 @@
-use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
+use nyanpasu_paths::{
+    PathResolver,
+    service::{ServicePathError, UserError},
+};
 use runas::Command as RunasCommand;
 use serde::Serialize;
 use snafu::{ResultExt, Snafu, ensure};
@@ -35,11 +38,6 @@ impl std::fmt::Display for ServiceCommand {
 fn boxed(error: anyhow::Error) -> Box<dyn std::error::Error + Send + Sync> {
     error.into()
 }
-
-#[cfg(windows)]
-type UserError = std::io::Error;
-#[cfg(not(windows))]
-type UserError = whoami::Error;
 
 /// A failure of running or querying the system service, including the bounds
 /// the service actor puts on every call.
@@ -125,22 +123,25 @@ fn signal(status: &ExitStatus) -> Option<i32> {
     }
 }
 
-pub async fn get_service_install_args() -> Result<Vec<OsString>, ServiceCommandError> {
-    let user = {
-        #[cfg(windows)]
-        {
-            nyanpasu_utils::os::get_current_user_sid()
-                .await
-                .context(ResolveServiceUserSnafu)?
+impl From<ServicePathError> for ServiceCommandError {
+    fn from(error: ServicePathError) -> Self {
+        match error {
+            ServicePathError::User(source) => Self::ResolveServiceUser { source },
+            ServicePathError::Directories(source) => Self::ResolveServiceDirs {
+                source: boxed(source),
+            },
         }
-        #[cfg(not(windows))]
-        {
-            whoami::username().context(ResolveServiceUserSnafu)?
-        }
-    };
-    let data_dir = app_data_dir().context(ResolveServiceDirsSnafu)?;
-    let config_dir = app_config_dir().context(ResolveServiceDirsSnafu)?;
-    let app_dir = app_install_dir().context(ResolveServiceDirsSnafu)?;
+    }
+}
+
+pub async fn get_service_install_args(
+    paths: &PathResolver,
+) -> Result<Vec<OsString>, ServiceCommandError> {
+    let inputs = paths.service_install_paths().await?;
+    let user = inputs.user;
+    let data_dir = inputs.data_dir;
+    let config_dir = inputs.config_dir;
+    let app_dir = inputs.install_dir;
 
     let args: Vec<OsString> = vec![
         "install".into(),
@@ -204,22 +205,26 @@ async fn run_elevated(
     Ok(())
 }
 
-pub async fn install_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
-    let args = get_service_install_args().await?;
+pub async fn install_service(
+    service_binary: &Path,
+    paths: &PathResolver,
+) -> Result<(), ServiceCommandError> {
+    let args = get_service_install_args(paths).await?;
     run_elevated(ServiceCommand::Install, service_binary, args).await
 }
 
-pub async fn update_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
-    #[cfg(unix)]
-    let args = vec![
-        "update".into(),
-        "--user".into(),
-        whoami::username().context(ResolveServiceUserSnafu)?.into(),
-        "--nyanpasu-data-dir".into(),
-        app_data_dir().context(ResolveServiceDirsSnafu)?.into(),
-    ];
-    #[cfg(windows)]
-    let args = vec!["update".into()];
+pub async fn update_service(
+    service_binary: &Path,
+    paths: &PathResolver,
+) -> Result<(), ServiceCommandError> {
+    let inputs = paths.service_update_paths().await?;
+    let mut args = vec!["update".into()];
+    if let Some(user) = inputs.user {
+        args.extend(["--user".into(), user.into()]);
+    }
+    if let Some(data_dir) = inputs.data_dir {
+        args.extend(["--nyanpasu-data-dir".into(), data_dir.into()]);
+    }
     run_elevated(ServiceCommand::Update, service_binary, args).await
 }
 

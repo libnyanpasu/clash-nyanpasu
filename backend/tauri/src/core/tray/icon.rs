@@ -1,4 +1,3 @@
-use crate::utils::dirs::tray_icons_path;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{
@@ -44,6 +43,17 @@ impl From<&TrayIcon> for &'static str {
             TrayIcon::SystemProxy => "system_proxy",
         }
     }
+}
+
+pub(crate) fn icon_path(config_dir: &std::path::Path, mode: &str) -> PathBuf {
+    config_dir.join("icons").join(format!("{mode}.png"))
+}
+
+pub(crate) fn tray_icons_path(mode: &str) -> anyhow::Result<PathBuf> {
+    let config = crate::host_paths::resolver().config_dir()?;
+    let icons = config.join("icons");
+    crate::log_err!(nyanpasu_paths::create_dir_all(&icons));
+    Ok(icon_path(&config, mode))
 }
 
 impl TrayIcon {
@@ -92,7 +102,10 @@ fn resize_image(mode: TrayIcon, scale_factor: f64) {
             raw_icon.to_vec()
         }
     };
-    let cache_dir = crate::utils::dirs::cache_dir().unwrap().join("icons");
+    let cache_dir = crate::host_paths::resolver()
+        .cache_dir()
+        .unwrap()
+        .join("icons");
     if !cache_dir.exists()
         && let Err(e) = std::fs::create_dir_all(&cache_dir)
     {
@@ -143,7 +156,8 @@ pub fn on_scale_factor_changed(scale_factor: f64) {
 }
 
 pub fn get_icon(mode: &TrayIcon) -> Vec<u8> {
-    let cache_file = crate::utils::dirs::cache_dir()
+    let cache_file = crate::host_paths::resolver()
+        .cache_dir()
         .unwrap()
         .join("icons")
         .join(format!("tray_{mode}.png"));
@@ -173,6 +187,42 @@ pub fn check_icon(bytes: &[u8]) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Moved from the original path tests: this assertion includes GUI icon layout.
+    #[test]
+    fn config_derived_paths_join_config_dir() {
+        use nyanpasu_paths::{
+            CLASH_CFG_GUARD_OVERRIDES, NYANPASU_CONFIG, PROFILE_YAML, ResolvedPaths,
+        };
+        use std::path::Path;
+        let r = ResolvedPaths::with_base_dirs(PathBuf::from("/cfg"), PathBuf::from("/data"));
+        assert_eq!(r.profiles_path(), Path::new("/cfg").join(PROFILE_YAML));
+        assert_eq!(
+            r.nyanpasu_config_path(),
+            Path::new("/cfg").join(NYANPASU_CONFIG)
+        );
+        assert_eq!(
+            r.clash_guard_overrides_path(),
+            Path::new("/cfg").join(CLASH_CFG_GUARD_OVERRIDES)
+        );
+        assert_eq!(
+            r.application_config_path(),
+            Path::new("/cfg").join("application.yaml")
+        );
+        assert_eq!(
+            r.session_state_path(),
+            Path::new("/cfg").join("session-state.yaml")
+        );
+        assert_eq!(
+            r.clash_config_path(),
+            Path::new("/cfg").join("clash-config.yaml")
+        );
+        assert_eq!(r.app_profiles_dir(), Path::new("/cfg").join("profiles"));
+        assert_eq!(
+            icon_path(r.app_config_dir(), "light"),
+            Path::new("/cfg").join("icons").join("light.png")
+        );
+    }
 
     #[test]
     fn the_bundled_icons_pass_the_check_and_a_corrupt_png_fails_it() {

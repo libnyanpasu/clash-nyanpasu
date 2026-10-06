@@ -1,29 +1,19 @@
-use super::{config::NyanpasuReqwestProxyExt, dirs::app_logs_dir};
+use super::config::NyanpasuReqwestProxyExt;
 use anyhow::Result;
 use chrono::Local;
 use glob::glob;
 use std::{
     io::{Seek, Write},
-    path::Path,
     time::Duration,
 };
 use url::Url;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
-pub fn collect_logs(target_path: &Path) -> Result<()> {
-    let file = std::fs::File::create(target_path)?;
-    collect_logs_to(file)?;
-    Ok(())
-}
-
-pub fn collect_logs_tempfile() -> Result<tempfile::NamedTempFile> {
-    let file = tempfile::NamedTempFile::new()?;
-    collect_logs_to(file.reopen()?)?;
-    Ok(file)
-}
-
-fn collect_logs_to<W: Write + Seek>(writer: W) -> Result<W> {
-    let logs_dir = app_logs_dir()?;
+pub fn collect_logs_to<W: Write + Seek>(
+    writer: W,
+    paths: &nyanpasu_paths::PathResolver,
+) -> Result<W> {
+    let logs_dir = paths.logs_dir()?;
     let now = Local::now().format("%Y-%m-%d");
     let globstr = format!(
         "{}/clash-nyanpasu_{}_*.log",

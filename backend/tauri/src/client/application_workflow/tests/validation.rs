@@ -53,12 +53,10 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
     )
     .await
     .unwrap();
-    let paths =
-        runtime::RuntimePaths::from_resolver(&crate::utils::path::PathResolver::with_base_dirs(
-            dir.path().into(),
-            dir.path().join("data"),
-        ))
-        .unwrap();
+    let paths = runtime::RuntimePaths::from_resolver(
+        &nyanpasu_paths::ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data")),
+    )
+    .unwrap();
     let endpoint = TestControlEndpoint::succeeding();
     let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
     let preparation = RuntimePreparation::new(
@@ -66,6 +64,7 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         clash.snapshot_handle(),
         profiles.snapshot_handle(),
         Arc::new(super::super::adapters::FsRuntimeBuildAdapter {
+            core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
             scripts: crate::enhance::ScriptDirs::under(dir.path()),

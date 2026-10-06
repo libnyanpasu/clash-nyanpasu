@@ -344,12 +344,10 @@ async fn workflow_graph_with_clients(
     )
     .await
     .unwrap();
-    let paths =
-        runtime::RuntimePaths::from_resolver(&crate::utils::path::PathResolver::with_base_dirs(
-            dir.path().into(),
-            dir.path().join("data"),
-        ))
-        .unwrap();
+    let paths = runtime::RuntimePaths::from_resolver(
+        &nyanpasu_paths::ResolvedPaths::with_base_dirs(dir.path().into(), dir.path().join("data")),
+    )
+    .unwrap();
     let validator_paths = paths.clone();
     let core_for_validator = core.clone();
     // The graph's router already drives the host it was built on, and these
@@ -359,6 +357,7 @@ async fn workflow_graph_with_clients(
     };
     let builder = Arc::new(BlockingBuilder {
         delegate: adapters::FsRuntimeBuildAdapter {
+            core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths,
             scripts: crate::enhance::ScriptDirs::under(dir.path()),

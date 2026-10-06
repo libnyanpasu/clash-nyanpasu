@@ -75,7 +75,8 @@ pub fn parse() -> anyhow::Result<()> {
                 std::process::Command::new(path).args(args).spawn().unwrap();
             }
             Commands::Collect => {
-                let envs = crate::utils::collect::collect_envs().unwrap();
+                let envs =
+                    crate::utils::collect::collect_envs(&crate::host_paths::resolver()).unwrap();
                 println!("{envs:#?}");
             }
             Commands::PanicDialog { message } => {

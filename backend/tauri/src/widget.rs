@@ -421,7 +421,8 @@ impl WidgetHost for ProcessWidgetHost {
         // spawn a process to run the widget
         let variant = format!("{widget}");
         tracing::debug!("Spawning widget process for {}...", variant);
-        let widget_win_state_path = crate::utils::dirs::app_data_dir()
+        let widget_win_state_path = crate::host_paths::resolver()
+            .data_dir()
             .map_err(anyhow::Error::into)
             .context(ResolveStatePathSnafu)?
             .join(format!("widget_{variant}.state"));

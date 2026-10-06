@@ -19,6 +19,7 @@ mod specta_export;
 mod state;
 mod unified_rpc;
 
+mod host_paths;
 #[cfg(windows)]
 mod shutdown_hook;
 mod utils;
@@ -184,7 +185,7 @@ pub fn run() -> std::io::Result<()> {
             .downcast_ref::<init::MigrationChildFailed>()
             .is_some_and(|failed| failed.status.code() == Some(BACKUP_FAILED_EXIT_CODE));
         let message = format!("Failed to finish migration event: {e}");
-        match utils::path::PathResolver::from_env(None) {
+        match host_paths::resolver().resolve_paths(None) {
             Ok(paths) => utils::dialog::migration_failed_dialog(&message, &paths, backup_failed),
             Err(_) => utils::dialog::panic_dialog(&message),
         }
@@ -268,8 +269,9 @@ pub fn run() -> std::io::Result<()> {
     };
 
     let mut context = tauri::generate_context!();
-    let executable_dir =
-        utils::dirs::app_install_dir().expect("failed to locate the application directory");
+    let executable_dir = crate::host_paths::resolver()
+        .install_dir()
+        .expect("failed to locate the application directory");
     let metadata =
         bundle::BundleMetadata::resolve(cfg!(windows), context.config(), &executable_dir)
             .expect("failed to resolve bundle metadata");

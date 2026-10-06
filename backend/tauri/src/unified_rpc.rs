@@ -290,12 +290,17 @@ impl UnifiedRpc {
 }
 
 async fn http_logs_archive() -> Result<Response, (StatusCode, Json<RpcError>)> {
-    let archive = tokio::task::spawn_blocking(crate::utils::candy::collect_logs_tempfile)
-        .await
-        .map_err(RpcError::application)
-        .map_err(http_rpc_error)?
-        .map_err(|error| RpcError::new("application_error", error.to_string()))
-        .map_err(http_rpc_error)?;
+    let archive = tokio::task::spawn_blocking(|| {
+        let file = tempfile::NamedTempFile::new()?;
+        let writer = file.reopen()?;
+        crate::utils::candy::collect_logs_to(writer, &crate::host_paths::resolver())?;
+        Ok::<_, anyhow::Error>(file)
+    })
+    .await
+    .map_err(RpcError::application)
+    .map_err(http_rpc_error)?
+    .map_err(|error| RpcError::new("application_error", error.to_string()))
+    .map_err(http_rpc_error)?;
     let file = tokio::fs::File::open(archive.path())
         .await
         .map_err(RpcError::application)

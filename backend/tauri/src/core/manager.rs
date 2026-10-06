@@ -2,10 +2,14 @@ use std::borrow::Cow;
 
 /// 给clash内核的tun模式授权
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn grant_permission(core: &nyanpasu_utils::core::CoreType) -> anyhow::Result<()> {
+pub fn grant_permission(
+    core: &nyanpasu_utils::core::CoreType,
+    paths: &nyanpasu_paths::PathResolver,
+) -> anyhow::Result<()> {
     use std::process::Command;
 
-    let path = crate::core::find_binary_path(&core)
+    let path = paths
+        .find_binary_path(core.get_executable_name())
         .map_err(|_| anyhow::anyhow!("clash core not found"))?
         .canonicalize()?
         .to_string_lossy()

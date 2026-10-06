@@ -276,8 +276,9 @@ export async function prepareCentralPublication(
       folderPath,
       itemIdentifier,
       publishedAt,
-      paths: files,
-    });
+      // Globs need forward slashes, so match file names inside the target.
+      paths: files.map((file) => path.basename(file)),
+    }, targetDir);
     const manifestPath = path.join(output, "manifests", `${target}.json`);
     await Deno.writeTextFile(
       manifestPath,

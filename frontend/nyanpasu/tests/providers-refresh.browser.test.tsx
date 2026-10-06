@@ -51,7 +51,9 @@ test('a proxies event refreshes only mounted provider views, without re-renderin
             {
               name: 'a',
               type: 'Shadowsocks',
-              history: [{ delay: providerFetches }],
+              history: [
+                { time: '2026-09-30T00:00:00Z', delay: providerFetches },
+              ],
             },
           ],
         },

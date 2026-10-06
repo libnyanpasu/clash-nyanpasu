@@ -8,6 +8,7 @@
     },
     "no_proxies": "Без прокси",
     "select_proxy": "Выбрать прокси",
+    "restore_auto_selection": "Восстановить автоматический выбор",
     "dashboard": "Панель управления",
     "direct_mode": "Прямой режим",
     "global_mode": "Глобальный режим",

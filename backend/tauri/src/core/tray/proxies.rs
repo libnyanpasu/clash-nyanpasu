@@ -22,6 +22,7 @@ type ProxySelectAction = (GroupName, FromProxy, ToProxy);
 
 const NODE_ITEM_ID_PREFIX: &str = "proxy_node:";
 const GROUP_MENU_ID_PREFIX: &str = "proxy_group:";
+const UNFIX_ITEM_ID_PREFIX: &str = "proxy_unfix:";
 
 /// A node item's id names its group and node, so a click needs no lookup.
 fn node_item_id(group: &str, node: &str) -> String {
@@ -37,6 +38,26 @@ fn parse_node_item_id(id: &str) -> Option<(String, String)> {
     serde_json::from_str(id.strip_prefix(NODE_ITEM_ID_PREFIX)?).ok()
 }
 
+/// The id of a group's "restore automatic selection" item. The group name is
+/// the whole rest of the id, so it needs no escaping.
+fn unfix_item_id(group: &str) -> String {
+    format!("{UNFIX_ITEM_ID_PREFIX}{group}")
+}
+
+/// The group an unfix item id names; `None` for any other menu item.
+fn parse_unfix_item_id(id: &str) -> Option<&str> {
+    id.strip_prefix(UNFIX_ITEM_ID_PREFIX)
+}
+
+/// A node's menu text; the pinned member carries a pin.
+fn node_item_text(node: &str, fixed: Option<&str>) -> String {
+    if fixed == Some(node) {
+        format!("{node} 📌")
+    } else {
+        node.to_owned()
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub(super) enum TrayUpdateType {
     None,
@@ -49,6 +70,10 @@ pub(super) struct TrayGroup {
     pub(super) all: Vec<String>,
     /// Whether the core accepts choosing one of `all`.
     pub(super) selectable: bool,
+    /// The member a user pinned, marked in the menu.
+    pub(super) fixed: Option<String>,
+    /// Whether the menu offers to return the group to automatic selection.
+    pub(super) clear_fixed: bool,
 }
 pub(super) type TrayProxies = IndexMap<String, TrayGroup>;
 
@@ -62,6 +87,8 @@ impl TrayGroup {
                 .map(|name| name.as_str().to_owned())
                 .collect(),
             selectable: group.capabilities.select,
+            fixed: group.fixed.as_ref().map(|name| name.as_str().to_owned()),
+            clear_fixed: group.capabilities.clear_fixed,
         }
     }
 }
@@ -103,8 +130,12 @@ pub(super) fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies)
     for (group, item) in new_proxies.iter() {
         let old_item = old_proxies.get(group).unwrap(); // safe to unwrap
 
-        // check if the length of all list or the selectability is different
-        if item.all.len() != old_item.all.len() || item.selectable != old_item.selectable {
+        // check if the length of all list, the selectability, or the pin is different
+        if item.all.len() != old_item.all.len()
+            || item.selectable != old_item.selectable
+            || item.fixed != old_item.fixed
+            || item.clear_fixed != old_item.clear_fixed
+        {
             return TrayUpdateType::Full;
         }
 
@@ -199,6 +230,7 @@ pub fn setup_proxies(app_handle: &AppHandle) {
 mod platform_impl {
     use super::{
         Paint, ProxySection, ProxySelectAction, Shown, TrayGroup, group_menu_id, node_item_id,
+        node_item_text, unfix_item_id,
     };
     use crate::{client::effects::plan::TrayView, core::tray::TrayState};
     use nyanpasu_config::application::ProxiesSelectorMode;
@@ -227,10 +259,23 @@ mod platform_impl {
             );
             return Ok(group_menu.build()?);
         }
+        if group.clear_fixed {
+            group_menu = group_menu
+                .item(
+                    &MenuItemBuilder::with_id(
+                        unfix_item_id(group_name),
+                        t!("tray.restore_auto_selection"),
+                    )
+                    .enabled(group.fixed.is_some())
+                    .build(app_handle)?,
+                )
+                .separator();
+        }
         for item in group.all.iter() {
-            let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone())
-                .id(node_item_id(group_name, item))
-                .checked(false);
+            let mut sub_item_builder =
+                CheckMenuItemBuilder::new(node_item_text(item, group.fixed.as_deref()))
+                    .id(node_item_id(group_name, item))
+                    .checked(false);
             if let Some(now) = group.now.clone()
                 && now == item.as_str()
             {
@@ -407,6 +452,11 @@ impl<R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'_, 
 
 #[instrument]
 pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
+    if let Some(group) = parse_unfix_item_id(event) {
+        clear_fixed(app_handle, group.to_owned());
+        return;
+    }
+
     let Some((group, name)) = parse_node_item_id(event) else {
         if event.starts_with(NODE_ITEM_ID_PREFIX) {
             error!("malformed proxy item id: {event}");
@@ -444,6 +494,29 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
     });
 }
 
+/// Returns `group` to automatic selection. Like a selection, the tray
+/// repaints once the core answered; a plain item is not flipped by the
+/// platform menu, so nothing is recorded as clicked.
+fn clear_fixed(app_handle: &AppHandle, group: String) {
+    let client = app_handle
+        .state::<crate::client::NyanpasuClient>()
+        .inner()
+        .clone();
+    let app_handle = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        debug!("received clear pinned proxy event: {group}");
+        match client.clear_proxy_fixed(group.clone()).await {
+            Ok(outcome) => {
+                for degradation in outcome.degradations() {
+                    warn!(reason = ?degradation.reason, message = %degradation.message, "clearing the pinned proxy degraded");
+                }
+            }
+            Err(error) => error!("clear pinned proxy failed, {group}: {error:#}"),
+        }
+        log_err!(Tray::request(&app_handle, TrayWork::PROXIES));
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -456,6 +529,8 @@ mod tests {
                 now: now.map(str::to_owned),
                 all: vec!["a".to_owned(), "b".to_owned()],
                 selectable: true,
+                fixed: None,
+                clear_fixed: false,
             },
         )])
     }
@@ -621,10 +696,75 @@ mod tests {
             "no_proxies",
             "quit",
             group_menu_id("Proxy").as_str(),
+            unfix_item_id("Proxy").as_str(),
             "proxy_node_3",
             "proxy_node:not json",
         ] {
             assert_eq!(parse_node_item_id(id), None, "{id:?}");
         }
+    }
+
+    #[test]
+    fn unfix_item_ids_round_trip() {
+        for group in [
+            "Proxy",
+            "a:b",
+            "sp ace",
+            "\u{1F680}",
+            "",
+            "proxy_node:[\"x\"]",
+        ] {
+            assert_eq!(parse_unfix_item_id(&unfix_item_id(group)), Some(group));
+        }
+    }
+
+    #[test]
+    fn node_and_unfix_ids_never_parse_as_each_other() {
+        assert_eq!(parse_unfix_item_id(&node_item_id("G", "n")), None);
+        assert_eq!(parse_node_item_id(&unfix_item_id("G")), None);
+        assert_eq!(parse_unfix_item_id(&group_menu_id("G")), None);
+    }
+
+    /// The pin follows `fixed`, not `now`: a pinned URLTest member that is
+    /// down keeps its pin while the check moves to the member in use.
+    #[test]
+    fn a_pinned_node_carries_a_pin() {
+        assert_eq!(node_item_text("a", Some("a")), "a 📌");
+        assert_eq!(node_item_text("b", Some("a")), "b");
+        assert_eq!(node_item_text("a", None), "a");
+    }
+
+    #[test]
+    fn tray_groups_carry_the_pin_and_whether_it_can_be_cleared() {
+        let mut pinned = group("Auto", &["node-a", "node-b"], "node-b");
+        pinned.kind = ProxyGroupKind::UrlTest;
+        pinned.fixed = Some("node-a".into());
+        pinned.capabilities = ProxyGroupCapabilities {
+            select: true,
+            clear_fixed: true,
+        };
+        let tray = TrayGroup::of(&pinned);
+        assert_eq!(tray.fixed.as_deref(), Some("node-a"));
+        assert_eq!(tray.now.as_deref(), Some("node-b"));
+        assert!(tray.clear_fixed);
+
+        // Clash-rs reports no pin: nothing to clear.
+        let automatic = group("Fallback", &["node-a"], "node-a");
+        let tray = TrayGroup::of(&automatic);
+        assert_eq!(tray.fixed, None);
+        assert!(!tray.clear_fixed);
+    }
+
+    /// The pin is part of the item text and the restore item exists only
+    /// for clearable groups, so either change needs a rebuild.
+    #[test]
+    fn a_pin_change_needs_a_rebuild() {
+        let open = selecting(Some("a"));
+        let mut pinned = selecting(Some("a"));
+        pinned["Proxy"].fixed = Some("a".to_owned());
+        assert_eq!(diff_proxies(&open, &pinned), TrayUpdateType::Full);
+        let mut clearable = selecting(Some("a"));
+        clearable["Proxy"].clear_fixed = true;
+        assert_eq!(diff_proxies(&open, &clearable), TrayUpdateType::Full);
     }
 }

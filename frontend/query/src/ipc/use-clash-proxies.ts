@@ -46,11 +46,18 @@ export const useClashProxies = () => {
   const queryClient = useQueryClient()
   const proxiesOptions = api.queries.getProxies()
   const selectProxyCommand = api.mutations.selectProxy
+  const clearProxyFixedCommand = api.mutations.clearProxyFixed
 
   const { mutateAsync: mutateSelectProxy } = useMutation({
     mutationKey: selectProxyCommand.mutationKey,
     mutationFn: async ({ group, name }: { group: string; name: string }) =>
       unwrapResult(await invokeMutation(selectProxyCommand, [group, name])),
+  })
+
+  const { mutateAsync: mutateClearProxyFixed } = useMutation({
+    mutationKey: clearProxyFixedCommand.mutationKey,
+    mutationFn: async (group: string) =>
+      unwrapResult(await invokeMutation(clearProxyFixedCommand, [group])),
   })
 
   const proxies = useQuery<ClashProxiesQuery | undefined>({
@@ -81,6 +88,17 @@ export const useClashProxies = () => {
       })
     },
     [mutateSelectProxy, queryClient],
+  )
+
+  const clearProxyFixed = useCallback(
+    async (group: string) => {
+      await mutateClearProxyFixed(group)
+      await queryClient.refetchQueries({
+        queryKey: api.queries.getProxies().queryKey,
+        exact: true,
+      })
+    },
+    [mutateClearProxyFixed, queryClient],
   )
 
   const getQueryData = () => {
@@ -183,6 +201,7 @@ export const useClashProxies = () => {
   return {
     proxies,
     selectProxy,
+    clearProxyFixed,
     updateProxiesDelay,
     updateGroupDelay,
   }

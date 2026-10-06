@@ -1,9 +1,11 @@
 import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
+import KeepRounded from '~icons/material-symbols/keep-rounded'
 import { ComponentProps, memo, MouseEvent, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
+import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { ClashProxiesQueryProxyItem } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
@@ -34,12 +36,14 @@ function FeatureChip({
 export default memo(function ProxyNodeButton({
   proxy,
   selectable,
+  fixed,
   onSelect,
   onDelayTest,
   ...props
 }: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'onSelect'> & {
   proxy: ClashProxiesQueryProxyItem
   selectable: boolean
+  fixed: boolean
   onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
   onDelayTest: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
 }) {
@@ -109,6 +113,16 @@ export default memo(function ProxyNodeButton({
       >
         <div className="flex w-full items-center justify-between gap-2 px-2">
           <div className="truncate text-sm font-medium">{proxy.name}</div>
+
+          {fixed && (
+            <span
+              className="text-primary shrink-0"
+              title={m.proxies_group_fixed_label()}
+              data-slot="proxy-node-fixed-icon"
+            >
+              <KeepRounded className="size-4" />
+            </span>
+          )}
           {/* TODO: takes up too much space and needs to be redesigned */}
           {/* <DelayHistoryBar history={proxy.history ?? []} /> */}
         </div>

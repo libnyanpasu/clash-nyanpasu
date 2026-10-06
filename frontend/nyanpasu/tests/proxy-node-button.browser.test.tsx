@@ -22,7 +22,7 @@ const proxy: ClashProxiesQueryProxyItem = {
   provider: null,
 }
 
-async function renderButton(selectable: boolean) {
+async function renderButton(selectable: boolean, fixed = false) {
   const onSelect = vi.fn(async () => {})
   const onDelayTest = vi.fn(async () => {})
   const screen = await render(
@@ -31,6 +31,7 @@ async function renderButton(selectable: boolean) {
         <ProxyNodeButton
           proxy={proxy}
           selectable={selectable}
+          fixed={fixed}
           onSelect={onSelect}
           onDelayTest={onDelayTest}
         />
@@ -64,4 +65,19 @@ test('a node of a group the core selects on its own ignores clicks but still tes
   delayControl.click()
   await expect.poll(() => onDelayTest).toHaveBeenCalledWith(proxy)
   expect(onSelect).not.toHaveBeenCalled()
+})
+
+test('only the pinned member shows the pin', async () => {
+  const pinned = await renderButton(true, true)
+  expect(
+    pinned.screen.container.querySelector(
+      '[data-slot="proxy-node-fixed-icon"]',
+    ),
+  ).not.toBeNull()
+  pinned.screen.unmount()
+
+  const other = await renderButton(true, false)
+  expect(
+    other.screen.container.querySelector('[data-slot="proxy-node-fixed-icon"]'),
+  ).toBeNull()
 })

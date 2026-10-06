@@ -1,4 +1,6 @@
 import BoltRounded from '~icons/material-symbols/bolt-rounded'
+import KeepOffRounded from '~icons/material-symbols/keep-off-rounded'
+import KeepRounded from '~icons/material-symbols/keep-rounded'
 import { useMemo } from 'react'
 import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
@@ -45,13 +47,40 @@ const DelayTestButton = () => {
   )
 }
 
+const ClearFixedButton = ({ group }: { group: string }) => {
+  const { clearProxyFixed } = useClashProxies()
+
+  const handleClick = async () => {
+    try {
+      await clearProxyFixed(group)
+    } catch (error) {
+      // A dialog would take focus and dismiss the tray menu; the frontend
+      // error reporter records this in the application log.
+      console.error('[tray-menu] failed to restore automatic selection', error)
+    }
+  }
+
+  return (
+    <ActionButton
+      className="w-10 shrink-0 justify-center backdrop-blur-lg"
+      title={m.proxies_group_clear_fixed_button()}
+      disableClose
+      onClick={handleClick}
+    >
+      <KeepOffRounded />
+    </ActionButton>
+  )
+}
+
 const ProxyButton = ({
   proxy,
   selectable,
+  fixed,
   onSelect,
 }: {
   proxy: ClashProxiesQueryProxyItem
   selectable: boolean
+  fixed: boolean
   onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
 }) => {
   const currentDelay = useMemo(() => {
@@ -75,6 +104,16 @@ const ProxyButton = ({
       onClick={handleClick}
     >
       <TextMarquee className="min-w-0 flex-1">{proxy.name}</TextMarquee>
+
+      {fixed && (
+        <span
+          className="text-primary shrink-0"
+          title={m.proxies_group_fixed_label()}
+          data-slot="tray-menu-proxy-fixed-icon"
+        >
+          <KeepRounded className="size-4" />
+        </span>
+      )}
 
       {currentDelay > 0 && <DelayChip delay={currentDelay} />}
     </ActionButton>
@@ -132,6 +171,10 @@ function RouteComponent() {
           <span>{m.tray_menu_back_to_proxies_menu()}</span>
         </BackButton>
 
+        {currentGroup?.fixed && currentGroup.capabilities.clearFixed && (
+          <ClearFixedButton group={currentGroup.name} />
+        )}
+
         <DelayTestButton />
       </div>
 
@@ -168,6 +211,7 @@ function RouteComponent() {
               <ProxyButton
                 proxy={proxy}
                 selectable={currentGroup?.capabilities.select ?? false}
+                fixed={name === currentGroup?.fixed}
                 onSelect={handleSelectProxy}
               />
             </div>

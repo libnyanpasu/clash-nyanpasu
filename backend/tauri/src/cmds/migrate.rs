@@ -144,7 +144,8 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 
     // 1. waiting for app exited
     println!("waiting for app exited.");
-    let placeholder = crate::host_paths::resolver().single_instance_placeholder()?;
+    let placeholder =
+        utils::init::single_instance_placeholder(crate::host_paths::APP_NAME, &current_home_dir);
     let mut single_instance: single_instance::SingleInstance;
     loop {
         single_instance = single_instance::SingleInstance::new(&placeholder)

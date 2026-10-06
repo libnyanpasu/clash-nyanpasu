@@ -20,9 +20,6 @@ mod platform;
 #[path = "unix.rs"]
 mod platform;
 
-#[cfg(all(test, windows))]
-mod windows_tests;
-
 pub const CLASH_CFG_GUARD_OVERRIDES: &str = "clash-guard-overrides.yaml";
 pub const NYANPASU_CONFIG: &str = "nyanpasu-config.yaml";
 pub const PROFILE_YAML: &str = "profiles.yaml";

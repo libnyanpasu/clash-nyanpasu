@@ -208,3 +208,24 @@ fn migration_process_fixture() {
     };
     std::process::exit(code);
 }
+
+#[cfg(windows)]
+#[test]
+fn test_get_current_user_sid() {
+    let sid = super::current_user_sid().unwrap();
+    assert!(!sid.is_empty());
+    // SID should start with "S-" followed by numbers
+    assert!(sid.starts_with("S-"));
+    println!("Current user SID: {}", sid);
+}
+
+#[cfg(windows)]
+#[test]
+fn test_get_single_instance_placeholder_with_sid() {
+    let dir = tempfile::tempdir().unwrap();
+    let placeholder = super::single_instance_placeholder("clash-nyanpasu", dir.path());
+    assert!(!placeholder.is_empty());
+    // Should contain the app name
+    assert!(placeholder.contains("clash-nyanpasu") || placeholder.contains("clash-nyanpasu-dev"));
+    println!("Single instance placeholder: {}", placeholder);
+}

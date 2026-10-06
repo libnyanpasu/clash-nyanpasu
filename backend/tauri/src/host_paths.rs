@@ -3,9 +3,9 @@ use nyanpasu_paths::{HostInputs, PathResolver};
 use std::{collections::BTreeMap, path::PathBuf};
 
 #[cfg(not(feature = "verge-dev"))]
-const APP_NAME: &str = "clash-nyanpasu";
+pub(crate) const APP_NAME: &str = "clash-nyanpasu";
 #[cfg(feature = "verge-dev")]
-const APP_NAME: &str = "clash-nyanpasu-dev";
+pub(crate) const APP_NAME: &str = "clash-nyanpasu-dev";
 
 pub fn resolver() -> PathResolver {
     PathResolver::new(HostInputs {

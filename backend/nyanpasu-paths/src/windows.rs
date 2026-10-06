@@ -2,9 +2,7 @@ use crate::{HostInputs, PathResolver};
 use anyhow::Result;
 use std::{
     io::ErrorKind,
-    os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::Command,
 };
 use winreg::{RegKey, enums::*};
 
@@ -56,64 +54,6 @@ impl PathResolver {
         key.set_value("AppDir", &path.to_str().unwrap())?;
         Ok(())
     }
-    pub fn current_user_sid(&self) -> Result<String> {
-        let output = Command::new("powershell")
-            .args([
-                "-Command",
-                "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
-            ])
-            .creation_flags(0x08000000)
-            .output();
-        if let Ok(output) = output
-            && output.status.success()
-        {
-            let sid = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !sid.is_empty() {
-                return Ok(sid);
-            }
-        }
-        let output = Command::new("wmic")
-            .args([
-                "useraccount",
-                "where",
-                "name='%username%'",
-                "get",
-                "sid",
-                "/value",
-            ])
-            .creation_flags(0x08000000)
-            .output();
-        if let Ok(output) = output
-            && output.status.success()
-        {
-            for line in String::from_utf8_lossy(&output.stdout).lines() {
-                if let Some(sid) = line.strip_prefix("SID=") {
-                    let sid = sid.trim();
-                    if !sid.is_empty() {
-                        return Ok(sid.to_string());
-                    }
-                }
-            }
-        }
-        Ok(config_hash(&self.config_dir()?))
-    }
-    pub fn single_instance_placeholder(&self) -> Result<String> {
-        let config = self.config_dir()?;
-        let sid = self
-            .current_user_sid()
-            .unwrap_or_else(|_| config_hash(&config));
-        Ok(format!("Local\\{}-{}", self.host()?.app_name, sid))
-    }
-}
-
-fn config_hash(config: &Path) -> String {
-    use std::{
-        collections::hash_map::DefaultHasher,
-        hash::{Hash, Hasher},
-    };
-    let mut hasher = DefaultHasher::new();
-    config.to_string_lossy().hash(&mut hasher);
-    format!("{:x}", hasher.finish())
 }
 
 pub(super) fn directory_name(app_name: &str) -> String {

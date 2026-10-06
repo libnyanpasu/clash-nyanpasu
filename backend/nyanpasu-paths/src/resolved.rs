@@ -96,9 +96,6 @@ impl ResolvedPaths {
     pub fn data_or_sidecar_path(&self, binary_name: impl AsRef<str>) -> Result<PathBuf> {
         self.resolver.data_or_sidecar_path(binary_name)
     }
-    pub fn single_instance_placeholder(&self) -> Result<String> {
-        self.resolver.single_instance_placeholder()
-    }
 }
 
 #[cfg(test)]

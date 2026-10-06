@@ -8,7 +8,7 @@ use runas::Command as RunasCommand;
 use std::{
     fs::{self, File},
     io::{self, BufReader, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
     sync::Arc,
     thread::JoinHandle,
@@ -245,8 +245,87 @@ pub fn init_resources(paths: &ResolvedPaths) -> Result<()> {
     Ok(())
 }
 
+/// The name the instances of one user contend for: a lock file in the config dir, or on
+/// Windows a session-local name carrying the user's SID.
+pub fn single_instance_placeholder(app_name: &str, config_dir: &Path) -> String {
+    #[cfg(windows)]
+    {
+        let sid = current_user_sid().unwrap_or_else(|| config_hash(config_dir));
+        format!("Local\\{app_name}-{sid}")
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app_name;
+        config_dir
+            .join("instance.lock")
+            .to_string_lossy()
+            .to_string()
+    }
+}
+
+/// The current user's SID, from PowerShell or else WMIC.
+#[cfg(windows)]
+fn current_user_sid() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+
+    let output = Command::new("powershell")
+        .args([
+            "-Command",
+            "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+        ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output();
+    if let Ok(output) = output
+        && output.status.success()
+    {
+        let sid = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !sid.is_empty() {
+            return Some(sid);
+        }
+    }
+
+    let output = Command::new("wmic")
+        .args([
+            "useraccount",
+            "where",
+            "name='%username%'",
+            "get",
+            "sid",
+            "/value",
+        ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output();
+    if let Ok(output) = output
+        && output.status.success()
+    {
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if let Some(sid) = line.strip_prefix("SID=") {
+                let sid = sid.trim();
+                if !sid.is_empty() {
+                    return Some(sid.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// What stands in for the SID when it cannot be read.
+#[cfg(windows)]
+fn config_hash(config_dir: &Path) -> String {
+    use std::{
+        collections::hash_map::DefaultHasher,
+        hash::{Hash, Hasher},
+    };
+    let mut hasher = DefaultHasher::new();
+    config_dir.to_string_lossy().hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
 pub fn check_singleton() -> Result<Option<single_instance::SingleInstance>> {
-    let placeholder = crate::host_paths::resolver().single_instance_placeholder()?;
+    // The config dir is created first, as the lock file and the hash fallback live in it.
+    let config_dir = crate::host_paths::resolver().config_dir()?;
+    let placeholder = single_instance_placeholder(crate::host_paths::APP_NAME, &config_dir);
     for i in 0..5 {
         let instance = single_instance::SingleInstance::new(&placeholder)
             .context("failed to create single instance")?;

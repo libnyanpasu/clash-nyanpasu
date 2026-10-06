@@ -16,14 +16,6 @@ impl PathResolver {
     pub fn custom_config_dir(&self) -> Result<Option<PathBuf>> {
         Ok(None)
     }
-
-    pub fn single_instance_placeholder(&self) -> Result<String> {
-        Ok(self
-            .config_dir()?
-            .join("instance.lock")
-            .to_string_lossy()
-            .to_string())
-    }
 }
 
 pub(super) fn executable_name(name: &str) -> String {

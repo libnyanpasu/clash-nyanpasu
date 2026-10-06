@@ -16,7 +16,7 @@ use std::{
     thread,
 };
 use tracing::error;
-use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
+use tracing_appender::non_blocking::{NonBlocking, NonBlockingBuilder, WorkerGuard};
 use tracing_log::log_tracer;
 use tracing_subscriber::{EnvFilter, Layer as _, filter, fmt, layer::SubscriberExt, reload};
 
@@ -58,7 +58,9 @@ fn file_log_writer(
 
 fn get_file_appender(rotation: LogRotation) -> Result<(NonBlocking, FileAppenderGuard)> {
     let (writer, handle) = file_log_writer(dirs::app_logs_dir().unwrap(), rotation)?;
-    let (appender, worker) = tracing_appender::non_blocking(writer);
+    let (appender, worker) = NonBlockingBuilder::default()
+        .buffered_lines_limit(4096)
+        .finish(writer);
     Ok((
         appender,
         FileAppenderGuard {

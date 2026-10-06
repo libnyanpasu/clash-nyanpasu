@@ -1,3 +1,4 @@
+use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{
@@ -49,8 +50,8 @@ pub(crate) fn icon_path(config_dir: &std::path::Path, mode: &str) -> PathBuf {
     config_dir.join("icons").join(format!("{mode}.png"))
 }
 
-pub(crate) fn tray_icons_path(mode: &str) -> anyhow::Result<PathBuf> {
-    let config = crate::host_paths::resolver().config_dir()?;
+pub(crate) fn tray_icons_path(paths: &PathResolver, mode: &str) -> anyhow::Result<PathBuf> {
+    let config = paths.config_dir()?;
     let icons = config.join("icons");
     crate::log_err!(nyanpasu_paths::create_dir_all(&icons));
     Ok(icon_path(&config, mode))
@@ -78,9 +79,9 @@ impl TrayIcon {
     }
 }
 
-#[tracing_attributes::instrument]
-pub fn get_raw_icon<'n>(mode: TrayIcon) -> Cow<'n, [u8]> {
-    match tray_icons_path(mode.as_str()) {
+#[tracing_attributes::instrument(skip(paths))]
+pub fn get_raw_icon<'n>(paths: &PathResolver, mode: TrayIcon) -> Cow<'n, [u8]> {
+    match tray_icons_path(paths, mode.as_str()) {
         Ok(path) if path.exists() => match std::fs::read(path) {
             Ok(bytes) => Cow::Owned(bytes),
             Err(e) => {
@@ -92,9 +93,9 @@ pub fn get_raw_icon<'n>(mode: TrayIcon) -> Cow<'n, [u8]> {
     }
 }
 
-#[tracing_attributes::instrument]
-fn resize_image(mode: TrayIcon, scale_factor: f64) {
-    let raw_icon: Cow<[u8]> = get_raw_icon(mode);
+#[tracing_attributes::instrument(skip(paths))]
+fn resize_image(paths: &PathResolver, mode: TrayIcon, scale_factor: f64) {
+    let raw_icon: Cow<[u8]> = get_raw_icon(paths, mode);
     let icon = match crate::utils::help::resize_tray_image(&raw_icon, scale_factor) {
         Ok(icon) => icon,
         Err(e) => {
@@ -102,10 +103,7 @@ fn resize_image(mode: TrayIcon, scale_factor: f64) {
             raw_icon.to_vec()
         }
     };
-    let cache_dir = crate::host_paths::resolver()
-        .cache_dir()
-        .unwrap()
-        .join("icons");
+    let cache_dir = paths.cache_dir().unwrap().join("icons");
     if !cache_dir.exists()
         && let Err(e) = std::fs::create_dir_all(&cache_dir)
     {
@@ -117,46 +115,50 @@ fn resize_image(mode: TrayIcon, scale_factor: f64) {
 }
 
 // TODO: migrate to async fn
-#[tracing_attributes::instrument]
-pub fn resize_images(scale_factor: f64) {
+#[tracing_attributes::instrument(skip(paths))]
+pub fn resize_images(paths: &PathResolver, scale_factor: f64) {
     for item in TrayIcon::all_supported() {
-        resize_image(*item, scale_factor);
+        resize_image(paths, *item, scale_factor);
     }
 }
 
-pub fn set_icon(mode: TrayIcon, path: Option<PathBuf>) -> anyhow::Result<()> {
+pub fn set_icon(paths: &PathResolver, mode: TrayIcon, path: Option<PathBuf>) -> anyhow::Result<()> {
     match path {
         Some(path) => {
             // try parse path and convert image to png
             let image = image::open(&path)?;
-            image.save(tray_icons_path(mode.as_str())?)?;
+            image.save(tray_icons_path(paths, mode.as_str())?)?;
         }
         None => {
             // use default icon
-            std::fs::remove_file(tray_icons_path(mode.as_str())?)?;
+            std::fs::remove_file(tray_icons_path(paths, mode.as_str())?)?;
         }
     }
-    refresh_icon(mode);
+    refresh_icon(paths, mode);
     Ok(())
 }
 
-pub fn set_icon_from_bytes(mode: TrayIcon, bytes: &[u8]) -> anyhow::Result<()> {
-    image::load_from_memory(bytes)?.save(tray_icons_path(mode.as_str())?)?;
-    refresh_icon(mode);
+pub fn set_icon_from_bytes(
+    paths: &PathResolver,
+    mode: TrayIcon,
+    bytes: &[u8],
+) -> anyhow::Result<()> {
+    image::load_from_memory(bytes)?.save(tray_icons_path(paths, mode.as_str())?)?;
+    refresh_icon(paths, mode);
     Ok(())
 }
 
-fn refresh_icon(mode: TrayIcon) {
+fn refresh_icon(paths: &PathResolver, mode: TrayIcon) {
     let factor = crate::utils::help::get_max_scale_factor();
-    resize_image(mode, factor);
+    resize_image(paths, mode, factor);
 }
 
-pub fn on_scale_factor_changed(scale_factor: f64) {
-    resize_images(scale_factor);
+pub fn on_scale_factor_changed(paths: &PathResolver, scale_factor: f64) {
+    resize_images(paths, scale_factor);
 }
 
-pub fn get_icon(mode: &TrayIcon) -> Vec<u8> {
-    let cache_file = crate::host_paths::resolver()
+pub fn get_icon(paths: &PathResolver, mode: &TrayIcon) -> Vec<u8> {
+    let cache_file = paths
         .cache_dir()
         .unwrap()
         .join("icons")

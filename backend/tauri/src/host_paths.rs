@@ -1,29 +1,31 @@
 //! GUI package inputs for the frontend-independent directory resolver.
 use nyanpasu_paths::{HostInputs, PathResolver};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 #[cfg(not(feature = "verge-dev"))]
 pub(crate) const APP_NAME: &str = "clash-nyanpasu";
 #[cfg(feature = "verge-dev")]
 pub(crate) const APP_NAME: &str = "clash-nyanpasu-dev";
 
+/// The one resolver of the process; `run()` calls this once and passes it down.
 pub fn resolver() -> PathResolver {
+    let executable = tauri::utils::platform::current_exe().map_err(Arc::new);
+    // Only Windows has a portable layout. The marker is a package property, read from the
+    // same install dir the resolver is given.
+    #[cfg(windows)]
+    let portable = executable
+        .as_ref()
+        .ok()
+        .and_then(|executable| nyanpasu_paths::installation_dir(executable).ok())
+        .is_some_and(|dir| crate::bundle::is_portable(&dir));
+    #[cfg(not(windows))]
+    let portable = false;
     PathResolver::new(HostInputs {
         app_name: APP_NAME.to_owned(),
-        executable: tauri::utils::platform::current_exe().map_err(std::sync::Arc::new),
-        portable: portable_flag(),
+        executable,
+        portable,
         development_binaries: development_binaries(),
     })
-}
-
-/// The portable marker is a GUI package property, sampled once per process.
-#[cfg(windows)]
-fn portable_flag() -> bool {
-    *crate::consts::IS_PORTABLE
-}
-#[cfg(not(windows))]
-fn portable_flag() -> bool {
-    false
 }
 
 #[cfg(debug_assertions)]

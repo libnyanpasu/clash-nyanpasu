@@ -5,6 +5,7 @@ use flexi_logger::{
     writers::{ArcFileLogWriter, FileLogWriter, FileLogWriterHandle},
 };
 use nyanpasu_config::application::LoggingLevel;
+use nyanpasu_paths::PathResolver;
 use std::{
     fs,
     io::IsTerminal,
@@ -53,9 +54,11 @@ fn file_log_writer(
     .try_build_with_handle()?)
 }
 
-fn get_file_appender(rotation: LogRotation) -> Result<(NonBlocking, FileAppenderGuard)> {
-    let (writer, handle) =
-        file_log_writer(crate::host_paths::resolver().logs_dir().unwrap(), rotation)?;
+fn get_file_appender(
+    logs_dir: PathBuf,
+    rotation: LogRotation,
+) -> Result<(NonBlocking, FileAppenderGuard)> {
+    let (writer, handle) = file_log_writer(logs_dir, rotation)?;
     let (appender, worker) = NonBlockingBuilder::default()
         .buffered_lines_limit(4096)
         .finish(writer);
@@ -89,9 +92,10 @@ fn app_filter(level: LoggingLevel) -> EnvFilter {
 /// trace profiler, when compiled in, joins the subscriber here
 pub fn init(
     profilers: &mut Profilers,
+    paths: &PathResolver,
 ) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
     let jobs = crate::client::jobs::capture();
-    let log_dir = crate::host_paths::resolver().logs_dir().unwrap();
+    let log_dir = paths.logs_dir().unwrap();
     if !log_dir.exists() {
         let _ = fs::create_dir_all(&log_dir);
     }
@@ -106,7 +110,7 @@ pub fn init(
     let (filter, filter_handle) = reload::Layer::new(app_filter(log_level));
 
     // register the logger
-    let (appender, _guard) = get_file_appender(log_rotation)?;
+    let (appender, _guard) = get_file_appender(log_dir.clone(), log_rotation)?;
     let (file_layer, file_handle) = reload::Layer::new(
         fmt::layer()
             .json()
@@ -118,6 +122,7 @@ pub fn init(
 
     // spawn a thread to handle the reload signal
     let (sender, receiver) = mpsc::channel::<ReloadSignal>();
+    let paths = paths.clone();
     thread::spawn(move || {
         let mut _guard = _guard; // just hold here to keep the file open
         let mut current_rotation = log_rotation;
@@ -130,7 +135,8 @@ pub fn init(
             // (such as the startup effect replaying the defaults) keeps the
             // current one.
             if let Some(rotation) = signal.1.filter(|r| *r != current_rotation) {
-                let (appender, guard) = match get_file_appender(rotation) {
+                let (appender, guard) = match get_file_appender(paths.logs_dir().unwrap(), rotation)
+                {
                     Ok(x) => x,
                     Err(e) => {
                         error!("failed to create file appender: {}", e);

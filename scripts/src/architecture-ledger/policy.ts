@@ -151,13 +151,6 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason: "launch-environment flag read once",
   },
   {
-    path: "backend/tauri/src/consts.rs",
-    name: "IS_PORTABLE",
-    category: "immutable",
-    reason:
-      "install-layout flag; base-dir resolution reads it before BundleMetadata exists",
-  },
-  {
     path: "backend/tauri/src/utils/dirs.rs",
     name: "APP_VERSION",
     category: "immutable",

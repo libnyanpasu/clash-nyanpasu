@@ -32,10 +32,11 @@ async fn remove_cache_file(path: &Path) {
 }
 
 pub async fn get_cached_icon(
-    url: Url,
+    url: &str,
     self_proxy_port: u16,
     paths: &nyanpasu_paths::PathResolver,
 ) -> Result<(String, Bytes)> {
+    let url = Url::parse(&url)?;
     let hash = Sha256::digest(url.as_str().as_bytes());
     let cache_dir = paths.cache_dir()?.join("icons");
     tokio::fs::create_dir_all(&cache_dir).await?;

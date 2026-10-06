@@ -21,6 +21,7 @@ use crate::{client::NyanpasuClient, core::storage::Storage};
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
     pub storage: Storage,
+    pub paths: nyanpasu_paths::PathResolver,
     pub events: EventBus,
 }
 
@@ -289,18 +290,17 @@ impl UnifiedRpc {
     }
 }
 
-async fn http_logs_archive() -> Result<Response, (StatusCode, Json<RpcError>)> {
-    let archive = tokio::task::spawn_blocking(|| {
-        let file = tempfile::NamedTempFile::new()?;
-        let writer = file.reopen()?;
-        crate::utils::candy::collect_logs_to(writer, &crate::host_paths::resolver())?;
-        Ok::<_, anyhow::Error>(file)
-    })
-    .await
-    .map_err(RpcError::application)
-    .map_err(http_rpc_error)?
-    .map_err(|error| RpcError::new("application_error", error.to_string()))
-    .map_err(http_rpc_error)?;
+async fn http_logs_archive(
+    State(rpc): State<UnifiedRpc>,
+) -> Result<Response, (StatusCode, Json<RpcError>)> {
+    let paths = rpc.dependencies.paths.clone();
+    let archive =
+        tokio::task::spawn_blocking(move || crate::utils::candy::collect_logs_tempfile(&paths))
+            .await
+            .map_err(RpcError::application)
+            .map_err(http_rpc_error)?
+            .map_err(|error| RpcError::new("application_error", error.to_string()))
+            .map_err(http_rpc_error)?;
     let file = tokio::fs::File::open(archive.path())
         .await
         .map_err(RpcError::application)
@@ -481,11 +481,13 @@ mod tests {
             b"{\"level\":\"INFO\",\"fields\":{\"message\":\"rpc log\"}}\n",
         )
         .unwrap();
+        let paths = args.paths.resolver().clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
             events: events.clone(),
         })
         .unwrap();
@@ -815,9 +817,11 @@ mod tests {
             crate::client::tests::TestControlEndpoint::succeeding(),
         );
         args.direct_egress = probe.clone();
+        let paths = args.paths.resolver().clone();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: NyanpasuClient::try_new_with_args(args).unwrap(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
             events: EventBus::new(),
         })
         .unwrap();
@@ -932,10 +936,12 @@ mod tests {
         args.http_frontend = Some(Frontend::Embedded(Arc::new(Assets)));
         let routes = Arc::new(RpcHttpRoutes::default());
         args.http_routes = routes.clone();
+        let paths = args.paths.resolver().clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
             events: EventBus::new(),
         })
         .unwrap();
@@ -1043,11 +1049,13 @@ mod tests {
         args.logging.frontend = frontend_events.clone();
         let routes = Arc::new(RpcHttpRoutes::default());
         args.http_routes = routes.clone();
+        let paths = args.paths.resolver().clone();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
             events: events.clone(),
         })
         .unwrap();

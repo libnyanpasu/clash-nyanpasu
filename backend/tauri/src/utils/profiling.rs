@@ -30,8 +30,8 @@ impl Profilers {
     /// Starts the heap profiler, as early as the app can: the Rust heap's
     /// allocations are recorded only from here on.
     #[cfg(feature = "dhat-heap")]
-    pub fn start_heap(&mut self) {
-        let dir = crate::host_paths::resolver()
+    pub fn start_heap(&mut self, paths: &nyanpasu_paths::PathResolver) {
+        let dir = paths
             .logs_dir()
             .expect("the heap profile is written to the logs directory");
         self.heap = Some(
@@ -40,9 +40,6 @@ impl Profilers {
                 .build(),
         );
     }
-
-    #[cfg(not(feature = "dhat-heap"))]
-    pub fn start_heap(&mut self) {}
 
     /// Writes the heap profile out once the user quits: what is live then is
     /// what the app held while it ran, before the shutdown frees it. Resolving

@@ -36,14 +36,3 @@ pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(|| BuildInfo {
 });
 
 pub static IS_APPIMAGE: Lazy<bool> = Lazy::new(|| std::env::var("APPIMAGE").is_ok());
-
-/// Kept as a process static because its only reader, base-dir resolution in
-/// `nyanpasu-paths`, runs before `BundleMetadata` exists: in the single-instance
-/// check, the pre-setup migrations, logging and the CLI subcommands. Code that
-/// holds a client asks `NyanpasuClient::is_portable` instead.
-#[cfg(target_os = "windows")]
-pub static IS_PORTABLE: Lazy<bool> = Lazy::new(|| {
-    let exe = tauri::utils::platform::current_exe().unwrap();
-    let dir = nyanpasu_paths::installation_dir(&exe).unwrap();
-    crate::bundle::is_portable(&dir)
-});

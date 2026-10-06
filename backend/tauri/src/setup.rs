@@ -1,5 +1,5 @@
 //! Setup logic for the app
-use nyanpasu_paths::ResolvedPaths;
+use nyanpasu_paths::{PathResolver, ResolvedPaths};
 use std::sync::Arc;
 
 use crate::{
@@ -48,6 +48,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     bundle_metadata: crate::bundle::BundleMetadata,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
     jobs_capture: nyanpasu_jobs::LogCapture,
+    resolver: PathResolver,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     let rpc_events = crate::unified_rpc::EventBus::new();
@@ -83,7 +84,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok()
         .map(|dir| dir.join("resources"));
-    let paths = crate::host_paths::resolver()
+    let paths = resolver
         .resolve_paths(resources_dir)
         .context("Failed to resolve app paths")?;
     let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
@@ -94,6 +95,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     crate::log_err!(crate::utils::init::init_resources(&paths));
     // For commands that need a path, such as the Windows UWP loopback tool.
     app.manage(paths.clone());
+    app.manage(resolver.clone());
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
     // TODO(ipc-timeout): nyanpasu_ipc::Client sets no request timeout. Remove the
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
@@ -251,6 +253,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         client.subscribe_clash_connections(),
         shutdown.child_token(),
         &tasks,
+        resolver,
     ))
     .context("Failed to setup the network statistic widget")?;
     widget_controller
@@ -268,6 +271,7 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
     let dependencies = crate::unified_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<crate::core::storage::Storage>()).clone(),
+        paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
     };
     let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies)?;

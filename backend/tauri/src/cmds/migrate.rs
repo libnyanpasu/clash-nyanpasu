@@ -5,6 +5,7 @@ use crate::core::{
     migration::{MigrationAdvice, Runner, current_version, registry},
 };
 use colored::Colorize;
+use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Args)]
 pub struct MigrateOpts {
@@ -25,8 +26,8 @@ pub struct MigrateOpts {
 /// A fresh install instance should have a empty config dir,
 ///
 /// The `app_config_dir` would create a new dir while access it.
-fn is_fresh_install_instance() -> bool {
-    crate::host_paths::resolver()
+fn is_fresh_install_instance(paths: &PathResolver) -> bool {
+    paths
         .config_dir()
         .ok()
         .and_then(|dir| std::fs::read_dir(dir).ok())
@@ -46,13 +47,13 @@ fn exit_code(error: &anyhow::Error) -> i32 {
     }
 }
 
-pub fn parse(args: &MigrateOpts) {
+pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
     if args.migration.is_some() && args.version.is_some() {
         eprintln!("Please specify only one of migration or version.");
         std::process::exit(1);
     }
 
-    let fresh_install = is_fresh_install_instance();
+    let fresh_install = is_fresh_install_instance(paths);
     let target = match args.version.as_deref() {
         Some(version) => semver::Version::parse(version).unwrap_or_else(|error| {
             eprintln!("Invalid migration target version {version}: {error}");
@@ -63,7 +64,7 @@ pub fn parse(args: &MigrateOpts) {
             std::process::exit(1);
         }),
     };
-    let mut runner = crate::host_paths::resolver()
+    let mut runner = paths
         .resolve_paths(None)
         .and_then(|paths| Runner::with_target(target, paths, args.force))
         .unwrap_or_else(|error| {
@@ -124,7 +125,7 @@ pub fn parse(args: &MigrateOpts) {
 }
 
 #[cfg(target_os = "windows")]
-pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
+pub fn migrate_home_dir_handler(target_path: &str, paths: &PathResolver) -> anyhow::Result<()> {
     use crate::utils;
     use anyhow::Context;
     use deelevate::{PrivilegeLevel, Token};
@@ -139,7 +140,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    let current_home_dir = crate::host_paths::resolver().config_dir()?;
+    let current_home_dir = paths.config_dir()?;
     let target_home_dir = PathBuf::from_str(target_path)?;
 
     // 1. waiting for app exited
@@ -186,7 +187,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 
     // 3. do config migrate and update the registry.
     utils::init::do_config_migration(&current_home_dir, &target_home_dir)?;
-    crate::host_paths::resolver().set_custom_config_dir(target_home_dir.as_path())?;
+    paths.set_custom_config_dir(target_home_dir.as_path())?;
     println!("migration finished. starting application...");
     drop(single_instance); // release single instance lock
 
@@ -199,7 +200,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn migrate_home_dir_handler(_target_path: &str) -> anyhow::Result<()> {
+pub fn migrate_home_dir_handler(_target_path: &str, _paths: &PathResolver) -> anyhow::Result<()> {
     Ok(())
 }
 

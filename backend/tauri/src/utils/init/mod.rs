@@ -2,7 +2,7 @@ use crate::core::migration::modules::profiles::ProfilesFormat;
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
 use nyanpasu_core::format::Format;
-use nyanpasu_paths::ResolvedPaths;
+use nyanpasu_paths::{PathResolver, ResolvedPaths};
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use std::{
@@ -27,18 +27,14 @@ pub struct MigrationChildFailed {
     pub stderr: String,
 }
 
-pub fn run_pending_migrations() -> Result<()> {
+pub fn run_pending_migrations(paths: &PathResolver) -> Result<()> {
     let current_exe = current_exe()?;
     let current_exe = dunce::canonicalize(current_exe)?;
     let file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(
-            crate::host_paths::resolver()
-                .data_dir()?
-                .join("migration.log"),
-        )?;
+        .open(paths.data_dir()?.join("migration.log"))?;
     let mut command = Command::new(current_exe);
     command.arg("migrate");
     run_migration_command(command, file)
@@ -134,7 +130,7 @@ fn wait_for_migration_output(
 
 /// Initialize all the config files
 /// before tauri setup
-pub fn init_config() -> Result<()> {
+pub fn init_config(paths: &PathResolver) -> Result<()> {
     // Check if old config dir exist and new config dir is not exist
     // let mut old_app_dir: Option<PathBuf> = None;
     // let mut app_dir: Option<PathBuf> = None;
@@ -158,17 +154,13 @@ pub fn init_config() -> Result<()> {
     //     }
     // }
 
-    crate::log_err!(
-        crate::host_paths::resolver()
-            .profiles_dir()
-            .map(|profiles_dir| {
-                if !profiles_dir.exists() {
-                    let _ = fs::create_dir_all(&profiles_dir);
-                }
-            })
-    );
+    crate::log_err!(paths.profiles_dir().map(|profiles_dir| {
+        if !profiles_dir.exists() {
+            let _ = fs::create_dir_all(&profiles_dir);
+        }
+    }));
 
-    crate::log_err!(crate::host_paths::resolver().profiles_path().map(|path| {
+    crate::log_err!(paths.profiles_path().map(|path| {
         if !path.exists() {
             // Stamped like every later write, since the app refuses to load
             // an unstamped profiles.yaml.
@@ -322,9 +314,9 @@ fn config_hash(config_dir: &Path) -> String {
     format!("{:x}", hasher.finish())
 }
 
-pub fn check_singleton() -> Result<Option<single_instance::SingleInstance>> {
+pub fn check_singleton(paths: &PathResolver) -> Result<Option<single_instance::SingleInstance>> {
     // The config dir is created first, as the lock file and the hash fallback live in it.
-    let config_dir = crate::host_paths::resolver().config_dir()?;
+    let config_dir = paths.config_dir()?;
     let placeholder = single_instance_placeholder(crate::host_paths::APP_NAME, &config_dir);
     for i in 0..5 {
         let instance = single_instance::SingleInstance::new(&placeholder)

@@ -4,15 +4,27 @@ use chrono::Local;
 use glob::glob;
 use std::{
     io::{Seek, Write},
+    path::Path,
     time::Duration,
 };
 use url::Url;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
-pub fn collect_logs_to<W: Write + Seek>(
-    writer: W,
+pub fn collect_logs(target_path: &Path, paths: &nyanpasu_paths::PathResolver) -> Result<()> {
+    let file = std::fs::File::create(target_path)?;
+    collect_logs_to(file, paths)?;
+    Ok(())
+}
+
+pub fn collect_logs_tempfile(
     paths: &nyanpasu_paths::PathResolver,
-) -> Result<W> {
+) -> Result<tempfile::NamedTempFile> {
+    let file = tempfile::NamedTempFile::new()?;
+    collect_logs_to(file.reopen()?, paths)?;
+    Ok(file)
+}
+
+fn collect_logs_to<W: Write + Seek>(writer: W, paths: &nyanpasu_paths::PathResolver) -> Result<W> {
     let logs_dir = paths.logs_dir()?;
     let now = Local::now().format("%Y-%m-%d");
     let globstr = format!(

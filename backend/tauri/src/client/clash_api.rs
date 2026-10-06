@@ -38,6 +38,17 @@ impl NyanpasuClient {
             .on_proxy_change;
         self.inner.proxies.select(group, name, strategy).await
     }
+    pub async fn clear_proxy_fixed(
+        &self,
+        group: String,
+    ) -> Result<super::runtime::MutationOutcome<()>> {
+        let strategy = self
+            .get_clash_config()
+            .await?
+            .break_connection
+            .on_proxy_change;
+        self.inner.proxies.clear_fixed(group, strategy).await
+    }
     pub async fn update_proxy_provider(&self, name: String) -> Result<()> {
         self.inner.proxies.update_provider(name).await
     }

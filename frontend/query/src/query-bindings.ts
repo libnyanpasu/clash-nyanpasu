@@ -700,6 +700,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.selectProxy>) =>
         commands.selectProxy(...input),
     }),
+    clearProxyFixed: mutationOptions({
+      mutationKey: ['clearProxyFixed'],
+      mutationFn: (input: Parameters<typeof commands.clearProxyFixed>) =>
+        commands.clearProxyFixed(...input),
+    }),
     updateProxyProvider: mutationOptions({
       mutationKey: ['updateProxyProvider'],
       mutationFn: (input: Parameters<typeof commands.updateProxyProvider>) =>

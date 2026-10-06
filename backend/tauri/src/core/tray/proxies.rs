@@ -414,10 +414,19 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
         return; // not a proxy item
     };
 
+    // The platform menu has already flipped the clicked item; the next proxy
+    // repaint sets it back from the selection.
+    app_handle
+        .state::<TrayState<tauri::Wry>>()
+        .display
+        .lock()
+        .clicked(group.clone(), name.clone());
+
     let client = app_handle
         .state::<crate::client::NyanpasuClient>()
         .inner()
         .clone();
+    let app_handle = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         debug!("received select proxy event: {} {}", group, name);
         match client.select_proxy(group.clone(), name.clone()).await {
@@ -429,6 +438,9 @@ pub fn on_system_tray_event(app_handle: &AppHandle, event: &str) {
             }
             Err(error) => error!("select proxy failed, {} {}: {:#}", group, name, error),
         }
+        // Requested here, off the menu-event listener loop and after the core answered: a
+        // rejected or no-op selection sends no proxy change notification.
+        log_err!(Tray::request(&app_handle, TrayWork::PROXIES));
     });
 }
 

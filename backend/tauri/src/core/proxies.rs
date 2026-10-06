@@ -155,6 +155,22 @@ impl State {
         }
     }
 
+    /// The core may have applied a mutation it reported as failed, so re-read it and publish the
+    /// truth. The mutation's own error is returned unchanged.
+    async fn reread_after_rejection(
+        &mut self,
+        actor: &ActorRef<Message>,
+        api: ApiClient,
+        mutation: Result<()>,
+    ) -> Result<()> {
+        if mutation.is_err()
+            && let Err(error) = self.refresh(actor, api).await
+        {
+            tracing::debug!(%error, "proxy cache refresh after a rejected mutation failed");
+        }
+        mutation
+    }
+
     async fn select(
         &mut self,
         actor: &ActorRef<Message>,
@@ -162,9 +178,20 @@ impl State {
         name: String,
         strategy: ProxyChangeBreakMode,
     ) -> Result<MutationOutcome<()>> {
-        self.clear();
-        let api = self.core.api_client().await?;
-        api.select_proxy(&group.clone().into(), &name.into())
+        // The published snapshot stays until the core answers: clearing it first would hand every
+        // subscriber an empty proxy list, and a rejected selection would leave it empty.
+        let api = match self.core.api_client().await {
+            Ok(api) => api,
+            Err(error) => {
+                self.clear();
+                return Err(error.into());
+            }
+        };
+        let selected = api
+            .select_proxy(&group.clone().into(), &name.into())
+            .await
+            .map_err(anyhow::Error::from);
+        self.reread_after_rejection(actor, api.clone(), selected)
             .await?;
         // Keep every follow-up on the selection's revocable source capability.
         let interruption =
@@ -280,9 +307,20 @@ impl Actor for ProxiesActor {
                     return Ok(());
                 }
                 let result = async {
-                    state.clear();
-                    let api = state.core.api_client().await?;
-                    api.update_proxy_provider(&name.into()).await?;
+                    let api = match state.core.api_client().await {
+                        Ok(api) => api,
+                        Err(error) => {
+                            state.clear();
+                            return Err(error.into());
+                        }
+                    };
+                    let updated = api
+                        .update_proxy_provider(&name.into())
+                        .await
+                        .map_err(anyhow::Error::from);
+                    state
+                        .reread_after_rejection(&actor, api.clone(), updated)
+                        .await?;
                     state
                         .refresh(&actor, api)
                         .await
@@ -671,13 +709,72 @@ mod tests {
         assert_eq!(*fixture.calls.lock().unwrap(), ["update", "read"]);
         fixture.calls.lock().unwrap().clear();
         fixture.fail_mutation.store(true, Ordering::SeqCst);
+        let error = client
+            .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::All)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("select_proxy"), "{error:#}");
+        assert_eq!(*fixture.calls.lock().unwrap(), ["select", "read"]);
         assert!(
-            client
-                .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::All)
-                .await
-                .is_err()
+            client.snapshot().nodes.is_empty(),
+            "the re-read failed, so the cache is cleared"
         );
-        assert_eq!(*fixture.calls.lock().unwrap(), ["select"]);
+        server.abort();
+    }
+    #[tokio::test]
+    async fn a_selection_keeps_the_published_snapshot_until_the_core_answers() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.get(false).await.unwrap();
+        let before = serde_json::to_value(client.snapshot()).unwrap();
+        let mut changes = client.subscribe();
+        changes.borrow_and_update();
+        fixture.hold_select.store(true, Ordering::SeqCst);
+        let selecting = {
+            let client = client.clone();
+            tokio::spawn(async move {
+                client
+                    .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::Off)
+                    .await
+            })
+        };
+        fixture.entered.notified().await;
+        assert!(!client.snapshot().groups.is_empty());
+        assert_eq!(serde_json::to_value(client.snapshot()).unwrap(), before);
+        assert!(!changes.has_changed().unwrap());
+        fixture.hold_select.store(false, Ordering::SeqCst);
+        fixture.release.notify_one();
+        selecting.await.unwrap().unwrap();
+        assert_eq!(
+            client.snapshot().groups[0]
+                .now
+                .as_ref()
+                .map(ProxyName::as_str),
+            Some(NODE)
+        );
+        assert!(changes.has_changed().unwrap());
+        server.abort();
+    }
+    #[tokio::test]
+    async fn a_rejected_mutation_rereads_the_core_instead_of_emptying_the_snapshot() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.get(false).await.unwrap();
+        fixture.fail_mutation.store(true, Ordering::SeqCst);
+        fixture.calls.lock().unwrap().clear();
+        let error = client
+            .select(GROUP.into(), NODE.into(), ProxyChangeBreakMode::Off)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("select_proxy"), "{error:#}");
+        assert_eq!(*fixture.calls.lock().unwrap(), ["select", "read"]);
+        assert!(!client.snapshot().groups.is_empty());
+        fixture.calls.lock().unwrap().clear();
+        let error = client.update_provider(PROVIDER.into()).await.unwrap_err();
+        assert!(
+            error.to_string().contains("update_proxy_provider"),
+            "{error:#}"
+        );
+        assert_eq!(*fixture.calls.lock().unwrap(), ["update", "read"]);
+        assert!(!client.snapshot().groups.is_empty());
         server.abort();
     }
     #[tokio::test]

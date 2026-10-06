@@ -4,6 +4,7 @@
 use std::{str::FromStr, sync::Arc};
 
 use snafu::{ResultExt as _, ensure};
+use tauri::Manager as _;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use super::ports::{
@@ -191,10 +192,11 @@ impl WindowControl for TauriWindowControl {
         // cannot interleave into a no-op.
         self.main_thread
             .run(move || {
-                if crate::utils::resolve::is_window_open(&app_handle) {
-                    crate::utils::resolve::close_window(&app_handle);
+                let windows = app_handle.state::<crate::window::WindowManager>();
+                if windows.is_wanted(crate::consts::MAIN_WINDOW_LABEL) {
+                    windows.close(crate::consts::MAIN_WINDOW_LABEL);
                 } else {
-                    crate::utils::resolve::create_window(&app_handle);
+                    crate::log_err!(windows.open(&crate::window::kinds::MainWindow, None));
                 }
             })
             .await

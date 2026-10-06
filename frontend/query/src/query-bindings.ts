@@ -776,6 +776,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.createEditorWindow>) =>
         commands.createEditorWindow(...input),
     }),
+    reportWindowReady: mutationOptions({
+      mutationKey: ['reportWindowReady'],
+      mutationFn: (input: Parameters<typeof commands.reportWindowReady>) =>
+        commands.reportWindowReady(...input),
+    }),
     copyClashEnv: mutationOptions({
       mutationKey: ['copyClashEnv'],
       mutationFn: (input: Parameters<typeof commands.copyClashEnv>) =>

@@ -227,8 +227,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(crate::core::tray::TrayState::<tauri::Wry>::new(
         client.tray_view(),
     ));
-    app.manage(crate::window::WindowRegistry::default());
-    app.manage(crate::utils::resolve::TrayMenuWindowController::default());
+    app.manage(crate::window::WindowManager::new(app_handle.clone()));
+    app.manage(crate::window::kinds::TrayMenuWindowController::default());
     forward_actor_events(app_handle.clone(), client.clone(), &shutdown, &tasks);
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,

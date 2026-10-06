@@ -34,7 +34,6 @@ const EVENT_NAMES: &[&str] = &[
     <crate::core::actor_v2::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
-    <crate::window::WindowReadyEvent as tauri_specta::Event>::NAME,
     "nyanpasu://mutation",
 ];
 

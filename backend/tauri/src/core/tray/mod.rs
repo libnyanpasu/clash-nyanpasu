@@ -6,7 +6,10 @@ use crate::{
     utils::{
         help,
         proxy_env::{self, CopyEnvOption},
-        resolve,
+    },
+    window::{
+        WindowManager,
+        kinds::{MainWindow, show_tray_menu_window},
     },
 };
 use anyhow::Result;
@@ -522,7 +525,9 @@ impl Tray {
             "direct_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeDirect),
             "script_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeScript),
 
-            "open_window" => resolve::create_window(app_handle),
+            "open_window" => {
+                log_err!(app_handle.state::<WindowManager>().open(&MainWindow, None))
+            }
             "system_proxy" => dispatch_action(app_handle, HotkeyAction::ToggleSystemProxy),
             "tun_mode" => dispatch_action(app_handle, HotkeyAction::ToggleTunMode),
             "copy_env_sh" => copy_clash_env(app_handle, CopyEnvOption::Shell),
@@ -551,7 +556,12 @@ impl Tray {
                 button: MouseButton::Left,
                 ..
             } => {
-                resolve::create_window(tray_icon.app_handle());
+                log_err!(
+                    tray_icon
+                        .app_handle()
+                        .state::<WindowManager>()
+                        .open(&MainWindow, None)
+                );
             }
             TrayIconEvent::Click {
                 button: MouseButton::Right,
@@ -561,7 +571,7 @@ impl Tray {
                 .is_some_and(|view| view.menu.menu_mode == TrayMenuMode::Webview) =>
             {
                 log_err!(
-                    resolve::show_tray_menu_window(tray_icon.app_handle(), position),
+                    show_tray_menu_window(tray_icon.app_handle(), position),
                     "failed to show webview tray menu"
                 );
             }

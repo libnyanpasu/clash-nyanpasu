@@ -125,12 +125,13 @@ fn with_provider(mut proxy: Proxy) -> Proxy {
     proxy
 }
 
-/// Every proxy of an HTTP, File, or Inline provider by name, tagged with its
+/// Every proxy of an HTTP, File, or Inline provider by name, with its
 /// provider. Mihomo 1.19.28 no longer includes these nodes in /proxies, so
-/// their metadata must come from /providers/proxies.
-fn provider_proxy_map(
+/// their metadata must come from /providers/proxies. The index borrows, so
+/// only the nodes a group references are ever copied.
+fn provider_proxy_index(
     providers: &IndexMap<ProviderName, ProxyProvider>,
-) -> IndexMap<ProxyName, Proxy> {
+) -> IndexMap<&ProxyName, (&ProviderName, &Proxy)> {
     let mut proxies = IndexMap::new();
     for (provider, record) in providers {
         if !matches!(
@@ -140,9 +141,7 @@ fn provider_proxy_map(
             continue;
         }
         for proxy in &record.proxies {
-            let mut proxy = proxy.clone();
-            proxy.provider = Some(provider.as_str().to_owned());
-            proxies.insert(proxy.name.clone(), proxy);
+            proxies.insert(&proxy.name, (provider, proxy));
         }
     }
     proxies
@@ -235,14 +234,18 @@ impl Proxies {
 
         // Group members missing from /proxies (provider-owned nodes) are
         // added once; a node shared by several groups keeps a single entry.
-        let provider_proxies = provider_proxy_map(providers);
+        let provider_proxies = provider_proxy_index(providers);
         let mut convert = |record: Proxy| {
             for name in record.all.iter().flatten() {
                 if !nodes.contains_key(name) {
-                    let node = provider_proxies
-                        .get(name)
-                        .cloned()
-                        .unwrap_or_else(|| unknown_proxy(name));
+                    let node = match provider_proxies.get(name) {
+                        Some((provider, proxy)) => {
+                            let mut node = Proxy::clone(proxy);
+                            node.provider = Some(provider.as_str().to_owned());
+                            node
+                        }
+                        None => unknown_proxy(name),
+                    };
                     nodes.insert(name.clone(), node);
                 }
             }
@@ -323,6 +326,35 @@ mod tests {
             .unwrap()
             .extend(fields.as_object().unwrap().clone());
         ProxyGroup::from_record(&record(value))
+    }
+
+    /// A node listed by several providers takes the last one, a provider
+    /// with an unsupported vehicle contributes nothing, and only members a
+    /// group references are added.
+    #[test]
+    fn a_node_in_several_providers_takes_the_last_provider() {
+        let providers = IndexMap::from([
+            provider("first", "HTTP", vec![item("shared", "Vmess", None, None)]),
+            provider("second", "File", vec![item("shared", "Trojan", None, None)]),
+            provider(
+                "compat",
+                "Compatible",
+                vec![item("compat-only", "Vless", None, None)],
+            ),
+            provider(
+                "extra",
+                "Inline",
+                vec![item("unreferenced", "Vless", None, None)],
+            ),
+        ]);
+        let group = item("G", "Selector", Some(vec!["shared", "compat-only"]), None);
+        let result = Proxies::from_responses(records(&[group]), &providers, None).unwrap();
+
+        let shared = &result.nodes[&name("shared")];
+        assert_eq!(shared.proxy_type, "Trojan");
+        assert_eq!(shared.provider.as_deref(), Some("second"));
+        assert_eq!(result.nodes[&name("compat-only")].proxy_type, "Unknown");
+        assert!(!result.nodes.contains_key(&name("unreferenced")));
     }
 
     #[test]

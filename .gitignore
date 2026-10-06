@@ -26,4 +26,7 @@ manifest/site/updater/*
 # (CLAUDE.md / AGENTS.md and .claude shared config stay tracked;
 #  .serena manages its own cache via .serena/.gitignore)
 .ccg/
-.claude/settings.local.json
+
+# Claude AI agent local/session state
+.claude/*
+!.claude/settings.json

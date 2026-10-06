@@ -43,28 +43,32 @@ To ensure the project runs correctly locally, the following dependencies are req
 
 ### 1. Required Dependencies
 
-| Tool    | Version  | Link                                                        | Notes                                         |
-| ------- | -------- | ----------------------------------------------------------- | --------------------------------------------- |
-| Rust    | ≥ 1.78   | [Official Install](https://www.rust-lang.org/tools/install) | Stable version; use MSVC toolchain on Windows |
-| Node.js | ≥ 20 LTS | [Official Site](https://nodejs.org/)                        | Install LTS or Latest version                 |
-| Deno    | Latest   | [Official Site](https://deno.com/)                          | For repository automation                     |
-| pnpm    | ≥ 9      | [Official Documentation](https://pnpm.io/)                  | Node.js package manager                       |
-| git     | Latest   | [Official Site](https://git-scm.com/)                       | Version control                               |
+| Tool    | Version | Link                                                        | Notes                                                                                                   |
+| ------- | ------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Rust    | Nightly | [Official Install](https://www.rust-lang.org/tools/install) | Install via `rustup`; the root `rust-toolchain.toml` selects nightly automatically; use MSVC on Windows |
+| Node.js | 24      | [Official Site](https://nodejs.org/)                        | Matches `engines.node` in `package.json`                                                                |
+| pnpm    | 12      | [Official Documentation](https://pnpm.io/)                  | Pinned by `packageManager` in `package.json`; Corepack can install the exact version                    |
+| Deno    | 2.x     | [Official Site](https://deno.com/)                          | Runs repository automation (`deno task ...`)                                                            |
+| git     | Latest  | [Official Site](https://git-scm.com/)                       | Version control                                                                                         |
 
 ### 2. Build Dependencies
 
-| Tool  | Link                                                                              | Notes                               |
-| ----- | --------------------------------------------------------------------------------- | ----------------------------------- |
-| cmake | [Official Site](https://cmake.org/)                                               | Required by `zip` crate             |
-| llvm  | [Official Site](https://llvm.org/)                                                | Required by `rquickjs` or `rocksdb` |
-| patch | [Windows Installation Guide](https://gnuwin32.sourceforge.net/packages/patch.htm) | Required by `rquickjs`              |
+| Tool  | Link                                | Notes                                                      |
+| ----- | ----------------------------------- | ---------------------------------------------------------- |
+| cmake | [Official Site](https://cmake.org/) | Build dependency of `aws-lc-sys` (TLS backend `aws-lc-rs`) |
+
+On Linux, also install the Tauri system libraries, for example on Debian/Ubuntu:
+
+```bash
+sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libappindicator3-dev librsvg2-dev patchelf
+```
+
+See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for other platforms.
 
 ### 3. Windows Special Requirements
 
-- Use **Administrator privileges** when opening the project for the first time; `patch` requires admin rights
-- Recommended to install `gsudo` (via `scoop`, `choco`, or `winget`)
-- Always use the **MSVC toolchain** on Windows
-- 💡 Admin privileges are only needed for initial setup; normal terminal is fine for daily development
+- Always use the **MSVC toolchain** on Windows (install the Visual Studio C++ build tools)
+- Creating directory symlinks for [worktrees](docs/development/workflow.md) requires Developer Mode
 
 ---
 

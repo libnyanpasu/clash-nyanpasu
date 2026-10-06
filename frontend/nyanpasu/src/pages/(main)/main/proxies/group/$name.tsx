@@ -37,8 +37,8 @@ import {
 import {
   HideUnavailableButton,
   LocateCurrentNodeButton,
-  NodeListToolbar,
   NoMatchingNodes,
+  SearchNodesButton,
   SortNodesButton,
 } from './_modules/node-list-toolbar'
 import ProxyNodeButton from './_modules/proxy-node-button'
@@ -300,9 +300,7 @@ function RouteComponent() {
 
   return (
     <>
-      <GroupHeader
-        bottom={<NodeListToolbar search={search} onSearchChange={setSearch} />}
-      >
+      <GroupHeader>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <div className="flex max-w-full min-w-0 flex-col gap-1">
             <div className="truncate" title={currentGroup?.name}>
@@ -354,6 +352,8 @@ function RouteComponent() {
         </div>
 
         <div className="flex-1" />
+
+        <SearchNodesButton search={search} onSearchChange={setSearch} />
 
         {currentGroup?.fixed && currentGroup.capabilities.clearFixed && (
           <Button

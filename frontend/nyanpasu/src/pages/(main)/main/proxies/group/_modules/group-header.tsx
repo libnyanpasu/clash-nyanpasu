@@ -1,5 +1,5 @@
 import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
-import { ComponentProps, ReactNode } from 'react'
+import { ComponentProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { useSidebarContext } from '@nyanpasu/ui/sidebar'
 import { cn } from '@nyanpasu/utils'
@@ -24,12 +24,8 @@ const BackButton = () => {
 export default function GroupHeader({
   children,
   className,
-  bottom,
   ...props
-}: ComponentProps<'div'> & {
-  /** Rendered under the header row, sticking together with it. */
-  bottom?: ReactNode
-}) {
+}: ComponentProps<'div'>) {
   return (
     // The horizontal padding sits on the root so the header row and the
     // content under it share their edges, also while the scrollbar shows.
@@ -51,8 +47,6 @@ export default function GroupHeader({
 
         {children}
       </div>
-
-      {bottom}
     </div>
   )
 }

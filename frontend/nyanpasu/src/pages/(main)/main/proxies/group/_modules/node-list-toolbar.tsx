@@ -1,6 +1,14 @@
 import Radar from '~icons/material-symbols/radar'
+import SearchRounded from '~icons/material-symbols/search-rounded'
 import SortRounded from '~icons/material-symbols/sort-rounded'
 import VisibilityOffRounded from '~icons/material-symbols/visibility-off-rounded'
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  type Transition,
+} from 'motion/react'
+import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
@@ -20,27 +28,80 @@ const SORT_LABELS = {
   delay: m.proxies_node_sort_delay,
 } satisfies Record<NodeSort, () => string>
 
-export function NodeListToolbar({
+export function SearchNodesButton({
   search,
   onSearchChange,
 }: {
   search: string
   onSearchChange: (search: string) => void
 }) {
+  const [open, setOpen] = useState(false)
+
+  const reduceMotion = useReducedMotion()
+
+  const transition: Transition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.2, ease: 'easeOut' }
+
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 pb-2"
-      data-slot="proxies-node-list-toolbar"
-    >
-      {/* Too narrow to read a term, the controls wrap instead of squeezing it. */}
-      <SearchField
-        className="min-w-40 flex-1"
-        placeholder={m.proxies_node_search_placeholder()}
-        clearLabel={m.proxies_node_search_clear()}
-        value={search}
-        onValueChange={onSearchChange}
-      />
-    </div>
+    <AnimatePresence initial={false} mode="wait">
+      {open ? (
+        <motion.div
+          key="field"
+          className="h-8 shrink-0"
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: '12rem', opacity: 1 }}
+          exit={{ width: 0, opacity: 0 }}
+          transition={transition}
+        >
+          <SearchField
+            className="h-8 w-full overflow-hidden"
+            autoFocus
+            placeholder={m.proxies_node_search_placeholder()}
+            clearLabel={m.proxies_node_search_clear()}
+            value={search}
+            onValueChange={onSearchChange}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !search) {
+                setOpen(false)
+              }
+            }}
+            onBlur={() => {
+              if (!search) {
+                setOpen(false)
+              }
+            }}
+            data-slot="proxies-node-search-field"
+          />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="button"
+          className="shrink-0"
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={transition}
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                icon
+                className="size-8 shrink-0"
+                aria-label={m.proxies_node_search_placeholder()}
+                onClick={() => setOpen(true)}
+                data-slot="proxies-node-search-button"
+              >
+                <SearchRounded className="size-4" />
+              </Button>
+            </TooltipTrigger>
+
+            <TooltipContent>
+              {m.proxies_node_search_placeholder()}
+            </TooltipContent>
+          </Tooltip>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 

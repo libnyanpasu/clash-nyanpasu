@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
@@ -5,31 +6,44 @@ import { type NodeView } from '@/pages/(main)/main/proxies/group/_modules/node-l
 import {
   HideUnavailableButton,
   LocateCurrentNodeButton,
-  NodeListToolbar,
   NoMatchingNodes,
+  SearchNodesButton,
   SortNodesButton,
 } from '@/pages/(main)/main/proxies/group/_modules/node-list-toolbar'
 import { m } from '@/paraglide/messages'
 
-async function renderToolbar({ search = '' }: { search?: string } = {}) {
+async function renderSearch({ initial = '' }: { initial?: string } = {}) {
   const onSearchChange = vi.fn()
+  function Harness() {
+    const [search, setSearch] = useState(initial)
+    return (
+      <SearchNodesButton
+        search={search}
+        onSearchChange={(next) => {
+          onSearchChange(next)
+          setSearch(next)
+        }}
+      />
+    )
+  }
   const screen = await render(
     <TooltipProvider>
-      <NodeListToolbar search={search} onSearchChange={onSearchChange} />
+      <Harness />
     </TooltipProvider>,
   )
   return { screen, onSearchChange }
 }
 
-test('the toolbar root is named by its slot', async () => {
-  const { screen } = await renderToolbar()
+test('searching opens from an icon and the clear button empties it', async () => {
+  const { screen, onSearchChange } = await renderSearch()
   expect(
-    screen.container.querySelector('[data-slot="proxies-node-list-toolbar"]'),
-  ).not.toBeNull()
-})
+    screen.container.querySelector('[data-slot="proxies-node-search-field"]'),
+  ).toBeNull()
 
-test('typing searches and the clear button empties the search', async () => {
-  const { screen, onSearchChange } = await renderToolbar({ search: 'hk' })
+  await screen
+    .getByRole('button', { name: m.proxies_node_search_placeholder() })
+    .click()
+
   const searchbox = screen.getByRole('searchbox')
   await expect
     .element(searchbox)
@@ -41,6 +55,7 @@ test('typing searches and the clear button empties the search', async () => {
     .getByRole('button', { name: m.proxies_node_search_clear() })
     .click()
   expect(onSearchChange).toHaveBeenLastCalledWith('')
+  await expect.element(searchbox).toHaveValue('')
 })
 
 test('the sort menu checks the current sort and picks another', async () => {

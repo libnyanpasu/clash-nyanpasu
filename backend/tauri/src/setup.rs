@@ -211,7 +211,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             app_handle.clone(),
         )),
         effects,
-        window: Arc::new(TauriWindowControl::new(app_handle.clone(), main_thread)),
+        window: Arc::new(TauriWindowControl::new(app_handle.clone())),
         accelerators: Arc::new(PlatformAcceleratorValidator),
         traffic_store,
         shutdown: shutdown.clone(),

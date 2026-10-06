@@ -526,7 +526,12 @@ impl Tray {
             "script_mode" => dispatch_action(app_handle, HotkeyAction::ClashModeScript),
 
             "open_window" => {
-                log_err!(app_handle.state::<WindowManager>().open(&MainWindow, None))
+                // Not on the main thread: building a window from a main-thread
+                // handler can deadlock on Windows.
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    log_err!(app_handle.state::<WindowManager>().open(&MainWindow, None));
+                });
             }
             "system_proxy" => dispatch_action(app_handle, HotkeyAction::ToggleSystemProxy),
             "tun_mode" => dispatch_action(app_handle, HotkeyAction::ToggleTunMode),
@@ -556,12 +561,10 @@ impl Tray {
                 button: MouseButton::Left,
                 ..
             } => {
-                log_err!(
-                    tray_icon
-                        .app_handle()
-                        .state::<WindowManager>()
-                        .open(&MainWindow, None)
-                );
+                let app_handle = tray_icon.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    log_err!(app_handle.state::<WindowManager>().open(&MainWindow, None));
+                });
             }
             TrayIconEvent::Click {
                 button: MouseButton::Right,
@@ -570,10 +573,13 @@ impl Tray {
             } if tray_view(tray_icon.app_handle())
                 .is_some_and(|view| view.menu.menu_mode == TrayMenuMode::Webview) =>
             {
-                log_err!(
-                    show_tray_menu_window(tray_icon.app_handle(), position),
-                    "failed to show webview tray menu"
-                );
+                let app_handle = tray_icon.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    log_err!(
+                        show_tray_menu_window(&app_handle, position),
+                        "failed to show webview tray menu"
+                    );
+                });
             }
             // In Native mode the system shows the attached menu automatically
             _ => {}

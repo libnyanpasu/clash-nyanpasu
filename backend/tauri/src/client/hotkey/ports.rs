@@ -159,8 +159,10 @@ pub enum ShortcutError {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum WindowError {
-    #[snafu(display("could not toggle the dashboard on the main thread"))]
-    ToggleDashboard { source: MainThreadError },
+    #[snafu(display("could not toggle the dashboard window"))]
+    ToggleDashboard {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 /// What has to change at the OS level to go from one binding set to another.

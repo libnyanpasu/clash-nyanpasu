@@ -186,10 +186,13 @@ impl WindowManager {
         let win_res = {
             let decorations = config.decorations.unwrap_or(true);
             if decorations {
+                // Tao keeps the buttons there across resizes, fullscreen and
+                // title changes.
                 builder
                     .decorations(true)
                     .hidden_title(true)
                     .title_bar_style(tauri::TitleBarStyle::Overlay)
+                    .traffic_light_position(tauri::LogicalPosition::new(18.0, 22.0))
                     .build()
             } else {
                 builder.decorations(false).build()
@@ -296,20 +299,6 @@ impl WindowManager {
             if let Some(webview_window) = win.get_webview_window(label) {
                 webview_window.open_devtools();
             }
-        }
-
-        #[cfg(target_os = "macos")]
-        if config.decorations.unwrap_or(true) {
-            tracing::trace!("setup traffic lights pos");
-            let win = win.clone();
-            // A command can open a window from any thread; AppKit wants the main one.
-            log_err!(
-                app_handle.run_on_main_thread(move || {
-                    let mtm = objc2_foundation::MainThreadMarker::new().unwrap();
-                    super::macos::setup_traffic_lights_pos(win, (18.0, 22.0), mtm);
-                }),
-                "failed to set up the traffic lights"
-            );
         }
 
         kind.on_created(&win);

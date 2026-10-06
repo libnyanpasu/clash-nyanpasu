@@ -6,55 +6,6 @@ use crate::{
 };
 use tauri::{App, Manager};
 
-#[cfg(target_os = "macos")]
-fn set_window_controls_pos(
-    window: objc2::rc::Retained<objc2_app_kit::NSWindow>,
-    x: f64,
-    y: f64,
-) -> anyhow::Result<()> {
-    use objc2_app_kit::NSWindowButton;
-    use objc2_foundation::NSRect;
-    let close = window
-        .standardWindowButton(NSWindowButton::CloseButton)
-        .ok_or(anyhow::anyhow!("failed to get close button"))?;
-    let miniaturize = window
-        .standardWindowButton(NSWindowButton::MiniaturizeButton)
-        .ok_or(anyhow::anyhow!("failed to get miniaturize button"))?;
-    let zoom = window
-        .standardWindowButton(NSWindowButton::ZoomButton)
-        .ok_or(anyhow::anyhow!("failed to get zoom button"))?;
-
-    let title_bar_container_view = unsafe {
-        close
-            .superview()
-            .and_then(|view| view.superview())
-            .ok_or(anyhow::anyhow!("failed to get title bar container view"))?
-    };
-
-    let close_rect = close.frame();
-    let button_height = close_rect.size.height;
-
-    let title_bar_frame_height = button_height + y;
-    let mut title_bar_rect = title_bar_container_view.frame();
-    title_bar_rect.size.height = title_bar_frame_height;
-    title_bar_rect.origin.y = window.frame().size.height - title_bar_frame_height;
-    unsafe {
-        title_bar_container_view.setFrame(title_bar_rect);
-    }
-
-    let space_between = miniaturize.frame().origin.x - close.frame().origin.x;
-    let window_buttons = vec![close, miniaturize, zoom];
-
-    for (i, button) in window_buttons.into_iter().enumerate() {
-        let mut rect: NSRect = button.frame();
-        rect.origin.x = x + (i as f64 * space_between);
-        unsafe {
-            button.setFrameOrigin(rect.origin);
-        }
-    }
-    Ok(())
-}
-
 /// handle something when start app
 #[tracing_attributes::instrument(skip_all)]
 pub fn resolve_setup(app: &mut App) {

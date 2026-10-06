@@ -22,18 +22,23 @@ const proxy: ClashProxiesQueryProxyItem = {
   provider: null,
 }
 
-async function renderButton(selectable: boolean, fixed = false) {
+async function renderButton(
+  selectable: boolean,
+  fixed = false,
+  node: ClashProxiesQueryProxyItem = proxy,
+) {
   const onSelect = vi.fn(async () => {})
   const onDelayTest = vi.fn(async () => {})
   const screen = await render(
     <BlockTaskProvider>
       <TooltipProvider>
         <ProxyNodeButton
-          proxy={proxy}
+          proxy={node}
           selectable={selectable}
           fixed={fixed}
           onSelect={onSelect}
           onDelayTest={onDelayTest}
+          testUrl="https://g/"
         />
       </TooltipProvider>
     </BlockTaskProvider>,
@@ -80,4 +85,24 @@ test('only the pinned member shows the pin', async () => {
   expect(
     other.screen.container.querySelector('[data-slot="proxy-node-fixed-icon"]'),
   ).toBeNull()
+})
+
+test('the delay chip reads the tested URL entry before the shared history', async () => {
+  const { screen } = await renderButton(true, false, {
+    ...proxy,
+    history: [{ time: '2026-09-10T00:00:00Z', delay: 10 }],
+    extra: {
+      'https://g/': {
+        alive: true,
+        history: [{ time: '2026-09-10T00:00:00Z', delay: 77 }],
+      },
+    },
+  })
+  await expect
+    .poll(
+      () =>
+        screen.container.querySelector('[data-slot="proxy-node-delay"]')
+          ?.textContent,
+    )
+    .toBe('77 ms')
 })

@@ -17,7 +17,7 @@ import { invokeMutation, invokeQuery } from './query-options'
 
 export type ClashDelayOptions = {
   url?: string
-  timeout?: number
+  expected?: string | null
 }
 
 // Query data stays plain JSON: functions in it would defeat structural
@@ -29,17 +29,36 @@ export type ClashProxiesQueryGroupItem = ProxyGroup
 
 export type ClashProxiesQuery = Proxies_Serialize
 
-// Append a delay sample to a node's history, returning a new node object.
+// Append a delay sample where it is read back: `history` and the tested
+// URL's `extra` entry.
 const withDelaySample = (
   node: ClashProxiesQueryProxyItem,
   delay: number,
-): ClashProxiesQueryProxyItem => ({
-  ...node,
-  history: [
-    ...node.history,
-    { time: new Date().toISOString(), delay },
-  ] satisfies DelayHistory[],
-})
+  url: string | null,
+): ClashProxiesQueryProxyItem => {
+  const sample = {
+    time: new Date().toISOString(),
+    delay,
+  } satisfies DelayHistory
+
+  if (!url) {
+    return { ...node, history: [...node.history, sample] }
+  }
+
+  const entry = node.extra?.[url]
+
+  return {
+    ...node,
+    history: [...node.history, sample],
+    extra: {
+      ...node.extra,
+      [url]: {
+        alive: delay > 0,
+        history: [...(entry?.history ?? []), sample],
+      },
+    },
+  }
+}
 
 // How many members of a pinned group are tested at once.
 const PINNED_GROUP_DELAY_CONCURRENCY = 8
@@ -145,16 +164,17 @@ export const useClashProxies = () => {
             name,
             provider,
             options?.url ?? null,
-            null,
+            options?.expected ?? null,
           ),
         ),
       )
       return {
         name,
         delay: res?.delay ?? 0,
+        url: options?.url ?? null,
       }
     },
-    onSuccess: ({ name, delay }) => {
+    onSuccess: ({ name, delay, url }) => {
       const oldData = getQueryData()
       const node = oldData?.nodes[name]
 
@@ -164,7 +184,7 @@ export const useClashProxies = () => {
 
       const newData = {
         ...oldData,
-        nodes: { ...oldData.nodes, [name]: withDelaySample(node, delay) },
+        nodes: { ...oldData.nodes, [name]: withDelaySample(node, delay, url) },
       } satisfies ClashProxiesQuery
 
       setQueryData(newData)
@@ -180,6 +200,7 @@ export const useClashProxies = () => {
     mutationFn: async (args: [string, ClashDelayOptions?]) => {
       const [group, options] = args
       const url = options?.url ?? null
+      const expected = options?.expected ?? null
       // The cached snapshot can predate a pin made in flight, in another
       // window, or by an external dashboard, so ask the core before choosing.
       const data = unwrapResult(
@@ -196,7 +217,7 @@ export const useClashProxies = () => {
         return (
           unwrapResult(
             await invokeQuery(
-              api.queries.clashApiGetGroupDelay(group, url, null),
+              api.queries.clashApiGetGroupDelay(group, url, expected),
             ),
           ) ?? {}
         )
@@ -214,7 +235,7 @@ export const useClashProxies = () => {
                   name,
                   data.nodes[name]?.provider ?? null,
                   url,
-                  null,
+                  expected,
                 ),
               ),
             )
@@ -235,7 +256,7 @@ export const useClashProxies = () => {
       // Return interval ID to be used in onSettled
       return intervalId
     },
-    onSuccess: (data) => {
+    onSuccess: (data, [, options]) => {
       const oldData = getQueryData()
 
       if (!oldData) {
@@ -246,7 +267,7 @@ export const useClashProxies = () => {
       for (const [name, delay] of Object.entries(data)) {
         const node = nodes[name]
         if (node) {
-          nodes[name] = withDelaySample(node, delay)
+          nodes[name] = withDelaySample(node, delay, options?.url ?? null)
         }
       }
 

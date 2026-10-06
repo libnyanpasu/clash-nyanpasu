@@ -11,8 +11,6 @@
 
 mod engine;
 pub mod kinds;
-#[cfg(target_os = "macos")]
-mod macos;
 mod manager;
 mod table;
 

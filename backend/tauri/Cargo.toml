@@ -256,18 +256,14 @@ specta = { version = '^2.0.0-rc.25', features = [
 tauri-plugin-global-shortcut = '2.2.0'
 
 [target.'cfg(target_os = "macos")'.dependencies]
-dispatch2 = '0.3.1'
-objc2 = '0.6.1'
 objc2-app-kit = { version = '0.3.1', features = [
   'NSApplication',
   'NSColor',
   'NSColorSpace',
   'NSResponder',
   'NSRunningApplication',
-  'NSWindow',
-  'NSView',
 ] }
-objc2-foundation = { version = '0.3.1', features = ['NSGeometry'] }
+objc2-foundation = '0.3.1'
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = '0.31.0', features = ['user', 'fs', 'process'] }

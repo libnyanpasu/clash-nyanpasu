@@ -2,7 +2,7 @@
 
 **日期：** 2026-10-06
 
-**状态：** 草案，待审核。审核通过前不实施。
+**状态：** 设计已确认（2026-10-06，§8 全部决策已定），按本 spec 实施。
 
 **基线：** main `e2a5e45a9`；Tauri 2.12.1，tauri-runtime-wry 2.12.1。
 
@@ -36,12 +36,13 @@
 6. macOS 也走这套流程。Dock 图标的显示与隐藏，从 `resolve_setup` 的 ready 监听和 `lib.rs` 的 `CloseRequested` 分支移到 `WindowManager` 的显示与关闭路径里。
 7. 顺带收拢几处与窗口生命周期直接相关的临时做法：
    - 三个创建窗口的命令里“开线程、睡 10 ms、再 `run_on_main_thread`”的写法；
-   - Windows 上创建窗口后“开线程、睡 100 ms，再关闭滑动导航”的写法。
+   - Windows 上创建窗口后“开线程、睡 100 ms，再关闭滑动导航”的写法；
+   - 托盘菜单的 750/250 ms 焦点宽限期，以及前端两处“等服务端应用”的 300 ms 和导入对话框的 150 ms（§2.5、§3.10）。
 8. 新增关闭模式 `WindowCloseBehavior { Destroy, Hide }`：
    - 全局设定一个值，主窗口、编辑器、托盘菜单各自可以选择“继承全局”、“销毁”或“隐藏”；
    - 所有关闭路径统一在 `CloseRequested` 处按该窗口的有效模式处理；
    - 现有的 `tray_menu_close_behavior` 并入新设定，通过配置迁移转换。
-   - 默认值保持现有行为：全局为销毁，托盘菜单为隐藏。见 §3.8。
+   - 默认值：全部为销毁（托盘菜单也继承全局）。已有配置里显式保存的托盘菜单设定由迁移保留。见 §3.8。
 9. 不变：
    - 窗口种类（主窗口、编辑器、托盘菜单）的外观参数、URL 参数与 label 规则；
    - 窗口几何的保存与恢复；
@@ -100,10 +101,31 @@ Tauri 的 `Window::close` 与用户点击关闭按钮一样，会先发出 `Clos
 
 热键切换（`hotkey/adapters.rs:194-197`）用“窗口是否存在”判断开关，窗口改为隐藏后，这个判据不再成立。
 
-### 2.4 其他相关的临时做法
+### 2.4 其他相关的临时做法（基于延时）
 
 - `ipc.rs:1902`、`:1918`、`:1952` 是同步命令，它们开线程、睡 10 ms，再 `run_on_main_thread` 创建窗口。Tauri 文档说明，在 Windows 上从同步命令或事件处理器里创建窗口会死锁，应改用 `async` 命令（`webview_window.rs:56-59`）。
 - `window.rs:695-718` 开线程睡 100 ms，“等 webview 就绪”后再关闭 WebView2 的滑动导航，与 webview 何时就绪并无因果关系。
+
+### 2.5 其他基于延时的临时做法
+
+全仓库扫描 `sleep`、`setTimeout` 后，筛出的“用延时代替等待真实事件”的做法：
+
+| 位置                                                                             | 延时            | 等的是什么                               | 处理                          |
+| -------------------------------------------------------------------------------- | --------------- | ---------------------------------------- | ----------------------------- |
+| `ipc.rs:1906`、`:1922`、`:1960`                                                  | 10 ms           | 让同步命令先返回，避免在命令里建窗死锁   | 改为 async 命令（§3.6）       |
+| `window.rs:705`                                                                  | 100 ms          | WebView2 controller 创建完成             | 改为首次 ready 时设置（§3.4） |
+| `resolve.rs:23-24`，`TrayMenuFocus`                                              | 750 ms / 250 ms | 托盘点击后，Windows shell 的焦点抖动结束 | 见 §3.10                      |
+| `web-ui/_modules/core-secret-config.tsx:73`、`external-controller-config.tsx:62` | 300 ms          | “等服务端应用”                           | 见 §3.10                      |
+| `profiles/$type/_modules/import-button.tsx:29`                                   | 150 ms          | 路由切换动画结束后再打开对话框           | 见 §3.10                      |
+
+以下不属于这类，不处理：
+
+- 周期任务：代理刷新 10 s、更新检查 30 s、日志落盘、geo 重试、ws 退避、deadlock 检测；
+- 测试代码中的轮询；
+- 带重试上限的单例等待（`utils/init/mod.rs:251`、`cmds/migrate.rs:151`），等待的是另一个进程退出；
+- 窗口过程中必须同步阻塞的关机钩子轮询（`shutdown_hook.rs:84`、`:101`）；
+- boa 的 promise 轮询（`enhance/script/js.rs:200`）；
+- 前端的输入防抖、提示自动消失、resize 合并（`use-window-maximized.ts:37`），以及核心下载的进度轮询（`core-manager-card.tsx:72`）。
 
 ## 3. 设计
 
@@ -307,7 +329,7 @@ pub struct WindowCloseSettings {
 }
 ```
 
-- `Default` 手写：`global: Destroy`、`main: Inherit`、`editor: Inherit`、`tray_menu: Hide`，与现有行为一致。
+- 用 `#[derive(Default)]`：`global: Destroy`，三个窗口均为 `Inherit`。也就是说，新安装的托盘菜单默认销毁，与之前默认隐藏不同；已有配置文件会显式写有 `tray_menu_close_behavior`，迁移后保留原值。
 - `NyanpasuAppConfig` 新增字段 `window_close: WindowCloseSettings`，删除 `tray_menu_close_behavior` 与 `TrayMenuCloseBehavior`。
 - struct-patch 对嵌套字段整值替换，前端每次提交整个 `window_close` 对象。
 - 改动不影响运行时，`impact.rs:872-876` 的用例按 `RuntimeImpact::None` 改写。`WindowManager` 在每次关闭时读取 `app_config_snapshot()`，所以设定改动不需要 effect。
@@ -397,7 +419,24 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 4. **透明去掉之后**，就不必再依赖各 runtime 对透明窗口的不同实现（§4）。
 5. **入口分流点只记录，不实施：** 切换 CEF 的前置条件是，在 `run()` 的最开头，即 `Profilers` 和命令行解析之前，加入 CEF helper 分流。本次不改 `run()`，只把这一点写进本 spec，作为将来迁移的检查项。
 
-### 3.10 调用方迁移
+### 3.10 基于延时的临时做法
+
+**托盘菜单的焦点宽限期。** `core/tray/mod.rs:550-566` 匹配 `TrayIconEvent::Click` 时没有限定 `button_state`。在 Windows 上，按下和松开各发一次 `Click`，所以一次右键会调用两次 `show_tray_menu_window`，一次左键也会调用两次 `create_window`。第一次在按下时显示并获取焦点，随后 shell 在松开时把焦点拿回托盘区，于是窗口失焦。这很可能就是那段“焦点抖动”的来源。
+
+处理：
+
+1. 只在 `button_state: MouseButtonState::Up` 时响应左右键。
+2. 删除 `TRAY_MENU_SHOW_BLUR_GRACE` 与 `TRAY_MENU_FOCUS_BLUR_GRACE`，以及 `TrayMenuFocus` 中基于时间的字段。保留基于事件的判定：首次 `Focused(true)` 之前的失焦不关闭菜单，常驻调试菜单不因失焦关闭。`TrayMenuFocus` 不再需要传入时间，测试相应改写。
+3. 冒烟测试（§6 第 3 项）如果仍有失焦后立即关闭的现象，就停下来报告，不要悄悄加回延时。
+
+**“等服务端应用”的 300 ms。** 两处都在 `patchClashConfig` 返回后再等 300 ms，然后刷新运行时 profile。按架构规则，进程内的 mutation 要等到真实结果才返回。实施前沿 `patch_clash_config` 的后端调用链确认：它是否在运行时应用完成（Required participant 投票并提交）之后才返回。
+
+- 若确认如此，删除 `sleep(300)` 及其注释；如果 `sleep` 因此不再被使用，也一并删除。
+- 若并非如此，不改，在交付报告中说明原因。
+
+**导入按钮的 150 ms。** 这段代码在路由切换后打开“导入本地 profile”对话框，150 ms 是在等切换动画。实施时查明动画的来源（路由 view transition 还是页面的进入动画），如果有可等待的完成信号（例如 `document.startViewTransition` 的 `finished`、路由的 `onResolved`，或动画结束事件），就改用它。找不到可靠信号时不改，在交付报告中说明。
+
+### 3.11 调用方迁移
 
 | 调用方                                         | 改为                                                                                                           |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -428,7 +467,7 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 - 单例窗口：加载中再次 `admit` 返回 `Pending`，ready 后再 `admit` 返回 `ShowExisting`。
 - 非单例窗口取最小的空闲编号；`remove` 之后同一 label 重新以 `Loading` 登记。
 
-`window_close.rs`：`WindowCloseOverride::resolve` 的三种取值，以及 `WindowCloseSettings::default()` 与现有行为一致。
+`window_close.rs`：`WindowCloseOverride::resolve` 的三种取值，以及 `WindowCloseSettings::default()` 全部解析为销毁。
 
 迁移步骤 `app_config/window_close`：
 
@@ -447,7 +486,7 @@ fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride;
 
 1. 冷启动：主窗口在前端渲染完成后出现，没有空白帧。
 2. 静默启动后，从托盘打开主窗口。
-3. 托盘菜单首次右键：在光标处出现，没有空窗口闪现。之后的右键在“隐藏”和“销毁”两种模式下均正常，点击“退出”等动作仍然生效。
+3. 托盘菜单首次右键：在光标处出现，没有空窗口闪现。之后的右键在“隐藏”和“销毁”两种模式下均正常，点击“退出”等动作仍然生效。去掉焦点宽限期后，菜单不会一出现就因失焦而关闭；左键单击托盘只打开一次主窗口。
 4. 打开 profile 编辑器和 CSS 编辑器：没有空白窗口。
 5. 热键切换主窗口；启动加载期间连续点托盘“打开窗口”，加载完成前窗口不提前显示。
 6. 在主窗口按 Ctrl+R 重载：不触发重复显示或抢焦点。
@@ -470,7 +509,7 @@ Linux：启动、托盘打开、编辑器窗口各测一次，看有无回归。
 
 ## 7. 提交拆分
 
-每个提交单独可构建：
+分两个 PR，均基于 main。PR A 是窗口管理（提交 1–7），PR B 是窗口以外的延时（提交 8–9）。每个提交单独可构建：
 
 1. `refactor(window): let a window manager own the window lifecycle`
    - 建立 `window/` 目录、`WindowTable`、`WindowManager`；
@@ -483,14 +522,17 @@ Linux：启动、托盘打开、编辑器窗口各测一次，看有无回归。
 4. `perf(window): stop making windows transparent`：删除 Windows 的 `.transparent(true)` 和 `WindowConfig.transparent`。
 5. `feat(config): replace the tray menu close behavior with window close settings`：新增配置类型和迁移步骤，同步修改 legacy 迁移；后端仍只对托盘菜单应用该设定，行为不变。
 6. `feat(window): let each window close by destroying or hiding`：`WindowManager` 拦截 `CloseRequested`，复用隐藏的窗口；修改热键切换和托盘菜单关闭入口；替换设置界面与 i18n，重新生成绑定。
+7. `fix(tray): respond to a tray click once, on release`：只在松开时响应，删除托盘菜单的焦点宽限期（§3.10）。
+8. `refactor(settings): stop waiting for the core after patching the controller`：删除两处 `sleep(300)`，前提是已确认 mutation 会等待应用完成（§3.10）。
+9. `refactor(profiles): open the import dialog when the transition ends`：仅在找到可靠的完成信号时提交（§3.10）。
 
-## 8. 待审核的决策
+## 8. 决策（2026-10-06 已定）
 
-1. **兜底计时器：** 推荐每个新建窗口一份，10 秒，即 §3.5 的方案。另一个方案是去掉计时器，只靠“错误边界报告 ready”加上用户再次打开时强制显示。它更简单，但前端完全不加载时（白屏、资源 404），窗口要等用户再点一次才出现。
-2. **macOS Dock 策略：** 推荐保持现状，Dock 图标只跟随主窗口。另一个方案是“任何普通窗口（主窗口、编辑器）可见时都显示 Dock 图标”，好处是只开编辑器时它也能出现在 Cmd+Tab 中，但需要统计可见窗口数。
-3. **窗口种类迁出 `resolve.rs`：** 推荐迁移，即 §3.1 的 `kinds.rs`。这会让第一个提交的 diff 变大。不迁的话，这些窗口种类留在 `resolve.rs`，只把入口改成调用 `WindowManager`。
-4. **ready 的判定条件：** 沿用“设置查询结束”。如果希望等主题和语言也就绪后再显示，需要另定判定条件。
-5. **关闭模式的默认值：** 推荐全局为销毁、托盘菜单为隐藏，与现有行为一致，即 §3.8 的方案。如果希望主窗口默认隐藏，再次打开会更快，但窗口关闭后 WebView2 的内存不会释放，抵消了内存优化的收益。
-6. **设定改动对已隐藏窗口的影响：** 推荐新设定在下次关闭时才生效，已隐藏的窗口保持隐藏，直到再次打开并关闭。另一个方案是提交设定后立即销毁那些有效模式变为销毁的隐藏窗口，这需要增加一个 UI effect。
-7. **隐藏模式下复用编辑器的状态：** 复用的编辑器会保留上次的页面状态，包括未保存的修改。另外，后端的状态变更事件只发给主窗口（`client/event_sink.rs:53-58`），隐藏期间别处修改的 profile 不会刷新到编辑器里。推荐本次不处理，在设置说明中注明；如果你希望再次打开时内容是最新的，需要编辑器在显示时重新拉取数据。
-8. **CEF 预留的范围：** 推荐只落实 §3.9 的约束 1–4，入口分流只作记录。另一个方案是现在就把 `run()` 开头那些运行在 Tauri 之前的工作挪到一个可以分流的入口函数后面。这会碰到单例检测、迁移、深链等启动路径，超出窗口管理的范围，更适合放在升级 Tauri 3 的 spec 里做。
+1. **兜底计时器：** 每个新建窗口一份，10 秒（§3.5）。
+2. **macOS Dock 策略：** 保持现状，Dock 图标只跟随主窗口。
+3. **窗口种类迁出 `resolve.rs`：** 迁到 `window/kinds.rs`（§3.1）。
+4. **ready 的判定条件：** 沿用“设置查询结束”。
+5. **关闭模式的默认值：** 全部为销毁（§3.8）。
+6. **设定改动对已隐藏窗口的影响：** 下次关闭时才生效。
+7. **隐藏模式下复用编辑器的状态：** 不处理。
+8. **CEF 预留的范围：** 只落实 §3.9 的约束 1–4，入口分流只作记录。

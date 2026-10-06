@@ -242,6 +242,13 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason:
       "CRT initializer the linker section points at, which has no closure state",
   },
+  {
+    path: "backend/tauri/src/main.rs",
+    name: "ALLOC",
+    category: "external",
+    reason:
+      "the global allocator Rust requires to be a static; compiled only with the dhat-heap profiling feature",
+  },
   // -- test-only ------------------------------------------------------------
   {
     path: "backend/tauri/src/core/migration/runner.rs",

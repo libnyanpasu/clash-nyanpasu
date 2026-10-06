@@ -180,6 +180,7 @@ tracing-log = { version = '0.2' }
 tracing-appender = { version = '0.2', features = ['parking_lot'] }
 flexi_logger = { version = '0.31', default-features = false }
 tracing-chrome = { version = '0.7', optional = true }
+dhat = { version = '0.3', optional = true }
 test-log = { workspace = true }
 tracing-test = { workspace = true }
 
@@ -312,6 +313,9 @@ deadlock-detection = ['parking_lot/deadlock_detection']
 # Writes a Chrome trace of the app's spans to the logs directory; see
 # docs/development/testing.md#profile-memory-and-startup.
 trace-chrome = ['dep:tracing-chrome']
+# Records the Rust heap's allocation sites and writes a DHAT profile to the
+# logs directory.
+dhat-heap = ['dep:dhat']
 # nyanpasu-config turns on struct-patch's `nesting`, and the `Patch` derives in
 # this crate emit `cfg(feature = "nesting")`, so it must be on here too.
 nesting = ['nyanpasu-config/nesting']

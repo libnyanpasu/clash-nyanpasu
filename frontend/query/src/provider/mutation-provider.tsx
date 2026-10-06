@@ -10,6 +10,8 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
       nyanpasuConfig: [
         api.queries.getAppConfig().queryKey,
         api.queries.getSysProxy().queryKey,
+        // The proxies snapshot is trimmed to the default latency test URL.
+        api.queries.getProxies().queryKey,
       ] as QueryKey[],
       clashConfig: [
         api.queries.clashApiGetVersion().queryKey,

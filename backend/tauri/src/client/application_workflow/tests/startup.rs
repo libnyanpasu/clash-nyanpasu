@@ -18,6 +18,13 @@ use std::{
     time::Duration,
 };
 
+use nyanpasu_application::core::{
+    CoreClient,
+    endpoint::{
+        ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
+        CoreSubmission, EndpointHandle, ExecutionHost,
+    },
+};
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::config::{
@@ -62,14 +69,7 @@ use crate::{
         runtime,
         tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
     },
-    core::actor_v2::{
-        CoreClient,
-        endpoint::{
-            ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
-            CoreSubmission, EndpointHandle, ExecutionHost,
-        },
-        service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
-    },
+    core::actor_v2::service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
 };
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
@@ -84,6 +84,7 @@ pub(super) struct HostEndpoint {
     log: Log,
     /// Holds the next stop until `release`, as a host slow to confirm one.
     pub(super) hold_stop: AtomicBool,
+    pub(super) stop_entered: Notify,
     pub(super) release: Notify,
     /// Loses the next reconcile's result until `deliver`.
     lose_reconcile: AtomicBool,
@@ -99,6 +100,7 @@ impl HostEndpoint {
             delegate,
             log,
             hold_stop: AtomicBool::new(false),
+            stop_entered: Notify::new(),
             release: Notify::new(),
             lose_reconcile: AtomicBool::new(false),
             lost: StdMutex::new(Vec::new()),
@@ -139,6 +141,7 @@ impl ControlEndpoint for HostEndpoint {
             CoreCommand::Shutdown => "shutdown",
         };
         if kind == "stop" && self.hold_stop.swap(false, Ordering::SeqCst) {
+            self.stop_entered.notify_one();
             self.release.notified().await;
         }
         if kind == "reconcile" && self.lose_reconcile.swap(false, Ordering::SeqCst) {
@@ -299,7 +302,6 @@ pub(super) struct Setup {
     pub(super) version: &'static str,
     pub(super) hold_update: bool,
     pub(super) command_timeout: Duration,
-    pub(super) handoff_budget: Option<Duration>,
     /// The router already drives the service host when the workflow starts,
     /// as after a handoff an earlier command made.
     pub(super) owner_on_service: bool,
@@ -318,7 +320,6 @@ impl Default for Setup {
             version: "2.0.0",
             hold_update: false,
             command_timeout: Duration::from_secs(100),
-            handoff_budget: None,
             owner_on_service: false,
             foreign_daemon: false,
         }
@@ -377,7 +378,9 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     });
     let core = CoreClient::spawn(local.clone()).await.unwrap();
     if setup.owner_on_service {
-        core.change_host(service_host.clone()).await.unwrap();
+        core.change_host_from(service_host.clone(), false)
+            .await
+            .unwrap();
         log.lock().unwrap().clear();
     }
     let service = ServiceClient::spawn_bounded(daemon.clone(), 0, setup.command_timeout)
@@ -415,10 +418,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
-            core: match setup.handoff_budget {
-                Some(budget) => core.clone().impatient(budget),
-                None => core.clone(),
-            },
+            core: core.clone(),
             service: service.clone(),
             builder,
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),

@@ -60,7 +60,7 @@ impl RuntimeSnapshot {
     pub(crate) fn with_effective_config(
         &self,
         effective: nyanpasu_ipc::api::core::v2::CoreEffectiveConfig,
-        host: crate::core::actor_v2::endpoint::ExecutionHost,
+        host: nyanpasu_application::core::endpoint::ExecutionHost,
         generation: u64,
     ) -> anyhow::Result<Self> {
         use nyanpasu_config::runtime::snapshot::BuiltinStepKind;
@@ -456,13 +456,13 @@ pub(crate) mod tests {
         };
         generated.applied_binding = Some(crate::core::actor_v2::facade::AppliedConfigBinding {
             revision: effective.revision.clone(),
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_application::core::endpoint::ExecutionHost::Local,
             generation: 1,
         });
         let applied = generated
             .with_effective_config(
                 effective,
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_application::core::endpoint::ExecutionHost::Local,
                 1,
             )
             .unwrap();
@@ -510,7 +510,7 @@ pub(crate) mod tests {
         assert!(
             next.with_effective_config(
                 effective.clone(),
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_application::core::endpoint::ExecutionHost::Local,
                 1
             )
             .is_err()
@@ -519,7 +519,7 @@ pub(crate) mod tests {
         assert!(
             next.with_effective_config(
                 effective.clone(),
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_application::core::endpoint::ExecutionHost::Local,
                 2
             )
             .is_err()
@@ -527,7 +527,7 @@ pub(crate) mod tests {
         let recovered = next
             .with_effective_config(
                 effective,
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_application::core::endpoint::ExecutionHost::Local,
                 1,
             )
             .unwrap();

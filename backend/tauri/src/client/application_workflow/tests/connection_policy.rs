@@ -1,3 +1,6 @@
+use nyanpasu_application::core::endpoint::{
+    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
+};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -5,6 +8,7 @@ use std::sync::{
 
 use axum::{Router, extract::State, http::StatusCode, routing::delete};
 use futures_util::FutureExt;
+use nyanpasu_application::core::api::ApiError;
 use nyanpasu_config::clash::config::overrides::{ClashGuardOverridesPatch, Mode};
 use nyanpasu_core_manager::{CoreError, OperationId};
 use nyanpasu_ipc::api::{
@@ -14,14 +18,9 @@ use nyanpasu_ipc::api::{
 use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
-use crate::{
-    client::{
-        NyanpasuClient,
-        tests::{TestControlEndpoint, test_client_args_with_endpoint},
-    },
-    core::actor_v2::endpoint::{
-        ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
-    },
+use crate::client::{
+    NyanpasuClient,
+    tests::{TestControlEndpoint, test_client_args_with_endpoint},
 };
 
 #[derive(Default)]
@@ -39,7 +38,6 @@ struct Endpoint {
     replace: AtomicBool,
     report_restart: AtomicBool,
     calls: Arc<Calls>,
-    api_queries: AtomicUsize,
 }
 
 impl Endpoint {
@@ -63,8 +61,13 @@ impl ControlEndpoint for Endpoint {
         ExecutionHost::Local
     }
     async fn api_connection(&self) -> Result<Option<CoreApiConnection>, CoreError> {
-        self.api_queries.fetch_add(1, Ordering::SeqCst);
         Ok(self.binding.lock().unwrap().clone())
+    }
+    fn api_backend(
+        &self,
+        binding: &CoreApiConnection,
+    ) -> Result<Arc<dyn nyanpasu_application::core::api::InstanceApiPort>, ApiError> {
+        nyanpasu_platform::core::clash_api_backend(binding)
     }
     async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
         self.calls.events.lock().unwrap().push("reconcile");
@@ -132,7 +135,7 @@ impl Fixture {
                     }),
                 )
                 .with_state(calls.clone());
-            crate::core::actor_v2::api::tests::server(router).await
+            crate::client::tests::server(router).await
         });
         let endpoint = Arc::new(Endpoint {
             delegate: if fail_reconcile {
@@ -148,7 +151,6 @@ impl Fixture {
             replace: AtomicBool::new(false),
             report_restart: AtomicBool::new(false),
             calls: calls.clone(),
-            api_queries: AtomicUsize::new(0),
         });
         let dir = tempfile::tempdir().unwrap();
         let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
@@ -156,7 +158,6 @@ impl Fixture {
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         tauri::async_runtime::block_on(endpoint.delegate.prime(&client));
         calls.events.lock().unwrap().clear();
-        endpoint.api_queries.store(0, Ordering::SeqCst);
         Self {
             client,
             endpoint,
@@ -637,15 +638,14 @@ fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
 }
 
 #[test]
-fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
+fn profile_policy_and_noop_gates_do_not_interrupt_a_source() {
     let f = Fixture::new(false);
     tauri::async_runtime::block_on(async {
-        // Only this workflow may read the binding counted below; background
-        // geo discovery and proxy refreshes otherwise race these assertions.
+        // Stop background readers so only this workflow can interrupt a
+        // source. Its exact outbound calls are recorded below.
         f.client.inner._geo_index.stop_for_test().await.unwrap();
         f.client.inner.proxies.stop_for_test().await.unwrap();
         f.client.inner.core_api.refresh_status().await.unwrap();
-        f.endpoint.api_queries.store(0, Ordering::SeqCst);
 
         let uid = add_profile(&f).await;
         let mut config = f.client.get_clash_config().await.unwrap();
@@ -658,7 +658,7 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
             .await
             .unwrap();
         f.client.activate_profile(Some(uid.clone())).await.unwrap();
-        assert_eq!(f.endpoint.api_queries.load(Ordering::SeqCst), 0);
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
 
         config.break_connection.on_profile_change = true;
         f.client
@@ -676,12 +676,10 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
             )
             .await
             .unwrap();
-        assert_eq!(f.endpoint.api_queries.load(Ordering::SeqCst), 0);
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "reconcile"]);
 
         // The source remains available when a selection actually changes.
         f.client.activate_profile(None).await.unwrap();
-        assert!(f.endpoint.api_queries.load(Ordering::SeqCst) > 0);
         assert_eq!(
             *f.calls.events.lock().unwrap(),
             ["reconcile", "reconcile", "reconcile", "close"]

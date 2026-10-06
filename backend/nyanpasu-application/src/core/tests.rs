@@ -12,8 +12,7 @@ use std::{
 use tokio::sync::Notify;
 
 use nyanpasu_core_manager::{
-    ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec,
-    InstanceOptions, OperationId, ReconcileRequest,
+    CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, OperationId,
 };
 use nyanpasu_ipc::api::{
     core::v2::{OperationErrorInfo, OperationInfo, OperationOutputInfo, OperationPhase},
@@ -21,8 +20,8 @@ use nyanpasu_ipc::api::{
 };
 
 use super::{
-    CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport, STOP_WAIT,
-    ShutdownReport, SubmitFailure,
+    CoreActorMessage, CoreClient, CoreSubmission, EndpointConnectivity, HandoffReport,
+    SubmitFailure,
     endpoint::{ControlEndpoint, CoreStatusSnapshot, EndpointHandle, ExecutionHost},
 };
 
@@ -55,9 +54,6 @@ struct FakeEndpoint {
     /// Dropped together with a hung `status` future, so cancellation is
     /// observable from the test instead of merely assumed.
     status_dropped: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
-    /// Makes `submit` never answer, the way an endpoint that accepted the
-    /// call and then wedged would (F4).
-    hang_submit: AtomicBool,
     never: Notify,
     last_core_type: Mutex<Option<Option<nyanpasu_utils::core::CoreType>>>,
 }
@@ -93,7 +89,6 @@ impl FakeEndpoint {
             release_stop: Notify::new(),
             hang_status: AtomicBool::new(false),
             status_dropped: Mutex::new(None),
-            hang_submit: AtomicBool::new(false),
             never: Notify::new(),
             last_core_type: Mutex::new(None),
         })
@@ -110,6 +105,10 @@ impl FakeEndpoint {
         self.release_stop.notify_one();
     }
 
+    fn ungate_stop(&self) {
+        self.gate_stop.store(false, Ordering::SeqCst);
+    }
+
     /// Makes `status` hang forever and hands back the receiver that resolves
     /// (with an error) once the hung future is dropped.
     fn hang_status(&self) -> tokio::sync::oneshot::Receiver<()> {
@@ -117,12 +116,6 @@ impl FakeEndpoint {
         *self.status_dropped.lock().unwrap() = Some(tx);
         self.hang_status.store(true, Ordering::SeqCst);
         rx
-    }
-
-    /// Makes `submit` hang forever, the way an endpoint that accepted the
-    /// call and then wedged would (F4).
-    fn hang_submit(&self) {
-        self.hang_submit.store(true, Ordering::SeqCst);
     }
 
     fn script_stop(&self, script: StopScript) {
@@ -177,10 +170,6 @@ impl ControlEndpoint for FakeEndpoint {
     }
 
     async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
-        if self.hang_submit.load(Ordering::SeqCst) {
-            self.never.notified().await;
-            unreachable!("nothing notifies `never`");
-        }
         self.submits.fetch_add(1, Ordering::SeqCst);
         *self.last_core_type.lock().unwrap() = Some(submission.core_type.clone());
         let envelope = submission.envelope;
@@ -237,62 +226,6 @@ fn reconcile_envelope() -> CoreSubmission {
         },
         core_type: None,
     }
-}
-
-#[tokio::test]
-async fn an_alpha_core_reaches_the_service_wire_intact() {
-    use camino::Utf8PathBuf;
-    use nyanpasu_core_manager::CoreKind;
-    use nyanpasu_ipc::api::core::v2::CoreCommandInfo;
-    use nyanpasu_utils::core::{ClashCoreType, CoreType};
-
-    let service = FakeEndpoint::new(
-        ExecutionHost::Service,
-        CoreStateDetail::Stopped { reason: None },
-    );
-    let client = CoreClient::spawn(service.clone()).await.unwrap();
-    let alpha = CoreType::Clash(ClashCoreType::MihomoAlpha);
-    let envelope = CoreCommandEnvelope {
-        operation_id: OperationId::generate(),
-        command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
-            core: CoreSpec {
-                kind: CoreKind::Mihomo,
-                binary_path: Utf8PathBuf::from("mihomo-alpha"),
-                version: None,
-                features: vec![],
-            },
-            config: ConfigInput::Inline {
-                bytes: b"proxies: []".to_vec(),
-                expected_digest: None,
-            },
-            options: InstanceOptions::default(),
-            expected_applied: None,
-        })),
-    };
-
-    client
-        .submit(CoreSubmission {
-            expected_owner: None,
-            envelope: envelope.clone(),
-            core_type: Some(alpha.clone()),
-        })
-        .await
-        .unwrap();
-    assert_eq!(*service.last_core_type.lock().unwrap(), Some(Some(alpha)));
-
-    let request = super::endpoint::wire_submit_request(&CoreSubmission {
-        expected_owner: None,
-        envelope,
-        core_type: None,
-    })
-    .unwrap();
-    let CoreCommandInfo::Reconcile { core_type, .. } = request.command else {
-        panic!("expected reconcile wire command");
-    };
-    assert_eq!(
-        core_type.into_owned(),
-        CoreType::Clash(ClashCoreType::Mihomo)
-    );
 }
 
 #[tokio::test]
@@ -406,6 +339,7 @@ async fn endpoint_down_degrades_honestly_and_stale_reports_are_fenced() {
         CoreStateDetail::Running { epoch: 1, pid: 42 },
     );
     let client = CoreClient::spawn(local.clone()).await.unwrap();
+    client.refresh_status().await.unwrap();
     let mut status_rx = client.subscribe();
 
     // A stale-generation down report is dropped entirely.
@@ -413,6 +347,7 @@ async fn endpoint_down_degrades_honestly_and_stale_reports_are_fenced() {
         .actor
         .cast(super::CoreActorMessage::EndpointDown {
             generation: 99,
+            pump_epoch: 0,
             reason: "stale".into(),
         })
         .unwrap();
@@ -421,6 +356,7 @@ async fn endpoint_down_degrades_honestly_and_stale_reports_are_fenced() {
         .actor
         .cast(super::CoreActorMessage::EndpointDown {
             generation: 0,
+            pump_epoch: 0,
             reason: "pump broke".into(),
         })
         .unwrap();
@@ -660,10 +596,12 @@ async fn await_projection(
 /// Degrades `client`'s current endpoint through the same message its pump
 /// would send.
 async fn degrade(client: &CoreClient, reason: &str) {
+    client.refresh_status().await.unwrap();
     client
         .actor
         .cast(CoreActorMessage::EndpointDown {
             generation: client.status().generation,
+            pump_epoch: 0,
             reason: reason.to_owned(),
         })
         .unwrap();
@@ -693,11 +631,93 @@ async fn handoff_in_flight(
     handle
 }
 
-/// M-7: the stop leg is a minute long in the worst case. Parking a submit
-/// behind it means the caller's own 10s bound expires and reports `Internal`,
-/// which says "the router broke" for what is really "try again in a moment".
+/// A submission queued behind a successful handoff is rejected because its
+/// caller captured the old host and generation before it entered the mailbox.
 #[tokio::test]
-async fn a_submit_during_a_handoff_is_refused_with_operation_conflict() {
+async fn a_submit_queued_during_a_handoff_is_refused_after_adoption() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let service = FakeEndpoint::new(
+        ExecutionHost::Service,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
+    let queued_client = client.clone();
+    let queued = tokio::spawn(async move { queued_client.submit(reconcile_envelope()).await });
+
+    local.release_stop();
+    assert!(handoff.await.unwrap().unwrap().completed());
+    let error = queued.await.unwrap().unwrap_err();
+    assert_eq!(error.kind, Some(CoreErrorKind::RevisionConflict));
+    assert_eq!(local.submits.load(Ordering::SeqCst), 1, "only the stop ran");
+    assert_eq!(local.stops.load(Ordering::SeqCst), 1);
+    assert_eq!(service.submits.load(Ordering::SeqCst), 0);
+    client.shutdown().await.unwrap();
+}
+
+/// If a failed stop leaves the source owner and generation unchanged, a
+/// submission queued behind that handoff remains eligible on the source.
+#[tokio::test]
+async fn a_submit_queued_during_a_failed_handoff_runs_on_the_same_owner() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    local.script_stop(StopScript::Failed {
+        kind: Some("backend_unavailable"),
+        retryable: true,
+    });
+    let service = FakeEndpoint::new(
+        ExecutionHost::Service,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
+    let queued_client = client.clone();
+    let queued = tokio::spawn(async move { queued_client.submit(reconcile_envelope()).await });
+
+    local.release_stop();
+    let error = handoff.await.unwrap().unwrap_err();
+    assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
+    assert!(queued.await.unwrap().is_ok());
+    assert_eq!(local.submits.load(Ordering::SeqCst), 2, "stop then submit");
+    assert_eq!(local.stops.load(Ordering::SeqCst), 1);
+    assert_eq!(service.submits.load(Ordering::SeqCst), 0);
+    local.ungate_stop();
+    client.shutdown().await.unwrap();
+}
+
+/// A second ownership request runs after the first handoff in mailbox order.
+#[tokio::test]
+async fn a_second_change_host_during_a_handoff_runs_after_it() {
+    let local = FakeEndpoint::new(
+        ExecutionHost::Local,
+        CoreStateDetail::Running { epoch: 1, pid: 42 },
+    );
+    let service = FakeEndpoint::new(
+        ExecutionHost::Service,
+        CoreStateDetail::Stopped { reason: None },
+    );
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
+    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
+    let second_client = client.clone();
+    let second = service.clone();
+    let queued = tokio::spawn(async move { second_client.change_host(second).await });
+
+    local.release_stop();
+    assert!(handoff.await.unwrap().unwrap().completed());
+    assert_eq!(queued.await.unwrap().unwrap(), HandoffReport::NoChange);
+    assert_eq!(local.stops.load(Ordering::SeqCst), 1);
+    client.shutdown().await.unwrap();
+}
+
+/// A caller owns only its reply wait. Aborting it does not cancel a handoff
+/// already accepted by the actor.
+#[tokio::test]
+async fn dropping_handoff_caller_does_not_cancel_actor_owned_work() {
     let local = FakeEndpoint::new(
         ExecutionHost::Local,
         CoreStateDetail::Running { epoch: 1, pid: 42 },
@@ -709,178 +729,75 @@ async fn a_submit_during_a_handoff_is_refused_with_operation_conflict() {
     let client = CoreClient::spawn(local.clone()).await.unwrap();
     let handoff = handoff_in_flight(&client, &local, service.clone()).await;
 
-    let error = client.submit(reconcile_envelope()).await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
-    assert!(error.retryable, "the caller should retry after the handoff");
-    assert_eq!(
-        client.status().connectivity,
-        EndpointConnectivity::HandingOff {
-            from: ExecutionHost::Local,
-            to: ExecutionHost::Service,
-        }
-    );
-
+    handoff.abort();
     local.release_stop();
-    assert_eq!(
-        handoff.await.unwrap().unwrap(),
-        HandoffReport::Completed {
-            generation: 1,
-            interrupted_running: false,
-        }
-    );
-
-    let ticket = client.submit(reconcile_envelope()).await.unwrap();
-    assert_eq!(ticket.endpoint.host(), ExecutionHost::Service);
-    assert_eq!(
-        local.submits.load(Ordering::SeqCst),
-        1,
-        "the refused submit must not run late on the source"
-    );
-
+    let settled = client.refresh_status().await.unwrap();
+    assert_eq!(settled.host, ExecutionHost::Service);
+    assert_eq!(settled.generation, 1);
+    assert_eq!(local.stops.load(Ordering::SeqCst), 1);
     client.shutdown().await.unwrap();
 }
 
+/// A failed stop refreshes the source authoritatively and fences its old pump.
 #[tokio::test]
-async fn a_second_change_host_during_a_handoff_is_refused() {
+async fn failed_handoff_refresh_fences_delayed_source_pump_frames() {
     let local = FakeEndpoint::new(
         ExecutionHost::Local,
         CoreStateDetail::Running { epoch: 1, pid: 42 },
     );
-    let service = FakeEndpoint::new(
-        ExecutionHost::Service,
-        CoreStateDetail::Stopped { reason: None },
-    );
-    let client = CoreClient::spawn(local.clone()).await.unwrap();
-    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
-
-    let other = FakeEndpoint::new(
-        ExecutionHost::Service,
-        CoreStateDetail::Stopped { reason: None },
-    );
-    let error = client.change_host(other.clone()).await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
-    assert!(error.retryable);
-
-    local.release_stop();
-    handoff.await.unwrap().unwrap();
-    assert_eq!(
-        local.stops.load(Ordering::SeqCst),
-        1,
-        "one handoff, one stop"
-    );
-
-    client.shutdown().await.unwrap();
-}
-
-/// T10 §1.11: whether a handoff finished is answered by the handoff, not by
-/// the router's health. Its stop leg in flight is unfinished; a failed leg
-/// whose source went down meanwhile is finished although the degraded
-/// router it leaves refuses every status read, and so are a completed
-/// handoff and a shut-down router.
-#[tokio::test]
-async fn a_handoff_is_settled_by_its_own_completion_not_by_router_health() {
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
+    local.script_stop(StopScript::Failed {
+        kind: Some("apply_failed"),
+        retryable: false,
+    });
     let service = FakeEndpoint::new(
         ExecutionHost::Service,
         CoreStateDetail::Stopped { reason: None },
     );
     let client = CoreClient::spawn(local.clone()).await.unwrap();
     let generation = client.status().generation;
-    local.script_stop(StopScript::Failed {
-        kind: Some("apply_failed"),
-        retryable: false,
-    });
-    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
-    assert!(!client.handoff_settled(generation).await.unwrap());
+    let handoff = handoff_in_flight(&client, &local, service).await;
 
-    // Queued ahead of the stop leg's own answer, as the source's pump would.
-    client
-        .actor
-        .cast(CoreActorMessage::EndpointDown {
-            generation,
-            reason: "the source stopped answering".into(),
-        })
-        .unwrap();
+    *local.status.lock().unwrap() = Ok(snapshot(CoreStateDetail::Stopped { reason: None }));
     local.release_stop();
     assert!(handoff.await.unwrap().is_err());
-    assert!(matches!(
-        client.status().connectivity,
-        EndpointConnectivity::Degraded {
-            desired: ExecutionHost::Local,
-            ..
-        }
-    ));
+    assert_eq!(client.status().generation, generation);
     assert_eq!(
-        client.refresh_status().await.unwrap_err().kind,
-        Some(CoreErrorKind::BackendUnavailable)
+        client.status().connectivity,
+        EndpointConnectivity::Connected
     );
-    assert!(client.handoff_settled(generation).await.unwrap());
-
-    let fresh = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Stopped { reason: None },
-    );
-    assert!(client.change_host(fresh).await.unwrap().completed());
-    assert!(client.handoff_settled(generation).await.unwrap());
-
-    client.shutdown().await.unwrap();
-    assert!(
+    assert!(matches!(
         client
-            .handoff_settled(client.status().generation)
-            .await
-            .unwrap()
-    );
-}
+            .status()
+            .snapshot
+            .as_ref()
+            .and_then(|s| s.state.as_ref()),
+        Some(CoreStateDetail::Stopped { .. })
+    ));
 
-/// Fencing use #2: a completion belonging to an abandoned handoff must not
-/// move ownership.
-#[tokio::test]
-async fn a_stale_handoff_completion_is_fenced() {
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
-    let service = FakeEndpoint::new(
-        ExecutionHost::Service,
-        CoreStateDetail::Stopped { reason: None },
-    );
-    let client = CoreClient::spawn(local.clone()).await.unwrap();
-    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
-
-    let (reply, _stale_rx) = ractor::concurrency::oneshot();
+    // An observation from the pre-handoff pump has the same owner generation,
+    // but its independent epoch is stale and cannot restore Running.
     client
         .actor
-        .cast(CoreActorMessage::HandoffStopped {
-            generation: 99,
-            result: Ok(None),
-            reply: reply.into(),
+        .cast(CoreActorMessage::EndpointEvent {
+            generation,
+            pump_epoch: 0,
+            snapshot: snapshot(CoreStateDetail::Running { epoch: 1, pid: 42 }),
         })
         .unwrap();
-
-    // The refusal doubles as a mailbox flush: the stale completion has been
-    // processed by the time this answers, and it adopted nothing.
-    let error = client.submit(reconcile_envelope()).await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::OperationConflict));
-    assert_eq!(client.status().generation, 0);
-    assert_eq!(service.submits.load(Ordering::SeqCst), 0);
-
-    local.release_stop();
-    assert_eq!(
-        handoff.await.unwrap().unwrap(),
-        HandoffReport::Completed {
-            generation: 1,
-            interrupted_running: false,
-        }
+    assert!(
+        client
+            .refresh_status()
+            .await
+            .unwrap()
+            .snapshot
+            .as_ref()
+            .is_some_and(|s| { matches!(s.state, Some(CoreStateDetail::Stopped { .. })) })
     );
-
+    assert!(client.handoff_settled(generation).await.unwrap());
+    local.ungate_stop();
     client.shutdown().await.unwrap();
 }
 
-/// An unproven stop leaves ownership exactly where it was, and routing has to
-/// keep working there.
 #[tokio::test]
 async fn a_handoff_whose_stop_fails_returns_to_connected_routing() {
     let local = FakeEndpoint::new(
@@ -909,11 +826,9 @@ async fn a_handoff_whose_stop_fails_returns_to_connected_routing() {
     assert_eq!(service.submits.load(Ordering::SeqCst), 0);
 }
 
-/// Missed-4: a shutdown that lands mid-handoff must settle from the stop
-/// already in flight. A second stop would be a second lifecycle command for
-/// one runtime.
+/// Shutdown queued behind a handoff stops the adopted owner in its own turn.
 #[tokio::test]
-async fn shutdown_during_a_handoff_settles_once_and_stops_nothing_twice() {
+async fn shutdown_queued_during_a_handoff_stops_the_adopted_owner() {
     let local = FakeEndpoint::new(
         ExecutionHost::Local,
         CoreStateDetail::Running { epoch: 1, pid: 42 },
@@ -924,34 +839,17 @@ async fn shutdown_during_a_handoff_settles_once_and_stops_nothing_twice() {
     );
     let client = CoreClient::spawn(local.clone()).await.unwrap();
     let handoff = handoff_in_flight(&client, &local, service.clone()).await;
-
-    // Cast rather than call: the gate is still closed, so this is provably in
-    // the mailbox ahead of the handoff's continuation.
-    let (reply, shutdown_rx) = ractor::concurrency::oneshot::<ShutdownReport>();
-    client
-        .actor
-        .cast(CoreActorMessage::Shutdown {
-            reply: reply.into(),
-        })
-        .unwrap();
+    let shutdown_client = client.clone();
+    let shutdown = tokio::spawn(async move { shutdown_client.shutdown().await });
 
     local.release_stop();
-    let error = handoff.await.unwrap().unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::ShuttingDown));
-
-    let report = shutdown_rx.await.unwrap();
-    assert!(
-        matches!(report.stop, Ok(Some(_))),
-        "the handoff's stop is the shutdown's stop, got {:?}",
-        report.stop
-    );
+    assert!(handoff.await.unwrap().unwrap().completed());
+    let report = shutdown.await.unwrap().unwrap();
+    assert!(matches!(report.stop, Ok(Some(_))));
     assert_eq!(local.stops.load(Ordering::SeqCst), 1);
-    assert_eq!(service.submits.load(Ordering::SeqCst), 0);
+    assert_eq!(service.stops.load(Ordering::SeqCst), 1);
 }
 
-/// C-3: an unreachable source is exactly the case where nothing can prove its
-/// runtime stopped. Adopting another host there is how two owners end up
-/// driving one core.
 #[tokio::test]
 async fn a_degraded_source_cannot_be_replaced_by_another_host_without_proof() {
     let local = FakeEndpoint::new(
@@ -1108,31 +1006,6 @@ async fn a_submit_after_shutdown_is_refused_as_shutting_down() {
     assert!(!error.retryable);
 }
 
-/// Minor-A2: an endpoint that accepts the read and never answers must degrade
-/// the projection. Unbounded, the pump would wait on it forever and the app
-/// would keep showing the last frame as if it were current.
-#[tokio::test]
-async fn a_hung_endpoint_read_degrades_the_projection() {
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
-    let _dropped = local.hang_status();
-    let client = CoreClient::spawn_with_bounds(local.clone(), Duration::from_millis(50), STOP_WAIT)
-        .await
-        .unwrap();
-
-    await_projection(&client, "degraded by a hung read", |projection| {
-        matches!(
-            projection.connectivity,
-            EndpointConnectivity::Degraded { .. }
-        )
-    })
-    .await;
-}
-
-/// The pump holds an `ActorRef` and an endpoint; a read in flight keeps both
-/// alive past the mailbox unless `post_stop` cancels it.
 #[tokio::test]
 async fn actor_stop_cancels_the_status_pump() {
     let local = FakeEndpoint::new(
@@ -1140,313 +1013,13 @@ async fn actor_stop_cancels_the_status_pump() {
         CoreStateDetail::Running { epoch: 1, pid: 42 },
     );
     let dropped = local.hang_status();
-    let client = CoreClient::spawn_with_bounds(local.clone(), Duration::from_secs(30), STOP_WAIT)
-        .await
-        .unwrap();
+    let client = CoreClient::spawn(local.clone()).await.unwrap();
 
     client.actor.stop(Some("test".into()));
     tokio::time::timeout(Duration::from_secs(5), dropped)
         .await
         .expect("the hung status future must be dropped when the actor stops")
         .expect_err("the guard is dropped, never sent");
-}
-
-/// The handoff's own calls have to be bounded too. Unbounded, a source that
-/// accepts the long poll and never answers parks the router in `HandingOff`
-/// forever: every submit is refused, no shutdown settles, and the projection
-/// never degrades.
-#[tokio::test]
-async fn a_handoff_whose_source_never_answers_still_ends() {
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
-    local.gate_stop();
-    let service = FakeEndpoint::new(
-        ExecutionHost::Service,
-        CoreStateDetail::Stopped { reason: None },
-    );
-    let client = CoreClient::spawn_with_bounds(
-        local.clone(),
-        Duration::from_millis(50),
-        Duration::from_millis(50),
-    )
-    .await
-    .unwrap();
-
-    // The gate is never released: the stop leg has to time out on its own.
-    let error = client.change_host(service.clone()).await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::StopUnconfirmed));
-    assert_eq!(service.submits.load(Ordering::SeqCst), 0);
-    assert_eq!(
-        client.status().connectivity,
-        EndpointConnectivity::Connected
-    );
-
-    // And routing works again, which is what "the phase ended" means.
-    let ticket = client.submit(reconcile_envelope()).await.unwrap();
-    assert_eq!(ticket.endpoint.host(), ExecutionHost::Local);
-}
-
-/// Two shutdowns during one handoff both have to be answered. Replacing the
-/// first reply port drops it, and its caller sees a sender error from a router
-/// that is still running.
-#[tokio::test]
-async fn two_shutdowns_during_a_handoff_are_both_answered() {
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
-    let service = FakeEndpoint::new(
-        ExecutionHost::Service,
-        CoreStateDetail::Stopped { reason: None },
-    );
-    let client = CoreClient::spawn(local.clone()).await.unwrap();
-    let handoff = handoff_in_flight(&client, &local, service.clone()).await;
-
-    let (first, first_rx) = ractor::concurrency::oneshot::<ShutdownReport>();
-    let (second, second_rx) = ractor::concurrency::oneshot::<ShutdownReport>();
-    for reply in [first, second] {
-        client
-            .actor
-            .cast(CoreActorMessage::Shutdown {
-                reply: reply.into(),
-            })
-            .unwrap();
-    }
-
-    local.release_stop();
-    let error = handoff.await.unwrap().unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::ShuttingDown));
-
-    for rx in [first_rx, second_rx] {
-        let report = rx.await.expect("every parked shutdown is answered");
-        assert!(matches!(report.stop, Ok(Some(_))), "got {:?}", report.stop);
-    }
-    assert_eq!(
-        local.stops.load(Ordering::SeqCst),
-        1,
-        "one runtime, one stop"
-    );
-}
-
-/// The stop leg holds the source endpoint, an `ActorRef` and the caller's
-/// reply port. The actor's own termination has to take it down, or all three
-/// outlive the mailbox.
-#[tokio::test]
-async fn actor_stop_cancels_an_in_flight_handoff() {
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
-    let service = FakeEndpoint::new(
-        ExecutionHost::Service,
-        CoreStateDetail::Stopped { reason: None },
-    );
-    let client = CoreClient::spawn(local.clone()).await.unwrap();
-    let handoff = handoff_in_flight(&client, &local, service).await;
-
-    client.actor.stop(Some("test".into()));
-    // The gate is never released; the caller is answered because the port is
-    // dropped with the cancelled task, not because the leg finished.
-    let error = tokio::time::timeout(Duration::from_secs(5), handoff)
-        .await
-        .expect("the handoff task must not outlive the actor")
-        .unwrap()
-        .unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::Internal));
-}
-
-/// F3: a caller bound has to outlast the sum of every internal leg the call
-/// can honestly take, not just one of them. Before the fix,
-/// `CoreClient::change_host` used a fixed `STOP_WAIT + 30s` (90s at
-/// production bounds) while `change_host`'s own worst case is a preflight
-/// read, a stop admission, a stop long poll (itself `stop_wait +
-/// status_timeout`), and a lost-result status fallback — four
-/// `status_timeout` legs plus `stop_wait`, 100s at production bounds. A
-/// timing test cannot discriminate this at safe-for-CI durations: shrinking
-/// `status_timeout`/`stop_wait` shrinks the real worst case far below even
-/// the old fixed 90s, so the old bug would pass any tiny-bound timing test
-/// too. The bound only ever breaks at the actual production sizes, so the
-/// arithmetic itself -- not a wall-clock race -- is what has to be tested.
-/// This test does not compile against the pre-fix module, which has no
-/// `handoff_budget` function at all.
-#[test]
-fn handoff_budget_outlasts_every_internal_leg_it_covers() {
-    for (status_timeout, stop_wait) in [
-        (Duration::from_millis(50), Duration::from_millis(100)),
-        (super::PUMP_STATUS_TIMEOUT, STOP_WAIT),
-    ] {
-        // Leg-by-leg, mirroring `change_host` and `stop_and_confirm` as they
-        // exist after this fix: preflight + admission + (stop_wait +
-        // call_timeout) long poll + status fallback.
-        let worst_case = status_timeout * 4 + stop_wait;
-        assert!(
-            super::handoff_budget(status_timeout, stop_wait) > worst_case,
-            "budget must outlast {worst_case:?} for status_timeout={status_timeout:?}, stop_wait={stop_wait:?}"
-        );
-    }
-
-    // The exact numbers this fixes: at production bounds the old hardcoded
-    // caller budget (90s) was smaller than the worst case it had to cover
-    // (100s), so an internal path that legitimately used its full bounds
-    // reported `Internal` to a caller while ownership kept moving.
-    let old_hardcoded_budget = STOP_WAIT + Duration::from_secs(30);
-    let production_worst_case = super::PUMP_STATUS_TIMEOUT * 4 + STOP_WAIT;
-    assert!(production_worst_case > old_hardcoded_budget);
-    assert!(super::handoff_budget(super::PUMP_STATUS_TIMEOUT, STOP_WAIT) > production_worst_case);
-}
-
-/// The coherence requirement's shutdown half. Standing alone, `Shutdown` never
-/// preflights a target, so its worst case is the stop's three legs (admission,
-/// long poll, status fallback). But it does not always stand alone: a shutdown
-/// that arrives during a handoff is deferred and settled by that handoff's
-/// continuation, after waiting out the preflight leg `change_host` holds the
-/// mailbox for. The budget has to outlast that longer path too, or it expires
-/// exactly when the actor answers honestly.
-#[test]
-fn shutdown_budget_outlasts_every_internal_leg_it_covers() {
-    let status_timeout = Duration::from_millis(50);
-    let stop_wait = Duration::from_millis(100);
-
-    let standalone = status_timeout * 3 + stop_wait;
-    assert!(super::shutdown_budget(status_timeout, stop_wait) > standalone);
-
-    let deferred_behind_a_handoff = status_timeout * 4 + stop_wait;
-    assert!(
-        super::shutdown_budget(status_timeout, stop_wait) > deferred_behind_a_handoff,
-        "a shutdown deferred by a concurrent handoff must outlast the preflight leg too"
-    );
-}
-
-/// The production numbers this closes, in the shape of the A1 defect it
-/// repeats: the previous three-leg budget was byte-for-byte the worst case a
-/// shutdown deferred behind a handoff can honestly take.
-#[test]
-fn the_old_shutdown_budget_equalled_the_deferred_worst_case() {
-    let deferred_worst_case = super::PUMP_STATUS_TIMEOUT * 4 + STOP_WAIT;
-    let old_budget = super::PUMP_STATUS_TIMEOUT * 3 + STOP_WAIT + super::CALL_BUDGET_SLACK;
-    assert_eq!(
-        old_budget, deferred_worst_case,
-        "the equality is the bug: the caller could give up as the actor answered"
-    );
-    assert!(super::shutdown_budget(super::PUMP_STATUS_TIMEOUT, STOP_WAIT) > deferred_worst_case);
-}
-
-/// The coherence requirement's submit half: once F4 bounds the `Submit`
-/// handler's one endpoint call by `status_timeout`, the caller has to
-/// outlast that leg or it races the actor's own honest `BackendUnavailable`.
-#[test]
-fn submit_budget_outlasts_the_bounded_submit_leg() {
-    let status_timeout = Duration::from_millis(50);
-    assert!(super::submit_budget(status_timeout) > status_timeout);
-}
-
-/// F4: an endpoint that accepts a submit and never answers must not park the
-/// mailbox behind it. Before the fix, `Submit` awaited `endpoint.submit`
-/// unbounded; the fake here never releases, so on the pre-fix handler the
-/// first `submit` call would only return once the caller-side RPC timeout
-/// elapsed (reporting `Internal`, not `BackendUnavailable`), and the actor
-/// task itself would stay stuck inside that one `handle()` call forever --
-/// every later message queued behind it never runs, so the following
-/// `shutdown()` would hang until its own RPC timeout and then fail rather
-/// than returning `Ok`.
-#[tokio::test]
-async fn a_hung_submit_is_bounded_and_the_mailbox_survives() {
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
-    local.hang_submit();
-    let client = CoreClient::spawn_with_bounds(local.clone(), Duration::from_millis(50), STOP_WAIT)
-        .await
-        .unwrap();
-
-    let error = client.submit(reconcile_envelope()).await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
-    assert!(error.retryable, "the same operation id can be retried");
-
-    // The mailbox is free: a shutdown right after is answered instead of
-    // queuing behind the hung submit forever.
-    client.shutdown().await.unwrap();
-}
-
-/// F8: an ordinary submit's echoed id has to match the one that was sent --
-/// the same check the stop path already makes. Before the fix, only the stop
-/// path verified this; an ordinary submit trusted whatever id the endpoint
-/// echoed back and would hand the caller a ticket for the wrong operation.
-#[tokio::test]
-async fn a_submit_echoing_another_id_is_rejected() {
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
-    *local.echo_id.lock().unwrap() = Some(OperationId::generate().to_string());
-    let client = CoreClient::spawn(local.clone()).await.unwrap();
-
-    let error = client.submit(reconcile_envelope()).await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::Internal));
-    assert!(!error.retryable);
-
-    client.shutdown().await.unwrap();
-}
-
-/// The finding this closes: `submit_budget` (like every caller-facing budget
-/// in `mod.rs`) bounds only a message's own execution legs, never how long it
-/// waits in the mailbox behind other messages -- the mailbox is unbounded by
-/// construction. Before the fix, a submit's caller-side timeout was reported
-/// as a non-retryable `Internal` no matter what caused it, including one
-/// caused entirely by queueing: a submit stuck behind enough other work can
-/// clear its own `submit_budget` before it is even dequeued, let alone before
-/// its own endpoint call starts, and then be admitted a moment later. That is
-/// exactly the situation the `Submit` handler's own internal timeout already
-/// answers with a retryable `BackendUnavailable`; the caller-side timeout has
-/// to carry the same contract.
-///
-/// This casts enough hung submits directly onto the mailbox -- synchronously,
-/// so their queue order ahead of the submit under test is guaranteed rather
-/// than raced -- that the cumulative time to resolve them each internally
-/// (F4's own `status_timeout` bound) exceeds `submit_budget` before the last
-/// one is even dequeued. `start_paused` makes every duration here virtual, so
-/// the ordering is exact, not a wall-clock race: on the fixed router this
-/// reports the same retryable `BackendUnavailable` `submit` always promises;
-/// on the pre-fix router, the hardcoded `CallResult::Timeout` arm in
-/// `CoreClient::call` reports a non-retryable `Internal` instead.
-#[tokio::test(start_paused = true)]
-async fn a_submit_queued_behind_other_work_is_reported_retryable_not_internal() {
-    let status_timeout = Duration::from_secs(5);
-    let local = FakeEndpoint::new(
-        ExecutionHost::Local,
-        CoreStateDetail::Running { epoch: 1, pid: 42 },
-    );
-    local.hang_submit();
-    let client = CoreClient::spawn_with_bounds(local.clone(), status_timeout, STOP_WAIT)
-        .await
-        .unwrap();
-
-    // Each hung submit resolves internally in exactly `status_timeout` (F4).
-    // Enough of them queued ahead of the one under test push its residence
-    // past its own `submit_budget`, independent of when its own endpoint call
-    // would otherwise have started.
-    let budget = super::submit_budget(status_timeout);
-    let ahead = (budget.as_nanos() / status_timeout.as_nanos()) as usize + 1;
-    for _ in 0..ahead {
-        let (reply, _rx) = ractor::concurrency::oneshot();
-        client
-            .actor
-            .cast(CoreActorMessage::Submit {
-                submission: reconcile_envelope(),
-                reply: reply.into(),
-            })
-            .unwrap();
-    }
-
-    let error = client.submit(reconcile_envelope()).await.unwrap_err();
-    assert_eq!(error.kind, Some(CoreErrorKind::BackendUnavailable));
-    assert!(
-        error.retryable,
-        "mailbox residence must not turn a submit's caller-side timeout into a non-retryable Internal"
-    );
 }
 
 #[tokio::test]

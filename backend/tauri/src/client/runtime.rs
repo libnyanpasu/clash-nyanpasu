@@ -19,11 +19,11 @@ use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
 use crate::{
-    core::actor_v2::api::ApiError,
     enhance::PostProcessingOutput,
     state::profiles::{ErrorPath, ProfilesError},
     utils::path::PathResolver,
 };
+use nyanpasu_application::core::api::ApiError;
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
@@ -65,7 +65,7 @@ pub(crate) struct RuntimeSnapshotData {
 pub struct RuntimeSnapshot {
     pub(crate) inspection_id: String,
     pub(crate) applied_binding: Option<crate::core::actor_v2::facade::AppliedConfigBinding>,
-    pub(crate) effective_host: Option<(crate::core::actor_v2::endpoint::ExecutionHost, u64)>,
+    pub(crate) effective_host: Option<(nyanpasu_application::core::endpoint::ExecutionHost, u64)>,
     pub(crate) effective: Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>,
     pub revision: RuntimeRevision,
     pub target_core: ClashCore,
@@ -133,7 +133,7 @@ pub(in crate::client) struct RuntimeApplyReceipt {
     pub config_digest: String,
     pub target_core: ClashCore,
     pub core_spec: nyanpasu_core_manager::CoreSpec,
-    pub host: crate::core::actor_v2::endpoint::ExecutionHost,
+    pub host: nyanpasu_application::core::endpoint::ExecutionHost,
     /// Whether the app wants this runtime running at all. A core the user
     /// stopped is a target too, and a recovery must not start it.
     pub run_intent: super::application_workflow::policy::CoreRunIntent,
@@ -890,7 +890,7 @@ pub(crate) mod tests {
                 source_hash: "source".into(),
                 effective_hash: "effective".into(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_application::core::endpoint::ExecutionHost::Local,
             generation: 0,
         }
     }
@@ -980,7 +980,7 @@ pub(crate) mod tests {
                 version: None,
                 features: Vec::new(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_application::core::endpoint::ExecutionHost::Local,
             run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,

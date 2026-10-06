@@ -16,6 +16,7 @@
 
 use std::sync::Arc;
 
+use nyanpasu_application::core::endpoint::ExecutionHost;
 use nyanpasu_core::state::StateDecision;
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use nyanpasu_ipc::api::status::CoreStateDetail;
@@ -53,7 +54,6 @@ use crate::{
         runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
     },
     core::actor_v2::{
-        endpoint::ExecutionHost,
         facade::{AppliedConfigBinding, ReconcileResult},
         intent::RuntimeIntent,
     },
@@ -71,7 +71,7 @@ pub(super) struct RestorableBaseline {
     /// none of them is a stop: they are all "not decided yet", and no commit
     /// decision may be derived from one.
     pub(super) settled: bool,
-    pub(super) expected: Option<crate::core::actor_v2::CoreStatusProjection>,
+    pub(super) expected: Option<nyanpasu_application::core::CoreStatusProjection>,
     /// What the host actually said, for the diagnostics only.
     pub(super) observed: Option<CoreStateDetail>,
     pub(super) state: KnownRuntimeState,
@@ -895,10 +895,11 @@ impl ApplicationWorkflow {
                             }
                         };
                         let generation = match report {
-                            crate::core::actor_v2::HandoffReport::Completed {
-                                generation, ..
+                            nyanpasu_application::core::HandoffReport::Completed {
+                                generation,
+                                ..
                             } => generation,
-                            crate::core::actor_v2::HandoffReport::NoChange => unreachable!(),
+                            nyanpasu_application::core::HandoffReport::NoChange => unreachable!(),
                         };
                         if expected.host != target_host || expected.generation != generation {
                             return RuntimePrepareOutcome::RecoveryRequired(Arc::new(

@@ -6,7 +6,7 @@ use ractor::{Actor, ActorProcessingErr, ActorRef};
 use tokio::{sync::watch, task::JoinHandle};
 
 use super::ports::{CountryIndexSource, GeodataMode, IndexKey, Loaded, OnChange};
-use crate::core::actor_v2::CoreClient;
+use nyanpasu_application::core::CoreClient;
 
 /// How long to wait before asking a core that did not answer again.
 const RETRY: Duration = Duration::from_secs(1);

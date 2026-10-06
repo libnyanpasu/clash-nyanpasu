@@ -20,13 +20,15 @@ use super::{
     ports::{BinaryInstaller, PreparedCoreBinary, PreparedRuntime, RuntimePreparationPort},
 };
 use crate::core::actor_v2::{
-    EndpointConnectivity, HandoffReport,
-    endpoint::{ExecutionHost, wire_core_type_to_kind},
     facade::{
         CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
         StopReport, UncertainReconcile,
     },
     service_actor::ServicePhase,
+};
+use nyanpasu_application::core::{
+    EndpointConnectivity, HandoffReport,
+    endpoint::{ExecutionHost, wire_core_type_to_kind},
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -571,7 +573,7 @@ impl CoreLifecycleWorkflow {
         &mut self,
         prepared: PreparedRuntime,
         preparation: &dyn RuntimePreparationPort,
-        expected: &crate::core::actor_v2::CoreStatusProjection,
+        expected: &nyanpasu_application::core::CoreStatusProjection,
     ) -> Result<RuntimeSubmission, RuntimeError> {
         let PreparedRuntime {
             snapshot,

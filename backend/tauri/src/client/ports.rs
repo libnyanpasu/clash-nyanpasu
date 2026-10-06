@@ -294,7 +294,7 @@ mod tests {
                 version: None,
                 features: Vec::new(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_application::core::endpoint::ExecutionHost::Local,
             run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
@@ -307,7 +307,7 @@ mod tests {
                     source_hash: "source".into(),
                     effective_hash: "effective".into(),
                 },
-                host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                host: nyanpasu_application::core::endpoint::ExecutionHost::Local,
                 generation: 0,
             },
             ports: candidate,

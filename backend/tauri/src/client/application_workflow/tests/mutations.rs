@@ -18,6 +18,7 @@ use std::{
 };
 
 use camino::Utf8PathBuf;
+use nyanpasu_application::core::{CoreClient, endpoint::ExecutionHost};
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
     clash::config::{
@@ -60,11 +61,7 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         tests::{TestCheckAnswer, TestControlEndpoint},
     },
-    core::actor_v2::{
-        CoreClient,
-        endpoint::ExecutionHost,
-        service_actor::{ServiceClient, ServiceHostAdapter},
-    },
+    core::actor_v2::service_actor::{ServiceClient, ServiceHostAdapter},
     state::mutation::{CommitAborted, RuntimeAftermath},
 };
 
@@ -193,7 +190,7 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
             version: None,
             features: Vec::new(),
         },
-        host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+        host: nyanpasu_application::core::endpoint::ExecutionHost::Local,
         run_intent: super::super::policy::CoreRunIntent::Running,
         local_ipc: nyanpasu_core_manager::LocalIpcSettings {
             policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
@@ -206,7 +203,7 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
                 source_hash: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
                 effective_hash: "effective".into(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_application::core::endpoint::ExecutionHost::Local,
             generation: 0,
         },
         ports: SessionPortResolver::default()
@@ -3631,8 +3628,10 @@ async fn selecting_the_saved_host_again_moves_the_actual_host() {
 async fn successful_confirm_keeps_the_promoted_inspection() {
     let mut f = fixture().await;
     f.endpoint.set_effective_enabled(true);
-    let _ = crate::core::actor_v2::endpoint::ControlEndpoint::effective_config(f.endpoint.as_ref())
-        .await;
+    let _ = nyanpasu_application::core::endpoint::ControlEndpoint::effective_config(
+        f.endpoint.as_ref(),
+    )
+    .await;
     let (id, result) = simple_mutate(
         &mut f.clash,
         &f.client,
@@ -3686,7 +3685,7 @@ impl ServiceHostAdapter for RefusedInstall {
     async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_application::core::endpoint::EndpointHandle {
         unreachable!()
     }
 }

@@ -12,8 +12,9 @@ use crate::{
         },
         tests::{IdleServiceAdapter, TestControlEndpoint},
     },
-    core::actor_v2::{CoreClient, service_actor::ServiceClient},
+    core::actor_v2::service_actor::ServiceClient,
 };
+use nyanpasu_application::core::{CoreClient, EndpointConnectivity, endpoint::ExecutionHost};
 
 /// The audited scenario: the app was running A, applied B, then asked to be
 /// put back on A. The runtime answers `RolledBack`, which only says that *its*
@@ -640,7 +641,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
     async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_application::core::endpoint::EndpointHandle {
         self.delegate.endpoint()
     }
 }
@@ -651,7 +652,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
 /// Confirm owed without stopping the daemon a second time.
 #[tokio::test]
 async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
-    use crate::core::actor_v2::endpoint::ExecutionHost;
+    use nyanpasu_application::core::endpoint::ExecutionHost;
     let daemon = Arc::new(ParkedStop {
         delegate: crate::client::tests::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(ExecutionHost::Service),
@@ -785,7 +786,7 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall 
     async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_application::core::endpoint::EndpointHandle {
         self.delegate.endpoint()
     }
 }
@@ -800,7 +801,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     let daemon = Arc::new(ParkedInstall {
         delegate: crate::client::tests::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(
-                crate::core::actor_v2::endpoint::ExecutionHost::Service,
+                nyanpasu_application::core::endpoint::ExecutionHost::Service,
             ),
             calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             stopped: std::sync::atomic::AtomicBool::new(false),
@@ -874,44 +875,38 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
 }
 
 /// The router drives a service host whose core no receipt describes, and
-/// Local is asked for. The handoff back is held at its stop past its caller's
-/// budget, so startup ends with the handoff pending, and while the router is
-/// still handing off a retry leaves it pending and the domain isolated. That
-/// handoff is the only one the workflow makes, and it cannot finish before
-/// its stop is released, so the caller's short budget decides nothing else.
+/// Local is asked for. The caller is dropped while the admitted stop is held;
+/// the actor must keep the handoff running until the endpoint answers.
 async fn a_lost_handoff() -> super::startup::Graph {
     use super::startup::{DaemonState, Setup, graph};
     let g = graph(Setup {
         daemon: DaemonState::Running,
         residual: true,
         owner_on_service: true,
-        handoff_budget: Some(std::time::Duration::from_millis(300)),
         ..Setup::default()
     })
     .await;
     g.service_host.hold_stop.store(true, Ordering::SeqCst);
 
-    let report = g.start().await;
-
-    assert!(
-        matches!(
-            report.outcome,
-            crate::client::application_workflow::startup::StartupOutcome::RecoveryRequired { .. }
-        ),
-        "{report:?}"
-    );
-    assert!(isolated(&g.client));
-    let error = g.client.retry_runtime().await.unwrap_err();
-    assert!(matches!(
-        error,
-        crate::client::RuntimeError::RecoveryUnresolved { .. }
-    ));
-    assert!(
-        error.to_string().contains("handoff to Local"),
-        "the router is still handing off: {}",
-        error
-    );
-    assert!(isolated(&g.client));
+    let mut status = g.core.subscribe();
+    let client = g.client.clone();
+    let waiter = tokio::spawn(async move { client.startup_reconcile().await });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        g.service_host.stop_entered.notified(),
+    )
+    .await
+    .expect("the host admitted the held stop");
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        status.wait_for(|status| {
+            matches!(status.connectivity, EndpointConnectivity::HandingOff { .. })
+        }),
+    )
+    .await
+    .expect("the router records the in-flight handoff")
+    .unwrap();
+    waiter.abort();
     g
 }
 
@@ -943,12 +938,10 @@ async fn a_handoff_whose_answer_was_lost_is_recovered_once_the_router_settles() 
 /// domain.
 #[tokio::test]
 async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
-    use crate::core::actor_v2::{EndpointConnectivity, endpoint::ExecutionHost};
     let g = a_lost_handoff().await;
     let mut status = g.core.subscribe();
 
-    g.core
-        .report_endpoint_down("scripted: the service host stopped answering");
+    g.service_host.delegate.set_status_fails(true);
     g.service_host.delegate.set_failure(Some("apply_failed"));
     g.service_host.release.notify_one();
     tokio::time::timeout(
@@ -1032,7 +1025,7 @@ async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
         "the stop is all recovery owed"
     );
     assert!(matches!(
-        crate::core::actor_v2::endpoint::ControlEndpoint::status(f.endpoint.as_ref())
+        nyanpasu_application::core::endpoint::ControlEndpoint::status(f.endpoint.as_ref())
             .await
             .unwrap()
             .state,

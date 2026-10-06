@@ -877,9 +877,9 @@ async fn the_shutdown_awaits_running_groups_and_starts_no_new_one() {
 async fn core_log_level_reaches_only_the_streams_owner() {
     use nyanpasu_config::clash::config::overrides::LogLevel;
     let port = Arc::new(Port::default());
-    let core = crate::core::actor_v2::CoreClient::spawn(
-        crate::core::actor_v2::api::tests::endpoint("http://127.0.0.1:9".into()),
-    )
+    let core = nyanpasu_application::core::CoreClient::spawn(crate::client::tests::api_endpoint(
+        "http://127.0.0.1:9".into(),
+    ))
     .await
     .unwrap();
     let core_logs = crate::core::logs::CoreLogsClient::test_client().await;

@@ -1,402 +1,7 @@
-//! Instance-bound Clash API capability. The protocol client never escapes this
-//! adapter: clones share revocation and every operation checks the applied binding.
-
-use std::{
-    future::Future,
-    sync::{Arc, OnceLock},
-    time::Duration,
-};
-
-use clash_api::{Delay, DelayQuery, ProviderName, ProxyName, Version};
+use clash_api::ProxyName;
+use nyanpasu_application::core::api::*;
 use nyanpasu_ipc::api::{core::v2::CoreApiConnection, status::CoreControllerInfo};
-use tokio_util::sync::CancellationToken;
-
-use super::endpoint::EndpointHandle;
-
-#[derive(Debug, thiserror::Error)]
-pub enum ApiError {
-    #[error("the Clash API capability belongs to a retired instance")]
-    Stale,
-    #[error("the running core's API is unavailable: {0}")]
-    Unavailable(String),
-    #[error("Clash API operation timed out; a submitted mutation may have taken effect")]
-    Timeout,
-    #[error(transparent)]
-    Protocol(#[from] clash_api::Error),
-}
-
-/// One read of the proxy view. `groups` is the core's own group list, or `None`
-/// when the instance offers none and groups must be inferred from `proxies`.
-pub(crate) struct ProxySnapshot {
-    pub proxies: clash_api::IndexMap<ProxyName, clash_api::Proxy>,
-    pub providers: clash_api::IndexMap<ProviderName, clash_api::ProxyProvider>,
-    pub groups: Option<clash_api::IndexMap<ProxyName, clash_api::Proxy>>,
-}
-
-/// Shared, permanently revocable capability; it cannot be rebound to a new core.
-#[derive(Clone)]
-pub struct ApiClient {
-    client: clash_api::Client,
-    binding: CoreApiConnection,
-    endpoint: EndpointHandle,
-    revoked: CancellationToken,
-    /// Whether this instance serves `/group`, settled by its first conclusive
-    /// answer. The client never outlives its instance, so the result is bound
-    /// to that core and its version.
-    group_list: Arc<OnceLock<bool>>,
-}
-
-impl std::fmt::Debug for ApiClient {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ApiClient")
-            .field("instance_id", &self.binding.instance_id)
-            .field("revoked", &self.revoked.is_cancelled())
-            .finish_non_exhaustive()
-    }
-}
-
-impl ApiClient {
-    pub(super) fn new(
-        binding: CoreApiConnection,
-        endpoint: EndpointHandle,
-    ) -> Result<Self, ApiError> {
-        let host = match &binding.controller {
-            CoreControllerInfo::Http(url) => clash_api::Host::url(url)?,
-            CoreControllerInfo::UnixSocket(path) => clash_api::Host::unix_socket(path),
-            CoreControllerInfo::NamedPipe(path) => clash_api::Host::named_pipe(path),
-        };
-        let mut builder = clash_api::Client::builder(host);
-        if let Some(secret) = &binding.secret {
-            builder = builder.secret(secret.clone());
-        }
-        Ok(Self {
-            client: builder.build()?,
-            binding,
-            endpoint,
-            revoked: CancellationToken::new(),
-            group_list: Arc::default(),
-        })
-    }
-
-    pub(super) fn matches(&self, binding: &CoreApiConnection) -> bool {
-        !self.revoked.is_cancelled() && self.binding == *binding
-    }
-
-    pub(super) fn revoke(&self) {
-        self.revoked.cancel();
-    }
-
-    async fn check(&self) -> Result<(), ApiError> {
-        if self.revoked.is_cancelled() {
-            return Err(ApiError::Stale);
-        }
-        match self.endpoint.api_connection().await {
-            Ok(Some(binding)) if self.matches(&binding) => Ok(()),
-            Ok(_) => {
-                self.revoke();
-                Err(ApiError::Stale)
-            }
-            Err(error) => {
-                self.revoke();
-                Err(ApiError::Unavailable(error.to_string()))
-            }
-        }
-    }
-
-    // One bound includes preflight, the complete body decode, and postflight.
-    // No automatic retry: losing a mutation reply does not authorize replay.
-    async fn execute<T>(
-        &self,
-        operation: impl Future<Output = clash_api::Result<T>>,
-    ) -> Result<T, ApiError> {
-        tokio::select! {
-            biased;
-            _ = self.revoked.cancelled() => Err(ApiError::Stale),
-            result = tokio::time::timeout(Duration::from_secs(30), async {
-                self.check().await?;
-                let result = operation.await;
-                self.check().await?;
-                result.map_err(ApiError::Protocol)
-            }) => result.map_err(|_| ApiError::Timeout)?,
-        }
-    }
-
-    pub(crate) fn is_revoked(&self) -> bool {
-        self.revoked.is_cancelled()
-    }
-
-    pub(crate) fn instance_id(&self) -> &str {
-        &self.binding.instance_id
-    }
-
-    pub(crate) fn same_instance(&self, other: &Self) -> bool {
-        !self.is_revoked() && !other.is_revoked() && self.binding == other.binding
-    }
-
-    pub(crate) async fn cancelled(&self) {
-        self.revoked.cancelled().await;
-    }
-
-    pub async fn connections_ws(
-        &self,
-    ) -> Result<ApiStream<clash_api::ConnectionsSnapshot>, ApiError> {
-        let stream = self
-            .execute(self.client.connections_ws(Default::default()))
-            .await?;
-        Ok(ApiStream::new(self.clone(), stream))
-    }
-
-    pub async fn logs_ws(
-        &self,
-        level: clash_api::LogLevel,
-    ) -> Result<ApiStream<clash_api::LogEntry>, ApiError> {
-        let stream = self
-            .execute(self.client.logs_ws(clash_api::LogQuery::new(level)))
-            .await?;
-        Ok(ApiStream::new(self.clone(), stream))
-    }
-
-    pub async fn traffic_ws(&self) -> Result<ApiStream<clash_api::Traffic>, ApiError> {
-        let stream = self.execute(self.client.traffic_ws()).await?;
-        Ok(ApiStream::new(self.clone(), stream))
-    }
-
-    pub async fn memory_ws(&self) -> Result<ApiStream<clash_api::Memory>, ApiError> {
-        let stream = self.execute(self.client.memory_ws()).await?;
-        Ok(ApiStream::new(self.clone(), stream))
-    }
-
-    pub(crate) async fn proxy_snapshot(&self) -> Result<ProxySnapshot, ApiError> {
-        self.execute(async {
-            let (proxies, providers, groups) = tokio::try_join!(
-                self.client.proxies(),
-                self.client.proxy_providers(),
-                async { Ok(self.group_list().await) },
-            )?;
-            Ok(ProxySnapshot {
-                proxies,
-                providers,
-                groups,
-            })
-        })
-        .await
-    }
-
-    // Any failure falls back to inference for this read. Only a missing route
-    // settles the probe; other errors may pass, so the next read asks again.
-    async fn group_list(&self) -> Option<clash_api::IndexMap<ProxyName, clash_api::Proxy>> {
-        if self.group_list.get() == Some(&false) {
-            return None;
-        }
-        match self.client.groups().await {
-            Ok(groups) => {
-                let _ = self.group_list.set(true);
-                Some(groups)
-            }
-            Err(error) => {
-                if error
-                    .status()
-                    .is_some_and(|status| matches!(status.as_u16(), 404 | 405))
-                {
-                    let _ = self.group_list.set(false);
-                }
-                tracing::debug!(%error, "proxy group list unavailable; inferring groups");
-                None
-            }
-        }
-    }
-
-    pub async fn select_proxy(
-        &self,
-        group: &ProxyName,
-        target: &ProxyName,
-    ) -> Result<(), ApiError> {
-        self.execute(
-            self.client
-                .select_proxy(clash_api::ProxySelection { group, target }),
-        )
-        .await
-    }
-
-    pub async fn update_proxy_provider(&self, name: &ProviderName) -> Result<(), ApiError> {
-        self.execute(self.client.update_proxy_provider(name)).await
-    }
-
-    pub async fn configs(&self) -> Result<clash_api::RuntimeConfig, ApiError> {
-        self.execute(self.client.configs()).await
-    }
-
-    pub async fn rule_providers(
-        &self,
-    ) -> Result<indexmap::IndexMap<clash_api::RuleProviderName, clash_api::RuleProvider>, ApiError>
-    {
-        self.execute(self.client.rule_providers()).await
-    }
-
-    pub async fn rules(&self) -> Result<Vec<clash_api::Rule>, ApiError> {
-        self.execute(self.client.rules()).await
-    }
-
-    pub async fn update_rule_provider(
-        &self,
-        name: &clash_api::RuleProviderName,
-    ) -> Result<(), ApiError> {
-        self.execute(self.client.update_rule_provider(name)).await
-    }
-
-    pub async fn version(&self) -> Result<Version, ApiError> {
-        self.execute(self.client.version()).await
-    }
-
-    pub async fn proxy_delay(
-        &self,
-        name: &ProxyName,
-        provider: Option<&ProviderName>,
-        query: &DelayQuery,
-    ) -> Result<Delay, ApiError> {
-        match provider {
-            Some(provider) => {
-                self.execute(self.client.provider_proxy_delay(provider, name, query))
-                    .await
-            }
-            None => self.execute(self.client.proxy_delay(name, query)).await,
-        }
-    }
-
-    pub async fn group_delay(
-        &self,
-        group: &ProxyName,
-        query: &DelayQuery,
-    ) -> Result<indexmap::IndexMap<ProxyName, u16>, ApiError> {
-        self.execute(self.client.group_delay(group, query)).await
-    }
-
-    pub async fn connections(&self) -> Result<clash_api::ConnectionsSnapshot, ApiError> {
-        self.execute(self.client.connections()).await
-    }
-
-    pub async fn close_connection(&self, id: uuid::Uuid) -> Result<(), ApiError> {
-        self.execute(self.client.close_connection(id)).await
-    }
-
-    pub async fn close_all_connections(&self) -> Result<(), ApiError> {
-        self.execute(self.client.close_all_connections()).await
-    }
-}
-
-/// An owned subscription bound to the same capability for its entire lifetime.
-/// Idle reads have no deadline; cancellation drops the socket, and each decoded
-/// frame must pass the authoritative binding check before delivery.
-pub struct ApiStream<T> {
-    api: ApiClient,
-    stream: Option<clash_api::WebSocketStream<T>>,
-}
-
-impl<T> ApiStream<T> {
-    fn new(api: ApiClient, stream: clash_api::WebSocketStream<T>) -> Self {
-        Self {
-            api,
-            stream: Some(stream),
-        }
-    }
-
-    pub async fn next(&mut self) -> Option<Result<T, ApiError>> {
-        use futures_util::StreamExt;
-        let stream = self.stream.as_mut()?;
-        let result = tokio::select! {
-            biased;
-            _ = self.api.cancelled() => Some(Err(ApiError::Stale)),
-            frame = stream.next() => match frame {
-                Some(frame) => Some(self.api.execute(async { frame }).await),
-                None => None,
-            },
-        };
-        if result.is_none()
-            || matches!(&result, Some(Err(error)) if !matches!(error, ApiError::Protocol(clash_api::Error::Decode { .. })))
-        {
-            self.stream.take();
-        }
-        result
-    }
-}
-
-/// Owned only by CoreActor. Dropping it revokes every outstanding clone even
-/// when actor teardown skips post_stop (for example, actor state unwinding).
-pub(super) struct ApiLease {
-    pub client: ApiClient,
-    monitor: tokio::task::JoinHandle<()>,
-}
-
-impl ApiLease {
-    pub fn new(client: ApiClient) -> Self {
-        let monitored = client.clone();
-        let monitor = tokio::spawn(async move {
-            use futures::StreamExt;
-            let subscription =
-                tokio::time::timeout(Duration::from_secs(10), monitored.endpoint.api_changes())
-                    .await;
-            let mut changes = match subscription {
-                Ok(Ok(Some(changes))) => changes,
-                Ok(Ok(None)) => Box::pin(futures::stream::pending()) as super::endpoint::ApiChanges,
-                Ok(Err(error)) => {
-                    tracing::warn!(host = ?monitored.endpoint.host(), "API lifecycle subscription failed: {error}");
-                    monitored.revoke();
-                    return;
-                }
-                Err(error) => {
-                    tracing::warn!(host = ?monitored.endpoint.host(), "API lifecycle subscription timed out: {error}");
-                    monitored.revoke();
-                    return;
-                }
-            };
-            let mut timer = tokio::time::interval(Duration::from_secs(2));
-            loop {
-                tokio::select! {
-                    biased;
-                    _ = monitored.revoked.cancelled() => return,
-                    event = changes.next() => {
-                        match event {
-                            Some(Ok(())) => {},
-                            Some(Err(error)) => {
-                                tracing::warn!(host = ?monitored.endpoint.host(), "API lifecycle stream failed: {error}");
-                                monitored.revoke();
-                                return;
-                            }
-                            None => {
-                                tracing::warn!(host = ?monitored.endpoint.host(), "API lifecycle stream ended; revoking API access");
-                                monitored.revoke();
-                                return;
-                            }
-                        }
-                    }
-                    _ = timer.tick() => {}
-                }
-                match tokio::time::timeout(Duration::from_secs(10), monitored.check()).await {
-                    Ok(Ok(())) => {}
-                    Ok(Err(ApiError::Stale)) => return,
-                    Ok(Err(error)) => {
-                        tracing::warn!(host = ?monitored.endpoint.host(), "API binding monitor failed: {:#}", anyhow::Error::new(error));
-                        monitored.revoke();
-                        return;
-                    }
-                    Err(error) => {
-                        tracing::warn!(host = ?monitored.endpoint.host(), "API binding monitor timed out: {error}");
-                        monitored.revoke();
-                        return;
-                    }
-                }
-            }
-        });
-        Self { client, monitor }
-    }
-}
-
-impl Drop for ApiLease {
-    fn drop(&mut self) {
-        self.client.revoke();
-        self.monitor.abort();
-    }
-}
+use std::{sync::Arc, time::Duration};
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -406,17 +11,58 @@ pub(crate) mod tests {
     use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
     use nyanpasu_ipc::api::{
         core::v2::{OperationInfo, OperationOutputInfo, OperationPhase},
-        status::CoreStateDetail,
+        status::{CoreControllerInfo, CoreStateDetail},
     };
     use tokio::sync::{Notify, watch};
 
     use super::*;
-    use crate::core::actor_v2::{
+    use nyanpasu_application::core::{
         CoreClient,
         endpoint::{
             ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
         },
     };
+
+    #[test]
+    fn service_wire_submission_preserves_alpha_core_type() {
+        use camino::Utf8PathBuf;
+        use nyanpasu_core_manager::{
+            ConfigInput, CoreCommand, CoreCommandEnvelope, CoreKind, CoreSpec, InstanceOptions,
+            OperationId, ReconcileRequest,
+        };
+        use nyanpasu_utils::core::{ClashCoreType, CoreType};
+
+        let core_type = CoreType::Clash(ClashCoreType::MihomoAlpha);
+        let request = super::super::endpoint::wire_submit_request(&CoreSubmission {
+            expected_owner: None,
+            envelope: CoreCommandEnvelope {
+                operation_id: OperationId::generate(),
+                command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
+                    core: CoreSpec {
+                        kind: CoreKind::Mihomo,
+                        binary_path: Utf8PathBuf::from("mihomo-alpha"),
+                        version: None,
+                        features: vec![],
+                    },
+                    config: ConfigInput::Inline {
+                        bytes: b"proxies: []".to_vec(),
+                        expected_digest: None,
+                    },
+                    options: InstanceOptions::default(),
+                    expected_applied: None,
+                })),
+            },
+            core_type: Some(core_type.clone()),
+        })
+        .unwrap();
+        let nyanpasu_ipc::api::core::v2::CoreCommandInfo::Reconcile {
+            core_type: wire, ..
+        } = request.command
+        else {
+            panic!("expected reconcile wire command");
+        };
+        assert_eq!(wire.into_owned(), core_type);
+    }
 
     pub(crate) struct Endpoint {
         pub(super) host: ExecutionHost,
@@ -431,6 +77,13 @@ pub(crate) mod tests {
 
         async fn api_connection(&self) -> Result<Option<CoreApiConnection>, CoreError> {
             Ok(self.binding.borrow().clone())
+        }
+
+        fn api_backend(
+            &self,
+            binding: &CoreApiConnection,
+        ) -> Result<Arc<dyn InstanceApiPort>, ApiError> {
+            crate::core::clash_api_backend(binding)
         }
 
         async fn api_changes(&self) -> Result<Option<ApiChanges>, CoreError> {
@@ -506,9 +159,13 @@ pub(crate) mod tests {
     }
 
     async fn revoked(api: &ApiClient) {
-        tokio::time::timeout(Duration::from_secs(2), api.revoked.cancelled())
-            .await
-            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !api.is_revoked() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -526,7 +183,7 @@ pub(crate) mod tests {
         assert_eq!(config.allow_lan, None);
         endpoint.binding.send_replace(None);
         assert!(matches!(api.configs().await, Err(ApiError::Stale)));
-        core.actor.stop(None);
+        core.shutdown().await.unwrap();
         server.abort();
     }
 
@@ -557,7 +214,7 @@ pub(crate) mod tests {
         );
         endpoint.binding.send_replace(None);
         assert!(matches!(api.rule_providers().await, Err(ApiError::Stale)));
-        core.actor.stop(None);
+        core.shutdown().await.unwrap();
         server.abort();
     }
 
@@ -597,7 +254,7 @@ pub(crate) mod tests {
             api.update_rule_provider(&provider).await,
             Err(ApiError::Stale)
         ));
-        core.actor.stop(None);
+        core.shutdown().await.unwrap();
         server.abort();
     }
 
@@ -613,13 +270,13 @@ pub(crate) mod tests {
         revoked(&first).await;
         assert!(matches!(clone.version().await, Err(ApiError::Stale)));
         let second = core.api_client().await.unwrap();
-        assert_eq!(second.binding.instance_id, "second-process");
-        assert!(!second.revoked.is_cancelled());
+        assert_eq!(second.instance_id(), "second-process");
+        assert!(!second.is_revoked());
         endpoint
             .binding
             .send_modify(|binding| binding.as_mut().unwrap().instance_id = "first-process".into());
         assert!(matches!(first.version().await, Err(ApiError::Stale)));
-        core.actor.stop(None);
+        core.shutdown().await.unwrap();
     }
 
     #[tokio::test]
@@ -636,11 +293,11 @@ pub(crate) mod tests {
         endpoint.binding.send_modify(|_| {});
         assert_eq!(api.version().await.unwrap().version, "test");
         let reacquired = core.api_client().await.unwrap();
-        assert!(api.matches(&reacquired.binding));
+        assert!(api.same_instance(&reacquired));
         core.shutdown().await.unwrap();
         assert!(matches!(api.version().await, Err(ApiError::Stale)));
         assert!(core.api_client().await.is_err());
-        core.actor.stop(None);
+        core.shutdown().await.unwrap();
         server.abort();
     }
 
@@ -661,9 +318,9 @@ pub(crate) mod tests {
             // Acquisition uses an authoritative binding, independent of the status pump.
             let replacement = core.api_client().await.unwrap();
             revoked(&api).await;
-            assert!(!replacement.revoked.is_cancelled());
+            assert!(!replacement.is_revoked());
             assert!(!format!("{replacement:?}").contains("replacement-secret"));
-            core.actor.stop(None);
+            core.shutdown().await.unwrap();
         }
     }
 
@@ -699,7 +356,7 @@ pub(crate) mod tests {
             .unwrap()
             .unwrap();
         assert!(matches!(result, Err(ApiError::Stale)));
-        core.actor.stop(None);
+        core.shutdown().await.unwrap();
         server.abort();
     }
 
@@ -708,7 +365,7 @@ pub(crate) mod tests {
         let endpoint = endpoint("http://127.0.0.1:1/".into());
         let core = CoreClient::spawn(endpoint).await.unwrap();
         let api = core.api_client().await.unwrap();
-        core.actor.stop(None);
+        core.shutdown().await.unwrap();
         revoked(&api).await;
         assert!(matches!(api.version().await, Err(ApiError::Stale)));
     }
@@ -722,11 +379,11 @@ pub(crate) mod tests {
         });
         let core = CoreClient::spawn(source).await.unwrap();
         let old = core.api_client().await.unwrap();
-        core.change_host(target).await.unwrap();
+        core.change_host_from(target, false).await.unwrap();
         assert!(matches!(old.version().await, Err(ApiError::Stale)));
         let new = core.api_client().await.unwrap();
-        assert!(!new.revoked.is_cancelled());
-        core.actor.stop(None);
+        assert!(!new.is_revoked());
+        core.shutdown().await.unwrap();
     }
 }
 
@@ -736,13 +393,13 @@ mod stream_tests {
         tests::{endpoint, server},
         *,
     };
-    use crate::core::actor_v2::CoreClient;
     use axum::{
         Router,
         extract::{State, WebSocketUpgrade, ws::Message},
         response::IntoResponse,
         routing::get,
     };
+    use nyanpasu_application::core::CoreClient;
     use tokio::sync::mpsc;
 
     async fn idle(
@@ -804,7 +461,7 @@ mod stream_tests {
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
         let mut endpoint = endpoint("http://127.0.0.1:1/".into());
         std::sync::Arc::get_mut(&mut endpoint).unwrap().host =
-            crate::core::actor_v2::endpoint::ExecutionHost::Service;
+            nyanpasu_application::core::endpoint::ExecutionHost::Service;
         endpoint.binding.send_modify(|binding| {
             binding.as_mut().unwrap().controller = CoreControllerInfo::NamedPipe(path.into());
         });
@@ -880,8 +537,8 @@ mod proxy_snapshot_tests {
         tests::{endpoint, server},
         *,
     };
-    use crate::core::actor_v2::CoreClient;
     use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::get};
+    use nyanpasu_application::core::CoreClient;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn router(

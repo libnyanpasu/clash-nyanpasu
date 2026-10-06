@@ -1,11 +1,10 @@
 use super::*;
 use crate::{
-    client::tests::HostTransitionServiceAdapter,
-    core::actor_v2::{
-        EndpointConnectivity,
-        endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
-        service_actor::ServiceHostAdapter,
-    },
+    client::tests::HostTransitionServiceAdapter, core::actor_v2::service_actor::ServiceHostAdapter,
+};
+use nyanpasu_application::core::{
+    EndpointConnectivity,
+    endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, EndpointHandle},
 };
 use nyanpasu_ipc::{
     api::{core::v2::OperationInfo, status::CoreStateDetail},
@@ -148,7 +147,7 @@ impl RecoveryGraph {
         let core = CoreClient::spawn(TestControlEndpoint::succeeding())
             .await
             .unwrap();
-        core.change_host(endpoint).await.unwrap();
+        core.change_host_from(endpoint, false).await.unwrap();
         core.refresh_status().await.unwrap();
         let service = ServiceClient::spawn(daemon.clone(), 3).await.unwrap();
         let shutdown = CancellationToken::new();

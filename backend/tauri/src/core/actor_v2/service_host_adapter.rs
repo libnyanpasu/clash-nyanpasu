@@ -6,10 +6,10 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use super::{
-    endpoint::{EndpointHandle, ServiceEndpoint},
-    service_actor::ServiceHostAdapter,
-};
+use nyanpasu_application::core::endpoint::EndpointHandle;
+use nyanpasu_platform::core::ServiceEndpoint;
+
+use super::service_actor::ServiceHostAdapter;
 use crate::core::service::control::ServiceCommandError;
 
 pub struct OsServiceHostAdapter {

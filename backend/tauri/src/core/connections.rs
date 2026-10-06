@@ -1,6 +1,6 @@
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 
-use super::actor_v2::api::{ApiClient, ApiError};
+use nyanpasu_application::core::api::{ApiClient, ApiError};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ConnectionScope {

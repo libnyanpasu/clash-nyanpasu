@@ -2,6 +2,10 @@
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
+use nyanpasu_application::core::{
+    CoreClient,
+    api::{ApiClient, ApiError},
+};
 use nyanpasu_config::clash::config::overrides::LogLevel;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
@@ -13,14 +17,8 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::core::{
-    actor_v2::{
-        CoreClient,
-        api::{ApiClient, ApiError},
-    },
-    clash::connection_rates::{
-        ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionRates,
-    },
+use crate::core::clash::connection_rates::{
+    ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionRates,
 };
 
 const MAX_CONNECTIONS_HISTORY: usize = 32;
@@ -700,7 +698,7 @@ impl Actor for StreamsActor {
                     && let Some(snapshot) = projection.snapshot
                     && matches!(
                         projection.connectivity,
-                        crate::core::actor_v2::EndpointConnectivity::Connected
+                        nyanpasu_application::core::EndpointConnectivity::Connected
                     )
                     && matches!(
                         snapshot.state,
@@ -928,7 +926,7 @@ impl StreamsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::actor_v2::api::tests::{endpoint, server};
+    use crate::client::tests::{api_endpoint, server};
     use axum::{Router, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
 
     async fn idle(ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -960,7 +958,7 @@ mod tests {
     #[tokio::test]
     async fn replacement_rejects_old_capability_and_clears_all_histories() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let endpoint = endpoint(url);
+        let endpoint = api_endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
@@ -976,9 +974,9 @@ mod tests {
         connected(&mut events).await;
         let old = core.api_client().await.unwrap();
         assert!(deliver(&client.0.actor, Delivery::Sample(old.clone(), sample(100))).await);
-        endpoint
-            .binding
-            .send_modify(|binding| binding.as_mut().unwrap().instance_id = "replacement".into());
+        let mut binding = endpoint.api_binding().unwrap();
+        binding.instance_id = "replacement".into();
+        endpoint.set_api_binding(Some(binding));
         let new = core.api_client().await.unwrap();
         assert!(!old.same_instance(&new));
         assert!(!deliver(&client.0.actor, Delivery::Sample(old, sample(200))).await);
@@ -995,7 +993,7 @@ mod tests {
     #[tokio::test]
     async fn recording_clear_and_history_limits_are_serialized_with_samples() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let core = CoreClient::spawn(api_endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
@@ -1095,7 +1093,7 @@ mod tests {
         )
         .await;
         let pair = |kind: &str, level: &str| (kind.to_owned(), level.to_owned());
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let core = CoreClient::spawn(api_endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core,
             crate::core::logs::CoreLogsClient::test_client().await,
@@ -1167,7 +1165,7 @@ mod tests {
                 .with_state(closed),
         )
         .await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let core = CoreClient::spawn(api_endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core,
             crate::core::logs::CoreLogsClient::test_client().await,
@@ -1242,7 +1240,7 @@ mod tests {
     #[tokio::test]
     async fn details_watch_stays_none_without_a_subscriber() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let core = CoreClient::spawn(api_endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
@@ -1268,7 +1266,7 @@ mod tests {
     #[tokio::test]
     async fn details_frame_matches_the_connections_updated_sequence() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let core = CoreClient::spawn(api_endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
@@ -1307,7 +1305,7 @@ mod tests {
     #[tokio::test]
     async fn reset_clears_the_details_watch() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let core = CoreClient::spawn(api_endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
@@ -1341,7 +1339,11 @@ mod tests {
     #[tokio::test]
     async fn connection_frames_carry_the_instance_id_and_reset_clears_them() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let endpoint = api_endpoint(url);
+        let mut binding = endpoint.api_binding().unwrap();
+        binding.instance_id = "first-process".into();
+        endpoint.set_api_binding(Some(binding));
+        let core = CoreClient::spawn(endpoint).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
             crate::core::logs::CoreLogsClient::test_client().await,
@@ -1501,7 +1503,7 @@ mod tests {
         .await
         .unwrap();
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
-        let endpoint = endpoint(url);
+        let endpoint = api_endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
@@ -1527,17 +1529,17 @@ mod tests {
         assert!(before.head.is_some());
         assert!(directory.path().join("current.redb").exists());
         // A new API capability for the same process is not a new log session.
-        endpoint
-            .binding
-            .send_modify(|binding| binding.as_mut().unwrap().secret = Some("changed".into()));
+        let mut binding = endpoint.api_binding().unwrap();
+        binding.secret = Some("changed".into());
+        endpoint.set_api_binding(Some(binding));
         let rebound = core.api_client().await.unwrap();
         assert!(deliver(&client.0.actor, Delivery::Bind(rebound)).await);
         assert_eq!(logs.status().await.unwrap().generation, before.generation);
         assert_eq!(logs.status().await.unwrap().head, before.head);
         let mut changed = logs.subscribe();
-        let mut replacement_binding = endpoint.binding.borrow().clone().unwrap();
+        let mut replacement_binding = endpoint.api_binding().unwrap();
         replacement_binding.instance_id = "replacement".into();
-        endpoint.binding.send_replace(None);
+        endpoint.set_api_binding(None);
         core.refresh_status().await.unwrap();
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
@@ -1552,7 +1554,7 @@ mod tests {
         .unwrap();
         assert!(!directory.path().join("current.redb").exists());
         assert!(!deliver(&client.0.actor, Delivery::Sample(api, sample())).await);
-        endpoint.binding.send_replace(Some(replacement_binding));
+        endpoint.set_api_binding(Some(replacement_binding));
         let replacement = core.api_client().await.unwrap();
         assert!(deliver(&client.0.actor, Delivery::Bind(replacement.clone())).await);
         assert!(deliver(&client.0.actor, Delivery::Sample(replacement, sample())).await);

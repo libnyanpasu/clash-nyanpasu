@@ -6,15 +6,13 @@ use crate::client::runtime::{
 };
 use anyhow::{Context, Result};
 use clash_api::{IndexMap, ProviderName, ProxyProvider};
+use nyanpasu_application::core::{CoreClient, api::ApiClient};
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::{sync::watch, time::Instant};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{
-    actor_v2::{CoreClient, api::ApiClient},
-    clash::proxies::Proxies,
-};
+use super::clash::proxies::Proxies;
 
 struct Snapshot {
     api: ApiClient,
@@ -426,7 +424,7 @@ impl ProxiesClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::actor_v2::api::tests::{endpoint, server};
+    use crate::client::tests::{api_endpoint, server};
     use axum::{
         Json, Router,
         extract::{Path, State as HttpState},
@@ -559,7 +557,7 @@ mod tests {
     async fn setup() -> (
         ProxiesClient,
         CoreClient,
-        Arc<crate::core::actor_v2::api::tests::Endpoint>,
+        Arc<crate::client::tests::TestControlEndpoint>,
         Arc<Fixture>,
         tokio::task::JoinHandle<()>,
     ) {
@@ -574,7 +572,7 @@ mod tests {
             .route("/connections/{id}", delete(close_one))
             .with_state(fixture.clone());
         let (url, server) = server(router).await;
-        let endpoint = endpoint(url);
+        let endpoint = api_endpoint(url);
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
         let client =
             ProxiesClient::spawn(core.clone(), CancellationToken::new(), &TaskTracker::new())
@@ -731,9 +729,9 @@ mod tests {
             })
         };
         fixture.entered.notified().await;
-        endpoint
-            .binding
-            .send_modify(|binding| binding.as_mut().unwrap().instance_id = "replacement".into());
+        let mut binding = endpoint.api_binding().unwrap();
+        binding.instance_id = "replacement".into();
+        endpoint.set_api_binding(Some(binding));
         core.api_client().await.unwrap();
         let outcome = waiting.await.unwrap().unwrap();
         assert_eq!(outcome.degradations().len(), 2);
@@ -749,9 +747,9 @@ mod tests {
         client.get(false).await.unwrap();
         let mut changes = client.subscribe();
         changes.borrow_and_update();
-        endpoint.binding.send_modify(|binding| {
-            binding.as_mut().unwrap().instance_id = "replacement".into();
-        });
+        let mut binding = endpoint.api_binding().unwrap();
+        binding.instance_id = "replacement".into();
+        endpoint.set_api_binding(Some(binding));
         core.api_client().await.unwrap();
         assert!(client.snapshot().nodes.is_empty());
         tokio::time::timeout(Duration::from_secs(3), changes.changed())
@@ -772,9 +770,9 @@ mod tests {
             tokio::spawn(async move { client.get(true).await })
         };
         fixture.entered.notified().await;
-        endpoint
-            .binding
-            .send_modify(|binding| binding.as_mut().unwrap().instance_id = "replacement".into());
+        let mut binding = endpoint.api_binding().unwrap();
+        binding.instance_id = "replacement".into();
+        endpoint.set_api_binding(Some(binding));
         core.api_client().await.unwrap();
         assert!(waiting.await.unwrap().is_err());
         assert!(client.snapshot().nodes.is_empty());

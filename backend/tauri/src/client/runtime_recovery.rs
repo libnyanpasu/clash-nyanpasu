@@ -31,10 +31,10 @@ use nyanpasu_core_manager::CoreKind;
 use nyanpasu_ipc::api::status::CoreStateDetail;
 
 use super::{application_workflow::policy::CoreRunIntent, runtime::RuntimeApplyReceipt};
-use crate::core::actor_v2::{
+use crate::core::actor_v2::facade::AppliedConfigBinding;
+use nyanpasu_application::core::{
     CoreStatusProjection,
     endpoint::{ExecutionHost, wire_core_type_to_kind},
-    facade::AppliedConfigBinding,
 };
 
 /// What the app can observe about the runtime right now. Built from a status

@@ -43,11 +43,12 @@ use crate::{
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
     core::actor_v2::{
-        CoreStatusProjection, EndpointConnectivity,
-        endpoint::ExecutionHost,
         facade::{HostChangeFailure, PendingAction, ReconcileReport},
         service_actor::{ServiceHostStatus, ServicePhase},
     },
+};
+use nyanpasu_application::core::{
+    CoreStatusProjection, EndpointConnectivity, endpoint::ExecutionHost,
 };
 
 /// What StartupReconcile found, and how it ended (T10 §1.6).

@@ -185,11 +185,23 @@ The aarch64 and x86_64 runs passed all 57 shared tests in their ImmortalWrt
 The harness checks the actual rootfs musl loader because its ARM image tag
 currently publishes amd64 Docker metadata. Builder architecture stays explicit.
 
-The next actor slice is the existing CoreActor/CoreClient and its API lease,
-with local/service endpoints implemented in platform, plus persistent session
-state with host-independent actor construction. Profile transactions, application
-workflow, facade composition and RPC registration still belong to the desktop
-host until their whole dependency paths can be moved.
+The CoreActor/CoreClient and revocable instance API lease now live in application.
+Platform implements local/service endpoints and Clash HTTP/WebSocket access behind
+application-owned ports. Desktop consumers import the shared types directly; the
+old actor, endpoint and API implementations have been removed. Each handoff runs
+to completion in its mailbox handler. Queued submissions carry their original
+host/generation fence, and shutdown stops the owner adopted by the prior turn.
+Profile transactions, application workflow, higher-level CoreFacade, desktop
+service lifecycle and RPC registration still belong to the desktop host until
+their whole dependency paths can be moved.
+
+The local shared suite now passes 40 application tests, 67 platform tests and
+the real filesystem/script integration test. The desktop library and test
+targets compile, and regenerated transport bindings retain their committed
+content. These checks do not extend the earlier musl result to the newly moved
+core slice: IPC currently pulls in the logging crate's AES-dependent hash
+implementation. Generic router support needs that dependency separated before
+claiming portable aarch64/x86_64 acceptance.
 
 The independent session-state slice now uses
 `nyanpasu_application::session_state::SessionStateClient` in the desktop host.

@@ -10,6 +10,17 @@ authors.workspace = true
 name = 'nyanpasu_application'
 
 [dependencies]
+camino = '1'
+nyanpasu-core-manager = { workspace = true }
+nyanpasu-ipc = { workspace = true }
+nyanpasu-utils = { workspace = true }
+clash-api = { workspace = true }
+async-trait = '0.1'
+futures = '0.3'
+futures-util = '0.3'
+indexmap = { version = '2', features = ['serde'] }
+uuid = { version = '1', features = ['v4', 'serde'] }
+thiserror = { workspace = true }
 nyanpasu-core = { path = '../nyanpasu-core' }
 anyhow = '1'
 ractor = '0.16'
@@ -28,6 +39,5 @@ snafu = { workspace = true }
 strum = { version = '0.28', features = ['derive'] }
 
 [dev-dependencies]
-camino = '1'
 tempfile = '3'
 serde_json = { version = '1', features = ['preserve_order'] }

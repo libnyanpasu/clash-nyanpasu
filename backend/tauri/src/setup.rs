@@ -92,7 +92,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(paths.clone());
     let runtime_paths = RuntimePaths::from_resolver(&paths)?;
     // TODO(ipc-timeout): nyanpasu_ipc::Client sets no request timeout. Remove the
-    // outer call deadlines in core/actor_v2 once the upstream client sets one.
+    // transport deadlines in nyanpasu-platform once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context("Failed to build the service IPC client")?;
     let service_binary = paths
@@ -100,9 +100,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .context("Failed to locate the service binary")?;
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
-        let local: crate::core::actor_v2::endpoint::EndpointHandle =
-            Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
-        let core = crate::core::actor_v2::CoreClient::spawn(local)
+        let local: nyanpasu_application::core::endpoint::EndpointHandle =
+            Arc::new(nyanpasu_platform::core::LocalEndpoint::new(control));
+        let core = nyanpasu_application::core::CoreClient::spawn(local)
             .await
             .context("Failed to spawn core actor")?;
         let adapter = Arc::new(

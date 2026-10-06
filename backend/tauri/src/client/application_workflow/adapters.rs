@@ -120,7 +120,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
 /// A wedged or merely slow core binary is not the core rejecting the document,
 /// so that case is separated out here before the kind decides anything.
 pub(in crate::client) struct CoreCheckValidator {
-    core: crate::core::actor_v2::CoreClient,
+    core: nyanpasu_application::core::CoreClient,
     paths: runtime::RuntimePaths,
     budget: Duration,
 }
@@ -143,7 +143,7 @@ const RUNTIME_CHECK_TIMEOUT: &str = "config check timed out after ";
 
 impl CoreCheckValidator {
     pub(in crate::client) fn new(
-        core: crate::core::actor_v2::CoreClient,
+        core: nyanpasu_application::core::CoreClient,
         paths: runtime::RuntimePaths,
     ) -> Self {
         Self {
@@ -157,7 +157,7 @@ impl CoreCheckValidator {
     /// out the production one.
     #[cfg(test)]
     pub(in crate::client) fn with_budget(
-        core: crate::core::actor_v2::CoreClient,
+        core: nyanpasu_application::core::CoreClient,
         paths: runtime::RuntimePaths,
         budget: Duration,
     ) -> Self {
@@ -176,7 +176,7 @@ impl super::ports::RuntimeValidatorPort for CoreCheckValidator {
         request: super::ports::RuntimeCheckRequest<'_>,
     ) -> super::ports::RuntimeCheckOutcome {
         use super::ports::{RuntimeCheckOutcome, RuntimeCheckUnavailable};
-        use crate::core::actor_v2::endpoint::{CheckSubmission, CheckSupport, ExecutionHost};
+        use nyanpasu_application::core::endpoint::{CheckSubmission, CheckSupport, ExecutionHost};
 
         let endpoint = match self.core.connected_endpoint().await {
             Ok(endpoint) => endpoint,

@@ -10,6 +10,13 @@ authors.workspace = true
 name = 'nyanpasu_platform'
 
 [dependencies]
+nyanpasu-core-manager = { workspace = true }
+nyanpasu-ipc = { workspace = true }
+nyanpasu-utils = { workspace = true }
+clash-api = { workspace = true }
+futures = '0.3'
+futures-util = '0.3'
+uuid = { version = '1', features = ['v4', 'serde'] }
 nyanpasu-core = { path = '../nyanpasu-core' }
 camino = '1'
 nyanpasu-application = { path = '../nyanpasu-application' }
@@ -44,5 +51,7 @@ tokio = { workspace = true, features = ['full'] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+tracing-subscriber = { version = '0.3', features = ['fmt', 'json'] }
+axum = { version = '0.8', features = ['ws'] }
 tempfile = '3'
 test-log = { workspace = true }

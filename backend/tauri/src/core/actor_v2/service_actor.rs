@@ -28,11 +28,11 @@ use nyanpasu_ipc::{
     types::{ServiceStatus, StatusInfo},
 };
 
-use super::endpoint::EndpointHandle;
 use crate::core::service::{
     compat::ServiceCompat,
     control::{ServiceCommandError, StillRunningSnafu, TaskCancelledSnafu, TimedOutSnafu},
 };
+use nyanpasu_application::core::endpoint::EndpointHandle;
 
 /// Elevated daemon mechanics behind one narrow boundary. `probe` reports
 /// what it actually knows: `Ok` is a real answer, `Err` is "unreachable or
@@ -1215,7 +1215,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::core::actor_v2::endpoint::{
+    use nyanpasu_application::core::endpoint::{
         ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
     };
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, StatusResBody};

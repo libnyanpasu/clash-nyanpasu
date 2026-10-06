@@ -23,8 +23,9 @@ use crate::{
         runtime,
         tests::{TestCheckAnswer, TestControlEndpoint},
     },
-    core::actor_v2::{CoreClient, endpoint::ExecutionHost, facade::CoreFacade},
+    core::actor_v2::facade::CoreFacade,
 };
+use nyanpasu_application::core::{CoreClient, endpoint::ExecutionHost};
 
 struct Graph {
     endpoint: Arc<TestControlEndpoint>,

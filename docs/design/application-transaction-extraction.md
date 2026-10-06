@@ -106,9 +106,9 @@ The current concrete locations and their target owners are:
 | `backend/tauri/src/client/runtime_error.rs`                                                                                    | `nyanpasu-application::client::runtime_error`                                          | Structured runtime errors crossing shared operations and mutation results.                                                                                            |
 | `backend/tauri/src/client/ports.rs`                                                                                            | `nyanpasu-application::client::ports`                                                  | Session candidate/confirmed resolution is shared state; port allocation is an injected `PortProbe` consumed by application.                                           |
 | `backend/tauri/src/service/profile_file.rs`                                                                                    | `nyanpasu-platform`                                                                    | Filesystem journal/materialization and subscription HTTP implementation are concrete adapters. Paths and self-proxy port source must be constructor inputs.           |
-| `backend/tauri/src/enhance/artifact_snapshot.rs`                                                                               | Tauri host initially                                                                   | Desktop command projection remains at the host edge; only move its mapper if it becomes pure and has a real second consumer.                                          |
+| `backend/tauri/src/enhance/artifact_snapshot.rs`                                                                               | `nyanpasu-application` pure diagnostics mapper                                         | The mapper consumes only the runtime artifact and produces plain values; both runtime hosts can use it without Tauri.                                                 |
 | `backend/tauri/src/client/runtime_inspection.rs` graph/step-log source data                                                    | `nyanpasu-application` domain diagnostics                                              | `ConfigSnapshotsGraph`, `StepLog`, and pure graph mutations are reusable diagnostic data.                                                                             |
-| `backend/tauri/src/client/runtime_inspection.rs` inspection response DTOs/query                                                | Tauri host projection initially                                                        | Specta/UI DTOs, display strings, and event correlation are desktop-specific.                                                                                          |
+| `backend/tauri/src/client/runtime_inspection.rs` inspection response DTOs/query                                                | `nyanpasu-application` domain diagnostics                                              | YAML, graph ids, logs and diffs are host-neutral values. Keep rendering, localized UI text and Tauri event emission at the host boundary.                             |
 | `backend/tauri/src/enhance/chain.rs` `PostProcessingOutput` and log spans                                                      | `nyanpasu-application::enhance`                                                        | Pure serde diagnostics produced by the shared transform pipeline.                                                                                                     |
 | `backend/tauri/src/client/application_workflow/adapters.rs`                                                                    | Split: application port definitions; concrete adapters in platform or host composition | It currently combines profile reads, `RuntimeBuilder`, blocking execution, Tauri runtime paths, core mapping and UI artifact projection.                              |
 | `backend/tauri/src/core/migration/modules/profiles.rs` `ProfilesDocument`/`ProfilesFormat`                                     | `nyanpasu-application::state::profiles::format`                                        | Move only the plain `StampedDocument` and `StampedYamlFormat` declaration; migration steps remain in Tauri bootstrap.                                                 |
@@ -163,6 +163,26 @@ moved in this stage. `facade.rs`, `service_actor.rs`, service readiness and
 desktop service lifecycle remain host/workflow dependencies until Stage 3
 decides their exact application port and ownership. This boundary keeps Stage 2
 buildable without prematurely moving the application workflow/facade graph.
+
+The current development standards require each handler to await its complete
+command and use only the actor mailbox for serialization. The earlier core
+integration plan's background stop continuation and immediate handoff-conflict
+reply are superseded by that rule. Preserve its safety intent with an owner
+fence: `CoreClient::submit` captures the current host/generation before enqueue
+when the request does not already carry a baseline; the handler rejects a
+baseline changed by an earlier handoff without contacting the target. A queued
+submission therefore cannot silently move to the adopted host. A handoff that
+fails without changing the owner can leave the queued request eligible for that
+same owner. Queued shutdown runs in its own subsequent turn and stops the owner
+actually adopted by the completed handoff. Dropping a waiter does not cancel
+accepted handoff or cleanup work. Tests must cover all three cases and verify
+that the target receives no stale-owner submission.
+
+Clash HTTP/WebSocket deadlines belong to the platform adapter (30 seconds per
+request/handshake); service IPC bounds each request separately (10 seconds plus
+long-poll allowance where needed). An API operation's pre/post binding checks
+are separate IO, so its elapsed time can exceed the former combined 30-second
+budget. In-process actor calls have no caller timeout.
 
 Keep `ControlEndpoint` as the consumed boundary. The local in-process endpoint,
 IPC/service endpoint and their connection watchers are concrete adapters. Put
@@ -256,18 +276,22 @@ ports, not by a cross-crate re-export or `ActorRef` map.
 
 ### Shared runtime product versus host projection
 
-The current desktop `RuntimeSnapshot` is not suitable as the shared runtime
-transaction type. It contains a runtime file product, but also a Tauri
-`PostProcessingOutput`, inspection identity/data, effective-config UI state,
-and path/candidate operations. Split it before moving the workflow:
+The current desktop `RuntimeSnapshot` mixes immutable runtime values with
+filesystem staging and publication. Split out the filesystem operations before
+moving the workflow. A closer inspection of the diagnostic types shows that
+`PostProcessingOutput`, graph inspection responses, build ids and effective
+configuration metadata are ordinary data: they contain no Tauri handles,
+webview identity, rendering callbacks or localized UI text. They remain shared
+so the desktop command contract and router diagnostics can use the same build.
+Specta derives describe those values and do not make them a desktop dependency.
 
-| Shared application value                                                                                               | Host/projection value                                                    |
-| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Candidate revision and target core                                                                                     | Desktop inspection id and inspector cache                                |
-| Exact serialized config bytes and digest used for check/apply/recovery                                                 | `PostProcessingOutput` rendered for desktop UI                           |
-| Immutable `ConfigSnapshotsGraph`, `StepLog` diagnostics and runtime provenance                                         | Desktop query DTOs, `exists_keys` and display-oriented inspection schema |
-| Confirmed apply receipt: exact accepted bytes, core identity, endpoint owner/generation, run intent and resolved ports | Effective-config projection and Tauri event correlation                  |
-| Build/check/reconcile errors and degraded status                                                                       | Specta inspection projection and Tauri event correlation                 |
+| Shared application value                                         | Platform or Tauri boundary                                  |
+| ---------------------------------------------------------------- | ----------------------------------------------------------- |
+| Revision, target core, exact bytes and digest                    | Filesystem paths, candidate creation and atomic publication |
+| Graph, step logs, inspection id, diffs and postprocessing report | UI rendering and localized presentation                     |
+| Confirmed apply receipt, owner generation, run intent and ports  | Process/IPC execution and Tauri event emission              |
+| Effective configuration and recovery state                       | Concrete endpoint transport                                 |
+| Structured build/check/reconcile errors                          | Transport error mapping                                     |
 
 The shared compiler consumes an immutable `RuntimeBuildInput`: committed
 application/clash/profile snapshots, resolved port bindings, and frozen contents
@@ -289,23 +313,14 @@ The runtime ports have these responsibilities and data directions:
 | `ControlEndpoint` through `CoreClient`                                                | Typed submit/status/check request                                            | Host-reported operation and status; the actor owns routing/generation, host owns lifecycle truth                                      |
 | `CommitNotifications` (narrowed consumed port)                                        | Committed domain slice or confirmed runtime binding                          | Best-effort downstream notification after the source transaction; no write vote and no desktop `ApplicationEffectPlan` in application |
 
-The concrete desktop adapter can keep producing the current runtime file and
-inspection projection from the same candidate. The OpenWrt adapter writes the
-fixed core config and exposes only fields required by its status response. Both
-must check and apply the same bytes. The application stores the shared
-product/receipt and graph diagnostics needed for recovery; a Tauri inspector
-projects those into its richer inspection response at the host edge.
-
-The shared application runtime snapshot/store owns candidate revision, target
-core, immutable graph and step-log diagnostics, serialized product bytes and
-digest, confirmed-apply receipt, effective-config state required for recovery,
-and promotion/confirmation transitions. Keep graph data (currently
-`RuntimeInspectionData`) in application as domain diagnostics; desktop
-`RuntimeInspection`/node/content response DTOs, display strings, Specta query
-shape and event correlation stay at the Tauri edge. Move the pure serde
-`PostProcessingOutput` and log-span types under application `enhance`; keep
-presentation mapping out. `artifact_snapshot` stays Tauri unless it becomes a
-pure mapping with an actual second consumer.
+The platform runtime adapter produces one candidate and its diagnostics from
+frozen content. Both hosts check and apply those exact bytes. The application
+owns the snapshot/store, confirmed receipt, effective configuration recovery,
+and promotion/confirmation transitions. The pure `artifact_snapshot` mapper,
+`RuntimeInspection` response values and serde `PostProcessingOutput`/log-span
+types move to application; they do not emit events or render UI. Tauri retains
+its event bridge and frontend presentation. OpenWrt exposes the diagnostic
+fields its ubus allowlist needs, without a second snapshot implementation.
 
 Move the filesystem half of `client/runtime.rs` to
 `nyanpasu-platform::runtime`: `RuntimePaths::new(product, candidate_dir)` takes

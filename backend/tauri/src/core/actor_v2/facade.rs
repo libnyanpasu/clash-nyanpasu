@@ -10,10 +10,13 @@ use nyanpasu_ipc::api::core::v2::{
     OperationInfo, OperationOutputInfo, OperationPhase, ReconcileOutcomeKind,
 };
 
-use super::{
+use nyanpasu_application::core::{
     ControllerGeneration, CoreClient, CoreStatusProjection, EndpointConnectivity, HandoffReport,
     ShutdownReport, SubmitFailure,
     endpoint::{CoreSubmission, EndpointHandle, ExecutionHost},
+};
+
+use super::{
     intent::RuntimeIntent,
     service_actor::{ServiceClient, ServiceCommandKind, ServiceHostStatus},
 };
@@ -406,12 +409,13 @@ impl CoreFacade {
 
     pub(crate) async fn api_client_if_running(
         &self,
-    ) -> Result<Option<super::api::ApiClient>, super::api::ApiError> {
-        let status = self
-            .core
-            .refresh_status()
-            .await
-            .map_err(|error| super::api::ApiError::Unavailable(error.to_string()))?;
+    ) -> Result<
+        Option<nyanpasu_application::core::api::ApiClient>,
+        nyanpasu_application::core::api::ApiError,
+    > {
+        let status = self.core.refresh_status().await.map_err(|error| {
+            nyanpasu_application::core::api::ApiError::Unavailable(error.to_string())
+        })?;
         // Only an authoritative Stopped state proves there were no source connections.
         // Unknown state must still try the binding instead of silently skipping policy.
         if matches!(
@@ -919,10 +923,8 @@ mod tests {
     };
 
     use super::*;
-    use crate::core::actor_v2::{
-        endpoint::{ControlEndpoint, CoreStatusSnapshot},
-        service_actor::ServiceHostAdapter,
-    };
+    use crate::core::actor_v2::service_actor::ServiceHostAdapter;
+    use nyanpasu_application::core::endpoint::{ControlEndpoint, CoreStatusSnapshot};
 
     struct RecordingEndpoint {
         host: ExecutionHost,
@@ -1113,7 +1115,7 @@ mod tests {
         async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
             Ok(())
         }
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> nyanpasu_application::core::endpoint::EndpointHandle {
             self.endpoint.clone()
         }
     }
@@ -1446,7 +1448,7 @@ mod tests {
         let generation = facade.core_status().generation;
         facade
             .core
-            .change_host(RecordingEndpoint::new(ExecutionHost::Service, None))
+            .change_host_from(RecordingEndpoint::new(ExecutionHost::Service, None), false)
             .await
             .unwrap();
         assert!(facade.core_status().generation > generation);
@@ -1468,7 +1470,7 @@ mod tests {
     /// A handoff the router answered, refusal included, is over; one whose
     /// reply never arrived stays pending until the router is seen settled.
     #[tokio::test]
-    async fn a_handoff_stays_pending_only_without_a_reply() {
+    async fn a_handoff_stays_pending_only_while_unsettled() {
         let local = RecordingEndpoint::new(ExecutionHost::Local, None);
         let (mut facade, _) = facade(local.clone()).await;
         wait_for_snapshot(&facade.core).await;
@@ -1490,21 +1492,5 @@ mod tests {
             Some(ActionEvidence::Settled)
         );
         facade.pending = None;
-
-        facade.core.actor.stop_and_wait(None, None).await.unwrap();
-        let lost = facade
-            .change_execution_host(ExecutionHost::Local)
-            .await
-            .err()
-            .map(|failure| (failure.error.kind, failure.handoff_started));
-        assert_eq!(lost, Some((Some(CoreErrorKind::Internal), true)));
-        assert!(matches!(
-            facade.pending_action(),
-            Some(PendingAction::Handoff { .. })
-        ));
-        assert!(matches!(
-            facade.action_evidence().await,
-            Some(ActionEvidence::Pending(_))
-        ));
     }
 }

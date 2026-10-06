@@ -33,7 +33,6 @@ use self::{application::ApplicationClient, clash_config::ClashConfigClient};
 use crate::{
     core::{
         actor_v2::{
-            CoreClient as CoreClientV2, CoreStatusProjection,
             facade::{ReconcileReport, StopReport},
             service_actor::{ServiceClient, ServiceHostStatus},
         },
@@ -54,7 +53,10 @@ use crate::{
 };
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
-use nyanpasu_application::session_state::SessionStateClient;
+use nyanpasu_application::{
+    core::{CoreClient as CoreClientV2, CoreStatusProjection},
+    session_state::SessionStateClient,
+};
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
@@ -1327,7 +1329,6 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         client::system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError, OsProxyPort},
-        core::actor_v2::endpoint::ExecutionHost,
         state::profiles::{
             error::SubscriptionFetchError,
             ports::{
@@ -1338,6 +1339,7 @@ pub(crate) mod tests {
         },
     };
     use camino::Utf8PathBuf;
+    use nyanpasu_application::core::endpoint::ExecutionHost;
     use nyanpasu_config::{
         clash::config::{ClashConfig, clash_strategy::PortStrategy},
         profile::{
@@ -1350,17 +1352,28 @@ pub(crate) mod tests {
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
 
+    pub(crate) fn api_endpoint(url: String) -> std::sync::Arc<TestControlEndpoint> {
+        TestControlEndpoint::api_endpoint(url)
+    }
+
+    pub(crate) async fn server(router: axum::Router) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        (url, task)
+    }
+
     struct IdleEndpoint;
 
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
+    impl nyanpasu_application::core::endpoint::ControlEndpoint for IdleEndpoint {
         fn host(&self) -> ExecutionHost {
             ExecutionHost::Local
         }
 
         async fn submit(
             &self,
-            submission: crate::core::actor_v2::endpoint::CoreSubmission,
+            submission: nyanpasu_application::core::endpoint::CoreSubmission,
         ) -> std::result::Result<
             nyanpasu_ipc::api::core::v2::OperationInfo,
             nyanpasu_core_manager::CoreError,
@@ -1379,10 +1392,10 @@ pub(crate) mod tests {
         async fn status(
             &self,
         ) -> std::result::Result<
-            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_application::core::endpoint::CoreStatusSnapshot,
             nyanpasu_core_manager::CoreError,
         > {
-            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+            Ok(nyanpasu_application::core::endpoint::CoreStatusSnapshot {
                 controller: None,
                 state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
                 state_changed_at: 0,
@@ -1418,6 +1431,8 @@ pub(crate) mod tests {
         /// epoch-specific controller endpoint into the effective document
         /// while the configuration it came from is unchanged.
         source_hash: StdMutex<String>,
+        api_binding:
+            tokio::sync::watch::Sender<Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>>,
         /// Terminal results, keyed by operation id, computed once at
         /// `submit` time so `wait_operation` replays that decision instead
         /// of re-running (and re-advancing) the CAS check.
@@ -1445,7 +1460,7 @@ pub(crate) mod tests {
         result_missing: std::sync::atomic::AtomicBool,
         /// Every advisory check this endpoint was asked to run, so a test can
         /// compare what the check saw with what the reconcile submitted.
-        checks: StdMutex<Vec<crate::core::actor_v2::endpoint::CheckSubmission>>,
+        checks: StdMutex<Vec<nyanpasu_application::core::endpoint::CheckSubmission>>,
         /// What the next check answers. The default mirrors the in-process
         /// control plane accepting a document.
         check_answer: StdMutex<TestCheckAnswer>,
@@ -1474,12 +1489,38 @@ pub(crate) mod tests {
     }
 
     impl TestControlEndpoint {
+        pub(crate) fn api_binding(&self) -> Option<nyanpasu_ipc::api::core::v2::CoreApiConnection> {
+            self.api_binding.borrow().clone()
+        }
+
+        pub(crate) fn set_api_binding(
+            &self,
+            binding: Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>,
+        ) {
+            let is_api_endpoint = binding.is_some() || self.api_binding.borrow().is_some();
+            if is_api_endpoint {
+                self.set_status(
+                    Some(match binding {
+                        Some(_) => {
+                            nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }
+                        }
+                        None => {
+                            nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }
+                        }
+                    }),
+                    None,
+                );
+            }
+            self.api_binding.send_replace(binding);
+        }
+
         pub(crate) fn succeeding() -> Arc<Self> {
             Self::succeeding_on(ExecutionHost::Local)
         }
 
         /// The same endpoint, owned by `host`.
         pub(crate) fn succeeding_on(host: ExecutionHost) -> Arc<Self> {
+            let (api_binding, _) = tokio::sync::watch::channel(None);
             Arc::new(Self {
                 host,
                 fail: std::sync::atomic::AtomicBool::new(false),
@@ -1490,6 +1531,7 @@ pub(crate) mod tests {
                 local_ipc: StdMutex::new(None),
                 revision: StdMutex::new(Self::initial_revision()),
                 source_hash: StdMutex::new("source".to_owned()),
+                api_binding,
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
                 recover_should_fail: std::sync::atomic::AtomicBool::new(false),
@@ -1530,6 +1572,7 @@ pub(crate) mod tests {
         }
 
         pub(crate) fn failing() -> Arc<Self> {
+            let (api_binding, _) = tokio::sync::watch::channel(None);
             Arc::new(Self {
                 host: ExecutionHost::Local,
                 fail: std::sync::atomic::AtomicBool::new(true),
@@ -1540,6 +1583,7 @@ pub(crate) mod tests {
                 local_ipc: StdMutex::new(None),
                 revision: StdMutex::new(Self::initial_revision()),
                 source_hash: StdMutex::new("source".to_owned()),
+                api_binding,
                 operations: StdMutex::new(std::collections::HashMap::new()),
                 status_override: StdMutex::new((None, None)),
                 recover_should_fail: std::sync::atomic::AtomicBool::new(false),
@@ -1568,6 +1612,16 @@ pub(crate) mod tests {
         }
         pub(crate) fn submissions(&self) -> usize {
             self.submissions.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        pub(crate) fn api_endpoint(url: String) -> Arc<Self> {
+            let endpoint = Self::succeeding();
+            endpoint.set_api_binding(Some(nyanpasu_ipc::api::core::v2::CoreApiConnection {
+                instance_id: "test-instance".into(),
+                controller: nyanpasu_ipc::api::status::CoreControllerInfo::Http(url),
+                secret: None,
+            }));
+            endpoint
         }
 
         /// Scripts `status()` as unreadable from now on.
@@ -1614,7 +1668,7 @@ pub(crate) mod tests {
         }
 
         /// The documents this endpoint was asked to check, in order.
-        pub(crate) fn checked(&self) -> Vec<crate::core::actor_v2::endpoint::CheckSubmission> {
+        pub(crate) fn checked(&self) -> Vec<nyanpasu_application::core::endpoint::CheckSubmission> {
             self.checks.lock().unwrap().clone()
         }
 
@@ -1650,7 +1704,7 @@ pub(crate) mod tests {
         /// `revision_conflict`, and an accepted reconcile advances it.
         fn operation(
             &self,
-            submission: &crate::core::actor_v2::endpoint::CoreSubmission,
+            submission: &nyanpasu_application::core::endpoint::CoreSubmission,
         ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
             let id = submission.envelope.operation_id.to_string();
             if self.fail.load(std::sync::atomic::Ordering::SeqCst) {
@@ -1792,16 +1846,50 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
+    impl nyanpasu_application::core::endpoint::ControlEndpoint for TestControlEndpoint {
         fn host(&self) -> ExecutionHost {
             self.host
         }
 
+        async fn api_connection(
+            &self,
+        ) -> std::result::Result<
+            Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>,
+            nyanpasu_core_manager::CoreError,
+        > {
+            Ok(self.api_binding.borrow().clone())
+        }
+
+        fn api_backend(
+            &self,
+            binding: &nyanpasu_ipc::api::core::v2::CoreApiConnection,
+        ) -> std::result::Result<
+            Arc<dyn nyanpasu_application::core::api::InstanceApiPort>,
+            nyanpasu_application::core::api::ApiError,
+        > {
+            nyanpasu_platform::core::clash_api_backend(binding)
+        }
+
+        async fn api_changes(
+            &self,
+        ) -> std::result::Result<
+            Option<nyanpasu_application::core::endpoint::ApiChanges>,
+            nyanpasu_core_manager::CoreError,
+        > {
+            Ok(Some(Box::pin(futures::stream::unfold(
+                self.api_binding.subscribe(),
+                |mut receiver| async move {
+                    receiver.changed().await.ok()?;
+                    Some((Ok(()), receiver))
+                },
+            ))))
+        }
+
         async fn check_config(
             &self,
-            submission: crate::core::actor_v2::endpoint::CheckSubmission,
-        ) -> crate::core::actor_v2::endpoint::CheckSupport {
-            use crate::core::actor_v2::endpoint::CheckSupport;
+            submission: nyanpasu_application::core::endpoint::CheckSubmission,
+        ) -> nyanpasu_application::core::endpoint::CheckSupport {
+            use nyanpasu_application::core::endpoint::CheckSupport;
             let answer = self.check_answer.lock().unwrap().clone();
             self.checks.lock().unwrap().push(submission);
             match answer {
@@ -1816,7 +1904,7 @@ pub(crate) mod tests {
 
         async fn submit(
             &self,
-            submission: crate::core::actor_v2::endpoint::CoreSubmission,
+            submission: nyanpasu_application::core::endpoint::CoreSubmission,
         ) -> std::result::Result<
             nyanpasu_ipc::api::core::v2::OperationInfo,
             nyanpasu_core_manager::CoreError,
@@ -1882,7 +1970,7 @@ pub(crate) mod tests {
         async fn status(
             &self,
         ) -> std::result::Result<
-            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_application::core::endpoint::CoreStatusSnapshot,
             nyanpasu_core_manager::CoreError,
         > {
             self.status_reads
@@ -1895,7 +1983,7 @@ pub(crate) mod tests {
                 ));
             }
             let (state, applied_kind) = self.status_override.lock().unwrap().clone();
-            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+            Ok(nyanpasu_application::core::endpoint::CoreStatusSnapshot {
                 controller: None,
                 state,
                 state_changed_at: 0,
@@ -1939,13 +2027,13 @@ pub(crate) mod tests {
         }
     }
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint {
+    impl nyanpasu_application::core::endpoint::ControlEndpoint for HostTransitionEndpoint {
         fn host(&self) -> ExecutionHost {
             self.host
         }
         async fn submit(
             &self,
-            submission: crate::core::actor_v2::endpoint::CoreSubmission,
+            submission: nyanpasu_application::core::endpoint::CoreSubmission,
         ) -> std::result::Result<
             nyanpasu_ipc::api::core::v2::OperationInfo,
             nyanpasu_core_manager::CoreError,
@@ -1977,7 +2065,7 @@ pub(crate) mod tests {
         async fn status(
             &self,
         ) -> std::result::Result<
-            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_application::core::endpoint::CoreStatusSnapshot,
             nyanpasu_core_manager::CoreError,
         > {
             self.delegate.status().await
@@ -1985,7 +2073,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) struct HostTransitionServiceAdapter {
-        pub endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+        pub endpoint: nyanpasu_application::core::endpoint::EndpointHandle,
         pub calls: Arc<StdMutex<Vec<&'static str>>>,
         pub stopped: std::sync::atomic::AtomicBool,
         /// The config dir the daemon reports it was installed with.
@@ -2078,7 +2166,7 @@ pub(crate) mod tests {
             Ok(())
         }
 
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> nyanpasu_application::core::endpoint::EndpointHandle {
             self.endpoint.clone()
         }
     }
@@ -2156,7 +2244,7 @@ pub(crate) mod tests {
             Ok(())
         }
 
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> nyanpasu_application::core::endpoint::EndpointHandle {
             Arc::new(IdleEndpoint)
         }
     }
@@ -2167,12 +2255,12 @@ pub(crate) mod tests {
 
     /// A core that answers nothing, for tests whose subject is the facade
     /// rather than the running core.
-    pub(crate) fn test_idle_endpoint() -> crate::core::actor_v2::endpoint::EndpointHandle {
+    pub(crate) fn test_idle_endpoint() -> nyanpasu_application::core::endpoint::EndpointHandle {
         Arc::new(IdleEndpoint)
     }
 
     pub(crate) fn test_v2_clients_with_endpoint(
-        endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+        endpoint: nyanpasu_application::core::endpoint::EndpointHandle,
     ) -> (CoreClientV2, ServiceClient) {
         std::thread::spawn(move || {
             tauri::async_runtime::block_on(async {
@@ -2896,7 +2984,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_client_args_with_endpoint(
         dir: &TempDir,
-        endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+        endpoint: nyanpasu_application::core::endpoint::EndpointHandle,
     ) -> ClientSetupArgs {
         let (paths, storage) = test_backup_deps(dir);
         seed_test_clash_config(paths.clash_config_path());
@@ -3016,7 +3104,7 @@ pub(crate) mod tests {
             self.delegate.update().await
         }
 
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> nyanpasu_application::core::endpoint::EndpointHandle {
             self.delegate.endpoint()
         }
     }

@@ -730,7 +730,7 @@ pub async fn get_postprocessing_output(
 #[specta::specta]
 pub async fn get_core_status(
     client: State<'_, NyanpasuClient>,
-) -> Result<crate::core::actor_v2::CoreStatusInfo> {
+) -> Result<nyanpasu_application::core::CoreStatusInfo> {
     Ok(client.core_status().into())
 }
 

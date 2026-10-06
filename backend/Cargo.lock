@@ -6523,9 +6523,17 @@ name = "nyanpasu-application"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "camino",
+ "clash-api",
+ "futures",
+ "futures-util",
+ "indexmap 2.14.2",
  "nyanpasu-config",
  "nyanpasu-core",
+ "nyanpasu-core-manager",
+ "nyanpasu-ipc",
+ "nyanpasu-utils",
  "ractor",
  "serde",
  "serde_json",
@@ -6535,9 +6543,11 @@ dependencies = [
  "struct-patch",
  "strum",
  "tempfile",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -6774,16 +6784,23 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum",
  "boa_engine",
  "boa_runtime",
  "boa_utils",
  "camino",
+ "clash-api",
  "dunce",
+ "futures",
+ "futures-util",
  "indexmap 2.14.2",
  "mlua",
  "nyanpasu-application",
  "nyanpasu-config",
  "nyanpasu-core",
+ "nyanpasu-core-manager",
+ "nyanpasu-ipc",
+ "nyanpasu-utils",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
@@ -6797,6 +6814,8 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

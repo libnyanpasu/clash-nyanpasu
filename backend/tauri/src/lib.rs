@@ -130,7 +130,9 @@ pub fn run() -> std::io::Result<()> {
     let started = std::time::Instant::now();
     let mut profilers = utils::profiling::Profilers::default();
     profilers.start_heap();
-    // share the tauri async runtime to nyanpasu-utils
+    // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
+    tauri::async_runtime::set(nyanpasu_utils::runtime::get_runtime_handle());
+
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
 

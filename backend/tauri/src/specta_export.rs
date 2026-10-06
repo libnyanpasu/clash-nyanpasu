@@ -162,6 +162,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::select_proxy,
             ipc::clear_proxy_fixed,
             ipc::update_proxy_provider,
+            ipc::clash_api_healthcheck_proxy_provider,
             ipc::restart_application,
             ipc::set_tray_icon,
             ipc::open_that,

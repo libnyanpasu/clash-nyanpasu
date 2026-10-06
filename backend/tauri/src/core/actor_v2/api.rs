@@ -245,6 +245,11 @@ impl ApiClient {
         self.execute(self.client.update_proxy_provider(name)).await
     }
 
+    pub async fn healthcheck_proxy_provider(&self, name: &ProviderName) -> Result<(), ApiError> {
+        self.execute(self.client.healthcheck_proxy_provider(name))
+            .await
+    }
+
     pub async fn configs(&self) -> Result<clash_api::RuntimeConfig, ApiError> {
         self.execute(self.client.configs()).await
     }

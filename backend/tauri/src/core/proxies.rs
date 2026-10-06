@@ -41,12 +41,19 @@ enum Message {
         strategy: ProxyChangeBreakMode,
         reply: RpcReplyPort<Result<MutationOutcome<()>>>,
     },
-    UpdateProvider {
+    Provider {
         name: String,
+        action: ProviderAction,
         reply: RpcReplyPort<Result<()>>,
     },
     Refresh,
     Invalidated(u64),
+}
+
+/// A provider-wide request whose result changes the cached nodes.
+enum ProviderAction {
+    Update,
+    Healthcheck,
 }
 
 /// A user's change to which member carries a group's traffic.
@@ -309,7 +316,7 @@ impl Actor for ProxiesActor {
                 Message::ClearFixed { reply, .. } => {
                     let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
                 }
-                Message::UpdateProvider { reply, .. } => {
+                Message::Provider { reply, .. } => {
                     let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
                 }
                 Message::Refresh | Message::Invalidated(_) => {}
@@ -352,7 +359,11 @@ impl Actor for ProxiesActor {
                         .await,
                 );
             }
-            Message::UpdateProvider { name, reply } => {
+            Message::Provider {
+                name,
+                action,
+                reply,
+            } => {
                 if reply.is_closed() {
                     return Ok(());
                 }
@@ -364,17 +375,23 @@ impl Actor for ProxiesActor {
                             return Err(error.into());
                         }
                     };
-                    let updated = api
-                        .update_proxy_provider(&name.into())
-                        .await
-                        .map_err(anyhow::Error::from);
+                    let name = name.into();
+                    let requested = match action {
+                        ProviderAction::Update => api.update_proxy_provider(&name).await,
+                        ProviderAction::Healthcheck => api.healthcheck_proxy_provider(&name).await,
+                    }
+                    .map_err(anyhow::Error::from);
                     state
-                        .reread_after_rejection(&actor, api.clone(), updated)
+                        .reread_after_rejection(&actor, api.clone(), requested)
                         .await?;
-                    state
-                        .refresh(&actor, api)
-                        .await
-                        .context("provider update succeeded but cache refresh failed")?;
+                    state.refresh(&actor, api).await.context(match action {
+                        ProviderAction::Update => {
+                            "provider update succeeded but cache refresh failed"
+                        }
+                        ProviderAction::Healthcheck => {
+                            "provider health check succeeded but cache refresh failed"
+                        }
+                    })?;
                     Ok(())
                 }
                 .await;
@@ -503,8 +520,20 @@ impl ProxiesClient {
         .await
     }
     pub async fn update_provider(&self, name: String) -> Result<()> {
-        self.call(|reply| Message::UpdateProvider { name, reply })
-            .await
+        self.call(|reply| Message::Provider {
+            name,
+            action: ProviderAction::Update,
+            reply,
+        })
+        .await
+    }
+    pub async fn healthcheck_provider(&self, name: String) -> Result<()> {
+        self.call(|reply| Message::Provider {
+            name,
+            action: ProviderAction::Healthcheck,
+            reply,
+        })
+        .await
     }
     pub fn request_refresh(&self) {
         let _ = self.0.actor.cast(Message::Refresh);
@@ -549,6 +578,7 @@ mod tests {
         reads: AtomicUsize,
         fail_reads: AtomicBool,
         fail_mutation: AtomicBool,
+        accepted: AtomicBool,
         fail_close: AtomicBool,
         hold_connections: AtomicBool,
         closed: Mutex<Vec<uuid::Uuid>>,
@@ -635,6 +665,20 @@ mod tests {
             StatusCode::NO_CONTENT
         }
     }
+    async fn healthcheck(
+        HttpState(f): HttpState<Arc<Fixture>>,
+        Path(name): Path<String>,
+    ) -> StatusCode {
+        assert_eq!(name, PROVIDER);
+        f.calls.lock().unwrap().push("healthcheck");
+        if f.fail_mutation.load(Ordering::SeqCst) {
+            StatusCode::SERVICE_UNAVAILABLE
+        } else if f.accepted.load(Ordering::SeqCst) {
+            StatusCode::ACCEPTED
+        } else {
+            StatusCode::NO_CONTENT
+        }
+    }
     async fn close(HttpState(f): HttpState<Arc<Fixture>>) -> StatusCode {
         f.calls.lock().unwrap().push("close");
         if f.fail_close.load(Ordering::SeqCst) {
@@ -686,6 +730,7 @@ mod tests {
             .route("/providers/proxies", get(providers))
             .route("/proxies/{group}", put(select).delete(clear))
             .route("/providers/proxies/{name}", put(update))
+            .route("/providers/proxies/{name}/healthcheck", get(healthcheck))
             .route("/connections", get(connections).delete(close))
             .route("/connections/{id}", delete(close_one))
             .with_state(fixture.clone());
@@ -977,6 +1022,35 @@ mod tests {
             "{error:#}"
         );
         assert_eq!(*fixture.calls.lock().unwrap(), ["update", "read"]);
+        assert!(!client.snapshot().groups.is_empty());
+        server.abort();
+    }
+    #[tokio::test]
+    async fn a_provider_health_check_rereads_the_core() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.healthcheck_provider(PROVIDER.into()).await.unwrap();
+        assert_eq!(*fixture.calls.lock().unwrap(), ["healthcheck", "read"]);
+        fixture.calls.lock().unwrap().clear();
+        fixture.accepted.store(true, Ordering::SeqCst);
+        client.healthcheck_provider(PROVIDER.into()).await.unwrap();
+        assert_eq!(*fixture.calls.lock().unwrap(), ["healthcheck", "read"]);
+        server.abort();
+    }
+    #[tokio::test]
+    async fn a_rejected_health_check_rereads_and_reports() {
+        let (client, _core, _, fixture, server) = setup().await;
+        client.get(false).await.unwrap();
+        fixture.fail_mutation.store(true, Ordering::SeqCst);
+        fixture.calls.lock().unwrap().clear();
+        let error = client
+            .healthcheck_provider(PROVIDER.into())
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("healthcheck_proxy_provider"),
+            "{error:#}"
+        );
+        assert_eq!(*fixture.calls.lock().unwrap(), ["healthcheck", "read"]);
         assert!(!client.snapshot().groups.is_empty());
         server.abort();
     }

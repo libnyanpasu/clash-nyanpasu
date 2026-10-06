@@ -83,6 +83,10 @@ impl NyanpasuClient {
     pub async fn update_proxy_provider(&self, name: String) -> Result<()> {
         self.inner.proxies.update_provider(name).await
     }
+
+    pub async fn healthcheck_proxy_provider(&self, name: String) -> Result<()> {
+        self.inner.proxies.healthcheck_provider(name).await
+    }
     pub fn request_proxy_refresh(&self) {
         self.inner.proxies.request_refresh();
     }

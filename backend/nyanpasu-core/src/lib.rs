@@ -1,6 +1,7 @@
 pub mod connections;
 pub mod format;
 pub mod runtime;
+pub mod service;
 pub mod state;
 
 /// Smoke test proving the gxhash dev-dependency compiles and runs under the

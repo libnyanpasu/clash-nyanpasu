@@ -18,6 +18,7 @@ import FieldFilterSwitch from './_modules/field-filter-switch'
 import IPv6Switch from './_modules/ipv6-switch'
 import LatencyTestConfig from './_modules/latency-test-config'
 import LogLevelSelector from './_modules/log-level-selector'
+import ManagedGuardFieldSelector from './_modules/managed-guard-field-selector'
 import {
   MixedPortConfig,
   OptionalPortConfig,
@@ -45,6 +46,10 @@ const PatchSettings = () => {
             <IPv6Switch />
           </SettingsCardContent>
         </SettingsCard>
+
+        <ManagedGuardFieldSelector field="unified-delay" />
+
+        <ManagedGuardFieldSelector field="tcp-concurrent" />
 
         <TunStackSelector />
 

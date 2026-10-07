@@ -169,6 +169,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             crate::consts::BUILD_INFO.clone(),
             paths.clone(),
         )),
+        device_info: Arc::new(nyanpasu_core::device::OsDeviceInfoSource::new()),
         http_frontend: Some(debug_http_frontend(&app_handle)?),
         http_routes,
         jobs,

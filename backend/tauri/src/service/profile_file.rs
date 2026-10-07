@@ -15,6 +15,7 @@ use atomicwrites::{AtomicFile, OverwriteBehavior, replace_atomic};
 use nyanpasu_config::profile::{
     ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions, SubscriptionInfo,
 };
+use nyanpasu_core::device::{DeviceInfoSource, sanitize_for_header};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::{OptionExt, ResultExt, ensure};
@@ -45,14 +46,20 @@ pub trait SelfProxyPortSource: Send + Sync + 'static {
 pub struct ProfileFileService {
     paths: PathResolver,
     self_proxy_port: Arc<dyn SelfProxyPortSource>,
+    device_info: Arc<dyn DeviceInfoSource>,
     http_timeout: Duration,
 }
 
 impl ProfileFileService {
-    pub fn new(paths: PathResolver, self_proxy_port: Arc<dyn SelfProxyPortSource>) -> Self {
+    pub fn new(
+        paths: PathResolver,
+        self_proxy_port: Arc<dyn SelfProxyPortSource>,
+        device_info: Arc<dyn DeviceInfoSource>,
+    ) -> Self {
         Self {
             paths,
             self_proxy_port,
+            device_info,
             http_timeout: Duration::from_secs(30),
         }
     }
@@ -2087,8 +2094,8 @@ impl SubscriptionFetcher for ProfileFileService {
             .build()
             .context(BuildHttpClientSnafu)?;
 
-        let device_info = crate::utils::hwid::get_device_info();
-        let sanitize = crate::utils::hwid::sanitize_for_header;
+        let device_info = self.device_info.snapshot();
+        let sanitize = sanitize_for_header;
         let perform = || async {
             let resp = client
                 .get(url.as_str())
@@ -2280,7 +2287,14 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let paths =
             crate::client::tests::test_paths(temp.path().join("config"), temp.path().join("data"));
-        (temp, ProfileFileService::new(paths, self_proxy_port))
+        (
+            temp,
+            ProfileFileService::new(
+                paths,
+                self_proxy_port,
+                Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            ),
+        )
     }
 
     fn managed(name: &str) -> ManagedProfilePath {

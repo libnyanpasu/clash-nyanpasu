@@ -118,7 +118,8 @@ Shared backend code follows [Backend packages](backend-packages.md):
 ports. The application/platform crates have been removed; runtime configuration
 building, builtins and concrete FS/script adapters share the capability owner
 `nyanpasu_core::runtime::config`. Non-GUI adapters stay behind narrow ports in
-capability-local core modules, such as runtime config's script/content adapters. Keep infrastructure IO out of pure services and retain explicit
+capability-local core modules, such as runtime config's script/content adapters
+and `device::os`. Keep infrastructure IO out of pure services and retain explicit
 construction. Core and config must not depend on Tauri or egui/eframe; config must
 not depend on core. Tauri is a host composition root and GUI/transport adapter;
 Tauri-specific implementations stay at that boundary. Move complete existing call

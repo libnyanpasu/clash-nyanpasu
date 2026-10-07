@@ -1,33 +1,35 @@
-use anyhow::{Result, anyhow};
-use once_cell::sync::Lazy;
-use serde::Serialize;
-use sha2::{Digest, Sha256};
-use specta::Type;
+use std::sync::OnceLock;
 
-#[derive(Debug, Clone, Serialize, Type)]
-pub struct DeviceInfo {
-    pub hwid: String,
-    pub device_os: String,
-    pub os_version: String,
-    pub device_model: String,
+use super::{DeviceInfo, DeviceInfoSource};
+use anyhow::{Result, anyhow};
+use sha2::{Digest, Sha256};
+
+/// Collects device information lazily and caches it for this application graph.
+#[derive(Default)]
+pub struct OsDeviceInfoSource {
+    info: OnceLock<DeviceInfo>,
 }
 
-impl Default for DeviceInfo {
-    fn default() -> Self {
-        Self {
-            hwid: generate_fallback_hwid(),
-            device_os: get_device_os().to_string(),
-            os_version: get_os_version(),
-            device_model: get_device_model(),
-        }
+impl OsDeviceInfoSource {
+    /// Constructs an empty cache without collecting OS information.
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
-/// Cached device info — computed once, reused for all subscription requests.
-/// Starts from `Default` (which already has real OS/model data and a fallback HWID),
-/// then tries to replace the HWID with a platform-specific one.
-pub static DEVICE_INFO: Lazy<DeviceInfo> = Lazy::new(|| {
-    let mut info = DeviceInfo::default();
+impl DeviceInfoSource for OsDeviceInfoSource {
+    fn snapshot(&self) -> DeviceInfo {
+        self.info.get_or_init(collect_device_info).clone()
+    }
+}
+
+fn collect_device_info() -> DeviceInfo {
+    let mut info = DeviceInfo {
+        hwid: generate_fallback_hwid(),
+        device_os: get_device_os().to_string(),
+        os_version: get_os_version(),
+        device_model: get_device_model(),
+    };
     match get_platform_hwid() {
         Ok(hwid) => {
             tracing::debug!(
@@ -42,11 +44,6 @@ pub static DEVICE_INFO: Lazy<DeviceInfo> = Lazy::new(|| {
         }
     }
     info
-});
-
-/// Public accessor that returns a clone of the cached DeviceInfo.
-pub fn get_device_info() -> DeviceInfo {
-    DEVICE_INFO.clone()
 }
 
 /// Generates a platform-specific HWID from the machine ID.
@@ -135,17 +132,6 @@ fn generate_fallback_hwid() -> String {
 }
 
 // ---------------------------------------------------------------------------
-// ASCII sanitization for HTTP headers
-// ---------------------------------------------------------------------------
-
-/// Strips non-ASCII characters from a string to produce a valid HTTP header value.
-/// `reqwest::header::HeaderValue` rejects non-ASCII bytes, so this prevents
-/// runtime panics for users with localized hostnames or model names.
-pub fn sanitize_for_header(s: &str) -> String {
-    s.chars().filter(|c| c.is_ascii() && *c >= ' ').collect()
-}
-
-// ---------------------------------------------------------------------------
 // Device OS
 // ---------------------------------------------------------------------------
 
@@ -227,8 +213,9 @@ mod tests {
 
     #[test]
     fn test_hwid_is_deterministic() {
-        let info1 = get_device_info();
-        let info2 = get_device_info();
+        let source = OsDeviceInfoSource::new();
+        let info1 = source.snapshot();
+        let info2 = source.snapshot();
         assert_eq!(info1.hwid, info2.hwid);
         assert_eq!(info1.hwid.len(), 32);
     }
@@ -257,13 +244,5 @@ mod tests {
         let hwid = generate_fallback_hwid();
         assert_eq!(hwid.len(), 32);
         assert!(hwid.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn test_sanitize_for_header_strips_non_ascii() {
-        assert_eq!(sanitize_for_header("Hello"), "Hello");
-        assert_eq!(sanitize_for_header("Привет"), "");
-        assert_eq!(sanitize_for_header("PC-Кирилл"), "PC-");
-        assert_eq!(sanitize_for_header("Model\x00Name"), "ModelName");
     }
 }

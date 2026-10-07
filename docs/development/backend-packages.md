@@ -19,8 +19,10 @@ retain old-path wrappers to avoid updating consumers.
 Shared application code receives dependencies through constructors, function
 arguments or actor startup parameters. Ports belong to the consuming core
 capability. Concrete non-GUI adapters may be capability-local in core when hosts
-need to construct that capability directly. This does not make pure services
-perform hidden IO or permit process-global caches. `runtime::config` assembles explicit snapshots
+need to construct that capability directly: `nyanpasu-core::device` owns its
+subscription device contract, pure header rule and lazy OS source, with OS IO
+isolated in `device::os`. This does not make pure services perform hidden IO or
+permit process-global caches. `runtime::config` assembles explicit snapshots
 through config executor ports; its FS content source and Boa/Lua/script adapters
 receive explicit directories. The synchronous build runs in a blocking context;
 `RuntimeConfigScriptRunner` owns its private Tokio runtime rather than relying on

@@ -86,6 +86,8 @@ export function createTestRpc(handlers: Record<string, RpcHandler>) {
   return {
     rpc,
     invoke: invokeMock,
+    emitMutation: (payload: unknown) =>
+      events.emit('nyanpasu://mutation', payload),
     emitResync: () => [...resyncListeners].forEach((callback) => callback()),
   }
 }

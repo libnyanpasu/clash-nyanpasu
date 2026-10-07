@@ -38,10 +38,21 @@ fn delay_query(
 
 impl NyanpasuClient {
     pub async fn get_proxies(&self) -> Result<crate::core::clash::proxies::Proxies> {
-        self.inner.proxies.get(false).await
+        let proxies = self.inner.proxies.get(false).await?;
+        Ok(proxies.trim_for_frontend(&self.default_latency_test_url().await?))
     }
     pub async fn refresh_proxies(&self) -> Result<crate::core::clash::proxies::Proxies> {
-        self.inner.proxies.get(true).await
+        let proxies = self.inner.proxies.get(true).await?;
+        Ok(proxies.trim_for_frontend(&self.default_latency_test_url().await?))
+    }
+    /// The URL a test without an explicit one uses, as in `delay_query`.
+    async fn default_latency_test_url(&self) -> Result<String> {
+        let url = self.get_app_config().await?.default_latency_test;
+        Ok(if url.is_empty() {
+            FALLBACK_LATENCY_TEST_URL.into()
+        } else {
+            url
+        })
     }
     pub async fn proxy_providers(&self) -> Result<IndexMap<ProviderName, ProxyProvider>> {
         self.inner.proxies.providers().await

@@ -160,12 +160,6 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason: "version string from a compile-time env var",
   },
   {
-    path: "backend/tauri/src/utils/hwid.rs",
-    name: "DEVICE_INFO",
-    category: "immutable",
-    reason: "host identity computed once",
-  },
-  {
     path: "backend/tauri/src/core/migration/registry.rs",
     name: "MODULES",
     category: "immutable",

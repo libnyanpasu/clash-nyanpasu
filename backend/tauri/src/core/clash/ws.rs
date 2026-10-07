@@ -3,6 +3,9 @@ use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
 use nyanpasu_config::clash::config::overrides::LogLevel;
+use nyanpasu_core::connections::{
+    ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionRates,
+};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -13,14 +16,9 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::core::{
-    actor_v2::{
-        CoreClient,
-        api::{ApiClient, ApiError},
-    },
-    clash::connection_rates::{
-        ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionRates,
-    },
+use crate::core::actor_v2::{
+    CoreClient,
+    api::{ApiClient, ApiError},
 };
 
 const MAX_CONNECTIONS_HISTORY: usize = 32;

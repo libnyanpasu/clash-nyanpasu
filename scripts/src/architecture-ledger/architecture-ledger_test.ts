@@ -18,7 +18,7 @@ import {
   matchRealDirDenylist,
   type StableSnapshot,
   STATIC_ALLOWLIST,
-  STATIC_GATE_PREFIX,
+  STATIC_GATE_PREFIXES,
   staticAllowlistKey,
 } from "./policy.ts";
 import {
@@ -906,7 +906,7 @@ fn shadow() {
   assert(staticAllowlistIssues(doubled).includes(`${key} matches 2 statics`));
 });
 
-Deno.test("scanFile: the static allowlist matches path and name exactly, and only the app crate counts", () => {
+Deno.test("scanFile: the static allowlist matches path and name exactly, and other libraries do not count", () => {
   const source =
     "pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(build_info);\n";
 
@@ -920,20 +920,41 @@ Deno.test("scanFile: the static allowlist matches path and name exactly, and onl
     1,
   );
 
-  const elsewhere = createBuckets();
-  scanFile("backend/tauri/src/other.rs", source, elsewhere);
-  assertEquals(elsewhere.allowlistedStatics.total, 0);
-  assertEquals(
-    elsewhere.mutableStatics.byKey.get(
-      "backend/tauri/src/other.rs::BUILD_INFO",
-    ),
-    1,
-  );
+  for (
+    const relPath of [
+      "backend/tauri/src/other.rs",
+      "backend/nyanpasu-core/src/consts.rs",
+    ]
+  ) {
+    const elsewhere = createBuckets();
+    scanFile(relPath, source, elsewhere);
+    assertEquals(elsewhere.allowlistedStatics.total, 0, relPath);
+    assertEquals(
+      elsewhere.mutableStatics.byKey.get(
+        staticAllowlistKey(relPath, "BUILD_INFO"),
+      ),
+      1,
+      relPath,
+    );
+  }
 
-  const library = createBuckets();
-  scanFile("backend/nyanpasu-egui/src/widget/mod.rs", source, library);
-  assertEquals(library.mutableStatics.total, 0);
-  assertEquals(library.allowlistedStatics.total, 0);
+  for (
+    const relPath of [
+      "backend/nyanpasu-egui/src/widget/mod.rs",
+      "backend/nyanpasu-config/src/lib.rs",
+      "backend/tauri/src_extra/statics.rs",
+      "backend/tauri-extra/src/statics.rs",
+      "backend/tauri/tests/statics.rs",
+      "backend/nyanpasu-core/src_extra/statics.rs",
+      "backend/nyanpasu-core-extra/src/statics.rs",
+      "backend/nyanpasu-core/tests/statics.rs",
+    ]
+  ) {
+    const library = createBuckets();
+    scanFile(relPath, source, library);
+    assertEquals(library.mutableStatics.total, 0, relPath);
+    assertEquals(library.allowlistedStatics.total, 0, relPath);
+  }
 });
 
 Deno.test("scanFile: an entry covers no static once its name is declared twice in the file", () => {
@@ -955,9 +976,12 @@ fn shadow() {
   assert(staticAllowlistIssues(buckets).includes(`${key} matches 2 statics`));
 });
 
-Deno.test("STATIC_ALLOWLIST: each entry is unique, in the app crate, categorized and gives a reason", () => {
+Deno.test("STATIC_ALLOWLIST: each entry is unique, in a gated crate, categorized and gives a reason", () => {
   for (const entry of STATIC_ALLOWLIST) {
-    assert(entry.path.startsWith(STATIC_GATE_PREFIX), entry.path);
+    assert(
+      STATIC_GATE_PREFIXES.some((prefix) => entry.path.startsWith(prefix)),
+      entry.path,
+    );
     assert(/^[A-Za-z_][A-Za-z0-9_]*$/.test(entry.name), entry.name);
     assert(
       ["immutable", "external", "test"].includes(entry.category),
@@ -970,6 +994,67 @@ Deno.test("STATIC_ALLOWLIST: each entry is unique, in the app crate, categorized
   );
   assertEquals(new Set(keys).size, keys.length);
 });
+
+for (const root of ["backend/tauri/src/", "backend/nyanpasu-core/src/"]) {
+  Deno.test(`scanFile / evaluateGate: service statics fail in ${root}`, () => {
+    const relPath = `${root}services/nested.rs`;
+    const fixtures = [
+      ["MUTABLE", "static mut MUTABLE: Option<Service> = None;"],
+      ["LOCKED", "static LOCKED: Mutex<Option<Service>> = Mutex::new(None);"],
+      ["CELL", "static CELL: OnceCell<Service> = OnceCell::new();"],
+      ["ONCE", "static ONCE: OnceLock<Service> = OnceLock::new();"],
+      ["LAZY", "static LAZY: Lazy<Service> = Lazy::new(Service::new);"],
+      [
+        "LOCAL",
+        "thread_local! { static LOCAL: RefCell<Option<Service>> = RefCell::new(None); }",
+      ],
+      ["REF", "lazy_static! { static ref REF: Service = Service::new(); }"],
+    ];
+    for (const [name, source] of fixtures) {
+      const buckets = createBuckets();
+      scanFile(relPath, source, buckets);
+      const key = staticAllowlistKey(relPath, name);
+      assertEquals(buckets.mutableStatics.byKey.get(key), 1, key);
+      assertEquals(buckets.allowlistedStatics.total, 0, key);
+      const current = toStableSnapshot(
+        ["backend"],
+        metricsFromBuckets(buckets),
+        [],
+      );
+      const result = evaluateGate(current, emptyStable());
+      assertFalse(result.ok, key);
+      assert(
+        result.issues.some((issue) =>
+          issue.kind === "metric_key" && issue.message.includes(key)
+        ),
+        key,
+      );
+    }
+  });
+
+  Deno.test(`scanFile / evaluateGate: service global lookup fails in ${root}`, () => {
+    const buckets = createBuckets();
+    scanFile(
+      `${root}services/nested.rs`,
+      "fn lookup() { Service::global(); }",
+      buckets,
+    );
+    assertEquals(buckets.serviceGlobals.byKey.get("Service::global()"), 1);
+    const current = toStableSnapshot(
+      ["backend"],
+      metricsFromBuckets(buckets),
+      [],
+    );
+    const result = evaluateGate(current, emptyStable());
+    assertFalse(result.ok);
+    assert(
+      result.issues.some((issue) =>
+        issue.kind === "metric_key" &&
+        issue.message.includes("Service::global()")
+      ),
+    );
+  });
+}
 
 Deno.test("evaluateGate: a new static fails against a zero snapshot", () => {
   const buckets = createBuckets();

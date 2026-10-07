@@ -58,8 +58,12 @@
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/architecture-ledger/main.ts --mode=gate"
     },
     "lint:backend-boundaries": {
-      "description": "Reject GUI, Tauri and reverse platform dependencies in neutral backend crates",
+      "description": "Reject GUI, Tauri and reverse core dependencies in neutral backend crates",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/architecture-ledger/backend-boundaries.ts"
+    },
+    "test:backend-boundaries": {
+      "description": "Test core/config backend dependency rules",
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/architecture-ledger/backend-boundaries_test.ts"
     },
     "test:backend-musl": {
       "description": "Build neutral backend tests with musl in Docker and run them in ImmortalWrt or a supplied OpenWrt rootfs",

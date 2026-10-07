@@ -11,6 +11,7 @@ use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use serde::Serialize;
 use snafu::Snafu;
 
+use super::application_workflow::error::RuntimePreparationError;
 use crate::{
     client::{
         application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
@@ -24,7 +25,6 @@ use crate::{
         service::control::ServiceCommandError,
     },
 };
-use nyanpasu_application::enhance::RuntimeBuildError;
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.
 /// It is the only place a `CoreError` is unpacked for the frontend.
@@ -156,7 +156,7 @@ pub enum RuntimeError {
     RecoveryUnresolved { reason: String },
 
     #[snafu(display("could not build the runtime configuration: {source}"))]
-    BuildRuntime { source: RuntimeBuildError },
+    BuildRuntime { source: RuntimePreparationError },
     #[snafu(display("could not publish the runtime configuration: {source}"))]
     PublishRuntime { source: PublishRuntimeError },
     #[snafu(display("could not resolve the ports of the runtime: {source}"))]

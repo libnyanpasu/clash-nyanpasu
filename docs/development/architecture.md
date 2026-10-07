@@ -114,14 +114,17 @@ If a mature ractor actor client already exists for a capability, use it instead 
 ### Backend package direction
 
 Shared backend code follows [Backend packages](backend-packages.md):
-`nyanpasu-application` owns use cases, typed actor clients and consumed ports;
-`nyanpasu-platform` implements infrastructure ports and may depend on application.
-Application must not depend on platform in production. Neither neutral crate nor
-`nyanpasu-config` may depend on Tauri or egui/eframe. Tauri is a host composition
-root and GUI/transport adapter; Tauri-specific implementations stay at that
-boundary. Move complete existing call paths and update callers without retaining
-old-path wrappers solely to avoid import changes. Run
-`deno task lint:backend-boundaries` after backend package-boundary changes.
+`nyanpasu-core` owns shared use cases, typed clients, workflows and consumed
+ports. The application/platform crates have been removed; runtime configuration
+building, builtins and concrete FS/script adapters share the capability owner
+`nyanpasu_core::runtime::config`. Non-GUI adapters stay behind narrow ports in
+capability-local core modules, such as runtime config's script/content adapters. Keep infrastructure IO out of pure services and retain explicit
+construction. Core and config must not depend on Tauri or egui/eframe; config must
+not depend on core. Tauri is a host composition root and GUI/transport adapter;
+Tauri-specific implementations stay at that boundary. Move complete existing call
+paths and update callers without retaining old-path wrappers solely to avoid
+import changes. Run `deno task lint:backend-boundaries` and focused
+`deno task test:backend-boundaries` after backend package-boundary changes.
 
 ### Do not add new global service singletons
 

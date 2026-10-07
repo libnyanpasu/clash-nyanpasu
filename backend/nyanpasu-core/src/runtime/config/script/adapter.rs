@@ -13,14 +13,15 @@ use nyanpasu_config::{
 use tracing::Instrument;
 
 use super::{RunnerManager, ScriptDirs, create_lua_context, ordered_map};
-use nyanpasu_application::enhance::{ScriptType, ScriptWrapper};
+use crate::runtime::config::{ScriptType, ScriptWrapper};
+use serde_yaml_ng as serde_yaml;
 
-pub struct EnhanceScriptRunner {
+pub struct RuntimeConfigScriptRunner {
     runtime: tokio::runtime::Runtime,
     dirs: ScriptDirs,
 }
 
-impl EnhanceScriptRunner {
+impl RuntimeConfigScriptRunner {
     pub fn new(dirs: ScriptDirs) -> std::io::Result<Self> {
         Ok(Self {
             runtime: tokio::runtime::Builder::new_current_thread()
@@ -44,7 +45,7 @@ fn mapping_to_config(mapping: serde_yaml::Mapping) -> Result<ConfigValue, PortEr
         .map_err(|e| format!("yaml to config: {e:?}").into())
 }
 
-impl ScriptRunner for EnhanceScriptRunner {
+impl ScriptRunner for RuntimeConfigScriptRunner {
     fn run(
         &self,
         runtime: ScriptRuntime,
@@ -120,7 +121,7 @@ mod tests {
     #[test]
     fn runs_javascript_transform_and_captures_logs() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = RuntimeConfigScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
         let script = r#"
 function main(config) {
   console.log("hello from js");
@@ -144,7 +145,7 @@ function main(config) {
     #[test]
     fn failing_script_returns_error() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = RuntimeConfigScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
         let result = runner.run(
             ScriptRuntime::JavaScript,
             "not valid js ][",
@@ -157,7 +158,7 @@ function main(config) {
     #[test]
     fn eval_item_errors_name_the_expression() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = RuntimeConfigScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
         let item = value("name: test-node\n");
         let error = runner
             .eval_item_predicate("item.missing.field", &item)
@@ -176,7 +177,7 @@ function main(config) {
     #[test]
     fn eval_item_expr_keeps_the_item_key_order() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = RuntimeConfigScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
         let item = value("name: node\ntype: ss\nserver: example.com\nport: 443\n");
         let renamed = runner
             .eval_item_expr(
@@ -193,7 +194,7 @@ function main(config) {
     #[test]
     fn eval_item_predicate_and_expr_use_lua_item_global() {
         let dir = tempfile::tempdir().unwrap();
-        let runner = EnhanceScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
+        let runner = RuntimeConfigScriptRunner::new(ScriptDirs::under(dir.path())).unwrap();
         let item = value("name: test-node\ntype: ss\n");
         assert!(
             runner

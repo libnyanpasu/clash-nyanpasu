@@ -30,11 +30,6 @@ pub struct RuntimeBuildLog {
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[snafu(visibility(pub))]
 pub enum RuntimeBuildError {
-    #[snafu(display("could not start the script runner"))]
-    StartScriptRunner {
-        #[serde(skip)]
-        source: std::io::Error,
-    },
     #[snafu(display("profiles snapshot failed validation: {errors:?}"))]
     ValidateProfiles { errors: Vec<ProfileValidationError> },
     #[snafu(display("could not run the runtime pipeline: {source}"))]
@@ -44,13 +39,6 @@ pub enum RuntimeBuildError {
         failures: Vec<TransformFailure>,
         logs: Vec<RuntimeBuildLog>,
     },
-    #[snafu(display("could not serialize the final config"))]
-    SerializeFinalConfig {
-        #[serde(skip)]
-        source: serde_yaml::Error,
-    },
-    #[snafu(display("the final config is not a mapping"))]
-    ConfigNotMapping,
 }
 
 pub struct RuntimeBuildInput {
@@ -209,6 +197,7 @@ mod tests {
             value::ConfigValue,
         },
     };
+    use serde_yaml_ng as serde_yaml;
 
     /// 极小 fakes(executor 的 support.rs 是 crate 内部,tauri 不可 import)
     struct EmptyContent;

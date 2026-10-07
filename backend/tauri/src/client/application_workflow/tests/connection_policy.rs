@@ -907,14 +907,14 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
         strict_transforms: bool,
     ) -> Result<
         Arc<crate::client::runtime::RuntimeSnapshot>,
-        nyanpasu_application::enhance::RuntimeBuildError,
+        crate::client::application_workflow::error::RuntimePreparationError,
     > {
         self.inputs
             .lock()
             .unwrap()
             .push((inputs.profiles.clone(), inputs.clash.clone()));
         if self.fail_build {
-            return Err(nyanpasu_application::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(crate::client::application_workflow::error::RuntimePreparationError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
@@ -938,7 +938,7 @@ impl RecordingBuilder {
                 core_specs: Arc::new(crate::client::runtime_core_spec),
                 profiles_dir: f.client.inner.profiles_dir.clone(),
                 paths: crate::client::tests::test_runtime_paths(&f._dir),
-                scripts: nyanpasu_platform::enhance::ScriptDirs::under(f._dir.path()),
+                scripts: nyanpasu_core::runtime::config::ScriptDirs::under(f._dir.path()),
             },
             inputs: Mutex::new(Vec::new()),
             fail_build,

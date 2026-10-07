@@ -98,7 +98,7 @@ Non-negotiable rules, restated because they are the most common violations:
 - `NyanpasuClient` is a facade with domain operations, never a service locator or a raw `ActorRef` registry.
 - In-process request/reply waits for the real result; deadlines belong to network/IPC adapters. Dropping a caller does not cancel owner-started work.
 - Business logic does not touch Tauri types; infrastructure goes behind narrow, consumer-owned port traits.
-- Backend packages follow [Backend packages](docs/development/backend-packages.md): `nyanpasu-application` owns use cases, typed actor clients and consumed ports; `nyanpasu-platform` implements infrastructure ports and may depend on application; application must not depend on platform in production. Neither neutral crate nor `nyanpasu-config` may depend on Tauri or egui/eframe. Run `deno task lint:backend-boundaries` after backend package-boundary changes.
+- Backend packages follow [Backend packages](docs/development/backend-packages.md): `nyanpasu-core` owns shared use cases, typed clients and consumed ports, with non-GUI adapters behind narrow ports in capability-local modules. Runtime configuration building and FS/script adapters belong to `nyanpasu_core::runtime::config`; the application/platform crates have been removed, not retained as wrappers. Core and config must not depend on Tauri or egui/eframe, and config must not depend on core. Run `deno task lint:backend-boundaries` and focused `deno task test:backend-boundaries` after backend package-boundary changes.
 
 ## 6. Current Goal: Separate `NyanpasuClient` from the GUI
 

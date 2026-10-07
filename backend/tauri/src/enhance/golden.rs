@@ -16,8 +16,10 @@ use nyanpasu_config::{
 };
 
 use super::golden_support::{composition, file_config, overlay};
-use nyanpasu_application::enhance::{RuntimeBuildInput, RuntimeBuilder};
-use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
+use nyanpasu_core::runtime::config::{
+    FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, RuntimeConfigScriptRunner,
+    ScriptDirs,
+};
 
 const SUB_A: &str =
     "proxies:\n  - name: a1\n    type: ss\n    server: a.example.com\n    port: 443\n";
@@ -58,7 +60,7 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
 
 fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml::Value {
     let content = FsProfileContentSource::new(dir.to_path_buf());
-    let scripts = EnhanceScriptRunner::new(ScriptDirs::under(dir)).unwrap();
+    let scripts = RuntimeConfigScriptRunner::new(ScriptDirs::under(dir)).unwrap();
     let artifact = RuntimeBuilder::build(input, &content, &scripts).expect("golden build");
     serde_yaml::to_value(&*artifact.final_config).unwrap()
 }
@@ -162,4 +164,127 @@ fn golden_whitelist_on_filters_unknown_keys() {
         "whitelist must drop unknown keys"
     );
     assert_matches_fixture(&yaml, "whitelist_on.yaml");
+}
+
+/// Real file/script adapters preserve the generated config and rejected-transform diagnostics.
+#[test]
+fn golden_selected_file_with_script_transform_end_to_end() {
+    use nyanpasu_config::profile::{
+        ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
+        ProfileDefinition, ProfileItem, ProfileMetadata, ProfileSource, ScriptRuntime,
+        ScriptTransform, TransformDefinition,
+    };
+
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("cfg1.yaml"),
+        "proxies: []\nmode: direct\nextra-key: keep\n",
+    )
+    .unwrap();
+    std::fs::write(
+        temp.path().join("scr1.js"),
+        "function main(config) { config[\"mode\"] = \"rule\"; console.log(\"scoped ran\"); return config; }\n",
+    )
+    .unwrap();
+
+    let managed = |name: &str| MaterializedFile {
+        file: ManagedProfilePath::new(name).unwrap(),
+        updated_at: None,
+    };
+    let mut profiles = Profiles::default();
+    profiles.append_item(ProfileItem {
+        uid: ProfileId("cfg1".into()),
+        metadata: ProfileMetadata {
+            name: "CFG1".into(),
+            desc: None,
+            custom_name: true,
+        },
+        definition: ProfileDefinition::Config {
+            config: ConfigDefinition::File(FileConfig {
+                source: ProfileSource::Local {
+                    binding: LocalBinding::Managed {
+                        materialized: managed("cfg1.yaml"),
+                    },
+                },
+                transforms: vec![ProfileId("scr1".into())],
+            }),
+        },
+    });
+    profiles.append_item(ProfileItem {
+        uid: ProfileId("scr1".into()),
+        metadata: ProfileMetadata {
+            name: "SCR1".into(),
+            desc: None,
+            custom_name: true,
+        },
+        definition: ProfileDefinition::Transform {
+            transform: TransformDefinition::Script(ScriptTransform {
+                source: ProfileSource::Local {
+                    binding: LocalBinding::Managed {
+                        materialized: managed("scr1.js"),
+                    },
+                },
+                runtime: ScriptRuntime::JavaScript,
+            }),
+        },
+    });
+    profiles.set_current(Some(ProfileId("cfg1".into())));
+
+    let mut input = RuntimeBuildInput {
+        profiles: Arc::new(profiles),
+        clash: Default::default(),
+        app: Default::default(),
+        resolved_ports: ResolvedPortBindings {
+            mixed_port: 7890,
+            ..Default::default()
+        },
+    };
+    input.app.enable_builtin_enhanced = false; // isolate assembly + adapters
+
+    let content = FsProfileContentSource::new(temp.path().to_path_buf());
+    let scripts = RuntimeConfigScriptRunner::new(ScriptDirs::under(temp.path())).unwrap();
+    let artifact = RuntimeBuilder::build(&input, &content, &scripts).expect("end-to-end build");
+
+    let yaml = serde_yaml::to_value(&*artifact.final_config).unwrap();
+    assert_eq!(yaml["mode"], serde_yaml::Value::from("rule")); // real boa ran the scoped script
+    assert_eq!(yaml["extra-key"], serde_yaml::Value::from("keep")); // whitelist off keeps keys
+    assert_eq!(yaml["mixed-port"], serde_yaml::Value::from(7890)); // guard ports injected
+    assert!(
+        artifact.step_logs.iter().any(|log| log
+            .entries
+            .iter()
+            .any(|entry| entry.message.contains("scoped ran"))),
+        "script logs must be anchored for the postprocessing_output consumer"
+    );
+    RuntimeBuilder::validate_transforms(&artifact).unwrap();
+
+    std::fs::write(
+        temp.path().join("scr1.js"),
+        "function main(config) { console.log('before failure'); throw new Error('transform rejected'); }",
+    )
+    .unwrap();
+    let artifact = RuntimeBuilder::build(&input, &content, &scripts).unwrap();
+    let error = RuntimeBuilder::validate_transforms(&artifact).unwrap_err();
+    let wire = serde_json::to_value(&error).unwrap();
+    assert_eq!(wire["kind"], "transforms_failed");
+    let log = wire["logs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|log| log["tag"]["data"]["transform_profile_id"] == "scr1")
+        .expect("failed transform must keep its chain tag");
+    let entries = log["entries"].as_array().unwrap();
+    assert!(entries.iter().any(|entry| {
+        entry["message"]
+            .as_str()
+            .unwrap()
+            .contains("before failure")
+    }));
+    assert!(entries.iter().any(|entry| {
+        entry["level"] == "error"
+            && entry["message"]
+                .as_str()
+                .unwrap()
+                .contains("transform rejected")
+    }));
 }

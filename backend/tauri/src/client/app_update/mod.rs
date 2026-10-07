@@ -79,10 +79,12 @@ pub struct VerifiedAppUpdate {
 
 #[derive(Debug, Clone, Copy)]
 pub enum AppUpdateDownloadProgress {
-    Source {
+    /// A download attempt started; progress and speed restart from zero.
+    /// Sent exactly once per attempt.
+    Attempt {
         source: UpdateSource,
-        content_length: Option<u64>,
     },
+    /// Cumulative bytes of the current attempt.
     Chunk {
         downloaded: u64,
         total: Option<u64>,
@@ -115,6 +117,9 @@ pub trait AppUpdateEventSink: Send + Sync + 'static {
 }
 
 pub(crate) mod adapters;
+mod progress;
+
+use progress::{ProgressSample, ProgressSampler, SAMPLE_INTERVAL};
 
 pub struct NoopAppUpdateEventSink;
 impl AppUpdateEventSink for NoopAppUpdateEventSink {
@@ -207,43 +212,54 @@ impl Actor for OperationActor {
                 let _ = reply.send(OperationResult::Checked(result));
             }
             OperationMessage::Download(update, reply) => {
-                let actor = state.parent.clone();
+                let parent = state.parent.clone();
                 let operation_id = state.operation_id;
-                // This mutex throttles synchronous adapter callbacks; it does not hold actor state.
-                let last_report =
-                    Arc::new(std::sync::Mutex::new((std::time::Instant::now(), 0_u64)));
-                let progress = Arc::new(move |event| {
-                    match event {
-                        AppUpdateDownloadProgress::Source {
-                            source,
-                            content_length,
-                        } => {
-                            if let Ok(mut last) = last_report.lock() {
-                                *last = (std::time::Instant::now(), 0);
-                            }
-                            let _ =
-                                actor.cast(Message::Source(operation_id, source, content_length));
-                            return;
+                // Guards only this download's sampler: the adapter records into it
+                // from its callbacks while the tick below reads it.
+                let sampler = Arc::new(std::sync::Mutex::new(ProgressSampler::new(
+                    tokio::time::Instant::now(),
+                )));
+                let progress = Arc::new({
+                    let sampler = sampler.clone();
+                    let parent = parent.clone();
+                    move |event| match event {
+                        AppUpdateDownloadProgress::Attempt { source } => {
+                            *sampler.lock().expect("progress sampler lock poisoned") =
+                                ProgressSampler::new(tokio::time::Instant::now());
+                            let _ = parent.cast(Message::Attempt(operation_id, source));
                         }
-                        AppUpdateDownloadProgress::Chunk { downloaded, .. } => {
-                            if let Ok(mut last) = last_report.lock() {
-                                if last.1 != 0
-                                    && downloaded.saturating_sub(last.1) < 256 * 1024
-                                    && last.0.elapsed() < std::time::Duration::from_millis(250)
-                                {
-                                    return;
-                                }
-                                *last = (std::time::Instant::now(), downloaded);
-                            }
+                        AppUpdateDownloadProgress::Chunk { downloaded, total } => sampler
+                            .lock()
+                            .expect("progress sampler lock poisoned")
+                            .record(downloaded, total),
+                        AppUpdateDownloadProgress::Verifying => {
+                            let _ = parent.cast(Message::Verifying(operation_id));
                         }
-                        AppUpdateDownloadProgress::Verifying => {}
                     }
-                    let _ = actor.cast(Message::Progress(operation_id, event));
                 });
-                let result = state
+                let download = state
                     .backend
-                    .download(update, state.cancellation.clone(), progress)
-                    .await;
+                    .download(update, state.cancellation.clone(), progress);
+                tokio::pin!(download);
+                // Progress is sampled on this task, so every message to the parent
+                // leaves in order and an attempt reset cannot race a sample.
+                let mut ticks = tokio::time::interval_at(
+                    tokio::time::Instant::now() + SAMPLE_INTERVAL,
+                    SAMPLE_INTERVAL,
+                );
+                ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                let result = loop {
+                    tokio::select! {
+                        result = &mut download => break result,
+                        now = ticks.tick() => {
+                            let sample = sampler
+                                .lock()
+                                .expect("progress sampler lock poisoned")
+                                .sample(now);
+                            let _ = parent.cast(Message::Progress(operation_id, sample));
+                        }
+                    }
+                };
                 let _ = reply.send(OperationResult::Downloaded(result));
             }
             OperationMessage::Install(update, package, reply) => {
@@ -265,8 +281,9 @@ enum Message {
     OperationFinished(u64, OperationResult),
     OperationPanicked(u64),
     OperationFailed(u64, ActorProcessingErr),
-    Progress(u64, AppUpdateDownloadProgress),
-    Source(u64, UpdateSource, Option<u64>),
+    Attempt(u64, UpdateSource),
+    Progress(u64, ProgressSample),
+    Verifying(u64),
     Download {
         automatic: bool,
         reply: Option<RpcReplyPort<Result<AppUpdateSnapshot>>>,
@@ -331,7 +348,6 @@ struct State {
     next_id: u64,
     cancelled_release: Option<String>,
     pending_auto_check: bool,
-    last_progress: Option<(u64, tokio::time::Instant)>,
 }
 
 struct AppUpdateActor;
@@ -348,6 +364,15 @@ impl AppUpdateActor {
             snapshot.phase = phase;
             snapshot.error = None;
         });
+    }
+
+    /// Progress of an operation that ended or is being cancelled is stale.
+    fn is_current_download(state: &State, id: u64) -> bool {
+        state
+            .operation
+            .as_ref()
+            .is_some_and(|operation| operation.id == id)
+            && state.snapshot.phase != AppUpdatePhase::Cancelling
     }
 
     async fn start_operation(
@@ -487,7 +512,6 @@ impl AppUpdateActor {
             installing: false,
             settings_revision: state.settings_revision,
         });
-        state.last_progress = Some((0, tokio::time::Instant::now()));
         Self::update_snapshot(state, |snapshot| {
             snapshot.phase = AppUpdatePhase::Downloading;
             snapshot.downloaded = 0;
@@ -536,7 +560,6 @@ impl Actor for AppUpdateActor {
             next_id: 0,
             cancelled_release: None,
             pending_auto_check: false,
-            last_progress: None,
         };
         state.args.events.publish(state.snapshot.clone());
         if state.settings.auto_check {
@@ -709,7 +732,6 @@ impl Actor for AppUpdateActor {
                         }
                     }
                     OperationResult::Downloaded(result) => {
-                        state.last_progress = None;
                         if stale || cancelled {
                             if !stale
                                 && !installing
@@ -788,46 +810,8 @@ impl Actor for AppUpdateActor {
                     return Err(error);
                 }
             }
-            Message::Progress(id, event) => {
-                if state
-                    .operation
-                    .as_ref()
-                    .is_none_or(|operation| operation.id != id)
-                    || state.snapshot.phase == AppUpdatePhase::Cancelling
-                {
-                    return Ok(());
-                }
-                match event {
-                    AppUpdateDownloadProgress::Source { .. } => {}
-                    AppUpdateDownloadProgress::Chunk { downloaded, total } => {
-                        let now = tokio::time::Instant::now();
-                        let speed = state.last_progress.map_or(0.0, |(last, at)| {
-                            downloaded.saturating_sub(last) as f64
-                                / now.saturating_duration_since(at).as_secs_f64().max(0.001)
-                        });
-                        state.last_progress = Some((downloaded, now));
-                        Self::update_snapshot(state, |snapshot| {
-                            if snapshot.phase == AppUpdatePhase::Downloading {
-                                snapshot.downloaded = downloaded;
-                                snapshot.total = total;
-                                snapshot.speed = speed;
-                            }
-                        });
-                    }
-                    AppUpdateDownloadProgress::Verifying => {
-                        if state.snapshot.phase == AppUpdatePhase::Downloading {
-                            Self::set_phase(state, AppUpdatePhase::Verifying);
-                        }
-                    }
-                }
-            }
-            Message::Source(id, source, content_length) => {
-                if state
-                    .operation
-                    .as_ref()
-                    .is_none_or(|operation| operation.id != id)
-                    || state.snapshot.phase == AppUpdatePhase::Cancelling
-                {
+            Message::Attempt(id, source) => {
+                if !Self::is_current_download(state, id) {
                     return Ok(());
                 }
                 Self::update_snapshot(state, |snapshot| {
@@ -838,9 +822,33 @@ impl Actor for AppUpdateActor {
                         snapshot.phase = AppUpdatePhase::Downloading;
                         snapshot.source = Some(source);
                         snapshot.downloaded = 0;
-                        snapshot.total = content_length;
+                        snapshot.total = None;
                         snapshot.speed = 0.0;
                     }
+                });
+            }
+            Message::Progress(id, sample) => {
+                if !Self::is_current_download(state, id)
+                    || state.snapshot.phase != AppUpdatePhase::Downloading
+                {
+                    return Ok(());
+                }
+                Self::update_snapshot(state, |snapshot| {
+                    snapshot.downloaded = sample.downloaded;
+                    snapshot.total = sample.total;
+                    snapshot.speed = sample.speed;
+                });
+            }
+            Message::Verifying(id) => {
+                if !Self::is_current_download(state, id)
+                    || state.snapshot.phase != AppUpdatePhase::Downloading
+                {
+                    return Ok(());
+                }
+                Self::update_snapshot(state, |snapshot| {
+                    snapshot.phase = AppUpdatePhase::Verifying;
+                    snapshot.speed = 0.0;
+                    snapshot.error = None;
                 });
             }
             Message::Download { automatic, reply } => {

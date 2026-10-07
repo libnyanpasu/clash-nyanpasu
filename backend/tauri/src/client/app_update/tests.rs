@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
 use anyhow::Result;
@@ -33,7 +33,11 @@ struct FakeBackend {
     cancellation_seen: Notify,
     allow_cleanup: Notify,
     fail_next_check: AtomicBool,
+    /// Chunks of `BURST_CHUNK` bytes reported before a held download waits.
+    burst_chunks: AtomicU64,
 }
+
+const BURST_CHUNK: u64 = 256 * 1024;
 
 #[async_trait]
 impl AppUpdateBackend for FakeBackend {
@@ -66,11 +70,16 @@ impl AppUpdateBackend for FakeBackend {
         progress: Arc<dyn Fn(AppUpdateDownloadProgress) + Send + Sync>,
     ) -> Result<VerifiedAppUpdate> {
         self.download_count.fetch_add(1, Ordering::SeqCst);
-        progress(AppUpdateDownloadProgress::Source {
+        progress(AppUpdateDownloadProgress::Attempt {
             source: UpdateSource::Github,
-            content_length: None,
         });
         if self.hold_download {
+            for chunk in 1..=self.burst_chunks.load(Ordering::SeqCst) {
+                progress(AppUpdateDownloadProgress::Chunk {
+                    downloaded: chunk * BURST_CHUNK,
+                    total: None,
+                });
+            }
             self.download_started.notify_one();
             cancellation.cancelled().await;
             self.cancellation_seen.notify_one();
@@ -79,9 +88,8 @@ impl AppUpdateBackend for FakeBackend {
         }
         progress(AppUpdateDownloadProgress::Verifying);
         if self.fallback_progress {
-            progress(AppUpdateDownloadProgress::Source {
+            progress(AppUpdateDownloadProgress::Attempt {
                 source: UpdateSource::Nyanpasu,
-                content_length: Some(3),
             });
             self.fallback_source.notify_one();
             self.continue_fallback.notified().await;
@@ -136,6 +144,20 @@ async fn wait_for_source(
     }
 }
 
+async fn wait_for_snapshot(
+    client: &AppUpdateClient,
+    events: &mut watch::Receiver<Option<AppUpdateSnapshot>>,
+    matches: impl Fn(&AppUpdateSnapshot) -> bool,
+) -> AppUpdateSnapshot {
+    loop {
+        let snapshot = client.state().await.unwrap();
+        if matches(&snapshot) {
+            return snapshot;
+        }
+        events.changed().await.unwrap();
+    }
+}
+
 async fn test_client(
     hold_download: bool,
     fallback_progress: bool,
@@ -163,6 +185,7 @@ async fn test_client(
         cancellation_seen: Notify::new(),
         allow_cleanup: Notify::new(),
         fail_next_check: AtomicBool::new(false),
+        burst_chunks: AtomicU64::new(0),
     });
     let shutdown = CancellationToken::new();
     let tasks = TaskTracker::new();
@@ -310,6 +333,8 @@ async fn fallback_source_after_verification_restarts_download_progress() {
     assert_eq!(fallback.phase, AppUpdatePhase::Downloading);
     assert_eq!(fallback.source, Some(UpdateSource::Nyanpasu));
     assert_eq!(fallback.downloaded, 0);
+    assert_eq!(fallback.total, None);
+    assert_eq!(fallback.speed, 0.0);
     backend.continue_fallback.notify_one();
     let ready = wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
     assert_eq!(ready.downloaded, 3);
@@ -362,4 +387,40 @@ async fn shutdown_hands_off_started_install_without_waiting_on_its_child() {
     tasks.wait().await;
     backend.continue_install.notify_one();
     backend.install_finished.notified().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn burst_progress_is_sampled_on_ticks_and_a_stall_reads_zero() {
+    const CHUNKS: u64 = 1000;
+    let (client, mut events, backend, _, _) = test_client(true, false, false).await;
+    client.check().await.unwrap();
+    wait_for_phase(&client, &mut events, AppUpdatePhase::Available).await;
+    backend.burst_chunks.store(CHUNKS, Ordering::SeqCst);
+
+    let started = client.download().await.unwrap();
+    backend.download_started.notified().await;
+    // Paused time keeps ticking, so a missing update fails at the timeout
+    // instead of hanging.
+    let sampled = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        wait_for_snapshot(&client, &mut events, |snapshot| {
+            snapshot.downloaded == CHUNKS * BURST_CHUNK
+        }),
+    )
+    .await
+    .expect("sampled progress reaches the parent");
+    // The attempt reset and one tick publish the whole burst, however many
+    // chunks the adapter reported.
+    assert!(sampled.revision - started.revision <= 2);
+    // The burst arrived within the first 250ms window.
+    assert_eq!(sampled.speed, (CHUNKS * BURST_CHUNK) as f64 / 0.25);
+
+    let stalled = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        wait_for_snapshot(&client, &mut events, |snapshot| snapshot.speed == 0.0),
+    )
+    .await
+    .expect("a stalled download keeps reporting its last speed");
+    assert_eq!(stalled.phase, AppUpdatePhase::Downloading);
+    assert_eq!(stalled.downloaded, CHUNKS * BURST_CHUNK);
 }

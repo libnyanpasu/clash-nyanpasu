@@ -4,6 +4,7 @@ use crate::utils;
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
+use nyanpasu_core::diagnostics::EnvironmentCollector as _;
 use nyanpasu_helper::StatisticWidgetVariant;
 use nyanpasu_paths::PathResolver;
 use tauri::utils::platform::current_exe;
@@ -78,7 +79,12 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
             Commands::Collect => {
                 // The core binaries are looked up in the data dir, which the command creates.
                 nyanpasu_paths::create_dir_all(paths.app_data_dir()).unwrap();
-                let envs = crate::utils::collect::collect_envs(paths).unwrap();
+                let envs = crate::utils::collect::OsEnvironmentCollector::new(
+                    crate::consts::BUILD_INFO.clone(),
+                    paths.clone(),
+                )
+                .collect()
+                .unwrap();
                 println!("{envs:#?}");
             }
             Commands::PanicDialog { message } => {

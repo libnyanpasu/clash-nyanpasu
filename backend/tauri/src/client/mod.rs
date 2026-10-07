@@ -67,6 +67,7 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_core::diagnostics::{EnvInfo, EnvironmentCollector};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
@@ -91,6 +92,7 @@ pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
     pub jobs: nyanpasu_jobs::JobsClient,
     pub bundle_metadata: crate::bundle::BundleMetadata,
+    pub environment: Arc<dyn EnvironmentCollector>,
     pub logging: logs::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
@@ -207,6 +209,7 @@ fn url_derived_name(url: &url::Url) -> String {
 struct NyanpasuClientInner {
     debug_http: crate::server::debug_http::HttpServerClient,
     bundle_metadata: crate::bundle::BundleMetadata,
+    environment: Arc<dyn EnvironmentCollector>,
     core_logs: crate::core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
@@ -252,6 +255,7 @@ impl NyanpasuClient {
         let ClientSetupArgs {
             jobs,
             bundle_metadata,
+            environment,
             logging,
             http_frontend,
             http_routes,
@@ -337,6 +341,7 @@ impl NyanpasuClient {
         tauri::async_runtime::block_on(Self::with_parts(
             Some(wiring),
             bundle_metadata,
+            environment,
             logging,
             jobs,
             application,
@@ -378,6 +383,7 @@ impl NyanpasuClient {
     async fn with_parts(
         mutations: Option<crate::state::mutation::MutationCoordinator>,
         bundle_metadata: crate::bundle::BundleMetadata,
+        environment: Arc<dyn EnvironmentCollector>,
         logging: logs::LoggingSetup,
         jobs: nyanpasu_jobs::JobsClient,
         application: ApplicationClient,
@@ -625,6 +631,7 @@ impl NyanpasuClient {
             inner: Arc::new(NyanpasuClientInner {
                 debug_http,
                 bundle_metadata,
+                environment,
                 core_logs,
                 app_logs,
                 jobs,
@@ -659,6 +666,10 @@ impl NyanpasuClient {
                 tasks,
             }),
         })
+    }
+
+    pub fn collect_envs(&self) -> std::io::Result<EnvInfo<'static>> {
+        self.inner.environment.collect()
     }
 
     pub async fn debug_http_status(
@@ -1352,6 +1363,14 @@ pub(crate) mod tests {
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
+
+    struct UnconfiguredEnvironmentCollector;
+
+    impl EnvironmentCollector for UnconfiguredEnvironmentCollector {
+        fn collect(&self) -> std::io::Result<EnvInfo<'static>> {
+            panic!("environment collection must be configured explicitly in this test")
+        }
+    }
 
     struct IdleEndpoint;
 
@@ -2441,6 +2460,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
+            Arc::new(UnconfiguredEnvironmentCollector),
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
                     .app_logs_dir()
@@ -2973,6 +2993,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
+            environment: Arc::new(UnconfiguredEnvironmentCollector),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
@@ -3306,6 +3327,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
+            Arc::new(UnconfiguredEnvironmentCollector),
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
                     .app_logs_dir()
@@ -3489,6 +3511,7 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
+            environment: Arc::new(UnconfiguredEnvironmentCollector),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
@@ -4456,6 +4479,7 @@ pub(crate) mod tests {
                     is_fixed_webview: false,
                     release_channel: crate::bundle::Channel::Stable,
                 },
+                Arc::new(UnconfiguredEnvironmentCollector),
                 logs::test_setup(
                     test_paths(dir.path(), dir.path().join("data"))
                         .app_logs_dir()

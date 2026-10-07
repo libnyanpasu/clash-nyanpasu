@@ -44,14 +44,21 @@ Tauri GUI (backend/tauri)      nyanpasu-cli (planned)      mobile shells (later)
                                       |
                        backend/nyanpasu-core
                          NyanpasuClient, typed clients, actors,
-                         pure services, port traits, state machinery
+                         workflows, pure services, consumed ports
+                                      |
+                       nyanpasu-config
+                         domain models and pure runtime executor
 ```
 
 `NyanpasuClient` currently lives in `backend/tauri/src/client/` together with the
-actors, services, and ports it depends on. It moves into `backend/nyanpasu-core`,
-which already holds the GUI-independent state transaction machinery. Each frontend
+actors, services, and ports it depends on. These application capabilities move into
+`backend/nyanpasu-core`, alongside its existing state transaction machinery.
+No separate application crate is required in the target layout. Concrete infrastructure belongs in
+`nyanpasu-platform`, injected by the host. Each frontend
 then supplies its concrete adapters and composes the core; the core never depends on
-a frontend. This split is the prerequisite for mobile support.
+a frontend. This split is the prerequisite for mobile support. The
+[OpenWrt reconciliation roadmap](../design/openwrt-roadmap.md) records the MVP
+dependency subset and how the concurrent extraction PRs fit this layout.
 
 Rules while the split is in progress:
 
@@ -59,19 +66,24 @@ Rules while the split is in progress:
   services: no `AppHandle`, `tauri::State`, `tauri::async_runtime`, Tauri events,
   windows, or tray handles. Use `tokio` directly and add a port trait for anything
   the frontend must provide.
-- Port traits are owned by the core; the Tauri implementations of them stay in the
-  GUI crate. Capabilities that a CLI or mobile frontend may not have (windows, tray,
-  webview events, dialogs, main-thread execution) are reached only through ports.
+- Port traits are owned by their application/domain consumers; Tauri implementations
+  stay in the GUI crate. Classify contracts by their actual consumer: window, tray,
+  widget, webview and main-thread presentation behavior belongs with frontend
+  adapters, not mandatory headless dependencies. Retained optional capabilities
+  need explicit availability and outcome semantics; no-op business effects must
+  not report successful application.
 - RPC commands, the Tauri IPC transport, and the HTTP server are transport adapters
   over `NyanpasuClient`; keep business orchestration out of them so they stay thin.
-- Move code bottom-up: a module moves into `nyanpasu-core` once its dependencies are
+- Move code bottom-up: a module moves into its neutral owner once its dependencies are
   Tauri-free. Update callers to the new path; do not leave re-export shims in the
   Tauri crate.
 - Tests of moved code construct the client or service graph with fake adapters and
   must not need the Tauri runtime.
 - The architecture-ledger gate scans only `backend/tauri/src/` for statics today
   (`STATIC_GATE_PREFIX` in `scripts/src/architecture-ledger/policy.ts`). Extend it to
-  `backend/nyanpasu-core/` before application code moves there.
+  all neutral application/domain/platform source roots before more actor or
+  application code moves there. The backend dependency gate complements this
+  source scan; it does not replace it.
 
 ## Actor model and ownership
 
@@ -113,9 +125,9 @@ If a mature ractor actor client already exists for a capability, use it instead 
 ### Backend package direction
 
 Shared backend code follows [Backend packages](backend-packages.md):
-`nyanpasu-application` owns use cases, typed actor clients and consumed ports;
-`nyanpasu-platform` implements infrastructure ports and may depend on application.
-Application must not depend on platform in production. Neither neutral crate nor
+`nyanpasu-core` owns use cases, typed actor clients and consumed ports;
+`nyanpasu-platform` implements infrastructure ports and may depend on core.
+Core must not depend on platform in production. Neither neutral crate nor
 `nyanpasu-config` may depend on Tauri or egui/eframe. Tauri is a host composition
 root and GUI/transport adapter; Tauri-specific implementations stay at that
 boundary. Move complete existing call paths and update callers without retaining

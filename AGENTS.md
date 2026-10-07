@@ -98,7 +98,7 @@ Non-negotiable rules, restated because they are the most common violations:
 - `NyanpasuClient` is a facade with domain operations, never a service locator or a raw `ActorRef` registry.
 - In-process request/reply waits for the real result; deadlines belong to network/IPC adapters. Dropping a caller does not cancel owner-started work.
 - Business logic does not touch Tauri types; infrastructure goes behind narrow, consumer-owned port traits.
-- Backend packages follow [Backend packages](docs/development/backend-packages.md): `nyanpasu-application` owns use cases, typed actor clients and consumed ports; `nyanpasu-platform` implements infrastructure ports and may depend on application; application must not depend on platform in production. Neither neutral crate nor `nyanpasu-config` may depend on Tauri or egui/eframe. Run `deno task lint:backend-boundaries` after backend package-boundary changes.
+- Backend packages follow [Backend packages](docs/development/backend-packages.md): `nyanpasu-core` owns use cases, typed actor clients and consumed ports; `nyanpasu-platform` implements infrastructure ports and may depend on core; core must not depend on platform in production. Neither neutral crate nor `nyanpasu-config` may depend on Tauri or egui/eframe. Run `deno task lint:backend-boundaries` after backend package-boundary changes.
 
 ## 6. Current Goal: Separate `NyanpasuClient` from the GUI
 
@@ -108,7 +108,7 @@ When touching code under `backend/tauri/src/client/` or the actors, services, an
 
 - Do not add new `tauri` dependencies (`AppHandle`, `tauri::State`, `tauri::async_runtime`, Tauri events, windows, tray) to the client, actors, or pure services. Add a port trait and implement it in the GUI crate instead.
 - Keep frontend-specific behavior (windows, tray, webview events, dialogs, main-thread execution, Tauri IPC) in the GUI crate as adapters.
-- Move code into `nyanpasu-core` by updating callers, not by leaving re-export shims behind in the Tauri crate.
+- Move code into its neutral application/domain owner by updating callers, not by leaving re-export shims behind in the Tauri crate.
 
 ## 7. Unified RPC
 

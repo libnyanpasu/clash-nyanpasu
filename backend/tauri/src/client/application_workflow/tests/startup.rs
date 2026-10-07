@@ -618,11 +618,7 @@ fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
         },
         ..ClashConfig::default()
     };
-    std::fs::write(
-        args.paths.clash_config_path(),
-        serde_yaml::to_string(&clash).unwrap(),
-    )
-    .unwrap();
+    crate::client::tests::write_clash_config(args.paths.clash_config_path(), &clash);
     let files = [
         args.paths.application_config_path(),
         args.paths.clash_config_path(),

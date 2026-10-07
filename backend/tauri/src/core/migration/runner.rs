@@ -1776,6 +1776,94 @@ tray_menu_close_behavior: hide
         assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
     }
 
+    fn clash_config_file(case: &LegacyCase) -> nyanpasu_core::format::Inspected {
+        nyanpasu_core::format::inspect(
+            &std::fs::read_to_string(case.ctx.clash_config_path()).unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn clash_config_stamp(case: &LegacyCase) -> Option<u64> {
+        clash_config_file(case)
+            .stamp()
+            .map(|stamp| stamp.schema_revision)
+    }
+
+    fn assert_clash_config_loads(case: &LegacyCase) {
+        use nyanpasu_core::format::Format as _;
+
+        let _: nyanpasu_config::clash::config::ClashConfig =
+            crate::core::migration::modules::clash_config::ClashConfigFormat::default()
+                .deserialize(std::fs::File::open(case.ctx.clash_config_path()).unwrap())
+                .unwrap();
+    }
+
+    #[test]
+    fn a_fresh_install_gets_a_stamped_clash_config() {
+        let case = LegacyCase::empty();
+
+        let mut runner = case.runner();
+        // No file yet, so the module starts at head.
+        assert_eq!(
+            runner.store.module_state("clash_config"),
+            at_revision(0, false)
+        );
+        runner.run_pending().unwrap();
+
+        assert_eq!(clash_config_stamp(&case), Some(0));
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert_eq!(state.module_state("clash_config"), at_revision(0, true));
+        assert_clash_config_loads(&case);
+    }
+
+    #[test]
+    fn a_1_6_1_install_converts_into_a_stamped_clash_config() {
+        let case = LegacyCase::new();
+
+        case.runner().run_pending().unwrap();
+
+        assert_eq!(clash_config_stamp(&case), Some(0));
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert_eq!(state.module_state("clash_config"), at_revision(0, true));
+        assert_clash_config_loads(&case);
+    }
+
+    #[test]
+    fn a_clash_config_from_2_0_is_stamped_without_changing_content() {
+        let case = LegacyCase::empty();
+        seed_typed_files(&case, Some(1), "");
+        let before = clash_config_file(&case).into_payload();
+
+        let mut runner = case.runner();
+        assert_eq!(
+            runner.store.module_state("clash_config"),
+            at_revision(0, false)
+        );
+        runner.run_pending().unwrap();
+
+        assert_eq!(clash_config_stamp(&case), Some(0));
+        assert_eq!(clash_config_file(&case).into_payload(), before);
+        assert_clash_config_loads(&case);
+    }
+
+    #[test]
+    fn a_clash_config_that_lost_its_stamp_is_refused() {
+        let case = LegacyCase::empty();
+        seed_typed_files(&case, Some(1), "");
+        let mut store = MigrationStore::default();
+        store
+            .modules
+            .insert("clash_config".to_string(), at_revision(0, true));
+        store.flush_atomic(&case.ctx.state_path()).unwrap();
+
+        let error = format!(
+            "{:#}",
+            Runner::with_context(TEST_VERSION.clone(), false, case.ctx.clone()).unwrap_err()
+        );
+
+        assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
+    }
+
     /// A config dir holding a real 1.6.1 install, which every module still has
     /// to migrate.
     struct LegacyCase {

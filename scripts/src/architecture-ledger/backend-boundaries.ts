@@ -1,10 +1,6 @@
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 
-const NEUTRAL_PACKAGES = [
-  "nyanpasu-application",
-  "nyanpasu-platform",
-  "nyanpasu-config",
-];
+const NEUTRAL_PACKAGES = ["nyanpasu-core", "nyanpasu-config"];
 
 /** Inspect resolved production dependencies, including transitive GUI leaks. */
 export function dependencyViolations(
@@ -21,7 +17,7 @@ export function dependencyViolations(
     name === "eframe" || name === "egui" || name === "gtk" ||
     name === "webkit2gtk" || name === "tauri" ||
     name.startsWith("tauri-") ||
-    (owner === "nyanpasu-application" && name === "nyanpasu-platform")
+    (owner === "nyanpasu-config" && name === "nyanpasu-core")
   ).map((name) => `${owner} must not depend on ${name}`);
 }
 
@@ -62,7 +58,7 @@ export async function main(): Promise<number> {
     console.error(problems.join("\n"));
     return 1;
   }
-  console.log("Backend application/platform/config boundaries passed.");
+  console.log("Backend core/config boundaries passed.");
   return 0;
 }
 

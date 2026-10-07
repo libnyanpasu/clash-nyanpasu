@@ -1,4 +1,9 @@
+mod content_source;
 mod runtime_builder;
+pub mod script;
+
+pub use content_source::FsProfileContentSource;
+pub use script::{RuntimeConfigScriptRunner, ScriptDirs};
 
 pub use runtime_builder::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuildLog, RuntimeBuilder, builtin_transforms_for,

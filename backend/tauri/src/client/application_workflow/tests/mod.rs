@@ -360,7 +360,7 @@ async fn workflow_graph_with_clients(
             core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths,
-            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+            scripts: nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),

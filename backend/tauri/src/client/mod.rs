@@ -292,7 +292,7 @@ impl NyanpasuClient {
         let profiles_dir = paths.app_profiles_dir().into_std_path_buf();
         let backup_paths = paths.clone();
         let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
-        let script_dirs = nyanpasu_platform::enhance::ScriptDirs::new(
+        let script_dirs = nyanpasu_core::runtime::config::ScriptDirs::new(
             paths.scripts_dir().into_std_path_buf(),
             paths.cache_dir().into_std_path_buf(),
         );
@@ -409,7 +409,7 @@ impl NyanpasuClient {
         storage: Storage,
         runtime_paths: RuntimePaths,
         core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
-        script_dirs: nyanpasu_platform::enhance::ScriptDirs,
+        script_dirs: nyanpasu_core::runtime::config::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
         app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
@@ -2484,7 +2484,7 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
             Arc::new(runtime_core_spec),
-            nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+            nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -3347,7 +3347,7 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&paths),
             Arc::new(runtime_core_spec),
-            nyanpasu_platform::enhance::ScriptDirs::new(
+            nyanpasu_core::runtime::config::ScriptDirs::new(
                 paths.scripts_dir().into_std_path_buf(),
                 paths.cache_dir().into_std_path_buf(),
             ),
@@ -4494,7 +4494,7 @@ pub(crate) mod tests {
                 storage,
                 RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
                 Arc::new(runtime_core_spec),
-                nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
                 None,
                 None,

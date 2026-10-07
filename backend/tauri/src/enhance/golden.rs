@@ -16,8 +16,10 @@ use nyanpasu_config::{
 };
 
 use super::golden_support::{composition, file_config, overlay};
-use nyanpasu_application::enhance::{RuntimeBuildInput, RuntimeBuilder};
-use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
+use nyanpasu_core::runtime::config::{
+    FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, RuntimeConfigScriptRunner,
+    ScriptDirs,
+};
 
 const SUB_A: &str =
     "proxies:\n  - name: a1\n    type: ss\n    server: a.example.com\n    port: 443\n";
@@ -58,7 +60,7 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
 
 fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml::Value {
     let content = FsProfileContentSource::new(dir.to_path_buf());
-    let scripts = EnhanceScriptRunner::new(ScriptDirs::under(dir)).unwrap();
+    let scripts = RuntimeConfigScriptRunner::new(ScriptDirs::under(dir)).unwrap();
     let artifact = RuntimeBuilder::build(input, &content, &scripts).expect("golden build");
     serde_yaml::to_value(&*artifact.final_config).unwrap()
 }
@@ -240,7 +242,7 @@ fn golden_selected_file_with_script_transform_end_to_end() {
     input.app.enable_builtin_enhanced = false; // isolate assembly + adapters
 
     let content = FsProfileContentSource::new(temp.path().to_path_buf());
-    let scripts = EnhanceScriptRunner::new(ScriptDirs::under(temp.path())).unwrap();
+    let scripts = RuntimeConfigScriptRunner::new(ScriptDirs::under(temp.path())).unwrap();
     let artifact = RuntimeBuilder::build(&input, &content, &scripts).expect("end-to-end build");
 
     let yaml = serde_yaml::to_value(&*artifact.final_config).unwrap();

@@ -63,17 +63,16 @@ export async function main(args: string[]): Promise<void> {
       "toolchain_cargo=$(rustup which --toolchain nightly cargo)\n" +
       "export RUSTC=$(rustup which --toolchain nightly rustc)\n" +
       '"$toolchain_cargo" test --locked --manifest-path backend/Cargo.toml ' +
-      "-p nyanpasu-application -p nyanpasu-platform --lib --tests " +
+      "-p nyanpasu-core --lib --tests " +
       "--no-run --message-format=json --jobs 4",
     ],
     stdout: "piped",
     stderr: "inherit",
   }).output();
   if (!build.success) throw new Error(`musl build failed (${build.code})`);
-  const executables: string[] = [];
+  const executables: { target: string; executable: string }[] = [];
   const expectedTargets = new Set([
-    "lib:nyanpasu_application",
-    "lib:nyanpasu_platform",
+    "lib:nyanpasu_core",
     "test:runtime_builder",
   ]);
   for (const line of new TextDecoder().decode(build.stdout).split("\n")) {
@@ -93,15 +92,15 @@ export async function main(args: string[]): Promise<void> {
       if (!expectedTargets.delete(identity)) {
         throw new Error(`unexpected test target: ${identity}`);
       }
-      executables.push(artifact.executable);
+      executables.push({ target: identity, executable: artifact.executable });
     }
   }
   if (expectedTargets.size > 0) {
     throw new Error(
-      `expected three neutral crate test binaries, got ${executables.length}`,
+      `expected core unit and runtime integration test binaries, got ${executables.length}`,
     );
   }
-  for (const executable of executables) {
+  for (const { target, executable } of executables) {
     const result = await new Deno.Command("docker", {
       args: [
         "run",
@@ -111,6 +110,7 @@ export async function main(args: string[]): Promise<void> {
         "--entrypoint",
         executable,
         router,
+        ...(target === "lib:nyanpasu_core" ? ["runtime::config::"] : []),
         "--test-threads=2",
       ],
       stdout: "inherit",
@@ -121,7 +121,7 @@ export async function main(args: string[]): Promise<void> {
     }
   }
   console.log(
-    `Neutral application/platform tests passed in ${router} (${platform}).`,
+    `Neutral core tests passed in ${router} (${platform}).`,
   );
 }
 

@@ -13,7 +13,7 @@ use nyanpasu_config::{
 };
 use snafu::{ResultExt, ensure};
 
-use nyanpasu_application::enhance::builtin_transforms_for;
+use nyanpasu_core::runtime::config::builtin_transforms_for;
 
 use crate::client::application_workflow::error::{
     ConfigNotMappingSnafu, RuntimePreparationError, SerializeFinalConfigSnafu,

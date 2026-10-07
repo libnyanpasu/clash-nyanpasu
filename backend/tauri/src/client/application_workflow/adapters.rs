@@ -8,8 +8,10 @@ use crate::{
     enhance::runtime_snapshot_data_from_artifact,
 };
 use async_trait::async_trait;
-use nyanpasu_application::enhance::{RuntimeBuildInput, RuntimeBuilder};
-use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
+use nyanpasu_core::runtime::config::{
+    FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, RuntimeConfigScriptRunner,
+    ScriptDirs,
+};
 use snafu::ResultExt;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
@@ -73,7 +75,8 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
             } = inputs;
             let core = app.core;
             let builtin_enabled = app.enable_builtin_enhanced;
-            let scripts = EnhanceScriptRunner::new(script_dirs).context(StartScriptRunnerSnafu)?;
+            let scripts =
+                RuntimeConfigScriptRunner::new(script_dirs).context(StartScriptRunnerSnafu)?;
             let input = RuntimeBuildInput {
                 profiles: profiles.clone(),
                 clash,

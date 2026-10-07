@@ -197,6 +197,7 @@ mod tests {
             value::ConfigValue,
         },
     };
+    use serde_yaml_ng as serde_yaml;
 
     /// 极小 fakes(executor 的 support.rs 是 crate 内部,tauri 不可 import)
     struct EmptyContent;

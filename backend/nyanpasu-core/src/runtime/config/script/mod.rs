@@ -1,11 +1,10 @@
 pub mod adapter;
-pub use adapter::EnhanceScriptRunner;
+pub use adapter::RuntimeConfigScriptRunner;
 mod js;
 mod lua;
 pub use js::ScriptDirs;
 pub use lua::{create_lua_context, ordered_map};
 pub mod runner;
-pub use nyanpasu_application::enhance::{ScriptType, ScriptWrapper};
 pub use runner::RunnerManager;
 // TODO: add test
 // pub fn use_script(

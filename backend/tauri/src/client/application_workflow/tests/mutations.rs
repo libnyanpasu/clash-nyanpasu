@@ -354,7 +354,7 @@ pub(super) async fn fixture_from(
             core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
-            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+            scripts: nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
@@ -3775,7 +3775,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     let mut profiles = Profiles::default();
     profiles.global_transforms.push(item.uid.clone());
     profiles.items.insert(item.uid.clone(), item);
-    let input = nyanpasu_application::enhance::RuntimeBuildInput {
+    let input = nyanpasu_core::runtime::config::RuntimeBuildInput {
         profiles: Arc::new(profiles.clone()),
         clash: ClashConfig::default(),
         app: NyanpasuAppConfig::default(),
@@ -3785,11 +3785,12 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
         },
     };
     let old_content =
-        nyanpasu_platform::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
+        nyanpasu_core::runtime::config::FsProfileContentSource::new(f.profiles_dir.clone());
     let script_dirs = f.builder.delegate.scripts.clone();
     let built = tokio::task::spawn_blocking(move || {
-        let scripts = nyanpasu_platform::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
-        nyanpasu_application::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
+        let scripts =
+            nyanpasu_core::runtime::config::RuntimeConfigScriptRunner::new(script_dirs).unwrap();
+        nyanpasu_core::runtime::config::RuntimeBuilder::build(&input, &old_content, &scripts)
     })
     .await
     .unwrap();

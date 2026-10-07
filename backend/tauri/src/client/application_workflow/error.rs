@@ -1,4 +1,4 @@
-use nyanpasu_application::enhance::RuntimeBuildError;
+use nyanpasu_core::runtime::config::RuntimeBuildError;
 use serde::Serialize;
 use snafu::Snafu;
 
@@ -29,7 +29,6 @@ pub enum RuntimePreparationError {
 mod tests {
     use super::*;
     use crate::client::runtime_error::RuntimeError;
-    use nyanpasu_application::enhance::RuntimeBuildLog;
     use nyanpasu_config::{
         profile::ProfileId,
         runtime::{
@@ -37,6 +36,7 @@ mod tests {
             snapshot::OperatorTag,
         },
     };
+    use nyanpasu_core::runtime::config::RuntimeBuildLog;
 
     #[test]
     fn preparation_failures_preserve_builder_context_on_the_wire() {

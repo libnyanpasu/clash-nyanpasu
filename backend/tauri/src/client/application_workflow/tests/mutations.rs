@@ -109,8 +109,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_application::enhance::RuntimeBuildError>
-    {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_core::enhance::RuntimeBuildError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -3776,7 +3775,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     let mut profiles = Profiles::default();
     profiles.global_transforms.push(item.uid.clone());
     profiles.items.insert(item.uid.clone(), item);
-    let input = nyanpasu_application::enhance::RuntimeBuildInput {
+    let input = nyanpasu_core::enhance::RuntimeBuildInput {
         profiles: Arc::new(profiles.clone()),
         clash: ClashConfig::default(),
         app: NyanpasuAppConfig::default(),
@@ -3790,7 +3789,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     let script_dirs = f.builder.delegate.scripts.clone();
     let built = tokio::task::spawn_blocking(move || {
         let scripts = nyanpasu_platform::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
-        nyanpasu_application::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
+        nyanpasu_core::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
     })
     .await
     .unwrap();

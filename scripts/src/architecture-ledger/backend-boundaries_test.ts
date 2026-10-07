@@ -18,11 +18,11 @@ Deno.test("transitive GUI and host dependencies invalidate neutral packages", ()
   );
 });
 
-Deno.test("application consumes ports while platform implements them", () => {
-  const graph = "nyanpasu-platform v0.1.0\nnyanpasu-application v0.1.0\n";
+Deno.test("core consumes ports while platform implements them", () => {
+  const graph = "nyanpasu-platform v0.1.0\nnyanpasu-core v0.1.0\n";
   assertEquals(dependencyViolations("nyanpasu-platform", graph), []);
-  assertEquals(dependencyViolations("nyanpasu-application", graph), [
-    "nyanpasu-application must not depend on nyanpasu-platform",
+  assertEquals(dependencyViolations("nyanpasu-core", graph), [
+    "nyanpasu-core must not depend on nyanpasu-platform",
   ]);
 });
 

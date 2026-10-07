@@ -25,11 +25,11 @@ remain in platform or existing infrastructure crates, injected by the host;
 core must not depend on platform or a frontend. Config retains its domain models
 and pure executor. Tauri/shell remains the desktop host and presentation boundary.
 
-The application crate delivered by #5652 is transitional source material. Its
-runtime behavior and any follow-up actor extraction must be consolidated into
-core by the upstream PRs, with callers migrated and obsolete dependencies removed.
-OpenWrt waits for that accepted result; it neither performs the consolidation nor
-introduces an application facade alongside NyanpasuClient in core.
+The runtime behavior delivered by #5652 now lives in `nyanpasu-core::enhance`,
+with platform/desktop consumers migrated and the former application crate removed.
+Follow-up actor/facade extraction targets core directly. This is shared-backend
+consolidation, not resumed OpenWrt work. OpenWrt still waits for upstream core/shell
+completion and introduces no second application facade.
 
 On resume, map the router to the actual accepted core APIs on main. Headless
 construction and operation are readiness evidence; a renamed crate alone is not.
@@ -38,14 +38,14 @@ construction and operation are readiness evidence; a renamed crate alone is not.
 
 Snapshot verified on 2026-10-08; refresh on resume.
 
-| Work                                                                                                                               | State                                                                                                                | Treatment while paused                                                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| [#5652](https://github.com/libnyanpasu/clash-nyanpasu/pull/5652)                                                                   | Already merged on 2026-10-06; runtime builder/scripts and neutral config baseline; application crate is transitional | Delivered foundation. Waiting means its related follow-up work, not waiting for this PR to merge again.                    |
-| [#5621](https://github.com/libnyanpasu/clash-nyanpasu/pull/5621), [#5629](https://github.com/libnyanpasu/clash-nyanpasu/pull/5629) | Open architecture/pure-service work                                                                                  | Upstream-owned review, architecture reconciliation and integration. No OpenWrt-mandated merge order.                       |
-| [#5666](https://github.com/libnyanpasu/clash-nyanpasu/pull/5666)                                                                   | Open session-state work                                                                                              | Upstream-owned. Desktop session-state extraction alone does not establish router readiness.                                |
-| Shell/Tauri separation                                                                                                             | Discussion stage: no dedicated implementation/PR identified in project docs and PR search                            | Required external dependency. Wait for an implemented, reviewed result on main; no invented PR number or completion claim. |
-| [#5645](https://github.com/libnyanpasu/clash-nyanpasu/pull/5645)                                                                   | Merged frontend-independent path resolution                                                                          | Reuse explicit path inputs; this does not prove complete shell separation.                                                 |
-| Local application-facade WIP                                                                                                       | Historical unfinished extraction                                                                                     | Preserve as reference. Do not replay its old commits into a moving main or implement its contracts in advance.             |
+| Work                                                                                                                               | State                                                                                                                                                 | Treatment while paused                                                                                                     |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [#5652](https://github.com/libnyanpasu/clash-nyanpasu/pull/5652)                                                                   | Already merged on 2026-10-06; runtime builder/scripts and neutral config baseline; runtime consolidated into core; original application crate removed | Delivered foundation. Waiting means its related follow-up work, not waiting for this PR to merge again.                    |
+| [#5621](https://github.com/libnyanpasu/clash-nyanpasu/pull/5621), [#5629](https://github.com/libnyanpasu/clash-nyanpasu/pull/5629) | Open architecture/pure-service work                                                                                                                   | Upstream-owned review, architecture reconciliation and integration. No OpenWrt-mandated merge order.                       |
+| [#5666](https://github.com/libnyanpasu/clash-nyanpasu/pull/5666)                                                                   | Open session-state work                                                                                                                               | Upstream-owned. Desktop session-state extraction alone does not establish router readiness.                                |
+| Shell/Tauri separation                                                                                                             | Discussion stage: no dedicated implementation/PR identified in project docs and PR search                                                             | Required external dependency. Wait for an implemented, reviewed result on main; no invented PR number or completion claim. |
+| [#5645](https://github.com/libnyanpasu/clash-nyanpasu/pull/5645)                                                                   | Merged frontend-independent path resolution                                                                                                           | Reuse explicit path inputs; this does not prove complete shell separation.                                                 |
+| Local application-facade WIP                                                                                                       | Historical unfinished extraction                                                                                                                      | Preserve as reference. Do not replay its old commits into a moving main or implement its contracts in advance.             |
 
 Paused work includes daemon composition, native ubus, procd endpoints, LuCI/ACL,
 feed packaging, and OpenWrt-specific musl/SDK acceptance. Existing generic

@@ -75,8 +75,11 @@ export const STATIC_KEYWORD_RE = /(?<![\w'#$])static(?!\w)/g;
 export const STATIC_ITEM_RE =
   /static\s+(?:(?:mut|ref)\s+)?((?:r#)?[A-Za-z_][A-Za-z0-9_]*)\s*:/y;
 
-/** Only the app crate is gated; the other backend crates are libraries. */
-export const STATIC_GATE_PREFIX = "backend/tauri/src/";
+/** Gate the GUI and application core sources, not other backend libraries. */
+export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
+  "backend/tauri/src/",
+  "backend/nyanpasu-core/src/",
+];
 
 /**
  * Why a static may exist (docs/development/architecture.md):
@@ -131,7 +134,7 @@ function migrationModuleStatics(
 }
 
 /**
- * Every static the app crate may declare. The type of a static cannot show
+ * Every static the gated crates may declare. The type of a static cannot show
  * that it is immutable (an alias, a newtype or a wrapper hides it), so every
  * non-`const` static counts against the gate until a reviewer lists it here
  * with its category and reason.

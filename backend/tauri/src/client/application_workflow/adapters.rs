@@ -4,7 +4,7 @@ use crate::{
     enhance::runtime_snapshot_data_from_artifact,
 };
 use async_trait::async_trait;
-use nyanpasu_application::enhance::{
+use nyanpasu_core::enhance::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
 };
 use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};

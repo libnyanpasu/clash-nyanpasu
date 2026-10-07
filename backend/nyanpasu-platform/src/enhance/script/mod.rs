@@ -5,7 +5,7 @@ mod lua;
 pub use js::ScriptDirs;
 pub use lua::{create_lua_context, ordered_map};
 pub mod runner;
-pub use nyanpasu_application::enhance::{ScriptType, ScriptWrapper};
+pub use nyanpasu_core::enhance::{ScriptType, ScriptWrapper};
 pub use runner::RunnerManager;
 // TODO: add test
 // pub fn use_script(

@@ -38,7 +38,6 @@ nyanpasu-core = { path = '../nyanpasu-core' }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-helper = { path = '../nyanpasu-helper' }
 nyanpasu-config = { path = '../nyanpasu-config' }
-nyanpasu-application = { path = '../nyanpasu-application' }
 nyanpasu-platform = { path = '../nyanpasu-platform' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
 nyanpasu-egui = { path = '../nyanpasu-egui' }

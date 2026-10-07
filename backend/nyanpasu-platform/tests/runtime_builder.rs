@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use nyanpasu_application::{RuntimeBuildInput, RuntimeBuilder};
 use nyanpasu_config::{
     profile::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
@@ -9,6 +8,7 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_core::enhance::{RuntimeBuildInput, RuntimeBuilder};
 use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 
 #[test]

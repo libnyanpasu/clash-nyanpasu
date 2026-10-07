@@ -13,7 +13,7 @@ use nyanpasu_config::{
 };
 use snafu::{ResultExt, ensure};
 
-use nyanpasu_application::enhance::{
+use nyanpasu_core::enhance::{
     ConfigNotMappingSnafu, RuntimeBuildError, SerializeFinalConfigSnafu, builtin_transforms_for,
 };
 

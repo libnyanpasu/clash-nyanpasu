@@ -16,7 +16,7 @@ use nyanpasu_config::{
 };
 
 use super::golden_support::{composition, file_config, overlay};
-use nyanpasu_application::enhance::{RuntimeBuildInput, RuntimeBuilder};
+use nyanpasu_core::enhance::{RuntimeBuildInput, RuntimeBuilder};
 use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 
 const SUB_A: &str =

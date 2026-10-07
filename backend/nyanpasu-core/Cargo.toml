@@ -6,6 +6,10 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+nyanpasu-config = { path = '../nyanpasu-config' }
+specta = { version = '^2.0.0-rc.25' }
+snafu = { workspace = true }
+strum = { version = '0.28', features = ['derive'] }
 anyhow = '1'
 bon = '3'
 arc-swap = '1'
@@ -22,8 +26,12 @@ fs-err = { workspace = true }
 serde_yaml_ng = { workspace = true }
 
 [dev-dependencies]
+serde_json = { version = '1', features = ['preserve_order'] }
 tokio = { workspace = true, features = ['full', 'test-util'] }
 tempfile = '3'
+
+[target.'cfg(not(target_env = "musl"))'.dev-dependencies]
+# The desktop AES smoke test does not apply to generic router/musl targets.
 # Currently exercised only by the gxhash smoke test below. Every distributed
 # target now guarantees hardware AES (see ../../.cargo/config.toml; i686 was
 # dropped in #4908), so gxhash can graduate to a normal dependency once the

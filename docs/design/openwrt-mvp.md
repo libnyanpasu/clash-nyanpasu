@@ -43,8 +43,8 @@ procd supervises the core process through an injected router control adapter
 ```
 
 The target shared facade and application graph live in `nyanpasu-core`; no
-separate `nyanpasu-application` layer is planned. Existing code in that transitional
-crate is consolidated by the upstream extraction PRs before OpenWrt resumes.
+separate `nyanpasu-application` layer is planned. Its former runtime code now lives in `nyanpasu-core::enhance`; the old crate is
+removed. The remaining facade/actor migration must settle before OpenWrt resumes.
 Concrete infrastructure stays behind core-owned ports and is injected by hosts.
 
 Use the reviewed upstream package boundaries and construction APIs rather than

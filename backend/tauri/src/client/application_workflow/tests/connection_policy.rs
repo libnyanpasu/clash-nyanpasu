@@ -907,14 +907,14 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
         strict_transforms: bool,
     ) -> Result<
         Arc<crate::client::runtime::RuntimeSnapshot>,
-        nyanpasu_application::enhance::RuntimeBuildError,
+        nyanpasu_core::enhance::RuntimeBuildError,
     > {
         self.inputs
             .lock()
             .unwrap()
             .push((inputs.profiles.clone(), inputs.clash.clone()));
         if self.fail_build {
-            return Err(nyanpasu_application::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(nyanpasu_core::enhance::RuntimeBuildError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)

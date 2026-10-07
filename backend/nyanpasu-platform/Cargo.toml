@@ -10,7 +10,7 @@ authors.workspace = true
 name = 'nyanpasu_platform'
 
 [dependencies]
-nyanpasu-application = { path = '../nyanpasu-application' }
+nyanpasu-core = { path = '../nyanpasu-core' }
 nyanpasu-config = { path = '../nyanpasu-config' }
 boa_utils = { path = '../boa_utils' }
 

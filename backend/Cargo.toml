@@ -12,7 +12,6 @@ members = [
   'nyanpasu-traffic',
   'nyanpasu-geodata',
   'nyanpasu-panics',
-  'nyanpasu-application',
   'nyanpasu-platform',
   # Test-only deterministic fake clash core. Never packaged as a production
   # sidecar/resource (see tauri.conf.json externalBin / resources).

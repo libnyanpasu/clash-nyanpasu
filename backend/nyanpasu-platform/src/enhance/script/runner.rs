@@ -4,7 +4,7 @@ use serde_yaml::Mapping;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use super::{ScriptDirs, js, lua};
-use nyanpasu_application::enhance::{ScriptType, ScriptWrapper};
+use nyanpasu_core::enhance::{ScriptType, ScriptWrapper};
 
 /// Collects the console output of one run. The engine's console callbacks
 /// hold clones; the runner drains it into the caller's logs once the run

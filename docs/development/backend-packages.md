@@ -34,13 +34,12 @@ transitive GUI leaks. Its source is in the architecture-ledger script category;
 `deno task test:scripts` covers its policy tests. Run relevant Rust behavior tests
 and desktop consumer checks as well: a dependency gate does not prove behavior.
 
-## Transitional application crate
+## Consolidated runtime baseline
 
-`nyanpasu-application` exists from the earlier runtime extraction. It is a
-transitional source location, not a second application layer in the target
-architecture. The upstream core/shell extraction migrates its remaining behavior
-and callers into core, then removes the obsolete crate and dependencies in a
-buildable change. Do not replace it with re-export shims or require OpenWrt to
-link both facades. Until consolidation lands, keep existing application/platform
-dependencies GUI-free and preserve the current no-application-to-platform cycle.
-This guide describes the target; it does not claim the source migration is done.
+The runtime builder, builtin transforms and script descriptor types originally
+extracted into `nyanpasu-application` now live in `nyanpasu-core::enhance`.
+Platform and desktop consumers import core directly; the application crate and
+its workspace/dependency entries have been removed. Continue the core extraction
+PRs from this baseline without introducing a second application layer. The full
+facade and its dependent actor/workflow graph still require their upstream
+migration; this consolidation does not claim that those capabilities have moved.

@@ -63,7 +63,7 @@ export async function main(args: string[]): Promise<void> {
       "toolchain_cargo=$(rustup which --toolchain nightly cargo)\n" +
       "export RUSTC=$(rustup which --toolchain nightly rustc)\n" +
       '"$toolchain_cargo" test --locked --manifest-path backend/Cargo.toml ' +
-      "-p nyanpasu-application -p nyanpasu-platform --lib --tests " +
+      "-p nyanpasu-core -p nyanpasu-platform --lib --tests " +
       "--no-run --message-format=json --jobs 4",
     ],
     stdout: "piped",
@@ -72,7 +72,7 @@ export async function main(args: string[]): Promise<void> {
   if (!build.success) throw new Error(`musl build failed (${build.code})`);
   const executables: string[] = [];
   const expectedTargets = new Set([
-    "lib:nyanpasu_application",
+    "lib:nyanpasu_core",
     "lib:nyanpasu_platform",
     "test:runtime_builder",
   ]);

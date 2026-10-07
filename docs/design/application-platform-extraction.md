@@ -38,22 +38,22 @@ business effects. Keep explicit availability/outcomes for optional capabilities.
 
 [#5652](https://github.com/libnyanpasu/clash-nyanpasu/pull/5652) delivered runtime
 builder/builtins in `nyanpasu-application`, filesystem/Boa/Lua in platform and the
-widget wire enum in helper. This is existing source behavior to reuse, not work
-to repeat. The target change does not mean that consolidation has already landed.
+widget wire enum in helper. This delivered behavior has now been consolidated into `nyanpasu-core::enhance`;
+platform and desktop callers use core directly and the application crate is
+removed. The higher-level facade/actor extraction remains upstream work.
 
-Upstream extraction migrates application-owned behavior into core, updates
-platform and desktop consumers, then removes the obsolete application crate,
-Cargo dependencies and lockfile entries in complete buildable units. Do not keep
-old-path re-exports or a second facade solely to preserve imports. Keep existing
-transitional dependencies GUI-free and avoid dependency cycles until migration.
+The consolidation preserves the existing enhance module and runtime error/wire
+contracts. It does not import the independent connections/service or runtime
+error/preparation changes from #5629. Follow-up PRs map their touched old
+application paths to core; keep their reviewed responsibility splits intact.
+The static gate uses #5621's core coverage rather than a parallel gate design.
 
 [#5621](https://github.com/libnyanpasu/clash-nyanpasu/pull/5621) and
 [#5629](https://github.com/libnyanpasu/clash-nyanpasu/pull/5629) establish the
 core extraction/gate route. Reconcile the runtime error/preparation contract and
 reuse accepted rates/compat implementations. Any session-state follow-up such as
-[#5666](https://github.com/libnyanpasu/clash-nyanpasu/pull/5666) must align its
-ultimate owner with core; an application-targeted historical patch is not the
-final package direction. These links identify upstream work, not merge commands.
+[#5666](https://github.com/libnyanpasu/clash-nyanpasu/pull/5666) must target core directly; an application-targeted historical patch needs its
+paths/dependencies updated against this consolidated baseline. These links identify upstream work, not merge commands.
 
 Local facade WIP is source material only. Recover touched behavior against the
 accepted main baseline, preserving newer MeowAlpha/version APIs, tests and wire

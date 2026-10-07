@@ -135,16 +135,21 @@ export default memo(function ProxyNodeButton({
         </div>
 
         <div className="flex w-full items-center justify-between gap-2 overflow-hidden px-2">
-          <div className="flex items-center gap-1 overflow-hidden">
+          <div
+            className="flex items-center gap-1 overflow-hidden"
+            data-slot="proxy-node-features"
+          >
             <FeatureChip label={proxy.type} variant="type" />
             {proxy.udp && <FeatureChip label="UDP" />}
             {proxy.xudp && <FeatureChip label="XUDP" />}
             {proxy.tfo && <FeatureChip label="TFO" />}
           </div>
 
+          {/* The leaf takes only the room the chips and the delay leave, so a
+              long name truncates instead of clipping the chips. */}
           {leaf && (
             <span
-              className="text-on-surface-variant min-w-0 truncate text-xs"
+              className="text-on-surface-variant min-w-0 flex-1 truncate text-xs"
               title={leaf}
               data-slot="proxy-node-leaf"
             >

@@ -556,6 +556,10 @@ export function createRpcClient(
       typedError<null, IpcError>(
         __RPC_INVOKE('update_proxy_provider', { name }),
       ),
+    clashApiHealthcheckProxyProvider: (name: string) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('clash_api_healthcheck_proxy_provider', { name }),
+      ),
     restartApplication: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
     setTrayIcon: (mode: TrayIcon, path: string | null) =>

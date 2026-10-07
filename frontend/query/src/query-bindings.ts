@@ -710,6 +710,12 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.updateProxyProvider>) =>
         commands.updateProxyProvider(...input),
     }),
+    clashApiHealthcheckProxyProvider: mutationOptions({
+      mutationKey: ['clashApiHealthcheckProxyProvider'],
+      mutationFn: (
+        input: Parameters<typeof commands.clashApiHealthcheckProxyProvider>,
+      ) => commands.clashApiHealthcheckProxyProvider(...input),
+    }),
     restartApplication: mutationOptions({
       mutationKey: ['restartApplication'],
       mutationFn: (input: Parameters<typeof commands.restartApplication>) =>

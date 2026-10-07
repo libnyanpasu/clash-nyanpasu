@@ -26,6 +26,7 @@ async function renderButton(
   selectable: boolean,
   fixed = false,
   node: ClashProxiesQueryProxyItem = proxy,
+  extra: { delay?: number; leaf?: string } = {},
 ) {
   const onSelect = vi.fn(async () => {})
   const onDelayTest = vi.fn(async () => {})
@@ -38,7 +39,9 @@ async function renderButton(
           fixed={fixed}
           onSelect={onSelect}
           onDelayTest={onDelayTest}
-          testUrl="https://g/"
+          history={node.history}
+          delay={extra.delay}
+          leaf={extra.leaf}
         />
       </TooltipProvider>
     </BlockTaskProvider>,
@@ -79,7 +82,7 @@ test('only the pinned member shows the pin', async () => {
       '[data-slot="proxy-node-fixed-icon"]',
     ),
   ).not.toBeNull()
-  pinned.screen.unmount()
+  await pinned.screen.unmount()
 
   const other = await renderButton(true, false)
   expect(
@@ -87,17 +90,8 @@ test('only the pinned member shows the pin', async () => {
   ).toBeNull()
 })
 
-test('the delay chip reads the tested URL entry before the shared history', async () => {
-  const { screen } = await renderButton(true, false, {
-    ...proxy,
-    history: [{ time: '2026-09-10T00:00:00Z', delay: 10 }],
-    extra: {
-      'https://g/': {
-        alive: true,
-        history: [{ time: '2026-09-10T00:00:00Z', delay: 77 }],
-      },
-    },
-  })
+test('the delay chip shows the delay the page computed', async () => {
+  const { screen } = await renderButton(true, false, proxy, { delay: 77 })
   await expect
     .poll(
       () =>
@@ -105,4 +99,33 @@ test('the delay chip reads the tested URL entry before the shared history', asyn
           ?.textContent,
     )
     .toBe('77 ms')
+})
+
+test('a nested group member shows its leaf node', async () => {
+  const { screen } = await renderButton(true, false, proxy, {
+    delay: 42,
+    leaf: 'HK-01',
+  })
+  const leaf = () =>
+    screen.container.querySelector('[data-slot="proxy-node-leaf"]')
+  await expect.poll(() => leaf()?.textContent).toBe('→ HK-01')
+  expect(leaf()?.getAttribute('title')).toBe('HK-01')
+  expect(
+    screen.container.querySelector('[data-slot="proxy-node-delay"]')
+      ?.textContent,
+  ).toBe('42 ms')
+})
+
+test('a plain member shows no leaf', async () => {
+  const { screen } = await renderButton(true, false, proxy, { delay: 42 })
+  await expect
+    .poll(
+      () =>
+        screen.container.querySelector('[data-slot="proxy-node-delay"]')
+          ?.textContent,
+    )
+    .toBe('42 ms')
+  expect(
+    screen.container.querySelector('[data-slot="proxy-node-leaf"]'),
+  ).toBeNull()
 })

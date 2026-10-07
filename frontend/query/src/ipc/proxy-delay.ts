@@ -90,24 +90,52 @@ export function resolveChain(start: string, proxies: Proxies_Serialize): Chain {
   return { path, parent }
 }
 
+export type MemberState = {
+  /** The delay the group sees; a nested group reports its leaf's. */
+  delay: number | undefined
+  /** The node a nested group member currently resolves to. */
+  leaf?: string
+  /** The samples `delay` is the latest of. */
+  history: DelayHistory[]
+}
+
+const NO_HISTORY: DelayHistory[] = []
+
 /**
- * A member's delay as its group sees it: a nested group reports its leaf,
- * tested against the URL of the group that directly holds that leaf.
+ * A member as its group sees it: a nested group reports its leaf, tested
+ * against the URL of the group that directly holds that leaf. The history keeps
+ * the identity of the snapshot's own arrays, so a memoized card can rely on it.
  */
+export function memberState(
+  member: string,
+  group: TestUrlSource,
+  proxies: Proxies_Serialize,
+  defaultUrl: string,
+): MemberState {
+  const node = proxies.nodes[member]
+  if (!node?.all) {
+    const history = node
+      ? nodeDelayHistory(node, groupTestUrl(group, defaultUrl))
+      : NO_HISTORY
+    return { delay: history.at(-1)?.delay, history }
+  }
+
+  const chain = resolveChain(member, proxies)
+  const history = chain.leaf
+    ? nodeDelayHistory(
+        chain.leaf,
+        groupTestUrl(proxies.nodes[chain.parent], defaultUrl),
+      )
+    : NO_HISTORY
+  return { delay: history.at(-1)?.delay, leaf: chain.leaf?.name, history }
+}
+
+/** A member's delay as its group sees it; see {@link memberState}. */
 export function memberDelay(
   member: string,
   group: TestUrlSource,
   proxies: Proxies_Serialize,
   defaultUrl: string,
 ): number | undefined {
-  const node = proxies.nodes[member]
-  if (!node?.all) {
-    return latestDelay(node, groupTestUrl(group, defaultUrl))
-  }
-
-  const chain = resolveChain(member, proxies)
-  return latestDelay(
-    chain.leaf,
-    groupTestUrl(proxies.nodes[chain.parent], defaultUrl),
-  )
+  return memberState(member, group, proxies, defaultUrl).delay
 }

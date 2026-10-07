@@ -1,6 +1,6 @@
 import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
 import KeepRounded from '~icons/material-symbols/keep-rounded'
-import { ComponentProps, memo, MouseEvent, useMemo } from 'react'
+import { ComponentProps, memo, MouseEvent } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import HighlightText from '@nyanpasu/ui/highlight-text'
 import { useBlockTask } from '@/components/providers/block-task-provider'
@@ -8,7 +8,7 @@ import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
-import { ClashProxiesQueryProxyItem, nodeDelayHistory } from '@nyanpasu/query'
+import { ClashProxiesQueryProxyItem, MemberState } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 function FeatureChip({
@@ -40,7 +40,9 @@ export default memo(function ProxyNodeButton({
   fixed,
   onSelect,
   onDelayTest,
-  testUrl,
+  history,
+  delay,
+  leaf,
   searchText = '',
   ...props
 }: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'onSelect'> & {
@@ -49,7 +51,12 @@ export default memo(function ProxyNodeButton({
   fixed: boolean
   onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
   onDelayTest: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
-  testUrl: string
+  /** The samples the delay is the latest of; keep its identity while they hold. */
+  history: MemberState['history']
+  /** The delay the group sees; a nested group reports its leaf's. */
+  delay: MemberState['delay']
+  /** The node a nested group member currently resolves to. */
+  leaf?: MemberState['leaf']
   /** The term highlighted in the name; empty highlights nothing. */
   searchText?: string
 }) {
@@ -77,13 +84,6 @@ export default memo(function ProxyNodeButton({
       await delayTask.execute()
     },
   )
-
-  const history = useMemo(
-    () => nodeDelayHistory(proxy, testUrl),
-    [proxy, testUrl],
-  )
-
-  const currentDelay = history.at(-1)?.delay ?? -1
 
   return (
     <DelayHistory history={history}>
@@ -142,6 +142,16 @@ export default memo(function ProxyNodeButton({
             {proxy.tfo && <FeatureChip label="TFO" />}
           </div>
 
+          {leaf && (
+            <span
+              className="text-on-surface-variant min-w-0 truncate text-xs"
+              title={leaf}
+              data-slot="proxy-node-leaf"
+            >
+              → {leaf}
+            </span>
+          )}
+
           <Button
             className="grid h-4 min-w-10 shrink-0 place-content-center px-2 text-center"
             variant="raised"
@@ -149,8 +159,8 @@ export default memo(function ProxyNodeButton({
             loading={delayTask.isPending}
             asChild
           >
-            {currentDelay > 0 ? (
-              <DelayChip delay={currentDelay} />
+            {delay !== undefined && delay > 0 ? (
+              <DelayChip delay={delay} />
             ) : (
               <span>
                 <FlashOnRounded className="py-1" />

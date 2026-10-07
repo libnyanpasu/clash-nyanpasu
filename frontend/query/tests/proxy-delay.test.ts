@@ -8,6 +8,7 @@ import {
   groupTestUrl,
   latestDelay,
   memberDelay,
+  memberState,
   nodeDelayHistory,
   resolveChain,
 } from '../src/ipc/proxy-delay'
@@ -185,9 +186,11 @@ test("a member that is a group reports its leaf under the leaf's group URL", () 
   }
   const proxies = snapshot(null, [], { inner, leaf, plain: node('plain', [5]) })
   const outer = { testUrl: 'https://o/' }
-  expect(memberDelay('inner', outer, proxies, 'https://d/')).toBe(40)
-  expect(memberDelay('plain', outer, proxies, 'https://d/')).toBe(5)
-  expect(memberDelay('gone', outer, proxies, 'https://d/')).toBeUndefined()
+  expect(memberState('inner', outer, proxies, 'https://d/').delay).toBe(40)
+  expect(memberState('plain', outer, proxies, 'https://d/').delay).toBe(5)
+  expect(
+    memberState('gone', outer, proxies, 'https://d/').delay,
+  ).toBeUndefined()
 })
 
 // Cases ported from the sidebar's former group-delay tests.
@@ -196,7 +199,7 @@ test('uses the selected member latest measurement, including failure and no hist
   const selected = node('selected', [30, 80])
   const root = group('root', 'selected', ['other', 'selected'])
   const data = snapshot(root, [root], { other, selected })
-  const now = () => memberDelay(root.now!, root, data, D)
+  const now = () => memberState(root.now!, root, data, D).delay
   expect(now()).toBe(80)
   selected.history.push({ time: '', delay: 0 })
   expect(now()).toBe(0)
@@ -214,11 +217,11 @@ test('resolves nested and global selections through the shared node record', () 
     auto,
     leaf,
   })
-  expect(memberDelay('auto', root, data, D)).toBe(42)
-  expect(memberDelay(data.global!.now!, data.global!, data, D)).toBe(42)
+  expect(memberState('auto', root, data, D).delay).toBe(42)
+  expect(memberState(data.global!.now!, data.global!, data, D).delay).toBe(42)
   // Only one `leaf` object exists, so a new sample is visible from every path.
   leaf.history.push({ time: '', delay: 75 })
-  expect(memberDelay('auto', root, data, D)).toBe(75)
+  expect(memberState('auto', root, data, D).delay).toBe(75)
 })
 
 test('resolves a hidden group that is not listed at the top level', () => {
@@ -226,15 +229,50 @@ test('resolves a hidden group that is not listed at the top level', () => {
   const hidden = groupRecord('hidden', 'leaf', ['leaf'])
   const root = group('root', 'hidden', ['hidden'])
   const data = snapshot(root, [root], { hidden, leaf })
-  expect(memberDelay('hidden', root, data, D)).toBe(42)
+  expect(memberState('hidden', root, data, D).delay).toBe(42)
 })
 
 test('missing selections, unresolved nodes, and cycles have no delay', () => {
   const root = group('root', 'missing', [])
   const data = snapshot(root, [root], {})
-  expect(memberDelay('missing', root, data, D)).toBe(undefined)
+  expect(memberState('missing', root, data, D).delay).toBe(undefined)
   data.nodes.root = groupRecord('root', 'nested', ['nested'])
   data.nodes.nested = groupRecord('nested', 'root', ['root'])
-  expect(memberDelay('nested', root, data, D)).toBe(undefined)
-  expect(memberDelay('root', root, data, D)).toBe(undefined)
+  expect(memberState('nested', root, data, D).delay).toBe(undefined)
+  expect(memberState('root', root, data, D).delay).toBe(undefined)
+})
+
+test('a nested member carries the history of the leaf its delay comes from', () => {
+  const leaf = node('leaf', [99, 42])
+  const inner = {
+    ...groupRecord('inner', 'leaf', ['leaf']),
+    testUrl: 'https://inner/',
+  }
+  const innerHistory = [{ time: '', delay: 42 }]
+  leaf.extra = {
+    'https://inner/': { alive: true, history: innerHistory },
+    'https://d/': { alive: true, history: [{ time: '', delay: 99 }] },
+  }
+  const root = group('root', 'inner', ['inner'])
+  const data = snapshot(root, [root], { inner, leaf })
+  const state = memberState('inner', root, data, 'https://d/')
+  expect(state.leaf).toBe('leaf')
+  expect(state.delay).toBe(42)
+  expect(state.history).toBe(innerHistory)
+})
+
+test('a plain member carries its own history under the group URL', () => {
+  const plain = node('plain', [7])
+  const root = group('root', 'plain', ['plain'])
+  const data = snapshot(root, [root], { plain })
+  const state = memberState('plain', root, data, D)
+  expect(state).toEqual({ delay: 7, history: plain.history })
+  expect(state.history).toBe(plain.history)
+})
+
+test('memberDelay is the delay of the member state', () => {
+  const plain = node('plain', [7])
+  const root = group('root', 'plain', ['plain'])
+  const data = snapshot(root, [root], { plain })
+  expect(memberDelay('plain', root, data, D)).toBe(7)
 })

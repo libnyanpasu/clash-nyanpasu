@@ -1173,6 +1173,16 @@ pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: Stri
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
+pub async fn clash_api_healthcheck_proxy_provider(
+    client: State<'_, NyanpasuClient>,
+    name: String,
+) -> Result<()> {
+    Ok(client.healthcheck_proxy_provider(name).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
 pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> {
     Ok((crate::utils::collect::collect_envs())?)
 }

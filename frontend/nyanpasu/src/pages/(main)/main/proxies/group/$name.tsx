@@ -2,7 +2,6 @@ import ArrowDownwardAltRounded from '~icons/material-symbols/arrow-downward-alt-
 import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-rounded'
 import KeepOffRounded from '~icons/material-symbols/keep-off-rounded'
 import KeepRounded from '~icons/material-symbols/keep-rounded'
-import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
 import { useCallback, useDeferredValue, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
@@ -14,15 +13,30 @@ import {
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
   groupTestUrl,
+  memberDelay,
   useClashProxies,
+  useKvStorage,
   useProxyMode,
   useSetting,
 } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useGroupTrafficSpeed } from '../_modules/hooks'
+import { useSearchTerm } from '../../_modules/use-search-term'
 import DelayTestButton from './_modules/delay-test-button'
 import GroupHeader from './_modules/group-header'
+import {
+  DEFAULT_NODE_VIEW,
+  NODE_VIEW_KV_KEY,
+  toNodeView,
+  visibleMembers,
+  type NodeView,
+} from './_modules/node-list'
+import {
+  LocateCurrentNodeButton,
+  NodeListToolbar,
+  NoMatchingNodes,
+} from './_modules/node-list-toolbar'
 import ProxyNodeButton from './_modules/proxy-node-button'
 
 export const Route = createFileRoute('/(main)/main/proxies/group/$name')({
@@ -69,6 +83,40 @@ function GroupTrafficSpeed({ groupName }: { groupName?: string }) {
 function RouteComponent() {
   const { name: proxyGroupName } = Route.useParams()
 
+  const { q } = Route.useSearch()
+
+  const navigate = Route.useNavigate()
+
+  const writeQuery = useCallback(
+    (next: string | undefined) =>
+      navigate({
+        search: (previous) => ({ ...previous, q: next }),
+        replace: true,
+      }),
+    [navigate],
+  )
+
+  const [search, setSearch] = useSearchTerm(q, writeQuery)
+
+  // Filtering and highlighting the nodes follows the field without holding
+  // up typing.
+  const deferredSearch = useDeferredValue(search)
+
+  const [storedView, setView] = useKvStorage<NodeView>(
+    NODE_VIEW_KV_KEY,
+    DEFAULT_NODE_VIEW,
+    { migrate: toNodeView },
+  )
+
+  const handleViewChange = useCallback(
+    async (next: NodeView) => {
+      if (!(await setView(next))) {
+        message(m.proxies_node_view_save_failed(), { kind: 'error' })
+      }
+    },
+    [setView],
+  )
+
   const {
     proxies: { data: proxies },
     selectProxy,
@@ -96,6 +144,27 @@ function RouteComponent() {
     () => ({ url: testUrl, expected: currentGroup?.expectedStatus ?? null }),
     [testUrl, currentGroup?.expectedStatus],
   )
+
+  const members = useMemo(
+    () =>
+      currentGroup && proxies
+        ? visibleMembers({
+            group: currentGroup,
+            proxies,
+            query: deferredSearch,
+            view: storedView,
+            delayOf: (name) =>
+              memberDelay(name, currentGroup, proxies, defaultUrl ?? ''),
+          })
+        : [],
+    [currentGroup, proxies, deferredSearch, storedView, defaultUrl],
+  )
+
+  // HighlightText marks one substring, so a query of several terms marks
+  // nothing.
+  const trimmedSearch = deferredSearch.trim()
+
+  const searchText = trimmedSearch.includes(' ') ? '' : trimmedSearch
 
   const selectable = currentGroup?.capabilities.select ?? false
 
@@ -158,7 +227,7 @@ function RouteComponent() {
   )
 
   const virtualizer = useVirtualizer({
-    count: currentGroup?.all?.length || 0,
+    count: members.length,
     getScrollElement: () => viewportRef.current,
     estimateSize: () => NODE_ITEM_HEIGHT,
     overscan: 5,
@@ -173,23 +242,32 @@ function RouteComponent() {
   // the cards in interruptible chunks right after.
   const showNodes = useDeferredValue(true, false)
 
-  const handleScrollToCurrentNode = useCallback(() => {
-    const index = currentGroup?.all?.findIndex(
-      (name) => name === currentGroup?.now,
-    )
+  // -1 while the current node is filtered out or the group has none.
+  const currentIndex = currentGroup?.now
+    ? members.indexOf(currentGroup.now)
+    : -1
 
-    // unwarp undefined index
-    if (index !== undefined) {
-      virtualizer.scrollToIndex(index, {
-        align: 'center',
-        behavior: 'smooth',
-      })
-    }
-  }, [currentGroup?.all, currentGroup?.now, virtualizer])
+  const handleScrollToCurrentNode = useCallback(() => {
+    virtualizer.scrollToIndex(currentIndex, {
+      align: 'center',
+      behavior: 'smooth',
+    })
+  }, [currentIndex, virtualizer])
+
+  const noMatch = members.length === 0 && Boolean(currentGroup?.all.length)
 
   return (
     <>
-      <GroupHeader>
+      <GroupHeader
+        bottom={
+          <NodeListToolbar
+            search={search}
+            onSearchChange={setSearch}
+            view={storedView}
+            onViewChange={handleViewChange}
+          />
+        }
+      >
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <div className="flex max-w-full min-w-0 flex-col gap-1">
             <div className="truncate" title={currentGroup?.name}>
@@ -228,58 +306,60 @@ function RouteComponent() {
           </Button>
         )}
 
-        <Button
-          icon
-          className="size-8 shrink-0"
-          onClick={handleScrollToCurrentNode}
-        >
-          <Radar className="size-4" />
-        </Button>
+        <LocateCurrentNodeButton
+          disabled={currentIndex === -1}
+          onLocate={handleScrollToCurrentNode}
+        />
       </GroupHeader>
 
-      <div
-        className="relative m-2"
-        data-slot="proxies-virtual-list"
-        style={{
-          width: 'calc(100% - 16px)',
-          height: `${virtualizer.getTotalSize()}px`,
-        }}
-      >
-        {showNodes &&
-          virtualItems.map((virtualItem) => {
-            const name = currentGroup?.all?.[virtualItem.index]
-            const proxy = name ? proxies?.nodes[name] : undefined
+      {noMatch ? (
+        <NoMatchingNodes />
+      ) : (
+        <div
+          className="relative m-2"
+          data-slot="proxies-virtual-list"
+          style={{
+            width: 'calc(100% - 16px)',
+            height: `${virtualizer.getTotalSize()}px`,
+          }}
+        >
+          {showNodes &&
+            virtualItems.map((virtualItem) => {
+              const name = members[virtualItem.index]
+              const proxy = name ? proxies?.nodes[name] : undefined
 
-            if (!proxy) {
-              return null
-            }
+              if (!proxy) {
+                return null
+              }
 
-            return (
-              <div
-                key={virtualItem.index}
-                className="group absolute top-0 left-0 p-1"
-                style={{
-                  height: `${virtualItem.size}px`,
-                  transform: `translateY(${virtualItem.start}px)`,
-                  width: `${100 / lanes}%`,
-                  left: `${virtualItem.lane * (100 / lanes)}%`,
-                }}
-                data-index={virtualItem.index}
-                data-slot="proxies-virtual-item"
-                data-active={String(name === currentGroup?.now)}
-              >
-                <ProxyNodeButton
-                  proxy={proxy}
-                  selectable={selectable}
-                  fixed={name === currentGroup?.fixed}
-                  onSelect={handleSelectProxy}
-                  onDelayTest={handleDelayTest}
-                  testUrl={testUrl}
-                />
-              </div>
-            )
-          })}
-      </div>
+              return (
+                <div
+                  key={name}
+                  className="group absolute top-0 left-0 p-1"
+                  style={{
+                    height: `${virtualItem.size}px`,
+                    transform: `translateY(${virtualItem.start}px)`,
+                    width: `${100 / lanes}%`,
+                    left: `${virtualItem.lane * (100 / lanes)}%`,
+                  }}
+                  data-index={virtualItem.index}
+                  data-slot="proxies-virtual-item"
+                  data-active={String(name === currentGroup?.now)}
+                >
+                  <ProxyNodeButton
+                    proxy={proxy}
+                    selectable={selectable}
+                    fixed={name === currentGroup?.fixed}
+                    onSelect={handleSelectProxy}
+                    onDelayTest={handleDelayTest}
+                    testUrl={testUrl}
+                    searchText={searchText}
+                  />
+                </div>
+              )
+            })}
+        </div>
+      )}
 
       <DelayTestButton delayOptions={delayOptions} />
     </>

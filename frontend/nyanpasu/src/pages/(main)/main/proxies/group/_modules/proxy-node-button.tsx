@@ -2,6 +2,7 @@ import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
 import KeepRounded from '~icons/material-symbols/keep-rounded'
 import { ComponentProps, memo, MouseEvent, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import HighlightText from '@nyanpasu/ui/highlight-text'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
@@ -40,6 +41,7 @@ export default memo(function ProxyNodeButton({
   onSelect,
   onDelayTest,
   testUrl,
+  searchText = '',
   ...props
 }: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'onSelect'> & {
   proxy: ClashProxiesQueryProxyItem
@@ -48,6 +50,8 @@ export default memo(function ProxyNodeButton({
   onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
   onDelayTest: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
   testUrl: string
+  /** The term highlighted in the name; empty highlights nothing. */
+  searchText?: string
 }) {
   const handleSelectProxy = useLockFn(async () => {
     // The core picks this group's member on its own.
@@ -113,7 +117,9 @@ export default memo(function ProxyNodeButton({
         {...props}
       >
         <div className="flex w-full items-center justify-between gap-2 px-2">
-          <div className="truncate text-sm font-medium">{proxy.name}</div>
+          <div className="truncate text-sm font-medium">
+            <HighlightText searchText={searchText}>{proxy.name}</HighlightText>
+          </div>
 
           {fixed && (
             <span

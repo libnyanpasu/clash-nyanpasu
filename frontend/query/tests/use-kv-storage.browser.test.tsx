@@ -10,6 +10,7 @@ const backend = vi.hoisted(() => ({
   failWrite: false,
   writes: [] as string[],
   readGate: null as Promise<void> | null,
+  writeGates: [] as Promise<void>[],
 }))
 async function mountStorageHook<T>(
   useHook: () => T,
@@ -28,7 +29,9 @@ async function mountStorageHook<T>(
     },
     set_storage_item: async (params) => {
       const value = params?.value as string
+      const gate = backend.writeGates.shift()
       backend.writes.push(value)
+      await gate
       if (backend.failWrite) {
         // Simulate the backend's string error payload so the generated Result wrapper is exercised.
         // oxlint-disable-next-line no-throw-literal
@@ -97,6 +100,7 @@ beforeEach(() => {
   backend.failWrite = false
   backend.writes = []
   backend.readGate = null
+  backend.writeGates = []
 })
 
 test('migration validates local cache before the authoritative read', async ({
@@ -169,4 +173,39 @@ test('a delayed read cannot overwrite a newer completed write', async ({
   release()
   await expect.poll(() => hook.result.current[2].isLoading).toBe(false)
   expect(hook.result.current[0]).toEqual({ enabled: true })
+})
+
+test('overlapping writes reach the backend in call order', async ({
+  onTestFinished,
+}) => {
+  let releaseFirst = () => {}
+  backend.writeGates = [
+    new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    }),
+  ]
+  const hook = await mountStorageHook(
+    () => useKvStorage('config', { sort: 'default', hide: false }),
+    onTestFinished,
+  )
+  await expect.poll(() => hook.result.current[2].isLoading).toBe(false)
+
+  const first = hook.result.current[1]((prev) => ({ ...prev, sort: 'name' }))
+  const second = hook.result.current[1]((prev) => ({ ...prev, hide: true }))
+
+  // The newer value is shown at once, and the second write waits for the first.
+  await expect
+    .poll(() => hook.result.current[0])
+    .toEqual({ sort: 'name', hide: true })
+  await expect.poll(() => backend.writes.length).toBe(1)
+  releaseFirst()
+
+  expect(await first).toBe(true)
+  expect(await second).toBe(true)
+  expect(backend.writes.map((write) => JSON.parse(write))).toEqual([
+    { sort: 'name', hide: false },
+    { sort: 'name', hide: true },
+  ])
+  expect(JSON.parse(backend.value!)).toEqual({ sort: 'name', hide: true })
+  expect(hook.result.current[0]).toEqual({ sort: 'name', hide: true })
 })

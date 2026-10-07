@@ -89,9 +89,15 @@ export function createRpcClient(
       name: string,
       provider: string | null,
       url: string | null,
+      expected: string | null,
     ) =>
       typedError<Delay, IpcError>(
-        __RPC_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
+        __RPC_INVOKE('clash_api_get_proxy_delay', {
+          name,
+          provider,
+          url,
+          expected,
+        }),
       ),
     clashApiGetConfigs: () =>
       typedError<ClashApiConfig, IpcError>(
@@ -105,9 +111,13 @@ export function createRpcClient(
       typedError<ProvidersRulesRes, IpcError>(
         __RPC_INVOKE('clash_api_get_providers_rules'),
       ),
-    clashApiGetGroupDelay: (group: string, url: string | null) =>
+    clashApiGetGroupDelay: (
+      group: string,
+      url: string | null,
+      expected: string | null,
+    ) =>
       typedError<{ [key in ProxyName]: number }, IpcError>(
-        __RPC_INVOKE('clash_api_get_group_delay', { group, url }),
+        __RPC_INVOKE('clash_api_get_group_delay', { group, url, expected }),
       ),
     clashApiGetProvidersProxies: () =>
       typedError<{ [key in ProviderName]: ProxyProvider_Serialize }, IpcError>(
@@ -538,9 +548,17 @@ export function createRpcClient(
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('select_proxy', { group, name }),
       ),
+    clearProxyFixed: (group: string) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('clear_proxy_fixed', { group }),
+      ),
     updateProxyProvider: (name: string) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('update_proxy_provider', { name }),
+      ),
+    clashApiHealthcheckProxyProvider: (name: string) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('clash_api_healthcheck_proxy_provider', { name }),
       ),
     restartApplication: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
@@ -586,6 +604,12 @@ export function createRpcClient(
       typedError<null, IpcError>(
         __RPC_INVOKE('create_editor_window', { windowType, uid }),
       ),
+    /**
+     *  The calling window has rendered. Its label comes from the invoking webview,
+     *  so a window can only report itself.
+     */
+    reportWindowReady: () =>
+      typedError<null, IpcError>(__RPC_INVOKE('report_window_ready')),
     copyClashEnv: (envType: CopyEnvOption) =>
       __RPC_INVOKE<void>('copy_clash_env', { envType }),
     quitApplication: () => __RPC_INVOKE<void>('quit_application'),
@@ -624,10 +648,6 @@ export function createRpcClient(
     windowMessageEvent: makeEvent<WindowMessageEvent>(
       transport.events,
       'window-message-event',
-    ),
-    windowReadyEvent: makeEvent<WindowReadyEvent>(
-      transport.events,
-      'window-ready-event',
     ),
   }
 
@@ -898,7 +918,13 @@ export type ClashControlChannel = 'prefer_ipc' | 'http_only'
 export type ClashCore = ClashCore_Serialize | ClashCore_Deserialize
 
 export type ClashCoreType =
-  'mihomo' | 'mihomo-alpha' | 'clash-rs' | 'clash-rs-alpha' | 'clash' | 'meow'
+  | 'mihomo'
+  | 'mihomo-alpha'
+  | 'clash-rs'
+  | 'clash-rs-alpha'
+  | 'clash'
+  | 'meow'
+  | 'meow-alpha'
 
 export type ClashCore_Deserialize =
   | 'clash'
@@ -909,9 +935,16 @@ export type ClashCore_Deserialize =
   | 'mihomo-alpha'
   | 'clash-rs-alpha'
   | 'meow'
+  | 'meow-alpha'
 
 export type ClashCore_Serialize =
-  'clash' | 'clash-rs' | 'mihomo' | 'mihomo-alpha' | 'clash-rs-alpha' | 'meow'
+  | 'clash'
+  | 'clash-rs'
+  | 'mihomo'
+  | 'mihomo-alpha'
+  | 'clash-rs-alpha'
+  | 'meow'
+  | 'meow-alpha'
 
 export type ClashGuardOverrides = {
   'log-level': LogLevel
@@ -1158,6 +1191,7 @@ export type ConfigError =
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
   | { kind: 'invalid_update_sources'; reason: string }
   | { kind: 'invalid_core_logs'; reason: string }
+  | { kind: 'invalid_latency_timeout'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'workflow_not_ready' }
   | { kind: 'shutting_down'; domain: ConfigDomain }
@@ -1737,7 +1771,6 @@ export type CoreStatusInfo = {
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
-/**  A failure of asking a core binary for its version. */
 export type CoreVersionError =
   | { kind: 'run_core_version'; core: string }
   | { kind: 'core_version_exit'; core: string }
@@ -2492,6 +2525,7 @@ export type ManifestVersionLatest = {
   clash_rs_alpha: string
   clash_premium: string
   meow: string
+  meow_alpha?: string
 }
 
 /**  What the materialization port was doing when it failed. */
@@ -2598,6 +2632,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       theme_color?: string
       hotkeys?: string[] | null
       default_latency_test?: string | null
+      default_latency_timeout_ms?: number | null
       enable_builtin_enhanced?: boolean | null
       proxy_layout_column?: number | null
       max_log_files?: number | null
@@ -2608,7 +2643,7 @@ export type NyanpasuAppConfigPatch_Deserialize =
       update_sources?: UpdateSource[] | null
       always_on_top?: boolean | null
       tray_menu_mode?: TrayMenuMode | null
-      tray_menu_close_behavior?: TrayMenuCloseBehavior | null
+      window_close?: WindowCloseSettingsPatch_Deserialize
       network_statistic_widget?: NetworkStatisticWidgetConfig | null
       traffic_retention?: TrafficRetention | null
       enable_local_ip_probe?: boolean | null
@@ -2653,6 +2688,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   core?: ClashCore_Serialize | null
   hotkeys?: string[] | null
   default_latency_test?: string | null
+  default_latency_timeout_ms?: number | null
   enable_builtin_enhanced?: boolean | null
   proxy_layout_column?: number | null
   max_log_files?: number | null
@@ -2664,7 +2700,7 @@ export type NyanpasuAppConfigPatch_Serialize = {
   tray_selector_mode?: ProxiesSelectorMode | null
   always_on_top?: boolean | null
   tray_menu_mode?: TrayMenuMode | null
-  tray_menu_close_behavior?: TrayMenuCloseBehavior | null
+  window_close: WindowCloseSettingsPatch_Serialize
   network_statistic_widget?: NetworkStatisticWidgetConfig | null
   traffic_retention?: TrafficRetention | null
   enable_local_ip_probe?: boolean | null
@@ -2719,6 +2755,8 @@ export type NyanpasuAppConfig_Deserialize = {
   hotkeys: string[]
   /**  默认的延迟测试连接 */
   default_latency_test: string
+  /**  Latency test timeout in milliseconds. */
+  default_latency_timeout_ms?: number
   /**  是否使用内部的脚本支持，默认为真 */
   enable_builtin_enhanced: boolean
   /**  proxy 页面布局 列数 */
@@ -2744,8 +2782,8 @@ export type NyanpasuAppConfig_Deserialize = {
    *  平台相关默认值：Windows 为 `webview`，其他平台 `native`
    */
   tray_menu_mode: TrayMenuMode
-  /**  WebView 托盘菜单窗口失焦时的行为：隐藏还是销毁 */
-  tray_menu_close_behavior: TrayMenuCloseBehavior
+  /**  窗口关闭时的行为：销毁还是隐藏，可按窗口种类单独设定 */
+  window_close?: WindowCloseSettings
   /**  是否启用网络统计信息浮窗 */
   network_statistic_widget: NetworkStatisticWidgetConfig
   /**  How long recorded traffic is kept */
@@ -2820,6 +2858,8 @@ export type NyanpasuAppConfig_Serialize = {
   hotkeys: string[]
   /**  默认的延迟测试连接 */
   default_latency_test: string
+  /**  Latency test timeout in milliseconds. */
+  default_latency_timeout_ms: number
   /**  是否使用内部的脚本支持，默认为真 */
   enable_builtin_enhanced: boolean
   /**  proxy 页面布局 列数 */
@@ -2845,8 +2885,8 @@ export type NyanpasuAppConfig_Serialize = {
    *  平台相关默认值：Windows 为 `webview`，其他平台 `native`
    */
   tray_menu_mode: TrayMenuMode
-  /**  WebView 托盘菜单窗口失焦时的行为：隐藏还是销毁 */
-  tray_menu_close_behavior: TrayMenuCloseBehavior
+  /**  窗口关闭时的行为：销毁还是隐藏，可按窗口种类单独设定 */
+  window_close: WindowCloseSettings
   /**  是否启用网络统计信息浮窗 */
   network_statistic_widget: NetworkStatisticWidgetConfig
   /**  How long recorded traffic is kept */
@@ -3669,6 +3709,10 @@ export type ProxyGroup = {
   now: ProxyName | null
   /**  The member a user pinned; `None` while the core selects on its own. */
   fixed: ProxyName | null
+  /**  The URL the core tests this group's members with; `None` when unset. */
+  testUrl: string | null
+  /**  The status codes a test must return, in the core's range syntax. */
+  expectedStatus: string | null
   hidden: boolean
   icon: string | null
   capabilities: ProxyGroupCapabilities
@@ -3946,7 +3990,6 @@ export type RuntimeBuildError =
     }
   | { kind: 'serialize_final_config' }
   | { kind: 'config_not_mapping' }
-  | { kind: 'serialize_runtime_config' }
 
 export type RuntimeBuildLog = {
   tag: OperatorTag
@@ -4593,9 +4636,6 @@ export type TransformOwner =
 
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 
-/**  What happens to the WebView tray menu window when it loses focus. */
-export type TrayMenuCloseBehavior = 'hide' | 'close'
-
 /**
  *  Whether the tray menu uses the system-native menu or the WebView menu.
  *
@@ -4652,6 +4692,47 @@ export type UsagePage = {
 
 export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
 
+/**  What closing a window does. */
+export type WindowCloseBehavior =
+  /**  Destroy the window and its webview, freeing their memory. */
+  | 'destroy'
+  /**  Keep the window and its webview, hidden, so reopening is instant. */
+  | 'hide'
+
+/**  One window kind's choice: follow the global behavior or set its own. */
+export type WindowCloseOverride = 'inherit' | 'destroy' | 'hide'
+
+/**
+ *  How each kind of window closes: a global behavior that every kind follows
+ *  unless it sets its own.
+ *
+ *  A patch names only the fields it changes, so an edit of one field, made
+ *  from a page that last saw the others a moment ago, leaves them alone.
+ */
+export type WindowCloseSettings = {
+  global?: WindowCloseBehavior
+  main?: WindowCloseOverride
+  editor?: WindowCloseOverride
+  tray_menu?: WindowCloseOverride
+}
+
+export type WindowCloseSettingsPatch =
+  WindowCloseSettingsPatch_Serialize | WindowCloseSettingsPatch_Deserialize
+
+export type WindowCloseSettingsPatch_Deserialize = {
+  global?: WindowCloseBehavior | null
+  main?: WindowCloseOverride | null
+  editor?: WindowCloseOverride | null
+  tray_menu?: WindowCloseOverride | null
+}
+
+export type WindowCloseSettingsPatch_Serialize = {
+  global?: WindowCloseBehavior | null
+  main?: WindowCloseOverride | null
+  editor?: WindowCloseOverride | null
+  tray_menu?: WindowCloseOverride | null
+}
+
 /**  Message for inter-window communication */
 export type WindowMessageEvent = {
   /**  Source window label */
@@ -4662,15 +4743,6 @@ export type WindowMessageEvent = {
   event: string
   /**  Message payload */
   payload: any
-}
-
-/**
- *  Event emitted by the frontend when a window's webview is ready and visible.
- *  Carries the window label so the backend can handle per-window logic.
- *  Event name: `window-ready-event`
- */
-export type WindowReadyEvent = {
-  label: string
 }
 
 /* Tauri Specta runtime */

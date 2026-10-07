@@ -209,6 +209,8 @@ export function configErrorMessage(
       return m.error_config_invalid_update_sources({ reason: error.reason })
     case 'invalid_core_logs':
       return m.error_config_invalid_core_logs({ reason: error.reason })
+    case 'invalid_latency_timeout':
+      return m.error_config_invalid_latency_timeout({ reason: error.reason })
     case 'validate_hotkeys':
       return hotkeyParseMessage(error.source)
     case 'workflow_not_ready':
@@ -586,7 +588,6 @@ function buildRuntimeMessage(
       ].join('\n\n')
     case 'serialize_final_config':
     case 'config_not_mapping':
-    case 'serialize_runtime_config':
       return m.error_runtime_render_runtime_config()
   }
 }

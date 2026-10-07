@@ -377,6 +377,23 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn non_utf8_platform_roots_are_rejected_without_filesystem_access() {
+        use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+        let path = PathBuf::from(OsStr::from_bytes(b"root\xff"));
+
+        for root in [Root::Config, Root::Data] {
+            assert!(matches!(
+                suggested(root, Some(path.clone())),
+                Err(DiscoverError::NotUtf8 { root: actual_root, path: actual_path })
+                    if actual_root == root && actual_path == path
+            ));
+        }
+    }
+
+    // macOS filesystems reject this fixture before the resolver can inspect it.
+    // Keep the filesystem integration on Linux; the pure UTF-8 check runs on all Unix hosts.
+    #[cfg(target_os = "linux")]
+    #[test]
     fn a_non_utf8_executable_dir_is_rejected() {
         use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
         let root = tempfile::tempdir().unwrap();

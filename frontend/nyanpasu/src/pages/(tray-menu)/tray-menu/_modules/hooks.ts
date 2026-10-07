@@ -1,6 +1,5 @@
 import { useLockFn } from '@nyanpasu/hooks'
 import { isTauri } from '@nyanpasu/platform'
-import { useSetting } from '@nyanpasu/query'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = isTauri() ? getCurrentWebviewWindow() : null
@@ -16,26 +15,22 @@ export type AsyncButtonOnClick<
 export function useTrayClickHandler<
   P extends unknown[] = [React.MouseEvent<HTMLButtonElement>],
 >(onClick?: AsyncHandler<P>, disableClose?: boolean) {
-  const { value: closeBehavior } = useSetting('tray_menu_close_behavior')
-
   return useLockFn(async (...args: P) => {
     if (disableClose) {
       await onClick?.(...args)
       return
     }
 
-    if (closeBehavior === 'close') {
-      // Run the action before closing. Closing first can destroy this webview
-      // before IPC actions like quit_application are sent.
-      try {
-        await onClick?.(...args)
-      } finally {
-        await appWindow?.close()
-      }
-    } else {
-      // Hide mode (default): hide immediately for fast visual response.
-      await appWindow?.hide()
+    // Run the action before closing: closing decides, from the window's close
+    // setting, whether the webview is destroyed, and a destroyed webview cannot
+    // send IPC actions like quit_application. The menu stays visible while the
+    // action runs; hiding it first would also make it lose focus, and the
+    // backend closes the menu then.
+    try {
       await onClick?.(...args)
+    } finally {
+      // A failed close must not hide the action's own error.
+      await appWindow?.close().catch(console.error)
     }
   })
 }

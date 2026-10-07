@@ -23,6 +23,7 @@ pub(crate) enum CoreTypeMeta {
     ClashRs(String),
     ClashRsAlpha,
     Meow(String),
+    MeowAlpha(String),
 }
 
 pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> String {
@@ -43,7 +44,26 @@ pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> Stri
             format!("zhongfly/Clash-premium-backup/releases/download/{tag}/{artifact}")
         }
         CoreTypeMeta::Meow(tag) => {
-            format!("madeye/meow-rs/releases/download/{tag}/{artifact}")
+            format!("meow-rs/meow-rs/releases/download/{tag}/{artifact}")
         }
+        CoreTypeMeta::MeowAlpha(_) => {
+            format!("meow-rs/meow-rs/releases/download/Prerelease-Alpha/{artifact}")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn meow_alpha_uses_the_fixed_prerelease_tag() {
+        assert_eq!(
+            get_download_path(
+                CoreTypeMeta::MeowAlpha("alpha-3c27aca".into()),
+                "meow-alpha-3c27aca-aarch64-apple-darwin.tar.gz",
+            ),
+            "meow-rs/meow-rs/releases/download/Prerelease-Alpha/meow-alpha-3c27aca-aarch64-apple-darwin.tar.gz"
+        );
     }
 }

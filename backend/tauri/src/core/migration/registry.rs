@@ -10,6 +10,9 @@ pub static MODULES: Lazy<Vec<&'static dyn ModuleMigrator>> = Lazy::new(|| {
         // creates.
         &modules::typed_config::MIGRATOR,
         &modules::storage::MIGRATOR,
+        // After the modules that create or edit `application.yaml`, though its
+        // creator stamps the file itself, so the order is not what stamps it.
+        &modules::application::MIGRATOR,
     ]
 });
 

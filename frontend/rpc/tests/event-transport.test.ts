@@ -131,8 +131,10 @@ describe('HTTP event transport', () => {
     useBrowserEventSource()
     const transport = createHttpEventTransport()
     await expect(
-      transport.emit('window-ready-event', { label: 'main' }),
-    ).rejects.toThrow('Emitting window-ready-event is not available over HTTP')
+      transport.emit('window-message-event', { label: 'main' }),
+    ).rejects.toThrow(
+      'Emitting window-message-event is not available over HTTP',
+    )
     transport.dispose()
   })
   it('keeps independent connections and listeners for two transport instances', async () => {

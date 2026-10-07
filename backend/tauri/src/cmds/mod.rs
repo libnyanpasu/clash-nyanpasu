@@ -4,7 +4,7 @@ use crate::utils;
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
-use nyanpasu_egui::widget::StatisticWidgetVariant;
+use nyanpasu_helper::StatisticWidgetVariant;
 use nyanpasu_paths::PathResolver;
 use tauri::utils::platform::current_exe;
 

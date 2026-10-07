@@ -17,7 +17,6 @@ snapshot-persistence = ['dep:rmp-serde', 'dep:zstd']
 
 [dependencies]
 nyanpasu-helper = { path = '../nyanpasu-helper' }
-nyanpasu-egui = { path = '../nyanpasu-egui' }
 nyanpasu-utils.workspace = true
 
 snafu.workspace = true

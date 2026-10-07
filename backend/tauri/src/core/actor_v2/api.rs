@@ -25,6 +25,17 @@ pub enum ApiError {
     Protocol(#[from] clash_api::Error),
 }
 
+const DEFAULT_DEADLINE: Duration = Duration::from_secs(30);
+
+/// Core-side overhead allowed on top of a latency test's own timeout.
+const DELAY_DEADLINE_MARGIN: Duration = Duration::from_secs(5);
+
+/// A latency test legitimately runs for its whole measurement timeout, so its
+/// deadline follows the query instead of the fixed default.
+fn delay_deadline(query: &DelayQuery) -> Duration {
+    query.timeout + DELAY_DEADLINE_MARGIN
+}
+
 /// One read of the proxy view. `groups` is the core's own group list, or `None`
 /// when the instance offers none and groups must be inferred from `proxies`.
 pub(crate) struct ProxySnapshot {
@@ -109,10 +120,18 @@ impl ApiClient {
         &self,
         operation: impl Future<Output = clash_api::Result<T>>,
     ) -> Result<T, ApiError> {
+        self.execute_within(DEFAULT_DEADLINE, operation).await
+    }
+
+    async fn execute_within<T>(
+        &self,
+        deadline: Duration,
+        operation: impl Future<Output = clash_api::Result<T>>,
+    ) -> Result<T, ApiError> {
         tokio::select! {
             biased;
             _ = self.revoked.cancelled() => Err(ApiError::Stale),
-            result = tokio::time::timeout(Duration::from_secs(30), async {
+            result = tokio::time::timeout(deadline, async {
                 self.check().await?;
                 let result = operation.await;
                 self.check().await?;
@@ -218,8 +237,17 @@ impl ApiClient {
         .await
     }
 
+    pub async fn clear_proxy_selection(&self, group: &ProxyName) -> Result<(), ApiError> {
+        self.execute(self.client.clear_proxy_selection(group)).await
+    }
+
     pub async fn update_proxy_provider(&self, name: &ProviderName) -> Result<(), ApiError> {
         self.execute(self.client.update_proxy_provider(name)).await
+    }
+
+    pub async fn healthcheck_proxy_provider(&self, name: &ProviderName) -> Result<(), ApiError> {
+        self.execute(self.client.healthcheck_proxy_provider(name))
+            .await
     }
 
     pub async fn configs(&self) -> Result<clash_api::RuntimeConfig, ApiError> {
@@ -254,12 +282,19 @@ impl ApiClient {
         provider: Option<&ProviderName>,
         query: &DelayQuery,
     ) -> Result<Delay, ApiError> {
+        let deadline = delay_deadline(query);
         match provider {
             Some(provider) => {
-                self.execute(self.client.provider_proxy_delay(provider, name, query))
+                self.execute_within(
+                    deadline,
+                    self.client.provider_proxy_delay(provider, name, query),
+                )
+                .await
+            }
+            None => {
+                self.execute_within(deadline, self.client.proxy_delay(name, query))
                     .await
             }
-            None => self.execute(self.client.proxy_delay(name, query)).await,
         }
     }
 
@@ -268,7 +303,8 @@ impl ApiClient {
         group: &ProxyName,
         query: &DelayQuery,
     ) -> Result<indexmap::IndexMap<ProxyName, u16>, ApiError> {
-        self.execute(self.client.group_delay(group, query)).await
+        self.execute_within(delay_deadline(query), self.client.group_delay(group, query))
+            .await
     }
 
     pub async fn connections(&self) -> Result<clash_api::ConnectionsSnapshot, ApiError> {
@@ -388,6 +424,16 @@ impl ApiLease {
             }
         });
         Self { client, monitor }
+    }
+
+    #[cfg(test)]
+    pub(super) async fn stop_for_test(mut self) {
+        self.client.revoke();
+        self.monitor.abort();
+        match (&mut self.monitor).await {
+            Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
+            _ => {}
+        }
     }
 }
 
@@ -699,6 +745,41 @@ pub(crate) mod tests {
             .unwrap()
             .unwrap();
         assert!(matches!(result, Err(ApiError::Stale)));
+        core.actor.stop(None);
+        server.abort();
+    }
+
+    fn delay_query(timeout: Duration) -> DelayQuery {
+        DelayQuery::new("http://example.com/".parse().unwrap(), timeout).unwrap()
+    }
+
+    #[test]
+    fn a_delay_deadline_outlasts_the_query_timeout() {
+        assert_eq!(
+            delay_deadline(&delay_query(Duration::from_secs(5))),
+            Duration::from_secs(10)
+        );
+        assert!(delay_deadline(&delay_query(Duration::from_secs(30))) > DEFAULT_DEADLINE);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_delay_call_waits_for_its_own_timeout_plus_the_margin() {
+        let (url, server) = server(Router::new().route(
+            "/proxies/node/delay",
+            get(|| async { std::future::pending::<Json<()>>().await }),
+        ))
+        .await;
+        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let api = core.api_client().await.unwrap();
+        let query = delay_query(Duration::from_secs(30));
+        let name = ProxyName::from("node");
+        let call = tokio::spawn(async move { api.proxy_delay(&name, None, &query).await });
+
+        // The fixed 30 s default would already have fired here.
+        tokio::time::sleep(Duration::from_secs(31)).await;
+        assert!(!call.is_finished());
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert!(matches!(call.await.unwrap(), Err(ApiError::Timeout)));
         core.actor.stop(None);
         server.abort();
     }

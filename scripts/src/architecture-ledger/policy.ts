@@ -174,6 +174,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     "NET_STAT_WIDGET_FLATTEN",
     "LANGUAGE_CASE",
   ]),
+  ...migrationModuleStatics("application", ["WINDOW_CLOSE"]),
   ...migrationModuleStatics("profiles", [
     "NULL_VALUE",
     "SCRIPT_NEWTYPE",

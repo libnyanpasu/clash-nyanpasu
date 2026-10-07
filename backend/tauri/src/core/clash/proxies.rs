@@ -1,5 +1,7 @@
 //! The proxy view the tray and the frontend share, assembled from one read
 //! of the core's `/proxies`, `/providers/proxies` and group list.
+use std::collections::HashSet;
+
 use anyhow::Result;
 use clash_api::{IndexMap, ProviderName, Proxy, ProxyName, ProxyProvider, VehicleType};
 use serde::{Deserialize, Serialize};
@@ -78,6 +80,10 @@ pub struct ProxyGroup {
     pub now: Option<ProxyName>,
     /// The member a user pinned; `None` while the core selects on its own.
     pub fixed: Option<ProxyName>,
+    /// The URL the core tests this group's members with; `None` when unset.
+    pub test_url: Option<String>,
+    /// The status codes a test must return, in the core's range syntax.
+    pub expected_status: Option<String>,
     pub hidden: bool,
     pub icon: Option<String>,
     pub capabilities: ProxyGroupCapabilities,
@@ -96,6 +102,11 @@ impl ProxyGroup {
                 .fixed
                 .clone()
                 .filter(|name| !name.as_str().is_empty()),
+            test_url: record.test_url.clone().filter(|url| !url.is_empty()),
+            expected_status: record
+                .expected_status
+                .clone()
+                .filter(|status| !status.is_empty()),
             hidden: record.hidden.unwrap_or(false),
             icon: record.icon.clone(),
             capabilities,
@@ -125,12 +136,13 @@ fn with_provider(mut proxy: Proxy) -> Proxy {
     proxy
 }
 
-/// Every proxy of an HTTP, File, or Inline provider by name, tagged with its
+/// Every proxy of an HTTP, File, or Inline provider by name, with its
 /// provider. Mihomo 1.19.28 no longer includes these nodes in /proxies, so
-/// their metadata must come from /providers/proxies.
-fn provider_proxy_map(
+/// their metadata must come from /providers/proxies. The index borrows, so
+/// only the nodes a group references are ever copied.
+fn provider_proxy_index(
     providers: &IndexMap<ProviderName, ProxyProvider>,
-) -> IndexMap<ProxyName, Proxy> {
+) -> IndexMap<&ProxyName, (&ProviderName, &Proxy)> {
     let mut proxies = IndexMap::new();
     for (provider, record) in providers {
         if !matches!(
@@ -140,9 +152,7 @@ fn provider_proxy_map(
             continue;
         }
         for proxy in &record.proxies {
-            let mut proxy = proxy.clone();
-            proxy.provider = Some(provider.as_str().to_owned());
-            proxies.insert(proxy.name.clone(), proxy);
+            proxies.insert(&proxy.name, (provider, proxy));
         }
     }
     proxies
@@ -235,14 +245,18 @@ impl Proxies {
 
         // Group members missing from /proxies (provider-owned nodes) are
         // added once; a node shared by several groups keeps a single entry.
-        let provider_proxies = provider_proxy_map(providers);
+        let provider_proxies = provider_proxy_index(providers);
         let mut convert = |record: Proxy| {
             for name in record.all.iter().flatten() {
                 if !nodes.contains_key(name) {
-                    let node = provider_proxies
-                        .get(name)
-                        .cloned()
-                        .unwrap_or_else(|| unknown_proxy(name));
+                    let node = match provider_proxies.get(name) {
+                        Some((provider, proxy)) => {
+                            let mut node = Proxy::clone(proxy);
+                            node.provider = Some(provider.as_str().to_owned());
+                            node
+                        }
+                        None => unknown_proxy(name),
+                    };
                     nodes.insert(name.clone(), node);
                 }
             }
@@ -259,6 +273,39 @@ impl Proxies {
     }
 }
 
+impl Proxies {
+    /// Drops every node's per-URL delay records except those in `keep`.
+    pub fn retain_extra(&mut self, keep: &HashSet<&str>) {
+        for node in self.nodes.values_mut() {
+            if let Some(extra) = node.extra.as_mut() {
+                extra.retain(|url, _| keep.contains(url.as_str()));
+            }
+        }
+    }
+
+    /// The frontend reads delays only under a group's test URL or the default
+    /// one, so other URLs' records are not sent. Both the raw and the
+    /// normalized form are kept: the core keys `extra` by the string a test
+    /// was requested with (normalized by the backend) and by a group's raw
+    /// testUrl for its own health checks.
+    pub fn trim_for_frontend(mut self, default_url: &str) -> Self {
+        let mut urls = Vec::new();
+        for url in self
+            .global
+            .iter()
+            .chain(&self.groups)
+            .filter_map(|group| group.test_url.as_deref())
+            .chain([default_url])
+        {
+            urls.extend(url::Url::parse(url).map(|parsed| parsed.as_str().to_owned()));
+            urls.push(url.to_owned());
+        }
+        let keep: HashSet<&str> = urls.iter().map(String::as_str).collect();
+        self.retain_extra(&keep);
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +319,32 @@ mod tests {
         record(json!({
             "name": name, "type": kind, "udp": false, "history": [], "all": all, "now": now
         }))
+    }
+
+    #[test]
+    fn a_group_carries_its_test_url_and_expected_status() {
+        let mut group = item("g", "URLTest", Some(vec!["DIRECT"]), Some("DIRECT"));
+        group.test_url = Some("https://cp.cloudflare.com".into());
+        group.expected_status = Some("204".into());
+        let mut empty = item("e", "Selector", Some(vec!["DIRECT"]), Some("DIRECT"));
+        empty.test_url = Some(String::new());
+        empty.expected_status = Some(String::new());
+        let proxies =
+            Proxies::from_responses(records(&[group, empty]), &IndexMap::new(), None).unwrap();
+        let by_name = |name: &str| {
+            proxies
+                .groups
+                .iter()
+                .find(|g| g.name.as_str() == name)
+                .unwrap()
+        };
+        assert_eq!(
+            by_name("g").test_url.as_deref(),
+            Some("https://cp.cloudflare.com")
+        );
+        assert_eq!(by_name("g").expected_status.as_deref(), Some("204"));
+        assert_eq!(by_name("e").test_url, None);
+        assert_eq!(by_name("e").expected_status, None);
     }
 
     fn name(value: &str) -> ProxyName {
@@ -323,6 +396,35 @@ mod tests {
             .unwrap()
             .extend(fields.as_object().unwrap().clone());
         ProxyGroup::from_record(&record(value))
+    }
+
+    /// A node listed by several providers takes the last one, a provider
+    /// with an unsupported vehicle contributes nothing, and only members a
+    /// group references are added.
+    #[test]
+    fn a_node_in_several_providers_takes_the_last_provider() {
+        let providers = IndexMap::from([
+            provider("first", "HTTP", vec![item("shared", "Vmess", None, None)]),
+            provider("second", "File", vec![item("shared", "Trojan", None, None)]),
+            provider(
+                "compat",
+                "Compatible",
+                vec![item("compat-only", "Vless", None, None)],
+            ),
+            provider(
+                "extra",
+                "Inline",
+                vec![item("unreferenced", "Vless", None, None)],
+            ),
+        ]);
+        let group = item("G", "Selector", Some(vec!["shared", "compat-only"]), None);
+        let result = Proxies::from_responses(records(&[group]), &providers, None).unwrap();
+
+        let shared = &result.nodes[&name("shared")];
+        assert_eq!(shared.proxy_type, "Trojan");
+        assert_eq!(shared.provider.as_deref(), Some("second"));
+        assert_eq!(result.nodes[&name("compat-only")].proxy_type, "Unknown");
+        assert!(!result.nodes.contains_key(&name("unreferenced")));
     }
 
     #[test]
@@ -517,11 +619,13 @@ mod tests {
         let cases = [
             ("Selector", None, (true, false)),
             ("Selector", Some(""), (true, false)),
+            ("Selector", Some("a"), (true, false)),
             ("URLTest", None, (false, false)),
             ("URLTest", Some(""), (true, true)),
             ("URLTest", Some("a"), (true, true)),
             ("Fallback", None, (false, false)),
             ("Fallback", Some(""), (true, true)),
+            ("Fallback", Some("a"), (true, true)),
             ("LoadBalance", None, (false, false)),
             ("Relay", None, (false, false)),
             ("Smart", None, (false, false)),
@@ -597,5 +701,149 @@ mod tests {
             let result = assemble(&[record(value)], None);
             assert_eq!(result.nodes[&name("n")].provider.as_deref(), expected);
         }
+    }
+
+    fn extra(urls: &[&str]) -> Option<IndexMap<String, clash_api::ProxyExtra>> {
+        Some(
+            urls.iter()
+                .map(|url| {
+                    (
+                        url.to_string(),
+                        clash_api::ProxyExtra {
+                            alive: true,
+                            history: Vec::new(),
+                        },
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn trimming_keeps_only_group_urls_and_the_default() {
+        let mut group = item("g", "URLTest", Some(vec!["a", "DIRECT"]), Some("a"));
+        group.test_url = Some("https://g/".into());
+        let mut a = item("a", "Vless", None, None);
+        a.extra = extra(&["https://g/", "https://d/", "https://other/"]);
+        let mut proxies = records(&[group]);
+        proxies.insert(name("a"), a);
+        let trimmed = Proxies::from_responses(proxies, &IndexMap::new(), None)
+            .unwrap()
+            .trim_for_frontend("https://d/");
+        let kept: Vec<_> = trimmed.nodes[&name("a")]
+            .extra
+            .as_ref()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(kept, ["https://g/", "https://d/"]);
+    }
+
+    /// The core keys `extra` by the URL it was asked with (normalized by the
+    /// backend) and by a group's raw testUrl for its own health checks.
+    #[test]
+    fn trimming_keeps_raw_and_normalized_forms_of_a_bare_host_url() {
+        let mut group = item("g", "URLTest", Some(vec!["a"]), Some("a"));
+        group.test_url = Some("https://g".into());
+        let mut a = item("a", "Vless", None, None);
+        a.extra = extra(&["https://g", "https://g/", "https://d/", "https://other/"]);
+        let mut proxies = records(&[group]);
+        proxies.insert(name("a"), a);
+        let trimmed = Proxies::from_responses(proxies, &IndexMap::new(), None)
+            .unwrap()
+            .trim_for_frontend("https://d");
+        let kept: Vec<_> = trimmed.nodes[&name("a")]
+            .extra
+            .as_ref()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(kept, ["https://g", "https://g/", "https://d/"]);
+    }
+
+    #[test]
+    fn trimming_keeps_global_and_hidden_group_urls_and_leaves_history() {
+        let mut global = item("GLOBAL", "Selector", Some(vec!["g"]), Some("g"));
+        global.test_url = Some("https://global/".into());
+        let mut hidden = item("g", "URLTest", Some(vec!["a"]), Some("a"));
+        hidden.test_url = Some("https://hidden/".into());
+        hidden.hidden = Some(true);
+        let mut a = item("a", "Vless", None, None);
+        a.history = vec![
+            serde_json::from_value(json!({"time":"2026-10-06T12:34:56+08:00","delay":7})).unwrap(),
+        ];
+        a.extra = extra(&["https://global/", "https://hidden/", "https://other/"]);
+        let mut proxies = records(&[global, hidden]);
+        proxies.insert(name("a"), a);
+        let full = Proxies::from_responses(proxies, &IndexMap::new(), None).unwrap();
+        let history = serde_json::to_value(&full.nodes[&name("a")].history).unwrap();
+        let trimmed = full.trim_for_frontend("https://d/");
+        let node = &trimmed.nodes[&name("a")];
+        let kept: Vec<_> = node.extra.as_ref().unwrap().keys().cloned().collect();
+        assert_eq!(kept, ["https://global/", "https://hidden/"]);
+        assert_eq!(serde_json::to_value(&node.history).unwrap(), history);
+    }
+
+    #[test]
+    fn trimming_leaves_nodes_without_extra_alone() {
+        let mut a = item("a", "Vless", None, None);
+        a.extra = Some(IndexMap::new());
+        let mut proxies = records(&[]);
+        proxies.insert(name("a"), a);
+        let trimmed = Proxies::from_responses(proxies, &IndexMap::new(), None)
+            .unwrap()
+            .trim_for_frontend("https://d/");
+        assert_eq!(trimmed.nodes[&name("a")].extra, Some(IndexMap::new()));
+        assert_eq!(trimmed.nodes[&name("DIRECT")].extra, None);
+    }
+
+    /// Prints the payload saved for a 1000-node subscription; numbers go in the PR.
+    #[test]
+    fn trimming_shrinks_a_large_snapshot() {
+        let urls = ["https://g/", "https://other-1/", "https://other-2/"];
+        let history: Vec<clash_api::DelayHistory> = (0..10)
+            .map(|delay| {
+                serde_json::from_value(
+                    json!({"time":"2026-10-06T12:34:56.123456789+08:00","delay":delay}),
+                )
+                .unwrap()
+            })
+            .collect();
+        let names: Vec<String> = (0..1000).map(|i| format!("node-{i}")).collect();
+        let mut group = item(
+            "g",
+            "URLTest",
+            Some(names.iter().map(String::as_str).collect()),
+            None,
+        );
+        group.test_url = Some(urls[0].into());
+        let mut proxies = records(&[group]);
+        for node_name in &names {
+            let mut node = item(node_name, "Vless", None, None);
+            node.history = history.clone();
+            node.extra = Some(
+                urls.iter()
+                    .map(|url| {
+                        (
+                            url.to_string(),
+                            clash_api::ProxyExtra {
+                                alive: true,
+                                history: history.clone(),
+                            },
+                        )
+                    })
+                    .collect(),
+            );
+            proxies.insert(name(node_name), node);
+        }
+        let full = Proxies::from_responses(proxies, &IndexMap::new(), None).unwrap();
+        let before = serde_json::to_vec(&full).unwrap().len();
+        let after = serde_json::to_vec(&full.trim_for_frontend(urls[0]))
+            .unwrap()
+            .len();
+        println!("proxies payload: {before} -> {after} bytes");
+        assert!(after < before);
     }
 }

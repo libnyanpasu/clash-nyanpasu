@@ -1,14 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type {
-  BreakConnectionStrategy,
-  ExternalControllerStrategy,
-} from '@nyanpasu/rpc/types'
+import type { ExternalControllerStrategy } from '@nyanpasu/rpc/types'
 import {
-  breaksOnProxyChange,
   formatControllerAddress,
   fromNetworkStatisticWidgetOption,
   parseControllerAddress,
-  proxyChangeBreakMode,
   toNetworkStatisticWidgetOption,
 } from '../src/ipc/settings-conversions'
 
@@ -96,25 +91,5 @@ describe('external controller address', () => {
     for (const value of ['::1', '::1:9090', 'fe80::1:9090']) {
       expect(parseControllerAddress(value)).toBeNull()
     }
-  })
-})
-
-describe('break connection on proxy change', () => {
-  const strategy: BreakConnectionStrategy = {
-    on_proxy_change: 'proxy_group',
-    on_profile_change: false,
-    on_mode_change: true,
-  }
-
-  it('treats every mode but off as enabled', () => {
-    expect(breaksOnProxyChange(strategy)).toBe(true)
-    expect(breaksOnProxyChange({ ...strategy, on_proxy_change: 'off' })).toBe(
-      false,
-    )
-  })
-
-  it('switches between off and all', () => {
-    expect(proxyChangeBreakMode(false)).toBe('off')
-    expect(proxyChangeBreakMode(true)).toBe('all')
   })
 })

@@ -49,8 +49,8 @@ use super::{
     },
     Progress, RecordingNotifications,
     mutations::{
-        manager, mutate_with_hints, names_overrides, overrides, settled, simple_mutate, temp_path,
-        unserviceable_check,
+        application_manager, manager, mutate_with_hints, names_overrides, overrides, settled,
+        simple_mutate, temp_path, unserviceable_check,
     },
     ownership,
 };
@@ -62,13 +62,16 @@ use crate::{
         runtime,
         tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
     },
-    core::actor_v2::{
-        CoreClient,
-        endpoint::{
-            ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
-            CoreSubmission, EndpointHandle, ExecutionHost,
+    core::{
+        actor_v2::{
+            CoreClient,
+            endpoint::{
+                ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
+                CoreSubmission, EndpointHandle, ExecutionHost,
+            },
+            service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
         },
-        service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
+        migration::modules::application::ApplicationFormat,
     },
 };
 
@@ -333,7 +336,7 @@ pub(super) struct Graph {
     service: ServiceClient,
     pub(super) core: CoreClient,
     log: Log,
-    application: PersistentStateManager<NyanpasuAppConfig>,
+    application: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
     clash: PersistentStateManager<ClashConfig>,
     ports: Arc<SessionPortResolver>,
     notifications: Arc<RecordingNotifications>,
@@ -383,7 +386,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let service = ServiceClient::spawn_bounded(daemon.clone(), 0, setup.command_timeout)
         .await
         .unwrap();
-    let application = manager(
+    let application = application_manager(
         temp_path(&dir, "application.yaml"),
         NyanpasuAppConfig {
             enable_service_mode: setup.service_mode,
@@ -405,7 +408,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         core_specs: Arc::new(crate::client::runtime_core_spec),
         profiles_dir: dir.path().join("profiles"),
         paths: paths.clone(),
-        scripts: crate::enhance::ScriptDirs::under(dir.path()),
+        scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
     });
     let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(

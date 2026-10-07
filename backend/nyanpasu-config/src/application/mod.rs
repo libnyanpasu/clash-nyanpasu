@@ -11,6 +11,7 @@ mod logging;
 mod traffic;
 mod update;
 mod widget;
+mod window_close;
 pub use clash_core::*;
 pub use core_logs::*;
 pub use i18n::*;
@@ -18,6 +19,7 @@ pub use logging::*;
 pub use traffic::*;
 pub use update::*;
 pub use widget::*;
+pub use window_close::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
@@ -46,15 +48,6 @@ impl Default for TrayMenuMode {
             TrayMenuMode::Native
         }
     }
-}
-
-/// What happens to the WebView tray menu window when it loses focus.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum TrayMenuCloseBehavior {
-    #[default]
-    Hide,
-    Close,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
@@ -154,6 +147,10 @@ pub struct NyanpasuAppConfig {
     /// 默认的延迟测试连接
     pub default_latency_test: String,
 
+    /// Latency test timeout in milliseconds.
+    #[serde(default = "default_latency_timeout_ms")]
+    pub default_latency_timeout_ms: u64,
+
     /// 是否使用内部的脚本支持，默认为真
     pub enable_builtin_enhanced: bool,
 
@@ -195,8 +192,10 @@ pub struct NyanpasuAppConfig {
     /// 平台相关默认值：Windows 为 `webview`，其他平台 `native`
     pub tray_menu_mode: TrayMenuMode,
 
-    /// WebView 托盘菜单窗口失焦时的行为：隐藏还是销毁
-    pub tray_menu_close_behavior: TrayMenuCloseBehavior,
+    /// 窗口关闭时的行为：销毁还是隐藏，可按窗口种类单独设定
+    #[patch(nesting)]
+    #[serde(default)]
+    pub window_close: WindowCloseSettings,
 
     /// 是否启用网络统计信息浮窗
     pub network_statistic_widget: NetworkStatisticWidgetConfig,
@@ -240,6 +239,23 @@ pub struct NyanpasuAppConfig {
     pub enable_macos_colored_icons: bool,
 }
 
+/// The latency test timeout a fresh or upgraded install starts with.
+pub const DEFAULT_LATENCY_TIMEOUT_MS: u64 = 5000;
+
+fn default_latency_timeout_ms() -> u64 {
+    DEFAULT_LATENCY_TIMEOUT_MS
+}
+
+/// A latency test waits between one and thirty seconds: Mihomo parses a single-node
+/// timeout as int16 milliseconds and the API adapter bounds every call.
+pub fn validate_latency_timeout(timeout_ms: u64) -> Result<(), &'static str> {
+    if (1000..=30000).contains(&timeout_ms) {
+        Ok(())
+    } else {
+        Err("the latency test timeout must be between 1 and 30 seconds")
+    }
+}
+
 fn default_max_log_file_size() -> u64 {
     10
 }
@@ -266,6 +282,7 @@ impl Default for NyanpasuAppConfig {
             core: ClashCore::default(),
             hotkeys: Vec::new(),
             default_latency_test: "http://www.gstatic.com/generate_204".into(),
+            default_latency_timeout_ms: default_latency_timeout_ms(),
             enable_builtin_enhanced: true,
             proxy_layout_column: 0,
             max_log_files: 7,
@@ -277,7 +294,7 @@ impl Default for NyanpasuAppConfig {
             tray_selector_mode: ProxiesSelectorMode::default(),
             always_on_top: false,
             tray_menu_mode: TrayMenuMode::default(),
-            tray_menu_close_behavior: TrayMenuCloseBehavior::default(),
+            window_close: WindowCloseSettings::default(),
             network_statistic_widget: NetworkStatisticWidgetConfig::default(),
             traffic_retention: TrafficRetention::default(),
             enable_local_ip_probe: false,
@@ -295,6 +312,25 @@ impl Default for NyanpasuAppConfig {
 mod patch_tests {
     use super::*;
     use struct_patch::Status;
+
+    #[test]
+    fn latency_timeout_defaults_when_missing_and_is_bounded() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("default_latency_timeout_ms");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            config.default_latency_timeout_ms,
+            DEFAULT_LATENCY_TIMEOUT_MS
+        );
+
+        assert!(validate_latency_timeout(1000).is_ok());
+        assert!(validate_latency_timeout(30000).is_ok());
+        assert!(validate_latency_timeout(999).is_err());
+        assert!(validate_latency_timeout(30001).is_err());
+    }
 
     #[test]
     fn local_ip_probe_requires_opt_in_and_can_be_patched() {
@@ -459,23 +495,19 @@ mod patch_tests {
     }
 
     /// Tray menu settings decode from their snake_case wire form onto the patch,
-    /// and the enums keep their platform-dependent / `Hide` defaults.
+    /// and the mode keeps its platform-dependent default.
     #[test]
     fn tray_menu_settings_wire_format() {
         let patch: NyanpasuAppConfigPatch =
-            serde_yaml_ng::from_str("tray_menu_mode: native\ntray_menu_close_behavior: close\n")
+            serde_yaml_ng::from_str("tray_menu_mode: native\nwindow_close:\n  tray_menu: hide\n")
                 .expect("tray menu patch must deserialize");
 
         assert_eq!(patch.tray_menu_mode, Some(TrayMenuMode::Native));
         assert_eq!(
-            patch.tray_menu_close_behavior,
-            Some(TrayMenuCloseBehavior::Close)
+            patch.window_close.tray_menu,
+            Some(WindowCloseOverride::Hide)
         );
 
-        assert_eq!(
-            TrayMenuCloseBehavior::default(),
-            TrayMenuCloseBehavior::Hide
-        );
         let expected_mode = if cfg!(windows) {
             TrayMenuMode::Webview
         } else {

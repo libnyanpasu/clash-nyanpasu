@@ -1,3 +1,4 @@
+import MonitorHeartRounded from '~icons/material-symbols/monitor-heart-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
@@ -6,13 +7,20 @@ import { getLocale } from '@/paraglide/runtime'
 import { formatRelativeTime } from '@/utils/date'
 import { useLockFn } from '@nyanpasu/hooks'
 import { ClashProxiesProviderQueryItem } from '@nyanpasu/query'
+import { useProxiesProviderHealthcheck } from '../../_modules/use-proxies-provider-healthcheck'
 import { useProxiesProviderUpdate } from '../../_modules/use-proxies-provider-update'
 
 export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
   const blockTask = useProxiesProviderUpdate(data)
 
+  const healthcheck = useProxiesProviderHealthcheck(data)
+
   const handleRefreshClick = useLockFn(async () => {
     await blockTask.execute()
+  })
+
+  const handleHealthcheckClick = useLockFn(async () => {
+    await healthcheck.execute()
   })
 
   return (
@@ -41,6 +49,16 @@ export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
         >
           <RefreshRounded />
           <span>{m.providers_update_provider()}</span>
+        </Button>
+
+        <Button
+          data-slot="providers-healthcheck-button"
+          className="flex items-center gap-2"
+          onClick={handleHealthcheckClick}
+          loading={healthcheck.isPending}
+        >
+          <MonitorHeartRounded />
+          <span>{m.providers_healthcheck_provider()}</span>
         </Button>
 
         <div className="flex-1" />

@@ -5,7 +5,7 @@ import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
 import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
 import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
-import BreakWhenProxyChangeSwitch from './_modules/break-when-proxy-change-switch'
+import BreakWhenProxyChangeSelector from './_modules/break-when-proxy-change-selector'
 import EnableBuiltinEnhancedSwitch from './_modules/enable-builtin-enhanced-switch'
 import HotkeyManager from './_modules/hotket-manager'
 import LocalIpProbeSwitch from './_modules/local-ip-probe-switch'
@@ -14,9 +14,9 @@ import LogLevelSelector from './_modules/log-level-selector'
 import NetworkStatisticWidgetSelector from './_modules/network-statistic-widget-selector'
 import TrafficRetentionSelector from './_modules/traffic-retention-selector'
 import TrayIconConfig from './_modules/tray-icon-config'
-import TrayMenuCloseBehaviorSelector from './_modules/tray-menu-close-behavior'
 import TrayMenuModeSelector from './_modules/tray-menu-mode'
 import TrayProxiesSelector from './_modules/tray-proxies-selector'
+import WindowCloseBehaviorCard from './_modules/window-close-behavior'
 
 export const Route = createFileRoute('/(main)/main/settings/nyanpasu')({
   component: RouteComponent,
@@ -70,7 +70,7 @@ const EnhanceSettings = () => {
       <SettingsLabel>{m.settings_nyanpasu_enhance_label()}</SettingsLabel>
 
       <SettingsGroup>
-        <BreakWhenProxyChangeSwitch />
+        <BreakWhenProxyChangeSelector />
 
         <BreakWhenProfileChangeSwitch />
 
@@ -92,11 +92,23 @@ const TraySettings = () => {
       <SettingsGroup>
         <TrayMenuModeSelector />
 
-        {trayMenuMode === 'webview' && <TrayMenuCloseBehaviorSelector />}
-
         {trayMenuMode === 'native' && <TrayProxiesSelector />}
 
         <TrayIconConfig />
+      </SettingsGroup>
+    </div>
+  )
+}
+
+const WindowSettings = () => {
+  const { value: trayMenuMode } = useSetting('tray_menu_mode')
+
+  return (
+    <div data-slot="app-settings-container">
+      <SettingsLabel>{m.settings_nyanpasu_window_close()}</SettingsLabel>
+
+      <SettingsGroup>
+        <WindowCloseBehaviorCard showTrayMenu={trayMenuMode === 'webview'} />
       </SettingsGroup>
     </div>
   )
@@ -129,6 +141,8 @@ function RouteComponent() {
         <EnhanceSettings />
 
         <TraySettings />
+
+        <WindowSettings />
 
         <KeyboardSettings />
       </div>

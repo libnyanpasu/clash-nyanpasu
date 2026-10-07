@@ -38,15 +38,11 @@ pub struct ScriptDirs {
 }
 
 impl ScriptDirs {
-    pub fn from_resolver(paths: &nyanpasu_paths::PathResolver) -> Self {
-        Self {
-            scripts: paths.scripts_dir().into_std_path_buf(),
-            cache: paths.cache_dir().into_std_path_buf(),
-        }
+    pub fn new(scripts: PathBuf, cache: PathBuf) -> Self {
+        Self { scripts, cache }
     }
 
-    #[cfg(test)]
-    pub(crate) fn under(root: &Path) -> Self {
+    pub fn under(root: &Path) -> Self {
         Self {
             scripts: root.join("scripts"),
             cache: root.join("cache"),

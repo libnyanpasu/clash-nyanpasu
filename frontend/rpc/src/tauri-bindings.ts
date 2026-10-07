@@ -36,7 +36,6 @@ export const events = {
     'storage-value-changed-event',
   ),
   windowMessageEvent: makeEvent<WindowMessageEvent>('window-message-event'),
-  windowReadyEvent: makeEvent<WindowReadyEvent>('window-ready-event'),
 }
 
 /* Types */
@@ -94,7 +93,13 @@ export type ClashConnectionsSummary = {
 }
 
 export type ClashCoreType =
-  'mihomo' | 'mihomo-alpha' | 'clash-rs' | 'clash-rs-alpha' | 'clash' | 'meow'
+  | 'mihomo'
+  | 'mihomo-alpha'
+  | 'clash-rs'
+  | 'clash-rs-alpha'
+  | 'clash'
+  | 'meow'
+  | 'meow-alpha'
 
 export type ClashWsEvent = {
   sequence: number
@@ -750,15 +755,6 @@ export type WindowMessageEvent = {
   event: string
   /**  Message payload */
   payload: any
-}
-
-/**
- *  Event emitted by the frontend when a window's webview is ready and visible.
- *  Carries the window label so the backend can handle per-window logic.
- *  Event name: `window-ready-event`
- */
-export type WindowReadyEvent = {
-  label: string
 }
 
 /* Tauri Specta runtime */

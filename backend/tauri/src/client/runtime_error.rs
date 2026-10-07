@@ -15,6 +15,7 @@ use crate::{
     client::{
         application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
         core_lifecycle::ports::InstallCoreBinaryError,
+        core_version::CoreVersionError,
         ports::PortResolveError,
         runtime::PublishRuntimeError,
     },
@@ -22,9 +23,8 @@ use crate::{
         actor_v2::{endpoint::ExecutionHost, local_host::CoreSpecError},
         service::control::ServiceCommandError,
     },
-    enhance::RuntimeBuildError,
-    utils::resolve::CoreVersionError,
 };
+use nyanpasu_application::enhance::RuntimeBuildError;
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.
 /// It is the only place a `CoreError` is unpacked for the frontend.

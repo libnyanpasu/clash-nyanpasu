@@ -700,10 +700,21 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.selectProxy>) =>
         commands.selectProxy(...input),
     }),
+    clearProxyFixed: mutationOptions({
+      mutationKey: ['clearProxyFixed'],
+      mutationFn: (input: Parameters<typeof commands.clearProxyFixed>) =>
+        commands.clearProxyFixed(...input),
+    }),
     updateProxyProvider: mutationOptions({
       mutationKey: ['updateProxyProvider'],
       mutationFn: (input: Parameters<typeof commands.updateProxyProvider>) =>
         commands.updateProxyProvider(...input),
+    }),
+    clashApiHealthcheckProxyProvider: mutationOptions({
+      mutationKey: ['clashApiHealthcheckProxyProvider'],
+      mutationFn: (
+        input: Parameters<typeof commands.clashApiHealthcheckProxyProvider>,
+      ) => commands.clashApiHealthcheckProxyProvider(...input),
     }),
     restartApplication: mutationOptions({
       mutationKey: ['restartApplication'],
@@ -775,6 +786,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['createEditorWindow'],
       mutationFn: (input: Parameters<typeof commands.createEditorWindow>) =>
         commands.createEditorWindow(...input),
+    }),
+    reportWindowReady: mutationOptions({
+      mutationKey: ['reportWindowReady'],
+      mutationFn: (input: Parameters<typeof commands.reportWindowReady>) =>
+        commands.reportWindowReady(...input),
     }),
     copyClashEnv: mutationOptions({
       mutationKey: ['copyClashEnv'],

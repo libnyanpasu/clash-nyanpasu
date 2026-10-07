@@ -16,6 +16,7 @@ name = 'nyanpasu-network-statistic-widget-small'
 path = './src/small.rs'
 
 [dependencies]
+nyanpasu-helper = { path = '../nyanpasu-helper' }
 eframe = { version = '0.36.1' }
 egui_extras = { version = '0.36.1', features = ['all_loaders'] }
 parking_lot = '0.12'

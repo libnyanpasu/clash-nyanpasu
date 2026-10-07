@@ -15,6 +15,7 @@ export const ClashCores = {
   'clash-rs': 'Clash Rust',
   'clash-rs-alpha': 'Clash Rust Alpha',
   meow: 'Meow',
+  'meow-alpha': 'Meow Alpha',
 } as Record<ClashCore_Serialize, string>
 
 export type ClashCoresInfo = Record<ClashCore_Serialize, ClashCoresDetail>
@@ -23,6 +24,7 @@ export type ClashCoresDetail = {
   name: string
   currentVersion: string
   latestVersion?: string
+  versionReadError?: boolean
 }
 
 export const useClashCores = () => {
@@ -60,6 +62,7 @@ export const useClashCores = () => {
             result[key as ClashCore_Serialize] = {
               name: ClashCores[key as ClashCore_Serialize],
               currentVersion: 'N/A',
+              versionReadError: true,
             }
           }
           return result

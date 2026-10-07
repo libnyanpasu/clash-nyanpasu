@@ -36,7 +36,10 @@ clash-api = { workspace = true }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-core = { path = '../nyanpasu-core' }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-helper = { path = '../nyanpasu-helper' }
 nyanpasu-config = { path = '../nyanpasu-config' }
+nyanpasu-application = { path = '../nyanpasu-application' }
+nyanpasu-platform = { path = '../nyanpasu-platform' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
 nyanpasu-egui = { path = '../nyanpasu-egui' }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
@@ -127,6 +130,7 @@ semver = '1.0'
 
 # Compression & Encoding
 flate2 = '1.0'
+tar = '0.4'
 zip = '8.0.0'
 zip-extensions = '0.14.0'
 base64 = '0.23'
@@ -139,7 +143,7 @@ rand = '0.10'
 md-5 = '0.11.0'
 sha2 = '0.11'
 nanoid = '0.5.0'
-seahash = '4.1'
+seahash = { version = '4.1', features = ['use_std'] }
 
 # System Utilities
 auto-launch = { workspace = true }
@@ -189,29 +193,6 @@ image = '0.25.5'
 fast_image_resize = '6'
 display-info = '0.5.0'  # should be removed after upgrading to tauri v2
 
-# OXC (The Oxidation Compiler)
-# We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = '0.153'
-oxc_allocator = '0.153'
-oxc_span = '0.153'
-oxc_ast = '0.153'
-oxc_syntax = '0.153'
-oxc_ast_visit = '0.153'
-
-# Lua Integration
-mlua = { version = '0.12', features = [
-  'lua54',
-  'async',
-  'serialize',
-  'vendored',
-  'error-send',
-] }
-
-# JavaScript Integration
-boa_utils = { path = '../boa_utils' }
-boa_engine = { workspace = true, features = ['annex-b'] }
-boa_runtime = { version = '0.22', default-features = false, features = ['url'] }
-
 # Tauri Dependencies
 tauri = { version = '2.4', features = [
   'tray-icon',
@@ -255,18 +236,14 @@ specta = { version = '^2.0.0-rc.25', features = [
 tauri-plugin-global-shortcut = '2.2.0'
 
 [target.'cfg(target_os = "macos")'.dependencies]
-dispatch2 = '0.3.1'
-objc2 = '0.6.1'
 objc2-app-kit = { version = '0.3.1', features = [
   'NSApplication',
   'NSColor',
   'NSColorSpace',
   'NSResponder',
   'NSRunningApplication',
-  'NSWindow',
-  'NSView',
 ] }
-objc2-foundation = { version = '0.3.1', features = ['NSGeometry'] }
+objc2-foundation = '0.3.1'
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = '0.31.0', features = ['user', 'fs', 'process'] }

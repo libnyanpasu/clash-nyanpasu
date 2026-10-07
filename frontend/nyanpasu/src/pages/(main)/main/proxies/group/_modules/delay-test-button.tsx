@@ -6,11 +6,15 @@ import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { sleep } from '@/utils'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashProxies } from '@nyanpasu/query'
+import { useClashProxies, type ClashDelayOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { Route as NameRoute } from '../$name'
 
-export default function DelayTestButton() {
+export default function DelayTestButton({
+  delayOptions,
+}: {
+  delayOptions: ClashDelayOptions
+}) {
   const { name } = NameRoute.useParams()
 
   const { updateGroupDelay } = useClashProxies()
@@ -18,7 +22,7 @@ export default function DelayTestButton() {
   const [isSuccess, setIsSuccess] = useState(false)
 
   const blockTask = useBlockTask(`delay-group-test-${name}`, async () => {
-    await updateGroupDelay.mutateAsync([name])
+    await updateGroupDelay.mutateAsync([name, delayOptions])
   })
 
   const handleClick = useLockFn(async () => {

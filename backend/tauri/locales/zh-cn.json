@@ -8,6 +8,7 @@
     },
     "no_proxies": "无代理",
     "select_proxy": "选择代理",
+    "restore_auto_selection": "恢复自动选择",
     "dashboard": "显示 Clash Nyanpasu",
     "direct_mode": "直连模式",
     "global_mode": "全局模式",

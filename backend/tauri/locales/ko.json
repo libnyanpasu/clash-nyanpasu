@@ -8,6 +8,7 @@
     },
     "no_proxies": "프록시 없음",
     "select_proxy": "프록시 선택",
+    "restore_auto_selection": "자동 선택 복원",
     "dashboard": "대시보드",
     "direct_mode": "다이렉트 모드",
     "global_mode": "글로벌 모드",

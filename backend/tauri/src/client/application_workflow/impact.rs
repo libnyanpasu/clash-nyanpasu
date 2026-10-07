@@ -544,7 +544,7 @@ mod tests {
     use nyanpasu_config::{
         application::{
             ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig,
-            ProxiesSelectorMode, ThemeMode, TrayMenuCloseBehavior, TrayMenuMode,
+            ProxiesSelectorMode, ThemeMode, TrayMenuMode, WindowCloseBehavior, WindowCloseSettings,
         },
         clash::config::{
             ClashConfigPatch,
@@ -564,7 +564,7 @@ mod tests {
         },
         runtime::executor::ResolvedPortBindings,
     };
-    use nyanpasu_egui::widget::StatisticWidgetVariant;
+    use nyanpasu_helper::StatisticWidgetVariant;
     use struct_patch::Patch as _;
 
     use crate::{
@@ -846,6 +846,12 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                field: "default_latency_timeout_ms",
+                mutate: |app| app.default_latency_timeout_ms = 10000,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "proxy_layout_column",
                 mutate: |app| app.proxy_layout_column = 3,
                 impact: RuntimeImpact::None,
@@ -870,8 +876,13 @@ mod tests {
                 owners: &[],
             },
             AppCase {
-                field: "tray_menu_close_behavior",
-                mutate: |app| app.tray_menu_close_behavior = TrayMenuCloseBehavior::Close,
+                field: "window_close",
+                mutate: |app| {
+                    app.window_close = WindowCloseSettings {
+                        global: WindowCloseBehavior::Hide,
+                        ..WindowCloseSettings::default()
+                    }
+                },
                 impact: RuntimeImpact::None,
                 owners: &[],
             },

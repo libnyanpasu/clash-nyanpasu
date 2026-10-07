@@ -35,7 +35,6 @@ const EVENT_NAMES: &[&str] = &[
     <crate::core::actor_v2::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
-    <crate::window::WindowReadyEvent as tauri_specta::Event>::NAME,
     "nyanpasu://mutation",
 ];
 
@@ -999,11 +998,15 @@ mod tests {
             language: nyanpasu_config::application::I18nLanguage::English,
             ..Default::default()
         };
-        std::fs::write(
-            args.paths.application_config_path(),
-            serde_yaml::to_string(&config).unwrap(),
+        let mut application = Vec::new();
+        nyanpasu_core::format::Format::serialize(
+            &crate::core::migration::modules::application::ApplicationFormat::default(),
+            &mut application,
+            &config,
+            None,
         )
         .unwrap();
+        std::fs::write(args.paths.application_config_path(), application).unwrap();
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {

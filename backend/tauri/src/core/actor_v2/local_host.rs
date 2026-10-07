@@ -80,7 +80,7 @@ fn core_spec_with(
         ClashCore::ClashPremium => CoreKind::ClashPremium,
         ClashCore::ClashRs | ClashCore::ClashRsAlpha => CoreKind::ClashRust,
         ClashCore::Mihomo | ClashCore::MihomoAlpha => CoreKind::Mihomo,
-        ClashCore::Meow => CoreKind::Meow,
+        ClashCore::Meow | ClashCore::MeowAlpha => CoreKind::Meow,
     };
     let binary_path = find_binary(&core_type).context(FindCoreBinarySnafu { core: *core })?;
 
@@ -132,6 +132,7 @@ mod tests {
             (ClashCore::MihomoAlpha, CoreKind::Mihomo),
             (ClashCore::ClashRsAlpha, CoreKind::ClashRust),
             (ClashCore::Meow, CoreKind::Meow),
+            (ClashCore::MeowAlpha, CoreKind::Meow),
         ];
 
         for (core, expected_kind) in variants {

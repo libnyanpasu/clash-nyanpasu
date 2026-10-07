@@ -10,6 +10,7 @@ mod clash_streams;
 pub mod configuration_status;
 pub mod convergence;
 pub mod core_lifecycle;
+pub mod core_version;
 mod direct_egress;
 pub(crate) mod effects;
 mod error;
@@ -112,6 +113,7 @@ pub struct ClientSetupArgs {
     pub geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+    pub core_versions: Arc<dyn core_version::CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
@@ -174,7 +176,8 @@ fn runtime_core_spec(
         | nyanpasu_config::application::ClashCore::ClashRsAlpha => CoreKind::ClashRust,
         nyanpasu_config::application::ClashCore::Mihomo
         | nyanpasu_config::application::ClashCore::MihomoAlpha => CoreKind::Mihomo,
-        nyanpasu_config::application::ClashCore::Meow => CoreKind::Meow,
+        nyanpasu_config::application::ClashCore::Meow
+        | nyanpasu_config::application::ClashCore::MeowAlpha => CoreKind::Meow,
     };
     Ok(nyanpasu_core_manager::CoreSpec {
         kind,
@@ -224,6 +227,7 @@ struct NyanpasuClientInner {
     streams: crate::core::clash::ws::StreamsClient,
     traffic: Option<crate::core::traffic::TrafficClient>,
     updater: crate::core::updater::UpdaterClient,
+    core_versions: Arc<dyn core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
@@ -265,6 +269,7 @@ impl NyanpasuClient {
             geo_index,
             os_proxy,
             binary_installer,
+            core_versions,
             effects,
             window,
             accelerators,
@@ -275,7 +280,10 @@ impl NyanpasuClient {
         let profiles_dir = paths.app_profiles_dir().into_std_path_buf();
         let backup_paths = paths.clone();
         let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
-        let script_dirs = crate::enhance::ScriptDirs::from_resolver(&paths);
+        let script_dirs = nyanpasu_platform::enhance::ScriptDirs::new(
+            paths.scripts_dir().into_std_path_buf(),
+            paths.cache_dir().into_std_path_buf(),
+        );
         let profiles_path = paths.profiles_path();
         let runtime_paths_for_setup = runtime_paths.clone();
         let jobs_for_setup = jobs.clone();
@@ -354,6 +362,7 @@ impl NyanpasuClient {
             geo_index,
             os_proxy,
             binary_installer,
+            core_versions,
             effects,
             window,
             accelerators,
@@ -383,7 +392,7 @@ impl NyanpasuClient {
         storage: Storage,
         runtime_paths: RuntimePaths,
         core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
-        script_dirs: crate::enhance::ScriptDirs,
+        script_dirs: nyanpasu_platform::enhance::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
         app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
@@ -394,6 +403,7 @@ impl NyanpasuClient {
         geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+        core_versions: Arc<dyn core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
@@ -635,6 +645,7 @@ impl NyanpasuClient {
                 streams,
                 traffic,
                 updater,
+                core_versions,
                 app_updater,
                 system_dns,
                 direct_egress,
@@ -807,6 +818,16 @@ impl NyanpasuClient {
 
     pub async fn uninstall_service(&self) -> std::result::Result<(), RuntimeError> {
         self.inner.application_workflow.uninstall_service().await
+    }
+
+    pub async fn get_core_version(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> std::result::Result<String, RuntimeError> {
+        snafu::ResultExt::context(
+            self.inner.core_versions.read(core).await,
+            runtime_error::ReadCoreVersionSnafu,
+        )
     }
 
     pub async fn fetch_latest_core_versions(
@@ -2173,6 +2194,17 @@ pub(crate) mod tests {
         Utf8PathBuf::from_path_buf(dir.path().join(file_name)).expect("temp path should be UTF-8")
     }
 
+    /// The stamped file the application loads.
+    fn write_application_config(path: &camino::Utf8Path, config: &NyanpasuAppConfig) {
+        use nyanpasu_core::format::Format as _;
+
+        let mut content = Vec::new();
+        crate::core::migration::modules::application::ApplicationFormat::default()
+            .serialize(&mut content, config, None)
+            .unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+
     /// Restores a directory's unix mode on drop so tempdir cleanup stays reliable
     /// after permission-poison tests.
     #[cfg(unix)]
@@ -2416,7 +2448,7 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
             Arc::new(runtime_core_spec),
-            crate::enhance::ScriptDirs::under(dir.path()),
+            nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -2427,6 +2459,7 @@ pub(crate) mod tests {
             geo_index,
             os_proxy,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            Arc::new(core_version::MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -2538,13 +2571,15 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        let mut manager =
-            nyanpasu_core::state::PersistentStateManagerSetup::<NyanpasuAppConfig>::builder()
-                .config_path(temp_config_path(&dir, "application.yaml"))
-                .assemble()
-                .from_state(NyanpasuAppConfig::default())
-                .await
-                .expect("application manager should initialize");
+        let mut manager = nyanpasu_core::state::PersistentStateManagerSetup::<
+            NyanpasuAppConfig,
+            crate::core::migration::modules::application::ApplicationFormat,
+        >::builder()
+        .config_path(temp_config_path(&dir, "application.yaml"))
+        .assemble()
+        .from_state(NyanpasuAppConfig::default())
+        .await
+        .expect("application manager should initialize");
         manager.add_subscriber(Box::new(ParkedPrepare {
             entered: entered.clone(),
             release: release.clone(),
@@ -2862,6 +2897,42 @@ pub(crate) mod tests {
         assert_eq!(client.inner.local_source.addresses().ipv4, None);
     }
 
+    #[test]
+    fn core_version_reads_use_the_injected_port_and_keep_domain_errors() {
+        let dir = tempdir().unwrap();
+        let mut reader = core_version::MockCoreVersionReader::new();
+        reader
+            .expect_read()
+            .withf(|core| *core == nyanpasu_config::application::ClashCore::Meow)
+            .times(1)
+            .returning(|_| Ok("0.22.0".to_owned()));
+        reader
+            .expect_read()
+            .withf(|core| *core == nyanpasu_config::application::ClashCore::ClashRs)
+            .times(1)
+            .returning(|core| Err(core_version::CoreVersionError::CoreVersionNotReported { core }));
+        let mut args = test_client_args_with_endpoint(&dir, Arc::new(IdleEndpoint));
+        args.core_versions = Arc::new(reader);
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        tauri::async_runtime::block_on(async {
+            assert_eq!(
+                client
+                    .get_core_version(nyanpasu_config::application::ClashCore::Meow)
+                    .await
+                    .unwrap(),
+                "0.22.0"
+            );
+            assert!(matches!(
+                client
+                    .get_core_version(nyanpasu_config::application::ClashCore::ClashRs)
+                    .await,
+                Err(RuntimeError::ReadCoreVersion {
+                    source: core_version::CoreVersionError::CoreVersionNotReported { .. }
+                })
+            ));
+        });
+    }
+
     pub(crate) fn test_client_args_with_endpoint(
         dir: &TempDir,
         endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
@@ -2908,6 +2979,7 @@ pub(crate) mod tests {
             geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
@@ -3024,11 +3096,7 @@ pub(crate) mod tests {
                 enable_service_mode: true,
                 ..Default::default()
             };
-            std::fs::write(
-                args.paths.application_config_path(),
-                serde_yaml::to_string(&seed).unwrap(),
-            )
-            .unwrap();
+            write_application_config(&args.paths.application_config_path(), &seed);
         }
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         if !service_seed {
@@ -3245,7 +3313,10 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&paths),
             Arc::new(runtime_core_spec),
-            crate::enhance::ScriptDirs::from_resolver(&paths),
+            nyanpasu_platform::enhance::ScriptDirs::new(
+                paths.scripts_dir().into_std_path_buf(),
+                paths.cache_dir().into_std_path_buf(),
+            ),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -3256,6 +3327,7 @@ pub(crate) mod tests {
             Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            Arc::new(core_version::MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -3423,6 +3495,7 @@ pub(crate) mod tests {
             geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+            core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
@@ -3521,7 +3594,7 @@ pub(crate) mod tests {
             .await
             .unwrap();
         let config: serde_yaml::Mapping = serde_yaml::from_str(&content.yaml).unwrap();
-        let mut expected = client.promoted_runtime().await.unwrap().config.clone();
+        let mut expected = client.promoted_runtime().await.unwrap().config();
         assert_ne!(
             expected.get("secret").and_then(serde_yaml::Value::as_str),
             Some("<redacted>")
@@ -3664,7 +3737,7 @@ pub(crate) mod tests {
                 .promoted_runtime()
                 .await
                 .expect("promoted runtime stored after rebuild");
-            assert!(promoted.config.get("mixed-port").is_some());
+            assert!(promoted.config().get("mixed-port").is_some());
             assert!(
                 !promoted.exists_keys.is_empty(),
                 "guard overrides must register applied fields"
@@ -3774,11 +3847,7 @@ pub(crate) mod tests {
             enable_service_mode: true,
             ..Default::default()
         };
-        std::fs::write(
-            args.paths.application_config_path(),
-            serde_yaml::to_string(&seed).unwrap(),
-        )
-        .unwrap();
+        write_application_config(&args.paths.application_config_path(), &seed);
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         tauri::async_runtime::block_on(async {
             let report = client.startup_reconcile().await;
@@ -4394,7 +4463,7 @@ pub(crate) mod tests {
                 storage,
                 RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
                 Arc::new(runtime_core_spec),
-                crate::enhance::ScriptDirs::under(dir.path()),
+                nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
                 None,
                 None,
@@ -4405,6 +4474,7 @@ pub(crate) mod tests {
                 Arc::new(crate::core::geo::NoopCountryIndexSource),
                 Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
+                Arc::new(core_version::MockCoreVersionReader::new()),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -4751,7 +4821,7 @@ pub(crate) mod tests {
             let runtime = client.promoted_runtime().await.unwrap();
             assert_eq!(
                 runtime
-                    .config
+                    .config()
                     .get("proxies")
                     .and_then(serde_yaml::Value::as_sequence)
                     .and_then(|items| items.first())

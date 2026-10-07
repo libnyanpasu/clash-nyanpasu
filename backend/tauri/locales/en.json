@@ -8,6 +8,7 @@
     },
     "no_proxies": "No Proxies",
     "select_proxy": "Select Proxy",
+    "restore_auto_selection": "Restore Automatic Selection",
     "dashboard": "Show Clash Nyanpasu",
     "direct_mode": "Direct Mode",
     "global_mode": "Global Mode",

@@ -1,11 +1,14 @@
 import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
-import { ComponentProps, memo, MouseEvent, useMemo } from 'react'
+import KeepRounded from '~icons/material-symbols/keep-rounded'
+import { ComponentProps, memo, MouseEvent } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import HighlightText from '@nyanpasu/ui/highlight-text'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
+import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
-import { ClashProxiesQueryProxyItem } from '@nyanpasu/query'
+import { ClashProxiesQueryProxyItem, MemberState } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 function FeatureChip({
@@ -33,15 +36,36 @@ function FeatureChip({
 // across refetches, so only nodes whose data changed re-render.
 export default memo(function ProxyNodeButton({
   proxy,
+  selectable,
+  fixed,
   onSelect,
   onDelayTest,
+  history,
+  delay,
+  leaf,
+  searchText = '',
   ...props
 }: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'onSelect'> & {
   proxy: ClashProxiesQueryProxyItem
+  selectable: boolean
+  fixed: boolean
   onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
   onDelayTest: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
+  /** The samples the delay is the latest of; keep its identity while they hold. */
+  history: MemberState['history']
+  /** The delay the group sees; a nested group reports its leaf's. */
+  delay: MemberState['delay']
+  /** The node a nested group member currently resolves to. */
+  leaf?: MemberState['leaf']
+  /** The term highlighted in the name; empty highlights nothing. */
+  searchText?: string
 }) {
   const handleSelectProxy = useLockFn(async () => {
+    // The core picks this group's member on its own.
+    if (!selectable) {
+      return
+    }
+
     await onSelect(proxy)
   })
 
@@ -61,16 +85,8 @@ export default memo(function ProxyNodeButton({
     },
   )
 
-  const currentDelay = useMemo(() => {
-    if (!proxy.history || proxy.history.length === 0) {
-      return -1
-    } else {
-      return proxy.history[proxy.history.length - 1].delay
-    }
-  }, [proxy.history])
-
   return (
-    <DelayHistory history={proxy.history}>
+    <DelayHistory history={history}>
       <Button
         variant="fab"
         className={cn(
@@ -90,12 +106,30 @@ export default memo(function ProxyNodeButton({
           'group-data-[active=false]:shadow-none',
           'group-data-[active=false]:hover:shadow-none',
           'group-data-[active=false]:hover:bg-surface-variant/30',
+          'data-[selectable=false]:cursor-default',
+          'data-[selectable=false]:hover:before:bg-transparent',
         )}
+        data-selectable={String(selectable)}
+        // Not `disabled`: the card holds the latency control, which must stay
+        // clickable.
+        aria-disabled={!selectable}
         onClick={handleSelectProxy}
         {...props}
       >
         <div className="flex w-full items-center justify-between gap-2 px-2">
-          <div className="truncate text-sm font-medium">{proxy.name}</div>
+          <div className="truncate text-sm font-medium">
+            <HighlightText searchText={searchText}>{proxy.name}</HighlightText>
+          </div>
+
+          {fixed && (
+            <span
+              className="text-primary shrink-0"
+              title={m.proxies_group_fixed_label()}
+              data-slot="proxy-node-fixed-icon"
+            >
+              <KeepRounded className="size-4" />
+            </span>
+          )}
           {/* TODO: takes up too much space and needs to be redesigned */}
           {/* <DelayHistoryBar history={proxy.history ?? []} /> */}
         </div>
@@ -108,6 +142,16 @@ export default memo(function ProxyNodeButton({
             {proxy.tfo && <FeatureChip label="TFO" />}
           </div>
 
+          {leaf && (
+            <span
+              className="text-on-surface-variant min-w-0 truncate text-xs"
+              title={leaf}
+              data-slot="proxy-node-leaf"
+            >
+              → {leaf}
+            </span>
+          )}
+
           <Button
             className="grid h-4 min-w-10 shrink-0 place-content-center px-2 text-center"
             variant="raised"
@@ -115,8 +159,8 @@ export default memo(function ProxyNodeButton({
             loading={delayTask.isPending}
             asChild
           >
-            {currentDelay > 0 ? (
-              <DelayChip delay={currentDelay} />
+            {delay !== undefined && delay > 0 ? (
+              <DelayChip delay={delay} />
             ) : (
               <span>
                 <FlashOnRounded className="py-1" />

@@ -93,6 +93,7 @@ deno task lint:deno
 deno task test:scripts
 deno task lint:frontend-boundaries
 deno task lint:architecture-ledger
+deno task lint:backend-boundaries
 ```
 
 Use the narrower test tasks for the affected category when appropriate. For a

@@ -3,6 +3,9 @@ import { ClashProxiesProviderQueryItem } from '@nyanpasu/query'
 
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
 
+// Providers may send garbage negative counters; usage never goes below zero.
+const nonNegative = (value: number) => Math.max(0, value)
+
 export const useProxiesSubscription = (data: ClashProxiesProviderQueryItem) => {
   return useMemo(() => {
     let progress = 0
@@ -14,9 +17,11 @@ export const useProxiesSubscription = (data: ClashProxiesProviderQueryItem) => {
     const hasSubscriptionInfo = subscriptionInfo != null
 
     if (hasSubscriptionInfo) {
-      total = subscriptionInfo.Total
+      total = nonNegative(subscriptionInfo.Total)
 
-      used = subscriptionInfo.Download + subscriptionInfo.Upload
+      used =
+        nonNegative(subscriptionInfo.Download) +
+        nonNegative(subscriptionInfo.Upload)
 
       if (total > 0) {
         progress = clampPercentage((used / total) * 100)

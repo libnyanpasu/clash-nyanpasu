@@ -14,7 +14,10 @@ use crate::{
         collect::EnvInfo,
         help,
         proxy_env::{self, CopyEnvOption},
-        resolve,
+    },
+    window::{
+        WindowManager,
+        kinds::{self, EditorWindow, EditorWindowType, MainWindow},
     },
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -25,7 +28,7 @@ use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Webview};
 use tray::icon::TrayIcon;
 
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -978,11 +981,11 @@ pub async fn fetch_latest_core_versions(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_version(app_handle: AppHandle, core_type: ClashCore) -> Result<String> {
-    Ok(snafu::ResultExt::context(
-        resolve::resolve_core_version(&app_handle, &core_type).await,
-        crate::client::runtime_error::ReadCoreVersionSnafu,
-    )?)
+pub async fn get_core_version(
+    client: State<'_, NyanpasuClient>,
+    core_type: ClashCore,
+) -> Result<String> {
+    Ok(client.get_core_version(core_type).await?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -1037,8 +1040,9 @@ pub async fn clash_api_get_proxy_delay(
     name: String,
     provider: Option<String>,
     url: Option<String>,
+    expected: Option<String>,
 ) -> Result<clash_api::Delay> {
-    Ok(client.proxy_delay(name, provider, url).await?)
+    Ok(client.proxy_delay(name, provider, url, expected).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1104,8 +1108,9 @@ pub async fn clash_api_get_group_delay(
     client: State<'_, NyanpasuClient>,
     group: String,
     url: Option<String>,
+    expected: Option<String>,
 ) -> Result<IndexMap<clash_api::ProxyName, u16>> {
-    Ok(client.group_delay(group, url).await?)
+    Ok(client.group_delay(group, url, expected).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1149,8 +1154,28 @@ pub async fn select_proxy(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
+pub async fn clear_proxy_fixed(
+    client: State<'_, NyanpasuClient>,
+    group: String,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.clear_proxy_fixed(group).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
 pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: String) -> Result<()> {
     Ok(client.update_proxy_provider(name).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_healthcheck_proxy_provider(
+    client: State<'_, NyanpasuClient>,
+    name: String,
+) -> Result<()> {
+    Ok(client.healthcheck_proxy_provider(name).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1907,7 +1932,7 @@ pub async fn discard_app_update_package(
 #[specta::specta]
 pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()> {
     if label == crate::consts::MAIN_WINDOW_LABEL {
-        resolve::save_main_window_state_async(&app_handle, true).await?;
+        kinds::save_main_window_state_async(&app_handle, true).await?;
     }
     Ok(())
 }
@@ -1915,32 +1940,16 @@ pub async fn save_window_size_state(app_handle: AppHandle, label: String) -> Res
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn create_main_window(app_handle: AppHandle) -> Result<()> {
-    // Spawn window creation to avoid blocking
-    std::thread::spawn(move || {
-        // Small delay to let the IPC return first
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let handle_inner = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            resolve::create_main_window(&handle_inner);
-        });
-    });
+pub async fn create_main_window(windows: State<'_, WindowManager>) -> Result<()> {
+    windows.open(&MainWindow, None)?;
     Ok(())
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
-    // Spawn window creation to avoid blocking
-    std::thread::spawn(move || {
-        // Small delay to let the IPC return first
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let handle_inner = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            let _ = resolve::create_debug_tray_menu_window(&handle_inner);
-        });
-    });
+pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
+    kinds::create_debug_tray_menu_window(&app_handle)?;
     Ok(())
 }
 
@@ -1965,20 +1974,26 @@ pub fn quit_application(app_handle: AppHandle) {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn create_editor_window(
-    app_handle: AppHandle,
-    window_type: resolve::EditorWindowType,
+pub async fn create_editor_window(
+    windows: State<'_, WindowManager>,
+    window_type: EditorWindowType,
     uid: Option<String>,
 ) -> Result<()> {
-    // Spawn window creation to avoid blocking
-    std::thread::spawn(move || {
-        // Small delay to let the IPC return first
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let handle_inner = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            let _ = resolve::create_editor_window(&handle_inner, window_type, uid.as_deref());
-        });
-    });
+    let (window, params) = EditorWindow::for_type(window_type, uid.as_deref())?;
+    windows.open(&window, params)?;
+    Ok(())
+}
+
+/// The calling window has rendered. Its label comes from the invoking webview,
+/// so a window can only report itself.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn report_window_ready(
+    windows: State<'_, WindowManager>,
+    webview: Webview,
+) -> Result<()> {
+    windows.report_ready(webview.label());
     Ok(())
 }
 

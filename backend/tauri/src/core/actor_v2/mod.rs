@@ -297,6 +297,10 @@ pub enum CoreActorMessage {
     ApiClient {
         reply: RpcReplyPort<Result<api::ApiClient, api::ApiError>>,
     },
+    #[cfg(test)]
+    ReleaseApiForTest {
+        reply: RpcReplyPort<()>,
+    },
     /// Routed through the mailbox so it serializes with `ChangeHost`: while a
     /// handoff runs, no submit can land on the wrong host (I-R1).
     Submit {
@@ -727,6 +731,13 @@ impl Actor for CoreActor {
                     )),
                 };
                 let _ = reply.send(result);
+            }
+            #[cfg(test)]
+            CoreActorMessage::ReleaseApiForTest { reply } => {
+                if let Some(lease) = state.api.take() {
+                    lease.stop_for_test().await;
+                }
+                let _ = reply.send(());
             }
             CoreActorMessage::ApiClient { reply } => {
                 let result = match &state.slot {
@@ -1323,6 +1334,17 @@ impl CoreClient {
                 "core actor did not answer API acquisition".into(),
             )),
         }
+    }
+
+    /// Drain the previous lease's monitor before counting workflow API acquisitions.
+    #[cfg(test)]
+    pub(crate) async fn release_api_for_test(&self) {
+        let reply = self
+            .actor
+            .call(|reply| CoreActorMessage::ReleaseApiForTest { reply }, None)
+            .await
+            .unwrap();
+        assert!(matches!(reply, ractor::rpc::CallResult::Success(())));
     }
 
     pub(crate) fn observer(&self) -> CoreObserver {

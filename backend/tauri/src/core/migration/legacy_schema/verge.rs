@@ -15,6 +15,8 @@ pub enum ClashCore {
     ClashRsAlpha,
     #[serde(rename = "meow")]
     Meow,
+    #[serde(rename = "meow-alpha")]
+    MeowAlpha,
 }
 
 impl Default for ClashCore {

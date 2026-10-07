@@ -11,7 +11,7 @@ use nyanpasu_config::{
     application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig},
     runtime::executor::ResolvedPortBindings,
 };
-use nyanpasu_egui::widget::StatisticWidgetVariant;
+use nyanpasu_helper::StatisticWidgetVariant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{

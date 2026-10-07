@@ -1,13 +1,17 @@
-use super::super::{
-    Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck,
-    fs::try_exists,
-    legacy_schema::{IClashTemp, IVerge, typed_config_from_legacy_parts},
+use super::{
+    super::{
+        Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck,
+        fs::try_exists,
+        legacy_schema::{IClashTemp, IVerge, typed_config_from_legacy_parts},
+    },
+    application::ApplicationFormat,
 };
 use crate::utils::help;
 use anyhow::Context as _;
 use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, state::PersistentState,
 };
+use nyanpasu_core::format::Format as _;
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Serialize, de::DeserializeOwned};
@@ -104,7 +108,7 @@ impl MigrationStep for SplitLegacyConfig {
             )
         };
 
-        let application_yaml = serialize_yaml(&application)
+        let application_yaml = serialize_application(&application)
             .context("failed to serialize migrated application config")?;
         let session_yaml =
             serialize_yaml(&session_state).context("failed to serialize migrated session state")?;
@@ -403,6 +407,16 @@ fn read_yaml<T: DeserializeOwned>(path: &Path) -> Result<T, MigrationCheckError>
 
 fn serialize_yaml<T: Serialize>(value: &T) -> anyhow::Result<String> {
     serde_yaml::to_string(value).map_err(Into::into)
+}
+
+/// `application.yaml` is written stamped from the start, at the revision its
+/// own module is at: the app refuses an unstamped file, and an unstamped one
+/// at that revision would look like a lost stamp if the run stopped before the
+/// runner adopted it.
+fn serialize_application(application: &NyanpasuAppConfig) -> anyhow::Result<String> {
+    let mut content = Vec::new();
+    ApplicationFormat::default().serialize(&mut content, application, None)?;
+    Ok(String::from_utf8(content)?)
 }
 
 fn write_typed_files(

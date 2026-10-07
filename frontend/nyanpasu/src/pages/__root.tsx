@@ -14,6 +14,7 @@ import { message } from '@/utils/notification'
 import { profileDialogLabel, type ProfileLabel } from '@/utils/profile-label'
 import { isBrowser, isTauri } from '@nyanpasu/platform'
 import { NyanpasuQueryProvider, useSettings } from '@nyanpasu/query'
+import { unwrapResult } from '@nyanpasu/rpc'
 import { type Degradation, type DegradationPhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
@@ -26,7 +27,22 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = isTauri() ? getCurrentWebviewWindow() : null
 
+// The backend shows a window once its frontend has rendered.
+const reportWindowReady = () => {
+  if (isTauri()) {
+    rpc
+      .reportWindowReady()
+      .then(unwrapResult)
+      .catch((error) =>
+        console.error('failed to report the window ready', error),
+      )
+  }
+}
+
 export const Catch = ({ error }: ErrorComponentProps) => {
+  // A window that failed to render is still shown, with the error.
+  useEffect(reportWindowReady, [])
+
   return (
     <div className={cn('h-dvh bg-black text-white', 'flex flex-col gap-4 p-4')}>
       <div
@@ -92,9 +108,9 @@ export const Route = createRootRoute({
   pendingComponent: Pending,
 })
 
-function WindowReveal() {
+function WindowReadyReporter() {
   const { query } = useSettings()
-  const hasRevealed = useRef(false)
+  const hasReported = useRef(false)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -107,21 +123,9 @@ function WindowReveal() {
   }, [])
 
   useEffect(() => {
-    if (
-      appWindow &&
-      (query.isSuccess || query.isError) &&
-      !hasRevealed.current
-    ) {
-      hasRevealed.current = true
-      Promise.all([
-        appWindow?.show(),
-        appWindow?.unminimize(),
-        appWindow?.setFocus(),
-      ]).finally(() => {
-        rpc.events.windowReadyEvent.emit({
-          label: appWindow?.label ?? 'browser',
-        })
-      })
+    if ((query.isSuccess || query.isError) && !hasReported.current) {
+      hasReported.current = true
+      reportWindowReady()
     }
   }, [query.isSuccess, query.isError])
 
@@ -234,7 +238,7 @@ export default function App() {
           <ExperimentalThemeProvider>
             <CustomCssProvider>
               <TooltipProvider>
-                <WindowReveal />
+                <WindowReadyReporter />
                 <MutationDegradationNotifier handler={degradationHandler} />
                 {appWindow?.label === 'main' && <DeepLinkImport />}
                 <Outlet />

@@ -100,13 +100,14 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, crate::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_application::enhance::RuntimeBuildError>
+    {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
-            return Err(crate::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(nyanpasu_application::enhance::RuntimeBuildError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
@@ -360,7 +361,7 @@ async fn workflow_graph_with_clients(
             core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths,
-            scripts: crate::enhance::ScriptDirs::under(dir.path()),
+            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
@@ -1145,8 +1146,8 @@ fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch() {
             .runtime()
             .promoted
             .unwrap();
-        assert_eq!(applied.config["mode"].as_str(), Some("global"));
-        assert_eq!(applied.config["ipv6"].as_bool(), Some(true));
+        assert_eq!(applied.config()["mode"].as_str(), Some("global"));
+        assert_eq!(applied.config()["ipv6"].as_bool(), Some(true));
         assert_eq!(applied.revision.get(), 3);
         assert_eq!(endpoint.submissions(), 2);
     });
@@ -1443,7 +1444,7 @@ fn an_override_patch_submits_once_and_notifies_the_ui() {
                 .runtime()
                 .promoted
                 .unwrap()
-                .config["mode"]
+                .config()["mode"]
                 .as_str(),
             Some("global")
         );

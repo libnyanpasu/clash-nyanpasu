@@ -2,6 +2,7 @@
 //! connection interruption, host changes, binary installation, and shutdown.
 pub(crate) mod adapters;
 mod attempt;
+pub(crate) mod error;
 pub(crate) mod impact;
 pub(in crate::client) mod inputs;
 pub(crate) mod mutation;

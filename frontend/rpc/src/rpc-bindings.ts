@@ -3990,7 +3990,6 @@ export type RuntimeAftermath =
 
 /**  A failure of building a runtime candidate from source config. */
 export type RuntimeBuildError =
-  | { kind: 'start_script_runner' }
   | { kind: 'validate_profiles'; errors: ProfileValidationError[] }
   | { kind: 'run_pipeline'; source: RuntimePipelineError }
   | {
@@ -3998,8 +3997,6 @@ export type RuntimeBuildError =
       failures: TransformFailure[]
       logs: RuntimeBuildLog[]
     }
-  | { kind: 'serialize_final_config' }
-  | { kind: 'config_not_mapping' }
 
 export type RuntimeBuildLog = {
   tag: OperatorTag
@@ -4068,7 +4065,7 @@ export type RuntimeError =
   | { kind: 'core_not_started'; reason: string; retryable: boolean }
   /**  An explicit recovery that could not settle the runtime. */
   | { kind: 'recovery_unresolved'; reason: string }
-  | { kind: 'build_runtime'; source: RuntimeBuildError }
+  | { kind: 'build_runtime'; source: RuntimePreparationError }
   | { kind: 'publish_runtime'; source: PublishRuntimeError }
   | { kind: 'resolve_port'; source: PortResolveError }
   | { kind: 'resolve_core_binary'; source: CoreSpecError }
@@ -4167,6 +4164,12 @@ export type RuntimePipelineError =
   | { kind: 'snapshot' }
   /**  Theoretically unreachable invariant breaks (e.g. guard serialization). */
   | { kind: 'internal'; message: string }
+
+export type RuntimePreparationError =
+  | { kind: 'build_artifact'; source: RuntimeBuildError }
+  | { kind: 'start_script_runner' }
+  | { kind: 'serialize_final_config' }
+  | { kind: 'config_not_mapping' }
 
 /**
  *  Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep

@@ -1,5 +1,5 @@
-pub mod enhance;
 pub mod format;
+pub mod runtime;
 pub mod state;
 
 /// Smoke test proving the gxhash dev-dependency compiles and runs under the

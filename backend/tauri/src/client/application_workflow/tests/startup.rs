@@ -408,7 +408,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         core_specs: Arc::new(crate::client::runtime_core_spec),
         profiles_dir: dir.path().join("profiles"),
         paths: paths.clone(),
-        scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+        scripts: nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
     });
     let shutdown = tokio_util::sync::CancellationToken::new();
     let client = ApplicationWorkflowClient::spawn_with_ticks(

@@ -318,8 +318,11 @@ test('a failed build names the profile or the transform', () => {
       runtime({
         kind: 'build_runtime',
         source: {
-          kind: 'run_pipeline',
-          source: { kind: 'selected_profile_not_found', profile: 'p1' },
+          kind: 'build_artifact',
+          source: {
+            kind: 'run_pipeline',
+            source: { kind: 'selected_profile_not_found', profile: 'p1' },
+          },
         },
       }),
     ),
@@ -329,16 +332,51 @@ test('a failed build names the profile or the transform', () => {
       runtime({
         kind: 'build_runtime',
         source: {
-          kind: 'transforms_failed',
-          logs: [],
-          failures: [
-            { kind: 'profile', id: 't1' },
-            { kind: 'builtin', name: 'config_fixer' },
-          ],
+          kind: 'build_artifact',
+          source: {
+            kind: 'transforms_failed',
+            logs: [],
+            failures: [
+              { kind: 'profile', id: 't1' },
+              { kind: 'builtin', name: 'config_fixer' },
+            ],
+          },
         },
       }),
     ),
   ).toBe(m.error_runtime_build_transforms_failed({ names: 't1, config_fixer' }))
+})
+
+test('runtime preparation failures keep their stage-specific messages', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'build_runtime',
+        source: { kind: 'start_script_runner' },
+      }),
+    ),
+  ).toBe(m.error_runtime_build_start_script_runner())
+
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'build_runtime',
+        source: {
+          kind: 'build_artifact',
+          source: { kind: 'validate_profiles', errors: [] },
+        },
+      }),
+    ),
+  ).toBe(m.error_runtime_build_validate_profiles())
+
+  for (const kind of [
+    'serialize_final_config',
+    'config_not_mapping',
+  ] as const) {
+    expect(
+      ipcErrorMessage(runtime({ kind: 'build_runtime', source: { kind } })),
+    ).toBe(m.error_runtime_render_runtime_config())
+  }
 })
 
 test('a port in use names the port, and a missing one names the field', () => {

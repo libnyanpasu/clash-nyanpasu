@@ -10,9 +10,7 @@ use crate::{
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
     utils::{
-        candy,
-        collect::EnvInfo,
-        help,
+        candy, help,
         proxy_env::{self, CopyEnvOption},
     },
     window::{
@@ -24,6 +22,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use nyanpasu_core::diagnostics::EnvInfo;
 use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
@@ -1181,8 +1180,8 @@ pub async fn clash_api_healthcheck_proxy_provider(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn collect_envs(paths: State<'_, PathResolver>) -> Result<EnvInfo<'static>> {
-    Ok((crate::utils::collect::collect_envs(paths))?)
+pub fn collect_envs(client: State<'_, NyanpasuClient>) -> Result<EnvInfo<'static>> {
+    Ok(client.collect_envs()?)
 }
 
 #[nyanpasu_macro::rpc]

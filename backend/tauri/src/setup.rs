@@ -164,6 +164,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let span = tracing::info_span!("build_client").entered();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         bundle_metadata,
+        environment: Arc::new(crate::utils::collect::OsEnvironmentCollector::new(
+            crate::consts::BUILD_INFO.clone(),
+            paths.clone(),
+        )),
         http_frontend: Some(debug_http_frontend(&app_handle)?),
         http_routes,
         jobs,

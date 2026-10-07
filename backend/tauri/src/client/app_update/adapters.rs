@@ -131,21 +131,11 @@ impl AppUpdateBackend for TauriAppUpdateBackend {
         let (source, bytes) = download_first(&candidates.0, &cancellation, |source, candidate| {
             let progress = progress.clone();
             async move {
-                progress(AppUpdateDownloadProgress::Source {
-                    source,
-                    content_length: None,
-                });
+                progress(AppUpdateDownloadProgress::Attempt { source });
                 let mut downloaded = 0;
-                let mut started = false;
                 candidate
                     .download(
                         |chunk, total| {
-                            if !std::mem::replace(&mut started, true) {
-                                progress(AppUpdateDownloadProgress::Source {
-                                    source,
-                                    content_length: total,
-                                });
-                            }
                             downloaded += chunk as u64;
                             progress(AppUpdateDownloadProgress::Chunk { downloaded, total });
                         },

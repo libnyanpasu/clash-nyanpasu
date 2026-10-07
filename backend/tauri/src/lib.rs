@@ -19,6 +19,7 @@ mod specta_export;
 mod state;
 mod unified_rpc;
 
+mod host_paths;
 #[cfg(windows)]
 mod shutdown_hook;
 mod utils;
@@ -128,8 +129,18 @@ fn queue_deep_link(app_handle: &tauri::AppHandle, url: String) {
 pub fn run() -> std::io::Result<()> {
     // Nothing before the logger reaches a trace, so its share is logged.
     let started = std::time::Instant::now();
+    // The one resolver: every later stage is given it, none looks the directories up again.
+    // Every stage needs both roots, so a host that has none ends the process here.
+    let paths = host_paths::discover().unwrap_or_else(|error| {
+        utils::dialog::panic_dialog(&format!(
+            "Failed to resolve the application directories: {}",
+            snafu::Report::from_error(&error)
+        ));
+        std::process::exit(1);
+    });
     let mut profilers = utils::profiling::Profilers::default();
-    profilers.start_heap();
+    #[cfg(feature = "dhat-heap")]
+    profilers.start_heap(&paths);
     // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
     tauri::async_runtime::set(nyanpasu_utils::runtime::get_runtime_handle());
 
@@ -149,7 +160,7 @@ pub fn run() -> std::io::Result<()> {
 
     if custom_scheme.is_none() {
         // Parse commands
-        cmds::parse().unwrap();
+        cmds::parse(&paths).unwrap();
     };
     #[cfg(feature = "verge-dev")]
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");
@@ -158,7 +169,7 @@ pub fn run() -> std::io::Result<()> {
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
     // 单例检测 with robust logging
-    let single_instance_result = utils::init::check_singleton();
+    let single_instance_result = utils::init::check_singleton(&paths);
     match &single_instance_result {
         Ok(Some(_)) => {
             tracing::info!(target: "app", "Acquired single-instance lock");
@@ -175,30 +186,36 @@ pub fn run() -> std::io::Result<()> {
     // Use system locale as default
     rust_i18n::set_locale(utils::help::detect_system_i18n_key());
 
+    // Past the single-instance lock, which a losing process never reaches, so it creates nothing.
+    if let Err(error) = paths.create_base_dirs() {
+        utils::dialog::panic_dialog(&format!(
+            "Failed to create the application directories: {}",
+            snafu::Report::from_error(&error)
+        ));
+        std::process::exit(1);
+    }
+
     if single_instance_result
         .as_ref()
         .is_ok_and(|instance| instance.is_some())
-        && let Err(e) = init::run_pending_migrations()
+        && let Err(e) = init::run_pending_migrations(&paths)
     {
         let backup_failed = e
             .downcast_ref::<init::MigrationChildFailed>()
             .is_some_and(|failed| failed.status.code() == Some(BACKUP_FAILED_EXIT_CODE));
         let message = format!("Failed to finish migration event: {e}");
-        match utils::path::PathResolver::from_env(None) {
-            Ok(paths) => utils::dialog::migration_failed_dialog(&message, &paths, backup_failed),
-            Err(_) => utils::dialog::panic_dialog(&message),
-        }
+        utils::dialog::migration_failed_dialog(&message, &paths, backup_failed);
         std::process::exit(1);
     }
 
     let (logger_reload, jobs_capture) =
-        init::logging::init(&mut profilers).expect("failed to initialize logging");
+        init::logging::init(&mut profilers, &paths).expect("failed to initialize logging");
     tracing::info!(
         pre_logging_ms = started.elapsed().as_millis(),
         "logging initialized"
     );
     let prepare_span = tracing::info_span!("prepare_app").entered();
-    crate::log_err!(init::init_config());
+    crate::log_err!(init::init_config(&paths));
 
     // Until setup hands over an app handle, a panic can only end the process.
     install_panic_hook(None);
@@ -268,13 +285,14 @@ pub fn run() -> std::io::Result<()> {
     };
 
     let mut context = tauri::generate_context!();
-    let executable_dir =
-        utils::dirs::app_install_dir().expect("failed to locate the application directory");
-    let metadata =
-        bundle::BundleMetadata::resolve(cfg!(windows), context.config(), &executable_dir)
-            .expect("failed to resolve bundle metadata");
+    let executable_dir = paths
+        .app_install_dir()
+        .expect("failed to locate the application directory")
+        .as_std_path();
+    let metadata = bundle::BundleMetadata::resolve(cfg!(windows), context.config(), executable_dir)
+        .expect("failed to resolve bundle metadata");
     let updater = metadata
-        .setup(context.config_mut(), &executable_dir)
+        .setup(context.config_mut(), executable_dir)
         .expect("failed to configure bundle startup");
 
     #[allow(unused_mut)]
@@ -299,7 +317,7 @@ pub fn run() -> std::io::Result<()> {
         })
         .setup(move |app| {
             transport_builder.mount_events(app);
-            setup::setup(app, metadata, logger_reload, jobs_capture)
+            setup::setup(app, metadata, logger_reload, jobs_capture, paths)
                 .context("Failed to setup the app")
                 .inspect_err(|e| {
                     tracing::error!("Failed to setup the app: {:#?}", e);
@@ -375,7 +393,10 @@ pub fn run() -> std::io::Result<()> {
             if label == "main" {
                 match &event {
                     tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                        core::tray::on_scale_factor_changed(*scale_factor);
+                        core::tray::on_scale_factor_changed(
+                            &app_handle.state::<nyanpasu_paths::PathResolver>(),
+                            *scale_factor,
+                        );
                     }
                     tauri::WindowEvent::Destroyed => {
                         log::debug!(target: "app", "window destroyed");

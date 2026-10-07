@@ -12,9 +12,8 @@ use crate::{
     utils::{
         candy,
         collect::EnvInfo,
-        dirs, help,
+        help,
         proxy_env::{self, CopyEnvOption},
-        resolve,
     },
     window::{
         WindowManager,
@@ -25,6 +24,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
@@ -891,18 +891,16 @@ pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn open_app_config_dir() -> Result<()> {
-    let config_dir = (dirs::app_config_dir())?;
-    (crate::utils::open::that(config_dir))?;
+pub fn open_app_config_dir(paths: State<'_, PathResolver>) -> Result<()> {
+    (crate::utils::open::that(paths.app_config_dir()))?;
     Ok(())
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn open_app_data_dir() -> Result<()> {
-    let data_dir = (dirs::app_data_dir())?;
-    (crate::utils::open::that(data_dir))?;
+pub fn open_app_data_dir(paths: State<'_, PathResolver>) -> Result<()> {
+    (crate::utils::open::that(paths.app_data_dir()))?;
     Ok(())
 }
 
@@ -958,9 +956,8 @@ pub fn get_core_dir() -> Result<String> {
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn open_logs_dir() -> Result<()> {
-    let log_dir = (dirs::app_logs_dir())?;
-    (crate::utils::open::that(log_dir))?;
+pub fn open_logs_dir(paths: State<'_, PathResolver>) -> Result<()> {
+    (crate::utils::open::that(paths.app_logs_dir()))?;
     Ok(())
 }
 
@@ -994,7 +991,8 @@ pub async fn get_core_version(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn collect_logs(app_handle: AppHandle) -> Result {
+pub async fn collect_logs(app_handle: AppHandle, paths: State<'_, PathResolver>) -> Result {
+    let paths = paths.clone();
     let now = Local::now().format("%Y-%m-%d");
     let fname = format!("{now}-log");
     let builder = FileDialogBuilder::new(app_handle.dialog().clone());
@@ -1002,10 +1000,10 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
         .add_filter("archive files", &["zip"])
         .set_file_name(&fname)
         .set_title("Save log archive")
-        .save_file(|file_path| match file_path {
+        .save_file(move |file_path| match file_path {
             Some(path) if path.as_path().is_some() => {
                 debug!("{path:#?}");
-                match candy::collect_logs(path.as_path().unwrap()) {
+                match candy::collect_logs(path.as_path().unwrap(), &paths) {
                     Ok(_) => (),
                     Err(err) => {
                         log::error!(target: "app", "{err:?}");
@@ -1183,8 +1181,8 @@ pub async fn clash_api_healthcheck_proxy_provider(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> {
-    Ok((crate::utils::collect::collect_envs())?)
+pub fn collect_envs(paths: State<'_, PathResolver>) -> Result<EnvInfo<'static>> {
+    Ok((crate::utils::collect::collect_envs(paths))?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -1207,11 +1205,10 @@ pub fn is_appimage() -> Result<bool> {
 #[tauri::command]
 #[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
-    use crate::utils::winreg::get_app_dir;
-    match get_app_dir() {
-        Ok(Some(path)) => Ok(Some(path.to_string_lossy().to_string())),
+    match nyanpasu_paths::registry::custom_config_dir(crate::host_paths::APP_NAME) {
+        Ok(Some(path)) => Ok(Some(path.into_string())),
         Ok(None) => Ok(None),
-        Err(err) => Err(IpcError::from(err)),
+        Err(err) => Err(IpcError::from(anyhow::Error::from(err))),
     }
 }
 
@@ -1228,12 +1225,10 @@ pub fn get_custom_app_dir() -> Result<Option<String>> {
 #[tauri::command]
 #[specta::specta]
 pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> Result {
-    use crate::utils::{self, dialog::migrate_dialog, winreg::set_app_dir};
+    use crate::utils::{self, dialog::migrate_dialog};
     use rust_i18n::t;
-    use std::path::PathBuf;
 
     let path_str = path.clone();
-    let path = PathBuf::from(path);
 
     // show a dialog to ask whether to migrate the data
     let res =
@@ -1255,7 +1250,10 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> R
                 ).spawn().unwrap().wait()?;
                 utils::help::quit_application(&app_handle);
             } else {
-                set_app_dir(&path)?;
+                nyanpasu_paths::registry::set_custom_config_dir(
+                    crate::host_paths::APP_NAME,
+                    camino::Utf8Path::new(&path_str),
+                )?;
             }
             Ok::<_, anyhow::Error>(())
         })
@@ -1280,9 +1278,13 @@ pub struct IconData {
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_cached_icon(client: State<'_, NyanpasuClient>, url: String) -> Result<IconData> {
+pub async fn get_cached_icon(
+    client: State<'_, NyanpasuClient>,
+    paths: State<'_, PathResolver>,
+    url: String,
+) -> Result<IconData> {
     let (mime, bytes) =
-        crate::service::icon::get_cached_icon(&url, client.clash_info().port).await?;
+        crate::service::icon::get_cached_icon(&url, client.clash_info().port, paths).await?;
     Ok(IconData {
         data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
     })
@@ -1291,8 +1293,8 @@ pub async fn get_cached_icon(client: State<'_, NyanpasuClient>, url: String) -> 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_tray_icon(mode: TrayIcon) -> Result<IconData> {
-    let bytes = crate::core::tray::icon::get_raw_icon(mode);
+pub async fn get_tray_icon(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<IconData> {
+    let bytes = crate::core::tray::icon::get_raw_icon(paths, mode);
     Ok(IconData {
         data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
     })
@@ -1309,14 +1311,15 @@ pub async fn set_custom_app_dir(_path: String) -> Result {
 #[cfg(windows)]
 pub mod uwp {
     use super::Result;
-    use crate::{core::win_uwp, utils::path::PathResolver};
-    use tauri::State;
+    use crate::core::win_uwp;
 
     #[nyanpasu_macro::rpc]
     #[tauri::command]
     #[specta::specta]
-    pub async fn invoke_uwp_tool(paths: State<'_, PathResolver>) -> Result {
-        (win_uwp::invoke_uwptools(paths.app_resources_dir()?).await)?;
+    pub async fn invoke_uwp_tool(app_handle: tauri::AppHandle) -> Result {
+        let resources_dir = (crate::utils::init::bundled_resources_dir(&app_handle))
+            .map_err(anyhow::Error::from)?;
+        (win_uwp::invoke_uwptools(&resources_dir).await)?;
         Ok(())
     }
 }
@@ -1326,13 +1329,14 @@ pub mod uwp {
 #[specta::specta]
 pub async fn set_tray_icon(
     app_handle: tauri::AppHandle,
+    paths: State<'_, PathResolver>,
     mode: TrayIcon,
     path: Option<PathBuf>,
 ) -> Result {
-    (crate::core::tray::icon::set_icon(mode, path))?;
+    (crate::core::tray::icon::set_icon(paths, mode, path))?;
     // Checked here, so a bad icon reaches the caller; only applying it to the
     // tray is queued.
-    (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode)))?;
+    (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(paths, &mode)))?;
     (crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART))?;
     Ok(())
 }
@@ -1342,6 +1346,7 @@ pub async fn set_tray_icon(
 #[specta::specta]
 pub async fn set_tray_icon_from_bytes(
     client: State<'_, NyanpasuClient>,
+    paths: State<'_, PathResolver>,
     mode: TrayIcon,
     bytes_base64: String,
 ) -> Result {
@@ -1355,8 +1360,8 @@ pub async fn set_tray_icon_from_bytes(
     if bytes.len() > MAX_ICON_BYTES {
         return Err("Tray icon image exceeds the 1 MiB limit".to_owned().into());
     }
-    crate::core::tray::icon::set_icon_from_bytes(mode, &bytes)?;
-    crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(&mode))?;
+    crate::core::tray::icon::set_icon_from_bytes(paths, mode, &bytes)?;
+    crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(paths, &mode))?;
     client.request_tray_refresh()?;
     Ok(())
 }
@@ -1364,8 +1369,8 @@ pub async fn set_tray_icon_from_bytes(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn is_tray_icon_set(mode: TrayIcon) -> Result<bool> {
-    let icon_path = (crate::utils::dirs::tray_icons_path(mode.as_str()))?;
+pub async fn is_tray_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> {
+    let icon_path = crate::core::tray::icon::tray_icons_path(paths, mode.as_str());
     Ok(tokio::fs::metadata(icon_path).await.is_ok())
 }
 
@@ -1459,11 +1464,21 @@ pub mod uwp {
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_service_install_prompt() -> Result<String> {
-    let args = snafu::ResultExt::context(
-        crate::core::service::control::get_service_install_args().await,
-        crate::client::runtime_error::PrepareServiceInstallPromptSnafu,
-    )?
+pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Result<String> {
+    use crate::core::service::control::{ResolveServiceDirsSnafu, get_service_install_args};
+    use snafu::ResultExt;
+
+    let args = async {
+        let app_dir = paths.app_install_dir().context(ResolveServiceDirsSnafu)?;
+        get_service_install_args(
+            paths.app_data_dir().as_std_path(),
+            paths.app_config_dir().as_std_path(),
+            app_dir.as_std_path(),
+        )
+        .await
+    }
+    .await
+    .context(crate::client::runtime_error::PrepareServiceInstallPromptSnafu)?
     .into_iter()
     .map(|arg| {
         #[cfg(unix)]

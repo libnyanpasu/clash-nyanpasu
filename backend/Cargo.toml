@@ -6,6 +6,7 @@ members = [
   'nyanpasu-macro',
   'nyanpasu-egui',
   'nyanpasu-core',
+  'nyanpasu-paths',
   'nyanpasu-helper',
   'nyanpasu-config',
   'nyanpasu-traffic',

@@ -31,10 +31,14 @@ async fn remove_cache_file(path: &Path) {
     }
 }
 
-pub async fn get_cached_icon(url: &str, self_proxy_port: u16) -> Result<(String, Bytes)> {
+pub async fn get_cached_icon(
+    url: &str,
+    self_proxy_port: u16,
+    paths: &nyanpasu_paths::PathResolver,
+) -> Result<(String, Bytes)> {
     let url = Url::parse(&url)?;
     let hash = Sha256::digest(url.as_str().as_bytes());
-    let cache_dir = crate::utils::dirs::cache_dir()?.join("icons");
+    let cache_dir = paths.cache_dir().join("icons").into_std_path_buf();
     tokio::fs::create_dir_all(&cache_dir).await?;
     let outdated_time = std::time::SystemTime::now()
         .checked_sub(CACHE_TIMEOUT)

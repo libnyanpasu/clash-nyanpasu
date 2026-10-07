@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::utils::path::PathResolver;
+use nyanpasu_paths::PathResolver;
 use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use rust_i18n::t;
 
@@ -30,10 +30,7 @@ pub fn migration_failed_dialog(error: &str, paths: &PathResolver, backup_failed:
     } else {
         format!(
             "{error}\n\n{}\n\n{}",
-            t!(
-                "dialog.migration_failed.backup_kept",
-                path = backups_dir.display()
-            ),
+            t!("dialog.migration_failed.backup_kept", path = backups_dir),
             t!("dialog.migration_failed.recovery")
         )
     };
@@ -57,7 +54,7 @@ pub fn migration_failed_dialog(error: &str, paths: &PathResolver, backup_failed:
             _ => return,
         };
         if let Err(error) = crate::utils::open::that(target) {
-            tracing::warn!("failed to open {}: {error}", target.display());
+            tracing::warn!("failed to open {}: {error}", target);
         }
     }
 }

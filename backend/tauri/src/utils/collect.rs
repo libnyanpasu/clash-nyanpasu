@@ -32,7 +32,9 @@ pub struct EnvInfo<'a> {
 
 pub type CoreInfo<'a> = BTreeMap<Cow<'a, str>, Cow<'a, str>>;
 
-pub fn collect_envs<'a>() -> Result<EnvInfo<'a>, std::io::Error> {
+pub fn collect_envs<'a>(
+    paths: &nyanpasu_paths::PathResolver,
+) -> Result<EnvInfo<'a>, std::io::Error> {
     let mut system = sysinfo::System::new_all();
     system.refresh_all();
 
@@ -65,7 +67,8 @@ pub fn collect_envs<'a>() -> Result<EnvInfo<'a>, std::io::Error> {
         let name: &str = c.as_ref();
 
         let mut command = std::process::Command::new(
-            super::dirs::get_data_or_sidecar_path(name)
+            paths
+                .data_or_sidecar_path(name)
                 .map_err(|e| std::io::Error::other(e.to_string()))?,
         );
         command.args(if matches!(c, CoreType::Clash(ClashCoreType::ClashRust)) {

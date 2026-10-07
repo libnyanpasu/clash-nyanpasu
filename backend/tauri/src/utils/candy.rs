@@ -1,4 +1,4 @@
-use super::{config::NyanpasuReqwestProxyExt, dirs::app_logs_dir};
+use super::config::NyanpasuReqwestProxyExt;
 use anyhow::Result;
 use chrono::Local;
 use glob::glob;
@@ -10,26 +10,24 @@ use std::{
 use url::Url;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
-pub fn collect_logs(target_path: &Path) -> Result<()> {
+pub fn collect_logs(target_path: &Path, paths: &nyanpasu_paths::PathResolver) -> Result<()> {
     let file = std::fs::File::create(target_path)?;
-    collect_logs_to(file)?;
+    collect_logs_to(file, paths)?;
     Ok(())
 }
 
-pub fn collect_logs_tempfile() -> Result<tempfile::NamedTempFile> {
+pub fn collect_logs_tempfile(
+    paths: &nyanpasu_paths::PathResolver,
+) -> Result<tempfile::NamedTempFile> {
     let file = tempfile::NamedTempFile::new()?;
-    collect_logs_to(file.reopen()?)?;
+    collect_logs_to(file.reopen()?, paths)?;
     Ok(file)
 }
 
-fn collect_logs_to<W: Write + Seek>(writer: W) -> Result<W> {
-    let logs_dir = app_logs_dir()?;
+fn collect_logs_to<W: Write + Seek>(writer: W, paths: &nyanpasu_paths::PathResolver) -> Result<W> {
+    let logs_dir = paths.app_logs_dir();
     let now = Local::now().format("%Y-%m-%d");
-    let globstr = format!(
-        "{}/clash-nyanpasu_{}_*.log",
-        logs_dir.to_str().unwrap(),
-        now
-    );
+    let globstr = format!("{}/clash-nyanpasu_{}_*.log", logs_dir, now);
     let mut paths = Vec::new();
     for entry in glob(&globstr)? {
         {

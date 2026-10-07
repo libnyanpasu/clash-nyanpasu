@@ -5,6 +5,7 @@ use crate::core::{
     migration::{MigrationAdvice, Runner, current_version, registry},
 };
 use colored::Colorize;
+use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Args)]
 pub struct MigrateOpts {
@@ -25,10 +26,10 @@ pub struct MigrateOpts {
 /// A fresh install instance should have a empty config dir,
 ///
 /// The `app_config_dir` would create a new dir while access it.
-fn is_fresh_install_instance() -> bool {
-    crate::utils::dirs::app_config_dir()
+fn is_fresh_install_instance(paths: &PathResolver) -> bool {
+    nyanpasu_paths::create_dir_all(paths.app_config_dir())
         .ok()
-        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .and_then(|()| std::fs::read_dir(paths.app_config_dir()).ok())
         .is_some_and(|entry| {
             let dirs = entry.collect::<Vec<Result<_, _>>>();
             dirs.is_empty()
@@ -45,13 +46,13 @@ fn exit_code(error: &anyhow::Error) -> i32 {
     }
 }
 
-pub fn parse(args: &MigrateOpts) {
+pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
     if args.migration.is_some() && args.version.is_some() {
         eprintln!("Please specify only one of migration or version.");
         std::process::exit(1);
     }
 
-    let fresh_install = is_fresh_install_instance();
+    let fresh_install = is_fresh_install_instance(paths);
     let target = match args.version.as_deref() {
         Some(version) => semver::Version::parse(version).unwrap_or_else(|error| {
             eprintln!("Invalid migration target version {version}: {error}");
@@ -62,10 +63,14 @@ pub fn parse(args: &MigrateOpts) {
             std::process::exit(1);
         }),
     };
-    let mut runner = Runner::with_target(target, args.force).unwrap_or_else(|error| {
-        eprintln!("Failed to initialize migration runner: {error:#}");
-        std::process::exit(1);
-    });
+    let mut runner = paths
+        .create_base_dirs()
+        .map_err(anyhow::Error::from)
+        .and_then(|()| Runner::with_target(target, paths.clone(), args.force))
+        .unwrap_or_else(|error| {
+            eprintln!("Failed to initialize migration runner: {error:#}");
+            std::process::exit(1);
+        });
 
     if args.list {
         println!("Available migrations:\n");
@@ -120,8 +125,8 @@ pub fn parse(args: &MigrateOpts) {
 }
 
 #[cfg(target_os = "windows")]
-pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
-    use crate::utils::{self, dirs};
+pub fn migrate_home_dir_handler(target_path: &str, paths: &PathResolver) -> anyhow::Result<()> {
+    use crate::utils;
     use anyhow::Context;
     use deelevate::{PrivilegeLevel, Token};
     use std::{borrow::Cow, path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
@@ -135,12 +140,14 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    let current_home_dir = dirs::app_config_dir()?;
+    nyanpasu_paths::create_dir_all(paths.app_config_dir())?;
+    let current_home_dir = paths.app_config_dir().as_std_path().to_owned();
     let target_home_dir = PathBuf::from_str(target_path)?;
 
     // 1. waiting for app exited
     println!("waiting for app exited.");
-    let placeholder = dirs::get_single_instance_placeholder()?;
+    let placeholder =
+        utils::init::single_instance_placeholder(crate::host_paths::APP_NAME, &current_home_dir);
     let mut single_instance: single_instance::SingleInstance;
     loop {
         single_instance = single_instance::SingleInstance::new(&placeholder)
@@ -181,7 +188,10 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 
     // 3. do config migrate and update the registry.
     utils::init::do_config_migration(&current_home_dir, &target_home_dir)?;
-    utils::winreg::set_app_dir(target_home_dir.as_path())?;
+    nyanpasu_paths::registry::set_custom_config_dir(
+        crate::host_paths::APP_NAME,
+        camino::Utf8Path::new(target_path),
+    )?;
     println!("migration finished. starting application...");
     drop(single_instance); // release single instance lock
 
@@ -194,7 +204,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn migrate_home_dir_handler(_target_path: &str) -> anyhow::Result<()> {
+pub fn migrate_home_dir_handler(_target_path: &str, _paths: &PathResolver) -> anyhow::Result<()> {
     Ok(())
 }
 

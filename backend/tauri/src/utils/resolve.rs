@@ -14,7 +14,10 @@ pub fn resolve_setup(app: &mut App) {
     #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");
     #[cfg(any(windows, target_os = "linux"))]
-    crate::core::tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
+    crate::core::tray::icon::resize_images(
+        &app.state::<nyanpasu_paths::PathResolver>(),
+        crate::utils::help::get_max_scale_factor(),
+    ); // generate latest cache icon by current scale factor
 
     {
         let client = app.state::<crate::client::NyanpasuClient>();

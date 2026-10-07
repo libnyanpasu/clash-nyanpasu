@@ -640,10 +640,12 @@ fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
 fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
     let f = Fixture::new(false);
     tauri::async_runtime::block_on(async {
-        // Only this workflow may read the binding counted below; background
-        // geo discovery and proxy refreshes otherwise race these assertions.
+        // Only this workflow may read the binding counted below. Stop background
+        // consumers, then drain the lease monitor they may already have started.
         f.client.inner._geo_index.stop_for_test().await.unwrap();
         f.client.inner.proxies.stop_for_test().await.unwrap();
+        f.client.inner.core_api.api_client().await.unwrap();
+        f.client.inner.core_api.release_api_for_test().await;
         f.client.inner.core_api.refresh_status().await.unwrap();
         f.endpoint.api_queries.store(0, Ordering::SeqCst);
 
@@ -933,6 +935,7 @@ impl RecordingBuilder {
     fn new(f: &Fixture, fail_build: bool, fail_publish: bool) -> Arc<Self> {
         Arc::new(Self {
             delegate: super::adapters::FsRuntimeBuildAdapter {
+                core_specs: Arc::new(crate::client::runtime_core_spec),
                 profiles_dir: f.client.inner.profiles_dir.clone(),
                 paths: crate::client::tests::test_runtime_paths(&f._dir),
                 scripts: nyanpasu_platform::enhance::ScriptDirs::under(f._dir.path()),

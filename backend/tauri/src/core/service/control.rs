@@ -1,8 +1,12 @@
-use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
+use nyanpasu_paths::InstallDirError;
 use runas::Command as RunasCommand;
 use serde::Serialize;
 use snafu::{ResultExt, Snafu, ensure};
-use std::{ffi::OsString, path::Path, process::ExitStatus};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    process::ExitStatus,
+};
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
@@ -32,10 +36,6 @@ impl std::fmt::Display for ServiceCommand {
     }
 }
 
-fn boxed(error: anyhow::Error) -> Box<dyn std::error::Error + Send + Sync> {
-    error.into()
-}
-
 #[cfg(windows)]
 type UserError = std::io::Error;
 #[cfg(not(windows))]
@@ -54,9 +54,9 @@ pub enum ServiceCommandError {
     },
     #[snafu(display("could not resolve the application directories: {source}"))]
     ResolveServiceDirs {
-        #[snafu(source(from(anyhow::Error, boxed)))]
+        #[snafu(source(from(InstallDirError, Box::new)))]
         #[serde(skip)]
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<InstallDirError>,
     },
     #[snafu(display("could not run the service {command} command: {source}"))]
     RunElevated {
@@ -125,7 +125,19 @@ fn signal(status: &ExitStatus) -> Option<i32> {
     }
 }
 
-pub async fn get_service_install_args() -> Result<Vec<OsString>, ServiceCommandError> {
+/// The service binary's name, without the platform's executable suffix.
+const SERVICE_BINARY: &str = "nyanpasu-service";
+
+/// The `nyanpasu-service` binary, shipped next to the executable.
+pub fn service_binary(install_dir: &Path) -> PathBuf {
+    install_dir.join(format!("{SERVICE_BINARY}{}", std::env::consts::EXE_SUFFIX))
+}
+
+pub async fn get_service_install_args(
+    data_dir: &Path,
+    config_dir: &Path,
+    app_dir: &Path,
+) -> Result<Vec<OsString>, ServiceCommandError> {
     let user = {
         #[cfg(windows)]
         {
@@ -138,9 +150,6 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, ServiceCommandE
             whoami::username().context(ResolveServiceUserSnafu)?
         }
     };
-    let data_dir = app_data_dir().context(ResolveServiceDirsSnafu)?;
-    let config_dir = app_config_dir().context(ResolveServiceDirsSnafu)?;
-    let app_dir = app_install_dir().context(ResolveServiceDirsSnafu)?;
 
     let args: Vec<OsString> = vec![
         "install".into(),
@@ -204,22 +213,33 @@ async fn run_elevated(
     Ok(())
 }
 
-pub async fn install_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
-    let args = get_service_install_args().await?;
+pub async fn install_service(
+    service_binary: &Path,
+    data_dir: &Path,
+    config_dir: &Path,
+    app_dir: &Path,
+) -> Result<(), ServiceCommandError> {
+    let args = get_service_install_args(data_dir, config_dir, app_dir).await?;
     run_elevated(ServiceCommand::Install, service_binary, args).await
 }
 
-pub async fn update_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
+pub async fn update_service(
+    service_binary: &Path,
+    data_dir: &Path,
+) -> Result<(), ServiceCommandError> {
     #[cfg(unix)]
     let args = vec![
         "update".into(),
         "--user".into(),
         whoami::username().context(ResolveServiceUserSnafu)?.into(),
         "--nyanpasu-data-dir".into(),
-        app_data_dir().context(ResolveServiceDirsSnafu)?.into(),
+        data_dir.into(),
     ];
     #[cfg(windows)]
-    let args = vec!["update".into()];
+    let args = {
+        let _ = data_dir;
+        vec!["update".into()]
+    };
     run_elevated(ServiceCommand::Update, service_binary, args).await
 }
 
@@ -292,6 +312,19 @@ mod tests {
             })
         );
         assert!(error.to_string().contains("install"), "{error}");
+    }
+
+    #[test]
+    fn the_service_binary_sits_next_to_the_executable() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let binary = service_binary(dir.path());
+
+        assert_eq!(binary.parent(), Some(dir.path()));
+        assert_eq!(
+            binary.file_name().unwrap().to_str(),
+            Some(format!("nyanpasu-service{}", std::env::consts::EXE_SUFFIX).as_str())
+        );
     }
 
     #[test]

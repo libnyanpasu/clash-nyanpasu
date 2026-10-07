@@ -425,6 +425,16 @@ impl ApiLease {
         });
         Self { client, monitor }
     }
+
+    #[cfg(test)]
+    pub(super) async fn stop_for_test(mut self) {
+        self.client.revoke();
+        self.monitor.abort();
+        match (&mut self.monitor).await {
+            Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
+            _ => {}
+        }
+    }
 }
 
 impl Drop for ApiLease {

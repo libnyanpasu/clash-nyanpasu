@@ -1,3 +1,4 @@
+use nyanpasu_paths::PathResolver;
 mod app_lifecycle;
 pub mod app_update;
 mod application;
@@ -55,10 +56,8 @@ use crate::{
         ReorderOp,
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
     },
-    utils::path::PathResolver,
 };
 use anyhow::Context as _;
-use camino::Utf8PathBuf;
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
@@ -100,6 +99,9 @@ pub struct ClientSetupArgs {
     /// for the storage commands.
     pub storage: Storage,
     pub runtime_paths: RuntimePaths,
+    /// Resolves the core binary a [`ClashCore`](nyanpasu_config::application::ClashCore)
+    /// selects; production looks it up on disk, tests substitute a fixed spec.
+    pub core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
     pub ui_sink: Arc<dyn UiEventSink>,
     /// Built after the active proxy-port source exists in the composition root.
     pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -139,22 +141,18 @@ async fn new_typed_config_clients(
     let application = ApplicationClient::new(
         mutations.clone(),
         build_channel,
-        utf8_path(paths.application_config_path())?,
+        paths.application_config_path(),
         shutdown.child_token(),
         tasks,
     )
     .await?;
 
-    let session_state = SessionStateClient::new(
-        utf8_path(paths.session_state_path())?,
-        shutdown.child_token(),
-        tasks,
-    )
-    .await?;
+    let session_state =
+        SessionStateClient::new(paths.session_state_path(), shutdown.child_token(), tasks).await?;
 
     let clash_config = ClashConfigClient::new(
         mutations.clone(),
-        utf8_path(paths.clash_config_path())?,
+        paths.clash_config_path(),
         shutdown.child_token(),
         tasks,
     )
@@ -163,16 +161,7 @@ async fn new_typed_config_clients(
     Ok((application, session_state, clash_config))
 }
 
-#[cfg(not(test))]
-fn runtime_core_spec(
-    core: &nyanpasu_config::application::ClashCore,
-) -> std::result::Result<
-    nyanpasu_core_manager::CoreSpec,
-    crate::core::actor_v2::local_host::CoreSpecError,
-> {
-    crate::core::actor_v2::local_host::core_spec(core)
-}
-
+/// The fixed core spec tests inject in place of the on-disk lookup.
 #[cfg(test)]
 fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
@@ -269,6 +258,7 @@ impl NyanpasuClient {
             paths,
             storage,
             runtime_paths,
+            core_specs,
             ui_sink,
             app_update_backend_factory,
             app_update_event_sink,
@@ -287,12 +277,14 @@ impl NyanpasuClient {
             shutdown,
             tasks,
         } = args;
-        let profiles_dir = paths.app_profiles_dir();
+        let profiles_dir = paths.app_profiles_dir().into_std_path_buf();
         let backup_paths = paths.clone();
-        let instance_config_dir = paths.app_config_dir().to_path_buf();
-        let script_dirs =
-            nyanpasu_platform::enhance::ScriptDirs::new(paths.scripts_dir(), paths.cache_dir());
-        let profiles_path = utf8_path(paths.profiles_path())?;
+        let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
+        let script_dirs = nyanpasu_platform::enhance::ScriptDirs::new(
+            paths.scripts_dir().into_std_path_buf(),
+            paths.cache_dir().into_std_path_buf(),
+        );
+        let profiles_path = paths.profiles_path();
         let runtime_paths_for_setup = runtime_paths.clone();
         let jobs_for_setup = jobs.clone();
         let mutations = crate::state::mutation::MutationCoordinator::pending();
@@ -358,6 +350,7 @@ impl NyanpasuClient {
             backup_paths,
             storage,
             runtime_paths,
+            core_specs,
             script_dirs,
             ui_sink,
             app_update_backend_factory,
@@ -398,6 +391,7 @@ impl NyanpasuClient {
         paths: PathResolver,
         storage: Storage,
         runtime_paths: RuntimePaths,
+        core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
         script_dirs: nyanpasu_platform::enhance::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -487,6 +481,7 @@ impl NyanpasuClient {
                 service,
                 builder: Arc::new(application_workflow::adapters::FsRuntimeBuildAdapter {
                     profiles_dir: profiles_dir.clone(),
+                    core_specs,
                     paths: runtime_paths.clone(),
                     scripts: script_dirs,
                 }),
@@ -739,9 +734,11 @@ impl NyanpasuClient {
                     kind: BackupKind::Manual,
                     now: time::OffsetDateTime::now_utc(),
                 })?;
-                if let Err(error) =
-                    backup::prune_backups(&paths.backups_dir(), MANUAL_PREFIX, KEEP_MANUAL_BACKUPS)
-                {
+                if let Err(error) = backup::prune_backups(
+                    paths.backups_dir().as_std_path(),
+                    MANUAL_PREFIX,
+                    KEEP_MANUAL_BACKUPS,
+                ) {
                     tracing::warn!(%error, "failed to prune old manual backups");
                 }
                 Ok(info)
@@ -752,7 +749,7 @@ impl NyanpasuClient {
 
     /// `<data>/backups`, created when it does not exist yet.
     pub fn backups_dir(&self) -> std::io::Result<PathBuf> {
-        let dir = self.inner.paths.backups_dir();
+        let dir = self.inner.paths.backups_dir().into_std_path_buf();
         std::fs::create_dir_all(&dir)?;
         Ok(dir)
     }
@@ -1314,11 +1311,6 @@ impl NyanpasuClient {
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
         self.inner.application_workflow.runtime().promoted
     }
-}
-
-fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
-    Utf8PathBuf::from_path_buf(path)
-        .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
 }
 
 #[async_trait::async_trait]
@@ -2203,7 +2195,7 @@ pub(crate) mod tests {
     }
 
     /// The stamped file the application loads.
-    fn write_application_config(path: &std::path::Path, config: &NyanpasuAppConfig) {
+    fn write_application_config(path: &camino::Utf8Path, config: &NyanpasuAppConfig) {
         use nyanpasu_core::format::Format as _;
 
         let mut content = Vec::new();
@@ -2242,9 +2234,9 @@ pub(crate) mod tests {
     /// Seeds `path` with [`test_clash_config`], which the clash config client
     /// then loads instead of creating the default.
     fn test_backup_deps(dir: &TempDir) -> (PathResolver, Storage) {
-        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let paths = test_paths(dir.path(), dir.path().join("data"));
         std::fs::create_dir_all(paths.app_data_dir()).unwrap();
-        let storage = Storage::try_new(&paths.storage_path()).unwrap();
+        let storage = Storage::try_new(paths.storage_path().as_std_path()).unwrap();
         (paths, storage)
     }
 
@@ -2319,7 +2311,7 @@ pub(crate) mod tests {
         use crate::client::logs::LogSource;
         use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
         let dir = tempdir().unwrap();
-        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let paths = test_paths(dir.path(), dir.path().join("data"));
         std::fs::create_dir_all(paths.app_logs_dir()).unwrap();
         std::fs::write(
             paths
@@ -2439,8 +2431,9 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logs::test_setup(
-                PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
-                    .app_logs_dir(),
+                test_paths(dir.path(), dir.path().join("data"))
+                    .app_logs_dir()
+                    .into_std_path_buf(),
             ),
             profiles.jobs(),
             application,
@@ -2453,11 +2446,8 @@ pub(crate) mod tests {
             PathBuf::new(),
             backup_paths,
             storage,
-            RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
-                dir.path().into(),
-                dir.path().join("data"),
-            ))
-            .unwrap(),
+            RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
+            Arc::new(runtime_core_spec),
             nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
@@ -2949,7 +2939,7 @@ pub(crate) mod tests {
     ) -> ClientSetupArgs {
         let (paths, storage) = test_backup_deps(dir);
         seed_test_clash_config(paths.clash_config_path());
-        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let runtime_paths = RuntimePaths::from_resolver(&paths);
         let (shutdown, tasks) = (
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -2972,12 +2962,13 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
-            logging: logs::test_setup(paths.app_logs_dir()),
+            logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             storage,
             runtime_paths,
+            core_specs: Arc::new(runtime_core_spec),
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             app_update_backend_factory: None,
             app_update_event_sink: None,
@@ -3085,9 +3076,9 @@ pub(crate) mod tests {
                 endpoint: service_endpoint,
                 calls: calls.clone(),
                 stopped: std::sync::atomic::AtomicBool::new(false),
-                installed_for: args.paths.app_config_dir().to_path_buf(),
+                installed_for: args.paths.app_config_dir().as_std_path().to_path_buf(),
             },
-            application_config: args.paths.application_config_path(),
+            application_config: args.paths.application_config_path().into_std_path_buf(),
         });
         let (core_v2, service) = std::thread::spawn(move || {
             tauri::async_runtime::block_on(async {
@@ -3278,7 +3269,7 @@ pub(crate) mod tests {
         fetcher: Arc<dyn SubscriptionFetcher>,
     ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
-        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let paths = test_paths(dir.path(), dir.path().join("data"));
         let ports = Arc::new(SessionPortResolver::default());
         let file_service = Arc::new(ProfileFileService::new(
             paths.clone(),
@@ -3305,8 +3296,9 @@ pub(crate) mod tests {
                 release_channel: crate::bundle::Channel::Stable,
             },
             logs::test_setup(
-                PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
-                    .app_logs_dir(),
+                test_paths(dir.path(), dir.path().join("data"))
+                    .app_logs_dir()
+                    .into_std_path_buf(),
             ),
             profiles.jobs(),
             application,
@@ -3315,12 +3307,16 @@ pub(crate) mod tests {
             profiles,
             file_service.clone() as Arc<dyn ProfileFsPort>,
             ports,
-            paths.app_profiles_dir(),
+            paths.app_profiles_dir().into_std_path_buf(),
             PathBuf::new(),
             backup_paths,
             storage,
-            RuntimePaths::from_resolver(&paths).unwrap(),
-            nyanpasu_platform::enhance::ScriptDirs::new(paths.scripts_dir(), paths.cache_dir()),
+            RuntimePaths::from_resolver(&paths),
+            Arc::new(runtime_core_spec),
+            nyanpasu_platform::enhance::ScriptDirs::new(
+                paths.scripts_dir().into_std_path_buf(),
+                paths.cache_dir().into_std_path_buf(),
+            ),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -3440,7 +3436,7 @@ pub(crate) mod tests {
             drop(session_state);
             drop(clash_config);
 
-            let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+            let paths = test_paths(dir.path(), dir.path().join("data"));
             let (loaded, _session_state, _clash_config) = new_typed_config_clients(
                 crate::state::mutation::MutationCoordinator::isolated(),
                 crate::bundle::Channel::Stable,
@@ -3459,7 +3455,7 @@ pub(crate) mod tests {
     fn try_new_with_args_constructs_typed_config_facade() {
         let dir = tempdir().expect("tempdir should be created");
         let (paths, storage) = test_backup_deps(&dir);
-        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
+        let runtime_paths = RuntimePaths::from_resolver(&paths);
         let (shutdown, tasks) = (
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -3482,12 +3478,13 @@ pub(crate) mod tests {
                 is_fixed_webview: false,
                 release_channel: crate::bundle::Channel::Stable,
             },
-            logging: logs::test_setup(paths.app_logs_dir()),
+            logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             storage,
             runtime_paths,
+            core_specs: Arc::new(runtime_core_spec),
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             app_update_backend_factory: None,
             app_update_event_sink: None,
@@ -3525,13 +3522,21 @@ pub(crate) mod tests {
         });
     }
 
+    /// A resolver rooted at `config` and `data`, for tests that do not run from an installed
+    /// executable.
+    pub(crate) fn test_paths(
+        config: impl AsRef<std::path::Path>,
+        data: impl AsRef<std::path::Path>,
+    ) -> PathResolver {
+        let utf8 = |path: &std::path::Path| {
+            Utf8PathBuf::from_path_buf(path.to_owned()).expect("test directories are UTF-8")
+        };
+        PathResolver::with_base_dirs(utf8(config.as_ref()), utf8(data.as_ref()))
+    }
+
     /// The runtime paths every test client is built with.
     pub(crate) fn test_runtime_paths(dir: &TempDir) -> RuntimePaths {
-        RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
-            dir.path().into(),
-            dir.path().join("data"),
-        ))
-        .unwrap()
+        RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data")))
     }
 
     #[test]
@@ -4441,8 +4446,9 @@ pub(crate) mod tests {
                     release_channel: crate::bundle::Channel::Stable,
                 },
                 logs::test_setup(
-                    PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"))
-                        .app_logs_dir(),
+                    test_paths(dir.path(), dir.path().join("data"))
+                        .app_logs_dir()
+                        .into_std_path_buf(),
                 ),
                 profiles.jobs(),
                 application,
@@ -4455,11 +4461,8 @@ pub(crate) mod tests {
                 PathBuf::new(),
                 backup_paths,
                 storage,
-                RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
-                    dir.path().into(),
-                    dir.path().join("data"),
-                ))
-                .unwrap(),
+                RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
+                Arc::new(runtime_core_spec),
                 nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
                 None,

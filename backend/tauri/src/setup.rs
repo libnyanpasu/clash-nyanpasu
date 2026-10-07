@@ -1,4 +1,5 @@
 //! Setup logic for the app
+use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
 use crate::{
@@ -28,10 +29,9 @@ use crate::{
             ports::LocaleSink,
         },
     },
-    utils::{init::logging::ReloadSignal, path::PathResolver},
+    utils::init::logging::ReloadSignal,
 };
 use anyhow::Context;
-use camino::Utf8PathBuf;
 use nyanpasu_traffic::{RedbTrafficStore, TrafficStore};
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -47,6 +47,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     bundle_metadata: crate::bundle::BundleMetadata,
     logger_reload: std::sync::mpsc::Sender<ReloadSignal>,
     jobs_capture: nyanpasu_jobs::LogCapture,
+    paths: PathResolver,
 ) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     let rpc_events = crate::unified_rpc::EventBus::new();
@@ -76,29 +77,31 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 
     // Only Tauri knows where the bundle is. Resources are copied best-effort,
     // so a bundle that cannot be located does not stop the app.
-    let resources_dir = app
-        .path()
-        .resource_dir()
+    let resources_dir = crate::utils::init::bundled_resources_dir(app)
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
-        .ok()
-        .map(|dir| dir.join("resources"));
-    let paths = PathResolver::from_env(resources_dir).context("Failed to resolve app paths")?;
+        .ok();
     let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
         .context("Failed to setup config migrations")?;
     migrations
         .run_pending()
         .context("Failed to run config migrations before client setup")?;
-    crate::log_err!(crate::utils::init::init_resources(&paths));
-    // For commands that need a path, such as the Windows UWP loopback tool.
+    crate::log_err!(crate::utils::init::init_resources(
+        paths.app_data_dir().as_std_path(),
+        resources_dir.as_deref()
+    ));
+    // For the desktop commands that need a path.
     app.manage(paths.clone());
-    let runtime_paths = RuntimePaths::from_resolver(&paths)?;
+    let runtime_paths = RuntimePaths::from_resolver(&paths);
     // TODO(ipc-timeout): nyanpasu_ipc::Client sets no request timeout. Remove the
     // outer call deadlines in core/actor_v2 once the upstream client sets one.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context("Failed to build the service IPC client")?;
-    let service_binary = paths
-        .service_binary_path()
-        .context("Failed to locate the service binary")?;
+    let service_binary = crate::core::service::control::service_binary(
+        paths
+            .app_install_dir()
+            .context("Failed to locate the service binary")?
+            .as_std_path(),
+    );
     let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service) = tauri::async_runtime::block_on(async {
         let control = crate::core::actor_v2::local_host::build(&paths).await?;
@@ -111,6 +114,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
                 service_ipc.clone(),
                 service_binary,
+                paths.clone(),
             ),
         );
         let service =
@@ -128,7 +132,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
     let span = tracing::info_span!("spawn_effect_owners").entered();
     let jobs = tauri::async_runtime::block_on(crate::client::jobs::start(
-        paths.jobs_path(),
+        paths.jobs_path().into_std_path_buf(),
         jobs_capture,
         shutdown.child_token(),
         &tasks,
@@ -149,13 +153,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
     // Opened after the in-process migrations above, which open the same file.
-    let storage = crate::core::storage::Storage::try_new(&paths.storage_path())
+    let storage = crate::core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context("Failed to open the storage")?;
     app.manage(storage.clone());
     // The core runs with the app data dir as its home, where its geo databases live.
     let geo_index = Arc::new(crate::core::geo::FsCountryIndexSource::new(
-        paths.app_data_dir().to_owned(),
-        paths.cache_dir().join("geodata"),
+        paths.app_data_dir().as_std_path().to_owned(),
+        paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
     let span = tracing::info_span!("build_client").entered();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
@@ -164,8 +168,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         http_routes,
         jobs,
         logging: crate::client::logs::LoggingSetup {
-            core: match crate::core::logs::RedbCoreLogStore::open(paths.app_logs_dir().join("core"))
-            {
+            core: match crate::core::logs::RedbCoreLogStore::open(
+                paths.app_logs_dir().join("core").into_std_path_buf(),
+            ) {
                 Ok(store) => Box::new(store),
                 Err(error) => {
                     tracing::warn!(%error, "Core log storage unavailable");
@@ -175,14 +180,18 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 }
             },
             files: Arc::new(nyanpasu_logging::FsLogFiles::new(
-                paths.app_logs_dir(),
+                paths.app_logs_dir().into_std_path_buf(),
                 "clash-nyanpasu".into(),
             )),
             clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
             service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
             frontend: Arc::new(crate::client::frontend_events::TracingFrontendLogSink),
         },
-        paths,
+        core_specs: {
+            let paths = paths.clone();
+            Arc::new(move |core| crate::core::actor_v2::local_host::core_spec(core, &paths))
+        },
+        paths: paths.clone(),
         storage,
         runtime_paths: runtime_paths.clone(),
         ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
@@ -244,6 +253,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         client.subscribe_clash_connections(),
         shutdown.child_token(),
         &tasks,
+        paths,
     ))
     .context("Failed to setup the network statistic widget")?;
     widget_controller
@@ -261,6 +271,7 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
     let dependencies = crate::unified_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
         storage: (*app.state::<crate::core::storage::Storage>()).clone(),
+        paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
     };
     let rpc = crate::unified_rpc::UnifiedRpc::new(dependencies)?;
@@ -274,7 +285,7 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
 /// than failing the launch. The history holds browsing targets, hence the
 /// owner-only directory.
 fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStore>> {
-    let dir = paths.app_data_dir().join("traffic");
+    let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
     let open = || -> anyhow::Result<RedbTrafficStore> {
         std::fs::create_dir_all(&dir)?;
         #[cfg(unix)]
@@ -345,7 +356,7 @@ fn build_application_effects(
     let auto_launch = AutoLaunchConfig::resolve(appimage)
         .and_then(AutoLaunchBackend::new)
         .context("Failed to resolve the auto-launch registration")?;
-    let pac = HttpPacBackend::new(utf8_path(paths.cache_dir().join("pac.js"))?)
+    let pac = HttpPacBackend::new(paths.cache_dir().join("pac.js"))
         .context("Failed to build the PAC backend")?;
 
     let system_proxy = tauri::async_runtime::block_on(SystemProxyClient::spawn(
@@ -428,11 +439,6 @@ fn forward_actor_events(
             let _ = crate::core::actor_v2::ServiceStatusChangedEvent(status).emit(&app_handle);
         }
     }));
-}
-
-fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
-    Utf8PathBuf::from_path_buf(path)
-        .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
 }
 
 fn debug_http_frontend(

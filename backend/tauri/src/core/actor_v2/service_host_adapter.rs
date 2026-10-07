@@ -6,22 +6,30 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+use snafu::ResultExt;
+
 use super::{
     endpoint::{EndpointHandle, ServiceEndpoint},
     service_actor::ServiceHostAdapter,
 };
-use crate::core::service::control::ServiceCommandError;
+use crate::core::service::control::{ResolveServiceDirsSnafu, ServiceCommandError};
 
 pub struct OsServiceHostAdapter {
     client: nyanpasu_ipc::client::Client,
     service_binary: PathBuf,
+    paths: nyanpasu_paths::PathResolver,
 }
 
 impl OsServiceHostAdapter {
-    pub fn new(client: nyanpasu_ipc::client::Client, service_binary: PathBuf) -> Self {
+    pub fn new(
+        client: nyanpasu_ipc::client::Client,
+        service_binary: PathBuf,
+        paths: nyanpasu_paths::PathResolver,
+    ) -> Self {
         Self {
             client,
             service_binary,
+            paths,
         }
     }
 }
@@ -33,7 +41,17 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
     }
 
     async fn install(&self) -> Result<(), ServiceCommandError> {
-        crate::core::service::control::install_service(&self.service_binary).await
+        let app_dir = self
+            .paths
+            .app_install_dir()
+            .context(ResolveServiceDirsSnafu)?;
+        crate::core::service::control::install_service(
+            &self.service_binary,
+            self.paths.app_data_dir().as_std_path(),
+            self.paths.app_config_dir().as_std_path(),
+            app_dir.as_std_path(),
+        )
+        .await
     }
 
     async fn uninstall(&self) -> Result<(), ServiceCommandError> {
@@ -49,7 +67,11 @@ impl ServiceHostAdapter for OsServiceHostAdapter {
     }
 
     async fn update(&self) -> Result<(), ServiceCommandError> {
-        crate::core::service::control::update_service(&self.service_binary).await
+        crate::core::service::control::update_service(
+            &self.service_binary,
+            self.paths.app_data_dir().as_std_path(),
+        )
+        .await
     }
 
     fn endpoint(&self) -> EndpointHandle {

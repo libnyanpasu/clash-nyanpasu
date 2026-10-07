@@ -5,6 +5,7 @@ use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
 use nyanpasu_helper::StatisticWidgetVariant;
+use nyanpasu_paths::PathResolver;
 use tauri::utils::platform::current_exe;
 
 mod migrate;
@@ -42,7 +43,7 @@ enum Commands {
     StatisticWidget { variant: StatisticWidgetVariant },
 }
 
-pub fn parse() -> anyhow::Result<()> {
+pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
     let cli = Cli::parse();
     if cli.version {
         print_version_info();
@@ -50,13 +51,13 @@ pub fn parse() -> anyhow::Result<()> {
     if let Some(commands) = &cli.command {
         match commands {
             Commands::Migrate(opts) => {
-                migrate::parse(opts);
+                migrate::parse(opts, paths);
             }
             Commands::MigrateHomeDir { target_path } => {
-                migrate::migrate_home_dir_handler(target_path).unwrap();
+                migrate::migrate_home_dir_handler(target_path, paths).unwrap();
             }
             Commands::Launch { args } => {
-                let _ = utils::init::check_singleton().unwrap();
+                let _ = utils::init::check_singleton(paths).unwrap();
                 let appimage: Option<String> = {
                     #[cfg(target_os = "linux")]
                     {
@@ -75,7 +76,9 @@ pub fn parse() -> anyhow::Result<()> {
                 std::process::Command::new(path).args(args).spawn().unwrap();
             }
             Commands::Collect => {
-                let envs = crate::utils::collect::collect_envs().unwrap();
+                // The core binaries are looked up in the data dir, which the command creates.
+                nyanpasu_paths::create_dir_all(paths.app_data_dir()).unwrap();
+                let envs = crate::utils::collect::collect_envs(paths).unwrap();
                 println!("{envs:#?}");
             }
             Commands::PanicDialog { message } => {

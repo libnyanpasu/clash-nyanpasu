@@ -3,9 +3,8 @@ use crate::client::{
     effects::status::failure_text,
     ui_effects::ports::{
         ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
-        MissingWidgetSenderSnafu, ResolveStatePathSnafu, ShutdownBeforeConnectSnafu,
-        ShuttingDownSnafu, SpawnWidgetSnafu, StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu,
-        WidgetError, WidgetExitedSnafu,
+        MissingWidgetSenderSnafu, ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu,
+        StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
     },
 };
 
@@ -16,6 +15,7 @@ use nyanpasu_egui::{
     },
     widget::StatisticWidgetVariant,
 };
+use nyanpasu_paths::PathResolver;
 use snafu::{IntoError as _, OptionExt as _, ResultExt as _, Snafu, ensure};
 use std::{
     sync::{Arc, Mutex as StdMutex, atomic::AtomicBool},
@@ -411,7 +411,9 @@ fn send(link: &SharedLink, message: Message) -> Result<(), WidgetSendError> {
 }
 
 /// The widget binary: this executable, relaunched with `statistic-widget`.
-struct ProcessWidgetHost;
+struct ProcessWidgetHost {
+    paths: PathResolver,
+}
 
 impl WidgetHost for ProcessWidgetHost {
     fn spawn(&self, widget: StatisticWidgetVariant) -> Result<SpawnedWidget, WidgetError> {
@@ -421,9 +423,9 @@ impl WidgetHost for ProcessWidgetHost {
         // spawn a process to run the widget
         let variant = format!("{widget}");
         tracing::debug!("Spawning widget process for {}...", variant);
-        let widget_win_state_path = crate::utils::dirs::app_data_dir()
-            .map_err(anyhow::Error::into)
-            .context(ResolveStatePathSnafu)?
+        let widget_win_state_path = self
+            .paths
+            .app_data_dir()
             .join(format!("widget_{variant}.state"));
         let child = tokio::process::Command::new(current_exe)
             .arg("statistic-widget")
@@ -486,8 +488,9 @@ pub async fn setup(
     ws_connections_receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>,
     shutdown: CancellationToken,
     tasks: &TaskTracker,
+    paths: PathResolver,
 ) -> anyhow::Result<WidgetManager> {
-    let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost), shutdown, tasks);
+    let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost { paths }), shutdown, tasks);
     widget_manager.register_listener(ws_connections_receiver);
     Ok(widget_manager)
 }

@@ -1,16 +1,14 @@
-use crate::{
-    core::migration::modules::profiles::ProfilesFormat,
-    utils::{dirs, path::PathResolver},
-};
+use crate::core::migration::modules::profiles::ProfilesFormat;
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
 use nyanpasu_core::format::Format;
+use nyanpasu_paths::PathResolver;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use std::{
     fs::{self, File},
     io::{self, BufReader, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
     sync::Arc,
     thread::JoinHandle,
@@ -29,14 +27,14 @@ pub struct MigrationChildFailed {
     pub stderr: String,
 }
 
-pub fn run_pending_migrations() -> Result<()> {
+pub fn run_pending_migrations(paths: &PathResolver) -> Result<()> {
     let current_exe = current_exe()?;
     let current_exe = dunce::canonicalize(current_exe)?;
     let file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(crate::utils::dirs::app_data_dir()?.join("migration.log"))?;
+        .open(paths.app_data_dir().join("migration.log"))?;
     let mut command = Command::new(current_exe);
     command.arg("migrate");
     run_migration_command(command, file)
@@ -132,7 +130,7 @@ fn wait_for_migration_output(
 
 /// Initialize all the config files
 /// before tauri setup
-pub fn init_config() -> Result<()> {
+pub fn init_config(paths: &PathResolver) -> Result<()> {
     // Check if old config dir exist and new config dir is not exist
     // let mut old_app_dir: Option<PathBuf> = None;
     // let mut app_dir: Option<PathBuf> = None;
@@ -156,35 +154,30 @@ pub fn init_config() -> Result<()> {
     //     }
     // }
 
-    crate::log_err!(dirs::app_profiles_dir().map(|profiles_dir| {
-        if !profiles_dir.exists() {
-            let _ = fs::create_dir_all(&profiles_dir);
-        }
-    }));
-
-    crate::log_err!(dirs::profiles_path().map(|path| {
-        if !path.exists() {
-            // Stamped like every later write, since the app refuses to load
-            // an unstamped profiles.yaml.
-            let mut content = Vec::new();
-            ProfilesFormat::default().serialize(
-                &mut content,
-                &nyanpasu_config::profile::Profiles::default(),
-                Some("# Clash Nyanpasu"),
-            )?;
-            fs::write(&path, content)
-                .with_context(|| format!("failed to save file \"{}\"", path.display()))?;
-        }
-        <Result<()>>::Ok(())
-    }));
+    let path = paths.profiles_path();
+    if !path.exists() {
+        // Stamped like every later write, since the app refuses to load
+        // an unstamped profiles.yaml.
+        let mut content = Vec::new();
+        ProfilesFormat::default().serialize(
+            &mut content,
+            &nyanpasu_config::profile::Profiles::default(),
+            Some("# Clash Nyanpasu"),
+        )?;
+        fs::write(&path, content).with_context(|| format!("failed to save file \"{path}\""))?;
+    }
 
     Ok(())
 }
 
+/// The bundled `resources` dir, which only Tauri can locate.
+pub fn bundled_resources_dir(manager: &impl tauri::Manager<tauri::Wry>) -> tauri::Result<PathBuf> {
+    Ok(manager.path().resource_dir()?.join("resources"))
+}
+
 /// initialize app resources
-pub fn init_resources(paths: &PathResolver) -> Result<()> {
-    let app_dir = paths.app_data_dir();
-    let res_dir = paths.app_resources_dir()?;
+pub fn init_resources(app_dir: &Path, res_dir: Option<&Path>) -> Result<()> {
+    let res_dir = res_dir.ok_or_else(|| anyhow!("the bundled resources dir is unknown"))?;
 
     if !app_dir.exists() {
         let _ = fs::create_dir_all(app_dir);
@@ -239,8 +232,90 @@ pub fn init_resources(paths: &PathResolver) -> Result<()> {
     Ok(())
 }
 
-pub fn check_singleton() -> Result<Option<single_instance::SingleInstance>> {
-    let placeholder = super::dirs::get_single_instance_placeholder()?;
+/// The name the instances of one user contend for: a lock file in the config dir, or on
+/// Windows a session-local name carrying the user's SID.
+pub fn single_instance_placeholder(app_name: &str, config_dir: &Path) -> String {
+    #[cfg(windows)]
+    {
+        let sid = current_user_sid().unwrap_or_else(|| config_hash(config_dir));
+        format!("Local\\{app_name}-{sid}")
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app_name;
+        config_dir
+            .join("instance.lock")
+            .to_string_lossy()
+            .to_string()
+    }
+}
+
+/// The current user's SID, from PowerShell or else WMIC.
+#[cfg(windows)]
+fn current_user_sid() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+
+    let output = Command::new("powershell")
+        .args([
+            "-Command",
+            "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+        ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output();
+    if let Ok(output) = output
+        && output.status.success()
+    {
+        let sid = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !sid.is_empty() {
+            return Some(sid);
+        }
+    }
+
+    let output = Command::new("wmic")
+        .args([
+            "useraccount",
+            "where",
+            "name='%username%'",
+            "get",
+            "sid",
+            "/value",
+        ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output();
+    if let Ok(output) = output
+        && output.status.success()
+    {
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if let Some(sid) = line.strip_prefix("SID=") {
+                let sid = sid.trim();
+                if !sid.is_empty() {
+                    return Some(sid.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// What stands in for the SID when it cannot be read.
+#[cfg(windows)]
+fn config_hash(config_dir: &Path) -> String {
+    use std::{
+        collections::hash_map::DefaultHasher,
+        hash::{Hash, Hasher},
+    };
+    let mut hasher = DefaultHasher::new();
+    config_dir.to_string_lossy().hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+pub fn check_singleton(paths: &PathResolver) -> Result<Option<single_instance::SingleInstance>> {
+    // The config dir is created first, as the lock file and the hash fallback live in it.
+    nyanpasu_paths::create_dir_all(paths.app_config_dir())?;
+    let placeholder = single_instance_placeholder(
+        crate::host_paths::APP_NAME,
+        paths.app_config_dir().as_std_path(),
+    );
     for i in 0..5 {
         let instance = single_instance::SingleInstance::new(&placeholder)
             .context("failed to create single instance")?;

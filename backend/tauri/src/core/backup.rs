@@ -4,10 +4,10 @@
 //! the request, so migrations and [`NyanpasuClient`](crate::client::NyanpasuClient)
 //! share it.
 
-use crate::{
-    core::storage::{Storage, StorageOperationError},
-    utils::path::PathResolver,
-};
+use camino::Utf8PathBuf;
+use nyanpasu_paths::PathResolver;
+
+use crate::core::storage::{Storage, StorageOperationError};
 use semver::Version;
 use serde::Serialize;
 use std::{
@@ -106,7 +106,7 @@ struct ManifestSymlink {
 /// Creates a full backup. A failure leaves neither a backup directory nor a
 /// `.partial` behind.
 pub fn create_backup(req: &BackupRequest<'_>) -> Result<BackupInfo, BackupError> {
-    let backups_dir = req.paths.backups_dir();
+    let backups_dir = req.paths.backups_dir().into_std_path_buf();
     fs::create_dir_all(&backups_dir).map_err(io_error(&backups_dir))?;
     remove_partials(&backups_dir)?;
 
@@ -219,7 +219,7 @@ fn write_backup(req: &BackupRequest<'_>, partial: &Path) -> Result<(), BackupErr
     let skipped = skipped_paths(req.paths);
     let mut symlinks = Vec::new();
     copy_dir(
-        req.paths.app_config_dir(),
+        req.paths.app_config_dir().as_std_path(),
         &partial.join(CONFIG_DIR),
         Path::new(CONFIG_DIR),
         &skipped,
@@ -238,7 +238,7 @@ fn write_backup(req: &BackupRequest<'_>, partial: &Path) -> Result<(), BackupErr
 /// None of them is config: the backups themselves, the stores redb keeps
 /// locked, and runtime data the backup does not cover.
 fn skipped_paths(paths: &PathResolver) -> Vec<PathBuf> {
-    vec![
+    [
         paths.backups_dir(),
         paths.storage_path(),
         paths.jobs_path(),
@@ -247,6 +247,9 @@ fn skipped_paths(paths: &PathResolver) -> Vec<PathBuf> {
         paths.scripts_dir(),
         paths.clash_pid_path(),
     ]
+    .into_iter()
+    .map(Utf8PathBuf::into_std_path_buf)
+    .collect()
 }
 
 /// Copies `src` into `dst`. Symlinks are neither followed nor recreated; they
@@ -321,8 +324,8 @@ fn manifest(req: &BackupRequest<'_>, symlinks: Vec<ManifestSymlink>) -> Manifest
         from_version,
         target_version,
         sources: ManifestSources {
-            config: req.paths.app_config_dir().to_owned(),
-            data: req.paths.app_data_dir().to_owned(),
+            config: req.paths.app_config_dir().as_std_path().to_owned(),
+            data: req.paths.app_data_dir().as_std_path().to_owned(),
         },
         symlinks,
     }
@@ -368,10 +371,11 @@ mod tests {
     }
 
     fn paths(root: &Path) -> PathResolver {
-        PathResolver::with_base_dirs(root.join("config"), root.join("data"))
+        crate::client::tests::test_paths(root.join("config"), root.join("data"))
     }
 
-    fn write(path: &Path, content: &str) {
+    fn write(path: &(impl AsRef<Path> + ?Sized), content: &str) {
+        let path = path.as_ref();
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, content).unwrap();
     }
@@ -389,8 +393,8 @@ mod tests {
         serde_json::from_slice(&fs::read(backup.path.join(MANIFEST_FILE)).unwrap()).unwrap()
     }
 
-    fn names(dir: &Path) -> Vec<String> {
-        let mut names: Vec<_> = fs::read_dir(dir)
+    fn names(dir: &(impl AsRef<Path> + ?Sized)) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(dir.as_ref())
             .unwrap()
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
@@ -410,7 +414,7 @@ mod tests {
 
         let backup = create_backup(&BackupRequest {
             paths: &paths,
-            storage: StorageSource::File(&paths.storage_path()),
+            storage: StorageSource::File(paths.storage_path().as_std_path()),
             kind: BackupKind::Migration {
                 from: Some(&from),
                 target: &target,
@@ -442,12 +446,9 @@ mod tests {
         assert_eq!(manifest["target_version"], "2.0.0");
         assert_eq!(
             manifest["sources"]["config"],
-            paths.app_config_dir().to_str().unwrap()
+            paths.app_config_dir().as_str()
         );
-        assert_eq!(
-            manifest["sources"]["data"],
-            paths.app_data_dir().to_str().unwrap()
-        );
+        assert_eq!(manifest["sources"]["data"], paths.app_data_dir().as_str());
         assert_eq!(manifest["symlinks"], serde_json::json!([]));
         assert_eq!(names(&paths.backups_dir()), [backup.name]);
     }
@@ -458,8 +459,11 @@ mod tests {
         let paths = paths(dir.path());
         write(&paths.profiles_path(), "profiles");
 
-        let backup =
-            create_backup(&manual(&paths, StorageSource::File(&paths.storage_path()))).unwrap();
+        let backup = create_backup(&manual(
+            &paths,
+            StorageSource::File(paths.storage_path().as_std_path()),
+        ))
+        .unwrap();
 
         assert_eq!(backup.name, format!("manual-{STAMP}"));
         assert!(!backup.path.join("data").exists());
@@ -478,7 +482,7 @@ mod tests {
 
         let backup = create_backup(&BackupRequest {
             paths: &paths,
-            storage: StorageSource::File(&paths.storage_path()),
+            storage: StorageSource::File(paths.storage_path().as_std_path()),
             kind: BackupKind::Migration {
                 from: None,
                 target: &target,
@@ -495,15 +499,16 @@ mod tests {
     fn a_data_dir_inside_the_config_dir_does_not_copy_the_backups() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
-        let paths = PathResolver::with_base_dirs(config.clone(), config.clone());
+        let paths = crate::client::tests::test_paths(config.clone(), config.clone());
         write(&paths.profiles_path(), "profiles");
         write(&paths.storage_path(), "db");
         write(&paths.app_logs_dir().join("app.log"), "log");
         write(&paths.jobs_path(), "jobs");
 
         let storage = paths.storage_path();
-        let first = create_backup(&manual(&paths, StorageSource::File(&storage))).unwrap();
-        let mut request = manual(&paths, StorageSource::File(&storage));
+        let first =
+            create_backup(&manual(&paths, StorageSource::File(storage.as_std_path()))).unwrap();
+        let mut request = manual(&paths, StorageSource::File(storage.as_std_path()));
         request.now = now() + time::Duration::seconds(1);
         let second = create_backup(&request).unwrap();
 
@@ -528,8 +533,11 @@ mod tests {
             return;
         }
 
-        let backup =
-            create_backup(&manual(&paths, StorageSource::File(&paths.storage_path()))).unwrap();
+        let backup = create_backup(&manual(
+            &paths,
+            StorageSource::File(paths.storage_path().as_std_path()),
+        ))
+        .unwrap();
 
         assert!(
             !backup
@@ -571,8 +579,10 @@ mod tests {
         write(&paths.profiles_path(), "profiles");
         let source = paths.storage_path();
 
-        let first = create_backup(&manual(&paths, StorageSource::File(&source))).unwrap();
-        let second = create_backup(&manual(&paths, StorageSource::File(&source))).unwrap();
+        let first =
+            create_backup(&manual(&paths, StorageSource::File(source.as_std_path()))).unwrap();
+        let second =
+            create_backup(&manual(&paths, StorageSource::File(source.as_std_path()))).unwrap();
 
         assert_eq!(first.name, format!("manual-{STAMP}"));
         assert_eq!(second.name, format!("manual-{STAMP}-1"));
@@ -585,7 +595,7 @@ mod tests {
         let paths = paths(dir.path());
         write(&paths.profiles_path(), "profiles");
         fs::create_dir_all(paths.app_data_dir()).unwrap();
-        let storage = Storage::try_new(&paths.storage_path()).unwrap();
+        let storage = Storage::try_new(paths.storage_path().as_std_path()).unwrap();
         storage.set_item("a", &1).unwrap();
         storage.set_item("b", &"two").unwrap();
 
@@ -645,8 +655,11 @@ mod tests {
         let leftover = paths.backups_dir().join(".manual-old.partial");
         fs::create_dir_all(&leftover).unwrap();
 
-        let backup =
-            create_backup(&manual(&paths, StorageSource::File(&paths.storage_path()))).unwrap();
+        let backup = create_backup(&manual(
+            &paths,
+            StorageSource::File(paths.storage_path().as_std_path()),
+        ))
+        .unwrap();
 
         assert_eq!(names(&paths.backups_dir()), [backup.name]);
     }

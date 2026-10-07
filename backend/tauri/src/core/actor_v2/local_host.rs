@@ -10,16 +10,16 @@ use nyanpasu_core_manager::{
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 
-use crate::utils::path::PathResolver;
+use nyanpasu_paths::PathResolver;
 
 pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
-        runtime_dir: Some(to_utf8(runtime_root.join("control"))?),
+        runtime_dir: Some(runtime_root.join("control")),
         local_ipc_policy: LocalIpcPolicy::Disable,
         ..ManagerOptions::default()
     };
-    let working_dir = to_utf8(paths.app_data_dir().to_owned())?;
+    let working_dir = paths.app_data_dir().to_owned();
     let config_path = paths.application_config_path();
     let config_path = if config_path.try_exists()? {
         config_path
@@ -29,7 +29,7 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
     let native_store = Arc::new(FsNativeStore::new(
         working_dir.clone(),
         StoreOwner::current(),
-        legacy_kind(&config_path)?,
+        legacy_kind(config_path.as_std_path())?,
     ));
     let manager = CoreManager::builder(options).native_store(native_store);
 
@@ -41,7 +41,7 @@ pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
     ));
 
     let manager = manager.build().await?;
-    let source_dir = to_utf8(runtime_root.join("staging"))?;
+    let source_dir = runtime_root.join("staging");
 
     Ok(CoreControl::spawn(
         manager,
@@ -60,21 +60,20 @@ pub enum CoreSpecError {
         #[serde(skip)]
         source: std::io::Error,
     },
-    #[snafu(display("the {core} core binary path is not valid UTF-8: {path}"))]
-    CoreBinaryPathNotUtf8 {
-        #[specta(type = String)]
-        core: ClashCore,
-        path: String,
-    },
 }
 
-pub fn core_spec(core: &ClashCore) -> Result<CoreSpec, CoreSpecError> {
-    core_spec_with(core, crate::core::find_binary_path)
+pub fn core_spec(
+    core: &ClashCore,
+    paths: &nyanpasu_paths::PathResolver,
+) -> Result<CoreSpec, CoreSpecError> {
+    core_spec_with(core, |core| {
+        paths.find_binary_path(core.get_executable_name())
+    })
 }
 
 fn core_spec_with(
     core: &ClashCore,
-    find_binary: impl FnOnce(&nyanpasu_utils::core::CoreType) -> std::io::Result<std::path::PathBuf>,
+    find_binary: impl FnOnce(&nyanpasu_utils::core::CoreType) -> std::io::Result<Utf8PathBuf>,
 ) -> Result<CoreSpec, CoreSpecError> {
     let core_type = core.into();
     let kind = match core {
@@ -84,12 +83,6 @@ fn core_spec_with(
         ClashCore::Meow | ClashCore::MeowAlpha => CoreKind::Meow,
     };
     let binary_path = find_binary(&core_type).context(FindCoreBinarySnafu { core: *core })?;
-    let binary_path = Utf8PathBuf::from_path_buf(binary_path).map_err(|path| {
-        CoreSpecError::CoreBinaryPathNotUtf8 {
-            core: *core,
-            path: path.to_string_lossy().into_owned(),
-        }
-    })?;
 
     Ok(CoreSpec {
         kind,
@@ -97,11 +90,6 @@ fn core_spec_with(
         version: None,
         features: vec![],
     })
-}
-
-fn to_utf8(path: std::path::PathBuf) -> Result<Utf8PathBuf> {
-    Utf8PathBuf::from_path_buf(path)
-        .map_err(|path| anyhow::anyhow!("path is not valid UTF-8: {}", path.to_string_lossy()))
 }
 
 #[cfg(test)]
@@ -112,7 +100,7 @@ mod tests {
     async fn the_local_host_spawns_under_a_temp_root() {
         let root = tempfile::TempDir::new().unwrap();
         let paths =
-            PathResolver::with_base_dirs(root.path().join("config"), root.path().join("data"));
+            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
 
         let control = build(&paths).await.unwrap();
 
@@ -123,7 +111,7 @@ mod tests {
     #[tokio::test]
     async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths = PathResolver::with_base_dirs(root.path().to_owned(), root.path().join("data"));
+        let paths = crate::client::tests::test_paths(root.path(), root.path().join("data"));
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 
@@ -149,7 +137,10 @@ mod tests {
 
         for (core, expected_kind) in variants {
             let spec = core_spec_with(&core, |core_type| {
-                Ok(root.path().join(core_type.get_executable_name()))
+                Ok(
+                    Utf8PathBuf::from_path_buf(root.path().join(core_type.get_executable_name()))
+                        .unwrap(),
+                )
             })
             .unwrap();
             assert_eq!(spec.kind, expected_kind);

@@ -353,6 +353,7 @@ impl Tray {
                 #[cfg(any(windows, target_os = "linux"))]
                 {
                     builder = builder.icon(tauri::image::Image::from_bytes(&icon::get_icon(
+                        &app_handle.state::<nyanpasu_paths::PathResolver>(),
                         &icon::TrayIcon::Normal,
                     ))?);
                 }
@@ -470,7 +471,7 @@ impl Tray {
             } else {
                 TrayIcon::Normal
             };
-            let icon = icon::get_icon(&mode);
+            let icon = icon::get_icon(&app_handle.state::<nyanpasu_paths::PathResolver>(), &mode);
             let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon)?));
         }
 
@@ -540,10 +541,10 @@ impl Tray {
             "copy_env_cmd" => copy_clash_env(app_handle, CopyEnvOption::Cmd),
             #[cfg(target_os = "windows")]
             "copy_env_ps" => copy_clash_env(app_handle, CopyEnvOption::Pwsh),
-            "open_app_config_dir" => crate::log_err!(ipc::open_app_config_dir()),
-            "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
+            "open_app_config_dir" => crate::log_err!(ipc::open_app_config_dir(app_handle.state())),
+            "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir(app_handle.state())),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
-            "open_logs_dir" => crate::log_err!(ipc::open_logs_dir()),
+            "open_logs_dir" => crate::log_err!(ipc::open_logs_dir(app_handle.state())),
             "restart_core" => restart_core(app_handle),
             "restart_app" => help::restart_application(app_handle),
             "quit" => {

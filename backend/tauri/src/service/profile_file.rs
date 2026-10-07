@@ -1,6 +1,8 @@
 //! Profile filesystem, materialization transactions, and subscription fetches
 //! over injected paths/network state. Tauri-free and legacy-Config-free.
 
+use nyanpasu_paths::PathResolver;
+
 use std::{
     collections::HashSet,
     io::Write,
@@ -18,17 +20,14 @@ use sha2::{Digest, Sha256};
 use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
-use crate::{
-    state::profiles::{
-        error::*,
-        ports::{
-            CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
-            MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
-            ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
-            ProfileMaterializationPort, SubscriptionFetcher,
-        },
+use crate::state::profiles::{
+    error::*,
+    ports::{
+        CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
+        MaterializationResource, PreparedCleanup, PreparedMaterialization, ProfileDegradation,
+        ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort, ProfileMaterializationPort,
+        SubscriptionFetcher,
     },
-    utils::path::PathResolver,
 };
 
 type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
@@ -73,13 +72,17 @@ impl ProfileFileService {
             ReservedPathSnafu { path }
         );
 
-        let full = self.paths.app_profiles_dir().join(path.as_path());
+        let full = self
+            .paths
+            .app_profiles_dir()
+            .as_std_path()
+            .join(path.as_path());
         self.validate_existing_parent_chain(&full)?;
         Ok(full)
     }
 
     fn validate_existing_parent_chain(&self, full: &Path) -> Result<()> {
-        let root = self.paths.app_profiles_dir();
+        let root = self.paths.app_profiles_dir().into_std_path_buf();
         let relative = full
             .strip_prefix(&root)
             .ok()
@@ -167,7 +170,7 @@ impl ProfileFileService {
     }
 
     fn ensure_profiles_root(&self) -> Result<PathBuf> {
-        let root = self.paths.app_profiles_dir();
+        let root = self.paths.app_profiles_dir().into_std_path_buf();
         let config_dir = root
             .parent()
             .context(NoParentDirectorySnafu { path: &root })?;
@@ -522,7 +525,10 @@ fn sync_directory(_path: &Path) -> Result<()> {
 impl ProfileFileService {
     #[allow(dead_code)]
     fn materialization_root(&self) -> PathBuf {
-        self.paths.app_profiles_dir().join(MATERIALIZATION_ROOT)
+        self.paths
+            .app_profiles_dir()
+            .as_std_path()
+            .join(MATERIALIZATION_ROOT)
     }
 
     fn stage_file_path(root: &Path, operation_id: &str) -> PathBuf {
@@ -2272,10 +2278,8 @@ mod tests {
         self_proxy_port: Arc<dyn SelfProxyPortSource>,
     ) -> (tempfile::TempDir, ProfileFileService) {
         let temp = tempfile::tempdir().unwrap();
-        let paths = crate::utils::path::PathResolver::with_base_dirs(
-            temp.path().join("config"),
-            temp.path().join("data"),
-        );
+        let paths =
+            crate::client::tests::test_paths(temp.path().join("config"), temp.path().join("data"));
         (temp, ProfileFileService::new(paths, self_proxy_port))
     }
 

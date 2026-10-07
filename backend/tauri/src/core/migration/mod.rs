@@ -1,4 +1,4 @@
-use crate::utils::path::PathResolver;
+use nyanpasu_paths::PathResolver;
 use semver::Version;
 use std::path::PathBuf;
 
@@ -48,13 +48,6 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn from_app_dirs() -> anyhow::Result<Self> {
-        // Migrations never read the bundled resources.
-        Ok(Self {
-            paths: PathResolver::from_env(None)?,
-        })
-    }
-
     pub fn from_paths(paths: PathResolver) -> Self {
         Self { paths }
     }
@@ -62,7 +55,7 @@ impl Ctx {
     #[cfg(test)]
     pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         Self {
-            paths: PathResolver::with_base_dirs(app_config_dir, app_data_dir),
+            paths: crate::client::tests::test_paths(app_config_dir, app_data_dir),
         }
     }
 
@@ -72,35 +65,38 @@ impl Ctx {
     }
 
     pub fn profiles_path(&self) -> PathBuf {
-        self.paths.profiles_path()
+        self.paths.profiles_path().into_std_path_buf()
     }
 
     pub fn nyanpasu_config_path(&self) -> PathBuf {
-        self.paths.nyanpasu_config_path()
+        self.paths.nyanpasu_config_path().into_std_path_buf()
     }
 
     pub fn application_config_path(&self) -> PathBuf {
-        self.paths.application_config_path()
+        self.paths.application_config_path().into_std_path_buf()
     }
 
     pub fn session_state_path(&self) -> PathBuf {
-        self.paths.session_state_path()
+        self.paths.session_state_path().into_std_path_buf()
     }
 
     pub fn clash_config_path(&self) -> PathBuf {
-        self.paths.clash_config_path()
+        self.paths.clash_config_path().into_std_path_buf()
     }
 
     pub fn clash_guard_overrides_path(&self) -> PathBuf {
-        self.paths.clash_guard_overrides_path()
+        self.paths.clash_guard_overrides_path().into_std_path_buf()
     }
 
     pub fn storage_path(&self) -> PathBuf {
-        self.paths.storage_path()
+        self.paths.storage_path().into_std_path_buf()
     }
 
     pub fn state_path(&self) -> PathBuf {
-        self.paths.app_config_dir().join(store::STORE_FILE_NAME)
+        self.paths
+            .app_config_dir()
+            .join(store::STORE_FILE_NAME)
+            .into_std_path_buf()
     }
 }
 

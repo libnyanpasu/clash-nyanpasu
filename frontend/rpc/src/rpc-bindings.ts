@@ -1673,9 +1673,7 @@ export type CoreLogsChanged = {
 }
 
 /**  A failure of locating the binary a core is started from. */
-export type CoreSpecError =
-  | { kind: 'find_core_binary'; core: string }
-  | { kind: 'core_binary_path_not_utf8'; core: string; path: string }
+export type CoreSpecError = { kind: 'find_core_binary'; core: string }
 
 export type CoreState = 'Running' | { Stopped: string | null }
 

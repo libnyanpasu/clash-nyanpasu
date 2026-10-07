@@ -1915,7 +1915,6 @@ dependencies = [
  "clap",
  "clash-api",
  "colored",
- "convert_case",
  "ctrlc",
  "dashmap",
  "deelevate",
@@ -1961,6 +1960,7 @@ dependencies = [
  "nyanpasu-logging",
  "nyanpasu-macro",
  "nyanpasu-panics",
+ "nyanpasu-paths",
  "nyanpasu-platform",
  "nyanpasu-traffic",
  "nyanpasu-utils",
@@ -6773,6 +6773,22 @@ version = "0.1.0"
 dependencies = [
  "scopeguard",
  "tracing",
+]
+
+[[package]]
+name = "nyanpasu-paths"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "convert_case",
+ "dunce",
+ "fs-err",
+ "fs_extra",
+ "log",
+ "nyanpasu-utils",
+ "snafu",
+ "tempfile",
+ "winreg 0.56.0",
 ]
 
 [[package]]

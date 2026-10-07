@@ -3,14 +3,12 @@ use super::{
     ModuleKind, ModuleMigrator, StepCheck, current_version, fs, registry,
     store::{MigrationStore, ModuleState, STORE_FILE_NAME},
 };
-use crate::{
-    core::backup::{
-        self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
-        StorageSource,
-    },
-    utils::path::PathResolver,
+use crate::core::backup::{
+    self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
+    StorageSource,
 };
 use anyhow::{Context, bail};
+use nyanpasu_paths::PathResolver;
 use semver::Version;
 use time::OffsetDateTime;
 
@@ -24,19 +22,9 @@ pub struct Runner {
     backup: Option<BackupInfo>,
 }
 
-impl Default for Runner {
-    fn default() -> Self {
-        Self::new(false).expect("failed to create migration runner")
-    }
-}
-
 impl Runner {
-    pub fn new(force: bool) -> anyhow::Result<Self> {
-        Self::with_target(current_version()?, force)
-    }
-
-    pub fn with_target(target: Version, force: bool) -> anyhow::Result<Self> {
-        Self::with_context(target, force, Ctx::from_app_dirs()?)
+    pub fn with_target(target: Version, paths: PathResolver, force: bool) -> anyhow::Result<Self> {
+        Self::with_context(target, force, Ctx::from_paths(paths))
     }
 
     pub fn with_paths(paths: PathResolver, force: bool) -> anyhow::Result<Self> {
@@ -132,9 +120,11 @@ impl Runner {
             .context("failed to persist successful migration state")?;
 
         let backups_dir = self.ctx.paths().backups_dir();
-        if let Err(error) =
-            backup::prune_backups(&backups_dir, MIGRATION_PREFIX, KEEP_MIGRATION_BACKUPS)
-        {
+        if let Err(error) = backup::prune_backups(
+            backups_dir.as_std_path(),
+            MIGRATION_PREFIX,
+            KEEP_MIGRATION_BACKUPS,
+        ) {
             eprintln!("Failed to prune old migration backups: {error:#}");
         }
         Ok(())
@@ -175,13 +165,11 @@ impl Runner {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(true),
             Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to read {}", config_dir.display()));
+                return Err(error).with_context(|| format!("failed to read {config_dir}"));
             }
         };
         for entry in entries {
-            let entry =
-                entry.with_context(|| format!("failed to read {}", config_dir.display()))?;
+            let entry = entry.with_context(|| format!("failed to read {config_dir}"))?;
             if entry.file_name() != STORE_FILE_NAME {
                 return Ok(false);
             }
@@ -786,7 +774,7 @@ mod tests {
 
         // Hotkeys left the legacy config file and ended up in the typed
         // application config, with nothing stranded in KV storage.
-        let storage = Storage::try_new(&data_dir.join(crate::utils::dirs::STORAGE_DB)).unwrap();
+        let storage = Storage::try_new(&data_dir.join(nyanpasu_paths::STORAGE_DB)).unwrap();
         let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap();
         assert_eq!(hotkeys, None);
 
@@ -1828,7 +1816,7 @@ tray_menu_close_behavior: hide
         }
 
         fn backups_dir(&self) -> std::path::PathBuf {
-            self.ctx.paths().backups_dir()
+            self.ctx.paths().backups_dir().into_std_path_buf()
         }
 
         fn backups(&self, prefix: &str) -> Vec<String> {

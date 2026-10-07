@@ -78,6 +78,10 @@ pub struct ProxyGroup {
     pub now: Option<ProxyName>,
     /// The member a user pinned; `None` while the core selects on its own.
     pub fixed: Option<ProxyName>,
+    /// The URL the core tests this group's members with; `None` when unset.
+    pub test_url: Option<String>,
+    /// The status codes a test must return, in the core's range syntax.
+    pub expected_status: Option<String>,
     pub hidden: bool,
     pub icon: Option<String>,
     pub capabilities: ProxyGroupCapabilities,
@@ -96,6 +100,11 @@ impl ProxyGroup {
                 .fixed
                 .clone()
                 .filter(|name| !name.as_str().is_empty()),
+            test_url: record.test_url.clone().filter(|url| !url.is_empty()),
+            expected_status: record
+                .expected_status
+                .clone()
+                .filter(|status| !status.is_empty()),
             hidden: record.hidden.unwrap_or(false),
             icon: record.icon.clone(),
             capabilities,
@@ -275,6 +284,32 @@ mod tests {
         record(json!({
             "name": name, "type": kind, "udp": false, "history": [], "all": all, "now": now
         }))
+    }
+
+    #[test]
+    fn a_group_carries_its_test_url_and_expected_status() {
+        let mut group = item("g", "URLTest", Some(vec!["DIRECT"]), Some("DIRECT"));
+        group.test_url = Some("https://cp.cloudflare.com".into());
+        group.expected_status = Some("204".into());
+        let mut empty = item("e", "Selector", Some(vec!["DIRECT"]), Some("DIRECT"));
+        empty.test_url = Some(String::new());
+        empty.expected_status = Some(String::new());
+        let proxies =
+            Proxies::from_responses(records(&[group, empty]), &IndexMap::new(), None).unwrap();
+        let by_name = |name: &str| {
+            proxies
+                .groups
+                .iter()
+                .find(|g| g.name.as_str() == name)
+                .unwrap()
+        };
+        assert_eq!(
+            by_name("g").test_url.as_deref(),
+            Some("https://cp.cloudflare.com")
+        );
+        assert_eq!(by_name("g").expected_status.as_deref(), Some("204"));
+        assert_eq!(by_name("e").test_url, None);
+        assert_eq!(by_name("e").expected_status, None);
     }
 
     fn name(value: &str) -> ProxyName {

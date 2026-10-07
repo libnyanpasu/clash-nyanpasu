@@ -846,6 +846,12 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                field: "default_latency_timeout_ms",
+                mutate: |app| app.default_latency_timeout_ms = 10000,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "proxy_layout_column",
                 mutate: |app| app.proxy_layout_column = 3,
                 impact: RuntimeImpact::None,

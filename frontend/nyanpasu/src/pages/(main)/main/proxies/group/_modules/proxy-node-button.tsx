@@ -7,7 +7,7 @@ import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
-import { ClashProxiesQueryProxyItem } from '@nyanpasu/query'
+import { ClashProxiesQueryProxyItem, nodeDelayHistory } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 
 function FeatureChip({
@@ -39,6 +39,7 @@ export default memo(function ProxyNodeButton({
   fixed,
   onSelect,
   onDelayTest,
+  testUrl,
   ...props
 }: Omit<ComponentProps<typeof Button>, 'onClick' | 'children' | 'onSelect'> & {
   proxy: ClashProxiesQueryProxyItem
@@ -46,6 +47,7 @@ export default memo(function ProxyNodeButton({
   fixed: boolean
   onSelect: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
   onDelayTest: (proxy: ClashProxiesQueryProxyItem) => Promise<void>
+  testUrl: string
 }) {
   const handleSelectProxy = useLockFn(async () => {
     // The core picks this group's member on its own.
@@ -72,16 +74,15 @@ export default memo(function ProxyNodeButton({
     },
   )
 
-  const currentDelay = useMemo(() => {
-    if (!proxy.history || proxy.history.length === 0) {
-      return -1
-    } else {
-      return proxy.history[proxy.history.length - 1].delay
-    }
-  }, [proxy.history])
+  const history = useMemo(
+    () => nodeDelayHistory(proxy, testUrl),
+    [proxy, testUrl],
+  )
+
+  const currentDelay = history.at(-1)?.delay ?? -1
 
   return (
-    <DelayHistory history={proxy.history}>
+    <DelayHistory history={history}>
       <Button
         variant="fab"
         className={cn(

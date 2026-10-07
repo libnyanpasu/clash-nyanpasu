@@ -1,9 +1,9 @@
 import KeepRounded from '~icons/material-symbols/keep-rounded'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
+import { memberDelay, useSetting } from '@nyanpasu/query'
 import type { Proxies_Serialize, ProxyGroup } from '@nyanpasu/rpc/types'
 import DelayChip from './delay-chip'
-import { getGroupSelectedDelay } from './group-delay'
 
 export default function GroupSummary({
   group,
@@ -12,7 +12,11 @@ export default function GroupSummary({
   group: ProxyGroup
   proxies: Proxies_Serialize
 }) {
-  const delay = getGroupSelectedDelay(group, proxies)
+  const { value: defaultUrl } = useSetting('default_latency_test')
+
+  const delay = group.now
+    ? memberDelay(group.now, group, proxies, defaultUrl ?? '')
+    : undefined
 
   return (
     <div className="text-on-surface-variant flex min-w-0 items-center gap-1.5 text-xs">

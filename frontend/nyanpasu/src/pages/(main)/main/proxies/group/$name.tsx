@@ -13,8 +13,10 @@ import { useContainerBreakpointValue, useLockFn } from '@nyanpasu/hooks'
 import {
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
+  groupTestUrl,
   useClashProxies,
   useProxyMode,
+  useSetting,
 } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -86,6 +88,15 @@ function RouteComponent() {
 
   const groupName = currentGroup?.name
 
+  const { value: defaultUrl } = useSetting('default_latency_test')
+
+  const testUrl = groupTestUrl(currentGroup, defaultUrl ?? '')
+
+  const delayOptions = useMemo(
+    () => ({ url: testUrl, expected: currentGroup?.expectedStatus ?? null }),
+    [testUrl, currentGroup?.expectedStatus],
+  )
+
   const selectable = currentGroup?.capabilities.select ?? false
 
   const handleSelectProxy = useCallback(
@@ -126,9 +137,9 @@ function RouteComponent() {
 
   const handleDelayTest = useCallback(
     async (proxy: ClashProxiesQueryProxyItem) => {
-      await mutateProxyDelay([proxy.name, proxy.provider])
+      await mutateProxyDelay([proxy.name, proxy.provider, delayOptions])
     },
-    [mutateProxyDelay],
+    [mutateProxyDelay, delayOptions],
   )
 
   const { viewportRef } = useScrollAreaViewport()
@@ -263,13 +274,14 @@ function RouteComponent() {
                   fixed={name === currentGroup?.fixed}
                   onSelect={handleSelectProxy}
                   onDelayTest={handleDelayTest}
+                  testUrl={testUrl}
                 />
               </div>
             )
           })}
       </div>
 
-      <DelayTestButton />
+      <DelayTestButton delayOptions={delayOptions} />
     </>
   )
 }

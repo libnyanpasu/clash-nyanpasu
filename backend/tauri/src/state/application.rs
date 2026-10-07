@@ -138,6 +138,10 @@ impl ApplicationActor {
                 reason: reason.into(),
             },
         )?;
+        nyanpasu_config::application::validate_latency_timeout(next.default_latency_timeout_ms)
+            .map_err(|reason| ConfigError::InvalidLatencyTimeout {
+                reason: reason.into(),
+            })?;
         let (version, impact) = {
             let current = state.manager.snapshot_handle().load();
             let impact = impact::runtime_impact(&current.state, &next, &hints, class);

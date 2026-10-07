@@ -1,4 +1,7 @@
 import { expect, test, vi } from 'vitest'
+import '@nyanpasu/theme/styles/fonts.css'
+import '@nyanpasu/theme/styles/theme.css'
+import '@/assets/styles/tailwind.css'
 import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
@@ -114,6 +117,36 @@ test('a nested group member shows its leaf node', async () => {
     screen.container.querySelector('[data-slot="proxy-node-delay"]')
       ?.textContent,
   ).toBe('42 ms')
+})
+
+test('a long leaf truncates instead of clipping the feature chips', async () => {
+  const screen = await render(
+    <BlockTaskProvider>
+      <TooltipProvider>
+        <div style={{ width: 300 }}>
+          <ProxyNodeButton
+            proxy={{ ...proxy, type: 'URLTest' }}
+            selectable
+            fixed={false}
+            onSelect={async () => {}}
+            onDelayTest={async () => {}}
+            history={proxy.history}
+            delay={39}
+            leaf="香港标准 IEPL 专线 6 [Premium] 0.8x"
+          />
+        </div>
+      </TooltipProvider>
+    </BlockTaskProvider>,
+  )
+  const features = screen.container.querySelector<HTMLElement>(
+    '[data-slot="proxy-node-features"]',
+  )!
+  await expect.poll(() => features.clientWidth).toBeGreaterThan(0)
+  expect(features.scrollWidth).toBeLessThanOrEqual(features.clientWidth)
+  const leaf = screen.container.querySelector<HTMLElement>(
+    '[data-slot="proxy-node-leaf"]',
+  )!
+  expect(leaf.scrollWidth).toBeGreaterThan(leaf.clientWidth)
 })
 
 test('a plain member shows no leaf', async () => {

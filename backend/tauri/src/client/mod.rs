@@ -2241,7 +2241,18 @@ pub(crate) mod tests {
     }
 
     fn seed_test_clash_config(path: impl AsRef<std::path::Path>) {
-        std::fs::write(path, serde_yaml::to_string(&test_clash_config()).unwrap()).unwrap();
+        write_clash_config(path, &test_clash_config());
+    }
+
+    /// The stamped file the clash config client loads.
+    pub(crate) fn write_clash_config(path: impl AsRef<std::path::Path>, config: &ClashConfig) {
+        use nyanpasu_core::format::Format as _;
+
+        let mut content = Vec::new();
+        crate::core::migration::modules::clash_config::ClashConfigFormat::default()
+            .serialize(&mut content, config, None)
+            .unwrap();
+        std::fs::write(path, content).unwrap();
     }
 
     pub(crate) async fn test_typed_config_clients(

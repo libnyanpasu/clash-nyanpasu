@@ -5,6 +5,7 @@ use super::{
         legacy_schema::{IClashTemp, IVerge, typed_config_from_legacy_parts},
     },
     application::ApplicationFormat,
+    clash_config::{self, ClashConfigFormat},
 };
 use crate::utils::help;
 use anyhow::Context as _;
@@ -113,7 +114,7 @@ impl MigrationStep for SplitLegacyConfig {
         let session_yaml =
             serialize_yaml(&session_state).context("failed to serialize migrated session state")?;
         let clash_yaml =
-            serialize_yaml(&clash_config).context("failed to serialize migrated clash config")?;
+            serialize_clash(&clash_config).context("failed to serialize migrated clash config")?;
 
         write_typed_files(ctx, &application_yaml, &session_yaml, &clash_yaml)
     }
@@ -157,10 +158,8 @@ impl MigrationStep for RepairClashConfigPath {
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let previous_typed_path = ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE);
         let clash_config = if previous_typed_path.exists() {
-            read_yaml::<nyanpasu_config::clash::config::ClashConfig>(
-                previous_typed_path.as_std_path(),
-            )
-            .context("failed to read previous typed clash config")?
+            clash_config::read_typed(previous_typed_path.as_std_path())
+                .context("failed to read previous typed clash config")?
         } else if has_legacy_inputs(ctx)? {
             let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
             let legacy_clash = read_legacy_clash_inputs(ctx)?;
@@ -171,7 +170,7 @@ impl MigrationStep for RepairClashConfigPath {
         };
 
         let clash_yaml =
-            serialize_yaml(&clash_config).context("failed to serialize repaired clash config")?;
+            serialize_clash(&clash_config).context("failed to serialize repaired clash config")?;
         crate::core::migration::fs::atomic_write(&ctx.clash_config_path(), clash_yaml.as_bytes())
             .context("failed to write repaired clash config")
     }
@@ -267,7 +266,7 @@ fn classify_shared_clash_file(ctx: &Ctx) -> Result<SharedClashFileState, Migrati
         return Ok(SharedClashFileState::Missing);
     }
 
-    if read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&path).is_ok() {
+    if clash_config::read_typed(&path).is_ok() {
         return Ok(SharedClashFileState::Typed);
     }
 
@@ -336,7 +335,7 @@ fn partial_typed_file_state(
 
 fn validate_existing_typed_files(ctx: &Ctx) -> Result<(), MigrationCheckError> {
     validate_existing_application_and_session(ctx)?;
-    read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&ctx.clash_config_path())?;
+    clash_config::read_typed(&ctx.clash_config_path())?;
     Ok(())
 }
 
@@ -416,6 +415,14 @@ fn serialize_yaml<T: Serialize>(value: &T) -> anyhow::Result<String> {
 fn serialize_application(application: &NyanpasuAppConfig) -> anyhow::Result<String> {
     let mut content = Vec::new();
     ApplicationFormat::default().serialize(&mut content, application, None)?;
+    Ok(String::from_utf8(content)?)
+}
+
+/// `clash-config.yaml` is written stamped for the same reason as
+/// `application.yaml`.
+fn serialize_clash(clash: &ClashConfig) -> anyhow::Result<String> {
+    let mut content = Vec::new();
+    ClashConfigFormat::default().serialize(&mut content, clash, None)?;
     Ok(String::from_utf8(content)?)
 }
 

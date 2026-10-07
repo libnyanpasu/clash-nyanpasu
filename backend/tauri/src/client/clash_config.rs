@@ -12,6 +12,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     client::application_workflow::mutation::ConfigDomain,
+    core::migration::modules::clash_config::ClashConfigFormat,
     state::{
         clash_config::{
             ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,
@@ -41,7 +42,7 @@ impl ClashConfigClient {
         tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
         let should_load = config_path.exists();
-        let setup = PersistentStateManagerSetup::<ClashConfig>::builder()
+        let setup = PersistentStateManagerSetup::<ClashConfig, ClashConfigFormat>::builder()
             .config_path(config_path)
             .assemble();
         let manager = if should_load {

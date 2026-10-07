@@ -4,6 +4,7 @@ use crate::{
         mutation::ConfigDomain,
         policy::CommandClass,
     },
+    core::migration::modules::clash_config::ClashConfigFormat,
     state::{
         config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
         mutation::MutationCoordinator,
@@ -49,14 +50,14 @@ impl ClashConfigSnapshot {
 
 pub struct ClashConfigActorArgs {
     pub(crate) mutations: MutationCoordinator,
-    pub manager: PersistentStateManager<ClashConfig>,
+    pub manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     /// Once cancelled, every write is refused.
     pub shutdown: CancellationToken,
 }
 
 pub struct ClashConfigActorState {
     mutations: MutationCoordinator,
-    manager: PersistentStateManager<ClashConfig>,
+    manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     shutdown: CancellationToken,
 }
 

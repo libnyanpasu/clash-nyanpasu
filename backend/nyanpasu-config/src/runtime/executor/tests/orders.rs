@@ -377,3 +377,33 @@ fn applied_fields_keep_prefilter_known_keys_and_drop_unknown_even_unfiltered() {
     assert!(!artifact.applied_fields.contains("custom-unknown"));
     assert_eq!(artifact.final_config.to_json()["custom-unknown"], json!(1));
 }
+
+/// #5609: a global Merge owns `tcp-concurrent` and `unified-delay` once they
+/// are unmanaged; it sets one and leaves the other out.
+#[test]
+fn global_merge_owns_unmanaged_guard_fields() {
+    let profiles = profiles_with(
+        Some("sub-a"),
+        &["merge"],
+        &["dns", "unified-delay", "tcp-concurrent"],
+        vec![
+            config_file_item("sub-a", "sub-a.yaml", &[]),
+            overlay_item("merge", "merge.yaml"),
+        ],
+    );
+    let content = MapContentSource::from_pairs(&[
+        ("sub-a.yaml", "proxies: []\nrules: []\n"),
+        ("merge.yaml", "tcp-concurrent: false\n"),
+    ]);
+    let ov = super::builtin::unmanaged_overrides();
+    let inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
+
+    let config = execute(&inputs, &content, &FakeScriptRunner::default())
+        .unwrap()
+        .final_config
+        .to_json();
+
+    assert_eq!(config["tcp-concurrent"], json!(false));
+    assert!(config.get("unified-delay").is_none());
+    assert_eq!(config["mode"], json!("rule"));
+}

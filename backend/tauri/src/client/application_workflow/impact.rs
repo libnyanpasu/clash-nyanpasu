@@ -557,7 +557,7 @@ mod tests {
                     PortStrategyPatch,
                 },
             },
-            overrides::{ClashGuardOverridesPatch, LogLevel, Mode},
+            overrides::{ClashGuardOverridesPatch, LogLevel, ManageableField, Mode},
         },
         profile::{
             ConfigDefinition, ProfileId, ProfileMetadata, ProfileSource, TransformDefinition,
@@ -1036,7 +1036,7 @@ mod tests {
             field: "overrides.unified_delay",
             candidate: || {
                 overrides_patch(ClashGuardOverridesPatch {
-                    unified_delay: Some(false),
+                    unified_delay: Some(ManageableField::Managed(false)),
                     ..ClashGuardOverridesPatch::default()
                 })
             },
@@ -1046,7 +1046,7 @@ mod tests {
             field: "overrides.tcp_concurrent",
             candidate: || {
                 overrides_patch(ClashGuardOverridesPatch {
-                    tcp_concurrent: Some(false),
+                    tcp_concurrent: Some(ManageableField::Unmanaged),
                     ..ClashGuardOverridesPatch::default()
                 })
             },

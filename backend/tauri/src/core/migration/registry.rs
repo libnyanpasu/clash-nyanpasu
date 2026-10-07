@@ -13,6 +13,9 @@ pub static MODULES: Lazy<Vec<&'static dyn ModuleMigrator>> = Lazy::new(|| {
         // After the modules that create or edit `application.yaml`, though its
         // creator stamps the file itself, so the order is not what stamps it.
         &modules::application::MIGRATOR,
+        // After `typed_config`, which creates `clash-config.yaml` stamped at
+        // this module's revision.
+        &modules::clash_config::MIGRATOR,
     ]
 });
 

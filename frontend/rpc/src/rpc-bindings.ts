@@ -951,8 +951,8 @@ export type ClashGuardOverrides = {
   'allow-lan': boolean
   mode: Mode
   secret: string
-  'unified-delay': boolean
-  'tcp-concurrent': boolean
+  'unified-delay': ManageableField<boolean>
+  'tcp-concurrent': ManageableField<boolean>
   ipv6: boolean
 }
 
@@ -964,8 +964,8 @@ export type ClashGuardOverridesPatch_Deserialize = {
   'allow-lan'?: boolean | null
   mode?: Mode | null
   secret?: string | null
-  'unified-delay'?: boolean | null
-  'tcp-concurrent'?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
   ipv6?: boolean | null
 }
 
@@ -974,8 +974,8 @@ export type ClashGuardOverridesPatch_Serialize = {
   'allow-lan'?: boolean | null
   mode?: Mode | null
   secret?: string | null
-  'unified-delay'?: boolean | null
-  'tcp-concurrent'?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
   ipv6?: boolean | null
 }
 
@@ -2514,6 +2514,16 @@ export type LoggingLevel_Deserialize =
 
 export type LoggingLevel_Serialize =
   'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
+
+/**  A runtime config field that Nyanpasu may take over from the profiles. */
+export type ManageableField<T> =
+  /**
+   *  Written into the runtime config over whatever the profiles and
+   *  transforms produced.
+   */
+  | { kind: 'managed'; value: T }
+  /**  Left to the profiles and transforms, subject to the field filter. */
+  | { kind: 'unmanaged' }
 
 /**  A path relative to the application-managed profile directory. */
 export type ManagedProfilePath = string

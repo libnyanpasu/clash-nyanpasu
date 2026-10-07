@@ -59,7 +59,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use nyanpasu_config::{
-    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
         ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
@@ -91,7 +91,8 @@ pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
     pub jobs: nyanpasu_jobs::JobsClient,
-    pub bundle_metadata: crate::bundle::BundleMetadata,
+    pub installed_channel: ReleaseChannel,
+    pub is_portable: bool,
     pub environment: Arc<dyn EnvironmentCollector>,
     pub logging: logs::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
@@ -135,7 +136,7 @@ pub struct NyanpasuClient {
 
 async fn new_typed_config_clients(
     mutations: crate::state::mutation::MutationCoordinator,
-    build_channel: crate::bundle::Channel,
+    build_channel: ReleaseChannel,
     paths: PathResolver,
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
@@ -208,7 +209,8 @@ fn url_derived_name(url: &url::Url) -> String {
 
 struct NyanpasuClientInner {
     debug_http: crate::server::debug_http::HttpServerClient,
-    bundle_metadata: crate::bundle::BundleMetadata,
+    installed_channel: ReleaseChannel,
+    is_portable: bool,
     environment: Arc<dyn EnvironmentCollector>,
     core_logs: crate::core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
@@ -254,7 +256,8 @@ impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
         let ClientSetupArgs {
             jobs,
-            bundle_metadata,
+            installed_channel,
+            is_portable,
             environment,
             logging,
             http_frontend,
@@ -302,7 +305,7 @@ impl NyanpasuClient {
                     .context("failed to clean stale runtime candidates")?;
                 let (application, session_state, clash_config) = new_typed_config_clients(
                     mutations.clone(),
-                    bundle_metadata.release_channel,
+                    installed_channel,
                     paths.clone(),
                     &owner_shutdown,
                     &owner_tasks,
@@ -340,7 +343,8 @@ impl NyanpasuClient {
             })?;
         tauri::async_runtime::block_on(Self::with_parts(
             Some(wiring),
-            bundle_metadata,
+            installed_channel,
+            is_portable,
             environment,
             logging,
             jobs,
@@ -382,7 +386,8 @@ impl NyanpasuClient {
     #[allow(clippy::too_many_arguments)]
     async fn with_parts(
         mutations: Option<crate::state::mutation::MutationCoordinator>,
-        bundle_metadata: crate::bundle::BundleMetadata,
+        installed_channel: ReleaseChannel,
+        is_portable: bool,
         environment: Arc<dyn EnvironmentCollector>,
         logging: logs::LoggingSetup,
         jobs: nyanpasu_jobs::JobsClient,
@@ -522,15 +527,13 @@ impl NyanpasuClient {
         .await?;
         let app_config = application.snapshot().state;
         let app_update_settings = app_update::AppUpdateSettings {
-            channel: app_config
-                .release_channel
-                .unwrap_or(bundle_metadata.release_channel),
+            channel: app_config.release_channel.unwrap_or(installed_channel),
             sources: app_config.update_sources.clone(),
             auto_check: app_config.enable_auto_check_update,
             auto_download: app_config.enable_auto_download_update,
         };
         let app_update_supported = app_update_backend_factory.is_some()
-            && !bundle_metadata.is_portable
+            && !is_portable
             && (cfg!(any(target_os = "windows", target_os = "macos"))
                 || (cfg!(target_os = "linux") && *crate::consts::IS_APPIMAGE));
         let app_update_backend = app_update_backend_factory
@@ -545,9 +548,7 @@ impl NyanpasuClient {
                 settings: app_update_settings,
                 supported: app_update_supported,
                 endpoints: crate::bundle::update_endpoints(
-                    app_config
-                        .release_channel
-                        .unwrap_or(bundle_metadata.release_channel),
+                    app_config.release_channel.unwrap_or(installed_channel),
                 ),
                 shutdown: shutdown.child_token(),
             },
@@ -557,7 +558,6 @@ impl NyanpasuClient {
         let mut application_settings = application.subscribe_settings_changes();
         let settings_updater = app_updater.clone();
         let settings_shutdown = shutdown.child_token();
-        let installed_channel = bundle_metadata.release_channel;
         tasks.spawn(async move {
             loop {
                 tokio::select! {
@@ -630,7 +630,8 @@ impl NyanpasuClient {
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 debug_http,
-                bundle_metadata,
+                installed_channel,
+                is_portable,
                 environment,
                 core_logs,
                 app_logs,
@@ -688,16 +689,15 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    pub async fn release_channel(&self) -> Result<crate::bundle::Channel> {
+    pub async fn release_channel(&self) -> Result<ReleaseChannel> {
         Ok(self
             .inner
-            .bundle_metadata
-            .release_channel
+            .installed_channel
             .resolve(self.inner.application.snapshot().state.release_channel))
     }
 
-    pub fn installed_release_channel(&self) -> crate::bundle::Channel {
-        self.inner.bundle_metadata.release_channel
+    pub fn installed_release_channel(&self) -> ReleaseChannel {
+        self.inner.installed_channel
     }
 
     pub async fn get_app_update_state(&self) -> Result<app_update::AppUpdateSnapshot> {
@@ -726,7 +726,7 @@ impl NyanpasuClient {
 
     pub async fn set_release_channel(
         &self,
-        channel: crate::bundle::Channel,
+        channel: ReleaseChannel,
     ) -> Result<runtime::MutationOutcome<()>> {
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(Some(channel));
@@ -766,7 +766,7 @@ impl NyanpasuClient {
     }
 
     pub fn is_portable(&self) -> bool {
-        self.inner.bundle_metadata.is_portable
+        self.inner.is_portable
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
@@ -2268,7 +2268,7 @@ pub(crate) mod tests {
     ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
         let application = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(dir, "application.yaml"),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -2444,11 +2444,8 @@ pub(crate) mod tests {
         let (backup_paths, storage) = test_backup_deps(&dir);
         NyanpasuClient::with_parts(
             None,
-            crate::bundle::BundleMetadata {
-                is_portable: false,
-                is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
-            },
+            ReleaseChannel::Stable,
+            false,
             Arc::new(UnconfiguredEnvironmentCollector),
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
@@ -2607,7 +2604,7 @@ pub(crate) mod tests {
         let application = ApplicationClient::from_manager(
             crate::state::mutation::MutationCoordinator::isolated(),
             manager,
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )
@@ -2977,11 +2974,8 @@ pub(crate) mod tests {
                     .join()
                     .unwrap()
             }),
-            bundle_metadata: crate::bundle::BundleMetadata {
-                is_portable: false,
-                is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
-            },
+            installed_channel: ReleaseChannel::Stable,
+            is_portable: false,
             environment: Arc::new(UnconfiguredEnvironmentCollector),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
@@ -3311,11 +3305,8 @@ pub(crate) mod tests {
         let (backup_paths, storage) = test_backup_deps(&dir);
         let client = NyanpasuClient::with_parts(
             None,
-            crate::bundle::BundleMetadata {
-                is_portable: false,
-                is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
-            },
+            ReleaseChannel::Stable,
+            false,
             Arc::new(UnconfiguredEnvironmentCollector),
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
@@ -3461,7 +3452,7 @@ pub(crate) mod tests {
             let paths = test_paths(dir.path(), dir.path().join("data"));
             let (loaded, _session_state, _clash_config) = new_typed_config_clients(
                 crate::state::mutation::MutationCoordinator::isolated(),
-                crate::bundle::Channel::Stable,
+                ReleaseChannel::Stable,
                 paths,
                 &tokio_util::sync::CancellationToken::new(),
                 &tokio_util::task::TaskTracker::new(),
@@ -3495,11 +3486,8 @@ pub(crate) mod tests {
                     .join()
                     .unwrap()
             }),
-            bundle_metadata: crate::bundle::BundleMetadata {
-                is_portable: true,
-                is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
-            },
+            installed_channel: ReleaseChannel::Stable,
+            is_portable: true,
             environment: Arc::new(UnconfiguredEnvironmentCollector),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
@@ -4463,11 +4451,8 @@ pub(crate) mod tests {
             let (backup_paths, storage) = test_backup_deps(&dir);
             let client = NyanpasuClient::with_parts(
                 None,
-                crate::bundle::BundleMetadata {
-                    is_portable: false,
-                    is_fixed_webview: false,
-                    release_channel: crate::bundle::Channel::Stable,
-                },
+                ReleaseChannel::Stable,
+                false,
                 Arc::new(UnconfiguredEnvironmentCollector),
                 logs::test_setup(
                     test_paths(dir.path(), dir.path().join("data"))

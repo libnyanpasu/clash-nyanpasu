@@ -630,7 +630,7 @@ PR 内的 API／边界说明见其 [README](https://github.com/libnyanpasu/clash
 | 10    | independent NyanpasuClient/bootstrap/lifecycle，消除必填HTTP/assets/window/tray/widget/frontend-log依赖，完成最小headless assembly；Tauri应用updater从共享facade剥离 |
 | 11    | frontend接入和终审：transport/native UI/thin setup、bindings、无主窗口观察与交付、平台矩阵；不是旧模块删除兜底阶段                                                   |
 
-Phase 02 的 resources／version／channel／build／device 输入细化见[独立子计划](../plan/2026-10-06-extract-core-02-host-inputs.md)。该文档已拆为七个原子任务：任务 1 实现已通过本地验证与用户审阅，随本次提交交付，见第 9.4 节；其余任务尚未实施。resources 位置复用 #5645，资源初始化与 UWP 执行仍归后续能力阶段；不把子任务完成视作整个 Phase 02 完成。
+Phase 02 的 resources／version／channel／build／device 输入细化见[独立子计划](../plan/2026-10-06-extract-core-02-host-inputs.md)。该文档已拆为七个原子任务：任务 1 原在 `70ff8350f` 交付，本次 rebase 并推送为 `2eaa58b85`，见第 9.4 节；任务 2 已从 stash 恢复、适配并通过新基线本地验证，用户已审阅并授权本次提交／推送，见第 9.5 节；任务 3—7 尚未实施。resources 位置复用 #5645，资源初始化与 UWP 执行仍归后续能力阶段；不把子任务完成视作整个 Phase 02 完成。
 
 各阶段允许按最小完整调用链调整依赖顺序，但必须在同一个PR更新所有调用者、删除旧实现／module声明；没有re-export shim，没有“Phase 11再清理”。frontend-only端口和原测试可以跟拆分能力一起调整，不意味着一次性重做全套UI。
 
@@ -642,10 +642,22 @@ Phase 02 的 resources／version／channel／build／device 输入细化见[独�
 - 同一模块声明窄 `EnvironmentCollector` 契约；GUI `OsEnvironmentCollector` 显式持有真实 BuildInfo，保留原 OS／进程采集。setup 注入 adapter，RPC 通过 facade 调用；CLI 直接构造相同 adapter。
 - GUI 编译环境装配、完整 diagnostics／core-version 执行能力、channel、订阅 device／UA、backup／migration 和资源初始化不因本任务而记作已迁移。
 - 本地原 core 140、client 576、RPC 5／1 ignored、Specta 1、macro 7 通过；生成 bindings 逐字节不变。Clippy／Rustfmt／architecture gate／49 ledger tests／Deno checks 通过。
-- 完整 GUI suite 为 1162 passed／6 ignored／1 原硬件 model 失败；保留的 main 基线二进制复现，未改动 HWID 源码。仅明确过滤该项后的串行 suite 为 1162 passed／6 ignored／1 filtered；不宣称未过滤 suite 全通过。
+- 完整 GUI suite 为 1162 passed／6 ignored／1 原硬件 model 失败；同一断言在原 main 基线复现，未改动 HWID 源码。仅明确过滤该项后的串行 suite 为 1162 passed／6 ignored／1 filtered；不宣称未过滤 suite 全通过。
 - 未新增迁移 tests。用户已另行授权任务 1 提交／推送，不创建 PR 或修改其他分支；未跑真实 CLI collect 端到端、Windows／macOS runtime 或 CI／merge 验证。执行与限制详见子计划第 8 节。
 
-**本次 rebase 适配：** diagnostics collector 同时持有真实 BuildInfo 与 `nyanpasu-paths::PathResolver`，setup／CLI 注入同一 resolver；保留 main 的 binary lookup、目录准备与错误／进程顺序。下方完整历史 inventory 与上述最初 PR 核对记录不改写为当前文件清单；最新集成状态以第 9.1／9.2 节覆盖说明为准。本次验证记录见子计划第 10 节，不由历史测试结果推断新基线通过。
+**本次 rebase 适配：** diagnostics collector 同时持有真实 BuildInfo 与 `nyanpasu-paths::PathResolver`，setup／CLI 注入同一 resolver；保留 main 的 binary lookup、目录准备与错误／进程顺序。第 5／6 节完整历史 inventory 与上述最初 PR 核对记录不改写为当前文件清单；最新集成状态以第 9.1／9.2 节覆盖说明为准。本次验证记录见子计划第 10 节，不由历史测试结果推断新基线通过。
+
+### 9.5 Phase 02 任务 2：本地 channel／bundle 输入分离
+
+本任务最初以 `70ff8350f2a92dbc7168bf80e08d8f2c595bcc42` 为基线，在用户选择的当前 checkout 实施；下面测试数字是最初执行记录。本次已从原 stash 恢复到接入最新 main 的 `2eaa58b85` 基线，保留 main 新增的 ApplicationFormat 类型参数；用户已在恢复与验证后审阅通过并另行授权本次任务 2 提交／推送。第 5／6 节仍是原历史 inventory，不改写为当前文件集合。
+
+- `ClientSetupArgs`、facade inner 与私有 assembly 不再接收／持有 `BundleMetadata`，只使用真实需要的 installed ReleaseChannel 与 portable bool；setup 从既有 GUI metadata 供应相同值，没有复制 fixed WebView 字段或再次探测。
+- application client／facade／RPC 直接使用 config ReleaseChannel，旧 GUI public alias 与全部消费者同步删除／更新。GUI bundle 只保留普通私有 import。
+- 原 application actor／channel 状态规则未改；app updater 仍留 GUI，`unwrap_or`／`resolve` 区别、portable 支持判定、WebView／feeds／发行包策略及原 tests 保留。
+- 原 bundle 16、client 576、RPC 5／1 ignored、Specta 1、macro 7、core 140 通过；bindings 字节不变。Clippy／Rustfmt／architecture gate／49 ledger tests／Deno checks 通过。
+- 串行完整 suite 为 1162 passed／6 ignored／1 明确 filtered，仅过滤任务 1 已复现的原硬件 model test。本轮未另跑未过滤完整 suite，未宣称该问题修复。
+- 首次 client suite 曾因原 Socks port `48234` 不可用失败；端口源码未改，单项与完整重跑通过，首次失败独立记录。未新增迁移 tests，未做 Windows／macOS runtime、自更新安装或 CI／merge 验证；详情见子计划第 9 节。
+- 新基线恢复后 bundle 16、client 584、Specta 1、macro 8、core 134 项通过；串行完整 suite 为 1163 passed／5 ignored／1 明确 filtered。Clippy／Rustfmt／architecture gate／49 ledger tests／backend boundaries／Deno checks 通过；bindings 字节不变，原测试函数清单、bundle body、actor 规则及 app-update 模块未变。用户已另行授权将任务 2 源码与配套文档纳入本次原子提交／推送，不创建 PR 或推进后续任务；详见子计划第 11 节，不以历史验证代替本次结果。
 
 ## 10. 验收与执行约束
 

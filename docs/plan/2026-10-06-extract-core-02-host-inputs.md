@@ -2,7 +2,7 @@
 
 ## 1. 状态、前提与目标
 
-**状态：任务 1 实现与本地验证完成，用户已审阅并另行授权提交／推送；源码及配套文档随本次任务 1 提交交付。任务 2—7 尚未实施，不声明 CI 或合并完成。** 本计划只细化[完整边界审计](../design/2026-10-06-tauri-core-boundary-audit.md)中 Phase 02 的这组输入，不替代完整 roadmap，也不代表 Phase 02 的 errors/contracts、notification seams 等其余工作已经完成。
+**状态：任务 1 已随分支栈 rebase 并推送为 `2eaa58b85`，原历史提交为 `70ff8350f`。任务 2 已从 stash 恢复、适配并通过新基线本地验证，用户已审阅并另行授权提交／推送；源码及配套文档纳入本次任务 2 原子提交，历史记录见第 9 节，新基线记录见第 11 节。任务 3—7 尚未实施，不声明 CI 或合并完成。** 本计划只细化[完整边界审计](../design/2026-10-06-tauri-core-boundary-audit.md)中 Phase 02 的这组输入，不替代完整 roadmap，也不代表 Phase 02 的 errors/contracts、notification seams 等其余工作已经完成。
 
 最初源码核对的 checkout 为 `refactor/extract-core-02-boundaries`，HEAD 为 `8f344a358404f43fe118cc9145f1e9eeba24a5f5`。当时含历史 Phase 01 实现，但不含独立 paths PR；已丢弃的旧 02-A 不是实施基础。最新 main 接入覆盖见第 10 节，最初执行与验证记录保留历史基线。
 
@@ -65,7 +65,7 @@ GUI `build.rs` 继续保留 package.json→Tauri config 的版本发现及 `tmp/
 
 ### 3.3 Channel 是共享状态输入，包策略仍是 GUI 职责
 
-现有 `BundleMetadata` 同时含 `is_portable`、`is_fixed_webview`、`release_channel`。`ApplicationClient` 只需要 channel 值，但类型路径仍经过 `crate::bundle::Channel`；`ApplicationActorArgs` 与 actor state 已直接使用 config 的 `ReleaseChannel`，不重复修改；facade 的 installed/effective channel 查询则读取整个 bundle metadata。
+GUI `BundleMetadata` 同时含 `is_portable`、`is_fixed_webview`、`release_channel`。任务 2 的实施基线中，`ApplicationClient` 类型路径仍经过 `crate::bundle::Channel`，facade 查询通过整个 bundle metadata 获取 channel；本地实现已改为直接使用 config `ReleaseChannel` 并显式供应 installed channel。`ApplicationActorArgs` 与 actor state 原本已使用共享类型，本次未修改。
 
 边界应为：
 
@@ -184,6 +184,8 @@ GUI composition root
 ### 任务 2：application channel 输入脱离 GUI bundle 类型
 
 **建议 subject：** `refactor(application): inject the installed release channel`
+
+**状态：原实现已从 stash 恢复、适配并通过新基线本地验证，用户已审阅并授权本次提交／推送；历史验证记录见第 9 节，新基线记录见第 11 节。** 实际删除 client 的整个 BundleMetadata 依赖，只保留真实使用的 `installed_channel` 与 `is_portable` 输入；GUI setup 从同一既有 metadata 供应两个值，不新增探测或重复来源。
 
 **独立结果：** application channel 类型直接来自 config，installed／effective 查询使用显式输入；不依赖后续 device／UA／backup 修改。
 
@@ -340,8 +342,8 @@ git diff --check
 - [x] shared BuildInfo／diagnostics 数据定义不依赖 GUI 编译输入或 GUI 类型入口。
 - [ ] 应用 version、三种 UA、config crate version、代理内核 version 的语义分别保留。
 - [ ] backup manifest 与 migration Runner 版本输入显式，实际应用版本与用户提供的 target 不混用。
-- [ ] application channel 输入／查询直接使用 shared config 类型，不借 GUI 包对象做输入定位。
-- [ ] Tauri self-update 的装配／发行／下载／安装行为没有进入 shared core。
+- [x] application channel 输入／查询直接使用 shared config 类型，不借 GUI 包对象做输入定位。
+- [x] Tauri self-update 的装配／发行／下载／安装行为没有进入 shared core。
 - [ ] subscription device 来源显式、lazy、实例拥有；旧全局和旧模块已删除，全部 constructor 已迁移。
 - [ ] resources 使用 #5645 的现有模型；optional source 不成为 fake GUI resource 前提。
 - [ ] 原 tests／bindings／错误契约、HTTP capability classification 和 actor lifecycle 未意外改变。
@@ -384,17 +386,46 @@ git diff --check
 | architecture gate／ledger tests／Deno   | gate、49 项原 ledger tests、Deno fmt/typecheck 通过                              |
 | core 正常依赖树／旧入口／whitespace     | 无 Tauri／egui；被替代 DTO 与无参函数无旧消费者；diff check 通过                 |
 
-完整 suite 的唯一失败是未改动的 `utils::hwid::tests::test_device_model_not_empty`。保留的 starting-main 基线二进制 `backend/target/debug/build/clash-nyanpasu/2cc72b6a5d016d72/out/clash_nyanpasu_lib-2cc72b6a5d016d72` 再次复现同一断言失败，exit 101；当前 HWID 源码与本任务 HEAD 基线 SHA-256 相同。没有修复或删除这个测试，不宣称未过滤 suite 全通过。
+完整 suite 的唯一失败是未改动的 `utils::hwid::tests::test_device_model_not_empty`。starting-main 基线再次复现同一断言失败，exit 101；当前 HWID 源码与本任务 HEAD 基线 SHA-256 相同。没有修复或删除这个测试，不宣称未过滤 suite 全通过。
 
 单独选择 `nyanpasu-macro` 的原基线命令因缺少 `syn/full` feature 编译失败；与 GUI 一起选择包时原七项检查通过。未修改 macro manifest／实现来处理此无关问题。
 
 本轮没有执行真实 CLI collect 的端到端采集、Windows／macOS runtime 或 CI／merge 验证；CLI 路径已编译，原 version 显示逻辑未改。这里的 Linux 本地／类型契约验证不能替代平台运行验证。
 
-本地日志：`/tmp/core02-task1-{baseline,macro-baseline,focused,gates,full-gui,serial-gui,hwid-baseline}.log`；改动前 bindings 在 `/tmp/core02-task1-baseline-bindings/`，正常依赖树在 `/tmp/core02-task1-core-tree.txt`。
+## 9. 任务 2 本地执行记录
+
+用户最初确认在当前 checkout 实施，基线为任务 1 的 `70ff8350f2a92dbc7168bf80e08d8f2c595bcc42`；本节保留最初范围及验证记录，不作为新基线通过证明。本次已从 stash 恢复到更新后的 `2eaa58b85` 基线，保留 main 新增的 ApplicationFormat 类型参数；恢复时未提交／推送。用户后续审阅通过并另行授权本次任务 2 提交／推送。
+
+### 实际范围
+
+- `ClientSetupArgs`、`NyanpasuClientInner`、`with_parts` 删除 `BundleMetadata`，替换为两个实际使用的值：`installed_channel: ReleaseChannel` 与 `is_portable: bool`。不复制未被 client 使用的 fixed WebView 字段，不保留旧构造入口。
+- GUI setup 从既有 bundle metadata 供应这两个输入；保持原 compiled-channel／portable 检测来源，未重新探测或新增第二个 metadata 来源。
+- application typed client、facade channel 查询／写入及 RPC DTO／参数直接使用 config 的 ReleaseChannel，旧 `bundle::Channel` 引用全部更新。bundle 内仅使用私有 import，不再 `pub use`。
+- app updater 的 settings／endpoints／settings watch 保留原 `unwrap_or` 规则，effective channel 查询保留原 `resolve` 规则；portable 支持判定仍消费相同 bool。
+- 原 ApplicationActor、config channel 规则及 app-update 模块未修改；bundle 的 compiled-channel、WebView、feeds、包策略 body 与实施基线逐字节相同，仅 import 调整。
+- 更新全部原测试构造点／import；测试函数清单不变，未新增迁移 tests、Tauri 依赖、全局状态、兼容层或 Cargo 依赖。
+
+### 验证结果
+
+| 检查                                            | 基线／实现后结果                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| bundle 原 tests                                 | 前后均 16 passed                                                                                                   |
+| GUI client 原 tests                             | 基线与最终重跑均 576 passed，串行、进程局部 `GSETTINGS_BACKEND=memory`                                             |
+| unified RPC 原 tests                            | 前后均 5 passed／1 原 ignored                                                                                      |
+| Specta export                                   | 前后均 1 passed，两份生成 bindings 与改动前逐字节相同                                                              |
+| macro 原 source／dispatcher tests               | 与 GUI 一起选择包，实现后 7 passed                                                                                 |
+| core 原 tests                                   | 实现后 140 passed                                                                                                  |
+| 完整 GUI suite，仅过滤已复现的原硬件 model test | 1162 passed／6 原 ignored／1 明确 filtered，串行                                                                   |
+| Clippy／Rustfmt／architecture gate／Deno        | workspace all-targets／all-features Clippy、Rustfmt、gate、49 项 ledger tests、Deno checks 通过                    |
+| 删除／行为审查                                  | client 无 BundleMetadata，旧 public channel 路径无消费者；actor／config／app updater 与包策略未变；diff check 通过 |
+
+首次实现后 client suite 为 575 passed／1 failed：原 `client::ports::tests::random_pick_is_sticky_until_fingerprint_changes` 遇到 Socks port `48234` 不可用。该文件与 HEAD 基线 SHA-256 一致；单项重跑及完整 client 重跑通过，未修改端口实现、范围或断言。单独记录首次失败，不将它隐藏在最终成功记录中。
+
+本轮完整 suite 明确过滤的唯一项是任务 1 已在未过滤 suite 与原 main 基线复现的 `utils::hwid::tests::test_device_model_not_empty`；HWID 实现未修改。本轮没有另跑未过滤完整 suite，也没有宣称该硬件问题已修复。未执行 Windows／macOS runtime、实际自更新下载／安装或 CI／merge 验证。
 
 ## 10. 最新 main 接入与 rebase 适配记录
 
-用户授权按 00→01→02 更新分支栈，遇到与 main 的迁移重叠后又确认以 main 归属为准继续。共同 main 基线为 `8ac8ba84c`，00 为 `2e03a81a4`，更新后的 01 为 `9656d6021`。#5645 已在该 main 提交合并；本分支直接消费其实际 `nyanpasu-paths` API，不重建旧 paths 实现。
+用户授权按 00→01→02 更新分支栈，遇到与 main 的迁移重叠后又确认以 main 归属为准继续。共同 main 基线为 `8ac8ba84c`，00 为 `2e03a81a4`，更新后的 01 为 `9656d6021`，02 任务 1 为 `2eaa58b85`；两条分支已使用精确 lease 原子推送。#5645 已在该 main 提交合并；本分支直接消费其实际 `nyanpasu-paths` API，不重建旧 paths 实现。
 
 - RuntimeBuilder／builtin 保留在 main 的 `nyanpasu-application`；script／FS adapters 保留在 `nyanpasu-platform`，widget enum 保留中立 `nyanpasu-helper` 的唯一类型。
 - 01 首项保留原错误分层和全部原测试，不覆盖 #5662／#5663 的快照图与单次序列化行为。main 已删除 preparation 阶段重复 render，因此不恢复无消费者的 preparation `SerializeRuntimeConfig`；实际 runtime inspection render 错误保持原状。
@@ -403,6 +434,17 @@ git diff --check
 - 连接速率自身提交 core 118 项通过；service compatibility 自身提交 core 134 项通过，保留 main `2.0.0-rc.10` 门槛。
 - 02 任务 1 适配后 core 134、GUI client 584、Specta 1、macro 8、platform 49 单元与 1 集成测试通过。两份生成 bindings 相对新 01 字节不变；workspace Clippy／Rustfmt、architecture gate／49 ledger tests、backend boundaries 与 Deno checks 通过。
 - 新基线未过滤 GUI suite 为 1163 passed／5 ignored／1 failed，仅原 `test_device_model_not_empty` 设备 model 为空；HWID 源码与 main SHA-256 相同。只过滤该已知项后的串行 suite 为 1163 passed／5 ignored／1 filtered。未改断言，不把新基线验证与最初 task 1／2 结果混用。
-- 本次日志为 `/tmp/core-stack-01-*.log` 与 `/tmp/core-stack-02-*.log`；历史 inventory 的 275 条记录及原顺序逐条一致。
+- 历史 inventory 的 275 条记录及原顺序逐条一致。
 
-任务 2 的原实现保留于 stash `28d02a8818a443c7f50144c1bec3b1771daccca6`，不混入任务 1 提交；任务 3—7 未实施。子模块实际 HEAD `e9f44e68b0c88981160f5b986f7ffcc9fb5b20a7` 未变，沿用 main 的 gitlink。未宣称本次 Windows／macOS runtime、真实 CLI diagnostics、CI 或 01／02 合并通过。
+任务 2 的原实现已恢复并适配，不混入任务 1 提交。任务 3—7 未实施。子模块实际 HEAD `e9f44e68b0c88981160f5b986f7ffcc9fb5b20a7` 未变，沿用 main 的 gitlink。未宣称本次 Windows／macOS runtime、真实 CLI diagnostics、CI 或 01／02 合并通过。
+
+## 11. 任务 2 恢复后的新基线验证
+
+验证基线为已推送的 `2eaa58b85`。恢复时解决 application constructor 的类型参数冲突，保留 `PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>`；文档同时保留第 9 节历史记录与第 10 节 rebase 记录。恢复与验证结束时 9 个 Rust 文件与 2 份文档均未暂存，没有提交／推送任务 2。用户后续已审阅并授权将这些路径纳入本次任务 2 原子提交；不创建 PR，不推进任务 3—7。
+
+- bundle 16、client 584、Specta 1、macro 8、core 134 项通过；完整 GUI 串行 suite 为 1163 passed／5 ignored／1 明确 filtered，仅过滤第 10 节已复现的原硬件 model test。未另跑任务 2 的未过滤 suite，不声称该硬件失败修复。
+- workspace all-targets／all-features Clippy、Rustfmt、architecture gate、49 ledger tests、backend boundaries 与 Deno checks 通过。
+- 两份正常生成 bindings 相对新任务 1 字节不变。9 个 Rust 文件的函数清单不变；GUI bundle body、application 状态规则与 app-update 模块相对新基线未变，没有新增迁移 tests 或 Cargo 依赖。
+- 历史 inventory 275 条记录与原顺序完全一致；子模块实际 HEAD 未动。未执行 Windows／macOS runtime、真实自更新下载／安装或 CI／merge 验证。
+
+授权提交后再次执行验证：core 134、GUI 串行 suite 1163 passed／5 ignored／1 原硬件 model filtered、macro 8、Specta 1 通过，architecture gate／49 ledger tests／backend boundaries／Deno checks 通过。两份正常生成 bindings 仍与任务 1 基线字节相同；本轮没有再跑未过滤 GUI suite。文档只记录可复现的命令、结果与限制，不引用仅存在于本地的日志、备份或构建产物。

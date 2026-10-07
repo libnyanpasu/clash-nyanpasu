@@ -1,4 +1,5 @@
 pub mod connections;
+pub mod diagnostics;
 pub mod format;
 pub mod service;
 pub mod state;

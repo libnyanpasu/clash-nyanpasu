@@ -1,3 +1,7 @@
+mod manageable;
+
+pub use manageable::ManageableField;
+
 use serde::{Deserialize, Serialize};
 use struct_patch::Patch;
 
@@ -61,9 +65,9 @@ pub struct ClashGuardOverrides {
     mode: Mode,
     secret: String,
     #[cfg(feature = "default-meta")]
-    unified_delay: bool,
+    unified_delay: ManageableField<bool>,
     #[cfg(feature = "default-meta")]
-    tcp_concurrent: bool,
+    tcp_concurrent: ManageableField<bool>,
     ipv6: bool,
 }
 
@@ -75,9 +79,9 @@ impl Default for ClashGuardOverrides {
             mode: Mode::Rule,
             secret: uuid::Uuid::new_v4().to_string().to_lowercase(),
             #[cfg(feature = "default-meta")]
-            unified_delay: true,
+            unified_delay: ManageableField::Managed(true),
             #[cfg(feature = "default-meta")]
-            tcp_concurrent: true,
+            tcp_concurrent: ManageableField::Managed(true),
             ipv6: false,
         }
     }
@@ -94,6 +98,29 @@ impl ClashGuardOverrides {
 
     pub fn mode(&self) -> Mode {
         self.mode
+    }
+
+    /// The top-level runtime config keys these overrides force, in field
+    /// order. An unmanaged field forces nothing, so whatever the profiles and
+    /// transforms produced for it stays.
+    pub fn forced_entries(&self) -> Vec<(&'static str, serde_json::Value)> {
+        let mut entries = vec![
+            ("log-level", serde_json::json!(self.log_level)),
+            ("allow-lan", serde_json::json!(self.allow_lan)),
+            ("mode", serde_json::json!(self.mode)),
+            ("secret", serde_json::json!(self.secret)),
+        ];
+        #[cfg(feature = "default-meta")]
+        {
+            if let Some(value) = self.unified_delay.managed() {
+                entries.push(("unified-delay", serde_json::json!(value)));
+            }
+            if let Some(value) = self.tcp_concurrent.managed() {
+                entries.push(("tcp-concurrent", serde_json::json!(value)));
+            }
+        }
+        entries.push(("ipv6", serde_json::json!(self.ipv6)));
+        entries
     }
 }
 
@@ -118,6 +145,39 @@ mod patch_tests {
         assert_eq!(overrides.log_level, LogLevel::Debug);
         assert_eq!(overrides.mode, Mode::Rule, "absent field unchanged");
         assert_eq!(overrides.secret, kept_secret, "absent secret unchanged");
+    }
+
+    /// `forced_entries` lists every field when all are managed, so a field
+    /// added to the struct cannot silently stop reaching the runtime config.
+    #[test]
+    fn forced_entries_cover_every_managed_field() {
+        let overrides = ClashGuardOverrides::default();
+        let serialized = serde_json::to_value(&overrides).unwrap();
+        let keys: std::collections::BTreeSet<&str> = serialized
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let forced: std::collections::BTreeSet<&str> = overrides
+            .forced_entries()
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect();
+
+        assert_eq!(forced, keys);
+    }
+
+    #[cfg(feature = "default-meta")]
+    #[test]
+    fn unmanaged_fields_are_not_forced() {
+        let mut overrides = ClashGuardOverrides::default();
+        overrides.tcp_concurrent = ManageableField::Unmanaged;
+
+        let forced = overrides.forced_entries();
+
+        assert!(!forced.iter().any(|(key, _)| *key == "tcp-concurrent"));
+        assert!(forced.contains(&("unified-delay", serde_json::json!(true))));
     }
 
     /// A serialized patch keeps the `kebab-case` keys and skips absent fields.

@@ -106,36 +106,25 @@ pub(super) fn whitelist_filter(
     ConfigValue::Object(Arc::new(filtered))
 }
 
-/// Legacy HANDLE overwrite (enhance/mod.rs:110-116): typed overrides + caller
-/// resolved ports force-inserted at top level, bypassing stage-1 whitelist.
+/// Legacy HANDLE overwrite (enhance/mod.rs:110-116): the keys the typed
+/// overrides force + caller resolved ports, inserted at top level, bypassing
+/// stage-1 whitelist. Unmanaged override fields are not inserted.
 pub(super) fn apply_guard(
     config: &ConfigValue,
     guard: &GuardInputs<'_>,
 ) -> Result<ConfigValue, RuntimePipelineError> {
-    let raw = match serde_json::to_value(guard.overrides) {
-        Ok(raw) => raw,
-        Err(error) => {
-            return InternalSnafu {
-                message: format!("encode guard overrides: {error}"),
-            }
-            .fail();
-        }
-    };
-    let entries = match ConfigValue::try_from(raw) {
-        Ok(entries) => entries,
-        Err(error) => {
-            return InternalSnafu {
-                message: format!("convert guard overrides: {error:?}"),
-            }
-            .fail();
-        }
-    };
-
     let mut next = config.clone();
-    if let Some(map) = entries.as_object_arc() {
-        for (key, value) in map.iter() {
-            next = obj_insert(&next, key.as_ref(), value.clone());
-        }
+    for (key, raw) in guard.overrides.forced_entries() {
+        let value = match ConfigValue::try_from(raw) {
+            Ok(value) => value,
+            Err(error) => {
+                return InternalSnafu {
+                    message: format!("convert guard override {key}: {error:?}"),
+                }
+                .fail();
+            }
+        };
+        next = obj_insert(&next, key, value);
     }
 
     next = obj_insert(

@@ -5,7 +5,7 @@ use super::{
         legacy_schema::{IClashTemp, IVerge, typed_config_from_legacy_parts},
     },
     application::ApplicationFormat,
-    clash_config::ClashConfigFormat,
+    clash_config::{self, ClashConfigFormat},
 };
 use crate::utils::help;
 use anyhow::Context as _;
@@ -158,10 +158,8 @@ impl MigrationStep for RepairClashConfigPath {
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let previous_typed_path = ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE);
         let clash_config = if previous_typed_path.exists() {
-            read_yaml::<nyanpasu_config::clash::config::ClashConfig>(
-                previous_typed_path.as_std_path(),
-            )
-            .context("failed to read previous typed clash config")?
+            clash_config::read_typed(previous_typed_path.as_std_path())
+                .context("failed to read previous typed clash config")?
         } else if has_legacy_inputs(ctx)? {
             let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
             let legacy_clash = read_legacy_clash_inputs(ctx)?;
@@ -268,7 +266,7 @@ fn classify_shared_clash_file(ctx: &Ctx) -> Result<SharedClashFileState, Migrati
         return Ok(SharedClashFileState::Missing);
     }
 
-    if read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&path).is_ok() {
+    if clash_config::read_typed(&path).is_ok() {
         return Ok(SharedClashFileState::Typed);
     }
 
@@ -337,7 +335,7 @@ fn partial_typed_file_state(
 
 fn validate_existing_typed_files(ctx: &Ctx) -> Result<(), MigrationCheckError> {
     validate_existing_application_and_session(ctx)?;
-    read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&ctx.clash_config_path())?;
+    clash_config::read_typed(&ctx.clash_config_path())?;
     Ok(())
 }
 

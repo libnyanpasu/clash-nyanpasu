@@ -1601,9 +1601,25 @@ schema_revision: {revision}
         .unwrap();
         std::fs::write(
             case.ctx.clash_config_path(),
-            serde_yaml::to_string(&nyanpasu_config::clash::config::ClashConfig::default()).unwrap(),
+            serde_yaml::to_string(&clash_config_2_0()).unwrap(),
         )
         .unwrap();
+    }
+
+    /// The default clash config as 2.0.x wrote it, with boolean guard fields.
+    fn clash_config_2_0() -> serde_yaml::Mapping {
+        let mut config: serde_yaml::Mapping = serde_yaml::from_str(
+            &serde_yaml::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
+                .unwrap(),
+        )
+        .unwrap();
+        let overrides = config
+            .get_mut("overrides")
+            .and_then(serde_yaml::Value::as_mapping_mut)
+            .unwrap();
+        overrides.insert("unified-delay".into(), true.into());
+        overrides.insert("tcp-concurrent".into(), false.into());
+        config
     }
 
     fn application_state(runner: &Runner) -> ModuleState {
@@ -1798,21 +1814,37 @@ tray_menu_close_behavior: hide
                 .unwrap();
     }
 
+    fn clash_guard_field(case: &LegacyCase, key: &str) -> serde_yaml::Value {
+        clash_config_file(case).into_payload()["overrides"][key].clone()
+    }
+
+    fn managed(value: bool) -> serde_yaml::Value {
+        serde_yaml::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
+    }
+
     #[test]
     fn a_fresh_install_gets_a_stamped_clash_config() {
         let case = LegacyCase::empty();
 
         let mut runner = case.runner();
-        // No file yet, so the module starts at head.
+        // No file yet, so the module starts at head: no step may run on a file
+        // that `typed_config` is about to create at head.
         assert_eq!(
             runner.store.module_state("clash_config"),
-            at_revision(0, false)
+            at_revision(1, false)
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(0));
+        assert_eq!(clash_config_stamp(&case), Some(1));
+        assert_eq!(
+            runner
+                .store
+                .task_state("clash_config/manageable_guard_fields"),
+            None,
+            "nothing to convert in a file created at head"
+        );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config"), at_revision(0, true));
+        assert_eq!(state.module_state("clash_config"), at_revision(1, true));
         assert_clash_config_loads(&case);
     }
 
@@ -1822,17 +1854,27 @@ tray_menu_close_behavior: hide
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(0));
+        assert_eq!(clash_config_stamp(&case), Some(1));
+        assert_eq!(clash_guard_field(&case, "tcp-concurrent"), managed(true));
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config"), at_revision(0, true));
+        assert_eq!(state.module_state("clash_config").applied_revision, 1);
+        assert!(state.module_state("clash_config").stamped);
         assert_clash_config_loads(&case);
     }
 
+    /// Also covers the lost state: `typed_config` detects its baseline from a
+    /// clash config still in the 2.0.x shape.
     #[test]
-    fn a_clash_config_from_2_0_is_stamped_without_changing_content() {
+    fn a_clash_config_from_2_0_keeps_its_guard_values_as_managed_fields() {
         let case = LegacyCase::empty();
         seed_typed_files(&case, Some(1), "");
-        let before = clash_config_file(&case).into_payload();
+        let mut expected = clash_config_file(&case).into_payload();
+        let overrides = expected
+            .get_mut("overrides")
+            .and_then(serde_yaml::Value::as_mapping_mut)
+            .unwrap();
+        overrides.insert("unified-delay".into(), managed(true));
+        overrides.insert("tcp-concurrent".into(), managed(false));
 
         let mut runner = case.runner();
         assert_eq!(
@@ -1841,9 +1883,22 @@ tray_menu_close_behavior: hide
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(0));
-        assert_eq!(clash_config_file(&case).into_payload(), before);
+        assert_eq!(clash_config_stamp(&case), Some(1));
+        assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
+        let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
+        assert_eq!(
+            state.task_state("clash_config/manageable_guard_fields"),
+            Some(MigrationState::Completed)
+        );
+        assert_eq!(
+            state.module_state("clash_config"),
+            ModuleState {
+                applied_revision: 1,
+                baseline_revision: 0,
+                stamped: true,
+            }
+        );
     }
 
     #[test]
@@ -1853,7 +1908,7 @@ tray_menu_close_behavior: hide
         let mut store = MigrationStore::default();
         store
             .modules
-            .insert("clash_config".to_string(), at_revision(0, true));
+            .insert("clash_config".to_string(), at_revision(1, true));
         store.flush_atomic(&case.ctx.state_path()).unwrap();
 
         let error = format!(

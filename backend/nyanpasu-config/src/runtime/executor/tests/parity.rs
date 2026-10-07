@@ -16,8 +16,8 @@ fn expected(yaml: &str) -> Value {
     normalized(serde_json::to_value(value).unwrap())
 }
 
-/// spec §13 #5：typed guard 恒插 unified-delay/tcp-concurrent，旧 HANDLE 覆盖
-/// 不含这两键——parity 比较前双边剥除，其余键逐字节等价。
+/// spec §13 #5：typed guard 默认接管（Managed）unified-delay/tcp-concurrent
+/// 并强插，旧 HANDLE 覆盖不含这两键——parity 比较前双边剥除，其余键逐字节等价。
 fn normalized(mut value: Value) -> Value {
     if let Value::Object(map) = &mut value {
         map.remove("unified-delay");

@@ -18,7 +18,16 @@ fn value(json: serde_json::Value) -> ConfigValue {
 /// Fixed-secret guard input; the default constructor generates a fresh uuid.
 pub fn fixed_overrides() -> ClashGuardOverrides {
     serde_yaml_ng::from_str(
-        "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: true\ntcp-concurrent: true\nipv6: false\n",
+        "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: managed, value: true}\ntcp-concurrent: {kind: managed, value: true}\nipv6: false\n",
+    )
+    .unwrap()
+}
+
+/// [`fixed_overrides`] with `unified-delay` and `tcp-concurrent` left to the
+/// profiles.
+pub fn unmanaged_overrides() -> ClashGuardOverrides {
+    serde_yaml_ng::from_str(
+        "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: unmanaged}\ntcp-concurrent: {kind: unmanaged}\nipv6: false\n",
     )
     .unwrap()
 }
@@ -139,6 +148,52 @@ fn guard_inserts_override_keys_and_resolved_ports() {
     assert_eq!(result["external-controller"], json!("127.0.0.1:9090"));
     assert!(result.get("port").is_none());
     assert_eq!(result["rules"], json!([]));
+}
+
+fn guard_inputs(overrides: &ClashGuardOverrides) -> GuardInputs<'_> {
+    GuardInputs {
+        overrides,
+        ports: ResolvedPortBindings {
+            mixed_port: 7890,
+            port: None,
+            socks_port: None,
+            external_controller: None,
+        },
+    }
+}
+
+/// A managed field overrides the profile's value.
+#[test]
+fn guard_overwrites_managed_fields() {
+    let overrides = fixed_overrides();
+    let result = apply_guard(
+        &value(json!({ "tcp-concurrent": false, "unified-delay": false })),
+        &guard_inputs(&overrides),
+    )
+    .unwrap()
+    .to_json();
+
+    assert_eq!(result["tcp-concurrent"], json!(true));
+    assert_eq!(result["unified-delay"], json!(true));
+}
+
+/// An unmanaged field keeps the profile's value and is not added when the
+/// profile has none, while the other guard fields stay forced.
+#[test]
+fn guard_leaves_unmanaged_fields_to_the_profile() {
+    let overrides = unmanaged_overrides();
+    let result = apply_guard(
+        &value(json!({ "tcp-concurrent": false, "mode": "from-profile" })),
+        &guard_inputs(&overrides),
+    )
+    .unwrap()
+    .to_json();
+
+    assert_eq!(result["tcp-concurrent"], json!(false));
+    assert!(result.get("unified-delay").is_none());
+    assert_eq!(result["mode"], json!("rule"));
+    assert_eq!(result["secret"], json!("golden-secret"));
+    assert_eq!(result["mixed-port"], json!(7890));
 }
 
 #[test]

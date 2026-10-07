@@ -175,10 +175,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     "LANGUAGE_CASE",
   ]),
   ...migrationModuleStatics("application", ["WINDOW_CLOSE"]),
-  // No steps yet, so no version constant either.
-  ...migrationModuleStatics("clash_config", []).filter(
-    (entry) => entry.name !== "VERSION_2_0_0",
-  ),
+  ...migrationModuleStatics("clash_config", ["MANAGEABLE_GUARD_FIELDS"]),
   ...migrationModuleStatics("profiles", [
     "NULL_VALUE",
     "SCRIPT_NEWTYPE",

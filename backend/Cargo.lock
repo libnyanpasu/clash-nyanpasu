@@ -6580,6 +6580,7 @@ dependencies = [
  "boa_utils",
  "bon",
  "camino",
+ "clash-api",
  "dashmap",
  "dunce",
  "fs-err",
@@ -6604,6 +6605,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

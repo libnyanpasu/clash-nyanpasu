@@ -538,6 +538,10 @@ export function createRpcClient(
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('select_proxy', { group, name }),
       ),
+    clearProxyFixed: (group: string) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('clear_proxy_fixed', { group }),
+      ),
     updateProxyProvider: (name: string) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('update_proxy_provider', { name }),

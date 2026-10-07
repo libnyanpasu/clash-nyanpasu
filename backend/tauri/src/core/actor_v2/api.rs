@@ -218,6 +218,10 @@ impl ApiClient {
         .await
     }
 
+    pub async fn clear_proxy_selection(&self, group: &ProxyName) -> Result<(), ApiError> {
+        self.execute(self.client.clear_proxy_selection(group)).await
+    }
+
     pub async fn update_proxy_provider(&self, name: &ProviderName) -> Result<(), ApiError> {
         self.execute(self.client.update_proxy_provider(name)).await
     }

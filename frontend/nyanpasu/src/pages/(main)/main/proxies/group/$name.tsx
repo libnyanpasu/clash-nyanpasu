@@ -1,11 +1,15 @@
 import ArrowDownwardAltRounded from '~icons/material-symbols/arrow-downward-alt-rounded'
 import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-rounded'
+import KeepOffRounded from '~icons/material-symbols/keep-off-rounded'
+import KeepRounded from '~icons/material-symbols/keep-rounded'
 import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
 import { useCallback, useDeferredValue, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
-import { useContainerBreakpointValue } from '@nyanpasu/hooks'
+import { m } from '@/paraglide/messages'
+import { message } from '@/utils/notification'
+import { useContainerBreakpointValue, useLockFn } from '@nyanpasu/hooks'
 import {
   ClashProxiesQueryGroupItem,
   ClashProxiesQueryProxyItem,
@@ -66,6 +70,7 @@ function RouteComponent() {
   const {
     proxies: { data: proxies },
     selectProxy,
+    clearProxyFixed,
     updateProxiesDelay: { mutateAsync: mutateProxyDelay },
   } = useClashProxies()
 
@@ -81,14 +86,43 @@ function RouteComponent() {
 
   const groupName = currentGroup?.name
 
+  const selectable = currentGroup?.capabilities.select ?? false
+
   const handleSelectProxy = useCallback(
     async (proxy: ClashProxiesQueryProxyItem) => {
-      if (groupName) {
+      if (!groupName) {
+        return
+      }
+
+      try {
         await selectProxy(groupName, proxy.name)
+      } catch (error) {
+        message(
+          m.proxies_select_failed_message({
+            group: groupName,
+            name: proxy.name,
+          }),
+          { kind: 'error', error },
+        )
       }
     },
     [groupName, selectProxy],
   )
+
+  const handleClearFixed = useLockFn(async () => {
+    if (!groupName) {
+      return
+    }
+
+    try {
+      await clearProxyFixed(groupName)
+    } catch (error) {
+      message(m.proxies_clear_fixed_failed_message({ group: groupName }), {
+        kind: 'error',
+        error,
+      })
+    }
+  })
 
   const handleDelayTest = useCallback(
     async (proxy: ClashProxiesQueryProxyItem) => {
@@ -150,12 +184,38 @@ function RouteComponent() {
             <div className="truncate" title={currentGroup?.name}>
               {currentGroup?.name}
             </div>
+
+            {currentGroup?.fixed && (
+              <div
+                className="text-on-surface-variant flex min-w-0 items-center gap-1 text-xs"
+                title={currentGroup.fixed}
+                data-slot="proxies-group-fixed"
+              >
+                <KeepRounded className="size-3.5 shrink-0" />
+                <span className="shrink-0">
+                  {m.proxies_group_fixed_label()}
+                </span>
+                <span className="truncate">{currentGroup.fixed}</span>
+              </div>
+            )}
           </div>
 
           <GroupTrafficSpeed groupName={currentGroup?.name} />
         </div>
 
         <div className="flex-1" />
+
+        {currentGroup?.fixed && currentGroup.capabilities.clearFixed && (
+          <Button
+            variant="stroked"
+            className="flex h-8 shrink-0 items-center gap-1 px-3 text-sm"
+            onClick={handleClearFixed}
+            data-slot="proxies-group-clear-fixed-button"
+          >
+            <KeepOffRounded className="size-4" />
+            <span>{m.proxies_group_clear_fixed_button()}</span>
+          </Button>
+        )}
 
         <Button
           icon
@@ -199,6 +259,8 @@ function RouteComponent() {
               >
                 <ProxyNodeButton
                   proxy={proxy}
+                  selectable={selectable}
+                  fixed={name === currentGroup?.fixed}
                   onSelect={handleSelectProxy}
                   onDelayTest={handleDelayTest}
                 />

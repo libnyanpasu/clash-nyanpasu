@@ -173,6 +173,8 @@ mod tests {
                 now: Some(proxy.to_owned()),
                 all: vec!["a".to_owned(), "b".to_owned()],
                 selectable: true,
+                fixed: None,
+                clear_fixed: false,
             },
         )])
     }
@@ -360,6 +362,8 @@ mod tests {
                     now: None,
                     all: vec!["a".to_owned(), "b".to_owned()],
                     selectable: true,
+                    fixed: None,
+                    clear_fixed: false,
                 },
             )])
         };

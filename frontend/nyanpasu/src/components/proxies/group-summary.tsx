@@ -1,3 +1,4 @@
+import KeepRounded from '~icons/material-symbols/keep-rounded'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import type { Proxies_Serialize, ProxyGroup } from '@nyanpasu/rpc/types'
@@ -20,6 +21,16 @@ export default function GroupSummary({
       </span>
       {group.now && (
         <>
+          {group.fixed && (
+            <span
+              className="shrink-0"
+              title={group.fixed}
+              data-slot="group-summary-fixed-icon"
+            >
+              <KeepRounded className="size-3.5" />
+            </span>
+          )}
+
           <div className="min-w-0 flex-1" title={group.now}>
             <TextMarquee className="w-full">{group.now}</TextMarquee>
           </div>

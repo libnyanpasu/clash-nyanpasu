@@ -160,6 +160,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::service::stop_service,
             ipc::service::restart_service,
             ipc::select_proxy,
+            ipc::clear_proxy_fixed,
             ipc::update_proxy_provider,
             ipc::restart_application,
             ipc::set_tray_icon,

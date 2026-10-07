@@ -1154,6 +1154,16 @@ pub async fn select_proxy(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
+pub async fn clear_proxy_fixed(
+    client: State<'_, NyanpasuClient>,
+    group: String,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.clear_proxy_fixed(group).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
 pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: String) -> Result<()> {
     Ok(client.update_proxy_provider(name).await?)
 }

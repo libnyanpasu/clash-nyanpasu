@@ -1,8 +1,120 @@
 # Application and platform extraction
 
-Status: implementation plan, 2026-10-06. This is the prerequisite to the
-[OpenWrt MVP](openwrt-mvp.md). The extraction takes priority over building a
-router-specific facade. Each completed stage is a separate, buildable commit.
+> Historical record: sequencing and package boundaries are superseded by the [approved core extraction plan](tauri-core-extraction-plan.md). Validation below describes its original source checkpoint, not the current restructuring.
+
+Status: original implementation plan, 2026-10-06, with the current ownership
+correction below. This is the prerequisite to the [OpenWrt MVP](openwrt-mvp.md).
+The extraction takes priority over building a router-specific facade. Each
+completed stage is a separate, buildable commit.
+
+Current target: shared application behavior belongs in `nyanpasu-core`.
+`nyanpasu-application` and `nyanpasu-platform` have now been removed after migrating
+their current implementation, original tests and all consumers into core. The
+runtime consolidation below is a separate task from the earlier device-input
+extraction. The original diagram, stages and first-slice delivery later in this
+document are historical, not instructions to recreate those packages. Follow
+[Backend packages](../development/backend-packages.md) for current rules.
+
+## Runtime configuration consolidation into core
+
+The user reviewed the implementation and authorized this atomic commit/push.
+The single shared owner is `nyanpasu_core::runtime::config`, under the runtime
+capability rather than a generic `enhance` module. It contains RuntimeBuilder,
+inputs/errors/logs, builtin sources and rules, script descriptors, the explicit
+filesystem content source and the Boa/Lua/script adapters. The script adapter is
+named `RuntimeConfigScriptRunner`; there are no old module/type forwarding paths.
+Original integration coverage lives in
+[`nyanpasu-core/tests/runtime_builder.rs`](../../backend/nyanpasu-core/tests/runtime_builder.rs).
+
+This migrates the newer main implementation, not a rollback to the old core
+runtime implementation. Snapshot graph, single serialization, build/preparation
+error separation, frozen-content policy, JS/Lua ordering, failed-script logs,
+private blocking runtime and shutdown behavior are unchanged. Config still owns
+the pure executor and its ports. Tauri retains artifact/log projection, runtime
+preparation, source/workflow owners, facade and frontend composition. This does
+not complete independent headless bootstrap or advance host-input tasks 4–7.
+
+The workspace, GUI consumers, exclusive dependencies, lockfile, dependency gate
+and musl harness now use core. The gate checks core/config for transitive GUI
+leaks and rejects config-to-core dependencies. The musl harness builds the two
+core test binaries but selects only `runtime::config::` unit tests plus the
+runtime-builder integration test; its original runtime/script scope is not
+expanded to unrelated core tests.
+
+### Verification and limitations
+
+Before the move, application had seven passing tests and platform had 49 unit
+plus one integration test passing. The existing core device-model assertion
+failed in this environment before editing. An unfiltered core run after the
+initial move, before the namespace rename, had 195 passes and the same one
+failure; an explicit skip rerun had 195 unit passes plus the integration test.
+The assertion and device implementation were not changed. After the user limited
+verification to affected areas, only focused tests were run; the interrupted
+complete GUI/script test runs are not counted as successful verification.
+
+Final focused results after the runtime/config naming change:
+
+| Scope                                                                  | Result                                                     |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Core `runtime::config::` original unit tests                           | 56 passed; 140 unrelated tests filtered out                |
+| Original runtime-builder integration                                   | 1 passed                                                   |
+| GUI enhance/artifact/golden                                            | 6 passed, including five goldens                           |
+| GUI application workflow                                               | 224 passed                                                 |
+| Affected facade construction/runtime paths                             | 9 original tests passed                                    |
+| Specta export                                                          | 1 passed; both generated bindings byte-identical           |
+| Backend dependency policy                                              | 3 original tests passed                                    |
+| Affected-package all-targets/all-features Clippy, Rustfmt, Deno checks | Passed                                                     |
+| Architecture ledger and backend dependency gates                       | Passed; 408 Rust files, 39 static allowances, no residuals |
+
+Reproducible final checks from the repository root:
+
+```sh
+cargo test --manifest-path backend/Cargo.toml -p nyanpasu-core --lib runtime::config::
+cargo test --manifest-path backend/Cargo.toml -p nyanpasu-core --test runtime_builder
+GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib enhance:: -- --test-threads=1
+GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib client::application_workflow:: -- --test-threads=1
+GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib specta_export::tests::export_typescript_bindings
+cargo clippy --manifest-path backend/Cargo.toml -p nyanpasu-core -p clash-nyanpasu --all-targets --all-features
+cargo fmt --manifest-path backend/Cargo.toml --all -- --check
+deno task test:backend-boundaries
+deno task lint:deno
+deno task lint:architecture-ledger
+deno task lint:backend-boundaries
+```
+
+The nine facade checks use exact original test names:
+
+```sh
+for name in \
+  client_constructs_with_mandatory_typed_config_clients \
+  typed_setup_loads_persisted_state \
+  try_new_with_args_constructs_typed_config_facade \
+  runtime_lifecycle_is_empty_before_first_rebuild \
+  reconcile_publishes_the_runtime_product_read_model \
+  runtime_inspection_tracks_promoted_builds \
+  repeated_reconcile_advances_the_runtime_revision \
+  repeated_core_updates_advance_the_runtime_revision \
+  managed_edit_uses_candidate_bytes_and_rejects_invalid_runtime_without_overwriting_source
+do
+  GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml \
+    -p clash-nyanpasu --lib "client::tests::$name" -- --exact --test-threads=1
+done
+```
+
+The all-target, all-feature normal/build core dependency tree contains no Tauri,
+egui/eframe or removed application/platform package. Semantic comparison of all
+15 migrated source/fixture/test files against the parent implementation found
+only import/module wiring and the approved runner rename; builtin source bytes
+and original assertions are intact. The lockfile has no version/checksum drift,
+only package removals and core/GUI dependency wiring changes.
+
+Docker/rootfs verification is blocked by permission to `/var/run/docker.sock`;
+`docker info` returned 1, so the musl harness was not executed in this round.
+Windows/macOS compilation/runtime, hardware router execution, independent
+headless composition and remote CI/merge are not established by these checks.
+The earlier first-slice Docker result below remains historical, not a result for
+this consolidated core. The runtime submodule and retained user stashes are
+unchanged. Concurrent audit/roadmap edits are outside this commit.
 
 ## Objective
 
@@ -11,7 +123,7 @@ application behavior. Desktop and OpenWrt must use the same profile, runtime,
 script and core application services. Building a second router application that
 copies the desktop workflow would leave the architectural problem unresolved.
 
-The target dependency direction is:
+The original dependency direction was:
 
 ```text
 Tauri GUI / IPC host              OpenWrt daemon / ubus host
@@ -42,7 +154,7 @@ enabling Tauri by default in the neutral platform crate. A future
 OpenWrt-specific procd/ubus implementations belong to its host or platform module,
 not to the shared application crate.
 
-## Current boundaries and known coupling
+## Original boundaries and known coupling
 
 | Existing module                                              | Target owner                               | Boundary to preserve                                           |
 | ------------------------------------------------------------ | ------------------------------------------ | -------------------------------------------------------------- |
@@ -165,7 +277,7 @@ finished phase until integrated, built and tested against the shared services.
 
 ## Compatibility, verification and commits
 
-### Implemented first slice
+### Original first-slice delivery (before consolidation)
 
 `nyanpasu-application` owns RuntimeBuilder, runtime build inputs/errors and script
 descriptors. `nyanpasu-platform` owns filesystem profile reads, Boa/JavaScript,

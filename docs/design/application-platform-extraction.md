@@ -1,8 +1,18 @@
 # Application and platform extraction
 
-Status: implementation plan, 2026-10-06. This is the prerequisite to the
-[OpenWrt MVP](openwrt-mvp.md). The extraction takes priority over building a
-router-specific facade. Each completed stage is a separate, buildable commit.
+Status: original implementation plan, 2026-10-06, with the current ownership
+correction below. This is the prerequisite to the [OpenWrt MVP](openwrt-mvp.md).
+The extraction takes priority over building a router-specific facade. Each
+completed stage is a separate, buildable commit.
+
+Current target: shared application behavior belongs in `nyanpasu-core`.
+`nyanpasu-application` is to be deleted after its existing runtime/builtin slice,
+original tests and consumers have been migrated completely; it receives no new
+capabilities. The diagram and stages below record the original split and existing
+implementation, not permission to extend that transitional package. The device
+input task moves the entire device capability into core; it does not also migrate
+the existing runtime slice or claim that package removal is complete. Follow
+[Backend packages](../development/backend-packages.md) for current rules.
 
 ## Objective
 
@@ -11,7 +21,7 @@ application behavior. Desktop and OpenWrt must use the same profile, runtime,
 script and core application services. Building a second router application that
 copies the desktop workflow would leave the architectural problem unresolved.
 
-The target dependency direction is:
+The original dependency direction was:
 
 ```text
 Tauri GUI / IPC host              OpenWrt daemon / ubus host

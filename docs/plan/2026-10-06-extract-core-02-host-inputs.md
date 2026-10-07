@@ -2,7 +2,7 @@
 
 ## 1. 状态、前提与目标
 
-**状态：任务 1 已随分支栈 rebase 并推送为 `2eaa58b85`，原历史提交为 `70ff8350f`。任务 2 已从 stash 恢复、适配并通过新基线本地验证，用户已审阅并另行授权提交／推送；源码及配套文档纳入本次任务 2 原子提交，历史记录见第 9 节，新基线记录见第 11 节。任务 3—7 尚未实施，不声明 CI 或合并完成。** 本计划只细化[完整边界审计](../design/2026-10-06-tauri-core-boundary-audit.md)中 Phase 02 的这组输入，不替代完整 roadmap，也不代表 Phase 02 的 errors/contracts、notification seams 等其余工作已经完成。
+**状态：任务 1 已随分支栈 rebase 并推送为 `2eaa58b85`，原历史提交为 `70ff8350f`。任务 2 已提交并推送为 `ee38948ff`，历史记录见第 9 节，新基线记录见第 11 节。任务 3 已在该基线上完成本地实施与验证，用户已审阅通过并另行授权本次原子提交／推送，执行与限制见第 12 节。任务 4—7 尚未实施，不声明 CI 或合并完成。** 本计划只细化[完整边界审计](../design/2026-10-06-tauri-core-boundary-audit.md)中 Phase 02 的这组输入，不替代完整 roadmap，也不代表 Phase 02 的 errors/contracts、notification seams 等其余工作已经完成。
 
 最初源码核对的 checkout 为 `refactor/extract-core-02-boundaries`，HEAD 为 `8f344a358404f43fe118cc9145f1e9eeba24a5f5`。当时含历史 Phase 01 实现，但不含独立 paths PR；已丢弃的旧 02-A 不是实施基础。最新 main 接入覆盖见第 10 节，最初执行与验证记录保留历史基线。
 
@@ -134,7 +134,7 @@ GUI composition root
 
 ### 4.3 Device
 
-建议在 `nyanpasu-core::device` 中明确区分数据／规则、窄设备来源接口和 OS 适配：`DeviceInfo` 是值，`DeviceInfoSource` 只提供设备 snapshot，`OsDeviceInfoSource` 执行平台采集。具体文件拆分按代码量决定，不创建无消费者的空 modules。
+用户确认整个设备能力归 `nyanpasu-core::device`，不向 `nyanpasu-application` 或 `nyanpasu-platform` 增加内容：`mod.rs` 定义 `DeviceInfo` 值、窄 `DeviceInfoSource` 接口与纯净化规则，`os.rs` 实现 `OsDeviceInfoSource`。现有 application runtime／builtin 的完整迁移与整包删除另行处理，本任务不扩大到该范围。当前归属规则已同步到[后端包规范](../development/backend-packages.md)。
 
 - 窄接口由共享能力所有，`ProfileFileService` 显式持有 `Arc<dyn DeviceInfoSource>`；生产与测试使用相同字段与同一 fetch 实现。
 - OS adapter 实例内部可用 `OnceLock<DeviceInfo>` 缓存一次不可变结果。这是实例拥有的缓存，不是 `static`，不需要新的 actor、周期刷新或 shutdown 任务。
@@ -206,9 +206,11 @@ GUI composition root
 
 **建议 subject：** `refactor(core): extract instance-owned device identity`
 
+**状态：本地实施与验证完成，用户已审阅通过并另行授权本次原子提交／推送。实际范围与验证见第 12 节。**
+
 **独立结果：** 真实 OS device adapter 可由非 GUI 宿主构造；订阅请求已使用注入的实例，旧实现全部删除。本任务不同时改变默认 UA。
 
-**迁出实现：** `backend/tauri/src/utils/hwid.rs` 的 DTO、HWID／fallback／sanitization、OS 采集及原六个 tests。建议去向为 `backend/nyanpasu-core/src/device/{mod.rs,os.rs}`。
+**迁出实现：** `backend/tauri/src/utils/hwid.rs` 的 DTO、HWID／fallback／sanitization、OS 采集及原六个 tests。实际去向为 `backend/nyanpasu-core/src/device/{mod.rs,os.rs}`，原六个 tests 分别随纯规则与 OS 实现移动，未新增测试函数。
 
 **改动文件：**
 
@@ -344,7 +346,7 @@ git diff --check
 - [ ] backup manifest 与 migration Runner 版本输入显式，实际应用版本与用户提供的 target 不混用。
 - [x] application channel 输入／查询直接使用 shared config 类型，不借 GUI 包对象做输入定位。
 - [x] Tauri self-update 的装配／发行／下载／安装行为没有进入 shared core。
-- [ ] subscription device 来源显式、lazy、实例拥有；旧全局和旧模块已删除，全部 constructor 已迁移。
+- [x] subscription device 来源显式、lazy、实例拥有；旧全局和旧模块已删除，全部 constructor 已迁移。
 - [ ] resources 使用 #5645 的现有模型；optional source 不成为 fake GUI resource 前提。
 - [ ] 原 tests／bindings／错误契约、HTTP capability classification 和 actor lifecycle 未意外改变。
 - [ ] 每个移动定义的调用者、module declaration 和独占依赖一起迁移，没有兼容 re-export 或重复实现。
@@ -436,7 +438,7 @@ git diff --check
 - 新基线未过滤 GUI suite 为 1163 passed／5 ignored／1 failed，仅原 `test_device_model_not_empty` 设备 model 为空；HWID 源码与 main SHA-256 相同。只过滤该已知项后的串行 suite 为 1163 passed／5 ignored／1 filtered。未改断言，不把新基线验证与最初 task 1／2 结果混用。
 - 历史 inventory 的 275 条记录及原顺序逐条一致。
 
-任务 2 的原实现已恢复并适配，不混入任务 1 提交。任务 3—7 未实施。子模块实际 HEAD `e9f44e68b0c88981160f5b986f7ffcc9fb5b20a7` 未变，沿用 main 的 gitlink。未宣称本次 Windows／macOS runtime、真实 CLI diagnostics、CI 或 01／02 合并通过。
+当时任务 2 的原实现已恢复并适配，不混入任务 1 提交；任务 3—7 尚未实施。本节是 rebase 时的历史记录，最新任务状态见第 1 节。子模块实际 HEAD `e9f44e68b0c88981160f5b986f7ffcc9fb5b20a7` 未变，沿用 main 的 gitlink。未宣称本次 Windows／macOS runtime、真实 CLI diagnostics、CI 或 01／02 合并通过。
 
 ## 11. 任务 2 恢复后的新基线验证
 
@@ -448,3 +450,62 @@ git diff --check
 - 历史 inventory 275 条记录与原顺序完全一致；子模块实际 HEAD 未动。未执行 Windows／macOS runtime、真实自更新下载／安装或 CI／merge 验证。
 
 授权提交后再次执行验证：core 134、GUI 串行 suite 1163 passed／5 ignored／1 原硬件 model filtered、macro 8、Specta 1 通过，architecture gate／49 ledger tests／backend boundaries／Deno checks 通过。两份正常生成 bindings 仍与任务 1 基线字节相同；本轮没有再跑未过滤 GUI suite。文档只记录可复现的命令、结果与限制，不引用仅存在于本地的日志、备份或构建产物。
+
+## 12. 任务 3：实例拥有的共享设备身份
+
+用户确认在当前 checkout 实施，基线为任务 2 的 `ee38948ffbce8cd55a3fd9958f4fca3090a6b2b6`。实施中再次明确：共享应用层目标为 core，application 包将另行完整迁移后删除；本轮只完成设备任务，包含 OS adapter 的整个设备能力归 core。最终 application／platform 的源码与依赖相对基线没有变化；用户已审阅通过并另行授权将任务 3 源码、依赖清理及配套文档纳入同一原子提交／推送，不创建 PR 或推进任务 4。
+
+### 实际范围与语义核对
+
+- core `device/mod.rs` 保留原订阅 DeviceInfo 的四个字段与 Debug／Clone／Serialize／Specta 类型契约，定义只返回 owned snapshot 的 `DeviceInfoSource`；纯 header 净化及原测试一同移动。diagnostics 的同名类型不合并。
+- `device/os.rs` 保留原 Windows registry、macOS ioreg／sysctl、Linux machine-id／model 与 fallback 实现；固定 salt／seed、SHA-256 截断与 hex 编码、原错误和日志不变。只用实例 `OnceLock<DeviceInfo>` 替换全局 Lazy，构造及 adapter Default 只建立空缓存，DTO 不再有隐藏 IO 的 Default。
+- setup 每个应用图构造一个真实 OsDeviceInfoSource，以 `ClientSetupArgs.device_info` 注入 ProfileFileService；facade 不提供设备服务查询入口。原测试图显式注入固定值 source，生产与测试共享相同字段和 fetch 实现，没有条件删除依赖。
+- fetch 中 snapshot 仍在 HTTP client 成功构建后、首次请求前采集，并在 retry closure 外持有；UA、proxy、timeout、retry／auth、headers、结果解析及 profiles 事务实现未变。
+- 删除旧 `utils/hwid.rs`、module declaration、未启用的旧 IPC 引用和 DEVICE_INFO 的精确 static 豁免；不留 re-export shim。core 接收原 SHA-256／hex／sysinfo／whoami／Windows winreg 依赖；GUI 删除独占 winreg 与 transactions feature，仍有真实消费者的依赖保留。Cargo.lock 仅反映这些归属调整。
+- 原六个设备测试保留：五个在 `device::os::tests`，一个在 `device::tests`；确定性测试改为调用同一个 source 的两次 snapshot，原断言不变。没有新增迁移 tests，也没有放宽硬件断言。
+- 同步 AGENTS 与 architecture／backend-packages 的当前所有权规则；原 application/platform 提取设计注明现有实现和待删除 application 的目标，不把 runtime 迁移或整包删除算作本轮完成。原 275 条历史 inventory 及顺序不变。
+
+### 验证结果
+
+| 检查                               | 结果                                                                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 实施前设备 tests                   | 5 passed／1 failed，仅原 `utils::hwid::tests::test_device_model_not_empty` 在容器返回空 model                                                                                  |
+| 实施前订阅服务／client             | 原 ProfileFileService 44、client 584 项通过，进程局部 memory backend、串行                                                                                                     |
+| core 未过滤 suite                  | 139 passed／1 failed，唯一失败是迁移后的 `device::os::tests::test_device_model_not_empty`，原断言保持                                                                          |
+| core 明确过滤该硬件项              | 139 passed／1 filtered，不声明完整 core suite 全通过                                                                                                                           |
+| GUI 完整串行 suite                 | 1158 passed／5 原 ignored／0 filtered；原六个设备 tests 已迁出 GUI，不是删除或绕过硬件失败                                                                                     |
+| 未改动的 application／platform     | 前后均 application 7、platform 49 单元＋1 集成测试通过                                                                                                                         |
+| Specta／macro                      | 正常 export 1、联合选择 GUI＋macro 的 8 项通过，两份生成 bindings 与基线字节相同                                                                                               |
+| Clippy／Rustfmt／Deno              | workspace all-targets／all-features Clippy、Rustfmt check、Deno fmt／typecheck 通过                                                                                            |
+| 架构与依赖                         | architecture gate、49 ledger tests、backend boundaries 通过；core 全平台 normal／build 依赖树无 Tauri／egui／application／platform；39 项 static allowance，所有 residual 为零 |
+| Windows GNU core all-targets check | exit 101，aws-lc-sys 因缺少 `x86_64-w64-mingw32-gcc` 阻塞，未完成平台编译验证                                                                                                  |
+| macOS core all-targets check       | exit 101，aws-lc-sys 使用 Linux cc，拒绝 `-arch`／`-mmacosx-version-min=10.7`；缺少可用 Apple 交叉 C 工具链，未完成平台编译验证                                                |
+
+主要复现命令：
+
+```sh
+# 在任务 2 基线上记录设备、订阅与 client 的原测试结果。
+cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib utils::hwid:: -- --test-threads=1
+GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib service::profile_file:: -- --test-threads=1
+GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib client:: -- --test-threads=1
+
+# 实施后保留未过滤失败，并另行明确过滤已复现的原硬件断言。
+cargo test --manifest-path backend/Cargo.toml -p nyanpasu-core
+cargo test --manifest-path backend/Cargo.toml -p nyanpasu-core -- --skip device::os::tests::test_device_model_not_empty
+GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib -- --test-threads=1
+cargo test --manifest-path backend/Cargo.toml -p nyanpasu-application -p nyanpasu-platform
+GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib specta_export::tests::export_typescript_bindings
+cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu -p nyanpasu-macro --lib unified_command::
+cargo clippy --manifest-path backend/Cargo.toml --all-targets --all-features
+cargo fmt --manifest-path backend/Cargo.toml --all -- --check
+cargo tree --manifest-path backend/Cargo.toml -p nyanpasu-core -e normal,build --target all --prefix none
+cargo check --manifest-path backend/Cargo.toml -p nyanpasu-core --all-targets --target x86_64-pc-windows-gnu
+cargo check --manifest-path backend/Cargo.toml -p nyanpasu-core --all-targets --target x86_64-apple-darwin
+deno task lint:architecture-ledger
+deno task test:architecture-ledger
+deno task lint:backend-boundaries
+deno task lint:deno
+git diff --check
+```
+
+未执行 Windows／macOS runtime、真实外部订阅请求、独立 CLI 完整装配或 CI／merge 验证。GUI 本地 suite 通过不等于原硬件失败已修复；非 GUI 宿主可构造设备 source 不等于整个 headless bootstrap 已完成。runtime 子模块与保留的 stash 未调整；文档不引用本地执行产物。

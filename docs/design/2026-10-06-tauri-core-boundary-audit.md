@@ -630,7 +630,7 @@ PR 内的 API／边界说明见其 [README](https://github.com/libnyanpasu/clash
 | 10    | independent NyanpasuClient/bootstrap/lifecycle，消除必填HTTP/assets/window/tray/widget/frontend-log依赖，完成最小headless assembly；Tauri应用updater从共享facade剥离 |
 | 11    | frontend接入和终审：transport/native UI/thin setup、bindings、无主窗口观察与交付、平台矩阵；不是旧模块删除兜底阶段                                                   |
 
-Phase 02 的 resources／version／channel／build／device 输入细化见[独立子计划](../plan/2026-10-06-extract-core-02-host-inputs.md)。该文档已拆为七个原子任务：任务 1 原在 `70ff8350f` 交付，本次 rebase 并推送为 `2eaa58b85`，见第 9.4 节；任务 2 已从 stash 恢复、适配并通过新基线本地验证，用户已审阅并授权本次提交／推送，见第 9.5 节；任务 3—7 尚未实施。resources 位置复用 #5645，资源初始化与 UWP 执行仍归后续能力阶段；不把子任务完成视作整个 Phase 02 完成。
+Phase 02 的 resources／version／channel／build／device 输入细化见[独立子计划](../plan/2026-10-06-extract-core-02-host-inputs.md)。该文档已拆为七个原子任务：任务 1 原在 `70ff8350f` 交付，本次 rebase 并推送为 `2eaa58b85`，见第 9.4 节；任务 2 已提交并推送为 `ee38948ff`，见第 9.5 节；任务 3 已在该基线上本地实施并验证，用户已审阅通过并另行授权本次原子提交／推送，见第 9.6 节；任务 4—7 尚未实施。resources 位置复用 #5645，资源初始化与 UWP 执行仍归后续能力阶段；不把子任务完成视作整个 Phase 02 完成。
 
 各阶段允许按最小完整调用链调整依赖顺序，但必须在同一个PR更新所有调用者、删除旧实现／module声明；没有re-export shim，没有“Phase 11再清理”。frontend-only端口和原测试可以跟拆分能力一起调整，不意味着一次性重做全套UI。
 
@@ -659,6 +659,17 @@ Phase 02 的 resources／version／channel／build／device 输入细化见[独�
 - 首次 client suite 曾因原 Socks port `48234` 不可用失败；端口源码未改，单项与完整重跑通过，首次失败独立记录。未新增迁移 tests，未做 Windows／macOS runtime、自更新安装或 CI／merge 验证；详情见子计划第 9 节。
 - 新基线恢复后 bundle 16、client 584、Specta 1、macro 8、core 134 项通过；串行完整 suite 为 1163 passed／5 ignored／1 明确 filtered。Clippy／Rustfmt／architecture gate／49 ledger tests／backend boundaries／Deno checks 通过；bindings 字节不变，原测试函数清单、bundle body、actor 规则及 app-update 模块未变。用户已另行授权将任务 2 源码与配套文档纳入本次原子提交／推送，不创建 PR 或推进后续任务；详见子计划第 11 节，不以历史验证代替本次结果。
 
+### 9.6 Phase 02 任务 3：实例拥有的订阅设备身份
+
+用户确认当前 checkout，并明确整个设备能力归 core，不向 application／platform 增加内容。application 现有 runtime／builtin 的完整迁移与整包删除另行处理，当前规则同步到[后端包规范](../development/backend-packages.md)。本轮基线为 `ee38948ff`，用户已审阅通过并另行授权将源码、依赖清理与配套文档纳入同一原子提交／推送，不创建 PR 或推进任务 4；第 5／6 节 275 条历史记录及顺序保持。
+
+- `nyanpasu-core::device` 拥有订阅 DeviceInfo、窄 DeviceInfoSource 与纯净化规则，`device::os` 拥有原 OS 采集和实例 OnceLock；不与 diagnostics 的同名 DTO 合并。真实宿主构造 source 并注入原 ProfileFileService，没有全局缓存、DTO 默认采集或旧路径转发。
+- 原平台 HWID／model／fallback、固定 salt／seed、截断与编码、错误／日志及 headers 保持；首次采集仍在 HTTP client 成功构建后，fetch 的 retries 使用同一 snapshot。UA、profiles 事务、代理和 timeout 不变。
+- 旧 HWID 模块、declaration、未启用 IPC 残留与精确 static 豁免一起删除；独占 winreg 移入 core，GUI 其他真实依赖保留。全部原构造点注入真实或固定值 source，未新增迁移 tests。
+- 原设备六 tests 随实现移动，实施前 5 passed／1 空 model 失败；实施后 core 未过滤为 139 passed／1 相同硬件断言失败，仅明确过滤该项后 139 passed／1 filtered。GUI 完整串行为 1158 passed／5 ignored／0 filtered，设备测试已迁入 core而非删除。
+- 未改动的 application 7、platform 49＋1 tests，Specta 1、macro 8 通过；bindings 字节不变。workspace Clippy／Rustfmt、architecture gate／49 ledger tests／backend boundaries／Deno checks 通过，core 全平台 normal／build 依赖无 GUI／application／platform；39 项 static allowance，residual 为零。
+- Windows GNU／macOS core all-targets checks 均被 aws-lc-sys 的 C 交叉工具链阻塞：前者缺少 MinGW GCC，后者 Linux cc 不支持 Apple 编译参数。不声明平台编译／runtime、CI／merge 或完整 headless 通过；完整命令、范围与限制见[子计划第 12 节](../plan/2026-10-06-extract-core-02-host-inputs.md#12-任务-3实例拥有的共享设备身份)。
+
 ## 10. 验收与执行约束
 
 ### 每个能力迁移
@@ -685,4 +696,4 @@ Phase 02 的 resources／version／channel／build／device 输入细化见[独�
 - 全部275个跟踪文件都已列出且有去向；226个Rust文件与49个非Rust文件分开核对。
 - 明确GUI白名单，而非只列迁移候选。
 - 混合文件记录保留上限与移出职责；区分历史基线实现、独立 PR 内实现、main 合并和仍待迁移，不把已丢弃实现算作完成或重复规划 #5645 范围。
-- 本轮只有文档变更；没有实现修改、PR远端编辑、提交或新增测试。
+- 初次审计只有文档变更；后续实现状态在第 9 节另行记录，不改写原历史 inventory。

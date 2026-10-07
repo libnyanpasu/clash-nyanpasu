@@ -67,7 +67,10 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
-use nyanpasu_core::diagnostics::{EnvInfo, EnvironmentCollector};
+use nyanpasu_core::{
+    device::DeviceInfoSource,
+    diagnostics::{EnvInfo, EnvironmentCollector},
+};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
@@ -94,6 +97,7 @@ pub struct ClientSetupArgs {
     pub installed_channel: ReleaseChannel,
     pub is_portable: bool,
     pub environment: Arc<dyn EnvironmentCollector>,
+    pub device_info: Arc<dyn DeviceInfoSource>,
     pub logging: logs::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
@@ -259,6 +263,7 @@ impl NyanpasuClient {
             installed_channel,
             is_portable,
             environment,
+            device_info,
             logging,
             http_frontend,
             http_routes,
@@ -320,6 +325,7 @@ impl NyanpasuClient {
                 let file_service = Arc::new(ProfileFileService::new(
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
+                    device_info,
                 ));
                 let profiles = profiles::ProfilesClient::new_with_jobs(
                     mutations.clone(),
@@ -1363,6 +1369,19 @@ pub(crate) mod tests {
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
+
+    pub(crate) struct FixedDeviceInfoSource;
+
+    impl DeviceInfoSource for FixedDeviceInfoSource {
+        fn snapshot(&self) -> nyanpasu_core::device::DeviceInfo {
+            nyanpasu_core::device::DeviceInfo {
+                hwid: "0123456789abcdef0123456789abcdef".into(),
+                device_os: "Linux".into(),
+                os_version: "test-os-version".into(),
+                device_model: "Test device".into(),
+            }
+        }
+    }
 
     struct UnconfiguredEnvironmentCollector;
 
@@ -2977,6 +2996,7 @@ pub(crate) mod tests {
             installed_channel: ReleaseChannel::Stable,
             is_portable: false,
             environment: Arc::new(UnconfiguredEnvironmentCollector),
+            device_info: Arc::new(FixedDeviceInfoSource),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
@@ -3289,6 +3309,7 @@ pub(crate) mod tests {
         let file_service = Arc::new(ProfileFileService::new(
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
+            Arc::new(FixedDeviceInfoSource),
         ));
         let profiles = profiles::ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -3489,6 +3510,7 @@ pub(crate) mod tests {
             installed_channel: ReleaseChannel::Stable,
             is_portable: true,
             environment: Arc::new(UnconfiguredEnvironmentCollector),
+            device_info: Arc::new(FixedDeviceInfoSource),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),

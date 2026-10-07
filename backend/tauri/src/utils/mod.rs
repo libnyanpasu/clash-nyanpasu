@@ -13,7 +13,6 @@ pub mod profiling;
 pub mod proxy_env;
 pub mod resolve;
 // mod winhelp;
-pub mod hwid;
 
 pub mod collect;
 pub mod net;

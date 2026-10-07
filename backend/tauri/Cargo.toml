@@ -250,7 +250,6 @@ nix = { version = '0.31.0', features = ['user', 'fs', 'process'] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = '0.2.0'
-winreg = { version = '0.56', features = ['transactions'] }
 windows-registry = '0.6.0'
 windows-sys = { version = '0.61', features = [
   'Win32_System_LibraryLoader',

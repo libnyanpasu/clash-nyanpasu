@@ -511,10 +511,13 @@ mod tests {
         assert!(global_mode.contains_key("GroupA"));
         assert_eq!(global_mode["GLOBAL"].all, vec!["GroupA".to_owned()]);
 
-        let rule_mode = to_tray_proxies(Mode::Rule, &proxies);
-        assert!(!rule_mode.contains_key("global"));
-        assert!(rule_mode.contains_key("GroupA"));
-        assert_eq!(rule_mode["GroupA"].all, vec!["node-a".to_owned()]);
+        for mode in [Mode::Rule, Mode::Script] {
+            let tray = to_tray_proxies(mode, &proxies);
+            assert!(!tray.contains_key("GLOBAL"), "{mode:?}");
+            assert!(!tray.contains_key("global"), "{mode:?}");
+            assert!(tray.contains_key("GroupA"), "{mode:?}");
+            assert_eq!(tray["GroupA"].all, vec!["node-a".to_owned()]);
+        }
     }
 
     /// The core looks a group up by its exact, case-sensitive name, so the

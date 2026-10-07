@@ -41,3 +41,33 @@ test('usage sums upload and download against the total', async () => {
     hasSubscriptionInfo: true,
   })
 })
+
+test('negative counters never produce negative usage', async () => {
+  const { result } = await renderHook(() =>
+    useProxiesSubscription(
+      provider({ Upload: -10, Download: 30, Total: -1, Expire: 0 }),
+    ),
+  )
+
+  expect(result.current).toEqual({
+    progress: 0,
+    total: 0,
+    used: 30,
+    hasSubscriptionInfo: true,
+  })
+})
+
+test('a negative download never reduces the used amount', async () => {
+  const { result } = await renderHook(() =>
+    useProxiesSubscription(
+      provider({ Upload: 30, Download: -10, Total: 100, Expire: 0 }),
+    ),
+  )
+
+  expect(result.current).toEqual({
+    progress: 30,
+    total: 100,
+    used: 30,
+    hasSubscriptionInfo: true,
+  })
+})

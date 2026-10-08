@@ -37,14 +37,6 @@ use self::{
     session_state::SessionStateClient,
 };
 use crate::{
-    core::{
-        backup,
-        backup::{
-            BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS, MANUAL_PREFIX,
-            StorageSource,
-        },
-        storage::Storage,
-    },
     service::profile_file::ProfileFileService,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
@@ -64,6 +56,10 @@ use nyanpasu_config::{
     runtime::executor::ResolvedPortBindings,
 };
 use nyanpasu_core::{
+    backup::{
+        self, BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS,
+        MANUAL_PREFIX, StorageSource,
+    },
     control::{
         CoreClient as CoreClientV2, CoreStatusProjection,
         facade::{ReconcileReport, StopReport},
@@ -72,6 +68,7 @@ use nyanpasu_core::{
     diagnostics::{EnvInfo, EnvironmentCollector},
     runtime::version::CoreVersionReader,
     service::actor::{ServiceClient, ServiceHostStatus},
+    storage::Storage,
 };
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
@@ -2253,7 +2250,7 @@ pub(crate) mod tests {
         use nyanpasu_core::format::Format as _;
 
         let mut content = Vec::new();
-        crate::core::migration::modules::application::ApplicationFormat::default()
+        nyanpasu_core::migration::modules::application::ApplicationFormat::default()
             .serialize(&mut content, config, None)
             .unwrap();
         std::fs::write(path, content).unwrap();
@@ -2303,7 +2300,7 @@ pub(crate) mod tests {
         use nyanpasu_core::format::Format as _;
 
         let mut content = Vec::new();
-        crate::core::migration::modules::clash_config::ClashConfigFormat::default()
+        nyanpasu_core::migration::modules::clash_config::ClashConfigFormat::default()
             .serialize(&mut content, config, None)
             .unwrap();
         std::fs::write(path, content).unwrap();
@@ -2636,7 +2633,7 @@ pub(crate) mod tests {
         let release = Arc::new(tokio::sync::Notify::new());
         let mut manager = nyanpasu_core::state::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
-            crate::core::migration::modules::application::ApplicationFormat,
+            nyanpasu_core::migration::modules::application::ApplicationFormat,
         >::builder()
         .config_path(temp_config_path(&dir, "application.yaml"))
         .assemble()

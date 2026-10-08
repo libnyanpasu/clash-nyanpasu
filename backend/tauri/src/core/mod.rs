@@ -1,11 +1,8 @@
-pub mod backup;
 pub mod clash;
 pub mod download;
 pub mod geo;
 pub mod logs;
 pub mod manager;
-pub mod migration;
-pub mod storage;
 pub mod traffic;
 pub mod tray;
 pub mod updater;

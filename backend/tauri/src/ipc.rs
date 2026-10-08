@@ -3,7 +3,7 @@ use crate::{
         ClientError, DirectEgress, NyanpasuClient, RuntimeError, SystemDnsError,
         effects::error::EffectsError, system_proxy::ports::OsProxyError,
     },
-    core::{storage::Storage, updater::ManifestVersionLatest, *},
+    core::{updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     state::{
         config_error::ConfigError,
@@ -23,11 +23,14 @@ use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
 use nyanpasu_config::application::ReleaseChannel;
-use nyanpasu_core::diagnostics::EnvInfo;
+use nyanpasu_core::{
+    backup,
+    diagnostics::EnvInfo,
+    storage::{Storage, StorageOperationError, WebStorage},
+};
 use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
-use storage::{StorageOperationError, WebStorage};
 use tauri::{AppHandle, State, Webview};
 use tray::icon::TrayIcon;
 

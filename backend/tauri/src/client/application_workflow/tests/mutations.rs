@@ -26,10 +26,13 @@ use nyanpasu_config::{
     },
     profile::{ManagedProfilePath, ProfileId, Profiles},
 };
-use nyanpasu_core::state::{
-    Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
-    ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber, StateChange,
-    StateParticipant, SubscriberName, error::StateChangedError,
+use nyanpasu_core::{
+    migration::modules::application::ApplicationFormat,
+    state::{
+        Ack, AckPolicy, AckStatus, PersistentStateManager, PersistentStateManagerSetup,
+        ReplaceIfVersionError, ReplaceIfVersionResult, RollbackReason, StateAckSubscriber,
+        StateChange, StateParticipant, SubscriberName, error::StateChangedError,
+    },
 };
 use nyanpasu_core_manager::{CoreErrorKind, CoreKind, OperationId};
 use nyanpasu_ipc::api::status::CoreStateDetail;
@@ -60,7 +63,6 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         tests::{TestCheckAnswer, TestControlEndpoint},
     },
-    core::migration::modules::application::ApplicationFormat,
     state::mutation::{CommitAborted, RuntimeAftermath},
 };
 use nyanpasu_core::{

@@ -3,7 +3,7 @@ use super::{
     ModuleKind, ModuleMigrator, StepCheck, current_version, fs, registry,
     store::{MigrationStore, ModuleState, STORE_FILE_NAME},
 };
-use crate::core::backup::{
+use crate::backup::{
     self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
     StorageSource,
 };
@@ -295,7 +295,7 @@ impl Runner {
                          rewritten by an older version or edited by hand. Restore it from a \
                          backup, or delete {} so its revision is detected from its content.",
                         path.display(),
-                        nyanpasu_core::format::STAMP_KEY,
+                        crate::format::STAMP_KEY,
                         state_path.display()
                     )
                 }
@@ -546,7 +546,7 @@ fn introduced_in_reached(introduced_in: &Version, target: &Version) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::migration::{
+    use crate::migration::{
         MigrationCheckError,
         store::{ModuleState, STORE_FILE_NAME},
     };
@@ -718,8 +718,8 @@ mod tests {
     fn assert_yaml_shape_eq(path: std::path::PathBuf, expected: &str) {
         let actual_raw = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-        let actual: serde_yaml::Value = serde_yaml::from_str(&actual_raw).unwrap();
-        let expected: serde_yaml::Value = serde_yaml::from_str(expected).unwrap();
+        let actual: serde_yaml_ng::Value = serde_yaml_ng::from_str(&actual_raw).unwrap();
+        let expected: serde_yaml_ng::Value = serde_yaml_ng::from_str(expected).unwrap();
         assert_eq!(
             actual,
             expected,
@@ -734,7 +734,7 @@ mod tests {
     /// test tracks the data contract, not serializer key ordering.
     #[test]
     fn real_1_6_1_fixture_migrates_to_2_0_shape() {
-        use crate::core::storage::{Storage, WebStorage};
+        use crate::storage::{Storage, WebStorage};
 
         let temp = tempfile::tempdir().unwrap();
         let config_dir = temp.path().join("config");
@@ -802,7 +802,7 @@ mod tests {
         let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap();
         assert_eq!(hotkeys, None);
 
-        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
+        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
             &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
         )
         .unwrap();
@@ -814,11 +814,11 @@ mod tests {
             ],
             "the typed application config is the single authority for hotkeys"
         );
-        let _: nyanpasu_config::state::PersistentState = serde_yaml::from_str(
+        let _: nyanpasu_config::state::PersistentState = serde_yaml_ng::from_str(
             &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
         )
         .unwrap();
-        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml::from_str(
+        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml_ng::from_str(
             &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
         )
         .unwrap();
@@ -847,9 +847,9 @@ mod tests {
 
         // Read back out of the fixture rather than spelled out here, so the
         // assertion tracks whatever the legacy file actually carries.
-        let legacy: serde_yaml::Mapping = serde_yaml::from_str(legacy_raw).unwrap();
+        let legacy: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(legacy_raw).unwrap();
         let expected: Vec<String> = legacy
-            .get(serde_yaml::Value::String("hotkeys".into()))
+            .get(serde_yaml_ng::Value::String("hotkeys".into()))
             .and_then(|value| value.as_sequence())
             .map(|values| {
                 values
@@ -870,7 +870,7 @@ mod tests {
         .unwrap();
         runner.run_pending().unwrap();
 
-        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
+        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
             &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
         )
         .unwrap();
@@ -943,15 +943,15 @@ mod tests {
             runner.store.module_state("typed_config").applied_revision,
             2
         );
-        let _: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
+        let _: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml_ng::from_str(
             &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
         )
         .unwrap();
-        let _: nyanpasu_config::state::PersistentState = serde_yaml::from_str(
+        let _: nyanpasu_config::state::PersistentState = serde_yaml_ng::from_str(
             &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
         )
         .unwrap();
-        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml::from_str(
+        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml_ng::from_str(
             &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
         )
         .unwrap();
@@ -1330,7 +1330,7 @@ mod tests {
         }
 
         fn stamp(&self) -> Option<u64> {
-            nyanpasu_core::format::inspect(&self.profiles())
+            crate::format::inspect(&self.profiles())
                 .unwrap()
                 .stamp()
                 .map(|stamp| stamp.schema_revision)
@@ -1553,12 +1553,12 @@ mod tests {
         assert!(state.tasks[step.id()].started_at.is_some());
         // So losing the stamp afterwards is refused rather than taken for a
         // file that never had one.
-        let payload = nyanpasu_core::format::inspect(&case.profiles())
+        let payload = crate::format::inspect(&case.profiles())
             .unwrap()
             .into_payload();
         std::fs::write(
             case.ctx.profiles_path(),
-            serde_yaml::to_string(&payload).unwrap(),
+            serde_yaml_ng::to_string(&payload).unwrap(),
         )
         .unwrap();
         let error = format!("{:#}", case.runner().unwrap_err());
@@ -1586,8 +1586,8 @@ mod tests {
         runner.run_pending().unwrap();
 
         assert_eq!(case.stamp(), Some(4));
-        let before: serde_yaml::Mapping = serde_yaml::from_str(CLEAN_PROFILES).unwrap();
-        let after = nyanpasu_core::format::inspect(&case.profiles())
+        let before: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(CLEAN_PROFILES).unwrap();
+        let after = crate::format::inspect(&case.profiles())
             .unwrap()
             .into_payload();
         assert_eq!(after, before);
@@ -1595,8 +1595,8 @@ mod tests {
         assert!(state.module_state("profiles").stamped);
     }
 
-    fn application_config_payload(case: &LegacyCase) -> serde_yaml::Mapping {
-        nyanpasu_core::format::inspect(
+    fn application_config_payload(case: &LegacyCase) -> serde_yaml_ng::Mapping {
+        crate::format::inspect(
             &std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
         )
         .unwrap()
@@ -1604,7 +1604,7 @@ mod tests {
     }
 
     fn application_stamp(case: &LegacyCase) -> Option<u64> {
-        nyanpasu_core::format::inspect(
+        crate::format::inspect(
             &std::fs::read_to_string(case.ctx.application_config_path()).unwrap(),
         )
         .unwrap()
@@ -1616,11 +1616,11 @@ mod tests {
     /// default application config, which is written with the stamp it had, if
     /// any.
     fn seed_typed_files(case: &LegacyCase, stamp: Option<u64>, settings: &str) {
-        let mut config = serde_yaml::Mapping::new();
+        let mut config = serde_yaml_ng::Mapping::new();
         if let Some(revision) = stamp {
             config.insert(
                 "_nyanpasu".into(),
-                serde_yaml::from_str(&format!(
+                serde_yaml_ng::from_str(&format!(
                     "document: application
 schema_revision: {revision}
 "
@@ -1629,38 +1629,38 @@ schema_revision: {revision}
             );
         }
         // A 2.0.x file predates the setting this build added.
-        let mut defaults: serde_yaml::Mapping = serde_yaml::from_str(
-            &serde_yaml::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
+        let mut defaults: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            &serde_yaml_ng::to_string(&nyanpasu_config::application::NyanpasuAppConfig::default())
                 .unwrap(),
         )
         .unwrap();
         defaults.remove("window_close");
         config.extend(defaults);
-        config.extend(serde_yaml::from_str::<serde_yaml::Mapping>(settings).unwrap());
-        let application = serde_yaml::to_string(&config).unwrap();
+        config.extend(serde_yaml_ng::from_str::<serde_yaml_ng::Mapping>(settings).unwrap());
+        let application = serde_yaml_ng::to_string(&config).unwrap();
         std::fs::write(case.ctx.application_config_path(), application).unwrap();
         std::fs::write(
             case.ctx.session_state_path(),
-            serde_yaml::to_string(&nyanpasu_config::state::PersistentState::default()).unwrap(),
+            serde_yaml_ng::to_string(&nyanpasu_config::state::PersistentState::default()).unwrap(),
         )
         .unwrap();
         std::fs::write(
             case.ctx.clash_config_path(),
-            serde_yaml::to_string(&clash_config_2_0()).unwrap(),
+            serde_yaml_ng::to_string(&clash_config_2_0()).unwrap(),
         )
         .unwrap();
     }
 
     /// The default clash config as 2.0.x wrote it, with boolean guard fields.
-    fn clash_config_2_0() -> serde_yaml::Mapping {
-        let mut config: serde_yaml::Mapping = serde_yaml::from_str(
-            &serde_yaml::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
+    fn clash_config_2_0() -> serde_yaml_ng::Mapping {
+        let mut config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            &serde_yaml_ng::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
                 .unwrap(),
         )
         .unwrap();
         let overrides = config
             .get_mut("overrides")
-            .and_then(serde_yaml::Value::as_mapping_mut)
+            .and_then(serde_yaml_ng::Value::as_mapping_mut)
             .unwrap();
         overrides.insert("unified-delay".into(), true.into());
         overrides.insert("tcp-concurrent".into(), false.into());
@@ -1672,10 +1672,10 @@ schema_revision: {revision}
     }
 
     fn assert_application_loads(case: &LegacyCase) {
-        use nyanpasu_core::format::Format as _;
+        use crate::format::Format as _;
 
         let _: nyanpasu_config::application::NyanpasuAppConfig =
-            crate::core::migration::modules::application::ApplicationFormat::default()
+            crate::migration::modules::application::ApplicationFormat::default()
                 .deserialize(std::fs::File::open(case.ctx.application_config_path()).unwrap())
                 .unwrap();
     }
@@ -1731,7 +1731,7 @@ schema_revision: {revision}
             .unwrap();
         assert_eq!(
             window_close["tray_menu"],
-            serde_yaml::Value::from("destroy")
+            serde_yaml_ng::Value::from("destroy")
         );
         assert_application_loads(&case);
     }
@@ -1843,11 +1843,9 @@ tray_menu_close_behavior: hide
         assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
     }
 
-    fn clash_config_file(case: &LegacyCase) -> nyanpasu_core::format::Inspected {
-        nyanpasu_core::format::inspect(
-            &std::fs::read_to_string(case.ctx.clash_config_path()).unwrap(),
-        )
-        .unwrap()
+    fn clash_config_file(case: &LegacyCase) -> crate::format::Inspected {
+        crate::format::inspect(&std::fs::read_to_string(case.ctx.clash_config_path()).unwrap())
+            .unwrap()
     }
 
     fn clash_config_stamp(case: &LegacyCase) -> Option<u64> {
@@ -1857,20 +1855,20 @@ tray_menu_close_behavior: hide
     }
 
     fn assert_clash_config_loads(case: &LegacyCase) {
-        use nyanpasu_core::format::Format as _;
+        use crate::format::Format as _;
 
         let _: nyanpasu_config::clash::config::ClashConfig =
-            crate::core::migration::modules::clash_config::ClashConfigFormat::default()
+            crate::migration::modules::clash_config::ClashConfigFormat::default()
                 .deserialize(std::fs::File::open(case.ctx.clash_config_path()).unwrap())
                 .unwrap();
     }
 
-    fn clash_guard_field(case: &LegacyCase, key: &str) -> serde_yaml::Value {
+    fn clash_guard_field(case: &LegacyCase, key: &str) -> serde_yaml_ng::Value {
         clash_config_file(case).into_payload()["overrides"][key].clone()
     }
 
-    fn managed(value: bool) -> serde_yaml::Value {
-        serde_yaml::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
+    fn managed(value: bool) -> serde_yaml_ng::Value {
+        serde_yaml_ng::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
     }
 
     #[test]
@@ -1922,7 +1920,7 @@ tray_menu_close_behavior: hide
         let mut expected = clash_config_file(&case).into_payload();
         let overrides = expected
             .get_mut("overrides")
-            .and_then(serde_yaml::Value::as_mapping_mut)
+            .and_then(serde_yaml_ng::Value::as_mapping_mut)
             .unwrap();
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));

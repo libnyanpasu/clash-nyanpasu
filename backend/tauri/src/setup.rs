@@ -80,7 +80,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let resources_dir = crate::utils::init::bundled_resources_dir(app)
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok();
-    let mut migrations = crate::core::migration::Runner::with_paths(
+    let mut migrations = nyanpasu_core::migration::Runner::with_paths(
         paths.clone(),
         false,
         crate::consts::BUILD_INFO.pkg_version,
@@ -156,7 +156,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
     // Opened after the in-process migrations above, which open the same file.
-    let storage = crate::core::storage::Storage::try_new(paths.storage_path().as_std_path())
+    let storage = nyanpasu_core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context("Failed to open the storage")?;
     app.manage(storage.clone());
     // The core runs with the app data dir as its home, where its geo databases live.
@@ -279,7 +279,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Result<()> {
     let dependencies = crate::unified_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
-        storage: (*app.state::<crate::core::storage::Storage>()).clone(),
+        storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
     };

@@ -8,6 +8,7 @@
 //! way the convergence timer would, and its schedule is read back bracketed by
 //! the instants taken around the call that set it; nothing sleeps.
 
+use nyanpasu_core::migration::modules::application::ApplicationFormat;
 use std::{
     borrow::Cow,
     path::PathBuf,
@@ -57,15 +58,12 @@ use super::{
     },
     ownership,
 };
-use crate::{
-    client::{
-        NyanpasuClient, SessionPortResolver,
-        convergence::ConvergenceHealth,
-        core_lifecycle::Ownership,
-        runtime,
-        tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
-    },
-    core::migration::modules::application::ApplicationFormat,
+use crate::client::{
+    NyanpasuClient, SessionPortResolver,
+    convergence::ConvergenceHealth,
+    core_lifecycle::Ownership,
+    runtime,
+    tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
 };
 use nyanpasu_core::{
     control::{

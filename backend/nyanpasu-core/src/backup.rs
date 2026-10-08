@@ -1,13 +1,12 @@
 //! Full snapshots of the config dir and `storage.db` under `<data>/backups/`.
 //!
-//! A backup is a stateless filesystem operation: every input arrives through
-//! the request, so migrations and [`NyanpasuClient`](crate::client::NyanpasuClient)
-//! share it.
+//! A backup is a stateless filesystem adapter: every input arrives through
+//! the request, so migrations and manual backup callers share it.
 
 use camino::Utf8PathBuf;
 use nyanpasu_paths::PathResolver;
 
-use crate::core::storage::{Storage, StorageOperationError};
+use crate::storage::{Storage, StorageOperationError};
 use semver::Version;
 use serde::Serialize;
 use std::{
@@ -20,10 +19,6 @@ pub const MIGRATION_PREFIX: &str = "migration-";
 pub const MANUAL_PREFIX: &str = "manual-";
 pub const KEEP_MIGRATION_BACKUPS: usize = 3;
 pub const KEEP_MANUAL_BACKUPS: usize = 3;
-
-/// Exit code of `clash-nyanpasu migrate` when the pre-migration backup failed,
-/// which tells the parent that no config file was touched.
-pub const BACKUP_FAILED_EXIT_CODE: i32 = 2;
 
 const MANIFEST_FILE: &str = "manifest.json";
 const CONFIG_DIR: &str = "config";
@@ -361,7 +356,7 @@ fn rfc3339(now: OffsetDateTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::storage::WebStorage as _;
+    use crate::storage::WebStorage as _;
 
     // 2026-09-21T14:13:20Z
     const NOW: i64 = 1_790_000_000;
@@ -371,8 +366,15 @@ mod tests {
         OffsetDateTime::from_unix_timestamp(NOW).unwrap()
     }
 
+    fn test_paths(config: impl AsRef<Path>, data: impl AsRef<Path>) -> PathResolver {
+        let utf8 = |path: &Path| {
+            Utf8PathBuf::from_path_buf(path.to_owned()).expect("test directories are UTF-8")
+        };
+        PathResolver::with_base_dirs(utf8(config.as_ref()), utf8(data.as_ref()))
+    }
+
     fn paths(root: &Path) -> PathResolver {
-        crate::client::tests::test_paths(root.join("config"), root.join("data"))
+        test_paths(root.join("config"), root.join("data"))
     }
 
     fn write(path: &(impl AsRef<Path> + ?Sized), content: &str) {
@@ -504,7 +506,7 @@ mod tests {
     fn a_data_dir_inside_the_config_dir_does_not_copy_the_backups() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
-        let paths = crate::client::tests::test_paths(config.clone(), config.clone());
+        let paths = test_paths(config.clone(), config.clone());
         write(&paths.profiles_path(), "profiles");
         write(&paths.storage_path(), "db");
         write(&paths.app_logs_dir().join("app.log"), "log");

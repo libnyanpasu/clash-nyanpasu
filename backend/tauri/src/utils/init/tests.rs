@@ -1,5 +1,5 @@
 use super::{MigrationChildFailed, run_migration_command, wait_for_migration_output};
-use crate::core::backup::BACKUP_FAILED_EXIT_CODE;
+use crate::cmds::migrate::MigrationExitCode;
 use std::{
     fs::File,
     io::{Read, Write},
@@ -45,7 +45,10 @@ fn migration_collects_both_unterminated_utf8_tails_before_returning() {
 
 #[test]
 fn migration_failure_preserves_complete_stderr_and_exit_code() {
-    for (case, code) in [("failure", 1), ("backup", BACKUP_FAILED_EXIT_CODE)] {
+    for (case, code) in [
+        ("failure", MigrationExitCode::MigrationFailed.code()),
+        ("backup", MigrationExitCode::BackupFailed.code()),
+    ] {
         let (result, log) = run_fixture(case);
         let error = result.unwrap_err();
         let failed = error.downcast_ref::<MigrationChildFailed>().unwrap();
@@ -182,7 +185,7 @@ fn migration_process_fixture() {
             #[allow(clippy::zombie_processes)]
             let child = fixture_command("descendant").spawn().unwrap();
             drop(child);
-            std::process::exit(0);
+            std::process::exit(MigrationExitCode::Success.code());
         }
         "descendant" => {
             let mut release = [0];
@@ -202,11 +205,11 @@ fn migration_process_fixture() {
     std::io::stdout().write_all(STDOUT_TAIL.as_bytes()).unwrap();
     std::io::stderr().write_all(STDERR_TAIL.as_bytes()).unwrap();
     let code = match case.as_str() {
-        "failure" => 1,
-        "backup" => BACKUP_FAILED_EXIT_CODE,
-        _ => 0,
+        "failure" => MigrationExitCode::MigrationFailed,
+        "backup" => MigrationExitCode::BackupFailed,
+        _ => MigrationExitCode::Success,
     };
-    std::process::exit(code);
+    std::process::exit(code.code());
 }
 
 #[cfg(windows)]

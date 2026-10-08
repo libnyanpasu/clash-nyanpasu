@@ -1,4 +1,4 @@
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 use std::{net::SocketAddr, str::FromStr};
 
 #[derive(Default, Debug, Clone)]
@@ -127,4 +127,21 @@ fn test_clash_info() {
         get_case(8888, "192.168.1.1:80800"),
         get_result(8888, "127.0.0.1:9090")
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn template_preserves_default_meta_fields() {
+        let template = IClashTemp::template();
+        for key in ["unified-delay", "tcp-concurrent"] {
+            if cfg!(feature = "default-meta") {
+                assert_eq!(template.0.get(key), Some(&Value::Bool(true)));
+            } else {
+                assert!(!template.0.contains_key(key));
+            }
+        }
+    }
 }

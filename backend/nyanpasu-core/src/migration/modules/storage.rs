@@ -1,11 +1,11 @@
 use super::super::{
     Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
 };
-use crate::core::storage::{Storage, WebStorage};
+use crate::storage::{Storage, WebStorage};
 use anyhow::Context as _;
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml::Mapping;
+use serde_yaml_ng::Mapping;
 
 pub static MIGRATOR: StorageMigrator = StorageMigrator;
 
@@ -27,7 +27,7 @@ impl ModuleMigrator for StorageMigrator {
         let config_path = ctx.nyanpasu_config_path();
         if config_path.exists() {
             let raw = std::fs::read_to_string(&config_path)?;
-            let config: Mapping = serde_yaml::from_str(&raw)
+            let config: Mapping = serde_yaml_ng::from_str(&raw)
                 .map_err(|e| anyhow::anyhow!("failed to parse config: {e}"))?;
             if config
                 .get(HOTKEYS_KEY)
@@ -76,7 +76,7 @@ impl MigrationStep for MigrateHotkeysToKv {
 
     fn check(&self, ctx: &Ctx) -> Result<Option<StepCheck>, MigrationCheckError> {
         let config: Option<Mapping> =
-            crate::core::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
+            crate::migration::fs::read_yaml_if_exists(&ctx.nyanpasu_config_path())?;
         Ok(Some(StepCheck::from_needed(config.is_some_and(|config| {
             config
                 .get(HOTKEYS_KEY)
@@ -87,13 +87,13 @@ impl MigrationStep for MigrateHotkeysToKv {
     fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
         let config_path = ctx.nyanpasu_config_path();
         let raw = std::fs::read_to_string(&config_path)?;
-        let mut config: Mapping = serde_yaml::from_str(&raw)
+        let mut config: Mapping = serde_yaml_ng::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("failed to parse config: {e}"))?;
 
-        let hotkeys_key = serde_yaml::Value::String(HOTKEYS_KEY.to_string());
+        let hotkeys_key = serde_yaml_ng::Value::String(HOTKEYS_KEY.to_string());
         let hotkeys = config
             .get(&hotkeys_key)
-            .and_then(serde_yaml::Value::as_sequence)
+            .and_then(serde_yaml_ng::Value::as_sequence)
             .context("hotkeys is not a list in the legacy config")?;
 
         let hotkey_strings: Vec<String> = hotkeys
@@ -121,9 +121,9 @@ impl MigrationStep for MigrateHotkeysToKv {
         }
 
         config.remove(&hotkeys_key);
-        let new_config = serde_yaml::to_string(&config)
+        let new_config = serde_yaml_ng::to_string(&config)
             .map_err(|e| anyhow::anyhow!("failed to serialize config: {e}"))?;
-        crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
+        crate::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
 
         Ok(())
     }
@@ -185,7 +185,7 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
 
         let application_path = ctx.application_config_path();
         let raw = std::fs::read_to_string(&application_path)?;
-        let mut application: Mapping = serde_yaml::from_str(&raw)
+        let mut application: Mapping = serde_yaml_ng::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("failed to parse the application config: {e}"))?;
         // While this key exists the key-value store is the authority: it was
         // the only place the hotkey editor wrote to and the only place startup
@@ -193,17 +193,17 @@ impl MigrationStep for MigrateHotkeysToTypedConfig {
         // choice. That includes an empty list, which means every binding was
         // cleared on purpose and must not be resurrected.
         application.insert(
-            serde_yaml::Value::String(HOTKEYS_KEY.to_string()),
-            serde_yaml::Value::Sequence(
+            serde_yaml_ng::Value::String(HOTKEYS_KEY.to_string()),
+            serde_yaml_ng::Value::Sequence(
                 hotkeys
                     .iter()
-                    .map(|hotkey| serde_yaml::Value::String(hotkey.clone()))
+                    .map(|hotkey| serde_yaml_ng::Value::String(hotkey.clone()))
                     .collect(),
             ),
         );
-        let serialized = serde_yaml::to_string(&application)
+        let serialized = serde_yaml_ng::to_string(&application)
             .map_err(|e| anyhow::anyhow!("failed to serialize the application config: {e}"))?;
-        crate::core::migration::fs::atomic_write(&application_path, serialized.as_bytes())?;
+        crate::migration::fs::atomic_write(&application_path, serialized.as_bytes())?;
         tracing::info!(
             "moved {} hotkeys from KV storage into the typed application config",
             hotkeys.len()
@@ -292,9 +292,9 @@ mod tests {
 
         fn typed_hotkeys(&self) -> Vec<String> {
             let raw = std::fs::read_to_string(self.ctx.application_config_path()).unwrap();
-            let config: Mapping = serde_yaml::from_str(&raw).unwrap();
+            let config: Mapping = serde_yaml_ng::from_str(&raw).unwrap();
             config
-                .get(serde_yaml::Value::String(HOTKEYS_KEY.to_string()))
+                .get(serde_yaml_ng::Value::String(HOTKEYS_KEY.to_string()))
                 .and_then(|value| value.as_sequence())
                 .map(|values| {
                     values
@@ -328,10 +328,10 @@ mod tests {
         );
         assert_eq!(fixture.kv_hotkeys(), None);
         let raw = std::fs::read_to_string(fixture.ctx.application_config_path()).unwrap();
-        let config: Mapping = serde_yaml::from_str(&raw).unwrap();
+        let config: Mapping = serde_yaml_ng::from_str(&raw).unwrap();
         assert_eq!(
             config
-                .get(serde_yaml::Value::String("language".into()))
+                .get(serde_yaml_ng::Value::String("language".into()))
                 .and_then(|value| value.as_str()),
             Some("en"),
             "the rest of the application config must survive untouched"

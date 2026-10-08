@@ -142,9 +142,11 @@ Tauri host
 5. P06拆分时完成core observations到现有Tauri事件的接线；P09再让HTTP直接订阅，不等最终PR才恢复通知。没有main window、没有tray时core观察依然有效。
 6. 现有RPC `EffectKind`/health/error形状默认不变；确需增加unsupported表达时，在P06同一行为commit同步DTO、生成bindings和消费者。不要让CLI靠注入“全部Healthy”的fake通过验收。
 
-## 4. PR依赖图与并行边界
+## 4. 能力依赖、串行PR与执行边界
 
-### 4.1 一个Phase，一个可合并PR
+### 4.1 一个Phase，一个串行堆叠的PR
+
+下表硬前置说明能力迁移所需的依赖闭包，不代表PR分支关系。实际交付按Phase编号串行堆叠，每个PR以紧邻的前一个Phase为base；即使能力相互独立，也不再创建兄弟PR。
 
 | Phase / PR | 交付结果                                      | 硬前置             | 建议commit数 | 风险                  |
 | ---------- | --------------------------------------------- | ------------------ | ------------ | --------------------- |
@@ -162,6 +164,8 @@ Tauri host
 
 P08通过P06传递依赖P04/P03，不是遗漏控制面。P05依赖P03交付的core version parser（`updater/instance.rs` 的真实调用），不能仅凭updater backend是trait就与P03完全独立。P04中的core logs可先本地准备，但整个P04 PR以P03为base，**不再产生“P04-A先落地”的第二套合并单位**。
 
+能力依赖图（不作为并行创建PR的分支图）：
+
 ```text
 B0 → P01 ─┬─ P02 ─────────────────────────────┐
           ├─ P03 ─┬─ P04 → P06 ──────────────┤
@@ -169,28 +173,28 @@ B0 → P01 ─┬─ P02 ──────────────────�
           └─ P07 ────────────────────────────┘       └─ P10 ─┴→ P11
 ```
 
-### 4.2 不夸大并行能力
+实际PR stack：
 
-建议最多三个活跃实现worktree，另有一个只做集成检查的位置；不是同时启动11个Cargo构建。
+```text
+main → P01 → P02 → P03 → P04 → P05 → P06 → P07 → P08 → P09 → P10 → P11
+```
 
-| 时段      | worktree A                  | worktree B       | worktree C            |
-| --------- | --------------------------- | ---------------- | --------------------- |
-| B0/P01    | P01唯一owner                | 只读审阅P02/P07  | 只读审阅P03/P05       |
-| P01落地后 | P03 → P04 → P06（关键路径） | P02              | P07；P03落地后再做P05 |
-| 汇合后    | P08唯一结构owner            | 独立审阅/测试P08 | 独立审阅/测试P08      |
-| P08落地后 | P09                         | P10              | 平台验收              |
-| 汇合后    | P11                         | 平台验收         | 平台验收              |
+### 4.2 串行实施与只读并行
 
-只读准备不等于可合并实现。P08不能在P06的未定presentation接口上平行发明自己的版本。P09与P10并行时，前者独占RPC/HTTP/macros/bindings，后者独占process/init/exit；`setup.rs`的最小接线仍需串行合入。
+- 按Phase顺序实施，前一阶段的候选完成审核和交付后，下一阶段从其明确的head继续；不从更早的共同祖先创建兄弟实现分支。
+- 一个worktree只有一个writer。可复用已选定的隔离worktree及其独立构建资源，不为每个Phase重复创建构建缓存。
+- 独立源码核对、调用者盘点和测试范围分析可以并行；它们不修改共享源码，也不提前实施后续Phase。
+- Cargo、依赖调整和集成验证串行执行。前置head改变后，先确认受影响范围并验证，再继续下游迁移。
+- 原子候选仍分别人工审核；通过后的提交和推送不再增加subagent复审。stack顺序不授权自动提交、改写历史或合并PR。
 
 ### 4.3 Worktree/branch与合并策略
 
 - 分支可用 `refactor/core-p01-foundation` 等一Phase一branch；PR描述固定写base SHA、前置PR、commit清单、验证结果和剩余风险。
-- 默认从**已落地前置的共同集成基线**创建worktree，所有PR最终合入同一目标分支。不要各自从不同旧head拼接“已迁移类型”。
-- 允许提前开stacked draft，但只依赖尚未合并的直接前置；不能把多个兄弟worktree的临时merge当正式base。兄弟前置未落地时做只读设计，不维护长期octopus集成branch。
-- siblings可并行开发，合并一次一个。每合入一个PR，其余先更新base，重新生成lock/bindings并验证。没有“所有PR一起合才绿”的批量合并。
+- 每个PR以紧邻的前一个Phase分支为base；前一个PR已合入main时，使用包含其交付结果的main基线。所有PR最终顺序合入main，不从不同旧head拼接“已迁移类型”。
+- 前置PR未合并时可以串行stack，不要求等待整栈全部合并才继续；后续分支必须包含其实际base的完整交付结果，不能只修改GitHub base而忽略代码集成。
+- 一次合入一个PR。前置更新或合并后，检查下游base、冲突、lock与bindings并做相关验证；没有“所有PR一起合才绿”的批量合并。保留已发布提交，merge/rebase等集成操作及其提交按人工授权执行。
 - 未推送修正折入所属commit；已推送历史的改写需要许可。PR策略应保留经过验证的原子commit；若项目选择squash，则整体PR必须同样可构建、可回退，不能据此容忍中间提交坏掉。
-- 只软链接 `backend/tauri/sidecar/` 和 `resources/`；`target/`、`node_modules/`、`tmp/dist/`各自独立。Rust-only Tauri检查可使用各自dist placeholder；独立core检查不准创建placeholder以掩盖GUI依赖。按磁盘/内存限制并发Cargo任务。
+- 只软链接 `backend/tauri/sidecar/` 和 `resources/`；`target/`、`node_modules/`、`tmp/dist/`各自独立。Rust-only Tauri检查可使用各自dist placeholder；独立core检查不准创建placeholder以掩盖GUI依赖。Cargo任务按当前stack串行执行。
 
 ### 4.4 文件写入权，而不只是目录分工
 
@@ -199,7 +203,7 @@ B0 → P01 ─┬─ P02 ──────────────────�
 | `client/mod.rs`、`setup.rs`、root `mod.rs` | 各能力PR只做自己构造参数/import/字段的最小接线；禁止整段重新格式化/重排；P08独占结构拆分 |
 | Cargo manifests / `Cargo.lock`             | 依赖随实际消费者迁移，同commit更新；合并后由Cargo重算，禁止手工拼lockfile或顺手升级      |
 | `ipc.rs` / `specta_export.rs`              | 叶子PR只改路径/必要wrapper；P09独占共享命令定义/宏协议重构                               |
-| generated bindings                         | 同PR由实际源码导出；兄弟branch的生成物不能文本合并，base更新后重导出                     |
+| generated bindings                         | 同PR由实际源码导出；base更新后重导出，不用文本合并替代真实生成                           |
 | `client::tests`                            | 不作为跨crate生产test-support API；迁移叶子只带走其最小fake，facade大fixture由P08负责    |
 | `utils/candy.rs`                           | P01先把HTTP/mirror拆出并更新所有调用者；P04再搬剩余archive，不同时编辑同一混合块         |
 | `client/core_lifecycle/ports.rs`           | P01移binary契约；P05只消费它；P08才处理runtime preparation部分                           |

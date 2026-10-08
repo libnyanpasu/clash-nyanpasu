@@ -17,6 +17,7 @@ mod service;
 mod setup;
 mod specta_export;
 mod state;
+mod storage;
 mod unified_rpc;
 
 mod host_paths;
@@ -27,7 +28,7 @@ mod widget;
 mod window;
 
 use crate::{
-    core::backup::BACKUP_FAILED_EXIT_CODE,
+    cmds::migrate::MigrationExitCode,
     utils::{init, resolve},
 };
 use anyhow::Context;
@@ -202,7 +203,10 @@ pub fn run() -> std::io::Result<()> {
     {
         let backup_failed = e
             .downcast_ref::<init::MigrationChildFailed>()
-            .is_some_and(|failed| failed.status.code() == Some(BACKUP_FAILED_EXIT_CODE));
+            .is_some_and(|failed| {
+                MigrationExitCode::from_code(failed.status.code())
+                    == Some(MigrationExitCode::BackupFailed)
+            });
         let message = format!("Failed to finish migration event: {e}");
         utils::dialog::migration_failed_dialog(&message, &paths, backup_failed);
         std::process::exit(1);

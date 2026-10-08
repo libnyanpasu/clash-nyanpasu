@@ -93,7 +93,7 @@ impl ProfilesClient {
         .await
         .context("failed to spawn profiles actor")?
         .0;
-        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(ProfilesClientInner {

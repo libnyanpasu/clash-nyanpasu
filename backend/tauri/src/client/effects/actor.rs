@@ -517,7 +517,7 @@ impl EffectsClient {
             },
         )
         .await?;
-        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self {
             actor,
             status: receiver,

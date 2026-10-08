@@ -456,7 +456,7 @@ impl ProxiesClient {
             },
         )
         .await?;
-        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner {
             actor,
             snapshots: snapshot_rx,

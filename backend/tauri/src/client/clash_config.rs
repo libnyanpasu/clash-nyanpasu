@@ -70,7 +70,7 @@ impl ClashConfigClient {
         .await
         .context("failed to spawn clash config actor")?
         .0;
-        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(ClashConfigClientInner {

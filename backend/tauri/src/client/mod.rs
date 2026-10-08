@@ -74,8 +74,6 @@ use nyanpasu_core::{
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub(crate) use app_lifecycle::drain_on_shutdown;
-pub use app_lifecycle::track_until_shutdown;
 pub use clash_info::ClashInfo;
 pub use direct_egress::{DirectEgress, DirectEgressProbe, HttpDirectEgressProbe};
 pub use error::{ClientError, Result};
@@ -743,7 +741,7 @@ impl NyanpasuClient {
     /// A failed prune is logged and does not fail the backup it follows.
     pub async fn create_config_backup(&self) -> std::result::Result<BackupInfo, BackupError> {
         let (paths, storage) = (self.inner.paths.clone(), self.inner.storage.clone());
-        crate::utils::blocking::join(
+        nyanpasu_core::tasks::blocking::join(
             tokio::task::spawn_blocking(move || {
                 let info = backup::create_backup(&BackupRequest {
                     paths: &paths,
@@ -874,12 +872,16 @@ impl NyanpasuClient {
     ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
     {
         let os_proxy = self.inner.os_proxy.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || os_proxy.get()).await)
+        nyanpasu_core::tasks::blocking::join(
+            tokio::task::spawn_blocking(move || os_proxy.get()).await,
+        )
     }
 
     pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
         let system_dns = self.inner.system_dns.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
+        nyanpasu_core::tasks::blocking::join(
+            tokio::task::spawn_blocking(move || system_dns.flush()).await,
+        )
     }
 
     /// A caller-triggered probe. Traffic consumes the result without waiting for network IO.

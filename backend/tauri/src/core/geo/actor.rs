@@ -108,7 +108,7 @@ impl State {
             return;
         };
         let (source, current) = (self.source.clone(), self.key.clone());
-        let loaded = crate::utils::blocking::join(
+        let loaded = nyanpasu_core::tasks::blocking::join(
             tokio::task::spawn_blocking(move || source.load(mode, current)).await,
         );
         match loaded {

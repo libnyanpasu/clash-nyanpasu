@@ -1003,7 +1003,7 @@ pub struct AppUpdateClient(Arc<Inner>);
 impl AppUpdateClient {
     pub async fn spawn(args: AppUpdateArgs, tasks: &TaskTracker) -> Result<Self> {
         let (actor, _) = Actor::spawn(None, AppUpdateActor, args.clone()).await?;
-        crate::client::drain_on_shutdown(tasks, args.shutdown, actor.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, args.shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner(actor))))
     }
 

@@ -1,4 +1,5 @@
 //! Setup logic for the app
+use nyanpasu_core::tasks::track_until_shutdown;
 use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
@@ -20,7 +21,6 @@ use crate::{
             adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
             ports::OsProxyPort,
         },
-        track_until_shutdown,
         ui_effects::{
             adapters::{
                 RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController,

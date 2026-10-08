@@ -3,10 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use super::super::runtime;
-use crate::{
-    client::{runtime::PublishRuntimeError, runtime_error::RuntimeError},
-    core::actor_v2::local_host::CoreSpecError,
-};
+use crate::client::{runtime::PublishRuntimeError, runtime_error::RuntimeError};
+use nyanpasu_core::control::local_host::CoreSpecError;
 
 /// Application-owned runtime preparation; implementations never call the workflow actor.
 #[async_trait]
@@ -24,7 +22,7 @@ pub(in crate::client) struct PreparedRuntime {
     pub snapshot: Arc<runtime::RuntimeSnapshot>,
     /// The to-be-committed bytes, serialized exactly once so the advisory
     /// check and the reconcile cannot drift apart.
-    pub intent: Arc<crate::core::actor_v2::intent::RuntimeIntent>,
+    pub intent: Arc<nyanpasu_core::control::intent::RuntimeIntent>,
     /// The ports this candidate would bind. Inert: only the receipt of an
     /// apply that succeeded may confirm them.
     pub ports: crate::client::ports::CandidatePortBindings,

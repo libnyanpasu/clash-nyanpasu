@@ -6,10 +6,14 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+nyanpasu-core-manager = { workspace = true }
+nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-utils = { workspace = true }
+runas = { workspace = true }
+futures-util = '0.3'
 nyanpasu-config = { path = '../nyanpasu-config' }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-helper = { path = '../nyanpasu-helper' }
-nyanpasu-paths = { path = '../nyanpasu-paths' }
 boa_utils = { path = '../boa_utils' }
 boa_engine = { workspace = true, features = ['annex-b'] }
 boa_runtime = { version = '0.22', default-features = false, features = ['url'] }
@@ -77,6 +81,8 @@ winreg = '0.56'
 gxhash = { workspace = true }
 
 [dev-dependencies]
+axum = { version = '0.8', features = ['ws'] }
+tracing-subscriber = { version = '0.3', features = ['fmt', 'json'] }
 pretty_assertions = '1.4.0'
 mockall = '0.15'
 test-log = { workspace = true }

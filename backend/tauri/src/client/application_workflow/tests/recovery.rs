@@ -4,16 +4,14 @@
 use std::sync::Arc;
 
 use super::workflow_graph_with_clients;
-use crate::{
-    client::{
-        runtime,
-        runtime_recovery::{
-            ObservedRuntime, RecoveryMismatch, RecoveryVerification, verify_recovery_target,
-        },
-        tests::{IdleServiceAdapter, TestControlEndpoint},
+use crate::client::{
+    runtime,
+    runtime_recovery::{
+        ObservedRuntime, RecoveryMismatch, RecoveryVerification, verify_recovery_target,
     },
-    core::actor_v2::{CoreClient, service_actor::ServiceClient},
+    tests::{IdleServiceAdapter, TestControlEndpoint},
 };
+use nyanpasu_core::{control::CoreClient, service::actor::ServiceClient};
 
 /// The audited scenario: the app was running A, applied B, then asked to be
 /// put back on A. The runtime answers `RolledBack`, which only says that *its*
@@ -612,35 +610,39 @@ struct ParkedStop {
 }
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
+impl nyanpasu_core::service::actor::ServiceHostAdapter for ParkedStop {
     async fn probe(
         &self,
     ) -> Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::core::service::control::ServiceCommandError,
+        nyanpasu_core::service::control::ServiceCommandError,
     > {
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.install().await
     }
-    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn start_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.start_daemon().await
     }
-    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn stop_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         if self.park.swap(false, Ordering::SeqCst) {
             self.parked.notify_one();
             self.release.notified().await;
         }
         self.delegate.stop_daemon().await
     }
-    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_core::control::endpoint::EndpointHandle {
         self.delegate.endpoint()
     }
 }
@@ -649,9 +651,10 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedStop {
 /// service mode. A release whose answer is lost leaves the stop pending and
 /// the domain isolated; once the stop is seen to end, recovery finishes what
 /// Confirm owed without stopping the daemon a second time.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
-    use crate::core::actor_v2::endpoint::ExecutionHost;
+    let _clock = crate::client::jobs::explicit_test_time();
+    use nyanpasu_core::control::endpoint::ExecutionHost;
     let daemon = Arc::new(ParkedStop {
         delegate: crate::client::tests::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(ExecutionHost::Service),
@@ -663,10 +666,7 @@ async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
         parked: tokio::sync::Notify::new(),
         release: tokio::sync::Notify::new(),
     });
-    let service =
-        ServiceClient::spawn_bounded(daemon.clone(), 0, std::time::Duration::from_millis(50))
-            .await
-            .unwrap();
+    let service = ServiceClient::spawn(daemon.clone(), 0).await.unwrap();
     let mut f = super::mutations::fixture_from(
         true,
         service,
@@ -710,6 +710,7 @@ async fn a_daemon_release_whose_answer_was_lost_is_finished_by_recovery() {
         "{result:?}"
     );
     daemon.parked.notified().await;
+    tokio::time::advance(std::time::Duration::from_millis(100_100)).await;
     until_idle(&f.client).await;
     let view = recovery(&f.client);
     assert_eq!(view.operation_id, id);
@@ -759,33 +760,37 @@ struct ParkedInstall {
 }
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall {
+impl nyanpasu_core::service::actor::ServiceHostAdapter for ParkedInstall {
     async fn probe(
         &self,
     ) -> Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::core::service::control::ServiceCommandError,
+        nyanpasu_core::service::control::ServiceCommandError,
     > {
         self.delegate.probe().await
     }
-    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.parked.notify_one();
         self.release.notified().await;
         self.delegate.install().await
     }
-    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.uninstall().await
     }
-    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn start_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.start_daemon().await
     }
-    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn stop_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.stop_daemon().await
     }
-    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.delegate.update().await
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_core::control::endpoint::EndpointHandle {
         self.delegate.endpoint()
     }
 }
@@ -794,13 +799,14 @@ impl crate::core::actor_v2::service_actor::ServiceHostAdapter for ParkedInstall 
 /// although the daemon probes `Ready`. The pending service command resolves
 /// only once the helper has ended, and recovery then re-establishes the
 /// runtime.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_service_command_still_running_keeps_the_domain_isolated() {
+    let _clock = crate::client::jobs::explicit_test_time();
     let dir = tempfile::tempdir().unwrap();
     let daemon = Arc::new(ParkedInstall {
         delegate: crate::client::tests::HostTransitionServiceAdapter {
             endpoint: TestControlEndpoint::succeeding_on(
-                crate::core::actor_v2::endpoint::ExecutionHost::Service,
+                nyanpasu_core::control::endpoint::ExecutionHost::Service,
             ),
             calls: Arc::new(std::sync::Mutex::new(Vec::new())),
             stopped: std::sync::atomic::AtomicBool::new(false),
@@ -815,10 +821,7 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
         None,
     );
     let core = CoreClient::spawn(local.clone()).await.unwrap();
-    let service =
-        ServiceClient::spawn_bounded(daemon.clone(), 0, std::time::Duration::from_millis(50))
-            .await
-            .unwrap();
+    let service = ServiceClient::spawn(daemon.clone(), 0).await.unwrap();
     let (client, builder, _, _) = workflow_graph_with_clients(
         &dir,
         core,
@@ -830,16 +833,21 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     .await;
     builder.release.notify_one();
 
-    let error = client.install_service().await.unwrap_err();
+    let install = {
+        let client = client.clone();
+        tokio::spawn(async move { client.install_service().await })
+    };
+    daemon.parked.notified().await;
+    tokio::time::advance(std::time::Duration::from_millis(100_100)).await;
+    let error = install.await.unwrap().unwrap_err();
     assert!(
         error.to_string().contains("still running"),
         "{}",
         error.to_string()
     );
-    daemon.parked.notified().await;
     assert_eq!(
         service.probe().await.unwrap().phase,
-        crate::core::actor_v2::service_actor::ServicePhase::Ready,
+        nyanpasu_core::service::actor::ServicePhase::Ready,
         "the daemon probes a stable Ready while the helper runs"
     );
     assert!(client.status().uncertain);
@@ -873,26 +881,111 @@ async fn a_service_command_still_running_keeps_the_domain_isolated() {
     );
 }
 
-/// The router drives a service host whose core no receipt describes, and
-/// Local is asked for. The handoff back is held at its stop past its caller's
-/// budget, so startup ends with the handoff pending, and while the router is
-/// still handing off a retry leaves it pending and the domain isolated. That
-/// handoff is the only one the workflow makes, and it cannot finish before
-/// its stop is released, so the caller's short budget decides nothing else.
+/// Twelve real, finite same-host preflights consume mailbox residence, not
+/// lifecycle work. The genuine workflow handoff then enters its source stop
+/// before its unchanged caller budget expires.
 async fn a_lost_handoff() -> super::startup::Graph {
-    use super::startup::{DaemonState, Setup, graph};
+    use std::time::Duration;
+
+    use futures_util::FutureExt;
+
+    use super::startup::{DaemonState, HostEndpoint, Log, Setup, graph};
+    use nyanpasu_core::control::{EndpointConnectivity, HandoffReport, endpoint::ExecutionHost};
+
     let g = graph(Setup {
         daemon: DaemonState::Running,
         residual: true,
         owner_on_service: true,
-        handoff_budget: Some(std::time::Duration::from_millis(300)),
         ..Setup::default()
     })
     .await;
+    // Adoption clears the snapshot. Its first real pump frame proves that
+    // pump has finished its read and entered the 2s sleep; no clock advances.
+    g.core
+        .subscribe()
+        .wait_for(|s| s.snapshot.is_some())
+        .await
+        .unwrap();
+    g.core.refresh_status().await.unwrap();
+    let generation = g.core.status().generation;
+    let start = tokio::time::Instant::now();
+    g.service_host.hold_status.store(true, Ordering::SeqCst);
     g.service_host.hold_stop.store(true, Ordering::SeqCst);
+    let startup = {
+        let client = g.client.clone();
+        tokio::spawn(async move { client.startup_reconcile().await })
+    };
+    // The probes read the delegate directly. With the pump sleeping this is
+    // the workflow's final authoritative RefreshStatus, not a guessed ordinal.
+    g.service_host.status_entered.notified().await;
+    assert_eq!(g.service_host.gated_reads.load(Ordering::SeqCst), 1);
+    assert_eq!(tokio::time::Instant::now(), start);
 
-    let report = g.start().await;
-
+    let backlog_log = Log::default();
+    let backlog = HostEndpoint::new("backlog", ExecutionHost::Service, backlog_log.clone());
+    backlog.hold_status.store(true, Ordering::SeqCst);
+    let mut calls = Vec::new();
+    for _ in 0..12 {
+        let core = g.core.clone();
+        let target = backlog.clone();
+        let mut call = Box::pin(async move { core.change_host_from(target, false).await });
+        assert!(
+            call.as_mut().now_or_never().is_none(),
+            "typed request queued"
+        );
+        calls.push(call);
+    }
+    g.service_host.status_release.notify_one();
+    backlog.status_entered.notified().await;
+    // Give the workflow a turn to resume its successful final refresh. The
+    // held-stop/110.1s caller-loss assertions below constrain admission timing;
+    // a yield is not itself an enqueue acknowledgement.
+    tokio::task::yield_now().await;
+    assert_eq!(tokio::time::Instant::now(), start);
+    for (index, call) in calls.into_iter().enumerate() {
+        assert_eq!(backlog.gated_reads.load(Ordering::SeqCst), index + 1);
+        if index < 11 {
+            backlog.hold_status.store(true, Ordering::SeqCst);
+        }
+        tokio::time::advance(Duration::from_secs(9)).await;
+        backlog.status_release.notify_one();
+        assert_eq!(call.await.unwrap(), HandoffReport::NoChange);
+        assert_eq!(g.core.status().generation, generation);
+        assert_eq!(g.core.status().host, ExecutionHost::Service);
+        if index < 11 {
+            backlog.status_entered.notified().await;
+        }
+    }
+    assert_eq!(backlog.gated_reads.load(Ordering::SeqCst), 12);
+    assert!(!backlog.hold_status.load(Ordering::SeqCst));
+    assert!(
+        backlog_log.lock().unwrap().is_empty(),
+        "preflights perform no lifecycle work"
+    );
+    g.service_host.stop_entered.notified().await;
+    assert_eq!(
+        tokio::time::Instant::now() - start,
+        Duration::from_secs(108)
+    );
+    assert!(matches!(
+        g.core.status().connectivity,
+        EndpointConnectivity::HandingOff { .. }
+    ));
+    assert!(
+        !startup.is_finished(),
+        "the real source stop is still owned"
+    );
+    tokio::time::advance(Duration::from_millis(2100)).await;
+    let report = startup.await.unwrap();
+    assert_eq!(
+        tokio::time::Instant::now() - start,
+        Duration::from_millis(110_100)
+    );
+    assert!(matches!(
+        g.core.status().connectivity,
+        EndpointConnectivity::HandingOff { .. }
+    ));
+    assert!(g.log().is_empty(), "the held stop has not completed");
     assert!(
         matches!(
             report.outcome,
@@ -901,6 +994,10 @@ async fn a_lost_handoff() -> super::startup::Graph {
         "{report:?}"
     );
     assert!(isolated(&g.client));
+    assert!(
+        g.client.mutation_journal().recovery.is_some(),
+        "the LiveAttempt remains unresolved"
+    );
     let error = g.client.retry_runtime().await.unwrap_err();
     assert!(matches!(
         error,
@@ -917,8 +1014,9 @@ async fn a_lost_handoff() -> super::startup::Graph {
 
 /// L10: the lost handoff completes. Once the router settles, recovery
 /// resolves the handoff and re-establishes the runtime.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_handoff_whose_answer_was_lost_is_recovered_once_the_router_settles() {
+    let _clock = crate::client::jobs::explicit_test_time();
     let g = a_lost_handoff().await;
 
     g.service_host.release.notify_one();
@@ -941,14 +1039,19 @@ async fn a_handoff_whose_answer_was_lost_is_recovered_once_the_router_settles() 
 /// resolves it and goes on to re-establish, which proves no owner through a
 /// degraded router and leaves a waiting target rather than an isolated
 /// domain.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
-    use crate::core::actor_v2::{EndpointConnectivity, endpoint::ExecutionHost};
+    let _clock = crate::client::jobs::explicit_test_time();
+    use nyanpasu_core::control::{EndpointConnectivity, endpoint::ExecutionHost};
     let g = a_lost_handoff().await;
     let mut status = g.core.subscribe();
 
-    g.core
-        .report_endpoint_down("scripted: the service host stopped answering");
+    g.service_host.fail_status.store(true, Ordering::SeqCst);
+    tokio::time::advance(std::time::Duration::from_secs(2)).await;
+    g.service_host.failed_read.notified().await;
+    // The ready-error pump cast precedes this actual typed FIFO barrier.
+    assert!(g.core.connected_endpoint().await.is_err());
+    assert_eq!(g.service_host.failed_reads.load(Ordering::SeqCst), 1);
     g.service_host.delegate.set_failure(Some("apply_failed"));
     g.service_host.release.notify_one();
     tokio::time::timeout(
@@ -1032,7 +1135,7 @@ async fn a_lost_stop_is_recovered_by_a_confirmed_stop_and_nothing_else() {
         "the stop is all recovery owed"
     );
     assert!(matches!(
-        crate::core::actor_v2::endpoint::ControlEndpoint::status(f.endpoint.as_ref())
+        nyanpasu_core::control::endpoint::ControlEndpoint::status(f.endpoint.as_ref())
             .await
             .unwrap()
             .state,

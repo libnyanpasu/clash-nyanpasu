@@ -35,7 +35,7 @@ pub(crate) struct RuntimeInspectionData {
 #[derive(Debug)]
 pub(crate) struct EffectiveInspection {
     pub config: nyanpasu_ipc::api::core::v2::CoreEffectiveConfig,
-    pub host: (crate::core::actor_v2::endpoint::ExecutionHost, u64),
+    pub host: (nyanpasu_core::control::endpoint::ExecutionHost, u64),
     /// The finalizing node the effective document is compared against.
     parent: Idx,
     tag: OperatorTag,
@@ -82,7 +82,7 @@ impl RuntimeSnapshot {
     pub(crate) fn with_effective_config(
         &self,
         effective: nyanpasu_ipc::api::core::v2::CoreEffectiveConfig,
-        host: crate::core::actor_v2::endpoint::ExecutionHost,
+        host: nyanpasu_core::control::endpoint::ExecutionHost,
         generation: u64,
     ) -> anyhow::Result<Self> {
         let binding = self
@@ -482,15 +482,15 @@ pub(crate) mod tests {
             },
             config: "external-controller-unix: /tmp/managed.sock\nsecret: private\n".into(),
         };
-        generated.applied_binding = Some(crate::core::actor_v2::facade::AppliedConfigBinding {
+        generated.applied_binding = Some(nyanpasu_core::control::facade::AppliedConfigBinding {
             revision: effective.revision.clone(),
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_core::control::endpoint::ExecutionHost::Local,
             generation: 1,
         });
         let applied = generated
             .with_effective_config(
                 effective,
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_core::control::endpoint::ExecutionHost::Local,
                 1,
             )
             .unwrap();
@@ -558,7 +558,7 @@ pub(crate) mod tests {
         assert!(
             next.with_effective_config(
                 effective.clone(),
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_core::control::endpoint::ExecutionHost::Local,
                 1
             )
             .is_err()
@@ -567,7 +567,7 @@ pub(crate) mod tests {
         assert!(
             next.with_effective_config(
                 effective.clone(),
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_core::control::endpoint::ExecutionHost::Local,
                 2
             )
             .is_err()
@@ -575,7 +575,7 @@ pub(crate) mod tests {
         let recovered = next
             .with_effective_config(
                 effective,
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_core::control::endpoint::ExecutionHost::Local,
                 1,
             )
             .unwrap();
@@ -649,9 +649,9 @@ pub(crate) mod tests {
             source_hash: "source".into(),
             effective_hash: "effective".into(),
         };
-        generated.applied_binding = Some(crate::core::actor_v2::facade::AppliedConfigBinding {
+        generated.applied_binding = Some(nyanpasu_core::control::facade::AppliedConfigBinding {
             revision: revision.clone(),
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_core::control::endpoint::ExecutionHost::Local,
             generation: 1,
         });
         let stamped = generated
@@ -661,7 +661,7 @@ pub(crate) mod tests {
                     revision,
                     config: "mode: global\n".into(),
                 },
-                crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                nyanpasu_core::control::endpoint::ExecutionHost::Local,
                 1,
             )
             .unwrap();

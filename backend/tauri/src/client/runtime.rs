@@ -20,9 +20,8 @@ use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
-use crate::{
-    core::actor_v2::api::ApiError, enhance::PostProcessingOutput, state::profiles::ProfilesError,
-};
+use crate::{enhance::PostProcessingOutput, state::profiles::ProfilesError};
+use nyanpasu_core::control::api::ApiError;
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
@@ -64,7 +63,7 @@ pub(crate) struct RuntimeSnapshotData {
 #[derive(Debug, Clone)]
 pub struct RuntimeSnapshot {
     pub(crate) inspection_id: String,
-    pub(crate) applied_binding: Option<crate::core::actor_v2::facade::AppliedConfigBinding>,
+    pub(crate) applied_binding: Option<nyanpasu_core::control::facade::AppliedConfigBinding>,
     pub(crate) effective: Option<Arc<super::runtime_inspection::EffectiveInspection>>,
     pub revision: RuntimeRevision,
     pub target_core: ClashCore,
@@ -140,14 +139,14 @@ pub(in crate::client) struct RuntimeApplyReceipt {
     pub config_digest: String,
     pub target_core: ClashCore,
     pub core_spec: nyanpasu_core_manager::CoreSpec,
-    pub host: crate::core::actor_v2::endpoint::ExecutionHost,
+    pub host: nyanpasu_core::control::endpoint::ExecutionHost,
     /// Whether the app wants this runtime running at all. A core the user
     /// stopped is a target too, and a recovery must not start it.
     pub run_intent: super::application_workflow::policy::CoreRunIntent,
     pub local_ipc: nyanpasu_core_manager::LocalIpcSettings,
     /// The binding this apply produced. A recovery may legitimately land on a
     /// newer instance generation, so only its content identity is a target.
-    pub binding: crate::core::actor_v2::facade::AppliedConfigBinding,
+    pub binding: nyanpasu_core::control::facade::AppliedConfigBinding,
     /// The ports this apply bound. Confirming them is gated on this receipt.
     pub ports: super::ports::CandidatePortBindings,
     /// The committed target these bytes were built from, when the build had
@@ -892,15 +891,15 @@ pub(crate) mod tests {
         assert!(lifecycle.promoted.is_none());
     }
 
-    fn binding() -> crate::core::actor_v2::facade::AppliedConfigBinding {
-        crate::core::actor_v2::facade::AppliedConfigBinding {
+    fn binding() -> nyanpasu_core::control::facade::AppliedConfigBinding {
+        nyanpasu_core::control::facade::AppliedConfigBinding {
             revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                 epoch: 1,
                 generation: 3,
                 source_hash: "source".into(),
                 effective_hash: "effective".into(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_core::control::endpoint::ExecutionHost::Local,
             generation: 0,
         }
     }
@@ -989,7 +988,7 @@ pub(crate) mod tests {
                 version: None,
                 features: Vec::new(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_core::control::endpoint::ExecutionHost::Local,
             run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,

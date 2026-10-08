@@ -731,7 +731,7 @@ pub async fn get_postprocessing_output(
 #[specta::specta]
 pub async fn get_core_status(
     client: State<'_, NyanpasuClient>,
-) -> Result<crate::core::actor_v2::CoreStatusInfo> {
+) -> Result<nyanpasu_core::control::CoreStatusInfo> {
     Ok(client.core_status().into())
 }
 
@@ -1385,7 +1385,7 @@ pub mod service {
         pub status: nyanpasu_ipc::types::ServiceStatus,
         pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
         pub compat: nyanpasu_core::service::ServiceCompat,
-        pub phase: crate::core::actor_v2::service_actor::ServicePhase,
+        pub phase: nyanpasu_core::service::actor::ServicePhase,
         pub restart_attempts: u8,
     }
 
@@ -1462,7 +1462,7 @@ pub mod uwp {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_service_install_prompt(paths: State<'_, PathResolver>) -> Result<String> {
-    use crate::core::service::control::{ResolveServiceDirsSnafu, get_service_install_args};
+    use nyanpasu_core::service::control::{ResolveServiceDirsSnafu, get_service_install_args};
     use snafu::ResultExt;
 
     let args = async {

@@ -294,20 +294,20 @@ mod tests {
                 version: None,
                 features: Vec::new(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_core::control::endpoint::ExecutionHost::Local,
             run_intent: crate::client::application_workflow::policy::CoreRunIntent::Running,
             local_ipc: nyanpasu_core_manager::LocalIpcSettings {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
                 keep_http_controller: true,
             },
-            binding: crate::core::actor_v2::facade::AppliedConfigBinding {
+            binding: nyanpasu_core::control::facade::AppliedConfigBinding {
                 revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                     epoch: 1,
                     generation: 1,
                     source_hash: "source".into(),
                     effective_hash: "effective".into(),
                 },
-                host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+                host: nyanpasu_core::control::endpoint::ExecutionHost::Local,
                 generation: 0,
             },
             ports: candidate,

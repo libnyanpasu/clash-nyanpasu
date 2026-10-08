@@ -386,7 +386,7 @@ claimed. P02/P03/P07 implementation still waits for real accepted prerequisites.
 
 上表路径均相对 `backend/tauri/src/`，宏文件位于 `backend/nyanpasu-macro/src/`。
 
-还发现源码与现行生命周期规则不完全一致：`core/actor_v2/mod.rs` 存在 caller-side budgets，部分旧测试使用 sleep；logger reload线程结束接收后永久 park。**不在机械搬迁中默默修复，也不在新方案中把它们认证为合规。** P03/P10分别负责收敛涉及的调用等待和资源所有权，使用独立行为 commit；若需要触碰 upstream IPC，必须先确认依赖交付方式，不擅自改 runtime 子模块。无关 sleep清理不扩张到整个测试库。
+最新决定：C0 已放弃；CoreClient/ServiceClient 的现有 caller budgets 覆盖 mailbox residence 和未决外部动作，C1 保留它们及原有 timeout/unknown/recovery 契约。ActorRef 首跳不等于整条能力纯进程内；ServiceEndpoint 使用真实 IPC，ServiceClient 的 adapter 执行 OS/提权命令。通用进程内调用规则不授权删除这些既有边界预算。部分旧测试使用 sleep；logger reload线程结束接收后永久 park，P10负责收敛涉及的资源所有权，使用独立行为 commit。若需要触碰 upstream IPC，必须先确认依赖交付方式，不擅自改 runtime 子模块。无关 sleep清理不扩张到整个测试库。
 
 ## 3. 最终架构与边界决策
 
@@ -550,13 +550,13 @@ B0 → P01 ─┬─ P02 ──────────────────�
 
 **PR结果：** core可以构造local/service端点、查询版本、执行服务操作；不通过Tauri shell。
 
-- **C1 `Move core and service control into core`**：`actor_v2/*`、`core/service/control.rs`、local host/OS adapter同迁；status Event wrapper留host。必要的路径/提权实现同调用链迁移；原actor tests不再依赖host `client::tests::test_paths`。
+- **C1 `Move core and service control into core`**：`actor_v2/*`、`core/service/control.rs`、local host/OS adapter同迁；status Event wrapper留host。必要的路径/提权实现同调用链迁移；原actor tests不再依赖host `client::tests::test_paths`。保留所有现有期限、错误分类与原测试；跨 crate cfg(test) 消费者先通过私有 host fixture 与既有生产 API 闭合，不公开测试 hook。
 - **C2 `Use host-independent process adapters for core utilities`**：version reader+parser、OS environment collector、UWP工具执行迁出，路径与资源由host传入。核对sidecar原binary解析语义；不把 `find_binary_path` 的data优先级当成shell plugin已具备的行为。不同之处需显式决策和测试，不能机械替换。
-- **C3 `Keep control reply deadlines at transport boundaries`**：单独核对并消除进程内caller timeout；外部daemon IPC/网络adapter保留真实deadline。保留timeout后的unknown/recovery语义，不能把deadline当作取消证明。不借此重写控制算法或升级IPC。
+- **C3 `Review control IPC and operation bounds`**：核对真实 daemon IPC、OS adapter 与 caller budget 的不同覆盖范围；保留现有期限及 timeout 后 unknown/recovery 语义，不把期限当作取消证明，不要求或承诺未来删除 caller budgets，不借此重写控制算法或升级 IPC。任何期限/IPC 契约变更另行明确审批。
 
 测试：handoff、revocable API lease、generation失效、service compatibility/restart exhaustion、queued call/caller drop、版本参数 `-v/-V`、spawn/nonzero/invalid output、路径带空格和提权。fake-core需要先构建，不假设dev-dependency会产生binary。
 
-P03 C3是源码中已确认的边界问题，不混在C1机械move中。若upstream接口使C3无法在本PR闭合，P03不得按“已完成控制面分离”合入；先另行确认依赖方案，再更新本规划，而不是新增无期限compatibility路径。
+C1保持现有行为；任何另行批准的 upstream transport 工作需要独立的依赖交付与验证计划，不作为删除 caller budgets 的前置。不声称尚未执行的 C2/C3 或平台验证已经完成；P03其余工具与平台范围保持不变。
 
 ### P04 — 日志、流与诊断
 

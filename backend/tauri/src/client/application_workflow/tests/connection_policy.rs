@@ -14,14 +14,12 @@ use nyanpasu_ipc::api::{
 use struct_patch::Patch as _;
 use tokio::sync::Notify;
 
-use crate::{
-    client::{
-        NyanpasuClient,
-        tests::{TestControlEndpoint, test_client_args_with_endpoint},
-    },
-    core::actor_v2::endpoint::{
-        ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
-    },
+use crate::client::{
+    NyanpasuClient,
+    tests::{TestControlEndpoint, test_client_args_with_endpoint},
+};
+use nyanpasu_core::control::endpoint::{
+    ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
 };
 
 #[derive(Default)]
@@ -40,6 +38,7 @@ struct Endpoint {
     report_restart: AtomicBool,
     calls: Arc<Calls>,
     api_queries: AtomicUsize,
+    fail_monitor_subscription: AtomicBool,
 }
 
 impl Endpoint {
@@ -65,6 +64,18 @@ impl ControlEndpoint for Endpoint {
     async fn api_connection(&self) -> Result<Option<CoreApiConnection>, CoreError> {
         self.api_queries.fetch_add(1, Ordering::SeqCst);
         Ok(self.binding.lock().unwrap().clone())
+    }
+    async fn api_changes(
+        &self,
+    ) -> Result<Option<nyanpasu_core::control::endpoint::ApiChanges>, CoreError> {
+        if self.fail_monitor_subscription.load(Ordering::SeqCst) {
+            return Err(CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::BackendUnavailable,
+                "scripted: monitor subscription unavailable",
+                true,
+            ));
+        }
+        Ok(None)
     }
     async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
         self.calls.events.lock().unwrap().push("reconcile");
@@ -113,6 +124,14 @@ impl Fixture {
         fail_reconcile: bool,
         installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
     ) -> Self {
+        Self::with_monitor_subscription(fail_reconcile, installer, false)
+    }
+
+    fn with_monitor_subscription(
+        fail_reconcile: bool,
+        installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
+        fail_monitor_subscription: bool,
+    ) -> Self {
         let calls = Arc::new(Calls::default());
         let (url, server) = tauri::async_runtime::block_on(async {
             let router = Router::new()
@@ -132,7 +151,7 @@ impl Fixture {
                     }),
                 )
                 .with_state(calls.clone());
-            crate::core::actor_v2::api::tests::server(router).await
+            crate::core::test_support::server(router).await
         });
         let endpoint = Arc::new(Endpoint {
             delegate: if fail_reconcile {
@@ -149,6 +168,7 @@ impl Fixture {
             report_restart: AtomicBool::new(false),
             calls: calls.clone(),
             api_queries: AtomicUsize::new(0),
+            fail_monitor_subscription: AtomicBool::new(fail_monitor_subscription),
         });
         let dir = tempfile::tempdir().unwrap();
         let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
@@ -638,14 +658,18 @@ fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
 
 #[test]
 fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
-    let f = Fixture::new(false);
+    let f = Fixture::with_monitor_subscription(
+        false,
+        Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+        true,
+    );
     tauri::async_runtime::block_on(async {
-        // Only this workflow may read the binding counted below. Stop background
-        // consumers, then drain the lease monitor they may already have started.
+        // Every monitor fails before its authority-check timer is created.
+        // Stop consumers and observe real revocation before counting reads.
         f.client.inner._geo_index.stop_for_test().await.unwrap();
         f.client.inner.proxies.stop_for_test().await.unwrap();
-        f.client.inner.core_api.api_client().await.unwrap();
-        f.client.inner.core_api.release_api_for_test().await;
+        let api = f.client.inner.core_api.api_client().await.unwrap();
+        api.cancelled().await;
         f.client.inner.core_api.refresh_status().await.unwrap();
         f.endpoint.api_queries.store(0, Ordering::SeqCst);
 
@@ -682,6 +706,9 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
         assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "reconcile"]);
 
         // The source remains available when a selection actually changes.
+        f.endpoint
+            .fail_monitor_subscription
+            .store(false, Ordering::SeqCst);
         f.client.activate_profile(None).await.unwrap();
         assert!(f.endpoint.api_queries.load(Ordering::SeqCst) > 0);
         assert_eq!(
@@ -895,7 +922,7 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
     fn core_spec(
         &self,
         core: &nyanpasu_config::application::ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    ) -> Result<nyanpasu_core_manager::CoreSpec, nyanpasu_core::control::local_host::CoreSpecError>
     {
         self.delegate.core_spec(core)
     }

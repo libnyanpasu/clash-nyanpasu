@@ -90,7 +90,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
     fn core_spec(
         &self,
         core: &ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    ) -> Result<nyanpasu_core_manager::CoreSpec, nyanpasu_core::control::local_host::CoreSpecError>
     {
         self.delegate.core_spec(core)
     }
@@ -418,19 +418,19 @@ async fn idle_ticks_do_not_advance_the_journal() {
 }
 
 struct ParkedEndpoint {
-    delegate: crate::core::actor_v2::endpoint::EndpointHandle,
+    delegate: nyanpasu_core::control::endpoint::EndpointHandle,
     entered: Notify,
     release: Notify,
 }
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::endpoint::ControlEndpoint for ParkedEndpoint {
+impl nyanpasu_core::control::endpoint::ControlEndpoint for ParkedEndpoint {
     fn host(&self) -> ExecutionHost {
         self.delegate.host()
     }
     async fn submit(
         &self,
-        submission: crate::core::actor_v2::endpoint::CoreSubmission,
+        submission: nyanpasu_core::control::endpoint::CoreSubmission,
     ) -> Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError> {
         self.delegate.submit(submission).await
     }
@@ -451,7 +451,7 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ParkedEndpoint {
     }
     async fn status(
         &self,
-    ) -> Result<crate::core::actor_v2::endpoint::CoreStatusSnapshot, CoreError> {
+    ) -> Result<nyanpasu_core::control::endpoint::CoreStatusSnapshot, CoreError> {
         self.delegate.status().await
     }
 }
@@ -535,7 +535,7 @@ impl ScriptedWaitEndpoint {
 }
 
 #[async_trait::async_trait]
-impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
+impl nyanpasu_core::control::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
     async fn effective_config(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
@@ -548,7 +548,7 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
     }
     async fn api_changes(
         &self,
-    ) -> Result<Option<crate::core::actor_v2::endpoint::ApiChanges>, CoreError> {
+    ) -> Result<Option<nyanpasu_core::control::endpoint::ApiChanges>, CoreError> {
         self.delegate.api_changes().await
     }
     fn host(&self) -> ExecutionHost {
@@ -556,13 +556,13 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
     }
     async fn check_config(
         &self,
-        submission: crate::core::actor_v2::endpoint::CheckSubmission,
-    ) -> crate::core::actor_v2::endpoint::CheckSupport {
+        submission: nyanpasu_core::control::endpoint::CheckSubmission,
+    ) -> nyanpasu_core::control::endpoint::CheckSupport {
         self.delegate.check_config(submission).await
     }
     async fn submit(
         &self,
-        submission: crate::core::actor_v2::endpoint::CoreSubmission,
+        submission: nyanpasu_core::control::endpoint::CoreSubmission,
     ) -> Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError> {
         let operation = submission.envelope.operation_id;
         let script = self
@@ -604,7 +604,7 @@ impl crate::core::actor_v2::endpoint::ControlEndpoint for ScriptedWaitEndpoint {
     }
     async fn status(
         &self,
-    ) -> Result<crate::core::actor_v2::endpoint::CoreStatusSnapshot, CoreError> {
+    ) -> Result<nyanpasu_core::control::endpoint::CoreStatusSnapshot, CoreError> {
         self.delegate.status().await
     }
 }

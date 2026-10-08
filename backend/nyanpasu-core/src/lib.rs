@@ -1,5 +1,6 @@
 pub mod backup;
 pub mod connections;
+pub mod control;
 pub mod device;
 pub mod diagnostics;
 pub mod error;

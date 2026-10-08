@@ -3,14 +3,14 @@ use super::{
     error::{BuildArtifactSnafu, RuntimePreparationError, StartScriptRunnerSnafu},
     ports::RuntimeBuildPort,
 };
-use crate::{
-    client::runtime::PublishRuntimeError, core::actor_v2::local_host::CoreSpecError,
-    enhance::runtime_snapshot_data_from_artifact,
-};
+use crate::{client::runtime::PublishRuntimeError, enhance::runtime_snapshot_data_from_artifact};
 use async_trait::async_trait;
-use nyanpasu_core::runtime::config::{
-    FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, RuntimeConfigScriptRunner,
-    ScriptDirs,
+use nyanpasu_core::{
+    control::local_host::CoreSpecError,
+    runtime::config::{
+        FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, RuntimeConfigScriptRunner,
+        ScriptDirs,
+    },
 };
 use snafu::ResultExt;
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -125,7 +125,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
 /// A wedged or merely slow core binary is not the core rejecting the document,
 /// so that case is separated out here before the kind decides anything.
 pub(in crate::client) struct CoreCheckValidator {
-    core: crate::core::actor_v2::CoreClient,
+    core: nyanpasu_core::control::CoreClient,
     paths: runtime::RuntimePaths,
     budget: Duration,
 }
@@ -148,7 +148,7 @@ const RUNTIME_CHECK_TIMEOUT: &str = "config check timed out after ";
 
 impl CoreCheckValidator {
     pub(in crate::client) fn new(
-        core: crate::core::actor_v2::CoreClient,
+        core: nyanpasu_core::control::CoreClient,
         paths: runtime::RuntimePaths,
     ) -> Self {
         Self {
@@ -162,7 +162,7 @@ impl CoreCheckValidator {
     /// out the production one.
     #[cfg(test)]
     pub(in crate::client) fn with_budget(
-        core: crate::core::actor_v2::CoreClient,
+        core: nyanpasu_core::control::CoreClient,
         paths: runtime::RuntimePaths,
         budget: Duration,
     ) -> Self {
@@ -181,7 +181,7 @@ impl super::ports::RuntimeValidatorPort for CoreCheckValidator {
         request: super::ports::RuntimeCheckRequest<'_>,
     ) -> super::ports::RuntimeCheckOutcome {
         use super::ports::{RuntimeCheckOutcome, RuntimeCheckUnavailable};
-        use crate::core::actor_v2::endpoint::{CheckSubmission, CheckSupport, ExecutionHost};
+        use nyanpasu_core::control::endpoint::{CheckSubmission, CheckSupport, ExecutionHost};
 
         let endpoint = match self.core.connected_endpoint().await {
             Ok(endpoint) => endpoint,

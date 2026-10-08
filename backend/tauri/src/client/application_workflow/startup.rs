@@ -34,20 +34,20 @@ use super::{
     tcc::{AttemptCharge, RestorableBaseline},
     workflow::ApplicationWorkflow,
 };
-use crate::{
-    client::{
-        convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
-        core_lifecycle::{Ownership, effective_host},
-        runtime::ConfirmedRuntime,
-        runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
-        runtime_recovery::{ObservedRuntime, verify_recovery_target},
-    },
-    core::actor_v2::{
+use crate::client::{
+    convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
+    core_lifecycle::{Ownership, effective_host},
+    runtime::ConfirmedRuntime,
+    runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},
+    runtime_recovery::{ObservedRuntime, verify_recovery_target},
+};
+use nyanpasu_core::{
+    control::{
         CoreStatusProjection, EndpointConnectivity,
         endpoint::ExecutionHost,
         facade::{HostChangeFailure, PendingAction, ReconcileReport},
-        service_actor::{ServiceHostStatus, ServicePhase},
     },
+    service::actor::{ServiceHostStatus, ServicePhase},
 };
 
 /// What StartupReconcile found, and how it ended (T10 §1.6).

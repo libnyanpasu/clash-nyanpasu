@@ -37,26 +37,24 @@ use super::{
     ports::{RuntimeCheckOutcome, RuntimeCheckRequest, RuntimeCheckUnavailable},
     workflow::ApplicationWorkflow,
 };
-use crate::{
-    client::{
-        convergence::{OutcomeClass, next_wait},
-        core_lifecycle::{RuntimeSubmission, effective_host, ports::RuntimePreparationPort},
-        runtime::{DegradationReason, InterruptFailure},
-        runtime_error::{
-            ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
-            CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
-            HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
-            PublishRuntimeSnafu, ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
-            RestoreFailedSnafu, RestoreFailure, RuntimeError, StopServiceSnafu,
-            SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
-        },
-        runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
+use crate::client::{
+    convergence::{OutcomeClass, next_wait},
+    core_lifecycle::{RuntimeSubmission, effective_host, ports::RuntimePreparationPort},
+    runtime::{DegradationReason, InterruptFailure},
+    runtime_error::{
+        ApplyRuntimeSnafu, CheckUnavailableSnafu, CommittedAfterRefusalSnafu, CoreFailure,
+        CoreRejectedConfigSnafu, CoreRolledBackSnafu, HandoffNotRestoredSnafu,
+        HandoffOwnerMismatchSnafu, MoveHostBackSnafu, MoveHostSnafu, NotRecordedSnafu,
+        PublishRuntimeSnafu, ReadStatusSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
+        RestoreFailedSnafu, RestoreFailure, RuntimeError, StopServiceSnafu,
+        SubmissionUnobservedSnafu, UnobservedSnafu, UnsettledBaselineSnafu, UnverifiedSnafu,
     },
-    core::actor_v2::{
-        endpoint::ExecutionHost,
-        facade::{AppliedConfigBinding, ReconcileResult},
-        intent::RuntimeIntent,
-    },
+    runtime_recovery::{ObservedRuntime, RecoveryVerification, verify_recovery_target},
+};
+use nyanpasu_core::control::{
+    endpoint::ExecutionHost,
+    facade::{AppliedConfigBinding, ReconcileResult},
+    intent::RuntimeIntent,
 };
 
 /// What was running when the mutation took the execution domain.
@@ -71,7 +69,7 @@ pub(super) struct RestorableBaseline {
     /// none of them is a stop: they are all "not decided yet", and no commit
     /// decision may be derived from one.
     pub(super) settled: bool,
-    pub(super) expected: Option<crate::core::actor_v2::CoreStatusProjection>,
+    pub(super) expected: Option<nyanpasu_core::control::CoreStatusProjection>,
     /// What the host actually said, for the diagnostics only.
     pub(super) observed: Option<CoreStateDetail>,
     pub(super) state: KnownRuntimeState,
@@ -895,10 +893,10 @@ impl ApplicationWorkflow {
                             }
                         };
                         let generation = match report {
-                            crate::core::actor_v2::HandoffReport::Completed {
+                            nyanpasu_core::control::HandoffReport::Completed {
                                 generation, ..
                             } => generation,
-                            crate::core::actor_v2::HandoffReport::NoChange => unreachable!(),
+                            nyanpasu_core::control::HandoffReport::NoChange => unreachable!(),
                         };
                         if expected.host != target_host || expected.generation != generation {
                             return RuntimePrepareOutcome::RecoveryRequired(Arc::new(
@@ -1282,8 +1280,8 @@ impl ApplicationWorkflow {
         let running = self.lifecycle.core.core_status().host == ExecutionHost::Local
             && !matches!(
                 service.phase,
-                crate::core::actor_v2::service_actor::ServicePhase::NotInstalled
-                    | crate::core::actor_v2::service_actor::ServicePhase::DaemonStopped
+                nyanpasu_core::service::actor::ServicePhase::NotInstalled
+                    | nyanpasu_core::service::actor::ServicePhase::DaemonStopped
             )
             && service.server.as_ref().is_some_and(|server| {
                 super::startup::serves_instance(server, &self.lifecycle.instance_config_dir)
@@ -1677,9 +1675,9 @@ fn core_error_cause(kind: Option<CoreErrorKind>) -> TryCauseKind {
 
 /// The failure a restore request answered with, when it had one.
 fn submission_failure(
-    submitted: &Result<crate::core::actor_v2::facade::ReconcileResult, CoreError>,
+    submitted: &Result<nyanpasu_core::control::facade::ReconcileResult, CoreError>,
 ) -> Option<CoreFailure> {
-    use crate::core::actor_v2::facade::ReconcileResult;
+    use nyanpasu_core::control::facade::ReconcileResult;
     match submitted {
         Ok(ReconcileResult::NotSubmitted(error) | ReconcileResult::Unchanged(error))
         | Err(error) => Some(error.clone().into()),
@@ -1689,9 +1687,9 @@ fn submission_failure(
 }
 
 fn describe_submission(
-    submitted: &Result<crate::core::actor_v2::facade::ReconcileResult, CoreError>,
+    submitted: &Result<nyanpasu_core::control::facade::ReconcileResult, CoreError>,
 ) -> String {
-    use crate::core::actor_v2::facade::ReconcileResult;
+    use nyanpasu_core::control::facade::ReconcileResult;
     match submitted {
         Ok(ReconcileResult::Reconciled(_)) => "applied".to_owned(),
         Ok(ReconcileResult::NotSubmitted(error) | ReconcileResult::Unchanged(error)) => {

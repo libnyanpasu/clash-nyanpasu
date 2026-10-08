@@ -36,8 +36,6 @@ pub mod endpoint;
 pub mod facade;
 pub mod intent;
 pub mod local_host;
-pub mod service_actor;
-pub mod service_host_adapter;
 
 use std::time::Duration;
 
@@ -185,12 +183,6 @@ impl From<CoreStatusProjection> for CoreStatusInfo {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
-
-#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct ServiceStatusChangedEvent(pub service_actor::ServiceHostStatus);
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum HandoffReport {
     /// The target already owned the runtime; nothing moved.
@@ -280,7 +272,7 @@ impl std::fmt::Debug for SubmitTicket {
     }
 }
 
-pub enum CoreActorMessage {
+pub(crate) enum CoreActorMessage {
     /// The endpoint currently owning the runtime. Handed out so a read-only,
     /// long-running call -- the advisory config check spawns a core binary --
     /// runs outside the mailbox, exactly as `wait_operation` does. Racing a
@@ -357,9 +349,9 @@ pub enum CoreActorMessage {
     },
 }
 
-pub struct CoreActor;
+pub(crate) struct CoreActor;
 
-pub struct CoreActorArgs {
+pub(crate) struct CoreActorArgs {
     /// The initial endpoint, adopted as-is (status read, no lifecycle writes).
     pub initial: EndpointHandle,
     /// Created by the composition root so the client keeps the receivers; the
@@ -397,7 +389,7 @@ enum EndpointSlot {
     },
 }
 
-pub struct CoreActorState {
+pub(crate) struct CoreActorState {
     api: Option<api::ApiLease>,
     slot: EndpointSlot,
     generation: ControllerGeneration,
@@ -1264,7 +1256,7 @@ pub struct CoreClient {
 
 /// Read-only projection access; carries no mutation capability.
 #[derive(Clone)]
-pub(crate) struct CoreObserver {
+pub struct CoreObserver {
     status: watch::Receiver<CoreStatusProjection>,
     events: broadcast::Sender<CoreStatusProjection>,
 }
@@ -1347,7 +1339,7 @@ impl CoreClient {
         assert!(matches!(reply, ractor::rpc::CallResult::Success(())));
     }
 
-    pub(crate) fn observer(&self) -> CoreObserver {
+    pub fn observer(&self) -> CoreObserver {
         CoreObserver {
             status: self.status_rx.clone(),
             events: self.events_tx.clone(),

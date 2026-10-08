@@ -63,12 +63,11 @@ use crate::{
         runtime_error::{RuntimeError, refusal_of},
         tests::{TestCheckAnswer, TestControlEndpoint},
     },
-    core::actor_v2::{
-        CoreClient,
-        endpoint::ExecutionHost,
-        service_actor::{ServiceClient, ServiceHostAdapter},
-    },
     state::mutation::{CommitAborted, RuntimeAftermath},
+};
+use nyanpasu_core::{
+    control::{CoreClient, endpoint::ExecutionHost},
+    service::actor::{ServiceClient, ServiceHostAdapter},
 };
 
 // -- fixture ---------------------------------------------------------------
@@ -99,7 +98,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
     fn core_spec(
         &self,
         core: &ClashCore,
-    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::core::actor_v2::local_host::CoreSpecError>
+    ) -> Result<nyanpasu_core_manager::CoreSpec, nyanpasu_core::control::local_host::CoreSpecError>
     {
         self.delegate.core_spec(core)
     }
@@ -209,20 +208,20 @@ pub(super) fn adopted_baseline() -> runtime::RuntimeApplyReceipt {
             version: None,
             features: Vec::new(),
         },
-        host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+        host: nyanpasu_core::control::endpoint::ExecutionHost::Local,
         run_intent: super::super::policy::CoreRunIntent::Running,
         local_ipc: nyanpasu_core_manager::LocalIpcSettings {
             policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
             keep_http_controller: true,
         },
-        binding: crate::core::actor_v2::facade::AppliedConfigBinding {
+        binding: nyanpasu_core::control::facade::AppliedConfigBinding {
             revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                 epoch: 1,
                 generation: 1,
                 source_hash: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
                 effective_hash: "effective".into(),
             },
-            host: crate::core::actor_v2::endpoint::ExecutionHost::Local,
+            host: nyanpasu_core::control::endpoint::ExecutionHost::Local,
             generation: 0,
         },
         ports: SessionPortResolver::default()
@@ -3650,8 +3649,9 @@ async fn selecting_the_saved_host_again_moves_the_actual_host() {
 async fn successful_confirm_keeps_the_promoted_inspection() {
     let mut f = fixture().await;
     f.endpoint.set_effective_enabled(true);
-    let _ = crate::core::actor_v2::endpoint::ControlEndpoint::effective_config(f.endpoint.as_ref())
-        .await;
+    let _ =
+        nyanpasu_core::control::endpoint::ControlEndpoint::effective_config(f.endpoint.as_ref())
+            .await;
     let (id, result) = simple_mutate(
         &mut f.clash,
         &f.client,
@@ -3684,28 +3684,35 @@ impl ServiceHostAdapter for RefusedInstall {
         &self,
     ) -> Result<
         nyanpasu_ipc::types::StatusInfo<'static>,
-        crate::core::service::control::ServiceCommandError,
+        nyanpasu_core::service::control::ServiceCommandError,
     > {
         crate::client::tests::IdleServiceAdapter.probe().await
     }
-    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
-        Err(crate::core::service::control::ServiceCommandError::mock(
-            "the user cancelled the elevation prompt",
-        ))
+    async fn install(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
+        Err(
+            nyanpasu_core::service::control::ServiceCommandError::RunElevated {
+                command: nyanpasu_core::service::control::ServiceCommand::Start,
+                source: std::io::Error::other("the user cancelled the elevation prompt"),
+            },
+        )
     }
-    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn start_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn stop_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         unreachable!()
     }
-    fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+    fn endpoint(&self) -> nyanpasu_core::control::endpoint::EndpointHandle {
         unreachable!()
     }
 }

@@ -52,7 +52,10 @@ pub enum ServiceCommandError {
         #[serde(skip)]
         source: UserError,
     },
-    #[snafu(display("could not resolve the application directories: {source}"))]
+    #[snafu(
+        display("could not resolve the application directories: {source}"),
+        visibility(pub)
+    )]
     ResolveServiceDirs {
         #[snafu(source(from(InstallDirError, Box::new)))]
         #[serde(skip)]
@@ -173,7 +176,7 @@ async fn run_elevated(
     args: Vec<OsString>,
 ) -> Result<(), ServiceCommandError> {
     let service_binary = service_binary.to_path_buf();
-    let status = nyanpasu_core::tasks::blocking::join(
+    let status = crate::tasks::blocking::join(
         tokio::task::spawn_blocking(move || {
             #[cfg(not(target_os = "macos"))]
             {
@@ -185,7 +188,7 @@ async fn run_elevated(
             }
             #[cfg(target_os = "macos")]
             {
-                use crate::utils::sudo::sudo;
+                use crate::service::os::sudo::sudo;
                 let args = args
                     .iter()
                     .map(|arg| format!("'{}'", arg.to_string_lossy().replace('\'', "'\\''")))
@@ -213,7 +216,7 @@ async fn run_elevated(
     Ok(())
 }
 
-pub async fn install_service(
+pub(crate) async fn install_service(
     service_binary: &Path,
     data_dir: &Path,
     config_dir: &Path,
@@ -223,7 +226,7 @@ pub async fn install_service(
     run_elevated(ServiceCommand::Install, service_binary, args).await
 }
 
-pub async fn update_service(
+pub(crate) async fn update_service(
     service_binary: &Path,
     data_dir: &Path,
 ) -> Result<(), ServiceCommandError> {
@@ -243,7 +246,7 @@ pub async fn update_service(
     run_elevated(ServiceCommand::Update, service_binary, args).await
 }
 
-pub async fn uninstall_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
+pub(crate) async fn uninstall_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
     run_elevated(
         ServiceCommand::Uninstall,
         service_binary,
@@ -252,15 +255,15 @@ pub async fn uninstall_service(service_binary: &Path) -> Result<(), ServiceComma
     .await
 }
 
-pub async fn start_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
+pub(crate) async fn start_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
     run_elevated(ServiceCommand::Start, service_binary, vec!["start".into()]).await
 }
 
-pub async fn stop_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
+pub(crate) async fn stop_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
     run_elevated(ServiceCommand::Stop, service_binary, vec!["stop".into()]).await
 }
 
-pub async fn restart_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
+pub(crate) async fn restart_service(service_binary: &Path) -> Result<(), ServiceCommandError> {
     run_elevated(
         ServiceCommand::Restart,
         service_binary,
@@ -270,7 +273,7 @@ pub async fn restart_service(service_binary: &Path) -> Result<(), ServiceCommand
 }
 
 #[tracing::instrument]
-pub async fn status<'a>(
+pub(crate) async fn status<'a>(
     service_binary: &Path,
 ) -> Result<nyanpasu_ipc::types::StatusInfo<'a>, ServiceCommandError> {
     let mut cmd = tokio::process::Command::new(service_binary);

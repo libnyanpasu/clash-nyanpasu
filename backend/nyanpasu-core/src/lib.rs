@@ -1,6 +1,7 @@
 pub mod connections;
 pub mod device;
 pub mod diagnostics;
+pub mod error;
 pub mod format;
 pub mod network;
 pub mod runtime;

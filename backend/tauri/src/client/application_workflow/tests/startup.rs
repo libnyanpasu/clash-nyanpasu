@@ -26,7 +26,10 @@ use nyanpasu_config::{
     },
     profile::Profiles,
 };
-use nyanpasu_core::state::{PersistentStateManager, ReplaceIfVersionResult};
+use nyanpasu_core::{
+    runtime::binary::PreparedCoreBinary,
+    state::{PersistentStateManager, ReplaceIfVersionResult},
+};
 use nyanpasu_core_manager::{CoreCommand, CoreError, CoreErrorKind, CoreKind, OperationId};
 use nyanpasu_ipc::{
     api::{
@@ -58,7 +61,7 @@ use crate::{
     client::{
         NyanpasuClient, SessionPortResolver,
         convergence::ConvergenceHealth,
-        core_lifecycle::{Ownership, ports::PreparedCoreBinary},
+        core_lifecycle::Ownership,
         runtime,
         tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
     },

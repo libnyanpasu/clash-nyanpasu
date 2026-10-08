@@ -118,7 +118,7 @@ pub struct ClientSetupArgs {
     pub direct_egress: Arc<dyn DirectEgressProbe>,
     pub geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-    pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+    pub binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
     pub core_versions: Arc<dyn core_version::CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
@@ -419,7 +419,7 @@ impl NyanpasuClient {
         direct_egress: Arc<dyn DirectEgressProbe>,
         geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-        binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+        binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
         core_versions: Arc<dyn core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
@@ -1342,7 +1342,7 @@ impl crate::core::updater::ports::CoreUpdateInstaller
 {
     async fn install(
         &self,
-        artifact: core_lifecycle::ports::PreparedCoreBinary,
+        artifact: nyanpasu_core::runtime::binary::PreparedCoreBinary,
     ) -> anyhow::Result<()> {
         Ok(self.replace_binary(artifact).await?)
     }

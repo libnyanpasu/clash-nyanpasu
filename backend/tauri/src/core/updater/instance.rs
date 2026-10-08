@@ -6,6 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use nyanpasu_core::runtime::binary::PreparedCoreBinary;
 use serde::Serialize;
 use specta::Type;
 #[cfg(target_family = "unix")]
@@ -18,10 +19,7 @@ use super::{
     ports::{UpdaterBackend, UpdaterProgress},
     shared::{self, CoreTypeMeta},
 };
-use crate::{
-    client::core_lifecycle::ports::PreparedCoreBinary,
-    core::download::{DownloadSession, DownloadStatus},
-};
+use crate::core::download::{DownloadSession, DownloadStatus};
 use nyanpasu_config::application::ClashCore;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]

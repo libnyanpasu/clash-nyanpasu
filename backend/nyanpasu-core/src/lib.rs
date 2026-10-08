@@ -7,6 +7,7 @@ pub mod diagnostics;
 pub mod error;
 pub mod format;
 pub mod geo;
+pub mod icons;
 pub mod logs;
 pub mod migration;
 pub mod network;

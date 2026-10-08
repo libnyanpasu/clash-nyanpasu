@@ -66,6 +66,8 @@ tracing-subscriber = { version = '0.3', features = [
 ] }
 tracing.workspace = true
 serde = { version = '1.0', features = ['derive'] }
+postcard = { version = '1.1', features = ['alloc'] }
+bytes = { version = '1', features = ['serde'] }
 atomicwrites = '0.4.4'
 camino = { version = '1.1.9', features = ['serde1'] }
 fs-err = { workspace = true }

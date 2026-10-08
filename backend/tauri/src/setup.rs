@@ -1,5 +1,6 @@
 //! Setup logic for the app
 use nyanpasu_core::{
+    diagnostics::direct_egress::HttpDirectEgressProbe,
     logs::logging::{ReloadSignal, TracingLoggerRefresher},
     tasks::track_until_shutdown,
 };
@@ -7,8 +8,8 @@ use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
 use crate::client::{
-    ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache,
-    RuntimePaths, TauriMainThread, TauriUiEventSink,
+    ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
+    TauriMainThread, TauriUiEventSink,
     effects::executor::ApplicationEffectExecutor,
     hotkey::{
         HotkeyArgs, HotkeyClient,

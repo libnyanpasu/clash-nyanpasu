@@ -3,10 +3,7 @@ use std::{borrow::Cow, ops::ControlFlow};
 use crate::{
     client::{NyanpasuClient, effects::plan::TrayView, hotkey::ports::HotkeyAction},
     ipc, log_err,
-    utils::{
-        help,
-        proxy_env::{self, CopyEnvOption},
-    },
+    utils::{help, proxy_env},
     window::{
         WindowManager,
         kinds::{MainWindow, show_tray_menu_window},
@@ -17,6 +14,7 @@ use nyanpasu_config::{
     application::{ClashCore, TrayMenuMode},
     clash::config::overrides::Mode,
 };
+use nyanpasu_core::network::proxy_env::CopyEnvOption;
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{

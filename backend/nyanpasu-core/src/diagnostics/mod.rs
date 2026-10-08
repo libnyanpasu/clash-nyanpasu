@@ -1,6 +1,8 @@
 //! Diagnostic data contracts and the environment collection port.
 //! Build metadata is supplied by the host, never discovered by this crate.
 
+pub mod direct_egress;
+pub mod net;
 pub mod os;
 
 use std::{borrow::Cow, collections::BTreeMap, io};

@@ -11,7 +11,6 @@ mod clash_streams;
 pub mod configuration_status;
 pub mod convergence;
 pub mod core_lifecycle;
-mod direct_egress;
 pub(crate) mod effects;
 mod error;
 mod event_sink;
@@ -65,7 +64,10 @@ use nyanpasu_core::{
         facade::{ReconcileReport, StopReport},
     },
     device::DeviceInfoSource,
-    diagnostics::{EnvInfo, EnvironmentCollector},
+    diagnostics::{
+        EnvInfo, EnvironmentCollector,
+        direct_egress::{DirectEgress, DirectEgressProbe},
+    },
     runtime::version::CoreVersionReader,
     service::actor::{ServiceClient, ServiceHostStatus},
     storage::Storage,
@@ -74,7 +76,6 @@ use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
 pub use clash_info::ClashInfo;
-pub use direct_egress::{DirectEgress, DirectEgressProbe, HttpDirectEgressProbe};
 pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
@@ -1398,6 +1399,15 @@ pub(crate) mod tests {
     }
 
     mockall::mock! {
+        DirectEgressProbe {}
+        #[async_trait::async_trait]
+        impl DirectEgressProbe for DirectEgressProbe {
+            async fn ipv4(&self) -> Option<std::net::Ipv4Addr>;
+            async fn ipv6(&self) -> Option<std::net::Ipv6Addr>;
+        }
+    }
+
+    mockall::mock! {
         CoreVersionReader {}
         #[async_trait::async_trait]
         impl nyanpasu_core::runtime::version::CoreVersionReader for CoreVersionReader {
@@ -2477,7 +2487,7 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             system_dns,
-            Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(MockDirectEgressProbe::new()),
             Arc::new(NoopCountryIndexSource),
             os_proxy,
         )
@@ -2698,7 +2708,7 @@ pub(crate) mod tests {
             session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
-            Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(MockDirectEgressProbe::new()),
             Arc::new(NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
         )
@@ -2825,7 +2835,7 @@ pub(crate) mod tests {
     async fn probe_direct_egress_reports_each_family_from_the_injected_probe() {
         let dir = tempdir().expect("tempdir should be created");
         let address = std::net::Ipv4Addr::new(203, 0, 113, 7);
-        let mut probe = direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         probe
             .expect_ipv4()
             .times(1)
@@ -2852,7 +2862,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn probe_direct_egress_does_not_probe_while_tun_mode_is_enabled() {
         let dir = tempdir().expect("tempdir should be created");
-        let mut probe = direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         probe.expect_ipv4().never();
         probe.expect_ipv6().never();
         let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
@@ -2881,7 +2891,7 @@ pub(crate) mod tests {
     async fn direct_egress_only_probes_on_request_and_failed_answers_clear_the_cache() {
         use nyanpasu_core::traffic::LocalSourceLocation;
         let dir = tempdir().unwrap();
-        let mut probe = direct_egress::MockDirectEgressProbe::new();
+        let mut probe = MockDirectEgressProbe::new();
         let mut sequence = mockall::Sequence::new();
         probe
             .expect_ipv4()
@@ -3057,7 +3067,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
-            direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            direct_egress: Arc::new(MockDirectEgressProbe::new()),
             geo_index: Arc::new(NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
@@ -3405,7 +3415,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             Arc::new(NoopSystemDnsCache),
-            Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            Arc::new(MockDirectEgressProbe::new()),
             Arc::new(NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
@@ -3572,7 +3582,7 @@ pub(crate) mod tests {
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
-            direct_egress: Arc::new(direct_egress::MockDirectEgressProbe::new()),
+            direct_egress: Arc::new(MockDirectEgressProbe::new()),
             geo_index: Arc::new(NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
@@ -4549,7 +4559,7 @@ pub(crate) mod tests {
                 core_v2,
                 service,
                 Arc::new(NoopSystemDnsCache),
-                Arc::new(direct_egress::MockDirectEgressProbe::new()),
+                Arc::new(MockDirectEgressProbe::new()),
                 Arc::new(NoopCountryIndexSource),
                 Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),

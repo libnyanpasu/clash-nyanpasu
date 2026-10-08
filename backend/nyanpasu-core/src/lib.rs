@@ -9,6 +9,8 @@ pub mod runtime;
 pub mod service;
 pub mod state;
 pub mod tasks;
+#[cfg(windows)]
+pub mod uwp;
 
 /// Smoke test proving the gxhash dev-dependency compiles and runs under the
 /// target-feature flags configured in `.cargo/config.toml`. gxhash fails to

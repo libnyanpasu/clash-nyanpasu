@@ -281,7 +281,7 @@ fn extract_core(
 }
 
 fn verify_meow_version(core: ClashCore, expected: &str, banner: &str) -> anyhow::Result<()> {
-    let parsed = crate::client::core_version::parse_version(core, banner)?;
+    let parsed = nyanpasu_core::runtime::version::parse_version(core, banner)?;
     let actual = semver::Version::parse(parsed.strip_prefix('v').unwrap_or(&parsed))?;
     match core {
         ClashCore::Meow => {

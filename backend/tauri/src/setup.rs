@@ -168,7 +168,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         installed_channel: bundle_metadata.release_channel,
         is_portable: bundle_metadata.is_portable,
-        environment: Arc::new(crate::utils::collect::OsEnvironmentCollector::new(
+        environment: Arc::new(nyanpasu_core::diagnostics::os::OsEnvironmentCollector::new(
             crate::consts::BUILD_INFO.clone(),
             paths.clone(),
         )),

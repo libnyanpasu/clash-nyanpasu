@@ -3,8 +3,8 @@ use std::{borrow::Cow, collections::BTreeMap};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+use super::{BuildInfo, DeviceInfo, EnvInfo, EnvironmentCollector};
 use humansize::{BINARY, SizeFormatter};
-use nyanpasu_core::diagnostics::{BuildInfo, DeviceInfo, EnvInfo, EnvironmentCollector};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_utils::core::{ClashCoreType, CoreType};
 use sysinfo::System;

@@ -79,7 +79,7 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
             Commands::Collect => {
                 // The core binaries are looked up in the data dir, which the command creates.
                 nyanpasu_paths::create_dir_all(paths.app_data_dir()).unwrap();
-                let envs = crate::utils::collect::OsEnvironmentCollector::new(
+                let envs = nyanpasu_core::diagnostics::os::OsEnvironmentCollector::new(
                     crate::consts::BUILD_INFO.clone(),
                     paths.clone(),
                 )

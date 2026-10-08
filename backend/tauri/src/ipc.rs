@@ -1305,7 +1305,7 @@ pub async fn set_custom_app_dir(_path: String) -> Result {
 #[cfg(windows)]
 pub mod uwp {
     use super::Result;
-    use crate::core::win_uwp;
+    use nyanpasu_core::uwp;
 
     #[nyanpasu_macro::rpc]
     #[tauri::command]
@@ -1313,7 +1313,7 @@ pub mod uwp {
     pub async fn invoke_uwp_tool(app_handle: tauri::AppHandle) -> Result {
         let resources_dir = (crate::utils::init::bundled_resources_dir(&app_handle))
             .map_err(anyhow::Error::from)?;
-        (win_uwp::invoke_uwptools(&resources_dir).await)?;
+        (uwp::invoke_uwptools(&resources_dir).await)?;
         Ok(())
     }
 }

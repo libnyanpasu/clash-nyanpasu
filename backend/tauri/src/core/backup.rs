@@ -234,11 +234,11 @@ fn write_backup(req: &BackupRequest<'_>, partial: &Path) -> Result<(), BackupErr
     fs::write(&manifest_path, manifest).map_err(io_error(&manifest_path))
 }
 
-/// Data-dir paths that sit inside the config dir when both are the same tree.
-/// None of them is config: the backups themselves, the stores redb keeps
-/// locked, and runtime data the backup does not cover.
+/// Excludes generated runtime state and data-dir paths that sit inside the
+/// config dir when both are the same tree, including backups and locked stores.
 fn skipped_paths(paths: &PathResolver) -> Vec<PathBuf> {
     [
+        paths.app_config_dir().join("runtime"),
         paths.backups_dir(),
         paths.storage_path(),
         paths.jobs_path(),
@@ -254,6 +254,7 @@ fn skipped_paths(paths: &PathResolver) -> Vec<PathBuf> {
 
 /// Copies `src` into `dst`. Symlinks are neither followed nor recreated; they
 /// are recorded under `rel`, their path relative to the backup root.
+/// Sockets, FIFOs, and devices are runtime resources and are not copied.
 fn copy_dir(
     src: &Path,
     dst: &Path,
@@ -279,7 +280,7 @@ fn copy_dir(
             });
         } else if file_type.is_dir() {
             copy_dir(&path, &dst, &rel, skipped, symlinks)?;
-        } else {
+        } else if file_type.is_file() {
             fs::copy(&path, &dst).map_err(io_error(&path))?;
         }
     }
@@ -400,6 +401,53 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn backups_skip_runtime_and_special_files() {
+        use std::os::unix::{fs::FileTypeExt, net::UnixListener};
+
+        let dir = tempfile::tempdir_in("/tmp").unwrap();
+        let paths = paths(dir.path());
+        let runtime = paths.app_config_dir().join("runtime");
+        write(&runtime.join("control/generated.yaml"), "runtime config");
+        write(&paths.profiles_path(), "profiles");
+        let runtime_socket = runtime.join("control/core-22.sock");
+        let _runtime_listener = UnixListener::bind(&runtime_socket).unwrap();
+        let socket = paths.app_config_dir().join("other.sock");
+        let _listener = UnixListener::bind(&socket).unwrap();
+
+        let target = Version::new(2, 0, 0);
+        let backup = create_backup(&BackupRequest {
+            paths: &paths,
+            storage: StorageSource::File(paths.storage_path().as_std_path()),
+            kind: BackupKind::Migration {
+                from: None,
+                target: &target,
+            },
+            now: now(),
+        })
+        .unwrap();
+
+        assert_eq!(names(&backup.path.join(CONFIG_DIR)), ["profiles.yaml"]);
+        assert_eq!(
+            fs::read_to_string(backup.path.join(CONFIG_DIR).join("profiles.yaml")).unwrap(),
+            "profiles"
+        );
+        assert!(
+            fs::symlink_metadata(runtime_socket)
+                .unwrap()
+                .file_type()
+                .is_socket()
+        );
+        assert!(
+            fs::symlink_metadata(socket)
+                .unwrap()
+                .file_type()
+                .is_socket()
+        );
+        assert_eq!(names(&paths.backups_dir()), [backup.name]);
     }
 
     #[test]

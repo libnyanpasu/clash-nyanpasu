@@ -50,6 +50,10 @@ pub struct WindowConfig {
     pub decorations: Option<bool>,
     /// Whether to skip taskbar
     pub skip_taskbar: bool,
+    /// Whether the window takes focus when it is built. On Windows that
+    /// focuses the webview of the still hidden window, which then reports a
+    /// focus and a focus loss before it is ever shown.
+    pub focused_on_create: bool,
 }
 
 impl Default for WindowConfig {
@@ -64,6 +68,7 @@ impl Default for WindowConfig {
             always_on_top: None,
             decorations: None,
             skip_taskbar: false,
+            focused_on_create: true,
         }
     }
 }
@@ -120,6 +125,12 @@ impl WindowConfig {
     /// Set whether to skip taskbar
     pub fn skip_taskbar(mut self, skip: bool) -> Self {
         self.skip_taskbar = skip;
+        self
+    }
+
+    /// Set whether the window takes focus when it is built
+    pub fn focused_on_create(mut self, focused: bool) -> Self {
+        self.focused_on_create = focused;
         self
     }
 

@@ -135,6 +135,7 @@ impl WindowManager {
                 .always_on_top(always_on_top)
                 .resizable(config.resizable)
                 .skip_taskbar(config.skip_taskbar)
+                .focused(config.focused_on_create)
                 .disable_drag_drop_handler()
                 // Shown by `reveal`, once the frontend has rendered.
                 .visible(false);

@@ -305,6 +305,9 @@ impl AppWindow for TrayMenuWindow {
             .always_on_top(true)
             .skip_taskbar(true)
             .decorations(false)
+            // Its focus loss dismisses it, so only the focus it gets when it
+            // is shown may count as its first.
+            .focused_on_create(false)
     }
 
     fn get_window_state(&self, _app_handle: &AppHandle) -> Option<WindowState> {
@@ -462,6 +465,11 @@ fn place_tray_menu_window(win: &WebviewWindow, cursor: PhysicalPosition<f64>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tray_menu_takes_no_focus_while_it_is_built_hidden() {
+        assert!(!TrayMenuWindow { cursor: None }.config().focused_on_create);
+    }
 
     #[test]
     fn a_blur_before_the_first_focus_keeps_the_menu() {

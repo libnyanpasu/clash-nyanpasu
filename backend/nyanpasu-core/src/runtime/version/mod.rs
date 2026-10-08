@@ -7,6 +7,7 @@ use snafu::Snafu;
 #[snafu(visibility(pub(crate)))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CoreVersionError {
+    #[snafu(visibility(pub))]
     #[snafu(display("could not run the {core} core to read its version: {source}"))]
     RunCoreVersion {
         #[specta(type = String)]
@@ -14,6 +15,7 @@ pub enum CoreVersionError {
         #[serde(skip)]
         source: anyhow::Error,
     },
+    #[snafu(visibility(pub))]
     #[snafu(display("the {core} core failed when asked for its version"))]
     CoreVersionExit {
         #[specta(type = String)]
@@ -32,7 +34,7 @@ pub trait CoreVersionReader: Send + Sync + 'static {
     async fn read(&self, core: ClashCore) -> Result<String, CoreVersionError>;
 }
 
-pub(crate) fn parse_version(core: ClashCore, banner: &str) -> Result<String, CoreVersionError> {
+pub fn parse_version(core: ClashCore, banner: &str) -> Result<String, CoreVersionError> {
     for token in banner.split_whitespace() {
         let version = token.strip_prefix('v').unwrap_or(token);
         let release = semver::Version::parse(version).is_ok();

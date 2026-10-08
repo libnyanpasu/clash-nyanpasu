@@ -6,8 +6,6 @@ pub mod manager;
 pub mod traffic;
 pub mod tray;
 pub mod updater;
-#[cfg(windows)]
-pub mod win_uwp;
 
 pub(crate) mod proxies;
 

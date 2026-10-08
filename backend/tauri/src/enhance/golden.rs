@@ -47,6 +47,7 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
             port: Some(7891),
             socks_port: Some(7892),
             external_controller: Some("127.0.0.1:9090".to_string()),
+            ..ResolvedPortBindings::default()
         },
     };
     input.clash.overrides = fixed_overrides();

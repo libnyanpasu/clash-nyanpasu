@@ -2,7 +2,9 @@
 //! the session state fails with. Library causes stay in `source` (skipped on
 //! the wire); they reach the user only through the copied detail.
 
-use nyanpasu_config::application::ReleaseChannel;
+use nyanpasu_config::{
+    application::ReleaseChannel, clash::config::TransparentProxyValidationError,
+};
 use nyanpasu_core::state::{
     ReplaceIfVersionError,
     error::{StateChangedError, UpsertError},
@@ -29,6 +31,12 @@ pub enum ConfigError {
     InvalidUpdateSources { reason: String },
     #[snafu(display("invalid core log settings: {reason}"))]
     InvalidCoreLogs { reason: String },
+    #[snafu(display("transparent proxy settings are invalid: {source}"))]
+    InvalidTransparentProxy {
+        source: TransparentProxyValidationError,
+    },
+    #[snafu(display("transparent capture requires service mode"))]
+    TransparentProxyRequiresServiceMode,
     #[snafu(display("invalid latency test timeout: {reason}"))]
     InvalidLatencyTimeout { reason: String },
     #[snafu(display("the hotkey list is invalid"))]

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
-    clash::config::{ClashConfig, tun_stack::TunStack},
+    clash::config::{ClashConfig, TransparentProxyValidationError, tun_stack::TunStack},
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
         BuiltinTransform, ExecutionTarget, GuardInputs, ProfileContentSource, ResolvedPortBindings,
@@ -37,6 +37,12 @@ pub enum RuntimeBuildError {
     },
     #[snafu(display("profiles snapshot failed validation: {errors:?}"))]
     ValidateProfiles { errors: Vec<ProfileValidationError> },
+    #[snafu(display("transparent proxy settings are invalid: {source}"))]
+    ValidateTransparentProxy {
+        source: TransparentProxyValidationError,
+    },
+    #[snafu(display("transparent capture requires service mode"))]
+    TransparentProxyRequiresServiceMode,
     #[snafu(display("could not run the runtime pipeline: {source}"))]
     RunPipeline { source: RuntimePipelineError },
     #[snafu(display("runtime candidate contains failed transforms: {failures:?}"))]
@@ -169,6 +175,16 @@ impl RuntimeBuilder {
         if let Err(errors) = input.profiles.validate() {
             return ValidateProfilesSnafu { errors }.fail();
         }
+        if input.clash.transparent_proxy.mode
+            != nyanpasu_config::clash::config::TransparentProxyMode::Disabled
+            && !input.app.enable_service_mode
+        {
+            return TransparentProxyRequiresServiceModeSnafu.fail();
+        }
+        input
+            .clash
+            .validate_transparent_proxy(input.app.core, cfg!(target_os = "linux"))
+            .context(ValidateTransparentProxySnafu)?;
 
         let target = match &input.profiles.current {
             Some(uid) => ExecutionTarget::Selected(uid.clone()),
@@ -185,6 +201,10 @@ impl RuntimeBuilder {
             guard: GuardInputs {
                 overrides: &input.clash.overrides,
                 ports: input.resolved_ports.clone(),
+                routing_mark: (cfg!(target_os = "linux")
+                    && input.clash.transparent_proxy.mode
+                        != nyanpasu_config::clash::config::TransparentProxyMode::Disabled)
+                    .then_some(0x20000),
             },
             whitelist_enabled: input.clash.enable_clash_fields,
             tun: TunParams {
@@ -328,6 +348,18 @@ mod tests {
         assert!(matches!(
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner),
             Err(RuntimeBuildError::ValidateProfiles { .. })
+        ));
+    }
+
+    #[test]
+    fn transparent_capture_requires_service_mode_during_runtime_build() {
+        let mut input = base_input();
+        input.clash.transparent_proxy.mode =
+            nyanpasu_config::clash::config::TransparentProxyMode::Tproxy;
+
+        assert!(matches!(
+            RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner),
+            Err(RuntimeBuildError::TransparentProxyRequiresServiceMode)
         ));
     }
 

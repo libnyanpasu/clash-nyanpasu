@@ -1,5 +1,5 @@
 //! The implementation of [`ApplicationEffectsPort`]: it fans one plan out to
-//! the owner of each effect. Inside the client, [`CoreLogCaptureEffects`] adds
+//! the owner of each effect. Inside the client, [`CoreRuntimeEffects`] adds
 //! the Core log owners the client spawns itself.
 //!
 //! The fan-out is by capability, not by lookup — there is no `get::<T>()` here,
@@ -200,8 +200,10 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
             let status = match effect {
                 ApplicationEffect::Locale(language) => self.apply_locale(revision, *language),
                 ApplicationEffect::Logger(desired) => self.apply_logger(revision, desired),
-                ApplicationEffect::CoreLogLevel(_) | ApplicationEffect::CoreLogStorage(_) => {
-                    unreachable!("CoreLogCaptureEffects applies the Core log effects")
+                ApplicationEffect::CoreLogLevel(_)
+                | ApplicationEffect::CoreLogStorage(_)
+                | ApplicationEffect::TransparentProxy(_) => {
+                    unreachable!("CoreRuntimeEffects applies core runtime effects")
                 }
                 ApplicationEffect::AutoLaunch(_)
                 | ApplicationEffect::SystemProxy(_)
@@ -245,28 +247,31 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
 /// other effect to the executor. The client spawns the Core log owners after
 /// the composition root has built the executor, so the client wraps the
 /// executor instead of joining it.
-pub(crate) struct CoreLogCaptureEffects {
+pub(crate) struct CoreRuntimeEffects {
     executor: Arc<dyn ApplicationEffectsPort>,
     streams: StreamsClient,
     storage: CoreLogsClient,
+    core: crate::core::actor_v2::CoreClient,
 }
 
-impl CoreLogCaptureEffects {
+impl CoreRuntimeEffects {
     pub(crate) fn new(
         executor: Arc<dyn ApplicationEffectsPort>,
         streams: StreamsClient,
         storage: CoreLogsClient,
+        core: crate::core::actor_v2::CoreClient,
     ) -> Self {
         Self {
             executor,
             streams,
             storage,
+            core,
         }
     }
 }
 
 #[async_trait::async_trait]
-impl ApplicationEffectsPort for CoreLogCaptureEffects {
+impl ApplicationEffectsPort for CoreRuntimeEffects {
     async fn apply(
         &self,
         revision: EffectRevision,
@@ -274,11 +279,13 @@ impl ApplicationEffectsPort for CoreLogCaptureEffects {
     ) -> Vec<EffectStatus> {
         let mut level = None;
         let mut storage = None;
+        let mut transparent = None;
         let mut others = Vec::new();
         for effect in plan.effects() {
             match effect {
                 ApplicationEffect::CoreLogLevel(desired) => level = Some(*desired),
                 ApplicationEffect::CoreLogStorage(desired) => storage = Some(*desired),
+                ApplicationEffect::TransparentProxy(desired) => transparent = Some(desired),
                 effect => others.push(effect.clone()),
             }
         }
@@ -315,6 +322,20 @@ impl ApplicationEffectsPort for CoreLogCaptureEffects {
                     false,
                 ),
             });
+        }
+        if let Some(desired) = transparent {
+            statuses.push(
+                match super::super::transparent_proxy::reconcile(&self.core, desired).await {
+                    Ok(()) => healthy(EffectKind::TransparentProxy, revision),
+                    Err(error) => degraded(
+                        EffectKind::TransparentProxy,
+                        revision,
+                        EffectFailureCode::TransparentProxyFailed,
+                        format!("{error:#}"),
+                        true,
+                    ),
+                },
+            );
         }
         statuses
     }

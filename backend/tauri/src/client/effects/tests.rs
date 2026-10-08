@@ -356,7 +356,7 @@ async fn independent_graphs_and_shutdown_admission() {
     assert!(a.calls.lock().unwrap().is_empty());
     right.publish_full(None);
     wait(&right, |s| {
-        s.effects.len() == 10
+        s.effects.len() == 11
             && s.effects
                 .iter()
                 .map(|e| &e.status)
@@ -738,6 +738,52 @@ async fn missing_binding_waits_without_spending_apply_budget() {
 }
 
 #[tokio::test]
+async fn same_port_runtime_binding_reapplies_transparent_proxy_for_new_generation() {
+    let port = Arc::new(Port::default());
+    let (client, shutdown) = graph(port.clone()).await;
+    let binding = Some(ResolvedPortBindings {
+        mixed_port: 7890,
+        ..ResolvedPortBindings::default()
+    });
+    client.publish_full(binding.clone());
+    wait(&client, |snapshot| {
+        snapshot.effects.iter().any(|effect| {
+            effect.status.kind == EffectKind::TransparentProxy
+                && effect.health == crate::client::convergence::ConvergenceHealth::Healthy
+        })
+    })
+    .await;
+    let first_count = port
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, effects)| effects)
+        .filter(|effect| effect.kind() == EffectKind::TransparentProxy)
+        .count();
+
+    client.runtime_bound(binding, false);
+    wait(&client, |snapshot| {
+        snapshot.effects.iter().any(|effect| {
+            effect.status.kind == EffectKind::TransparentProxy
+                && effect.attempts >= 2
+                && effect.health == crate::client::convergence::ConvergenceHealth::Healthy
+        })
+    })
+    .await;
+    let second_count = port
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, effects)| effects)
+        .filter(|effect| effect.kind() == EffectKind::TransparentProxy)
+        .count();
+    assert_eq!(second_count, first_count + 1);
+    shutdown.run().await;
+}
+
+#[tokio::test]
 async fn same_named_failed_target_gets_one_probe_without_budget_reset() {
     use crate::client::convergence::ConvergenceHealth;
     let port = Arc::new(Port {
@@ -884,7 +930,7 @@ async fn core_log_level_reaches_only_the_streams_owner() {
     .unwrap();
     let core_logs = crate::core::logs::CoreLogsClient::test_client().await;
     let streams = crate::core::clash::ws::StreamsClient::spawn(
-        core,
+        core.clone(),
         core_logs.clone(),
         LogLevel::Info,
         CancellationToken::new(),
@@ -892,7 +938,7 @@ async fn core_log_level_reaches_only_the_streams_owner() {
     )
     .await
     .unwrap();
-    let effects = super::executor::CoreLogCaptureEffects::new(port.clone(), streams, core_logs);
+    let effects = super::executor::CoreRuntimeEffects::new(port.clone(), streams, core_logs, core);
     let locale = ApplicationEffect::Locale(I18nLanguage::Russian);
 
     let revision = EffectRevision::new(1);

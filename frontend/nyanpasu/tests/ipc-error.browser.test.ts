@@ -253,6 +253,66 @@ test('a core operation names what failed and why the core refused it', () => {
   ).toBe(m.error_runtime_stop_service())
 })
 
+test('transparent proxy failures are localized in config, build, and effect status', () => {
+  const validation = { kind: 'unsupported_target' } as const
+
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'build_runtime',
+        source: { kind: 'validate_transparent_proxy', source: validation },
+      }),
+    ),
+  ).toBe(m.error_transparent_proxy_unsupported_target())
+
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'build_runtime',
+        source: { kind: 'transparent_proxy_requires_service_mode' },
+      }),
+    ),
+  ).toBe(m.settings_clash_transparent_proxy_service_mode_required())
+
+  expect(
+    ipcErrorMessage(
+      config({ kind: 'invalid_transparent_proxy', source: validation }),
+    ),
+  ).toBe(m.error_transparent_proxy_unsupported_target())
+
+  expect(
+    ipcErrorMessage(
+      config({ kind: 'transparent_proxy_requires_service_mode' }),
+    ),
+  ).toBe(m.settings_clash_transparent_proxy_service_mode_required())
+
+  expect(effectFailureMessage('transparent_proxy_failed')).toBe(
+    m.effect_failure_transparent_proxy_failed(),
+  )
+})
+
+test('a transparent listener port conflict names both listeners and the port', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'resolve_port',
+        source: {
+          kind: 'port_conflict',
+          first: 'redir',
+          second: 'tproxy',
+          port: 7893,
+        },
+      }),
+    ),
+  ).toBe(
+    m.error_runtime_ports_conflict({
+      first: m.settings_clash_settings_redir_port_label(),
+      second: m.settings_clash_settings_tproxy_port_label(),
+      port: 7893,
+    }),
+  )
+})
+
 test('unavailable native storage is explained for operations and refused mutations', () => {
   const reason = m.error_runtime_core_reason_native_store_unavailable()
   expect(

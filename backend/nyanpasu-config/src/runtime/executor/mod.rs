@@ -65,6 +65,8 @@ pub struct GuardInputs<'a> {
     pub overrides: &'a ClashGuardOverrides,
     /// Ports resolved by the caller — port probing IO never enters here.
     pub ports: ResolvedPortBindings,
+    /// Force Mihomo's mark when the Linux capture service owns firewall rules.
+    pub routing_mark: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -73,6 +75,10 @@ pub struct ResolvedPortBindings {
     /// Legacy `port` (HTTP) key; absent when `None`.
     pub port: Option<u16>,
     pub socks_port: Option<u16>,
+    /// Managed `redir-port`; absent preserves the selected profile's value.
+    pub redir_port: Option<u16>,
+    /// Managed `tproxy-port`; absent preserves the selected profile's value.
+    pub tproxy_port: Option<u16>,
     /// `host:port`; absent when `None`.
     pub external_controller: Option<String>,
 }

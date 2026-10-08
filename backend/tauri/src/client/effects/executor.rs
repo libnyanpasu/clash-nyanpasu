@@ -27,13 +27,15 @@ use crate::{
             ports::{AcceleratorValidator, HotkeyBindings},
         },
         system_proxy::SystemProxyClient,
-        ui_effects::ports::{
-            LocaleSink, LogRotation, LoggerRefresher, TrayRefresher, WidgetController,
-        },
+        ui_effects::ports::{LocaleSink, TrayRefresher, WidgetController},
     },
-    core::{clash::ws::StreamsClient, logs::CoreLogsClient},
+    core::clash::ws::StreamsClient,
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
+use nyanpasu_core::logs::{
+    CoreLogsClient,
+    logging::{LogRotation, LoggerRefresher},
+};
 
 pub struct ApplicationEffectExecutor {
     system_proxy: SystemProxyClient,
@@ -116,7 +118,7 @@ impl ApplicationEffectExecutor {
             Err(error) => degraded(
                 EffectKind::Logger,
                 revision,
-                error.code(),
+                EffectFailureCode::LoggerRefreshFailed,
                 failure_text(&error),
                 true,
             ),

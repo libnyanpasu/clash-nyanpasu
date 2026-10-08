@@ -46,6 +46,19 @@ tokio.workspace = true
 tokio-util = { version = '0.7', features = ['rt'] }
 ractor = '0.16'
 redb = '4.0.0'
+zstd = '0.14.0'
+glob = '0.3.1'
+zip = '8.0.0'
+nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', features = [
+  'specta',
+] }
+flexi_logger = { version = '0.31', default-features = false }
+tracing-appender = { version = '0.2', features = ['parking_lot'] }
+tracing-subscriber = { version = '0.3', features = [
+  'env-filter',
+  'json',
+  'parking_lot',
+] }
 tracing.workspace = true
 serde = { version = '1.0', features = ['derive'] }
 atomicwrites = '0.4.4'
@@ -84,7 +97,6 @@ gxhash = { workspace = true }
 
 [dev-dependencies]
 axum = { version = '0.8', features = ['ws'] }
-tracing-subscriber = { version = '0.3', features = ['fmt', 'json'] }
 pretty_assertions = '1.4.0'
 mockall = '0.15'
 test-log = { workspace = true }

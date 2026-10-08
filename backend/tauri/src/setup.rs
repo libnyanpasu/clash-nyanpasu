@@ -1,35 +1,32 @@
 //! Setup logic for the app
-use nyanpasu_core::tasks::track_until_shutdown;
+use nyanpasu_core::{
+    logs::logging::{ReloadSignal, TracingLoggerRefresher},
+    tasks::track_until_shutdown,
+};
 use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
-use crate::{
-    client::{
-        ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient,
-        OsSystemDnsCache, RuntimePaths, TauriMainThread, TauriUiEventSink,
-        effects::executor::ApplicationEffectExecutor,
-        hotkey::{
-            HotkeyArgs, HotkeyClient,
-            adapters::{
-                ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
-                TauriWindowControl,
-            },
-            ports::HotkeyAction,
+use crate::client::{
+    ClientSetupArgs, HttpDirectEgressProbe, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache,
+    RuntimePaths, TauriMainThread, TauriUiEventSink,
+    effects::executor::ApplicationEffectExecutor,
+    hotkey::{
+        HotkeyArgs, HotkeyClient,
+        adapters::{
+            ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
+            TauriWindowControl,
         },
-        system_proxy::{
-            SystemProxyArgs, SystemProxyClient,
-            adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
-            ports::OsProxyPort,
-        },
-        ui_effects::{
-            adapters::{
-                RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController,
-                TracingLoggerRefresher,
-            },
-            ports::LocaleSink,
-        },
+        ports::HotkeyAction,
     },
-    utils::init::logging::ReloadSignal,
+    system_proxy::{
+        SystemProxyArgs, SystemProxyClient,
+        adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
+        ports::OsProxyPort,
+    },
+    ui_effects::{
+        adapters::{RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController},
+        ports::LocaleSink,
+    },
 };
 use anyhow::Context;
 use nyanpasu_traffic::{RedbTrafficStore, TrafficStore};
@@ -176,14 +173,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         http_frontend: Some(debug_http_frontend(&app_handle)?),
         http_routes,
         jobs,
-        logging: crate::client::logs::LoggingSetup {
-            core: match crate::core::logs::RedbCoreLogStore::open(
+        logging: nyanpasu_core::logs::app::LoggingSetup {
+            core: match nyanpasu_core::logs::RedbCoreLogStore::open(
                 paths.app_logs_dir().join("core").into_std_path_buf(),
             ) {
                 Ok(store) => Box::new(store),
                 Err(error) => {
                     tracing::warn!(%error, "Core log storage unavailable");
-                    Box::new(crate::core::logs::UnavailableCoreLogStore(format!(
+                    Box::new(nyanpasu_core::logs::UnavailableCoreLogStore(format!(
                         "{error:#}"
                     )))
                 }
@@ -193,8 +190,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                 "clash-nyanpasu".into(),
             )),
             clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
-            service: Arc::new(crate::client::logs::IpcServiceLogs::new(service_ipc)),
-            frontend: Arc::new(crate::client::frontend_events::TracingFrontendLogSink),
+            service: Arc::new(nyanpasu_core::logs::app::IpcServiceLogs::new(service_ipc)),
+            frontend: Arc::new(nyanpasu_core::logs::frontend::TracingFrontendLogSink),
         },
         core_specs: {
             let paths = paths.clone();

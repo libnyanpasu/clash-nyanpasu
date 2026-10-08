@@ -465,7 +465,7 @@ fn startup_discards_both_committed_and_pending_records_after_abrupt_exit() {
     let status = Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
-            "core::logs::tests::crash_writer_child",
+            "logs::tests::crash_writer_child",
             "--ignored",
             "--nocapture",
         ])

@@ -5,6 +5,7 @@ pub mod device;
 pub mod diagnostics;
 pub mod error;
 pub mod format;
+pub mod logs;
 pub mod migration;
 pub mod network;
 pub mod runtime;

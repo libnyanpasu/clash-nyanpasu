@@ -3,19 +3,17 @@
 
 use std::sync::Arc;
 
-use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
+use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
 use nyanpasu_helper::StatisticWidgetVariant;
-use snafu::{OptionExt as _, ResultExt as _};
+use snafu::ResultExt as _;
 
 use super::ports::{
-    LocaleSink, LogRotation, LoggerError, LoggerRefresher, ReloadThreadStoppedSnafu,
-    ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WIDGET_STOP_BOUND, WidgetController,
-    WidgetError, WidgetRuntime,
+    LocaleSink, ScheduleTrayWorkSnafu, TrayError, TrayRefresher, WIDGET_STOP_BOUND,
+    WidgetController, WidgetError, WidgetRuntime,
 };
 use crate::{
     client::effects::plan::TrayView,
     core::tray::{Tray, TrayWork},
-    utils::init::logging::ReloadSignal,
 };
 
 /// The `rust_i18n` locale.
@@ -67,32 +65,6 @@ impl TrayRefresher for TauriTrayRefresher<tauri::Wry> {
         Tray::request(&self.app_handle, TrayWork::PART)
             .boxed()
             .context(ScheduleTrayWorkSnafu)
-    }
-}
-
-/// The running `tracing` subscriber, through the reload channel that
-/// initializing it returned.
-#[derive(Debug)]
-pub struct TracingLoggerRefresher {
-    reload: std::sync::mpsc::Sender<ReloadSignal>,
-}
-
-impl TracingLoggerRefresher {
-    pub fn new(reload: std::sync::mpsc::Sender<ReloadSignal>) -> Self {
-        Self { reload }
-    }
-}
-
-impl LoggerRefresher for TracingLoggerRefresher {
-    fn refresh(
-        &self,
-        level: Option<LoggingLevel>,
-        rotation: Option<LogRotation>,
-    ) -> Result<(), LoggerError> {
-        self.reload
-            .send((level, rotation))
-            .ok()
-            .context(ReloadThreadStoppedSnafu)
     }
 }
 

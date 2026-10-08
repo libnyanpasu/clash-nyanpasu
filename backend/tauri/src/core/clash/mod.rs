@@ -29,7 +29,9 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
     client.spawn_tracked(&logs_token, async move {
         while logs_rx.changed().await.is_ok() {
             let status = logs_rx.borrow_and_update().clone();
-            if let Err(error) = (crate::core::logs::CoreLogsChanged { status }).emit(&logs_app) {
+            if let Err(error) =
+                (crate::core::status_events::CoreLogsChanged { status }).emit(&logs_app)
+            {
                 tracing::warn!(%error, "failed to emit Core log status");
             }
         }

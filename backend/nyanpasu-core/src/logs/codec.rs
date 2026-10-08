@@ -160,7 +160,7 @@ mod tests {
         let samples: Vec<_> = (0..12000).map(synthetic).collect();
         let dictionary = zstd::dict::from_samples(&samples, DICTIONARY_BYTES).unwrap();
         std::fs::write(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/src/core/logs/preset.zdict"),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/src/logs/preset.zdict"),
             dictionary,
         )
         .unwrap();

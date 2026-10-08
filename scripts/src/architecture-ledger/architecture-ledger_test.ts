@@ -440,7 +440,7 @@ fn guard(_: &IClashTemp) {}
 `;
   const schema = createBuckets();
   scanFile(
-    "backend/tauri/src/core/migration/legacy_schema/verge.rs",
+    "backend/nyanpasu-core/src/migration/legacy_schema/verge.rs",
     source,
     schema,
   );
@@ -449,7 +449,8 @@ fn guard(_: &IClashTemp) {}
   // Only that directory: look-alike paths still count.
   for (
     const relPath of [
-      "backend/tauri/src/core/migration/legacy_schema.rs",
+      "backend/tauri/src/core/migration/legacy_schema/verge.rs",
+      "backend/nyanpasu-core/src/migration/legacy_schema.rs",
       "backend/tauri/src/client/legacy_schema/verge.rs",
     ]
   ) {
@@ -467,7 +468,7 @@ fn read(_: &IVerge) {}
 `;
   const reader = createBuckets();
   scanFile(
-    "backend/tauri/src/core/migration/modules/typed_config.rs",
+    "backend/nyanpasu-core/src/migration/modules/typed_config.rs",
     source,
     reader,
   );
@@ -477,9 +478,10 @@ fn read(_: &IVerge) {}
   // merely start with its name still count.
   for (
     const relPath of [
-      "backend/tauri/src/core/migration/modules/app_config.rs",
-      "backend/tauri/src/core/migration/modules/typed_config.rs.orig",
-      "backend/tauri/src/core/migration/modules/typed_config/mod.rs",
+      "backend/tauri/src/core/migration/modules/typed_config.rs",
+      "backend/nyanpasu-core/src/migration/modules/app_config.rs",
+      "backend/nyanpasu-core/src/migration/modules/typed_config.rs.orig",
+      "backend/nyanpasu-core/src/migration/modules/typed_config/mod.rs",
     ]
   ) {
     assertFalse(isLegacyDtoAllowlisted(relPath), relPath);
@@ -958,7 +960,7 @@ Deno.test("scanFile: the static allowlist matches path and name exactly, and oth
 });
 
 Deno.test("scanFile: an entry covers no static once its name is declared twice in the file", () => {
-  const path = "backend/tauri/src/core/migration/modules/app_config.rs";
+  const path = "backend/nyanpasu-core/src/migration/modules/app_config.rs";
   const key = staticAllowlistKey(path, "VERSION_2_0_0");
   const buckets = createBuckets();
   scanFile(
@@ -1112,4 +1114,17 @@ Deno.test("evaluateGate: an allowlist entry whose static is gone fails the gate"
       i.kind === "static_allowlist" && i.message.includes("IS_APPIMAGE")
     ),
   );
+});
+
+Deno.test("scanFile: retired host migration paths have no static allowance", () => {
+  const path = "backend/tauri/src/core/migration/modules/app_config.rs";
+  const key = staticAllowlistKey(path, "VERSION_2_0_0");
+  const buckets = createBuckets();
+  scanFile(
+    path,
+    "static VERSION_2_0_0: Lazy<Version> = Lazy::new(version);",
+    buckets,
+  );
+  assertEquals(buckets.allowlistedStatics.byKey.get(key), undefined);
+  assertEquals(buckets.mutableStatics.byKey.get(key), 1);
 });

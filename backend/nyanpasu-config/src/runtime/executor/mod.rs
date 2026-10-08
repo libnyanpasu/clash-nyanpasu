@@ -102,7 +102,7 @@ pub struct BuiltinTransform {
 }
 
 /// YAML text → `<<:` merge-key expansion → ConfigValue (spec D13; parity with
-/// legacy `help::read_merge_mapping`, utils/help.rs:45-57).
+/// `nyanpasu_core::migration::fs::read_merge_mapping`).
 pub(crate) fn parse_config_document(text: &str) -> Result<ConfigValue, String> {
     let mut value: serde_yaml_ng::Value =
         serde_yaml_ng::from_str(text).map_err(|error| error.to_string())?;

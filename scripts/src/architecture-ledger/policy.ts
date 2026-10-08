@@ -47,8 +47,8 @@ export const LEGACY_DTO_ALLOWLIST: ReadonlyArray<
 > = [
   {
     paths: [
-      "backend/tauri/src/core/migration/legacy_schema/",
-      "backend/tauri/src/core/migration/modules/typed_config.rs",
+      "backend/nyanpasu-core/src/migration/legacy_schema/",
+      "backend/nyanpasu-core/src/migration/modules/typed_config.rs",
     ],
     // The pre-typed `verge.yaml` / clash overrides shape the typed config
     // migration reads to upgrade old installs, and the migration module that
@@ -104,7 +104,7 @@ function migrationModuleStatics(
   module: string,
   steps: string[],
 ): StaticAllowlistEntry[] {
-  const path = `backend/tauri/src/core/migration/modules/${module}.rs`;
+  const path = `backend/nyanpasu-core/src/migration/modules/${module}.rs`;
   return [
     {
       path,
@@ -154,7 +154,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     reason: "launch-environment flag read once",
   },
   {
-    path: "backend/tauri/src/core/migration/registry.rs",
+    path: "backend/nyanpasu-core/src/migration/registry.rs",
     name: "MODULES",
     category: "immutable",
     reason: "lookup table of the migration modules",
@@ -225,7 +225,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
   },
   // -- test-only ------------------------------------------------------------
   {
-    path: "backend/tauri/src/core/migration/runner.rs",
+    path: "backend/nyanpasu-core/src/migration/runner.rs",
     name: "TEST_VERSION",
     category: "test",
     reason: "constant version in a test fixture",

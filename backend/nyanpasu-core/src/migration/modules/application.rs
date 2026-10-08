@@ -2,11 +2,11 @@ use super::super::{
     Ctx, DocumentSpec, MigrationStep, ModuleKind, ModuleMigrator,
     fs::{read_document, write_document},
 };
+use crate::format::{StampedDocument, StampedYamlFormat};
 use anyhow::{Context as _, bail};
-use nyanpasu_core::format::{StampedDocument, StampedYamlFormat};
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 
 pub static MIGRATOR: ApplicationMigrator = ApplicationMigrator;
 
@@ -130,7 +130,7 @@ mod tests {
     use super::*;
 
     fn payload(src: &str) -> Mapping {
-        serde_yaml::from_str(src).unwrap()
+        serde_yaml_ng::from_str(src).unwrap()
     }
 
     #[test]

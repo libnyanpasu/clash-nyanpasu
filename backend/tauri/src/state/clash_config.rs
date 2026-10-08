@@ -4,12 +4,12 @@ use crate::{
         mutation::ConfigDomain,
         policy::CommandClass,
     },
-    core::migration::modules::clash_config::ClashConfigFormat,
     state::{
         config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
         mutation::MutationCoordinator,
     },
 };
+use nyanpasu_core::migration::modules::clash_config::ClashConfigFormat;
 use nyanpasu_core_manager::OperationId;
 
 use nyanpasu_config::clash::config::{

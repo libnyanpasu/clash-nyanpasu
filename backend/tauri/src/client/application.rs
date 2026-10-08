@@ -1,4 +1,5 @@
 use crate::state::mutation::MutationCoordinator;
+use nyanpasu_core::migration::modules::application::ApplicationFormat;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -10,7 +11,6 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     client::application_workflow::mutation::ConfigDomain,
-    core::migration::modules::application::ApplicationFormat,
     state::{
         application::{
             ApplicationActor, ApplicationActorArgs, ApplicationActorMessage, ApplicationSnapshot,

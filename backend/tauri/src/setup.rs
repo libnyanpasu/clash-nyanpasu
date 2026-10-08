@@ -80,7 +80,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let resources_dir = crate::utils::init::bundled_resources_dir(app)
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok();
-    let mut migrations = crate::core::migration::Runner::with_paths(
+    let mut migrations = nyanpasu_core::migration::Runner::with_paths(
         paths.clone(),
         false,
         crate::consts::BUILD_INFO.pkg_version,

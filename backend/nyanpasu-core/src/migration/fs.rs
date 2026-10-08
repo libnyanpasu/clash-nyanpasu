@@ -6,12 +6,16 @@
 //! future swap only touches this file.
 
 use super::MigrationCheckError;
-use anyhow::{Context, ensure};
+use crate::format::{DocumentStamp, Inspected, StampError};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use atomicwrites::{AllowOverwrite, AtomicFile};
-use nyanpasu_core::format::{DocumentStamp, Inspected, StampError};
+use fs_err as fs;
 use serde::de::DeserializeOwned;
-use serde_yaml::Mapping;
-use std::{io::Write, path::Path};
+use serde_yaml_ng::{Mapping, Value};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 /// Whether `path` exists, reporting an inaccessible parent as an error
 /// instead of the `false` that [`Path::exists`] would return.
@@ -36,7 +40,7 @@ pub(crate) fn read_yaml_if_exists<T: DeserializeOwned>(
             });
         }
     };
-    serde_yaml::from_str(&raw)
+    serde_yaml_ng::from_str(&raw)
         .map(Some)
         .map_err(|source| MigrationCheckError::Parse {
             path: path.to_path_buf(),
@@ -72,19 +76,18 @@ pub(crate) fn read_document(
         path: path.to_path_buf(),
         source,
     };
-    let (schema_revision, payload) =
-        match nyanpasu_core::format::inspect(&raw).map_err(stamp_error)? {
-            Inspected::Unstamped(payload) => (None, payload),
-            Inspected::Stamped { stamp, payload } => {
-                if stamp.document != document {
-                    return Err(stamp_error(StampError::WrongDocument {
-                        expected: document.to_owned(),
-                        found: stamp.document,
-                    }));
-                }
-                (Some(stamp.schema_revision), payload)
+    let (schema_revision, payload) = match crate::format::inspect(&raw).map_err(stamp_error)? {
+        Inspected::Unstamped(payload) => (None, payload),
+        Inspected::Stamped { stamp, payload } => {
+            if stamp.document != document {
+                return Err(stamp_error(StampError::WrongDocument {
+                    expected: document.to_owned(),
+                    found: stamp.document,
+                }));
             }
-        };
+            (Some(stamp.schema_revision), payload)
+        }
+    };
     Ok(Some(DocumentFile {
         raw,
         schema_revision,
@@ -105,9 +108,9 @@ pub(crate) fn write_document(
         document: document.to_owned(),
         schema_revision,
     };
-    let stamped = nyanpasu_core::format::stamp(payload, &stamp)
+    let stamped = crate::format::stamp(payload, &stamp)
         .with_context(|| format!("failed to stamp {}", path.display()))?;
-    let body = serde_yaml::to_string(&stamped)
+    let body = serde_yaml_ng::to_string(&stamped)
         .with_context(|| format!("failed to serialize {}", path.display()))?;
     let content = match prefix {
         Some(prefix) => format!("{prefix}\n\n{body}"),
@@ -141,4 +144,92 @@ pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
         .write(|file| file.write_all(contents))
         .with_context(|| format!("failed to atomically write {}", path.display()))?;
     Ok(())
+}
+
+/// read data from yaml as struct T
+fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
+    let path = path.as_ref();
+    if !path.exists() {
+        bail!("file not found \"{}\"", path.display());
+    }
+
+    let yaml_str = fs::read_to_string(path)
+        .with_context(|| format!("failed to read the file \"{}\"", path.display()))?;
+
+    serde_yaml_ng::from_str::<T>(&yaml_str).with_context(|| {
+        format!(
+            "failed to read the file with yaml format \"{}\"",
+            path.display()
+        )
+    })
+}
+
+/// read mapping from yaml fix #165
+pub(super) fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
+    let mut val: Value = read_yaml(path)?;
+    val.apply_merge()
+        .with_context(|| format!("failed to apply merge \"{}\"", path.display()))?;
+
+    Ok(val
+        .as_mapping()
+        .ok_or(anyhow!(
+            "failed to transform to yaml mapping \"{}\"",
+            path.display()
+        ))?
+        .to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_merge_mapping_expands_merges_and_rejects_non_mappings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("overrides.yaml");
+        std::fs::write(
+            &path,
+            "defaults: &defaults {port: 7890}\n<<: *defaults\nmode: rule\n",
+        )
+        .unwrap();
+        let mapping = read_merge_mapping(&path).unwrap();
+        assert_eq!(mapping.get(Value::from("port")), Some(&Value::from(7890)));
+        assert_eq!(mapping.get(Value::from("mode")), Some(&Value::from("rule")));
+        assert!(!mapping.contains_key(Value::from("<<")));
+
+        std::fs::write(&path, "- rule\n").unwrap();
+        assert_eq!(
+            read_merge_mapping(&path).unwrap_err().to_string(),
+            format!("failed to transform to yaml mapping \"{}\"", path.display())
+        );
+
+        std::fs::write(&path, "<<: 1\n").unwrap();
+        let error = read_merge_mapping(&path).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("failed to apply merge \"{}\"", path.display())
+        );
+        assert!(error.downcast_ref::<serde_yaml_ng::Error>().is_some());
+    }
+
+    #[test]
+    fn read_merge_mapping_preserves_missing_and_malformed_input_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("overrides.yaml");
+        assert_eq!(
+            read_merge_mapping(&path).unwrap_err().to_string(),
+            format!("file not found \"{}\"", path.display())
+        );
+
+        std::fs::write(&path, "port: [\n").unwrap();
+        let error = read_merge_mapping(&path).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "failed to read the file with yaml format \"{}\"",
+                path.display()
+            )
+        );
+        assert!(error.downcast_ref::<serde_yaml_ng::Error>().is_some());
+    }
 }

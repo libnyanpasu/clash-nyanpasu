@@ -1,6 +1,6 @@
 # Tauri → nyanpasu-core：按可合并 PR 重新设计迁移
 
-> 状态：方案已获批准；本轮仅重整已有 foundation 工作，P01 尚未完成。下方 B0 记录已形成的 F1–F8 原子提交及实际验证；未发布或获得远端 CI 验证。
+> 状态：方案已获批准；F1–F8 foundation 已形成提交，剩余 P01 C2–C4 已集成并通过本地定向验证，但仍未完成独立评审、人工批准和平台/CI 验收。B0 保留历史重整记录；B1 记录本轮未暂存的实现与验证，不代表 P01 已落地。
 > 本文重新编号，不继承旧设计的 Phase 00—11、A/B/C 或完成百分比。
 > 一个 Phase 对应一个 PR；一个 PR 可以包含多个独立可构建的原子 commit。
 
@@ -181,6 +181,129 @@ Windows/macOS compilation/runtime, live GUI/HTTP integration, full suites/CI and
 the musl container were not run. The existing musl harness covers runtime/scripts
 only, not a complete headless application. No fully extracted facade or mobile
 product is claimed.
+
+## B1 remaining P01 integration checkpoint (2026-10-08)
+
+The approved C2, C3 and C4 source handoffs were integrated **serially in that
+order**, after supervisor approval of their complete diffs, new sources and shared
+file resolution. This is an unstaged implementation checkpoint, not a commit or
+publication checkpoint. HEAD remains `6dc2256245294736d3858282a1e14612d80f3f2b`
+on `refactor/core-p01-foundation`; the index is empty. Draft PR #5675 existed
+before this work. No commit, staging, push or PR mutation was performed in this
+iteration; the prior restructuring-only human-review waiver does not apply.
+
+### Delivered ownership and retained boundaries
+
+- C2: `nyanpasu_core::tasks` owns the shared drain/tracking helpers and
+  `tasks::blocking::join`. All existing consumers use the new owner directly;
+  the old host helper and reexports are removed. Root token/tracker construction,
+  facade lifecycle, startup reconciliation and final shutdown remain host-owned.
+  The helper semantics and seven retained facade lifecycle test bodies are
+  preserved; two producer tests moved to core, with additional deterministic
+  registration/drain/panic regressions.
+- C3: `nyanpasu_core::network` owns the HTTP/proxy/mirror/speed helpers and
+  `SelfProxyPortSource`. Profile fetch, kernel updater and plugin-backed application
+  updater remain host-owned and consume the shared definitions. Subscription UA
+  stays `clash-nyanpasu/v{product_version}`, ordinary requests stay
+  `clash-nyanpasu/{product_version}`, kernel requests stay
+  `clash-nyanpasu/{host_cargo_version}`, and application updater UA remains owned
+  by the locked Tauri plugin. Custom subscription UA still overrides the injected
+  default. Backup product version and migration target are explicit, independent
+  inputs; paths discovery, BuildInfo/channel/device timing and archive helpers
+  are unchanged. No profiles/persistence/update owner extraction is claimed.
+- C4: `nyanpasu_core::runtime::binary` owns the single binary artifact, progress,
+  installer and installation error contracts; `nyanpasu_core::error::ErrorPath`
+  owns the independent path wrapper. Actual installer/workflow/updater/test
+  consumers use them directly. Runtime preparation and recursive runtime errors
+  remain host-owned. Error variants retain their serde/Specta metadata, with no
+  blanket public Snafu selectors or old-path compatibility layer.
+
+Eleven shared source/manifest paths were combined by their capability-specific
+hunks. The only text conflict was core's production dependency insertion: retain
+C3 dependencies and add C4's promoted `tempfile`; C2's installer blocking-join
+rewiring was retained. Rustfmt normalized the combined updater imports. No new
+production semantics or API boundary was invented by integration.
+
+Cargo recomputed the actual core dependency entry after manifest changes. The
+complete package version/source/checksum inventory stayed unchanged; there were
+no upgrades or hand-edited lock entries. Only the integration worktree's own
+existing target/dist/dependencies were used, with serial Cargo execution. The
+protected source, old persistence worktree and three lane worktrees retain their
+pre-integration source, HEAD, index and status fingerprints.
+
+### Actual local verification
+
+Every Cargo command below used `--offline --manifest-path backend/Cargo.toml`;
+GUI tests also used `GSETTINGS_BACKEND=memory`. `check(P)` means
+`cargo check -p P --all-targets --all-features`, and `test(P,F)` means
+`cargo test -p P --lib F`. These are cumulative working-tree checkpoints, not
+isolated commits. All test counts are actual execution counts, not source
+forecasts; no listed Rust test command selected zero tests.
+
+| Checkpoint                           | Actual checks and outcomes                                                                                                                                                                                                                                                        |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frozen baseline, before source edits | Both core/GUI checks passed; host `client::app_lifecycle::tests::` **9 passed**, profile `fetch_` **6 passed**, updater `instance::tests::` **10 passed**; five exact backup/migration/binary workflow/updater regressions each **1 passed**                                      |
+| C2 cumulative                        | Both checks passed; core `tasks::` **9 passed**; retained host lifecycle **7 passed**                                                                                                                                                                                             |
+| C3 cumulative                        | Both checks passed; core `network::tests::` **4 passed**; host profile `fetch_` **7 passed**, updater `instance::tests::` **10 passed**; exact backup-manifest, migration-backup, explicit-version parse and three facade construction/independence regressions each **1 passed** |
+| C4 cumulative                        | Both checks passed; core `error::tests::` **2 passed** and `runtime::binary::tests::` **2 passed**; exact host installer test, nine binary workflow regressions and three updater installation regressions **13 passed**, one per command                                         |
+| Final integrated source              | Both checks passed; core tasks **9 passed**, controlled network **4 passed**; host lifecycle **7 passed**, profile fetch **7 passed**, updater instance **10 passed**; all-target/all-feature core+GUI Clippy passed with existing warnings; workspace Rustfmt check passed       |
+| Policy and resolved gates            | Backend-boundary policy tests **3 passed**; architecture policy tests **49 passed**; resolved backend dependency gate passed; architecture gate passed, **415 Rust files**, **42 exact static allowances**, all residual metrics and bridges zero                                 |
+| Generated output                     | Exact `specta_export::tests::export_typescript_bindings` **1 passed**; all three generated binding files remain byte-identical to the frozen baseline; no manual generated edits                                                                                                  |
+
+The five baseline exact tests were the backup manifest and migration backup tests
+below, `replacement_decisions_use_applied_identity_and_always_recover`,
+`failed_installation_does_not_restart`, and
+`core::updater::tests::successful_install_finishes_and_keeps_staging_owned_by_installer`.
+The two workflow names are under `client::application_workflow::tests::`.
+
+The C3 exact checks covered:
+
+- `core::backup::tests::copies_the_config_dir_and_storage_with_a_manifest`
+- `core::migration::runner::tests::pending_steps_are_preceded_by_exactly_one_backup_of_the_old_files`
+- `core::migration::tests::current_version_parses_the_host_product_version`
+- `client::tests::{client_constructs_with_mandatory_typed_config_clients,try_new_with_args_constructs_typed_config_facade,two_client_graphs_are_independent}` (three separate exact commands)
+
+The C4 exact workflow regressions under `client::application_workflow::tests::`
+were `replacement_serializes_reconcile_and_retains_files_after_caller_cancellation`,
+`replacement_decisions_use_applied_identity_and_always_recover`,
+`failed_death_proof_never_installs_even_when_status_says_stopped`,
+`shutdown_rejects_pending_work_and_waits_for_the_active_installation`,
+`failed_installation_does_not_restart`,
+`an_installation_the_workflow_never_received_is_refused_as_not_run`,
+`queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_it`,
+`connection_policy::profile_interruption_serializes_mode_host_and_binary_operations`,
+and `startup::a_binary_replaced_without_a_proven_owner_brings_the_target_forward`.
+The installer test was
+`client::core_lifecycle::adapters::tests::installs_by_copy_without_reporting_workflow_progress`.
+The three updater tests under `core::updater::tests::` were
+`the_shutdown_waits_for_an_install_in_progress`,
+`successful_install_finishes_and_keeps_staging_owned_by_installer`, and
+`definitive_install_failure_allows_fresh_admission`.
+
+The first offline resolved dependency gate stopped on an uncached locked
+`handlebars 3.5.5`, before policy analysis. After explicit supervisor authorization,
+the normal gate fetched only locked `handlebars 3.5.5`, `interfaces 0.0.9`,
+`memoffset 0.7.1` and `nix 0.26.4`; all four archive SHA256 values matched the lock.
+The rerun passed with the same lock inventory. No live mirror behavior test was
+run. The updater filter selected three HTTP tests plus seven existing artifact
+extraction/verification tests, hence ten rather than the lane's three-test source
+forecast.
+
+### Outstanding acceptance
+
+**P01 is not yet accepted or landed.** Independent integrated ownership/behavior
+reviews and human approval remain required before any commit/publication.
+Windows/macOS compilation and installer/proxy runtime, musl, GUI/HTTP end-to-end,
+full suites and remote CI were not run. Frontend typecheck/tests were not rerun
+because the actual exporter produced no frontend diff. The preserved live mirror
+smoke is excluded by `network::tests::`; that controlled suite does not prove
+ambient OS proxy ordering or ordinary-helper UA header delivery. Subscription and
+kernel UA delivery are covered by their existing local-server tests.
+
+The historical device-model suite result remains **5 passed / 1 failed** from
+missing host model; it was not rerun, fixed, skipped or waived. No full-suite
+success, fully extracted facade, headless lifecycle, CLI or mobile product is
+claimed. P02/P03/P07 implementation still waits for real accepted prerequisites.
 
 ## 1. 目标、基线与范围
 

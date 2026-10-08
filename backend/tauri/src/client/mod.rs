@@ -95,7 +95,7 @@ pub struct ClientSetupArgs {
     pub is_portable: bool,
     pub environment: Arc<dyn EnvironmentCollector>,
     pub device_info: Arc<dyn DeviceInfoSource>,
-    pub logging: logs::LoggingSetup,
+    pub logging: nyanpasu_core::logs::app::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
     pub paths: PathResolver,
@@ -213,11 +213,11 @@ struct NyanpasuClientInner {
     installed_channel: ReleaseChannel,
     is_portable: bool,
     environment: Arc<dyn EnvironmentCollector>,
-    core_logs: crate::core::logs::CoreLogsClient,
+    core_logs: nyanpasu_core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
-    service_logs: Arc<dyn logs::ServiceLogsPort>,
-    frontend_log: Arc<dyn frontend_events::FrontendLogSink>,
+    service_logs: Arc<dyn nyanpasu_core::logs::app::ServiceLogsPort>,
+    frontend_log: Arc<dyn nyanpasu_core::logs::frontend::FrontendLogSink>,
     application: ApplicationClient,
     session_state: SessionStateClient,
     clash_config: ClashConfigClient,
@@ -393,7 +393,7 @@ impl NyanpasuClient {
         installed_channel: ReleaseChannel,
         is_portable: bool,
         environment: Arc<dyn EnvironmentCollector>,
-        logging: logs::LoggingSetup,
+        logging: nyanpasu_core::logs::app::LoggingSetup,
         jobs: nyanpasu_jobs::JobsClient,
         application: ApplicationClient,
         session_state: SessionStateClient,
@@ -439,7 +439,7 @@ impl NyanpasuClient {
                 }
             }
         });
-        let core_logs = crate::core::logs::CoreLogsClient::spawn(
+        let core_logs = nyanpasu_core::logs::CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
             shutdown.child_token(),
@@ -2370,7 +2370,7 @@ pub(crate) mod tests {
 
     #[test]
     fn logs_facade_reads_app_files_and_degrades_service_independently() {
-        use crate::client::logs::LogSource;
+        use nyanpasu_core::logs::app::LogSource;
         use nyanpasu_logging::{Direction, Filter, LogError, OpenLogs, QueryLogs};
         let dir = tempdir().unwrap();
         let paths = test_paths(dir.path(), dir.path().join("data"));

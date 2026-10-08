@@ -29,7 +29,7 @@ pub struct RpcDependencies {
 const EVENT_NAMES: &[&str] = &[
     <crate::client::app_update::AppUpdateStateChanged as tauri_specta::Event>::NAME,
     <crate::core::clash::ws::ClashWsEvent as tauri_specta::Event>::NAME,
-    <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
+    <crate::core::status_events::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
     <crate::core::status_events::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
@@ -150,7 +150,7 @@ impl RpcError {
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
             }
-            if let Some(log) = error.downcast_ref::<crate::core::logs::CoreLogError>() {
+            if let Some(log) = error.downcast_ref::<nyanpasu_core::logs::CoreLogError>() {
                 result.domain_error = serde_json::to_value(log)
                     .ok()
                     .map(|value| Box::new(RpcValue(value)));
@@ -294,13 +294,14 @@ async fn http_logs_archive(
     State(rpc): State<UnifiedRpc>,
 ) -> Result<Response, (StatusCode, Json<RpcError>)> {
     let paths = rpc.dependencies.paths.clone();
-    let archive =
-        tokio::task::spawn_blocking(move || crate::utils::candy::collect_logs_tempfile(&paths))
-            .await
-            .map_err(RpcError::application)
-            .map_err(http_rpc_error)?
-            .map_err(|error| RpcError::new("application_error", error.to_string()))
-            .map_err(http_rpc_error)?;
+    let archive = tokio::task::spawn_blocking(move || {
+        nyanpasu_core::logs::archive::collect_logs_tempfile(&paths)
+    })
+    .await
+    .map_err(RpcError::application)
+    .map_err(http_rpc_error)?
+    .map_err(|error| RpcError::new("application_error", error.to_string()))
+    .map_err(http_rpc_error)?;
     let file = tokio::fs::File::open(archive.path())
         .await
         .map_err(RpcError::application)
@@ -746,7 +747,7 @@ mod tests {
                     .unwrap()
                     .contains("\"sequence\":1")
             );
-            let name = <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME;
+            let name = <crate::core::status_events::CoreLogsChanged as tauri_specta::Event>::NAME;
             let response = app
                 .oneshot(
                     Request::get(format!("/bridge/events?name={name}"))
@@ -1011,8 +1012,8 @@ mod tests {
         for first in (0..10000).step_by(40) {
             let batch: Vec<_> = (first..first + 40)
                 .map(|number| {
-                    crate::core::logs::PreparedCoreLog::new(&crate::core::logs::CoreLogRecord {
-                        source: crate::core::logs::CoreLogSource {
+                    nyanpasu_core::logs::PreparedCoreLog::new(&nyanpasu_core::logs::CoreLogRecord {
+                        source: nyanpasu_core::logs::CoreLogSource {
                             capture: "http-fixture".into(),
                             instance_id: "instance".into(),
                             core_kind: Some("Mihomo".into()),
@@ -1037,7 +1038,7 @@ mod tests {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
             ))),
         });
-        use crate::client::frontend_events::{FrontendLogSink, SanitizedEvent};
+        use nyanpasu_core::logs::frontend::{FrontendLogSink, SanitizedEvent};
         #[derive(Default)]
         struct RecordingSink(std::sync::Mutex<Vec<(String, SanitizedEvent)>>);
         impl FrontendLogSink for RecordingSink {
@@ -1067,16 +1068,17 @@ mod tests {
         tauri::async_runtime::block_on(async {
             // The headless fixture has no Tauri event bridge; forward the real owner watch.
             let mut logs = client.subscribe_core_logs();
-            let bridge = tokio::spawn(async move {
-                while logs.changed().await.is_ok() {
-                    let status = logs.borrow_and_update().clone();
-                    events.publish(
-                        <crate::core::logs::CoreLogsChanged as tauri_specta::Event>::NAME,
-                        serde_json::to_value(crate::core::logs::CoreLogsChanged { status })
+            let bridge =
+                tokio::spawn(async move {
+                    while logs.changed().await.is_ok() {
+                        let status = logs.borrow_and_update().clone();
+                        events.publish(
+                        <crate::core::status_events::CoreLogsChanged as tauri_specta::Event>::NAME,
+                        serde_json::to_value(crate::core::status_events::CoreLogsChanged { status })
                             .unwrap(),
                     );
-                }
-            });
+                    }
+                });
             let url = client
                 .set_debug_http_enabled(true)
                 .await
@@ -1110,7 +1112,7 @@ mod tests {
                 .iter()
                 .filter(|(_, event)| event.event.message.contains("error reporting test"))
                 .collect();
-            use crate::client::frontend_events::{FrontendEventKind, FrontendEventLevel};
+            use nyanpasu_core::logs::frontend::{FrontendEventKind, FrontendEventLevel};
             let kinds: Vec<_> = fixture
                 .iter()
                 .map(|(_, event)| (event.event.kind, event.event.level))

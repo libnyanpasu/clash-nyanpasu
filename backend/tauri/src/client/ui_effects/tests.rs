@@ -11,15 +11,15 @@ use nyanpasu_config::{
     application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig},
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_core::logs::logging::{LogRotation, LoggerError, LoggerRefresher};
 use nyanpasu_helper::StatisticWidgetVariant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     adapters::TauriWidgetController,
     ports::{
-        LocaleSink, LogRotation, LoggerError, LoggerRefresher, MockLocaleSink, MockLoggerRefresher,
-        MockTrayRefresher, MockWidgetController, MockWidgetRuntime, TrayError, TrayRefresher,
-        WIDGET_STOP_BOUND, WidgetController, WidgetError,
+        LocaleSink, MockLocaleSink, MockTrayRefresher, MockWidgetController, MockWidgetRuntime,
+        TrayError, TrayRefresher, WIDGET_STOP_BOUND, WidgetController, WidgetError,
     },
 };
 use crate::client::{
@@ -48,6 +48,18 @@ use crate::client::{
         },
     },
 };
+
+mockall::mock! {
+    LoggerRefresher {}
+
+    impl LoggerRefresher for LoggerRefresher {
+        fn refresh(
+            &self,
+            level: Option<LoggingLevel>,
+            rotation: Option<LogRotation>,
+        ) -> Result<(), LoggerError>;
+    }
+}
 
 /// The root shutdown, shared by every owner a test builds.
 struct Shutdown {
@@ -1322,27 +1334,4 @@ async fn the_shutdown_ends_a_widget_handshake_and_reaps_the_child() {
         host.events(),
         vec!["spawn", "kill", "release", "handshake released"]
     );
-}
-
-/// The refresher owns no logger of its own: it forwards to the reload channel
-/// it was handed, and says so once nothing is left to receive.
-#[test]
-fn the_logger_refresher_forwards_to_the_reload_channel_it_was_given() {
-    let (reload, signals) = std::sync::mpsc::channel();
-    let refresher = super::adapters::TracingLoggerRefresher::new(reload);
-    let rotation = LogRotation {
-        max_files: 3,
-        max_file_size: 10,
-    };
-
-    refresher
-        .refresh(Some(LoggingLevel::Info), Some(rotation))
-        .unwrap();
-    assert_eq!(
-        signals.try_recv().unwrap(),
-        (Some(LoggingLevel::Info), Some(rotation))
-    );
-
-    drop(signals);
-    assert!(refresher.refresh(None, Some(rotation)).is_err());
 }

@@ -10,7 +10,7 @@ use crate::{
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
     utils::{
-        candy, help,
+        help,
         proxy_env::{self, CopyEnvOption},
     },
     window::{
@@ -1000,7 +1000,7 @@ pub async fn collect_logs(app_handle: AppHandle, paths: State<'_, PathResolver>)
         .save_file(move |file_path| match file_path {
             Some(path) if path.as_path().is_some() => {
                 debug!("{path:#?}");
-                match candy::collect_logs(path.as_path().unwrap(), &paths) {
+                match nyanpasu_core::logs::archive::collect_logs(path.as_path().unwrap(), &paths) {
                     Ok(_) => (),
                     Err(err) => {
                         log::error!(target: "app", "{err:?}");
@@ -1612,8 +1612,8 @@ pub async fn get_clash_ws_snapshot(
 #[specta::specta]
 pub async fn query_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
-    query: crate::core::logs::CoreLogQuery,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogPage> {
+    query: nyanpasu_core::logs::CoreLogQuery,
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogPage> {
     client.query_core_logs(query).await
 }
 
@@ -1622,8 +1622,8 @@ pub async fn query_core_logs(
 #[specta::specta]
 pub async fn get_core_log(
     client: tauri::State<'_, NyanpasuClient>,
-    cursor: crate::core::logs::CoreLogCursor,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogRecord> {
+    cursor: nyanpasu_core::logs::CoreLogCursor,
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogRecord> {
     client.get_core_log(cursor).await
 }
 
@@ -1632,7 +1632,7 @@ pub async fn get_core_log(
 #[specta::specta]
 pub async fn get_core_log_status(
     client: tauri::State<'_, NyanpasuClient>,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogStatus> {
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogStatus> {
     client.get_core_log_status().await
 }
 
@@ -1641,7 +1641,7 @@ pub async fn get_core_log_status(
 #[specta::specta]
 pub async fn clear_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
-) -> crate::core::logs::CoreLogResult<()> {
+) -> nyanpasu_core::logs::CoreLogResult<()> {
     client.clear_core_logs().await
 }
 
@@ -1787,7 +1787,7 @@ pub fn unsubscribe_clash_connection_details(
 #[specta::specta]
 pub async fn list_log_files(
     client: tauri::State<'_, NyanpasuClient>,
-    source: crate::client::logs::LogSource,
+    source: nyanpasu_core::logs::app::LogSource,
 ) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
     client.list_log_files(source).await
 }
@@ -1797,7 +1797,7 @@ pub async fn list_log_files(
 pub async fn open_log_session(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
-    source: crate::client::logs::LogSource,
+    source: nyanpasu_core::logs::app::LogSource,
     request: nyanpasu_logging::OpenLogs,
 ) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogSession> {
     client
@@ -1810,7 +1810,7 @@ pub async fn open_log_session(
 pub async fn query_logs(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
-    source: crate::client::logs::LogSource,
+    source: nyanpasu_core::logs::app::LogSource,
     request: nyanpasu_logging::QueryLogs,
 ) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogPage> {
     client
@@ -1823,7 +1823,7 @@ pub async fn query_logs(
 pub async fn close_log_session(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
-    source: crate::client::logs::LogSource,
+    source: nyanpasu_core::logs::app::LogSource,
     session: String,
 ) -> nyanpasu_logging::LogResult<()> {
     client
@@ -1836,7 +1836,7 @@ pub async fn close_log_session(
 pub fn report_frontend_events(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
-    batch: crate::client::frontend_events::FrontendEventBatch,
+    batch: nyanpasu_core::logs::frontend::FrontendEventBatch,
 ) -> Result {
     client.report_frontend_events(window.label(), batch);
     Ok(())

@@ -358,7 +358,7 @@ impl CoreLogsClient {
             },
         )
         .await?;
-        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor, changed })))
     }
 
@@ -392,7 +392,7 @@ impl CoreLogsClient {
         self.call(|reply| Message::Configure(settings, reply))
             .await?
     }
-    pub(crate) async fn set_instance(&self, instance: Option<String>) -> CoreLogResult<()> {
+    pub async fn set_instance(&self, instance: Option<String>) -> CoreLogResult<()> {
         self.call(|reply| Message::SetInstance(instance, reply))
             .await?
     }

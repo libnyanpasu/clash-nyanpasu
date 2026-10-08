@@ -1,4 +1,3 @@
-pub mod candy;
 pub mod color;
 pub mod core_version;
 pub mod dialog;

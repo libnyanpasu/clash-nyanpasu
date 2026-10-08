@@ -15,7 +15,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .commands(collect_commands![unified_rpc::call_rpc])
         .events(collect_events![
             crate::client::app_update::AppUpdateStateChanged,
-            core::logs::CoreLogsChanged,
+            core::status_events::CoreLogsChanged,
             core::clash::ws::ClashWsEvent,
             window::WindowMessageEvent,
             crate::storage::StorageValueChangedEvent,
@@ -184,7 +184,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     )
     .events(collect_events![
         crate::client::app_update::AppUpdateStateChanged,
-        core::logs::CoreLogsChanged,
+        core::status_events::CoreLogsChanged,
         core::clash::ws::ClashWsEvent,
         window::WindowMessageEvent,
         crate::storage::StorageValueChangedEvent,

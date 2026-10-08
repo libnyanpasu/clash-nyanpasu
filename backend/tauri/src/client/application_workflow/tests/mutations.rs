@@ -1260,7 +1260,7 @@ async fn a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt(
 /// new is committed.
 #[tokio::test]
 async fn a_failed_save_restores_the_verified_runtime_baseline() {
-    use crate::service::profile_file::SelfProxyPortSource as _;
+    use nyanpasu_core::network::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2611,7 +2611,7 @@ async fn a_restore_that_cannot_be_observed_is_not_a_clean_cancel() {
 /// withdrawn candidate's ports on offer through the isolated state (v2 §6.2).
 #[tokio::test]
 async fn an_unverified_restore_takes_the_confirmed_ports_away() {
-    use crate::service::profile_file::SelfProxyPortSource as _;
+    use nyanpasu_core::network::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2707,7 +2707,7 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
 /// gone; nothing short of an apply the core confirmed says otherwise (D1).
 #[tokio::test]
 async fn an_unverified_restore_takes_unchanged_ports_away_too() {
-    use crate::service::profile_file::SelfProxyPortSource as _;
+    use nyanpasu_core::network::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2802,7 +2802,7 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
 /// one without starting the new. So the binding ends there too (D1).
 #[tokio::test]
 async fn an_unobserved_apply_takes_unchanged_ports_away() {
-    use crate::service::profile_file::SelfProxyPortSource as _;
+    use nyanpasu_core::network::SelfProxyPortSource as _;
 
     let Fixture {
         client,

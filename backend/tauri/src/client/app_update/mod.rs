@@ -108,7 +108,7 @@ pub trait AppUpdateBackend: Send + Sync + 'static {
     async fn install(&self, update: PreparedAppUpdate, package: VerifiedAppUpdate) -> Result<()>;
 }
 
-pub type BackendFactory = dyn Fn(Arc<dyn crate::service::profile_file::SelfProxyPortSource>) -> Arc<dyn AppUpdateBackend>
+pub type BackendFactory = dyn Fn(Arc<dyn nyanpasu_core::network::SelfProxyPortSource>) -> Arc<dyn AppUpdateBackend>
     + Send
     + Sync;
 

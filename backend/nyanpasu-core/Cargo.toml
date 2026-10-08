@@ -52,11 +52,16 @@ nyanpasu-ipc = { workspace = true }
 semver = '1.0'
 clash-api = { workspace = true }
 uuid = '1'
+reqwest = { workspace = true }
+sysproxy = { workspace = true }
+url = '2'
+futures = '0.3'
 
 [target.'cfg(windows)'.dependencies]
 winreg = '0.56'
 
 [dev-dependencies]
+mockall = '0.15'
 test-log = { workspace = true }
 tokio = { workspace = true, features = ['full', 'test-util'] }
 tempfile = '3'

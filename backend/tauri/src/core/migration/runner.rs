@@ -15,6 +15,7 @@ use time::OffsetDateTime;
 #[derive(Debug)]
 pub struct Runner {
     target: Version,
+    app_version: String,
     force: bool,
     ctx: Ctx,
     store: MigrationStore,
@@ -23,12 +24,22 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn with_target(target: Version, paths: PathResolver, force: bool) -> anyhow::Result<Self> {
-        Self::with_context(target, force, Ctx::from_paths(paths))
+    pub fn with_target(
+        target: Version,
+        paths: PathResolver,
+        force: bool,
+        app_version: &str,
+    ) -> anyhow::Result<Self> {
+        Self::with_context(target, force, Ctx::from_paths(paths), app_version)
     }
 
-    pub fn with_paths(paths: PathResolver, force: bool) -> anyhow::Result<Self> {
-        Self::with_context(current_version()?, force, Ctx::from_paths(paths))
+    pub fn with_paths(paths: PathResolver, force: bool, app_version: &str) -> anyhow::Result<Self> {
+        Self::with_context(
+            current_version(app_version)?,
+            force,
+            Ctx::from_paths(paths),
+            app_version,
+        )
     }
 
     pub fn advice_step(&self, step: &dyn MigrationStep) -> MigrationAdvice {
@@ -150,6 +161,7 @@ impl Runner {
                 target: &self.target,
             },
             now: OffsetDateTime::now_utc(),
+            app_version: &self.app_version,
         })
         .context("failed to back up the config before migrating")?;
         println!("Backup created at {}", info.path.display());
@@ -177,11 +189,17 @@ impl Runner {
         Ok(!self.ctx.storage_path().exists())
     }
 
-    fn with_context(target: Version, force: bool, ctx: Ctx) -> anyhow::Result<Self> {
+    fn with_context(
+        target: Version,
+        force: bool,
+        ctx: Ctx,
+        app_version: &str,
+    ) -> anyhow::Result<Self> {
         let state_path = ctx.state_path();
         let store = MigrationStore::load(&state_path)?;
         let mut runner = Self {
             target,
+            app_version: app_version.to_owned(),
             force,
             ctx,
             store,
@@ -581,6 +599,7 @@ mod tests {
         std::fs::create_dir_all(&data_dir).unwrap();
         Runner {
             target: TEST_VERSION.clone(),
+            app_version: "test-product-version".to_owned(),
             force,
             ctx: Ctx::new(config_dir, data_dir),
             store,
@@ -737,8 +756,13 @@ mod tests {
         .unwrap();
 
         let ctx = Ctx::new(config_dir.clone(), data_dir.clone());
-        let mut runner =
-            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
+        let mut runner = Runner::with_context(
+            Version::parse("2.0.0").unwrap(),
+            false,
+            ctx,
+            "test-product-version",
+        )
+        .unwrap();
         runner.run_pending().unwrap();
 
         assert_yaml_shape_eq(
@@ -837,8 +861,13 @@ mod tests {
         assert!(!expected.is_empty());
 
         let ctx = Ctx::new(config_dir.clone(), data_dir);
-        let mut runner =
-            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
+        let mut runner = Runner::with_context(
+            Version::parse("2.0.0").unwrap(),
+            false,
+            ctx,
+            "test-product-version",
+        )
+        .unwrap();
         runner.run_pending().unwrap();
 
         let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
@@ -891,8 +920,13 @@ mod tests {
         .unwrap();
 
         let ctx = Ctx::new(config_dir.clone(), data_dir);
-        let mut runner =
-            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
+        let mut runner = Runner::with_context(
+            Version::parse("2.0.0").unwrap(),
+            false,
+            ctx,
+            "test-product-version",
+        )
+        .unwrap();
 
         assert_eq!(
             runner.store.module_state("typed_config").applied_revision,
@@ -955,7 +989,7 @@ mod tests {
         prepare(&config_dir);
 
         let ctx = Ctx::new(config_dir, data_dir);
-        let result = Runner::with_context(TEST_VERSION.clone(), false, ctx)
+        let result = Runner::with_context(TEST_VERSION.clone(), false, ctx, "test-product-version")
             .and_then(|mut runner| runner.run_pending());
         (result, MigrationStore::load(&state_path).unwrap())
     }
@@ -1195,7 +1229,8 @@ mod tests {
             .unwrap();
 
         let ctx = Ctx::new(config_dir, data_dir);
-        let mut runner = Runner::with_context(TEST_VERSION.clone(), true, ctx).unwrap();
+        let mut runner =
+            Runner::with_context(TEST_VERSION.clone(), true, ctx, "test-product-version").unwrap();
         let step = registry::find_migration("profiles/null_value").unwrap();
 
         let error = format!("{:#}", runner.run_migration(step).unwrap_err());
@@ -1278,7 +1313,12 @@ mod tests {
         }
 
         fn runner(&self) -> anyhow::Result<Runner> {
-            Runner::with_context(TEST_VERSION.clone(), false, self.ctx.clone())
+            Runner::with_context(
+                TEST_VERSION.clone(),
+                false,
+                self.ctx.clone(),
+                "test-product-version",
+            )
         }
 
         fn profiles(&self) -> String {
@@ -1366,7 +1406,12 @@ mod tests {
         let error = format!("{:#}", case.runner().unwrap_err());
         assert!(error.contains("newer version"), "{error}");
         // `--migration <id>` builds the same runner, forced or not.
-        let forced = Runner::with_context(TEST_VERSION.clone(), true, case.ctx.clone());
+        let forced = Runner::with_context(
+            TEST_VERSION.clone(),
+            true,
+            case.ctx.clone(),
+            "test-product-version",
+        );
         assert!(forced.is_err());
 
         assert_eq!(case.state(), None);
@@ -1786,7 +1831,13 @@ tray_menu_close_behavior: hide
 
         let error = format!(
             "{:#}",
-            Runner::with_context(TEST_VERSION.clone(), false, case.ctx.clone()).unwrap_err()
+            Runner::with_context(
+                TEST_VERSION.clone(),
+                false,
+                case.ctx.clone(),
+                "test-product-version"
+            )
+            .unwrap_err()
         );
 
         assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
@@ -1913,7 +1964,13 @@ tray_menu_close_behavior: hide
 
         let error = format!(
             "{:#}",
-            Runner::with_context(TEST_VERSION.clone(), false, case.ctx.clone()).unwrap_err()
+            Runner::with_context(
+                TEST_VERSION.clone(),
+                false,
+                case.ctx.clone(),
+                "test-product-version"
+            )
+            .unwrap_err()
         );
 
         assert!(error.contains("lost the `_nyanpasu` stamp"), "{error}");
@@ -1955,7 +2012,13 @@ tray_menu_close_behavior: hide
         }
 
         fn runner(&self) -> Runner {
-            Runner::with_context(TEST_VERSION.clone(), false, self.ctx.clone()).unwrap()
+            Runner::with_context(
+                TEST_VERSION.clone(),
+                false,
+                self.ctx.clone(),
+                "test-product-version",
+            )
+            .unwrap()
         }
 
         fn backups_dir(&self) -> std::path::PathBuf {
@@ -2024,6 +2087,12 @@ tray_menu_close_behavior: hide
         assert_eq!(backups.len(), 1, "{backups:?}");
         assert!(backups[0].ends_with("-unknown-to-2.0.0"), "{backups:?}");
         assert_eq!(runner.backup.as_ref().unwrap().name, backups[0]);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(case.backups_dir().join(&backups[0]).join("manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["app_version"], "test-product-version");
+        assert_eq!(manifest["target_version"], "2.0.0");
         let config = case.backups_dir().join(&backups[0]).join("config");
         assert_eq!(
             std::fs::read_to_string(config.join("nyanpasu-config.yaml")).unwrap(),

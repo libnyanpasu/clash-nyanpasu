@@ -386,7 +386,7 @@ impl Drop for ProfilesClientInner {
 mod tests {
     use super::*;
     use crate::{
-        service::profile_file::{ProfileFileService, SelfProxyPortSource},
+        service::profile_file::ProfileFileService,
         state::{
             mutation::CommitAborted,
             profiles::{
@@ -407,7 +407,7 @@ mod tests {
         ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, ScriptRuntime,
         ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
-    use nyanpasu_core::state::ReplaceIfVersionError;
+    use nyanpasu_core::{network::SelfProxyPortSource, state::ReplaceIfVersionError};
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
 
@@ -843,6 +843,7 @@ mod tests {
             paths,
             Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -1457,6 +1458,7 @@ mod tests {
             paths,
             std::sync::Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -1509,6 +1511,7 @@ mod tests {
             paths,
             std::sync::Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -1546,6 +1549,7 @@ mod tests {
             paths,
             std::sync::Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -1584,6 +1588,7 @@ mod tests {
             paths,
             std::sync::Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -1747,6 +1752,7 @@ mod tests {
             paths,
             Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2541,6 +2547,7 @@ mod tests {
             paths,
             Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2583,6 +2590,7 @@ mod tests {
             paths,
             Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let profiles_path =
             Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
@@ -2673,6 +2681,7 @@ mod tests {
             paths,
             Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -3102,6 +3111,7 @@ mod tests {
             paths,
             Arc::new(NoProxyPort),
             Arc::new(crate::client::tests::FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let client = ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -4414,6 +4424,7 @@ mod tests {
                 crate::client::tests::test_paths(config_dir.path(), data_dir.path()),
                 Arc::new(NoProxyPort),
                 Arc::new(crate::client::tests::FixedDeviceInfoSource),
+                format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
             ));
             let client = ProfilesClient::new(
                 crate::state::mutation::MutationCoordinator::isolated(),

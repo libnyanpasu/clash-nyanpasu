@@ -1,3 +1,4 @@
+use nyanpasu_core::network::{ReqwestSpeedTestExt, parse_gh_url};
 use std::{
     path::PathBuf,
     sync::Arc,
@@ -20,7 +21,6 @@ use super::{
 use crate::{
     client::core_lifecycle::ports::PreparedCoreBinary,
     core::download::{DownloadSession, DownloadStatus},
-    utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
 use nyanpasu_config::application::ClashCore;
 
@@ -45,24 +45,27 @@ pub struct UpdaterSummary {
 }
 
 pub(crate) struct HttpUpdaterBackend {
-    proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
+    proxy_port: Arc<dyn nyanpasu_core::network::SelfProxyPortSource>,
     destination_dir: PathBuf,
+    user_agent: String,
 }
 
 impl HttpUpdaterBackend {
     pub fn new(
         destination_dir: PathBuf,
-        proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
+        proxy_port: Arc<dyn nyanpasu_core::network::SelfProxyPortSource>,
+        user_agent: String,
     ) -> Self {
         Self {
             proxy_port,
             destination_dir,
+            user_agent,
         }
     }
 
     fn http_client(&self) -> anyhow::Result<reqwest::Client> {
         let mut builder = reqwest::Client::builder()
-            .user_agent(concat!("clash-nyanpasu/", env!("CARGO_PKG_VERSION")))
+            .user_agent(&self.user_agent)
             .timeout(Duration::from_secs(120));
         if let Some(port) = self.proxy_port.mixed_port() {
             builder = builder.proxy(reqwest::Proxy::all(format!("http://127.0.0.1:{port}"))?);
@@ -92,7 +95,7 @@ impl UpdaterBackend for HttpUpdaterBackend {
             Some(cached) if cached.1.elapsed() < Duration::from_secs(3600) => cached,
             _ => {
                 let results = client.mirror_speed_test(
-                    crate::utils::candy::INTERNAL_MIRRORS,
+                    nyanpasu_core::network::INTERNAL_MIRRORS,
                     "https://github.com/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
                 ).await?;
                 let (mirror, speed) = results
@@ -311,7 +314,7 @@ mod tests {
 
     struct ProxyPort(std::sync::atomic::AtomicU16);
 
-    impl crate::service::profile_file::SelfProxyPortSource for ProxyPort {
+    impl nyanpasu_core::network::SelfProxyPortSource for ProxyPort {
         fn mixed_port(&self) -> Option<u16> {
             Some(self.0.load(std::sync::atomic::Ordering::SeqCst))
         }
@@ -330,11 +333,9 @@ mod tests {
                 break;
             }
         }
-        assert!(
-            String::from_utf8(request)
-                .unwrap()
-                .starts_with("GET http://updater.invalid/artifact HTTP/1.1")
-        );
+        let request = String::from_utf8(request).unwrap();
+        assert!(request.starts_with("GET http://updater.invalid/artifact HTTP/1.1"));
+        assert!(request.contains("user-agent: clash-nyanpasu/test-runtime-version\r\n"));
         socket
             .write_all(
                 format!(
@@ -356,7 +357,11 @@ mod tests {
             first.local_addr().unwrap().port(),
         )));
         let dir = TempDir::new().unwrap();
-        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), port.clone());
+        let backend = HttpUpdaterBackend::new(
+            dir.path().to_path_buf(),
+            port.clone(),
+            "clash-nyanpasu/test-runtime-version".to_owned(),
+        );
         for (listener, expected) in [(&first, "first core"), (&second, "restarted core")] {
             port.0.store(
                 listener.local_addr().unwrap().port(),
@@ -434,7 +439,11 @@ mod tests {
         let (stalled, mut stall) = tokio::sync::mpsc::unbounded_channel();
         let mirror = tokio::spawn(stalling_mirror(listener, stall_probe, stalled));
         let dir = TempDir::new().unwrap();
-        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), port);
+        let backend = HttpUpdaterBackend::new(
+            dir.path().to_path_buf(),
+            port,
+            "clash-nyanpasu/test-runtime-version".to_owned(),
+        );
         let token = CancellationToken::new();
         let prepare = tokio::spawn({
             let token = token.clone();

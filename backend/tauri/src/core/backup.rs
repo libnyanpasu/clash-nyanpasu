@@ -70,6 +70,7 @@ pub struct BackupRequest<'a> {
     pub storage: StorageSource<'a>,
     pub kind: BackupKind<'a>,
     pub now: OffsetDateTime,
+    pub app_version: &'a str,
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +83,7 @@ pub struct BackupInfo {
 struct Manifest {
     kind: &'static str,
     created_at: String,
-    app_version: &'static str,
+    app_version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     from_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -320,7 +321,7 @@ fn manifest(req: &BackupRequest<'_>, symlinks: Vec<ManifestSymlink>) -> Manifest
     Manifest {
         kind,
         created_at: rfc3339(req.now),
-        app_version: crate::consts::BUILD_INFO.pkg_version,
+        app_version: req.app_version.to_owned(),
         from_version,
         target_version,
         sources: ManifestSources {
@@ -386,6 +387,7 @@ mod tests {
             storage,
             kind: BackupKind::Manual,
             now: now(),
+            app_version: "test-product-version",
         }
     }
 
@@ -420,6 +422,7 @@ mod tests {
                 target: &target,
             },
             now: now(),
+            app_version: "test-product-version",
         })
         .unwrap();
 
@@ -444,6 +447,7 @@ mod tests {
         assert_eq!(manifest["created_at"], "2026-09-21T14:13:20Z");
         assert_eq!(manifest["from_version"], "1.6.1");
         assert_eq!(manifest["target_version"], "2.0.0");
+        assert_eq!(manifest["app_version"], "test-product-version");
         assert_eq!(
             manifest["sources"]["config"],
             paths.app_config_dir().as_str()
@@ -488,6 +492,7 @@ mod tests {
                 target: &target,
             },
             now: now(),
+            app_version: "test-product-version",
         })
         .unwrap();
 

@@ -802,7 +802,7 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         struct Probe(AtomicUsize);
         #[async_trait::async_trait]
-        impl crate::client::DirectEgressProbe for Probe {
+        impl nyanpasu_core::diagnostics::direct_egress::DirectEgressProbe for Probe {
             async fn ipv4(&self) -> Option<std::net::Ipv4Addr> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Some("203.0.113.7".parse().unwrap())

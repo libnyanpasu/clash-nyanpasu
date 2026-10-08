@@ -1,3 +1,5 @@
+pub mod proxy_env;
+
 use anyhow::Result;
 use std::time::Duration;
 use sysproxy::Sysproxy;

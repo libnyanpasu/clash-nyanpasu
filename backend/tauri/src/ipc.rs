@@ -1,7 +1,7 @@
 use crate::{
     client::{
-        ClientError, DirectEgress, NyanpasuClient, RuntimeError, SystemDnsError,
-        effects::error::EffectsError, system_proxy::ports::OsProxyError,
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
+        system_proxy::ports::OsProxyError,
     },
     core::{updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
@@ -9,10 +9,7 @@ use crate::{
         config_error::ConfigError,
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
-    utils::{
-        help,
-        proxy_env::{self, CopyEnvOption},
-    },
+    utils::{help, proxy_env},
     window::{
         WindowManager,
         kinds::{self, EditorWindow, EditorWindowType, MainWindow},
@@ -25,7 +22,8 @@ use log::debug;
 use nyanpasu_config::application::ReleaseChannel;
 use nyanpasu_core::{
     backup,
-    diagnostics::EnvInfo,
+    diagnostics::{EnvInfo, direct_egress::DirectEgress},
+    network::proxy_env::CopyEnvOption,
     storage::{Storage, StorageOperationError, WebStorage},
 };
 use nyanpasu_paths::PathResolver;
@@ -743,7 +741,13 @@ pub async fn url_delay_test(
     url: String,
     expected_status: u16,
 ) -> Result<Option<u64>> {
-    Ok(crate::utils::net::url_delay_test(&url, expected_status, client.clash_info().port).await)
+    Ok(nyanpasu_core::diagnostics::net::url_delay_test(
+        &url,
+        expected_status,
+        client.clash_info().port,
+        &format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.pkg_version),
+    )
+    .await)
 }
 
 #[nyanpasu_macro::rpc]
@@ -754,7 +758,11 @@ pub async fn url_delay_test(
 pub async fn get_ipsb_asn(
     client: State<'_, NyanpasuClient>,
 ) -> Result<specta_typescript::Any<serde_json::Value>> {
-    let value = crate::utils::net::get_ipsb_asn(client.clash_info().port).await?;
+    let value = nyanpasu_core::diagnostics::net::get_ipsb_asn(
+        client.clash_info().port,
+        &format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.pkg_version),
+    )
+    .await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
 }
@@ -1280,8 +1288,13 @@ pub async fn get_cached_icon(
     paths: State<'_, PathResolver>,
     url: String,
 ) -> Result<IconData> {
-    let (mime, bytes) =
-        crate::service::icon::get_cached_icon(&url, client.clash_info().port, paths).await?;
+    let (mime, bytes) = nyanpasu_core::icons::get_cached_icon(
+        &url,
+        client.clash_info().port,
+        paths,
+        &format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.pkg_version),
+    )
+    .await?;
     Ok(IconData {
         data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
     })

@@ -108,7 +108,7 @@ When touching code under `backend/tauri/src/client/` or the actors, services, an
 
 - Do not add new `tauri` dependencies (`AppHandle`, `tauri::State`, `tauri::async_runtime`, Tauri events, windows, tray) to the client, actors, or pure services. Add a port trait and implement it in the GUI crate instead.
 - Keep frontend-specific behavior (windows, tray, webview events, dialogs, main-thread execution, Tauri IPC) in the GUI crate as adapters.
-- Move code into `nyanpasu-core` by updating callers, not by leaving re-export shims behind in the Tauri crate.
+- Move code into its neutral application/domain owner by updating callers, not by leaving re-export shims behind in the Tauri crate.
 
 ## 7. Unified RPC
 

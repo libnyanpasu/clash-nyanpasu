@@ -7,16 +7,16 @@ to these guides, and restates only the most frequently violated rules.
 
 ## Choose a guide
 
-| When you are working on                                                | Read                                             |
-| ---------------------------------------------------------------------- | ------------------------------------------------ |
-| Services, state ownership, dependency injection, or core/GUI split     | [Architecture and ownership](architecture.md)    |
-| Backend crate extraction and application/platform dependency direction | [Backend packages](backend-packages.md)          |
-| Commands, frontend backend calls, HTTP capabilities, or events         | [Unified RPC](rpc.md)                            |
-| Tests, mocks, verification, or final review                            | [Testing and review](testing.md)                 |
-| Worktree selection, build prerequisites, or commits                    | [Development workflow](workflow.md)              |
-| Repository scripts, Deno tasks, tool dependencies and script layout    | [Repository scripts](scripts.md)                 |
-| Rust style and current formatter/lint behavior                         | [Rust code style](rust.md)                       |
-| TypeScript, React structure, constants, slots, or UI composition       | [TypeScript and React code style](typescript.md) |
+| When you are working on                                             | Read                                             |
+| ------------------------------------------------------------------- | ------------------------------------------------ |
+| Services, state ownership, dependency injection, or core/GUI split  | [Architecture and ownership](architecture.md)    |
+| Backend crate extraction and core/platform dependency direction     | [Backend packages](backend-packages.md)          |
+| Commands, frontend backend calls, HTTP capabilities, or events      | [Unified RPC](rpc.md)                            |
+| Tests, mocks, verification, or final review                         | [Testing and review](testing.md)                 |
+| Worktree selection, build prerequisites, or commits                 | [Development workflow](workflow.md)              |
+| Repository scripts, Deno tasks, tool dependencies and script layout | [Repository scripts](scripts.md)                 |
+| Rust style and current formatter/lint behavior                      | [Rust code style](rust.md)                       |
+| TypeScript, React structure, constants, slots, or UI composition    | [TypeScript and React code style](typescript.md) |
 
 Start with the [root README](../../README.md#development) for running the app and
 [CONTRIBUTING.md](../../CONTRIBUTING.md) for contribution setup. For frontend test
@@ -28,7 +28,7 @@ For package ownership, dependency directions, and source-only typechecking, see
 
 - Construct dependencies explicitly and keep long-lived mutable state with its actor owner.
 - Call application operations through `NyanpasuClient`; keep infrastructure behind adapters.
-- Keep `NyanpasuClient`, actors, and pure services free of new Tauri dependencies; they are moving to `nyanpasu-core`.
+- Keep `NyanpasuClient`, actors, and pure services free of new Tauri dependencies; application capabilities are moving to `nyanpasu-core`.
 - Use the unified RPC surface for application APIs on both desktop and HTTP transports.
 - Wait for real in-process RPC results; a caller leaving does not cancel owner-started work.
 - Keep changes focused, verify the intended behavior, and submit atomic commits.

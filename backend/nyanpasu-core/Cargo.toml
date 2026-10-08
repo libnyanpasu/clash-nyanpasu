@@ -61,12 +61,15 @@ tempfile = '3'
 [target.'cfg(windows)'.dependencies]
 winreg = '0.56'
 
-[dev-dependencies]
-mockall = '0.15'
-test-log = { workspace = true }
-tokio = { workspace = true, features = ['full', 'test-util'] }
+[target.'cfg(not(target_env = "musl"))'.dev-dependencies]
+# The desktop AES smoke test does not apply to generic router/musl targets.
 # Currently exercised only by the gxhash smoke test below. Every distributed
 # target now guarantees hardware AES (see ../../.cargo/config.toml; i686 was
 # dropped in #4908), so gxhash can graduate to a normal dependency once the
 # default HashMap hasher is migrated to it.
 gxhash = { workspace = true }
+
+[dev-dependencies]
+mockall = '0.15'
+test-log = { workspace = true }
+tokio = { workspace = true, features = ['full', 'test-util'] }

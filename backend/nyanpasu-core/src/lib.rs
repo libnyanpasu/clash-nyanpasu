@@ -13,7 +13,7 @@ pub mod tasks;
 /// target-feature flags configured in `.cargo/config.toml`. gxhash fails to
 /// compile without `+aes` (plus `+sse2` / `+neon`), so a passing test build
 /// here confirms the per-target rustflags are actually being applied.
-#[cfg(test)]
+#[cfg(all(test, not(target_env = "musl")))]
 mod gxhash_smoke {
     use gxhash::{HashMap as GxHashMap, HashMapExt};
 

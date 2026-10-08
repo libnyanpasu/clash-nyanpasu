@@ -16,7 +16,8 @@ use serde_json::Value;
 use tauri::Manager;
 use tokio::sync::broadcast;
 
-use crate::{client::NyanpasuClient, core::storage::Storage};
+use crate::client::NyanpasuClient;
+use nyanpasu_core::storage::Storage;
 
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
@@ -33,7 +34,7 @@ const EVENT_NAMES: &[&str] = &[
     <crate::core::actor_v2::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
     <crate::ipc::SchemeRequestReceivedEvent as tauri_specta::Event>::NAME,
     <crate::core::actor_v2::ServiceStatusChangedEvent as tauri_specta::Event>::NAME,
-    <crate::core::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
+    <crate::storage::StorageValueChangedEvent as tauri_specta::Event>::NAME,
     <crate::window::WindowMessageEvent as tauri_specta::Event>::NAME,
     "nyanpasu://mutation",
 ];

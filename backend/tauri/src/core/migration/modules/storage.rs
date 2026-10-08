@@ -1,8 +1,8 @@
 use super::super::{
     Ctx, MigrationCheckError, MigrationStep, ModuleMigrator, StepCheck, fs::try_exists,
 };
-use crate::core::storage::{Storage, WebStorage};
 use anyhow::Context as _;
+use nyanpasu_core::storage::{Storage, WebStorage};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml::Mapping;

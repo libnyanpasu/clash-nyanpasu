@@ -1,8 +1,10 @@
 use clap::Args;
 
-use crate::core::migration::{MigrationAdvice, Runner, current_version, registry};
 use colored::Colorize;
-use nyanpasu_core::backup::BackupError;
+use nyanpasu_core::{
+    backup::BackupError,
+    migration::{MigrationAdvice, Runner, current_version, registry},
+};
 use nyanpasu_paths::PathResolver;
 
 /// Process exit protocol for `clash-nyanpasu migrate` and its parent.

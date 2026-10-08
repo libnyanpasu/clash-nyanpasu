@@ -4,7 +4,6 @@ pub mod download;
 pub mod geo;
 pub mod logs;
 pub mod manager;
-pub mod migration;
 pub mod service;
 pub mod traffic;
 pub mod tray;

@@ -2241,7 +2241,7 @@ pub(crate) mod tests {
         use nyanpasu_core::format::Format as _;
 
         let mut content = Vec::new();
-        crate::core::migration::modules::application::ApplicationFormat::default()
+        nyanpasu_core::migration::modules::application::ApplicationFormat::default()
             .serialize(&mut content, config, None)
             .unwrap();
         std::fs::write(path, content).unwrap();
@@ -2291,7 +2291,7 @@ pub(crate) mod tests {
         use nyanpasu_core::format::Format as _;
 
         let mut content = Vec::new();
-        crate::core::migration::modules::clash_config::ClashConfigFormat::default()
+        nyanpasu_core::migration::modules::clash_config::ClashConfigFormat::default()
             .serialize(&mut content, config, None)
             .unwrap();
         std::fs::write(path, content).unwrap();
@@ -2624,7 +2624,7 @@ pub(crate) mod tests {
         let release = Arc::new(tokio::sync::Notify::new());
         let mut manager = nyanpasu_core::state::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
-            crate::core::migration::modules::application::ApplicationFormat,
+            nyanpasu_core::migration::modules::application::ApplicationFormat,
         >::builder()
         .config_path(temp_config_path(&dir, "application.yaml"))
         .assemble()

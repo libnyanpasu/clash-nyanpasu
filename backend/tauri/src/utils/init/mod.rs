@@ -1,7 +1,6 @@
-use crate::core::migration::modules::profiles::ProfilesFormat;
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
-use nyanpasu_core::format::Format;
+use nyanpasu_core::{format::Format, migration::modules::profiles::ProfilesFormat};
 use nyanpasu_paths::PathResolver;
 #[cfg(windows)]
 use runas::Command as RunasCommand;

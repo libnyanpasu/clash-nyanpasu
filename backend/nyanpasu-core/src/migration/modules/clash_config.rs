@@ -2,12 +2,12 @@ use super::super::{
     Ctx, DocumentSpec, MigrationCheckError, MigrationStep, ModuleKind, ModuleMigrator,
     fs::{read_document, write_document},
 };
+use crate::format::{Inspected, StampedDocument, StampedYamlFormat};
 use anyhow::{Context as _, bail};
 use nyanpasu_config::clash::config::ClashConfig;
-use nyanpasu_core::format::{Inspected, StampedDocument, StampedYamlFormat};
 use once_cell::sync::Lazy;
 use semver::Version;
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
 use std::path::Path;
 
 pub static MIGRATOR: ClashConfigMigrator = ClashConfigMigrator;
@@ -62,15 +62,13 @@ impl ModuleMigrator for ClashConfigMigrator {
 /// `typed_config` judges `clash-config.yaml` before this module runs, and
 /// repairs it from the older `clash.yaml`, so neither may read the file in the
 /// current shape alone.
-pub(in crate::core::migration) fn read_typed(
-    path: &Path,
-) -> Result<ClashConfig, MigrationCheckError> {
+pub(in crate::migration) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError> {
     let raw = std::fs::read_to_string(path).map_err(|source| MigrationCheckError::Io {
         path: path.to_path_buf(),
         source,
     })?;
     let (revision, mut payload) =
-        match nyanpasu_core::format::inspect(&raw).map_err(|source| MigrationCheckError::Stamp {
+        match crate::format::inspect(&raw).map_err(|source| MigrationCheckError::Stamp {
             path: path.to_path_buf(),
             source,
         })? {
@@ -82,9 +80,11 @@ pub(in crate::core::migration) fn read_typed(
             MigrationCheckError::Unrecognized(format!("{}: {error:#}", path.display()))
         })?;
     }
-    serde_yaml::from_value(Value::Mapping(payload)).map_err(|source| MigrationCheckError::Parse {
-        path: path.to_path_buf(),
-        source,
+    serde_yaml_ng::from_value(Value::Mapping(payload)).map_err(|source| {
+        MigrationCheckError::Parse {
+            path: path.to_path_buf(),
+            source,
+        }
     })
 }
 
@@ -148,9 +148,7 @@ fn manage_guard_fields(payload: &mut Mapping) -> anyhow::Result<()> {
 /// mapping itself, which the legacy conversion shares. A field already in the
 /// managed shape is left alone: `typed_config` may have written the file at
 /// head before this step runs on it.
-pub(in crate::core::migration) fn manage_override_fields(
-    overrides: &mut Mapping,
-) -> anyhow::Result<()> {
+pub(in crate::migration) fn manage_override_fields(overrides: &mut Mapping) -> anyhow::Result<()> {
     for key in MANAGEABLE_GUARD_KEYS {
         let Some(value) = overrides.get_mut(key) else {
             continue;
@@ -174,7 +172,7 @@ mod tests {
     use super::*;
 
     fn payload(src: &str) -> Mapping {
-        serde_yaml::from_str(src).unwrap()
+        serde_yaml_ng::from_str(src).unwrap()
     }
 
     #[test]

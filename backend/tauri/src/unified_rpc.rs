@@ -1001,7 +1001,7 @@ mod tests {
         };
         let mut application = Vec::new();
         nyanpasu_core::format::Format::serialize(
-            &crate::core::migration::modules::application::ApplicationFormat::default(),
+            &nyanpasu_core::migration::modules::application::ApplicationFormat::default(),
             &mut application,
             &config,
             None,

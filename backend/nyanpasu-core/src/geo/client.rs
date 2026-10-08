@@ -24,12 +24,6 @@ impl Drop for Inner {
 }
 
 impl GeoIndexClient {
-    #[cfg(test)]
-    pub(crate) async fn stop_for_test(&self) -> Result<()> {
-        self.0.actor.stop_and_wait(None, None).await?;
-        Ok(())
-    }
-
     pub async fn spawn(
         args: GeoIndexArgs,
         shutdown: CancellationToken,
@@ -37,7 +31,7 @@ impl GeoIndexClient {
     ) -> Result<Self> {
         let (published, index) = watch::channel(None);
         let (actor, _) = Actor::spawn(None, GeoIndexActor, (args, published)).await?;
-        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor, index })))
     }
 

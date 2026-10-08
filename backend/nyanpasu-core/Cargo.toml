@@ -12,6 +12,11 @@ nyanpasu-utils = { workspace = true }
 runas = { workspace = true }
 futures-util = '0.3'
 nyanpasu-config = { path = '../nyanpasu-config' }
+nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
+nyanpasu-geodata = { path = '../nyanpasu-geodata' }
+memmap2 = '0.9'
+notify-debouncer-full = '0.7.0'
+tracing-attributes = '0.1'
 nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-helper = { path = '../nyanpasu-helper' }
 boa_utils = { path = '../boa_utils' }

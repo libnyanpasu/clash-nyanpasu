@@ -1047,7 +1047,7 @@ pub async fn clash_api_get_proxy_delay(
 #[specta::specta]
 pub async fn clash_api_get_configs(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::ClashConfig> {
+) -> Result<nyanpasu_core::clash::api::ClashConfig> {
     Ok(client.clash_configs().await?)
 }
 
@@ -1066,7 +1066,7 @@ pub async fn clash_api_delete_connections(
 #[specta::specta]
 pub async fn clash_api_get_version(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::ClashVersion> {
+) -> Result<nyanpasu_core::clash::api::ClashVersion> {
     Ok(client.clash_version().await?)
 }
 
@@ -1075,7 +1075,7 @@ pub async fn clash_api_get_version(
 #[specta::specta]
 pub async fn clash_api_get_rules(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::RulesRes> {
+) -> Result<nyanpasu_core::clash::api::RulesRes> {
     Ok(client.clash_rules().await?)
 }
 
@@ -1084,7 +1084,7 @@ pub async fn clash_api_get_rules(
 #[specta::specta]
 pub async fn clash_api_get_providers_rules(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::ProvidersRulesRes> {
+) -> Result<nyanpasu_core::clash::api::ProvidersRulesRes> {
     Ok(client.clash_rule_providers().await?)
 }
 
@@ -1124,7 +1124,7 @@ pub async fn clash_api_get_providers_proxies(
 #[specta::specta]
 pub async fn get_proxies(
     client: State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::proxies::Proxies> {
+) -> Result<nyanpasu_core::clash::proxies::Proxies> {
     Ok(client.get_proxies().await?)
 }
 
@@ -1133,7 +1133,7 @@ pub async fn get_proxies(
 #[specta::specta]
 pub async fn mutate_proxies(
     client: State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::proxies::Proxies> {
+) -> Result<nyanpasu_core::clash::proxies::Proxies> {
     Ok(client.refresh_proxies().await?)
 }
 
@@ -1603,7 +1603,7 @@ pub fn clear_storage(storage: State<'_, Storage>) -> Result {
 #[specta::specta]
 pub async fn get_clash_ws_snapshot(
     client: tauri::State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::ws::ClashWsSnapshot> {
+) -> Result<nyanpasu_core::clash::ws::ClashWsSnapshot> {
     Ok(client.clash_ws_snapshot().await?)
 }
 
@@ -1724,9 +1724,9 @@ pub async fn query_traffic_active_connection_ids(
 #[specta::specta]
 pub async fn set_clash_ws_recording(
     client: tauri::State<'_, NyanpasuClient>,
-    kind: crate::core::clash::ws::ClashWsKind,
+    kind: nyanpasu_core::clash::ws::ClashWsKind,
     enabled: bool,
-) -> Result<crate::core::clash::ws::ClashWsRecording> {
+) -> Result<nyanpasu_core::clash::ws::ClashWsRecording> {
     Ok(client.set_clash_ws_recording(kind, enabled).await?)
 }
 
@@ -1735,7 +1735,7 @@ pub async fn set_clash_ws_recording(
 #[specta::specta]
 pub async fn clear_clash_ws_history(
     client: tauri::State<'_, NyanpasuClient>,
-    kind: crate::core::clash::ws::ClashWsKind,
+    kind: nyanpasu_core::clash::ws::ClashWsKind,
 ) -> Result {
     client.clear_clash_ws_history(kind).await?;
     Ok(())
@@ -1753,7 +1753,7 @@ pub async fn subscribe_clash_connection_details(
         '_,
         crate::core::clash::connection_details::ConnectionDetailSubscriptions,
     >,
-    on_frame: tauri::ipc::Channel<crate::core::clash::ws::ClashConnectionDetails>,
+    on_frame: tauri::ipc::Channel<nyanpasu_core::clash::ws::ClashConnectionDetails>,
 ) -> Result<crate::core::clash::connection_details::SubscriptionId> {
     let receiver = client.subscribe_clash_connection_details();
     let parent = client.shutdown_child_token();

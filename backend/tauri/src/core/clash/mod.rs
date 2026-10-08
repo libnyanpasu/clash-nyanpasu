@@ -1,9 +1,9 @@
+use nyanpasu_core::clash::ws::{ClashWsEventPayload, ClashWsUpdate};
 use tauri_specta::Event;
 
-pub mod api;
+use crate::core::status_events::ClashWsEvent;
+
 pub mod connection_details;
-pub mod proxies;
-pub mod ws;
 
 // Tauri owns only event-forwarding tasks; stream state lives in StreamsActor.
 struct StreamEventBridge(Vec<tauri::async_runtime::JoinHandle<()>>);
@@ -42,9 +42,9 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
             let event = match ws_rx.recv().await {
                 Ok(event) => event,
                 Err(RecvError::Lagged(_)) => match client.clash_ws_snapshot().await {
-                    Ok(snapshot) => ws::ClashWsEvent {
+                    Ok(snapshot) => ClashWsEventPayload {
                         sequence: snapshot.sequence,
-                        update: ws::ClashWsUpdate::Reset(Box::new(snapshot)),
+                        update: ClashWsUpdate::Reset(Box::new(snapshot)),
                     },
                     Err(error) => {
                         tracing::warn!(%error, "failed to resync Clash streams");
@@ -53,7 +53,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
                 },
                 Err(RecvError::Closed) => break,
             };
-            if let Err(error) = event.emit(&app) {
+            if let Err(error) = ClashWsEvent(event).emit(&app) {
                 tracing::warn!(%error, "failed to emit Clash stream event");
             }
         }

@@ -2,7 +2,7 @@
 //! Subscribe/unsubscribe are UnifiedRpc mutations; only frame delivery uses
 //! a native Channel. Browser delivery uses the dedicated SSE adapter.
 //! `StreamsActor` only publishes frames on a `watch` channel (see
-//! `ws::StreamsClient::subscribe_connection_details`); this module owns each
+//! `nyanpasu_core::clash::ws::StreamsClient::subscribe_connection_details`); this module owns each
 //! subscription's lifetime, since `Channel::send` cannot detect a reloaded
 //! or closed webview on its own (design §1.3).
 use std::{
@@ -17,7 +17,7 @@ use tauri::Manager;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use super::ws::ClashConnectionDetails;
+use nyanpasu_core::clash::ws::ClashConnectionDetails;
 
 /// Identifies one `subscribe_clash_connection_details` call, for a later
 /// `unsubscribe_clash_connection_details`.

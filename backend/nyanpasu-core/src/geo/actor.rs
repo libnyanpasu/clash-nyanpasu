@@ -6,7 +6,7 @@ use ractor::{Actor, ActorProcessingErr, ActorRef};
 use tokio::{sync::watch, task::JoinHandle};
 
 use super::ports::{CountryIndexSource, GeodataMode, IndexKey, Loaded, OnChange};
-use nyanpasu_core::control::CoreClient;
+use crate::control::CoreClient;
 
 /// How long to wait before asking a core that did not answer again.
 const RETRY: Duration = Duration::from_secs(1);
@@ -108,7 +108,7 @@ impl State {
             return;
         };
         let (source, current) = (self.source.clone(), self.key.clone());
-        let loaded = nyanpasu_core::tasks::blocking::join(
+        let loaded = crate::tasks::blocking::join(
             tokio::task::spawn_blocking(move || source.load(mode, current)).await,
         );
         match loaded {

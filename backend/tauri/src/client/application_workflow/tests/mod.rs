@@ -14,11 +14,11 @@ use super::{
     },
     *,
 };
-use crate::client::core_lifecycle::ports::{
-    BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
-};
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_core::runtime::binary::{
+    BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
+};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},

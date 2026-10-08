@@ -14,15 +14,14 @@ use std::{
 
 use camino::{Utf8Path, Utf8PathBuf};
 use nyanpasu_config::{application::ClashCore, profile::ProfileId};
+use nyanpasu_core::error::ErrorPath;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
 use crate::{
-    core::actor_v2::api::ApiError,
-    enhance::PostProcessingOutput,
-    state::profiles::{ErrorPath, ProfilesError},
+    core::actor_v2::api::ApiError, enhance::PostProcessingOutput, state::profiles::ProfilesError,
 };
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";

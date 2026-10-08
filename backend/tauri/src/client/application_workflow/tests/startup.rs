@@ -65,17 +65,17 @@ use crate::{
         runtime,
         tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
     },
-    core::{
-        actor_v2::{
-            CoreClient,
-            endpoint::{
-                ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
-                CoreSubmission, EndpointHandle, ExecutionHost,
-            },
-            service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
+    core::migration::modules::application::ApplicationFormat,
+};
+use nyanpasu_core::{
+    control::{
+        CoreClient,
+        endpoint::{
+            ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
+            CoreSubmission, EndpointHandle, ExecutionHost,
         },
-        migration::modules::application::ApplicationFormat,
     },
+    service::actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
 };
 
 const STOPPED: CoreStateDetail = CoreStateDetail::Stopped { reason: None };
@@ -91,13 +91,21 @@ pub(super) struct HostEndpoint {
     /// Holds the next stop until `release`, as a host slow to confirm one.
     pub(super) hold_stop: AtomicBool,
     pub(super) release: Notify,
+    pub(super) stop_entered: Notify,
+    pub(super) hold_status: AtomicBool,
+    pub(super) status_entered: Notify,
+    pub(super) status_release: Notify,
+    pub(super) gated_reads: AtomicUsize,
+    pub(super) fail_status: AtomicBool,
+    pub(super) failed_read: Notify,
+    pub(super) failed_reads: AtomicUsize,
     /// Loses the next reconcile's result until `deliver`.
     lose_reconcile: AtomicBool,
     lost: StdMutex<Vec<OperationId>>,
 }
 
 impl HostEndpoint {
-    fn new(name: &'static str, host: ExecutionHost, log: Log) -> Arc<Self> {
+    pub(super) fn new(name: &'static str, host: ExecutionHost, log: Log) -> Arc<Self> {
         let delegate = TestControlEndpoint::succeeding_on(host);
         delegate.set_status(Some(STOPPED), None);
         Arc::new(Self {
@@ -106,6 +114,14 @@ impl HostEndpoint {
             log,
             hold_stop: AtomicBool::new(false),
             release: Notify::new(),
+            stop_entered: Notify::new(),
+            hold_status: AtomicBool::new(false),
+            status_entered: Notify::new(),
+            status_release: Notify::new(),
+            gated_reads: AtomicUsize::new(0),
+            fail_status: AtomicBool::new(false),
+            failed_read: Notify::new(),
+            failed_reads: AtomicUsize::new(0),
             lose_reconcile: AtomicBool::new(false),
             lost: StdMutex::new(Vec::new()),
         })
@@ -145,6 +161,7 @@ impl ControlEndpoint for HostEndpoint {
             CoreCommand::Shutdown => "shutdown",
         };
         if kind == "stop" && self.hold_stop.swap(false, Ordering::SeqCst) {
+            self.stop_entered.notify_one();
             self.release.notified().await;
         }
         if kind == "reconcile" && self.lose_reconcile.swap(false, Ordering::SeqCst) {
@@ -166,6 +183,22 @@ impl ControlEndpoint for HostEndpoint {
         self.delegate.wait_operation(id, timeout).await
     }
     async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
+        if self.fail_status.load(Ordering::SeqCst) {
+            self.failed_reads.fetch_add(1, Ordering::SeqCst);
+            // Ready error: the current-thread pump casts EndpointDown before
+            // the notified driver can enqueue its typed FIFO barrier.
+            self.failed_read.notify_one();
+            return Err(CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "scripted: the service host stopped answering",
+                true,
+            ));
+        }
+        if self.hold_status.swap(false, Ordering::SeqCst) {
+            self.gated_reads.fetch_add(1, Ordering::SeqCst);
+            self.status_entered.notify_one();
+            self.status_release.notified().await;
+        }
         self.delegate.status().await
     }
 }
@@ -208,14 +241,17 @@ impl FakeDaemon {
 impl ServiceHostAdapter for FakeDaemon {
     async fn probe(
         &self,
-    ) -> Result<StatusInfo<'static>, crate::core::service::control::ServiceCommandError> {
+    ) -> Result<StatusInfo<'static>, nyanpasu_core::service::control::ServiceCommandError> {
         let probe = self.probes.fetch_add(1, Ordering::SeqCst);
         if self.unreadable.load(Ordering::SeqCst)
             || probe >= self.unreadable_from.load(Ordering::SeqCst)
         {
-            return Err(crate::core::service::control::ServiceCommandError::mock(
-                "scripted: the daemon's status cannot be read",
-            ));
+            return Err(
+                nyanpasu_core::service::control::ServiceCommandError::RunElevated {
+                    command: nyanpasu_core::service::control::ServiceCommand::Start,
+                    source: std::io::Error::other("scripted: the daemon's status cannot be read"),
+                },
+            );
         }
         let state = *self.state.lock().unwrap();
         let server = match state {
@@ -260,7 +296,7 @@ impl ServiceHostAdapter for FakeDaemon {
             server,
         })
     }
-    async fn install(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn install(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         if self.hold_install.load(Ordering::SeqCst) {
             self.held.notify_one();
             self.release.notified().await;
@@ -268,19 +304,23 @@ impl ServiceHostAdapter for FakeDaemon {
         self.installs.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn uninstall(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn uninstall(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         *self.state.lock().unwrap() = DaemonState::NotInstalled;
         Ok(())
     }
-    async fn start_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn start_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         self.starts.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    async fn stop_daemon(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn stop_daemon(
+        &self,
+    ) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         *self.state.lock().unwrap() = DaemonState::Stopped;
         Ok(())
     }
-    async fn update(&self) -> Result<(), crate::core::service::control::ServiceCommandError> {
+    async fn update(&self) -> Result<(), nyanpasu_core::service::control::ServiceCommandError> {
         if self.hold_update.load(Ordering::SeqCst) {
             self.held.notify_one();
             self.release.notified().await;
@@ -304,8 +344,6 @@ pub(super) struct Setup {
     pub(super) clash: ClashConfig,
     pub(super) version: &'static str,
     pub(super) hold_update: bool,
-    pub(super) command_timeout: Duration,
-    pub(super) handoff_budget: Option<Duration>,
     /// The router already drives the service host when the workflow starts,
     /// as after a handoff an earlier command made.
     pub(super) owner_on_service: bool,
@@ -323,8 +361,6 @@ impl Default for Setup {
             clash: crate::client::tests::test_clash_config(),
             version: "2.0.0",
             hold_update: false,
-            command_timeout: Duration::from_secs(100),
-            handoff_budget: None,
             owner_on_service: false,
             foreign_daemon: false,
         }
@@ -350,6 +386,13 @@ pub(super) struct Graph {
 }
 
 pub(super) async fn graph(setup: Setup) -> Graph {
+    graph_with_daemon(setup, None).await
+}
+
+async fn graph_with_daemon(
+    setup: Setup,
+    daemon_ready: Option<tokio::sync::oneshot::Sender<Arc<FakeDaemon>>>,
+) -> Graph {
     let dir = tempfile::tempdir().unwrap();
     let log = Log::default();
     let local = HostEndpoint::new("local", ExecutionHost::Local, log.clone());
@@ -381,14 +424,17 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         starts: AtomicUsize::new(0),
         updates: AtomicUsize::new(0),
     });
+    if let Some(ready) = daemon_ready {
+        assert!(ready.send(daemon.clone()).is_ok());
+    }
     let core = CoreClient::spawn(local.clone()).await.unwrap();
     if setup.owner_on_service {
-        core.change_host(service_host.clone()).await.unwrap();
+        core.change_host_from(service_host.clone(), false)
+            .await
+            .unwrap();
         log.lock().unwrap().clear();
     }
-    let service = ServiceClient::spawn_bounded(daemon.clone(), 0, setup.command_timeout)
-        .await
-        .unwrap();
+    let service = ServiceClient::spawn(daemon.clone(), 0).await.unwrap();
     let application = application_manager(
         temp_path(&dir, "application.yaml"),
         NyanpasuAppConfig {
@@ -420,10 +466,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
-            core: match setup.handoff_budget {
-                Some(budget) => core.clone().impatient(budget),
-                None => core.clone(),
-            },
+            core: core.clone(),
             service: service.clone(),
             builder,
             validator: Arc::new(adapters::CoreCheckValidator::new(core.clone(), paths)),
@@ -1488,14 +1531,11 @@ async fn a_refused_first_startup_publishes_once_unless_the_application_is_closin
 /// latest committed target. A target committed after that receipt and never
 /// applied is applied from a stop, not dropped; when the receipt is the
 /// committed target, nothing is submitted.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn recovery_keeps_a_running_owner_only_when_it_runs_the_committed_target() {
+    let _clock = crate::client::jobs::explicit_test_time();
     for outstanding in [true, false] {
-        let mut g = graph(Setup {
-            command_timeout: Duration::from_millis(50),
-            ..Setup::default()
-        })
-        .await;
+        let mut g = graph(Setup::default()).await;
         assert_eq!(g.start().await.outcome, StartupOutcome::Ready);
         if outstanding {
             // Committed, deferred, and never applied: the core refused it.
@@ -1517,8 +1557,13 @@ async fn recovery_keeps_a_running_owner_only_when_it_runs_the_committed_target()
         // A lifecycle command whose helper outlives its bound isolates the
         // domain while the runtime stays on its receipt.
         g.daemon.hold_install.store(true, Ordering::SeqCst);
-        assert!(g.client.install_service().await.is_err());
+        let install = {
+            let client = g.client.clone();
+            tokio::spawn(async move { client.install_service().await })
+        };
         g.daemon.held.notified().await;
+        tokio::time::advance(Duration::from_millis(100_100)).await;
+        assert!(install.await.unwrap().is_err());
         assert!(g.isolated());
         let submitted = g.log().len();
 
@@ -1981,19 +2026,25 @@ async fn a_stop_after_a_waiting_explicit_start_leaves_only_the_ownership_proof()
 /// decides nothing past it, whichever host is asked for: nothing is
 /// submitted and nothing adopted until the update ends, and the next attempt
 /// after that is Ready.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_startup_update_still_running_holds_back_submission_and_adoption() {
+    let _clock = crate::client::jobs::explicit_test_time();
     for service_mode in [true, false] {
-        let g = graph(Setup {
-            service_mode,
-            daemon: DaemonState::Running,
-            version: "1.4.5",
-            hold_update: true,
-            command_timeout: Duration::from_millis(50),
-            ..Setup::default()
-        })
-        .await;
-        g.daemon.held.notified().await;
+        let (ready, daemon_ready) = tokio::sync::oneshot::channel();
+        let pending_graph = tokio::spawn(graph_with_daemon(
+            Setup {
+                service_mode,
+                daemon: DaemonState::Running,
+                version: "1.4.5",
+                hold_update: true,
+                ..Setup::default()
+            },
+            Some(ready),
+        ));
+        let daemon = daemon_ready.await.unwrap();
+        daemon.held.notified().await;
+        tokio::time::advance(Duration::from_millis(100_100)).await;
+        let g = pending_graph.await.unwrap();
         *g.daemon.version.lock().unwrap() = "2.0.0";
 
         let report = g.start().await;

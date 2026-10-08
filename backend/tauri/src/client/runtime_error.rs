@@ -12,17 +12,15 @@ use serde::Serialize;
 use snafu::Snafu;
 
 use super::application_workflow::error::RuntimePreparationError;
-use crate::{
-    client::{
-        application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
-        core_version::CoreVersionError,
-        ports::PortResolveError,
-        runtime::PublishRuntimeError,
-    },
-    core::{
-        actor_v2::{endpoint::ExecutionHost, local_host::CoreSpecError},
-        service::control::ServiceCommandError,
-    },
+use crate::client::{
+    application_workflow::{mutation::EvidenceGap, ports::RuntimeCheckUnavailable},
+    core_version::CoreVersionError,
+    ports::PortResolveError,
+    runtime::PublishRuntimeError,
+};
+use nyanpasu_core::{
+    control::{endpoint::ExecutionHost, local_host::CoreSpecError},
+    service::control::ServiceCommandError,
 };
 
 /// The wire mirror of a [`CoreError`], which is a foreign type without serde.

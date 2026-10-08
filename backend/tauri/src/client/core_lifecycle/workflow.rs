@@ -22,14 +22,16 @@ use super::{
     Command, Output,
     ports::{PreparedRuntime, RuntimePreparationPort},
 };
-use crate::core::actor_v2::{
-    EndpointConnectivity, HandoffReport,
-    endpoint::{ExecutionHost, wire_core_type_to_kind},
-    facade::{
-        CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
-        StopReport, UncertainReconcile,
+use nyanpasu_core::{
+    control::{
+        EndpointConnectivity, HandoffReport,
+        endpoint::{ExecutionHost, wire_core_type_to_kind},
+        facade::{
+            CoreFacade, HostChangeFailure, ReconcileReport, ReconcileResult, RolledBackReport,
+            StopReport, UncertainReconcile,
+        },
     },
-    service_actor::ServicePhase,
+    service::actor::ServicePhase,
 };
 
 pub(in crate::client) struct CoreLifecycleWorkflow {
@@ -502,7 +504,7 @@ impl CoreLifecycleWorkflow {
         &mut self,
         host: ExecutionHost,
         converge: bool,
-    ) -> Result<HandoffReport, crate::core::actor_v2::facade::HostChangeFailure> {
+    ) -> Result<HandoffReport, nyanpasu_core::control::facade::HostChangeFailure> {
         let report = if host == ExecutionHost::Service && !converge {
             self.core.adopt_service_host().await?
         } else {
@@ -574,7 +576,7 @@ impl CoreLifecycleWorkflow {
         &mut self,
         prepared: PreparedRuntime,
         preparation: &dyn RuntimePreparationPort,
-        expected: &crate::core::actor_v2::CoreStatusProjection,
+        expected: &nyanpasu_core::control::CoreStatusProjection,
     ) -> Result<RuntimeSubmission, RuntimeError> {
         let PreparedRuntime {
             snapshot,

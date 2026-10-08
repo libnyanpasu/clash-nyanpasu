@@ -259,7 +259,7 @@ pub(crate) struct AppliedCandidate {
     pub receipt: Arc<RuntimeApplyReceipt>,
     pub product: Arc<RuntimeSnapshot>,
     /// What the core answered, for an explicit start that reports it.
-    pub report: Box<crate::core::actor_v2::facade::ReconcileReport>,
+    pub report: Box<nyanpasu_core::control::facade::ReconcileReport>,
 }
 
 /// How the critical part of one mutation ended (v2 §4.3).

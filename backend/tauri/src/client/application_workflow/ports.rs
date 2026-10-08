@@ -1,6 +1,7 @@
 use super::{super::runtime, error::RuntimePreparationError};
-use crate::{client::runtime::PublishRuntimeError, core::actor_v2::local_host::CoreSpecError};
+use crate::client::runtime::PublishRuntimeError;
 use async_trait::async_trait;
+use nyanpasu_core::control::local_host::CoreSpecError;
 use std::sync::Arc;
 
 #[async_trait]
@@ -32,7 +33,7 @@ pub(in crate::client) trait RuntimeBuildPort: Send + Sync + 'static {
 /// to consume the identical to-be-committed bytes.
 pub(in crate::client) struct RuntimeCheckRequest<'a> {
     pub core_spec: nyanpasu_core_manager::CoreSpec,
-    pub intent: &'a crate::core::actor_v2::intent::RuntimeIntent,
+    pub intent: &'a nyanpasu_core::control::intent::RuntimeIntent,
 }
 
 /// Why no check ran. Every variant is a reason, never a verdict: an absent
@@ -44,7 +45,7 @@ pub enum RuntimeCheckUnavailable {
     NoEndpoint { reason: String },
     /// The host owning the runtime exposes no check for this request.
     HostUnsupported {
-        host: crate::core::actor_v2::endpoint::ExecutionHost,
+        host: nyanpasu_core::control::endpoint::ExecutionHost,
         reason: String,
     },
     /// The host reads the candidate from disk and it could not be staged.

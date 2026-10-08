@@ -12,10 +12,8 @@ use seahash::SeaHasher;
 use tokio::{sync::watch, time::Instant};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::{
-    actor_v2::{CoreClient, api::ApiClient},
-    clash::proxies::Proxies,
-};
+use super::clash::proxies::Proxies;
+use nyanpasu_core::control::{CoreClient, api::ApiClient};
 
 struct Snapshot {
     api: ApiClient,
@@ -555,7 +553,7 @@ impl ProxiesClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::actor_v2::api::tests::{endpoint, server};
+    use crate::core::test_support::{endpoint, server};
     use axum::{
         Json, Router,
         extract::{Path, State as HttpState},
@@ -716,7 +714,7 @@ mod tests {
     async fn setup() -> (
         ProxiesClient,
         CoreClient,
-        Arc<crate::core::actor_v2::api::tests::Endpoint>,
+        Arc<crate::core::test_support::Endpoint>,
         Arc<Fixture>,
         tokio::task::JoinHandle<()>,
     ) {

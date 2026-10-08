@@ -884,7 +884,7 @@ async fn core_log_level_reaches_only_the_streams_owner() {
     .await
     .unwrap();
     let core_logs = crate::core::test_support::core_logs_client().await;
-    let streams = crate::core::clash::ws::StreamsClient::spawn(
+    let streams = nyanpasu_core::clash::ws::StreamsClient::spawn(
         core,
         core_logs.clone(),
         LogLevel::Info,

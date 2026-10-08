@@ -1,22 +1,21 @@
 //! Actor-owned Clash subscriptions. Transport and credentials come only from CoreClient.
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
-use anyhow::{Context, Result};
-use nyanpasu_config::clash::config::overrides::LogLevel;
-use nyanpasu_core::connections::{
+use crate::connections::{
     ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionRates,
 };
+use anyhow::{Context, Result};
+use nyanpasu_config::clash::config::overrides::LogLevel;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri_specta::Event;
 use tokio::{
     sync::{broadcast, watch},
     task::JoinHandle,
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use nyanpasu_core::control::{
+use crate::control::{
     CoreClient,
     api::{ApiClient, ApiError},
 };
@@ -135,8 +134,8 @@ pub struct ClashWsSnapshot {
     pub memory: Vec<ClashWsMemory>,
 }
 
-#[derive(Debug, Clone, Type, Serialize, Deserialize, Event)]
-pub struct ClashWsEvent {
+#[derive(Debug, Clone, Type, Serialize, Deserialize)]
+pub struct ClashWsEventPayload {
     pub sequence: u64,
     pub update: ClashWsUpdate,
 }
@@ -254,12 +253,12 @@ enum Message {
 }
 struct Args {
     core: CoreClient,
-    logs: nyanpasu_core::logs::CoreLogsClient,
+    logs: crate::logs::CoreLogsClient,
     /// The capture level, replaced by `SetLogLevel`.
     log_level: LogLevel,
     shutdown: CancellationToken,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
-    events: broadcast::Sender<ClashWsEvent>,
+    events: broadcast::Sender<ClashWsEventPayload>,
     details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
 }
@@ -299,7 +298,7 @@ impl State {
     }
     fn emit(&mut self, update: ClashWsUpdate) {
         self.sequence += 1;
-        let _ = self.args.events.send(ClashWsEvent {
+        let _ = self.args.events.send(ClashWsEventPayload {
             sequence: self.sequence,
             update,
         });
@@ -330,7 +329,7 @@ impl State {
             .connections
             .send(ClashConnectionsConnectorEvent::Update(Default::default()));
         self.sequence += 1;
-        let _ = self.args.events.send(ClashWsEvent {
+        let _ = self.args.events.send(ClashWsEventPayload {
             sequence: self.sequence,
             update: ClashWsUpdate::Reset(Box::new(self.snapshot())),
         });
@@ -423,7 +422,7 @@ impl State {
                     && let Some(api) = &self.api
                 {
                     let projection = self.args.core.status();
-                    let source = nyanpasu_core::logs::CoreLogSource {
+                    let source = crate::logs::CoreLogSource {
                         capture: format!(
                             "{}:{:?}:{}",
                             self.capture_prefix,
@@ -440,7 +439,7 @@ impl State {
                     let _ = self
                         .args
                         .logs
-                        .append(nyanpasu_core::logs::CoreLogRecord {
+                        .append(crate::logs::CoreLogRecord {
                             source,
                             received_at: now.timestamp_millis(),
                             log_type: sample.level.as_str().to_owned(),
@@ -698,7 +697,7 @@ impl Actor for StreamsActor {
                     && let Some(snapshot) = projection.snapshot
                     && matches!(
                         projection.connectivity,
-                        nyanpasu_core::control::EndpointConnectivity::Connected
+                        crate::control::EndpointConnectivity::Connected
                     )
                     && matches!(
                         snapshot.state,
@@ -814,9 +813,9 @@ pub struct StreamsClient(Arc<Inner>);
 struct Inner {
     actor: ActorRef<Message>,
     #[cfg(test)]
-    logs: nyanpasu_core::logs::CoreLogsClient,
+    logs: crate::logs::CoreLogsClient,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
-    events: broadcast::Sender<ClashWsEvent>,
+    events: broadcast::Sender<ClashWsEventPayload>,
     details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
 }
@@ -828,7 +827,7 @@ impl Drop for Inner {
 impl StreamsClient {
     pub async fn spawn(
         core: CoreClient,
-        logs: nyanpasu_core::logs::CoreLogsClient,
+        logs: crate::logs::CoreLogsClient,
         log_level: LogLevel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
@@ -852,7 +851,7 @@ impl StreamsClient {
             },
         )
         .await?;
-        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner {
             actor,
             #[cfg(test)]
@@ -902,7 +901,7 @@ impl StreamsClient {
     pub fn subscribe(&self) -> broadcast::Receiver<ClashConnectionsConnectorEvent> {
         self.0.connections.subscribe()
     }
-    pub fn subscribe_ws(&self) -> broadcast::Receiver<ClashWsEvent> {
+    pub fn subscribe_ws(&self) -> broadcast::Receiver<ClashWsEventPayload> {
         self.0.events.subscribe()
     }
     /// The latest connection-detail frame, kept only while at least one
@@ -926,13 +925,13 @@ impl StreamsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::test_support::{endpoint, server};
+    use crate::control::api::tests::{endpoint, server};
     use axum::{Router, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
 
     async fn idle(ws: WebSocketUpgrade) -> impl IntoResponse {
         ws.on_upgrade(|mut socket| async move { while socket.recv().await.is_some() {} })
     }
-    async fn connected(events: &mut broadcast::Receiver<ClashWsEvent>) {
+    async fn connected(events: &mut broadcast::Receiver<ClashWsEventPayload>) {
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
                 if matches!(
@@ -962,7 +961,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::core::test_support::core_logs_client().await,
+            crate::logs::CoreLogsClient::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -996,7 +995,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::core::test_support::core_logs_client().await,
+            crate::logs::CoreLogsClient::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1096,7 +1095,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core,
-            crate::core::test_support::core_logs_client().await,
+            crate::logs::CoreLogsClient::test_client().await,
             LogLevel::Info,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1168,7 +1167,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core,
-            crate::core::test_support::core_logs_client().await,
+            crate::logs::CoreLogsClient::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1203,8 +1202,8 @@ mod tests {
         let page = client
             .0
             .logs
-            .query(nyanpasu_core::logs::CoreLogQuery {
-                direction: nyanpasu_core::logs::CoreLogDirection::Latest,
+            .query(crate::logs::CoreLogQuery {
+                direction: crate::logs::CoreLogDirection::Latest,
                 cursor: None,
                 level: None,
                 keyword: String::new(),
@@ -1243,7 +1242,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::core::test_support::core_logs_client().await,
+            crate::logs::CoreLogsClient::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1269,7 +1268,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::core::test_support::core_logs_client().await,
+            crate::logs::CoreLogsClient::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1308,7 +1307,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::core::test_support::core_logs_client().await,
+            crate::logs::CoreLogsClient::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1342,7 +1341,7 @@ mod tests {
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
         let client = StreamsClient::spawn(
             core.clone(),
-            crate::core::test_support::core_logs_client().await,
+            crate::logs::CoreLogsClient::test_client().await,
             LogLevel::Debug,
             CancellationToken::new(),
             &TaskTracker::new(),
@@ -1490,8 +1489,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let token = CancellationToken::new();
         let tasks = TaskTracker::new();
-        let logs = nyanpasu_core::logs::CoreLogsClient::spawn(
-            Box::new(nyanpasu_core::logs::RedbCoreLogStore::open(directory.path().into()).unwrap()),
+        let logs = crate::logs::CoreLogsClient::spawn(
+            Box::new(crate::logs::RedbCoreLogStore::open(directory.path().into()).unwrap()),
             Default::default(),
             token.clone(),
             &tasks,

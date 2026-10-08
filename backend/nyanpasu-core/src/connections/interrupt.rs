@@ -1,9 +1,9 @@
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 
-use nyanpasu_core::control::api::{ApiClient, ApiError};
+use crate::control::api::{ApiClient, ApiError};
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum ConnectionScope {
+pub enum ConnectionScope {
     All,
     ProxyGroup { name: String },
 }
@@ -18,7 +18,7 @@ impl ConnectionScope {
     }
 }
 
-pub(crate) async fn interrupt_connections(
+pub async fn interrupt_connections(
     source: &ApiClient,
     scope: &ConnectionScope,
 ) -> Result<(), ApiError> {

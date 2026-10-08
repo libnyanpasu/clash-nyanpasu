@@ -28,7 +28,7 @@ pub struct RpcDependencies {
 
 const EVENT_NAMES: &[&str] = &[
     <crate::client::app_update::AppUpdateStateChanged as tauri_specta::Event>::NAME,
-    <crate::core::clash::ws::ClashWsEvent as tauri_specta::Event>::NAME,
+    <crate::core::status_events::ClashWsEvent as tauri_specta::Event>::NAME,
     <crate::core::status_events::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
     <crate::core::status_events::CoreStatusChangedEvent as tauri_specta::Event>::NAME,
@@ -343,7 +343,7 @@ async fn http_connection_details(State(rpc): State<UnifiedRpc>) -> impl IntoResp
 
 fn connection_detail_events(
     receiver: tokio::sync::watch::Receiver<
-        Option<Arc<crate::core::clash::ws::ClashConnectionDetails>>,
+        Option<Arc<nyanpasu_core::clash::ws::ClashConnectionDetails>>,
     >,
 ) -> impl futures::Stream<Item = Result<Event, Infallible>> {
     stream::unfold((receiver, true), |(mut receiver, mut first)| async move {
@@ -892,7 +892,7 @@ mod tests {
 
     #[tokio::test]
     async fn connection_details_send_current_and_new_frames_and_release_demand() {
-        use crate::core::clash::ws::ClashConnectionDetails;
+        use nyanpasu_core::clash::ws::ClashConnectionDetails;
         let frame = |sequence| {
             Some(Arc::new(ClashConnectionDetails {
                 sequence,

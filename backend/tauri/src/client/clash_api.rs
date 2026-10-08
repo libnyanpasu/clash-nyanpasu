@@ -6,7 +6,7 @@ use clash_api::{
 };
 use nyanpasu_config::application::NyanpasuAppConfig;
 
-use crate::core::clash::api::{
+use nyanpasu_core::clash::api::{
     ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes, RuleProviderItem, RulesRes,
 };
 
@@ -37,11 +37,11 @@ fn delay_query(
 }
 
 impl NyanpasuClient {
-    pub async fn get_proxies(&self) -> Result<crate::core::clash::proxies::Proxies> {
+    pub async fn get_proxies(&self) -> Result<nyanpasu_core::clash::proxies::Proxies> {
         let proxies = self.inner.proxies.get(false).await?;
         Ok(proxies.trim_for_frontend(&self.default_latency_test_url().await?))
     }
-    pub async fn refresh_proxies(&self) -> Result<crate::core::clash::proxies::Proxies> {
+    pub async fn refresh_proxies(&self) -> Result<nyanpasu_core::clash::proxies::Proxies> {
         let proxies = self.inner.proxies.get(true).await?;
         Ok(proxies.trim_for_frontend(&self.default_latency_test_url().await?))
     }
@@ -90,7 +90,7 @@ impl NyanpasuClient {
     pub fn request_proxy_refresh(&self) {
         self.inner.proxies.request_refresh();
     }
-    pub fn proxies_snapshot(&self) -> crate::core::clash::proxies::Proxies {
+    pub fn proxies_snapshot(&self) -> nyanpasu_core::clash::proxies::Proxies {
         self.inner.proxies.snapshot()
     }
     pub fn subscribe_proxy_changes(&self) -> tokio::sync::watch::Receiver<()> {

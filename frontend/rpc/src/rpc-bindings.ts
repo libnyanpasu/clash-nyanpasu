@@ -1000,7 +1000,9 @@ export type ClashVersion = {
   meta: boolean | null
 }
 
-export type ClashWsEvent = {
+export type ClashWsEvent = ClashWsEventPayload
+
+export type ClashWsEventPayload = {
   sequence: number
   update: ClashWsUpdate
 }

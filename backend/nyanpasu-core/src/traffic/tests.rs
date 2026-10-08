@@ -22,7 +22,7 @@ use super::{
     Clock, ProfileSelection, RetentionPolicy, TrafficArgs, TrafficClient,
     source::frame_from_snapshot,
 };
-use crate::core::clash::ws::ClashConnectionsFrame;
+use crate::clash::ws::ClashConnectionsFrame;
 
 const CORE: &str = "core-1";
 const A: &str = "11111111-1111-1111-1111-111111111111";
@@ -1441,7 +1441,7 @@ async fn pump_delivers_frames_and_lost_feeds() {
 #[tokio::test]
 async fn pump_locates_regions_with_the_published_index() {
     let h = Harness::new("p1").await;
-    let dat = crate::core::geo::fixtures::geoip_dat(&[("US", &["8.0.0.0/8"])]);
+    let dat = crate::geo::fixtures::geoip_dat(&[("US", &["8.0.0.0/8"])]);
     h.geo.send_replace(Some(Arc::new(
         nyanpasu_geodata::IpIndex::from_geoip_dat(&dat).unwrap(),
     )));
@@ -1468,7 +1468,7 @@ async fn pump_locates_regions_with_the_published_index() {
 #[tokio::test]
 async fn pump_maps_local_regions_without_changing_source_identity_or_usage() {
     let h = Harness::new("p1").await;
-    let dat = crate::core::geo::fixtures::geoip_dat(&[("US", &["8.0.0.0/8"])]);
+    let dat = crate::geo::fixtures::geoip_dat(&[("US", &["8.0.0.0/8"])]);
     h.geo.send_replace(Some(Arc::new(
         nyanpasu_geodata::IpIndex::from_geoip_dat(&dat).unwrap(),
     )));

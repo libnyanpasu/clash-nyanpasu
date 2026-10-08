@@ -11,7 +11,7 @@ use nyanpasu_traffic::{
 };
 
 use super::{ClientError, NyanpasuClient, Result};
-use crate::core::traffic::{
+use nyanpasu_core::traffic::{
     Clock, LocalSourceIps, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficClient,
 };
 

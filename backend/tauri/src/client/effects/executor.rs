@@ -19,22 +19,22 @@ use super::{
     ports::ApplicationEffectsPort,
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
-use crate::{
-    client::{
-        hotkey::{
-            HotkeyClient,
-            error::InvalidBindingsSnafu,
-            ports::{AcceleratorValidator, HotkeyBindings},
-        },
-        system_proxy::SystemProxyClient,
-        ui_effects::ports::{LocaleSink, TrayRefresher, WidgetController},
+use crate::client::{
+    hotkey::{
+        HotkeyClient,
+        error::InvalidBindingsSnafu,
+        ports::{AcceleratorValidator, HotkeyBindings},
     },
-    core::clash::ws::StreamsClient,
+    system_proxy::SystemProxyClient,
+    ui_effects::ports::{LocaleSink, TrayRefresher, WidgetController},
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
-use nyanpasu_core::logs::{
-    CoreLogsClient,
-    logging::{LogRotation, LoggerRefresher},
+use nyanpasu_core::{
+    clash::ws::StreamsClient,
+    logs::{
+        CoreLogsClient,
+        logging::{LogRotation, LoggerRefresher},
+    },
 };
 
 pub struct ApplicationEffectExecutor {

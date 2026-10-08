@@ -67,7 +67,7 @@ impl HotkeyClient {
     pub async fn spawn(args: HotkeyArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
         let shutdown = args.shutdown.clone();
         let (actor, _handle) = Actor::spawn(None, HotkeyActor, args).await?;
-        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self { actor })
     }
 

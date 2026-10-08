@@ -31,7 +31,7 @@ impl BinaryInstaller for FsBinaryInstaller {
                     .context(PathNotUtf8Snafu { path: &destination })?
                     .to_owned(),
             );
-            let status = crate::utils::blocking::join(
+            let status = nyanpasu_core::tasks::blocking::join(
                 tokio::task::spawn_blocking(move || {
                     let _staging = staging;
                     #[cfg(target_os = "windows")]

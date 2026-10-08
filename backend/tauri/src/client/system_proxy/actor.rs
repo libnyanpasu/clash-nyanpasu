@@ -805,5 +805,5 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    crate::utils::blocking::join(tokio::task::spawn_blocking(work).await)
+    nyanpasu_core::tasks::blocking::join(tokio::task::spawn_blocking(work).await)
 }

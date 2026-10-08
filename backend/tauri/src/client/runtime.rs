@@ -366,7 +366,7 @@ pub(crate) async fn write_product(
             .context(CreateRuntimeDirectorySnafu { path: parent })?;
     }
     let path = product.to_path_buf();
-    let written = crate::utils::blocking::join(
+    let written = nyanpasu_core::tasks::blocking::join(
         tokio::task::spawn_blocking(move || {
             atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite)
                 .write(|file| std::io::Write::write_all(file, &bytes))

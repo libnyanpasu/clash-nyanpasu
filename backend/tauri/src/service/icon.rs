@@ -62,7 +62,10 @@ pub async fn get_cached_icon(
         }
     }
 
-    let client = crate::utils::candy::get_reqwest_client(self_proxy_port)?;
+    let client = nyanpasu_core::network::get_reqwest_client(
+        self_proxy_port,
+        &format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.pkg_version),
+    )?;
     let response = client.get(url).send().await?.error_for_status()?;
     let mime = response
         .headers()

@@ -1,3 +1,4 @@
+use nyanpasu_core::network::SelfProxyPortSource;
 use nyanpasu_paths::PathResolver;
 mod app_lifecycle;
 pub mod app_update;
@@ -49,7 +50,7 @@ use crate::{
         },
         storage::Storage,
     },
-    service::profile_file::{ProfileFileService, SelfProxyPortSource},
+    service::profile_file::ProfileFileService,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
@@ -324,6 +325,7 @@ impl NyanpasuClient {
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
                     device_info,
+                    format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
                 ));
                 let profiles = profiles::ProfilesClient::new_with_jobs(
                     mutations.clone(),
@@ -523,6 +525,7 @@ impl NyanpasuClient {
                     .context("executable has no parent directory")?
                     .to_path_buf(),
                 ports.clone(),
+                format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.app_version),
             )),
             Arc::new(application_workflow.clone()),
             shutdown.child_token(),
@@ -748,6 +751,7 @@ impl NyanpasuClient {
                     storage: StorageSource::Live(&storage),
                     kind: BackupKind::Manual,
                     now: time::OffsetDateTime::now_utc(),
+                    app_version: crate::consts::BUILD_INFO.pkg_version,
                 })?;
                 if let Err(error) = backup::prune_backups(
                     paths.backups_dir().as_std_path(),
@@ -3323,6 +3327,7 @@ pub(crate) mod tests {
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
             Arc::new(FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let profiles = profiles::ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),

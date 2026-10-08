@@ -1,6 +1,5 @@
 pub mod candy;
 pub mod color;
-pub mod config;
 pub mod core_version;
 pub mod dialog;
 pub mod dirs;

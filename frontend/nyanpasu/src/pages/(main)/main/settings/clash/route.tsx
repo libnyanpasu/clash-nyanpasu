@@ -23,6 +23,7 @@ import {
   MixedPortConfig,
   OptionalPortConfig,
 } from './_modules/proxy-port-config'
+import TransparentProxyConfigSettings from './_modules/transparent-proxy-config'
 import TunStackSelector from './_modules/tun-stack-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/clash')({
@@ -145,6 +146,8 @@ function RouteComponent() {
         {showAll && (
           <>
             <PortSettings />
+
+            <TransparentProxyConfigSettings />
 
             <ControlChannelSettings />
 

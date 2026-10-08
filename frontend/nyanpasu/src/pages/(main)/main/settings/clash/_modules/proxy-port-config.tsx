@@ -67,6 +67,16 @@ const OPTIONAL_PORTS = {
     runtimeKey: 'port',
     defaultPort: 7892,
   },
+  redir_port: {
+    label: m.settings_clash_settings_redir_port_label,
+    runtimeKey: 'redir-port',
+    defaultPort: 7893,
+  },
+  tproxy_port: {
+    label: m.settings_clash_settings_tproxy_port_label,
+    runtimeKey: 'tproxy-port',
+    defaultPort: 7894,
+  },
 } satisfies Record<
   string,
   { label: () => string; runtimeKey: keyof ClashApiConfig; defaultPort: number }
@@ -285,8 +295,10 @@ export function MixedPortConfig() {
  */
 export function OptionalPortConfig({
   field,
+  onApplied,
 }: {
   field: keyof typeof OPTIONAL_PORTS
+  onApplied?: () => Promise<unknown> | unknown
 }) {
   const setting = useClashSetting(field)
 
@@ -296,10 +308,20 @@ export function OptionalPortConfig({
 
   const strategy = setting.value ?? null
 
-  const handleToggle = (enabled: boolean) => {
-    setting
-      .upsert(enabled ? { kind: 'fixed', start_port: defaultPort } : null)
-      .catch(reportError)
+  const handleApply = async (next: PortStrategy) => {
+    await setting.upsert(next)
+    await onApplied?.()
+  }
+
+  const handleToggle = async (enabled: boolean) => {
+    try {
+      await setting.upsert(
+        enabled ? { kind: 'fixed', start_port: defaultPort } : null,
+      )
+      await onApplied?.()
+    } catch (error) {
+      reportError(error)
+    }
   }
 
   const itemLabel = (
@@ -321,7 +343,7 @@ export function OptionalPortConfig({
           <PortStrategyDialog
             title={label()}
             value={strategy}
-            onApply={(next) => setting.upsert(next)}
+            onApply={handleApply}
           >
             <SettingsCardContent className="min-w-0 flex-1" asChild>
               <ModalTrigger asChild>

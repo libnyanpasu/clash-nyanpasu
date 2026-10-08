@@ -9,7 +9,7 @@ use nyanpasu_helper::StatisticWidgetVariant;
 use nyanpasu_paths::PathResolver;
 use tauri::utils::platform::current_exe;
 
-mod migrate;
+pub(crate) mod migrate;
 
 #[derive(Parser, Debug)]
 #[command(name = "clash-nyanpasu", version, about, long_about = None, disable_version_flag = true)]
@@ -53,6 +53,7 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
         match commands {
             Commands::Migrate(opts) => {
                 migrate::parse(opts, paths);
+                std::process::exit(migrate::MigrationExitCode::Success.code());
             }
             Commands::MigrateHomeDir { target_path } => {
                 migrate::migrate_home_dir_handler(target_path, paths).unwrap();

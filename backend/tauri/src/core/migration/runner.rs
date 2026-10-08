@@ -3,11 +3,11 @@ use super::{
     ModuleKind, ModuleMigrator, StepCheck, current_version, fs, registry,
     store::{MigrationStore, ModuleState, STORE_FILE_NAME},
 };
-use crate::core::backup::{
+use anyhow::{Context, bail};
+use nyanpasu_core::backup::{
     self, BackupInfo, BackupKind, BackupRequest, KEEP_MIGRATION_BACKUPS, MIGRATION_PREFIX,
     StorageSource,
 };
-use anyhow::{Context, bail};
 use nyanpasu_paths::PathResolver;
 use semver::Version;
 use time::OffsetDateTime;

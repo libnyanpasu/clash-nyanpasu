@@ -1,11 +1,34 @@
 use clap::Args;
 
-use crate::core::{
-    backup::{BACKUP_FAILED_EXIT_CODE, BackupError},
-    migration::{MigrationAdvice, Runner, current_version, registry},
-};
+use crate::core::migration::{MigrationAdvice, Runner, current_version, registry};
 use colored::Colorize;
+use nyanpasu_core::backup::BackupError;
 use nyanpasu_paths::PathResolver;
+
+/// Process exit protocol for `clash-nyanpasu migrate` and its parent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub(crate) enum MigrationExitCode {
+    Success = 0,
+    MigrationFailed = 1,
+    /// The pre-migration backup failed, so no config file was touched.
+    BackupFailed = 2,
+}
+
+impl MigrationExitCode {
+    pub(crate) fn code(self) -> i32 {
+        self as i32
+    }
+
+    pub(crate) fn from_code(code: Option<i32>) -> Option<Self> {
+        match code {
+            Some(0) => Some(Self::Success),
+            Some(1) => Some(Self::MigrationFailed),
+            Some(2) => Some(Self::BackupFailed),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Args)]
 pub struct MigrateOpts {
@@ -38,29 +61,29 @@ fn is_fresh_install_instance(paths: &PathResolver) -> bool {
 
 /// The exit code the parent process reads to tell a failed backup, after which
 /// nothing was migrated, from a failed migration.
-fn exit_code(error: &anyhow::Error) -> i32 {
+fn exit_code(error: &anyhow::Error) -> MigrationExitCode {
     if error.downcast_ref::<BackupError>().is_some() {
-        BACKUP_FAILED_EXIT_CODE
+        MigrationExitCode::BackupFailed
     } else {
-        1
+        MigrationExitCode::MigrationFailed
     }
 }
 
 pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
     if args.migration.is_some() && args.version.is_some() {
         eprintln!("Please specify only one of migration or version.");
-        std::process::exit(1);
+        std::process::exit(MigrationExitCode::MigrationFailed.code());
     }
 
     let fresh_install = is_fresh_install_instance(paths);
     let target = match args.version.as_deref() {
         Some(version) => semver::Version::parse(version).unwrap_or_else(|error| {
             eprintln!("Invalid migration target version {version}: {error}");
-            std::process::exit(1);
+            std::process::exit(MigrationExitCode::MigrationFailed.code());
         }),
         None => current_version(crate::consts::BUILD_INFO.pkg_version).unwrap_or_else(|error| {
             eprintln!("Failed to resolve current version: {error:#}");
-            std::process::exit(1);
+            std::process::exit(MigrationExitCode::MigrationFailed.code());
         }),
     };
     let mut runner = paths
@@ -76,7 +99,7 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
         })
         .unwrap_or_else(|error| {
             eprintln!("Failed to initialize migration runner: {error:#}");
-            std::process::exit(1);
+            std::process::exit(MigrationExitCode::MigrationFailed.code());
         });
 
     if args.list {
@@ -99,7 +122,7 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
                 );
             }
         }
-        std::process::exit(0);
+        std::process::exit(MigrationExitCode::Success.code());
     }
 
     if let Some(migration) = args.migration.as_ref() {
@@ -108,12 +131,12 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
             Some(migration) => {
                 if let Err(error) = runner.run_migration(migration) {
                     eprintln!("Migration failed: {error:#}");
-                    std::process::exit(exit_code(&error));
+                    std::process::exit(exit_code(&error).code());
                 }
             }
             None => {
                 eprintln!("Migration not found.");
-                std::process::exit(1);
+                std::process::exit(MigrationExitCode::MigrationFailed.code());
             }
         }
     } else {
@@ -126,7 +149,7 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
         }
         if let Err(error) = runner.run_pending() {
             eprintln!("Migration failed: {error:#}");
-            std::process::exit(exit_code(&error));
+            std::process::exit(exit_code(&error).code());
         }
     }
 }
@@ -229,7 +252,34 @@ mod tests {
         .context("failed to back up the config before migrating")
         .unwrap_err();
 
-        assert_eq!(exit_code(&backup), BACKUP_FAILED_EXIT_CODE);
-        assert_eq!(exit_code(&anyhow::anyhow!("boom")), 1);
+        assert_eq!(exit_code(&backup), MigrationExitCode::BackupFailed);
+        assert_eq!(
+            exit_code(&anyhow::anyhow!("boom")),
+            MigrationExitCode::MigrationFailed
+        );
+    }
+
+    #[test]
+    fn migration_exit_code_preserves_known_protocol_values() {
+        for (exit, code) in [
+            (MigrationExitCode::Success, 0),
+            (MigrationExitCode::MigrationFailed, 1),
+            (MigrationExitCode::BackupFailed, 2),
+        ] {
+            assert_eq!(exit.code(), code);
+            assert_eq!(MigrationExitCode::from_code(Some(code)), Some(exit));
+        }
+    }
+
+    #[test]
+    fn migration_exit_code_does_not_classify_unknown_values() {
+        for code in [-1, 3, 255] {
+            assert_eq!(MigrationExitCode::from_code(Some(code)), None);
+        }
+    }
+
+    #[test]
+    fn migration_exit_code_does_not_classify_a_missing_code() {
+        assert_eq!(MigrationExitCode::from_code(None), None);
     }
 }

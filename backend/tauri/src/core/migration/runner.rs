@@ -734,7 +734,7 @@ mod tests {
     /// test tracks the data contract, not serializer key ordering.
     #[test]
     fn real_1_6_1_fixture_migrates_to_2_0_shape() {
-        use crate::core::storage::{Storage, WebStorage};
+        use nyanpasu_core::storage::{Storage, WebStorage};
 
         let temp = tempfile::tempdir().unwrap();
         let config_dir = temp.path().join("config");

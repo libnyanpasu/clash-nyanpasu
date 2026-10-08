@@ -138,7 +138,7 @@ pub enum MigrationCheckError {
     Storage {
         path: PathBuf,
         #[source]
-        source: crate::core::storage::StorageOperationError,
+        source: nyanpasu_core::storage::StorageOperationError,
     },
     #[error("failed to read the stamp of {}", path.display())]
     Stamp {

@@ -17,6 +17,7 @@ mod service;
 mod setup;
 mod specta_export;
 mod state;
+mod storage;
 mod unified_rpc;
 
 mod host_paths;

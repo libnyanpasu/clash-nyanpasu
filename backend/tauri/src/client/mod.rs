@@ -48,7 +48,6 @@ use crate::{
             self, BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS,
             MANUAL_PREFIX, StorageSource,
         },
-        storage::Storage,
     },
     service::profile_file::ProfileFileService,
     state::profiles::{
@@ -71,6 +70,7 @@ use nyanpasu_config::{
 use nyanpasu_core::{
     device::DeviceInfoSource,
     diagnostics::{EnvInfo, EnvironmentCollector},
+    storage::Storage,
 };
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;

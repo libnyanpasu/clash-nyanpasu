@@ -7,7 +7,7 @@
 use camino::Utf8PathBuf;
 use nyanpasu_paths::PathResolver;
 
-use crate::core::storage::{Storage, StorageOperationError};
+use nyanpasu_core::storage::{Storage, StorageOperationError};
 use semver::Version;
 use serde::Serialize;
 use std::{
@@ -361,7 +361,7 @@ fn rfc3339(now: OffsetDateTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::storage::WebStorage as _;
+    use nyanpasu_core::storage::WebStorage as _;
 
     // 2026-09-21T14:13:20Z
     const NOW: i64 = 1_790_000_000;

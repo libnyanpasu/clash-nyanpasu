@@ -6598,6 +6598,7 @@ dependencies = [
  "oxc_span",
  "oxc_syntax",
  "ractor",
+ "redb",
  "reqwest 0.13.5",
  "semver 1.0.28",
  "serde",

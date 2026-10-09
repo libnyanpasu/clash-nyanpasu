@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { page, userEvent } from 'vitest/browser'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
-import { DndGridRoot, useDndGridRoot } from '@nyanpasu/ui/dnd-grid'
+import { DndGrid, DndGridRoot, useDndGridRoot } from '@nyanpasu/ui/dnd-grid'
 import ContextMenuProvider, {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -51,7 +51,22 @@ function Harness({ onPageAction }: { onPageAction: () => void }) {
     <>
       <RegisterContextMenu>
         <RegisterContextMenuTrigger asChild>
-          <div data-testid="dashboard" style={{ width: 640, height: 300 }}>
+          <div
+            data-testid="dashboard"
+            style={{ position: 'relative', width: 640, height: 300 }}
+          >
+            <div
+              style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+            >
+              <DndGrid
+                gridId="dashboard"
+                items={[]}
+                disabled={false}
+                onExternalDrop={() => setDrops((value) => value + 1)}
+              >
+                {() => null}
+              </DndGrid>
+            </div>
             <button onClick={() => setOpenSheet(true)}>Open library</button>
             <button
               data-testid="page-action"
@@ -77,7 +92,7 @@ function Harness({ onPageAction }: { onPageAction: () => void }) {
       </RegisterContextMenu>
       <WidgetSheet
         onSourceDragStart={() => setOpenSheet(false)}
-        onSourceDrop={() => setDrops((value) => value + 1)}
+        onAdd={() => setDrops((value) => value + 1)}
       />
     </>
   )
@@ -105,6 +120,7 @@ async function mount(onFinished: (callback: () => void) => void) {
     [data-slot=drawer-content] > div:first-child { height:60px; min-height:60px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; position:relative; z-index:1; }
     [data-slot=drawer-content] [data-slot=scroll-area] { flex:1; min-height:0; height:320px; overflow:hidden; }
     [data-slot=dnd-grid-container] { position:relative; height:384px; width:352px; flex:none; }
+    [data-testid=dashboard] [data-slot=dnd-grid-container] { width:100%; height:100%; }
     button { min-width:40px; min-height:32px; }
     [data-slot=drawer-content] [data-slot=scroll-area-viewport] > div { height:100%; }
     [data-slot=drawer-overlay] { position:fixed; inset:0; background:#0003; }

@@ -2,7 +2,11 @@ import AddRounded from '~icons/material-symbols/add-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import { useMemo, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { DndGrid, GridSize, useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import {
+  DndGrid,
+  useDndGridContext,
+  type GridSize,
+} from '@nyanpasu/ui/dnd-grid'
 import {
   Drawer,
   DrawerClose,
@@ -51,10 +55,10 @@ function SheetWidget({
 }
 
 export function WidgetSheet({
-  onSourceDrop,
+  onAdd,
   onSourceDragStart,
 }: {
-  onSourceDrop: (id: WidgetId) => void
+  onAdd: (id: WidgetId) => void
   onSourceDragStart: () => void
 }) {
   const { openSheet, setOpenSheet } = useDashboardContext()
@@ -140,14 +144,11 @@ export function WidgetSheet({
               disabled={false}
               sourceOnly
               dragIdPrefix="sheet:"
-              onSourceDrop={(id) => onSourceDrop(id as WidgetId)}
               onSourceDragStart={onSourceDragStart}
               onSizeChange={(size) => setGridSize(size)}
             >
               {(item) => {
-                return (
-                  <SheetWidget id={item.id as WidgetId} onAdd={onSourceDrop} />
-                )
+                return <SheetWidget id={item.id as WidgetId} onAdd={onAdd} />
               }}
             </DndGrid>
           </div>

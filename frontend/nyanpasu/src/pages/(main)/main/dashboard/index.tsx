@@ -9,6 +9,7 @@ import {
   DndGridRoot,
   useDndGridRoot,
   type DndGridItemType,
+  type GridPosition,
   type GridSize,
 } from '@nyanpasu/ui/dnd-grid'
 import {
@@ -221,7 +222,7 @@ const WidgetRender = () => {
   )
 
   const addWidgetFromSheet = useCallback(
-    (widgetId: WidgetId) => {
+    (widgetId: WidgetId, position?: GridPosition) => {
       const { cols, rows } = gridSizeRef.current
       const current = displayItemsRef.current
       const instanceId = crypto.randomUUID()
@@ -233,6 +234,7 @@ const WidgetRender = () => {
         rows,
         minimum: WIDGET_MIN_SIZE_MAP[widgetId],
         recommended: WIDGET_RECOMMENDED_SIZE_MAP[widgetId],
+        position,
       })
 
       if (placement) {
@@ -256,6 +258,9 @@ const WidgetRender = () => {
             className="min-h-0 flex-1"
             items={displayItems}
             onLayoutChange={handleGridLayoutChange}
+            onExternalDrop={(id, position) =>
+              addWidgetFromSheet(id as WidgetId, position)
+            }
             minCellSize={64}
             onSizeChange={handleSizeChange}
             gap={16}
@@ -269,7 +274,7 @@ const WidgetRender = () => {
       <DashboardDragOverlay displayItems={displayItems} />
 
       <WidgetSheet
-        onSourceDrop={(id) => addWidgetFromSheet(id)}
+        onAdd={addWidgetFromSheet}
         onSourceDragStart={() => setOpenSheet(false)}
       />
     </DndGridRoot>

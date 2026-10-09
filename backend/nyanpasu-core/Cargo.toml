@@ -51,6 +51,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { version = '0.7', features = ['rt'] }
 ractor = '0.16'
+struct-patch = '0.14'
 redb = '4.0.0'
 zstd = '0.14.0'
 glob = '0.3.1'

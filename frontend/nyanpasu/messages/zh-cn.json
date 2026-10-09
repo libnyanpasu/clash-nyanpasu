@@ -1094,6 +1094,7 @@
   "effect_failure_widget_unavailable": "网络统计小组件尚未就绪",
   "effect_failure_widget_apply_failed": "无法更新网络统计小组件",
   "effect_failure_tray_refresh_failed": "无法刷新托盘菜单",
+  "effect_failure_presentation_unsupported": "当前环境不支持应用界面设置",
   "effect_failure_effect_owner_silent": "负责应用此设置的服务没有返回结果",
   "effect_failure_proxy_guard_waiting_dependency": "正在等待系统代理确认",
   "effect_failure_auto_launch_failed": "无法更新「随开机启动」设置",

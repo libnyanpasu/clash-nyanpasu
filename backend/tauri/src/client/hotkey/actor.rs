@@ -14,13 +14,14 @@ use tokio_util::sync::CancellationToken;
 use super::{
     HotkeyStatus,
     error::{HotkeyEffectError, InvalidBindingsSnafu, PartialRegistrationSnafu},
-    ports::{
-        HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp, ShortcutError, ShortcutRegistrar,
-    },
+    ports::{HotkeyActionSink, ShortcutError, ShortcutRegistrar},
 };
-use crate::client::effects::{
-    plan::EffectKind,
-    status::{EffectHealth, EffectRevision, EffectStatus},
+use nyanpasu_core::{
+    effects::{
+        EffectKind,
+        status::{EffectHealth, EffectRevision, EffectStatus},
+    },
+    hotkey::{HotkeyAction, HotkeyBindings, HotkeyOp},
 };
 
 pub(super) enum Message {

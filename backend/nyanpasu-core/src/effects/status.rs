@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-use super::plan::EffectKind;
+use super::EffectKind;
 
 /// Monotonic counter over committed desired configurations, allocated by the
 /// facade after a commit.
@@ -34,6 +34,7 @@ impl EffectRevision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectFailureCode {
+    PresentationUnsupported,
     HotkeyInvalidBindings,
     HotkeyPartialRegistration,
     HotkeyShutDown,

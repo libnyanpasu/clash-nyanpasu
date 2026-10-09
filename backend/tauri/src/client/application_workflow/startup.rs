@@ -13,6 +13,9 @@
 //! The target it works for is carried by the live attempt from the first
 //! read to the last, so an interruption anywhere leaves it where recovery
 //! looks for it.
+use nyanpasu_core::effects::convergence::{
+    ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait,
+};
 
 use std::{ffi::OsStr, path::Path};
 
@@ -35,7 +38,6 @@ use super::{
     workflow::ApplicationWorkflow,
 };
 use crate::client::{
-    convergence::{ConvergenceHealth, OutcomeClass, RETRY_DELAYS, next_wait},
     core_lifecycle::{Ownership, effective_host},
     runtime::ConfirmedRuntime,
     runtime_error::{CoreNotStartedSnafu, RecoveryUnresolvedSnafu, RuntimeError},

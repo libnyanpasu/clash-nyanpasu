@@ -5,8 +5,11 @@
 
 use snafu::Snafu;
 
-use super::ports::{HotkeyParseError, ShortcutError};
-use crate::client::effects::status::{EffectFailureCode, EffectHealth, failure_text};
+use super::ports::ShortcutError;
+use nyanpasu_core::{
+    effects::status::{EffectFailureCode, EffectHealth, failure_text},
+    hotkey::HotkeyParseError,
+};
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]

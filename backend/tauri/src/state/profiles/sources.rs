@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use nyanpasu_config::profile::{ProfileId, Profiles};
 use tokio::sync::watch;
 
-use crate::client::convergence::ConvergenceHealth;
+use nyanpasu_core::effects::convergence::ConvergenceHealth;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]

@@ -1094,6 +1094,7 @@
   "effect_failure_widget_unavailable": "The network statistic widget is not ready yet",
   "effect_failure_widget_apply_failed": "Could not update the network statistic widget",
   "effect_failure_tray_refresh_failed": "Could not refresh the tray menu",
+  "effect_failure_presentation_unsupported": "Applying interface settings is not supported in this environment",
   "effect_failure_effect_owner_silent": "The service applying this setting did not report back",
   "effect_failure_proxy_guard_waiting_dependency": "Waiting for the system proxy to be confirmed",
   "effect_failure_auto_launch_failed": "Could not update the launch-at-login setting",

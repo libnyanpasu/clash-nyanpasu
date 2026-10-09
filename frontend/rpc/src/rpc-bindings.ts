@@ -1951,6 +1951,7 @@ export type EffectConvergence = {
  *  message beside it is only the diagnostic text.
  */
 export type EffectFailureCode =
+  | 'presentation_unsupported'
   | 'hotkey_invalid_bindings'
   | 'hotkey_partial_registration'
   | 'hotkey_shut_down'

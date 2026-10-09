@@ -405,7 +405,10 @@ mod tests {
         ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, ScriptRuntime,
         ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
-    use nyanpasu_core::{network::SelfProxyPortSource, state::ReplaceIfVersionError};
+    use nyanpasu_core::{
+        effects::convergence::ConvergenceHealth, network::SelfProxyPortSource,
+        state::ReplaceIfVersionError,
+    };
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
 
@@ -3602,12 +3605,9 @@ mod tests {
 
     // --- T10 §2 producer gating (P1–P5) and §3 source receipts (R1–R5) ---
 
-    use crate::{
-        client::convergence::ConvergenceHealth,
-        state::profiles::{
-            RefreshAttemptToken, RefreshOutcome,
-            sources::{SourceOrigin, SourceOutcome, SourceStatus},
-        },
+    use crate::state::profiles::{
+        RefreshAttemptToken, RefreshOutcome,
+        sources::{SourceOrigin, SourceOutcome, SourceStatus},
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
 

@@ -8,7 +8,7 @@
 
 **目标不是移动一个 facade 文件，而是让非 GUI 宿主直接使用同一套应用实现。**
 
-最终 `backend/tauri` 只拥有 GUI 产品装配、Tauri IPC/插件适配、窗口/webview/托盘/widget/主线程及原生交互。共享业务、状态机、持久化、网络、进程、OS 能力，以及不依赖 GUI 的 HTTP/RPC 实现，移入 `nyanpasu-core` 的具体能力模块。已在独立库中的实现继续复用，不物理吞并 `nyanpasu-config`、`nyanpasu-paths`、runtime 子模块、traffic/geodata 等库。
+最终 `backend/tauri` 只拥有 GUI 产品装配、Tauri 应用更新及其发布规则、Tauri IPC/插件适配、窗口/webview/托盘/widget/主线程及原生交互。共享业务、状态机、持久化、网络、进程、OS 能力，以及不依赖 GUI 的 HTTP/RPC 实现，移入 `nyanpasu-core` 的具体能力模块。已在独立库中的实现继续复用，不物理吞并 `nyanpasu-config`、`nyanpasu-paths`、runtime 子模块、traffic/geodata 等库。
 
 ### 1.1 复用边界与基线选择
 
@@ -58,14 +58,14 @@
 
 | 证据位置                                                                  | 实际问题                                                                                               | 本方案处理                                                                    |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `client/mod.rs::try_new_with_args/with_parts`                             | 同时 block_on、创建 domain owners、HTTP server、app updater、streams/geo/traffic；依赖 AppImage/bundle | P05/P06 先拆 capability；P08 async bootstrap与真实 facade一起切换；P09迁 HTTP |
+| `client/mod.rs::try_new_with_args/with_parts`                             | 同时 block_on、创建 domain owners、HTTP server、app updater、streams/geo/traffic；依赖 AppImage/bundle | P05/P06 拆共享能力；P08 切换async bootstrap/facade，应用更新留host；P09迁HTTP |
 | `state/mutation.rs`                                                       | `MutationCoordinator` 持有具体 `ApplicationWorkflowClient`；source actor依赖工作流参与者               | 留在 P08 同一事务闭包，不造临时总线/回调注册表                                |
 | `client/runtime.rs`、`state/profiles/error.rs`、`client/runtime_error.rs` | `DegradationReason/ProfilesError/CommitAborted/RuntimeError/preparation` 递归引用                      | P07只抽独立 IO 错误；其余 P08一起迁，不先公开整套内部错误构造器               |
 | `core/proxies.rs`                                                         | proxy selection返回共享 `MutationOutcome`，不是纯 cache 叶子                                           | 整个 proxy owner随 P08；不拆出第二份 outcome                                  |
 | `client/core_lifecycle/ports.rs`                                          | binary artifact/install契约与 runtime preparation契约混在同文件                                        | P01只抽 binary契约；runtime部分随 P08                                         |
 | `service/profile_file.rs`                                                 | 依赖 profiles ports/errors、UA、device；测试依赖 `client::tests`                                       | P07完整迁移端口+IO错误+实现+原测试；不依赖 facade测试模块                     |
 | `client/ui_effects/ports.rs`                                              | `WidgetIpcError/StatisticWidgetVariant` 来自 egui                                                      | GUI widget实现/错误留宿主；消费契约只接收中立数据与映射后的结果               |
-| `client/event_sink.rs`、`unified_rpc.rs::bridge_tauri_events`             | main webview存在才 emit；HTTP再监听Tauri事件                                                           | P06提供真实 owner观察；P09让两种transport直接消费同一观察源                   |
+| `client/event_sink.rs`、`unified_rpc.rs::bridge_tauri_events`             | clash_config失效提示受main webview门控；HTTP监听Tauri事件                                              | P06验收既有owner观察与同步回调；P09让transport直接消费观察源                  |
 | `unified_rpc.rs::CommandEntry`、宏 `unified_command.rs`                   | 一个表混合 HTTP handler和 `AppHandle/Window/Webview` handler；宏硬编码host路径                         | P09拆中立表与desktop binding，宏与全部消费者同提交更新                        |
 | `core/*/tests`、`client/*/tests`                                          | Tauri block_on和host `client::tests`反向依赖                                                           | 测试跟owner迁移；fake下沉到使用它的最小能力测试模块                           |
 | `utils/core_version.rs`                                                   | 版本查询仍用Tauri shell sidecar，不能照搬为core adapter                                                | P03只迁契约/错误/parser；Tauri reader留host，保持shell执行语义                |
@@ -91,12 +91,12 @@ nyanpasu-core
   control/                core endpoint/router、API lease、local host
   service/                compatibility（已有）、daemon actor/OS adapter
   effects/                desired/revision/health、平台收敛、可选宿主效果契约
-  system_proxy/           OS proxy/PAC/autostart
+  system_proxy/           OS proxy/PAC；autostart owner/port
   system_dns/             DNS能力
   connections/ proxies/   中立流、连接规则、proxy owner
   logs/ traffic/ geo/     日志、流量与地理索引
   storage/ backup/ migration/
-  updates/                kernel/ 与 application/，不混淆安装对象
+  updates/                kernel/；不包含Tauri应用更新
   download/ network/ icons/ diagnostics/
   process/                实际共用的执行/提权/实例锁/OS shutdown机制
   transport/              rpc/、http/；不进入domain依赖方向
@@ -105,7 +105,8 @@ Tauri host
   GUI builder/插件/managed state/事件循环
   原生窗口、托盘、widget、clipboard/dialog、快捷键插件adapter
   Tauri RPC dispatcher / Channel / Event wrappers / Specta导出
-  bundle/WebView2/APPIMAGE/资源发现/安装器adapter
+  应用更新owner、feed/mirror/release规则、bundle/plugin/安装/重启
+  WebView2/APPIMAGE/资源发现；具体autostart配置解析与注册backend
   消费core bootstrap、capability clients和观察，不实现共享业务
 ```
 
@@ -117,7 +118,7 @@ Tauri host
 ### 3.2 不沿用旧白名单的三个决定
 
 - **HTTP在范围内。** `debug_http.rs` 的server actor、loopback监听、token/Host/Origin校验、SSE、静态asset接口、dev代理都可以不依赖Tauri。放core的transport adapter模块，而不是业务层。Tauri AssetResolver和dev URL读取留host，向其传普通值/asset port。HTTP默认仍关闭，迁移绝不扩大 `rpc(http)` allowlist。
-- **应用更新按状态机与安装后端拆。** `AppUpdateClient` 的检查/下载/取消/进度/状态规则可以通过现有backend契约运行，迁入 `updates::application`；feed/mirror/版本比较的纯规则也迁入并接收显式产品输入。Tauri plugin的包上下文、签名验证实现、平台installer、关GUI/重启以及WebView2 target选择留adapter。headless不配置该能力时明确 unavailable；不假设未来CLI与GUI使用同一feed，更不新增通用自更新框架。
+- **Tauri应用更新整体留host。** `AppUpdateClient`、检查/下载/取消/进度/状态规则、feed/mirror/release比较及相应测试均不迁core；bundle、plugin、签名验证、安装/重启与WebView2 target选择也留host。已有backend trait不代表这是共享能力。P05只迁Clash代理内核的下载和更新，不为未来CLI预设相同feed或新增通用自更新框架。
 - **“UI会调用”不是保留理由。** icon下载缓存、proxy env文本、frontend error batch净化/日志写入、会话几何数据持久化均可由中立能力拥有；实际展示、剪贴板写入、JS捕获、窗口尺寸应用仍属于GUI。反之tray绘制队列、窗口URL构造、widget展示生命周期，即使只操作普通值，也仍是GUI。
 
 上述边界按实际消费关系确定，不以历史目录或白名单替代。
@@ -136,11 +137,11 @@ Tauri host
 不将现有effects整体留GUI，也不将egui错误和TrayView原样送进core。
 
 1. core保留真实domain slices、平台effects、revision、retry和health owner；GUI保留tray/menu projection、locale/widget/native shortcut执行。
-2. 在现有dispatch seam接入**可选、静态类型的presentation port**，只暴露现有需要的配置/触发/结果。它不是任意capability registry。GUI适配层从输入形成TrayView并映射widget/shortcut失败；没有presentation时明确能力未提供。
+2. 在现有dispatch seam接入**可选、静态类型的 `PresentationEffectsPort`**，以 `PresentationRequest` 传递现有配置/触发并返回 `EffectStatus`。它不是任意capability registry。Tray输入复用 `ApplicationEffectFields/ClashEffectFields`，host拥有唯一TrayView投影及widget/shortcut失败映射。完整payload的clone与较宽PartialEq不扩大原menu/part触发条件。没有presentation时返回 `Unsupported` 与 `PresentationUnsupported`，applied revision保持零，不自动重试；平台及日志效果继续执行。这是明确的接口/行为边界改造，不归类为纯文件移动。
 3. 保留现有分组与顺序约束，尤其locale在tray之前、同一system proxy owner的一次reconcile、group 2原有logger位置、full refresh压过part refresh、stale revision不覆盖新结果。不要为迁移再创建第二个核心effects scheduler。
-4. 原group 2 apply前的 `refresh_clash` 是一个**失效提示**，不是commit成功事件。观察必须保留触发来源/意图，不能用“统一state changed”掩盖mutation/lifecycle/retry差异。GUI映射为旧wire；源状态版本/health另由真实owner发布。
-5. P06拆分时完成core observations到现有Tauri事件的接线；P09再让HTTP直接订阅，不等最终PR才恢复通知。没有main window、没有tray时core观察依然有效。
-6. 现有RPC `EffectKind`/health/error形状默认不变；确需增加unsupported表达时，在P06同一行为commit同步DTO、生成bindings和消费者。不要让CLI靠注入“全部Healthy”的fake通过验收。
+4. 原group 2 apply前的 `refresh_clash` 是一个**失效提示**，不是commit成功事件。可选 `EffectInvalidationSink::before_visual_apply()` 保持同步调用，返回后才开始apply；host映射仍使用旧wire和main-window门控。它不是独立订阅流，不能以异步入队冒充相同时序，也不能用“统一state changed”掩盖mutation/lifecycle/retry差异。
+5. P06复用owner现有watch、提交回执与上述同步回调，分别验收状态观察、提交后的通知、apply前失效；不新增统一观察层或独立失效订阅接口。Proxy转发虽位于tray模块，启动不以tray实例或开窗为条件；保留既有订阅时点及先emit、后请求tray刷新的顺序，不为此只换GUI函数目录。P08负责独立facade，P09负责HTTP直接消费观察，不把当前host回调声称为已完成的独立HTTP事件出口。
+6. `EffectKind`及既有health/error结构保持；P06的 `presentation_unsupported` 枚举值与真实生成的bindings、前端映射和五种语言文案同一行为commit交付。不要让CLI靠注入“全部Healthy”的fake通过验收。
 
 ## 4. 能力依赖、串行PR与执行边界
 
@@ -154,8 +155,8 @@ Tauri host
 | P02        | KV、备份及配置迁移能力                        | P01                | 3            | 高：磁盘一致性        |
 | P03        | core/daemon控制面、进程版本与OS执行           | P01                | 3            | 高：资源所有权/跨平台 |
 | P04        | 日志、streams、traffic/geo及网络诊断能力      | P03                | 3            | 中高：流生命周期      |
-| P05        | kernel与application更新能力                   | P03                | 3            | 高：下载/安装/取消    |
-| P06        | 平台effects和GUI presentation边界             | P04                | 3            | 高：顺序/降级/通知    |
+| P05        | Clash代理内核下载与更新                       | P03                | 1            | 高：下载/安装/取消    |
+| P06        | 平台effects和GUI presentation边界             | P04                | 2及只读验收  | 高：顺序/降级/通知    |
 | P07        | profiles IO/materialization/fetch             | P01                | 2            | 高：文件事务          |
 | P08        | 真实事务闭包、NyanpasuClient与async bootstrap | P02、P05、P06、P07 | 3            | 高：最大机械迁移      |
 | P09        | 可独立运行的HTTP/中立RPC及事件出口            | P08                | 3            | 高：宏/权限/wire      |
@@ -257,23 +258,25 @@ main → P01 → P02 → P03 → P04 → P05 → P06 → P07 → P08 → P09 →
 
 测试：session切换/失联不等于停止、日志cursor/rotation/codec兼容、stream receiver demand/取消、traffic flush/retry、geo失效重载、DIRECT探测不借系统代理、缓存过期。字典bytes不改；原ignored字典再生成测试保持ignored，不为迁移重训。
 
-### P05 — 更新能力（kernel与application分开）
+### P05 — Clash代理内核下载与更新
 
-**PR结果：** 更新状态机和网络/文件操作可共享，Tauri只实现应用包插件/安装/重启适配。
+**PR结果：** Mihomo、Clash-rs、Clash Premium、Meow等代理内核的下载和更新可共享；Tauri应用自身的更新整体留host。
 
 - **C1 `Move kernel downloads and updates into core`**：download/session/bolt adapter、kernel updater/manifest/platform selection/HTTP backend与原tests迁出。通过P01的artifact和注入 `CoreUpdateInstaller` 调用仍在host的workflow；不把workflow反向带入core，不复制安装编排。
-- **C2 `Extract application release policy from the GUI bundle`**：从bundle提取feed候选、mirror验证与版本比较，参数使用普通version/date/target/project值；plugin `RemoteRelease`在adapter转换，构建env读取留host。WebView2/portable bundle判定不迁。
-- **C3 `Move the application update owner into core`**：app update actor/typed client/settings/progress/tests迁入可选能力；插件adapter/event包装留host。host提供支持性和产品输入，core不读取 `IS_APPIMAGE`。`PreparedAppUpdate`插件上下文保持不透明、只供backend使用，不变成服务查询或向facade暴露的downcast接口。
 
-测试：取消与owner终态、已下载但未验证不得安装、discard/retry、source切换、nightly比较、SourceForge URL约束、staging目录存活、core restart失败。GUI installer-before-exit/relaunch在平台上验收；不为测试做真实更新发布或升级本机应用。
+不设置应用release规则或app update owner的迁移commit。`is_newer_release`等规则、bundle和plugin实现及其测试留host；P08拆facade时也不将这条GUI产品能力带入core。
+
+测试：保留原kernel下载session、取消/owner终态、artifact验证、安装与core restart相关回归。应用更新测试继续属于host，不借迁移重写其行为，不做真实更新发布或升级本机应用。
 
 ### P06 — Effects/presentation切口
 
 **PR结果：** core平台effects可独立运行；GUI效果是可选adapter，不是core启动前提。
 
-- **C1 `Move system proxy and DNS capabilities into core`**：system proxy/PAC/autostart/DNS owner/adapters、其实际消费的desired/revision/health类型一起迁移；GUI注入实际executable/AppImage值。现有effects executor改用它们，不留旧类型alias。
+- **C1 `Move system proxy and DNS capabilities into core`**：system proxy/PAC/DNS能力、autostart owner/port及其实际消费的desired/revision/health类型迁core；具体 `AutoLaunchConfig::resolve` 与 `AutoLaunchBackend` 留host，负责executable/AppImage配置和注册。保留同一system proxy owner的一次reconcile及原顺序，现有executor改用新路径，不留旧类型alias。
 - **C2 `Separate presentation from application effect execution`**：按3.4节一次完成plan/actor/executor/ports拆分及GUI实现。core保留平台effects和协调，并同迁其真实依赖 `convergence.rs` 的health/retry值模型；TrayView、widget runtime错误、window/main-thread/native快捷键接线留host。提交前hotkey验证用独立契约，不要求注册器存在；非GUI动作调用领域操作。迁移涉及的core/GUI原测试随职责拆分，不能让core tests import widget。
-- **C3 `Publish application observations without a webview`**：从owner输出独立订阅与现有refresh意图，host事件映射直接消费；proxy变化的frontend转发不再借tray保活。原proxy owner仍在host直到P08，使用其现有watch，不提前复制它。明确提交后的通知、apply前invalidations、configuration status三种语义。
+- **C3 `Review existing observation boundaries`**：只读验收owner现有watch、提交回执、configuration status与同步apply前失效回调，不新增接口、事件总线、mock或测试函数，不为凑commit移动GUI函数。Proxy owner直到P08仍在host；复用原通知、缓存失效与关闭测试，并核对 `resolve_setup → setup_proxies → proxies_updated_receiver` 的既有转发链路，不把tray模块归属误认为tray实例存活门控。独立失效订阅、提前订阅或改变转发任务生命周期均不在本项范围。
+
+验收分层说明：owner测试不构造AppHandle/window/tray，只证明该owner观察不依赖这些对象；在Tauri crate运行的测试不等于core-only构造。C2无presentation测试验证平台执行和状态观察，不证明通用mailbox排空、独立失效流或live GUI事件投递。完整headless facade与直接HTTP观察分别由P08/P09验收。
 
 测试：四组并发边界/组内顺序、requested-but-unchanged、full/part、retry budget、stale revision、shutdown restore/unregister、无presentation与显式unsupported；desktop事件名/payload/触发时机保持。旧casing不一致若复现，先记录为独立问题，不借切分悄悄改wire。
 
@@ -290,7 +293,7 @@ main → P01 → P02 → P03 → P04 → P05 → P06 → P07 → P08 → P09 →
 
 **PR结果：** 第一个真正可用、可构造和可关闭的 `nyanpasu_core::NyanpasuClient`。此PR不是等待后续“frontend接入”的半成品。
 
-- **C1 `Separate GUI-only facade operations and host composition`**：在现有host内把dashboard/window dispatch、main-thread、GUI展示projection从facade移给实际GUI owner；HTTP控制移至host transport owner，不再放 `NyanpasuClientInner`。命令名不变，命令只调用所属能力。补齐headless所需capability选择，而不是增加 `HeadlessClient` 替身。
+- **C1 `Separate GUI-only facade operations and host composition`**：在现有host内把dashboard/window dispatch、main-thread、GUI展示projection及Tauri应用更新装配/入口从共享facade边界分离给实际GUI owner；HTTP控制移至host transport owner，不再放 `NyanpasuClientInner`。命令名不变，命令只调用所属能力。补齐headless所需capability选择，而不是增加 `HeadlessClient` 替身。
 - **C2 `Make application assembly asynchronous and owned`**：原真实构造改async，domain组装逻辑与facade方法分离；host唯一同步边界适配。全体构造测试改显式Tokio runtime。失败时回收已启动owner；不引入全局shutdown phase/budget，也不把caller丢弃改成取消已启动事务。
 - **C3 `Move the application transaction graph and client into core`**：一次迁移剩余source/typed clients、MutationCoordinator、workflow/TCC/settlement/startup/recovery/core lifecycle、runtime snapshot/inspection/errors、剩余enhance projection/goldens、jobs/scheduler/sources、proxies与facade全部领域impl。所有GUI/HTTP/测试调用者同commit改为新路径；共享bootstrap接入P02—P07的真实能力，旧模块删除。
 
@@ -407,9 +410,9 @@ P11独立构建环境不安装GTK/WebKit、不准备Tauri dist，仅有Rust/nati
 
 1. 同一个NyanpasuClient由GUI与非GUI测试宿主构造，非GUI宿主没有fake window/tray/widget/main-thread。
 2. profile/config修改、runtime构建/校验/应用、恢复、核心更新、日志/traffic/geo观察和关闭使用同一份实现。
-3. 不支持的系统/呈现/更新能力有真实结果；缺席不伪装Healthy，支持的能力不在另一宿主重新实现。
+3. 不支持的系统/呈现/内核更新能力有真实结果；缺席不伪装Healthy，支持的能力不在另一宿主重新实现。Tauri应用更新不属于共享core能力。
 4. HTTP可独立部署，facade不反向依赖transport；Tauri与HTTP都不依赖main window来接收core变化。
-5. 所有源模块和fixture都有最终owner；Tauri只剩可解释的GUI/desktop适配，不残留旧路径re-export和第二套业务实现。
+5. 所有源模块和fixture都有最终owner；Tauri只保留GUI产品职责（包括应用更新）与desktop适配，不残留旧路径re-export和第二套共享业务实现。
 6. 最终GUI白名单、原tests与新增边界测试、bindings、平台矩阵和已知限制都可在PR/仓库中复现。
 
 ## 8. 模块迁移归属清单
@@ -421,13 +424,13 @@ P11独立构建环境不安装GTK/WebKit、不准备Tauri dist，仅有Rust/nati
 | `main.rs`                                                                                                           | G：GUI executable入口                                                                                                                                                                                                                      |
 | `lib.rs`、`setup.rs`                                                                                                | G装配；共享graph P08、startup P10、transport P09                                                                                                                                                                                           |
 | `host_paths.rs`、`consts.rs`                                                                                        | G产品/构建输入；消费方不反查这些模块，P01/P08                                                                                                                                                                                              |
-| `bundle.rs`、`bundle/tests.rs`                                                                                      | G bundle/WebView2；release纯策略及相应tests P05                                                                                                                                                                                            |
+| `bundle.rs`、`bundle/tests.rs`                                                                                      | G bundle/WebView2及应用release规则/相应tests；不迁core                                                                                                                                                                                     |
 | `shutdown_hook.rs`                                                                                                  | core process Windows adapter P10；Tauri exit接线留G                                                                                                                                                                                        |
 | `cmds/`                                                                                                             | G parse/print/exit/widget dispatch；迁移/诊断执行 P02/P03/P10                                                                                                                                                                              |
 | `ipc.rs`、`unified_rpc.rs`、`specta_export.rs`                                                                      | P09拆中立RPC/共享操作；G保留native commands/desktop dispatcher/导出                                                                                                                                                                        |
 | `server/`                                                                                                           | core transport P09；assets resolver实现留G                                                                                                                                                                                                 |
 | `window/`、`widget.rs`、`event_handler/`                                                                            | G窗口/展示/widget IPC；调用共享core，不能存业务owner                                                                                                                                                                                       |
-| `core/tray/`                                                                                                        | G菜单/绘制/队列/icon；独立proxy通知接线P06                                                                                                                                                                                                 |
+| `core/tray/`                                                                                                        | G菜单/绘制/队列/icon及既有proxy事件转发；P06只验收观察边界                                                                                                                                                                                 |
 | `core/storage.rs`                                                                                                   | core storage P02；G Event/listener                                                                                                                                                                                                         |
 | `core/backup.rs`、`core/migration/`                                                                                 | core backup/migration P02                                                                                                                                                                                                                  |
 | `core/actor_v2/`、`core/service/`                                                                                   | core control/service P03；G status Event包装                                                                                                                                                                                               |
@@ -444,13 +447,13 @@ P11独立构建环境不安装GTK/WebKit、不准备Tauri dist，仅有Rust/nati
 | `service/icon.rs`、`service/mod.rs`                                                                                 | 已迁 `nyanpasu-core/src/icons.rs` P04；host `service/mod.rs` 保留 profile_file                                                                                                                                                             |
 | `enhance/`                                                                                                          | 剩余artifact/log/snapshot projection/goldens P08；不是重搬已在core的builder                                                                                                                                                                |
 | `state/`                                                                                                            | core source/transaction P08；P07先分独立IO ports/errors                                                                                                                                                                                    |
-| `client/app_update/`                                                                                                | core application updater P05；G plugin/install/Event adapter                                                                                                                                                                               |
+| `client/app_update/`                                                                                                | G应用更新owner、release规则、plugin/install/Event及原tests；不迁core                                                                                                                                                                       |
 | `client/application_workflow/`、`client/core_lifecycle/`                                                            | core runtime/workflow P08；P01先抽binary契约                                                                                                                                                                                               |
 | `client/effects/`                                                                                                   | core effects P06；facade impl随P08，G presentation projection拆出                                                                                                                                                                          |
-| `client/system_proxy/`、`client/system_dns.rs`                                                                      | core platform effects P06                                                                                                                                                                                                                  |
+| `client/system_proxy/`、`client/system_dns.rs`                                                                      | core platform effects P06；具体autostart配置解析/注册backend留G                                                                                                                                                                            |
 | `client/hotkey/`                                                                                                    | P06中立配置验证/业务动作契约；G插件注册owner/dashboard/action pump；facade业务方法P08                                                                                                                                                      |
 | `client/ui_effects/`                                                                                                | G tray/widget/locale实现；logger基础P04，presentation消费切口P06                                                                                                                                                                           |
-| `client/event_sink.rs`、`client/main_thread.rs`                                                                     | G Tauri emitter/main-thread handoff；owner观察P06，不把整个UI trait搬core                                                                                                                                                                  |
+| `client/event_sink.rs`、`client/main_thread.rs`                                                                     | G Tauri emitter/main-thread handoff；P06验收既有watch/同步回调，不搬整个UI trait                                                                                                                                                           |
 | `client/logs.rs`、`client/frontend_events.rs`                                                                       | logs能力/净化/sink P04，facade impl P08；webview身份映射P09                                                                                                                                                                                |
 | `client/core_version.rs`、`client/direct_egress.rs`                                                                 | core version P03 / `nyanpasu-core/src/diagnostics/direct_egress.rs` P04；facade impl如有随P08                                                                                                                                              |
 | `client/convergence.rs`                                                                                             | core effects共享health/retry模型 P06，runtime消费者同步改路径                                                                                                                                                                              |

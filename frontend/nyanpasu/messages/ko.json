@@ -1004,6 +1004,7 @@
   "effect_failure_widget_unavailable": "네트워크 통계 위젯이 아직 준비되지 않았습니다",
   "effect_failure_widget_apply_failed": "네트워크 통계 위젯을 업데이트하지 못했습니다",
   "effect_failure_tray_refresh_failed": "트레이 메뉴를 새로 고치지 못했습니다",
+  "effect_failure_presentation_unsupported": "이 환경에서는 인터페이스 설정 적용을 지원하지 않습니다",
   "effect_failure_effect_owner_silent": "이 설정을 적용하는 서비스가 결과를 알려 주지 않았습니다",
   "effect_failure_proxy_guard_waiting_dependency": "시스템 프록시 확인을 기다리는 중입니다",
   "effect_failure_auto_launch_failed": "로그인 시 자동 실행 설정을 업데이트하지 못했습니다",

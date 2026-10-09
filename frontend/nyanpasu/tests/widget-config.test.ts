@@ -189,3 +189,31 @@ test('numeric options clamp to their supported ranges and malformed values defau
     showDirections: false,
   })
 })
+
+test('quota wave options restore saved choices and keep defaults for older or invalid storage', () => {
+  const storage = normalizeWidgetConfigStorage({
+    version: 1,
+    byInstance: {
+      old: { type: WidgetId.SubscriptionQuota },
+      single: {
+        type: WidgetId.SubscriptionQuota,
+        waveStyle: 'single',
+        animateWave: false,
+      },
+      invalid: {
+        type: WidgetId.SubscriptionQuota,
+        waveStyle: 'triple',
+        animateWave: 'false',
+      },
+    },
+  })
+  expect(getWidgetConfig(storage, 'old', WidgetId.SubscriptionQuota)).toEqual(
+    DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota],
+  )
+  expect(
+    getWidgetConfig(storage, 'invalid', WidgetId.SubscriptionQuota),
+  ).toEqual(DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota])
+  expect(
+    getWidgetConfig(storage, 'single', WidgetId.SubscriptionQuota),
+  ).toMatchObject({ waveStyle: 'single', animateWave: false })
+})

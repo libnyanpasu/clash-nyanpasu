@@ -146,6 +146,30 @@ function ConfigFields({
                   onChange({ ...config, showProgress })
                 }
               />
+              <Choice
+                label={m.dashboard_widget_subscription_quota_config_wave_style()}
+                value={config.waveStyle}
+                options={[
+                  {
+                    value: 'single',
+                    label:
+                      m.dashboard_widget_subscription_quota_config_wave_single(),
+                  },
+                  {
+                    value: 'double',
+                    label:
+                      m.dashboard_widget_subscription_quota_config_wave_double(),
+                  },
+                ]}
+                disabled={disabled || !config.showProgress}
+                onChange={(waveStyle) => onChange({ ...config, waveStyle })}
+              />
+              <Toggle
+                label={m.dashboard_widget_subscription_quota_config_wave_animation()}
+                checked={config.animateWave}
+                disabled={disabled || !config.showProgress}
+                onChange={(animateWave) => onChange({ ...config, animateWave })}
+              />
               <NumberStepper
                 variant="filled"
                 label={m.dashboard_widget_config_expiry_threshold()}

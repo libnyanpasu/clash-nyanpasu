@@ -51,6 +51,8 @@ export type WidgetConfigs = {
     target: SubscriptionTarget
     showExpiry: boolean
     showProgress: boolean
+    waveStyle: 'single' | 'double'
+    animateWave: boolean
     expiryWarningDays: number
     quotaWarningPercent: number
   }
@@ -116,6 +118,8 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
     target: { kind: 'current' },
     showExpiry: true,
     showProgress: true,
+    waveStyle: 'double',
+    animateWave: true,
     expiryWarningDays: 7,
     quotaWarningPercent: 20,
   },
@@ -276,6 +280,8 @@ export function normalizeWidgetConfigStorage(
           typeof candidate === 'string' &&
           ['both', 'proxy', 'rule'].includes(candidate)) ||
         (key === 'unit' && (candidate === 'bytes' || candidate === 'bits')) ||
+        (key === 'waveStyle' &&
+          (candidate === 'single' || candidate === 'double')) ||
         (key === 'orientation' &&
           (candidate === 'vertical' || candidate === 'horizontal')) ||
         (key === 'buttons' &&

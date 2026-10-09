@@ -51,13 +51,47 @@ function ProviderUpdatesPreview({ id, onCloseClick }: WidgetComponentProps) {
       onCloseClick={onCloseClick}
     >
       <Card className="size-full" data-slot="widget-provider-updates-card">
-        <CardContent className="flex size-full flex-col gap-3">
+        <CardContent className="flex size-full min-h-0 flex-col gap-2 overflow-hidden">
           <WidgetTitle icon={CloudSyncRounded}>
             {m.dashboard_widget_provider_updates_title()}
           </WidgetTitle>
-          <p className="text-on-surface-variant text-sm">
-            {m.dashboard_widget_provider_updates_preview()}
+          <p className="text-on-surface-variant text-xs">
+            {m.dashboard_widget_provider_updates_counts({
+              proxies: '4',
+              rules: '2',
+            })}
           </p>
+          <ul
+            className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden"
+            data-slot="widget-provider-updates-preview-list"
+          >
+            {[
+              { name: 'Japan Premium', kind: 'HTTP', count: '128' },
+              { name: 'Regional Rules', kind: 'HTTP', count: '342' },
+            ].map((provider) => (
+              <li
+                className="bg-surface-variant/20 flex min-h-10 min-w-0 shrink-0 items-center gap-2 rounded-xl px-2 py-1 text-xs"
+                data-slot="widget-provider-updates-preview-row"
+                key={provider.name}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{provider.name}</p>
+                  <p className="text-on-surface-variant truncate">
+                    {provider.kind} · {provider.count} ·{' '}
+                    {formatRelativeTime(
+                      '2026-10-10T12:58:00Z',
+                      Date.parse('2026-10-10T13:00:00Z'),
+                      getLocale(),
+                    )}
+                  </p>
+                </div>
+                <RefreshRounded
+                  className="text-on-surface-variant size-4 shrink-0"
+                  aria-hidden="true"
+                />
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
     </WidgetItem>

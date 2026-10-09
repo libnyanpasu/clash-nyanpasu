@@ -5,6 +5,7 @@ import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-r
 import { filesize } from 'filesize'
 import { ComponentProps, ReactNode } from 'react'
 import { Card, CardContent } from '@nyanpasu/ui/card'
+import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { Sparkline } from '@nyanpasu/ui/sparkline'
 import { m } from '@/paraglide/messages'
 import {
@@ -72,6 +73,55 @@ function SparklineCard({
 // sample re-renders the chart and the figures, not the widget around them.
 
 const chartClass = 'absolute inset-0 z-0'
+const previewDownloadTraffic = [
+  180_000, 240_000, 210_000, 420_000, 360_000, 510_000, 460_000, 720_000,
+]
+const previewUploadTraffic = [
+  45_000, 60_000, 52_000, 90_000, 78_000, 120_000, 135_000, 180_000,
+]
+const previewConnections = [4, 6, 5, 8, 7, 10, 9, 12]
+const previewMemory = [420, 448, 462, 456, 492, 510, 536, 560].map(
+  (mebibytes) => mebibytes * 1024 * 1024,
+)
+
+function TrafficPreview({
+  direction,
+  unit,
+  showTotal,
+}: {
+  direction: 'up' | 'down'
+  unit: 'bytes' | 'bits'
+  showTotal: boolean
+}) {
+  const latest = direction === 'down' ? 720_000 : 180_000
+  const total = direction === 'down' ? 86_400_000 : 12_800_000
+
+  return (
+    <>
+      <WidgetTitle
+        icon={direction === 'down' ? ArrowDownwardRounded : ArrowUpwardRounded}
+      >
+        {direction === 'down'
+          ? m.dashboard_widget_traffic_download()
+          : m.dashboard_widget_traffic_upload()}
+      </WidgetTitle>
+      <WidgetMetric>
+        {filesize(latest, {
+          standard: unit === 'bits' ? 'si' : 'iec',
+          bits: unit === 'bits',
+        })}
+        /s
+      </WidgetMetric>
+      {showTotal && (
+        <WidgetMeta>
+          {m.dashboard_widget_traffic_total({
+            value: filesize(total, { standard: 'iec' }),
+          })}
+        </WidgetMeta>
+      )}
+    </>
+  )
+}
 
 function TrafficChart({ direction }: { direction: 'up' | 'down' }) {
   const { data: clashTraffic } = useClashTraffic()
@@ -122,6 +172,28 @@ function TrafficTotal({ field }: { field: 'downloadTotal' | 'uploadTotal' }) {
 
 export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
   const config = useWidgetConfig(id, WidgetId.TrafficDown)
+  const { sourceOnly, isOverlay } = useDndGridContext()
+
+  if (sourceOnly || isOverlay) {
+    return (
+      <SparklineCard
+        id={id}
+        widgetType={WidgetId.TrafficDown}
+        chart={
+          config.showChart && (
+            <Sparkline data={previewDownloadTraffic} className={chartClass} />
+          )
+        }
+        onCloseClick={onCloseClick}
+      >
+        <TrafficPreview
+          direction="down"
+          unit={config.unit}
+          showTotal={config.showTotal}
+        />
+      </SparklineCard>
+    )
+  }
 
   return (
     <SparklineCard
@@ -149,6 +221,28 @@ export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
 
 export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
   const config = useWidgetConfig(id, WidgetId.TrafficUp)
+  const { sourceOnly, isOverlay } = useDndGridContext()
+
+  if (sourceOnly || isOverlay) {
+    return (
+      <SparklineCard
+        id={id}
+        widgetType={WidgetId.TrafficUp}
+        chart={
+          config.showChart && (
+            <Sparkline data={previewUploadTraffic} className={chartClass} />
+          )
+        }
+        onCloseClick={onCloseClick}
+      >
+        <TrafficPreview
+          direction="up"
+          unit={config.unit}
+          showTotal={config.showTotal}
+        />
+      </SparklineCard>
+    )
+  }
 
   return (
     <SparklineCard
@@ -196,6 +290,28 @@ function ConnectionsCount() {
 
 export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
   const config = useWidgetConfig(id, WidgetId.Connections)
+  const { sourceOnly, isOverlay } = useDndGridContext()
+
+  if (sourceOnly || isOverlay) {
+    return (
+      <SparklineCard
+        id={id}
+        widgetType={WidgetId.Connections}
+        chart={
+          config.showChart && (
+            <Sparkline data={previewConnections} className={chartClass} />
+          )
+        }
+        onCloseClick={onCloseClick}
+      >
+        <WidgetTitle icon={SettingsEthernetRounded}>
+          {m.dashboard_widget_connections()}
+        </WidgetTitle>
+        <WidgetMetric>12</WidgetMetric>
+        <WidgetMeta />
+      </SparklineCard>
+    )
+  }
 
   return (
     <SparklineCard
@@ -239,6 +355,30 @@ function MemoryInUse() {
 
 export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
   const config = useWidgetConfig(id, WidgetId.Memory)
+  const { sourceOnly, isOverlay } = useDndGridContext()
+
+  if (sourceOnly || isOverlay) {
+    return (
+      <SparklineCard
+        id={id}
+        widgetType={WidgetId.Memory}
+        chart={
+          config.showChart && (
+            <Sparkline data={previewMemory} className={chartClass} />
+          )
+        }
+        onCloseClick={onCloseClick}
+      >
+        <WidgetTitle icon={MemoryOutlineRounded}>
+          {m.dashboard_widget_memory()}
+        </WidgetTitle>
+        <WidgetMetric>
+          {filesize(previewMemory.at(-1)!, { standard: 'iec' })}
+        </WidgetMetric>
+        <WidgetMeta />
+      </SparklineCard>
+    )
+  }
 
   return (
     <SparklineCard

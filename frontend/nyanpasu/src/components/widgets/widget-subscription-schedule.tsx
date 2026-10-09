@@ -50,9 +50,26 @@ function SubscriptionSchedulePreview({ id }: { id: string }) {
             {m.dashboard_widget_subscription_schedule_title()}
           </WidgetTitle>
         </WidgetHeader>
-        <CardContent className="min-h-0 flex-1 justify-center gap-2 overflow-hidden">
-          <div className="bg-surface-variant h-4 w-2/3 animate-pulse rounded-full" />
-          <div className="bg-surface-variant h-4 w-1/2 animate-pulse rounded-full" />
+        <CardContent className="min-h-0 flex-1 gap-2 overflow-hidden pt-3 text-xs">
+          <div
+            className="bg-surface-variant/30 flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-hidden rounded-2xl px-4 py-3"
+            data-slot="subscription-schedule-preview"
+          >
+            <p className="shrink-0 truncate text-sm font-medium">
+              Japan Premium
+            </p>
+            <div className="text-on-surface-variant flex min-w-0 items-center gap-2">
+              <SyncRounded className="size-4 shrink-0" aria-hidden="true" />
+              <span>
+                {m.dashboard_widget_subscription_schedule_succeeded()}
+              </span>
+            </div>
+            <p className="text-on-surface-variant tabular-nums">
+              {m.dashboard_widget_subscription_schedule_next_run({
+                time: '21:30',
+              })}
+            </p>
+          </div>
         </CardContent>
       </Card>
     </WidgetItem>

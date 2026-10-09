@@ -48,17 +48,57 @@ function ActiveConnectionsPreview({ id, onCloseClick }: WidgetComponentProps) {
       onCloseClick={onCloseClick}
     >
       <Card className="size-full" data-slot="widget-active-connections-card">
-        <CardContent className="flex size-full min-h-0 flex-col gap-3 overflow-hidden">
-          <WidgetTitle icon={NetworkCheckRounded}>
-            {m.dashboard_widget_active_connections_title()}
-          </WidgetTitle>
-          <p className="bg-surface-variant/30 text-on-surface-variant rounded-2xl p-3 text-sm">
-            {m.dashboard_widget_active_connections_preview()}
-          </p>
-          <div className="flex-1" />
-          <div className="text-on-surface-variant text-xs">
-            {m.dashboard_widget_active_connections_preview_rows()}
+        <CardContent className="flex size-full min-h-0 flex-col gap-2 overflow-hidden">
+          <div className="flex shrink-0 items-center gap-2">
+            <WidgetTitle className="flex-1" icon={NetworkCheckRounded}>
+              {m.dashboard_widget_active_connections_title()}
+            </WidgetTitle>
+            <span
+              className="bg-surface-variant/30 text-on-surface-variant rounded-full px-2 py-0.5 text-xs tabular-nums"
+              data-slot="widget-active-connections-count"
+            >
+              2
+            </span>
           </div>
+          <ul
+            className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
+            data-slot="widget-active-connections-list"
+          >
+            {[
+              {
+                host: 'video.example.com',
+                download: 1_572_864,
+                upload: 65_536,
+              },
+              { host: 'api.example.com', download: 458_752, upload: 32_768 },
+            ].map((connection) => (
+              <li
+                className="bg-surface-variant/30 flex min-w-0 shrink-0 items-center gap-3 rounded-2xl px-3 py-2 text-xs"
+                data-slot="widget-active-connections-row"
+                key={connection.host}
+              >
+                <div className="bg-surface-variant/40 text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
+                  <PublicRounded className="size-5" aria-hidden="true" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="min-w-0 truncate text-sm font-medium"
+                    data-slot="widget-active-connections-label"
+                  >
+                    {connection.host}
+                  </div>
+                  <div className="text-on-surface-variant flex gap-4 tabular-nums">
+                    <span className="whitespace-nowrap">
+                      ↓ {filesize(connection.download, { standard: 'iec' })}/s
+                    </span>
+                    <span className="whitespace-nowrap">
+                      ↑ {filesize(connection.upload, { standard: 'iec' })}/s
+                    </span>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
     </WidgetItem>

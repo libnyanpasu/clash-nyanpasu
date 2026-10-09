@@ -183,12 +183,59 @@ function TrafficReportContent({
 }
 
 function ReportPreview({ kind }: { kind: 'recent' | ReportDimension }) {
-  return (
-    <TrafficStatus>
-      {kind === 'recent'
-        ? m.dashboard_widget_traffic_report_preview()
-        : m.dashboard_widget_traffic_report_preview_ranking()}
-    </TrafficStatus>
+  const dimension = kind === 'recent' ? null : kind
+  const labels = dimension
+    ? {
+        origin: ['Safari', 'Chrome', 'Firefox'],
+        exit: ['Japan Premium', 'Singapore Premium', 'DIRECT'],
+        target: ['video.example.com', 'api.example.com', 'cdn.example.com'],
+        rule: ['DOMAIN-SUFFIX,example.com', 'MATCH', 'GEOIP,CN'],
+      }[dimension]
+    : []
+  const usages = [
+    {
+      bytes: { upload: 500_000_000, download: 1_200_000_000 },
+      connections: 12,
+    },
+    { bytes: { upload: 134_003_200, download: 210_612_736 }, connections: 5 },
+    { bytes: { upload: 100_000_000, download: 200_000_000 }, connections: 7 },
+  ]
+  const report: TrafficReport = {
+    total: {
+      bytes: { upload: 734_003_200, download: 1_610_612_736 },
+      connections: 24,
+    },
+    current_rate: null,
+    rankings: dimension
+      ? [
+          {
+            dimension,
+            distinct: 3,
+            groups: labels.map((key, index) => ({
+              key,
+              usage: usages[index]!,
+              current_rate: null,
+            })),
+            other: {
+              bytes: { upload: 0, download: 0 },
+              connections: 0,
+            },
+          },
+        ]
+      : [],
+    topology: null,
+  }
+
+  return dimension ? (
+    <RankingRows
+      report={report}
+      dimension={dimension}
+      topN={3}
+      showDirections={false}
+      hideNames={false}
+    />
+  ) : (
+    <RecentTrafficContent report={report} showDirections />
   )
 }
 

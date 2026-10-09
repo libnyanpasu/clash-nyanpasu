@@ -45,15 +45,27 @@ function SubscriptionQuotaPreview({ id }: { id: string }) {
       minW={3}
       minH={2}
     >
-      <Card className="flex size-full flex-col">
+      <Card className="relative isolate flex size-full flex-col">
+        <SubscriptionQuotaWave percent={68} waveStyle="double" animateWave />
         <WidgetHeader>
           <WidgetTitle icon={DataUsageRounded}>
             {m.dashboard_widget_subscription_quota_title()}
           </WidgetTitle>
         </WidgetHeader>
-        <CardContent className="min-h-0 flex-1 justify-center">
-          <div className="bg-surface-variant h-5 w-2/3 animate-pulse rounded-full" />
-          <div className="bg-surface-variant h-2 w-full animate-pulse rounded-full" />
+        <CardContent className="relative min-h-0 flex-1 justify-start gap-0 p-4 pt-2">
+          <div className="flex min-h-0 flex-1 flex-col gap-1">
+            <div className="flex min-h-0 flex-1 items-center">
+              <WidgetMetric data-slot="subscription-quota-percent">
+                68%
+              </WidgetMetric>
+            </div>
+            <WidgetMeta data-slot="subscription-quota-summary">
+              6.8 GiB{' '}
+              {m.dashboard_widget_subscription_quota_remaining_of({
+                total: '10 GiB',
+              })}
+            </WidgetMeta>
+          </div>
         </CardContent>
       </Card>
     </WidgetItem>

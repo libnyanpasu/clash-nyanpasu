@@ -53,8 +53,9 @@ Tauri GUI (backend/tauri)      nyanpasu-cli (planned)      mobile shells (later)
 `NyanpasuClient` currently lives in `backend/tauri/src/client/` together with the
 actors, services, and ports it depends on. These application capabilities move into
 `backend/nyanpasu-core`, alongside its existing state transaction machinery.
-No separate application crate is required in the target layout. Concrete infrastructure belongs in
-`nyanpasu-platform`, injected by the host. Each frontend
+No separate application or platform crate is required in the target layout.
+Reusable non-GUI adapters belong in capability-local core modules behind narrow
+ports, with explicit inputs supplied by the host. Each frontend
 then supplies its concrete adapters and composes the core; the core never depends on
 a frontend. This split is the prerequisite for mobile support. The
 [OpenWrt reconciliation roadmap](../design/openwrt-roadmap.md) records the MVP
@@ -126,14 +127,18 @@ If a mature ractor actor client already exists for a capability, use it instead 
 ### Backend package direction
 
 Shared backend code follows [Backend packages](backend-packages.md):
-`nyanpasu-core` owns use cases, typed actor clients and consumed ports;
-`nyanpasu-platform` implements infrastructure ports and may depend on core.
-Core must not depend on platform in production. Neither neutral crate nor
-`nyanpasu-config` may depend on Tauri or egui/eframe. Tauri is a host composition
-root and GUI/transport adapter; Tauri-specific implementations stay at that
-boundary. Move complete existing call paths and update callers without retaining
-old-path wrappers solely to avoid import changes. Run
-`deno task lint:backend-boundaries` after backend package-boundary changes.
+`nyanpasu-core` owns shared use cases, typed clients, workflows and consumed
+ports. The application/platform crates have been removed; runtime configuration
+building, builtins and concrete FS/script adapters share the capability owner
+`nyanpasu_core::runtime::config`. Non-GUI adapters stay behind narrow ports in
+capability-local core modules, such as runtime config's script/content adapters
+and `device::os`. Keep infrastructure IO out of pure services and retain explicit
+construction. Core and config must not depend on Tauri or egui/eframe; config must
+not depend on core. Tauri is a host composition root and GUI/transport adapter;
+Tauri-specific implementations stay at that boundary. Move complete existing call
+paths and update callers without retaining old-path wrappers solely to avoid
+import changes. Run `deno task lint:backend-boundaries` and focused
+`deno task test:backend-boundaries` after backend package-boundary changes.
 
 ### Do not add new global service singletons
 

@@ -14,11 +14,11 @@ use super::{
     },
     *,
 };
-use crate::client::core_lifecycle::ports::{
-    BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
-};
 use futures_util::FutureExt;
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_core::runtime::binary::{
+    BinaryInstallProgress, InstallCoreBinaryError, PreparedCoreBinary,
+};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind};
 use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -100,13 +100,13 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_core::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, super::error::RuntimePreparationError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
-            return Err(nyanpasu_core::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(super::error::RuntimePreparationError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
@@ -360,7 +360,7 @@ async fn workflow_graph_with_clients(
             core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths,
-            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+            scripts: nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),

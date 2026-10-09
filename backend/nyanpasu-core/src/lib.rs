@@ -1,6 +1,13 @@
-pub mod enhance;
+pub mod connections;
+pub mod device;
+pub mod diagnostics;
+pub mod error;
 pub mod format;
+pub mod network;
+pub mod runtime;
+pub mod service;
 pub mod state;
+pub mod tasks;
 
 /// Smoke test proving the gxhash dev-dependency compiles and runs under the
 /// target-feature flags configured in `.cargo/config.toml`. gxhash fails to

@@ -8,8 +8,11 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
-use nyanpasu_core::enhance::{RuntimeBuildInput, RuntimeBuilder};
-use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
+use nyanpasu_core::runtime::config::{
+    FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, RuntimeConfigScriptRunner,
+    ScriptDirs,
+};
+use serde_yaml_ng as serde_yaml;
 
 #[test]
 fn builder_runs_a_managed_script_through_the_platform_adapters() {
@@ -81,7 +84,7 @@ fn builder_runs_a_managed_script_through_the_platform_adapters() {
     input.clash.enable_clash_fields = false;
 
     let content = FsProfileContentSource::new(temp.path().to_path_buf());
-    let scripts = EnhanceScriptRunner::new(ScriptDirs::under(temp.path())).unwrap();
+    let scripts = RuntimeConfigScriptRunner::new(ScriptDirs::under(temp.path())).unwrap();
     let artifact = RuntimeBuilder::build(&input, &content, &scripts).unwrap();
     let yaml = serde_yaml::to_value(&*artifact.final_config).unwrap();
 

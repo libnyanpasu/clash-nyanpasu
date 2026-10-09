@@ -19,7 +19,7 @@ use std::{
 
 use camino::Utf8PathBuf;
 use nyanpasu_config::{
-    application::{ClashCore, NyanpasuAppConfig},
+    application::{ClashCore, NyanpasuAppConfig, ReleaseChannel},
     clash::config::{
         ClashConfig,
         clash_strategy::port::{PortStrategy, PortStrategyKind},
@@ -109,7 +109,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::application_workflow::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_core::enhance::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, super::super::error::RuntimePreparationError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -354,7 +354,7 @@ pub(super) async fn fixture_from(
             core_specs: Arc::new(crate::client::runtime_core_spec),
             profiles_dir: dir.path().join("profiles"),
             paths: paths.clone(),
-            scripts: nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+            scripts: nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
         },
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
@@ -1260,7 +1260,7 @@ async fn a_slow_source_write_is_waited_out_and_its_decision_settles_the_attempt(
 /// new is committed.
 #[tokio::test]
 async fn a_failed_save_restores_the_verified_runtime_baseline() {
-    use crate::service::profile_file::SelfProxyPortSource as _;
+    use nyanpasu_core::network::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2611,7 +2611,7 @@ async fn a_restore_that_cannot_be_observed_is_not_a_clean_cancel() {
 /// withdrawn candidate's ports on offer through the isolated state (v2 §6.2).
 #[tokio::test]
 async fn an_unverified_restore_takes_the_confirmed_ports_away() {
-    use crate::service::profile_file::SelfProxyPortSource as _;
+    use nyanpasu_core::network::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2707,7 +2707,7 @@ async fn an_unverified_restore_takes_the_confirmed_ports_away() {
 /// gone; nothing short of an apply the core confirmed says otherwise (D1).
 #[tokio::test]
 async fn an_unverified_restore_takes_unchanged_ports_away_too() {
-    use crate::service::profile_file::SelfProxyPortSource as _;
+    use nyanpasu_core::network::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -2802,7 +2802,7 @@ async fn an_unverified_restore_takes_unchanged_ports_away_too() {
 /// one without starting the new. So the binding ends there too (D1).
 #[tokio::test]
 async fn an_unobserved_apply_takes_unchanged_ports_away() {
-    use crate::service::profile_file::SelfProxyPortSource as _;
+    use nyanpasu_core::network::SelfProxyPortSource as _;
 
     let Fixture {
         client,
@@ -3438,7 +3438,7 @@ async fn a_gui_save_never_reaches_the_runtime() {
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
-        crate::bundle::Channel::Stable,
+        ReleaseChannel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )
@@ -3487,7 +3487,7 @@ async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
-        crate::bundle::Channel::Stable,
+        ReleaseChannel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )
@@ -3775,7 +3775,7 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     let mut profiles = Profiles::default();
     profiles.global_transforms.push(item.uid.clone());
     profiles.items.insert(item.uid.clone(), item);
-    let input = nyanpasu_core::enhance::RuntimeBuildInput {
+    let input = nyanpasu_core::runtime::config::RuntimeBuildInput {
         profiles: Arc::new(profiles.clone()),
         clash: ClashConfig::default(),
         app: NyanpasuAppConfig::default(),
@@ -3785,11 +3785,12 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
         },
     };
     let old_content =
-        nyanpasu_platform::enhance::FsProfileContentSource::new(f.profiles_dir.clone());
+        nyanpasu_core::runtime::config::FsProfileContentSource::new(f.profiles_dir.clone());
     let script_dirs = f.builder.delegate.scripts.clone();
     let built = tokio::task::spawn_blocking(move || {
-        let scripts = nyanpasu_platform::enhance::EnhanceScriptRunner::new(script_dirs).unwrap();
-        nyanpasu_core::enhance::RuntimeBuilder::build(&input, &old_content, &scripts)
+        let scripts =
+            nyanpasu_core::runtime::config::RuntimeConfigScriptRunner::new(script_dirs).unwrap();
+        nyanpasu_core::runtime::config::RuntimeBuilder::build(&input, &old_content, &scripts)
     })
     .await
     .unwrap();
@@ -3895,7 +3896,7 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
-        crate::bundle::Channel::Stable,
+        ReleaseChannel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )
@@ -3928,7 +3929,7 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
         f.application,
-        crate::bundle::Channel::Stable,
+        ReleaseChannel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )
@@ -3963,7 +3964,7 @@ async fn domain_actor_refuses_writes_before_composition_is_ready() {
     let application = crate::client::application::ApplicationClient::from_manager(
         crate::state::mutation::MutationCoordinator::pending(),
         manager,
-        crate::bundle::Channel::Stable,
+        ReleaseChannel::Stable,
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
     )

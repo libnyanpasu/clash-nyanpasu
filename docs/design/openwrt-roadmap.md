@@ -21,12 +21,14 @@ PRs merely to implement this roadmap.
 The current upstream plan moves NyanpasuClient, shared use cases, typed clients,
 actors, workflows and consumed ports into `nyanpasu-core`. No separate
 `nyanpasu-application` layer is required in the target. Concrete reusable adapters
-remain in platform or existing infrastructure crates, injected by the host;
-core must not depend on platform or a frontend. Config retains its domain models
+belong in capability-local core modules or existing infrastructure crates, with
+explicit host inputs and narrow ports; core must not depend on a frontend.
+The application/platform crates are removed. Config retains its domain models
 and pure executor. Tauri/shell remains the desktop host and presentation boundary.
 
-The runtime behavior delivered by #5652 now lives in `nyanpasu-core::enhance`,
-with platform/desktop consumers migrated and the former application crate removed.
+The runtime behavior delivered by #5652 now lives in `nyanpasu_core::runtime::config`,
+with its filesystem/script adapters and original tests in the same capability;
+desktop consumers are migrated and the former application/platform crates removed.
 Follow-up actor/facade extraction targets core directly. This is shared-backend
 consolidation, not resumed OpenWrt work. OpenWrt still waits for upstream core/shell
 completion and introduces no second application facade.

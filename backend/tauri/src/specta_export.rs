@@ -612,6 +612,38 @@ mod tests {
             "no legacy verge DTO may stay on the wire"
         );
 
+        let preparation_error = exported_type(&generated, "RuntimePreparationError");
+        assert_contains_all(
+            preparation_error,
+            "RuntimePreparationError",
+            &[
+                "kind: 'build_artifact'",
+                "source: RuntimeBuildError",
+                "kind: 'start_script_runner'",
+                "kind: 'serialize_final_config'",
+                "kind: 'config_not_mapping'",
+            ],
+        );
+        let build_error = exported_type(&generated, "RuntimeBuildError");
+        assert_contains_all(
+            build_error,
+            "RuntimeBuildError",
+            &[
+                "kind: 'validate_profiles'",
+                "kind: 'run_pipeline'",
+                "kind: 'transforms_failed'",
+                "logs: RuntimeBuildLog[]",
+            ],
+        );
+        assert!(!build_error.contains("start_script_runner"));
+        assert!(!build_error.contains("serialize_final_config"));
+        assert!(!build_error.contains("config_not_mapping"));
+        assert!(!build_error.contains("serialize_runtime_config"));
+        assert!(
+            exported_type(&generated, "RuntimeError")
+                .contains("kind: 'build_runtime'; source: RuntimePreparationError")
+        );
+
         // The plain `ClashConfig` name belongs to the typed persistent config,
         // not to the clash-API `/configs` DTO.
         let clash_config = exported_type(&generated, "ClashConfig");

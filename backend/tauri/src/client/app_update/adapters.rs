@@ -13,8 +13,8 @@ use super::{
     AppUpdateSettings, AppUpdateSnapshot, AppUpdateStateChanged, PreparedAppUpdate,
     VerifiedAppUpdate,
 };
-use crate::service::profile_file::SelfProxyPortSource;
 use nyanpasu_config::application::UpdateSource;
+use nyanpasu_core::network::SelfProxyPortSource;
 
 struct DownloadCandidates(Vec<(UpdateSource, Update)>);
 
@@ -69,9 +69,9 @@ impl AppUpdateBackend for TauriAppUpdateBackend {
                     }
                 });
             if let Some(port) = self.proxy_port.mixed_port() {
-                builder = builder.proxy(crate::utils::config::get_self_proxy(port).parse()?);
+                builder = builder.proxy(nyanpasu_core::network::get_self_proxy(port).parse()?);
             }
-            if let Ok(Some(proxy)) = crate::utils::config::get_system_proxy() {
+            if let Ok(Some(proxy)) = nyanpasu_core::network::get_system_proxy() {
                 builder = builder.proxy(proxy.parse().context("invalid system proxy")?);
             }
             let Some(mut update) = builder.build()?.check().await? else {

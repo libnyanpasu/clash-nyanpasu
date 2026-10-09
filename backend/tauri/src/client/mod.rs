@@ -1,3 +1,4 @@
+use nyanpasu_core::network::SelfProxyPortSource;
 use nyanpasu_paths::PathResolver;
 mod app_lifecycle;
 pub mod app_update;
@@ -49,7 +50,7 @@ use crate::{
         },
         storage::Storage,
     },
-    service::profile_file::{ProfileFileService, SelfProxyPortSource},
+    service::profile_file::ProfileFileService,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
         ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
@@ -59,7 +60,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use nyanpasu_config::{
-    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel},
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
         ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
@@ -67,11 +68,13 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_core::{
+    device::DeviceInfoSource,
+    diagnostics::{EnvInfo, EnvironmentCollector},
+};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub(crate) use app_lifecycle::drain_on_shutdown;
-pub use app_lifecycle::track_until_shutdown;
 pub use clash_info::ClashInfo;
 pub use direct_egress::{DirectEgress, DirectEgressProbe, HttpDirectEgressProbe};
 pub use error::{ClientError, Result};
@@ -90,7 +93,10 @@ pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
 pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
     pub jobs: nyanpasu_jobs::JobsClient,
-    pub bundle_metadata: crate::bundle::BundleMetadata,
+    pub installed_channel: ReleaseChannel,
+    pub is_portable: bool,
+    pub environment: Arc<dyn EnvironmentCollector>,
+    pub device_info: Arc<dyn DeviceInfoSource>,
     pub logging: logs::LoggingSetup,
     pub http_frontend: Option<crate::server::debug_http::Frontend>,
     pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
@@ -112,7 +118,7 @@ pub struct ClientSetupArgs {
     pub direct_egress: Arc<dyn DirectEgressProbe>,
     pub geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-    pub binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+    pub binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
     pub core_versions: Arc<dyn core_version::CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
@@ -133,7 +139,7 @@ pub struct NyanpasuClient {
 
 async fn new_typed_config_clients(
     mutations: crate::state::mutation::MutationCoordinator,
-    build_channel: crate::bundle::Channel,
+    build_channel: ReleaseChannel,
     paths: PathResolver,
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
@@ -206,7 +212,9 @@ fn url_derived_name(url: &url::Url) -> String {
 
 struct NyanpasuClientInner {
     debug_http: crate::server::debug_http::HttpServerClient,
-    bundle_metadata: crate::bundle::BundleMetadata,
+    installed_channel: ReleaseChannel,
+    is_portable: bool,
+    environment: Arc<dyn EnvironmentCollector>,
     core_logs: crate::core::logs::CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
@@ -251,7 +259,10 @@ impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
         let ClientSetupArgs {
             jobs,
-            bundle_metadata,
+            installed_channel,
+            is_portable,
+            environment,
+            device_info,
             logging,
             http_frontend,
             http_routes,
@@ -280,7 +291,7 @@ impl NyanpasuClient {
         let profiles_dir = paths.app_profiles_dir().into_std_path_buf();
         let backup_paths = paths.clone();
         let instance_config_dir = paths.app_config_dir().as_std_path().to_path_buf();
-        let script_dirs = nyanpasu_platform::enhance::ScriptDirs::new(
+        let script_dirs = nyanpasu_core::runtime::config::ScriptDirs::new(
             paths.scripts_dir().into_std_path_buf(),
             paths.cache_dir().into_std_path_buf(),
         );
@@ -298,7 +309,7 @@ impl NyanpasuClient {
                     .context("failed to clean stale runtime candidates")?;
                 let (application, session_state, clash_config) = new_typed_config_clients(
                     mutations.clone(),
-                    bundle_metadata.release_channel,
+                    installed_channel,
                     paths.clone(),
                     &owner_shutdown,
                     &owner_tasks,
@@ -313,6 +324,8 @@ impl NyanpasuClient {
                 let file_service = Arc::new(ProfileFileService::new(
                     paths,
                     ports.clone() as Arc<dyn SelfProxyPortSource>,
+                    device_info,
+                    format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
                 ));
                 let profiles = profiles::ProfilesClient::new_with_jobs(
                     mutations.clone(),
@@ -336,7 +349,9 @@ impl NyanpasuClient {
             })?;
         tauri::async_runtime::block_on(Self::with_parts(
             Some(wiring),
-            bundle_metadata,
+            installed_channel,
+            is_portable,
+            environment,
             logging,
             jobs,
             application,
@@ -377,7 +392,9 @@ impl NyanpasuClient {
     #[allow(clippy::too_many_arguments)]
     async fn with_parts(
         mutations: Option<crate::state::mutation::MutationCoordinator>,
-        bundle_metadata: crate::bundle::BundleMetadata,
+        installed_channel: ReleaseChannel,
+        is_portable: bool,
+        environment: Arc<dyn EnvironmentCollector>,
         logging: logs::LoggingSetup,
         jobs: nyanpasu_jobs::JobsClient,
         application: ApplicationClient,
@@ -392,7 +409,7 @@ impl NyanpasuClient {
         storage: Storage,
         runtime_paths: RuntimePaths,
         core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
-        script_dirs: nyanpasu_platform::enhance::ScriptDirs,
+        script_dirs: nyanpasu_core::runtime::config::ScriptDirs,
         ui_sink: Arc<dyn UiEventSink>,
         app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
         app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
@@ -402,7 +419,7 @@ impl NyanpasuClient {
         direct_egress: Arc<dyn DirectEgressProbe>,
         geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-        binary_installer: Arc<dyn core_lifecycle::ports::BinaryInstaller>,
+        binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
         core_versions: Arc<dyn core_version::CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
@@ -508,6 +525,7 @@ impl NyanpasuClient {
                     .context("executable has no parent directory")?
                     .to_path_buf(),
                 ports.clone(),
+                format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.app_version),
             )),
             Arc::new(application_workflow.clone()),
             shutdown.child_token(),
@@ -516,15 +534,13 @@ impl NyanpasuClient {
         .await?;
         let app_config = application.snapshot().state;
         let app_update_settings = app_update::AppUpdateSettings {
-            channel: app_config
-                .release_channel
-                .unwrap_or(bundle_metadata.release_channel),
+            channel: app_config.release_channel.unwrap_or(installed_channel),
             sources: app_config.update_sources.clone(),
             auto_check: app_config.enable_auto_check_update,
             auto_download: app_config.enable_auto_download_update,
         };
         let app_update_supported = app_update_backend_factory.is_some()
-            && !bundle_metadata.is_portable
+            && !is_portable
             && (cfg!(any(target_os = "windows", target_os = "macos"))
                 || (cfg!(target_os = "linux") && *crate::consts::IS_APPIMAGE));
         let app_update_backend = app_update_backend_factory
@@ -539,9 +555,7 @@ impl NyanpasuClient {
                 settings: app_update_settings,
                 supported: app_update_supported,
                 endpoints: crate::bundle::update_endpoints(
-                    app_config
-                        .release_channel
-                        .unwrap_or(bundle_metadata.release_channel),
+                    app_config.release_channel.unwrap_or(installed_channel),
                 ),
                 shutdown: shutdown.child_token(),
             },
@@ -551,7 +565,6 @@ impl NyanpasuClient {
         let mut application_settings = application.subscribe_settings_changes();
         let settings_updater = app_updater.clone();
         let settings_shutdown = shutdown.child_token();
-        let installed_channel = bundle_metadata.release_channel;
         tasks.spawn(async move {
             loop {
                 tokio::select! {
@@ -624,7 +637,9 @@ impl NyanpasuClient {
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 debug_http,
-                bundle_metadata,
+                installed_channel,
+                is_portable,
+                environment,
                 core_logs,
                 app_logs,
                 jobs,
@@ -661,6 +676,10 @@ impl NyanpasuClient {
         })
     }
 
+    pub fn collect_envs(&self) -> std::io::Result<EnvInfo<'static>> {
+        self.inner.environment.collect()
+    }
+
     pub async fn debug_http_status(
         &self,
     ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
@@ -677,16 +696,15 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    pub async fn release_channel(&self) -> Result<crate::bundle::Channel> {
+    pub async fn release_channel(&self) -> Result<ReleaseChannel> {
         Ok(self
             .inner
-            .bundle_metadata
-            .release_channel
+            .installed_channel
             .resolve(self.inner.application.snapshot().state.release_channel))
     }
 
-    pub fn installed_release_channel(&self) -> crate::bundle::Channel {
-        self.inner.bundle_metadata.release_channel
+    pub fn installed_release_channel(&self) -> ReleaseChannel {
+        self.inner.installed_channel
     }
 
     pub async fn get_app_update_state(&self) -> Result<app_update::AppUpdateSnapshot> {
@@ -715,7 +733,7 @@ impl NyanpasuClient {
 
     pub async fn set_release_channel(
         &self,
-        channel: crate::bundle::Channel,
+        channel: ReleaseChannel,
     ) -> Result<runtime::MutationOutcome<()>> {
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.release_channel = Some(Some(channel));
@@ -726,13 +744,14 @@ impl NyanpasuClient {
     /// A failed prune is logged and does not fail the backup it follows.
     pub async fn create_config_backup(&self) -> std::result::Result<BackupInfo, BackupError> {
         let (paths, storage) = (self.inner.paths.clone(), self.inner.storage.clone());
-        crate::utils::blocking::join(
+        nyanpasu_core::tasks::blocking::join(
             tokio::task::spawn_blocking(move || {
                 let info = backup::create_backup(&BackupRequest {
                     paths: &paths,
                     storage: StorageSource::Live(&storage),
                     kind: BackupKind::Manual,
                     now: time::OffsetDateTime::now_utc(),
+                    app_version: crate::consts::BUILD_INFO.pkg_version,
                 })?;
                 if let Err(error) = backup::prune_backups(
                     paths.backups_dir().as_std_path(),
@@ -755,7 +774,7 @@ impl NyanpasuClient {
     }
 
     pub fn is_portable(&self) -> bool {
-        self.inner.bundle_metadata.is_portable
+        self.inner.is_portable
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
@@ -857,12 +876,16 @@ impl NyanpasuClient {
     ) -> std::result::Result<system_proxy::ports::OsProxyConfig, system_proxy::ports::OsProxyError>
     {
         let os_proxy = self.inner.os_proxy.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || os_proxy.get()).await)
+        nyanpasu_core::tasks::blocking::join(
+            tokio::task::spawn_blocking(move || os_proxy.get()).await,
+        )
     }
 
     pub async fn flush_system_dns_cache(&self) -> std::result::Result<(), SystemDnsError> {
         let system_dns = self.inner.system_dns.clone();
-        crate::utils::blocking::join(tokio::task::spawn_blocking(move || system_dns.flush()).await)
+        nyanpasu_core::tasks::blocking::join(
+            tokio::task::spawn_blocking(move || system_dns.flush()).await,
+        )
     }
 
     /// A caller-triggered probe. Traffic consumes the result without waiting for network IO.
@@ -1319,7 +1342,7 @@ impl crate::core::updater::ports::CoreUpdateInstaller
 {
     async fn install(
         &self,
-        artifact: core_lifecycle::ports::PreparedCoreBinary,
+        artifact: nyanpasu_core::runtime::binary::PreparedCoreBinary,
     ) -> anyhow::Result<()> {
         Ok(self.replace_binary(artifact).await?)
     }
@@ -1352,6 +1375,27 @@ pub(crate) mod tests {
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
+
+    pub(crate) struct FixedDeviceInfoSource;
+
+    impl DeviceInfoSource for FixedDeviceInfoSource {
+        fn snapshot(&self) -> nyanpasu_core::device::DeviceInfo {
+            nyanpasu_core::device::DeviceInfo {
+                hwid: "0123456789abcdef0123456789abcdef".into(),
+                device_os: "Linux".into(),
+                os_version: "test-os-version".into(),
+                device_model: "Test device".into(),
+            }
+        }
+    }
+
+    struct UnconfiguredEnvironmentCollector;
+
+    impl EnvironmentCollector for UnconfiguredEnvironmentCollector {
+        fn collect(&self) -> std::io::Result<EnvInfo<'static>> {
+            panic!("environment collection must be configured explicitly in this test")
+        }
+    }
 
     struct IdleEndpoint;
 
@@ -2260,7 +2304,7 @@ pub(crate) mod tests {
     ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
         let application = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(dir, "application.yaml"),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -2436,11 +2480,9 @@ pub(crate) mod tests {
         let (backup_paths, storage) = test_backup_deps(&dir);
         NyanpasuClient::with_parts(
             None,
-            crate::bundle::BundleMetadata {
-                is_portable: false,
-                is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
-            },
+            ReleaseChannel::Stable,
+            false,
+            Arc::new(UnconfiguredEnvironmentCollector),
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
                     .app_logs_dir()
@@ -2459,7 +2501,7 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
             Arc::new(runtime_core_spec),
-            nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+            nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             None,
             None,
@@ -2598,7 +2640,7 @@ pub(crate) mod tests {
         let application = ApplicationClient::from_manager(
             crate::state::mutation::MutationCoordinator::isolated(),
             manager,
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
         )
@@ -2968,11 +3010,10 @@ pub(crate) mod tests {
                     .join()
                     .unwrap()
             }),
-            bundle_metadata: crate::bundle::BundleMetadata {
-                is_portable: false,
-                is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
-            },
+            installed_channel: ReleaseChannel::Stable,
+            is_portable: false,
+            environment: Arc::new(UnconfiguredEnvironmentCollector),
+            device_info: Arc::new(FixedDeviceInfoSource),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
@@ -3285,6 +3326,8 @@ pub(crate) mod tests {
         let file_service = Arc::new(ProfileFileService::new(
             paths.clone(),
             ports.clone() as Arc<dyn SelfProxyPortSource>,
+            Arc::new(FixedDeviceInfoSource),
+            format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
         ));
         let profiles = profiles::ProfilesClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -3301,11 +3344,9 @@ pub(crate) mod tests {
         let (backup_paths, storage) = test_backup_deps(&dir);
         let client = NyanpasuClient::with_parts(
             None,
-            crate::bundle::BundleMetadata {
-                is_portable: false,
-                is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
-            },
+            ReleaseChannel::Stable,
+            false,
+            Arc::new(UnconfiguredEnvironmentCollector),
             logs::test_setup(
                 test_paths(dir.path(), dir.path().join("data"))
                     .app_logs_dir()
@@ -3324,7 +3365,7 @@ pub(crate) mod tests {
             storage,
             RuntimePaths::from_resolver(&paths),
             Arc::new(runtime_core_spec),
-            nyanpasu_platform::enhance::ScriptDirs::new(
+            nyanpasu_core::runtime::config::ScriptDirs::new(
                 paths.scripts_dir().into_std_path_buf(),
                 paths.cache_dir().into_std_path_buf(),
             ),
@@ -3450,7 +3491,7 @@ pub(crate) mod tests {
             let paths = test_paths(dir.path(), dir.path().join("data"));
             let (loaded, _session_state, _clash_config) = new_typed_config_clients(
                 crate::state::mutation::MutationCoordinator::isolated(),
-                crate::bundle::Channel::Stable,
+                ReleaseChannel::Stable,
                 paths,
                 &tokio_util::sync::CancellationToken::new(),
                 &tokio_util::task::TaskTracker::new(),
@@ -3484,11 +3525,10 @@ pub(crate) mod tests {
                     .join()
                     .unwrap()
             }),
-            bundle_metadata: crate::bundle::BundleMetadata {
-                is_portable: true,
-                is_fixed_webview: false,
-                release_channel: crate::bundle::Channel::Stable,
-            },
+            installed_channel: ReleaseChannel::Stable,
+            is_portable: true,
+            environment: Arc::new(UnconfiguredEnvironmentCollector),
+            device_info: Arc::new(FixedDeviceInfoSource),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
             http_frontend: None,
             http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
@@ -4451,11 +4491,9 @@ pub(crate) mod tests {
             let (backup_paths, storage) = test_backup_deps(&dir);
             let client = NyanpasuClient::with_parts(
                 None,
-                crate::bundle::BundleMetadata {
-                    is_portable: false,
-                    is_fixed_webview: false,
-                    release_channel: crate::bundle::Channel::Stable,
-                },
+                ReleaseChannel::Stable,
+                false,
+                Arc::new(UnconfiguredEnvironmentCollector),
                 logs::test_setup(
                     test_paths(dir.path(), dir.path().join("data"))
                         .app_logs_dir()
@@ -4474,7 +4512,7 @@ pub(crate) mod tests {
                 storage,
                 RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
                 Arc::new(runtime_core_spec),
-                nyanpasu_platform::enhance::ScriptDirs::under(dir.path()),
+                nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
                 Arc::new(crate::client::event_sink::NoopUiEventSink),
                 None,
                 None,

@@ -58,7 +58,7 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
             eprintln!("Invalid migration target version {version}: {error}");
             std::process::exit(1);
         }),
-        None => current_version().unwrap_or_else(|error| {
+        None => current_version(crate::consts::BUILD_INFO.pkg_version).unwrap_or_else(|error| {
             eprintln!("Failed to resolve current version: {error:#}");
             std::process::exit(1);
         }),
@@ -66,7 +66,14 @@ pub fn parse(args: &MigrateOpts, paths: &PathResolver) {
     let mut runner = paths
         .create_base_dirs()
         .map_err(anyhow::Error::from)
-        .and_then(|()| Runner::with_target(target, paths.clone(), args.force))
+        .and_then(|()| {
+            Runner::with_target(
+                target,
+                paths.clone(),
+                args.force,
+                crate::consts::BUILD_INFO.pkg_version,
+            )
+        })
         .unwrap_or_else(|error| {
             eprintln!("Failed to initialize migration runner: {error:#}");
             std::process::exit(1);

@@ -108,7 +108,7 @@ pub trait AppUpdateBackend: Send + Sync + 'static {
     async fn install(&self, update: PreparedAppUpdate, package: VerifiedAppUpdate) -> Result<()>;
 }
 
-pub type BackendFactory = dyn Fn(Arc<dyn crate::service::profile_file::SelfProxyPortSource>) -> Arc<dyn AppUpdateBackend>
+pub type BackendFactory = dyn Fn(Arc<dyn nyanpasu_core::network::SelfProxyPortSource>) -> Arc<dyn AppUpdateBackend>
     + Send
     + Sync;
 
@@ -1003,7 +1003,7 @@ pub struct AppUpdateClient(Arc<Inner>);
 impl AppUpdateClient {
     pub async fn spawn(args: AppUpdateArgs, tasks: &TaskTracker) -> Result<Self> {
         let (actor, _) = Actor::spawn(None, AppUpdateActor, args.clone()).await?;
-        crate::client::drain_on_shutdown(tasks, args.shutdown, actor.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, args.shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner(actor))))
     }
 

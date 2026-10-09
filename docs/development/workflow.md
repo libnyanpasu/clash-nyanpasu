@@ -60,7 +60,7 @@ these YAML files.
 | `deps-build-windows-nsis.yaml`      | `[Reusable] Build Windows NSIS and Portable Packages` | Windows installers and optional portable artifacts; called by nightly and release workflows, or dispatched manually. |
 | `deps-create-updater.yaml`          | `[Reusable] Publish Updater Manifests`                | App updater feeds on GitHub and Surge; called by nightly and release workflows, or dispatched manually.              |
 | `deps-delete-releases.yaml`         | `[Reusable] Clear Release Assets`                     | Clear assets on the existing nightly release; called by nightly workflow, or dispatched manually.                    |
-| `deps-message-telegram.yaml`        | `[Reusable] Notify Telegram of Releases`              | Manual release notification resend; normal builds publish files through central storage.                             |
+| `deps-message-telegram.yaml`        | `[Reusable] Notify Telegram of Releases`              | Release notifications; called by nightly and release workflows, or dispatched manually.                              |
 | `deps-publish-storage.yaml`         | `[Reusable] Publish Central Storage Mirrors`          | Publish six-target build inventories to SourceForge and Telegram; called by nightly and release workflows.           |
 | `deps-update-tag.yaml`              | `[Reusable] Update Nightly Tag and Release`           | Move the nightly tag and update release metadata; called by nightly workflow, or dispatched manually.                |
 | `deps-upload-release-assets.yaml`   | `[Reusable] Upload Release Assets`                    | Upload artifacts from the current caller run to its release; called by nightly and release workflows.                |

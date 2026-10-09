@@ -165,6 +165,16 @@ jobs:
       sourceforge_mirrors_json: ${{ needs.verify_sourceforge.outputs.sourceforge_mirrors_json }}
     secrets: inherit
 
+  notify_telegram:
+    name: Send Release Message to Telegram
+    if: startsWith(github.repository, 'libnyanpasu')
+    needs: [upload_release_assets]
+    uses: ./.github/workflows/deps-message-telegram.yaml
+    with:
+      nightly: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
   telegram:
     name: Publish Files to Telegram
     if: ${{ startsWith(github.repository, 'libnyanpasu') && needs.publish_storage.outputs.publication_prepared == 'true' }}

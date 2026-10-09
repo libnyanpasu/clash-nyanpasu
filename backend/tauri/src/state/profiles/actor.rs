@@ -4,6 +4,7 @@
 use nyanpasu_core::{
     migration::modules::profiles::ProfilesFormat,
     profiles::{
+        current_closure,
         error::{
             EmptyScriptSnafu, MissingProxiesSnafu, NotYamlMappingSnafu, ProfileContentError,
             ProfileFileError,
@@ -367,43 +368,6 @@ pub(super) enum AffectsRule {
 impl ProfilesActor {
     fn current_state(state: &ProfilesActorState) -> Profiles {
         state.manager.snapshot_handle().load().state.clone()
-    }
-
-    pub(crate) fn current_closure(profiles: &Profiles) -> indexmap::IndexSet<ProfileId> {
-        let mut closure: indexmap::IndexSet<ProfileId> =
-            profiles.global_transforms.iter().cloned().collect();
-        let Some(current) = &profiles.current else {
-            return closure;
-        };
-
-        closure.insert(current.clone());
-        let mut configs = vec![current.clone()];
-        if let Some(item) = profiles.items.get(current)
-            && let ProfileDefinition::Config {
-                config: ConfigDefinition::Composition(composition),
-            } = &item.definition
-        {
-            if let Some(base) = &composition.base {
-                closure.insert(base.clone());
-                configs.push(base.clone());
-            }
-            for member in &composition.extend_proxies_from {
-                closure.insert(member.clone());
-                configs.push(member.clone());
-            }
-        }
-
-        for config in configs {
-            if let Some(item) = profiles.items.get(&config)
-                && let ProfileDefinition::Config { config } = &item.definition
-            {
-                for transform in config.transforms() {
-                    closure.insert(transform.clone());
-                }
-            }
-        }
-
-        closure
     }
 
     fn prepare_candidate(mut next: Profiles) -> Result<Profiles, ProfilesError> {
@@ -1073,7 +1037,7 @@ impl ProfilesActor {
             let content = match &resource {
                 MaterializationResource::File { content } => Some(content.clone()),
                 MaterializationResource::Symlink { .. }
-                    if !Self::current_closure(&candidate).iter().any(|uid| {
+                    if !current_closure(&candidate).iter().any(|uid| {
                         candidate
                             .items
                             .get(uid)

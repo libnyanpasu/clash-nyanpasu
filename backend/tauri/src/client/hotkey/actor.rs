@@ -18,8 +18,8 @@ use super::{
         HotkeyAction, HotkeyActionSink, HotkeyBindings, HotkeyOp, ShortcutError, ShortcutRegistrar,
     },
 };
-use crate::client::effects::{
-    plan::EffectKind,
+use nyanpasu_core::effects::{
+    EffectKind,
     status::{EffectHealth, EffectRevision, EffectStatus},
 };
 

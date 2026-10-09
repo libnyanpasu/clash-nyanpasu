@@ -1,12 +1,9 @@
-use crate::client::{
-    effects::status::failure_text,
-    ui_effects::ports::{
-        ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
-        MissingWidgetSenderSnafu, ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu,
-        StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
-    },
+use crate::client::ui_effects::ports::{
+    ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
+    MissingWidgetSenderSnafu, ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu,
+    StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
 };
-use nyanpasu_core::clash::ws::ClashConnectionsConnectorEvent;
+use nyanpasu_core::{clash::ws::ClashConnectionsConnectorEvent, effects::status::failure_text};
 
 use nyanpasu_egui::{
     ipc::{

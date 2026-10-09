@@ -7,7 +7,6 @@ pub(crate) mod error;
 pub mod executor;
 pub mod plan;
 pub mod ports;
-pub mod status;
 
 impl NyanpasuClient {
     /// What the tray renders from the committed configuration, for the tray

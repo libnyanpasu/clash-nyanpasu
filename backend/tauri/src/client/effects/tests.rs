@@ -1,12 +1,8 @@
 //! Post-commit isolation and coalescing, using explicit actor acknowledgements.
 use super::{
     actor::{EffectsArgs, EffectsClient, EffectsSnapshot},
-    plan::{
-        ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-        SystemProxyDesired, TrayRefresh,
-    },
+    plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, TrayRefresh},
     ports::{ApplicationEffectsPort, CommitNotifications},
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
     NyanpasuClient, UiEventSink,
@@ -16,6 +12,13 @@ use nyanpasu_config::{
     application::{I18nLanguage, NyanpasuAppConfig},
     clash::config::ClashConfig,
     runtime::executor::ResolvedPortBindings,
+};
+use nyanpasu_core::{
+    effects::{
+        EffectKind,
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    },
+    system_proxy::SystemProxyDesired,
 };
 use std::{
     sync::{

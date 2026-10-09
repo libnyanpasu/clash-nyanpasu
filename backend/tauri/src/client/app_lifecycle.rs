@@ -100,11 +100,7 @@ mod tests {
 
     use super::*;
     use crate::client::{
-        effects::{
-            plan::ApplicationEffectPlan,
-            ports::ApplicationEffectsPort,
-            status::{EffectHealth, EffectRevision, EffectStatus},
-        },
+        effects::{plan::ApplicationEffectPlan, ports::ApplicationEffectsPort},
         hotkey::{
             HotkeyArgs, HotkeyClient,
             ports::{
@@ -114,9 +110,12 @@ mod tests {
         },
         tests::{TestControlEndpoint, test_client_args_with_endpoint},
     };
-    use nyanpasu_core::control::endpoint::{
-        CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
-        EndpointHandle, ExecutionHost,
+    use nyanpasu_core::{
+        control::endpoint::{
+            CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
+            EndpointHandle, ExecutionHost,
+        },
+        effects::status::{EffectHealth, EffectRevision, EffectStatus},
     };
 
     // -- the owners' shutdown through the client (V14, V16, V21) -----------

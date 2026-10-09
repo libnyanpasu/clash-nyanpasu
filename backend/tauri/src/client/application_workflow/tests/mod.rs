@@ -631,7 +631,7 @@ impl crate::client::effects::ports::CommitNotifications for RecordingNotificatio
     fn application_committed(
         &self,
         _: crate::client::effects::plan::ApplicationEffectFields,
-        _: Vec<crate::client::effects::plan::EffectKind>,
+        _: Vec<nyanpasu_core::effects::EffectKind>,
     ) {
         unreachable!("only the application owner sends its slice")
     }

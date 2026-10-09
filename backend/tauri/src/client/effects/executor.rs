@@ -12,12 +12,8 @@ use std::sync::{
 };
 
 use super::{
-    plan::{
-        ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
-        SystemProxyDesired, TrayRefresh, TrayView,
-    },
+    plan::{ApplicationEffect, ApplicationEffectPlan, LoggerDesired, TrayRefresh, TrayView},
     ports::ApplicationEffectsPort,
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
 use crate::client::{
     hotkey::{
@@ -25,16 +21,20 @@ use crate::client::{
         error::InvalidBindingsSnafu,
         ports::{AcceleratorValidator, HotkeyBindings},
     },
-    system_proxy::SystemProxyClient,
     ui_effects::ports::{LocaleSink, TrayRefresher, WidgetController},
 };
 use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
 use nyanpasu_core::{
     clash::ws::StreamsClient,
+    effects::{
+        EffectKind,
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
+    },
     logs::{
         CoreLogsClient,
         logging::{LogRotation, LoggerRefresher},
     },
+    system_proxy::{ProxyGuardDesired, SystemProxyClient, SystemProxyDesired},
 };
 
 pub struct ApplicationEffectExecutor {

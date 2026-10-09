@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-use super::plan::EffectKind;
+use super::EffectKind;
 
 /// Monotonic counter over committed desired configurations, allocated by the
 /// facade after a commit.

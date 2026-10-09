@@ -7,7 +7,7 @@
 use snafu::Snafu;
 
 use super::ports::{AutoLaunchError, OsProxyError, PacError};
-use crate::client::effects::status::{EffectFailureCode, EffectHealth, failure_text};
+use crate::effects::status::{EffectFailureCode, EffectHealth, failure_text};
 
 /// What happened to the plain proxy that a failed PAC transition falls back to.
 #[derive(Debug)]

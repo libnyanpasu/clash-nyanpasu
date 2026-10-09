@@ -25,12 +25,8 @@ use super::{
 use crate::client::{
     effects::{
         executor::ApplicationEffectExecutor,
-        plan::{
-            ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind,
-            TrayRefresh,
-        },
+        plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, TrayRefresh},
         ports::ApplicationEffectsPort,
-        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     },
     hotkey::{
         HotkeyArgs, HotkeyClient,
@@ -40,12 +36,16 @@ use crate::client::{
             MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
         },
     },
+    platform_test_support::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
+};
+use nyanpasu_core::{
+    effects::{
+        EffectKind,
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
+    },
     system_proxy::{
         SystemProxyArgs, SystemProxyClient,
-        ports::{
-            MockAutoLaunchPort, MockOsProxyPort, MockPacPort, OsProxyConfig, OsProxyError,
-            OsProxyPort, PacError, PacPort,
-        },
+        ports::{OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort},
     },
 };
 
@@ -770,8 +770,11 @@ async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
     let pac = Arc::new(HeldPac::default());
     let shutdown = Shutdown::new();
     let mut os = MockOsProxyPort::new();
-    os.expect_get()
-        .returning(|| Err(OsProxyError::unreadable("no system proxy is set")));
+    os.expect_get().returning(|| {
+        Err(OsProxyError::ReadOsProxy {
+            source: "no system proxy is set".into(),
+        })
+    });
     os.expect_default_bypass().return_const("bypass");
     os.expect_set().returning(|_: &OsProxyConfig| Ok(()));
     let mut tray = MockTrayRefresher::new();
@@ -912,8 +915,11 @@ async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
         started: tokio::sync::Notify::new(),
     });
     let mut os = MockOsProxyPort::new();
-    os.expect_get()
-        .returning(|| Err(OsProxyError::unreadable("no system proxy is set")));
+    os.expect_get().returning(|| {
+        Err(OsProxyError::ReadOsProxy {
+            source: "no system proxy is set".into(),
+        })
+    });
     os.expect_default_bypass().return_const("bypass");
     let written = log.clone();
     os.expect_set().returning(move |config: &OsProxyConfig| {
@@ -1013,7 +1019,9 @@ async fn the_restore_waits_for_an_os_call_the_token_cannot_interrupt() {
     os.expect_get().returning(move || {
         entered.notify_one();
         let _ = released.lock().expect("gate").recv();
-        Err(OsProxyError::unreadable("no system proxy is set"))
+        Err(OsProxyError::ReadOsProxy {
+            source: "no system proxy is set".into(),
+        })
     });
     os.expect_default_bypass().return_const("bypass");
     os.expect_set().never();
@@ -1116,7 +1124,9 @@ struct HeldOsProxy {
 
 impl OsProxyPort for HeldOsProxy {
     fn get(&self) -> Result<OsProxyConfig, OsProxyError> {
-        Err(OsProxyError::unreadable("no system proxy is set"))
+        Err(OsProxyError::ReadOsProxy {
+            source: "no system proxy is set".into(),
+        })
     }
 
     fn set(&self, _: &OsProxyConfig) -> Result<(), OsProxyError> {

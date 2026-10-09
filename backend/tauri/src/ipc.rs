@@ -1,8 +1,5 @@
 use crate::{
-    client::{
-        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
-        system_proxy::ports::OsProxyError,
-    },
+    client::{ClientError, NyanpasuClient, RuntimeError, effects::error::EffectsError},
     core::*,
     enhance::PostProcessingOutput,
     state::{
@@ -25,6 +22,8 @@ use nyanpasu_core::{
     diagnostics::{EnvInfo, direct_egress::DirectEgress},
     network::proxy_env::CopyEnvOption,
     storage::{Storage, StorageOperationError, WebStorage},
+    system_dns::SystemDnsError,
+    system_proxy::ports::OsProxyError,
     updates::kernel::{self, ManifestVersionLatest},
 };
 use nyanpasu_paths::PathResolver;
@@ -2037,29 +2036,27 @@ pub async fn retry_configuration_runtime(client: State<'_, NyanpasuClient>) -> R
 #[specta::specta]
 pub fn retry_configuration_effect(
     client: State<'_, NyanpasuClient>,
-    kind: crate::client::effects::plan::EffectKind,
+    kind: nyanpasu_core::effects::EffectKind,
 ) -> Result<()> {
     Ok(client.retry_effect_now(kind)?)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
+    use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError};
     use nyanpasu_config::profile::ProfileId;
     use nyanpasu_core::state::ReplaceIfVersionError;
     use serde_json::json;
     use snafu::IntoError;
 
     use crate::{
-        client::{
-            effects::error::EffectsError, runtime_error::RuntimeError,
-            system_proxy::ports::OsProxyError,
-        },
+        client::{effects::error::EffectsError, runtime_error::RuntimeError},
         state::{
             mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
             profiles::{ProfileFileError, SubscriptionFetchError},
         },
     };
+    use nyanpasu_core::{system_dns::SystemDnsError, system_proxy::ports::OsProxyError};
 
     fn wire(error: impl Into<ClientError>) -> serde_json::Value {
         serde_json::to_value(IpcError::from(error.into())).unwrap()

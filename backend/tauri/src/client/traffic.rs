@@ -245,7 +245,8 @@ mod tests {
             &dir,
             test_idle_endpoint(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         tauri::async_runtime::block_on(async {
             let unavailable = "traffic recording is unavailable";
             assert_eq!(
@@ -311,7 +312,7 @@ mod tests {
         let store = Arc::new(UnreadableStore::default());
         let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
         args.traffic_store = Some(store.clone());
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
         tauri::async_runtime::block_on(async {
             assert_eq!(
                 client.traffic_summary().await.unwrap_err().to_string(),
@@ -329,7 +330,7 @@ mod tests {
         args.traffic_store = Some(Arc::new(
             RedbTrafficStore::open(&dir.path().join("traffic.redb")).unwrap(),
         ));
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
         tauri::async_runtime::block_on(async {
             let summary = client.traffic_summary().await.unwrap();
             assert_eq!(summary.active_connections, 0);

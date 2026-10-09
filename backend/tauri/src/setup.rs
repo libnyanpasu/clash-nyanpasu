@@ -10,15 +10,20 @@ use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
 use crate::client::{
-    ClientSetupArgs, MainThreadExecutor, NyanpasuClient, RuntimePaths, TauriMainThread,
-    TauriUiEventSink,
-    effects::presentation::TauriPresentationEffects,
+    ClientSetupArgs, ClientSetupOutput, MainThreadExecutor, NyanpasuClient, RuntimePaths,
+    TauriMainThread, TauriUiEventSink,
+    effects::{
+        presentation::{TauriEffectInvalidationSink, TauriPresentationEffects},
+        tray_view,
+    },
     hotkey::{
         HotkeyArgs, HotkeyClient,
         adapters::{
             ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
             TauriWindowControl,
         },
+        dispatch_hotkey_action,
+        ports::WindowControl,
     },
     system_proxy_adapters::{AutoLaunchBackend, AutoLaunchConfig},
     ui_effects::{
@@ -68,6 +73,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // system proxy, hotkey and widget owners are built outside it.
     let shutdown = CancellationToken::new();
     let tasks = TaskTracker::new();
+    app.manage(shutdown.clone());
+    app.manage(tasks.clone());
     #[cfg(target_os = "windows")]
     {
         let shutdown_handle = app_handle.clone();
@@ -158,6 +165,17 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let traffic_store = open_traffic_store(&paths);
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
+    let debug_http = tauri::async_runtime::block_on(
+        crate::server::debug_http::HttpServerClient::spawn_tracked(
+            Some(debug_http_frontend(&app_handle)?),
+            http_routes,
+            shutdown.clone(),
+            &tasks,
+        ),
+    )?;
+    app.manage(debug_http);
+    let window: Arc<dyn WindowControl> = Arc::new(TauriWindowControl::new(app_handle.clone()));
+    app.manage(window.clone());
     // Opened after the in-process migrations above, which open the same file.
     let storage = nyanpasu_core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context("Failed to open the storage")?;
@@ -168,7 +186,11 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
     let span = tracing::info_span!("build_client").entered();
-    let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+    let ClientSetupOutput {
+        client,
+        mut application_settings,
+        self_proxy_port,
+    } = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         installed_channel: bundle_metadata.release_channel,
         is_portable: bundle_metadata.is_portable,
         environment: Arc::new(nyanpasu_core::diagnostics::os::OsEnvironmentCollector::new(
@@ -176,8 +198,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             paths.clone(),
         )),
         device_info: Arc::new(nyanpasu_core::device::OsDeviceInfoSource::new()),
-        http_frontend: Some(debug_http_frontend(&app_handle)?),
-        http_routes,
         jobs,
         logging: nyanpasu_core::logs::app::LoggingSetup {
             core: match nyanpasu_core::logs::RedbCoreLogStore::open(
@@ -206,21 +226,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths: paths.clone(),
         storage,
         runtime_paths: runtime_paths.clone(),
-        ui_sink: Arc::new(TauriUiEventSink::<tauri::Wry>::new(app_handle.clone())),
-        app_update_backend_factory: Some(Arc::new({
-            let app_handle = app_handle.clone();
-            move |proxy_port| {
-                Arc::new(
-                    crate::client::app_update::adapters::TauriAppUpdateBackend::new(
-                        app_handle.clone(),
-                        proxy_port,
-                    ),
-                )
-            }
-        })),
-        app_update_event_sink: Some(Arc::new(
-            crate::client::app_update::adapters::TauriAppUpdateEventSink::new(app_handle.clone()),
-        )),
+        invalidation: Some(Arc::new(TauriEffectInvalidationSink::new(Arc::new(
+            TauriUiEventSink::<tauri::Wry>::new(app_handle.clone()),
+        )))),
         core_v2,
         service,
         system_dns: Arc::new(OsSystemDnsCache),
@@ -232,7 +240,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             app_handle.clone(),
         )),
         effects,
-        window: Arc::new(TauriWindowControl::new(app_handle.clone())),
         accelerators: Arc::new(PlatformAcceleratorValidator),
         traffic_store,
         shutdown: shutdown.clone(),
@@ -240,13 +247,71 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     })
     .context("Failed to setup nyanpasu client")?;
     drop(span);
+    let installed_channel = bundle_metadata.release_channel;
+    let app_config = client.app_config_snapshot();
+    let app_update_settings = crate::client::app_update::AppUpdateSettings {
+        channel: app_config.release_channel.unwrap_or(installed_channel),
+        sources: app_config.update_sources.clone(),
+        auto_check: app_config.enable_auto_check_update,
+        auto_download: app_config.enable_auto_download_update,
+    };
+    let app_update_supported = !bundle_metadata.is_portable
+        && (cfg!(any(target_os = "windows", target_os = "macos"))
+            || (cfg!(target_os = "linux") && *crate::consts::IS_APPIMAGE));
+    let app_updater =
+        tauri::async_runtime::block_on(crate::client::app_update::AppUpdateClient::spawn(
+            crate::client::app_update::AppUpdateArgs {
+                backend: Arc::new(
+                    crate::client::app_update::adapters::TauriAppUpdateBackend::new(
+                        app_handle.clone(),
+                        self_proxy_port,
+                    ),
+                ),
+                events: Arc::new(
+                    crate::client::app_update::adapters::TauriAppUpdateEventSink::new(
+                        app_handle.clone(),
+                    ),
+                ),
+                settings: app_update_settings,
+                supported: app_update_supported,
+                endpoints: crate::bundle::update_endpoints(
+                    app_config.release_channel.unwrap_or(installed_channel),
+                ),
+                shutdown: shutdown.child_token(),
+            },
+            &tasks,
+        ))?;
+    let settings_updater = app_updater.clone();
+    let settings_shutdown = shutdown.child_token();
+    tauri::async_runtime::block_on(async {
+        tasks.spawn(async move {
+            loop {
+                tokio::select! {
+                    () = settings_shutdown.cancelled() => break,
+                    changed = application_settings.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        let config = application_settings.borrow_and_update().clone();
+                        settings_updater.configure(crate::client::app_update::AppUpdateSettings {
+                            channel: config.release_channel.unwrap_or(installed_channel),
+                            sources: config.update_sources,
+                            auto_check: config.enable_auto_check_update,
+                            auto_download: config.enable_auto_download_update,
+                        });
+                    }
+                }
+            }
+        });
+    });
+    app.manage(app_updater);
     // The tray menu and the first window render with the process locale, so
     // the configured language replaces the system default before either exists.
     RustI18nLocaleSink.set_locale(client.app_config_snapshot().language);
     // Seeded before anything can build the tray, so the first menu is rendered
     // from the committed configuration rather than from defaults.
     app.manage(crate::core::tray::TrayState::<tauri::Wry>::new(
-        client.tray_view(),
+        tauri::async_runtime::block_on(tray_view(&client))?,
     ));
     app.manage(crate::window::WindowManager::new(app_handle.clone()));
     app.manage(crate::window::kinds::TrayMenuWindowController::default());
@@ -254,7 +319,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
-        hotkey_action_pump(hotkey_rx, client.clone()),
+        hotkey_action_pump(hotkey_rx, client.clone(), window),
     ));
     // The widget needs the client's connection stream and the client needs the
     // widget controller, so the controller is built empty and filled here, in
@@ -282,6 +347,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Result<()> {
     let dependencies = crate::unified_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
+        debug_http: (*app.state::<crate::server::debug_http::HttpServerClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
@@ -325,9 +391,10 @@ fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStore>> {
 async fn hotkey_action_pump(
     mut actions: tokio::sync::mpsc::UnboundedReceiver<HotkeyAction>,
     client: NyanpasuClient,
+    window: Arc<dyn WindowControl>,
 ) {
     while let Some(action) = actions.recv().await {
-        if let Err(error) = client.dispatch_hotkey_action(action).await {
+        if let Err(error) = dispatch_hotkey_action(&client, window.as_ref(), action).await {
             tracing::warn!(%error, %action, "hotkey action failed");
         }
     }

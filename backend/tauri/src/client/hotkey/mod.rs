@@ -3,7 +3,7 @@
 //! Callers never see a `ractor::ActorRef`: they hand a revision and the desired
 //! bindings in and get one [`EffectStatus`] back. The actor never calls the
 //! facade either — a pressed shortcut travels out through a channel and back in
-//! through [`NyanpasuClient::dispatch_hotkey_action`], so the two never form a
+//! through [`dispatch_hotkey_action`], so the two never form a
 //! cycle.
 
 mod actor;
@@ -137,69 +137,71 @@ pub(crate) fn validate_bindings(
     Ok(())
 }
 
-impl NyanpasuClient {
-    /// Runs what a shortcut or a tray item asked for.
-    ///
-    /// Every action but the dashboard toggle is an ordinary config mutation, so
-    /// it goes through the same commit-and-reconcile pipeline as a settings
-    /// change and reports the same degradations.
-    pub async fn dispatch_hotkey_action(&self, action: HotkeyAction) -> Result<()> {
-        match action {
-            HotkeyAction::OpenOrCloseDashboard => {
-                self.inner.window.toggle_dashboard().await?;
-                Ok(())
-            }
-            HotkeyAction::ClashModeRule => self.set_clash_mode(Mode::Rule).await,
-            HotkeyAction::ClashModeGlobal => self.set_clash_mode(Mode::Global).await,
-            HotkeyAction::ClashModeDirect => self.set_clash_mode(Mode::Direct).await,
-            HotkeyAction::ClashModeScript => self.set_clash_mode(Mode::Script).await,
-            HotkeyAction::ToggleSystemProxy => {
-                let enabled = self.get_app_config().await?.enable_system_proxy;
-                self.set_system_proxy(!enabled).await
-            }
-            HotkeyAction::EnableSystemProxy => self.set_system_proxy(true).await,
-            HotkeyAction::DisableSystemProxy => self.set_system_proxy(false).await,
-            HotkeyAction::ToggleTunMode => {
-                let enabled = self.get_clash_config().await?.enable_tun_mode;
-                self.set_tun_mode(!enabled).await
-            }
-            HotkeyAction::EnableTunMode => self.set_tun_mode(true).await,
-            HotkeyAction::DisableTunMode => self.set_tun_mode(false).await,
+/// Runs what a shortcut or a tray item asked for.
+///
+/// Every action but the dashboard toggle is an ordinary config mutation, so
+/// it goes through the same commit-and-reconcile pipeline as a settings
+/// change and reports the same degradations.
+pub(crate) async fn dispatch_hotkey_action(
+    client: &NyanpasuClient,
+    window: &dyn ports::WindowControl,
+    action: HotkeyAction,
+) -> anyhow::Result<()> {
+    match action {
+        HotkeyAction::OpenOrCloseDashboard => {
+            window.toggle_dashboard().await?;
+            Ok(())
         }
+        HotkeyAction::ClashModeRule => Ok(set_clash_mode(client, Mode::Rule).await?),
+        HotkeyAction::ClashModeGlobal => Ok(set_clash_mode(client, Mode::Global).await?),
+        HotkeyAction::ClashModeDirect => Ok(set_clash_mode(client, Mode::Direct).await?),
+        HotkeyAction::ClashModeScript => Ok(set_clash_mode(client, Mode::Script).await?),
+        HotkeyAction::ToggleSystemProxy => {
+            let enabled = client.get_app_config().await?.enable_system_proxy;
+            Ok(set_system_proxy(client, !enabled).await?)
+        }
+        HotkeyAction::EnableSystemProxy => Ok(set_system_proxy(client, true).await?),
+        HotkeyAction::DisableSystemProxy => Ok(set_system_proxy(client, false).await?),
+        HotkeyAction::ToggleTunMode => {
+            let enabled = client.get_clash_config().await?.enable_tun_mode;
+            Ok(set_tun_mode(client, !enabled).await?)
+        }
+        HotkeyAction::EnableTunMode => Ok(set_tun_mode(client, true).await?),
+        HotkeyAction::DisableTunMode => Ok(set_tun_mode(client, false).await?),
     }
+}
 
-    async fn set_clash_mode(&self, mode: Mode) -> Result<()> {
-        let outcome = self
-            .patch_runtime_overrides(ClashGuardOverridesPatch {
-                mode: Some(mode),
-                ..Default::default()
-            })
-            .await?;
-        log_degradations(&outcome);
-        Ok(())
-    }
+async fn set_clash_mode(client: &NyanpasuClient, mode: Mode) -> Result<()> {
+    let outcome = client
+        .patch_runtime_overrides(ClashGuardOverridesPatch {
+            mode: Some(mode),
+            ..Default::default()
+        })
+        .await?;
+    log_degradations(&outcome);
+    Ok(())
+}
 
-    async fn set_system_proxy(&self, enabled: bool) -> Result<()> {
-        let outcome = self
-            .patch_app_config(NyanpasuAppConfigPatch {
-                enable_system_proxy: Some(enabled),
-                ..Default::default()
-            })
-            .await?;
-        log_degradations(&outcome);
-        Ok(())
-    }
+async fn set_system_proxy(client: &NyanpasuClient, enabled: bool) -> Result<()> {
+    let outcome = client
+        .patch_app_config(NyanpasuAppConfigPatch {
+            enable_system_proxy: Some(enabled),
+            ..Default::default()
+        })
+        .await?;
+    log_degradations(&outcome);
+    Ok(())
+}
 
-    async fn set_tun_mode(&self, enabled: bool) -> Result<()> {
-        let outcome = self
-            .patch_clash_config(ClashConfigPatch {
-                enable_tun_mode: Some(enabled),
-                ..Default::default()
-            })
-            .await?;
-        log_degradations(&outcome);
-        Ok(())
-    }
+async fn set_tun_mode(client: &NyanpasuClient, enabled: bool) -> Result<()> {
+    let outcome = client
+        .patch_clash_config(ClashConfigPatch {
+            enable_tun_mode: Some(enabled),
+            ..Default::default()
+        })
+        .await?;
+    log_degradations(&outcome);
+    Ok(())
 }
 
 /// The action already committed, so a degraded side effect is reported rather

@@ -1,11 +1,6 @@
 //! The application lifecycle the composition root drives: the startup
 //! reconcile, and the shutdown every owner carries out on its own once the root
 //! token is cancelled.
-use std::future::Future;
-
-use nyanpasu_core::tasks::track_until_shutdown;
-use tokio_util::sync::CancellationToken;
-
 use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport};
 
 impl NyanpasuClient {
@@ -54,28 +49,6 @@ impl NyanpasuClient {
         if let Err(error) = stop {
             tracing::warn!(%error, "the core was not proven stopped");
         }
-    }
-
-    /// A child of the root shutdown token, for Tauri-boundary background
-    /// work that is not one of the client's own owners (e.g. per-webview
-    /// connection-detail forwarding) but must still end when the root token
-    /// does, and needs its own narrower cancellation besides (e.g. one child
-    /// per subscription).
-    pub(crate) fn shutdown_child_token(&self) -> CancellationToken {
-        self.inner.shutdown.child_token()
-    }
-
-    /// Runs `producer` as tracked background work, the same way the
-    /// client's own owners do (see `track_until_shutdown`): it ends when
-    /// `token` is cancelled, and `wait_shutdown` waits for it. `token` must
-    /// be `shutdown_child_token()` or one of its descendants, so the root
-    /// shutdown still ends it.
-    pub(crate) fn spawn_tracked(
-        &self,
-        token: &CancellationToken,
-        producer: impl Future<Output = ()> + Send + 'static,
-    ) {
-        tauri::async_runtime::spawn(track_until_shutdown(&self.inner.tasks, token, producer));
     }
 }
 
@@ -304,7 +277,8 @@ mod tests {
                 tokio::task::spawn_blocking(move || NyanpasuClient::try_new_with_args(args))
                     .await
                     .unwrap()
-                    .unwrap();
+                    .unwrap()
+                    .client;
             Self {
                 client,
                 core,

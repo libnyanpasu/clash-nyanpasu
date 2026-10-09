@@ -527,7 +527,7 @@ mod facade {
 
     use nyanpasu_core::hotkey::{HotkeyAction, HotkeyParseError};
 
-    use super::super::ports::MockWindowControl;
+    use super::super::{dispatch_hotkey_action, ports::MockWindowControl};
     use crate::{
         client::{
             ClientError, NyanpasuClient,
@@ -537,14 +537,11 @@ mod facade {
         state::config_error::ConfigError,
     };
 
-    fn client_with_window(dir: &TempDir, window: MockWindowControl) -> NyanpasuClient {
-        let mut args = test_client_args_with_endpoint(dir, test_idle_endpoint());
-        args.window = Arc::new(window);
-        NyanpasuClient::try_new_with_args(args).expect("client should construct")
-    }
-
     fn client(dir: &TempDir) -> NyanpasuClient {
-        client_with_window(dir, MockWindowControl::new())
+        let args = test_client_args_with_endpoint(dir, test_idle_endpoint());
+        NyanpasuClient::try_new_with_args(args)
+            .expect("client should construct")
+            .client
     }
 
     /// A mode change would otherwise ask the core to drop connections, which
@@ -566,28 +563,40 @@ mod facade {
         tauri::async_runtime::block_on(async {
             assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
 
-            client
-                .dispatch_hotkey_action(HotkeyAction::ToggleSystemProxy)
-                .await
-                .expect("the toggle should commit");
+            dispatch_hotkey_action(
+                &client,
+                &MockWindowControl::new(),
+                HotkeyAction::ToggleSystemProxy,
+            )
+            .await
+            .expect("the toggle should commit");
             assert!(client.get_app_config().await.unwrap().enable_system_proxy);
 
-            client
-                .dispatch_hotkey_action(HotkeyAction::ToggleSystemProxy)
-                .await
-                .expect("the toggle should commit");
+            dispatch_hotkey_action(
+                &client,
+                &MockWindowControl::new(),
+                HotkeyAction::ToggleSystemProxy,
+            )
+            .await
+            .expect("the toggle should commit");
             assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
 
-            client
-                .dispatch_hotkey_action(HotkeyAction::EnableSystemProxy)
-                .await
-                .expect("the explicit enable should commit");
+            dispatch_hotkey_action(
+                &client,
+                &MockWindowControl::new(),
+                HotkeyAction::EnableSystemProxy,
+            )
+            .await
+            .expect("the explicit enable should commit");
             assert!(client.get_app_config().await.unwrap().enable_system_proxy);
 
-            client
-                .dispatch_hotkey_action(HotkeyAction::DisableSystemProxy)
-                .await
-                .expect("the explicit disable should commit");
+            dispatch_hotkey_action(
+                &client,
+                &MockWindowControl::new(),
+                HotkeyAction::DisableSystemProxy,
+            )
+            .await
+            .expect("the explicit disable should commit");
             assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
         });
     }
@@ -600,25 +609,34 @@ mod facade {
         tauri::async_runtime::block_on(async {
             let before = client.get_clash_config().await.unwrap().enable_tun_mode;
 
-            client
-                .dispatch_hotkey_action(HotkeyAction::ToggleTunMode)
-                .await
-                .expect("the toggle should commit");
+            dispatch_hotkey_action(
+                &client,
+                &MockWindowControl::new(),
+                HotkeyAction::ToggleTunMode,
+            )
+            .await
+            .expect("the toggle should commit");
             assert_eq!(
                 client.get_clash_config().await.unwrap().enable_tun_mode,
                 !before
             );
 
-            client
-                .dispatch_hotkey_action(HotkeyAction::DisableTunMode)
-                .await
-                .expect("the explicit disable should commit");
+            dispatch_hotkey_action(
+                &client,
+                &MockWindowControl::new(),
+                HotkeyAction::DisableTunMode,
+            )
+            .await
+            .expect("the explicit disable should commit");
             assert!(!client.get_clash_config().await.unwrap().enable_tun_mode);
 
-            client
-                .dispatch_hotkey_action(HotkeyAction::EnableTunMode)
-                .await
-                .expect("the explicit enable should commit");
+            dispatch_hotkey_action(
+                &client,
+                &MockWindowControl::new(),
+                HotkeyAction::EnableTunMode,
+            )
+            .await
+            .expect("the explicit enable should commit");
             assert!(client.get_clash_config().await.unwrap().enable_tun_mode);
         });
     }
@@ -631,10 +649,13 @@ mod facade {
         tauri::async_runtime::block_on(async {
             disable_mode_interruption(&client).await;
 
-            client
-                .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
-                .await
-                .expect("the mode change should commit");
+            dispatch_hotkey_action(
+                &client,
+                &MockWindowControl::new(),
+                HotkeyAction::ClashModeGlobal,
+            )
+            .await
+            .expect("the mode change should commit");
 
             assert_eq!(
                 serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
@@ -651,11 +672,10 @@ mod facade {
             .expect_toggle_dashboard()
             .times(1)
             .returning(|| Ok(()));
-        let client = client_with_window(&dir, window);
+        let client = client(&dir);
 
         tauri::async_runtime::block_on(async {
-            client
-                .dispatch_hotkey_action(HotkeyAction::OpenOrCloseDashboard)
+            dispatch_hotkey_action(&client, &window, HotkeyAction::OpenOrCloseDashboard)
                 .await
                 .expect("the dashboard toggle should succeed");
         });
@@ -671,7 +691,9 @@ mod facade {
         effects.expect_apply().never();
         let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
         args.effects = Arc::new(effects);
-        let client = NyanpasuClient::try_new_with_args(args).expect("client should construct");
+        let client = NyanpasuClient::try_new_with_args(args)
+            .expect("client should construct")
+            .client;
 
         tauri::async_runtime::block_on(async {
             let mut patch = <NyanpasuAppConfig as struct_patch::Patch<_>>::new_empty_patch();

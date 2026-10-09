@@ -173,7 +173,7 @@ impl Fixture {
         let dir = tempfile::tempdir().unwrap();
         let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
         args.binary_installer = installer;
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
         tauri::async_runtime::block_on(endpoint.delegate.prime(&client));
         calls.events.lock().unwrap().clear();
         endpoint.api_queries.store(0, Ordering::SeqCst);

@@ -675,7 +675,7 @@ fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
             .map(|path| std::fs::read(path).ok())
             .collect::<Vec<_>>()
     };
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
     tauri::async_runtime::block_on(async {
         let versions = |client: &NyanpasuClient| {
             let versions = client.configuration_status().source_versions;

@@ -147,7 +147,7 @@ fn source_commit_and_second_save_do_not_wait_for_gui() {
     });
     let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
     args.effects = port.clone();
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
     tauri::async_runtime::block_on(async {
         let first = tokio::time::timeout(
             Duration::from_secs(5),
@@ -184,7 +184,7 @@ fn asynchronous_failure_is_status_and_never_cancels_source() {
     });
     let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
     args.effects = port;
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
     tauri::async_runtime::block_on(async {
         let result = client
             .patch_app_config(language(I18nLanguage::Korean))
@@ -220,7 +220,7 @@ fn no_op_and_session_saves_persist_source_state() {
     let port = Arc::new(Port::default());
     let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
     args.effects = port.clone();
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
     tauri::async_runtime::block_on(async {
         let current = client.get_app_config().await.unwrap().language;
         client.patch_app_config(language(current)).await.unwrap();
@@ -251,7 +251,7 @@ fn rejected_source_keeps_carried_language_uncommitted() {
     let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
     args.effects = port.clone();
     args.installed_channel = Channel::Nightly;
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
     tauri::async_runtime::block_on(async {
         let mut nightly = NyanpasuAppConfig::new_empty_patch();
         nightly.release_channel = Some(Some(Channel::Nightly));
@@ -290,7 +290,7 @@ fn clash_and_profiles_owners_hand_their_own_slices_to_the_tray() {
     let endpoint = TestControlEndpoint::succeeding();
     let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
     args.effects = port.clone();
-    let client = NyanpasuClient::try_new_with_args(args).unwrap();
+    let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         client
@@ -377,7 +377,8 @@ async fn commit_receipt_and_status_keep_source_separate_from_pending_notificatio
     let client = tokio::task::spawn_blocking(move || NyanpasuClient::try_new_with_args(args))
         .await
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .client;
     let before = client.configuration_status();
     let outcome = client
         .patch_app_config(language(I18nLanguage::Korean))

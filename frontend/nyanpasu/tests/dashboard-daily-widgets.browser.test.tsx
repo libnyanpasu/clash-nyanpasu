@@ -240,6 +240,7 @@ function mount(
     id?: string
     width?: number
     height?: number
+    pixelHeight?: number
     sourceOnly?: boolean
     gridDisabled?: boolean
   } = {},
@@ -271,7 +272,7 @@ function mount(
                     left: 0,
                     top: 0,
                     width: 320,
-                    height: 220,
+                    height: options.pixelHeight ?? 220,
                   }),
                   dropInfoMap: {},
                   activeItemId: null,
@@ -622,6 +623,95 @@ test('schedule reads a real next run and polls latest history at a low rate', as
   })
   expect(hooks.useProfileSyncStatus).toHaveBeenCalledWith('remote')
   expect(document.querySelector('a[aria-disabled="true"]')).not.toBeNull()
+})
+
+test('schedule keeps the next update readable at its minimum height without scrolling', async ({
+  onTestFinished,
+}) => {
+  mount(onTestFinished, SubscriptionScheduleWidget, {
+    height: 2,
+    pixelHeight: 160,
+  })
+  const expectedTime = formatDate('2026-01-01T02:00:00Z', 'HH:mm')
+  await expect
+    .element(page.getByText(expectedTime, { exact: true }))
+    .toBeVisible()
+  const content = document.querySelector<HTMLElement>(
+    '[data-slot="subscription-schedule-content"]',
+  )!
+  expect(getComputedStyle(content).overflowY).toBe('hidden')
+  expect(content.scrollHeight).toBeLessThanOrEqual(content.clientHeight)
+  expect(content.querySelector('time')?.getAttribute('datetime')).toBe(
+    '2026-01-01T02:00:00Z',
+  )
+})
+
+test('schedule centers the profile and active state while syncing', async ({
+  onTestFinished,
+}) => {
+  hooks.useProfileSyncStatus.mockReturnValue({
+    data: { active: [{ ...finishedRun, state: { kind: 'running' } }] },
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
+  })
+  mount(onTestFinished, SubscriptionScheduleWidget, {
+    height: 2,
+    pixelHeight: 160,
+  })
+  await expect
+    .element(
+      page.getByText(m.dashboard_widget_subscription_schedule_running(), {
+        exact: true,
+      }),
+    )
+    .toBeVisible()
+  const content = document.querySelector<HTMLElement>(
+    '[data-slot="subscription-schedule-content"]',
+  )!
+  expect(
+    content.querySelector('[data-slot="subscription-schedule-active"]'),
+  ).not.toBeNull()
+  expect(
+    content.querySelector('[data-slot="subscription-schedule-next-run"]'),
+  ).toBeNull()
+  expect(
+    content.querySelector('[data-slot="subscription-schedule-recent"]'),
+  ).toBeNull()
+  expect(content.scrollHeight).toBeLessThanOrEqual(content.clientHeight)
+})
+
+test('schedule swaps an error into the summary instead of stacking it below the profile', async ({
+  onTestFinished,
+}) => {
+  const current = hooks.useProfileSyncStatus.getMockImplementation()!()
+  hooks.useProfileSyncStatus.mockReturnValue({
+    ...current,
+    data: {
+      ...current.data,
+      registration_error: 'Unable to register the update schedule',
+    },
+  })
+  mount(onTestFinished, SubscriptionScheduleWidget, {
+    height: 2,
+    pixelHeight: 160,
+  })
+  const error = m.dashboard_widget_subscription_schedule_registration_error({
+    error: 'Unable to register the update schedule',
+  })
+  await expect.element(page.getByRole('alert', { name: error })).toBeVisible()
+  const content = document.querySelector<HTMLElement>(
+    '[data-slot="subscription-schedule-content"]',
+  )!
+  expect(
+    content.querySelector(
+      '[data-slot="subscription-schedule-summary"] [role="alert"]',
+    ),
+  ).not.toBeNull()
+  expect(
+    content.querySelector('[data-slot="subscription-schedule-next-run"]'),
+  ).toBeNull()
+  expect(content.scrollHeight).toBeLessThanOrEqual(content.clientHeight)
 })
 
 test('schedule refresh starts one profile update', async ({

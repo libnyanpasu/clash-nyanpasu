@@ -123,7 +123,7 @@ export const WIDGET_MIN_SIZE_MAP: Record<
   [WidgetId.ExitTraffic]: { minW: 3, minH: 2 },
   [WidgetId.TargetTraffic]: { minW: 3, minH: 2 },
   [WidgetId.RuleTraffic]: { minW: 3, minH: 2 },
-  [WidgetId.ActiveConnections]: { minW: 4, minH: 3 },
+  [WidgetId.ActiveConnections]: { minW: 4, minH: 2 },
   [WidgetId.ProviderUpdates]: { minW: 3, minH: 2 },
 }
 

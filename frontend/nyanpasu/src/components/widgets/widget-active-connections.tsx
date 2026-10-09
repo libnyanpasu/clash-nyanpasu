@@ -1,10 +1,14 @@
 import NetworkCheckRounded from '~icons/material-symbols/network-check-rounded'
 import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
+import PublicRounded from '~icons/material-symbols/public-rounded'
 import { filesize } from 'filesize'
+import { motion, useReducedMotion } from 'motion/react'
 import { memo, useDeferredValue, useMemo } from 'react'
+import { ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { useClashConnectionDetails, useClashWSStatus } from '@nyanpasu/query'
@@ -17,7 +21,8 @@ import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
 import { WidgetTitle } from './widget-ui'
 
-const CONNECTION_ROW_HEIGHT = 44
+const CONNECTION_ROW_HEIGHT = 60
+const CONNECTION_REMAINDER_HEIGHT = 24
 
 function connectionTarget(connection: ClashConnection_Serialize) {
   return (
@@ -39,15 +44,15 @@ function ActiveConnectionsPreview({ id, onCloseClick }: WidgetComponentProps) {
       id={id}
       widgetType={WidgetId.ActiveConnections}
       minW={4}
-      minH={3}
+      minH={2}
       onCloseClick={onCloseClick}
     >
       <Card className="size-full" data-slot="widget-active-connections-card">
-        <CardContent className="flex size-full flex-col gap-3">
+        <CardContent className="flex size-full min-h-0 flex-col gap-3 overflow-hidden">
           <WidgetTitle icon={NetworkCheckRounded}>
             {m.dashboard_widget_active_connections_title()}
           </WidgetTitle>
-          <p className="text-on-surface-variant text-sm">
+          <p className="bg-surface-variant/30 text-on-surface-variant rounded-2xl p-3 text-sm">
             {m.dashboard_widget_active_connections_preview()}
           </p>
           <div className="flex-1" />
@@ -66,6 +71,7 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
   canAct,
 }: WidgetComponentProps & { canAct: boolean }) {
   const config = useWidgetConfig(id, WidgetId.ActiveConnections)
+  const reducedMotion = useReducedMotion()
   const { data, status, connectorState, retry } = useClashConnectionDetails()
   const { isLoading: isClashStatusLoading } = useClashWSStatus()
   const details = useDeferredValue(data)
@@ -91,10 +97,22 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
       })
       .slice(0, config.topN)
   }, [config.sort, config.topN, details])
-  const visibleCount =
+  const rowHeight = CONNECTION_ROW_HEIGHT
+  const capacity =
     listHeight == null
       ? 1
-      : Math.max(1, Math.floor((listHeight + 4) / CONNECTION_ROW_HEIGHT))
+      : Math.max(1, Math.floor((listHeight + 8) / rowHeight))
+  const totalCount = details?.connections.length ?? 0
+  const visibleCount =
+    totalCount > Math.min(capacity, connections.length) && listHeight != null
+      ? Math.max(
+          1,
+          Math.floor(
+            (listHeight - CONNECTION_REMAINDER_HEIGHT + 8) / rowHeight,
+          ),
+        )
+      : capacity
+  const hiddenCount = totalCount - Math.min(visibleCount, connections.length)
 
   const retryDisabled =
     !canAct || connectorState !== 'connected' || status === 'connecting'
@@ -104,15 +122,23 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
       id={id}
       widgetType={WidgetId.ActiveConnections}
       minW={4}
-      minH={3}
+      minH={2}
       onCloseClick={onCloseClick}
     >
       <Card className="size-full" data-slot="widget-active-connections-card">
-        <CardContent className="flex size-full min-h-0 flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
+        <CardContent className="flex size-full min-h-0 flex-col gap-2 overflow-hidden">
+          <div className="flex shrink-0 items-center justify-between gap-2">
             <WidgetTitle className="flex-1" icon={NetworkCheckRounded}>
               {m.dashboard_widget_active_connections_title()}
             </WidgetTitle>
+            {details && connectorState === 'connected' && (
+              <span
+                className="bg-surface-variant/30 text-on-surface-variant rounded-full px-2 py-0.5 text-xs tabular-nums"
+                data-slot="widget-active-connections-count"
+              >
+                {totalCount}
+              </span>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -171,10 +197,10 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
           ) : (
             <div
               ref={listRef}
-              className="min-h-0 flex-1"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
               data-slot="widget-active-connections-list"
             >
-              <ul className="flex flex-col gap-1">
+              <ul className="flex flex-col gap-2">
                 {connections.slice(0, visibleCount).map((connection) => {
                   const process = config.showProcess
                     ? processBasename(connection.metadata?.process)
@@ -184,41 +210,55 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
                     : connectionTarget(connection)
 
                   return (
-                    <li
-                      className="hover:bg-surface-variant/40 flex min-h-10 min-w-0 shrink-0 items-center justify-between gap-3 rounded-xl px-2 py-1 text-xs"
+                    <motion.li
+                      layout="position"
+                      initial={false}
+                      transition={{
+                        duration: reducedMotion ? 0 : 0.22,
+                        ease: 'easeOut',
+                      }}
+                      className="bg-surface-variant/30 flex min-w-0 shrink-0 items-center gap-3 rounded-2xl px-3 py-2 text-xs"
+                      data-slot="widget-active-connections-row"
                       key={connection.id}
                     >
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">
-                          {target ??
-                            m.dashboard_widget_active_connections_hidden_target()}
-                        </div>
-                        {process && (
-                          <div className="text-on-surface-variant truncate">
-                            {process}
-                          </div>
-                        )}
+                      <div className="bg-surface-variant/40 text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
+                        <PublicRounded className="size-5" aria-hidden="true" />
                       </div>
-                      <div className="shrink-0 text-right tabular-nums">
-                        <div>
-                          ↓{' '}
-                          {filesize(connection.downloadSpeed, {
-                            standard: 'iec',
-                          })}
-                          /s
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="min-w-0 text-sm font-medium"
+                          data-slot="widget-active-connections-label"
+                        >
+                          <TextMarquee className="w-full" speed={30}>
+                            {[target, process].filter(Boolean).join(' · ') ||
+                              m.dashboard_widget_active_connections_hidden_target()}
+                          </TextMarquee>
                         </div>
-                        <div className="text-on-surface-variant">
-                          ↑{' '}
-                          {filesize(connection.uploadSpeed, {
-                            standard: 'iec',
-                          })}
-                          /s
+                        <div className="text-on-surface-variant flex gap-4 tabular-nums">
+                          <ActionSwapText
+                            className="whitespace-nowrap"
+                            value={`↓ ${filesize(connection.downloadSpeed, { standard: 'iec' })}/s`}
+                          />
+                          <ActionSwapText
+                            className="whitespace-nowrap"
+                            value={`↑ ${filesize(connection.uploadSpeed, { standard: 'iec' })}/s`}
+                          />
                         </div>
                       </div>
-                    </li>
+                    </motion.li>
                   )
                 })}
               </ul>
+              {hiddenCount > 0 && (
+                <p
+                  className="text-on-surface-variant mt-auto shrink-0 pt-1 text-xs"
+                  data-slot="widget-active-connections-remainder"
+                >
+                  {m.dashboard_widget_active_connections_remaining({
+                    count: hiddenCount,
+                  })}
+                </p>
+              )}
             </div>
           )}
         </CardContent>

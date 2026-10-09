@@ -1,3 +1,4 @@
+import '@/assets/styles/tailwind.css'
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
@@ -29,7 +30,7 @@ vi.mock('@/components/widgets/consts', async (importOriginal) => {
     ...original,
     RENDER_MAP: {
       [original.WidgetId.TrafficDown]: ({ id }: { id: string }) => (
-        <DndGridItem id={id} minW={3} minH={2}>
+        <DndGridItem id={id} minW={2} minH={2}>
           <div
             data-testid="source-card"
             style={{ width: '100%', height: '100%', background: '#ddd' }}
@@ -116,14 +117,8 @@ async function mount(onFinished: (callback: () => void) => void) {
   })
   const originalPointerEvents = document.body.style.pointerEvents
   const style = document.createElement('style')
-  style.textContent = `[data-slot=drawer-content] { position:fixed; bottom:0; left:0; width:384px; height:384px; display:flex; flex-direction:column; z-index:50; background:white; }
-    [data-slot=drawer-content] > div:first-child { height:60px; min-height:60px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; position:relative; z-index:1; }
-    [data-slot=drawer-content] [data-slot=scroll-area] { flex:1; min-height:0; height:320px; overflow:hidden; }
-    [data-slot=dnd-grid-container] { position:relative; height:384px; width:352px; flex:none; }
+  style.textContent = `[data-testid=dashboard] { max-width:100vw; }
     [data-testid=dashboard] [data-slot=dnd-grid-container] { width:100%; height:100%; }
-    button { min-width:40px; min-height:32px; }
-    [data-slot=drawer-content] [data-slot=scroll-area-viewport] > div { height:100%; }
-    [data-slot=drawer-overlay] { position:fixed; inset:0; background:#0003; }
     [role=menu] { background:white; min-width:200px; }`
   document.head.append(style)
   const view = await render(
@@ -211,6 +206,116 @@ test('dragging a source out closes the library and restores page clicks', async 
     )
     .toBe(1)
   await expect.element(page.getByTestId('clicks')).toHaveTextContent('1')
+})
+
+test('search filters localized widget names and preserves add actions', async ({
+  onTestFinished,
+}) => {
+  await mount(onTestFinished)
+  await userEvent.click(page.getByRole('button', { name: 'Open library' }))
+
+  const drawer = page.getByRole('dialog')
+  const search = page.getByRole('searchbox', {
+    name: m.dashboard_widget_library_search(),
+  })
+  await expect.element(search).toBeVisible()
+  const drawerElement = document.querySelector<HTMLElement>(
+    '[data-slot=drawer-content]',
+  )!
+  await expect
+    .poll(() => drawerElement.getBoundingClientRect().width)
+    .toBe(Math.min(window.innerWidth - 16, 960))
+  await expect
+    .poll(() => drawerElement.getBoundingClientRect().height)
+    .toBeCloseTo(window.innerHeight * 0.85, 0)
+
+  await userEvent.type(search, m.dashboard_widget_traffic_download())
+  await expect.element(page.getByTestId('source-card')).toBeVisible()
+  await expect
+    .element(page.getByRole('button', { name: m.dashboard_add_widget() }))
+    .toBeVisible()
+
+  await userEvent.type(search, ' no match')
+  await expect.element(page.getByTestId('source-card')).not.toBeInTheDocument()
+  await expect
+    .element(page.getByText(m.dashboard_widget_library_no_results()))
+    .toBeVisible()
+
+  await userEvent.click(
+    page.getByRole('button', {
+      name: m.dashboard_widget_library_search_clear(),
+    }),
+  )
+  await expect.element(search).toHaveValue('')
+  await expect.element(page.getByTestId('source-card')).toBeVisible()
+
+  await userEvent.click(
+    page.getByRole('button', { name: m.dashboard_add_widget() }),
+  )
+  await expect.element(page.getByTestId('drops')).toHaveTextContent('1')
+  await expect.element(drawer).toBeVisible()
+})
+
+test('narrow viewports keep the drawer and widget preview inside the screen', async ({
+  onTestFinished,
+}) => {
+  await page.viewport(900, 600)
+  await mount(onTestFinished)
+  onTestFinished(async () => page.viewport(900, 600))
+  await userEvent.click(page.getByRole('button', { name: 'Open library' }))
+
+  const drawer = document.querySelector<HTMLElement>(
+    '[data-slot=drawer-content]',
+  )!
+  const search = page.getByRole('searchbox', {
+    name: m.dashboard_widget_library_search(),
+  })
+  const heading = page.getByRole('heading', { name: m.dashboard_add_widget() })
+
+  for (const [width, height] of [
+    [320, 640],
+    [384, 720],
+  ]) {
+    await page.viewport(width, height)
+    await expect.element(search).toBeVisible()
+    await expect.element(heading).toBeVisible()
+    await expect.element(page.getByTestId('source-card')).toBeVisible()
+    await expect
+      .poll(() => drawer.getBoundingClientRect().width)
+      .toBe(width - 16)
+    await expect
+      .poll(() => drawer.getBoundingClientRect().height)
+      .toBeCloseTo(height * 0.85, 0)
+    await expect
+      .poll(() => drawer.getBoundingClientRect().bottom)
+      .toBeCloseTo(height, 0)
+
+    const drawerRect = drawer.getBoundingClientRect()
+    const grid = drawer.querySelector<HTMLElement>(
+      '[data-slot=dnd-grid-container]',
+    )!
+    const gridRect = grid.getBoundingClientRect()
+    const card = page
+      .getByTestId('source-card')
+      .element()
+      .closest('[role=button]')!
+    const cardRect = card.getBoundingClientRect()
+    const addButton = drawer.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add Widget"]',
+    )!
+    const addRect = addButton.getBoundingClientRect()
+
+    expect(drawerRect.left).toBeGreaterThanOrEqual(0)
+    expect(drawerRect.right).toBeLessThanOrEqual(width)
+    expect(drawerRect.bottom).toBeCloseTo(height, 0)
+    expect(cardRect.left).toBeGreaterThanOrEqual(gridRect.left - 1)
+    expect(cardRect.right).toBeLessThanOrEqual(gridRect.right + 1)
+    expect(addRect.left).toBeGreaterThanOrEqual(gridRect.left - 1)
+    expect(addRect.right).toBeLessThanOrEqual(gridRect.right + 1)
+    expect(drawer.scrollWidth).toBeLessThanOrEqual(drawer.clientWidth)
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
+    expect(document.documentElement.scrollHeight).toBeLessThanOrEqual(height)
+  }
 })
 
 test('repeated Escape and outside dismissal leave the page interactive', async ({

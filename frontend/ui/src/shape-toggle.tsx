@@ -39,7 +39,7 @@ export function ShapeToggle({
           'relative isolate overflow-hidden rounded-2xl px-2 py-1 transition-colors duration-200',
         elastic &&
           (active
-            ? 'bg-primary text-on-primary hover:bg-primary dark:bg-primary dark:text-on-primary dark:hover:bg-primary'
+            ? 'bg-primary-container text-on-primary-container hover:bg-primary-container dark:bg-primary-container dark:text-on-primary-container dark:hover:bg-primary-container'
             : 'bg-surface-variant/35 text-on-surface-variant hover:bg-surface-variant/50 dark:bg-surface-variant/35 dark:text-on-surface-variant dark:hover:bg-surface-variant/50'),
       )}
     >
@@ -91,8 +91,8 @@ export function ShapeToggle({
               'absolute inset-0 transition-[color,opacity] duration-200',
               elastic
                 ? active
-                  ? 'bg-primary-container opacity-100'
-                  : 'bg-primary-container opacity-0'
+                  ? 'bg-primary opacity-100'
+                  : 'bg-primary opacity-0'
                 : active
                   ? 'bg-primary'
                   : 'bg-surface-variant/60',
@@ -105,11 +105,7 @@ export function ShapeToggle({
             animate={{ y: active && !loading && !elastic ? -3 : 0 }}
             className={cn(
               'relative grid aspect-square w-[clamp(1.25rem,40cqi,1.75rem)] place-items-center',
-              active
-                ? elastic
-                  ? 'text-on-primary-container'
-                  : 'text-on-primary'
-                : 'text-on-surface-variant',
+              active ? 'text-on-primary' : 'text-on-surface-variant',
             )}
             transition={{ duration: reducedMotion ? 0 : 0.3 }}
           >
@@ -144,7 +140,7 @@ export function ShapeToggle({
         {elastic && (
           <motion.span
             aria-hidden
-            className="text-on-primary absolute top-2 right-2"
+            className="text-on-primary-container absolute top-2 right-2"
             initial={false}
             animate={{
               opacity: active && !loading ? 1 : 0,

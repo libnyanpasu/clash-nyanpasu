@@ -3,7 +3,9 @@ import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
 import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
 import DnsRounded from '~icons/material-symbols/dns-rounded'
 import RuleFolderRounded from '~icons/material-symbols/rule-folder-rounded'
+import { motion, useReducedMotion } from 'motion/react'
 import { ComponentType, type ReactNode } from 'react'
+import { ActionSwap, ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { LinearProgress } from '@nyanpasu/ui/progress'
@@ -388,6 +390,7 @@ function TrafficRankingRow({
   compact?: boolean
 }) {
   const Icon = reportIcons[dimension]
+  const reducedMotion = useReducedMotion()
   const label = usageLabel(dimension, group.key)
   const name = hideName
     ? m.dashboard_widget_traffic_report_hidden_name()
@@ -400,7 +403,10 @@ function TrafficRankingRow({
 
   if (!featured) {
     return (
-      <div
+      <motion.div
+        layout="position"
+        initial={false}
+        transition={{ duration: reducedMotion ? 0 : 0.22, ease: 'easeOut' }}
         className="flex h-12 min-w-0 items-center gap-3"
         data-slot={
           dimension === 'exit'
@@ -427,10 +433,11 @@ function TrafficRankingRow({
             })}
           </p>
         </div>
-        <span className="shrink-0 text-sm tabular-nums">
-          {value} {unit}
-        </span>
-      </div>
+        <ActionSwapText
+          className="shrink-0 text-sm tabular-nums"
+          value={`${value} ${unit}`}
+        />
+      </motion.div>
     )
   }
 
@@ -454,24 +461,24 @@ function TrafficRankingRow({
             : m.dashboard_widget_traffic_report_leading()}
         </p>
       )}
-      <p
+      <ActionSwapText
         className={cn(
           'truncate font-medium',
           compact ? 'text-xs' : 'text-base',
         )}
         title={hideName ? undefined : label.title}
-      >
-        {name}
-      </p>
+        value={name}
+      />
       <div className="flex items-baseline gap-2 tabular-nums">
-        <p
+        <ActionSwap
+          contentKey={`${value} ${unit}`}
           className={cn(
             'min-w-0 flex-1 truncate',
             compact ? 'text-xl' : 'text-3xl',
           )}
         >
           <span>{value}</span> <span className="text-sm">{unit}</span>
-        </p>
+        </ActionSwap>
         <span className="shrink-0 text-base">{share}</span>
       </div>
       <LinearProgress

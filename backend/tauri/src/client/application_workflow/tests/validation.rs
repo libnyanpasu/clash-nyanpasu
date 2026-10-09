@@ -37,7 +37,7 @@ struct Graph {
 async fn graph(dir: &tempfile::TempDir) -> Graph {
     use crate::{
         client::tests::{test_materialization_port, test_typed_config_clients},
-        state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher},
+        state::profiles::test_support::{MockProfileFsPort, MockSubscriptionFetcher},
     };
     let (application, _, clash) = test_typed_config_clients(dir).await;
     let profiles = crate::client::profiles::ProfilesClient::new(

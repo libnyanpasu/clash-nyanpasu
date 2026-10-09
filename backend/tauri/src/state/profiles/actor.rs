@@ -1,7 +1,20 @@
 //! ProfilesActor: single owner of the profiles document.
 //! Tauri-free; every filesystem/network effect goes through the ports.
 
-use nyanpasu_core::migration::modules::profiles::ProfilesFormat;
+use nyanpasu_core::{
+    migration::modules::profiles::ProfilesFormat,
+    profiles::{
+        error::{
+            EmptyScriptSnafu, MissingProxiesSnafu, NotYamlMappingSnafu, ProfileContentError,
+            ProfileFileError,
+        },
+        ports::{
+            MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
+            ProfileDegradation, ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
+            ProfileMaterializationPort, SubscriptionFetcher,
+        },
+    },
+};
 use std::{collections::HashMap, sync::Arc};
 
 use nyanpasu_config::profile::{
@@ -35,11 +48,6 @@ use tokio_util::sync::CancellationToken;
 use super::{
     error::*,
     jobs::{ProfileJobs, ProfileSyncContext},
-    ports::{
-        MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
-        ProfileDegradation, ProfileDegradationCode, ProfileDegradationPhase, ProfileFsPort,
-        ProfileMaterializationPort, SubscriptionFetcher,
-    },
     scheduler::ExternalWatchers,
     sources::{SourceLedger, SourceOrigin, SourceOutcome, SourcesSnapshot},
 };

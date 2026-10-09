@@ -4,9 +4,9 @@ use crate::client::runtime;
 /// wire. Actor-internal Cleanup/Reconcile phases collapse to
 /// `ProfileMaterialization`; retryability stays code-derived.
 pub(in crate::client) fn map_profile_degradation(
-    degradation: &crate::state::profiles::ports::ProfileDegradation,
+    degradation: &nyanpasu_core::profiles::ports::ProfileDegradation,
 ) -> runtime::Degradation {
-    use crate::state::profiles::ports::ProfileDegradationCode;
+    use nyanpasu_core::profiles::ports::ProfileDegradationCode;
 
     let reason = match degradation.code {
         ProfileDegradationCode::JournalInvalid => runtime::DegradationReason::JournalInvalid,

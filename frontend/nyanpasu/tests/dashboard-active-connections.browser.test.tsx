@@ -1,5 +1,8 @@
-import '@/assets/styles/tailwind.css'
+// Layout is measured with the app's Inter font, theme and Tailwind classes.
+import '@fontsource-variable/inter'
+import '@nyanpasu/theme/styles/fonts.css'
 import '@nyanpasu/theme/styles/theme.css'
+import '@/assets/styles/tailwind.css'
 import type { PropsWithChildren } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
@@ -202,6 +205,11 @@ test.for([3, 2, 4])(
       routeTree: rootRoute.addChildren([dashboardRoute, connectionsRoute]),
       history: createMemoryHistory({ initialEntries: ['/main/dashboard'] }),
     })
+    // TextMarquee decides once, when a row mounts, whether the label has to
+    // scroll, so the app font must be loaded before the rows render.
+    const interFaces = await document.fonts.load('500 14px "Inter Variable"')
+    expect(interFaces).not.toHaveLength(0)
+
     const screen = await render(
       <div style={{ transform: 'scale(0.5)', transformOrigin: 'top left' }}>
         <RpcProvider rpc={rpc}>

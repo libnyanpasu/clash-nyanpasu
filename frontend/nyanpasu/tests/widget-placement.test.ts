@@ -37,3 +37,33 @@ test('full layouts append below existing items without overlap; narrow grids ref
   ).toMatchObject({ x: 0, y: 4, w: 3, h: 2 })
   expect(placeWidget({ ...input, cols: 2, items: [] })).toBeNull()
 })
+
+test('a drop uses its requested cell even when earlier cells are free', () => {
+  expect(
+    placeWidget({ ...input, items: [], position: { x: 2, y: 1 } }),
+  ).toMatchObject({ x: 2, y: 1, w: 4, h: 3 })
+})
+
+test('a drop tries the minimum size at its cell before searching elsewhere', () => {
+  expect(
+    placeWidget({
+      ...input,
+      position: { x: 0, y: 0 },
+      items: [
+        { id: 'occupied', type: WidgetId.Memory, x: 3, y: 0, w: 3, h: 2 },
+      ],
+    }),
+  ).toMatchObject({ x: 0, y: 0, w: 3, h: 2 })
+})
+
+test('an occupied drop is refused instead of being moved to a free cell or appended', () => {
+  for (const w of [3, 6]) {
+    expect(
+      placeWidget({
+        ...input,
+        position: { x: 0, y: 0 },
+        items: [{ id: 'occupied', type: WidgetId.Memory, x: 0, y: 0, w, h: 4 }],
+      }),
+    ).toBeNull()
+  }
+})

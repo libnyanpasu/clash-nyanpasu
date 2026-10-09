@@ -60,7 +60,7 @@ function ExampleWidget({ id }: { id: string }) {
   return (
     <WidgetItem id={id} widgetType={WidgetId.ProxyShortcuts}>
       <div data-testid={`value-${id}`}>
-        {config.orientation}/{config.buttons}/{config.order}
+        {config.buttons}/{config.order}
       </div>
     </WidgetItem>
   )
@@ -228,18 +228,18 @@ test('bottom popover preserves focus, stays open and saves independent instance 
   )
   await dialog
     .getByRole('radio', {
-      name: m.dashboard_widget_proxy_shortcuts_config_horizontal(),
+      name: m.dashboard_widget_proxy_shortcuts_config_tun_first(),
     })
     .click()
   await expect
     .poll(() => saved().byInstance.first)
-    .toMatchObject({ orientation: 'horizontal' })
+    .toMatchObject({ order: 'tun-first' })
   await expect
     .element(page.getByTestId('value-first'))
-    .toHaveTextContent('horizontal/both/system-first')
+    .toHaveTextContent('both/tun-first')
   await expect
     .element(page.getByTestId('value-second'))
-    .toHaveTextContent('vertical/both/system-first')
+    .toHaveTextContent('both/system-first')
   await expect.element(dialog).toBeVisible()
   await userEvent.keyboard('{Escape}')
   await expect.element(dialog).not.toBeInTheDocument()
@@ -250,13 +250,11 @@ test('bottom popover preserves focus, stays open and saves independent instance 
   await secondTrigger.click()
   await page
     .getByRole('dialog')
-    .getByRole('radio', {
-      name: m.dashboard_widget_proxy_shortcuts_config_tun_first(),
-    })
+    .getByRole('radio', { name: 'TUN', exact: true })
     .click()
   await expect
     .poll(() => saved().byInstance.second)
-    .toMatchObject({ order: 'tun-first' })
+    .toMatchObject({ buttons: 'tun' })
   await userEvent.keyboard('{Escape}')
   expect(backend.writes).toHaveLength(2)
   // A new provider loads its authoritative backend config independently.
@@ -264,10 +262,10 @@ test('bottom popover preserves focus, stays open and saves independent instance 
   await expect.poll(() => reloaded.loading).toBe(false)
   await expect
     .element(page.getByTestId('value-first').nth(1))
-    .toHaveTextContent('horizontal/both/system-first')
+    .toHaveTextContent('both/tun-first')
   await expect
     .element(page.getByTestId('value-second').nth(1))
-    .toHaveTextContent('vertical/both/tun-first')
+    .toHaveTextContent('tun/system-first')
 })
 
 test('one click on outside blank space closes the menu after editing an option', async ({
@@ -311,7 +309,7 @@ test('failed autosave retains preview and retries the current options', async ({
   backend.fail = true
   await dialog
     .getByRole('radio', {
-      name: m.dashboard_widget_proxy_shortcuts_config_horizontal(),
+      name: m.dashboard_widget_proxy_shortcuts_config_tun_first(),
     })
     .click()
   await expect
@@ -319,7 +317,7 @@ test('failed autosave retains preview and retries the current options', async ({
     .toBeVisible()
   await expect
     .element(page.getByTestId('value-first'))
-    .toHaveTextContent('horizontal/both/system-first')
+    .toHaveTextContent('both/tun-first')
   backend.fail = false
   await dialog
     .getByRole('button', { name: m.dashboard_widget_config_retry() })
@@ -327,19 +325,19 @@ test('failed autosave retains preview and retries the current options', async ({
   await expect
     .element(dialog.getByText(m.dashboard_widget_config_save_failed()))
     .not.toBeInTheDocument()
-  expect(saved().byInstance.first).toMatchObject({ orientation: 'horizontal' })
+  expect(saved().byInstance.first).toMatchObject({ order: 'tun-first' })
   await dialog
     .getByRole('button', { name: m.dashboard_widget_config_reset() })
     .click()
   await expect
     .poll(() => saved().byInstance.first)
-    .toMatchObject({ orientation: 'vertical' })
+    .toMatchObject({ order: 'system-first' })
 })
 
-test('a narrow widget explains and disables horizontal layout for both buttons', async ({
+test('proxy status offers button choices without a vertical layout option', async ({
   onTestFinished,
 }) => {
-  const controls = mount(onTestFinished, 3)
+  const controls = mount(onTestFinished)
   await expect.poll(() => controls.loading).toBe(false)
   controls.editing(true)
   await page
@@ -349,25 +347,20 @@ test('a narrow widget explains and disables horizontal layout for both buttons',
   const dialog = page.getByRole('dialog')
   await expect
     .element(
-      dialog.getByText(
-        m.dashboard_widget_proxy_shortcuts_config_widen({ columns: 6 }),
-      ),
+      dialog.getByRole('radio', {
+        name: m.dashboard_widget_proxy_shortcuts_config_vertical(),
+      }),
     )
-    .toBeVisible()
+    .not.toBeInTheDocument()
   await expect
     .element(
       dialog.getByRole('radio', {
         name: m.dashboard_widget_proxy_shortcuts_config_horizontal(),
       }),
     )
-    .toBeDisabled()
-  await dialog.getByRole('radio', { name: 'TUN', exact: true }).click()
+    .not.toBeInTheDocument()
   await expect
-    .element(
-      dialog.getByRole('radio', {
-        name: m.dashboard_widget_proxy_shortcuts_config_horizontal(),
-      }),
-    )
+    .element(dialog.getByRole('radio', { name: 'TUN', exact: true }))
     .toBeEnabled()
 })
 
@@ -388,7 +381,7 @@ test('a pending write prevents overlapping edits until its result arrives', asyn
   })
   await dialog
     .getByRole('radio', {
-      name: m.dashboard_widget_proxy_shortcuts_config_horizontal(),
+      name: m.dashboard_widget_proxy_shortcuts_config_tun_first(),
     })
     .click()
   await expect.element(dialog.getByRole('status')).not.toBeInTheDocument()
@@ -403,7 +396,7 @@ test('a pending write prevents overlapping edits until its result arrives', asyn
   await dialog.getByRole('radio', { name: 'TUN', exact: true }).click()
   await expect
     .poll(() => saved().byInstance.first)
-    .toMatchObject({ orientation: 'horizontal', buttons: 'tun' })
+    .toMatchObject({ order: 'tun-first', buttons: 'tun' })
 })
 
 test('popover flips above the trigger near the viewport bottom', async ({
@@ -415,13 +408,23 @@ test('popover flips above the trigger near the viewport bottom', async ({
   const trigger = page
     .getByRole('button', { name: m.dashboard_widget_config_title() })
     .nth(0)
-  await trigger.click()
+  await expect.element(trigger).toBeVisible()
+  const wrapper = trigger.element().parentElement!
+  wrapper.style.position = 'absolute'
+  wrapper.style.inset = '0'
+  await expect
+    .poll(() => trigger.element().getBoundingClientRect().top)
+    .toBeGreaterThan(window.innerHeight - 80)
+  ;(trigger.element() as HTMLButtonElement).click()
   const dialog = page.getByRole('dialog')
   await expect.element(dialog).toBeVisible()
-  expect(dialog.element().getAttribute('data-side')).toBe('top')
-  expect(dialog.element().getBoundingClientRect().bottom).toBeLessThan(
-    trigger.element().getBoundingClientRect().top,
-  )
+  await expect
+    .poll(
+      () =>
+        dialog.element().getBoundingClientRect().bottom -
+        trigger.element().getBoundingClientRect().top,
+    )
+    .toBeLessThan(0)
 })
 
 test('leaving edit mode disables an open widget config popover immediately', async ({
@@ -510,12 +513,12 @@ test('drag overlays keep instance options while new-widget previews use defaults
   await expect.poll(() => main.loading).toBe(false)
   await expect
     .element(page.getByTestId('value-first').nth(0))
-    .toHaveTextContent('horizontal/tun/system-first')
+    .toHaveTextContent('tun/system-first')
   const sheet = mount(onTestFinished, 6, false, 'sheet')
   await expect.poll(() => sheet.loading).toBe(false)
   await expect
     .element(page.getByTestId('value-first').nth(1))
-    .toHaveTextContent('vertical/both/system-first')
+    .toHaveTextContent('both/system-first')
   expect(
     document.querySelectorAll('[data-slot=widget-config-trigger]'),
   ).toHaveLength(0)

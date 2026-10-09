@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
@@ -23,6 +24,7 @@ import { useWidgetConfig } from './provider'
 import { useWidgetHeight } from './use-widget-height'
 import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetTitle } from './widget-ui'
 
 const PROVIDER_ROW_HEIGHT = 44
 
@@ -49,14 +51,47 @@ function ProviderUpdatesPreview({ id, onCloseClick }: WidgetComponentProps) {
       onCloseClick={onCloseClick}
     >
       <Card className="size-full" data-slot="widget-provider-updates-card">
-        <CardContent className="flex size-full flex-col gap-3">
-          <div className="flex items-center gap-2 font-bold">
-            <CloudSyncRounded className="size-5" />
+        <CardContent className="flex size-full min-h-0 flex-col gap-2 overflow-hidden">
+          <WidgetTitle icon={CloudSyncRounded}>
             {m.dashboard_widget_provider_updates_title()}
-          </div>
-          <p className="text-on-surface-variant text-sm">
-            {m.dashboard_widget_provider_updates_preview()}
+          </WidgetTitle>
+          <p className="text-on-surface-variant text-xs">
+            {m.dashboard_widget_provider_updates_counts({
+              proxies: '4',
+              rules: '2',
+            })}
           </p>
+          <ul
+            className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden"
+            data-slot="widget-provider-updates-preview-list"
+          >
+            {[
+              { name: 'Japan Premium', kind: 'HTTP', count: '128' },
+              { name: 'Regional Rules', kind: 'HTTP', count: '342' },
+            ].map((provider) => (
+              <li
+                className="bg-surface-variant/20 flex min-h-10 min-w-0 shrink-0 items-center gap-2 rounded-xl px-2 py-1 text-xs"
+                data-slot="widget-provider-updates-preview-row"
+                key={provider.name}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{provider.name}</p>
+                  <p className="text-on-surface-variant truncate">
+                    {provider.kind} · {provider.count} ·{' '}
+                    {formatRelativeTime(
+                      '2026-10-10T12:58:00Z',
+                      Date.parse('2026-10-10T13:00:00Z'),
+                      getLocale(),
+                    )}
+                  </p>
+                </div>
+                <RefreshRounded
+                  className="text-on-surface-variant size-4 shrink-0"
+                  aria-hidden="true"
+                />
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
     </WidgetItem>
@@ -205,12 +240,9 @@ function ProviderUpdatesLive({
       <Card className="size-full" data-slot="widget-provider-updates-card">
         <CardContent className="flex size-full min-h-0 flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2 font-bold">
-              <CloudSyncRounded className="size-5 shrink-0" />
-              <span className="truncate">
-                {m.dashboard_widget_provider_updates_title()}
-              </span>
-            </div>
+            <WidgetTitle className="flex-1" icon={CloudSyncRounded}>
+              {m.dashboard_widget_provider_updates_title()}
+            </WidgetTitle>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -315,7 +347,9 @@ function ProviderUpdatesLive({
                       >
                         <div className="min-w-0 flex-1">
                           {missing ? (
-                            <div className="truncate font-medium">{name}</div>
+                            <TextMarquee className="w-full font-medium">
+                              {name}
+                            </TextMarquee>
                           ) : (
                             <Link
                               aria-disabled={!canAct}
@@ -327,10 +361,12 @@ function ProviderUpdatesLive({
                               to={to}
                               params={{ key: name }}
                             >
-                              {name}
+                              <TextMarquee className="w-full">
+                                {name}
+                              </TextMarquee>
                             </Link>
                           )}
-                          <div className="text-on-surface-variant truncate">
+                          <TextMarquee className="text-on-surface-variant w-full">
                             {row
                               ? `${row.vehicleType ?? '—'} · ${row.type ?? '—'} · ${row.count ?? '—'} · ${formatRelativeTime(row.updatedAt, Date.now(), getLocale())}`
                               : missing
@@ -338,7 +374,7 @@ function ProviderUpdatesLive({
                                 : isLoading
                                   ? m.dashboard_widget_provider_updates_loading()
                                   : m.dashboard_widget_provider_updates_read_failed()}
-                          </div>
+                          </TextMarquee>
                         </div>
                         {row && (
                           <Button

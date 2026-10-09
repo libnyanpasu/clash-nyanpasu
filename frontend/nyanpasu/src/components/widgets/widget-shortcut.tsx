@@ -1,8 +1,12 @@
 import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
+import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
+import NetworkPingRounded from '~icons/material-symbols/network-ping-rounded'
+import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import { useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { ShapeToggle } from '@nyanpasu/ui/shape-toggle'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
 import {
@@ -25,12 +29,9 @@ import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { WidgetComponentProps } from './consts'
 import { useWidgetConfig } from './provider'
-import {
-  PROXY_HORIZONTAL_MIN_WIDTH,
-  WidgetConfigs,
-  WidgetId,
-} from './widget-config'
+import { WidgetConfigs, WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetHeader, WidgetTitle } from './widget-ui'
 
 enum ProxyStatus {
   SYSTEM = 'system',
@@ -78,10 +79,10 @@ const ProxyTitleRow = () => {
   }
 
   return (
-    <CardHeader className="flex items-center gap-3">
-      <span className="shrink-0 font-bold">
+    <WidgetHeader>
+      <WidgetTitle icon={SettingsEthernetRounded}>
         {m.dashboard_widget_proxy_status()}
-      </span>
+      </WidgetTitle>
 
       <Button
         variant="raised"
@@ -104,7 +105,7 @@ const ProxyTitleRow = () => {
           </TextMarquee>
         </Link>
       </Button>
-    </CardHeader>
+    </WidgetHeader>
   )
 }
 
@@ -113,62 +114,83 @@ export function ProxyShortcutsWidget({
   onCloseClick,
 }: WidgetComponentProps) {
   const config = useWidgetConfig(id, WidgetId.ProxyShortcuts)
-  const { sourceOnly, displayItems } = useDndGridContext()
-  const horizontal = config.orientation === 'horizontal'
-  const tooNarrow =
-    horizontal &&
-    config.buttons === 'both' &&
-    (displayItems.find((item) => item.id === id)?.w ?? 0) <
-      PROXY_HORIZONTAL_MIN_WIDTH
+  const { sourceOnly, isOverlay } = useDndGridContext()
   const buttons =
     config.order === 'system-first' ? ['system', 'tun'] : ['tun', 'system']
+  const preview = sourceOnly || isOverlay
 
   return (
     <WidgetItem
       id={id}
       widgetType={WidgetId.ProxyShortcuts}
-      minW={
-        horizontal && config.buttons === 'both' ? PROXY_HORIZONTAL_MIN_WIDTH : 3
-      }
+      minW={3}
       minH={2}
       onCloseClick={onCloseClick}
     >
       <Card className="flex size-full flex-col justify-between">
-        <ProxyTitleRow />
+        {preview ? (
+          <WidgetHeader>
+            <WidgetTitle icon={SettingsEthernetRounded}>
+              {m.dashboard_widget_proxy_status()}
+            </WidgetTitle>
+            <Button
+              variant="raised"
+              disabled
+              className="bg-primary-container text-on-primary-container flex h-6 min-w-0 items-center px-2 text-xs"
+            >
+              {config.buttons === 'tun'
+                ? m.dashboard_widget_proxy_status_success_tun()
+                : m.dashboard_widget_proxy_status_success_system()}
+            </Button>
+          </WidgetHeader>
+        ) : (
+          <ProxyTitleRow />
+        )}
 
         <CardContent
-          className={cn('min-h-0 flex-1 gap-3', horizontal && 'flex-row')}
+          className="min-h-0 flex-1 flex-row items-stretch justify-center gap-2 overflow-hidden py-3"
           data-slot="proxy-shortcut-buttons"
-          data-orientation={config.orientation}
         >
-          {tooNarrow ? (
-            <p className="text-on-surface-variant self-center text-sm">
-              {m.dashboard_widget_proxy_shortcuts_config_widen({
-                columns: PROXY_HORIZONTAL_MIN_WIDTH,
-              })}
-            </p>
-          ) : (
-            buttons
-              .filter(
-                (button) =>
-                  config.buttons === 'both' || config.buttons === button,
-              )
-              .map((button) =>
-                button === 'system' ? (
-                  <SystemProxyButton
-                    key={button}
-                    disabled={sourceOnly}
-                    className="h-full min-w-0 flex-1 rounded-3xl"
-                  />
-                ) : (
-                  <TunModeButton
-                    key={button}
-                    disabled={sourceOnly}
-                    className="h-full min-w-0 flex-1 rounded-3xl"
-                  />
-                ),
-              )
-          )}
+          {buttons
+            .filter(
+              (button) =>
+                config.buttons === 'both' || config.buttons === button,
+            )
+            .map((button) =>
+              preview ? (
+                <ShapeToggle
+                  key={button}
+                  disabled
+                  active={button === 'system'}
+                  elastic={config.layout === 'flex'}
+                  icon={
+                    button === 'system' ? (
+                      <NetworkPingRounded />
+                    ) : (
+                      <SettingsEthernetRounded />
+                    )
+                  }
+                  label={
+                    button === 'system'
+                      ? m.settings_system_proxy_system_proxy_label()
+                      : m.settings_system_proxy_tun_mode_label()
+                  }
+                />
+              ) : button === 'system' ? (
+                <SystemProxyButton
+                  key={button}
+                  presentation="cookie"
+                  elastic={config.layout === 'flex'}
+                />
+              ) : (
+                <TunModeButton
+                  key={button}
+                  presentation="cookie"
+                  elastic={config.layout === 'flex'}
+                  disabled={sourceOnly}
+                />
+              ),
+            )}
         </CardContent>
       </Card>
     </WidgetItem>
@@ -294,7 +316,6 @@ const CurrentCoreCard = ({
         config.showChannel
           ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
           : 'grid-rows-1',
-        config.density === 'compact' && 'gap-1 px-2',
         'bg-surface-variant/30 text-on-surface hover:bg-surface-variant/50 shadow-none hover:shadow-none focus:shadow-none',
         'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
       )}
@@ -307,16 +328,13 @@ const CurrentCoreCard = ({
           <div
             className={cn(
               'bg-surface/60 grid shrink-0 place-items-center rounded-xl',
-              config.density === 'compact' ? 'size-8' : 'size-10',
+              'size-10',
             )}
           >
             <img
               src={currentCoreIcon}
               alt=""
-              className={cn(
-                'object-contain',
-                config.density === 'compact' ? 'size-6' : 'size-8',
-              )}
+              className="size-8 object-contain"
               data-slot="core-icon"
             />
           </div>
@@ -327,7 +345,9 @@ const CurrentCoreCard = ({
               title={currentCoreName || undefined}
               data-slot="core-name"
             >
-              {currentCoreName || '—'}
+              <TextMarquee className="w-full">
+                {currentCoreName || '—'}
+              </TextMarquee>
             </div>
             {config.showVersion && (
               <div
@@ -335,7 +355,9 @@ const CurrentCoreCard = ({
                 title={currentVersion}
                 data-slot="core-version"
               >
-                {currentVersion ?? '—'}
+                <TextMarquee className="w-full">
+                  {currentVersion ?? '—'}
+                </TextMarquee>
               </div>
             )}
           </div>
@@ -391,6 +413,9 @@ export function CoreShortcutsWidget({
   onCloseClick,
 }: WidgetComponentProps) {
   const config = useWidgetConfig(id, WidgetId.CoreShortcuts)
+  const { sourceOnly, isOverlay } = useDndGridContext()
+  const preview = sourceOnly || isOverlay
+  const previewCoreIcon = useCoreIcon('mihomo')
 
   return (
     <WidgetItem
@@ -401,18 +426,104 @@ export function CoreShortcutsWidget({
       onCloseClick={onCloseClick}
     >
       <Card className="flex size-full flex-col justify-between">
-        <CardHeader className="shrink-0 gap-3 pt-3">
-          <span className="shrink-0 text-base font-medium">
+        <WidgetHeader>
+          <WidgetTitle icon={MemoryOutlineRounded}>
             {m.dashboard_widget_core_status()}
-          </span>
+          </WidgetTitle>
 
-          <ServiceFallbackWarning className="-ml-2" />
-
-          <CoreStatusBadge />
-        </CardHeader>
+          {preview ? (
+            <div
+              className={cn(
+                'flex h-6 max-w-full min-w-0 items-center rounded-full px-2 text-xs font-medium',
+                'bg-primary-container text-on-primary-container',
+              )}
+              data-slot="core-status-badge"
+            >
+              {m.dashboard_widget_core_status_running_by_child_process()}
+            </div>
+          ) : (
+            <>
+              <ServiceFallbackWarning className="-ml-2" />
+              <CoreStatusBadge />
+            </>
+          )}
+        </WidgetHeader>
 
         <CardContent className="min-h-0 flex-1 pt-2 pb-3">
-          <CurrentCoreCard config={config} />
+          {preview ? (
+            <Button
+              variant="raised"
+              disabled
+              className={cn(
+                'grid h-full w-full min-w-0 rounded-[20px] px-2.5 py-0 text-left',
+                config.showChannel
+                  ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
+                  : 'grid-rows-1',
+                'bg-surface-variant/30 text-on-surface shadow-none',
+              )}
+              data-running="true"
+              data-slot="current-core-card"
+            >
+              <div className="flex w-full min-w-0 items-center gap-3">
+                <div className="bg-surface/60 grid size-10 shrink-0 place-items-center rounded-xl">
+                  <img
+                    src={previewCoreIcon}
+                    alt=""
+                    className="size-8 object-contain"
+                    data-slot="core-icon"
+                  />
+                </div>
+                <div className="min-w-0 flex-1" data-slot="core-info">
+                  <div
+                    className="truncate text-base leading-5 font-semibold"
+                    data-slot="core-name"
+                  >
+                    Mihomo
+                  </div>
+                  {config.showVersion && (
+                    <div
+                      className="text-on-surface-variant truncate text-xs leading-4 font-normal"
+                      data-slot="core-version"
+                    >
+                      v1.19.12
+                    </div>
+                  )}
+                </div>
+                <div
+                  className="bg-primary-container text-on-primary-container flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+                  data-slot="core-status"
+                >
+                  <span
+                    className="size-1.5 shrink-0 rounded-full bg-current"
+                    aria-hidden="true"
+                    data-slot="core-status-indicator"
+                  />
+                  <span data-slot="core-status-text">
+                    {m.dashboard_widget_core_status_running()}
+                  </span>
+                </div>
+              </div>
+              {config.showChannel && (
+                <div
+                  className="border-outline-variant/40 text-on-surface-variant flex w-full min-w-0 items-center gap-2 border-t text-xs leading-4 font-normal"
+                  data-slot="core-control-channel"
+                >
+                  <span className="min-w-0 truncate">
+                    {m.settings_clash_control_channel_label()}
+                  </span>
+                  <span className="text-on-surface ml-auto shrink-0 font-medium">
+                    HTTP
+                  </span>
+                  <ChevronRightRounded
+                    className="size-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                </div>
+              )}
+            </Button>
+          ) : (
+            <CurrentCoreCard config={config} />
+          )}
         </CardContent>
       </Card>
     </WidgetItem>

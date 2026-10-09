@@ -233,8 +233,62 @@ async function mount(
     queryClient.clear()
     rpc.dispose()
   })
-  return { view: rendered, controls, router }
+  return { view: rendered, controls, router, queryClient }
 }
+
+test('narrow ranking rows keep shares on one line and scroll long names', async ({
+  onTestFinished,
+}) => {
+  const { view, queryClient } = await mount(onTestFinished)
+  await expect.poll(() => reports.requests.length).toBe(1)
+  const query = queryClient
+    .getQueryCache()
+    .getAll()
+    .find((query) => {
+      const data = query.state.data as TrafficReport | undefined
+      return Array.isArray(data?.rankings)
+    })!
+  const data = query.state.data as TrafficReport
+  queryClient.setQueryData(query.queryKey, {
+    ...data,
+    rankings: data.rankings.map((ranking) => ({
+      ...ranking,
+      distinct: 3,
+      groups: [600, 300, 124].map((bytes, index) => ({
+        key: `/apps/very-long-process-name-for-narrow-widget-${index}.exe`,
+        usage: usage(bytes, 0),
+        current_rate: null,
+      })),
+    })),
+  } satisfies TrafficReport)
+  const card = view.container.querySelectorAll<HTMLElement>(
+    '[data-slot="widget-traffic-report-card"]',
+  )[1]
+  card.style.width = '240px'
+  card.style.height = '400px'
+  await expect
+    .poll(
+      () =>
+        card.querySelectorAll('[data-slot="widget-traffic-report-row"]').length,
+    )
+    .toBe(2)
+  await expect
+    .poll(() => card.querySelector('[data-slot="text-marquee-content-item"]'))
+    .not.toBeNull()
+  for (const row of card.querySelectorAll<HTMLElement>(
+    '[data-slot="widget-traffic-report-row"]',
+  )) {
+    const share = row.querySelectorAll<HTMLElement>(
+      '[data-slot="text-marquee"]',
+    )[1]
+    expect(share.clientHeight).toBeLessThanOrEqual(18)
+    expect(
+      getComputedStyle(row.querySelector('[data-slot="action-swap-text"]')!)
+        .whiteSpace,
+    ).toBe('nowrap')
+  }
+  expect(getComputedStyle(card.firstElementChild!).overflowY).toBe('hidden')
+})
 
 test('does not fetch traffic metadata when no report widgets are visible', async ({
   onTestFinished,
@@ -269,7 +323,7 @@ test('duplicate widgets share one report request, and stopped core still has his
   await expect.poll(() => view.container.textContent).toContain('1.00 KiB')
 })
 
-test('report navigation is enabled in normal view and unavailable while editing', async ({
+test('report widgets omit footer navigation while retaining editing controls', async ({
   onTestFinished,
 }) => {
   const { view, controls } = await mount(onTestFinished)
@@ -278,8 +332,8 @@ test('report navigation is enabled in normal view and unavailable while editing'
   const links = page.getByRole('link', {
     name: m.dashboard_widget_traffic_report_open(),
   })
-  await expect.element(links.first()).toBeEnabled()
-  expect(links.elements()).toHaveLength(2)
+  expect(links.elements()).toHaveLength(0)
+  expect(links.elements()).toHaveLength(0)
   const originalLinks = links.elements()
 
   expect(
@@ -298,7 +352,7 @@ test('report navigation is enabled in normal view and unavailable while editing'
           .length,
     )
     .toBe(2)
-  expect(links.elements()).toHaveLength(2)
+  expect(links.elements()).toHaveLength(0)
   expect(links.elements()).toEqual(originalLinks)
   for (const link of links.elements()) {
     expect(link.getAttribute('aria-disabled')).toBe('true')
@@ -314,22 +368,23 @@ test('report navigation is enabled in normal view and unavailable while editing'
 })
 
 test.for([null, 'deleted-profile'])(
-  'traffic details preserve the widget profile scope %s',
+  'traffic reports preserve the widget profile scope %s',
   async (profileUid, { onTestFinished }) => {
-    const { router } = await mount(onTestFinished, 'last7_days', profileUid)
+    const { view } = await mount(onTestFinished, 'last7_days', profileUid)
     await expect.poll(() => reports.requests.length).toBe(2)
     const links = page.getByRole('link', {
       name: m.dashboard_widget_traffic_report_open(),
     })
-    await links.nth(1).click()
-    await expect
-      .poll(() => router.state.location.pathname)
-      .toBe('/main/topology')
-    expect(router.state.location.search).toMatchObject({
-      range: 'last7_days',
-      metric: 'bytes',
-      filters: profileUid ? [{ d: 'profile', v: profileUid }] : [],
-    })
+    expect(links.elements()).toHaveLength(0)
+    expect(
+      reports.requests.some((request) =>
+        request.query.filters.some(
+          (filter) =>
+            filter.dimension === 'profile' && filter.value === profileUid,
+        ),
+      ),
+    ).toBe(Boolean(profileUid))
+    await expect.poll(() => view.container.textContent).toContain('7.00 KiB')
   },
 )
 
@@ -373,7 +428,7 @@ test('a saved profile filter keeps a visible missing UID after its profile is de
   ).toBe(true)
 })
 
-test('a window longer than retention is marked incomplete', async ({
+test('long ranges omit the removed retention footer', async ({
   onTestFinished,
 }) => {
   const { view } = await mount(onTestFinished, 'last30_days')
@@ -381,10 +436,10 @@ test('a window longer than retention is marked incomplete', async ({
   await expect.poll(() => reports.requests.length).toBe(2)
   await expect
     .poll(() => view.container.textContent)
-    .toContain(m.dashboard_widget_traffic_report_retention_limited_short())
+    .not.toContain(m.dashboard_widget_traffic_report_retention_limited_short())
 })
 
-test('a failed retention read stays unknown instead of assuming seven days', async ({
+test('unavailable retention does not add a footer', async ({
   onTestFinished,
 }) => {
   const { view } = await mount(onTestFinished, 'last30_days', null, null)
@@ -392,7 +447,7 @@ test('a failed retention read stays unknown instead of assuming seven days', asy
   await expect.poll(() => reports.requests.length).toBe(2)
   await expect
     .poll(() => view.container.textContent)
-    .toContain(m.dashboard_widget_traffic_report_retention_unknown())
+    .not.toContain(m.dashboard_widget_traffic_report_retention_unknown())
   expect(view.container.textContent).not.toContain(
     m.dashboard_widget_traffic_report_retention_limited_short(),
   )

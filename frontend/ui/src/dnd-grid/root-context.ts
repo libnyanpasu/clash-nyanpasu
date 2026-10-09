@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { DragEndEvent, DragMoveEvent, DragStartEvent } from '@dnd-kit/core'
+import type { GridPosition } from './types'
 
 export type GridRegistration = {
   itemIds: string[]
@@ -10,7 +11,8 @@ export type GridRegistration = {
   handleDragEnd: (e: DragEndEvent) => void
   handleDragCancel: () => void
   getCellSize: () => { cellW: number; cellH: number; gap: number }
-  onSourceDrop?: (itemId: string) => void
+  getDropPosition: (clientX: number, clientY: number) => GridPosition | null
+  onExternalDrop?: (itemId: string, position: GridPosition) => void
   onSourceDragStart?: () => void
 }
 

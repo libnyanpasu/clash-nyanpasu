@@ -2,7 +2,6 @@ import TuneRounded from '~icons/material-symbols/tune-rounded'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useId, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { NumberStepper } from '@nyanpasu/ui/number-stepper'
 import { Popover, PopoverContent, PopoverTrigger } from '@nyanpasu/ui/popover'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
@@ -17,7 +16,6 @@ import { useDashboardContext } from './provider'
 import {
   DEFAULT_WIDGET_CONFIGS,
   getWidgetConfig,
-  PROXY_HORIZONTAL_MIN_WIDTH,
   WIDGET_CONFIG_NUMBER_RANGES,
   WidgetConfig,
   WidgetId,
@@ -103,12 +101,10 @@ function Toggle({
 function ConfigFields({
   config,
   disabled,
-  wideEnough,
   onChange,
 }: {
   config: WidgetConfig
   disabled: boolean
-  wideEnough: boolean
   onChange: (config: WidgetConfig) => void
 }) {
   switch (config.type) {
@@ -146,6 +142,30 @@ function ConfigFields({
                   onChange({ ...config, showProgress })
                 }
               />
+              <Choice
+                label={m.dashboard_widget_subscription_quota_config_wave_style()}
+                value={config.waveStyle}
+                options={[
+                  {
+                    value: 'single',
+                    label:
+                      m.dashboard_widget_subscription_quota_config_wave_single(),
+                  },
+                  {
+                    value: 'double',
+                    label:
+                      m.dashboard_widget_subscription_quota_config_wave_double(),
+                  },
+                ]}
+                disabled={disabled || !config.showProgress}
+                onChange={(waveStyle) => onChange({ ...config, waveStyle })}
+              />
+              <Toggle
+                label={m.dashboard_widget_subscription_quota_config_wave_animation()}
+                checked={config.animateWave}
+                disabled={disabled || !config.showProgress}
+                onChange={(animateWave) => onChange({ ...config, animateWave })}
+              />
               <NumberStepper
                 variant="filled"
                 label={m.dashboard_widget_config_expiry_threshold()}
@@ -177,7 +197,24 @@ function ConfigFields({
         </>
       )
     case WidgetId.ProxyMode:
-      return null
+      return (
+        <Choice
+          label={m.dashboard_widget_proxy_mode_config_layout()}
+          value={config.layout}
+          disabled={disabled}
+          options={[
+            {
+              value: 'focus',
+              label: m.dashboard_widget_proxy_mode_config_focus(),
+            },
+            {
+              value: 'flex',
+              label: m.dashboard_widget_proxy_mode_config_flex(),
+            },
+          ]}
+          onChange={(layout) => onChange({ ...config, layout })}
+        />
+      )
     case WidgetId.RecentTraffic:
     case WidgetId.OriginTraffic:
     case WidgetId.ExitTraffic:
@@ -342,29 +379,21 @@ function ConfigFields({
       return (
         <>
           <Choice
-            label={m.dashboard_widget_proxy_shortcuts_config_orientation()}
-            value={config.orientation}
+            label={m.dashboard_widget_proxy_mode_config_layout()}
+            value={config.layout}
             disabled={disabled}
             options={[
               {
-                value: 'vertical',
-                label: m.dashboard_widget_proxy_shortcuts_config_vertical(),
+                value: 'equal',
+                label: m.dashboard_widget_proxy_shortcuts_config_equal(),
               },
               {
-                value: 'horizontal',
-                label: m.dashboard_widget_proxy_shortcuts_config_horizontal(),
-                disabled: config.buttons === 'both' && !wideEnough,
+                value: 'flex',
+                label: m.dashboard_widget_proxy_mode_config_flex(),
               },
             ]}
-            onChange={(orientation) => onChange({ ...config, orientation })}
+            onChange={(layout) => onChange({ ...config, layout })}
           />
-          {!wideEnough && config.buttons === 'both' && (
-            <p className="text-on-surface-variant text-xs">
-              {m.dashboard_widget_proxy_shortcuts_config_widen({
-                columns: PROXY_HORIZONTAL_MIN_WIDTH,
-              })}
-            </p>
-          )}
           <Choice
             label={m.dashboard_widget_proxy_shortcuts_config_buttons()}
             value={config.buttons}
@@ -373,7 +402,6 @@ function ConfigFields({
               {
                 value: 'both',
                 label: m.dashboard_widget_proxy_shortcuts_config_both(),
-                disabled: config.orientation === 'horizontal' && !wideEnough,
               },
               {
                 value: 'system',
@@ -458,22 +486,6 @@ function ConfigFields({
     case WidgetId.CoreShortcuts:
       return (
         <>
-          <Choice
-            label={m.dashboard_widget_core_shortcuts_config_density()}
-            value={config.density}
-            disabled={disabled}
-            options={[
-              {
-                value: 'detailed',
-                label: m.dashboard_widget_core_shortcuts_config_detailed(),
-              },
-              {
-                value: 'compact',
-                label: m.dashboard_widget_core_shortcuts_config_compact(),
-              },
-            ]}
-            onChange={(density) => onChange({ ...config, density })}
-          />
           <Toggle
             label={m.dashboard_widget_core_shortcuts_config_version()}
             checked={config.showVersion}
@@ -538,13 +550,9 @@ export default function WidgetConfigMenu({
 }) {
   const { configs, saveConfig, saveStatus, configLoading, configReadError } =
     useDashboardContext()
-  const { displayItems } = useDndGridContext()
   const config = getWidgetConfig(configs, id, type)
   const disabled =
     configLoading || configReadError || saveStatus.state === 'saving'
-  const wideEnough =
-    (displayItems.find((item) => item.id === id)?.w ?? 0) >=
-    PROXY_HORIZONTAL_MIN_WIDTH
   const titleId = useId()
   const reducedMotion = useReducedMotion()
   const [open, setOpen] = useState(false)
@@ -554,8 +562,6 @@ export default function WidgetConfigMenu({
       setOpen(false)
     }
   }, [isActive])
-
-  if (type === WidgetId.ProxyMode) return null
 
   return (
     <Popover open={isActive && open} onOpenChange={setOpen}>
@@ -602,7 +608,6 @@ export default function WidgetConfigMenu({
               <ConfigFields
                 config={config}
                 disabled={disabled}
-                wideEnough={wideEnough}
                 onChange={(next) => saveConfig(id, next)}
               />
             </div>

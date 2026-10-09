@@ -118,6 +118,13 @@ spacing, shape, motion, and semantic color tokens (`primary`, `surface`,
 `on-surface`, etc.). Preserve
 dark-mode, focus, disabled, loading, and keyboard behavior; avoid a parallel design system.
 
+Dashboard widgets must not contain internal scrollbars. Keep content within the
+widget's allocated size with `min-h-0` and `overflow-hidden`; do not use
+`overflow-auto` or `overflow-scroll` to accommodate widget content. Reduce visible
+ranking rows to fit the available height and fold hidden rows into the existing
+other total. Clip any remaining overflow rather than creating a scrollable area.
+Apply this rule to compact, expanded, loading, empty, and error states.
+
 If a needed component is missing, check Radix UI for a suitable primitive first.
 When one exists, wrap and style it in the UI package, expose the appropriate
 props and slots, and reuse that wrapper. If no primitive fits, implement a focused

@@ -24,6 +24,7 @@ import { useDndGridRoot, type GridRegistration } from './root-context'
 import type {
   DndGridItemType,
   GridItemConstraints,
+  GridPosition,
   GridSize,
   ResizeHandle,
 } from './types'
@@ -46,7 +47,7 @@ export interface DndGridProps<T extends string = string> {
   sourceOnly?: boolean
   dragIdPrefix?: string
   gridId?: string
-  onSourceDrop?: (itemId: string) => void
+  onExternalDrop?: (itemId: string, position: GridPosition) => void
   onSourceDragStart?: () => void
 }
 
@@ -63,7 +64,7 @@ export function DndGrid<T extends string = string>({
   sourceOnly = false,
   dragIdPrefix = '',
   gridId,
-  onSourceDrop,
+  onExternalDrop,
   onSourceDragStart,
 }: DndGridProps<T>) {
   const constraintsMapRef = useRef<Record<string, GridItemConstraints>>({})
@@ -262,6 +263,28 @@ export function DndGrid<T extends string = string>({
 
   const rootCtx = useDndGridRoot()
 
+  const getDropPosition = useCallback(
+    (clientX: number, clientY: number): GridPosition | null => {
+      const element = containerRef.current
+      if (!element) {
+        return null
+      }
+
+      const rect = element.getBoundingClientRect()
+      const x = clientX - rect.left
+      const y = clientY - rect.top
+      if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+        return null
+      }
+
+      return {
+        x: Math.min(layout.cols - 1, Math.floor(x / (layout.cellW + gap))),
+        y: Math.min(layout.rows - 1, Math.floor(y / (layout.cellH + gap))),
+      }
+    },
+    [containerRef, layout, gap],
+  )
+
   // Stable object mutated in place every render so the root always reads fresh closures
   const registrationRef = useRef<GridRegistration>({
     itemIds: [],
@@ -272,6 +295,7 @@ export function DndGrid<T extends string = string>({
     handleDragEnd: () => {},
     handleDragCancel: () => {},
     getCellSize: () => ({ cellW: 0, cellH: 0, gap: 0 }),
+    getDropPosition: () => null,
   })
 
   Object.assign(registrationRef.current, {
@@ -283,7 +307,8 @@ export function DndGrid<T extends string = string>({
     handleDragEnd,
     handleDragCancel,
     getCellSize: () => ({ cellW: layout.cellW, cellH: layout.cellH, gap }),
-    onSourceDrop,
+    getDropPosition,
+    onExternalDrop: disabled ? undefined : onExternalDrop,
     onSourceDragStart,
   })
 

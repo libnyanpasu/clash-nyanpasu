@@ -2,27 +2,24 @@ import AppsRounded from '~icons/material-symbols/apps-rounded'
 import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
 import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
 import DnsRounded from '~icons/material-symbols/dns-rounded'
-import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import RuleFolderRounded from '~icons/material-symbols/rule-folder-rounded'
+import { motion, useReducedMotion } from 'motion/react'
 import { ComponentType, type ReactNode } from 'react'
-import { Button } from '@nyanpasu/ui/button'
+import { ActionSwap, ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
-import { beyondRetention } from '@/utils/traffic-retention'
 import { usageLabel } from '@/utils/traffic-usage'
 import type {
   TrafficRange,
   TrafficReport,
-  TrafficRetention,
   Usage,
   UsageGroup,
 } from '@nyanpasu/rpc/types'
-import { Link } from '@tanstack/react-router'
+import { cn } from '@nyanpasu/utils'
 import { WidgetComponentProps } from './consts'
 import { useWidgetConfig } from './provider'
 import { useWidgetHeight } from './use-widget-height'
@@ -31,7 +28,6 @@ import WidgetItem from './widget-item'
 import {
   useDashboardTrafficProfile,
   useDashboardTrafficReport,
-  useDashboardTrafficRetention,
 } from './widget-traffic-provider'
 import {
   addTrafficUsage,
@@ -39,12 +35,18 @@ import {
   trafficSharePercent,
   usageTotalBytes,
 } from './widget-traffic-report-model'
+import { WidgetTitle } from './widget-ui'
 
-const TRAFFIC_ROW_HEIGHT = 34
-const TRAFFIC_ROW_HEIGHT_WITH_DIRECTIONS = 52
+const TRAFFIC_ROW_HEIGHT = 48
 
 type ReportDimension = 'origin' | 'exit' | 'target' | 'rule'
 type ReportIcon = ComponentType<{ className?: string }>
+const reportIcons: Record<ReportDimension, ReportIcon> = {
+  origin: AppsRounded,
+  exit: CallSplitRounded,
+  target: DnsRounded,
+  rule: RuleFolderRounded,
+}
 
 const rangeLabels: Record<TrafficRange, () => string> = {
   last_hour: m.dashboard_widget_traffic_report_range_last_hour,
@@ -56,14 +58,6 @@ const rangeLabels: Record<TrafficRange, () => string> = {
 }
 
 const formatBytes = (bytes: number) => parseTraffic(bytes).join(' ')
-
-const retentionLabels: Record<TrafficRetention, () => string> = {
-  '1d': m.settings_nyanpasu_traffic_retention_1d,
-  '7d': m.settings_nyanpasu_traffic_retention_7d,
-  '30d': m.settings_nyanpasu_traffic_retention_30d,
-  '90d': m.settings_nyanpasu_traffic_retention_90d,
-  forever: m.settings_nyanpasu_traffic_retention_forever,
-}
 
 function LoadingBody() {
   return (
@@ -95,8 +89,7 @@ function ReportWidgetShell({
   icon: Icon,
   range,
   profile,
-  retention,
-  interactive,
+
   children,
 }: WidgetComponentProps & {
   widgetType: WidgetId
@@ -106,14 +99,9 @@ function ReportWidgetShell({
   icon: ReportIcon
   range: TrafficRange
   profile: { uid: string; name?: string; missing: boolean } | null
-  retention: TrafficRetention | undefined
-  interactive: boolean
+
   children: ReactNode
 }) {
-  const retentionLimited = beyondRetention(range, retention)
-  const { sourceOnly, isOverlay } = useDndGridContext()
-  const preview = sourceOnly || isOverlay
-
   return (
     <WidgetItem
       id={id}
@@ -123,13 +111,12 @@ function ReportWidgetShell({
       onCloseClick={onCloseClick}
     >
       <Card className="size-full" data-slot="widget-traffic-report-card">
-        <CardContent className="flex size-full min-h-0 flex-col gap-2 p-4">
+        <CardContent className="flex size-full min-h-0 flex-col gap-2 overflow-hidden p-4">
           <div className="flex min-w-0 items-center gap-2">
-            <Icon className="text-on-surface-variant size-5 shrink-0" />
-            <TextMarquee className="min-w-0 flex-1 font-medium">
+            <WidgetTitle className="flex-1" icon={Icon}>
               {title}
-            </TextMarquee>
-            <span className="text-on-surface-variant shrink-0 text-xs">
+            </WidgetTitle>
+            <span className="text-on-surface-variant shrink-0 text-xs whitespace-nowrap">
               {rangeLabels[range]()}
             </span>
           </div>
@@ -145,67 +132,6 @@ function ReportWidgetShell({
             </p>
           )}
           {children}
-          <div className="text-on-surface-variant border-outline-variant flex shrink-0 items-center justify-between gap-2 border-t pt-2 text-xs">
-            <div className="flex min-w-0 items-center">
-              <span
-                className={
-                  retentionLimited ? 'text-error truncate' : 'truncate'
-                }
-              >
-                {retention
-                  ? m.dashboard_widget_traffic_report_retention({
-                      value: retentionLabels[retention](),
-                    })
-                  : m.dashboard_widget_traffic_report_retention_unknown()}
-                {retentionLimited &&
-                  ` · ${m.dashboard_widget_traffic_report_retention_limited_short()}`}
-              </span>
-            </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="basic"
-                  className="size-7 shrink-0"
-                  icon
-                  aria-label={m.dashboard_widget_traffic_report_open()}
-                  asChild={!preview}
-                  disabled={preview}
-                >
-                  {preview ? (
-                    <OpenInNewRounded className="size-4" />
-                  ) : (
-                    <Link
-                      aria-disabled={!interactive}
-                      tabIndex={interactive ? 0 : -1}
-                      className={
-                        !interactive ? 'pointer-events-none opacity-50' : ''
-                      }
-                      onClick={(event) => {
-                        if (!interactive) event.preventDefault()
-                      }}
-                      to="/main/topology"
-                      search={{
-                        range,
-                        scope: 'all',
-                        filters: profile
-                          ? [{ d: 'profile', v: profile.uid }]
-                          : [],
-                        view: 'flow',
-                        metric: 'bytes',
-                        limit: 7,
-                      }}
-                      onPointerDown={(event) => event.stopPropagation()}
-                    >
-                      <OpenInNewRounded className="size-4" />
-                    </Link>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {m.dashboard_widget_traffic_report_open()}
-              </TooltipContent>
-            </Tooltip>
-          </div>
         </CardContent>
       </Card>
     </WidgetItem>
@@ -257,12 +183,59 @@ function TrafficReportContent({
 }
 
 function ReportPreview({ kind }: { kind: 'recent' | ReportDimension }) {
-  return (
-    <TrafficStatus>
-      {kind === 'recent'
-        ? m.dashboard_widget_traffic_report_preview()
-        : m.dashboard_widget_traffic_report_preview_ranking()}
-    </TrafficStatus>
+  const dimension = kind === 'recent' ? null : kind
+  const labels = dimension
+    ? {
+        origin: ['Safari', 'Chrome', 'Firefox'],
+        exit: ['Japan Premium', 'Singapore Premium', 'DIRECT'],
+        target: ['video.example.com', 'api.example.com', 'cdn.example.com'],
+        rule: ['DOMAIN-SUFFIX,example.com', 'MATCH', 'GEOIP,CN'],
+      }[dimension]
+    : []
+  const usages = [
+    {
+      bytes: { upload: 500_000_000, download: 1_200_000_000 },
+      connections: 12,
+    },
+    { bytes: { upload: 134_003_200, download: 210_612_736 }, connections: 5 },
+    { bytes: { upload: 100_000_000, download: 200_000_000 }, connections: 7 },
+  ]
+  const report: TrafficReport = {
+    total: {
+      bytes: { upload: 734_003_200, download: 1_610_612_736 },
+      connections: 24,
+    },
+    current_rate: null,
+    rankings: dimension
+      ? [
+          {
+            dimension,
+            distinct: 3,
+            groups: labels.map((key, index) => ({
+              key,
+              usage: usages[index]!,
+              current_rate: null,
+            })),
+            other: {
+              bytes: { upload: 0, download: 0 },
+              connections: 0,
+            },
+          },
+        ]
+      : [],
+    topology: null,
+  }
+
+  return dimension ? (
+    <RankingRows
+      report={report}
+      dimension={dimension}
+      topN={3}
+      showDirections={false}
+      hideNames={false}
+    />
+  ) : (
+    <RecentTrafficContent report={report} showDirections />
   )
 }
 
@@ -276,25 +249,30 @@ function RecentTrafficContent({
   const total = usageTotalBytes(report.total)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col justify-center gap-2">
+    <div className="bg-surface-variant/30 flex min-h-0 flex-1 flex-col justify-center gap-2 overflow-hidden rounded-2xl px-4 py-2">
+      <p className="text-on-surface-variant text-xs">
+        {m.dashboard_widget_traffic_report_total_label()}
+      </p>
       <p
-        className="text-2xl font-bold tabular-nums"
+        className="overflow-hidden text-3xl whitespace-nowrap tabular-nums"
         data-slot="widget-traffic-report-total"
       >
         {formatBytes(total)}
       </p>
       {showDirections && (
-        <div className="text-on-surface-variant flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums">
-          <span>
-            {m.dashboard_widget_traffic_report_upload({
-              value: formatBytes(report.total.bytes.upload),
-            })}
-          </span>
-          <span>
-            {m.dashboard_widget_traffic_report_download({
-              value: formatBytes(report.total.bytes.download),
-            })}
-          </span>
+        <div className="text-on-surface-variant min-w-0 text-xs tabular-nums">
+          <TextMarquee className="w-full">
+            <span className="mr-4">
+              {m.dashboard_widget_traffic_report_upload({
+                value: formatBytes(report.total.bytes.upload),
+              })}
+            </span>
+            <span>
+              {m.dashboard_widget_traffic_report_download({
+                value: formatBytes(report.total.bytes.download),
+              })}
+            </span>
+          </TextMarquee>
         </div>
       )}
       {total === 0 && (
@@ -312,12 +290,14 @@ function RankingRows({
   topN,
   showDirections,
   hideNames,
+  compact = false,
 }: {
   report: TrafficReport
   dimension: ReportDimension
   topN: number
   showDirections: boolean
   hideNames: boolean
+  compact?: boolean
 }) {
   const ranking = sliceTrafficRanking(report, dimension, topN)
   const { ref: listRef, height: listHeight } = useWidgetHeight<HTMLDivElement>()
@@ -329,10 +309,33 @@ function RankingRows({
     )
   }
   if (ranking.totalBytes === 0) {
+    const Icon = reportIcons[dimension]
     return (
-      <TrafficStatus>
-        {m.dashboard_widget_traffic_report_no_traffic()}
-      </TrafficStatus>
+      <div
+        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden text-center"
+        data-slot={
+          dimension === 'exit'
+            ? 'widget-exit-traffic-empty'
+            : 'widget-traffic-report-empty'
+        }
+      >
+        <span
+          className="bg-secondary-container text-on-secondary-container flex size-14 shrink-0 items-center justify-center rounded-2xl"
+          aria-hidden="true"
+        >
+          <Icon className="size-7" />
+        </span>
+        <div>
+          <p className="text-base font-medium">
+            {m.dashboard_widget_traffic_report_no_traffic()}
+          </p>
+          <p className="text-on-surface-variant mt-1 text-xs">
+            {dimension === 'exit'
+              ? m.dashboard_widget_exit_traffic_empty_hint()
+              : m.dashboard_widget_traffic_report_preview_ranking()}
+          </p>
+        </div>
+      </div>
     )
   }
   if (ranking.groups.length === 0) {
@@ -343,35 +346,65 @@ function RankingRows({
     )
   }
 
-  const rowHeight = showDirections
-    ? TRAFFIC_ROW_HEIGHT_WITH_DIRECTIONS
-    : TRAFFIC_ROW_HEIGHT
+  const featured = ranking.groups[0]
+  if (featured && ranking.distinct === 1 && ranking.otherCount === 0) {
+    return (
+      <TrafficRankingRow
+        dimension={dimension}
+        group={featured}
+        totalBytes={ranking.totalBytes}
+        hideName={hideNames}
+        featured
+        expanded
+        compact={compact}
+        showDirections={showDirections}
+      />
+    )
+  }
+
   const visibleCount =
-    listHeight == null
-      ? 1
-      : Math.max(1, Math.floor((listHeight + 8) / rowHeight))
-  const visibleGroups = ranking.groups.slice(0, visibleCount)
+    compact || listHeight == null
+      ? 0
+      : Math.max(0, Math.floor(listHeight / TRAFFIC_ROW_HEIGHT))
+  const visibleGroups = ranking.groups.slice(1, visibleCount + 1)
+  const displayedCount = visibleGroups.length + 1
   const otherUsage = ranking.groups
-    .slice(visibleGroups.length)
+    .slice(displayedCount)
     .reduce(
       (total, group) => addTrafficUsage(total, group.usage),
       ranking.other,
     )
-  const otherCount = Math.max(0, ranking.distinct - visibleGroups.length)
+  const otherCount = Math.max(0, ranking.distinct - displayedCount)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div
+      className={cn(
+        'flex min-h-0 flex-1 flex-col overflow-hidden',
+        compact ? 'gap-0.5' : 'gap-2',
+      )}
+    >
+      {featured && (
+        <TrafficRankingRow
+          dimension={dimension}
+          group={featured}
+          totalBytes={ranking.totalBytes}
+          hideName={hideNames}
+          featured
+          compact={compact}
+          showDirections={showDirections}
+        />
+      )}
       <div ref={listRef} className="min-h-0 flex-1">
-        <div className="flex flex-col gap-2">
-          {visibleGroups.map((group, index) => (
+        <div className="flex flex-col">
+          {visibleGroups.map((group) => (
             <TrafficRankingRow
               key={group.key}
-              dimension={dimension}
               group={group}
-              index={index}
+              dimension={dimension}
               totalBytes={ranking.totalBytes}
-              showDirections={showDirections}
               hideName={hideNames}
+              featured={false}
+              showDirections={false}
             />
           ))}
         </div>
@@ -390,65 +423,136 @@ function RankingRows({
 function TrafficRankingRow({
   dimension,
   group,
-  index,
   totalBytes,
-  showDirections,
   hideName,
+  featured,
+  showDirections,
+  expanded = false,
+  compact = false,
 }: {
   dimension: ReportDimension
   group: UsageGroup
-  index: number
   totalBytes: number
-  showDirections: boolean
   hideName: boolean
+  featured: boolean
+  showDirections: boolean
+  expanded?: boolean
+  compact?: boolean
 }) {
+  const Icon = reportIcons[dimension]
+  const reducedMotion = useReducedMotion()
   const label = usageLabel(dimension, group.key)
-  const percent = trafficSharePercent(group.usage, totalBytes)
-  const visibleName = hideName
+  const name = hideName
     ? m.dashboard_widget_traffic_report_hidden_name()
-    : dimension === 'origin' && /[\\/]/.test(label.text)
+    : dimension === 'origin'
       ? label.text.split(/[\\/]/).pop() || label.text
       : label.text
-  const title = hideName
-    ? undefined
-    : dimension === 'origin'
-      ? visibleName
-      : label.title
-  const total = usageTotalBytes(group.usage)
+  const percent = trafficSharePercent(group.usage, totalBytes)
+  const share = percent === null ? '—' : `${percent.toFixed(1)}%`
+  const [value, unit] = parseTraffic(usageTotalBytes(group.usage))
+
+  if (!featured) {
+    return (
+      <motion.div
+        layout="position"
+        initial={false}
+        transition={{ duration: reducedMotion ? 0 : 0.22, ease: 'easeOut' }}
+        className="flex h-12 min-w-0 items-center gap-3"
+        data-slot={
+          dimension === 'exit'
+            ? 'widget-exit-traffic-row'
+            : 'widget-traffic-report-row'
+        }
+      >
+        <span
+          className="bg-surface-variant text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-full"
+          aria-hidden="true"
+        >
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div
+            className="text-sm font-medium"
+            title={hideName ? undefined : label.title}
+          >
+            <TextMarquee className="w-full">{name}</TextMarquee>
+          </div>
+          <div className="text-on-surface-variant text-xs tabular-nums">
+            <TextMarquee className="w-full">
+              {m.dashboard_widget_traffic_report_share({
+                percent: percent?.toFixed(1) ?? '0',
+              })}
+            </TextMarquee>
+          </div>
+        </div>
+        <ActionSwapText
+          className="shrink-0 text-sm whitespace-nowrap tabular-nums"
+          value={`${value} ${unit}`}
+        />
+      </motion.div>
+    )
+  }
 
   return (
-    <div className="min-w-0" data-slot="widget-traffic-report-row">
-      <div className="flex min-w-0 items-center gap-2 text-xs">
-        <span className="text-on-surface-variant w-4 shrink-0 tabular-nums">
-          {index + 1}
-        </span>
-        <span className="min-w-0 flex-1 truncate" title={title}>
-          {visibleName}
-        </span>
-        <span className="shrink-0 tabular-nums">{formatBytes(total)}</span>
-        <span className="text-on-surface-variant w-10 shrink-0 text-right tabular-nums">
-          {percent === null ? '—' : `${percent.toFixed(1)}%`}
-        </span>
+    <div
+      className={cn(
+        'bg-surface-variant/30 text-on-surface flex flex-col rounded-2xl',
+        compact ? 'gap-0.5 px-3 py-1' : 'gap-1 px-4 py-3',
+        expanded ? 'min-h-0 flex-1 justify-between' : 'shrink-0',
+      )}
+      data-slot={
+        dimension === 'exit'
+          ? 'widget-exit-traffic-featured'
+          : 'widget-traffic-report-featured'
+      }
+    >
+      {!compact && (
+        <p className="text-xs">
+          {dimension === 'exit'
+            ? m.dashboard_widget_exit_traffic_leading()
+            : m.dashboard_widget_traffic_report_leading()}
+        </p>
+      )}
+      <ActionSwap
+        className={cn('min-w-0 font-medium', compact ? 'text-xs' : 'text-base')}
+        title={hideName ? undefined : label.title}
+        contentKey={name}
+      >
+        <TextMarquee className="w-full">{name}</TextMarquee>
+      </ActionSwap>
+      <div className="flex items-baseline gap-2 tabular-nums">
+        <ActionSwap
+          contentKey={`${value} ${unit}`}
+          className={cn(
+            'min-w-0 flex-1 truncate whitespace-nowrap',
+            compact ? 'text-xl' : 'text-3xl',
+          )}
+        >
+          <span>{value}</span> <span className="text-sm">{unit}</span>
+        </ActionSwap>
+        <span className="shrink-0 text-base whitespace-nowrap">{share}</span>
       </div>
       <LinearProgress
         value={percent ?? 0}
+        className={cn('bg-on-surface/10', compact ? 'h-1' : 'h-1.5')}
         aria-label={m.dashboard_widget_traffic_report_share({
           percent: percent?.toFixed(1) ?? '0',
         })}
-        className="mt-1 h-1.5"
       />
       {showDirections && (
-        <div className="text-on-surface-variant mt-1 flex gap-3 pl-6 text-[11px] tabular-nums">
-          <span>
-            {m.dashboard_widget_traffic_report_upload({
-              value: formatBytes(group.usage.bytes.upload),
-            })}
-          </span>
-          <span>
-            {m.dashboard_widget_traffic_report_download({
-              value: formatBytes(group.usage.bytes.download),
-            })}
-          </span>
+        <div className="min-w-0 text-xs tabular-nums">
+          <TextMarquee className="w-full">
+            <span className="mr-4">
+              {m.dashboard_widget_traffic_report_upload({
+                value: formatBytes(group.usage.bytes.upload),
+              })}
+            </span>
+            <span>
+              {m.dashboard_widget_traffic_report_download({
+                value: formatBytes(group.usage.bytes.download),
+              })}
+            </span>
+          </TextMarquee>
         </div>
       )}
     </div>
@@ -467,14 +571,16 @@ function TrafficOtherRow({
   const percent = trafficSharePercent(usage, totalBytes)
 
   return (
-    <div className="text-on-surface-variant border-outline-variant flex items-center gap-2 border-t pt-2 text-xs tabular-nums">
+    <div className="text-on-surface-variant flex shrink-0 items-center gap-2 text-xs tabular-nums">
       <span className="min-w-0 flex-1 truncate">
         {m.dashboard_widget_traffic_report_other({
           count: count.toLocaleString(),
         })}
       </span>
-      <span>{formatBytes(usageTotalBytes(usage))}</span>
-      <span className="w-10 text-right">
+      <span className="shrink-0 whitespace-nowrap">
+        {formatBytes(usageTotalBytes(usage))}
+      </span>
+      <span className="w-10 shrink-0 text-right whitespace-nowrap">
         {percent === null ? '—' : `${percent.toFixed(1)}%`}
       </span>
     </div>
@@ -502,15 +608,17 @@ function TrafficWidget({
   dimension?: ReportDimension
 }) {
   const config = useReportConfig(id, widgetType)
-  const { sourceOnly, isOverlay, disabled, displayItems } = useDndGridContext()
-  const retention = useDashboardTrafficRetention()
+  const { sourceOnly, isOverlay, displayItems } = useDndGridContext()
+
   const profile = useDashboardTrafficProfile(config.profileUid)
   const itemSize = displayItems.find((item) => item.id === id)
-  const minH = dimension ? 3 : 2
+  const minH = 2
+  const compact = itemSize !== undefined && itemSize.h <= 2
   const preview = sourceOnly || isOverlay
   const expanded =
     itemSize !== undefined && (itemSize.w > 3 || itemSize.h > minH)
-  const showDirections = config.showDirections && (!dimension || expanded)
+  const showDirections =
+    config.showDirections && !compact && (!dimension || expanded)
 
   return (
     <ReportWidgetShell
@@ -523,8 +631,6 @@ function TrafficWidget({
       icon={icon}
       range={config.range}
       profile={profile}
-      retention={retention}
-      interactive={!preview && disabled}
     >
       {preview ? (
         <ReportPreview kind={dimension ?? 'recent'} />
@@ -541,6 +647,7 @@ function TrafficWidget({
                 topN={config.topN ?? 3}
                 showDirections={showDirections}
                 hideNames={config.hideNames ?? false}
+                compact={compact}
               />
             ) : (
               <RecentTrafficContent

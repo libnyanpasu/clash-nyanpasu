@@ -5,67 +5,6 @@ import {
   type GridSize,
 } from '@nyanpasu/ui/dnd-grid'
 
-export function sizeKey(size: GridSize): string {
-  return `${size.cols}x${size.rows}`
-}
-
-/**
- * Find the best stored layout for a given grid size.
- * Scans all stored layouts whose dimensions fit within `size` and returns the
- * one with the largest area (closest match). Returns null if none found.
- */
-export function findBestLayout<T extends DndGridItemType<string>>(
-  storage: Record<string, T[]>,
-  size: GridSize,
-): T[] | null {
-  let best: { area: number; items: T[] } | null = null
-
-  for (const [key, items] of Object.entries(storage)) {
-    const match = key.match(/^(\d+)x(\d+)$/)
-    if (!match) continue
-
-    const cols = parseInt(match[1], 10)
-    const rows = parseInt(match[2], 10)
-
-    if (cols <= size.cols && rows <= size.rows) {
-      const area = cols * rows
-
-      if (!best || area > best.area) {
-        best = { area, items }
-      }
-    }
-  }
-
-  return best?.items ?? null
-}
-
-/**
- * When no layout fits within `size`, find the stored layout whose dimensions
- * are closest (Manhattan distance on cols/rows) to use as an adaptation base.
- * Returns null if storage is empty.
- */
-export function findClosestStoredLayout<T extends DndGridItemType<string>>(
-  storage: Record<string, T[]>,
-  size: GridSize,
-): T[] | null {
-  let best: { dist: number; items: T[] } | null = null
-
-  for (const [key, items] of Object.entries(storage)) {
-    const match = key.match(/^(\d+)x(\d+)$/)
-    if (!match) continue
-
-    const cols = parseInt(match[1], 10)
-    const rows = parseInt(match[2], 10)
-    const dist = Math.abs(cols - size.cols) + Math.abs(rows - size.rows)
-
-    if (!best || dist < best.dist) {
-      best = { dist, items }
-    }
-  }
-
-  return best?.items ?? null
-}
-
 function hasOverlapWith<T extends DndGridItemType<string>>(
   placed: T[],
   candidate: T,

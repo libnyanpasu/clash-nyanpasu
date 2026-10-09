@@ -1,4 +1,10 @@
-import { useCallback, useRef, useState, type PropsWithChildren } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PropsWithChildren,
+} from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -50,11 +56,35 @@ export function DndGridRoot({ children }: PropsWithChildren) {
 
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null)
 
-  // Captured at drag-start so the handler survives grid unmount (e.g. sheet closing)
+  // Keep the source identity when the library closes and unmounts its grid.
   const pendingSourceRef = useRef<{
-    onSourceDrop?: (itemId: string) => void
     itemId: string
   } | null>(null)
+  const pointerRef = useRef<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    const trackPointer = (event: PointerEvent) => {
+      if (pendingSourceRef.current) {
+        pointerRef.current = { x: event.clientX, y: event.clientY }
+      }
+    }
+    const trackTouch = (event: TouchEvent) => {
+      const touch = event.changedTouches[0]
+      if (pendingSourceRef.current && touch) {
+        pointerRef.current = { x: touch.clientX, y: touch.clientY }
+      }
+    }
+    document.addEventListener('pointermove', trackPointer, true)
+    document.addEventListener('pointerup', trackPointer, true)
+    document.addEventListener('touchmove', trackTouch, true)
+    document.addEventListener('touchend', trackTouch, true)
+    return () => {
+      document.removeEventListener('pointermove', trackPointer, true)
+      document.removeEventListener('pointerup', trackPointer, true)
+      document.removeEventListener('touchmove', trackTouch, true)
+      document.removeEventListener('touchend', trackTouch, true)
+    }
+  }, [])
 
   const registerGrid = useCallback((gridId: string, reg: GridRegistration) => {
     gridsRef.current.set(gridId, reg)
@@ -87,9 +117,9 @@ export function DndGridRoot({ children }: PropsWithChildren) {
     const h = data?.h ?? 2
 
     if (sourceOnly) {
+      pointerRef.current = null
       // Capture before onSourceDragStart may unmount the grid
       pendingSourceRef.current = {
-        onSourceDrop: reg.onSourceDrop,
         itemId: plainId,
       }
       onSourceDragStart?.()
@@ -123,11 +153,25 @@ export function DndGridRoot({ children }: PropsWithChildren) {
   const handleDragEnd = useCallback((e: DragEndEvent) => {
     setActiveDrag(null)
 
-    // Source drag: use the captured handler (grid may have unmounted already)
+    // The destination owns the drop; a missing destination cancels the addition.
     if (pendingSourceRef.current) {
-      const { onSourceDrop, itemId } = pendingSourceRef.current
+      const { itemId } = pendingSourceRef.current
       pendingSourceRef.current = null
-      onSourceDrop?.(itemId)
+
+      // Drag deltas include layout adjustments when the drawer closes; use
+      // the native release coordinates instead.
+      const pointer = pointerRef.current
+      pointerRef.current = null
+      if (pointer) {
+        for (const reg of gridsRef.current.values()) {
+          if (reg.sourceOnly || !reg.onExternalDrop) continue
+          const position = reg.getDropPosition(pointer.x, pointer.y)
+          if (position) {
+            reg.onExternalDrop(itemId, position)
+            break
+          }
+        }
+      }
       return
     }
 
@@ -141,6 +185,7 @@ export function DndGridRoot({ children }: PropsWithChildren) {
   }, [])
 
   const handleDragCancel = useCallback(() => {
+    pointerRef.current = null
     pendingSourceRef.current = null
     setActiveDrag(null)
 

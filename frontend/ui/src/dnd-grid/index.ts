@@ -7,6 +7,7 @@ export { hasOverlap, isOverlap } from './utils'
 export type {
   DndGridItemType,
   GridItemConstraints,
+  GridPosition,
   GridSize,
   ResizeHandle,
 } from './types'

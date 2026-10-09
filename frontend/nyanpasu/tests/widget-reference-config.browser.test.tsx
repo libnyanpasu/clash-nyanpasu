@@ -387,3 +387,28 @@ test('report widgets save independent range and profile filters per instance', a
   })
   expect(backend.writes.length).toBeGreaterThanOrEqual(4)
 })
+
+test('quota wave controls save single-wave and static choices independently', async ({
+  onTestFinished,
+}) => {
+  const view = mount(onTestFinished, [quotaItem])
+  await waitForReady(view.controls)
+  view.controls.setEditing(true)
+  const dialog = await openMenu()
+  await dialog
+    .getByRole('radio', {
+      name: m.dashboard_widget_subscription_quota_config_wave_single(),
+    })
+    .click()
+  await expect
+    .poll(() => saved().byInstance[quotaItem.id])
+    .toMatchObject({ waveStyle: 'single', animateWave: true })
+  await dialog
+    .getByRole('switch', {
+      name: m.dashboard_widget_subscription_quota_config_wave_animation(),
+    })
+    .click()
+  await expect
+    .poll(() => saved().byInstance[quotaItem.id])
+    .toMatchObject({ waveStyle: 'single', animateWave: false })
+})

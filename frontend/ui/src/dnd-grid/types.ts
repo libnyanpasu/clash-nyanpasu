@@ -36,6 +36,11 @@ export interface GridSize {
   rows: number
 }
 
+export interface GridPosition {
+  x: number
+  y: number
+}
+
 export interface GridLayout extends GridSize {
   cellW: number
   cellH: number

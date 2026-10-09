@@ -14,12 +14,16 @@ import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import type { WidgetComponentProps } from '@/components/widgets/consts'
 import { DashboardProvider } from '@/components/widgets/provider'
-import { WidgetId } from '@/components/widgets/widget-config'
+import {
+  DEFAULT_WIDGET_CONFIGS,
+  WidgetId,
+} from '@/components/widgets/widget-config'
 import { ProxyModeWidget } from '@/components/widgets/widget-proxy-mode'
 import { SubscriptionQuotaWidget } from '@/components/widgets/widget-subscription-quota'
 import { SubscriptionScheduleWidget } from '@/components/widgets/widget-subscription-schedule'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
+import { formatDate } from '@/utils/date'
 import { DndContext } from '@dnd-kit/core'
 import { MutationUnconfirmedError } from '@nyanpasu/query'
 import { RpcProvider } from '@nyanpasu/query/provider'
@@ -236,6 +240,7 @@ function mount(
     id?: string
     width?: number
     height?: number
+    pixelHeight?: number
     sourceOnly?: boolean
     gridDisabled?: boolean
   } = {},
@@ -267,7 +272,7 @@ function mount(
                     left: 0,
                     top: 0,
                     width: 320,
-                    height: 220,
+                    height: options.pixelHeight ?? 220,
                   }),
                   dropInfoMap: {},
                   activeItemId: null,
@@ -353,6 +358,243 @@ test('quota display keeps the remaining amount when progress is hidden', async (
   ).toBeNull()
 })
 
+test('quota uses the profile title, remaining water level, and a full-card details link', async ({
+  onTestFinished,
+}) => {
+  mount(onTestFinished, SubscriptionQuotaWidget)
+  await expect
+    .element(page.getByText('Remote plan', { exact: true }))
+    .toBeVisible()
+  await expect.element(page.getByText('70%')).toBeVisible()
+  expect(
+    document
+      .querySelector('[data-slot="subscription-quota-wave"]')
+      ?.getAttribute('data-percent'),
+  ).toBe('70')
+  const card = document.querySelector('[data-slot="subscription-quota-card"]')!
+  const link = document.querySelector(
+    '[data-slot="subscription-quota-details"]',
+  )!
+  expect(link.getBoundingClientRect().width).toBe(
+    card.getBoundingClientRect().width,
+  )
+  expect(link.getBoundingClientRect().height).toBe(
+    card.getBoundingClientRect().height,
+  )
+  const bounds = card.getBoundingClientRect()
+  expect(
+    document.elementFromPoint(bounds.left + 24, bounds.top + bounds.height / 2),
+  ).toBe(link)
+  expect(link.getAttribute('to')).toBe('/main/profiles/$type/detail/$uid')
+  expect(
+    document.querySelector(
+      '[data-slot="subscription-quota-summary"] [data-slot="action-swap"]',
+    ),
+  ).not.toBeNull()
+})
+
+for (const { upload, download, percent } of [
+  { upload: 0, download: 0, percent: 100 },
+  { upload: 12_000_000, download: 0, percent: 0 },
+]) {
+  test(`quota renders the boundary water level ${percent} without a running wave`, async ({
+    onTestFinished,
+  }) => {
+    hooks.useProfile.mockReturnValue({
+      query: {
+        ...profileQuery,
+        data: {
+          current: 'remote',
+          items: [
+            profile('remote', 'Boundary plan', {
+              type: 'file',
+              source: {
+                type: 'remote',
+                subscription: { upload, download, total: 10_000_000 },
+              },
+            }),
+          ],
+        },
+      },
+    })
+    mount(onTestFinished, SubscriptionQuotaWidget)
+    await expect.element(page.getByText(`${percent}%`)).toBeVisible()
+    const wave = document.querySelector(
+      '[data-slot="subscription-quota-wave"]',
+    )!
+    expect(wave.getAttribute('data-percent')).toBe(String(percent))
+    expect(wave.getAnimations({ subtree: true })).toHaveLength(0)
+  })
+}
+
+test('quota summary swaps to expiry and scrolls overflowing text', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  const intervals = vi.spyOn(window, 'setInterval')
+  onTestFinished(() => {
+    intervals.mockRestore()
+    vi.useRealTimers()
+  })
+  mount(onTestFinished, SubscriptionQuotaWidget)
+  await expect.element(page.getByText('70%')).toBeVisible()
+  const summary = document.querySelector<HTMLElement>(
+    '[data-slot="subscription-quota-summary"]',
+  )!
+  summary.style.width = '100px'
+  const delay = Number(intervals.mock.calls.at(-1)?.[1])
+  expect(delay).toBeGreaterThanOrEqual(8000)
+  await vi.advanceTimersByTimeAsync(delay + 1)
+  await expect
+    .poll(() => summary.textContent)
+    .toContain(formatDate(1_900_000_000 * 1000))
+  await expect
+    .poll(
+      () =>
+        summary.querySelectorAll('[data-slot="text-marquee-content-item"]')
+          .length,
+    )
+    .toBe(2)
+  expect(summary.scrollWidth).toBe(summary.clientWidth)
+})
+
+test('quota warnings join the footer rotation while the profile title stays fixed', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  cacheWidgetConfig({
+    ...DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota],
+    quotaWarningPercent: 80,
+  })
+  mount(onTestFinished, SubscriptionQuotaWidget)
+  const warning = m.dashboard_widget_subscription_quota_warning()
+  await expect
+    .element(page.getByText(warning, { exact: true }).first())
+    .toBeVisible()
+  const title = document.querySelector(
+    '[data-slot="subscription-quota-title"]',
+  )!
+  const content = document.querySelector(
+    '[data-slot="subscription-quota-content"]',
+  )!
+  const summary = document.querySelector(
+    '[data-slot="subscription-quota-summary"]',
+  )!
+  expect(title.textContent).toBe('Remote plan')
+  expect(title.querySelector('[data-slot="action-swap"]')).toBeNull()
+  expect(summary.textContent).toContain(warning)
+  expect(
+    content.querySelectorAll('[data-slot="subscription-quota-summary"]'),
+  ).toHaveLength(1)
+  await expect
+    .poll(
+      async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+        return summary.textContent?.includes(
+          filesize(7_000_000, { standard: 'iec' }),
+        )
+      },
+      { interval: 10, timeout: 5000 },
+    )
+    .toBe(true)
+  await expect
+    .element(page.getByText('Remote plan', { exact: true }))
+    .toBeVisible()
+  await expect
+    .poll(
+      async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+        return summary.textContent?.includes(formatDate(1_900_000_000 * 1000))
+      },
+      { interval: 10, timeout: 5000 },
+    )
+    .toBe(true)
+  await expect
+    .poll(
+      async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+        return summary.textContent?.includes(warning)
+      },
+      { interval: 10, timeout: 5000 },
+    )
+    .toBe(true)
+  expect(title.textContent).toBe('Remote plan')
+  await expect.element(page.getByText('70%')).toBeVisible()
+})
+
+test('quota renders a straight waterline when animation is disabled', async ({
+  onTestFinished,
+}) => {
+  cacheWidgetConfig({
+    ...DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota],
+    waveStyle: 'double',
+    animateWave: false,
+  })
+  mount(onTestFinished, SubscriptionQuotaWidget)
+  await expect.element(page.getByText('70%')).toBeVisible()
+  const wave = document.querySelector('[data-slot="subscription-quota-wave"]')!
+  expect(wave.querySelectorAll('svg')).toHaveLength(1)
+  expect(wave.getAnimations({ subtree: true })).toHaveLength(0)
+  const outline = wave.querySelector<SVGPathElement>('path[fill="none"]')!
+  expect(outline.getBBox().height).toBe(0)
+})
+
+test('quota checks an unconfirmed refresh from its header before allowing another update', async ({
+  onTestFinished,
+}) => {
+  const refetch = vi
+    .fn()
+    .mockResolvedValueOnce({ isError: true, data: profileQuery.data })
+    .mockResolvedValueOnce({ isError: true, data: profileQuery.data })
+    .mockResolvedValueOnce({ isError: false, data: profileQuery.data })
+  const update = vi
+    .fn()
+    .mockRejectedValueOnce(new MutationUnconfirmedError(new Error('timeout')))
+    .mockResolvedValueOnce({ status: 'committed' })
+  hooks.useProfile.mockReturnValue({ query: { ...profileQuery, refetch } })
+  hooks.useProfileMutations.mockReturnValue({
+    update: { isPending: false, mutateAsync: update },
+  })
+  mount(onTestFinished, SubscriptionQuotaWidget)
+  await userEvent.click(
+    page.getByRole('button', {
+      name: m.dashboard_widget_subscription_quota_refresh(),
+    }),
+  )
+  await expect
+    .element(
+      page.getByText(m.dashboard_widget_subscription_quota_unconfirmed()),
+    )
+    .toBeVisible()
+  const check = page.getByRole('button', {
+    name: m.dashboard_widget_operation_check(),
+  })
+  await userEvent.click(check)
+  await expect
+    .element(
+      page.getByText(m.dashboard_widget_operation_check_failed()).first(),
+    )
+    .toBeVisible()
+  expect(update).toHaveBeenCalledTimes(1)
+  await userEvent.click(check)
+  const refresh = page.getByRole('button', {
+    name: m.dashboard_widget_subscription_quota_refresh(),
+  })
+  await expect.element(refresh).toBeEnabled()
+  await userEvent.click(refresh)
+  expect(update).toHaveBeenCalledTimes(2)
+  await expect
+    .poll(
+      () =>
+        document.querySelector('[data-slot="subscription-quota-content"]')
+          ?.textContent,
+    )
+    .not.toContain(m.dashboard_widget_subscription_quota_unconfirmed())
+})
+
 test('quota refresh calls the profile update operation', async ({
   onTestFinished,
 }) => {
@@ -381,6 +623,95 @@ test('schedule reads a real next run and polls latest history at a low rate', as
   })
   expect(hooks.useProfileSyncStatus).toHaveBeenCalledWith('remote')
   expect(document.querySelector('a[aria-disabled="true"]')).not.toBeNull()
+})
+
+test('schedule keeps the next update readable at its minimum height without scrolling', async ({
+  onTestFinished,
+}) => {
+  mount(onTestFinished, SubscriptionScheduleWidget, {
+    height: 2,
+    pixelHeight: 160,
+  })
+  const expectedTime = formatDate('2026-01-01T02:00:00Z', 'HH:mm')
+  await expect
+    .element(page.getByText(expectedTime, { exact: true }))
+    .toBeVisible()
+  const content = document.querySelector<HTMLElement>(
+    '[data-slot="subscription-schedule-content"]',
+  )!
+  expect(getComputedStyle(content).overflowY).toBe('hidden')
+  expect(content.scrollHeight).toBeLessThanOrEqual(content.clientHeight)
+  expect(content.querySelector('time')?.getAttribute('datetime')).toBe(
+    '2026-01-01T02:00:00Z',
+  )
+})
+
+test('schedule centers the profile and active state while syncing', async ({
+  onTestFinished,
+}) => {
+  hooks.useProfileSyncStatus.mockReturnValue({
+    data: { active: [{ ...finishedRun, state: { kind: 'running' } }] },
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
+  })
+  mount(onTestFinished, SubscriptionScheduleWidget, {
+    height: 2,
+    pixelHeight: 160,
+  })
+  await expect
+    .element(
+      page.getByText(m.dashboard_widget_subscription_schedule_running(), {
+        exact: true,
+      }),
+    )
+    .toBeVisible()
+  const content = document.querySelector<HTMLElement>(
+    '[data-slot="subscription-schedule-content"]',
+  )!
+  expect(
+    content.querySelector('[data-slot="subscription-schedule-active"]'),
+  ).not.toBeNull()
+  expect(
+    content.querySelector('[data-slot="subscription-schedule-next-run"]'),
+  ).toBeNull()
+  expect(
+    content.querySelector('[data-slot="subscription-schedule-recent"]'),
+  ).toBeNull()
+  expect(content.scrollHeight).toBeLessThanOrEqual(content.clientHeight)
+})
+
+test('schedule swaps an error into the summary instead of stacking it below the profile', async ({
+  onTestFinished,
+}) => {
+  const current = hooks.useProfileSyncStatus.getMockImplementation()!()
+  hooks.useProfileSyncStatus.mockReturnValue({
+    ...current,
+    data: {
+      ...current.data,
+      registration_error: 'Unable to register the update schedule',
+    },
+  })
+  mount(onTestFinished, SubscriptionScheduleWidget, {
+    height: 2,
+    pixelHeight: 160,
+  })
+  const error = m.dashboard_widget_subscription_schedule_registration_error({
+    error: 'Unable to register the update schedule',
+  })
+  await expect.element(page.getByRole('alert', { name: error })).toBeVisible()
+  const content = document.querySelector<HTMLElement>(
+    '[data-slot="subscription-schedule-content"]',
+  )!
+  expect(
+    content.querySelector(
+      '[data-slot="subscription-schedule-summary"] [role="alert"]',
+    ),
+  ).not.toBeNull()
+  expect(
+    content.querySelector('[data-slot="subscription-schedule-next-run"]'),
+  ).toBeNull()
+  expect(content.scrollHeight).toBeLessThanOrEqual(content.clientHeight)
 })
 
 test('schedule refresh starts one profile update', async ({
@@ -553,7 +884,9 @@ test('proxy mode selection follows the confirmed runtime value and premium expos
   await expect.element(rule).toHaveAttribute('aria-pressed', 'false')
   expect(upsert).toHaveBeenCalledWith('script')
   expect(
-    document.querySelectorAll('[data-slot="proxy-mode-indicator"]'),
+    document.querySelectorAll(
+      '[data-slot="expressive-choice"][data-layout="flex"]',
+    ),
   ).toHaveLength(1)
   expect(
     document.querySelector('[data-slot="widget-config-trigger"]'),

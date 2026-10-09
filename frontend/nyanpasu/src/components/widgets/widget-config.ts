@@ -19,8 +19,6 @@ export enum WidgetId {
   ProviderUpdates = 'provider-updates',
 }
 
-export const PROXY_HORIZONTAL_MIN_WIDTH = 6
-
 type TrafficConfig = {
   showChart: boolean
   showTotal: boolean
@@ -51,6 +49,8 @@ export type WidgetConfigs = {
     target: SubscriptionTarget
     showExpiry: boolean
     showProgress: boolean
+    waveStyle: 'single' | 'double'
+    animateWave: boolean
     expiryWarningDays: number
     quotaWarningPercent: number
   }
@@ -59,7 +59,10 @@ export type WidgetConfigs = {
     target: SubscriptionTarget
     showRecentRuns: boolean
   }
-  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode }
+  [WidgetId.ProxyMode]: {
+    type: WidgetId.ProxyMode
+    layout: 'focus' | 'flex'
+  }
   [WidgetId.RecentTraffic]: ReportWidgetConfig & {
     type: WidgetId.RecentTraffic
   }
@@ -86,13 +89,12 @@ export type WidgetConfigs = {
   [WidgetId.Connections]: HistoryConfig & { type: WidgetId.Connections }
   [WidgetId.ProxyShortcuts]: {
     type: WidgetId.ProxyShortcuts
-    orientation: 'vertical' | 'horizontal'
+    layout: 'equal' | 'flex'
     buttons: 'both' | 'system' | 'tun'
     order: 'system-first' | 'tun-first'
   }
   [WidgetId.CoreShortcuts]: {
     type: WidgetId.CoreShortcuts
-    density: 'detailed' | 'compact'
     showVersion: boolean
     showChannel: boolean
   }
@@ -117,6 +119,8 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
     target: { kind: 'current' },
     showExpiry: true,
     showProgress: true,
+    waveStyle: 'double',
+    animateWave: true,
     expiryWarningDays: 7,
     quotaWarningPercent: 20,
   },
@@ -125,7 +129,7 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
     target: { kind: 'current' },
     showRecentRuns: true,
   },
-  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode },
+  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode, layout: 'flex' },
   [WidgetId.RecentTraffic]: { ...reportDefaults, type: WidgetId.RecentTraffic },
   [WidgetId.OriginTraffic]: {
     ...rankingDefaults,
@@ -170,13 +174,12 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
   },
   [WidgetId.ProxyShortcuts]: {
     type: WidgetId.ProxyShortcuts,
-    orientation: 'vertical',
+    layout: 'flex',
     buttons: 'both',
     order: 'system-first',
   },
   [WidgetId.CoreShortcuts]: {
     type: WidgetId.CoreShortcuts,
-    density: 'detailed',
     showVersion: true,
     showChannel: true,
   },
@@ -278,16 +281,19 @@ export function normalizeWidgetConfigStorage(
           typeof candidate === 'string' &&
           ['both', 'proxy', 'rule'].includes(candidate)) ||
         (key === 'unit' && (candidate === 'bytes' || candidate === 'bits')) ||
-        (key === 'orientation' &&
-          (candidate === 'vertical' || candidate === 'horizontal')) ||
+        (key === 'waveStyle' &&
+          (candidate === 'single' || candidate === 'double')) ||
         (key === 'buttons' &&
           (candidate === 'both' ||
             candidate === 'system' ||
             candidate === 'tun')) ||
         (key === 'order' &&
           (candidate === 'system-first' || candidate === 'tun-first')) ||
-        (key === 'density' &&
-          (candidate === 'detailed' || candidate === 'compact'))
+        (key === 'layout' &&
+          (candidate === 'flex' ||
+            (config.type === WidgetId.ProxyShortcuts
+              ? candidate === 'equal'
+              : candidate === 'focus')))
       ) {
         Object.assign(config, { [key]: candidate })
       } else if (

@@ -1,6 +1,6 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
 import EditRounded from '~icons/material-symbols/edit-rounded'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
 import {
@@ -9,6 +9,7 @@ import {
   DndGridRoot,
   useDndGridRoot,
   type DndGridItemType,
+  type GridPosition,
   type GridSize,
 } from '@nyanpasu/ui/dnd-grid'
 import {
@@ -18,9 +19,7 @@ import {
 } from '@/components/providers/context-menu-provider'
 import {
   DashboardItem,
-  DEFAULT_ITEMS,
   DEFAULT_LAYOUTS,
-  LayoutStorage,
   RENDER_MAP,
   WIDGET_MIN_SIZE_MAP,
   WIDGET_RECOMMENDED_SIZE_MAP,
@@ -36,12 +35,13 @@ import { DragOverlay } from '@dnd-kit/core'
 import { useKvStorage } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import EditAction from './_modules/edit-action'
+import { adaptLayout } from './_modules/layout-adapt'
 import {
-  adaptLayout,
-  findBestLayout,
-  findClosestStoredLayout,
-  sizeKey,
-} from './_modules/layout-adapt'
+  normalizeLayoutStorage,
+  saveLayout,
+  selectLayoutEntry,
+  type DashboardLayoutStorage,
+} from './_modules/layout-storage'
 import { placeWidget } from './_modules/widget-placement'
 import { WidgetSheet } from './_modules/widget-sheet'
 
@@ -55,19 +55,6 @@ const constraintsFor = (items: DashboardItem[]) =>
   Object.fromEntries(
     items.map((item) => [item.id, WIDGET_MIN_SIZE_MAP[item.type]]),
   )
-
-function layoutForSize(storage: LayoutStorage, size: GridSize) {
-  const bestLayout = findBestLayout(storage, size)
-  if (bestLayout) {
-    return normalizeDashboardItems(bestLayout)
-  }
-
-  const base = normalizeDashboardItems(
-    findClosestStoredLayout(storage, size) ?? DEFAULT_ITEMS,
-  )
-
-  return adaptLayout(base, size, constraintsFor(base))
-}
 
 function DashboardDragOverlay({
   displayItems,
@@ -137,43 +124,98 @@ const WidgetRender = () => {
   const { isEditing, setOpenSheet, configLoading, configReadError } =
     useDashboardContext()
 
-  const [layoutStorage, setLayoutStorage, { isLoading: layoutLoading }] =
-    useKvStorage<LayoutStorage>('dashboard-widgets', DEFAULT_LAYOUTS)
+  const [
+    layoutStorage,
+    setLayoutStorage,
+    { isLoading: layoutLoading, readError: layoutReadError },
+  ] = useKvStorage<DashboardLayoutStorage>(
+    'dashboard-widgets',
+    normalizeLayoutStorage(DEFAULT_LAYOUTS, DEFAULT_LAYOUTS),
+    { migrate: (value) => normalizeLayoutStorage(value, DEFAULT_LAYOUTS) },
+  )
 
   const [gridSize, setGridSize] = useState<GridSize | null>(null)
-
-  // The layout saved for this grid size, or one adapted to it. The grid
-  // renders no items until it has measured its size.
-  const displayItems = useMemo(
-    () => (gridSize ? layoutForSize(layoutStorage, gridSize) : []),
-    [layoutStorage, gridSize],
-  )
+  const [activeLayoutId, setActiveLayoutId] = useState<string | null>(null)
+  const gridSizeRef = useRef<GridSize | null>(null)
 
   const layoutStorageRef = useRef(layoutStorage)
   layoutStorageRef.current = layoutStorage
 
+  const activeLayoutIdRef = useRef(activeLayoutId)
+  activeLayoutIdRef.current = activeLayoutId
+
+  useEffect(() => {
+    const gridSize = gridSizeRef.current
+    const nextId =
+      layoutStorage.preferredId ??
+      (gridSize ? selectLayoutEntry(layoutStorage, gridSize)?.id : null) ??
+      null
+
+    activeLayoutIdRef.current = nextId
+    setActiveLayoutId(nextId)
+  }, [layoutStorage])
+
+  const sourceLayout = useMemo(() => {
+    if (!gridSize) return null
+
+    return (
+      layoutStorage.entries.find(({ id }) => id === activeLayoutId) ??
+      selectLayoutEntry(layoutStorage, gridSize)
+    )
+  }, [layoutStorage, activeLayoutId, gridSize])
+
+  // Adapt from the pinned source each time; never persist this projection.
+  const displayItems = useMemo(() => {
+    if (!gridSize || !sourceLayout) return []
+
+    const items = normalizeDashboardItems(sourceLayout.items)
+    return adaptLayout(items, gridSize, constraintsFor(items))
+  }, [gridSize, sourceLayout])
+
   const displayItemsRef = useRef(displayItems)
   displayItemsRef.current = displayItems
-
-  const gridSizeRef = useRef<GridSize>({ cols: 1, rows: 1 })
 
   const handleSizeChange = useCallback((newSize: GridSize) => {
     gridSizeRef.current = newSize
     setGridSize(newSize)
+
+    if (activeLayoutIdRef.current === null) {
+      const id =
+        selectLayoutEntry(layoutStorageRef.current, newSize)?.id ?? null
+      activeLayoutIdRef.current = id
+      setActiveLayoutId(id)
+    }
   }, [])
 
   const handleLayoutChange = useCallback(
     (newItems: DashboardItem[]) => {
-      const key = sizeKey(gridSizeRef.current)
-      displayItemsRef.current = newItems
+      if (layoutLoading || layoutReadError) return
 
-      layoutStorageRef.current = {
-        ...layoutStorageRef.current,
-        [key]: newItems,
-      }
+      const gridSize = gridSizeRef.current
+      const source =
+        layoutStorageRef.current.entries.find(
+          ({ id }) => id === activeLayoutIdRef.current,
+        ) ??
+        (gridSize
+          ? selectLayoutEntry(layoutStorageRef.current, gridSize)
+          : null)
+      if (!source) return
+
+      const visibleIds = new Set(displayItemsRef.current.map(({ id }) => id))
+      const hiddenSourceItems = source.items.filter(
+        ({ id }) => !visibleIds.has(id),
+      )
+      displayItemsRef.current = newItems
+      layoutStorageRef.current = saveLayout(
+        layoutStorageRef.current,
+        source.id,
+        [...newItems, ...hiddenSourceItems],
+      )
+      activeLayoutIdRef.current = source.id
+      setActiveLayoutId(source.id)
       setLayoutStorage(layoutStorageRef.current)
     },
-    [setLayoutStorage],
+    [layoutLoading, layoutReadError, setLayoutStorage],
   )
 
   const handleCloseClick = useCallback(
@@ -221,8 +263,13 @@ const WidgetRender = () => {
   )
 
   const addWidgetFromSheet = useCallback(
-    (widgetId: WidgetId) => {
-      const { cols, rows } = gridSizeRef.current
+    (widgetId: WidgetId, position?: GridPosition) => {
+      if (layoutLoading || layoutReadError) return
+
+      const gridSize = gridSizeRef.current
+      if (!gridSize) return
+
+      const { cols, rows } = gridSize
       const current = displayItemsRef.current
       const instanceId = crypto.randomUUID()
       const placement = placeWidget({
@@ -233,13 +280,14 @@ const WidgetRender = () => {
         rows,
         minimum: WIDGET_MIN_SIZE_MAP[widgetId],
         recommended: WIDGET_RECOMMENDED_SIZE_MAP[widgetId],
+        position,
       })
 
       if (placement) {
         handleLayoutChange([...current, placement])
       }
     },
-    [handleLayoutChange],
+    [handleLayoutChange, layoutLoading, layoutReadError],
   )
 
   return (
@@ -256,10 +304,13 @@ const WidgetRender = () => {
             className="min-h-0 flex-1"
             items={displayItems}
             onLayoutChange={handleGridLayoutChange}
+            onExternalDrop={(id, position) =>
+              addWidgetFromSheet(id as WidgetId, position)
+            }
             minCellSize={64}
             onSizeChange={handleSizeChange}
             gap={16}
-            disabled={!isEditing || layoutLoading}
+            disabled={!isEditing || layoutLoading || Boolean(layoutReadError)}
           >
             {renderWidget}
           </DndGrid>
@@ -269,7 +320,7 @@ const WidgetRender = () => {
       <DashboardDragOverlay displayItems={displayItems} />
 
       <WidgetSheet
-        onSourceDrop={(id) => addWidgetFromSheet(id)}
+        onAdd={addWidgetFromSheet}
         onSourceDragStart={() => setOpenSheet(false)}
       />
     </DndGridRoot>

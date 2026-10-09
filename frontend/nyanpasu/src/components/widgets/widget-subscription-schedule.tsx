@@ -1,9 +1,14 @@
+import ErrorOutlineRounded from '~icons/material-symbols/error-outline-rounded'
 import EventRepeatRounded from '~icons/material-symbols/event-repeat-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
+import SyncRounded from '~icons/material-symbols/sync-rounded'
+import { motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
+import { ActionSwap } from '@nyanpasu/ui/action-swap-text'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
@@ -15,6 +20,7 @@ import {
   useProfileSyncStatus,
 } from '@nyanpasu/query'
 import type { RunDto } from '@nyanpasu/rpc/types'
+import { cn } from '@nyanpasu/utils'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { WidgetComponentProps } from './consts'
@@ -26,8 +32,9 @@ import { useDashboardContext, useWidgetConfig } from './provider'
 import { useWidgetHeight } from './use-widget-height'
 import { WidgetId, type WidgetConfig } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetHeader, WidgetTitle } from './widget-ui'
 
-const RECENT_RUN_ROW_HEIGHT = 20
+const RECENT_RUN_ROW_HEIGHT = 24
 
 function SubscriptionSchedulePreview({ id }: { id: string }) {
   return (
@@ -38,13 +45,31 @@ function SubscriptionSchedulePreview({ id }: { id: string }) {
       minH={2}
     >
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
-          <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
-          {m.dashboard_widget_subscription_schedule_title()}
-        </CardHeader>
-        <CardContent className="min-h-0 flex-1 justify-center gap-2">
-          <div className="bg-surface-variant h-4 w-2/3 animate-pulse rounded-full" />
-          <div className="bg-surface-variant h-4 w-1/2 animate-pulse rounded-full" />
+        <WidgetHeader>
+          <WidgetTitle icon={EventRepeatRounded}>
+            {m.dashboard_widget_subscription_schedule_title()}
+          </WidgetTitle>
+        </WidgetHeader>
+        <CardContent className="min-h-0 flex-1 gap-2 overflow-hidden pt-3 text-xs">
+          <div
+            className="bg-surface-variant/30 flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-hidden rounded-2xl px-4 py-3"
+            data-slot="subscription-schedule-preview"
+          >
+            <p className="shrink-0 truncate text-sm font-medium">
+              Japan Premium
+            </p>
+            <div className="text-on-surface-variant flex min-w-0 items-center gap-2">
+              <SyncRounded className="size-4 shrink-0" aria-hidden="true" />
+              <span>
+                {m.dashboard_widget_subscription_schedule_succeeded()}
+              </span>
+            </div>
+            <p className="text-on-surface-variant tabular-nums">
+              {m.dashboard_widget_subscription_schedule_next_run({
+                time: '21:30',
+              })}
+            </p>
+          </div>
         </CardContent>
       </Card>
     </WidgetItem>
@@ -100,6 +125,9 @@ function SubscriptionScheduleTarget({
   const { ref: contentRef, height: contentHeight } =
     useWidgetHeight<HTMLDivElement>()
   const queryClient = useQueryClient()
+  const reducedMotion = useReducedMotion()
+  const { displayItems } = useDndGridContext()
+  const compact = displayItems.find((item) => item.id === id)?.h === 2
   const [actionState, setActionState] = useState<ActionState>('idle')
   const [checkedAfterUnconfirmed, setCheckedAfterUnconfirmed] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
@@ -117,12 +145,41 @@ function SubscriptionScheduleTarget({
     activeRun != null ||
     actionState !== 'idle' ||
     checkFailed
+  const notice = checkFailed
+    ? m.dashboard_widget_operation_check_failed()
+    : actionState === 'failed'
+      ? m.dashboard_widget_subscription_schedule_refresh_failed()
+      : actionState === 'unconfirmed'
+        ? m.dashboard_widget_subscription_schedule_unconfirmed()
+        : actionState === 'degraded'
+          ? m.dashboard_widget_subscription_schedule_committed_degraded()
+          : unavailable
+            ? m.dashboard_widget_subscription_schedule_load_failed()
+            : status.data?.registration_error
+              ? m.dashboard_widget_subscription_schedule_registration_error({
+                  error: status.data.registration_error,
+                })
+              : status.data?.journal_degraded
+                ? m.dashboard_widget_subscription_schedule_journal_degraded()
+                : status.isPending
+                  ? m.dashboard_widget_subscription_schedule_loading()
+                  : null
+  const noticeIsError =
+    checkFailed ||
+    actionState === 'failed' ||
+    unavailable ||
+    Boolean(status.data?.registration_error)
   const recentRunLimit =
     contentHeight == null || hasCriticalState
       ? 0
       : Math.max(
           0,
-          Math.min(3, Math.floor((contentHeight - 64) / RECENT_RUN_ROW_HEIGHT)),
+          Math.min(
+            3,
+            Math.floor(
+              (contentHeight - (compact ? 72 : 120)) / RECENT_RUN_ROW_HEIGHT,
+            ),
+          ),
         )
 
   const refresh = async () => {
@@ -204,17 +261,14 @@ function SubscriptionScheduleTarget({
         className="flex size-full flex-col"
         data-slot="subscription-schedule-card"
       >
-        <CardHeader className="shrink-0 flex-row items-center justify-between gap-2 px-3 pt-2 pb-1">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
-            <span className="truncate text-sm font-medium">
-              {m.dashboard_widget_subscription_schedule_title()}
-            </span>
-          </div>
+        <WidgetHeader className="flex-row items-center justify-between gap-2">
+          <WidgetTitle className="flex-1" icon={EventRepeatRounded}>
+            {m.dashboard_widget_subscription_schedule_title()}
+          </WidgetTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant="raised"
+                variant="basic"
                 className="size-7 shrink-0"
                 icon
                 aria-label={m.dashboard_widget_subscription_schedule_refresh()}
@@ -234,76 +288,161 @@ function SubscriptionScheduleTarget({
               {m.dashboard_widget_subscription_schedule_refresh()}
             </TooltipContent>
           </Tooltip>
-        </CardHeader>
+        </WidgetHeader>
 
-        <CardContent className="min-h-0 flex-1 justify-start gap-0 px-3 py-1 text-xs">
-          <div
+        <CardContent className="min-h-0 flex-1 gap-0 overflow-hidden pt-3 text-xs">
+          <motion.div
             ref={contentRef}
-            className="flex min-h-0 flex-1 flex-col gap-1"
+            className={cn(
+              'bg-surface-variant/30 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden rounded-2xl px-4 py-3',
+              compact && 'gap-0.5 px-3 py-1',
+              (activeRun || notice) && 'justify-center',
+            )}
             data-slot="subscription-schedule-content"
           >
-            <Link
-              aria-disabled={disabled}
-              tabIndex={disabled ? -1 : 0}
-              onClick={(event) => {
-                if (disabled) event.preventDefault()
+            <motion.div
+              layout="position"
+              transition={{
+                duration: reducedMotion ? 0 : 0.22,
+                ease: 'easeOut',
               }}
-              className={`text-on-surface-variant truncate text-[10px] ${disabled ? 'pointer-events-none opacity-50' : ''}`}
-              to="/main/profiles/$type/detail/$uid"
-              params={{ type: 'profile', uid: profileUid }}
+              className="min-w-0 shrink-0"
             >
-              {profileName}
-            </Link>
-            {status.isPending && (
-              <p role="status">
-                {m.dashboard_widget_subscription_schedule_loading()}
-              </p>
-            )}
-            {unavailable && (
-              <p role="alert" className="text-error">
-                {m.dashboard_widget_subscription_schedule_load_failed()}
-              </p>
-            )}
-            {status.data && (
-              <>
-                {activeRun ? (
-                  <p role="status" className="font-medium">
-                    {m.dashboard_widget_subscription_schedule_active({
-                      state: runStateLabel(activeRun),
-                    })}
-                  </p>
-                ) : status.data.scheduled && status.data.next_run_at ? (
-                  <p>
-                    {m.dashboard_widget_subscription_schedule_next_run({
-                      time: formatDate(status.data.next_run_at),
-                    })}
-                  </p>
-                ) : (
-                  <p>
-                    {m.dashboard_widget_subscription_schedule_manual_only()}
-                  </p>
-                )}
-                {status.data.registration_error && (
-                  <p className="text-error break-words" role="alert">
-                    {m.dashboard_widget_subscription_schedule_registration_error(
-                      {
-                        error: status.data.registration_error,
-                      },
+              <ActionSwap
+                contentKey={
+                  notice ??
+                  activeRun?.state.kind ??
+                  status.data?.next_run_at ??
+                  'manual'
+                }
+                className="min-h-12 min-w-0 shrink-0 grid-cols-[minmax(0,1fr)] items-center [&>div]:min-w-0"
+                data-slot="subscription-schedule-summary"
+              >
+                {notice ? (
+                  <div
+                    className={cn(
+                      'flex min-w-0 items-center gap-3 text-sm',
+                      noticeIsError ? 'text-error' : 'text-on-surface-variant',
                     )}
-                  </p>
+                    role={noticeIsError ? 'alert' : 'status'}
+                    aria-label={notice}
+                  >
+                    <span className="bg-surface-variant/40 flex size-8 shrink-0 items-center justify-center rounded-xl">
+                      {noticeIsError ? (
+                        <ErrorOutlineRounded
+                          className="size-5"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <SyncRounded className="size-5" aria-hidden="true" />
+                      )}
+                    </span>
+                    <TextMarquee className="w-full" speed={30}>
+                      {notice}
+                    </TextMarquee>
+                  </div>
+                ) : activeRun ? (
+                  <div
+                    className="text-on-surface-variant flex shrink-0 items-center gap-3 text-sm"
+                    role="status"
+                    data-slot="subscription-schedule-active"
+                  >
+                    <span className="bg-surface-variant/40 flex size-8 shrink-0 items-center justify-center rounded-xl">
+                      <motion.span
+                        className="flex"
+                        animate={{
+                          rotate:
+                            activeRun.state.kind === 'running' && !reducedMotion
+                              ? 360
+                              : 0,
+                        }}
+                        transition={
+                          activeRun.state.kind === 'running' && !reducedMotion
+                            ? {
+                                duration: 1.8,
+                                ease: 'linear',
+                                repeat: Infinity,
+                              }
+                            : { duration: 0 }
+                        }
+                      >
+                        <SyncRounded className="size-5" aria-hidden="true" />
+                      </motion.span>
+                    </span>
+                    <span>{runStateLabel(activeRun)}</span>
+                  </div>
+                ) : (
+                  status.data && (
+                    <>
+                      {!activeRun &&
+                        (status.data.scheduled && status.data.next_run_at ? (
+                          <div
+                            className="shrink-0"
+                            data-slot="subscription-schedule-next-run"
+                          >
+                            <p className="text-on-surface-variant">
+                              {m.dashboard_widget_subscription_schedule_next_run(
+                                {
+                                  time: formatDate(
+                                    status.data.next_run_at,
+                                    'yyyy-MM-dd',
+                                  ),
+                                },
+                              )}
+                            </p>
+                            <time
+                              dateTime={status.data.next_run_at}
+                              className={cn(
+                                'block text-3xl tabular-nums',
+                                compact && 'text-xl',
+                              )}
+                            >
+                              {formatDate(status.data.next_run_at, 'HH:mm')}
+                            </time>
+                          </div>
+                        ) : (
+                          <p>
+                            {m.dashboard_widget_subscription_schedule_manual_only()}
+                          </p>
+                        ))}
+                    </>
+                  )
                 )}
-                {status.data.journal_degraded && (
-                  <p className="text-on-surface-variant" role="status">
-                    {m.dashboard_widget_subscription_schedule_journal_degraded()}
-                  </p>
+              </ActionSwap>
+            </motion.div>
+            <motion.div
+              layout="position"
+              className="order-first min-w-0 shrink-0"
+              transition={{
+                duration: reducedMotion ? 0 : 0.22,
+                ease: 'easeOut',
+              }}
+            >
+              <Link
+                aria-disabled={disabled}
+                tabIndex={disabled ? -1 : 0}
+                onClick={(event) => {
+                  if (disabled) event.preventDefault()
+                }}
+                className={cn(
+                  'shrink-0 truncate text-sm font-medium',
+                  'block',
+                  disabled && 'pointer-events-none opacity-50',
                 )}
-              </>
-            )}
+                to="/main/profiles/$type/detail/$uid"
+                params={{ type: 'profile', uid: profileUid }}
+              >
+                <TextMarquee className="w-full">{profileName}</TextMarquee>
+              </Link>
+            </motion.div>
             {config.showRecentRuns && recentRunLimit > 0 && (
-              <div className="space-y-1 pt-1">
-                <p className="text-on-surface-variant text-xs">
-                  {m.dashboard_widget_subscription_schedule_recent()}
-                </p>
+              <div
+                className={cn(
+                  'border-outline-variant mt-2 shrink-0 space-y-1 border-t pt-2',
+                  compact && 'mt-0.5 pt-0.5',
+                )}
+                data-slot="subscription-schedule-recent"
+              >
                 {runs.isPending ? (
                   <p className="text-on-surface-variant text-xs" role="status">
                     {m.dashboard_widget_subscription_schedule_loading()}
@@ -313,15 +452,34 @@ function SubscriptionScheduleTarget({
                     {m.dashboard_widget_subscription_schedule_history_unavailable()}
                   </p>
                 ) : completed.length > 0 ? (
-                  completed.slice(0, recentRunLimit).map((run) => (
+                  completed.slice(0, recentRunLimit).map((run, index) => (
                     <p
                       key={run.id}
                       className="flex items-center justify-between gap-2 text-xs"
                       data-slot="subscription-schedule-run"
                     >
-                      <span className="truncate">{runStateLabel(run)}</span>
-                      <time className="text-on-surface-variant shrink-0 tabular-nums">
-                        {run.finished_at ? formatDate(run.finished_at) : '—'}
+                      <span
+                        className={cn(
+                          'truncate',
+                          run.state.kind === 'finished' &&
+                            run.state.completion.outcome.kind === 'failed' &&
+                            'text-error',
+                        )}
+                      >
+                        {index === 0 && (
+                          <span className="text-on-surface-variant mr-1">
+                            {m.dashboard_widget_subscription_schedule_recent()}
+                          </span>
+                        )}
+                        {runStateLabel(run)}
+                      </span>
+                      <time
+                        dateTime={run.finished_at ?? undefined}
+                        className="text-on-surface-variant shrink-0 whitespace-nowrap tabular-nums"
+                      >
+                        {run.finished_at
+                          ? formatDate(run.finished_at, 'MM-dd HH:mm')
+                          : '—'}
                       </time>
                     </p>
                   ))
@@ -331,22 +489,6 @@ function SubscriptionScheduleTarget({
                   </p>
                 )}
               </div>
-            )}
-            {actionState !== 'idle' && (
-              <p
-                className={
-                  actionState === 'failed'
-                    ? 'text-error text-xs'
-                    : 'text-on-surface-variant text-xs'
-                }
-                role={actionState === 'failed' ? 'alert' : 'status'}
-              >
-                {actionState === 'degraded'
-                  ? m.dashboard_widget_subscription_schedule_committed_degraded()
-                  : actionState === 'unconfirmed'
-                    ? m.dashboard_widget_subscription_schedule_unconfirmed()
-                    : m.dashboard_widget_subscription_schedule_refresh_failed()}
-              </p>
             )}
             {actionState === 'unconfirmed' && (
               <>
@@ -359,14 +501,9 @@ function SubscriptionScheduleTarget({
                 >
                   {m.dashboard_widget_operation_check()}
                 </Button>
-                {checkFailed && (
-                  <p className="text-error text-xs" role="alert">
-                    {m.dashboard_widget_operation_check_failed()}
-                  </p>
-                )}
               </>
             )}
-          </div>
+          </motion.div>
         </CardContent>
       </Card>
     </WidgetItem>
@@ -422,11 +559,12 @@ function SubscriptionScheduleLive({
       onCloseClick={onCloseClick}
     >
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
-          <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
-          {m.dashboard_widget_subscription_schedule_title()}
-        </CardHeader>
-        <CardContent className="min-h-0 flex-1 items-center justify-center gap-2 text-center text-sm">
+        <WidgetHeader>
+          <WidgetTitle icon={EventRepeatRounded}>
+            {m.dashboard_widget_subscription_schedule_title()}
+          </WidgetTitle>
+        </WidgetHeader>
+        <CardContent className="min-h-0 flex-1 items-center justify-center gap-2 overflow-hidden text-center text-sm">
           <p role={query.isError ? 'alert' : 'status'}>{message}</p>
           {(resolution?.kind === 'missing' ||
             resolution?.kind === 'unsupported' ||

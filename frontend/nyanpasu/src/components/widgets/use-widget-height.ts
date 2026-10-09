@@ -11,7 +11,8 @@ export function useWidgetHeight<T extends HTMLElement>() {
   useEffect(() => {
     if (!element) return
 
-    const measure = () => setHeight(element.getBoundingClientRect().height)
+    // Layout capacity must not shrink with the widget's entrance/drag transform.
+    const measure = () => setHeight(element.clientHeight)
     measure()
 
     const observer = new ResizeObserver(measure)

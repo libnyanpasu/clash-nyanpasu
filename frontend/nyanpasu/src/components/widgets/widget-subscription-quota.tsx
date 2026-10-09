@@ -1,12 +1,13 @@
 import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
-import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { filesize } from 'filesize'
-import { useState } from 'react'
+import { useReducedMotion } from 'motion/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ActionSwap } from '@nyanpasu/ui/action-swap-text'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
-import { LinearProgress } from '@nyanpasu/ui/progress'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
@@ -26,9 +27,15 @@ import {
   subscriptionExpiryTimestamp,
 } from './dashboard-daily-utils'
 import { useDashboardContext, useWidgetConfig } from './provider'
-import { useWidgetHeight } from './use-widget-height'
+import { SubscriptionQuotaWave } from './subscription-quota-wave'
 import { WidgetId, type WidgetConfig } from './widget-config'
 import WidgetItem from './widget-item'
+import {
+  WidgetHeader,
+  WidgetMeta,
+  WidgetMetric,
+  WidgetTitle,
+} from './widget-ui'
 
 function SubscriptionQuotaPreview({ id }: { id: string }) {
   return (
@@ -38,22 +45,130 @@ function SubscriptionQuotaPreview({ id }: { id: string }) {
       minW={3}
       minH={2}
     >
-      <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
-          <DataUsageRounded className="text-on-surface-variant size-5 shrink-0" />
-          <span
-            className="min-w-0 flex-1 truncate"
-            title={m.dashboard_widget_subscription_quota_title()}
-          >
+      <Card className="relative isolate flex size-full flex-col">
+        <SubscriptionQuotaWave percent={68} waveStyle="double" animateWave />
+        <WidgetHeader>
+          <WidgetTitle icon={DataUsageRounded}>
             {m.dashboard_widget_subscription_quota_title()}
-          </span>
-        </CardHeader>
-        <CardContent className="min-h-0 flex-1 justify-center">
-          <div className="bg-surface-variant h-5 w-2/3 animate-pulse rounded-full" />
-          <div className="bg-surface-variant h-2 w-full animate-pulse rounded-full" />
+          </WidgetTitle>
+        </WidgetHeader>
+        <CardContent className="relative min-h-0 flex-1 justify-start gap-0 p-4 pt-2">
+          <div className="flex min-h-0 flex-1 flex-col gap-1">
+            <div className="flex min-h-0 flex-1 items-center">
+              <WidgetMetric data-slot="subscription-quota-percent">
+                68%
+              </WidgetMetric>
+            </div>
+            <WidgetMeta data-slot="subscription-quota-summary">
+              6.8 GiB{' '}
+              {m.dashboard_widget_subscription_quota_remaining_of({
+                total: '10 GiB',
+              })}
+            </WidgetMeta>
+          </div>
         </CardContent>
       </Card>
     </WidgetItem>
+  )
+}
+
+function QuotaSummary({
+  remaining,
+  total,
+  expiryText,
+  notice,
+  isError,
+}: {
+  remaining: string | null
+  total: string | null
+  expiryText: string | null
+  notice: string | null
+  isError: boolean
+}) {
+  const quotaText =
+    remaining && total
+      ? `${remaining} ${m.dashboard_widget_subscription_quota_remaining_of({ total })}`
+      : null
+  const texts = useMemo(
+    () => [notice, quotaText, expiryText].filter((text) => text !== null),
+    [notice, quotaText, expiryText],
+  )
+  const [index, setIndex] = useState(0)
+  const ref = useRef<HTMLDivElement>(null)
+  const reducedMotion = useReducedMotion()
+  const text = texts[reducedMotion ? 0 : index % texts.length] ?? null
+  const isNotice = notice !== null && text === notice
+
+  useEffect(() => {
+    setIndex(0)
+  }, [texts])
+
+  useEffect(() => {
+    if (texts.length < 2 || reducedMotion) return
+
+    const root = ref.current
+    if (!root) return
+    let interval: number
+    const schedule = () => {
+      window.clearInterval(interval)
+      const marquee = Array.from(
+        root.querySelectorAll('[data-slot="text-marquee"]'),
+      ).at(-1)
+      const content = marquee?.querySelector<HTMLElement>(
+        '[data-slot="text-marquee-content-item"], [data-slot="text-marquee-content"]',
+      )
+      // Leave enough time for one complete scroll, including its initial pause.
+      const duration = Math.max(
+        8000,
+        (((content?.scrollWidth ?? 0) + 32) / 30) * 1000 + 2000,
+      )
+      interval = window.setInterval(() => {
+        if (!document.hidden)
+          setIndex((current) => (current + 1) % texts.length)
+      }, duration)
+    }
+    const observer = new ResizeObserver(schedule)
+    observer.observe(root)
+    schedule()
+
+    return () => {
+      observer.disconnect()
+      window.clearInterval(interval)
+    }
+  }, [texts, reducedMotion, text])
+
+  const content =
+    text === quotaText ? (
+      <>
+        <span data-slot="subscription-quota-remaining">{remaining}</span>{' '}
+        {total && m.dashboard_widget_subscription_quota_remaining_of({ total })}
+      </>
+    ) : (
+      text
+    )
+
+  return (
+    <WidgetMeta
+      ref={ref}
+      className="min-w-0 shrink-0 tabular-nums"
+      data-slot="subscription-quota-summary"
+      role={isNotice ? (isError ? 'alert' : 'status') : undefined}
+      aria-label={isNotice ? notice : undefined}
+      title={reducedMotion ? texts.join(' · ') : undefined}
+    >
+      {reducedMotion ? (
+        <div className="truncate">{content}</div>
+      ) : (
+        <ActionSwap
+          contentKey={text}
+          className="min-w-0 grid-cols-[minmax(0,1fr)] [&>div]:min-w-0"
+        >
+          <TextMarquee className="w-full" speed={30}>
+            {content}
+          </TextMarquee>
+        </ActionSwap>
+      )}
+    </WidgetMeta>
   )
 }
 
@@ -71,8 +186,6 @@ function SubscriptionQuotaLive({
   const { query } = useProfile()
   const { update } = useProfileMutations()
   const { setIsEditing } = useDashboardContext()
-  const { ref: contentRef, height: contentHeight } =
-    useWidgetHeight<HTMLDivElement>()
   const [actionState, setActionState] = useState<ActionState>('idle')
   const [checkedAfterUnconfirmed, setCheckedAfterUnconfirmed] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
@@ -90,12 +203,6 @@ function SubscriptionQuotaLive({
       : undefined
   const quota = calculateSubscriptionQuota(subscription)
   const expiry = subscriptionExpiryTimestamp(subscription?.expire)
-  const updatedAt =
-    profile?.type === 'config' && profile.config.type === 'file'
-      ? profile.config.source.type === 'remote'
-        ? profile.config.source.updated_at
-        : undefined
-      : undefined
   const isWarning =
     isQuotaWarning(quota, config.quotaWarningPercent) ||
     isExpiryWarning(expiry, config.expiryWarningDays, Date.now())
@@ -171,14 +278,32 @@ function SubscriptionQuotaLive({
   }
 
   const targetMessage = statusText()
-  const hasPriorityState =
-    isWarning ||
-    (query.isError && query.data != null) ||
-    actionState !== 'idle' ||
-    checkFailed
-  const showTotal = !hasPriorityState && (contentHeight ?? 0) >= 88
-  const showBreakdown = !hasPriorityState && (contentHeight ?? 0) >= 144
-  const showUpdatedAt = !hasPriorityState && (contentHeight ?? 0) >= 112
+  const needsCheck = actionState === 'unconfirmed' && !checkedAfterUnconfirmed
+  const summaryNotice = () => {
+    if (targetMessage) return targetMessage
+    if (checkFailed) return m.dashboard_widget_operation_check_failed()
+    if (actionState === 'failed')
+      return m.dashboard_widget_subscription_quota_refresh_failed()
+    if (actionState === 'unconfirmed')
+      return m.dashboard_widget_subscription_quota_unconfirmed()
+    if (actionState === 'degraded')
+      return m.dashboard_widget_subscription_quota_committed_degraded()
+    if (query.isError && query.data)
+      return m.dashboard_widget_subscription_quota_stale_error()
+    if (quota && quota.overage > 0)
+      return m.dashboard_widget_subscription_quota_overage({
+        value: filesize(quota.overage, { standard: 'iec' }),
+      })
+    if (isWarning) return m.dashboard_widget_subscription_quota_warning()
+    if (profile && !quota)
+      return m.dashboard_widget_subscription_quota_unknown()
+    return null
+  }
+  const noticeIsError =
+    query.isError || checkFailed || actionState === 'failed' || isWarning
+  const refreshLabel = needsCheck
+    ? m.dashboard_widget_operation_check()
+    : m.dashboard_widget_subscription_quota_refresh()
 
   return (
     <WidgetItem
@@ -189,90 +314,73 @@ function SubscriptionQuotaLive({
       onCloseClick={onCloseClick}
     >
       <Card
-        className="flex size-full flex-col"
+        className="relative isolate flex size-full flex-col"
         data-slot="subscription-quota-card"
       >
-        <CardHeader className="shrink-0 flex-row items-center justify-between gap-2 px-3 pt-2 pb-1 text-sm font-medium">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <DataUsageRounded className="text-on-surface-variant size-5 shrink-0" />
-            <span
-              className="min-w-0 flex-1 truncate"
-              title={m.dashboard_widget_subscription_quota_title()}
-            >
-              {m.dashboard_widget_subscription_quota_title()}
-            </span>
-          </div>
+        {quota && config.showProgress && !targetMessage && (
+          <SubscriptionQuotaWave
+            percent={quota.remainingPercent}
+            waveStyle={config.waveStyle}
+            animateWave={config.animateWave}
+          />
+        )}
+        {profile && !targetMessage && (
+          <Link
+            className="hover:bg-on-surface/5 active:bg-on-surface/10 focus-visible:outline-primary absolute inset-0 z-10 rounded-3xl transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2"
+            data-slot="subscription-quota-details"
+            aria-label={`${profile.name}: ${m.dashboard_widget_subscription_quota_details()}`}
+            aria-disabled={disabled}
+            tabIndex={disabled ? -1 : 0}
+            onClick={(event) => {
+              if (disabled) event.preventDefault()
+            }}
+            to="/main/profiles/$type/detail/$uid"
+            params={{ type: 'profile', uid: profile.uid }}
+          />
+        )}
+        <WidgetHeader className="pointer-events-none relative flex-row items-center justify-between gap-2">
+          <WidgetTitle
+            className="flex-1"
+            icon={DataUsageRounded}
+            data-slot="subscription-quota-title"
+          >
+            {profile?.name ?? m.dashboard_widget_subscription_quota_configure()}
+          </WidgetTitle>
           {profile && (
-            <div className="flex shrink-0 items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="basic"
-                    className="size-7"
-                    icon
-                    aria-label={m.dashboard_widget_subscription_quota_details()}
-                    asChild
-                  >
-                    <Link
-                      aria-disabled={disabled}
-                      tabIndex={disabled ? -1 : 0}
-                      onClick={(event) => {
-                        if (disabled) event.preventDefault()
-                      }}
-                      to="/main/profiles/$type/detail/$uid"
-                      params={{ type: 'profile', uid: profile.uid }}
-                    >
-                      <OpenInNewRounded className="size-4" />
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {m.dashboard_widget_subscription_quota_details()}
-                </TooltipContent>
-              </Tooltip>
+            <div className="pointer-events-auto relative z-20 flex shrink-0 items-center gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="raised"
                     className="size-7"
                     icon
-                    aria-label={m.dashboard_widget_subscription_quota_refresh()}
-                    disabled={
-                      disabled ||
-                      update.isPending ||
-                      checkingStatus ||
-                      (actionState === 'unconfirmed' &&
-                        !checkedAfterUnconfirmed)
-                    }
-                    loading={update.isPending}
-                    onClick={refresh}
+                    aria-label={refreshLabel}
+                    disabled={disabled || update.isPending || checkingStatus}
+                    loading={update.isPending || checkingStatus}
+                    onClick={needsCheck ? checkStatus : refresh}
                   >
                     <RefreshRounded className="size-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
-                  {m.dashboard_widget_subscription_quota_refresh()}
-                </TooltipContent>
+                <TooltipContent>{refreshLabel}</TooltipContent>
               </Tooltip>
             </div>
           )}
-        </CardHeader>
+        </WidgetHeader>
 
-        <CardContent className="min-h-0 flex-1 justify-start gap-0 px-3 py-1">
+        <CardContent className="pointer-events-none relative min-h-0 flex-1 justify-start gap-0 p-4 pt-2">
           <div
-            ref={contentRef}
             className="flex min-h-0 flex-1 flex-col gap-1"
             data-slot="subscription-quota-content"
           >
             {targetMessage ? (
-              <div className="flex flex-col items-center gap-2 text-center text-sm">
-                <p role={query.isError ? 'alert' : 'status'}>{targetMessage}</p>
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center text-sm">
                 {(resolution?.kind === 'needs_selection' ||
                   resolution?.kind === 'missing' ||
                   resolution?.kind === 'unsupported') && (
                   <Button
                     variant="raised"
-                    className="h-8 min-w-0 px-3 text-xs"
+                    className="pointer-events-auto relative z-20 h-8 min-w-0 px-3 text-xs"
                     onClick={() => setIsEditing(true)}
                   >
                     {m.dashboard_widget_subscription_quota_configure()}
@@ -281,139 +389,49 @@ function SubscriptionQuotaLive({
               </div>
             ) : profile ? (
               <>
-                {!hasPriorityState && (
-                  <Link
-                    aria-disabled={disabled}
-                    tabIndex={disabled ? -1 : 0}
-                    onClick={(event) => {
-                      if (disabled) event.preventDefault()
-                    }}
-                    className={`text-on-surface-variant truncate text-xs ${disabled ? 'pointer-events-none opacity-50' : ''}`}
-                    to="/main/profiles/$type/detail/$uid"
-                    params={{ type: 'profile', uid: profile.uid }}
-                  >
-                    {profile.name}
-                  </Link>
-                )}
-                {isWarning && (
-                  <p
-                    className="text-error text-xs"
-                    role="status"
-                    data-slot="subscription-quota-warning"
-                  >
-                    {m.dashboard_widget_subscription_quota_warning()}
-                  </p>
-                )}
                 {quota ? (
-                  <>
-                    <div className="flex flex-col gap-0">
-                      <span className="text-xl font-bold whitespace-nowrap tabular-nums">
-                        <span data-slot="subscription-quota-remaining">
-                          {filesize(quota.remaining, { standard: 'iec' })}
-                        </span>
-                      </span>
-                      {showTotal && (
-                        <span className="text-on-surface-variant text-[10px] tabular-nums">
-                          {m.dashboard_widget_subscription_quota_remaining_of({
-                            total: filesize(quota.total, { standard: 'iec' }),
-                          })}
-                        </span>
-                      )}
-                    </div>
-                    {config.showProgress && (
-                      <div data-slot="subscription-quota-progress">
-                        <LinearProgress value={quota.usedPercent} />
-                      </div>
-                    )}
-                    {quota.overage > 0 && (
-                      <p className="text-error text-xs break-words">
-                        {m.dashboard_widget_subscription_quota_overage({
-                          value: filesize(quota.overage, { standard: 'iec' }),
-                        })}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-on-surface-variant text-sm" role="status">
-                    {m.dashboard_widget_subscription_quota_unknown()}
-                  </p>
-                )}
-                {config.showExpiry && (
-                  <p className="text-on-surface-variant text-[10px] break-words">
-                    {expiry
-                      ? m.dashboard_widget_subscription_quota_expires({
-                          relative: formatRelativeTime(
-                            expiry,
-                            Date.now(),
-                            getLocale(),
-                          ),
-                          date: formatDate(expiry),
-                        })
-                      : m.dashboard_widget_subscription_quota_expiry_unknown()}
-                  </p>
-                )}
-                {showBreakdown && quota && (
-                  <p className="text-on-surface-variant truncate text-xs">
-                    {m.dashboard_widget_subscription_quota_breakdown({
-                      upload: filesize(quota.upload, { standard: 'iec' }),
-                      download: filesize(quota.download, { standard: 'iec' }),
-                    })}
-                  </p>
-                )}
-                {showUpdatedAt && (
-                  <p className="text-on-surface-variant truncate text-[10px]">
-                    {updatedAt
-                      ? m.dashboard_widget_subscription_quota_updated({
-                          time: formatRelativeTime(
-                            updatedAt * 1000,
-                            Date.now(),
-                            getLocale(),
-                          ),
-                        })
-                      : m.dashboard_widget_subscription_quota_updated_unknown()}
-                  </p>
-                )}
-                {query.isError && query.data && (
-                  <p className="text-error text-xs" role="alert">
-                    {m.dashboard_widget_subscription_quota_stale_error()}
-                  </p>
-                )}
-                {actionState !== 'idle' && (
-                  <p
-                    className={
-                      actionState === 'failed'
-                        ? 'text-error text-xs'
-                        : 'text-on-surface-variant text-xs'
-                    }
-                    role={actionState === 'failed' ? 'alert' : 'status'}
+                  <div
+                    className="flex min-h-0 flex-1 items-center"
+                    data-slot="subscription-quota-metric"
                   >
-                    {actionState === 'degraded'
-                      ? m.dashboard_widget_subscription_quota_committed_degraded()
-                      : actionState === 'unconfirmed'
-                        ? m.dashboard_widget_subscription_quota_unconfirmed()
-                        : m.dashboard_widget_subscription_quota_refresh_failed()}
-                  </p>
-                )}
-                {actionState === 'unconfirmed' && (
-                  <>
-                    <Button
-                      variant="basic"
-                      className="h-7 min-w-0 px-2 text-xs"
-                      disabled={disabled || checkingStatus}
-                      loading={checkingStatus}
-                      onClick={checkStatus}
+                    <WidgetMetric
+                      className="tabular-nums"
+                      data-slot="subscription-quota-percent"
                     >
-                      {m.dashboard_widget_operation_check()}
-                    </Button>
-                    {checkFailed && (
-                      <p className="text-error text-xs" role="alert">
-                        {m.dashboard_widget_operation_check_failed()}
-                      </p>
-                    )}
-                  </>
+                      {Math.round(quota.remainingPercent)}%
+                    </WidgetMetric>
+                  </div>
+                ) : (
+                  <WidgetMetric className="flex min-h-0 flex-1 items-center">
+                    &mdash;
+                  </WidgetMetric>
                 )}
               </>
-            ) : null}
+            ) : (
+              <div className="flex-1" />
+            )}
+            <QuotaSummary
+              notice={summaryNotice()}
+              isError={noticeIsError}
+              remaining={
+                quota ? filesize(quota.remaining, { standard: 'iec' }) : null
+              }
+              total={quota ? filesize(quota.total, { standard: 'iec' }) : null}
+              expiryText={
+                profile && config.showExpiry
+                  ? expiry
+                    ? m.dashboard_widget_subscription_quota_expires({
+                        relative: formatRelativeTime(
+                          expiry,
+                          Date.now(),
+                          getLocale(),
+                        ),
+                        date: formatDate(expiry),
+                      })
+                    : m.dashboard_widget_subscription_quota_expiry_unknown()
+                  : null
+              }
+            />
           </div>
         </CardContent>
       </Card>

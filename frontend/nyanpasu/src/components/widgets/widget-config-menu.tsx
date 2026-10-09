@@ -458,22 +458,6 @@ function ConfigFields({
     case WidgetId.CoreShortcuts:
       return (
         <>
-          <Choice
-            label={m.dashboard_widget_core_shortcuts_config_density()}
-            value={config.density}
-            disabled={disabled}
-            options={[
-              {
-                value: 'detailed',
-                label: m.dashboard_widget_core_shortcuts_config_detailed(),
-              },
-              {
-                value: 'compact',
-                label: m.dashboard_widget_core_shortcuts_config_compact(),
-              },
-            ]}
-            onChange={(density) => onChange({ ...config, density })}
-          />
           <Toggle
             label={m.dashboard_widget_core_shortcuts_config_version()}
             checked={config.showVersion}

@@ -294,7 +294,6 @@ const CurrentCoreCard = ({
         config.showChannel
           ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
           : 'grid-rows-1',
-        config.density === 'compact' && 'gap-1 px-2',
         'bg-surface-variant/30 text-on-surface hover:bg-surface-variant/50 shadow-none hover:shadow-none focus:shadow-none',
         'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
       )}
@@ -307,16 +306,13 @@ const CurrentCoreCard = ({
           <div
             className={cn(
               'bg-surface/60 grid shrink-0 place-items-center rounded-xl',
-              config.density === 'compact' ? 'size-8' : 'size-10',
+              'size-10',
             )}
           >
             <img
               src={currentCoreIcon}
               alt=""
-              className={cn(
-                'object-contain',
-                config.density === 'compact' ? 'size-6' : 'size-8',
-              )}
+              className="size-8 object-contain"
               data-slot="core-icon"
             />
           </div>

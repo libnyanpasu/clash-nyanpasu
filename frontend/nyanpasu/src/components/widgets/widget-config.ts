@@ -92,7 +92,6 @@ export type WidgetConfigs = {
   }
   [WidgetId.CoreShortcuts]: {
     type: WidgetId.CoreShortcuts
-    density: 'detailed' | 'compact'
     showVersion: boolean
     showChannel: boolean
   }
@@ -176,7 +175,6 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
   },
   [WidgetId.CoreShortcuts]: {
     type: WidgetId.CoreShortcuts,
-    density: 'detailed',
     showVersion: true,
     showChannel: true,
   },
@@ -285,9 +283,7 @@ export function normalizeWidgetConfigStorage(
             candidate === 'system' ||
             candidate === 'tun')) ||
         (key === 'order' &&
-          (candidate === 'system-first' || candidate === 'tun-first')) ||
-        (key === 'density' &&
-          (candidate === 'detailed' || candidate === 'compact'))
+          (candidate === 'system-first' || candidate === 'tun-first'))
       ) {
         Object.assign(config, { [key]: candidate })
       } else if (

@@ -1,4 +1,5 @@
 use crate::state::mutation::MutationCoordinator;
+use nyanpasu_core::migration::modules::clash_config::ClashConfigFormat;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -12,7 +13,6 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     client::application_workflow::mutation::ConfigDomain,
-    core::migration::modules::clash_config::ClashConfigFormat,
     state::{
         clash_config::{
             ClashConfigActor, ClashConfigActorArgs, ClashConfigActorMessage, ClashConfigSnapshot,

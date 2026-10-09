@@ -1,11 +1,8 @@
-use crate::log_err;
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 use snafu::{ResultExt as _, Snafu};
 use specta::Type;
 use std::{fs, ops::Deref, result::Result as StdResult, sync::Arc};
-use tauri::Manager;
-use tauri_specta::Event;
 
 /// What a storage operation failed with. Library causes stay in `source`
 /// (skipped on the wire); they reach the user only through the copied detail.
@@ -76,8 +73,7 @@ pub const NYANPASU_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("
 
 type Result<T> = StdResult<T, StorageOperationError>;
 
-/// storage is a wrapper or called a facade for the rocksdb
-/// Maybe provide a facade for a kv storage is a good idea?
+/// Redb persistence adapter for the application key-value store.
 #[derive(Clone)]
 pub struct Storage {
     inner: Arc<StorageInner>,
@@ -136,15 +132,6 @@ impl Deref for Storage {
 pub struct StorageInner {
     instance: redb::Database,
     tx: tokio::sync::broadcast::Sender<(String, Option<Vec<u8>>)>,
-}
-
-/// Event emitted to all windows when a storage value changes.
-/// Event name: `storage-value-changed-event`
-#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
-pub struct StorageValueChangedEvent {
-    pub key: String,
-    /// The new JSON-encoded value, or `None` if the key was removed.
-    pub value: Option<String>,
 }
 
 pub trait WebStorage {
@@ -217,7 +204,8 @@ impl StorageInner {
         });
     }
 
-    fn get_rx(&self) -> tokio::sync::broadcast::Receiver<(String, Option<Vec<u8>>)> {
+    /// Subscribes to committed key changes as raw JSON bytes, or `None` for removals.
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<(String, Option<Vec<u8>>)> {
         self.tx.subscribe()
     }
 }
@@ -326,26 +314,6 @@ impl WebStorage for StorageInner {
     }
 }
 
-pub fn register_web_storage_listener(app_handle: &tauri::AppHandle) {
-    let storage = app_handle.state::<Storage>();
-    let rx = storage.get_rx();
-    let app_handle = app_handle.clone();
-    std::thread::spawn(move || {
-        nyanpasu_utils::runtime::block_on(async {
-            let mut rx = rx;
-
-            while let Ok((key, value)) = rx.recv().await {
-                let value = value.map(|v| String::from_utf8_lossy(&v).to_string());
-                let event = StorageValueChangedEvent { key, value };
-                log_err!(
-                    event.emit(&app_handle),
-                    "failed to emit storage_value_changed event"
-                );
-            }
-        });
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,5 +331,27 @@ mod tests {
             matches!(&error, StorageOperationError::DecodeValue { key, .. } if key == "web:key"),
             "{error:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn subscribe_observes_committed_set_and_remove() {
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let storage =
+            StorageInner::try_new(&dir.path().join("storage.redb")).expect("storage should open");
+        let mut changes = storage.subscribe();
+
+        storage.set_item("web:key", &"text").unwrap();
+        assert_eq!(
+            changes.recv().await.unwrap(),
+            ("web:key".to_string(), Some(br#""text""#.to_vec()))
+        );
+        assert_eq!(
+            storage.get_item::<String>("web:key").unwrap(),
+            Some("text".to_string())
+        );
+
+        storage.remove_item("web:key").unwrap();
+        assert_eq!(changes.recv().await.unwrap(), ("web:key".to_string(), None));
+        assert_eq!(storage.get_item::<String>("web:key").unwrap(), None);
     }
 }

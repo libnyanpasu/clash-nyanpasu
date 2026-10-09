@@ -1,4 +1,4 @@
-use crate::core::storage::StorageOperationError;
+use nyanpasu_core::storage::StorageOperationError;
 
 pub type Result<T = ()> = std::result::Result<T, ClientError>;
 

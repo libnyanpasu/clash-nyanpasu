@@ -8,6 +8,7 @@
 //! way the convergence timer would, and its schedule is read back bracketed by
 //! the instants taken around the call that set it; nothing sleeps.
 
+use nyanpasu_core::migration::modules::application::ApplicationFormat;
 use std::{
     borrow::Cow,
     path::PathBuf,
@@ -65,16 +66,13 @@ use crate::{
         runtime,
         tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},
     },
-    core::{
-        actor_v2::{
-            CoreClient,
-            endpoint::{
-                ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
-                CoreSubmission, EndpointHandle, ExecutionHost,
-            },
-            service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
+    core::actor_v2::{
+        CoreClient,
+        endpoint::{
+            ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
+            CoreSubmission, EndpointHandle, ExecutionHost,
         },
-        migration::modules::application::ApplicationFormat,
+        service_actor::{ServiceClient, ServiceHostAdapter, ServicePhase},
     },
 };
 

@@ -25,7 +25,7 @@
     "es-toolkit": "1.52.0",
     "motion": "14.0.0",
     "radix-ui": "1.7.0",
-    "react-aria-components": "1.21.1"
+    "react-aria-components": "1.22.0"
   },
   "peerDependencies": {
     "react": "19.3.0",

@@ -857,6 +857,8 @@
   "dashboard_widget_traffic_report_refresh_error": "刷新失败，正在显示上次报告",
   "dashboard_widget_traffic_report_preview": "流量汇总将在此显示",
   "dashboard_widget_traffic_report_preview_ranking": "流量排行将在此显示",
+  "dashboard_widget_traffic_report_leading": "流量最多的项",
+  "dashboard_widget_traffic_report_total_label": "累计流量",
   "dashboard_widget_traffic_report_upload": "上行 {value}",
   "dashboard_widget_traffic_report_download": "下行 {value}",
   "dashboard_widget_traffic_report_no_traffic": "此范围内没有流量",

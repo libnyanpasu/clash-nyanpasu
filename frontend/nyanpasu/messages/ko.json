@@ -827,6 +827,8 @@
   "dashboard_widget_traffic_report_refresh_error": "새로고침 실패 · 마지막 보고서 표시 중",
   "dashboard_widget_traffic_report_preview": "여기에 트래픽 합계가 표시됩니다",
   "dashboard_widget_traffic_report_preview_ranking": "여기에 상위 트래픽이 표시됩니다",
+  "dashboard_widget_traffic_report_leading": "트래픽이 가장 많은 항목",
+  "dashboard_widget_traffic_report_total_label": "총 트래픽",
   "dashboard_widget_traffic_report_upload": "↑ {value}",
   "dashboard_widget_traffic_report_download": "↓ {value}",
   "dashboard_widget_traffic_report_no_traffic": "이 기간의 트래픽 없음",

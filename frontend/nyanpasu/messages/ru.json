@@ -827,6 +827,8 @@
   "dashboard_widget_traffic_report_refresh_error": "Не удалось обновить; показан последний отчёт",
   "dashboard_widget_traffic_report_preview": "Здесь появится объём трафика",
   "dashboard_widget_traffic_report_preview_ranking": "Здесь появится рейтинг трафика",
+  "dashboard_widget_traffic_report_leading": "Лидер по трафику",
+  "dashboard_widget_traffic_report_total_label": "Суммарный трафик",
   "dashboard_widget_traffic_report_upload": "↑ {value}",
   "dashboard_widget_traffic_report_download": "↓ {value}",
   "dashboard_widget_traffic_report_no_traffic": "За этот период трафика нет",

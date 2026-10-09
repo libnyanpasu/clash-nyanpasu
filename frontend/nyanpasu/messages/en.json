@@ -857,6 +857,8 @@
   "dashboard_widget_traffic_report_refresh_error": "Refresh failed; showing the last report",
   "dashboard_widget_traffic_report_preview": "Traffic totals appear here",
   "dashboard_widget_traffic_report_preview_ranking": "Top traffic sources appear here",
+  "dashboard_widget_traffic_report_leading": "Top traffic item",
+  "dashboard_widget_traffic_report_total_label": "Total traffic",
   "dashboard_widget_traffic_report_upload": "↑ {value}",
   "dashboard_widget_traffic_report_download": "↓ {value}",
   "dashboard_widget_traffic_report_no_traffic": "No traffic in this range",

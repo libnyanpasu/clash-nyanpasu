@@ -233,7 +233,7 @@ struct NyanpasuClientInner {
     proxies: crate::core::proxies::ProxiesClient,
     streams: nyanpasu_core::clash::ws::StreamsClient,
     traffic: Option<nyanpasu_core::traffic::TrafficClient>,
-    updater: crate::core::updater::UpdaterClient,
+    updater: nyanpasu_core::updates::kernel::UpdaterClient,
     core_versions: Arc<dyn CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
     system_dns: Arc<dyn SystemDnsCache>,
@@ -517,8 +517,8 @@ impl NyanpasuClient {
         if let Some(mutations) = mutations {
             mutations.connect(application_workflow.clone(), Arc::new(effects.clone()));
         }
-        let updater = crate::core::updater::UpdaterClient::spawn(
-            Arc::new(crate::core::updater::HttpUpdaterBackend::new(
+        let updater = nyanpasu_core::updates::kernel::UpdaterClient::spawn(
+            Arc::new(nyanpasu_core::updates::kernel::HttpUpdaterBackend::new(
                 std::env::current_exe()?
                     .parent()
                     .context("executable has no parent directory")?
@@ -850,7 +850,7 @@ impl NyanpasuClient {
 
     pub async fn fetch_latest_core_versions(
         &self,
-    ) -> Result<crate::core::updater::ManifestVersionLatest> {
+    ) -> Result<nyanpasu_core::updates::kernel::ManifestVersionLatest> {
         Ok(self.inner.updater.fetch_latest().await?)
     }
 
@@ -861,7 +861,10 @@ impl NyanpasuClient {
         Ok(self.inner.updater.update(core).await?)
     }
 
-    pub async fn inspect_updater(&self, id: usize) -> Result<crate::core::updater::UpdaterSummary> {
+    pub async fn inspect_updater(
+        &self,
+        id: usize,
+    ) -> Result<nyanpasu_core::updates::kernel::UpdaterSummary> {
         Ok(self.inner.updater.inspect(id).await?)
     }
 
@@ -1336,7 +1339,7 @@ impl NyanpasuClient {
 }
 
 #[async_trait::async_trait]
-impl crate::core::updater::ports::CoreUpdateInstaller
+impl nyanpasu_core::updates::kernel::ports::CoreUpdateInstaller
     for application_workflow::ApplicationWorkflowClient
 {
     async fn install(

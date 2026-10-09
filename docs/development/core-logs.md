@@ -28,7 +28,7 @@ Decode allocation and scan budgets use original sizes. Malformed envelopes, over
 To regenerate the preset with the locked Zstd version:
 
 ```sh
-cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features core::logs::codec::tests::regenerate_preset_dictionary -- --exact --ignored
+cargo test --manifest-path backend/Cargo.toml -p nyanpasu-core --all-features logs::codec::tests::regenerate_preset_dictionary -- --exact --ignored
 ```
 
 ## Memory and queries
@@ -50,10 +50,10 @@ Write or rotation/deletion failures stop saving new records, release the failed 
 Tests cover complete pagination, UTF-8 previews, scan continuation, lifecycle invalidation, controller rebinding, deletion after releasing database handles, startup cleanup after abrupt exit, write failures and memory use. Shared queries, details and clearing use the same typed errors over Tauri and HTTP RPC. The real HTTP browser fixture verifies 10,000 records and clearing across windows.
 
 ```sh
-cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features core::logs
+cargo test --manifest-path backend/Cargo.toml -p nyanpasu-core --all-features logs
 cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features core::clash::ws
 cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features unified_rpc::tests::browser_debug_page_and_real_rpc -- --exact --ignored --nocapture
-CORE_LOG_BENCH_BYTES=1024 cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features core::logs::tests::actor_memory_under_sustained_capture -- --exact --ignored --nocapture
+CORE_LOG_BENCH_BYTES=1024 cargo test --manifest-path backend/Cargo.toml -p nyanpasu-core --all-features logs::tests::actor_memory_under_sustained_capture -- --exact --ignored --nocapture
 ```
 
 The memory benchmark uses an isolated Linux process running the production actor, redb adapter and real page queries. It reports RSS, peak RSS and database bytes at 1,000, 10,000 and 100,000 records; these include test-process and allocator overhead rather than a complete desktop WebView. Repeat with `CORE_LOG_BENCH_BYTES=8192` for larger messages. Windows tests exercise deletion after releasing database handles and a rotation blocked by an external file handle. macOS still requires platform validation of file-lock release and lifecycle deletion.

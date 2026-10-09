@@ -136,11 +136,6 @@ pub struct CoreLogPage {
     pub status: CoreLogStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
-pub struct CoreLogsChanged {
-    pub status: CoreLogStatus,
-}
-
 pub fn normalize_level(level: &str) -> String {
     match level.to_ascii_lowercase().as_str() {
         "warning" => "warn".into(),

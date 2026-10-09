@@ -127,7 +127,7 @@ impl ApplicationWorkflow {
                         operation_id,
                         crate::client::core_lifecycle::apply::RuntimeApplyOptions {
                             interrupt_connections: Some(
-                                crate::core::connections::ConnectionScope::All,
+                                nyanpasu_core::connections::ConnectionScope::All,
                             ),
                         },
                     )

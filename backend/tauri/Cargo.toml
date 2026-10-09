@@ -41,7 +41,6 @@ nyanpasu-config = { path = '../nyanpasu-config' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
 nyanpasu-egui = { path = '../nyanpasu-egui' }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
-nyanpasu-geodata = { path = '../nyanpasu-geodata' }
 nyanpasu-panics = { path = '../nyanpasu-panics' }
 
 # Common Utilities
@@ -50,9 +49,7 @@ tokio-util = { version = '0.7', features = ['full'] }
 oneshot = '0.2'
 futures = '0.3'
 futures-util = '0.3'
-glob = '0.3.1'
 timeago = '0.6'
-memmap2 = '0.9'
 anyhow = '1.0'
 pretty_assertions = '1.4.0'
 chrono = { version = '0.4', features = ['serde'] }
@@ -121,8 +118,6 @@ serde_json = { version = '1.0', features = ['preserve_order'] }
 serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://github.com/libnyanpasu/serde-yaml-ng.git', rev = '363da138dc97f90ef0a356f971c2dc1d8fe04c9e', features = [
   'specta',
 ] }
-postcard = { version = '1.1', features = ['alloc'] }
-bytes = { version = '1', features = ['serde'] }
 semver = '1.0'
 
 # Compression & Encoding
@@ -161,10 +156,6 @@ fs_extra = '1.3.0'
 notify-debouncer-full = '0.7.0'
 notify = '8.0.0'
 
-# Database
-redb = '4.0.0'
-zstd = '0.14.0'
-
 # Logging & Tracing
 log = '0.4.20'
 tracing = { workspace = true }
@@ -177,8 +168,6 @@ tracing-subscriber = { version = '0.3', features = [
 ] }
 tracing-error = '0.2'
 tracing-log = { version = '0.2' }
-tracing-appender = { version = '0.2', features = ['parking_lot'] }
-flexi_logger = { version = '0.31', default-features = false }
 tracing-chrome = { version = '0.7', optional = true }
 dhat = { version = '0.3', optional = true }
 test-log = { workspace = true }

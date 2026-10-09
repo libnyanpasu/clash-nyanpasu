@@ -1,4 +1,3 @@
-use super::core::clash::ws::ClashConnectionsConnectorEvent;
 use crate::client::{
     effects::status::failure_text,
     ui_effects::ports::{
@@ -7,6 +6,7 @@ use crate::client::{
         StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,
     },
 };
+use nyanpasu_core::clash::ws::ClashConnectionsConnectorEvent;
 
 use nyanpasu_egui::{
     ipc::{

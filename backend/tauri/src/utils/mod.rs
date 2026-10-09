@@ -1,4 +1,3 @@
-pub mod candy;
 pub mod color;
 pub mod core_version;
 pub mod dialog;
@@ -11,8 +10,6 @@ pub mod profiling;
 pub mod proxy_env;
 pub mod resolve;
 // mod winhelp;
-
-pub mod net;
 
 pub mod open;
 

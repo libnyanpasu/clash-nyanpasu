@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
+use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
 use nyanpasu_egui::{ipc::WidgetIpcError, widget::StatisticWidgetVariant};
 use snafu::Snafu;
 use tokio::time::Instant;
@@ -37,20 +37,6 @@ impl TrayError {
     }
 }
 
-/// Why the running logger could not be reconfigured.
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
-pub enum LoggerError {
-    #[snafu(display("the logger reload thread has stopped"))]
-    ReloadThreadStopped,
-}
-
-impl LoggerError {
-    pub fn code(&self) -> EffectFailureCode {
-        EffectFailureCode::LoggerRefreshFailed
-    }
-}
-
 /// A tray rebuild (`refresh_full`) or a refresh of the parts that change with
 /// state (`refresh_part`), both rendered from `view`. Async because the
 /// concrete implementation has to reach the main thread to touch the tray at
@@ -60,29 +46,6 @@ impl LoggerError {
 pub trait TrayRefresher: Send + Sync + 'static {
     async fn refresh_full(&self, view: TrayView) -> Result<(), TrayError>;
     async fn refresh_part(&self, view: TrayView) -> Result<(), TrayError>;
-}
-
-/// How the log file is split and how many of its files are kept. The two
-/// limits change together because the file writer is rebuilt from both.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LogRotation {
-    pub max_files: usize,
-    /// Split the current file once it exceeds this many MiB.
-    pub max_file_size: u64,
-}
-
-/// Reconfigures the running logger.
-///
-/// The two `Option`s are the shape the underlying reload signal already has:
-/// `None` means "leave this half alone". The plan always carries both, but the
-/// port keeps the signal's own vocabulary so the adapter stays a pass-through.
-#[cfg_attr(test, mockall::automock)]
-pub trait LoggerRefresher: Send + Sync + 'static {
-    fn refresh(
-        &self,
-        level: Option<LoggingLevel>,
-        rotation: Option<LogRotation>,
-    ) -> Result<(), LoggerError>;
 }
 
 /// How long a widget stop waits for the widget to leave before it reports the

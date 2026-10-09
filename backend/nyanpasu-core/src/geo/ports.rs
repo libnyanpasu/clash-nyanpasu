@@ -71,18 +71,3 @@ pub trait CountryIndexSource: Send + Sync + 'static {
     /// when the returned guard drops.
     fn watch(&self, changed: OnChange) -> Result<Box<dyn Send>, GeoIndexError>;
 }
-
-/// A home without databases, for tests whose subject is not the index.
-#[cfg(test)]
-pub struct NoopCountryIndexSource;
-
-#[cfg(test)]
-impl CountryIndexSource for NoopCountryIndexSource {
-    fn load(&self, _: GeodataMode, _: Option<IndexKey>) -> Result<Loaded, GeoIndexError> {
-        Ok(Loaded::Missing)
-    }
-
-    fn watch(&self, _: OnChange) -> Result<Box<dyn Send>, GeoIndexError> {
-        Ok(Box::new(()))
-    }
-}

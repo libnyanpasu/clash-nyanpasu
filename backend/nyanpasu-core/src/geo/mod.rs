@@ -12,6 +12,6 @@ mod tests;
 pub use actor::GeoIndexArgs;
 pub use adapters::FsCountryIndexSource;
 pub use client::GeoIndexClient;
-pub use ports::CountryIndexSource;
 #[cfg(test)]
-pub use ports::{MockCountryIndexSource, NoopCountryIndexSource};
+pub use ports::MockCountryIndexSource;
+pub use ports::{CountryIndexSource, GeoIndexError, GeodataMode, IndexKey, Loaded, OnChange};

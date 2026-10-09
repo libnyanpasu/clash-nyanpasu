@@ -658,7 +658,7 @@ fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
 
 #[test]
 fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
-    let f = Fixture::with_monitor_subscription(
+    let mut f = Fixture::with_monitor_subscription(
         false,
         Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
         true,
@@ -666,7 +666,28 @@ fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
     tauri::async_runtime::block_on(async {
         // Every monitor fails before its authority-check timer is created.
         // Stop consumers and observe real revocation before counting reads.
-        f.client.inner._geo_index.stop_for_test().await.unwrap();
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let tasks = tokio_util::task::TaskTracker::new();
+        let stopped_geo = nyanpasu_core::geo::GeoIndexClient::spawn(
+            nyanpasu_core::geo::GeoIndexArgs {
+                source: Arc::new(crate::client::tests::NoopCountryIndexSource),
+                core: f.client.inner.core_api.clone(),
+            },
+            shutdown.clone(),
+            &tasks,
+        )
+        .await
+        .unwrap();
+        let mut geo_index = f.client.inner._geo_index.subscribe();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            shutdown.cancel();
+            tasks.close();
+            tasks.wait().await;
+            Arc::get_mut(&mut f.client.inner).unwrap()._geo_index = stopped_geo;
+            while geo_index.changed().await.is_ok() {}
+        })
+        .await
+        .expect("geo owner stops");
         f.client.inner.proxies.stop_for_test().await.unwrap();
         let api = f.client.inner.core_api.api_client().await.unwrap();
         api.cancelled().await;

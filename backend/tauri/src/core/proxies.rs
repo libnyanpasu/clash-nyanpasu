@@ -12,8 +12,10 @@ use seahash::SeaHasher;
 use tokio::{sync::watch, time::Instant};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use super::clash::proxies::Proxies;
-use nyanpasu_core::control::{CoreClient, api::ApiClient};
+use nyanpasu_core::{
+    clash::proxies::Proxies,
+    control::{CoreClient, api::ApiClient},
+};
 
 struct Snapshot {
     api: ApiClient,
@@ -228,8 +230,10 @@ impl State {
             .await?;
         // Keep every follow-up on the change's revocable source capability.
         let interruption =
-            match super::connections::ConnectionScope::for_proxy_change(strategy, group) {
-                Some(scope) => super::connections::interrupt_connections(&api, &scope).await,
+            match nyanpasu_core::connections::ConnectionScope::for_proxy_change(strategy, group) {
+                Some(scope) => {
+                    nyanpasu_core::connections::interrupt_connections(&api, &scope).await
+                }
                 None => Ok(()),
             };
         let mut degradations = Vec::new();

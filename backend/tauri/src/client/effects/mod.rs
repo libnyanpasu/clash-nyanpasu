@@ -6,17 +6,15 @@ use nyanpasu_core::effects::plan::ApplicationEffectInputs;
 pub mod plan;
 pub mod presentation;
 
-impl NyanpasuClient {
-    /// What the tray renders from the committed configuration, for the tray
-    /// to start from before the first tray effect reaches it.
-    pub fn tray_view(&self) -> TrayView {
-        let inputs = ApplicationEffectInputs::project(
-            &self.inner.application.snapshot().state,
-            &self.inner.clash_config.snapshot().state,
-            self.inner.ports.confirmed(),
-        );
-        presentation::tray_view(&inputs.app, &inputs.clash)
-    }
+/// What the tray renders from the committed configuration, for the tray
+/// to start from before the first tray effect reaches it.
+pub(crate) async fn tray_view(client: &NyanpasuClient) -> crate::client::Result<TrayView> {
+    let inputs = ApplicationEffectInputs::project(
+        &client.app_config_snapshot(),
+        &client.get_clash_config().await?,
+        client.session_ports(),
+    );
+    Ok(presentation::tray_view(&inputs.app, &inputs.clash))
 }
 
 #[cfg(test)]

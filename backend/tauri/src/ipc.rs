@@ -1763,6 +1763,8 @@ pub async fn clear_clash_ws_history(
 pub async fn subscribe_clash_connection_details(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
+    shutdown: tauri::State<'_, tokio_util::sync::CancellationToken>,
+    tasks: tauri::State<'_, tokio_util::task::TaskTracker>,
     subscriptions: tauri::State<
         '_,
         crate::core::clash::connection_details::ConnectionDetailSubscriptions,
@@ -1770,12 +1772,13 @@ pub async fn subscribe_clash_connection_details(
     on_frame: tauri::ipc::Channel<nyanpasu_core::clash::ws::ClashConnectionDetails>,
 ) -> Result<crate::core::clash::connection_details::SubscriptionId> {
     let receiver = client.subscribe_clash_connection_details();
-    let parent = client.shutdown_child_token();
+    let parent = shutdown.child_token();
     let (id, cancel) = subscriptions.register(&parent, window.label().to_string());
-    client.spawn_tracked(
+    tauri::async_runtime::spawn(nyanpasu_core::tasks::track_until_shutdown(
+        &tasks,
         &cancel,
         crate::core::clash::connection_details::forward_details(receiver, on_frame),
-    );
+    ));
     Ok(id)
 }
 
@@ -1888,54 +1891,72 @@ pub async fn set_release_channel(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_app_update_state(
-    client: State<'_, NyanpasuClient>,
+    updater: State<'_, crate::client::app_update::AppUpdateClient>,
 ) -> Result<crate::client::app_update::AppUpdateSnapshot> {
-    Ok(client.get_app_update_state().await?)
+    Ok(updater
+        .state()
+        .await
+        .map_err(crate::client::ClientError::Anyhow)?)
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn check_app_update(
-    client: State<'_, NyanpasuClient>,
+    updater: State<'_, crate::client::app_update::AppUpdateClient>,
 ) -> Result<crate::client::app_update::AppUpdateSnapshot> {
-    Ok(client.check_app_update().await?)
+    Ok(updater
+        .check()
+        .await
+        .map_err(crate::client::ClientError::Anyhow)?)
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn download_app_update(
-    client: State<'_, NyanpasuClient>,
+    updater: State<'_, crate::client::app_update::AppUpdateClient>,
 ) -> Result<crate::client::app_update::AppUpdateSnapshot> {
-    Ok(client.download_app_update().await?)
+    Ok(updater
+        .download()
+        .await
+        .map_err(crate::client::ClientError::Anyhow)?)
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn cancel_app_update_download(
-    client: State<'_, NyanpasuClient>,
+    updater: State<'_, crate::client::app_update::AppUpdateClient>,
 ) -> Result<crate::client::app_update::AppUpdateSnapshot> {
-    Ok(client.cancel_app_update_download().await?)
+    Ok(updater
+        .cancel_download()
+        .await
+        .map_err(crate::client::ClientError::Anyhow)?)
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn install_app_update(
-    client: State<'_, NyanpasuClient>,
+    updater: State<'_, crate::client::app_update::AppUpdateClient>,
 ) -> Result<crate::client::app_update::AppUpdateSnapshot> {
-    Ok(client.install_app_update().await?)
+    Ok(updater
+        .install()
+        .await
+        .map_err(crate::client::ClientError::Anyhow)?)
 }
 
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn discard_app_update_package(
-    client: State<'_, NyanpasuClient>,
+    updater: State<'_, crate::client::app_update::AppUpdateClient>,
 ) -> Result<crate::client::app_update::AppUpdateSnapshot> {
-    Ok(client.discard_app_update_package().await?)
+    Ok(updater
+        .discard()
+        .await
+        .map_err(crate::client::ClientError::Anyhow)?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -2302,16 +2323,16 @@ mod tests {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_debug_http_status(
-    client: State<'_, NyanpasuClient>,
+    debug_http: State<'_, crate::server::debug_http::HttpServerClient>,
 ) -> Result<crate::server::debug_http::DebugHttpStatus> {
-    Ok(client.debug_http_status().await?)
+    Ok(debug_http.status().await?)
 }
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_debug_http_enabled(
-    client: State<'_, NyanpasuClient>,
+    debug_http: State<'_, crate::server::debug_http::HttpServerClient>,
     enabled: bool,
 ) -> Result<crate::server::debug_http::DebugHttpStatus> {
-    Ok(client.set_debug_http_enabled(enabled).await?)
+    Ok(debug_http.set_enabled(enabled).await?)
 }

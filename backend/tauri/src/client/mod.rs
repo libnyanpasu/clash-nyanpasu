@@ -100,8 +100,6 @@ pub struct ClientSetupArgs {
     pub environment: Arc<dyn EnvironmentCollector>,
     pub device_info: Arc<dyn DeviceInfoSource>,
     pub logging: nyanpasu_core::logs::app::LoggingSetup,
-    pub http_frontend: Option<crate::server::debug_http::Frontend>,
-    pub http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
     pub paths: PathResolver,
     /// Opened by the composition root, which also manages the same instance
     /// for the storage commands.
@@ -110,10 +108,7 @@ pub struct ClientSetupArgs {
     /// Resolves the core binary a [`ClashCore`](nyanpasu_config::application::ClashCore)
     /// selects; production looks it up on disk, tests substitute a fixed spec.
     pub core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
-    pub ui_sink: Arc<dyn UiEventSink>,
-    /// Built after the active proxy-port source exists in the composition root.
-    pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
-    pub app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
+    pub invalidation: Option<Arc<dyn nyanpasu_core::effects::ports::EffectInvalidationSink>>,
     pub core_v2: CoreClientV2,
     pub service: ServiceClient,
     pub system_dns: Arc<dyn SystemDnsCache>,
@@ -123,7 +118,6 @@ pub struct ClientSetupArgs {
     pub binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
     pub core_versions: Arc<dyn CoreVersionReader>,
     pub effects: Arc<dyn nyanpasu_core::effects::ports::ApplicationEffectsPort>,
-    pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn nyanpasu_core::hotkey::AcceleratorValidator>,
     /// `None` disables traffic recording: the store could not be opened.
     pub traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
@@ -132,6 +126,12 @@ pub struct ClientSetupArgs {
     pub shutdown: tokio_util::sync::CancellationToken,
     /// Every owner the shutdown waits for.
     pub tasks: tokio_util::task::TaskTracker,
+}
+
+pub struct ClientSetupOutput {
+    pub client: NyanpasuClient,
+    pub application_settings: tokio::sync::watch::Receiver<NyanpasuAppConfig>,
+    pub self_proxy_port: Arc<dyn nyanpasu_core::network::SelfProxyPortSource>,
 }
 
 #[derive(Clone)]
@@ -213,7 +213,6 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
-    debug_http: crate::server::debug_http::HttpServerClient,
     installed_channel: ReleaseChannel,
     is_portable: bool,
     environment: Arc<dyn EnvironmentCollector>,
@@ -238,7 +237,6 @@ struct NyanpasuClientInner {
     traffic: Option<nyanpasu_core::traffic::TrafficClient>,
     updater: nyanpasu_core::updates::kernel::UpdaterClient,
     core_versions: Arc<dyn CoreVersionReader>,
-    app_updater: app_update::AppUpdateClient,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
     local_source: Arc<traffic::LocalSourceCache>,
@@ -247,7 +245,6 @@ struct NyanpasuClientInner {
     _geo_index: nyanpasu_core::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     effects: nyanpasu_core::effects::actor::EffectsClient,
-    window: Arc<dyn hotkey::ports::WindowControl>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
     accelerators: Arc<dyn nyanpasu_core::hotkey::AcceleratorValidator>,
@@ -258,7 +255,7 @@ struct NyanpasuClientInner {
 }
 
 impl NyanpasuClient {
-    pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
+    pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<ClientSetupOutput> {
         let ClientSetupArgs {
             jobs,
             installed_channel,
@@ -266,15 +263,11 @@ impl NyanpasuClient {
             environment,
             device_info,
             logging,
-            http_frontend,
-            http_routes,
             paths,
             storage,
             runtime_paths,
             core_specs,
-            ui_sink,
-            app_update_backend_factory,
-            app_update_event_sink,
+            invalidation,
             core_v2,
             service,
             system_dns,
@@ -284,7 +277,6 @@ impl NyanpasuClient {
             binary_installer,
             core_versions,
             effects,
-            window,
             accelerators,
             traffic_store,
             shutdown,
@@ -349,7 +341,9 @@ impl NyanpasuClient {
                     file_service as Arc<dyn ProfileFsPort>,
                 ))
             })?;
-        tauri::async_runtime::block_on(Self::with_parts(
+        let application_settings = application.subscribe_settings_changes();
+        let self_proxy_port = ports.clone() as Arc<dyn SelfProxyPortSource>;
+        let client = tauri::async_runtime::block_on(Self::with_parts(
             Some(wiring),
             installed_channel,
             is_portable,
@@ -369,9 +363,7 @@ impl NyanpasuClient {
             runtime_paths,
             core_specs,
             script_dirs,
-            ui_sink,
-            app_update_backend_factory,
-            app_update_event_sink,
+            invalidation,
             core_v2,
             service,
             system_dns,
@@ -381,14 +373,16 @@ impl NyanpasuClient {
             binary_installer,
             core_versions,
             effects,
-            window,
             accelerators,
-            http_frontend,
-            http_routes,
             traffic_store,
             shutdown,
             tasks,
-        ))
+        ))?;
+        Ok(ClientSetupOutput {
+            client,
+            application_settings,
+            self_proxy_port,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -412,9 +406,7 @@ impl NyanpasuClient {
         runtime_paths: RuntimePaths,
         core_specs: Arc<application_workflow::adapters::CoreSpecResolver>,
         script_dirs: nyanpasu_core::runtime::config::ScriptDirs,
-        ui_sink: Arc<dyn UiEventSink>,
-        app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
-        app_update_event_sink: Option<Arc<dyn app_update::AppUpdateEventSink>>,
+        invalidation: Option<Arc<dyn nyanpasu_core::effects::ports::EffectInvalidationSink>>,
         core_v2: CoreClientV2,
         service: ServiceClient,
         system_dns: Arc<dyn SystemDnsCache>,
@@ -424,25 +416,11 @@ impl NyanpasuClient {
         binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
         core_versions: Arc<dyn CoreVersionReader>,
         effects: Arc<dyn nyanpasu_core::effects::ports::ApplicationEffectsPort>,
-        window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn nyanpasu_core::hotkey::AcceleratorValidator>,
-        http_frontend: Option<crate::server::debug_http::Frontend>,
-        http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
         traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> anyhow::Result<Self> {
-        let debug_http =
-            crate::server::debug_http::HttpServerClient::spawn(http_frontend, http_routes).await?;
-        tasks.spawn({
-            let (http, token) = (debug_http.clone(), shutdown.child_token());
-            async move {
-                token.cancelled().await;
-                if let Err(error) = http.shutdown().await {
-                    tracing::warn!(%error, "debug HTTP server shutdown failed");
-                }
-            }
-        });
         let core_logs = nyanpasu_core::logs::CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
@@ -481,9 +459,7 @@ impl NyanpasuClient {
                         core_logs.clone(),
                     ),
                 ),
-                invalidation: Some(Arc::new(
-                    effects::presentation::TauriEffectInvalidationSink::new(ui_sink),
-                )),
+                invalidation,
                 initial: nyanpasu_core::effects::plan::ApplicationEffectInputs::project(
                     &application.snapshot().state,
                     &clash_config.snapshot().state,
@@ -538,58 +514,6 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
-        let app_config = application.snapshot().state;
-        let app_update_settings = app_update::AppUpdateSettings {
-            channel: app_config.release_channel.unwrap_or(installed_channel),
-            sources: app_config.update_sources.clone(),
-            auto_check: app_config.enable_auto_check_update,
-            auto_download: app_config.enable_auto_download_update,
-        };
-        let app_update_supported = app_update_backend_factory.is_some()
-            && !is_portable
-            && (cfg!(any(target_os = "windows", target_os = "macos"))
-                || (cfg!(target_os = "linux") && *crate::consts::IS_APPIMAGE));
-        let app_update_backend = app_update_backend_factory
-            .map(|factory| factory(ports.clone() as Arc<dyn SelfProxyPortSource>))
-            .unwrap_or_else(|| Arc::new(app_update::UnavailableAppUpdateBackend));
-        let app_update_events =
-            app_update_event_sink.unwrap_or_else(|| Arc::new(app_update::NoopAppUpdateEventSink));
-        let app_updater = app_update::AppUpdateClient::spawn(
-            app_update::AppUpdateArgs {
-                backend: app_update_backend,
-                events: app_update_events,
-                settings: app_update_settings,
-                supported: app_update_supported,
-                endpoints: crate::bundle::update_endpoints(
-                    app_config.release_channel.unwrap_or(installed_channel),
-                ),
-                shutdown: shutdown.child_token(),
-            },
-            &tasks,
-        )
-        .await?;
-        let mut application_settings = application.subscribe_settings_changes();
-        let settings_updater = app_updater.clone();
-        let settings_shutdown = shutdown.child_token();
-        tasks.spawn(async move {
-            loop {
-                tokio::select! {
-                    () = settings_shutdown.cancelled() => break,
-                    changed = application_settings.changed() => {
-                        if changed.is_err() {
-                            break;
-                        }
-                        let config = application_settings.borrow_and_update().clone();
-                        settings_updater.configure(app_update::AppUpdateSettings {
-                            channel: config.release_channel.unwrap_or(installed_channel),
-                            sources: config.update_sources,
-                            auto_check: config.enable_auto_check_update,
-                            auto_download: config.enable_auto_download_update,
-                        });
-                    }
-                }
-            }
-        });
         let proxies = crate::core::proxies::ProxiesClient::spawn(
             core_v2.clone(),
             shutdown.child_token(),
@@ -642,7 +566,6 @@ impl NyanpasuClient {
         };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
-                debug_http,
                 installed_channel,
                 is_portable,
                 environment,
@@ -667,14 +590,12 @@ impl NyanpasuClient {
                 traffic,
                 updater,
                 core_versions,
-                app_updater,
                 system_dns,
                 direct_egress,
                 local_source,
                 _geo_index: geo_index,
                 os_proxy,
                 effects,
-                window,
                 accelerators,
                 shutdown,
                 tasks,
@@ -686,22 +607,6 @@ impl NyanpasuClient {
         self.inner.environment.collect()
     }
 
-    pub async fn debug_http_status(
-        &self,
-    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
-        self.inner.debug_http.status().await
-    }
-    pub async fn set_debug_http_enabled(
-        &self,
-        enabled: bool,
-    ) -> anyhow::Result<crate::server::debug_http::DebugHttpStatus> {
-        self.inner.debug_http.set_enabled(enabled).await
-    }
-    pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
-        self.inner.debug_http.set_enabled(false).await?;
-        Ok(())
-    }
-
     pub async fn release_channel(&self) -> Result<ReleaseChannel> {
         Ok(self
             .inner
@@ -711,30 +616,6 @@ impl NyanpasuClient {
 
     pub fn installed_release_channel(&self) -> ReleaseChannel {
         self.inner.installed_channel
-    }
-
-    pub async fn get_app_update_state(&self) -> Result<app_update::AppUpdateSnapshot> {
-        Ok(self.inner.app_updater.state().await?)
-    }
-
-    pub async fn check_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
-        Ok(self.inner.app_updater.check().await?)
-    }
-
-    pub async fn download_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
-        Ok(self.inner.app_updater.download().await?)
-    }
-
-    pub async fn cancel_app_update_download(&self) -> Result<app_update::AppUpdateSnapshot> {
-        Ok(self.inner.app_updater.cancel_download().await?)
-    }
-
-    pub async fn install_app_update(&self) -> Result<app_update::AppUpdateSnapshot> {
-        Ok(self.inner.app_updater.install().await?)
-    }
-
-    pub async fn discard_app_update_package(&self) -> Result<app_update::AppUpdateSnapshot> {
-        Ok(self.inner.app_updater.discard().await?)
     }
 
     pub async fn set_release_channel(
@@ -2555,8 +2436,6 @@ pub(crate) mod tests {
             RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
             Arc::new(runtime_core_spec),
             nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
-            Arc::new(crate::client::event_sink::NoopUiEventSink),
-            None,
             None,
             core_v2,
             service,
@@ -2567,10 +2446,7 @@ pub(crate) mod tests {
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(MockCoreVersionReader::new()),
             Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
-            Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            None,
-            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -3019,7 +2895,7 @@ pub(crate) mod tests {
             .returning(|core| Err(CoreVersionError::CoreVersionNotReported { core }));
         let mut args = test_client_args_with_endpoint(&dir, Arc::new(IdleEndpoint));
         args.core_versions = Arc::new(reader);
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
         tauri::async_runtime::block_on(async {
             assert_eq!(
                 client
@@ -3068,15 +2944,11 @@ pub(crate) mod tests {
             environment: Arc::new(UnconfiguredEnvironmentCollector),
             device_info: Arc::new(FixedDeviceInfoSource),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
-            http_frontend: None,
-            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             storage,
             runtime_paths,
             core_specs: Arc::new(runtime_core_spec),
-            ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
-            app_update_backend_factory: None,
-            app_update_event_sink: None,
+            invalidation: None,
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
@@ -3086,9 +2958,6 @@ pub(crate) mod tests {
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             core_versions: Arc::new(MockCoreVersionReader::new()),
             effects: Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
-            // A mock rather than a no-op: a test that dispatches a window
-            // action without saying so should fail, not pass silently.
-            window: Arc::new(hotkey::ports::MockWindowControl::new()),
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -3203,7 +3072,7 @@ pub(crate) mod tests {
             };
             write_application_config(&args.paths.application_config_path(), &seed);
         }
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
         if !service_seed {
             let report = tauri::async_runtime::block_on(client.startup_reconcile());
             assert_eq!(
@@ -3422,8 +3291,6 @@ pub(crate) mod tests {
                 paths.scripts_dir().into_std_path_buf(),
                 paths.cache_dir().into_std_path_buf(),
             ),
-            Arc::new(crate::client::event_sink::NoopUiEventSink),
-            None,
             None,
             core_v2,
             service,
@@ -3434,10 +3301,7 @@ pub(crate) mod tests {
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(MockCoreVersionReader::new()),
             Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
-            Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-            None,
-            Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             None,
             tokio_util::sync::CancellationToken::new(),
             tokio_util::task::TaskTracker::new(),
@@ -3566,7 +3430,11 @@ pub(crate) mod tests {
             tokio_util::task::TaskTracker::new(),
         );
         let (core_v2, service) = test_v2_clients();
-        let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+        let ClientSetupOutput {
+            client,
+            mut application_settings,
+            self_proxy_port,
+        } = NyanpasuClient::try_new_with_args(ClientSetupArgs {
             jobs: std::thread::scope(|scope| {
                 scope
                     .spawn(|| {
@@ -3583,15 +3451,11 @@ pub(crate) mod tests {
             environment: Arc::new(UnconfiguredEnvironmentCollector),
             device_info: Arc::new(FixedDeviceInfoSource),
             logging: logs::test_setup(paths.app_logs_dir().into_std_path_buf()),
-            http_frontend: None,
-            http_routes: Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
             paths,
             storage,
             runtime_paths,
             core_specs: Arc::new(runtime_core_spec),
-            ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
-            app_update_backend_factory: None,
-            app_update_event_sink: None,
+            invalidation: None,
             core_v2,
             service,
             system_dns: Arc::new(NoopSystemDnsCache),
@@ -3601,9 +3465,6 @@ pub(crate) mod tests {
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             core_versions: Arc::new(MockCoreVersionReader::new()),
             effects: Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
-            // A mock rather than a no-op: a test that dispatches a window
-            // action without saying so should fail, not pass silently.
-            window: Arc::new(hotkey::ports::MockWindowControl::new()),
             // The real rule: a test that writes a hotkey the platform cannot
             // parse should fail here, exactly as the app would.
             accelerators: Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -3614,6 +3475,16 @@ pub(crate) mod tests {
         .expect("client should construct with typed config actors");
 
         assert!(client.is_portable());
+        assert_eq!(
+            serde_json::to_value(&*application_settings.borrow()).unwrap(),
+            serde_json::to_value(client.app_config_snapshot()).unwrap(),
+        );
+        assert!(Arc::ptr_eq(
+            &self_proxy_port,
+            &(client.inner.ports.clone() as Arc<dyn SelfProxyPortSource>),
+        ));
+        assert_eq!(self_proxy_port.mixed_port(), None);
+        assert_eq!(client.session_ports(), None);
 
         tauri::async_runtime::block_on(async {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
@@ -3623,6 +3494,15 @@ pub(crate) mod tests {
                 .await
                 .expect("typed app patch should succeed");
             assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+            application_settings.changed().await.unwrap();
+            assert_eq!(
+                serde_json::to_value(&*application_settings.borrow_and_update()).unwrap(),
+                serde_json::to_value(client.app_config_snapshot()).unwrap(),
+            );
+            assert_eq!(
+                self_proxy_port.mixed_port(),
+                client.session_ports().map(|ports| ports.mixed_port)
+            );
         });
     }
 
@@ -3748,7 +3628,8 @@ pub(crate) mod tests {
             &dir,
             endpoint.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
             client.update_core(ClashCore::ClashRs).await.unwrap();
@@ -3776,12 +3657,14 @@ pub(crate) mod tests {
             &dir_a,
             endpoint_a.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         let client_b = NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(
             &dir_b,
             endpoint_b.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         let default_core = NyanpasuAppConfig::default().core;
         tauri::async_runtime::block_on(async {
             endpoint_a.prime(&client_a).await;
@@ -3881,7 +3764,8 @@ pub(crate) mod tests {
             &dir,
             endpoint.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
             let uid = client
@@ -3952,7 +3836,7 @@ pub(crate) mod tests {
             ..Default::default()
         };
         write_application_config(&args.paths.application_config_path(), &seed);
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
         tauri::async_runtime::block_on(async {
             let report = client.startup_reconcile().await;
 
@@ -3983,7 +3867,8 @@ pub(crate) mod tests {
             &dir,
             endpoint.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
             let uid = client
@@ -4032,7 +3917,8 @@ pub(crate) mod tests {
             &dir,
             endpoint.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
             let uid = client
@@ -4064,7 +3950,8 @@ pub(crate) mod tests {
             &dir,
             endpoint.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         tauri::async_runtime::block_on(async {
             // Wait for the pump's very first read so the router's cached
             // projection is seeded with the endpoint's revision before
@@ -4121,7 +4008,8 @@ pub(crate) mod tests {
         let endpoint = TestControlEndpoint::succeeding();
         let client =
             NyanpasuClient::try_new_with_args(test_client_args_with_endpoint(&dir, endpoint))
-                .unwrap();
+                .unwrap()
+                .client;
         tauri::async_runtime::block_on(async {
             for _ in 0..100 {
                 if client.core_status().snapshot.is_some() {
@@ -4140,7 +4028,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
         let args = test_client_args_with_endpoint(&dir, endpoint.clone());
-        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
             let uid = client
@@ -4167,7 +4055,8 @@ pub(crate) mod tests {
             &dir,
             endpoint.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
 
         tauri::async_runtime::block_on(async {
             endpoint.prime(&client).await;
@@ -4566,8 +4455,6 @@ pub(crate) mod tests {
                 RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
                 Arc::new(runtime_core_spec),
                 nyanpasu_core::runtime::config::ScriptDirs::under(dir.path()),
-                Arc::new(crate::client::event_sink::NoopUiEventSink),
-                None,
                 None,
                 core_v2,
                 service,
@@ -4578,10 +4465,7 @@ pub(crate) mod tests {
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(MockCoreVersionReader::new()),
                 Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
-                Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
-                None,
-                Arc::new(|| anyhow::bail!("HTTP routes are unavailable")),
                 None,
                 tokio_util::sync::CancellationToken::new(),
                 tokio_util::task::TaskTracker::new(),
@@ -4872,7 +4756,8 @@ pub(crate) mod tests {
             &dir,
             endpoint.clone(),
         ))
-        .unwrap();
+        .unwrap()
+        .client;
         tauri::async_runtime::block_on(async {
             client.reconcile_core().await.unwrap();
             let uid = client

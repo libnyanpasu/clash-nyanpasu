@@ -108,10 +108,6 @@ pub trait AppUpdateBackend: Send + Sync + 'static {
     async fn install(&self, update: PreparedAppUpdate, package: VerifiedAppUpdate) -> Result<()>;
 }
 
-pub type BackendFactory = dyn Fn(Arc<dyn nyanpasu_core::network::SelfProxyPortSource>) -> Arc<dyn AppUpdateBackend>
-    + Send
-    + Sync;
-
 pub trait AppUpdateEventSink: Send + Sync + 'static {
     fn publish(&self, snapshot: AppUpdateSnapshot);
 }
@@ -120,34 +116,6 @@ pub(crate) mod adapters;
 mod progress;
 
 use progress::{ProgressSample, ProgressSampler, SAMPLE_INTERVAL};
-
-pub struct NoopAppUpdateEventSink;
-impl AppUpdateEventSink for NoopAppUpdateEventSink {
-    fn publish(&self, _snapshot: AppUpdateSnapshot) {}
-}
-
-pub struct UnavailableAppUpdateBackend;
-#[async_trait]
-impl AppUpdateBackend for UnavailableAppUpdateBackend {
-    async fn check(
-        &self,
-        _settings: &AppUpdateSettings,
-        _cancellation: CancellationToken,
-    ) -> Result<Option<PreparedAppUpdate>> {
-        Err(anyhow!("application updater is unavailable"))
-    }
-    async fn download(
-        &self,
-        _update: PreparedAppUpdate,
-        _cancellation: CancellationToken,
-        _progress: Arc<dyn Fn(AppUpdateDownloadProgress) + Send + Sync>,
-    ) -> Result<VerifiedAppUpdate> {
-        Err(anyhow!("application updater is unavailable"))
-    }
-    async fn install(&self, _update: PreparedAppUpdate, _package: VerifiedAppUpdate) -> Result<()> {
-        Err(anyhow!("application updater is unavailable"))
-    }
-}
 
 #[derive(Clone)]
 pub struct AppUpdateArgs {

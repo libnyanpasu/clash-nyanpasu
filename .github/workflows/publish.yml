@@ -35,10 +35,20 @@ jobs:
       discussions: write
     runs-on: ubuntu-latest
     steps:
+      # The RequireCI ruleset rejects GITHUB_TOKEN pushes to main; the release
+      # app is its bypass actor.
+      - name: Create release app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
       - name: Prepare Node

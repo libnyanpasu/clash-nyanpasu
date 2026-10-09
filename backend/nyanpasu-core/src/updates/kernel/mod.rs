@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use nyanpasu_config::application::ClashCore;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use serde::{Deserialize, Serialize};
-use shared::{CoreTypeMeta, get_arch};
+use shared::get_arch;
 use specta::Type;
 use std::{
     collections::HashMap,
@@ -12,11 +12,11 @@ use std::{
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 mod instance;
-pub(crate) mod ports;
+pub mod ports;
 mod shared;
-pub(crate) use instance::HttpUpdaterBackend;
-pub use instance::{UpdaterState, UpdaterSummary};
+pub use instance::{HttpUpdaterBackend, UpdaterState, UpdaterSummary};
 use ports::{CoreUpdateInstaller, UpdaterBackend, UpdaterProgress};
+pub use shared::CoreTypeMeta;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ManifestVersion {
@@ -156,11 +156,7 @@ enum Message {
     Fetched(Box<Result<(ManifestVersion, (String, Instant))>>),
     Start(ClashCore, RpcReplyPort<Result<usize>>),
     Inspect(usize, RpcReplyPort<Result<UpdaterSummary>>),
-    Progress(
-        usize,
-        UpdaterState,
-        Option<crate::core::download::DownloadStatus>,
-    ),
+    Progress(usize, UpdaterState, Option<crate::download::DownloadStatus>),
     Finished(usize, Result<()>),
     Prune(Instant),
 }
@@ -328,7 +324,7 @@ impl Actor for UpdaterActor {
                         summary: UpdaterSummary {
                             id,
                             state: UpdaterState::Idle,
-                            downloader: crate::core::download::DownloadStatus {
+                            downloader: crate::download::DownloadStatus {
                                 state: Default::default(),
                                 downloaded: 0,
                                 total: 0,
@@ -424,7 +420,7 @@ impl Drop for ClientInner {
     }
 }
 #[derive(Clone)]
-pub(crate) struct UpdaterClient(Arc<ClientInner>);
+pub struct UpdaterClient(Arc<ClientInner>);
 impl UpdaterClient {
     pub async fn spawn(
         backend: Arc<dyn UpdaterBackend>,
@@ -442,7 +438,7 @@ impl UpdaterClient {
             },
         )
         .await?;
-        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner(actor))))
     }
     async fn call<T: Send + 'static>(

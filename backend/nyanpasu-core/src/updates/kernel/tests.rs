@@ -1,7 +1,9 @@
 use super::*;
-use crate::core::download::{DownloadStatus, DownloaderState};
+use crate::{
+    download::{DownloadStatus, DownloaderState},
+    runtime::binary::PreparedCoreBinary,
+};
 use async_trait::async_trait;
-use nyanpasu_core::runtime::binary::PreparedCoreBinary;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::{Semaphore, mpsc};
 

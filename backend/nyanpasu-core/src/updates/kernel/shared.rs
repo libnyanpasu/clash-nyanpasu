@@ -16,7 +16,7 @@ pub(super) fn get_arch() -> anyhow::Result<&'static str> {
     }
 }
 
-pub(crate) enum CoreTypeMeta {
+pub enum CoreTypeMeta {
     ClashPremium(String),
     Mihomo(String),
     MihomoAlpha,

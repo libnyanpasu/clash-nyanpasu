@@ -1,12 +1,12 @@
-use nyanpasu_core::network::{ReqwestSpeedTestExt, parse_gh_url};
+use crate::network::{ReqwestSpeedTestExt, parse_gh_url};
 use std::{
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
 
+use crate::runtime::binary::PreparedCoreBinary;
 use async_trait::async_trait;
-use nyanpasu_core::runtime::binary::PreparedCoreBinary;
 use serde::Serialize;
 use specta::Type;
 #[cfg(target_family = "unix")]
@@ -19,7 +19,7 @@ use super::{
     ports::{UpdaterBackend, UpdaterProgress},
     shared::{self, CoreTypeMeta},
 };
-use crate::core::download::{DownloadSession, DownloadStatus};
+use crate::download::{DownloadSession, DownloadStatus};
 use nyanpasu_config::application::ClashCore;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
@@ -42,8 +42,8 @@ pub struct UpdaterSummary {
     pub downloader: DownloadStatus,
 }
 
-pub(crate) struct HttpUpdaterBackend {
-    proxy_port: Arc<dyn nyanpasu_core::network::SelfProxyPortSource>,
+pub struct HttpUpdaterBackend {
+    proxy_port: Arc<dyn crate::network::SelfProxyPortSource>,
     destination_dir: PathBuf,
     user_agent: String,
 }
@@ -51,7 +51,7 @@ pub(crate) struct HttpUpdaterBackend {
 impl HttpUpdaterBackend {
     pub fn new(
         destination_dir: PathBuf,
-        proxy_port: Arc<dyn nyanpasu_core::network::SelfProxyPortSource>,
+        proxy_port: Arc<dyn crate::network::SelfProxyPortSource>,
         user_agent: String,
     ) -> Self {
         Self {
@@ -93,7 +93,7 @@ impl UpdaterBackend for HttpUpdaterBackend {
             Some(cached) if cached.1.elapsed() < Duration::from_secs(3600) => cached,
             _ => {
                 let results = client.mirror_speed_test(
-                    nyanpasu_core::network::INTERNAL_MIRRORS,
+                    crate::network::INTERNAL_MIRRORS,
                     "https://github.com/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
                 ).await?;
                 let (mirror, speed) = results
@@ -281,7 +281,7 @@ fn extract_core(
 }
 
 fn verify_meow_version(core: ClashCore, expected: &str, banner: &str) -> anyhow::Result<()> {
-    let parsed = nyanpasu_core::runtime::version::parse_version(core, banner)?;
+    let parsed = crate::runtime::version::parse_version(core, banner)?;
     let actual = semver::Version::parse(parsed.strip_prefix('v').unwrap_or(&parsed))?;
     match core {
         ClashCore::Meow => {
@@ -312,7 +312,7 @@ mod tests {
 
     struct ProxyPort(std::sync::atomic::AtomicU16);
 
-    impl nyanpasu_core::network::SelfProxyPortSource for ProxyPort {
+    impl crate::network::SelfProxyPortSource for ProxyPort {
         fn mixed_port(&self) -> Option<u16> {
             Some(self.0.load(std::sync::atomic::Ordering::SeqCst))
         }

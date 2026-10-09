@@ -98,15 +98,6 @@ tokio-tungstenite = '0.30'
 url = '2'
 mime = '0.3'
 reqwest = { workspace = true }
-# Parallel/concurrent download engine. Our BoltLoadAdapter in `core::download`
-# reuses the configured reqwest client and classifies failures for retry.
-bolt-load = { version = '0.1', default-features = false, features = [
-  'tokio',
-  'serde',
-  'tracing',
-] }
-# the CancellationToken type required by bolt-load's TaskBuilder
-smol-cancellation-token = '0.1'
 urlencoding = '2.1'
 sysproxy = { workspace = true }
 
@@ -121,8 +112,6 @@ serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://githu
 semver = '1.0'
 
 # Compression & Encoding
-flate2 = '1.0'
-tar = '0.4'
 zip = '8.0.0'
 zip-extensions = '0.14.0'
 base64 = '0.23'

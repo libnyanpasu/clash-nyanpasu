@@ -21,6 +21,7 @@ import type {
   Usage,
   UsageGroup,
 } from '@nyanpasu/rpc/types'
+import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { WidgetComponentProps } from './consts'
 import { useWidgetConfig } from './provider'
@@ -42,6 +43,7 @@ import { WidgetTitle } from './widget-ui'
 
 const TRAFFIC_ROW_HEIGHT = 34
 const TRAFFIC_ROW_HEIGHT_WITH_DIRECTIONS = 52
+const EXIT_TRAFFIC_ROW_HEIGHT = 48
 
 type ReportDimension = 'origin' | 'exit' | 'target' | 'rule'
 type ReportIcon = ComponentType<{ className?: string }>
@@ -144,67 +146,69 @@ function ReportWidgetShell({
             </p>
           )}
           {children}
-          <div className="text-on-surface-variant border-outline-variant flex shrink-0 items-center justify-between gap-2 border-t pt-2 text-xs">
-            <div className="flex min-w-0 items-center">
-              <span
-                className={
-                  retentionLimited ? 'text-error truncate' : 'truncate'
-                }
-              >
-                {retention
-                  ? m.dashboard_widget_traffic_report_retention({
-                      value: retentionLabels[retention](),
-                    })
-                  : m.dashboard_widget_traffic_report_retention_unknown()}
-                {retentionLimited &&
-                  ` · ${m.dashboard_widget_traffic_report_retention_limited_short()}`}
-              </span>
-            </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="basic"
-                  className="size-7 shrink-0"
-                  icon
-                  aria-label={m.dashboard_widget_traffic_report_open()}
-                  asChild={!preview}
-                  disabled={preview}
+          {widgetType !== WidgetId.ExitTraffic && (
+            <div className="text-on-surface-variant border-outline-variant flex shrink-0 items-center justify-between gap-2 border-t pt-2 text-xs">
+              <div className="flex min-w-0 items-center">
+                <span
+                  className={
+                    retentionLimited ? 'text-error truncate' : 'truncate'
+                  }
                 >
-                  {preview ? (
-                    <OpenInNewRounded className="size-4" />
-                  ) : (
-                    <Link
-                      aria-disabled={!interactive}
-                      tabIndex={interactive ? 0 : -1}
-                      className={
-                        !interactive ? 'pointer-events-none opacity-50' : ''
-                      }
-                      onClick={(event) => {
-                        if (!interactive) event.preventDefault()
-                      }}
-                      to="/main/topology"
-                      search={{
-                        range,
-                        scope: 'all',
-                        filters: profile
-                          ? [{ d: 'profile', v: profile.uid }]
-                          : [],
-                        view: 'flow',
-                        metric: 'bytes',
-                        limit: 7,
-                      }}
-                      onPointerDown={(event) => event.stopPropagation()}
-                    >
+                  {retention
+                    ? m.dashboard_widget_traffic_report_retention({
+                        value: retentionLabels[retention](),
+                      })
+                    : m.dashboard_widget_traffic_report_retention_unknown()}
+                  {retentionLimited &&
+                    ` · ${m.dashboard_widget_traffic_report_retention_limited_short()}`}
+                </span>
+              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="basic"
+                    className="size-7 shrink-0"
+                    icon
+                    aria-label={m.dashboard_widget_traffic_report_open()}
+                    asChild={!preview}
+                    disabled={preview}
+                  >
+                    {preview ? (
                       <OpenInNewRounded className="size-4" />
-                    </Link>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {m.dashboard_widget_traffic_report_open()}
-              </TooltipContent>
-            </Tooltip>
-          </div>
+                    ) : (
+                      <Link
+                        aria-disabled={!interactive}
+                        tabIndex={interactive ? 0 : -1}
+                        className={
+                          !interactive ? 'pointer-events-none opacity-50' : ''
+                        }
+                        onClick={(event) => {
+                          if (!interactive) event.preventDefault()
+                        }}
+                        to="/main/topology"
+                        search={{
+                          range,
+                          scope: 'all',
+                          filters: profile
+                            ? [{ d: 'profile', v: profile.uid }]
+                            : [],
+                          view: 'flow',
+                          metric: 'bytes',
+                          limit: 7,
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <OpenInNewRounded className="size-4" />
+                      </Link>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {m.dashboard_widget_traffic_report_open()}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
         </CardContent>
       </Card>
     </WidgetItem>
@@ -311,12 +315,14 @@ function RankingRows({
   topN,
   showDirections,
   hideNames,
+  compact = false,
 }: {
   report: TrafficReport
   dimension: ReportDimension
   topN: number
   showDirections: boolean
   hideNames: boolean
+  compact?: boolean
 }) {
   const ranking = sliceTrafficRanking(report, dimension, topN)
   const { ref: listRef, height: listHeight } = useWidgetHeight<HTMLDivElement>()
@@ -328,6 +334,29 @@ function RankingRows({
     )
   }
   if (ranking.totalBytes === 0) {
+    if (dimension === 'exit') {
+      return (
+        <div
+          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center"
+          data-slot="widget-exit-traffic-empty"
+        >
+          <span
+            className="bg-secondary-container text-on-secondary-container flex size-14 shrink-0 items-center justify-center rounded-2xl"
+            aria-hidden="true"
+          >
+            <CallSplitRounded className="size-7" />
+          </span>
+          <div>
+            <p className="text-base font-medium">
+              {m.dashboard_widget_traffic_report_no_traffic()}
+            </p>
+            <p className="text-on-surface-variant mt-1 text-xs">
+              {m.dashboard_widget_exit_traffic_empty_hint()}
+            </p>
+          </div>
+        </div>
+      )
+    }
     return (
       <TrafficStatus>
         {m.dashboard_widget_traffic_report_no_traffic()}
@@ -342,37 +371,87 @@ function RankingRows({
     )
   }
 
-  const rowHeight = showDirections
-    ? TRAFFIC_ROW_HEIGHT_WITH_DIRECTIONS
-    : TRAFFIC_ROW_HEIGHT
+  const featured = dimension === 'exit' ? ranking.groups[0] : undefined
+  if (featured && ranking.distinct === 1 && ranking.otherCount === 0) {
+    return (
+      <ExitTrafficRow
+        group={featured}
+        totalBytes={ranking.totalBytes}
+        hideName={hideNames}
+        featured
+        expanded
+        compact={compact}
+        showDirections={showDirections}
+      />
+    )
+  }
+
+  const rowHeight = featured
+    ? EXIT_TRAFFIC_ROW_HEIGHT
+    : showDirections
+      ? TRAFFIC_ROW_HEIGHT_WITH_DIRECTIONS
+      : TRAFFIC_ROW_HEIGHT
   const visibleCount =
     listHeight == null
       ? 1
-      : Math.max(1, Math.floor((listHeight + 8) / rowHeight))
-  const visibleGroups = ranking.groups.slice(0, visibleCount)
+      : Math.max(
+          featured ? 0 : 1,
+          Math.floor((listHeight + (featured ? 0 : 8)) / rowHeight),
+        )
+  const visibleGroups = ranking.groups.slice(
+    featured ? 1 : 0,
+    visibleCount + (featured ? 1 : 0),
+  )
+  const displayedCount = visibleGroups.length + (featured ? 1 : 0)
   const otherUsage = ranking.groups
-    .slice(visibleGroups.length)
+    .slice(displayedCount)
     .reduce(
       (total, group) => addTrafficUsage(total, group.usage),
       ranking.other,
     )
-  const otherCount = Math.max(0, ranking.distinct - visibleGroups.length)
+  const otherCount = Math.max(0, ranking.distinct - displayedCount)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div
+      className={cn(
+        'flex min-h-0 flex-1 flex-col gap-2',
+        featured && 'overflow-y-auto',
+      )}
+    >
+      {featured && (
+        <ExitTrafficRow
+          group={featured}
+          totalBytes={ranking.totalBytes}
+          hideName={hideNames}
+          featured
+          compact={compact}
+          showDirections={showDirections}
+        />
+      )}
       <div ref={listRef} className="min-h-0 flex-1">
-        <div className="flex flex-col gap-2">
-          {visibleGroups.map((group, index) => (
-            <TrafficRankingRow
-              key={group.key}
-              dimension={dimension}
-              group={group}
-              index={index}
-              totalBytes={ranking.totalBytes}
-              showDirections={showDirections}
-              hideName={hideNames}
-            />
-          ))}
+        <div className={featured ? 'flex flex-col' : 'flex flex-col gap-2'}>
+          {visibleGroups.map((group, index) =>
+            featured ? (
+              <ExitTrafficRow
+                key={group.key}
+                group={group}
+                totalBytes={ranking.totalBytes}
+                hideName={hideNames}
+                featured={false}
+                showDirections={false}
+              />
+            ) : (
+              <TrafficRankingRow
+                key={group.key}
+                dimension={dimension}
+                group={group}
+                index={index}
+                totalBytes={ranking.totalBytes}
+                showDirections={showDirections}
+                hideName={hideNames}
+              />
+            ),
+          )}
         </div>
       </div>
       {otherCount > 0 && (
@@ -381,6 +460,120 @@ function RankingRows({
           count={otherCount}
           totalBytes={ranking.totalBytes}
         />
+      )}
+    </div>
+  )
+}
+
+function ExitTrafficRow({
+  group,
+  totalBytes,
+  hideName,
+  featured,
+  showDirections,
+  expanded = false,
+  compact = false,
+}: {
+  group: UsageGroup
+  totalBytes: number
+  hideName: boolean
+  featured: boolean
+  showDirections: boolean
+  expanded?: boolean
+  compact?: boolean
+}) {
+  const label = usageLabel('exit', group.key)
+  const name = hideName
+    ? m.dashboard_widget_traffic_report_hidden_name()
+    : label.text
+  const percent = trafficSharePercent(group.usage, totalBytes)
+  const share = percent === null ? '—' : `${percent.toFixed(1)}%`
+  const [value, unit] = parseTraffic(usageTotalBytes(group.usage))
+
+  if (!featured) {
+    return (
+      <div
+        className="flex h-12 min-w-0 items-center gap-3"
+        data-slot="widget-exit-traffic-row"
+      >
+        <span
+          className="bg-surface-variant text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-full"
+          aria-hidden="true"
+        >
+          <CallSplitRounded className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p
+            className="truncate text-sm font-medium"
+            title={hideName ? undefined : label.title}
+          >
+            {name}
+          </p>
+          <p className="text-on-surface-variant text-xs tabular-nums">
+            {m.dashboard_widget_traffic_report_share({
+              percent: percent?.toFixed(1) ?? '0',
+            })}
+          </p>
+        </div>
+        <span className="shrink-0 text-sm tabular-nums">
+          {value} {unit}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        'bg-surface-variant/30 text-on-surface flex flex-col gap-1 rounded-2xl px-4',
+        compact ? 'py-2' : 'py-3',
+        expanded ? 'min-h-0 flex-1 justify-between' : 'shrink-0',
+      )}
+      data-slot="widget-exit-traffic-featured"
+    >
+      {!compact && (
+        <p className="text-xs">{m.dashboard_widget_exit_traffic_leading()}</p>
+      )}
+      <p
+        className={cn(
+          'truncate font-medium',
+          compact ? 'text-sm' : 'text-base',
+        )}
+        title={hideName ? undefined : label.title}
+      >
+        {name}
+      </p>
+      <div className="flex items-baseline gap-2 tabular-nums">
+        <p
+          className={cn(
+            'min-w-0 flex-1 truncate',
+            compact ? 'text-2xl' : 'text-3xl',
+          )}
+        >
+          <span>{value}</span> <span className="text-sm">{unit}</span>
+        </p>
+        <span className="shrink-0 text-base">{share}</span>
+      </div>
+      <LinearProgress
+        value={percent ?? 0}
+        className="bg-on-surface/10 h-1.5"
+        aria-label={m.dashboard_widget_traffic_report_share({
+          percent: percent?.toFixed(1) ?? '0',
+        })}
+      />
+      {showDirections && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums">
+          <span>
+            {m.dashboard_widget_traffic_report_upload({
+              value: formatBytes(group.usage.bytes.upload),
+            })}
+          </span>
+          <span>
+            {m.dashboard_widget_traffic_report_download({
+              value: formatBytes(group.usage.bytes.download),
+            })}
+          </span>
+        </div>
       )}
     </div>
   )
@@ -505,11 +698,14 @@ function TrafficWidget({
   const retention = useDashboardTrafficRetention()
   const profile = useDashboardTrafficProfile(config.profileUid)
   const itemSize = displayItems.find((item) => item.id === id)
-  const minH = dimension ? 3 : 2
+  const minH = dimension && dimension !== 'exit' ? 3 : 2
+  const compact =
+    dimension === 'exit' && itemSize !== undefined && itemSize.h <= 2
   const preview = sourceOnly || isOverlay
   const expanded =
     itemSize !== undefined && (itemSize.w > 3 || itemSize.h > minH)
-  const showDirections = config.showDirections && (!dimension || expanded)
+  const showDirections =
+    config.showDirections && !compact && (!dimension || expanded)
 
   return (
     <ReportWidgetShell
@@ -540,6 +736,7 @@ function TrafficWidget({
                 topN={config.topN ?? 3}
                 showDirections={showDirections}
                 hideNames={config.hideNames ?? false}
+                compact={compact}
               />
             ) : (
               <RecentTrafficContent

@@ -802,6 +802,8 @@
   "dashboard_widget_recent_traffic_title": "최근 트래픽",
   "dashboard_widget_origin_traffic_title": "앱 트래픽",
   "dashboard_widget_exit_traffic_title": "출구 트래픽",
+  "dashboard_widget_exit_traffic_leading": "트래픽이 가장 많은 출구",
+  "dashboard_widget_exit_traffic_empty_hint": "트래픽이 기록되면 출구 분포가 여기에 표시됩니다",
   "dashboard_widget_target_traffic_title": "인기 대상",
   "dashboard_widget_rule_traffic_title": "규칙 트래픽",
   "dashboard_widget_traffic_report_range_last_hour": "최근 1시간",

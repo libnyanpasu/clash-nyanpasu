@@ -802,6 +802,8 @@
   "dashboard_widget_recent_traffic_title": "Недавний трафик",
   "dashboard_widget_origin_traffic_title": "Трафик приложений",
   "dashboard_widget_exit_traffic_title": "Трафик по выходам",
+  "dashboard_widget_exit_traffic_leading": "Выход с наибольшим трафиком",
+  "dashboard_widget_exit_traffic_empty_hint": "Распределение по выходам появится после записи трафика",
   "dashboard_widget_target_traffic_title": "Популярные адреса",
   "dashboard_widget_rule_traffic_title": "Трафик по правилам",
   "dashboard_widget_traffic_report_range_last_hour": "За последний час",

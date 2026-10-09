@@ -832,6 +832,8 @@
   "dashboard_widget_recent_traffic_title": "近期流量",
   "dashboard_widget_origin_traffic_title": "應用程式流量",
   "dashboard_widget_exit_traffic_title": "出口流量",
+  "dashboard_widget_exit_traffic_leading": "流量最多的出口",
+  "dashboard_widget_exit_traffic_empty_hint": "產生流量後，出口分布會顯示在這裡",
   "dashboard_widget_target_traffic_title": "熱門目標",
   "dashboard_widget_rule_traffic_title": "路由規則流量",
   "dashboard_widget_traffic_report_range_last_hour": "近 1 小時",

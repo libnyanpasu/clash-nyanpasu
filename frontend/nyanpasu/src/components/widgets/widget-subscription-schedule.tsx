@@ -415,7 +415,7 @@ function SubscriptionScheduleTarget({
                 to="/main/profiles/$type/detail/$uid"
                 params={{ type: 'profile', uid: profileUid }}
               >
-                {profileName}
+                <TextMarquee className="w-full">{profileName}</TextMarquee>
               </Link>
             </motion.div>
             {config.showRecentRuns && recentRunLimit > 0 && (
@@ -458,7 +458,7 @@ function SubscriptionScheduleTarget({
                       </span>
                       <time
                         dateTime={run.finished_at ?? undefined}
-                        className="text-on-surface-variant shrink-0 tabular-nums"
+                        className="text-on-surface-variant shrink-0 whitespace-nowrap tabular-nums"
                       >
                         {run.finished_at
                           ? formatDate(run.finished_at, 'MM-dd HH:mm')

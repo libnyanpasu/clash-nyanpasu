@@ -326,7 +326,9 @@ const CurrentCoreCard = ({
               title={currentCoreName || undefined}
               data-slot="core-name"
             >
-              {currentCoreName || '—'}
+              <TextMarquee className="w-full">
+                {currentCoreName || '—'}
+              </TextMarquee>
             </div>
             {config.showVersion && (
               <div
@@ -334,7 +336,9 @@ const CurrentCoreCard = ({
                 title={currentVersion}
                 data-slot="core-version"
               >
-                {currentVersion ?? '—'}
+                <TextMarquee className="w-full">
+                  {currentVersion ?? '—'}
+                </TextMarquee>
               </div>
             )}
           </div>

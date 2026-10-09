@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
@@ -312,7 +313,9 @@ function ProviderUpdatesLive({
                       >
                         <div className="min-w-0 flex-1">
                           {missing ? (
-                            <div className="truncate font-medium">{name}</div>
+                            <TextMarquee className="w-full font-medium">
+                              {name}
+                            </TextMarquee>
                           ) : (
                             <Link
                               aria-disabled={!canAct}
@@ -324,10 +327,12 @@ function ProviderUpdatesLive({
                               to={to}
                               params={{ key: name }}
                             >
-                              {name}
+                              <TextMarquee className="w-full">
+                                {name}
+                              </TextMarquee>
                             </Link>
                           )}
-                          <div className="text-on-surface-variant truncate">
+                          <TextMarquee className="text-on-surface-variant w-full">
                             {row
                               ? `${row.vehicleType ?? '—'} · ${row.type ?? '—'} · ${row.count ?? '—'} · ${formatRelativeTime(row.updatedAt, Date.now(), getLocale())}`
                               : missing
@@ -335,7 +340,7 @@ function ProviderUpdatesLive({
                                 : isLoading
                                   ? m.dashboard_widget_provider_updates_loading()
                                   : m.dashboard_widget_provider_updates_read_failed()}
-                          </div>
+                          </TextMarquee>
                         </div>
                         {row && (
                           <Button

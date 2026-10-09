@@ -9,6 +9,7 @@ import { ActionSwap, ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { LinearProgress } from '@nyanpasu/ui/progress'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
 import { usageLabel } from '@/utils/traffic-usage'
@@ -115,7 +116,7 @@ function ReportWidgetShell({
             <WidgetTitle className="flex-1" icon={Icon}>
               {title}
             </WidgetTitle>
-            <span className="text-on-surface-variant shrink-0 text-xs">
+            <span className="text-on-surface-variant shrink-0 text-xs whitespace-nowrap">
               {rangeLabels[range]()}
             </span>
           </div>
@@ -206,23 +207,25 @@ function RecentTrafficContent({
         {m.dashboard_widget_traffic_report_total_label()}
       </p>
       <p
-        className="text-3xl tabular-nums"
+        className="overflow-hidden text-3xl whitespace-nowrap tabular-nums"
         data-slot="widget-traffic-report-total"
       >
         {formatBytes(total)}
       </p>
       {showDirections && (
-        <div className="text-on-surface-variant flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums">
-          <span>
-            {m.dashboard_widget_traffic_report_upload({
-              value: formatBytes(report.total.bytes.upload),
-            })}
-          </span>
-          <span>
-            {m.dashboard_widget_traffic_report_download({
-              value: formatBytes(report.total.bytes.download),
-            })}
-          </span>
+        <div className="text-on-surface-variant min-w-0 text-xs tabular-nums">
+          <TextMarquee className="w-full">
+            <span className="mr-4">
+              {m.dashboard_widget_traffic_report_upload({
+                value: formatBytes(report.total.bytes.upload),
+              })}
+            </span>
+            <span>
+              {m.dashboard_widget_traffic_report_download({
+                value: formatBytes(report.total.bytes.download),
+              })}
+            </span>
+          </TextMarquee>
         </div>
       )}
       {total === 0 && (
@@ -421,20 +424,22 @@ function TrafficRankingRow({
           <Icon className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p
-            className="truncate text-sm font-medium"
+          <div
+            className="text-sm font-medium"
             title={hideName ? undefined : label.title}
           >
-            {name}
-          </p>
-          <p className="text-on-surface-variant text-xs tabular-nums">
-            {m.dashboard_widget_traffic_report_share({
-              percent: percent?.toFixed(1) ?? '0',
-            })}
-          </p>
+            <TextMarquee className="w-full">{name}</TextMarquee>
+          </div>
+          <div className="text-on-surface-variant text-xs tabular-nums">
+            <TextMarquee className="w-full">
+              {m.dashboard_widget_traffic_report_share({
+                percent: percent?.toFixed(1) ?? '0',
+              })}
+            </TextMarquee>
+          </div>
         </div>
         <ActionSwapText
-          className="shrink-0 text-sm tabular-nums"
+          className="shrink-0 text-sm whitespace-nowrap tabular-nums"
           value={`${value} ${unit}`}
         />
       </motion.div>
@@ -461,25 +466,24 @@ function TrafficRankingRow({
             : m.dashboard_widget_traffic_report_leading()}
         </p>
       )}
-      <ActionSwapText
-        className={cn(
-          'truncate font-medium',
-          compact ? 'text-xs' : 'text-base',
-        )}
+      <ActionSwap
+        className={cn('min-w-0 font-medium', compact ? 'text-xs' : 'text-base')}
         title={hideName ? undefined : label.title}
-        value={name}
-      />
+        contentKey={name}
+      >
+        <TextMarquee className="w-full">{name}</TextMarquee>
+      </ActionSwap>
       <div className="flex items-baseline gap-2 tabular-nums">
         <ActionSwap
           contentKey={`${value} ${unit}`}
           className={cn(
-            'min-w-0 flex-1 truncate',
+            'min-w-0 flex-1 truncate whitespace-nowrap',
             compact ? 'text-xl' : 'text-3xl',
           )}
         >
           <span>{value}</span> <span className="text-sm">{unit}</span>
         </ActionSwap>
-        <span className="shrink-0 text-base">{share}</span>
+        <span className="shrink-0 text-base whitespace-nowrap">{share}</span>
       </div>
       <LinearProgress
         value={percent ?? 0}
@@ -489,17 +493,19 @@ function TrafficRankingRow({
         })}
       />
       {showDirections && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums">
-          <span>
-            {m.dashboard_widget_traffic_report_upload({
-              value: formatBytes(group.usage.bytes.upload),
-            })}
-          </span>
-          <span>
-            {m.dashboard_widget_traffic_report_download({
-              value: formatBytes(group.usage.bytes.download),
-            })}
-          </span>
+        <div className="min-w-0 text-xs tabular-nums">
+          <TextMarquee className="w-full">
+            <span className="mr-4">
+              {m.dashboard_widget_traffic_report_upload({
+                value: formatBytes(group.usage.bytes.upload),
+              })}
+            </span>
+            <span>
+              {m.dashboard_widget_traffic_report_download({
+                value: formatBytes(group.usage.bytes.download),
+              })}
+            </span>
+          </TextMarquee>
         </div>
       )}
     </div>
@@ -524,8 +530,10 @@ function TrafficOtherRow({
           count: count.toLocaleString(),
         })}
       </span>
-      <span>{formatBytes(usageTotalBytes(usage))}</span>
-      <span className="w-10 text-right">
+      <span className="shrink-0 whitespace-nowrap">
+        {formatBytes(usageTotalBytes(usage))}
+      </span>
+      <span className="w-10 shrink-0 text-right whitespace-nowrap">
         {percent === null ? '—' : `${percent.toFixed(1)}%`}
       </span>
     </div>

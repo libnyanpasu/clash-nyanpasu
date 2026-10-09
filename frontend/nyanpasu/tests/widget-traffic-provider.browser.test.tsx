@@ -233,8 +233,62 @@ async function mount(
     queryClient.clear()
     rpc.dispose()
   })
-  return { view: rendered, controls, router }
+  return { view: rendered, controls, router, queryClient }
 }
+
+test('narrow ranking rows keep shares on one line and scroll long names', async ({
+  onTestFinished,
+}) => {
+  const { view, queryClient } = await mount(onTestFinished)
+  await expect.poll(() => reports.requests.length).toBe(1)
+  const query = queryClient
+    .getQueryCache()
+    .getAll()
+    .find((query) => {
+      const data = query.state.data as TrafficReport | undefined
+      return Array.isArray(data?.rankings)
+    })!
+  const data = query.state.data as TrafficReport
+  queryClient.setQueryData(query.queryKey, {
+    ...data,
+    rankings: data.rankings.map((ranking) => ({
+      ...ranking,
+      distinct: 3,
+      groups: [600, 300, 124].map((bytes, index) => ({
+        key: `/apps/very-long-process-name-for-narrow-widget-${index}.exe`,
+        usage: usage(bytes, 0),
+        current_rate: null,
+      })),
+    })),
+  } satisfies TrafficReport)
+  const card = view.container.querySelectorAll<HTMLElement>(
+    '[data-slot="widget-traffic-report-card"]',
+  )[1]
+  card.style.width = '240px'
+  card.style.height = '400px'
+  await expect
+    .poll(
+      () =>
+        card.querySelectorAll('[data-slot="widget-traffic-report-row"]').length,
+    )
+    .toBe(2)
+  await expect
+    .poll(() => card.querySelector('[data-slot="text-marquee-content-item"]'))
+    .not.toBeNull()
+  for (const row of card.querySelectorAll<HTMLElement>(
+    '[data-slot="widget-traffic-report-row"]',
+  )) {
+    const share = row.querySelectorAll<HTMLElement>(
+      '[data-slot="text-marquee"]',
+    )[1]
+    expect(share.clientHeight).toBeLessThanOrEqual(18)
+    expect(
+      getComputedStyle(row.querySelector('[data-slot="action-swap-text"]')!)
+        .whiteSpace,
+    ).toBe('nowrap')
+  }
+  expect(getComputedStyle(card.firstElementChild!).overflowY).toBe('hidden')
+})
 
 test('does not fetch traffic metadata when no report widgets are visible', async ({
   onTestFinished,

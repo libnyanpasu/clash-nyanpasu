@@ -6,7 +6,7 @@
 use snafu::Snafu;
 
 use super::ports::{HotkeyParseError, ShortcutError};
-use crate::client::effects::status::{EffectFailureCode, EffectHealth, failure_text};
+use nyanpasu_core::effects::status::{EffectFailureCode, EffectHealth, failure_text};
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]

@@ -11,7 +11,8 @@ use nyanpasu_egui::{ipc::WidgetIpcError, widget::StatisticWidgetVariant};
 use snafu::Snafu;
 use tokio::time::Instant;
 
-use crate::client::effects::{plan::TrayView, status::EffectFailureCode};
+use crate::client::effects::plan::TrayView;
+use nyanpasu_core::effects::status::EffectFailureCode;
 
 /// The process-wide i18n locale that the tray menu labels are rendered from.
 /// Setting it cannot fail.

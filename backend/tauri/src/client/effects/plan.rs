@@ -14,6 +14,10 @@ use nyanpasu_config::{
     },
     runtime::executor::ResolvedPortBindings,
 };
+use nyanpasu_core::{
+    effects::EffectKind,
+    system_proxy::{ProxyGuardDesired, SystemProxyDesired},
+};
 use struct_patch::Patch;
 
 /// The only configuration an effect may depend on.
@@ -160,55 +164,10 @@ impl ApplicationEffectInputs {
     }
 }
 
-/// Execution order of a plan. The ordering is load-bearing: the tray menu is
-/// rendered with the process-wide locale, and the proxy guard re-applies the
-/// system proxy value that the `SystemProxy` effect just installed.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    specta::Type,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum EffectKind {
-    Locale,
-    Logger,
-    CoreLogLevel,
-    CoreLogStorage,
-    AutoLaunch,
-    SystemProxy,
-    ProxyGuard,
-    Hotkeys,
-    Widget,
-    Tray,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayRefresh {
     Full,
     Part,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SystemProxyDesired {
-    pub enabled: bool,
-    pub bypass: String,
-    /// Resolved mixed port; `None` while the session has not resolved ports.
-    pub port: Option<u16>,
-    pub pac_url: Option<url::Url>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProxyGuardDesired {
-    pub enabled: bool,
-    pub interval: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

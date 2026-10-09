@@ -21,12 +21,24 @@ use self::{
     error::SystemProxyError,
     ports::OsProxyConfig,
 };
-use crate::client::effects::{
-    plan::{ProxyGuardDesired, SystemProxyDesired},
-    status::{EffectHealth, EffectRevision, EffectStatus},
-};
+use crate::effects::status::{EffectHealth, EffectRevision, EffectStatus};
 
 pub use self::actor::Args as SystemProxyArgs;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SystemProxyDesired {
+    pub enabled: bool,
+    pub bypass: String,
+    /// Resolved mixed port; `None` while the session has not resolved ports.
+    pub port: Option<u16>,
+    pub pac_url: Option<url::Url>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProxyGuardDesired {
+    pub enabled: bool,
+    pub interval: Duration,
+}
 
 /// What the actor currently holds. Nothing in the effect protocol needs it —
 /// that travels as [`EffectStatus`] — so today only the tests observe the
@@ -56,7 +68,7 @@ impl SystemProxyClient {
     pub async fn spawn(args: SystemProxyArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
         let shutdown = args.shutdown.clone();
         let (actor, _handle) = Actor::spawn(None, SystemProxyActor, args).await?;
-        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self { actor })
     }
 

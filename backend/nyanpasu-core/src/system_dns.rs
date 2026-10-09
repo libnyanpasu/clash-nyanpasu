@@ -104,17 +104,6 @@ fn ensure_success(
     Ok(())
 }
 
-#[cfg(test)]
-#[derive(Debug, Default)]
-pub struct NoopSystemDnsCache;
-
-#[cfg(test)]
-impl SystemDnsCache for NoopSystemDnsCache {
-    fn flush(&self) -> Result<(), SystemDnsError> {
-        Ok(())
-    }
-}
-
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests {
     use super::{WINDOWS_ARGS, WINDOWS_PROGRAM};

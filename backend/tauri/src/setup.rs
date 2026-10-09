@@ -8,8 +8,8 @@ use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
 use crate::client::{
-    ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
-    TauriMainThread, TauriUiEventSink,
+    ClientSetupArgs, MainThreadExecutor, NyanpasuClient, RuntimePaths, TauriMainThread,
+    TauriUiEventSink,
     effects::executor::ApplicationEffectExecutor,
     hotkey::{
         HotkeyArgs, HotkeyClient,
@@ -19,17 +19,21 @@ use crate::client::{
         },
         ports::HotkeyAction,
     },
-    system_proxy::{
-        SystemProxyArgs, SystemProxyClient,
-        adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
-        ports::OsProxyPort,
-    },
+    system_proxy_adapters::{AutoLaunchBackend, AutoLaunchConfig},
     ui_effects::{
         adapters::{RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController},
         ports::LocaleSink,
     },
 };
 use anyhow::Context;
+use nyanpasu_core::{
+    system_dns::OsSystemDnsCache,
+    system_proxy::{
+        SystemProxyArgs, SystemProxyClient,
+        adapters::{HttpPacBackend, SysproxyOsProxy},
+        ports::OsProxyPort,
+    },
+};
 use nyanpasu_traffic::{RedbTrafficStore, TrafficStore};
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};

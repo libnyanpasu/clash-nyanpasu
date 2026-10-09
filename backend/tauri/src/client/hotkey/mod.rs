@@ -34,13 +34,10 @@ use self::{
 };
 use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
 
-use super::{
-    NyanpasuClient, Result,
-    effects::{
-        plan::EffectKind,
-        status::{EffectHealth, EffectRevision, EffectStatus},
-    },
-    runtime::MutationOutcome,
+use super::{NyanpasuClient, Result, runtime::MutationOutcome};
+use nyanpasu_core::effects::{
+    EffectKind,
+    status::{EffectHealth, EffectRevision, EffectStatus},
 };
 
 pub use self::actor::Args as HotkeyArgs;

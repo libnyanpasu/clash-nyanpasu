@@ -11,14 +11,14 @@ use std::{
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
-    SystemProxyArgs, SystemProxyClient,
+    ProxyGuardDesired, SystemProxyArgs, SystemProxyClient, SystemProxyDesired,
     ports::{
         AutoLaunchError, AutoLaunchPort, MockAutoLaunchPort, MockOsProxyPort, MockPacPort,
         OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort,
     },
 };
-use crate::client::effects::{
-    plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
+use crate::effects::{
+    EffectKind,
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
 };
 

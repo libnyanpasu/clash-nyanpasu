@@ -6,12 +6,10 @@
 
 use nyanpasu_config::runtime::executor::ResolvedPortBindings;
 
+use super::plan::ApplicationEffectPlan;
 #[cfg(test)]
-use super::status::EffectHealth;
-use super::{
-    plan::ApplicationEffectPlan,
-    status::{EffectRevision, EffectStatus},
-};
+use nyanpasu_core::effects::status::EffectHealth;
+use nyanpasu_core::effects::status::{EffectRevision, EffectStatus};
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
@@ -97,7 +95,7 @@ pub(crate) trait CommitNotifications: Send + Sync + 'static {
     fn application_committed(
         &self,
         fields: super::plan::ApplicationEffectFields,
-        requested: Vec<super::plan::EffectKind>,
+        requested: Vec<nyanpasu_core::effects::EffectKind>,
     );
 
     /// The clash config owner, once its commit has settled.
@@ -124,7 +122,7 @@ impl CommitNotifications for NoopCommitNotifications {
     fn application_committed(
         &self,
         _: super::plan::ApplicationEffectFields,
-        _: Vec<super::plan::EffectKind>,
+        _: Vec<nyanpasu_core::effects::EffectKind>,
     ) {
     }
 

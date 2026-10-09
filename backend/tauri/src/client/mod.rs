@@ -1,4 +1,8 @@
-use nyanpasu_core::network::SelfProxyPortSource;
+use nyanpasu_core::{
+    network::SelfProxyPortSource,
+    system_dns::{SystemDnsCache, SystemDnsError},
+    system_proxy,
+};
 use nyanpasu_paths::PathResolver;
 mod app_lifecycle;
 pub mod app_update;
@@ -19,6 +23,8 @@ pub mod hotkey;
 pub(crate) mod jobs;
 pub mod logs;
 mod main_thread;
+#[cfg(test)]
+mod platform_test_support;
 mod ports;
 pub mod profiles;
 pub mod runtime;
@@ -26,8 +32,7 @@ pub mod runtime_error;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
 mod session_state;
-mod system_dns;
-pub mod system_proxy;
+pub mod system_proxy_adapters;
 mod traffic;
 pub mod ui_effects;
 
@@ -87,9 +92,6 @@ pub use main_thread::MainThreadExecutor;
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 pub use runtime_error::RuntimeError;
-#[cfg(test)]
-pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
-pub use system_dns::{OsSystemDnsCache, SystemDnsCache, SystemDnsError};
 pub struct ClientSetupArgs {
     pub jobs: nyanpasu_jobs::JobsClient,
     pub installed_channel: ReleaseChannel,
@@ -924,7 +926,7 @@ impl NyanpasuClient {
 
     pub fn retry_effect_now(
         &self,
-        kind: effects::plan::EffectKind,
+        kind: nyanpasu_core::effects::EffectKind,
     ) -> std::result::Result<(), effects::error::EffectsError> {
         self.inner.effects.retry_now(kind)
     }
@@ -1354,7 +1356,7 @@ impl nyanpasu_core::updates::kernel::ports::CoreUpdateInstaller
 pub(crate) mod tests {
     use super::*;
     use crate::{
-        client::system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError, OsProxyPort},
+        client::platform_test_support::{MockOsProxyPort, MockSystemDnsCache, NoopSystemDnsCache},
         state::profiles::{
             error::SubscriptionFetchError,
             ports::{
@@ -1377,6 +1379,7 @@ pub(crate) mod tests {
         control::endpoint::ExecutionHost,
         geo::{CountryIndexSource, GeoIndexError, GeodataMode, IndexKey, Loaded, OnChange},
         runtime::version::CoreVersionError,
+        system_proxy::ports::{OsProxyConfig, OsProxyError, OsProxyPort},
     };
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;

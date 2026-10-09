@@ -14,7 +14,7 @@ use super::{
         HotkeyParseError, MockHotkeyActionSink, ShortcutError, ShortcutRegistrar,
     },
 };
-use crate::client::effects::status::{EffectFailureCode, EffectHealth, EffectRevision};
+use nyanpasu_core::effects::status::{EffectFailureCode, EffectHealth, EffectRevision};
 
 fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()

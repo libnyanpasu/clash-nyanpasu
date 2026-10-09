@@ -72,7 +72,7 @@ pub trait OsProxyPort: Send + Sync + 'static {
 /// Why the autostart entry could not be addressed, read or written. Library
 /// causes are boxed for the same reason as in [`OsProxyError`].
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 pub enum AutoLaunchError {
     #[snafu(display("could not locate the running executable"))]
     LocateExecutable { source: std::io::Error },

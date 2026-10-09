@@ -13,14 +13,17 @@ use super::{
     error::{EffectsError, EffectsStoppedSnafu},
     plan::{
         ApplicationEffect, ApplicationEffectFields, ApplicationEffectInputs, ApplicationEffectPlan,
-        ClashEffectFields, EffectKind, TrayRefresh,
+        ClashEffectFields, TrayRefresh,
     },
     ports::{ApplicationEffectsPort, CommitNotifications},
-    status::{EffectHealth, EffectRevision, EffectStatus},
 };
 use crate::client::{
     UiEventSink,
     convergence::{ConvergenceHealth, RetryBudget},
+};
+use nyanpasu_core::effects::{
+    EffectKind,
+    status::{EffectHealth, EffectRevision, EffectStatus},
 };
 
 #[derive(Clone, Debug, Default)]

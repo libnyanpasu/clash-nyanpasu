@@ -1,5 +1,5 @@
-//! Consumer-owned ports for the profiles actor (design §7, D10). Concrete
-//! implementations live in `crate::service::profile_file`.
+//! Consumer-owned ports for profiles (design §7, D10). Concrete
+//! implementations live in `super::profile_file`.
 
 use nyanpasu_config::profile::{
     ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions, SubscriptionInfo,
@@ -59,19 +59,19 @@ pub trait SubscriptionFetcher: Send + Sync + 'static {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum MaterializationResource {
+pub enum MaterializationResource {
     File { content: String },
     Symlink { target: ExternalProfilePath },
 }
 
 /// Opaque durable transaction handle. Phase and storage paths stay adapter-owned.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PreparedMaterialization {
+pub struct PreparedMaterialization {
     operation_id: String,
 }
 
 impl PreparedMaterialization {
-    pub(crate) fn new(operation_id: String) -> Self {
+    pub fn new(operation_id: String) -> Self {
         Self { operation_id }
     }
 
@@ -82,12 +82,12 @@ impl PreparedMaterialization {
 
 /// Opaque durable cleanup handle. Phase and storage paths stay adapter-owned.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PreparedCleanup {
+pub struct PreparedCleanup {
     operation_id: String,
 }
 
 impl PreparedCleanup {
-    pub(crate) fn new(operation_id: String) -> Self {
+    pub fn new(operation_id: String) -> Self {
         Self { operation_id }
     }
 
@@ -97,7 +97,7 @@ impl PreparedCleanup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CleanupOutcome {
+pub enum CleanupOutcome {
     Removed,
     AlreadyAbsent,
     FencedActivePath,
@@ -106,20 +106,20 @@ pub(crate) enum CleanupOutcome {
 
 /// Internal degradation details. S08 owns any public IPC representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProfileDegradation {
+pub struct ProfileDegradation {
     pub phase: ProfileDegradationPhase,
     pub code: ProfileDegradationCode,
     pub message: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProfileDegradationPhase {
+pub enum ProfileDegradationPhase {
     Cleanup,
     Reconcile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProfileDegradationCode {
+pub enum ProfileDegradationCode {
     JournalInvalid,
     MaterializationDeferred,
     CleanupDeferred,
@@ -127,7 +127,7 @@ pub(crate) enum ProfileDegradationCode {
 
 impl ProfileDegradationCode {
     /// Retryability is derived from the code, not stored per instance.
-    pub(crate) const fn retryable(self) -> bool {
+    pub const fn retryable(self) -> bool {
         match self {
             Self::JournalInvalid => false,
             Self::MaterializationDeferred | Self::CleanupDeferred => true,
@@ -136,7 +136,7 @@ impl ProfileDegradationCode {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct MaterializationReconcileReport {
+pub struct MaterializationReconcileReport {
     pub discarded: usize,
     pub promoted: usize,
     pub completed: usize,
@@ -146,7 +146,7 @@ pub(crate) struct MaterializationReconcileReport {
     pub degradations: Vec<ProfileDegradation>,
 }
 
-/// Crate-internal transactional materialization and durable cleanup. Blocking
+/// Transactional materialization and durable cleanup. Blocking
 /// callers must invoke this port through `spawn_blocking` from the actor layer.
 ///
 /// Preparation receives the durable `Profiles::revision` that will be committed
@@ -160,7 +160,7 @@ pub(crate) struct MaterializationReconcileReport {
 /// - cleanup: prepare(next) -> state CAS -> activate -> retry;
 /// - recovery: reconcile(loaded profiles) before watchers or mutations.
 #[cfg_attr(test, mockall::automock)]
-pub(crate) trait ProfileMaterializationPort: Send + Sync + 'static {
+pub trait ProfileMaterializationPort: Send + Sync + 'static {
     fn prepare_state_first(
         &self,
         path: &ManagedProfilePath,

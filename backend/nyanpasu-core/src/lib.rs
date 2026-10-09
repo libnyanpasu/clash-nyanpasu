@@ -14,6 +14,7 @@ pub mod icons;
 pub mod logs;
 pub mod migration;
 pub mod network;
+pub mod profiles;
 pub mod runtime;
 pub mod service;
 pub mod state;

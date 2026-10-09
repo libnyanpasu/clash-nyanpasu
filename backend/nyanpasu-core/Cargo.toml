@@ -73,6 +73,10 @@ serde = { version = '1.0', features = ['derive'] }
 postcard = { version = '1.1', features = ['alloc'] }
 bytes = { version = '1', features = ['serde'] }
 atomicwrites = '0.4.4'
+backon = { version = '1.0.1', features = ['tokio-sleep'] }
+nanoid = '0.5.0'
+base64 = '0.23'
+percent-encoding = '2.3.1'
 camino = { version = '1.1.9', features = ['serde1'] }
 fs-err = { workspace = true }
 hex = '0.4'

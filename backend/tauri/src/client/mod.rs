@@ -1,5 +1,9 @@
 use nyanpasu_core::{
     network::SelfProxyPortSource,
+    profiles::{
+        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+        profile_file::ProfileFileService,
+    },
     system_dns::{SystemDnsCache, SystemDnsError},
     system_proxy,
 };
@@ -41,14 +45,10 @@ use self::{
     application::ApplicationClient, clash_config::ClashConfigClient,
     session_state::SessionStateClient,
 };
-use crate::{
-    service::profile_file::ProfileFileService,
-    state::profiles::{
-        CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
-        ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
-        ReorderOp,
-        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
-    },
+use crate::state::profiles::{
+    CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
+    ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
+    ReorderOp,
 };
 use anyhow::Context as _;
 use nyanpasu_config::{
@@ -1320,7 +1320,7 @@ impl NyanpasuClient {
         )?;
         match &item.definition {
             ProfileDefinition::Config { .. } => Ok(snafu::ResultExt::context(
-                crate::service::profile_file::normalize_yaml_document(&raw),
+                nyanpasu_core::profiles::profile_file::normalize_yaml_document(&raw),
                 ProfileFileNotYamlSnafu { uid },
             )?),
             ProfileDefinition::Transform { .. } => Ok(raw),
@@ -1364,13 +1364,9 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         client::platform_test_support::{MockOsProxyPort, MockSystemDnsCache, NoopSystemDnsCache},
-        state::profiles::{
-            error::SubscriptionFetchError,
-            ports::{
-                CleanupOutcome, MaterializationReconcileReport, MockProfileFsPort,
-                MockProfileMaterializationPort, MockSubscriptionFetcher, PreparedCleanup,
-                PreparedMaterialization, ProfileMaterializationPort,
-            },
+        state::profiles::test_support::{
+            MockProfileFsPort, MockProfileMaterializationPort, MockSubscriptionFetcher,
+            mock_subscription_fetch_error,
         },
     };
     use camino::Utf8PathBuf;
@@ -1385,6 +1381,10 @@ pub(crate) mod tests {
     use nyanpasu_core::{
         control::endpoint::ExecutionHost,
         geo::{CountryIndexSource, GeoIndexError, GeodataMode, IndexKey, Loaded, OnChange},
+        profiles::ports::{
+            CleanupOutcome, MaterializationReconcileReport, PreparedCleanup,
+            PreparedMaterialization, ProfileMaterializationPort,
+        },
         runtime::version::CoreVersionError,
         system_proxy::ports::{OsProxyConfig, OsProxyError, OsProxyPort},
     };
@@ -4185,7 +4185,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(nyanpasu_core::profiles::ports::FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 // No server name: exercises the url last-segment fallback below.
@@ -4232,14 +4232,14 @@ pub(crate) mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             if counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 2 {
-                Ok(crate::state::profiles::ports::FetchedSubscription {
+                Ok(nyanpasu_core::profiles::ports::FetchedSubscription {
                     content: "proxies: []\n".into(),
                     subscription: SubscriptionInfo::default(),
                     filename: None,
                     suggested_update_interval_minutes: None,
                 })
             } else {
-                Err(SubscriptionFetchError::mock())
+                Err(mock_subscription_fetch_error())
             }
         });
         tauri::async_runtime::block_on(async {
@@ -4297,7 +4297,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(nyanpasu_core::profiles::ports::FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -4397,7 +4397,7 @@ pub(crate) mod tests {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
             .expect_fetch()
-            .returning(|_, _| Err(SubscriptionFetchError::mock()));
+            .returning(|_, _| Err(mock_subscription_fetch_error()));
         // A failed import never reaches core apply, so the bridge expects nothing.
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
@@ -4637,7 +4637,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().times(1).returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(nyanpasu_core::profiles::ports::FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
@@ -4787,7 +4787,7 @@ pub(crate) mod tests {
     fn ok_fetch_without_name() -> MockSubscriptionFetcher {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(|_, _| {
-            Ok(crate::state::profiles::ports::FetchedSubscription {
+            Ok(nyanpasu_core::profiles::ports::FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,

@@ -23,6 +23,7 @@ import { useWidgetConfig } from './provider'
 import { useWidgetHeight } from './use-widget-height'
 import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetTitle } from './widget-ui'
 
 const PROVIDER_ROW_HEIGHT = 44
 
@@ -50,10 +51,9 @@ function ProviderUpdatesPreview({ id, onCloseClick }: WidgetComponentProps) {
     >
       <Card className="size-full" data-slot="widget-provider-updates-card">
         <CardContent className="flex size-full flex-col gap-3">
-          <div className="flex items-center gap-2 font-bold">
-            <CloudSyncRounded className="size-5" />
+          <WidgetTitle icon={CloudSyncRounded}>
             {m.dashboard_widget_provider_updates_title()}
-          </div>
+          </WidgetTitle>
           <p className="text-on-surface-variant text-sm">
             {m.dashboard_widget_provider_updates_preview()}
           </p>
@@ -205,12 +205,9 @@ function ProviderUpdatesLive({
       <Card className="size-full" data-slot="widget-provider-updates-card">
         <CardContent className="flex size-full min-h-0 flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2 font-bold">
-              <CloudSyncRounded className="size-5 shrink-0" />
-              <span className="truncate">
-                {m.dashboard_widget_provider_updates_title()}
-              </span>
-            </div>
+            <WidgetTitle className="flex-1" icon={CloudSyncRounded}>
+              {m.dashboard_widget_provider_updates_title()}
+            </WidgetTitle>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

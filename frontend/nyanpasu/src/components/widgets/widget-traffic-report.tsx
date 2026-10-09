@@ -9,7 +9,6 @@ import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { LinearProgress } from '@nyanpasu/ui/progress'
-import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
@@ -39,6 +38,7 @@ import {
   trafficSharePercent,
   usageTotalBytes,
 } from './widget-traffic-report-model'
+import { WidgetTitle } from './widget-ui'
 
 const TRAFFIC_ROW_HEIGHT = 34
 const TRAFFIC_ROW_HEIGHT_WITH_DIRECTIONS = 52
@@ -125,10 +125,9 @@ function ReportWidgetShell({
       <Card className="size-full" data-slot="widget-traffic-report-card">
         <CardContent className="flex size-full min-h-0 flex-col gap-2 p-4">
           <div className="flex min-w-0 items-center gap-2">
-            <Icon className="text-on-surface-variant size-5 shrink-0" />
-            <TextMarquee className="min-w-0 flex-1 font-medium">
+            <WidgetTitle className="flex-1" icon={Icon}>
               {title}
-            </TextMarquee>
+            </WidgetTitle>
             <span className="text-on-surface-variant shrink-0 text-xs">
               {rangeLabels[range]()}
             </span>

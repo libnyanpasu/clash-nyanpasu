@@ -15,6 +15,7 @@ import { useWidgetConfig } from './provider'
 import { useWidgetHeight } from './use-widget-height'
 import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetTitle } from './widget-ui'
 
 const CONNECTION_ROW_HEIGHT = 44
 
@@ -43,10 +44,9 @@ function ActiveConnectionsPreview({ id, onCloseClick }: WidgetComponentProps) {
     >
       <Card className="size-full" data-slot="widget-active-connections-card">
         <CardContent className="flex size-full flex-col gap-3">
-          <div className="flex items-center gap-2 font-bold">
-            <NetworkCheckRounded className="size-5" />
+          <WidgetTitle icon={NetworkCheckRounded}>
             {m.dashboard_widget_active_connections_title()}
-          </div>
+          </WidgetTitle>
           <p className="text-on-surface-variant text-sm">
             {m.dashboard_widget_active_connections_preview()}
           </p>
@@ -110,12 +110,9 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
       <Card className="size-full" data-slot="widget-active-connections-card">
         <CardContent className="flex size-full min-h-0 flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2 font-bold">
-              <NetworkCheckRounded className="size-5 shrink-0" />
-              <span className="truncate">
-                {m.dashboard_widget_active_connections_title()}
-              </span>
-            </div>
+            <WidgetTitle className="flex-1" icon={NetworkCheckRounded}>
+              {m.dashboard_widget_active_connections_title()}
+            </WidgetTitle>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

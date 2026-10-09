@@ -6,7 +6,7 @@ import RouteRounded from '~icons/material-symbols/route-rounded'
 import { motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -20,6 +20,7 @@ import { cn } from '@nyanpasu/utils'
 import type { WidgetComponentProps } from './consts'
 import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetHeader, WidgetTitle } from './widget-ui'
 
 const MODE_KEYS: ProxyMode[] = ['rule', 'global', 'direct', 'script']
 const MODE_ICONS = {
@@ -114,10 +115,11 @@ function ProxyModePreview({ id }: { id: string }) {
   return (
     <WidgetItem id={id} widgetType={WidgetId.ProxyMode} minW={4} minH={2}>
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 gap-2 pt-3 text-base font-medium">
-          <RouteRounded className="text-primary size-4 shrink-0" />
-          {m.dashboard_widget_proxy_mode_title()}
-        </CardHeader>
+        <WidgetHeader className="gap-2">
+          <WidgetTitle icon={RouteRounded}>
+            {m.dashboard_widget_proxy_mode_title()}
+          </WidgetTitle>
+        </WidgetHeader>
         <CardContent className="min-h-0 flex-1 justify-center">
           <ProxyModeOptions
             modes={MODE_KEYS.slice(0, 3)}
@@ -246,11 +248,10 @@ function ProxyModeLive({
       onCloseClick={onCloseClick}
     >
       <Card className="flex size-full flex-col" data-slot="proxy-mode-card">
-        <CardHeader className="shrink-0 flex-wrap gap-x-2 gap-y-1 pt-3">
-          <RouteRounded className="text-primary size-4 shrink-0" />
-          <span className="text-base font-medium">
+        <WidgetHeader className="flex-wrap gap-x-2 gap-y-1">
+          <WidgetTitle className="flex-1" icon={RouteRounded}>
             {m.dashboard_widget_proxy_mode_title()}
-          </span>
+          </WidgetTitle>
 
           {actionState === 'unconfirmed' && (
             <>
@@ -286,7 +287,7 @@ function ProxyModeLive({
               {message}
             </span>
           )}
-        </CardHeader>
+        </WidgetHeader>
 
         <CardContent className="min-h-0 flex-1 justify-center gap-1 px-3 py-2">
           <ProxyModeOptions

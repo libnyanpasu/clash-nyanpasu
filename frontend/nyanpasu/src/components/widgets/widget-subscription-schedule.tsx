@@ -2,7 +2,7 @@ import EventRepeatRounded from '~icons/material-symbols/event-repeat-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -26,6 +26,7 @@ import { useDashboardContext, useWidgetConfig } from './provider'
 import { useWidgetHeight } from './use-widget-height'
 import { WidgetId, type WidgetConfig } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetHeader, WidgetTitle } from './widget-ui'
 
 const RECENT_RUN_ROW_HEIGHT = 20
 
@@ -38,10 +39,11 @@ function SubscriptionSchedulePreview({ id }: { id: string }) {
       minH={2}
     >
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
-          <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
-          {m.dashboard_widget_subscription_schedule_title()}
-        </CardHeader>
+        <WidgetHeader>
+          <WidgetTitle icon={EventRepeatRounded}>
+            {m.dashboard_widget_subscription_schedule_title()}
+          </WidgetTitle>
+        </WidgetHeader>
         <CardContent className="min-h-0 flex-1 justify-center gap-2">
           <div className="bg-surface-variant h-4 w-2/3 animate-pulse rounded-full" />
           <div className="bg-surface-variant h-4 w-1/2 animate-pulse rounded-full" />
@@ -204,13 +206,10 @@ function SubscriptionScheduleTarget({
         className="flex size-full flex-col"
         data-slot="subscription-schedule-card"
       >
-        <CardHeader className="shrink-0 flex-row items-center justify-between gap-2 px-3 pt-2 pb-1">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
-            <span className="truncate text-sm font-medium">
-              {m.dashboard_widget_subscription_schedule_title()}
-            </span>
-          </div>
+        <WidgetHeader className="flex-row items-center justify-between gap-2">
+          <WidgetTitle className="flex-1" icon={EventRepeatRounded}>
+            {m.dashboard_widget_subscription_schedule_title()}
+          </WidgetTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -234,7 +233,7 @@ function SubscriptionScheduleTarget({
               {m.dashboard_widget_subscription_schedule_refresh()}
             </TooltipContent>
           </Tooltip>
-        </CardHeader>
+        </WidgetHeader>
 
         <CardContent className="min-h-0 flex-1 justify-start gap-0 px-3 py-1 text-xs">
           <div
@@ -422,10 +421,11 @@ function SubscriptionScheduleLive({
       onCloseClick={onCloseClick}
     >
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
-          <EventRepeatRounded className="text-on-surface-variant size-5 shrink-0" />
-          {m.dashboard_widget_subscription_schedule_title()}
-        </CardHeader>
+        <WidgetHeader>
+          <WidgetTitle icon={EventRepeatRounded}>
+            {m.dashboard_widget_subscription_schedule_title()}
+          </WidgetTitle>
+        </WidgetHeader>
         <CardContent className="min-h-0 flex-1 items-center justify-center gap-2 text-center text-sm">
           <p role={query.isError ? 'alert' : 'status'}>{message}</p>
           {(resolution?.kind === 'missing' ||

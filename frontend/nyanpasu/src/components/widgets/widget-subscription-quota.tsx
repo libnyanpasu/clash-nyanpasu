@@ -4,7 +4,7 @@ import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { filesize } from 'filesize'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
@@ -29,6 +29,7 @@ import { useDashboardContext, useWidgetConfig } from './provider'
 import { useWidgetHeight } from './use-widget-height'
 import { WidgetId, type WidgetConfig } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetHeader, WidgetTitle } from './widget-ui'
 
 function SubscriptionQuotaPreview({ id }: { id: string }) {
   return (
@@ -39,15 +40,11 @@ function SubscriptionQuotaPreview({ id }: { id: string }) {
       minH={2}
     >
       <Card className="flex size-full flex-col">
-        <CardHeader className="shrink-0 gap-2 px-3 pt-2 pb-1 text-sm font-medium">
-          <DataUsageRounded className="text-on-surface-variant size-5 shrink-0" />
-          <span
-            className="min-w-0 flex-1 truncate"
-            title={m.dashboard_widget_subscription_quota_title()}
-          >
+        <WidgetHeader>
+          <WidgetTitle icon={DataUsageRounded}>
             {m.dashboard_widget_subscription_quota_title()}
-          </span>
-        </CardHeader>
+          </WidgetTitle>
+        </WidgetHeader>
         <CardContent className="min-h-0 flex-1 justify-center">
           <div className="bg-surface-variant h-5 w-2/3 animate-pulse rounded-full" />
           <div className="bg-surface-variant h-2 w-full animate-pulse rounded-full" />
@@ -192,16 +189,10 @@ function SubscriptionQuotaLive({
         className="flex size-full flex-col"
         data-slot="subscription-quota-card"
       >
-        <CardHeader className="shrink-0 flex-row items-center justify-between gap-2 px-3 pt-2 pb-1 text-sm font-medium">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <DataUsageRounded className="text-on-surface-variant size-5 shrink-0" />
-            <span
-              className="min-w-0 flex-1 truncate"
-              title={m.dashboard_widget_subscription_quota_title()}
-            >
-              {m.dashboard_widget_subscription_quota_title()}
-            </span>
-          </div>
+        <WidgetHeader className="flex-row items-center justify-between gap-2">
+          <WidgetTitle className="flex-1" icon={DataUsageRounded}>
+            {m.dashboard_widget_subscription_quota_title()}
+          </WidgetTitle>
           {profile && (
             <div className="flex shrink-0 items-center gap-1">
               <Tooltip>
@@ -256,7 +247,7 @@ function SubscriptionQuotaLive({
               </Tooltip>
             </div>
           )}
-        </CardHeader>
+        </WidgetHeader>
 
         <CardContent className="min-h-0 flex-1 justify-start gap-0 px-3 py-1">
           <div

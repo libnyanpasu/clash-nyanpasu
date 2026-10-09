@@ -3,10 +3,9 @@ import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
 import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import { filesize } from 'filesize'
-import { ComponentProps, ComponentType, ReactNode } from 'react'
+import { ComponentProps, ReactNode } from 'react'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { Sparkline } from '@nyanpasu/ui/sparkline'
-import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
 import {
   MAX_TRAFFIC_HISTORY,
@@ -19,6 +18,7 @@ import { WidgetComponentProps } from './consts'
 import { useWidgetConfig } from './provider'
 import { WidgetId } from './widget-config'
 import WidgetItem, { WidgetItemProps } from './widget-item'
+import { WidgetMeta, WidgetMetric, WidgetTitle } from './widget-ui'
 
 const padData = (data: (number | undefined)[] = [], max: number) =>
   Array(Math.max(0, max - data.length))
@@ -65,52 +65,6 @@ function SparklineCard({
         </CardContent>
       </Card>
     </WidgetItem>
-  )
-}
-
-function SparklineCardTitle({
-  icon: Icon,
-  className,
-  children,
-  ...props
-}: ComponentProps<'div'> & {
-  icon: ComponentType<{
-    className?: string
-  }>
-}) {
-  return (
-    <div
-      className={cn('flex items-center gap-2', className)}
-      data-slot="widget-sparkline-card-title"
-      {...props}
-    >
-      <Icon className="size-5 shrink-0" />
-
-      <TextMarquee className="font-bold">{children}</TextMarquee>
-    </div>
-  )
-}
-
-function SparklineCardContent({ className, ...props }: ComponentProps<'div'>) {
-  return (
-    <div
-      className={cn('text-2xl font-bold text-nowrap text-shadow-md', className)}
-      data-slot="widget-sparkline-card-content"
-      {...props}
-    />
-  )
-}
-
-function SparklineCardBottom({ className, ...props }: ComponentProps<'div'>) {
-  return (
-    <div
-      className={cn(
-        'text-shadow-background h-5 text-sm text-nowrap text-shadow-xs',
-        className,
-      )}
-      data-slot="widget-sparkline-card-bottom"
-      {...props}
-    />
   )
 }
 
@@ -176,18 +130,18 @@ export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
       chart={config.showChart && <TrafficChart direction="down" />}
       onCloseClick={onCloseClick}
     >
-      <SparklineCardTitle icon={ArrowDownwardRounded}>
+      <WidgetTitle icon={ArrowDownwardRounded}>
         {m.dashboard_widget_traffic_download()}
-      </SparklineCardTitle>
+      </WidgetTitle>
 
-      <SparklineCardContent>
+      <WidgetMetric>
         <TrafficRate direction="down" unit={config.unit} />
-      </SparklineCardContent>
+      </WidgetMetric>
 
       {config.showTotal && (
-        <SparklineCardBottom>
+        <WidgetMeta>
           <TrafficTotal field="downloadTotal" />
-        </SparklineCardBottom>
+        </WidgetMeta>
       )}
     </SparklineCard>
   )
@@ -203,18 +157,18 @@ export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
       chart={config.showChart && <TrafficChart direction="up" />}
       onCloseClick={onCloseClick}
     >
-      <SparklineCardTitle icon={ArrowUpwardRounded}>
+      <WidgetTitle icon={ArrowUpwardRounded}>
         {m.dashboard_widget_traffic_upload()}
-      </SparklineCardTitle>
+      </WidgetTitle>
 
-      <SparklineCardContent>
+      <WidgetMetric>
         <TrafficRate direction="up" unit={config.unit} />
-      </SparklineCardContent>
+      </WidgetMetric>
 
       {config.showTotal && (
-        <SparklineCardBottom>
+        <WidgetMeta>
           <TrafficTotal field="uploadTotal" />
-        </SparklineCardBottom>
+        </WidgetMeta>
       )}
     </SparklineCard>
   )
@@ -250,15 +204,15 @@ export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
       chart={config.showChart && <ConnectionsChart samples={config.samples} />}
       onCloseClick={onCloseClick}
     >
-      <SparklineCardTitle icon={SettingsEthernetRounded}>
+      <WidgetTitle icon={SettingsEthernetRounded}>
         {m.dashboard_widget_connections()}
-      </SparklineCardTitle>
+      </WidgetTitle>
 
-      <SparklineCardContent>
+      <WidgetMetric>
         <ConnectionsCount />
-      </SparklineCardContent>
+      </WidgetMetric>
 
-      <SparklineCardBottom />
+      <WidgetMeta />
     </SparklineCard>
   )
 }
@@ -293,15 +247,15 @@ export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
       chart={config.showChart && <MemoryChart samples={config.samples} />}
       onCloseClick={onCloseClick}
     >
-      <SparklineCardTitle icon={MemoryOutlineRounded}>
+      <WidgetTitle icon={MemoryOutlineRounded}>
         {m.dashboard_widget_memory()}
-      </SparklineCardTitle>
+      </WidgetTitle>
 
-      <SparklineCardContent>
+      <WidgetMetric>
         <MemoryInUse />
-      </SparklineCardContent>
+      </WidgetMetric>
 
-      <SparklineCardBottom />
+      <WidgetMeta />
     </SparklineCard>
   )
 }

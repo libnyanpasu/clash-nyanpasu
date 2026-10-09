@@ -1,7 +1,9 @@
 import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
+import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
+import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import { useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
@@ -31,6 +33,7 @@ import {
   WidgetId,
 } from './widget-config'
 import WidgetItem from './widget-item'
+import { WidgetHeader, WidgetTitle } from './widget-ui'
 
 enum ProxyStatus {
   SYSTEM = 'system',
@@ -78,10 +81,10 @@ const ProxyTitleRow = () => {
   }
 
   return (
-    <CardHeader className="flex items-center gap-3">
-      <span className="shrink-0 font-bold">
+    <WidgetHeader>
+      <WidgetTitle icon={SettingsEthernetRounded}>
         {m.dashboard_widget_proxy_status()}
-      </span>
+      </WidgetTitle>
 
       <Button
         variant="raised"
@@ -104,7 +107,7 @@ const ProxyTitleRow = () => {
           </TextMarquee>
         </Link>
       </Button>
-    </CardHeader>
+    </WidgetHeader>
   )
 }
 
@@ -397,15 +400,15 @@ export function CoreShortcutsWidget({
       onCloseClick={onCloseClick}
     >
       <Card className="flex size-full flex-col justify-between">
-        <CardHeader className="shrink-0 gap-3 pt-3">
-          <span className="shrink-0 text-base font-medium">
+        <WidgetHeader>
+          <WidgetTitle icon={MemoryOutlineRounded}>
             {m.dashboard_widget_core_status()}
-          </span>
+          </WidgetTitle>
 
           <ServiceFallbackWarning className="-ml-2" />
 
           <CoreStatusBadge />
-        </CardHeader>
+        </WidgetHeader>
 
         <CardContent className="min-h-0 flex-1 pt-2 pb-3">
           <CurrentCoreCard config={config} />

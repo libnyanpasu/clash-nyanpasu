@@ -23,8 +23,9 @@ use nyanpasu_config::{
     profile::{ManagedProfilePath, ProfileDefinition, ProfileId, Profiles},
 };
 
+use nyanpasu_core::profiles::current_closure;
+
 use super::{mutation::MutationDomain, policy::CommandClass};
-use crate::state::profiles::ProfilesActor;
 
 /// How much of the running core a candidate forces to change.
 ///
@@ -400,8 +401,8 @@ pub(crate) fn classify_profiles(
     candidate: &Profiles,
     hints: &MutationHints,
 ) -> RuntimeImpact {
-    let before = ProfilesActor::current_closure(previous);
-    let after = ProfilesActor::current_closure(candidate);
+    let before = current_closure(previous);
+    let after = current_closure(candidate);
 
     // `global_transforms` is compared as a list, not through the closure: the
     // closure is a set, and reordering the global transforms leaves it equal
@@ -490,7 +491,7 @@ pub(crate) fn clash_target(candidate: &ClashConfig) -> Option<String> {
 /// captured file contents so content changes remain distinct even when a
 /// producer has not advanced a materialization stamp.
 pub(crate) fn profiles_target(candidate: &Profiles) -> Option<String> {
-    let closure = ProfilesActor::current_closure(candidate);
+    let closure = current_closure(candidate);
     digest(&ProfilesRuntimeInputs {
         current: candidate.current.as_ref(),
         global_transforms: &candidate.global_transforms,
@@ -1403,8 +1404,8 @@ mod tests {
         candidate.global_transforms.reverse();
 
         assert_eq!(
-            ProfilesActor::current_closure(&previous),
-            ProfilesActor::current_closure(&candidate),
+            current_closure(&previous),
+            current_closure(&candidate),
             "the closure must be set-equal for this test to mean anything"
         );
         assert_eq!(

@@ -369,7 +369,7 @@ async fn workflow_graph_with_clients(
     });
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
-            notifications: Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+            notifications: Arc::new(crate::client::effects_test_support::NoopCommitNotifications),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
             profiles: profiles.snapshot_handle(),
@@ -627,16 +627,16 @@ impl RecordingNotifications {
     }
 }
 
-impl crate::client::effects::ports::CommitNotifications for RecordingNotifications {
+impl nyanpasu_core::effects::ports::CommitNotifications for RecordingNotifications {
     fn application_committed(
         &self,
-        _: crate::client::effects::plan::ApplicationEffectFields,
+        _: nyanpasu_core::effects::plan::ApplicationEffectFields,
         _: Vec<nyanpasu_core::effects::EffectKind>,
     ) {
         unreachable!("only the application owner sends its slice")
     }
 
-    fn clash_committed(&self, _: crate::client::effects::plan::ClashEffectFields) {
+    fn clash_committed(&self, _: nyanpasu_core::effects::plan::ClashEffectFields) {
         unreachable!("only the clash config owner sends its slice")
     }
 
@@ -1173,7 +1173,7 @@ fn config_reconcile_failure_reports_committed_state_without_replaying() {
         ));
         assert_eq!(
             client.configuration_status().runtime.health,
-            crate::client::convergence::ConvergenceHealth::RetryScheduled
+            nyanpasu_core::effects::convergence::ConvergenceHealth::RetryScheduled
         );
         assert_eq!(endpoint.submissions(), 1);
         let persisted: nyanpasu_config::clash::config::ClashConfig =
@@ -1440,32 +1440,62 @@ impl UiEventSink for CountingUi {
     }
 }
 
-/// Waits until every notification sent so far has reached the UI, so a
-/// later refresh can only come from what the test does next. An idle
-/// workflow has sent its last operation's notification, the effects barrier
-/// has queued what it carried, and no pending effect is left to refresh.
-async fn until_notified(client: &NyanpasuClient) {
-    let mut status = client.inner.application_workflow.subscribe_status();
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        status.wait_for(|status| status.active.is_none()),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    client.inner.effects.barrier().await;
-    let mut effects = client.inner.effects.subscribe();
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        effects.wait_for(|snapshot| {
-            snapshot.effects.iter().all(|progress| {
-                progress.health != crate::client::convergence::ConvergenceHealth::Pending
+/// Synchronizes the expected plan's completion, not a universal mailbox drain.
+async fn until_notified(
+    client: &NyanpasuClient,
+    recorded: &mut tokio::sync::watch::Receiver<
+        Vec<(
+            nyanpasu_core::effects::status::EffectRevision,
+            nyanpasu_core::effects::plan::ApplicationEffect,
+        )>,
+    >,
+    expected: nyanpasu_core::effects::plan::ApplicationEffect,
+    after: nyanpasu_core::effects::status::EffectRevision,
+) -> nyanpasu_core::effects::status::EffectRevision {
+    use nyanpasu_core::effects::{
+        EffectKind, convergence::ConvergenceHealth, status::EffectHealth,
+    };
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut workflow = client.inner.application_workflow.subscribe_status();
+        workflow
+            .wait_for(|status| status.active.is_none())
+            .await
+            .unwrap();
+        let revision = recorded
+            .wait_for(|calls| {
+                calls
+                    .iter()
+                    .any(|(revision, effect)| *revision > after && effect == &expected)
             })
-        }),
-    )
+            .await
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|(revision, effect)| *revision > after && effect == &expected)
+            .expect("the expected tray request was recorded")
+            .0;
+        client
+            .inner
+            .effects
+            .subscribe()
+            .wait_for(|snapshot| {
+                snapshot.effects.iter().any(|progress| {
+                    let status = &progress.status;
+                    status.kind == EffectKind::Tray
+                        && status.desired_revision == revision
+                        && status.applied_revision == revision
+                        && status.health == EffectHealth::Healthy
+                }) && snapshot
+                    .effects
+                    .iter()
+                    .all(|progress| progress.health != ConvergenceHealth::Pending)
+            })
+            .await
+            .unwrap();
+        revision
+    })
     .await
-    .unwrap()
-    .unwrap();
+    .expect("the expected tray plan completes")
 }
 
 #[test]
@@ -1477,11 +1507,46 @@ fn an_override_patch_submits_once_and_notifies_the_ui() {
     });
     let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
     args.ui_sink = ui.clone();
+    let (recorded, mut effects) = tokio::sync::watch::channel(Vec::new());
+    let mut port = crate::client::effects_test_support::MockApplicationEffectsPort::new();
+    port.expect_apply().returning(move |revision, plan| {
+        use nyanpasu_core::effects::{
+            plan::ApplicationEffect,
+            status::{EffectHealth, EffectStatus},
+        };
+        if let Some(effect) = plan
+            .effects()
+            .iter()
+            .find(|effect| matches!(effect, ApplicationEffect::Tray(..)))
+        {
+            recorded.send_modify(|calls| calls.push((revision, effect.clone())));
+        }
+        plan.effects()
+            .iter()
+            .map(|effect| EffectStatus {
+                kind: effect.kind(),
+                desired_revision: revision,
+                applied_revision: revision,
+                health: EffectHealth::Healthy,
+            })
+            .collect()
+    });
+    args.effects = Arc::new(port);
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
         disable_mode_interruption(&client).await;
-        until_notified(&client).await;
+        let baseline = until_notified(
+            &client,
+            &mut effects,
+            nyanpasu_core::effects::plan::ApplicationEffect::Tray(
+                nyanpasu_core::effects::plan::TrayRefresh::Full,
+                (&client.inner.application.snapshot().state).into(),
+                (&client.inner.clash_config.snapshot().state).into(),
+            ),
+            nyanpasu_core::effects::status::EffectRevision::default(),
+        )
+        .await;
         let mut refreshed = ui.refreshed.subscribe();
         let before = *refreshed.borrow_and_update();
         let outcome = client
@@ -1501,6 +1566,17 @@ fn an_override_patch_submits_once_and_notifies_the_ui() {
                 .as_str(),
             Some("global")
         );
+        until_notified(
+            &client,
+            &mut effects,
+            nyanpasu_core::effects::plan::ApplicationEffect::Tray(
+                nyanpasu_core::effects::plan::TrayRefresh::Part,
+                (&client.inner.application.snapshot().state).into(),
+                (&client.inner.clash_config.snapshot().state).into(),
+            ),
+            baseline,
+        )
+        .await;
         tokio::time::timeout(
             std::time::Duration::from_secs(5),
             refreshed.wait_for(|count| *count > before),
@@ -1522,13 +1598,59 @@ fn a_core_reconcile_notifies_the_ui() {
     });
     let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
     args.ui_sink = ui.clone();
+    let (recorded, mut effects) = tokio::sync::watch::channel(Vec::new());
+    let mut port = crate::client::effects_test_support::MockApplicationEffectsPort::new();
+    port.expect_apply().returning(move |revision, plan| {
+        use nyanpasu_core::effects::{
+            plan::ApplicationEffect,
+            status::{EffectHealth, EffectStatus},
+        };
+        if let Some(effect) = plan
+            .effects()
+            .iter()
+            .find(|effect| matches!(effect, ApplicationEffect::Tray(..)))
+        {
+            recorded.send_modify(|calls| calls.push((revision, effect.clone())));
+        }
+        plan.effects()
+            .iter()
+            .map(|effect| EffectStatus {
+                kind: effect.kind(),
+                desired_revision: revision,
+                applied_revision: revision,
+                health: EffectHealth::Healthy,
+            })
+            .collect()
+    });
+    args.effects = Arc::new(port);
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         endpoint.prime(&client).await;
-        until_notified(&client).await;
+        let baseline = until_notified(
+            &client,
+            &mut effects,
+            nyanpasu_core::effects::plan::ApplicationEffect::Tray(
+                nyanpasu_core::effects::plan::TrayRefresh::Full,
+                (&client.inner.application.snapshot().state).into(),
+                (&client.inner.clash_config.snapshot().state).into(),
+            ),
+            nyanpasu_core::effects::status::EffectRevision::default(),
+        )
+        .await;
         let mut refreshed = ui.refreshed.subscribe();
         let before = *refreshed.borrow_and_update();
         client.reconcile_core().await.unwrap();
+        until_notified(
+            &client,
+            &mut effects,
+            nyanpasu_core::effects::plan::ApplicationEffect::Tray(
+                nyanpasu_core::effects::plan::TrayRefresh::Part,
+                (&client.inner.application.snapshot().state).into(),
+                (&client.inner.clash_config.snapshot().state).into(),
+            ),
+            baseline,
+        )
+        .await;
         tokio::time::timeout(
             std::time::Duration::from_secs(5),
             refreshed.wait_for(|count| *count > before),
@@ -1555,11 +1677,44 @@ fn an_explicit_start_notifies_the_ui() {
     });
     let mut args = test_client_args_with_endpoint(&dir, endpoint.clone());
     args.ui_sink = ui.clone();
+    let (recorded, mut effects) = tokio::sync::watch::channel(Vec::new());
+    let mut port = crate::client::effects_test_support::MockApplicationEffectsPort::new();
+    port.expect_apply().returning(move |revision, plan| {
+        use nyanpasu_core::effects::{
+            plan::ApplicationEffect,
+            status::{EffectHealth, EffectStatus},
+        };
+        if let Some(effect) = plan
+            .effects()
+            .iter()
+            .find(|effect| matches!(effect, ApplicationEffect::Tray(..)))
+        {
+            recorded.send_modify(|calls| calls.push((revision, effect.clone())));
+        }
+        plan.effects()
+            .iter()
+            .map(|effect| EffectStatus {
+                kind: effect.kind(),
+                desired_revision: revision,
+                applied_revision: revision,
+                health: EffectHealth::Healthy,
+            })
+            .collect()
+    });
+    args.effects = Arc::new(port);
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         let workflow = &client.inner.application_workflow;
         assert_eq!(ownership(workflow).await, Ownership::Unproven);
-        until_notified(&client).await;
+        let mut status = workflow.subscribe_status();
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            status.wait_for(|status| status.active.is_none()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let baseline = nyanpasu_core::effects::status::EffectRevision::default();
         let mut refreshed = ui.refreshed.subscribe();
         let before = *refreshed.borrow_and_update();
         client.reconcile_core().await.unwrap();
@@ -1569,6 +1724,17 @@ fn an_explicit_start_notifies_the_ui() {
                 host: ExecutionHost::Local
             }
         );
+        until_notified(
+            &client,
+            &mut effects,
+            nyanpasu_core::effects::plan::ApplicationEffect::Tray(
+                nyanpasu_core::effects::plan::TrayRefresh::Part,
+                (&client.inner.application.snapshot().state).into(),
+                (&client.inner.clash_config.snapshot().state).into(),
+            ),
+            baseline,
+        )
+        .await;
         tokio::time::timeout(
             std::time::Duration::from_secs(5),
             refreshed.wait_for(|count| *count > before),

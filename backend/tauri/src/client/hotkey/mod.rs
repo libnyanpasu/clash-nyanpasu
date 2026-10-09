@@ -30,14 +30,16 @@ use tokio_util::task::TaskTracker;
 use self::{
     actor::{HotkeyActor, Message},
     error::HotkeyEffectError,
-    ports::{HotkeyAction, HotkeyBindings},
 };
 use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
 
 use super::{NyanpasuClient, Result, runtime::MutationOutcome};
-use nyanpasu_core::effects::{
-    EffectKind,
-    status::{EffectHealth, EffectRevision, EffectStatus},
+use nyanpasu_core::{
+    effects::{
+        EffectKind,
+        status::{EffectHealth, EffectRevision, EffectStatus},
+    },
+    hotkey::{AcceleratorValidator, HotkeyAction, HotkeyBindings},
 };
 
 pub use self::actor::Args as HotkeyArgs;
@@ -129,7 +131,7 @@ fn stopped_health() -> EffectHealth {
 /// effect, leaving the stored config holding bindings that can never register.
 pub(crate) fn validate_bindings(
     raw: &[String],
-    accelerators: &dyn ports::AcceleratorValidator,
+    accelerators: &dyn AcceleratorValidator,
 ) -> std::result::Result<(), ConfigError> {
     HotkeyBindings::parse(raw, accelerators).context(ValidateHotkeysSnafu)?;
     Ok(())

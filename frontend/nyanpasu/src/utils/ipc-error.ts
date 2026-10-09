@@ -688,6 +688,8 @@ export function effectFailureMessage(code: EffectFailureCode): string {
       return m.effect_failure_widget_apply_failed()
     case 'tray_refresh_failed':
       return m.effect_failure_tray_refresh_failed()
+    case 'presentation_unsupported':
+      return m.effect_failure_presentation_unsupported()
     case 'effect_owner_silent':
       return m.effect_failure_effect_owner_silent()
     case 'proxy_guard_waiting_dependency':

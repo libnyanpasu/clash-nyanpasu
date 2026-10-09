@@ -4,12 +4,38 @@
 //! fan-out to actor clients and adapters stays inside the executor. There is no
 //! lookup API here, so this is not a service locator.
 
-use nyanpasu_config::runtime::executor::ResolvedPortBindings;
+use nyanpasu_config::{
+    application::{I18nLanguage, NetworkStatisticWidgetConfig},
+    runtime::executor::ResolvedPortBindings,
+};
 
-use super::plan::ApplicationEffectPlan;
+use super::plan::{ApplicationEffectFields, ApplicationEffectPlan, ClashEffectFields, TrayRefresh};
 #[cfg(test)]
-use nyanpasu_core::effects::status::EffectHealth;
-use nyanpasu_core::effects::status::{EffectRevision, EffectStatus};
+use crate::effects::status::EffectHealth;
+use crate::effects::status::{EffectRevision, EffectStatus};
+
+/// One presentation effect, awaited at its existing position in the plan.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PresentationRequest {
+    Locale(I18nLanguage),
+    Hotkeys(Vec<String>),
+    Widget(NetworkStatisticWidgetConfig),
+    Tray {
+        refresh: TrayRefresh,
+        application: ApplicationEffectFields,
+        clash: ClashEffectFields,
+    },
+}
+
+#[async_trait::async_trait]
+pub trait PresentationEffectsPort: Send + Sync + 'static {
+    async fn apply(&self, revision: EffectRevision, request: PresentationRequest) -> EffectStatus;
+}
+
+/// Synchronous invalidation immediately before the visual group dispatch.
+pub trait EffectInvalidationSink: Send + Sync + 'static {
+    fn before_visual_apply(&self);
+}
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait::async_trait]
@@ -32,7 +58,7 @@ pub trait ApplicationEffectsPort: Send + Sync + 'static {
 /// rather than about any particular effect.
 #[cfg(test)]
 #[derive(Debug, Default)]
-pub struct NoopApplicationEffects;
+pub(crate) struct NoopApplicationEffects;
 
 #[cfg(test)]
 #[async_trait::async_trait]
@@ -57,7 +83,7 @@ impl ApplicationEffectsPort for NoopApplicationEffects {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::effects::plan::ApplicationEffectInputs;
+    use crate::effects::plan::ApplicationEffectInputs;
     use nyanpasu_config::{application::NyanpasuAppConfig, clash::config::ClashConfig};
 
     #[tokio::test]
@@ -89,13 +115,13 @@ mod tests {
 /// forwards a sibling's slice; the effects owner combines them.
 ///
 /// [`ApplicationEffectInputs`]: super::plan::ApplicationEffectInputs
-pub(crate) trait CommitNotifications: Send + Sync + 'static {
+pub trait CommitNotifications: Send + Sync + 'static {
     /// The application owner, once its commit has settled. `requested` names
     /// the owners the request asked for even when their inputs did not move.
     fn application_committed(
         &self,
         fields: super::plan::ApplicationEffectFields,
-        requested: Vec<nyanpasu_core::effects::EffectKind>,
+        requested: Vec<crate::effects::EffectKind>,
     );
 
     /// The clash config owner, once its commit has settled.
@@ -122,7 +148,7 @@ impl CommitNotifications for NoopCommitNotifications {
     fn application_committed(
         &self,
         _: super::plan::ApplicationEffectFields,
-        _: Vec<nyanpasu_core::effects::EffectKind>,
+        _: Vec<crate::effects::EffectKind>,
     ) {
     }
 

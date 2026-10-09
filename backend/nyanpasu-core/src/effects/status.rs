@@ -34,6 +34,7 @@ impl EffectRevision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectFailureCode {
+    PresentationUnsupported,
     HotkeyInvalidBindings,
     HotkeyPartialRegistration,
     HotkeyShutDown,

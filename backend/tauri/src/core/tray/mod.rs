@@ -1,7 +1,8 @@
+use nyanpasu_core::hotkey::HotkeyAction;
 use std::{borrow::Cow, ops::ControlFlow};
 
 use crate::{
-    client::{NyanpasuClient, effects::plan::TrayView, hotkey::ports::HotkeyAction},
+    client::{NyanpasuClient, effects::plan::TrayView},
     ipc, log_err,
     utils::{help, proxy_env},
     window::{

@@ -1,6 +1,7 @@
 //! What a command that changes the application config, the clash config or
 //! the session state fails with. Library causes stay in `source` (skipped on
 //! the wire); they reach the user only through the copied detail.
+use nyanpasu_core::hotkey::HotkeyParseError;
 
 use nyanpasu_config::application::ReleaseChannel;
 use nyanpasu_core::state::{
@@ -11,10 +12,7 @@ use serde::Serialize;
 use snafu::{IntoError, Snafu};
 
 use crate::{
-    client::{
-        application_workflow::mutation::{ConfigDomain, MutationReceipt},
-        hotkey::ports::HotkeyParseError,
-    },
+    client::application_workflow::mutation::{ConfigDomain, MutationReceipt},
     state::mutation::{CommitAborted, NotReady},
 };
 

@@ -13,9 +13,10 @@ mod clash_config;
 mod clash_info;
 mod clash_streams;
 pub mod configuration_status;
-pub mod convergence;
 pub mod core_lifecycle;
 pub(crate) mod effects;
+#[cfg(test)]
+pub(crate) mod effects_test_support;
 mod error;
 mod event_sink;
 pub mod frontend_events;
@@ -121,9 +122,9 @@ pub struct ClientSetupArgs {
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
     pub core_versions: Arc<dyn CoreVersionReader>,
-    pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+    pub effects: Arc<dyn nyanpasu_core::effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
-    pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    pub accelerators: Arc<dyn nyanpasu_core::hotkey::AcceleratorValidator>,
     /// `None` disables traffic recording: the store could not be opened.
     pub traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
     /// The root shutdown token. The composition root owns it because some
@@ -245,11 +246,11 @@ struct NyanpasuClientInner {
     /// index it publishes.
     _geo_index: nyanpasu_core::geo::GeoIndexClient,
     os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
-    effects: effects::actor::EffectsClient,
+    effects: nyanpasu_core::effects::actor::EffectsClient,
     window: Arc<dyn hotkey::ports::WindowControl>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
-    accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+    accelerators: Arc<dyn nyanpasu_core::hotkey::AcceleratorValidator>,
     /// The root shutdown token; `request_shutdown` cancels it.
     shutdown: tokio_util::sync::CancellationToken,
     /// Every owner the shutdown waits for.
@@ -422,9 +423,9 @@ impl NyanpasuClient {
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
         core_versions: Arc<dyn CoreVersionReader>,
-        effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
+        effects: Arc<dyn nyanpasu_core::effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
-        accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
+        accelerators: Arc<dyn nyanpasu_core::hotkey::AcceleratorValidator>,
         http_frontend: Option<crate::server::debug_http::Frontend>,
         http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
         traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
@@ -471,15 +472,19 @@ impl NyanpasuClient {
         });
         let service_logs = logging.service;
         let frontend_log = logging.frontend;
-        let effects = effects::actor::EffectsClient::spawn(
-            effects::actor::EffectsArgs {
-                port: Arc::new(effects::executor::CoreLogCaptureEffects::new(
-                    effects,
-                    streams.clone(),
-                    core_logs.clone(),
+        let effects = nyanpasu_core::effects::actor::EffectsClient::spawn(
+            nyanpasu_core::effects::actor::EffectsArgs {
+                port: Arc::new(
+                    nyanpasu_core::effects::executor::CoreLogCaptureEffects::new(
+                        effects,
+                        streams.clone(),
+                        core_logs.clone(),
+                    ),
+                ),
+                invalidation: Some(Arc::new(
+                    effects::presentation::TauriEffectInvalidationSink::new(ui_sink),
                 )),
-                ui: ui_sink,
-                initial: effects::plan::ApplicationEffectInputs::project(
+                initial: nyanpasu_core::effects::plan::ApplicationEffectInputs::project(
                     &application.snapshot().state,
                     &clash_config.snapshot().state,
                     ports.confirmed(),
@@ -927,11 +932,13 @@ impl NyanpasuClient {
     pub fn retry_effect_now(
         &self,
         kind: nyanpasu_core::effects::EffectKind,
-    ) -> std::result::Result<(), effects::error::EffectsError> {
+    ) -> std::result::Result<(), nyanpasu_core::effects::error::EffectsError> {
         self.inner.effects.retry_now(kind)
     }
 
-    pub fn request_tray_refresh(&self) -> std::result::Result<(), effects::error::EffectsError> {
+    pub fn request_tray_refresh(
+        &self,
+    ) -> std::result::Result<(), nyanpasu_core::effects::error::EffectsError> {
         self.inner.effects.request_tray_refresh()
     }
 
@@ -2559,7 +2566,7 @@ pub(crate) mod tests {
             os_proxy,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(MockCoreVersionReader::new()),
-            Arc::new(effects::ports::NoopApplicationEffects),
+            Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             None,
@@ -3078,7 +3085,7 @@ pub(crate) mod tests {
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             core_versions: Arc::new(MockCoreVersionReader::new()),
-            effects: Arc::new(effects::ports::NoopApplicationEffects),
+            effects: Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
             window: Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -3426,7 +3433,7 @@ pub(crate) mod tests {
             Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             Arc::new(MockCoreVersionReader::new()),
-            Arc::new(effects::ports::NoopApplicationEffects),
+            Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
             None,
@@ -3593,7 +3600,7 @@ pub(crate) mod tests {
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
             core_versions: Arc::new(MockCoreVersionReader::new()),
-            effects: Arc::new(effects::ports::NoopApplicationEffects),
+            effects: Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
             window: Arc::new(hotkey::ports::MockWindowControl::new()),
@@ -3962,7 +3969,7 @@ pub(crate) mod tests {
             assert_eq!(endpoint.submissions(), 1, "the core starts locally instead");
             assert_eq!(
                 client.configuration_status().runtime.health,
-                crate::client::convergence::ConvergenceHealth::Healthy
+                nyanpasu_core::effects::convergence::ConvergenceHealth::Healthy
             );
         });
     }
@@ -4275,7 +4282,7 @@ pub(crate) mod tests {
             assert_eq!(failed.sources[0].profile, uid);
             assert_eq!(
                 failed.sources[0].health,
-                convergence::ConvergenceHealth::Blocked
+                nyanpasu_core::effects::convergence::ConvergenceHealth::Blocked
             );
 
             client.delete_profile(uid).await.unwrap();
@@ -4570,7 +4577,7 @@ pub(crate) mod tests {
                 Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
                 Arc::new(MockCoreVersionReader::new()),
-                Arc::new(effects::ports::NoopApplicationEffects),
+                Arc::new(crate::client::effects_test_support::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
                 None,

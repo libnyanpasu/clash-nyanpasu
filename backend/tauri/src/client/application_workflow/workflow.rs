@@ -21,7 +21,7 @@ use crate::client::{
 /// handles are read-only and are sampled only once the actor has admitted the
 /// command, so a candidate never fixes a domain it did not wait for.
 pub(super) struct ApplicationWorkflow {
-    pub notifications: Arc<dyn crate::client::effects::ports::CommitNotifications>,
+    pub notifications: Arc<dyn nyanpasu_core::effects::ports::CommitNotifications>,
     pub profiles: StateSnapshot<Profiles>,
     pub clash: StateSnapshot<ClashConfig>,
     pub preparation: RuntimePreparation,
@@ -144,7 +144,8 @@ impl ApplicationWorkflow {
             && let Some(deferred) = &mut self.deferred
             && matches!(deferred.origin, TargetOrigin::Mutation)
         {
-            deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
+            deferred.health =
+                nyanpasu_core::effects::convergence::ConvergenceHealth::WaitingDependency;
             deferred.next_attempt = None;
         }
         self.notify_bound(true);

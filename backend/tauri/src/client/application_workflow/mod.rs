@@ -166,7 +166,7 @@ struct PublishedView {
     recovery: Option<attempt::RecoveryView>,
     deferred: Option<(
         OperationId,
-        super::convergence::ConvergenceHealth,
+        nyanpasu_core::effects::convergence::ConvergenceHealth,
         u32,
         u8,
         String,
@@ -174,7 +174,7 @@ struct PublishedView {
 }
 
 pub(super) struct ApplicationWorkflowArgs {
-    pub notifications: Arc<dyn super::effects::ports::CommitNotifications>,
+    pub notifications: Arc<dyn nyanpasu_core::effects::ports::CommitNotifications>,
     /// Read-only committed state. The workflow reads the three source domains
     /// and writes none of them.
     pub application: StateSnapshot<nyanpasu_config::application::NyanpasuAppConfig>,

@@ -9,6 +9,7 @@ pub mod effects;
 pub mod error;
 pub mod format;
 pub mod geo;
+pub mod hotkey;
 pub mod icons;
 pub mod logs;
 pub mod migration;

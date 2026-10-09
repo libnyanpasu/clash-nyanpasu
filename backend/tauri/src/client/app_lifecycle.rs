@@ -99,26 +99,24 @@ mod tests {
     use tokio::sync::Notify;
 
     use super::*;
-    use crate::{
-        client::{
-            effects::{
-                plan::ApplicationEffectPlan,
-                ports::ApplicationEffectsPort,
-                status::{EffectHealth, EffectRevision, EffectStatus},
-            },
-            hotkey::{
-                HotkeyArgs, HotkeyClient,
-                ports::{
-                    HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-                    ShortcutError, ShortcutRegistrar,
-                },
-            },
-            tests::{TestControlEndpoint, test_client_args_with_endpoint},
+    use crate::client::{
+        effects::{
+            plan::ApplicationEffectPlan,
+            ports::ApplicationEffectsPort,
+            status::{EffectHealth, EffectRevision, EffectStatus},
         },
-        core::actor_v2::endpoint::{
-            CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
-            EndpointHandle, ExecutionHost,
+        hotkey::{
+            HotkeyArgs, HotkeyClient,
+            ports::{
+                HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
+                ShortcutError, ShortcutRegistrar,
+            },
         },
+        tests::{TestControlEndpoint, test_client_args_with_endpoint},
+    };
+    use nyanpasu_core::control::endpoint::{
+        CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot, CoreSubmission,
+        EndpointHandle, ExecutionHost,
     };
 
     // -- the owners' shutdown through the client (V14, V16, V21) -----------

@@ -12,10 +12,8 @@ pub mod proxy_env;
 pub mod resolve;
 // mod winhelp;
 
-pub mod collect;
 pub mod net;
 
 pub mod open;
 
 pub mod dock;
-pub mod sudo;

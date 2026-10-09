@@ -20,9 +20,9 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
             window::WindowMessageEvent,
             crate::storage::StorageValueChangedEvent,
             ipc::SchemeRequestReceivedEvent,
-            core::actor_v2::CoreStatusChangedEvent,
+            core::status_events::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
-            core::actor_v2::ServiceStatusChangedEvent
+            core::status_events::ServiceStatusChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
 }
@@ -189,9 +189,9 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         window::WindowMessageEvent,
         crate::storage::StorageValueChangedEvent,
         ipc::SchemeRequestReceivedEvent,
-        core::actor_v2::CoreStatusChangedEvent,
+        core::status_events::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,
-        core::actor_v2::ServiceStatusChangedEvent
+        core::status_events::ServiceStatusChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
     // arrive with T08; explicit registration keeps them exported (and the

@@ -415,7 +415,7 @@ function RankingRows({
     <div
       className={cn(
         'flex min-h-0 flex-1 flex-col gap-2',
-        featured && 'overflow-y-auto',
+        featured && 'overflow-hidden',
       )}
     >
       {featured && (

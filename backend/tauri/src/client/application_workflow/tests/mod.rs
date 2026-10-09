@@ -1313,6 +1313,60 @@ fn config_persistence_failure_restores_runtime_and_keeps_source_unchanged() {
     }
 }
 
+struct ReadyBackend;
+
+#[async_trait::async_trait]
+impl nyanpasu_core::updates::kernel::ports::UpdaterBackend for ReadyBackend {
+    async fn fetch_manifest(
+        &self,
+        _mirror: Option<(String, std::time::Instant)>,
+    ) -> anyhow::Result<(
+        nyanpasu_core::updates::kernel::ManifestVersion,
+        (String, std::time::Instant),
+    )> {
+        use nyanpasu_core::updates::kernel::ManifestVersion;
+        let mut manifest = serde_json::to_value(ManifestVersion::default())?;
+        manifest["latest"]["mihomo"] = serde_json::json!("test-version");
+        manifest["arch_template"]["mihomo"] = serde_json::json!({
+            "darwin-x64": "mihomo-{}.gz",
+            "linux-amd64": "mihomo-{}.gz",
+            "windows-x86_64": "mihomo-{}.gz",
+            "darwin-arm64": "mihomo-{}.gz",
+            "linux-aarch64": "mihomo-{}.gz",
+            "windows-arm64": "mihomo-{}.gz",
+        });
+        Ok((
+            serde_json::from_value(manifest)?,
+            ("https://github.com".into(), std::time::Instant::now()),
+        ))
+    }
+
+    async fn prepare(
+        &self,
+        core: ClashCore,
+        _mirror: String,
+        _artifact: String,
+        _tag: nyanpasu_core::updates::kernel::CoreTypeMeta,
+        progress: nyanpasu_core::updates::kernel::ports::UpdaterProgress,
+        _shutdown: &tokio_util::sync::CancellationToken,
+    ) -> anyhow::Result<PreparedCoreBinary> {
+        let staging = Arc::new(tempfile::TempDir::new()?);
+        let source = staging.path().join("prepared");
+        std::fs::write(&source, b"core binary")?;
+        progress.report(
+            nyanpasu_core::updates::kernel::UpdaterState::Replacing,
+            None,
+        );
+        Ok(PreparedCoreBinary {
+            target: core,
+            source,
+            destination: staging.path().join("installed"),
+            staging,
+            progress: Arc::new(progress),
+        })
+    }
+}
+
 /// An installation sent after the workflow has stopped never reaches it, so it
 /// certainly did not run: the caller gets a definite refusal, and the progress
 /// observer its one terminal answer.
@@ -1340,9 +1394,9 @@ fn an_installation_the_workflow_never_received_is_refused_as_not_run() {
 
         // Through the updater, the same refusal ends its task as a failure
         // that reserves nothing.
-        use crate::core::updater::{UpdaterClient, UpdaterState};
+        use nyanpasu_core::updates::kernel::{UpdaterClient, UpdaterState};
         let updater = UpdaterClient::spawn(
-            Arc::new(crate::core::updater::tests::ReadyBackend),
+            Arc::new(ReadyBackend),
             Arc::new(f.client.inner.application_workflow.clone()),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),

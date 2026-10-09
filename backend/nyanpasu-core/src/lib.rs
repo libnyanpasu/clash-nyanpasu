@@ -4,6 +4,7 @@ pub mod connections;
 pub mod control;
 pub mod device;
 pub mod diagnostics;
+pub mod download;
 pub mod error;
 pub mod format;
 pub mod geo;
@@ -17,6 +18,7 @@ pub mod state;
 pub mod storage;
 pub mod tasks;
 pub mod traffic;
+pub mod updates;
 #[cfg(windows)]
 pub mod uwp;
 

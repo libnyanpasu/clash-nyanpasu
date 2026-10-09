@@ -3,7 +3,7 @@ use crate::{
         ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
         system_proxy::ports::OsProxyError,
     },
-    core::{updater::ManifestVersionLatest, *},
+    core::*,
     enhance::PostProcessingOutput,
     state::{
         config_error::ConfigError,
@@ -25,6 +25,7 @@ use nyanpasu_core::{
     diagnostics::{EnvInfo, direct_egress::DirectEgress},
     network::proxy_env::CopyEnvOption,
     storage::{Storage, StorageOperationError, WebStorage},
+    updates::kernel::{self, ManifestVersionLatest},
 };
 use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
@@ -1033,7 +1034,7 @@ pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore
 pub async fn inspect_updater(
     client: State<'_, NyanpasuClient>,
     updater_id: usize,
-) -> Result<updater::UpdaterSummary> {
+) -> Result<kernel::UpdaterSummary> {
     Ok(client.inspect_updater(updater_id).await?)
 }
 

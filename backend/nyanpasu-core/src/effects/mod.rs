@@ -1,3 +1,9 @@
+pub mod actor;
+pub mod convergence;
+pub mod error;
+pub mod executor;
+pub mod plan;
+pub mod ports;
 pub mod status;
 
 /// Execution order of a plan. The ordering is load-bearing: the tray menu is
@@ -29,3 +35,6 @@ pub enum EffectKind {
     Widget,
     Tray,
 }
+
+#[cfg(test)]
+mod tests;

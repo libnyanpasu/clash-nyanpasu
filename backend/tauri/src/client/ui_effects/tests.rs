@@ -2,10 +2,7 @@
 //! no widget process, no sleep. Ordering is asserted from a shared call log
 //! rather than from timing.
 
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicUsize, Ordering},
-};
+use std::sync::{Arc, Mutex, atomic::Ordering};
 
 use nyanpasu_config::{
     application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig},
@@ -23,17 +20,13 @@ use super::{
     },
 };
 use crate::client::{
-    effects::{
-        executor::ApplicationEffectExecutor,
-        plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, TrayRefresh},
-        ports::ApplicationEffectsPort,
-    },
+    effects::presentation::{TauriEffectInvalidationSink, TauriPresentationEffects},
     hotkey::{
         HotkeyArgs, HotkeyClient,
         adapters::PlatformAcceleratorValidator,
         ports::{
-            HotkeyAction, HotkeyActionSink, HotkeyParseError, MockHotkeyActionSink,
-            MockShortcutRegistrar, ShortcutError, ShortcutRegistrar,
+            HotkeyActionSink, MockHotkeyActionSink, MockShortcutRegistrar, ShortcutError,
+            ShortcutRegistrar,
         },
     },
     platform_test_support::{MockAutoLaunchPort, MockOsProxyPort, MockPacPort},
@@ -41,8 +34,12 @@ use crate::client::{
 use nyanpasu_core::{
     effects::{
         EffectKind,
+        executor::ApplicationEffectExecutor,
+        plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, TrayRefresh},
+        ports::ApplicationEffectsPort,
         status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     },
+    hotkey::{HotkeyAction, HotkeyParseError},
     system_proxy::{
         SystemProxyArgs, SystemProxyClient,
         ports::{OsProxyConfig, OsProxyError, OsProxyPort, PacError, PacPort},
@@ -221,12 +218,14 @@ async fn executor_with_owners(
     .expect("the hotkey actor should spawn");
     ApplicationEffectExecutor::new(
         system_proxy,
-        hotkeys,
-        Arc::new(PlatformAcceleratorValidator),
-        locale,
         logger,
-        widget,
-        tray,
+        Some(Arc::new(TauriPresentationEffects::new(
+            hotkeys,
+            Arc::new(PlatformAcceleratorValidator),
+            locale,
+            widget,
+            tray,
+        ))),
     )
 }
 
@@ -361,7 +360,8 @@ fn language_change_requests_full_refresh() {
     assert!(
         plan.effects().contains(&ApplicationEffect::Tray(
             TrayRefresh::Full,
-            after.tray_view()
+            after.app.clone(),
+            after.clash.clone()
         )),
         "a language change rebuilds the menu: {:?}",
         plan.effects()
@@ -392,7 +392,8 @@ fn system_proxy_change_only_requests_part_refresh() {
     assert!(
         plan.effects().contains(&ApplicationEffect::Tray(
             TrayRefresh::Part,
-            after.tray_view()
+            after.app.clone(),
+            after.clash.clone()
         )),
         "nothing the menu is built from changed: {:?}",
         plan.effects()
@@ -725,136 +726,6 @@ async fn late_full_tray_refresh_still_runs_after_a_newer_part_refresh() {
     );
 }
 
-/// Parks a PAC apply until the test releases it, counting how often the actor
-/// reached it.
-#[derive(Default)]
-struct HeldPac {
-    applies: AtomicUsize,
-    started: tokio::sync::Notify,
-    release: tokio::sync::Notify,
-}
-
-#[async_trait::async_trait]
-impl PacPort for HeldPac {
-    fn is_supported(&self) -> bool {
-        true
-    }
-
-    async fn apply(
-        &self,
-        _url: &url::Url,
-        _cancel: tokio_util::sync::CancellationToken,
-    ) -> Result<(), PacError> {
-        self.applies.fetch_add(1, Ordering::SeqCst);
-        self.started.notify_one();
-        self.release.notified().await;
-        Ok(())
-    }
-
-    fn disable(&self) -> Result<(), PacError> {
-        Ok(())
-    }
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_held_pac_keeps_its_group_until_the_owner_settles() {
-    use crate::client::{
-        NoopUiEventSink,
-        convergence::ConvergenceHealth,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
-    };
-
-    let pac = Arc::new(HeldPac::default());
-    let shutdown = Shutdown::new();
-    let mut os = MockOsProxyPort::new();
-    os.expect_get().returning(|| {
-        Err(OsProxyError::ReadOsProxy {
-            source: "no system proxy is set".into(),
-        })
-    });
-    os.expect_default_bypass().return_const("bypass");
-    os.expect_set().returning(|_: &OsProxyConfig| Ok(()));
-    let mut tray = MockTrayRefresher::new();
-    tray.expect_refresh_part()
-        .returning(|_| Box::pin(async { Ok(()) }));
-    let executor = executor_with_ports(
-        os,
-        pac.clone(),
-        Arc::new(MockLocaleSink::new()),
-        Arc::new(MockLoggerRefresher::new()),
-        Arc::new(MockWidgetController::new()),
-        Arc::new(tray),
-        &shutdown,
-    )
-    .await;
-    let effects = EffectsClient::spawn(
-        EffectsArgs {
-            port: Arc::new(executor),
-            ui: Arc::new(NoopUiEventSink),
-            initial: proxied_inputs(NyanpasuAppConfig::default()),
-            shutdown: shutdown.token.child_token(),
-        },
-        &shutdown.tasks,
-    )
-    .await
-    .expect("the effects actor should spawn");
-
-    effects.application_committed(
-        (&NyanpasuAppConfig {
-            enable_system_proxy: true,
-            pac_url: Some(
-                "http://example.test/proxy.pac"
-                    .parse()
-                    .expect("a valid url"),
-            ),
-            ..NyanpasuAppConfig::default()
-        })
-            .into(),
-        Vec::new(),
-    );
-    pac.started.notified().await;
-
-    // Well past any RPC bound and every automatic retry delay. A paused clock
-    // runs each timer on the way, so any retry would have been submitted.
-    tokio::time::sleep(std::time::Duration::from_secs(120)).await;
-    effects.barrier().await;
-    let proxy = |effects: &EffectsClient| {
-        effects
-            .snapshot()
-            .effects
-            .into_iter()
-            .find(|progress| progress.status.kind == EffectKind::SystemProxy)
-            .expect("the plan carries the system proxy")
-    };
-    let held = proxy(&effects);
-    assert_eq!(
-        (held.health, held.attempts),
-        (ConvergenceHealth::Pending, 1),
-        "the group must not be released or retried while the owner still runs"
-    );
-
-    pac.release.notify_one();
-    let mut status = effects.subscribe();
-    status
-        .wait_for(|snapshot| {
-            snapshot.effects.iter().any(|progress| {
-                progress.status.kind == EffectKind::SystemProxy
-                    && progress.health == ConvergenceHealth::Healthy
-            })
-        })
-        .await
-        .expect("the effects actor is alive");
-    assert_eq!(proxy(&effects).attempts, 1);
-    assert_eq!(pac.applies.load(Ordering::SeqCst), 1);
-    shutdown.request();
-    // No bound here: the paused clock would run one out while the restore
-    // is on a blocking thread.
-    shutdown.tasks.wait().await;
-}
-
 // -- the owners' own cleanups on the shutdown token -------------------------
 
 fn quiet_tray() -> MockTrayRefresher {
@@ -900,12 +771,10 @@ impl PacPort for CancelledPac {
 /// after it on the owner's own exit path, and nothing installs a proxy again.
 #[tokio::test]
 async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
-    use crate::client::{
-        NoopUiEventSink,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use crate::client::NoopUiEventSink;
+    use nyanpasu_core::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
 
     let shutdown = Shutdown::new();
@@ -945,7 +814,9 @@ async fn the_shutdown_ends_a_pac_download_before_the_restore_runs() {
     let effects = EffectsClient::spawn(
         EffectsArgs {
             port: Arc::new(executor),
-            ui: Arc::new(NoopUiEventSink),
+            invalidation: Some(Arc::new(TauriEffectInvalidationSink::new(Arc::new(
+                NoopUiEventSink,
+            )))),
             initial: proxied_inputs(NyanpasuAppConfig::default()),
             shutdown: shutdown.token.child_token(),
         },
@@ -1036,17 +907,13 @@ async fn the_restore_waits_for_an_os_call_the_token_cannot_interrupt() {
         )
         .await,
     );
-    let enabling = ApplicationEffectPlan::from_effects(
-        ApplicationEffectPlan::full(&proxied_inputs(NyanpasuAppConfig {
-            enable_system_proxy: true,
-            ..NyanpasuAppConfig::default()
-        }))
-        .effects()
-        .iter()
-        .filter(|effect| effect.kind() == EffectKind::SystemProxy)
-        .cloned()
-        .collect(),
-    );
+    let after = proxied_inputs(NyanpasuAppConfig {
+        enable_system_proxy: true,
+        ..NyanpasuAppConfig::default()
+    });
+    let mut before = after.clone();
+    before.ports = None;
+    let enabling = ApplicationEffectPlan::diff(&before, &after);
     let applying = tokio::spawn({
         let executor = executor.clone();
         async move { executor.apply(EffectRevision::new(1), enabling).await }
@@ -1174,12 +1041,10 @@ impl ApplicationEffectsPort for HeldEffects {
 /// shutdown waits until every one of them has really finished.
 #[tokio::test]
 async fn the_owners_clean_up_independently_and_the_shutdown_waits_for_all() {
-    use crate::client::{
-        NoopUiEventSink,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use crate::client::NoopUiEventSink;
+    use nyanpasu_core::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
 
     let shutdown = Shutdown::new();
@@ -1205,20 +1070,15 @@ async fn the_owners_clean_up_independently_and_the_shutdown_waits_for_all() {
     .await;
     // The proxy is installed, so the restore has something to put back.
     let installed = executor
-        .apply(
-            EffectRevision::new(1),
-            ApplicationEffectPlan::from_effects(
-                ApplicationEffectPlan::full(&proxied_inputs(NyanpasuAppConfig {
-                    enable_system_proxy: true,
-                    ..NyanpasuAppConfig::default()
-                }))
-                .effects()
-                .iter()
-                .filter(|effect| effect.kind() == EffectKind::SystemProxy)
-                .cloned()
-                .collect(),
-            ),
-        )
+        .apply(EffectRevision::new(1), {
+            let after = proxied_inputs(NyanpasuAppConfig {
+                enable_system_proxy: true,
+                ..NyanpasuAppConfig::default()
+            });
+            let mut before = after.clone();
+            before.ports = None;
+            ApplicationEffectPlan::diff(&before, &after)
+        })
         .await;
     assert!(
         installed
@@ -1230,7 +1090,9 @@ async fn the_owners_clean_up_independently_and_the_shutdown_waits_for_all() {
     let effects = EffectsClient::spawn(
         EffectsArgs {
             port: held.clone(),
-            ui: Arc::new(NoopUiEventSink),
+            invalidation: Some(Arc::new(TauriEffectInvalidationSink::new(Arc::new(
+                NoopUiEventSink,
+            )))),
             initial: inputs(NyanpasuAppConfig::default()),
             shutdown: shutdown.token.child_token(),
         },
@@ -1268,15 +1130,13 @@ async fn effects_with_a_widget_starting(
     host: &Arc<crate::widget::tests::FakeWidgetHost>,
     shutdown: &Shutdown,
 ) -> (
-    crate::client::effects::actor::EffectsClient,
+    nyanpasu_core::effects::actor::EffectsClient,
     crate::widget::WidgetManager,
 ) {
-    use crate::client::{
-        NoopUiEventSink,
-        effects::{
-            actor::{EffectsArgs, EffectsClient},
-            ports::CommitNotifications,
-        },
+    use crate::client::NoopUiEventSink;
+    use nyanpasu_core::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        ports::CommitNotifications,
     };
 
     let manager = crate::widget::WidgetManager::new(
@@ -1300,7 +1160,9 @@ async fn effects_with_a_widget_starting(
     let effects = EffectsClient::spawn(
         EffectsArgs {
             port: Arc::new(executor),
-            ui: Arc::new(NoopUiEventSink),
+            invalidation: Some(Arc::new(TauriEffectInvalidationSink::new(Arc::new(
+                NoopUiEventSink,
+            )))),
             initial: inputs(NyanpasuAppConfig::default()),
             shutdown: shutdown.token.child_token(),
         },

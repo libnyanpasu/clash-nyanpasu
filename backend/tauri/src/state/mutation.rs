@@ -1,6 +1,7 @@
 //! Startup-injected connection to the application transaction participant
 //! and the effects owner, and what a source tells its caller once the Runtime
 //! has settled a mutation.
+use nyanpasu_core::effects::ports::CommitNotifications;
 use std::sync::Arc;
 
 use nyanpasu_core::state::{
@@ -20,7 +21,6 @@ use crate::client::{
         participant::ApplicationMutationParticipant,
         policy::CommandClass,
     },
-    effects::ports::CommitNotifications,
     runtime::{
         CommitReceipt, Degradation, DegradationPhase, DegradationReason, RuntimeCommitStatus,
     },
@@ -164,7 +164,7 @@ impl MutationCoordinator {
             Connection::Ready { effects, .. } => effects.clone(),
             #[cfg(test)]
             Connection::Isolated => {
-                Arc::new(crate::client::effects::ports::NoopCommitNotifications)
+                Arc::new(crate::client::effects_test_support::NoopCommitNotifications)
             }
             Connection::Pending => unreachable!("a source commits only once connected"),
         }

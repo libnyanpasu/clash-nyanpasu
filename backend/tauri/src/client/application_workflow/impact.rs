@@ -567,14 +567,10 @@ mod tests {
     use nyanpasu_helper::StatisticWidgetVariant;
     use struct_patch::Patch as _;
 
-    use crate::{
-        client::effects::plan::{
-            ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan,
-        },
-        enhance::golden_support,
-    };
+    use crate::enhance::golden_support;
     use nyanpasu_core::effects::{
         EffectKind,
+        plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan},
         status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     };
 

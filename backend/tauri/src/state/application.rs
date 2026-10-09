@@ -89,7 +89,7 @@ impl ApplicationActor {
         let mut next = state.manager.snapshot_handle().load().state.clone();
         let hints = MutationHints {
             requested: RequestedRuntimeFields::of_application(&patch),
-            requested_owners: crate::client::effects::plan::requested_owners(&patch),
+            requested_owners: nyanpasu_core::effects::plan::requested_owners(&patch),
             ..Default::default()
         };
         let class = if patch.core.is_some() || patch.enable_service_mode.is_some() {

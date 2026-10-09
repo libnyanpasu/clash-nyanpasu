@@ -1,6 +1,8 @@
 //! Setup logic for the app
 use nyanpasu_core::{
     diagnostics::direct_egress::HttpDirectEgressProbe,
+    effects::executor::ApplicationEffectExecutor,
+    hotkey::HotkeyAction,
     logs::logging::{ReloadSignal, TracingLoggerRefresher},
     tasks::track_until_shutdown,
 };
@@ -10,14 +12,13 @@ use std::sync::Arc;
 use crate::client::{
     ClientSetupArgs, MainThreadExecutor, NyanpasuClient, RuntimePaths, TauriMainThread,
     TauriUiEventSink,
-    effects::executor::ApplicationEffectExecutor,
+    effects::presentation::TauriPresentationEffects,
     hotkey::{
         HotkeyArgs, HotkeyClient,
         adapters::{
             ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
             TauriWindowControl,
         },
-        ports::HotkeyAction,
     },
     system_proxy_adapters::{AutoLaunchBackend, AutoLaunchConfig},
     ui_effects::{
@@ -394,12 +395,14 @@ fn build_application_effects(
     let widget = Arc::new(TauriWidgetController::default());
     let executor = Arc::new(ApplicationEffectExecutor::new(
         system_proxy,
-        hotkeys,
-        Arc::new(PlatformAcceleratorValidator),
-        Arc::new(RustI18nLocaleSink),
         Arc::new(TracingLoggerRefresher::new(logger_reload)),
-        widget.clone(),
-        Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
+        Some(Arc::new(TauriPresentationEffects::new(
+            hotkeys,
+            Arc::new(PlatformAcceleratorValidator),
+            Arc::new(RustI18nLocaleSink),
+            widget.clone(),
+            Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
+        ))),
     ));
     Ok((executor, widget))
 }

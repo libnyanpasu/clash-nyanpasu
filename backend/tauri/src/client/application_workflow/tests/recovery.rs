@@ -1082,7 +1082,7 @@ async fn a_lost_handoff_that_failed_into_a_degraded_router_is_resolved() {
         .expect("the runtime still waits for a proven owner");
     assert_eq!(
         target.health,
-        crate::client::convergence::ConvergenceHealth::RecoveryRequired
+        nyanpasu_core::effects::convergence::ConvergenceHealth::RecoveryRequired
     );
     assert_eq!(
         g.log(),

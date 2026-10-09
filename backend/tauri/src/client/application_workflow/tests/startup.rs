@@ -7,6 +7,7 @@
 //! single-instance claims read. A scheduled retry is driven by sending it, the
 //! way the convergence timer would, and its schedule is read back bracketed by
 //! the instants taken around the call that set it; nothing sleeps.
+use nyanpasu_core::effects::convergence::ConvergenceHealth;
 
 use nyanpasu_core::migration::modules::application::ApplicationFormat;
 use std::{
@@ -60,7 +61,6 @@ use super::{
 };
 use crate::client::{
     NyanpasuClient, SessionPortResolver,
-    convergence::ConvergenceHealth,
     core_lifecycle::Ownership,
     runtime,
     tests::{TestCheckAnswer, TestControlEndpoint, test_client_args_with_endpoint},

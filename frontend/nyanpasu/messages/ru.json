@@ -1008,6 +1008,7 @@
   "effect_failure_widget_unavailable": "Виджет сетевой статистики ещё не готов",
   "effect_failure_widget_apply_failed": "Не удалось обновить виджет сетевой статистики",
   "effect_failure_tray_refresh_failed": "Не удалось обновить меню в трее",
+  "effect_failure_presentation_unsupported": "Применение настроек интерфейса не поддерживается в этой среде",
   "effect_failure_effect_owner_silent": "Служба, применяющая эту настройку, не сообщила результат",
   "effect_failure_proxy_guard_waiting_dependency": "Ожидание подтверждения системного прокси",
   "effect_failure_auto_launch_failed": "Не удалось обновить настройку автозапуска",

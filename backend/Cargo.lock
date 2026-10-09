@@ -6618,6 +6618,7 @@ dependencies = [
  "smol-cancellation-token",
  "snafu",
  "specta",
+ "struct-patch",
  "strum",
  "sysinfo",
  "sysproxy",

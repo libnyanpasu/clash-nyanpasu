@@ -1,5 +1,5 @@
 use crate::{
-    client::{ClientError, NyanpasuClient, RuntimeError, effects::error::EffectsError},
+    client::{ClientError, NyanpasuClient, RuntimeError},
     core::*,
     enhance::PostProcessingOutput,
     state::{
@@ -20,6 +20,7 @@ use nyanpasu_config::application::ReleaseChannel;
 use nyanpasu_core::{
     backup,
     diagnostics::{EnvInfo, direct_egress::DirectEgress},
+    effects::error::EffectsError,
     network::proxy_env::CopyEnvOption,
     storage::{Storage, StorageOperationError, WebStorage},
     system_dns::SystemDnsError,
@@ -843,7 +844,7 @@ pub async fn patch_runtime_overrides(
 #[tauri::command]
 #[specta::specta]
 pub fn get_hotkey_functions() -> Vec<&'static str> {
-    crate::client::hotkey::ports::HotkeyAction::all()
+    nyanpasu_core::hotkey::HotkeyAction::all()
         .iter()
         .map(|action| action.as_str())
         .collect()
@@ -2050,13 +2051,15 @@ mod tests {
     use snafu::IntoError;
 
     use crate::{
-        client::{effects::error::EffectsError, runtime_error::RuntimeError},
+        client::runtime_error::RuntimeError,
         state::{
             mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
             profiles::{ProfileFileError, SubscriptionFetchError},
         },
     };
-    use nyanpasu_core::{system_dns::SystemDnsError, system_proxy::ports::OsProxyError};
+    use nyanpasu_core::{
+        effects::error::EffectsError, system_dns::SystemDnsError, system_proxy::ports::OsProxyError,
+    };
 
     fn wire(error: impl Into<ClientError>) -> serde_json::Value {
         serde_json::to_value(IpcError::from(error.into())).unwrap()

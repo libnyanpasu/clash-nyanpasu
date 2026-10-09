@@ -1094,6 +1094,7 @@
   "effect_failure_widget_unavailable": "網路統計小工具尚未就緒",
   "effect_failure_widget_apply_failed": "無法更新網路統計小工具",
   "effect_failure_tray_refresh_failed": "無法重新整理系統匣選單",
+  "effect_failure_presentation_unsupported": "目前環境不支援套用介面設定",
   "effect_failure_effect_owner_silent": "負責套用此設定的服務沒有回報結果",
   "effect_failure_proxy_guard_waiting_dependency": "正在等待系統 Proxy 確認",
   "effect_failure_auto_launch_failed": "無法更新「隨系統啟動」設定",

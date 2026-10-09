@@ -884,7 +884,9 @@ test('proxy mode selection follows the confirmed runtime value and premium expos
   await expect.element(rule).toHaveAttribute('aria-pressed', 'false')
   expect(upsert).toHaveBeenCalledWith('script')
   expect(
-    document.querySelectorAll('[data-slot="proxy-mode-indicator"]'),
+    document.querySelectorAll(
+      '[data-slot="expressive-choice"][data-layout="flex"]',
+    ),
   ).toHaveLength(1)
   expect(
     document.querySelector('[data-slot="widget-config-trigger"]'),

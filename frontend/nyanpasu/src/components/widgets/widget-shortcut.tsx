@@ -27,11 +27,7 @@ import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { WidgetComponentProps } from './consts'
 import { useWidgetConfig } from './provider'
-import {
-  PROXY_HORIZONTAL_MIN_WIDTH,
-  WidgetConfigs,
-  WidgetId,
-} from './widget-config'
+import { WidgetConfigs, WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
 import { WidgetHeader, WidgetTitle } from './widget-ui'
 
@@ -116,13 +112,7 @@ export function ProxyShortcutsWidget({
   onCloseClick,
 }: WidgetComponentProps) {
   const config = useWidgetConfig(id, WidgetId.ProxyShortcuts)
-  const { sourceOnly, displayItems } = useDndGridContext()
-  const horizontal = config.orientation === 'horizontal'
-  const tooNarrow =
-    horizontal &&
-    config.buttons === 'both' &&
-    (displayItems.find((item) => item.id === id)?.w ?? 0) <
-      PROXY_HORIZONTAL_MIN_WIDTH
+  const { sourceOnly } = useDndGridContext()
   const buttons =
     config.order === 'system-first' ? ['system', 'tun'] : ['tun', 'system']
 
@@ -130,9 +120,7 @@ export function ProxyShortcutsWidget({
     <WidgetItem
       id={id}
       widgetType={WidgetId.ProxyShortcuts}
-      minW={
-        horizontal && config.buttons === 'both' ? PROXY_HORIZONTAL_MIN_WIDTH : 3
-      }
+      minW={3}
       minH={2}
       onCloseClick={onCloseClick}
     >
@@ -140,38 +128,31 @@ export function ProxyShortcutsWidget({
         <ProxyTitleRow />
 
         <CardContent
-          className={cn('min-h-0 flex-1 gap-3', horizontal && 'flex-row')}
+          className="min-h-0 flex-1 flex-row items-stretch justify-center gap-2 overflow-hidden py-3"
           data-slot="proxy-shortcut-buttons"
-          data-orientation={config.orientation}
         >
-          {tooNarrow ? (
-            <p className="text-on-surface-variant self-center text-sm">
-              {m.dashboard_widget_proxy_shortcuts_config_widen({
-                columns: PROXY_HORIZONTAL_MIN_WIDTH,
-              })}
-            </p>
-          ) : (
-            buttons
-              .filter(
-                (button) =>
-                  config.buttons === 'both' || config.buttons === button,
-              )
-              .map((button) =>
-                button === 'system' ? (
-                  <SystemProxyButton
-                    key={button}
-                    disabled={sourceOnly}
-                    className="h-full min-w-0 flex-1 rounded-3xl"
-                  />
-                ) : (
-                  <TunModeButton
-                    key={button}
-                    disabled={sourceOnly}
-                    className="h-full min-w-0 flex-1 rounded-3xl"
-                  />
-                ),
-              )
-          )}
+          {buttons
+            .filter(
+              (button) =>
+                config.buttons === 'both' || config.buttons === button,
+            )
+            .map((button) =>
+              button === 'system' ? (
+                <SystemProxyButton
+                  key={button}
+                  presentation="cookie"
+                  elastic={config.layout === 'flex'}
+                  disabled={sourceOnly}
+                />
+              ) : (
+                <TunModeButton
+                  key={button}
+                  presentation="cookie"
+                  elastic={config.layout === 'flex'}
+                  disabled={sourceOnly}
+                />
+              ),
+            )}
         </CardContent>
       </Card>
     </WidgetItem>

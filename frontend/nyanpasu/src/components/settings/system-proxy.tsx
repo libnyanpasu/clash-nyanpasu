@@ -2,7 +2,7 @@ import NetworkPing from '~icons/material-symbols/network-ping-rounded'
 import SettingsEthernet from '~icons/material-symbols/settings-ethernet-rounded'
 import { Button, ButtonProps } from '@nyanpasu/ui/button'
 import { CircularProgress } from '@nyanpasu/ui/progress'
-import { useBlockTask } from '@/components/providers/block-task-provider'
+import { ShapeToggle } from '@nyanpasu/ui/shape-toggle'
 import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
@@ -46,10 +46,30 @@ const ProxyButton = ({
   )
 }
 
-export const SystemProxyButton = (
-  props: Omit<ButtonProps, 'children' | 'loading'>,
-) => {
+export const SystemProxyButton = ({
+  presentation,
+  compact,
+  elastic,
+  ...props
+}: Omit<ButtonProps, 'children' | 'loading'> & {
+  presentation?: 'cookie'
+  compact?: boolean
+  elastic?: boolean
+}) => {
   const { execute, isPending, isActive } = useSystemProxy()
+  if (presentation === 'cookie')
+    return (
+      <ShapeToggle
+        compact={compact}
+        elastic={elastic}
+        {...props}
+        active={Boolean(isActive)}
+        loading={isPending}
+        onClick={execute}
+        icon={<NetworkPing />}
+        label={m.settings_system_proxy_system_proxy_label()}
+      />
+    )
 
   return (
     <ProxyButton
@@ -64,10 +84,30 @@ export const SystemProxyButton = (
   )
 }
 
-export const TunModeButton = (
-  props: Omit<ButtonProps, 'children' | 'loading'>,
-) => {
+export const TunModeButton = ({
+  presentation,
+  compact,
+  elastic,
+  ...props
+}: Omit<ButtonProps, 'children' | 'loading'> & {
+  presentation?: 'cookie'
+  compact?: boolean
+  elastic?: boolean
+}) => {
   const { execute, isPending, isActive } = useTunMode()
+  if (presentation === 'cookie')
+    return (
+      <ShapeToggle
+        compact={compact}
+        elastic={elastic}
+        {...props}
+        active={Boolean(isActive)}
+        loading={isPending}
+        onClick={execute}
+        icon={<SettingsEthernet />}
+        label={m.settings_system_proxy_tun_mode_label()}
+      />
+    )
 
   return (
     <ProxyButton

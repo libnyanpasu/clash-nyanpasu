@@ -19,8 +19,6 @@ export enum WidgetId {
   ProviderUpdates = 'provider-updates',
 }
 
-export const PROXY_HORIZONTAL_MIN_WIDTH = 6
-
 type TrafficConfig = {
   showChart: boolean
   showTotal: boolean
@@ -61,7 +59,10 @@ export type WidgetConfigs = {
     target: SubscriptionTarget
     showRecentRuns: boolean
   }
-  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode }
+  [WidgetId.ProxyMode]: {
+    type: WidgetId.ProxyMode
+    layout: 'focus' | 'flex'
+  }
   [WidgetId.RecentTraffic]: ReportWidgetConfig & {
     type: WidgetId.RecentTraffic
   }
@@ -88,7 +89,7 @@ export type WidgetConfigs = {
   [WidgetId.Connections]: HistoryConfig & { type: WidgetId.Connections }
   [WidgetId.ProxyShortcuts]: {
     type: WidgetId.ProxyShortcuts
-    orientation: 'vertical' | 'horizontal'
+    layout: 'equal' | 'flex'
     buttons: 'both' | 'system' | 'tun'
     order: 'system-first' | 'tun-first'
   }
@@ -128,7 +129,7 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
     target: { kind: 'current' },
     showRecentRuns: true,
   },
-  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode },
+  [WidgetId.ProxyMode]: { type: WidgetId.ProxyMode, layout: 'flex' },
   [WidgetId.RecentTraffic]: { ...reportDefaults, type: WidgetId.RecentTraffic },
   [WidgetId.OriginTraffic]: {
     ...rankingDefaults,
@@ -173,7 +174,7 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
   },
   [WidgetId.ProxyShortcuts]: {
     type: WidgetId.ProxyShortcuts,
-    orientation: 'vertical',
+    layout: 'flex',
     buttons: 'both',
     order: 'system-first',
   },
@@ -282,14 +283,17 @@ export function normalizeWidgetConfigStorage(
         (key === 'unit' && (candidate === 'bytes' || candidate === 'bits')) ||
         (key === 'waveStyle' &&
           (candidate === 'single' || candidate === 'double')) ||
-        (key === 'orientation' &&
-          (candidate === 'vertical' || candidate === 'horizontal')) ||
         (key === 'buttons' &&
           (candidate === 'both' ||
             candidate === 'system' ||
             candidate === 'tun')) ||
         (key === 'order' &&
-          (candidate === 'system-first' || candidate === 'tun-first'))
+          (candidate === 'system-first' || candidate === 'tun-first')) ||
+        (key === 'layout' &&
+          (candidate === 'flex' ||
+            (config.type === WidgetId.ProxyShortcuts
+              ? candidate === 'equal'
+              : candidate === 'focus')))
       ) {
         Object.assign(config, { [key]: candidate })
       } else if (

@@ -68,14 +68,39 @@ test('duplicate instances are independent and a mismatched type uses defaults', 
     },
   })
   expect(
-    getWidgetConfig(storage, 'first', WidgetId.ProxyShortcuts).orientation,
-  ).toBe('horizontal')
+    getWidgetConfig(storage, 'first', WidgetId.ProxyShortcuts).buttons,
+  ).toBe('tun')
   expect(
-    getWidgetConfig(storage, 'second', WidgetId.ProxyShortcuts).orientation,
-  ).toBe('vertical')
+    getWidgetConfig(storage, 'second', WidgetId.ProxyShortcuts).buttons,
+  ).toBe('both')
+  expect(
+    getWidgetConfig(storage, 'second', WidgetId.ProxyShortcuts),
+  ).not.toHaveProperty('orientation')
   expect(getWidgetConfig(storage, 'first', WidgetId.Memory)).toEqual(
     DEFAULT_WIDGET_CONFIGS[WidgetId.Memory],
   )
+})
+
+test('proxy mode layouts persist per instance and old or invalid choices use the flex layout', () => {
+  const storage = normalizeWidgetConfigStorage({
+    version: 1,
+    byInstance: {
+      focus: { type: WidgetId.ProxyMode, layout: 'focus' },
+      flex: { type: WidgetId.ProxyMode, layout: 'flex' },
+      old: { type: WidgetId.ProxyMode },
+      invalid: { type: WidgetId.ProxyMode, layout: 'tabs' },
+    },
+  })
+
+  expect(getWidgetConfig(storage, 'flex', WidgetId.ProxyMode).layout).toBe(
+    'flex',
+  )
+  expect(getWidgetConfig(storage, 'focus', WidgetId.ProxyMode).layout).toBe(
+    'focus',
+  )
+  for (const id of ['old', 'invalid']) {
+    expect(getWidgetConfig(storage, id, WidgetId.ProxyMode).layout).toBe('flex')
+  }
 })
 
 test('new references are validated and isolated while version 1 stays readable', () => {
@@ -216,4 +241,26 @@ test('quota wave options restore saved choices and keep defaults for older or in
   expect(
     getWidgetConfig(storage, 'single', WidgetId.SubscriptionQuota),
   ).toMatchObject({ waveStyle: 'single', animateWave: false })
+})
+
+test('both proxy widgets default to flex while status preserves an explicit equal layout', () => {
+  const storage = normalizeWidgetConfigStorage({
+    version: 1,
+    byInstance: {
+      status: { type: WidgetId.ProxyShortcuts },
+      equal: { type: WidgetId.ProxyShortcuts, layout: 'equal' },
+      invalid: { type: WidgetId.ProxyShortcuts, layout: 'focus' },
+      mode: { type: WidgetId.ProxyMode },
+    },
+  })
+  for (const id of ['status', 'invalid'])
+    expect(getWidgetConfig(storage, id, WidgetId.ProxyShortcuts).layout).toBe(
+      'flex',
+    )
+  expect(
+    getWidgetConfig(storage, 'equal', WidgetId.ProxyShortcuts).layout,
+  ).toBe('equal')
+  expect(getWidgetConfig(storage, 'mode', WidgetId.ProxyMode).layout).toBe(
+    'flex',
+  )
 })

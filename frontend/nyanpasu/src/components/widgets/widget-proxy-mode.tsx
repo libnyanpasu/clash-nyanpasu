@@ -3,11 +3,11 @@ import NorthEastRounded from '~icons/material-symbols/north-east-rounded'
 import PublicRounded from '~icons/material-symbols/public-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import RouteRounded from '~icons/material-symbols/route-rounded'
-import { motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { ExpressiveChoice } from '@nyanpasu/ui/expressive-choice'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import {
@@ -16,8 +16,8 @@ import {
   useProxyMode,
   type ProxyMode,
 } from '@nyanpasu/query'
-import { cn } from '@nyanpasu/utils'
 import type { WidgetComponentProps } from './consts'
+import { useWidgetConfig } from './provider'
 import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
 import { WidgetHeader, WidgetTitle } from './widget-ui'
@@ -43,75 +43,57 @@ function modeLabel(mode: ProxyMode): string {
   }
 }
 
+function modeDescription(mode: ProxyMode): string {
+  switch (mode) {
+    case 'rule':
+      return m.dashboard_widget_proxy_mode_rule_description()
+    case 'global':
+      return m.dashboard_widget_proxy_mode_global_description()
+    case 'direct':
+      return m.dashboard_widget_proxy_mode_direct_description()
+    case 'script':
+      return m.dashboard_widget_proxy_mode_script_description()
+  }
+}
+
 function ProxyModeOptions({
   modes,
   currentMode,
   disabled,
   onChange,
+  layout = 'focus',
 }: {
   modes: ProxyMode[]
   currentMode: ProxyMode | null
   disabled: boolean
   onChange?: (mode: ProxyMode) => void
+  layout?: 'focus' | 'flex'
 }) {
-  const reducedMotion = useReducedMotion()
-  const selectedIndex = currentMode ? modes.indexOf(currentMode) : 0
-
   return (
-    <div
-      className="relative isolate grid shrink-0 gap-1"
-      style={{
-        gridTemplateColumns: `repeat(${modes.length}, minmax(0, 1fr))`,
-      }}
-      role="group"
-      aria-label={m.dashboard_widget_proxy_mode_title()}
-      data-slot="proxy-mode-options"
-    >
-      <motion.span
-        aria-hidden
-        data-slot="proxy-mode-indicator"
-        className="bg-primary-container absolute inset-y-0 left-0 rounded-2xl"
-        style={{
-          width: `calc((100% - ${(modes.length - 1) * 4}px) / ${modes.length})`,
-        }}
-        initial={false}
-        animate={{
-          x: `calc(${selectedIndex * 100}% + ${selectedIndex * 4}px)`,
-          opacity: currentMode ? 1 : 0,
-        }}
-        transition={{
-          duration: reducedMotion ? 0 : 0.3,
-          ease: [0.22, 1, 0.36, 1],
-        }}
-      />
-      {modes.map((mode) => {
+    <ExpressiveChoice
+      label={m.dashboard_widget_proxy_mode_title()}
+      options={modes.map((mode) => {
         const Icon = MODE_ICONS[mode]
-        const selected = mode === currentMode
-
-        return (
-          <Button
-            key={mode}
-            variant="basic"
-            className={cn(
-              'relative z-10 flex aspect-square h-auto w-full min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-transparent px-1',
-              selected
-                ? 'text-on-primary-container'
-                : 'text-on-surface-variant',
-            )}
-            aria-pressed={selected}
-            disabled={disabled}
-            onClick={() => onChange?.(mode)}
-          >
-            <Icon className="size-5 shrink-0" />
-            <span className="text-xs">{modeLabel(mode)}</span>
-          </Button>
-        )
+        return {
+          value: mode,
+          label: modeLabel(mode),
+          description: modeDescription(mode),
+          icon: <Icon aria-hidden />,
+        }
       })}
-    </div>
+      value={currentMode}
+      layout={layout}
+      disabled={disabled}
+      onChange={(value) => {
+        const mode = modes.find((mode) => mode === value)
+        if (mode) onChange?.(mode)
+      }}
+    />
   )
 }
 
 function ProxyModePreview({ id }: { id: string }) {
+  const config = useWidgetConfig(id, WidgetId.ProxyMode)
   return (
     <WidgetItem id={id} widgetType={WidgetId.ProxyMode} minW={4} minH={2}>
       <Card className="flex size-full flex-col">
@@ -120,11 +102,12 @@ function ProxyModePreview({ id }: { id: string }) {
             {m.dashboard_widget_proxy_mode_title()}
           </WidgetTitle>
         </WidgetHeader>
-        <CardContent className="min-h-0 flex-1 justify-center">
+        <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-hidden px-4 py-3">
           <ProxyModeOptions
             modes={MODE_KEYS.slice(0, 3)}
             currentMode="rule"
             disabled
+            layout={config.layout}
           />
         </CardContent>
       </Card>
@@ -142,12 +125,14 @@ function ProxyModeLive({
   disabled: boolean
 }) {
   const proxyMode = useProxyMode()
+  const config = useWidgetConfig(id, WidgetId.ProxyMode)
   const coreStatus = useCoreStatus()
   const [actionState, setActionState] = useState<ActionState>('idle')
   const [checkedAfterUnconfirmed, setCheckedAfterUnconfirmed] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
   const [checkFailed, setCheckFailed] = useState(false)
   const configData = proxyMode.query.data
+  const layout = config.layout
   const core = proxyMode.settingsQuery.data?.core
   const rawMode = configData?.mode?.toLowerCase()
   const supportedModes = core === 'clash' ? MODE_KEYS : MODE_KEYS.slice(0, 3)
@@ -289,10 +274,11 @@ function ProxyModeLive({
           )}
         </WidgetHeader>
 
-        <CardContent className="min-h-0 flex-1 justify-center gap-1 px-3 py-2">
+        <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-hidden px-4 py-3">
           <ProxyModeOptions
             modes={supportedModes}
             currentMode={currentMode}
+            layout={layout}
             disabled={!actionable || proxyMode.isPending}
             onChange={changeMode}
           />

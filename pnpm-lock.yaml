@@ -183,7 +183,7 @@ importers:
         version: 21.2.3
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.7.1
-        version: 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2)
+        version: 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)(supports-color@10.2.2)
       '@tanstack/react-query':
         specifier: 5.104.1
         version: 5.104.1(react@19.3.0)
@@ -233,14 +233,14 @@ importers:
         specifier: 2.0.0
         version: 2.0.0(postcss@8.5.28)
       prettier:
-        specifier: 3.9.9
-        version: 3.9.9
+        specifier: 3.9.10
+        version: 3.9.10
       prettier-plugin-tailwindcss:
         specifier: 0.8.1
-        version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)
+        version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)
       prettier-plugin-toml:
         specifier: 3.0.2
-        version: 3.0.2(prettier@3.9.9)
+        version: 3.0.2(prettier@3.9.10)
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -258,7 +258,7 @@ importers:
         version: 2.0.0(postcss-html@2.0.0(postcss@8.5.28))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
       stylelint-config-recess-order:
         specifier: 7.8.0
-        version: 7.8.0(stylelint-order@8.1.1(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
+        version: 7.8.0(stylelint-order@8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
       stylelint-config-standard:
         specifier: 40.0.0
         version: 40.0.0(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
@@ -266,8 +266,8 @@ importers:
         specifier: 3.0.0
         version: 3.0.0(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
       stylelint-order:
-        specifier: 8.1.1
-        version: 8.1.1(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
+        specifier: 8.1.2
+        version: 8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
       tailwind-merge:
         specifier: 3.7.0
         version: 3.7.0
@@ -5573,6 +5573,11 @@ packages:
     engines: {node: '>=14'}
     hasBin: true
 
+  prettier@3.9.10:
+    resolution: {integrity: sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==}
+    engines: {node: '>=14'}
+    hasBin: true
+
   prettier@3.9.9:
     resolution: {integrity: sha512-Z/CJHIkdujO/OtN7nXUii0Rf3VT5SRuhjBA82Xvu2XhBUgX3nhP67T0LHceBdQLex7OOFGTox+Q5Yg8Jk2Qivg==}
     engines: {node: '>=14'}
@@ -6004,8 +6009,8 @@ packages:
     peerDependencies:
       stylelint: ^17.0.0
 
-  stylelint-order@8.1.1:
-    resolution: {integrity: sha512-LqsEB6VggJuu5v10RtkrQsBObcdwBE7GuAOlwfc/LR3VL/w8UqKX2BOLIjhyGt0Gne/njo7gRNGiJAKhfmPMNw==}
+  stylelint-order@8.1.2:
+    resolution: {integrity: sha512-A+bxnIMVmzkWr6KlIwHnjQqTWBXPlIixoJa962BpK1N5bkhq3lXhKHjs4fY8ecooktjd3B3TtRiqoLSj+MfbxQ==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       stylelint: ^16.18.0 || ^17.0.0
@@ -7620,17 +7625,17 @@ snapshots:
       valibot: 1.4.2(typescript@7.0.2)
       zod: 4.6.5
 
-  '@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2)':
+  '@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)(supports-color@10.2.2)':
     dependencies:
       '@babel/generator': 7.29.0
       '@babel/parser': 7.29.0
       '@babel/traverse': 7.29.0(supports-color@10.2.2)
       '@babel/types': 7.29.0
-      prettier: 3.9.9
+      prettier: 3.9.10
       semver: 7.7.3
     optionalDependencies:
       content-tag: 4.2.0
-      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.9.9)(supports-color@10.2.2)
+      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.9.10)(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -11447,29 +11452,31 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2):
+  prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@10.2.2):
     dependencies:
       '@babel/traverse': 7.29.8(supports-color@10.2.2)
       content-tag: 4.2.0
-      prettier: 3.9.9
+      prettier: 3.9.10
     transitivePeerDependencies:
       - supports-color
     optional: true
 
-  prettier-plugin-tailwindcss@0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9):
+  prettier-plugin-tailwindcss@0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10):
     dependencies:
-      prettier: 3.9.9
+      prettier: 3.9.10
     optionalDependencies:
-      '@ianvs/prettier-plugin-sort-imports': 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.9)(supports-color@10.2.2))(prettier@3.9.9)(supports-color@10.2.2)
+      '@ianvs/prettier-plugin-sort-imports': 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)(supports-color@10.2.2)
 
-  prettier-plugin-toml@3.0.2(prettier@3.9.9):
+  prettier-plugin-toml@3.0.2(prettier@3.9.10):
     dependencies:
       '@dual-bundle/import-meta-resolve': 4.2.1
       '@tombi-toml/wasm-lib': 1.5.8
-      prettier: 3.9.9
+      prettier: 3.9.10
       smol-toml: 1.8.0
 
   prettier@3.8.5: {}
+
+  prettier@3.9.10: {}
 
   prettier@3.9.9: {}
 
@@ -11965,10 +11972,10 @@ snapshots:
       postcss-html: 2.0.0(postcss@8.5.28)
       stylelint: 17.16.0(supports-color@10.2.2)(typescript@7.0.2)
 
-  stylelint-config-recess-order@7.8.0(stylelint-order@8.1.1(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)):
+  stylelint-config-recess-order@7.8.0(stylelint-order@8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)):
     dependencies:
       stylelint: 17.16.0(supports-color@10.2.2)(typescript@7.0.2)
-      stylelint-order: 8.1.1(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
+      stylelint-order: 8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
 
   stylelint-config-recommended@18.0.0(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)):
     dependencies:
@@ -11983,7 +11990,7 @@ snapshots:
     dependencies:
       stylelint: 17.16.0(supports-color@10.2.2)(typescript@7.0.2)
 
-  stylelint-order@8.1.1(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)):
+  stylelint-order@8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)):
     dependencies:
       postcss: 8.5.28
       postcss-sorting: 10.0.0(postcss@8.5.28)

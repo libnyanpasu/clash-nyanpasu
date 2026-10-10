@@ -294,16 +294,17 @@ main → P01 → P02 → P03 → P04 → P05 → P06 → P07 → P08 → P09 →
 **PR结果：** 第一个真正可用、可构造和可关闭的 `nyanpasu_core::NyanpasuClient`。此PR不是等待后续“frontend接入”的半成品。
 
 - **C1 `Separate GUI-only facade operations and host composition`**：在现有host内把dashboard/window dispatch、main-thread、GUI展示projection及Tauri应用更新装配/入口从共享facade边界分离给实际GUI owner；HTTP控制移至host transport owner，不再放 `NyanpasuClientInner`。命令名不变，命令只调用所属能力。补齐headless所需capability选择，而不是增加 `HeadlessClient` 替身。
-- **C2 `Make application assembly asynchronous and owned`**：原真实构造改async，domain组装逻辑与facade方法分离；host唯一同步边界适配。全体构造测试改显式Tokio runtime。失败时回收已启动owner；不引入全局shutdown phase/budget，也不把caller丢弃改成取消已启动事务。
-- **C3 `Move the application transaction graph and client into core`**：一次迁移剩余source/typed clients、MutationCoordinator、workflow/TCC/settlement/startup/recovery/core lifecycle、runtime snapshot/inspection/errors、剩余enhance projection/goldens、jobs/scheduler/sources、proxies与facade全部领域impl。所有GUI/HTTP/测试调用者同commit改为新路径；共享bootstrap接入P02—P07的真实能力，旧模块删除。
+- **C2/C3 `Move the client and application transaction graph into core`**：C1之后直接在同一个完整迁移中把真实构造改async，并迁移剩余source/typed clients、MutationCoordinator、workflow/TCC/settlement/startup/recovery/core lifecycle、runtime snapshot/inspection/errors、剩余enhance projection/goldens、jobs/scheduler/sources、proxies与facade全部领域impl。保留私有 `with_parts` 在facade模块，不引入中间 `assembly.rs`、新bootstrap wrapper或另一套facade。host保留唯一同步构造边界；全体构造测试改显式Tokio runtime。所有GUI/HTTP/测试调用者同一能力切换改为core或desktop实际owner的新路径，旧模块删除。共享构造接入P02—P07的真实能力，并显式接收原订阅UA、kernel UA与backup版本值；不引入全局shutdown phase/budget，也不把caller丢弃改成取消已启动事务。
 
 **为何C3允许大diff：** 它移动的是已经切断外部GUI依赖的真实事务闭包。已发现 `MutationCoordinator → ApplicationWorkflowClient → source snapshots/participant` 和递归错误图；为把这次move分成小行数commit而引入临时trait、复制DTO或Tauri re-export，风险更高。原子性按“一个完整能力切换”衡量，不按行数。P08前应重新计算闭包；若出现未知依赖，停止C3并补完前置，不能把破坏性迁移拆成坏commit。
 
-C1/C2是独立可运行的边界改造，C3尽量仅包含路径/可见性/装配迁移；不把行为修复塞进大move。评审分别查看rename-aware diff、删除/新增符号和非机械差异。这里选择闭包迁移不是保护旧结构：若重整已有实现能形成有独立消费者、长期合理的切口，可先交付完整可构建的边界commit，再缩小C3；不能仅为分commit而发明临时抽象。
+C1是独立可运行的host边界改造；其后直接合并C2/C3的async转换与物理闭包迁移，不交付assembly-first中间态。评审分别查看原文件移动hash、rename-aware diff、删除/新增符号、原测试归属及非机械差异；不把行为修复塞进大move。
+
+**保留的生命周期限制：** 此直接迁移保留现有shutdown顺序、caller budgets及timeout后的unknown/recovery语义；失败启动时已创建owner的回收、构造future被丢弃的资源安全尚未实现，也不是本次迁移或headless测试的成功声明。两者仍是需要后续USER决定的独立行为需求，不自动转交P10，不增加取消/join/cleanup设计。
 
 **可见性计划：** core内部类型维持private/`pub(crate)`；GUI只获启动参数、领域client方法、事件payload和消费端口。`pub(in crate::client)`随新模块树改为最窄合法范围，不全改pub。foreign inherent impl必须随其类型一起迁移；GUI扩展改adapter函数，不能留 `impl NyanpasuClient` 在host。
 
-验收在本PR内完成：无Tauri import、无GUI fake、临时路径、真实配置/脚本/文件实现与可控core endpoint；加载→startup→profile/config mutation→Required vote/commit/compensation→观察→shutdown。保留所有原workflow/facade测试，不以新smoke替代原回归。
+验收在本PR内完成：core无Tauri import、无GUI presentation fake，使用临时路径、真实配置/脚本/文件实现与可控core endpoint。一个core unit测试通过公开构造/领域方法完成加载→startup→profile/config mutation→Required vote拒绝且source/files不变→再次成功mutation→观察→shutdown；真实ApplicationEffectExecutor/SystemProxyClient在presentation=None时呈现Unsupported/PresentationUnsupported、零applied revision与零自动重试。复用真实TracingLoggerRefresher并保留reload receiver，只证明reload信号转发，不证明全局reload线程。外部control、OS与accelerator端口仍是原有test doubles，不声称执行native进程/OS/GUI。Required vote拒绝不是post-apply compensation；compensation证据来自保留的原回归。原workflow/facade测试全部随owner迁移；native Hotkey和真实tray投影用例留desktop，core私有shutdown断言留core。该unit测试本身不证明外部crate的public API可达性，真实host调用编译提供另一个层次的证据。不以新smoke替代原回归，HTTP直接事件出口仍属P09。
 
 ### P09 — HTTP、RPC与事件双出口
 

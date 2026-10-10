@@ -16,8 +16,7 @@ use serde_json::Value;
 use tauri::Manager;
 use tokio::sync::broadcast;
 
-use crate::client::NyanpasuClient;
-use nyanpasu_core::storage::Storage;
+use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
@@ -28,7 +27,7 @@ pub struct RpcDependencies {
 }
 
 const EVENT_NAMES: &[&str] = &[
-    <crate::client::app_update::AppUpdateStateChanged as tauri_specta::Event>::NAME,
+    <crate::desktop::app_update::AppUpdateStateChanged as tauri_specta::Event>::NAME,
     <crate::core::status_events::ClashWsEvent as tauri_specta::Event>::NAME,
     <crate::core::status_events::CoreLogsChanged as tauri_specta::Event>::NAME,
     <crate::ipc::ConfigurationStatusChanged as tauri_specta::Event>::NAME,
@@ -468,13 +467,14 @@ mod tests {
     use futures::StreamExt;
     use tower::ServiceExt;
 
-    #[test]
-    fn shared_profile_command_over_experimental_http() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn shared_profile_command_over_experimental_http() {
         let directory = tempfile::tempdir().unwrap();
-        let args = crate::client::tests::test_client_args_with_endpoint(
+        let args = crate::desktop::test_support::test_client_args_with_endpoint(
             &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
-        );
+            crate::desktop::test_support::TestControlEndpoint::succeeding(),
+        )
+        .await;
         std::fs::create_dir_all(args.paths.app_logs_dir()).unwrap();
         std::fs::write(
             args.paths
@@ -486,16 +486,18 @@ mod tests {
         let paths = args.paths.clone();
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
-        let debug_http = tauri::async_runtime::block_on(
-            crate::server::debug_http::HttpServerClient::spawn_tracked(
-                None,
-                routes.clone(),
-                shutdown,
-                &tasks,
-            ),
-        )
+        let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
+            None,
+            routes.clone(),
+            shutdown,
+            &tasks,
+        ))
+        .await
         .unwrap();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
+        let client = NyanpasuClient::try_new_with_args(args)
+            .await
+            .unwrap()
+            .client;
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client,
@@ -518,7 +520,7 @@ mod tests {
                 .contains(&"unsubscribe_clash_connection_details")
         );
         let app = rpc.router();
-        tauri::async_runtime::block_on(async move {
+        (async move {
             let status =
                 rpc_for_test_call(&app, "get_debug_http_status", serde_json::json!({}), None).await;
             assert_eq!(status.0, StatusCode::OK);
@@ -784,7 +786,7 @@ mod tests {
                     .unwrap()
                     .contains("\"version\":1")
             );
-        });
+        }).await;
     }
     async fn rpc_for_test_call(
         app: &Router,
@@ -815,8 +817,8 @@ mod tests {
         (status, value)
     }
 
-    #[test]
-    fn direct_egress_http_requires_permission_and_runs_only_when_requested() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn direct_egress_http_requires_permission_and_runs_only_when_requested() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         struct Probe(AtomicUsize);
         #[async_trait::async_trait]
@@ -831,25 +833,28 @@ mod tests {
         }
         let directory = tempfile::tempdir().unwrap();
         let probe = Arc::new(Probe(AtomicUsize::new(0)));
-        let mut args = crate::client::tests::test_client_args_with_endpoint(
+        let mut args = crate::desktop::test_support::test_client_args_with_endpoint(
             &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
-        );
+            crate::desktop::test_support::TestControlEndpoint::succeeding(),
+        )
+        .await;
         args.direct_egress = probe.clone();
         let paths = args.paths.clone();
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
-        let debug_http = tauri::async_runtime::block_on(
-            crate::server::debug_http::HttpServerClient::spawn_tracked(
-                None,
-                routes.clone(),
-                shutdown,
-                &tasks,
-            ),
-        )
+        let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
+            None,
+            routes.clone(),
+            shutdown,
+            &tasks,
+        ))
+        .await
         .unwrap();
         let rpc = UnifiedRpc::new(RpcDependencies {
-            client: NyanpasuClient::try_new_with_args(args).unwrap().client,
+            client: NyanpasuClient::try_new_with_args(args)
+                .await
+                .unwrap()
+                .client,
             debug_http,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -858,7 +863,7 @@ mod tests {
         .unwrap();
         routes.install(&rpc).unwrap();
         let app = rpc.router();
-        tauri::async_runtime::block_on(async {
+        (async {
             let (status, result) =
                 rpc_for_test_call(&app, "probe_direct_egress", serde_json::json!({}), None).await;
             assert_eq!(status, StatusCode::OK);
@@ -892,7 +897,8 @@ mod tests {
             assert_eq!(status, StatusCode::OK);
             assert_eq!(result["kind"], "disabled");
             assert_eq!(probe.0.load(Ordering::SeqCst), 1);
-        });
+        })
+        .await;
     }
 
     #[test]
@@ -951,8 +957,8 @@ mod tests {
         assert_eq!(sender.receiver_count(), 0);
     }
 
-    #[test]
-    fn enabled_http_server_joins_application_shutdown() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn enabled_http_server_joins_application_shutdown() {
         use crate::server::debug_http::{Frontend, FrontendAssets};
         struct Assets;
         impl FrontendAssets for Assets {
@@ -961,23 +967,26 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let args = crate::client::tests::test_client_args_with_endpoint(
+        let args = crate::desktop::test_support::test_client_args_with_endpoint(
             &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
-        );
+            crate::desktop::test_support::TestControlEndpoint::succeeding(),
+        )
+        .await;
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
-        let debug_http = tauri::async_runtime::block_on(
-            crate::server::debug_http::HttpServerClient::spawn_tracked(
-                Some(Frontend::Embedded(Arc::new(Assets))),
-                routes.clone(),
-                shutdown,
-                &tasks,
-            ),
-        )
+        let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
+            Some(Frontend::Embedded(Arc::new(Assets))),
+            routes.clone(),
+            shutdown,
+            &tasks,
+        ))
+        .await
         .unwrap();
         let paths = args.paths.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
+        let client = NyanpasuClient::try_new_with_args(args)
+            .await
+            .unwrap()
+            .client;
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
             debug_http: debug_http.clone(),
@@ -987,7 +996,7 @@ mod tests {
         })
         .unwrap();
         routes.install(&rpc).unwrap();
-        tauri::async_runtime::block_on(async {
+        (async {
             let url = debug_http.set_enabled(true).await.unwrap().url.unwrap();
             let http = reqwest::Client::builder().no_proxy().build().unwrap();
             let base = url::Url::parse(&url)
@@ -1010,12 +1019,13 @@ mod tests {
             assert!(debug_http.status().await.is_err());
             drop(rpc);
             assert!(crate::server::debug_http::HttpRoutes::build(&*routes).is_err());
-        });
+        })
+        .await;
     }
 
-    #[test]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore = "requires pnpm web:build and Playwright Chromium; optional NYANPASU_HTTP_UI_DEV_URL tests Vite proxy"]
-    fn browser_debug_page_and_real_rpc() {
+    async fn browser_debug_page_and_real_rpc() {
         use crate::server::debug_http::{Frontend, FrontendAssets};
         struct Dist(std::path::PathBuf);
         impl FrontendAssets for Dist {
@@ -1026,10 +1036,11 @@ mod tests {
             }
         }
         let directory = tempfile::tempdir().unwrap();
-        let mut args = crate::client::tests::test_client_args_with_endpoint(
+        let mut args = crate::desktop::test_support::test_client_args_with_endpoint(
             &directory,
-            crate::client::tests::TestControlEndpoint::succeeding(),
-        );
+            crate::desktop::test_support::TestControlEndpoint::succeeding(),
+        )
+        .await;
         // The browser fixture uses English accessible names on every host locale.
         let config = nyanpasu_config::application::NyanpasuAppConfig {
             language: nyanpasu_config::application::I18nLanguage::English,
@@ -1089,17 +1100,19 @@ mod tests {
         args.logging.frontend = frontend_events.clone();
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
-        let debug_http = tauri::async_runtime::block_on(
-            crate::server::debug_http::HttpServerClient::spawn_tracked(
-                frontend,
-                routes.clone(),
-                shutdown,
-                &tasks,
-            ),
-        )
+        let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
+            frontend,
+            routes.clone(),
+            shutdown,
+            &tasks,
+        ))
+        .await
         .unwrap();
         let paths = args.paths.clone();
-        let client = NyanpasuClient::try_new_with_args(args).unwrap().client;
+        let client = NyanpasuClient::try_new_with_args(args)
+            .await
+            .unwrap()
+            .client;
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
@@ -1110,7 +1123,7 @@ mod tests {
         })
         .unwrap();
         routes.install(&rpc).unwrap();
-        tauri::async_runtime::block_on(async {
+        (async {
             // The headless fixture has no Tauri event bridge; forward the real owner watch.
             let mut logs = client.subscribe_core_logs();
             let bridge =
@@ -1181,6 +1194,7 @@ mod tests {
             assert!(console_error.stack.is_some());
             assert_eq!(console_error.causes.len(), 1);
             assert!(console_error.causes[0].message.contains("root cause"));
-        });
+        })
+        .await;
     }
 }

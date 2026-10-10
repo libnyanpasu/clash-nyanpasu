@@ -55,7 +55,9 @@ function requireEnv(name: string): string {
 async function main(): Promise<void> {
   const nightly = Deno.args.includes("--nightly");
   const bot = new Bot(requireEnv("TELEGRAM_TOKEN"));
-  const chatId = requireEnv(nightly ? "TELEGRAM_TO_NIGHTLY" : "TELEGRAM_TO");
+  const chatId = requireEnv(
+    nightly ? "TELEGRAM_ARCHIVE_CHANNEL" : "TELEGRAM_RELEASE_CHANNEL",
+  );
   const pkg = JSON.parse(
     await Deno.readTextFile(path.join(WORKSPACE_ROOT, "package.json")),
   );

@@ -121,7 +121,7 @@ jobs:
         if: ${{ inputs.backend == 'telegram' }}
         run: deno task storage:preflight
         env:
-          TELEGRAM_TO: '@ClashNyanpasu'
+          TELEGRAM_ARCHIVE_CHANNEL: ${{ vars.TELEGRAM_ARCHIVE_CHANNEL }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -138,7 +138,7 @@ jobs:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_TO: '@ClashNyanpasu'
+          TELEGRAM_ARCHIVE_CHANNEL: ${{ vars.TELEGRAM_ARCHIVE_CHANNEL }}
           SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           SOURCEFORGE_USERNAME: ${{ vars.SOURCEFORGE_USERNAME || secrets.SOURCEFORGE_USERNAME }}
           SOURCEFORGE_SSH_KEY: ${{ secrets.SOURCEFORGE_SSH_KEY }}

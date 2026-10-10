@@ -43,14 +43,14 @@ Deno.test("archive preflight probes auth and database without registering files"
 
 Deno.test("Telegram preflight requires MTProto credentials and indexing auth without IA credentials", () => {
   const values: Record<string, string> = {
-    TELEGRAM_TO: "@ClashNyanpasu",
+    TELEGRAM_ARCHIVE_CHANNEL: "@ExampleArchive",
     TELEGRAM_API_ID: "123",
     TELEGRAM_API_HASH: "hash",
     TELEGRAM_TOKEN: "bot-token",
     FILE_SERVER_TOKEN: "index-token",
   };
   const configuration = storageConfiguration((key) => values[key]);
-  assertEquals(configuration.telegram, "@ClashNyanpasu");
+  assertEquals(configuration.telegram, "@ExampleArchive");
   assertEquals(configuration.archive, null);
   assertEquals(configuration.token, "index-token");
   assertThrows(

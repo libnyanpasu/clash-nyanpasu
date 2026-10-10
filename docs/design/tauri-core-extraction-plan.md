@@ -1,309 +1,8 @@
 # Tauri → nyanpasu-core：按可合并 PR 重新设计迁移
 
-> 状态：方案已获批准；F1–F8 foundation 已形成提交，剩余 P01 C2–C4 已集成并通过本地定向验证，但仍未完成独立评审、人工批准和平台/CI 验收。B0 保留历史重整记录；B1 记录本轮未暂存的实现与验证，不代表 P01 已落地。
+> 本文仅维护整体迁移计划：目标架构、阶段依赖、能力归属、原子提交范围与验收要求，不记录实施进度、提交状态或已执行的验证结果。
 > 本文重新编号，不继承旧设计的 Phase 00—11、A/B/C 或完成百分比。
 > 一个 Phase 对应一个 PR；一个 PR 可以包含多个独立可构建的原子 commit。
-
-## B0 restructuring checkpoint (2026-10-07)
-
-This approved plan is being used to regroup **existing work only**. P01 is not
-complete. No shared task/blocking helpers, network/UA/SelfProxyPortSource migration,
-binary installation contracts, remaining host-version inputs, persistence, facade
-or bootstrap extraction are delivered by this iteration.
-
-- Frozen base: `b2c705b055fcda5fe8d7499ea4721fa703b45276` (main).
-- Existing source: `9c329ec5e0b9204e4e521dec0ae748979a7b7118`.
-- Branch: `refactor/core-p01-foundation`, dedicated writer worktree.
-- Implementation tip (F7): `1f2995470c88334452892d0efd024ae65067a63f`;
-  F8 is this documentation commit directly after F7.
-- F1/F2 are preserved unchanged. The user explicitly authorized commits without
-  further human confirmation **only for this PR restructuring phase**. F3–F8
-  materialize the already-reviewed groups under that task-specific exception;
-  the human-review/approval gate for other tasks is unchanged. AI review alone
-  does not authorize commits. No publication or PR mutation has occurred.
-- The source user's staged historical audit was excluded. Historical documents
-  below come from committed source and retain their original validation claims,
-  explicitly marked superseded. The dirty persistence worktree remains untouched;
-  its unique untracked persistence plan is excluded, not silently discarded.
-
-| Group | Existing material                                                   | Actual status / intended responsibility                                                                                                                                                  |
-| ----- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F1    | `2e03a81a4`                                                         | `82d677c89ea4b1618e00c748e6833667eea29e92`: architecture gate, retaining main's exact manageable-field allowance                                                                         |
-| F2    | `66860b466` + runtime code/tooling/current standards of `9c329ec5e` | `1a1320d378fa8cec45617fbfb1558ac67d3596d0`: final `runtime::config` owner, preparation errors, original tests, generated bindings; remove application/platform directly                  |
-| F3    | `69650a859`                                                         | `5fbb7f3a0b427a9e12c01dde2601814ae761b957`: connection rates and ten original tests, direct stream consumers; foundation leaf for future P04 integration                                 |
-| F4    | `9656d6021`                                                         | `61313c67dfc892bcc1e48a5b2b7137e9987e387c`: compatibility and 16 original tests/two fixtures, daemon manifest assertion and direct consumers; foundation leaf for future P03 integration |
-| F5    | code of `2eaa58b85`                                                 | `8af6257c8edce629d8700b0aa329baa27177447d`: diagnostic DTO/collector contract, actual GUI build metadata injection; OS/process collection stays GUI-owned                                |
-| F6    | code of `ee38948ff`                                                 | `ec845ed06d46f0361a4b0ee64daccbe73f93c80e`: installed channel and portable inputs; existing updater semantics remain unchanged                                                           |
-| F7    | code of `fefa5e0dc`                                                 | `1f2995470c88334452892d0efd024ae65067a63f`: lazy instance-owned subscription identity, header rules, consumers, exact policy/dependency changes and final device standards               |
-| F8    | committed historical docs + approved plan                           | This documentation commit: superseded historical records and the updated B0 scope/verification record                                                                                    |
-
-Seven implementation groups are intentional: rates, compatibility, diagnostic
-contracts, channel inputs and device lifecycle are independently reviewable
-capabilities. The illustrative P01 commit count below is not a requirement to
-combine them. F2 is the materially coupled runtime closure; no transitional
-application/platform checkpoint is introduced.
-
-### Historical verification before commit materialization
-
-All Cargo commands used `--manifest-path backend/Cargo.toml`. In the table,
-`check(P)` means `cargo check -p P --all-targets --all-features`; `test(P,F)` means
-`cargo test -p P --lib F`, with the manifest argument above. GUI tests used
-`GSETTINGS_BACKEND=memory`. These are local results, not CI or platform acceptance.
-
-| Checkpoint                          | Commands and actual results                                                                                                                                                                                                                                                                                                                                 |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Baseline main                       | `check(nyanpasu-core)` and `check(clash-nyanpasu)` passed; `cargo fmt --all -- --check` passed; `deno task test:architecture-ledger` 45 passed; `lint:architecture-ledger` and `lint:backend-boundaries` passed                                                                                                                                             |
-| F1 committed                        | Both checks/fmt passed; ledger tests 49 passed; architecture gate and `deno task lint:deno` passed; normal commit hooks passed (first commit-message attempt rejected an overlong body line; corrected before commit)                                                                                                                                       |
-| F2 committed                        | Both checks/fmt passed; `test(nyanpasu-core,runtime::config::)` 56 passed; `cargo test -p nyanpasu-core --test runtime_builder` 1 passed; GUI `client::application_workflow::` 224, `enhance::golden` 5, `cmds::` 3, `tests::widget` 5, `core::migration::modules::clash_config` 3 passed; config `runtime::executor` 59 and `application::widget` 2 passed |
-| F2 bindings/frontend                | GUI `specta_export::tests::export_typescript_bindings` 1 passed and regenerated bindings; `pnpm web:build`, `pnpm typecheck` passed; `pnpm test:frontend frontend/nyanpasu/tests/ipc-error.browser.test.ts frontend/nyanpasu/tests/profile-errors.browser.test.tsx` 27 passed; normal commit hooks passed                                                   |
-| F3 cumulative working tree          | Both checks/fmt passed; core `connections::` 10 passed; GUI `core::clash::` 39 passed; `unified_rpc::` 5 passed, 1 existing ignored                                                                                                                                                                                                                         |
-| F4 cumulative working tree          | Both checks/fmt passed; core `service::` 16 passed; GUI `core::actor_v2::service_actor::tests` 30 and `client::application_workflow::tests::startup` 37 passed                                                                                                                                                                                              |
-| F5 cumulative working tree          | Core check passed; first GUI check interrupted by session timeout; GUI check retry passed. Targeted `client_constructs_with_mandatory_typed_config_clients` retry was interrupted during compilation at 600 seconds, before tests executed; no test pass is claimed                                                                                         |
-| Final F3–F7 cumulative working tree | Both checks/fmt and `cargo clippy -p nyanpasu-core -p clash-nyanpasu --all-targets --all-features` passed with existing warnings; no separate F6 checkpoint was tested                                                                                                                                                                                      |
-| F7 device tests                     | `test(nyanpasu-core,device::)` ran unfiltered: **5 passed, 1 failed** (`device::os::tests::test_device_model_not_empty`, empty host model). Migrated assertion was not changed or skipped                                                                                                                                                                   |
-| Static gates                        | F2/F3/F4/final: ledger 49 and backend-boundary 3 tests passed, both lint gates passed; final `deno task lint:deno` passed. Final static allowance count 43 includes main's added exact allowance                                                                                                                                                            |
-
-Initial recursive submodule absence was resolved with `git submodule update
---init --recursive`. Independent `pnpm install --frozen-lockfile` supplied the
-frontend dependencies. Initial browser/type errors were missing generated
-Paraglide files; `pnpm web:build` generated them and both reruns passed. GUI Rust
-checks initially used an independent dist placeholder; the subsequent frontend
-build replaced it. Core's baseline check preceded placeholder creation. Cargo
-used an independent target; only sidecar/resources were symlinked.
-
-The initial F2 runtime test build was interrupted at a 120-second tool limit and
-then rerun successfully. Two exploratory filters (`core::migration::clash_config`
-and `client::clash_streams`) selected zero tests; they are not evidence. The
-correct migration filter above and actual stream tests supplied coverage.
-
-Main's 39 upstream-only changed paths are byte-identical to the frozen base.
-The overlapping paths retain manageable-field types/allowance, stamped clash
-configuration writes and managed golden inputs. Regenerated F2 bindings contain
-both main's managed-field definitions and nested preparation errors. Moved rates,
-fixtures, builtins and final capability sources retain their source content.
-
-### Historical final targeted verification pass
-
-On the final cumulative tree, the following command completed compilation in
-1m 36s and ran **1 passing exporter test**:
-
-```sh
-GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib specta_export::tests::export_typescript_bindings -- --exact
-```
-
-The exporter regenerated all three binding files; their bytes were unchanged.
-No manual binding edits or business-code changes were made. The earlier F5
-interruptions above remain historical facts, not failed assertions or final pass
-claims.
-
-Using the same default-feature test build, each exact name below was run with
-`GSETTINGS_BACKEND=memory cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --lib <name> -- --exact`.
-**All 13 commands selected exactly one test and passed** (0 failed/ignored):
-
-```text
-client::tests::client_constructs_with_mandatory_typed_config_clients
-client::tests::try_new_with_args_constructs_typed_config_facade
-client::tests::two_client_graphs_are_independent
-service::profile_file::tests::fetch_parses_userinfo_and_title_headers
-service::profile_file::tests::fetch_sends_default_user_agent_and_hwid
-service::profile_file::tests::fetch_retries_transient_errors_but_not_auth_failures
-client::application::tests::release_channel_persists_and_non_nightly_builds_can_leave_nightly
-client::application::tests::nightly_build_cannot_leave_nightly
-bundle::tests::resolves_portable_and_fixed_webview_independently
-bundle::tests::release_channel_selects_feeds_without_changing_fixed_target
-client::app_update::progress::tests::a_burst_reads_its_window_average_and_a_stall_reads_zero
-client::app_update::progress::tests::a_window_shorter_than_one_interval_reads_zero
-client::app_update::tests::burst_progress_is_sampled_on_ticks_and_a_stall_reads_zero
-```
-
-These cover injected graph construction/independence, subscription headers and
-retry behavior, channel restrictions, bundle/portable selection, and main's
-fixed-window speed regression. They are not an exhaustive platform installer or
-AppImage eligibility matrix.
-
-Read-only host inspection found both `/sys/devices/virtual/dmi/id/product_name`
-and `/etc/machine-info` absent (`ENOENT`). The locked `whoami 2.1.3` Linux
-implementation reads the latter and propagates its IO error; the preserved model
-fallback uses `unwrap_or_default()`. This explains the observed empty model
-without exposing device identifiers. The device suite was not rerun or modified:
-its recorded result remains **5 passed / 1 failed**, not waived.
-
-Two independent reviews of the actual F1/F2 commits and F3–F8 working tree found
-no new P0/P1/P2 defects. The code review withheld merge readiness for outstanding
-verification and approval gates; the evidence review returned OK with notes.
-Those reviews did not authorize commits or publication. That targeted pass
-closed their missing final GUI-test/export evidence, not the known device failure.
-The later task-specific user approval above authorized materialization; it does
-not waive the failure or authorize this writer to publish.
-
-### Materialized commit checkpoints
-
-The following checks were **freshly run on each isolated group**, with later
-groups absent, before committing it. They do not reclassify the historical runs
-above. Core and GUI checks use `check(P)` as defined above; targeted Rust tests
-use `test(P,F)`. Exact GUI tests use the full names in the historical targeted
-list above with `-- --exact`; every such command selected one test, not zero.
-
-| Checkpoint      | Fresh commands and actual results                                                                                                                                                                                                                                                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F3              | Both checks/fmt passed; core `connections::` **10 passed**; GUI `core::clash::` **39 passed**; backend-boundary tests **3 passed**; both lint gates passed                                                                                                                                                                                                 |
-| F4              | Both checks/fmt passed; core `service::` **16 passed**; GUI `core::actor_v2::service_actor::tests` **30 passed** and `client::application_workflow::startup::tests::` **2 passed**; backend-boundary tests **3 passed**; both lint gates passed                                                                                                            |
-| F5              | Both checks/fmt and both lint gates passed; exact GUI `client::tests::client_constructs_with_mandatory_typed_config_clients` **1 passed**; exact Specta exporter **1 passed**, all three generated bindings unchanged                                                                                                                                      |
-| F6              | Both checks/fmt and both lint gates passed; the two exact `client::application::tests` channel tests and two exact `bundle::tests` tests listed above **4 passed**                                                                                                                                                                                         |
-| F7              | Both checks/fmt passed; core `device::` unfiltered **5 passed / 1 failed**, same `test_device_model_not_empty` assertion; three exact construction/independence tests and three exact profile-fetch tests listed above **6 passed**; ledger tests **49 passed**, backend-boundary tests **3 passed**, both lint gates passed, exact allowance count **43** |
-| F8 / final code | Both checks passed; the four channel/bundle tests and three update-speed tests listed above **7 passed**; exact Specta exporter **1 passed**, all three bindings unchanged. Together with F7 this freshly verifies all thirteen listed GUI regressions on the final implementation                                                                         |
-
-Normal commit hooks ran without bypass: Rust groups run Clippy with
-`--all-targets --all-features` and Rustfmt; documentation is Prettier-formatted,
-and F7's policy file uses the scoped Deno formatter/type checker. The first F3
-and F4 commit-message attempts were rejected for overlong body lines; corrected
-messages passed before commits were created. No test suite runs in these hooks.
-
-A complete pre-grouping file/hash snapshot was captured before separating the
-groups. Final implementation, manifests, lockfile, generated bindings, standards
-and historical documents match those reviewed bytes exactly; only this plan's
-status/B0 record changed. F1/F2 and newer main fixes remain intact. This phase
-adds no behavior fixes, dependencies or test expectations beyond the reviewed
-migration. The unchanged model assertion was neither skipped nor silenced.
-
-### Remaining verification and publication
-
-The user limited local execution to targeted tests: full suites are deferred to
-CI (the historical 224-test workflow run preceded that instruction). F3–F8 now
-form actual atomic commits with the checkpoints above, not proposed cumulative
-groups. Independent read-only review of the materialized chain remains required
-before publication. No push, merge, old-branch rewrite/deletion or PR mutation
-was performed by this writer. P01 remains **INCOMPLETE**.
-
-The device-model failure must still be assessed in a supported environment; the
-host inspection is not a test pass or permission to change preserved behavior.
-Windows/macOS compilation/runtime, live GUI/HTTP integration, full suites/CI and
-the musl container were not run. The existing musl harness covers runtime/scripts
-only, not a complete headless application. No fully extracted facade or mobile
-product is claimed.
-
-## B1 remaining P01 integration checkpoint (2026-10-08)
-
-The approved C2, C3 and C4 source handoffs were integrated **serially in that
-order**, after supervisor approval of their complete diffs, new sources and shared
-file resolution. This is an unstaged implementation checkpoint, not a commit or
-publication checkpoint. HEAD remains `6dc2256245294736d3858282a1e14612d80f3f2b`
-on `refactor/core-p01-foundation`; the index is empty. Draft PR #5675 existed
-before this work. No commit, staging, push or PR mutation was performed in this
-iteration; the prior restructuring-only human-review waiver does not apply.
-
-### Delivered ownership and retained boundaries
-
-- C2: `nyanpasu_core::tasks` owns the shared drain/tracking helpers and
-  `tasks::blocking::join`. All existing consumers use the new owner directly;
-  the old host helper and reexports are removed. Root token/tracker construction,
-  facade lifecycle, startup reconciliation and final shutdown remain host-owned.
-  The helper semantics and seven retained facade lifecycle test bodies are
-  preserved; two producer tests moved to core, with additional deterministic
-  registration/drain/panic regressions.
-- C3: `nyanpasu_core::network` owns the HTTP/proxy/mirror/speed helpers and
-  `SelfProxyPortSource`. Profile fetch, kernel updater and plugin-backed application
-  updater remain host-owned and consume the shared definitions. Subscription UA
-  stays `clash-nyanpasu/v{product_version}`, ordinary requests stay
-  `clash-nyanpasu/{product_version}`, kernel requests stay
-  `clash-nyanpasu/{host_cargo_version}`, and application updater UA remains owned
-  by the locked Tauri plugin. Custom subscription UA still overrides the injected
-  default. Backup product version and migration target are explicit, independent
-  inputs; paths discovery, BuildInfo/channel/device timing and archive helpers
-  are unchanged. No profiles/persistence/update owner extraction is claimed.
-- C4: `nyanpasu_core::runtime::binary` owns the single binary artifact, progress,
-  installer and installation error contracts; `nyanpasu_core::error::ErrorPath`
-  owns the independent path wrapper. Actual installer/workflow/updater/test
-  consumers use them directly. Runtime preparation and recursive runtime errors
-  remain host-owned. Error variants retain their serde/Specta metadata, with no
-  blanket public Snafu selectors or old-path compatibility layer.
-
-Eleven shared source/manifest paths were combined by their capability-specific
-hunks. The only text conflict was core's production dependency insertion: retain
-C3 dependencies and add C4's promoted `tempfile`; C2's installer blocking-join
-rewiring was retained. Rustfmt normalized the combined updater imports. No new
-production semantics or API boundary was invented by integration.
-
-Cargo recomputed the actual core dependency entry after manifest changes. The
-complete package version/source/checksum inventory stayed unchanged; there were
-no upgrades or hand-edited lock entries. Only the integration worktree's own
-existing target/dist/dependencies were used, with serial Cargo execution. The
-protected source, old persistence worktree and three lane worktrees retain their
-pre-integration source, HEAD, index and status fingerprints.
-
-### Actual local verification
-
-Every Cargo command below used `--offline --manifest-path backend/Cargo.toml`;
-GUI tests also used `GSETTINGS_BACKEND=memory`. `check(P)` means
-`cargo check -p P --all-targets --all-features`, and `test(P,F)` means
-`cargo test -p P --lib F`. These are cumulative working-tree checkpoints, not
-isolated commits. All test counts are actual execution counts, not source
-forecasts; no listed Rust test command selected zero tests.
-
-| Checkpoint                           | Actual checks and outcomes                                                                                                                                                                                                                                                        |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frozen baseline, before source edits | Both core/GUI checks passed; host `client::app_lifecycle::tests::` **9 passed**, profile `fetch_` **6 passed**, updater `instance::tests::` **10 passed**; five exact backup/migration/binary workflow/updater regressions each **1 passed**                                      |
-| C2 cumulative                        | Both checks passed; core `tasks::` **9 passed**; retained host lifecycle **7 passed**                                                                                                                                                                                             |
-| C3 cumulative                        | Both checks passed; core `network::tests::` **4 passed**; host profile `fetch_` **7 passed**, updater `instance::tests::` **10 passed**; exact backup-manifest, migration-backup, explicit-version parse and three facade construction/independence regressions each **1 passed** |
-| C4 cumulative                        | Both checks passed; core `error::tests::` **2 passed** and `runtime::binary::tests::` **2 passed**; exact host installer test, nine binary workflow regressions and three updater installation regressions **13 passed**, one per command                                         |
-| Final integrated source              | Both checks passed; core tasks **9 passed**, controlled network **4 passed**; host lifecycle **7 passed**, profile fetch **7 passed**, updater instance **10 passed**; all-target/all-feature core+GUI Clippy passed with existing warnings; workspace Rustfmt check passed       |
-| Policy and resolved gates            | Backend-boundary policy tests **3 passed**; architecture policy tests **49 passed**; resolved backend dependency gate passed; architecture gate passed, **415 Rust files**, **42 exact static allowances**, all residual metrics and bridges zero                                 |
-| Generated output                     | Exact `specta_export::tests::export_typescript_bindings` **1 passed**; all three generated binding files remain byte-identical to the frozen baseline; no manual generated edits                                                                                                  |
-
-The five baseline exact tests were the backup manifest and migration backup tests
-below, `replacement_decisions_use_applied_identity_and_always_recover`,
-`failed_installation_does_not_restart`, and
-`core::updater::tests::successful_install_finishes_and_keeps_staging_owned_by_installer`.
-The two workflow names are under `client::application_workflow::tests::`.
-
-The C3 exact checks covered:
-
-- `core::backup::tests::copies_the_config_dir_and_storage_with_a_manifest`
-- `core::migration::runner::tests::pending_steps_are_preceded_by_exactly_one_backup_of_the_old_files`
-- `core::migration::tests::current_version_parses_the_host_product_version`
-- `client::tests::{client_constructs_with_mandatory_typed_config_clients,try_new_with_args_constructs_typed_config_facade,two_client_graphs_are_independent}` (three separate exact commands)
-
-The C4 exact workflow regressions under `client::application_workflow::tests::`
-were `replacement_serializes_reconcile_and_retains_files_after_caller_cancellation`,
-`replacement_decisions_use_applied_identity_and_always_recover`,
-`failed_death_proof_never_installs_even_when_status_says_stopped`,
-`shutdown_rejects_pending_work_and_waits_for_the_active_installation`,
-`failed_installation_does_not_restart`,
-`an_installation_the_workflow_never_received_is_refused_as_not_run`,
-`queued_installation_timeout_is_settled_when_shutdown_or_uncertainty_rejects_it`,
-`connection_policy::profile_interruption_serializes_mode_host_and_binary_operations`,
-and `startup::a_binary_replaced_without_a_proven_owner_brings_the_target_forward`.
-The installer test was
-`client::core_lifecycle::adapters::tests::installs_by_copy_without_reporting_workflow_progress`.
-The three updater tests under `core::updater::tests::` were
-`the_shutdown_waits_for_an_install_in_progress`,
-`successful_install_finishes_and_keeps_staging_owned_by_installer`, and
-`definitive_install_failure_allows_fresh_admission`.
-
-The first offline resolved dependency gate stopped on an uncached locked
-`handlebars 3.5.5`, before policy analysis. After explicit supervisor authorization,
-the normal gate fetched only locked `handlebars 3.5.5`, `interfaces 0.0.9`,
-`memoffset 0.7.1` and `nix 0.26.4`; all four archive SHA256 values matched the lock.
-The rerun passed with the same lock inventory. No live mirror behavior test was
-run. The updater filter selected three HTTP tests plus seven existing artifact
-extraction/verification tests, hence ten rather than the lane's three-test source
-forecast.
-
-### Outstanding acceptance
-
-**P01 is not yet accepted or landed.** Independent integrated ownership/behavior
-reviews and human approval remain required before any commit/publication.
-Windows/macOS compilation and installer/proxy runtime, musl, GUI/HTTP end-to-end,
-full suites and remote CI were not run. Frontend typecheck/tests were not rerun
-because the actual exporter produced no frontend diff. The preserved live mirror
-smoke is excluded by `network::tests::`; that controlled suite does not prove
-ambient OS proxy ordering or ordinary-helper UA header delivery. Subscription and
-kernel UA delivery are covered by their existing local-server tests.
-
-The historical device-model suite result remains **5 passed / 1 failed** from
-missing host model; it was not rerun, fixed, skipped or waived. No full-suite
-success, fully extracted facade, headless lifecycle, CLI or mobile product is
-claimed. P02/P03/P07 implementation still waits for real accepted prerequisites.
 
 ## 1. 目标、基线与范围
 
@@ -311,52 +10,40 @@ claimed. P02/P03/P07 implementation still waits for real accepted prerequisites.
 
 最终 `backend/tauri` 只拥有 GUI 产品装配、Tauri IPC/插件适配、窗口/webview/托盘/widget/主线程及原生交互。共享业务、状态机、持久化、网络、进程、OS 能力，以及不依赖 GUI 的 HTTP/RPC 实现，移入 `nyanpasu-core` 的具体能力模块。已在独立库中的实现继续复用，不物理吞并 `nyanpasu-config`、`nyanpasu-paths`、runtime 子模块、traffic/geodata 等库。
 
-### 1.1 本次实际审计基线
+### 1.1 复用边界与基线选择
 
-- 分支：`refactor/extract-core-02-boundaries`。
-- 审计开始HEAD：`fefa5e0dc804a65596a6a443ba7d825a658b51a4`；读取范围包括当时暂存/未暂存的实现。
-- **收尾核对时HEAD已前进到 `9c329ec5e0b9204e4e521dec0ae748979a7b7118`**（`refactor(core): consolidate runtime configuration ownership`），runtime config归core、application/platform删除及相应调用者/tooling变更已形成提交，源码工作区无未提交diff。该提交不是本次文档工作创建的；未查询远端CI/merge状态。
-- 已实现成果可直接吸收或按新设计重整，不能作为“尚未实现”重复开发，也不能因已提交而被当作不可调整的边界。开始时的dirty状态和收尾的commit状态分开记录，不声称它们已合入main。
-- 当前 `git ls-files backend/tauri`：272 个跟踪文件，223 个 Rust 文件（包含 `build.rs`），49 个非 Rust 文件；`src/` 内有 222 个 Rust 文件，约 105,073 行，包含内联测试。
-- 检查了模块清单、manifest、跨模块引用、GUI/运行时/构建环境泄漏、混合实现、测试反向依赖、宏生成路径及静态门禁；重点阅读真实装配与事务调用链。**文件覆盖不代表逐行行为证明。**
-- 先按源码审计，再对照[旧审计](2026-10-06-tauri-core-boundary-audit.md)和[历史提取记录](application-platform-extraction.md)。历史测试数字不计入本次验证。
+| 复用的既有能力                                                    | 对应迁移责任                                                   |
+| ----------------------------------------------------------------- | -------------------------------------------------------------- |
+| core 的 state transaction/format                                  | application/clash/profiles/session 的具体 owner 与事务接线     |
+| `runtime::config` 的 builder、builtin、FS/JS/Lua adapters及原测试 | runtime snapshot/inspection、准备、TCC、恢复、facade           |
+| core 的 connections rates、service compatibility                  | streams/proxy cache、service actor/control、完整生命周期       |
+| core 的 diagnostics DTO/port、device source                       | diagnostics OS/process adapter与剩余身份输入                   |
+| `nyanpasu-paths::PathResolver`                                    | shared init、资源复制、migration process、单实例及 OS shutdown |
+| backend dependency gate                                           | 独立 headless 构造、观察、关闭和无 GUI 的完整 HTTP 服务        |
 
-用户选择在当前 checkout 新建文档、保留旧设计。本次不修改已有迁移、旧文档、开发规范或 git 暂存区。
-
-### 1.2 已有实现是素材，不是冻结的设计
-
-| 已有实现，复用或重整                                                              | 尚未完成                                                       |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| core 的 state transaction/format                                                  | application/clash/profiles/session 的具体 owner 与事务接线     |
-| `runtime::config` 的 builder、builtin、FS/JS/Lua adapters及原测试（收尾时已提交） | runtime snapshot/inspection、准备、TCC、恢复、facade           |
-| core 的 connections rates、service compatibility                                  | streams/proxy cache、service actor/control、完整生命周期       |
-| core 的 diagnostics DTO/port、device source                                       | diagnostics OS/process adapter与剩余身份输入                   |
-| `nyanpasu-paths::PathResolver`                                                    | shared init、资源复制、migration process、单实例及 OS shutdown |
-| 当前 backend dependency gate                                                      | 独立 headless 构造、观察、关闭和无 GUI 的完整 HTTP 服务        |
-
-**用户已明确允许重整当前已经实施的修正。** 因此可以调整其模块归属、内部API、构造方式、测试组织以及commit/PR归组；不为保住旧目录、旧Phase或既有commit边界而扭曲新设计。保留的是已修正的行为与测试保障，不是每一行现有实现。内部breaking change应一次迁完调用者，不加旧路径shim。
+优先复用已有实现及其行为和测试保障，按真实消费关系调整模块归属、必要的可见性与调用路径。不为迁移新增抽象或重写业务逻辑；独立行为变更须另行明确审批。内部breaking change应一次迁完调用者，不加旧路径shim。
 
 **启动实施前的 B0：** 盘点当前工作区、分支提交和共同目标分支，选定重整所依据的可复现源码状态及PR base。**不要求现有修正先按旧计划提交/合并，也不要求先丢弃它们。** 未提交成果可直接重组到下表对应PR；未合并的旧stack按能力重新归组；已在目标分支的实现只提交必要增量，不反复搬出再搬入。B0只是实施准备，不是额外PR或旧设计审批关卡。
 
 多worktree开始写代码之前，其共同前置仍须成为一致的、可构建的base；不能从dirty checkout只取HEAD却假定拥有全部工作区变更。实际快照/提交/历史操作在实施时确认，不擅自stash、reset或覆盖当前改动。允许重整代码不等于授权改写已推送历史；后者仍须单独确认。
 
-| 已实施修正                                                       | 新设计的吸收/重整责任                                | 不应丢失的行为                                                                              |
+| 需保留的能力与约束                                               | 新设计的吸收/重整责任                                | 不应丢失的行为                                                                              |
 | ---------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | runtime config、builtin、FS/script收敛及application/platform删除 | P01建立唯一owner；P07/P08可为真实消费边界继续调整API | 单次序列化、snapshot graph、build/preparation错误分层、JS/Lua顺序及private blocking runtime |
 | BuildInfo/channel/订阅device与剩余host inputs                    | P01按实际消费者重整，不延续旧“任务1/2/3/4”提交分组   | 真实宿主版本/channel、设备采集时机、实例缓存、原header语义                                  |
 | paths/resolver与host_paths接线                                   | P01复核接口，P03/P10按执行能力调整消费者             | 一次发现、显式roots、可失败install路径、现有binary查找语义；不重建第二套resolver            |
 | connection rates、service compatibility                          | P04/P03随能力调整归属和调用                          | 原算法、最低版本规则、fixtures                                                              |
-| 已调整的workspace/lock/gates/musl harness/说明                   | 随所属能力的原子commit重组，P11做最终矩阵            | 唯一实现、无传递GUI依赖；不把原局部musl覆盖宣称为完整headless覆盖                           |
+| workspace/lock/gates/musl harness/说明                           | 随所属能力的原子commit重组，P11做最终矩阵            | 唯一实现、无传递GUI依赖；不把原局部musl覆盖宣称为完整headless覆盖                           |
 
 如果重整表明某个现有抽象应被合并、拆开或删除，按其新消费者完整调整，而不是因为它“已经实施”就排除在规划之外。没有实际边界收益的改名或重写仍不做。
 
-### 1.3 明确排除
+### 1.2 明确排除
 
 不新建 CLI/OpenWrt/mobile 产品，不修改 profile schema、代理算法或发布渠道语义，不升级依赖，不重写 ractor 框架，不新增万能 service locator、全局状态或 migration compatibility shim。迁移造成的孤儿必须当场删除；预先存在的死代码不借机清理。
 
 现有文档不作为本次架构划界的结论。与本方案冲突的文档在对应实施 PR 同步；本次只记录需要同步的地方。显式 DI、串行 owner、窄端口、真实结果等待和原子提交等工程约束仍适用。
 
-## 2. 重新审阅得到的关键结论
+## 2. 迁移闭包与边界风险
 
 ### 2.1 旧任务拆分为什么不能直接执行
 
@@ -367,7 +54,7 @@ claimed. P02/P03/P07 implementation still waits for real accepted prerequisites.
 5. **历史状态和未来计划相互覆盖。** 已删除的路径、旧 PR head 的 API、当前未提交实现混在任务表里，容易重复迁移。
 6. **机械迁移与行为边界修改没有分开评审。** effects、通知、shutdown、版本进程和宏协议都需要具体契约，不能在最终“集成/清理”中补做。
 
-### 2.2 现在的真实阻塞点
+### 2.2 关键依赖与迁移责任
 
 | 证据位置                                                                  | 实际问题                                                                                               | 本方案处理                                                                    |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
@@ -381,12 +68,12 @@ claimed. P02/P03/P07 implementation still waits for real accepted prerequisites.
 | `client/event_sink.rs`、`unified_rpc.rs::bridge_tauri_events`             | main webview存在才 emit；HTTP再监听Tauri事件                                                           | P06提供真实 owner观察；P09让两种transport直接消费同一观察源                   |
 | `unified_rpc.rs::CommandEntry`、宏 `unified_command.rs`                   | 一个表混合 HTTP handler和 `AppHandle/Window/Webview` handler；宏硬编码host路径                         | P09拆中立表与desktop binding，宏与全部消费者同提交更新                        |
 | `core/*/tests`、`client/*/tests`                                          | Tauri block_on和host `client::tests`反向依赖                                                           | 测试跟owner迁移；fake下沉到使用它的最小能力测试模块                           |
-| `utils/core_version.rs`                                                   | 版本查询仍用Tauri shell sidecar，不能照搬为core adapter                                                | P03用注入路径/进程执行，核对实际binary选择与参数                              |
+| `utils/core_version.rs`                                                   | 版本查询仍用Tauri shell sidecar，不能照搬为core adapter                                                | P03只迁契约/错误/parser；Tauri reader留host，保持shell执行语义                |
 | `shutdown_hook.rs`                                                        | 非GUI OS会话检测使用两个全局mutable statics                                                            | P10改实例owner/回调上下文后迁移，不能把allowlist整条平移                      |
 
 上表路径均相对 `backend/tauri/src/`，宏文件位于 `backend/nyanpasu-macro/src/`。
 
-还发现源码与现行生命周期规则不完全一致：`core/actor_v2/mod.rs` 存在 caller-side budgets，部分旧测试使用 sleep；logger reload线程结束接收后永久 park。**不在机械搬迁中默默修复，也不在新方案中把它们认证为合规。** P03/P10分别负责收敛涉及的调用等待和资源所有权，使用独立行为 commit；若需要触碰 upstream IPC，必须先确认依赖交付方式，不擅自改 runtime 子模块。无关 sleep清理不扩张到整个测试库。
+边界约束：保留CoreClient/ServiceClient 的现有 caller budgets。它们限制调用者等待；mailbox residence 消耗预算，但预算不保证任意队列延迟或外部动作完成时间。C1 保留它们及原有 timeout/unknown/recovery 契约。ActorRef 首跳不等于整条能力纯进程内；ServiceEndpoint 使用真实 IPC，ServiceClient 的 adapter 执行 OS/提权命令。通用进程内调用规则不授权删除这些既有边界预算。部分旧测试使用 sleep；logger reload线程结束接收后永久 park，P10负责收敛涉及的资源所有权，使用独立行为 commit。若需要触碰 upstream IPC，必须先确认依赖交付方式，不擅自改 runtime 子模块。无关 sleep清理不扩张到整个测试库。
 
 ## 3. 最终架构与边界决策
 
@@ -433,7 +120,7 @@ Tauri host
 - **应用更新按状态机与安装后端拆。** `AppUpdateClient` 的检查/下载/取消/进度/状态规则可以通过现有backend契约运行，迁入 `updates::application`；feed/mirror/版本比较的纯规则也迁入并接收显式产品输入。Tauri plugin的包上下文、签名验证实现、平台installer、关GUI/重启以及WebView2 target选择留adapter。headless不配置该能力时明确 unavailable；不假设未来CLI与GUI使用同一feed，更不新增通用自更新框架。
 - **“UI会调用”不是保留理由。** icon下载缓存、proxy env文本、frontend error batch净化/日志写入、会话几何数据持久化均可由中立能力拥有；实际展示、剪贴板写入、JS捕获、窗口尺寸应用仍属于GUI。反之tray绘制队列、窗口URL构造、widget展示生命周期，即使只操作普通值，也仍是GUI。
 
-这些是本方案的边界提案，不是声称旧方案已经批准过它们。实施前评审整份方案，不以历史白名单替代这次决定。
+上述边界按实际消费关系确定，不以历史目录或白名单替代。
 
 ### 3.3 Bootstrap必须可以真正不用GUI
 
@@ -455,9 +142,11 @@ Tauri host
 5. P06拆分时完成core observations到现有Tauri事件的接线；P09再让HTTP直接订阅，不等最终PR才恢复通知。没有main window、没有tray时core观察依然有效。
 6. 现有RPC `EffectKind`/health/error形状默认不变；确需增加unsupported表达时，在P06同一行为commit同步DTO、生成bindings和消费者。不要让CLI靠注入“全部Healthy”的fake通过验收。
 
-## 4. PR依赖图与并行边界
+## 4. 能力依赖、串行PR与执行边界
 
-### 4.1 一个Phase，一个可合并PR
+### 4.1 一个Phase，一个串行堆叠的PR
+
+下表硬前置说明能力迁移所需的依赖闭包，不代表PR分支关系。实际交付按Phase编号串行堆叠，每个PR以紧邻的前一个Phase为base；即使能力相互独立，也不再创建兄弟PR。
 
 | Phase / PR | 交付结果                                      | 硬前置             | 建议commit数 | 风险                  |
 | ---------- | --------------------------------------------- | ------------------ | ------------ | --------------------- |
@@ -475,6 +164,8 @@ Tauri host
 
 P08通过P06传递依赖P04/P03，不是遗漏控制面。P05依赖P03交付的core version parser（`updater/instance.rs` 的真实调用），不能仅凭updater backend是trait就与P03完全独立。P04中的core logs可先本地准备，但整个P04 PR以P03为base，**不再产生“P04-A先落地”的第二套合并单位**。
 
+能力依赖图（不作为并行创建PR的分支图）：
+
 ```text
 B0 → P01 ─┬─ P02 ─────────────────────────────┐
           ├─ P03 ─┬─ P04 → P06 ──────────────┤
@@ -482,28 +173,28 @@ B0 → P01 ─┬─ P02 ──────────────────�
           └─ P07 ────────────────────────────┘       └─ P10 ─┴→ P11
 ```
 
-### 4.2 不夸大并行能力
+实际PR stack：
 
-建议最多三个活跃实现worktree，另有一个只做集成检查的位置；不是同时启动11个Cargo构建。
+```text
+main → P01 → P02 → P03 → P04 → P05 → P06 → P07 → P08 → P09 → P10 → P11
+```
 
-| 时段      | worktree A                  | worktree B       | worktree C            |
-| --------- | --------------------------- | ---------------- | --------------------- |
-| B0/P01    | P01唯一owner                | 只读审阅P02/P07  | 只读审阅P03/P05       |
-| P01落地后 | P03 → P04 → P06（关键路径） | P02              | P07；P03落地后再做P05 |
-| 汇合后    | P08唯一结构owner            | 独立审阅/测试P08 | 独立审阅/测试P08      |
-| P08落地后 | P09                         | P10              | 平台验收              |
-| 汇合后    | P11                         | 平台验收         | 平台验收              |
+### 4.2 串行实施与只读并行
 
-只读准备不等于可合并实现。P08不能在P06的未定presentation接口上平行发明自己的版本。P09与P10并行时，前者独占RPC/HTTP/macros/bindings，后者独占process/init/exit；`setup.rs`的最小接线仍需串行合入。
+- 按Phase顺序实施，前一阶段的候选完成审核和交付后，下一阶段从其明确的head继续；不从更早的共同祖先创建兄弟实现分支。
+- 一个worktree只有一个writer。可复用已选定的隔离worktree及其独立构建资源，不为每个Phase重复创建构建缓存。
+- 独立源码核对、调用者盘点和测试范围分析可以并行；它们不修改共享源码，也不提前实施后续Phase。
+- Cargo、依赖调整和集成验证串行执行。前置head改变后，先确认受影响范围并验证，再继续下游迁移。
+- 原子候选仍分别人工审核；通过后的提交和推送不再增加subagent复审。stack顺序不授权自动提交、改写历史或合并PR。
 
 ### 4.3 Worktree/branch与合并策略
 
 - 分支可用 `refactor/core-p01-foundation` 等一Phase一branch；PR描述固定写base SHA、前置PR、commit清单、验证结果和剩余风险。
-- 默认从**已落地前置的共同集成基线**创建worktree，所有PR最终合入同一目标分支。不要各自从不同旧head拼接“已迁移类型”。
-- 允许提前开stacked draft，但只依赖尚未合并的直接前置；不能把多个兄弟worktree的临时merge当正式base。兄弟前置未落地时做只读设计，不维护长期octopus集成branch。
-- siblings可并行开发，合并一次一个。每合入一个PR，其余先更新base，重新生成lock/bindings并验证。没有“所有PR一起合才绿”的批量合并。
+- 每个PR以紧邻的前一个Phase分支为base；前一个PR已合入main时，使用包含其交付结果的main基线。所有PR最终顺序合入main，不从不同旧head拼接“已迁移类型”。
+- 前置PR未合并时可以串行stack，不要求等待整栈全部合并才继续；后续分支必须包含其实际base的完整交付结果，不能只修改GitHub base而忽略代码集成。
+- 一次合入一个PR。前置更新或合并后，检查下游base、冲突、lock与bindings并做相关验证；没有“所有PR一起合才绿”的批量合并。保留已发布提交，merge/rebase等集成操作及其提交按人工授权执行。
 - 未推送修正折入所属commit；已推送历史的改写需要许可。PR策略应保留经过验证的原子commit；若项目选择squash，则整体PR必须同样可构建、可回退，不能据此容忍中间提交坏掉。
-- 只软链接 `backend/tauri/sidecar/` 和 `resources/`；`target/`、`node_modules/`、`tmp/dist/`各自独立。Rust-only Tauri检查可使用各自dist placeholder；独立core检查不准创建placeholder以掩盖GUI依赖。按磁盘/内存限制并发Cargo任务。
+- 只软链接 `backend/tauri/sidecar/` 和 `resources/`；`target/`、`node_modules/`、`tmp/dist/`各自独立。Rust-only Tauri检查可使用各自dist placeholder；独立core检查不准创建placeholder以掩盖GUI依赖。Cargo任务按当前stack串行执行。
 
 ### 4.4 文件写入权，而不只是目录分工
 
@@ -512,7 +203,7 @@ B0 → P01 ─┬─ P02 ──────────────────�
 | `client/mod.rs`、`setup.rs`、root `mod.rs` | 各能力PR只做自己构造参数/import/字段的最小接线；禁止整段重新格式化/重排；P08独占结构拆分 |
 | Cargo manifests / `Cargo.lock`             | 依赖随实际消费者迁移，同commit更新；合并后由Cargo重算，禁止手工拼lockfile或顺手升级      |
 | `ipc.rs` / `specta_export.rs`              | 叶子PR只改路径/必要wrapper；P09独占共享命令定义/宏协议重构                               |
-| generated bindings                         | 同PR由实际源码导出；兄弟branch的生成物不能文本合并，base更新后重导出                     |
+| generated bindings                         | 同PR由实际源码导出；base更新后重导出，不用文本合并替代真实生成                           |
 | `client::tests`                            | 不作为跨crate生产test-support API；迁移叶子只带走其最小fake，facade大fixture由P08负责    |
 | `utils/candy.rs`                           | P01先把HTTP/mirror拆出并更新所有调用者；P04再搬剩余archive，不同时编辑同一混合块         |
 | `client/core_lifecycle/ports.rs`           | P01移binary契约；P05只消费它；P08才处理runtime preparation部分                           |
@@ -548,15 +239,13 @@ B0 → P01 ─┬─ P02 ──────────────────�
 
 ### P03 — 控制面与OS执行
 
-**PR结果：** core可以构造local/service端点、查询版本、执行服务操作；不通过Tauri shell。
+**PR结果：** core可以构造local/service端点、执行服务操作，并拥有版本查询契约/错误/parser、OS environment collector与UWP执行。原 `TauriCoreVersionReader` 继续作为host适配器使用Tauri shell，不在move refactor中重写进程执行。
 
-- **C1 `Move core and service control into core`**：`actor_v2/*`、`core/service/control.rs`、local host/OS adapter同迁；status Event wrapper留host。必要的路径/提权实现同调用链迁移；原actor tests不再依赖host `client::tests::test_paths`。
-- **C2 `Use host-independent process adapters for core utilities`**：version reader+parser、OS environment collector、UWP工具执行迁出，路径与资源由host传入。核对sidecar原binary解析语义；不把 `find_binary_path` 的data优先级当成shell plugin已具备的行为。不同之处需显式决策和测试，不能机械替换。
-- **C3 `Keep control reply deadlines at transport boundaries`**：单独核对并消除进程内caller timeout；外部daemon IPC/网络adapter保留真实deadline。保留timeout后的unknown/recovery语义，不能把deadline当作取消证明。不借此重写控制算法或升级IPC。
+- **C1 `Move core and service control into core`**：`actor_v2/*`、`core/service/control.rs`、local host/OS adapter同迁；status Event wrapper留host。必要的路径/提权实现同调用链迁移；原actor tests不再依赖host `client::tests::test_paths`。保留所有现有期限、错误分类与原测试；跨 crate cfg(test) 消费者先通过私有 host fixture 与既有生产 API 闭合，不公开测试 hook。
+- **C2 `Move version contracts and OS utilities`**：迁移现有version契约/错误/parser、OS environment collector与UWP工具执行，更新真实调用者。`utils/core_version.rs` 保留原Tauri reader实现，仅改import；路径选择、参数、进程生命周期和错误行为仍由原shell调用承担。不新增进程adapter、probe binary或对照测试框架。
+- **C3 `Review control IPC and operation bounds`**：核对真实 daemon IPC、OS adapter 与 caller budget 的不同覆盖范围；保留现有期限及 timeout 后 unknown/recovery 语义，不把期限当作取消证明，不要求或承诺未来删除 caller budgets，不借此重写控制算法或升级 IPC。任何期限/IPC 契约变更另行明确审批。此项只做复核和文档同步，不为凑commit数量制造代码改动。
 
-测试：handoff、revocable API lease、generation失效、service compatibility/restart exhaustion、queued call/caller drop、版本参数 `-v/-V`、spawn/nonzero/invalid output、路径带空格和提权。fake-core需要先构建，不假设dev-dependency会产生binary。
-
-P03 C3是源码中已确认的边界问题，不混在C1机械move中。若upstream接口使C3无法在本PR闭合，P03不得按“已完成控制面分离”合入；先另行确认依赖方案，再更新本规划，而不是新增无期限compatibility路径。
+验收：保留原handoff、revocable API lease、generation、service compatibility/restart exhaustion、queued call/caller drop及parser、注入reader与updater测试。版本参数 `-v/-V`、sidecar路径、spawn/exit处理使用原host实现；不为迁移新增进程对照框架。区分源码复核、定向回归与真实IPC/提权/打包路径/native进程验证，不把观察超时当作操作终止或完整关闭证明。需要fake-core的原测试须先构建，不假设dev-dependency会产生binary。
 
 ### P04 — 日志、流与诊断
 
@@ -590,7 +279,7 @@ P03 C3是源码中已确认的边界问题，不混在C1机械move中。若upstr
 
 ### P07 — Profiles IO闭包
 
-**PR结果：** 同一套FS/materialization/fetch实现已可在core测试，具体profiles actor仍留待P08。
+**PR结果：** 同一套FS/materialization/fetch实现可在core测试，具体profiles actor仍留待P08。
 
 - **C1 `Move profile filesystem and subscription adapters into core`**：一次迁移 `ProfileFsPort/SubscriptionFetcher/ProfileMaterializationPort`、独立file/fetch错误及 `ProfileFileService` 实现/原测试；复用P01已迁的 `SelfProxyPortSource`；同commit更新所有真实消费者。事务 `ProfilesError`、`CommitAborted`仍留原owner，引用新IO错误。不要整个error.rs原样搬走制造反向依赖。
 - **C2 `Isolate profile content preparation from actor ownership`**：将 `FsRuntimeBuildAdapter` 实际调用的 `ProfilesActor::current_closure` 纯规则归profiles能力，原actor和builder直接调用同一实现；只迁这条实际依赖及其测试，不为future builder另造content框架。不搬RuntimeSnapshot/RuntimeError图，不重复现有 `runtime::config`。
@@ -723,11 +412,11 @@ P11独立构建环境不安装GTK/WebKit、不准备Tauri dist，仅有Rust/nati
 5. 所有源模块和fixture都有最终owner；Tauri只剩可解释的GUI/desktop适配，不残留旧路径re-export和第二套业务实现。
 6. 最终GUI白名单、原tests与新增边界测试、bindings、平台矩阵和已知限制都可在PR/仓库中复现。
 
-## 8. 当前源码覆盖与最终owner清单
+## 8. 模块迁移归属清单
 
-下面覆盖本次 `src/` 的全部222个Rust文件；目录行递归包括其tests和module入口。更具体的行优先于目录/剩余项。`G`表示确实服务GUI而保留，不意味着可以继续承载共享业务。测试按实现owner迁移，混合测试按职责拆开。
+以下按迁移前的模块路径标识职责与目标owner，不表示当前工作区文件是否已迁移。目录行递归包括其tests和module入口。更具体的行优先于目录/剩余项。`G`表示确实服务GUI而保留，不意味着可以继续承载共享业务。测试按实现owner迁移，混合测试按职责拆开。
 
-| 当前路径（相对 `backend/tauri/src`）                                                                                | 最终归属 / phase                                                                                                                                                                                                                           |
+| 迁移前路径（相对 `backend/tauri/src`）                                                                              | 最终归属 / phase                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `main.rs`                                                                                                           | G：GUI executable入口                                                                                                                                                                                                                      |
 | `lib.rs`、`setup.rs`                                                                                                | G装配；共享graph P08、startup P10、transport P09                                                                                                                                                                                           |
@@ -742,7 +431,7 @@ P11独立构建环境不安装GTK/WebKit、不准备Tauri dist，仅有Rust/nati
 | `core/storage.rs`                                                                                                   | core storage P02；G Event/listener                                                                                                                                                                                                         |
 | `core/backup.rs`、`core/migration/`                                                                                 | core backup/migration P02                                                                                                                                                                                                                  |
 | `core/actor_v2/`、`core/service/`                                                                                   | core control/service P03；G status Event包装                                                                                                                                                                                               |
-| `core/manager.rs`                                                                                                   | 当前仅escape helper；迁到对应process能力P03，不按旧文档误记为完整manager                                                                                                                                                                   |
+| `core/manager.rs`                                                                                                   | 当前仅escape helper；P03保留，不为迁移清理无关helper，不按旧文档误记为完整manager                                                                                                                                                          |
 | `core/win_uwp.rs`                                                                                                   | core Windows能力P03；资源位置和native命令权限留边界                                                                                                                                                                                        |
 | `core/logs/`                                                                                                        | core logs P04；G Event包装                                                                                                                                                                                                                 |
 | `core/geo/`、`core/traffic/`、`core/connections.rs`                                                                 | core geo/traffic/connections P04                                                                                                                                                                                                           |
@@ -769,7 +458,8 @@ P11独立构建环境不安装GTK/WebKit、不准备Tauri dist，仅有Rust/nati
 | `client/`其余文件                                                                                                   | `mod/application/clash_api/clash_config/clash_info/clash_streams/configuration_status/error/jobs/ports/profiles/runtime/runtime_error/runtime_inspection/runtime_recovery/session_state/traffic` 全归P08；按领域分布，不搬泛用client工具桶 |
 | `utils/blocking.rs`、`utils/config.rs`                                                                              | core task/IO与network P01                                                                                                                                                                                                                  |
 | `utils/candy.rs`                                                                                                    | network部分P01；archive部分P04                                                                                                                                                                                                             |
-| `utils/collect.rs`、`utils/core_version.rs`、`utils/sudo.rs`                                                        | core diagnostics/process P03                                                                                                                                                                                                               |
+| `utils/collect.rs`、`utils/sudo.rs`                                                                                 | core diagnostics/process P03                                                                                                                                                                                                               |
+| `utils/core_version.rs`                                                                                             | G原Tauri版本进程适配器；P03仅将其消费的契约/错误/parser迁入core                                                                                                                                                                            |
 | `utils/net.rs`、`utils/proxy_env.rs`                                                                                | core diagnostics/文本P04；clipboard留G                                                                                                                                                                                                     |
 | `utils/init/mod.rs`、`utils/init/tests.rs`                                                                          | shared init/process P10；bundle resources发现留G                                                                                                                                                                                           |
 | `utils/init/logging.rs`                                                                                             | logs writer/reload P04，生命周期P10；process subscriber/profiler安装留host                                                                                                                                                                 |
@@ -780,30 +470,12 @@ P11独立构建环境不安装GTK/WebKit、不准备Tauri dist，仅有Rust/nati
 | `utils/winhelp.rs`                                                                                                  | 当前未挂载、用于Windows版本/UI判断的孤立文件；保留记录，不擅自删除或启用；无独立业务调用链证据，不强造core API                                                                                                                             |
 | `utils/mod.rs`                                                                                                      | 随各phase删共享module声明，仅留GUI helpers                                                                                                                                                                                                 |
 
-### 8.1 49个非Rust文件与build.rs
+### 8.1 非Rust资源与build.rs
 
 - `Cargo.toml`：依赖跟消费能力逐PR迁移，不整体复制到core；`.gitignore`继续属于GUI构建目录。
 - `build.rs`：保留tauri-build、bundle/git metadata/GUI manifest工作；共享BuildInfo作为参数，不让core编译运行Tauri build script。
 - `Info.plist`、`capabilities/main.json`、两个Tauri配置、两个overrides、三个installer templates、Windows app manifest：G。
 - 五个locale JSON和全部22个icons资产：G。不把GUI locales搬成core错误文案依赖。
 - `src/core/logs/preset.zdict`：P04；四个migration fixture：P02；四个enhance golden fixture：P08。移动不改变内容。
-- `tests/sample_clash_config.yaml`：当前未找到源码引用，P08复核后随runtime测试资产归core；不趁机删除、也不为它制造新业务测试。
+- `tests/sample_clash_config.yaml`：P08复核实际引用后随runtime测试资产归core；不趁机删除、也不为它制造新业务测试。
 - gitignored sidecar/resources是host提供的运行输入及分发资产，不要求core从Tauri目录发现它们；`tmp/dist`、`tmp/git-info.json`、Tauri生成schema不成为core构建前提。
-
-## 9. 本次规划的验证记录与限制
-
-本轮已经执行：
-
-| 命令/检查                                                                | 结果                                                                  |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `git status --short`、`git rev-parse HEAD`、`git ls-files backend/tauri` | 确认开始dirty基线、收尾 `9c329ec5e` 和272文件清单；未推断远端合并状态 |
-| 源码模块/依赖/调用者/测试引用/构建常量扫描                               | 定位本文列出的实际切口与事务闭包；不是编译器生成的完整依赖图          |
-| `deno task test:backend-boundaries`                                      | 3 passed，0 failed                                                    |
-| `deno task lint:backend-boundaries`                                      | passed；当前core/config production/build依赖无门禁禁止的GUI依赖       |
-| `deno task lint:architecture-ledger`                                     | passed；408个Rust文件，39个精确static allowances，各残留指标为0       |
-
-本次只写规划，没有执行Rust编译/行为测试、GUI启动、HTTP/browser端到端、Windows/macOS runtime、musl容器或远端CI。旧文档记录的hardware model断言失败等情况需在B0重新建立基线，不作为本次重现结果。现有门禁通过也不证明尚在Tauri的facade已完成分离。
-
-文档验证：`pnpm exec prettier --check docs/design/tauri-core-extraction-plan.md` 通过；`git diff --no-index --check /dev/null docs/design/tauri-core-extraction-plan.md` 无空白错误输出（新增文件差异返回1），另行确认无行尾空白和冲突标记。清单核对覆盖当前222个Rust源码文件，11个PR的前置引用有效且DAG无环，所有本地Markdown链接目标存在。源码覆盖/依赖图核对不等于Rust编译证明。
-
-本次仅新增本规划，未编辑用户既有代码/旧文档或暂存区。实施时每PR直接记录命令和结果；不引用执行环境里的临时清单、日志或本地diff作为持久证明。

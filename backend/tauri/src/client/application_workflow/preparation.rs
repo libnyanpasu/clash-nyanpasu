@@ -11,14 +11,12 @@ use super::{
     super::{SessionPortResolver, runtime},
     ports::RuntimeBuildPort,
 };
-use crate::{
-    client::{
-        core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
-        runtime::PublishRuntimeError,
-        runtime_error::{BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError},
-    },
-    core::actor_v2::{intent::RuntimeIntentBuilder, local_host::CoreSpecError},
+use crate::client::{
+    core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
+    runtime::PublishRuntimeError,
+    runtime_error::{BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError},
 };
+use nyanpasu_core::control::{intent::RuntimeIntentBuilder, local_host::CoreSpecError};
 
 /// Builds runtime candidates from committed source config. It holds read-only
 /// state handles, never a domain client: the workflow is a state participant

@@ -96,11 +96,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // For the desktop commands that need a path.
     app.manage(paths.clone());
     let runtime_paths = RuntimePaths::from_resolver(&paths);
-    // TODO(ipc-timeout): nyanpasu_ipc::Client sets no request timeout. Remove the
-    // outer call deadlines in core/actor_v2 once the upstream client sets one.
+    // The service client uses real socket/pipe IPC without an explicit request timeout.
+    // Preserve CoreClient/ServiceClient caller budgets and endpoint/OS bounds:
+    // they also cover mailbox residence and potentially outstanding external work.
     let service_ipc = nyanpasu_ipc::client::Client::new(nyanpasu_ipc::SERVICE_PLACEHOLDER)
         .context("Failed to build the service IPC client")?;
-    let service_binary = crate::core::service::control::service_binary(
+    let service_binary = nyanpasu_core::service::control::service_binary(
         paths
             .app_install_dir()
             .context("Failed to locate the service binary")?
@@ -108,23 +109,21 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     );
     let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service) = tauri::async_runtime::block_on(async {
-        let control = crate::core::actor_v2::local_host::build(&paths).await?;
-        let local: crate::core::actor_v2::endpoint::EndpointHandle =
-            Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
-        let core = crate::core::actor_v2::CoreClient::spawn(local)
+        let control = nyanpasu_core::control::local_host::build(&paths).await?;
+        let local: nyanpasu_core::control::endpoint::EndpointHandle = Arc::new(
+            nyanpasu_core::control::endpoint::LocalEndpoint::new(control),
+        );
+        let core = nyanpasu_core::control::CoreClient::spawn(local)
             .await
             .context("Failed to spawn core actor")?;
-        let adapter = Arc::new(
-            crate::core::actor_v2::service_host_adapter::OsServiceHostAdapter::new(
-                service_ipc.clone(),
-                service_binary,
-                paths.clone(),
-            ),
-        );
-        let service =
-            crate::core::actor_v2::service_actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
-                .await
-                .context("Failed to spawn service actor")?;
+        let adapter = Arc::new(nyanpasu_core::service::os::OsServiceHostAdapter::new(
+            service_ipc.clone(),
+            service_binary,
+            paths.clone(),
+        ));
+        let service = nyanpasu_core::service::actor::ServiceClient::spawn(adapter, RESTART_BUDGET)
+            .await
+            .context("Failed to spawn service actor")?;
         anyhow::Ok((core, service))
     })?;
     drop(span);
@@ -169,7 +168,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         installed_channel: bundle_metadata.release_channel,
         is_portable: bundle_metadata.is_portable,
-        environment: Arc::new(crate::utils::collect::OsEnvironmentCollector::new(
+        environment: Arc::new(nyanpasu_core::diagnostics::os::OsEnvironmentCollector::new(
             crate::consts::BUILD_INFO.clone(),
             paths.clone(),
         )),
@@ -199,7 +198,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         },
         core_specs: {
             let paths = paths.clone();
-            Arc::new(move |core| crate::core::actor_v2::local_host::core_spec(core, &paths))
+            Arc::new(move |core| nyanpasu_core::control::local_host::core_spec(core, &paths))
         },
         paths: paths.clone(),
         storage,
@@ -433,7 +432,7 @@ fn forward_actor_events(
         loop {
             match core_events.recv().await {
                 Ok(status) => {
-                    let _ = crate::core::actor_v2::CoreStatusChangedEvent(status.into())
+                    let _ = crate::core::status_events::CoreStatusChangedEvent(status.into())
                         .emit(&core_handle);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -446,7 +445,7 @@ fn forward_actor_events(
     tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         while service_events.changed().await.is_ok() {
             let status = service_events.borrow_and_update().clone();
-            let _ = crate::core::actor_v2::ServiceStatusChangedEvent(status).emit(&app_handle);
+            let _ = crate::core::status_events::ServiceStatusChangedEvent(status).emit(&app_handle);
         }
     }));
 }

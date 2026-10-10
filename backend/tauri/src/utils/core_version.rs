@@ -4,7 +4,7 @@ use snafu::{ResultExt, ensure};
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
-use crate::client::core_version::{
+use nyanpasu_core::runtime::version::{
     CoreVersionError, CoreVersionExitSnafu, CoreVersionReader, RunCoreVersionSnafu, parse_version,
 };
 

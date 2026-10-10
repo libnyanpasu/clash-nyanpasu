@@ -11,7 +11,6 @@ mod clash_streams;
 pub mod configuration_status;
 pub mod convergence;
 pub mod core_lifecycle;
-pub mod core_version;
 mod direct_egress;
 pub(crate) mod effects;
 mod error;
@@ -38,11 +37,6 @@ use self::{
     session_state::SessionStateClient,
 };
 use crate::{
-    core::actor_v2::{
-        CoreClient as CoreClientV2, CoreStatusProjection,
-        facade::{ReconcileReport, StopReport},
-        service_actor::{ServiceClient, ServiceHostStatus},
-    },
     service::profile_file::ProfileFileService,
     state::profiles::{
         CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
@@ -66,8 +60,14 @@ use nyanpasu_core::{
         self, BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS,
         MANUAL_PREFIX, StorageSource,
     },
+    control::{
+        CoreClient as CoreClientV2, CoreStatusProjection,
+        facade::{ReconcileReport, StopReport},
+    },
     device::DeviceInfoSource,
     diagnostics::{EnvInfo, EnvironmentCollector},
+    runtime::version::CoreVersionReader,
+    service::actor::{ServiceClient, ServiceHostStatus},
     storage::Storage,
 };
 use std::{path::PathBuf, sync::Arc};
@@ -117,7 +117,7 @@ pub struct ClientSetupArgs {
     pub geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
     pub os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
     pub binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
-    pub core_versions: Arc<dyn core_version::CoreVersionReader>,
+    pub core_versions: Arc<dyn CoreVersionReader>,
     pub effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
@@ -171,7 +171,7 @@ fn runtime_core_spec(
     core: &nyanpasu_config::application::ClashCore,
 ) -> std::result::Result<
     nyanpasu_core_manager::CoreSpec,
-    crate::core::actor_v2::local_host::CoreSpecError,
+    nyanpasu_core::control::local_host::CoreSpecError,
 > {
     use nyanpasu_core_manager::CoreKind;
     let kind = match core {
@@ -233,7 +233,7 @@ struct NyanpasuClientInner {
     streams: crate::core::clash::ws::StreamsClient,
     traffic: Option<crate::core::traffic::TrafficClient>,
     updater: crate::core::updater::UpdaterClient,
-    core_versions: Arc<dyn core_version::CoreVersionReader>,
+    core_versions: Arc<dyn CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
@@ -418,7 +418,7 @@ impl NyanpasuClient {
         geo_index: Arc<dyn crate::core::geo::CountryIndexSource>,
         os_proxy: Arc<dyn system_proxy::ports::OsProxyPort>,
         binary_installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
-        core_versions: Arc<dyn core_version::CoreVersionReader>,
+        core_versions: Arc<dyn CoreVersionReader>,
         effects: Arc<dyn effects::ports::ApplicationEffectsPort>,
         window: Arc<dyn hotkey::ports::WindowControl>,
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
@@ -1351,7 +1351,6 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         client::system_proxy::ports::{MockOsProxyPort, OsProxyConfig, OsProxyError, OsProxyPort},
-        core::actor_v2::endpoint::ExecutionHost,
         state::profiles::{
             error::SubscriptionFetchError,
             ports::{
@@ -1370,9 +1369,19 @@ pub(crate) mod tests {
         },
         state::window::WindowState,
     };
+    use nyanpasu_core::{control::endpoint::ExecutionHost, runtime::version::CoreVersionError};
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
+
+    mockall::mock! {
+        CoreVersionReader {}
+        #[async_trait::async_trait]
+        impl nyanpasu_core::runtime::version::CoreVersionReader for CoreVersionReader {
+            async fn read(&self, core: nyanpasu_config::application::ClashCore)
+                -> std::result::Result<String, CoreVersionError>;
+        }
+    }
 
     pub(crate) struct FixedDeviceInfoSource;
 
@@ -1398,14 +1407,14 @@ pub(crate) mod tests {
     struct IdleEndpoint;
 
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
+    impl nyanpasu_core::control::endpoint::ControlEndpoint for IdleEndpoint {
         fn host(&self) -> ExecutionHost {
             ExecutionHost::Local
         }
 
         async fn submit(
             &self,
-            submission: crate::core::actor_v2::endpoint::CoreSubmission,
+            submission: nyanpasu_core::control::endpoint::CoreSubmission,
         ) -> std::result::Result<
             nyanpasu_ipc::api::core::v2::OperationInfo,
             nyanpasu_core_manager::CoreError,
@@ -1424,10 +1433,10 @@ pub(crate) mod tests {
         async fn status(
             &self,
         ) -> std::result::Result<
-            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_core::control::endpoint::CoreStatusSnapshot,
             nyanpasu_core_manager::CoreError,
         > {
-            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+            Ok(nyanpasu_core::control::endpoint::CoreStatusSnapshot {
                 controller: None,
                 state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
                 state_changed_at: 0,
@@ -1490,7 +1499,7 @@ pub(crate) mod tests {
         result_missing: std::sync::atomic::AtomicBool,
         /// Every advisory check this endpoint was asked to run, so a test can
         /// compare what the check saw with what the reconcile submitted.
-        checks: StdMutex<Vec<crate::core::actor_v2::endpoint::CheckSubmission>>,
+        checks: StdMutex<Vec<nyanpasu_core::control::endpoint::CheckSubmission>>,
         /// What the next check answers. The default mirrors the in-process
         /// control plane accepting a document.
         check_answer: StdMutex<TestCheckAnswer>,
@@ -1659,7 +1668,7 @@ pub(crate) mod tests {
         }
 
         /// The documents this endpoint was asked to check, in order.
-        pub(crate) fn checked(&self) -> Vec<crate::core::actor_v2::endpoint::CheckSubmission> {
+        pub(crate) fn checked(&self) -> Vec<nyanpasu_core::control::endpoint::CheckSubmission> {
             self.checks.lock().unwrap().clone()
         }
 
@@ -1695,7 +1704,7 @@ pub(crate) mod tests {
         /// `revision_conflict`, and an accepted reconcile advances it.
         fn operation(
             &self,
-            submission: &crate::core::actor_v2::endpoint::CoreSubmission,
+            submission: &nyanpasu_core::control::endpoint::CoreSubmission,
         ) -> nyanpasu_ipc::api::core::v2::OperationInfo {
             let id = submission.envelope.operation_id.to_string();
             if self.fail.load(std::sync::atomic::Ordering::SeqCst) {
@@ -1837,16 +1846,16 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
+    impl nyanpasu_core::control::endpoint::ControlEndpoint for TestControlEndpoint {
         fn host(&self) -> ExecutionHost {
             self.host
         }
 
         async fn check_config(
             &self,
-            submission: crate::core::actor_v2::endpoint::CheckSubmission,
-        ) -> crate::core::actor_v2::endpoint::CheckSupport {
-            use crate::core::actor_v2::endpoint::CheckSupport;
+            submission: nyanpasu_core::control::endpoint::CheckSubmission,
+        ) -> nyanpasu_core::control::endpoint::CheckSupport {
+            use nyanpasu_core::control::endpoint::CheckSupport;
             let answer = self.check_answer.lock().unwrap().clone();
             self.checks.lock().unwrap().push(submission);
             match answer {
@@ -1861,7 +1870,7 @@ pub(crate) mod tests {
 
         async fn submit(
             &self,
-            submission: crate::core::actor_v2::endpoint::CoreSubmission,
+            submission: nyanpasu_core::control::endpoint::CoreSubmission,
         ) -> std::result::Result<
             nyanpasu_ipc::api::core::v2::OperationInfo,
             nyanpasu_core_manager::CoreError,
@@ -1927,7 +1936,7 @@ pub(crate) mod tests {
         async fn status(
             &self,
         ) -> std::result::Result<
-            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_core::control::endpoint::CoreStatusSnapshot,
             nyanpasu_core_manager::CoreError,
         > {
             self.status_reads
@@ -1940,7 +1949,7 @@ pub(crate) mod tests {
                 ));
             }
             let (state, applied_kind) = self.status_override.lock().unwrap().clone();
-            Ok(crate::core::actor_v2::endpoint::CoreStatusSnapshot {
+            Ok(nyanpasu_core::control::endpoint::CoreStatusSnapshot {
                 controller: None,
                 state,
                 state_changed_at: 0,
@@ -1984,13 +1993,13 @@ pub(crate) mod tests {
         }
     }
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint {
+    impl nyanpasu_core::control::endpoint::ControlEndpoint for HostTransitionEndpoint {
         fn host(&self) -> ExecutionHost {
             self.host
         }
         async fn submit(
             &self,
-            submission: crate::core::actor_v2::endpoint::CoreSubmission,
+            submission: nyanpasu_core::control::endpoint::CoreSubmission,
         ) -> std::result::Result<
             nyanpasu_ipc::api::core::v2::OperationInfo,
             nyanpasu_core_manager::CoreError,
@@ -2022,7 +2031,7 @@ pub(crate) mod tests {
         async fn status(
             &self,
         ) -> std::result::Result<
-            crate::core::actor_v2::endpoint::CoreStatusSnapshot,
+            nyanpasu_core::control::endpoint::CoreStatusSnapshot,
             nyanpasu_core_manager::CoreError,
         > {
             self.delegate.status().await
@@ -2030,7 +2039,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) struct HostTransitionServiceAdapter {
-        pub endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+        pub endpoint: nyanpasu_core::control::endpoint::EndpointHandle,
         pub calls: Arc<StdMutex<Vec<&'static str>>>,
         pub stopped: std::sync::atomic::AtomicBool,
         /// The config dir the daemon reports it was installed with.
@@ -2038,12 +2047,12 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::service_actor::ServiceHostAdapter for HostTransitionServiceAdapter {
+    impl nyanpasu_core::service::actor::ServiceHostAdapter for HostTransitionServiceAdapter {
         async fn probe(
             &self,
         ) -> std::result::Result<
             nyanpasu_ipc::types::StatusInfo<'static>,
-            crate::core::service::control::ServiceCommandError,
+            nyanpasu_core::service::control::ServiceCommandError,
         > {
             if self.stopped.load(std::sync::atomic::Ordering::SeqCst) {
                 return Ok(nyanpasu_ipc::types::StatusInfo {
@@ -2087,21 +2096,21 @@ pub(crate) mod tests {
 
         async fn install(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("install");
             Ok(())
         }
 
         async fn uninstall(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.calls.lock().unwrap().push("uninstall");
             Ok(())
         }
 
         async fn start_daemon(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.stopped
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("start_daemon");
@@ -2110,7 +2119,7 @@ pub(crate) mod tests {
 
         async fn stop_daemon(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.stopped
                 .store(true, std::sync::atomic::Ordering::SeqCst);
             self.calls.lock().unwrap().push("stop_daemon");
@@ -2119,11 +2128,11 @@ pub(crate) mod tests {
 
         async fn update(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> nyanpasu_core::control::endpoint::EndpointHandle {
             self.endpoint.clone()
         }
     }
@@ -2156,12 +2165,12 @@ pub(crate) mod tests {
     pub(crate) struct IdleServiceAdapter;
 
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::service_actor::ServiceHostAdapter for IdleServiceAdapter {
+    impl nyanpasu_core::service::actor::ServiceHostAdapter for IdleServiceAdapter {
         async fn probe(
             &self,
         ) -> std::result::Result<
             nyanpasu_ipc::types::StatusInfo<'static>,
-            crate::core::service::control::ServiceCommandError,
+            nyanpasu_core::service::control::ServiceCommandError,
         > {
             Ok(nyanpasu_ipc::types::StatusInfo {
                 name: std::borrow::Cow::Borrowed("test-service"),
@@ -2173,35 +2182,35 @@ pub(crate) mod tests {
 
         async fn install(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
 
         async fn uninstall(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
 
         async fn start_daemon(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
 
         async fn stop_daemon(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
 
         async fn update(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             Ok(())
         }
 
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> nyanpasu_core::control::endpoint::EndpointHandle {
             Arc::new(IdleEndpoint)
         }
     }
@@ -2212,12 +2221,12 @@ pub(crate) mod tests {
 
     /// A core that answers nothing, for tests whose subject is the facade
     /// rather than the running core.
-    pub(crate) fn test_idle_endpoint() -> crate::core::actor_v2::endpoint::EndpointHandle {
+    pub(crate) fn test_idle_endpoint() -> nyanpasu_core::control::endpoint::EndpointHandle {
         Arc::new(IdleEndpoint)
     }
 
     pub(crate) fn test_v2_clients_with_endpoint(
-        endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+        endpoint: nyanpasu_core::control::endpoint::EndpointHandle,
     ) -> (CoreClientV2, ServiceClient) {
         std::thread::spawn(move || {
             tauri::async_runtime::block_on(async {
@@ -2510,7 +2519,7 @@ pub(crate) mod tests {
             geo_index,
             os_proxy,
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-            Arc::new(core_version::MockCoreVersionReader::new()),
+            Arc::new(MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -2951,7 +2960,7 @@ pub(crate) mod tests {
     #[test]
     fn core_version_reads_use_the_injected_port_and_keep_domain_errors() {
         let dir = tempdir().unwrap();
-        let mut reader = core_version::MockCoreVersionReader::new();
+        let mut reader = MockCoreVersionReader::new();
         reader
             .expect_read()
             .withf(|core| *core == nyanpasu_config::application::ClashCore::Meow)
@@ -2961,7 +2970,7 @@ pub(crate) mod tests {
             .expect_read()
             .withf(|core| *core == nyanpasu_config::application::ClashCore::ClashRs)
             .times(1)
-            .returning(|core| Err(core_version::CoreVersionError::CoreVersionNotReported { core }));
+            .returning(|core| Err(CoreVersionError::CoreVersionNotReported { core }));
         let mut args = test_client_args_with_endpoint(&dir, Arc::new(IdleEndpoint));
         args.core_versions = Arc::new(reader);
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
@@ -2978,7 +2987,7 @@ pub(crate) mod tests {
                     .get_core_version(nyanpasu_config::application::ClashCore::ClashRs)
                     .await,
                 Err(RuntimeError::ReadCoreVersion {
-                    source: core_version::CoreVersionError::CoreVersionNotReported { .. }
+                    source: CoreVersionError::CoreVersionNotReported { .. }
                 })
             ));
         });
@@ -2986,7 +2995,7 @@ pub(crate) mod tests {
 
     pub(crate) fn test_client_args_with_endpoint(
         dir: &TempDir,
-        endpoint: crate::core::actor_v2::endpoint::EndpointHandle,
+        endpoint: nyanpasu_core::control::endpoint::EndpointHandle,
     ) -> ClientSetupArgs {
         let (paths, storage) = test_backup_deps(dir);
         seed_test_clash_config(paths.clash_config_path());
@@ -3029,7 +3038,7 @@ pub(crate) mod tests {
             geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-            core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
+            core_versions: Arc::new(MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
@@ -3059,12 +3068,12 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::core::actor_v2::service_actor::ServiceHostAdapter for PersistedSwitchProbe {
+    impl nyanpasu_core::service::actor::ServiceHostAdapter for PersistedSwitchProbe {
         async fn probe(
             &self,
         ) -> std::result::Result<
             nyanpasu_ipc::types::StatusInfo<'static>,
-            crate::core::service::control::ServiceCommandError,
+            nyanpasu_core::service::control::ServiceCommandError,
         > {
             let persisted = std::fs::read(&self.application_config)
                 .ok()
@@ -3079,35 +3088,35 @@ pub(crate) mod tests {
 
         async fn install(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.delegate.install().await
         }
 
         async fn uninstall(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.delegate.uninstall().await
         }
 
         async fn start_daemon(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.delegate.start_daemon().await
         }
 
         async fn stop_daemon(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.delegate.stop_daemon().await
         }
 
         async fn update(
             &self,
-        ) -> std::result::Result<(), crate::core::service::control::ServiceCommandError> {
+        ) -> std::result::Result<(), nyanpasu_core::service::control::ServiceCommandError> {
             self.delegate.update().await
         }
 
-        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+        fn endpoint(&self) -> nyanpasu_core::control::endpoint::EndpointHandle {
             self.delegate.endpoint()
         }
     }
@@ -3377,7 +3386,7 @@ pub(crate) mod tests {
             Arc::new(crate::core::geo::NoopCountryIndexSource),
             Arc::new(MockOsProxyPort::new()),
             Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-            Arc::new(core_version::MockCoreVersionReader::new()),
+            Arc::new(MockCoreVersionReader::new()),
             Arc::new(effects::ports::NoopApplicationEffects),
             Arc::new(hotkey::ports::MockWindowControl::new()),
             Arc::new(hotkey::adapters::PlatformAcceleratorValidator),
@@ -3544,7 +3553,7 @@ pub(crate) mod tests {
             geo_index: Arc::new(crate::core::geo::NoopCountryIndexSource),
             os_proxy: Arc::new(MockOsProxyPort::new()),
             binary_installer: Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-            core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
+            core_versions: Arc::new(MockCoreVersionReader::new()),
             effects: Arc::new(effects::ports::NoopApplicationEffects),
             // A mock rather than a no-op: a test that dispatches a window
             // action without saying so should fail, not pass silently.
@@ -4521,7 +4530,7 @@ pub(crate) mod tests {
                 Arc::new(crate::core::geo::NoopCountryIndexSource),
                 Arc::new(MockOsProxyPort::new()),
                 Arc::new(core_lifecycle::adapters::FsBinaryInstaller),
-                Arc::new(core_version::MockCoreVersionReader::new()),
+                Arc::new(MockCoreVersionReader::new()),
                 Arc::new(effects::ports::NoopApplicationEffects),
                 Arc::new(hotkey::ports::MockWindowControl::new()),
                 Arc::new(hotkey::adapters::PlatformAcceleratorValidator),

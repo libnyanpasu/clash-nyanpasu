@@ -108,9 +108,9 @@ registration token (`ARCHIVE_UPLOAD_TOKEN`, `FILE_SERVER_TOKEN` or
 `UPLOAD_TOKEN`). The bot must be allowed to post documents to the channel.
 Documents upload sequentially with eight concurrent part workers per file. No
 Bot API download URL or token is exposed. The archive lists Telegram files and
-redirects `/bin/:id` to the corresponding
-`https://t.me/<channel>/<message-id>` post. This is a Telegram message link;
-users download the document through Telegram.
+redirects `/bin/:id` to the corresponding `https://t.me/<channel>/<message-id>`
+post. This is a Telegram message link; users download the document through
+Telegram.
 
 Deploy `nyanpasu-file-list` migration `0004_add_telegram_storage.sql` and its
 Telegram-aware routes before enabling this uploader. Old IA and OneDrive rows
@@ -206,9 +206,8 @@ through `telegram:publish`. The manual notification does not download or upload
 packages. Set the `TELEGRAM_RELEASE_CHANNEL` GitHub Actions variable to the
 public channel username, including its leading `@`. To resend a release
 notification after the updated workflow is available on GitHub, manually run
-`[Reusable] Notify Telegram of Releases` with
-`nightly: false` and the published `tag`, for example `v2.0.0-beta.1`. This
-sends only the notification to the channel configured by the
-`TELEGRAM_RELEASE_CHANNEL` GitHub Actions variable; it does not rebuild packages.
-Re-running an older failed publication run uses that run's original workflow and
-scripts.
+`[Reusable] Notify Telegram of Releases` with `nightly: false` and the published
+`tag`, for example `v2.0.0-beta.1`. This sends only the notification to the
+channel configured by the `TELEGRAM_RELEASE_CHANNEL` GitHub Actions variable; it
+does not rebuild packages. Re-running an older failed publication run uses that
+run's original workflow and scripts.

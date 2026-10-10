@@ -94,9 +94,9 @@ const TraySettings = () => {
         <TrayMenuModeSelector />
 
         {trayMenuMode === 'native' && <TrayProxiesSelector />}
-
-        {!isMacOS && <TrayIconConfig />}
       </SettingsGroup>
+
+      {!isMacOS && <TrayIconConfig />}
     </div>
   )
 }

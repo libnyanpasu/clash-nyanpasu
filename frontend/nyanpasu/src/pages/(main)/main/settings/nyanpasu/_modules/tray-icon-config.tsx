@@ -11,9 +11,16 @@ import { mutations, queries } from '@/services/rpc'
 import { pickFile } from '@/utils/file-picker'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
+import { isWindows } from '@nyanpasu/platform'
 import { invokeMutation, unwrapQueryOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
-import { useQuery } from '@tanstack/react-query'
+import catNormal from '@root/backend/tauri/icons/tray/cat/normal.png'
+import catSystemProxy from '@root/backend/tauri/icons/tray/cat/system-proxy.png'
+import catTun from '@root/backend/tauri/icons/tray/cat/tun.png'
+import mascotNormal from '@root/backend/tauri/icons/tray/mascot/normal.png'
+import mascotSystemProxy from '@root/backend/tauri/icons/tray/mascot/system-proxy.png'
+import mascotTun from '@root/backend/tauri/icons/tray/mascot/tun.png'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 enum TrayIconMode {
@@ -22,7 +29,37 @@ enum TrayIconMode {
   system_proxy = 'system_proxy',
 }
 
-const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
+const TRAY_PRESETS = {
+  cat: { normal: catNormal, tun: catTun, system_proxy: catSystemProxy },
+  mascot: {
+    normal: mascotNormal,
+    tun: mascotTun,
+    system_proxy: mascotSystemProxy,
+  },
+} as const
+
+const imageBase64 = async (url: string) => {
+  const response = await fetch(url)
+  if (!response.ok)
+    throw new Error(`Failed to load tray preset: ${response.status}`)
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+  }
+
+  return btoa(binary)
+}
+
+const TrayIconItem = ({
+  mode,
+  disabled,
+  onBusyChange,
+}: {
+  mode: TrayIconMode
+  disabled: boolean
+  onBusyChange: (busy: boolean) => void
+}) => {
   const [iconVersion, setIconVersion] = useState(0)
 
   const isIconSetQuery = queries.isTrayIconSet(mode)
@@ -34,6 +71,7 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
   const [isLoading, setIsLoading] = useState(false)
 
   const handleChangeIcon = useLockFn(async () => {
+    onBusyChange(true)
     try {
       const selected = await pickFile(null, [
         {
@@ -75,10 +113,12 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
       })
     } finally {
       setIsLoading(false)
+      onBusyChange(false)
     }
   })
 
   const handleResetIcon = useLockFn(async () => {
+    onBusyChange(true)
     try {
       // null means reset
       await invokeMutation(setTrayIcon, [mode, null])
@@ -94,6 +134,8 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
         kind: 'error',
         error: e,
       })
+    } finally {
+      onBusyChange(false)
     }
   })
 
@@ -132,6 +174,7 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
         <Button
           className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base"
           onClick={handleChangeIcon}
+          disabled={disabled}
         >
           <TrayImage className="size-12" mode={mode} version={iconVersion} />
 
@@ -141,6 +184,7 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  disabled={disabled}
                   variant="raised"
                   className="hover:bg-inverse-on-surface"
                   icon
@@ -173,22 +217,108 @@ const TrayIconItem = ({ mode }: { mode: TrayIconMode }) => {
 }
 
 export default function TrayIconConfig() {
-  return Object.values(TrayIconMode).map((mode) => (
-    <TrayIconItem key={mode} mode={mode} />
-  ))
-  // return (
-  //   <SettingsCard>
-  //     {/* <SettingsCardContent className="gap-4">
-  //       <div className="flex items-center justify-between">
-  //         <span>{m.settings_nyanpasu_tray_icon()}</span>
-  //       </div>
-  //     </SettingsCardContent> */}
+  const queryClient = useQueryClient()
+  const [isApplying, setIsApplying] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [presetVersion, setPresetVersion] = useState(0)
 
-  //     <SettingsCardContent className="grid grid-cols-1 gap-3 pb-5 sm:grid-cols-3">
-  //       {Object.values(TrayIconMode).map((mode) => (
-  //         <TrayIconItem key={mode} mode={mode} />
-  //       ))}
-  //     </SettingsCardContent>
-  //   </SettingsCard>
-  // )
+  const applyPreset = useLockFn(async (preset: keyof typeof TRAY_PRESETS) => {
+    setIsApplying(true)
+    try {
+      // Load all assets before changing any saved icon.
+      const icons = await Promise.all(
+        Object.values(TrayIconMode).map(async (mode) => ({
+          mode,
+          base64: await imageBase64(TRAY_PRESETS[preset][mode]),
+        })),
+      )
+      for (const { mode, base64 } of icons) {
+        await invokeMutation(mutations.setTrayIconFromBytes, [mode, base64])
+      }
+      message(m.settings_nyanpasu_tray_icon_set_success(), { kind: 'info' })
+    } catch (error) {
+      message(m.settings_nyanpasu_tray_icon_set_failed(), {
+        kind: 'error',
+        error,
+      })
+    } finally {
+      // Refresh even after a failure: earlier writes may have succeeded.
+      await Promise.all(
+        Object.values(TrayIconMode).flatMap((mode) => [
+          queryClient.invalidateQueries({ queryKey: ['getTrayIcon', mode] }),
+          queryClient.invalidateQueries({ queryKey: ['isTrayIconSet', mode] }),
+        ]),
+      )
+      setPresetVersion((version) => version + 1)
+      setIsApplying(false)
+    }
+  })
+
+  const presetLabels = {
+    cat: m.settings_nyanpasu_tray_icon_preset_cat(),
+    mascot: m.settings_nyanpasu_tray_icon_preset_mascot(),
+  }
+  const modeLabels = {
+    normal: m.settings_nyanpasu_tray_icon_normal(),
+    tun: m.settings_nyanpasu_tray_icon_tun(),
+    system_proxy: m.settings_nyanpasu_tray_icon_system_proxy(),
+  }
+
+  return (
+    <>
+      {isWindows && (
+        <SettingsCard data-slot="tray-icon-presets" aria-busy={isApplying}>
+          <SettingsCardContent className="gap-3">
+            <p className="text-sm">
+              {m.settings_nyanpasu_tray_icon_preset_description()}
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(['cat', 'mascot'] as const).map((preset) => (
+                <Button
+                  key={preset}
+                  data-slot="tray-icon-preset"
+                  variant="stroked"
+                  className="h-auto flex-col gap-3 rounded-2xl p-4"
+                  disabled={isApplying || isEditing}
+                  onClick={() => applyPreset(preset)}
+                >
+                  <span className="font-semibold">{presetLabels[preset]}</span>
+                  <span className="flex w-full justify-around gap-2">
+                    {Object.values(TrayIconMode).map((mode) => (
+                      <span
+                        key={mode}
+                        className="flex flex-col items-center gap-2"
+                      >
+                        <span className="bg-surface-variant flex size-10 items-center justify-center rounded-lg">
+                          <img
+                            src={TRAY_PRESETS[preset][mode]}
+                            alt=""
+                            className="size-6"
+                          />
+                        </span>
+                        <span className="text-xs">{modeLabels[mode]}</span>
+                      </span>
+                    ))}
+                  </span>
+                  <span className="text-sm">
+                    {isApplying
+                      ? m.settings_nyanpasu_tray_icon_loading()
+                      : m.settings_nyanpasu_tray_icon_preset_apply()}
+                  </span>
+                </Button>
+              ))}
+            </div>
+          </SettingsCardContent>
+        </SettingsCard>
+      )}
+      {Object.values(TrayIconMode).map((mode) => (
+        <TrayIconItem
+          key={`${mode}-${presetVersion}`}
+          mode={mode}
+          disabled={isApplying || isEditing}
+          onBusyChange={setIsEditing}
+        />
+      ))}
+    </>
+  )
 }

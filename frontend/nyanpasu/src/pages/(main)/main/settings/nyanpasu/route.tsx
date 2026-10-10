@@ -1,4 +1,5 @@
 import { m } from '@/paraglide/messages'
+import { isMacOS } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
@@ -94,7 +95,7 @@ const TraySettings = () => {
 
         {trayMenuMode === 'native' && <TrayProxiesSelector />}
 
-        <TrayIconConfig />
+        {!isMacOS && <TrayIconConfig />}
       </SettingsGroup>
     </div>
   )

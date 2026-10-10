@@ -5,12 +5,12 @@ use super::{
     AppWindow, WindowConfig, WindowManager, WindowParams, WindowParamsBuilder,
     build_url_with_params,
 };
-use crate::client::NyanpasuClient;
 use anyhow::Result;
 use nyanpasu_config::{
     application::{WindowCloseOverride, WindowCloseSettings},
     state::window::WindowState,
 };
+use nyanpasu_core::client::NyanpasuClient;
 use std::collections::HashMap;
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 

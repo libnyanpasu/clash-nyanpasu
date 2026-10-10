@@ -19,7 +19,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
     use tokio::sync::broadcast::error::RecvError;
     manager.manage(connection_details::ConnectionDetailSubscriptions::new());
     let client = manager
-        .state::<crate::client::NyanpasuClient>()
+        .state::<nyanpasu_core::client::NyanpasuClient>()
         .inner()
         .clone();
     let mut ws_rx = client.subscribe_clash_ws();

@@ -9,9 +9,8 @@ use nyanpasu_core::{
 use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
-use crate::client::{
-    ClientSetupArgs, ClientSetupOutput, MainThreadExecutor, NyanpasuClient, RuntimePaths,
-    TauriMainThread, TauriUiEventSink,
+use crate::desktop::{
+    MainThreadExecutor, TauriMainThread, TauriUiEventSink,
     effects::{
         presentation::{TauriEffectInvalidationSink, TauriPresentationEffects},
         tray_view,
@@ -33,6 +32,8 @@ use crate::client::{
 };
 use anyhow::Context;
 use nyanpasu_core::{
+    ClientSetupArgs, ClientSetupOutput, NyanpasuClient,
+    client::RuntimePaths,
     system_dns::OsSystemDnsCache,
     system_proxy::{
         SystemProxyArgs, SystemProxyClient,
@@ -63,7 +64,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(rpc_events);
     // Shared with the panic hook, which takes the main thread's work over
     // once the event loop is gone.
-    let main_thread_handoff = Arc::new(crate::client::MainThreadHandoff::default());
+    let main_thread_handoff = Arc::new(crate::desktop::MainThreadHandoff::default());
     app.manage(main_thread_handoff.clone());
     let main_thread: Arc<dyn MainThreadExecutor> = Arc::new(TauriMainThread::new(
         app_handle.clone(),
@@ -144,7 +145,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     // read of the OS settings.
     let os_proxy: Arc<dyn OsProxyPort> = Arc::new(SysproxyOsProxy);
     let span = tracing::info_span!("spawn_effect_owners").entered();
-    let jobs = tauri::async_runtime::block_on(crate::client::jobs::start(
+    let jobs = tauri::async_runtime::block_on(nyanpasu_core::client::jobs::start(
         paths.jobs_path().into_std_path_buf(),
         jobs_capture,
         shutdown.child_token(),
@@ -190,7 +191,10 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         client,
         mut application_settings,
         self_proxy_port,
-    } = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+    } = tauri::async_runtime::block_on(NyanpasuClient::try_new_with_args(ClientSetupArgs {
+        profile_user_agent: format!("clash-nyanpasu/v{}", crate::consts::BUILD_INFO.pkg_version),
+        kernel_user_agent: format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.app_version),
+        backup_app_version: crate::consts::BUILD_INFO.pkg_version.to_owned(),
         installed_channel: bundle_metadata.release_channel,
         is_portable: bundle_metadata.is_portable,
         environment: Arc::new(nyanpasu_core::diagnostics::os::OsEnvironmentCollector::new(
@@ -235,7 +239,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         direct_egress: Arc::new(HttpDirectEgressProbe::dnspod()),
         geo_index,
         os_proxy: os_proxy.clone(),
-        binary_installer: Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+        binary_installer: Arc::new(nyanpasu_core::client::core_lifecycle::FsBinaryInstaller),
         core_versions: Arc::new(crate::utils::core_version::TauriCoreVersionReader::new(
             app_handle.clone(),
         )),
@@ -244,12 +248,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         traffic_store,
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
-    })
+    }))
     .context("Failed to setup nyanpasu client")?;
     drop(span);
     let installed_channel = bundle_metadata.release_channel;
     let app_config = client.app_config_snapshot();
-    let app_update_settings = crate::client::app_update::AppUpdateSettings {
+    let app_update_settings = crate::desktop::app_update::AppUpdateSettings {
         channel: app_config.release_channel.unwrap_or(installed_channel),
         sources: app_config.update_sources.clone(),
         auto_check: app_config.enable_auto_check_update,
@@ -259,16 +263,16 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         && (cfg!(any(target_os = "windows", target_os = "macos"))
             || (cfg!(target_os = "linux") && *crate::consts::IS_APPIMAGE));
     let app_updater =
-        tauri::async_runtime::block_on(crate::client::app_update::AppUpdateClient::spawn(
-            crate::client::app_update::AppUpdateArgs {
+        tauri::async_runtime::block_on(crate::desktop::app_update::AppUpdateClient::spawn(
+            crate::desktop::app_update::AppUpdateArgs {
                 backend: Arc::new(
-                    crate::client::app_update::adapters::TauriAppUpdateBackend::new(
+                    crate::desktop::app_update::adapters::TauriAppUpdateBackend::new(
                         app_handle.clone(),
                         self_proxy_port,
                     ),
                 ),
                 events: Arc::new(
-                    crate::client::app_update::adapters::TauriAppUpdateEventSink::new(
+                    crate::desktop::app_update::adapters::TauriAppUpdateEventSink::new(
                         app_handle.clone(),
                     ),
                 ),
@@ -293,7 +297,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                             break;
                         }
                         let config = application_settings.borrow_and_update().clone();
-                        settings_updater.configure(crate::client::app_update::AppUpdateSettings {
+                        settings_updater.configure(crate::desktop::app_update::AppUpdateSettings {
                             channel: config.release_channel.unwrap_or(installed_channel),
                             sources: config.update_sources,
                             auto_check: config.enable_auto_check_update,

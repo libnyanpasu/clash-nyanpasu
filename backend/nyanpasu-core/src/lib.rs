@@ -1,12 +1,15 @@
+pub mod backup;
 pub mod connections;
 pub mod device;
 pub mod diagnostics;
 pub mod error;
 pub mod format;
+pub mod migration;
 pub mod network;
 pub mod runtime;
 pub mod service;
 pub mod state;
+pub mod storage;
 pub mod tasks;
 
 /// Smoke test proving the gxhash dev-dependency compiles and runs under the

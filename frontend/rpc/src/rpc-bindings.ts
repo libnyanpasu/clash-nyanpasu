@@ -281,6 +281,10 @@ export function createRpcClient(
       typedError<string | null, IpcError>(
         __RPC_INVOKE('get_system_accent_color'),
       ),
+    getTransparentProxyStatus: () =>
+      typedError<NetworkTransparentProxyStatus, IpcError>(
+        __RPC_INVOKE('get_transparent_proxy_status'),
+      ),
     writeClipboardText: (text: string) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('write_clipboard_text', { text }),
@@ -793,6 +797,11 @@ export type ClashConfig = {
   socks_port: PortStrategy | null
   /**  HTTP Proxy Port */
   http_port: PortStrategy | null
+  /**  Transparent proxy listener ports. `None` leaves profile-provided ports intact. */
+  redir_port: PortStrategy | null
+  tproxy_port: PortStrategy | null
+  /**  Capture policy applied by the platform network service. */
+  transparent_proxy?: TransparentProxyConfig
   /**  断开连接策略 */
   break_connection: BreakConnectionStrategy
   /**  Tun 堆栈选择 */
@@ -814,6 +823,9 @@ export type ClashConfigPatch_Deserialize = {
   mixed_port?: PortStrategyPatch_Deserialize
   socks_port?: PortStrategy | null
   http_port?: PortStrategy | null
+  redir_port?: PortStrategy | null
+  tproxy_port?: PortStrategy | null
+  transparent_proxy?: TransparentProxyConfigPatch
   break_connection?: BreakConnectionStrategyPatch_Deserialize
   tun_stack?: TunStack | null
 }
@@ -830,6 +842,9 @@ export type ClashConfigPatch_Serialize = {
   mixed_port: PortStrategyPatch_Serialize
   socks_port?: PortStrategy | null
   http_port?: PortStrategy | null
+  redir_port?: PortStrategy | null
+  tproxy_port?: PortStrategy | null
+  transparent_proxy: TransparentProxyConfigPatch
   break_connection: BreakConnectionStrategyPatch_Serialize
   tun_stack?: TunStack | null
 }
@@ -1191,6 +1206,11 @@ export type ConfigError =
   | { kind: 'leave_nightly_channel'; to: ReleaseChannel }
   | { kind: 'invalid_update_sources'; reason: string }
   | { kind: 'invalid_core_logs'; reason: string }
+  | {
+      kind: 'invalid_transparent_proxy'
+      source: TransparentProxyValidationError
+    }
+  | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'invalid_latency_timeout'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'workflow_not_ready' }
@@ -1955,6 +1975,7 @@ export type EffectFailureCode =
   | 'hotkey_stopped'
   | 'logger_refresh_failed'
   | 'core_log_storage_failed'
+  | 'transparent_proxy_failed'
   | 'widget_unavailable'
   | 'widget_apply_failed'
   | 'tray_refresh_failed'
@@ -1980,6 +2001,7 @@ export type EffectKind =
   | 'logger'
   | 'core_log_level'
   | 'core_log_storage'
+  | 'transparent_proxy'
   | 'auto_launch'
   | 'system_proxy'
   | 'proxy_guard'
@@ -2601,6 +2623,16 @@ export type NativeDialogKind = 'info' | 'warning' | 'error'
 export type NetworkStatisticWidgetConfig =
   { kind: 'disabled' } | { kind: 'enabled'; value: StatisticWidgetVariant }
 
+export type NetworkTransparentProxyMode = 'disabled' | 'redir' | 'tproxy'
+
+export type NetworkTransparentProxyStatus = {
+  supported: boolean
+  active: boolean
+  mode: NetworkTransparentProxyMode | null
+  revision: RevisionIdInfo | null
+  error: string | null
+}
+
 export type NewProfileRequest =
   NewProfileRequest_Serialize | NewProfileRequest_Deserialize
 
@@ -3039,14 +3071,13 @@ export type PickPortError =
   { kind: 'port_not_available'; port: number } | { kind: 'no_open_port' }
 
 /**  The port a resolution was picking for. */
-export type PortField = 'mixed' | 'http' | 'socks' | 'external_controller'
+export type PortField =
+  'mixed' | 'http' | 'socks' | 'redir' | 'tproxy' | 'external_controller'
 
 /**  A failure of resolving the ports a candidate runtime would bind. */
-export type PortResolveError = {
-  kind: 'resolve_port'
-  field: PortField
-  source: PickPortError
-}
+export type PortResolveError =
+  | { kind: 'resolve_port'; field: PortField; source: PickPortError }
+  | { kind: 'port_conflict'; first: PortField; second: PortField; port: number }
 
 export type PortStrategy = {
   /**  外部控制器端口策略类型 */
@@ -3992,6 +4023,11 @@ export type RuntimeAftermath =
 export type RuntimeBuildError =
   | { kind: 'start_script_runner' }
   | { kind: 'validate_profiles'; errors: ProfileValidationError[] }
+  | {
+      kind: 'validate_transparent_proxy'
+      source: TransparentProxyValidationError
+    }
+  | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'run_pipeline'; source: RuntimePipelineError }
   | {
       kind: 'transforms_failed'
@@ -4643,6 +4679,32 @@ export type TransformKind =
 
 export type TransformOwner =
   { type: 'global' } | { type: 'config'; uid: ProfileId }
+
+export type TransparentProxyConfig = {
+  mode?: TransparentProxyMode
+  local?: boolean
+  interfaces?: string[]
+  ipv6?: boolean
+}
+
+export type TransparentProxyConfigPatch = {
+  mode?: TransparentProxyMode | null
+  local?: boolean | null
+  interfaces?: string[] | null
+  ipv6?: boolean | null
+}
+
+export type TransparentProxyMode = 'disabled' | 'redir' | 'tproxy'
+
+export type TransparentProxyValidationError =
+  | { kind: 'unsupported_target' }
+  | { kind: 'tun_conflict' }
+  | { kind: 'missing_listener'; mode: TransparentProxyMode }
+  | { kind: 'zero_port' }
+  | { kind: 'empty_target' }
+  | { kind: 'invalid_interface'; name: string }
+  | { kind: 'duplicate_interface' }
+  | { kind: 'too_many_interfaces' }
 
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 

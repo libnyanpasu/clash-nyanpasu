@@ -362,6 +362,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getSystemAccentColor', ...args],
         queryFn: () => commands.getSystemAccentColor(...args),
       }),
+    getTransparentProxyStatus: (
+      ...args: Parameters<typeof commands.getTransparentProxyStatus>
+    ) =>
+      queryOptions({
+        queryKey: ['getTransparentProxyStatus', ...args],
+        queryFn: () => commands.getTransparentProxyStatus(...args),
+      }),
   }
   const mutations = {
     writeClipboardText: mutationOptions({

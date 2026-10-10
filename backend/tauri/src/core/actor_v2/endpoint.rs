@@ -110,6 +110,33 @@ pub enum CheckSupport {
 /// read and deliberately not routed through the actor mailbox.
 #[async_trait::async_trait]
 pub trait ControlEndpoint: Send + Sync {
+    async fn reconcile_transparent_proxy(
+        &self,
+        _request: &nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyRequest,
+    ) -> Result<
+        nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus,
+        CoreError,
+    > {
+        Err(CoreError::new(
+            CoreErrorKind::BackendUnavailable,
+            "transparent capture requires a Linux service host with network support",
+            false,
+        ))
+    }
+
+    async fn transparent_proxy_status(
+        &self,
+    ) -> Result<
+        nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus,
+        CoreError,
+    > {
+        Err(CoreError::new(
+            CoreErrorKind::BackendUnavailable,
+            "this execution host does not expose transparent capture",
+            false,
+        ))
+    }
+
     async fn effective_config(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
@@ -416,6 +443,31 @@ pub struct ServiceEndpoint {
     client: nyanpasu_ipc::client::Client,
 }
 
+fn legacy_disabled_transparent_proxy_response(
+    mode: nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyMode,
+    error: &nyanpasu_ipc::client::ClientError,
+) -> Option<nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus> {
+    use nyanpasu_ipc::api::network::transparent_proxy::{
+        NetworkTransparentProxyMode::Disabled, NetworkTransparentProxyStatus,
+    };
+
+    (mode == Disabled
+        && matches!(
+            error,
+            nyanpasu_ipc::client::ClientError::HttpStatus {
+                status: reqwest::StatusCode::NOT_FOUND,
+                ..
+            }
+        ))
+    .then_some(NetworkTransparentProxyStatus {
+        supported: false,
+        active: false,
+        mode: None,
+        revision: None,
+        error: None,
+    })
+}
+
 impl ServiceEndpoint {
     pub fn new(client: nyanpasu_ipc::client::Client) -> Self {
         Self { client }
@@ -457,6 +509,66 @@ fn map_client_error(error: nyanpasu_ipc::client::ClientError) -> CoreError {
 
 #[async_trait::async_trait]
 impl ControlEndpoint for ServiceEndpoint {
+    async fn reconcile_transparent_proxy(
+        &self,
+        request: &nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyRequest,
+    ) -> Result<
+        nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus,
+        CoreError,
+    > {
+        let response = match self
+            .client
+            .call::<nyanpasu_ipc::api::contract::NetworkTransparentProxyReconcile>(Some(request))
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                if let Some(status) =
+                    legacy_disabled_transparent_proxy_response(request.mode, &error)
+                {
+                    return Ok(status);
+                }
+                return Err(map_client_error(error));
+            }
+        };
+        response.data.ok_or_else(|| {
+            CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "service returned no transparent capture status",
+                false,
+            )
+        })
+    }
+
+    async fn transparent_proxy_status(
+        &self,
+    ) -> Result<
+        nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus,
+        CoreError,
+    > {
+        let response = match self
+            .client
+            .call::<nyanpasu_ipc::api::contract::NetworkTransparentProxyStatusQuery>(None)
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                if let Some(status) = legacy_disabled_transparent_proxy_response(
+                    nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyMode::Disabled,
+                    &error,
+                ) { return Ok(status); }
+                return Err(map_client_error(error));
+            }
+        };
+        response.data.ok_or_else(|| {
+            CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "service returned no transparent capture status",
+                false,
+            )
+        })
+    }
+
     async fn effective_config(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
@@ -720,6 +832,38 @@ mod tests {
         api::{ResponseCode, status::CoreState},
         client::ClientError,
     };
+
+    #[test]
+    fn only_disabled_capture_treats_a_missing_legacy_endpoint_as_supported_noop() {
+        use nyanpasu_ipc::api::network::transparent_proxy::{
+            NetworkTransparentProxyMode as Mode, NetworkTransparentProxyStatus,
+        };
+
+        let missing = ClientError::HttpStatus {
+            operation: "network.transparent_proxy.reconcile",
+            status: reqwest::StatusCode::NOT_FOUND,
+            body: None,
+        };
+        let status = legacy_disabled_transparent_proxy_response(Mode::Disabled, &missing).unwrap();
+        assert_eq!(
+            status,
+            NetworkTransparentProxyStatus {
+                supported: false,
+                active: false,
+                mode: None,
+                revision: None,
+                error: None,
+            }
+        );
+        assert!(legacy_disabled_transparent_proxy_response(Mode::Tproxy, &missing).is_none());
+
+        let unavailable = ClientError::HttpStatus {
+            operation: "network.transparent_proxy.reconcile",
+            status: reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            body: None,
+        };
+        assert!(legacy_disabled_transparent_proxy_response(Mode::Disabled, &unavailable).is_none());
+    }
 
     fn infos(detail: Option<CoreStateDetail>) -> CoreInfos {
         CoreInfos {

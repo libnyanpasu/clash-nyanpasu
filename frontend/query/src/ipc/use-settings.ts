@@ -161,7 +161,8 @@ export const useClashSettings = () => {
  * The clash fields whose patch is a double option, so `null` clears them. The
  * generated patch type cannot tell them apart from the other fields.
  */
-type ClearableClashField = 'socks_port' | 'http_port'
+type ClearableClashField =
+  'socks_port' | 'http_port' | 'redir_port' | 'tproxy_port'
 
 /**
  * One field of the persistent clash config, addressed by its typed name.

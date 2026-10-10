@@ -16,6 +16,7 @@ import type {
   OsProxyError,
   PickPortError,
   PortField,
+  PortResolveError,
   ProfileContentError,
   ProfileFileError,
   ProfilesError,
@@ -25,6 +26,8 @@ import type {
   RuntimePipelineError,
   StorageOperationError,
   SystemDnsError,
+  TransparentProxyMode,
+  TransparentProxyValidationError,
 } from '@nyanpasu/rpc/types'
 import { stepParts, type ProfileLabel } from './profile-label'
 
@@ -220,6 +223,10 @@ export function configErrorMessage(
     case 'owner_stopped':
     case 'session_state_stopped':
       return m.error_config_owner_stopped()
+    case 'invalid_transparent_proxy':
+      return transparentProxyValidationMessage(error.source)
+    case 'transparent_proxy_requires_service_mode':
+      return m.settings_clash_transparent_proxy_service_mode_required()
     case 'version_conflict':
       return m.error_config_version_conflict()
     case 'commit':
@@ -438,7 +445,7 @@ export function runtimeErrorMessage(
     case 'publish_runtime':
       return m.error_runtime_publish_runtime({ path: error.source.path })
     case 'resolve_port':
-      return portMessage(error.source.field, error.source.source)
+      return portResolveMessage(error.source)
     case 'resolve_core_binary':
       return m.error_runtime_find_core_binary({ core: error.source.core })
     case 'install_core_binary':
@@ -562,6 +569,10 @@ function buildRuntimeMessage(
       return m.error_runtime_build_start_script_runner()
     case 'validate_profiles':
       return m.error_runtime_build_validate_profiles()
+    case 'validate_transparent_proxy':
+      return transparentProxyValidationMessage(error.source)
+    case 'transparent_proxy_requires_service_mode':
+      return m.settings_clash_transparent_proxy_service_mode_required()
     case 'run_pipeline':
       return pipelineMessage(error.source, profileLabel)
     case 'transforms_failed':
@@ -630,6 +641,55 @@ function portMessage(field: PortField, error: PickPortError): string {
   }
 }
 
+function transparentProxyValidationMessage(
+  error: TransparentProxyValidationError,
+): string {
+  switch (error.kind) {
+    case 'unsupported_target':
+      return m.error_transparent_proxy_unsupported_target()
+    case 'tun_conflict':
+      return m.error_transparent_proxy_tun_conflict()
+    case 'missing_listener':
+      return m.error_transparent_proxy_missing_listener({
+        mode: transparentProxyModeName(error.mode),
+      })
+    case 'zero_port':
+      return m.error_transparent_proxy_zero_port()
+    case 'empty_target':
+      return m.error_transparent_proxy_empty_target()
+    case 'invalid_interface':
+      return m.error_transparent_proxy_invalid_interface({ name: error.name })
+    case 'duplicate_interface':
+      return m.error_transparent_proxy_duplicate_interface()
+    case 'too_many_interfaces':
+      return m.error_transparent_proxy_too_many_interfaces()
+  }
+}
+
+function transparentProxyModeName(mode: TransparentProxyMode): string {
+  switch (mode) {
+    case 'disabled':
+      return m.settings_clash_transparent_proxy_mode_disabled()
+    case 'redir':
+      return m.settings_clash_transparent_proxy_mode_redir()
+    case 'tproxy':
+      return m.settings_clash_transparent_proxy_mode_tproxy()
+  }
+}
+
+function portResolveMessage(error: PortResolveError): string {
+  switch (error.kind) {
+    case 'resolve_port':
+      return portMessage(error.field, error.source)
+    case 'port_conflict':
+      return m.error_runtime_ports_conflict({
+        first: portFieldName(error.first),
+        second: portFieldName(error.second),
+        port: error.port,
+      })
+  }
+}
+
 function portFieldName(field: PortField): string {
   switch (field) {
     case 'mixed':
@@ -638,6 +698,10 @@ function portFieldName(field: PortField): string {
       return m.error_runtime_port_field_http()
     case 'socks':
       return m.error_runtime_port_field_socks()
+    case 'redir':
+      return m.settings_clash_settings_redir_port_label()
+    case 'tproxy':
+      return m.settings_clash_settings_tproxy_port_label()
     case 'external_controller':
       return m.error_runtime_port_field_external_controller()
   }
@@ -699,6 +763,8 @@ export function effectFailureMessage(code: EffectFailureCode): string {
       return m.effect_failure_system_proxy_shut_down()
     case 'system_proxy_stopped':
       return m.effect_failure_system_proxy_stopped()
+    case 'transparent_proxy_failed':
+      return m.effect_failure_transparent_proxy_failed()
   }
 }
 

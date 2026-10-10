@@ -105,6 +105,7 @@ fn proxied_inputs(app: NyanpasuAppConfig) -> ApplicationEffectInputs {
             port: None,
             socks_port: None,
             external_controller: None,
+            ..ResolvedPortBindings::default()
         }),
     )
 }

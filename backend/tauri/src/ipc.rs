@@ -2303,3 +2303,12 @@ pub async fn set_debug_http_enabled(
 ) -> Result<crate::server::debug_http::DebugHttpStatus> {
     Ok(client.set_debug_http_enabled(enabled).await?)
 }
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_transparent_proxy_status(
+    client: State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus> {
+    Ok(client.get_transparent_proxy_status().await?)
+}

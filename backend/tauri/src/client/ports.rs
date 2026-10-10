@@ -28,6 +28,8 @@ pub enum PortField {
     Mixed,
     Http,
     Socks,
+    Redir,
+    Tproxy,
     ExternalController,
 }
 
@@ -40,6 +42,12 @@ pub enum PortResolveError {
         field: PortField,
         source: PickPortError,
     },
+    #[snafu(display("the {first:?} and {second:?} listeners both use port {port}"))]
+    PortConflict {
+        first: PortField,
+        second: PortField,
+        port: u16,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +55,8 @@ pub struct PortsFingerprint {
     mixed: PortStrategy,
     socks: Option<PortStrategy>,
     http: Option<PortStrategy>,
+    redir: Option<PortStrategy>,
+    tproxy: Option<PortStrategy>,
     external: ExternalControllerStrategy,
 }
 
@@ -56,6 +66,8 @@ fn ports_fingerprint(clash: &ClashConfig) -> PortsFingerprint {
         mixed: clash.mixed_port.clone(),
         socks: clash.socks_port.clone(),
         http: clash.http_port.clone(),
+        redir: clash.redir_port.clone(),
+        tproxy: clash.tproxy_port.clone(),
         external: clash.external_controller.clone(),
     }
 }
@@ -167,6 +179,38 @@ impl SessionPortResolver {
                 })?
                 .map(|picked| *picked),
         };
+        let redir_port = match unchanged(
+            previous
+                .as_ref()
+                .is_some_and(|(prev, _)| prev.redir == fingerprint.redir),
+        ) {
+            Some(ports) => ports.redir_port,
+            None => clash
+                .redir_port
+                .as_ref()
+                .map(PortStrategy::pick_and_try_port)
+                .transpose()
+                .context(ResolvePortSnafu {
+                    field: PortField::Redir,
+                })?
+                .map(|picked| *picked),
+        };
+        let tproxy_port = match unchanged(
+            previous
+                .as_ref()
+                .is_some_and(|(prev, _)| prev.tproxy == fingerprint.tproxy),
+        ) {
+            Some(ports) => ports.tproxy_port,
+            None => clash
+                .tproxy_port
+                .as_ref()
+                .map(PortStrategy::pick_and_try_tcp_udp_port)
+                .transpose()
+                .context(ResolvePortSnafu {
+                    field: PortField::Tproxy,
+                })?
+                .map(|picked| *picked),
+        };
         // The external controller compares host and port strategy separately:
         // a host-only change must keep the session port pick (re-probing it
         // would race the running core exactly like the fields above).
@@ -196,10 +240,35 @@ impl SessionPortResolver {
             clash.external_controller.host, external_port
         ));
 
+        let mut used = std::collections::HashMap::new();
+        let external_controller_port = external_controller
+            .as_deref()
+            .and_then(|address| address.rsplit(':').next())
+            .and_then(|raw| raw.parse::<u16>().ok());
+        for (field, port) in [
+            (PortField::Mixed, Some(mixed_port)),
+            (PortField::Http, port),
+            (PortField::Socks, socks_port),
+            (PortField::Redir, redir_port),
+            (PortField::Tproxy, tproxy_port),
+            (PortField::ExternalController, external_controller_port),
+        ] {
+            let Some(port) = port else { continue };
+            if let Some(first) = used.insert(port, field) {
+                return Err(PortResolveError::PortConflict {
+                    first,
+                    second: field,
+                    port,
+                });
+            }
+        }
+
         let ports = ResolvedPortBindings {
             mixed_port,
             port,
             socks_port,
+            redir_port,
+            tproxy_port,
             external_controller,
         };
         Ok(CandidatePortBindings {
@@ -352,6 +421,59 @@ mod tests {
         assert_eq!(resolver.mixed_port(), Some(48231));
     }
 
+    #[test]
+    fn resolves_managed_redir_and_tproxy_ports() {
+        let unused_port = || {
+            let socket = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let port = socket.local_addr().unwrap().port();
+            drop(socket);
+            port
+        };
+        let redir = unused_port();
+        let mut tproxy = unused_port();
+        while tproxy == redir {
+            tproxy = unused_port();
+        }
+        let mut mixed = unused_port();
+        while mixed == redir || mixed == tproxy {
+            mixed = unused_port();
+        }
+        let clash = ClashConfig {
+            mixed_port: fixed(mixed),
+            redir_port: Some(fixed(redir)),
+            tproxy_port: Some(fixed(tproxy)),
+            ..Default::default()
+        };
+
+        let resolved = SessionPortResolver::default()
+            .resolve_candidate(&clash)
+            .unwrap();
+        assert_eq!(resolved.bindings().redir_port, Some(redir));
+        assert_eq!(resolved.bindings().tproxy_port, Some(tproxy));
+    }
+
+    #[test]
+    fn rejects_duplicate_managed_listener_ports() {
+        let probe = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let clash = ClashConfig {
+            mixed_port: fixed(port),
+            redir_port: Some(fixed(port)),
+            ..Default::default()
+        };
+
+        assert!(matches!(
+            SessionPortResolver::default().resolve_candidate(&clash),
+            Err(PortResolveError::PortConflict {
+                first: PortField::Mixed,
+                second: PortField::Redir,
+                port: conflict,
+            })
+            if conflict == port
+        ));
+    }
+
     /// V10: a resolution is inert. An apply that never happens, or one that
     /// fails afterwards, must leave the confirmed binding exactly as it was,
     /// so the system proxy never points at a candidate port.
@@ -457,6 +579,10 @@ mod tests {
 
         let resolver = SessionPortResolver::default();
         let mut clash = ClashConfig::default();
+        clash.mixed_port = PortStrategy {
+            kind: PortStrategyKind::Random,
+            start_port: 0,
+        };
         clash.external_controller.port = fixed(ext);
         let first = resolve_and_confirm(&resolver, &clash);
         assert_eq!(

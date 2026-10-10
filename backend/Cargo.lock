@@ -2047,7 +2047,7 @@ dependencies = [
  "winreg 0.56.0",
  "zip 8.6.0",
  "zip-extensions",
- "zstd 0.14.1",
+ "zstd 0.14.2",
 ]
 
 [[package]]
@@ -6565,7 +6565,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "zstd 0.14.1",
+ "zstd 0.14.2",
 ]
 
 [[package]]
@@ -14267,9 +14267,9 @@ dependencies = [
 
 [[package]]
 name = "zstd"
-version = "0.14.1"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a9ecd0608fac4196ed58e1f337e9a72680fcc9ee449b8bcde6acea680b46f0"
+checksum = "057cfd910cfac363a0ada849592624b4c9ff2e10bef504c3433810d78ed96f93"
 dependencies = [
  "zstd-safe 8.1.0",
 ]

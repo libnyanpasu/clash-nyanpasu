@@ -30,11 +30,6 @@ pub struct RuntimeBuildLog {
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[snafu(visibility(pub))]
 pub enum RuntimeBuildError {
-    #[snafu(display("could not start the script runner"))]
-    StartScriptRunner {
-        #[serde(skip)]
-        source: std::io::Error,
-    },
     #[snafu(display("profiles snapshot failed validation: {errors:?}"))]
     ValidateProfiles { errors: Vec<ProfileValidationError> },
     #[snafu(display("could not run the runtime pipeline: {source}"))]
@@ -44,13 +39,6 @@ pub enum RuntimeBuildError {
         failures: Vec<TransformFailure>,
         logs: Vec<RuntimeBuildLog>,
     },
-    #[snafu(display("could not serialize the final config"))]
-    SerializeFinalConfig {
-        #[serde(skip)]
-        source: serde_yaml_ng::Error,
-    },
-    #[snafu(display("the final config is not a mapping"))]
-    ConfigNotMapping,
 }
 
 pub struct RuntimeBuildInput {
@@ -209,6 +197,7 @@ mod tests {
             value::ConfigValue,
         },
     };
+    use serde_yaml_ng as serde_yaml;
 
     /// 极小 fakes(executor 的 support.rs 是 crate 内部,tauri 不可 import)
     struct EmptyContent;
@@ -315,8 +304,8 @@ mod tests {
         input.app.enable_builtin_enhanced = false; // EchoRunner 下 builtin 无意义
         let artifact =
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner).expect("bare build");
-        let yaml = serde_yaml_ng::to_value(&*artifact.final_config).expect("artifact to yaml");
-        assert_eq!(yaml["mixed-port"], serde_yaml_ng::Value::from(7890));
+        let yaml = serde_yaml::to_value(&*artifact.final_config).expect("artifact to yaml");
+        assert_eq!(yaml["mixed-port"], serde_yaml::Value::from(7890));
     }
 
     #[test]

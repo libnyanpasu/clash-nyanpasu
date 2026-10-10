@@ -118,7 +118,7 @@ fn metadata_selects_matching_update_downloads() {
             let metadata = BundleMetadata {
                 is_portable: false,
                 is_fixed_webview: fixed,
-                release_channel: crate::bundle::Channel::Stable,
+                release_channel: Channel::Stable,
             };
             let target = metadata.updater_target(&format!("windows-{arch}"));
             let variant = if fixed { "fixed" } else { "standard" };

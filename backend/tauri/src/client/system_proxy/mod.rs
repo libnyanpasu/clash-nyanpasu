@@ -56,7 +56,7 @@ impl SystemProxyClient {
     pub async fn spawn(args: SystemProxyArgs, tasks: &TaskTracker) -> anyhow::Result<Self> {
         let shutdown = args.shutdown.clone();
         let (actor, _handle) = Actor::spawn(None, SystemProxyActor, args).await?;
-        crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self { actor })
     }
 

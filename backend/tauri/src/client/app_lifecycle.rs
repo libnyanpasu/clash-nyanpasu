@@ -3,43 +3,10 @@
 //! token is cancelled.
 use std::future::Future;
 
-use ractor::ActorCell;
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use nyanpasu_core::tasks::track_until_shutdown;
+use tokio_util::sync::CancellationToken;
 
 use super::{NyanpasuClient, Result, application_workflow::startup::StartupReport};
-
-/// Spawns the tracked task that drains `cell` once `token` is cancelled: what
-/// is already queued is still handled, anything sent later is refused, and the
-/// task ends once the actor, its `post_stop` included, has stopped.
-pub(crate) fn drain_on_shutdown(tasks: &TaskTracker, token: CancellationToken, cell: ActorCell) {
-    tasks.spawn(async move {
-        token.cancelled().await;
-        // An actor that has already stopped refuses the drain, and there is
-        // nothing left to wait for.
-        let _ = cell.drain_and_wait(None).await;
-    });
-}
-
-/// Wraps a boundary producer so that it ends once `token` is cancelled.
-/// Tracking starts here rather than when the returned future is spawned, and a
-/// producer wrapped after the cancel never runs.
-pub fn track_until_shutdown<F>(
-    tasks: &TaskTracker,
-    token: &CancellationToken,
-    producer: F,
-) -> impl Future<Output = ()> + Send + 'static
-where
-    F: Future<Output = ()> + Send + 'static,
-{
-    let token = token.clone();
-    tasks.track_future(async move {
-        tokio::select! {
-            biased;
-            () = token.cancelled() => {}
-            () = producer => {}
-        }
-    })
-}
 
 impl NyanpasuClient {
     /// Proves who owns the runtime and applies the committed configuration,
@@ -153,51 +120,6 @@ mod tests {
             EndpointHandle, ExecutionHost,
         },
     };
-
-    /// Flags its own drop, which is how a cancelled producer ends.
-    struct Dropped(Arc<AtomicBool>);
-
-    impl Drop for Dropped {
-        fn drop(&mut self) {
-            self.0.store(true, Ordering::SeqCst);
-        }
-    }
-
-    #[tokio::test]
-    async fn the_cancel_ends_a_running_producer_and_the_wait_sees_it_gone() {
-        let (token, tasks) = (CancellationToken::new(), TaskTracker::new());
-        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-        let dropped = Arc::new(AtomicBool::new(false));
-        let guard = Dropped(Arc::clone(&dropped));
-        let task = tokio::spawn(track_until_shutdown(&tasks, &token, async move {
-            let _guard = guard;
-            let _ = started_tx.send(());
-            std::future::pending::<()>().await;
-        }));
-        started_rx.await.unwrap();
-
-        token.cancel();
-        tasks.close();
-        tasks.wait().await;
-
-        assert!(dropped.load(Ordering::SeqCst));
-        task.await.expect("a cancelled producer ends normally");
-    }
-
-    #[tokio::test]
-    async fn a_producer_tracked_after_the_cancel_never_runs() {
-        let (token, tasks) = (CancellationToken::new(), TaskTracker::new());
-        token.cancel();
-
-        let ran = Arc::new(AtomicBool::new(false));
-        let flag = Arc::clone(&ran);
-        tokio::spawn(track_until_shutdown(&tasks, &token, async move {
-            flag.store(true, Ordering::SeqCst);
-        }))
-        .await
-        .unwrap();
-        assert!(!ran.load(Ordering::SeqCst));
-    }
 
     // -- the owners' shutdown through the client (V14, V16, V21) -----------
 

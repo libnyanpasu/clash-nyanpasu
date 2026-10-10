@@ -1,4 +1,5 @@
 //! Setup logic for the app
+use nyanpasu_core::tasks::track_until_shutdown;
 use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
@@ -20,7 +21,6 @@ use crate::{
             adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
             ports::OsProxyPort,
         },
-        track_until_shutdown,
         ui_effects::{
             adapters::{
                 RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController,
@@ -80,8 +80,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let resources_dir = crate::utils::init::bundled_resources_dir(app)
         .inspect_err(|error| tracing::error!(%error, "failed to locate the bundled resources"))
         .ok();
-    let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
-        .context("Failed to setup config migrations")?;
+    let mut migrations = crate::core::migration::Runner::with_paths(
+        paths.clone(),
+        false,
+        crate::consts::BUILD_INFO.pkg_version,
+    )
+    .context("Failed to setup config migrations")?;
     migrations
         .run_pending()
         .context("Failed to run config migrations before client setup")?;
@@ -163,7 +167,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     let span = tracing::info_span!("build_client").entered();
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
-        bundle_metadata,
+        installed_channel: bundle_metadata.release_channel,
+        is_portable: bundle_metadata.is_portable,
+        environment: Arc::new(crate::utils::collect::OsEnvironmentCollector::new(
+            crate::consts::BUILD_INFO.clone(),
+            paths.clone(),
+        )),
+        device_info: Arc::new(nyanpasu_core::device::OsDeviceInfoSource::new()),
         http_frontend: Some(debug_http_frontend(&app_handle)?),
         http_routes,
         jobs,

@@ -111,7 +111,7 @@ impl Fixture {
 
     fn with_installer(
         fail_reconcile: bool,
-        installer: Arc<dyn crate::client::core_lifecycle::ports::BinaryInstaller>,
+        installer: Arc<dyn nyanpasu_core::runtime::binary::BinaryInstaller>,
     ) -> Self {
         let calls = Arc::new(Calls::default());
         let (url, server) = tauri::async_runtime::block_on(async {
@@ -783,11 +783,11 @@ fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
 struct CountingInstaller(AtomicUsize);
 
 #[async_trait::async_trait]
-impl crate::client::core_lifecycle::ports::BinaryInstaller for CountingInstaller {
+impl nyanpasu_core::runtime::binary::BinaryInstaller for CountingInstaller {
     async fn install(
         &self,
-        _: &crate::client::core_lifecycle::ports::PreparedCoreBinary,
-    ) -> Result<(), crate::client::core_lifecycle::ports::InstallCoreBinaryError> {
+        _: &nyanpasu_core::runtime::binary::PreparedCoreBinary,
+    ) -> Result<(), nyanpasu_core::runtime::binary::InstallCoreBinaryError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -840,7 +840,7 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
         assert!(host.as_mut().now_or_never().is_none());
         let staging = Arc::new(tempfile::tempdir().unwrap());
         let progress = Arc::new(super::Progress::default());
-        let artifact = crate::client::core_lifecycle::ports::PreparedCoreBinary {
+        let artifact = nyanpasu_core::runtime::binary::PreparedCoreBinary {
             target: f.client.get_app_config().await.unwrap().core,
             source: staging.path().join("prepared-core"),
             destination: f._dir.path().join("installed-core"),
@@ -907,14 +907,14 @@ impl super::ports::RuntimeBuildPort for RecordingBuilder {
         strict_transforms: bool,
     ) -> Result<
         Arc<crate::client::runtime::RuntimeSnapshot>,
-        nyanpasu_core::enhance::RuntimeBuildError,
+        crate::client::application_workflow::error::RuntimePreparationError,
     > {
         self.inputs
             .lock()
             .unwrap()
             .push((inputs.profiles.clone(), inputs.clash.clone()));
         if self.fail_build {
-            return Err(nyanpasu_core::enhance::RuntimeBuildError::ConfigNotMapping);
+            return Err(crate::client::application_workflow::error::RuntimePreparationError::ConfigNotMapping);
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
@@ -938,7 +938,7 @@ impl RecordingBuilder {
                 core_specs: Arc::new(crate::client::runtime_core_spec),
                 profiles_dir: f.client.inner.profiles_dir.clone(),
                 paths: crate::client::tests::test_runtime_paths(&f._dir),
-                scripts: nyanpasu_platform::enhance::ScriptDirs::under(f._dir.path()),
+                scripts: nyanpasu_core::runtime::config::ScriptDirs::under(f._dir.path()),
             },
             inputs: Mutex::new(Vec::new()),
             fail_build,

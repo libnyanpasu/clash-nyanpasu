@@ -291,7 +291,7 @@ impl PacPort for HttpPacBackend {
         ensure!(!cancel.is_cancelled(), DownloadCancelledSnafu);
 
         let url = url.to_string();
-        crate::utils::blocking::join(
+        nyanpasu_core::tasks::blocking::join(
             tokio::task::spawn_blocking(move || {
                 Autoproxy {
                     enable: true,

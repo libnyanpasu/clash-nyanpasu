@@ -94,11 +94,17 @@ deno task test:scripts
 deno task lint:frontend-boundaries
 deno task lint:architecture-ledger
 deno task lint:backend-boundaries
+deno task test:backend-boundaries
 ```
 
-Use the narrower test tasks for the affected category when appropriate. For a
-reorganization, compare tests before and after, check root-relative paths and
-argument forwarding, and update all active callers. Verify migrated generators
+Use the narrower test tasks for the affected category when appropriate.
+`test:backend-boundaries` runs the core/config dependency-policy tests without the
+full repository script suite. `test:backend-musl` builds the core unit and
+runtime-builder integration test binaries for the selected router architecture;
+it runs only `runtime::config::` unit tests and the runtime-builder integration
+test, preserving the original runtime/script scope rather than running unrelated
+core tests. For a reorganization, compare tests before and after, check
+root-relative paths and argument forwarding, and update all active callers. Verify migrated generators
 against existing output and browser tooling against a real browser. Publishing,
 uploading and notification tasks have external effects: validate their local logic
 and configuration without making live releases solely to test a refactor. Record

@@ -15,6 +15,10 @@ use atomicwrites::{AtomicFile, OverwriteBehavior, replace_atomic};
 use nyanpasu_config::profile::{
     ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions, SubscriptionInfo,
 };
+use nyanpasu_core::{
+    device::{DeviceInfoSource, sanitize_for_header},
+    network::{SelfProxyPortSource, get_self_proxy, get_system_proxy},
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::{OptionExt, ResultExt, ensure};
@@ -35,24 +39,26 @@ type Result<T, E = ProfileFileError> = std::result::Result<T, E>;
 const MATERIALIZATION_ROOT: &str = ".profile-materialization-v1";
 const ABSENT_HASH: &str = "b7c03610089b9f660990ee7db3290cc8d8564161b079319c9c7ba1f19dc2e190";
 
-/// Where the fetcher looks up the app's own mixed port when `self_proxy` is
-/// requested. Wired at the composition root (T07); tests inject a constant.
-#[cfg_attr(test, mockall::automock)]
-pub trait SelfProxyPortSource: Send + Sync + 'static {
-    fn mixed_port(&self) -> Option<u16>;
-}
-
 pub struct ProfileFileService {
     paths: PathResolver,
     self_proxy_port: Arc<dyn SelfProxyPortSource>,
+    device_info: Arc<dyn DeviceInfoSource>,
+    default_user_agent: String,
     http_timeout: Duration,
 }
 
 impl ProfileFileService {
-    pub fn new(paths: PathResolver, self_proxy_port: Arc<dyn SelfProxyPortSource>) -> Self {
+    pub fn new(
+        paths: PathResolver,
+        self_proxy_port: Arc<dyn SelfProxyPortSource>,
+        device_info: Arc<dyn DeviceInfoSource>,
+        default_user_agent: String,
+    ) -> Self {
         Self {
             paths,
             self_proxy_port,
+            device_info,
+            default_user_agent,
             http_timeout: Duration::from_secs(30),
         }
     }
@@ -2055,40 +2061,33 @@ impl SubscriptionFetcher for ProfileFileService {
         // Proxy precedence mirrors the legacy subscriber (remote.rs:129-150):
         // self_proxy wins, then system proxy, else direct.
         let proxy_url = if options.self_proxy {
-            self.self_proxy_port
-                .mixed_port()
-                .map(|port| format!("http://127.0.0.1:{port}"))
+            self.self_proxy_port.mixed_port().map(get_self_proxy)
         } else {
             None
         };
         let proxy_url = proxy_url.or_else(|| {
             if options.with_proxy {
-                match sysproxy::Sysproxy::get_system_proxy() {
-                    Ok(p @ sysproxy::Sysproxy { enable: true, .. }) => {
-                        Some(format!("http://{}:{}", p.host, p.port))
-                    }
-                    _ => None,
-                }
+                get_system_proxy().ok().flatten()
             } else {
                 None
             }
         });
         if let Some(proxy_url) = proxy_url {
-            use crate::utils::config::NyanpasuReqwestProxyExt;
+            use nyanpasu_core::network::NyanpasuReqwestProxyExt;
             builder = builder.swift_set_proxy(&proxy_url);
         }
 
         let user_agent = options
             .user_agent
             .clone()
-            .unwrap_or_else(|| format!("clash-nyanpasu/v{}", crate::utils::dirs::APP_VERSION));
+            .unwrap_or_else(|| self.default_user_agent.clone());
         let client = builder
             .user_agent(user_agent)
             .build()
             .context(BuildHttpClientSnafu)?;
 
-        let device_info = crate::utils::hwid::get_device_info();
-        let sanitize = crate::utils::hwid::sanitize_for_header;
+        let device_info = self.device_info.snapshot();
+        let sanitize = sanitize_for_header;
         let perform = || async {
             let resp = client
                 .get(url.as_str())
@@ -2280,7 +2279,15 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let paths =
             crate::client::tests::test_paths(temp.path().join("config"), temp.path().join("data"));
-        (temp, ProfileFileService::new(paths, self_proxy_port))
+        (
+            temp,
+            ProfileFileService::new(
+                paths,
+                self_proxy_port,
+                Arc::new(crate::client::tests::FixedDeviceInfoSource),
+                "clash-nyanpasu/vtest-product-version".to_owned(),
+            ),
+        )
     }
 
     fn managed(name: &str) -> ManagedProfilePath {
@@ -3686,11 +3693,30 @@ mod tests {
             .unwrap();
 
         let (ua, has_hwid) = seen.lock().unwrap().clone().unwrap();
-        assert_eq!(
-            ua,
-            format!("clash-nyanpasu/v{}", crate::utils::dirs::APP_VERSION)
-        );
+        assert_eq!(ua, "clash-nyanpasu/vtest-product-version");
         assert!(has_hwid);
+    }
+
+    #[tokio::test]
+    async fn fetch_preserves_a_custom_user_agent_over_the_injected_default() {
+        let router = Router::new().route(
+            "/",
+            get(|headers: AxumHeaderMap| async move {
+                assert_eq!(
+                    headers.get(header::USER_AGENT).unwrap(),
+                    "custom-subscription-agent"
+                );
+                "ok: true\n"
+            }),
+        );
+        let (url, _server) = serve(router).await;
+        let (_temp, service) = service();
+        let mut options = options_direct();
+        options.user_agent = Some("custom-subscription-agent".to_owned());
+        service
+            .fetch(&Url::parse(&url).unwrap(), &options)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

@@ -1,7 +1,5 @@
-pub use nyanpasu_config::application::ReleaseChannel as Channel;
-
 use anyhow::{Context, Result, bail};
-use nyanpasu_config::application::UpdateSource;
+use nyanpasu_config::application::{ReleaseChannel as Channel, UpdateSource};
 use std::path::{Path, PathBuf};
 use tauri::utils::config::{Config, WebviewInstallMode};
 

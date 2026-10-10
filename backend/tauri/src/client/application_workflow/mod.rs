@@ -1,7 +1,9 @@
 //! Application workflow admission: serializes configuration commits, runtime application,
 //! connection interruption, host changes, binary installation, and shutdown.
+
 pub(crate) mod adapters;
 mod attempt;
+pub(crate) mod error;
 pub(crate) mod impact;
 pub(in crate::client) mod inputs;
 pub(crate) mod mutation;
@@ -19,7 +21,10 @@ mod tests;
 
 use std::sync::Arc;
 
-use nyanpasu_core::state::{Ack, StateDecision, StateSnapshot};
+use nyanpasu_core::{
+    runtime::binary::{BinaryInstaller, PreparedCoreBinary},
+    state::{Ack, StateDecision, StateSnapshot},
+};
 use nyanpasu_core_manager::OperationId;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::OptionExt;
@@ -30,7 +35,6 @@ use super::{
     core_lifecycle::{
         Command as CoreCommand, CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL,
         ServiceRecovery,
-        ports::{BinaryInstaller, PreparedCoreBinary},
     },
     runtime,
     runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},
@@ -671,7 +675,7 @@ impl ApplicationWorkflowClient {
                 }
             }
         });
-        crate::client::drain_on_shutdown(&args.tasks, args.shutdown, actor.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(&args.tasks, args.shutdown, actor.get_cell());
         Ok(Self(Arc::new(ClientInner {
             actor,
             runtime,

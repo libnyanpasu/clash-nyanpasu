@@ -27,7 +27,7 @@ pub(crate) async fn start(
     tasks: &TaskTracker,
 ) -> anyhow::Result<JobsClient> {
     let dispatch = tracing::dispatcher::get_default(Clone::clone);
-    let store = crate::utils::blocking::join(
+    let store = nyanpasu_core::tasks::blocking::join(
         tokio::task::spawn_blocking(move || RedbJobStore::open(path)).await,
     )?;
     let mut limits = Limits::default();

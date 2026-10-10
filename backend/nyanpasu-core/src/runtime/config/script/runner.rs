@@ -1,10 +1,11 @@
 use async_trait::async_trait;
 use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
 use serde_yaml::Mapping;
+use serde_yaml_ng as serde_yaml;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use super::{ScriptDirs, js, lua};
-use nyanpasu_core::enhance::{ScriptType, ScriptWrapper};
+use crate::runtime::config::{ScriptType, ScriptWrapper};
 
 /// Collects the console output of one run. The engine's console callbacks
 /// hold clones; the runner drains it into the caller's logs once the run

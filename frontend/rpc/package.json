@@ -16,6 +16,6 @@
     "./events": "./src/event-transport.ts"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.12.2"
+    "@tauri-apps/api": "2.12.3"
   }
 }

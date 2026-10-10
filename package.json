@@ -82,7 +82,7 @@
     "npm-run-all2": "9.0.3",
     "oxlint": "1.87.0",
     "playwright": "1.64.0",
-    "postcss": "8.5.28",
+    "postcss": "8.5.29",
     "postcss-html": "2.0.0",
     "prettier": "3.9.9",
     "prettier-plugin-tailwindcss": "0.8.1",

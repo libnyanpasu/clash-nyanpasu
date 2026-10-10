@@ -167,7 +167,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let http_routes = Arc::new(crate::unified_rpc::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
     let debug_http = tauri::async_runtime::block_on(
-        crate::server::debug_http::HttpServerClient::spawn_tracked(
+        nyanpasu_core::transport::http::HttpServerClient::spawn_tracked(
             Some(debug_http_frontend(&app_handle)?),
             http_routes,
             shutdown.clone(),
@@ -351,7 +351,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Result<()> {
     let dependencies = crate::unified_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
-        debug_http: (*app.state::<crate::server::debug_http::HttpServerClient>()).clone(),
+        debug_http: (*app.state::<nyanpasu_core::transport::http::HttpServerClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<crate::unified_rpc::EventBus>()).clone(),
@@ -528,8 +528,8 @@ fn forward_actor_events(
 
 fn debug_http_frontend(
     app: &tauri::AppHandle,
-) -> anyhow::Result<crate::server::debug_http::Frontend> {
-    use crate::server::debug_http::{Frontend, FrontendAssets};
+) -> anyhow::Result<nyanpasu_core::transport::http::Frontend> {
+    use nyanpasu_core::transport::http::{Frontend, FrontendAssets};
     if !cfg!(feature = "custom-protocol") {
         if let Some(url) = &app.config().build.dev_url {
             return Ok(Frontend::Dev(url.clone()));

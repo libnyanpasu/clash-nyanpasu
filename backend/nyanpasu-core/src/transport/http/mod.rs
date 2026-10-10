@@ -42,12 +42,12 @@ impl<F: Fn() -> Result<Router> + Send + Sync + 'static> HttpRoutes for F {
     }
 }
 
-pub struct HttpServerArgs {
+struct HttpServerArgs {
     pub frontend: Option<Frontend>,
     pub routes: Arc<dyn HttpRoutes>,
 }
 
-pub enum Message {
+enum Message {
     SetEnabled {
         enabled: bool,
         reply: RpcReplyPort<Result<DebugHttpStatus>>,
@@ -63,8 +63,8 @@ struct Running {
     task: tokio::task::JoinHandle<()>,
 }
 
-pub struct HttpServerActor;
-pub struct HttpServerState {
+struct HttpServerActor;
+struct HttpServerState {
     frontend: Option<Frontend>,
     routes: Arc<dyn HttpRoutes>,
     running: Option<Running>,
@@ -214,7 +214,7 @@ impl HttpServerClient {
                 .0,
         })))
     }
-    pub(crate) async fn spawn_tracked(
+    pub async fn spawn_tracked(
         frontend: Option<Frontend>,
         routes: Arc<dyn HttpRoutes>,
         shutdown: CancellationToken,

@@ -2335,16 +2335,16 @@ mod tests {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_debug_http_status(
-    debug_http: State<'_, crate::server::debug_http::HttpServerClient>,
-) -> Result<crate::server::debug_http::DebugHttpStatus> {
+    debug_http: State<'_, nyanpasu_core::transport::http::HttpServerClient>,
+) -> Result<nyanpasu_core::transport::http::DebugHttpStatus> {
     Ok(debug_http.status().await?)
 }
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_debug_http_enabled(
-    debug_http: State<'_, crate::server::debug_http::HttpServerClient>,
+    debug_http: State<'_, nyanpasu_core::transport::http::HttpServerClient>,
     enabled: bool,
-) -> Result<crate::server::debug_http::DebugHttpStatus> {
+) -> Result<nyanpasu_core::transport::http::DebugHttpStatus> {
     Ok(debug_http.set_enabled(enabled).await?)
 }

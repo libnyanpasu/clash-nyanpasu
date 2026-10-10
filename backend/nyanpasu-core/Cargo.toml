@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+axum = { version = '0.8', features = ['ws'] }
 nyanpasu-core-manager = { workspace = true }
 nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
   'specta'
@@ -53,6 +54,7 @@ parking_lot = { version = '0.12.1' }
 indexmap = { version = '2.2.3', features = ['serde'] }
 thiserror.workspace = true
 tokio.workspace = true
+tokio-tungstenite = '0.30'
 tokio-util = { version = '0.7', features = ['rt'] }
 ractor = '0.16'
 struct-patch = '0.14'
@@ -124,7 +126,7 @@ winreg = '0.56'
 gxhash = { workspace = true }
 
 [dev-dependencies]
-axum = { version = '0.8', features = ['ws'] }
+tower = { version = '0.5', features = ['util'] }
 pretty_assertions = '1.4.0'
 mockall = '0.15'
 test-log = { workspace = true }

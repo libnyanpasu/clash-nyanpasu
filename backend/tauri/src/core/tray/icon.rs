@@ -59,9 +59,9 @@ pub(crate) fn tray_icons_path(paths: &PathResolver, mode: &str) -> PathBuf {
 impl TrayIcon {
     pub fn raw_bytes(&self) -> &'static [u8] {
         match self {
-            TrayIcon::Normal => include_bytes!("../../../icons/win-tray-icon.png"),
-            TrayIcon::Tun => include_bytes!("../../../icons/win-tray-icon-blue.png"),
-            TrayIcon::SystemProxy => include_bytes!("../../../icons/win-tray-icon-pink.png"),
+            TrayIcon::Normal => include_bytes!("../../../icons/tray/cat/normal.png"),
+            TrayIcon::Tun => include_bytes!("../../../icons/tray/cat/tun.png"),
+            TrayIcon::SystemProxy => include_bytes!("../../../icons/tray/cat/system-proxy.png"),
         }
     }
 

@@ -361,7 +361,7 @@ impl Tray {
                 {
                     builder = builder
                         .icon(tauri::image::Image::from_bytes(include_bytes!(
-                            "../../../icons/tray-icon.png"
+                            "../../../icons/tray/macos/template.png"
                         ))?)
                         .icon_as_template(true);
                 }

@@ -24,17 +24,27 @@ import {
 
 export default function ControlChannelSettings() {
   const channel = useClashSetting('clash_control_channel')
+
   const disableHttp = useClashSetting('clash_ipc_disable_http_controller')
+
   const current = channel.value ?? 'prefer_ipc'
+
   const options = {
     prefer_ipc: m.settings_clash_control_channel_prefer_ipc(),
     http_only: m.settings_clash_control_channel_http_only(),
   }
+
   const reportError = (error: unknown) =>
-    message(formatError(error), { title: 'Error', kind: 'error', error })
+    message(formatError(error), {
+      title: 'Error',
+      kind: 'error',
+      error,
+    })
+
   return (
     <div>
       <SettingsLabel>{m.settings_clash_control_channel_label()}</SettingsLabel>
+
       <SettingsGroup>
         <SettingsCard>
           <DropdownMenu align="end">
@@ -49,15 +59,18 @@ export default function ControlChannelSettings() {
                       <ItemLabelText>
                         {m.settings_clash_control_channel_label()}
                       </ItemLabelText>
+
                       <ItemLabelDescription>
                         {options[current]}
                       </ItemLabelDescription>
                     </ItemLabel>
+
                     <ArrowForwardIosRounded />
                   </ItemContainer>
                 </Button>
               </SettingsCardContent>
             </DropdownMenuTrigger>
+
             <DropdownMenuContent sideOffset={-16} alignOffset={16}>
               {(['prefer_ipc', 'http_only'] as const).map((value) => (
                 <DropdownMenuCheckboxItem
@@ -76,6 +89,7 @@ export default function ControlChannelSettings() {
             </DropdownMenuContent>
           </DropdownMenu>
         </SettingsCard>
+
         <SettingsCard>
           <SettingsCardContent>
             <ItemContainer>
@@ -83,10 +97,12 @@ export default function ControlChannelSettings() {
                 <ItemLabelText>
                   {m.settings_clash_ipc_disable_http_label()}
                 </ItemLabelText>
+
                 <ItemLabelDescription>
                   {m.settings_clash_ipc_disable_http_description()}
                 </ItemLabelDescription>
               </ItemLabel>
+
               <Switch
                 checked={disableHttp.value ?? false}
                 disabled={current === 'http_only'}

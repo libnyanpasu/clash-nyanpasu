@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@nyanpasu/rpc": "workspace:^",
-    "@tauri-apps/api": "2.12.2",
+    "@tauri-apps/api": "2.12.3",
     "es-toolkit": "1.52.0",
     "react-use": "17.6.1",
     "semver": "7.7.4"

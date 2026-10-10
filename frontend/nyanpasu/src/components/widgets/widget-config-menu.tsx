@@ -1,14 +1,19 @@
+import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
+import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useId, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import {
+  LauncherMenu,
+  LauncherMenuChipButton,
+  LauncherMenuGroup,
+  LauncherMenuIconButton,
+  LauncherMenuRow,
+} from '@nyanpasu/ui/launcher-menu'
 import { NumberStepper } from '@nyanpasu/ui/number-stepper'
 import { Popover, PopoverContent, PopoverTrigger } from '@nyanpasu/ui/popover'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
-import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@nyanpasu/ui/segmented-button'
 import { Switch } from '@nyanpasu/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -20,6 +25,7 @@ import {
   WidgetConfig,
   WidgetId,
 } from './widget-config'
+import { ConfigGroup, ConfigRow } from './widget-config-row'
 import {
   ProviderReferencesField,
   ReportProfileField,
@@ -40,31 +46,37 @@ function Choice<T extends string>({
   disabled: boolean
   onChange: (value: T) => void
 }) {
+  const selected = options.find((option) => option.value === value)
+  const other = options.find((option) => option.value !== value)
+
+  // A two-way choice flips on press; longer lists open a menu.
+  if (options.length === 2) {
+    return (
+      <ConfigRow label={label}>
+        <LauncherMenuChipButton
+          aria-label={`${label}: ${selected?.label ?? value}`}
+          disabled={disabled || !other || other.disabled}
+          onClick={() => other && onChange(other.value)}
+        >
+          <span className="truncate">{selected?.label ?? value}</span>
+
+          <SwapHorizRounded className="size-4 shrink-0" aria-hidden="true" />
+        </LauncherMenuChipButton>
+      </ConfigRow>
+    )
+  }
+
   return (
-    <div className="space-y-2" data-slot="widget-config-choice">
-      <div className="text-on-surface-variant text-xs">{label}</div>
-      <SegmentedButton
-        size="sm"
-        value={value}
-        disabled={disabled}
-        aria-label={label}
-        onValueChange={(next) => {
-          const option = options.find((item) => item.value === next)
-          if (option) onChange(option.value)
-        }}
-      >
-        {options.map((option) => (
-          <SegmentedButtonItem
-            key={option.value}
-            value={option.value}
-            disabled={option.disabled}
-            hideIndicator
-          >
-            {option.label}
-          </SegmentedButtonItem>
-        ))}
-      </SegmentedButton>
-    </div>
+    <WidgetOptionSelect
+      label={label}
+      value={value}
+      options={options}
+      disabled={disabled}
+      onChange={(next) => {
+        const option = options.find((item) => item.value === next)
+        if (option) onChange(option.value)
+      }}
+    />
   )
 }
 
@@ -98,7 +110,36 @@ function Toggle({
   )
 }
 
-function ConfigFields({
+function Stepper({
+  label,
+  value,
+  range,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: number
+  range: readonly [number, number]
+  disabled: boolean
+  onChange: (value: number) => void
+}) {
+  return (
+    <NumberStepper
+      variant="filled"
+      layout="inline"
+      label={label}
+      value={value}
+      min={range[0]}
+      max={range[1]}
+      decrementLabel={`${m.dashboard_widget_config_decrease()} ${label}`}
+      incrementLabel={`${m.dashboard_widget_config_increase()} ${label}`}
+      disabled={disabled}
+      onChange={onChange}
+    />
+  )
+}
+
+function ConfigFieldRows({
   config,
   disabled,
   onChange,
@@ -108,112 +149,116 @@ function ConfigFields({
   onChange: (config: WidgetConfig) => void
 }) {
   switch (config.type) {
-    case WidgetId.SubscriptionQuota:
     case WidgetId.SubscriptionSchedule:
       return (
-        <>
+        <ConfigGroup>
           <SubscriptionTargetField
             target={config.target}
             disabled={disabled}
             onChange={(target) => onChange({ ...config, target })}
           />
-          {config.type === WidgetId.SubscriptionSchedule ? (
-            <Toggle
-              label={m.dashboard_widget_config_recent_runs()}
-              checked={config.showRecentRuns}
+          <Toggle
+            label={m.dashboard_widget_config_recent_runs()}
+            checked={config.showRecentRuns}
+            disabled={disabled}
+            onChange={(showRecentRuns) =>
+              onChange({ ...config, showRecentRuns })
+            }
+          />
+        </ConfigGroup>
+      )
+    case WidgetId.SubscriptionQuota:
+      return (
+        <>
+          <ConfigGroup>
+            <SubscriptionTargetField
+              target={config.target}
               disabled={disabled}
-              onChange={(showRecentRuns) =>
-                onChange({ ...config, showRecentRuns })
+              onChange={(target) => onChange({ ...config, target })}
+            />
+          </ConfigGroup>
+
+          <ConfigGroup>
+            <Toggle
+              label={m.dashboard_widget_config_expiry()}
+              checked={config.showExpiry}
+              disabled={disabled}
+              onChange={(showExpiry) => onChange({ ...config, showExpiry })}
+            />
+            <Toggle
+              label={m.dashboard_widget_config_progress()}
+              checked={config.showProgress}
+              disabled={disabled}
+              onChange={(showProgress) => onChange({ ...config, showProgress })}
+            />
+            <Choice
+              label={m.dashboard_widget_subscription_quota_config_wave_style()}
+              value={config.waveStyle}
+              options={[
+                {
+                  value: 'single',
+                  label:
+                    m.dashboard_widget_subscription_quota_config_wave_single(),
+                },
+                {
+                  value: 'double',
+                  label:
+                    m.dashboard_widget_subscription_quota_config_wave_double(),
+                },
+              ]}
+              disabled={disabled || !config.showProgress}
+              onChange={(waveStyle) => onChange({ ...config, waveStyle })}
+            />
+            <Toggle
+              label={m.dashboard_widget_subscription_quota_config_wave_animation()}
+              checked={config.animateWave}
+              disabled={disabled || !config.showProgress}
+              onChange={(animateWave) => onChange({ ...config, animateWave })}
+            />
+          </ConfigGroup>
+
+          <ConfigGroup>
+            <Stepper
+              label={m.dashboard_widget_config_expiry_threshold()}
+              value={config.expiryWarningDays}
+              range={WIDGET_CONFIG_NUMBER_RANGES.expiryWarningDays}
+              disabled={disabled}
+              onChange={(expiryWarningDays) =>
+                onChange({ ...config, expiryWarningDays })
               }
             />
-          ) : (
-            <>
-              <Toggle
-                label={m.dashboard_widget_config_expiry()}
-                checked={config.showExpiry}
-                disabled={disabled}
-                onChange={(showExpiry) => onChange({ ...config, showExpiry })}
-              />
-              <Toggle
-                label={m.dashboard_widget_config_progress()}
-                checked={config.showProgress}
-                disabled={disabled}
-                onChange={(showProgress) =>
-                  onChange({ ...config, showProgress })
-                }
-              />
-              <Choice
-                label={m.dashboard_widget_subscription_quota_config_wave_style()}
-                value={config.waveStyle}
-                options={[
-                  {
-                    value: 'single',
-                    label:
-                      m.dashboard_widget_subscription_quota_config_wave_single(),
-                  },
-                  {
-                    value: 'double',
-                    label:
-                      m.dashboard_widget_subscription_quota_config_wave_double(),
-                  },
-                ]}
-                disabled={disabled || !config.showProgress}
-                onChange={(waveStyle) => onChange({ ...config, waveStyle })}
-              />
-              <Toggle
-                label={m.dashboard_widget_subscription_quota_config_wave_animation()}
-                checked={config.animateWave}
-                disabled={disabled || !config.showProgress}
-                onChange={(animateWave) => onChange({ ...config, animateWave })}
-              />
-              <NumberStepper
-                variant="filled"
-                label={m.dashboard_widget_config_expiry_threshold()}
-                value={config.expiryWarningDays}
-                min={WIDGET_CONFIG_NUMBER_RANGES.expiryWarningDays[0]}
-                max={WIDGET_CONFIG_NUMBER_RANGES.expiryWarningDays[1]}
-                decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_expiry_threshold()}`}
-                incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_expiry_threshold()}`}
-                disabled={disabled}
-                onChange={(expiryWarningDays) =>
-                  onChange({ ...config, expiryWarningDays })
-                }
-              />
-              <NumberStepper
-                variant="filled"
-                label={m.dashboard_widget_config_quota_threshold()}
-                value={config.quotaWarningPercent}
-                min={WIDGET_CONFIG_NUMBER_RANGES.quotaWarningPercent[0]}
-                max={WIDGET_CONFIG_NUMBER_RANGES.quotaWarningPercent[1]}
-                decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_quota_threshold()}`}
-                incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_quota_threshold()}`}
-                disabled={disabled}
-                onChange={(quotaWarningPercent) =>
-                  onChange({ ...config, quotaWarningPercent })
-                }
-              />
-            </>
-          )}
+            <Stepper
+              label={m.dashboard_widget_config_quota_threshold()}
+              value={config.quotaWarningPercent}
+              range={WIDGET_CONFIG_NUMBER_RANGES.quotaWarningPercent}
+              disabled={disabled}
+              onChange={(quotaWarningPercent) =>
+                onChange({ ...config, quotaWarningPercent })
+              }
+            />
+          </ConfigGroup>
         </>
       )
     case WidgetId.ProxyMode:
       return (
-        <Choice
-          label={m.dashboard_widget_proxy_mode_config_layout()}
-          value={config.layout}
-          disabled={disabled}
-          options={[
-            {
-              value: 'focus',
-              label: m.dashboard_widget_proxy_mode_config_focus(),
-            },
-            {
-              value: 'flex',
-              label: m.dashboard_widget_proxy_mode_config_flex(),
-            },
-          ]}
-          onChange={(layout) => onChange({ ...config, layout })}
-        />
+        <ConfigGroup>
+          <Choice
+            label={m.dashboard_widget_proxy_mode_config_layout()}
+            value={config.layout}
+            disabled={disabled}
+            options={[
+              {
+                value: 'focus',
+                label: m.dashboard_widget_proxy_mode_config_focus(),
+              },
+              {
+                value: 'flex',
+                label: m.dashboard_widget_proxy_mode_config_flex(),
+              },
+            ]}
+            onChange={(layout) => onChange({ ...config, layout })}
+          />
+        </ConfigGroup>
       )
     case WidgetId.RecentTraffic:
     case WidgetId.OriginTraffic:
@@ -222,162 +267,163 @@ function ConfigFields({
     case WidgetId.RuleTraffic:
       return (
         <>
-          <WidgetOptionSelect
-            label={m.dashboard_widget_config_range()}
-            value={config.range}
-            disabled={disabled}
-            options={[
-              {
-                value: 'last_hour',
-                label: m.dashboard_widget_config_range_hour(),
-              },
-              {
-                value: 'last6_hours',
-                label: m.dashboard_widget_config_range_6hours(),
-              },
-              {
-                value: 'last24_hours',
-                label: m.dashboard_widget_config_range_24hours(),
-              },
-              {
-                value: 'last7_days',
-                label: m.dashboard_widget_config_range_7days(),
-              },
-              {
-                value: 'last30_days',
-                label: m.dashboard_widget_config_range_30days(),
-              },
-              { value: 'all', label: m.dashboard_widget_config_range_all() },
-            ]}
-            onChange={(range) =>
-              onChange({ ...config, range: range as typeof config.range })
-            }
-          />
-          <ReportProfileField
-            profileUid={config.profileUid}
-            disabled={disabled}
-            onChange={(profileUid) => onChange({ ...config, profileUid })}
-          />
-          <Toggle
-            label={m.dashboard_widget_config_directions()}
-            checked={config.showDirections}
-            disabled={disabled}
-            onChange={(showDirections) =>
-              onChange({ ...config, showDirections })
-            }
-          />
-          {config.type !== WidgetId.RecentTraffic && (
-            <>
-              <NumberStepper
-                variant="filled"
+          <ConfigGroup>
+            <WidgetOptionSelect
+              label={m.dashboard_widget_config_range()}
+              value={config.range}
+              disabled={disabled}
+              options={[
+                {
+                  value: 'last_hour',
+                  label: m.dashboard_widget_config_range_hour(),
+                },
+                {
+                  value: 'last6_hours',
+                  label: m.dashboard_widget_config_range_6hours(),
+                },
+                {
+                  value: 'last24_hours',
+                  label: m.dashboard_widget_config_range_24hours(),
+                },
+                {
+                  value: 'last7_days',
+                  label: m.dashboard_widget_config_range_7days(),
+                },
+                {
+                  value: 'last30_days',
+                  label: m.dashboard_widget_config_range_30days(),
+                },
+                { value: 'all', label: m.dashboard_widget_config_range_all() },
+              ]}
+              onChange={(range) =>
+                onChange({ ...config, range: range as typeof config.range })
+              }
+            />
+            <ReportProfileField
+              profileUid={config.profileUid}
+              disabled={disabled}
+              onChange={(profileUid) => onChange({ ...config, profileUid })}
+            />
+          </ConfigGroup>
+
+          <ConfigGroup>
+            <Toggle
+              label={m.dashboard_widget_config_directions()}
+              checked={config.showDirections}
+              disabled={disabled}
+              onChange={(showDirections) =>
+                onChange({ ...config, showDirections })
+              }
+            />
+            {config.type !== WidgetId.RecentTraffic && (
+              <Stepper
                 label={m.dashboard_widget_config_top()}
                 value={config.topN}
-                min={WIDGET_CONFIG_NUMBER_RANGES.topN[0]}
-                max={WIDGET_CONFIG_NUMBER_RANGES.topN[1]}
-                decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_top()}`}
-                incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_top()}`}
+                range={WIDGET_CONFIG_NUMBER_RANGES.topN}
                 disabled={disabled}
                 onChange={(topN) => onChange({ ...config, topN })}
               />
-              {(config.type === WidgetId.OriginTraffic ||
-                config.type === WidgetId.TargetTraffic) && (
-                <Toggle
-                  label={m.dashboard_widget_config_hide_names()}
-                  checked={config.hideNames}
-                  disabled={disabled}
-                  onChange={(hideNames) => onChange({ ...config, hideNames })}
-                />
-              )}
-            </>
-          )}
+            )}
+            {(config.type === WidgetId.OriginTraffic ||
+              config.type === WidgetId.TargetTraffic) && (
+              <Toggle
+                label={m.dashboard_widget_config_hide_names()}
+                checked={config.hideNames}
+                disabled={disabled}
+                onChange={(hideNames) => onChange({ ...config, hideNames })}
+              />
+            )}
+          </ConfigGroup>
         </>
       )
     case WidgetId.ActiveConnections:
       return (
         <>
-          <Choice
-            label={m.dashboard_widget_config_sort()}
-            value={config.sort}
-            options={[
-              {
-                value: 'download',
-                label: m.dashboard_widget_config_download(),
-              },
-              { value: 'upload', label: m.dashboard_widget_config_upload() },
-              { value: 'total', label: m.dashboard_widget_config_total() },
-            ]}
-            disabled={disabled}
-            onChange={(sort) => onChange({ ...config, sort })}
-          />
-          <NumberStepper
-            variant="filled"
-            label={m.dashboard_widget_config_top()}
-            value={config.topN}
-            min={WIDGET_CONFIG_NUMBER_RANGES.topN[0]}
-            max={WIDGET_CONFIG_NUMBER_RANGES.topN[1]}
-            decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_top()}`}
-            incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_top()}`}
-            disabled={disabled}
-            onChange={(topN) => onChange({ ...config, topN })}
-          />
-          <Toggle
-            label={m.dashboard_widget_config_process()}
-            checked={config.showProcess}
-            disabled={disabled}
-            onChange={(showProcess) => onChange({ ...config, showProcess })}
-          />
-          <Toggle
-            label={m.dashboard_widget_config_hide_targets()}
-            checked={config.hideTargets}
-            disabled={disabled}
-            onChange={(hideTargets) => onChange({ ...config, hideTargets })}
-          />
+          <ConfigGroup>
+            <Choice
+              label={m.dashboard_widget_config_sort()}
+              value={config.sort}
+              options={[
+                {
+                  value: 'download',
+                  label: m.dashboard_widget_config_download(),
+                },
+                { value: 'upload', label: m.dashboard_widget_config_upload() },
+                { value: 'total', label: m.dashboard_widget_config_total() },
+              ]}
+              disabled={disabled}
+              onChange={(sort) => onChange({ ...config, sort })}
+            />
+            <Stepper
+              label={m.dashboard_widget_config_top()}
+              value={config.topN}
+              range={WIDGET_CONFIG_NUMBER_RANGES.topN}
+              disabled={disabled}
+              onChange={(topN) => onChange({ ...config, topN })}
+            />
+          </ConfigGroup>
+
+          <ConfigGroup>
+            <Toggle
+              label={m.dashboard_widget_config_process()}
+              checked={config.showProcess}
+              disabled={disabled}
+              onChange={(showProcess) => onChange({ ...config, showProcess })}
+            />
+            <Toggle
+              label={m.dashboard_widget_config_hide_targets()}
+              checked={config.hideTargets}
+              disabled={disabled}
+              onChange={(hideTargets) => onChange({ ...config, hideTargets })}
+            />
+          </ConfigGroup>
         </>
       )
     case WidgetId.ProviderUpdates:
       return (
         <>
-          <Choice
-            label={m.dashboard_widget_config_provider_types()}
-            value={config.kinds}
-            options={[
-              {
-                value: 'both',
-                label: m.dashboard_widget_config_both_providers(),
-              },
-              {
-                value: 'proxy',
-                label: m.dashboard_widget_config_proxy_providers(),
-              },
-              {
-                value: 'rule',
-                label: m.dashboard_widget_config_rule_providers(),
-              },
-            ]}
-            disabled={disabled}
-            onChange={(kinds) => onChange({ ...config, kinds })}
-          />
-          <NumberStepper
-            variant="filled"
-            label={m.dashboard_widget_config_items()}
-            value={config.maxItems}
-            min={WIDGET_CONFIG_NUMBER_RANGES.maxItems[0]}
-            max={WIDGET_CONFIG_NUMBER_RANGES.maxItems[1]}
-            decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_config_items()}`}
-            incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_config_items()}`}
-            disabled={disabled}
-            onChange={(maxItems) => onChange({ ...config, maxItems })}
-          />
-          <ProviderReferencesField
-            resources={config.resources}
-            disabled={disabled}
-            onChange={(resources) => onChange({ ...config, resources })}
-          />
+          <ConfigGroup>
+            <Choice
+              label={m.dashboard_widget_config_provider_types()}
+              value={config.kinds}
+              options={[
+                {
+                  value: 'both',
+                  label: m.dashboard_widget_config_both_providers(),
+                },
+                {
+                  value: 'proxy',
+                  label: m.dashboard_widget_config_proxy_providers(),
+                },
+                {
+                  value: 'rule',
+                  label: m.dashboard_widget_config_rule_providers(),
+                },
+              ]}
+              disabled={disabled}
+              onChange={(kinds) => onChange({ ...config, kinds })}
+            />
+            <Stepper
+              label={m.dashboard_widget_config_items()}
+              value={config.maxItems}
+              range={WIDGET_CONFIG_NUMBER_RANGES.maxItems}
+              disabled={disabled}
+              onChange={(maxItems) => onChange({ ...config, maxItems })}
+            />
+          </ConfigGroup>
+
+          <ConfigGroup>
+            <ProviderReferencesField
+              resources={config.resources}
+              disabled={disabled}
+              onChange={(resources) => onChange({ ...config, resources })}
+            />
+          </ConfigGroup>
         </>
       )
     case WidgetId.ProxyShortcuts:
       return (
-        <>
+        <ConfigGroup>
           <Choice
             label={m.dashboard_widget_proxy_mode_config_layout()}
             value={config.layout}
@@ -430,12 +476,12 @@ function ConfigFields({
               onChange={(order) => onChange({ ...config, order })}
             />
           )}
-        </>
+        </ConfigGroup>
       )
     case WidgetId.TrafficDown:
     case WidgetId.TrafficUp:
       return (
-        <>
+        <ConfigGroup>
           <Toggle
             label={m.dashboard_widget_sparkline_config_chart()}
             checked={config.showChart}
@@ -458,34 +504,30 @@ function ConfigFields({
             ]}
             onChange={(unit) => onChange({ ...config, unit })}
           />
-        </>
+        </ConfigGroup>
       )
     case WidgetId.Memory:
     case WidgetId.Connections:
       return (
-        <>
+        <ConfigGroup>
           <Toggle
             label={m.dashboard_widget_sparkline_config_chart()}
             checked={config.showChart}
             disabled={disabled}
             onChange={(showChart) => onChange({ ...config, showChart })}
           />
-          <NumberStepper
-            variant="filled"
+          <Stepper
             label={m.dashboard_widget_sparkline_config_samples()}
             value={config.samples}
-            min={WIDGET_CONFIG_NUMBER_RANGES.samples[0]}
-            max={WIDGET_CONFIG_NUMBER_RANGES.samples[1]}
-            decrementLabel={`${m.dashboard_widget_config_decrease()} ${m.dashboard_widget_sparkline_config_samples()}`}
-            incrementLabel={`${m.dashboard_widget_config_increase()} ${m.dashboard_widget_sparkline_config_samples()}`}
+            range={WIDGET_CONFIG_NUMBER_RANGES.samples}
             disabled={disabled || !config.showChart}
             onChange={(samples) => onChange({ ...config, samples })}
           />
-        </>
+        </ConfigGroup>
       )
     case WidgetId.CoreShortcuts:
       return (
-        <>
+        <ConfigGroup>
           <Toggle
             label={m.dashboard_widget_core_shortcuts_config_version()}
             checked={config.showVersion}
@@ -498,9 +540,17 @@ function ConfigFields({
             disabled={disabled}
             onChange={(showChannel) => onChange({ ...config, showChannel })}
           />
-        </>
+        </ConfigGroup>
       )
   }
+}
+
+function ConfigFields(props: Parameters<typeof ConfigFieldRows>[0]) {
+  return (
+    <LauncherMenu data-slot="widget-config-fields">
+      <ConfigFieldRows {...props} />
+    </LauncherMenu>
+  )
 }
 
 export function WidgetConfigSaveStatus() {
@@ -587,45 +637,52 @@ export default function WidgetConfigMenu({
       </Tooltip>
       <PopoverContent
         aria-labelledby={titleId}
+        className="w-80 overflow-visible border-0 bg-transparent shadow-none"
         onKeyDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
-        <div
-          className="flex min-h-0 flex-auto flex-col"
+        <LauncherMenu
+          className="min-h-0 flex-auto"
           data-slot="widget-config-menu"
         >
-          <h2 id={titleId} className="shrink-0 px-4 pt-4 text-sm font-semibold">
-            {m.dashboard_widget_config_title()}
-          </h2>
+          <LauncherMenuGroup data-slot="widget-config-header">
+            <LauncherMenuRow className="justify-between">
+              <h2 id={titleId} className="text-sm font-medium">
+                {m.dashboard_widget_config_title()}
+              </h2>
+
+              <LauncherMenuIconButton
+                aria-label={m.dashboard_widget_config_reset()}
+                title={m.dashboard_widget_config_reset()}
+                disabled={disabled}
+                onClick={() => saveConfig(id, DEFAULT_WIDGET_CONFIGS[type])}
+              >
+                <RestartAltRounded className="size-5" aria-hidden="true" />
+              </LauncherMenuIconButton>
+            </LauncherMenuRow>
+          </LauncherMenuGroup>
+
           <ScrollArea
-            className="flex-auto"
+            className="min-h-0 flex-auto rounded-3xl"
             data-slot="widget-config-scroll-area"
           >
-            <div
-              className="space-y-4 px-4 py-4"
-              data-slot="widget-config-fields"
-            >
-              <ConfigFields
-                config={config}
-                disabled={disabled}
-                onChange={(next) => saveConfig(id, next)}
-              />
-            </div>
-          </ScrollArea>
-          <div
-            className="border-outline-variant/50 mx-4 shrink-0 space-y-2 border-t pt-3 pb-4"
-            data-slot="widget-config-footer"
-          >
-            <Button
-              className="h-8 w-full text-xs"
+            <ConfigFields
+              config={config}
               disabled={disabled}
-              onClick={() => saveConfig(id, DEFAULT_WIDGET_CONFIGS[type])}
-            >
-              {m.dashboard_widget_config_reset()}
-            </Button>
-            <WidgetConfigSaveStatus />
-          </div>
-        </div>
+              onChange={(next) => saveConfig(id, next)}
+            />
+          </ScrollArea>
+
+          {(configLoading ||
+            configReadError ||
+            saveStatus.state === 'error') && (
+            <LauncherMenuGroup data-slot="widget-config-footer">
+              <LauncherMenuRow className="py-3">
+                <WidgetConfigSaveStatus />
+              </LauncherMenuRow>
+            </LauncherMenuGroup>
+          )}
+        </LauncherMenu>
       </PopoverContent>
     </Popover>
   )

@@ -6,6 +6,8 @@ import { Button } from './button'
 
 export type NumberStepperVariant = 'outlined' | 'filled' | 'tonal'
 
+export type NumberStepperLayout = 'stacked' | 'inline'
+
 const buttonStyles: Record<NumberStepperVariant, string> = {
   outlined:
     'border border-outline bg-transparent text-on-surface-variant hover:bg-on-surface/8 dark:bg-transparent dark:text-on-surface-variant dark:hover:bg-on-surface/8 disabled:border-on-surface/12 disabled:bg-transparent disabled:hover:bg-transparent dark:disabled:bg-transparent dark:disabled:hover:bg-transparent',
@@ -30,6 +32,7 @@ export function NumberStepper({
   incrementLabel,
   disabled = false,
   variant = 'outlined',
+  layout = 'stacked',
   onChange,
 }: {
   label: string
@@ -40,6 +43,8 @@ export function NumberStepper({
   incrementLabel: string
   disabled?: boolean
   variant?: NumberStepperVariant
+  /** `inline` puts the label before a compact stepper on one row. */
+  layout?: NumberStepperLayout
   onChange: (value: number) => void
 }) {
   const inputId = useId()
@@ -90,29 +95,38 @@ export function NumberStepper({
     submit(boundedDraft + delta)
   }
 
+  const inline = layout === 'inline'
+
   const buttonClassName = cn(
-    'size-10 shrink-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:text-on-surface/38 dark:disabled:text-on-surface/38',
+    inline ? 'size-8' : 'size-10',
+    'shrink-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:text-on-surface/38 dark:disabled:text-on-surface/38',
     buttonStyles[variant],
   )
 
   return (
     <div
-      className="space-y-2"
+      className={
+        inline ? 'flex items-center justify-between gap-3' : 'space-y-2'
+      }
       data-slot="number-stepper"
       data-variant={variant}
     >
       <label
         htmlFor={inputId}
         className={cn(
-          'block text-xs',
-          disabled ? 'text-on-surface/38' : 'text-on-surface-variant',
+          inline ? 'min-w-0 text-sm' : 'block text-xs',
+          disabled
+            ? 'text-on-surface/38'
+            : inline
+              ? 'text-on-surface'
+              : 'text-on-surface-variant',
         )}
       >
         {label}
       </label>
       <div
         data-slot="number-stepper-field"
-        className="flex h-10 items-center gap-2"
+        className={cn('flex items-center', inline ? 'h-8 gap-1' : 'h-10 gap-2')}
       >
         <Button
           type="button"
@@ -124,7 +138,7 @@ export function NumberStepper({
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => stepBy(-1)}
         >
-          <RemoveRounded className="size-6" />
+          <RemoveRounded className={inline ? 'size-5' : 'size-6'} />
         </Button>
         <input
           id={inputId}
@@ -141,7 +155,8 @@ export function NumberStepper({
           value={draft}
           disabled={disabled}
           className={cn(
-            'text-on-surface focus:border-primary focus:ring-primary h-full min-w-0 flex-1 rounded-full border px-3 text-center text-base tabular-nums transition-colors outline-none focus:ring-1',
+            'text-on-surface focus:border-primary focus:ring-primary h-full min-w-0 rounded-full border px-3 text-center tabular-nums transition-colors outline-none focus:ring-1',
+            inline ? 'w-12 flex-none px-1 text-sm' : 'flex-1 text-base',
             inputStyles[variant],
             disabled &&
               'border-on-surface/12 bg-on-surface/4 text-on-surface/38',
@@ -187,7 +202,7 @@ export function NumberStepper({
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => stepBy(1)}
         >
-          <AddRounded className="size-6" />
+          <AddRounded className={inline ? 'size-5' : 'size-6'} />
         </Button>
       </div>
     </div>

@@ -180,8 +180,11 @@ export function ContextMenuSubContent({
 export const ContextMenuContent = ({
   children,
   className,
+  variant = 'default',
   ...props
-}: ComponentProps<typeof ContextMenuPrimitive.Content>) => {
+}: ComponentProps<typeof ContextMenuPrimitive.Content> & {
+  variant?: 'default' | 'launcher'
+}) => {
   const { open } = useContextMenuContext()
 
   return (
@@ -190,7 +193,12 @@ export const ContextMenuContent = ({
         <ContextMenuPrimitive.Portal forceMount>
           <ContextMenuPrimitive.Content {...props} asChild>
             <MotionContent
-              className={cn('min-w-40', className)}
+              className={cn(
+                'min-w-40',
+                variant === 'launcher' &&
+                  'flex min-w-60 flex-col gap-1 overflow-visible rounded-none border-0 bg-transparent shadow-none backdrop-blur-none',
+                className,
+              )}
               onContextMenu={(e) => {
                 e.preventDefault()
               }}

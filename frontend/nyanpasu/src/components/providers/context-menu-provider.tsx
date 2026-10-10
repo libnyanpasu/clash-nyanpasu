@@ -4,6 +4,7 @@ import ContentPaste from '~icons/material-symbols/content-paste-rounded'
 import {
   Children,
   cloneElement,
+  ComponentProps,
   createContext,
   PropsWithChildren,
   ReactElement,
@@ -27,11 +28,21 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from '@nyanpasu/ui/context-menu'
+import {
+  LauncherMenuGroup,
+  launcherMenuRowClassName,
+} from '@nyanpasu/ui/launcher-menu'
 import { m } from '@/paraglide/messages'
 import { readClipboardText, writeClipboardText } from '@/utils/clipboard'
 
+type ContextMenuVariant = ComponentProps<typeof ContextMenuContent>['variant']
+
 type ContextMenuRegistryValue = {
-  registerElement: (el: Element, getChildren: () => ReactNode) => void
+  registerElement: (
+    el: Element,
+    getChildren: () => ReactNode,
+    getVariant?: () => ContextMenuVariant,
+  ) => void
   unregisterElement: (el: Element) => void
 }
 
@@ -81,6 +92,7 @@ export function useRegisterContextMenu<T extends Element>(
 
 type RegisterContextMenuInternalCtxValue = {
   childrenRef: RefObject<ReactNode>
+  variantRef: RefObject<ContextMenuVariant>
   setTriggerEl: (el: Element | null) => void
 }
 
@@ -104,8 +116,10 @@ export function RegisterContextMenu({ children }: PropsWithChildren) {
 
   const triggerElRef = useRef<Element | null>(null)
   const childrenRef = useRef<ReactNode>(null)
+  const variantRef = useRef<ContextMenuVariant>(undefined)
 
   const getChildren = useCallback(() => childrenRef.current, [])
+  const getVariant = useCallback(() => variantRef.current, [])
 
   const setTriggerEl = useCallback(
     (el: Element | null) => {
@@ -114,13 +128,16 @@ export function RegisterContextMenu({ children }: PropsWithChildren) {
       }
       triggerElRef.current = el
       if (el) {
-        registerElement(el, getChildren)
+        registerElement(el, getChildren, getVariant)
       }
     },
-    [registerElement, unregisterElement, getChildren],
+    [registerElement, unregisterElement, getChildren, getVariant],
   )
 
-  const value = useMemo(() => ({ childrenRef, setTriggerEl }), [setTriggerEl])
+  const value = useMemo(
+    () => ({ childrenRef, variantRef, setTriggerEl }),
+    [setTriggerEl],
+  )
 
   return (
     <RegisterContextMenuInternalCtx.Provider value={value}>
@@ -175,8 +192,13 @@ export function RegisterContextMenuTrigger({
   return <span ref={setTriggerEl}>{children}</span>
 }
 
-export function RegisterContextMenuContent({ children }: PropsWithChildren) {
-  const { childrenRef } = useRegisterContextMenuInternal()
+export function RegisterContextMenuContent({
+  children,
+  variant,
+}: PropsWithChildren<{ variant?: ContextMenuVariant }>) {
+  const { childrenRef, variantRef } = useRegisterContextMenuInternal()
+
+  variantRef.current = variant
 
   // Update the ref synchronously during render so getChildren() always returns
   // the latest JSX when the menu opens (safe — mutating a ref, not state).
@@ -221,6 +243,7 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
   const [editable, setEditable] = useState(false)
 
   const [customChildren, setCustomChildren] = useState<ReactNode>(null)
+  const [customVariant, setCustomVariant] = useState<ContextMenuVariant>()
 
   const targetRef = useRef<Element | null>(null)
 
@@ -230,7 +253,12 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
     Array<{ left: number; top: number; width: number; height: number }>
   >([])
 
-  const registryRef = useRef(new Map<Element, () => ReactNode>())
+  const registryRef = useRef(
+    new Map<
+      Element,
+      { getChildren: () => ReactNode; getVariant?: () => ContextMenuVariant }
+    >(),
+  )
 
   const lastRightClickTargetRef = useRef<Element | null>(null)
   const rightClickSelectionRef = useRef('')
@@ -328,8 +356,12 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
   }, [open])
 
   const registerElement = useCallback(
-    (el: Element, getChildren: () => ReactNode) => {
-      registryRef.current.set(el, getChildren)
+    (
+      el: Element,
+      getChildren: () => ReactNode,
+      getVariant?: () => ContextMenuVariant,
+    ) => {
+      registryRef.current.set(el, { getChildren, getVariant })
     },
     [],
   )
@@ -360,15 +392,18 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
     // Traverse up the DOM from the right-clicked element to find registered children.
     let el: Element | null = lastRightClickTargetRef.current
     let found: ReactNode = null
+    let variant: ContextMenuVariant
     while (el) {
-      const getter = registryRef.current.get(el)
-      if (getter) {
-        found = getter()
+      const registered = registryRef.current.get(el)
+      if (registered) {
+        found = registered.getChildren()
+        variant = registered.getVariant?.()
         break
       }
       el = el.parentElement
     }
     setCustomChildren(found)
+    setCustomVariant(variant)
   }, [])
 
   const handleCopy = useCallback(async () => {
@@ -476,6 +511,44 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
     }
   }, [])
 
+  const launcher = customVariant === 'launcher'
+
+  const itemClassName = launcher ? launcherMenuRowClassName : undefined
+
+  const clipboardItems = (
+    <>
+      <ContextMenuItem
+        className={itemClassName}
+        disabled={!hasSelection || !editable}
+        onSelect={handleCut}
+      >
+        <ContentCut className="size-4" />
+        <span>{m.common_cut()}</span>
+        <ContextMenuShortcut>Ctrl+X</ContextMenuShortcut>
+      </ContextMenuItem>
+
+      <ContextMenuItem
+        className={itemClassName}
+        disabled={!hasSelection}
+        onSelect={handleCopy}
+      >
+        <ContentCopy className="size-4" />
+        <span>{m.common_copy()}</span>
+        <ContextMenuShortcut>Ctrl+C</ContextMenuShortcut>
+      </ContextMenuItem>
+
+      <ContextMenuItem
+        className={itemClassName}
+        disabled={!editable}
+        onSelect={handlePaste}
+      >
+        <ContentPaste className="size-4" />
+        <span>{m.common_paste()}</span>
+        <ContextMenuShortcut>Ctrl+V</ContextMenuShortcut>
+      </ContextMenuItem>
+    </>
+  )
+
   return (
     <ContextMenuRegistryContext.Provider
       value={{ registerElement, unregisterElement }}
@@ -483,35 +556,20 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
       <ContextMenu open={open} onOpenChange={handleOpenChange}>
         <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
 
-        <ContextMenuContent>
+        <ContextMenuContent variant={customVariant}>
           {customChildren != null && (
             <>
               {customChildren}
 
-              <ContextMenuSeparator />
+              {!launcher && <ContextMenuSeparator />}
             </>
           )}
 
-          <ContextMenuItem
-            disabled={!hasSelection || !editable}
-            onSelect={handleCut}
-          >
-            <ContentCut className="size-4" />
-            <span>{m.common_cut()}</span>
-            <ContextMenuShortcut>Ctrl+X</ContextMenuShortcut>
-          </ContextMenuItem>
-
-          <ContextMenuItem disabled={!hasSelection} onSelect={handleCopy}>
-            <ContentCopy className="size-4" />
-            <span>{m.common_copy()}</span>
-            <ContextMenuShortcut>Ctrl+C</ContextMenuShortcut>
-          </ContextMenuItem>
-
-          <ContextMenuItem disabled={!editable} onSelect={handlePaste}>
-            <ContentPaste className="size-4" />
-            <span>{m.common_paste()}</span>
-            <ContextMenuShortcut>Ctrl+V</ContextMenuShortcut>
-          </ContextMenuItem>
+          {launcher ? (
+            <LauncherMenuGroup>{clipboardItems}</LauncherMenuGroup>
+          ) : (
+            clipboardItems
+          )}
         </ContextMenuContent>
       </ContextMenu>
       {selectionRects.length > 0 &&

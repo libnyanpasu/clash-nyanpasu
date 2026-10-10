@@ -89,10 +89,11 @@ function mount(
   style.textContent = `[data-slot="widget-config-trigger"] { position:absolute; bottom:-4px; left:50%; width:36px; height:24px; transform:translateX(-50%); }
     [data-slot="popover-content"] { width:288px; display:flex; flex-direction:column; overflow:hidden; border-radius:24px; background:white; border:1px solid #ccc; }
     [data-slot="popover-body"], [data-slot="widget-config-menu"], [data-slot="widget-config-scroll-area"] { display:flex; flex-direction:column; min-height:0; flex:1 1 auto; }
-    [data-slot="widget-config-menu"] > h2 { flex-shrink:0; margin:0; padding:16px; font-size:14px; line-height:20px; }
-    [data-slot="widget-config-fields"] { padding:0 16px 16px; }
-    [data-slot="widget-config-fields"] > * + * { margin-top:16px; }
-    [data-slot="widget-config-footer"] { flex-shrink:0; margin:0 16px; border-top:1px solid #ccc; padding:12px 0 16px; }
+    [data-slot="widget-config-header"] { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:8px 16px; }
+    [data-slot="widget-config-header"] h2 { margin:0; font-size:14px; line-height:20px; }
+    [data-slot="widget-config-group"] { padding:0 16px 16px; }
+    [data-slot="widget-config-group"] > * + * { margin-top:16px; }
+    [data-slot="widget-config-footer"] { flex-shrink:0; padding:12px 16px; }
     [data-slot="scroll-area-viewport"] { display:flex; flex-direction:column; min-height:0; flex:1 1 auto; width:100%; }
     [data-slot="scroll-area-viewport"] > div { display:block !important; min-height:0; flex:1; }`
   document.head.append(style)
@@ -163,6 +164,16 @@ function mount(
 
 const saved = () => JSON.parse(backend.value!) as WidgetConfigStorage
 
+const buttonsSelect = (dialog: ReturnType<typeof page.getByRole>) =>
+  dialog.getByRole('combobox', {
+    name: m.dashboard_widget_proxy_shortcuts_config_buttons(),
+  })
+
+async function chooseTunButtons(dialog: ReturnType<typeof page.getByRole>) {
+  await buttonsSelect(dialog).click()
+  await page.getByRole('option', { name: 'TUN', exact: true }).click()
+}
+
 test('number field saves multi-digit values on commit and restores them when reopened', async ({
   onTestFinished,
 }) => {
@@ -227,8 +238,8 @@ test('bottom popover preserves focus, stays open and saves independent instance 
     triggerRect.bottom,
   )
   await dialog
-    .getByRole('radio', {
-      name: m.dashboard_widget_proxy_shortcuts_config_tun_first(),
+    .getByRole('button', {
+      name: `${m.dashboard_widget_proxy_shortcuts_config_order()}: ${m.dashboard_widget_proxy_shortcuts_config_system_first()}`,
     })
     .click()
   await expect
@@ -248,10 +259,7 @@ test('bottom popover preserves focus, stays open and saves independent instance 
     .getByRole('button', { name: m.dashboard_widget_config_title() })
     .nth(1)
   await secondTrigger.click()
-  await page
-    .getByRole('dialog')
-    .getByRole('radio', { name: 'TUN', exact: true })
-    .click()
+  await chooseTunButtons(page.getByRole('dialog'))
   await expect
     .poll(() => saved().byInstance.second)
     .toMatchObject({ buttons: 'tun' })
@@ -286,7 +294,7 @@ test('one click on outside blank space closes the menu after editing an option',
     .click()
   const dialog = page.getByRole('dialog')
   await expect.element(dialog).toBeVisible()
-  await dialog.getByRole('radio', { name: 'TUN', exact: true }).click()
+  await chooseTunButtons(dialog)
   await expect.element(dialog).toBeVisible()
   expect(controls.dragStarts).toBe(0)
   await page.getByTestId('outside-blank-space').click()
@@ -308,8 +316,8 @@ test('failed autosave retains preview and retries the current options', async ({
   const dialog = page.getByRole('dialog')
   backend.fail = true
   await dialog
-    .getByRole('radio', {
-      name: m.dashboard_widget_proxy_shortcuts_config_tun_first(),
+    .getByRole('button', {
+      name: `${m.dashboard_widget_proxy_shortcuts_config_order()}: ${m.dashboard_widget_proxy_shortcuts_config_system_first()}`,
     })
     .click()
   await expect
@@ -347,21 +355,15 @@ test('proxy status offers button choices without a vertical layout option', asyn
   const dialog = page.getByRole('dialog')
   await expect
     .element(
-      dialog.getByRole('radio', {
-        name: m.dashboard_widget_proxy_shortcuts_config_vertical(),
-      }),
+      dialog.getByText(m.dashboard_widget_proxy_shortcuts_config_vertical()),
     )
     .not.toBeInTheDocument()
   await expect
     .element(
-      dialog.getByRole('radio', {
-        name: m.dashboard_widget_proxy_shortcuts_config_horizontal(),
-      }),
+      dialog.getByText(m.dashboard_widget_proxy_shortcuts_config_horizontal()),
     )
     .not.toBeInTheDocument()
-  await expect
-    .element(dialog.getByRole('radio', { name: 'TUN', exact: true }))
-    .toBeEnabled()
+  await expect.element(buttonsSelect(dialog)).toBeEnabled()
 })
 
 test('a pending write prevents overlapping edits until its result arrives', async ({
@@ -380,20 +382,16 @@ test('a pending write prevents overlapping edits until its result arrives', asyn
     finish = resolve
   })
   await dialog
-    .getByRole('radio', {
-      name: m.dashboard_widget_proxy_shortcuts_config_tun_first(),
+    .getByRole('button', {
+      name: `${m.dashboard_widget_proxy_shortcuts_config_order()}: ${m.dashboard_widget_proxy_shortcuts_config_system_first()}`,
     })
     .click()
   await expect.element(dialog.getByRole('status')).not.toBeInTheDocument()
-  await expect
-    .element(dialog.getByRole('radio', { name: 'TUN', exact: true }))
-    .toBeDisabled()
+  await expect.element(buttonsSelect(dialog)).toBeDisabled()
   expect(backend.writes).toHaveLength(1)
   finish()
-  await expect
-    .element(dialog.getByRole('radio', { name: 'TUN', exact: true }))
-    .toBeEnabled()
-  await dialog.getByRole('radio', { name: 'TUN', exact: true }).click()
+  await expect.element(buttonsSelect(dialog)).toBeEnabled()
+  await chooseTunButtons(dialog)
   await expect
     .poll(() => saved().byInstance.first)
     .toMatchObject({ order: 'tun-first', buttons: 'tun' })
@@ -475,7 +473,7 @@ test('only config fields scroll when the popover height is constrained', async (
 
   const constrained = document.createElement('style')
   constrained.textContent =
-    '[data-slot="popover-content"] { max-height:200px !important; }'
+    '[data-slot="popover-content"] { max-height:120px !important; }'
   document.head.append(constrained)
   onTestFinished(() => constrained.remove())
   await expect

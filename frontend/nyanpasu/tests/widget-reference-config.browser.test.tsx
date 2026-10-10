@@ -396,8 +396,8 @@ test('quota wave controls save single-wave and static choices independently', as
   view.controls.setEditing(true)
   const dialog = await openMenu()
   await dialog
-    .getByRole('radio', {
-      name: m.dashboard_widget_subscription_quota_config_wave_single(),
+    .getByRole('button', {
+      name: `${m.dashboard_widget_subscription_quota_config_wave_style()}: ${m.dashboard_widget_subscription_quota_config_wave_double()}`,
     })
     .click()
   await expect

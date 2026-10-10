@@ -20,7 +20,7 @@ use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
-    pub debug_http: crate::server::debug_http::HttpServerClient,
+    pub debug_http: nyanpasu_core::transport::http::HttpServerClient,
     pub storage: Storage,
     pub paths: nyanpasu_paths::PathResolver,
     pub events: EventBus,
@@ -217,7 +217,7 @@ impl RpcHttpRoutes {
             .map_err(|_| anyhow::anyhow!("HTTP routes already installed"))
     }
 }
-impl crate::server::debug_http::HttpRoutes for RpcHttpRoutes {
+impl nyanpasu_core::transport::http::HttpRoutes for RpcHttpRoutes {
     fn build(&self) -> anyhow::Result<Router> {
         let (dependencies, commands) = self
             .0
@@ -486,7 +486,7 @@ mod tests {
         let paths = args.paths.clone();
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
-        let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
+        let debug_http = (nyanpasu_core::transport::http::HttpServerClient::spawn_tracked(
             None,
             routes.clone(),
             shutdown,
@@ -842,7 +842,7 @@ mod tests {
         let paths = args.paths.clone();
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
-        let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
+        let debug_http = (nyanpasu_core::transport::http::HttpServerClient::spawn_tracked(
             None,
             routes.clone(),
             shutdown,
@@ -959,7 +959,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn enabled_http_server_joins_application_shutdown() {
-        use crate::server::debug_http::{Frontend, FrontendAssets};
+        use nyanpasu_core::transport::http::{Frontend, FrontendAssets};
         struct Assets;
         impl FrontendAssets for Assets {
             fn get(&self, _: &str) -> Option<(String, Vec<u8>)> {
@@ -974,7 +974,7 @@ mod tests {
         .await;
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
-        let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
+        let debug_http = (nyanpasu_core::transport::http::HttpServerClient::spawn_tracked(
             Some(Frontend::Embedded(Arc::new(Assets))),
             routes.clone(),
             shutdown,
@@ -1018,7 +1018,7 @@ mod tests {
             assert!(http.get(url).send().await.is_err());
             assert!(debug_http.status().await.is_err());
             drop(rpc);
-            assert!(crate::server::debug_http::HttpRoutes::build(&*routes).is_err());
+            assert!(nyanpasu_core::transport::http::HttpRoutes::build(&*routes).is_err());
         })
         .await;
     }
@@ -1026,7 +1026,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "requires pnpm web:build and Playwright Chromium; optional NYANPASU_HTTP_UI_DEV_URL tests Vite proxy"]
     async fn browser_debug_page_and_real_rpc() {
-        use crate::server::debug_http::{Frontend, FrontendAssets};
+        use nyanpasu_core::transport::http::{Frontend, FrontendAssets};
         struct Dist(std::path::PathBuf);
         impl FrontendAssets for Dist {
             fn get(&self, path: &str) -> Option<(String, Vec<u8>)> {
@@ -1100,7 +1100,7 @@ mod tests {
         args.logging.frontend = frontend_events.clone();
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
-        let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
+        let debug_http = (nyanpasu_core::transport::http::HttpServerClient::spawn_tracked(
             frontend,
             routes.clone(),
             shutdown,

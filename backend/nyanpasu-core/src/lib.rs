@@ -27,6 +27,7 @@ pub mod system_dns;
 pub mod system_proxy;
 pub mod tasks;
 pub mod traffic;
+pub mod transport;
 pub mod updates;
 #[cfg(windows)]
 pub mod uwp;

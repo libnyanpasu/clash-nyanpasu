@@ -13,6 +13,7 @@ import {
 } from 'react'
 import { chains, cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
+import { launcherMenuChipClassName } from './launcher-menu'
 
 export const selectTriggerVariants = cva(
   [
@@ -29,6 +30,8 @@ export const selectTriggerVariants = cva(
         filled: 'rounded-t bg-surface-variant/30 dark:bg-surface',
         // outlined use selectValuePlaceholderFieldsetVariants
         outlined: '',
+        // compact pill that sits at the end of a menu row
+        chip: [launcherMenuChipClassName, 'gap-1'],
       },
     },
     defaultVariants: {
@@ -62,6 +65,7 @@ export const selectLineVariants = cva('', {
       ],
       // hidden line for outlined variant
       outlined: 'hidden',
+      chip: 'hidden',
     },
   },
   defaultVariants: {
@@ -78,6 +82,7 @@ export const selectValueVariants = cva(
       variant: {
         filled: '',
         outlined: '',
+        chip: 'truncate',
       },
       haveValue: {
         true: '',
@@ -124,6 +129,7 @@ export const selectValuePlaceholderVariants = cva(
           'dark:group-data-[state=open]:text-inverse-primary',
           'dark:group-data-[state=closed]:text-on-primary-container',
         ],
+        chip: 'hidden',
       },
       focus: {
         true: '',
@@ -179,6 +185,7 @@ export const selectValuePlaceholderFieldsetVariants = cva(
           'dark:peer-not-focus:border-outline-variant',
           'dark:peer-focus:border-primary-container',
         ],
+        chip: 'hidden',
       },
     },
     defaultVariants: {
@@ -197,6 +204,7 @@ export const selectValuePlaceholderLegendVariants = cva('', {
       // only for outlined variant
       filled: 'hidden',
       outlined: 'invisible ml-2 px-2 text-sm h-0',
+      chip: 'hidden',
     },
     haveValue: {
       true: '',
@@ -232,6 +240,7 @@ export const selectContentVariants = cva(
       variant: {
         filled: 'rounded-t-none',
         outlined: '',
+        chip: 'min-w-40 rounded-2xl',
       },
     },
     defaultVariants: {
@@ -433,9 +442,14 @@ export const SelectIcon = ({
   className,
   ...props
 }: ComponentProps<typeof SelectPrimitive.Icon>) => {
+  const { variant } = useSelectContext()
+
   return (
     <SelectPrimitive.Icon
-      className={cn('absolute right-4', className)}
+      className={cn(
+        variant === 'chip' ? '-mr-1 size-5 shrink-0' : 'absolute right-4',
+        className,
+      )}
       asChild
       {...props}
     >
@@ -464,7 +478,10 @@ export const SelectContent = ({
                 className,
               )}
               style={{
-                width: 'var(--radix-popper-anchor-width)',
+                width:
+                  variant === 'chip'
+                    ? undefined
+                    : 'var(--radix-popper-anchor-width)',
                 maxHeight: 'var(--radix-popper-available-height)',
               }}
               initial={{

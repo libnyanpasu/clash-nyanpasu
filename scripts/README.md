@@ -100,14 +100,16 @@ SourceForge preflight errors are reported without blocking package builds or the
 GitHub updater.
 
 All finalized packages, updater bundles and signatures are uploaded as documents
-to `@ClashNyanpasu` using the historical MTProto/GramJS approach. Configure
+to the channel configured by the `TELEGRAM_ARCHIVE_CHANNEL` GitHub Actions
+variable, using the historical MTProto/GramJS approach. Configure that variable
+with the public channel username (including its leading `@`), plus
 `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_TOKEN` and an archive
 registration token (`ARCHIVE_UPLOAD_TOKEN`, `FILE_SERVER_TOKEN` or
 `UPLOAD_TOKEN`). The bot must be allowed to post documents to the channel.
 Documents upload sequentially with eight concurrent part workers per file. No
 Bot API download URL or token is exposed. The archive lists Telegram files and
 redirects `/bin/:id` to the corresponding
-`https://t.me/ClashNyanpasu/<message-id>` post. This is a Telegram message link;
+`https://t.me/<channel>/<message-id>` post. This is a Telegram message link;
 users download the document through Telegram.
 
 Deploy `nyanpasu-file-list` migration `0004_add_telegram_storage.sql` and its
@@ -201,9 +203,12 @@ Telegram notifications contain release/build information and the corresponding
 GitHub Release download page (`pre-release` for nightly builds). Notifications
 are available through manual dispatch; normal release/nightly jobs upload files
 through `telegram:publish`. The manual notification does not download or upload
-packages. To resend a release notification after the updated workflow is
-available on GitHub, manually run `[Reusable] Notify Telegram of Releases` with
+packages. Set the `TELEGRAM_RELEASE_CHANNEL` GitHub Actions variable to the
+public channel username, including its leading `@`. To resend a release
+notification after the updated workflow is available on GitHub, manually run
+`[Reusable] Notify Telegram of Releases` with
 `nightly: false` and the published `tag`, for example `v2.0.0-beta.1`. This
-sends only the notification to `@keikolog`; it does not rebuild packages.
+sends only the notification to the channel configured by the
+`TELEGRAM_RELEASE_CHANNEL` GitHub Actions variable; it does not rebuild packages.
 Re-running an older failed publication run uses that run's original workflow and
 scripts.

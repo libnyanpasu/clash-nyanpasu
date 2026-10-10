@@ -16,6 +16,7 @@ import {
   useProfile,
 } from '@nyanpasu/query'
 import type { ProviderReference, SubscriptionTarget } from './widget-config'
+import { ConfigRow } from './widget-config-row'
 
 export function WidgetOptionSelect({
   label,
@@ -26,31 +27,37 @@ export function WidgetOptionSelect({
 }: {
   label: string
   value: string
-  options: { value: string; label: string }[]
+  options: { value: string; label: string; disabled?: boolean }[]
   disabled: boolean
   onChange: (value: string) => void
 }) {
   const selected = options.find((option) => option.value === value)
+
   return (
-    <Select
-      variant="outlined"
-      value={value}
-      disabled={disabled}
-      onValueChange={onChange}
-    >
-      <SelectTrigger aria-label={label}>
-        <SelectValue placeholder={label}>
-          {selected?.label ?? value}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <ConfigRow label={label}>
+      <Select
+        variant="chip"
+        value={value}
+        disabled={disabled}
+        onValueChange={onChange}
+      >
+        <SelectTrigger aria-label={label}>
+          <SelectValue>{selected?.label ?? value}</SelectValue>
+        </SelectTrigger>
+
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+            >
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </ConfigRow>
   )
 }
 
@@ -137,7 +144,7 @@ export function ReportProfileField({
   onChange: (uid: string | null) => void
 }) {
   return (
-    <>
+    <div className="space-y-2" data-slot="widget-report-profile-config">
       <ProfileSelect
         value={profileUid}
         disabled={disabled}
@@ -146,7 +153,7 @@ export function ReportProfileField({
       <p className="text-on-surface-variant text-xs">
         {m.dashboard_widget_config_profile_attribution()}
       </p>
-    </>
+    </div>
   )
 }
 
@@ -182,40 +189,44 @@ export function ProviderReferencesField({
     ),
   ]
   return (
-    <div className="space-y-2" data-slot="widget-provider-references-config">
-      <p className="text-on-surface-variant text-xs">
+    <>
+      <div
+        className="text-on-surface-variant text-xs"
+        data-slot="widget-provider-references-config"
+      >
         {m.dashboard_widget_config_resources()}
-      </p>
+      </div>
+
       {(proxies.isError || rules.isError) && (
         <p className="text-error text-xs">
           {m.dashboard_widget_config_references_failed()}
         </p>
       )}
+
       {refs.map((ref) => {
         const checked = resources.some(
           (entry) => entry.kind === ref.kind && entry.name === ref.name,
         )
         const id = `${idPrefix}-${ref.kind}-${ref.name}`
+
         return (
-          <div
+          <ConfigRow
             key={JSON.stringify(ref)}
-            className="flex items-center justify-between gap-2"
+            htmlFor={id}
+            label={
+              <span title={ref.name} className="block truncate">
+                {ref.kind === 'proxy'
+                  ? m.dashboard_widget_config_proxy_providers()
+                  : m.dashboard_widget_config_rule_providers()}
+                : {ref.name}
+                {!available.some(
+                  (entry) => entry.kind === ref.kind && entry.name === ref.name,
+                )
+                  ? ` (${m.dashboard_widget_config_missing()})`
+                  : ''}
+              </span>
+            }
           >
-            <label
-              htmlFor={id}
-              className="min-w-0 truncate text-xs"
-              title={ref.name}
-            >
-              {ref.kind === 'proxy'
-                ? m.dashboard_widget_config_proxy_providers()
-                : m.dashboard_widget_config_rule_providers()}
-              : {ref.name}
-              {!available.some(
-                (entry) => entry.kind === ref.kind && entry.name === ref.name,
-              )
-                ? ` (${m.dashboard_widget_config_missing()})`
-                : ''}
-            </label>
             <Switch
               id={id}
               disabled={disabled}
@@ -231,9 +242,9 @@ export function ProviderReferencesField({
                 )
               }
             />
-          </div>
+          </ConfigRow>
         )
       })}
-    </div>
+    </>
   )
 }

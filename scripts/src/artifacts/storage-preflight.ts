@@ -14,7 +14,7 @@ export function storageConfiguration(
   };
   const sourceforge = get("SOURCEFORGE_PROJECT")?.trim() || null;
   const archive = get("IA_ITEM_PREFIX")?.trim() || null;
-  const telegram = get("TELEGRAM_TO")?.trim() || null;
+  const telegram = get("TELEGRAM_ARCHIVE_CHANNEL")?.trim() || null;
   if (sourceforge) {
     validateSourceforgeProject(sourceforge);
     validateSourceforgeUsername(required("SOURCEFORGE_USERNAME"));
@@ -33,9 +33,6 @@ export function storageConfiguration(
     if (!token) throw new Error("An archive upload token is required");
   }
   if (telegram) {
-    if (telegram !== "@ClashNyanpasu") {
-      throw new Error("Unexpected Telegram publication channel");
-    }
     const id = Number(required("TELEGRAM_API_ID"));
     if (!Number.isSafeInteger(id) || id <= 0) {
       throw new Error("Invalid TELEGRAM_API_ID");

@@ -11,8 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.repository, 'libnyanpasu')
     steps:
+      # The RequireCI ruleset allows the release app to bypass required checks.
+      - name: Create release app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Persist the allowed app credentials for the later git push.
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Install Node
         uses: actions/setup-node@v7
@@ -45,7 +57,8 @@ jobs:
       - uses: oleksiyrudenko/gha-git-credentials@v2.1
         if: steps.git-check.outputs.has-changes == 'true'
         with:
-          token: '${{ secrets.GITHUB_TOKEN }}'
+          # GITHUB_TOKEN is blocked by RequireCI; push as the allowed release app.
+          token: '${{ steps.app-token.outputs.token }}'
           name: 'github-actions[bot]'
           email: '41898282+github-actions[bot]@users.noreply.github.com'
 

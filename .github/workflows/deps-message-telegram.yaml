@@ -52,6 +52,6 @@ jobs:
           NIGHTLY: ${{ inputs.nightly }}
           RELEASE_TAG: ${{ inputs.tag }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_TO: '@keikolog'
-          TELEGRAM_TO_NIGHTLY: '@ClashNyanpasu'
+          TELEGRAM_RELEASE_CHANNEL: ${{ vars.TELEGRAM_RELEASE_CHANNEL }}
+          TELEGRAM_ARCHIVE_CHANNEL: ${{ vars.TELEGRAM_ARCHIVE_CHANNEL }}
           WORKFLOW_RUN_ID: ${{ github.run_id }}

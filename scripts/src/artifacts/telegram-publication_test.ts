@@ -25,7 +25,7 @@ const target: TelegramTarget = {
 const receipt = {
   messageId: 123,
   documentId: "456",
-  messageUrl: "https://t.me/ClashNyanpasu/123",
+  messageUrl: "https://t.me/ExampleArchive/123",
 };
 
 Deno.test("historical MTProto adapter loads in Deno without authentication or lifecycle scripts", async () => {

@@ -28,10 +28,7 @@ async function main() {
   const token = required("TELEGRAM_TOKEN");
   const archiveToken = Deno.env.get("ARCHIVE_UPLOAD_TOKEN")?.trim() ||
     Deno.env.get("FILE_SERVER_TOKEN")?.trim() || required("UPLOAD_TOKEN");
-  const chat = Deno.env.get("TELEGRAM_TO") || "@ClashNyanpasu";
-  if (chat !== "@ClashNyanpasu") {
-    throw new Error("Publication channel must be @ClashNyanpasu");
-  }
+  const chat = required("TELEGRAM_ARCHIVE_CHANNEL");
   const inventory = await readTelegramInventory(args["publication-dir"]);
   const targets = args.target && args.target !== "all"
     ? inventory.filter((target) => target.target === args.target)
@@ -145,7 +142,7 @@ async function main() {
         return {
           messageId: message.id,
           documentId: document.id.toString(),
-          messageUrl: `https://t.me/ClashNyanpasu/${message.id}`,
+          messageUrl: `https://t.me/${chat.replace(/^@/, "")}/${message.id}`,
         };
       },
       async (artifacts) => {

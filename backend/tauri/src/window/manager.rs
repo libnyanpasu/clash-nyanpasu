@@ -119,7 +119,7 @@ impl WindowManager {
 
         let always_on_top = config.always_on_top.unwrap_or_else(|| {
             app_handle
-                .try_state::<crate::client::NyanpasuClient>()
+                .try_state::<nyanpasu_core::client::NyanpasuClient>()
                 .is_some_and(|client| client.app_config_snapshot().always_on_top)
         });
 
@@ -417,7 +417,7 @@ fn apply(handle: &AppHandle, label: &str) {
             facts.hooks.on_dismissed(&window);
         }
         let settings = handle
-            .try_state::<crate::client::NyanpasuClient>()
+            .try_state::<nyanpasu_core::client::NyanpasuClient>()
             .map(|client| client.app_config_snapshot().window_close)
             .unwrap_or_default();
         match facts

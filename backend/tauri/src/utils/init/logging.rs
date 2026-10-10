@@ -19,7 +19,7 @@ pub fn init(
     profilers: &mut Profilers,
     paths: &PathResolver,
 ) -> Result<(Sender<ReloadSignal>, nyanpasu_jobs::LogCapture)> {
-    let jobs = crate::client::jobs::capture();
+    let jobs = nyanpasu_core::client::jobs::capture();
     let log_dir = paths.app_logs_dir();
     if !log_dir.exists() {
         let _ = fs::create_dir_all(&log_dir);

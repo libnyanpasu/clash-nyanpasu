@@ -120,7 +120,7 @@ impl DetailsSink for tauri::ipc::Channel<ClashConnectionDetails> {
 /// Sends the current frame (if any), then the latest frame after every
 /// `changed()`, until the watch closes. Cancellation is the caller's job:
 /// production races this against a subscription's token via
-/// `NyanpasuClient::spawn_tracked`.
+/// `nyanpasu_core::tasks::track_until_shutdown`.
 pub async fn forward_details(
     mut receiver: watch::Receiver<Option<Arc<ClashConnectionDetails>>>,
     sink: impl DetailsSink,
@@ -160,7 +160,7 @@ mod tests {
         })
     }
 
-    /// Mirrors `NyanpasuClient::spawn_tracked`'s race, without pulling in
+    /// Mirrors `track_until_shutdown`'s race, without pulling in
     /// `tauri::async_runtime` or a `TaskTracker` for a plain adapter test.
     fn spawn_forwarding(
         token: CancellationToken,

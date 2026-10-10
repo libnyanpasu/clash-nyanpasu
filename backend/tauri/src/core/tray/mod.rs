@@ -1,8 +1,8 @@
 use nyanpasu_core::hotkey::HotkeyAction;
-use std::{borrow::Cow, ops::ControlFlow};
+use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
 
 use crate::{
-    client::{NyanpasuClient, effects::plan::TrayView},
+    desktop::effects::plan::TrayView,
     ipc, log_err,
     utils::{help, proxy_env},
     window::{
@@ -15,7 +15,7 @@ use nyanpasu_config::{
     application::{ClashCore, TrayMenuMode},
     clash::config::overrides::Mode,
 };
-use nyanpasu_core::network::proxy_env::CopyEnvOption;
+use nyanpasu_core::{NyanpasuClient, network::proxy_env::CopyEnvOption};
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{
@@ -674,7 +674,7 @@ fn restart_core(app_handle: &AppHandle) {
     });
 }
 
-/// Runs a tray item through the facade, the same path a global shortcut takes.
+/// Runs a tray item through the host adapter, the same path a global shortcut takes.
 fn dispatch_action(app_handle: &AppHandle, action: HotkeyAction) {
     // A tray click during startup can arrive before the client is managed;
     // dropping it is better than taking the whole app down.
@@ -685,8 +685,14 @@ fn dispatch_action(app_handle: &AppHandle, action: HotkeyAction) {
         tracing::warn!(%action, "the tray fired before the client was ready");
         return;
     };
+    let window = app_handle
+        .state::<Arc<dyn crate::desktop::hotkey::ports::WindowControl>>()
+        .inner()
+        .clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = client.dispatch_hotkey_action(action).await {
+        if let Err(error) =
+            crate::desktop::hotkey::dispatch_hotkey_action(&client, window.as_ref(), action).await
+        {
             tracing::error!(%error, %action, "tray action failed");
         }
     });

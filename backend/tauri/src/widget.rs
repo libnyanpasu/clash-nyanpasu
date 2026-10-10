@@ -1,4 +1,4 @@
-use crate::client::ui_effects::ports::{
+use crate::desktop::ui_effects::ports::{
     ConnectWidgetSnafu, CreateIpcServerSnafu, DuplicateStdioSnafu, LocateExecutableSnafu,
     MissingWidgetSenderSnafu, ShutdownBeforeConnectSnafu, ShuttingDownSnafu, SpawnWidgetSnafu,
     StopPreviousSnafu, WIDGET_STOP_BOUND, WaitWidgetSnafu, WidgetError, WidgetExitedSnafu,

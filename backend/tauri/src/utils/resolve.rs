@@ -1,9 +1,5 @@
-use crate::{
-    client::{NyanpasuClient, application_workflow::startup::StartupOutcome},
-    core::tray::proxies,
-    log_err,
-    window::WindowManager,
-};
+use crate::{core::tray::proxies, log_err, window::WindowManager};
+use nyanpasu_core::{NyanpasuClient, client::application_workflow::startup::StartupOutcome};
 use tauri::{App, Manager};
 
 /// handle something when start app
@@ -20,7 +16,7 @@ pub fn resolve_setup(app: &mut App) {
     ); // generate latest cache icon by current scale factor
 
     {
-        let client = app.state::<crate::client::NyanpasuClient>();
+        let client = app.state::<nyanpasu_core::client::NyanpasuClient>();
         // TODO(startup): resolve_setup needs restructuring; startup_reconcile
         // should not block setup. See
         // docs/plan/2026-09-28-workflow-lifecycle-simplification.md §9.
@@ -55,7 +51,7 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(crate::core::clash::setup(app));
 
     log_err!(tauri::async_runtime::block_on(
-        app.state::<crate::client::NyanpasuClient>()
+        app.state::<nyanpasu_core::client::NyanpasuClient>()
             .start_clash_streams()
     ));
 

@@ -1,5 +1,9 @@
 pub mod backup;
 pub mod clash;
+pub mod client;
+pub use client::{ClientSetupArgs, ClientSetupOutput, NyanpasuClient};
+pub(crate) mod enhance;
+pub use enhance::PostProcessingOutput;
 pub mod connections;
 pub mod control;
 pub mod device;

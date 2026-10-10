@@ -214,6 +214,25 @@ impl HttpServerClient {
                 .0,
         })))
     }
+    pub(crate) async fn spawn_tracked(
+        frontend: Option<Frontend>,
+        routes: Arc<dyn HttpRoutes>,
+        shutdown: CancellationToken,
+        tasks: &tokio_util::task::TaskTracker,
+    ) -> anyhow::Result<Self> {
+        let debug_http = Self::spawn(frontend, routes).await?;
+        tasks.spawn({
+            let (http, token) = (debug_http.clone(), shutdown.child_token());
+            async move {
+                token.cancelled().await;
+                if let Err(error) = http.shutdown().await {
+                    tracing::warn!(%error, "debug HTTP server shutdown failed");
+                }
+            }
+        });
+        Ok(debug_http)
+    }
+
     pub async fn set_enabled(&self, enabled: bool) -> Result<DebugHttpStatus> {
         match self
             .0

@@ -162,7 +162,7 @@ function ProfileCardMetric({
             {value}
           </p>
         )}
-        <p className="text-on-surface-variant mt-1 text-sm">{hint}</p>
+        {hint && <p className="text-on-surface-variant mt-1 text-sm">{hint}</p>}
         {children}
       </div>
       {percent !== undefined && (
@@ -248,27 +248,29 @@ export function ProfileCardTraffic({
             : !usage || report.isPlaceholderData
               ? m.profile_card_traffic_loading()
               : total === 0 && usage.connections === 0
-                ? m.profile_card_traffic_empty()
+                ? ''
                 : m.topology_connection_count({ count: usage.connections })
         }
         percent={featured && !report.isPlaceholderData ? percent : undefined}
         percentLabel={m.profile_card_download_share()}
         showPercentLabel
       />
-      {usage && !report.isPlaceholderData && (
-        <div className="text-on-surface-variant flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          <span>
-            {m.dashboard_widget_traffic_report_download({
-              value: filesize(usage.bytes.download, { standard: 'iec' }),
-            })}
-          </span>
-          <span>
-            {m.dashboard_widget_traffic_report_upload({
-              value: filesize(usage.bytes.upload, { standard: 'iec' }),
-            })}
-          </span>
-        </div>
-      )}
+      {usage &&
+        (usage.bytes.upload > 0 || usage.bytes.download > 0) &&
+        !report.isPlaceholderData && (
+          <div className="text-on-surface-variant flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <span>
+              {m.dashboard_widget_traffic_report_download({
+                value: filesize(usage.bytes.download, { standard: 'iec' }),
+              })}
+            </span>
+            <span>
+              {m.dashboard_widget_traffic_report_upload({
+                value: filesize(usage.bytes.upload, { standard: 'iec' }),
+              })}
+            </span>
+          </div>
+        )}
     </div>
   )
 }

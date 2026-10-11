@@ -28,12 +28,7 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import {
-  getProfileSource,
-  getRemoteSource,
-  isConfigItem,
-  useProfile,
-} from '@nyanpasu/query'
+import { getRemoteSource, isConfigItem, useProfile } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { MeshGradient, meshGradientMeta } from '@paper-design/shaders-react'
@@ -205,13 +200,7 @@ const GridViewProfile = memo(function GridViewProfile({
                 />
               ) : isConfigItem(profile) ? (
                 <ProfileCardTraffic profile={profile} featured={featured} />
-              ) : (
-                <p className="text-on-surface-variant text-sm">
-                  {getProfileSource(profile)
-                    ? m.profile_card_local_description()
-                    : m.profile_card_composition_description()}
-                </p>
-              )}
+              ) : null}
             </CardContent>
 
             <CardFooter className="relative flex-row flex-wrap gap-1 px-4 pb-3">

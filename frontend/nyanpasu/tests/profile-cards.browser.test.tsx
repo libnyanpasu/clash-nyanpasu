@@ -234,8 +234,18 @@ test.for(['en', 'zh-cn'] as const)(
       },
     )
     await expect
-      .poll(() => card('local')?.textContent)
-      .toContain(m.profile_card_traffic_empty())
+      .poll(
+        () =>
+          card('local')?.querySelector('[data-slot="profile-card-remaining"]')
+            ?.textContent,
+      )
+      .toBe('0 B')
+    expect(card('local').textContent).not.toContain(
+      m.topology_connection_count({ count: 0 }),
+    )
+    expect(card('local').textContent).not.toContain(
+      m.dashboard_widget_traffic_report_upload({ value: '0 B' }),
+    )
     expect(card('local').querySelector('[role="meter"]')).toBeNull()
     const unknown = profile('remote', true)
     if (

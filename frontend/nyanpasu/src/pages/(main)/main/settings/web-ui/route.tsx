@@ -1,7 +1,7 @@
+import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
-import { SettingsTitle } from '../_modules/settings-title'
 import CoreSecretConfig from './_modules/core-secret-config'
 import ExternalControllerConfig from './_modules/external-controller-config'
 import PortStrategySelector from './_modules/port-strategy-selector'
@@ -40,7 +40,9 @@ const WebUISettings = () => {
 function RouteComponent() {
   return (
     <>
-      <SettingsTitle>{m.settings_label_external_controll()}</SettingsTitle>
+      <PageTitle backTo="/main/settings">
+        {m.settings_label_external_controll()}
+      </PageTitle>
 
       <div className="space-y-4 px-4 pb-4">
         <ExternalController />

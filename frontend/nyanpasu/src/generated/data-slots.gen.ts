@@ -283,7 +283,7 @@ export const DATA_SLOTS = [
   'settings-group',
   'settings-label',
   'settings-sidebar-scroll-area',
-  'settings-title',
+  'page-title',
   'shape-toggle',
   'shape-toggle-label',
   'shape-toggle-surface',

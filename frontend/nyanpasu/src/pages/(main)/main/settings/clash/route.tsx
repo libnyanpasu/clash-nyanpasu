@@ -1,4 +1,5 @@
 import { useDeferredValue } from 'react'
+import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -7,7 +8,6 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../_modules/settings-card'
-import { SettingsTitle } from '../_modules/settings-title'
 import AllowLanSwitch from './_modules/allow-lan-switch'
 import ControlChannelSettings from './_modules/control-channel-settings'
 import CoreLogStorageConfig from './_modules/core-log-storage-config'
@@ -137,7 +137,9 @@ function RouteComponent() {
 
   return (
     <>
-      <SettingsTitle>{m.settings_clash_settings_title()}</SettingsTitle>
+      <PageTitle backTo="/main/settings">
+        {m.settings_clash_settings_title()}
+      </PageTitle>
 
       <div className="space-y-4 px-4 pb-4">
         <PatchSettings />

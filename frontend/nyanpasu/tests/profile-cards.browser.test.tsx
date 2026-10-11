@@ -94,6 +94,24 @@ test.for(['en', 'zh-cn'] as const)(
         current = wire.params.uid
         return { status: 'committed', value: null }
       }
+      if (method === 'query_traffic_report') {
+        expect(
+          (
+            wire.params as unknown as {
+              request: { query: { filters: unknown[] } }
+            }
+          ).request.query.filters,
+        ).toEqual([{ dimension: 'profile', value: 'local' }])
+        return {
+          total: {
+            bytes: { upload: 1024 ** 3, download: 3 * 1024 ** 3 },
+            connections: 12,
+          },
+          current_rate: null,
+          rankings: [],
+          topology: null,
+        }
+      }
       if (method === 'delete_clash_connections') return null
       if (method === 'update_profile') {
         updates.push([wire.params.uid, wire.params.option])
@@ -155,6 +173,13 @@ test.for(['en', 'zh-cn'] as const)(
         .querySelector('[role="meter"]')
         ?.getAttribute('aria-valuenow'),
     ).toBe('68')
+    await expect
+      .poll(
+        () =>
+          card('local')?.querySelector('[data-slot="profile-card-remaining"]')
+            ?.textContent,
+      )
+      .toBe('4 GiB')
     expect(card('remote').getBoundingClientRect().width).toBeGreaterThan(
       card('local').getBoundingClientRect().width,
     )
@@ -165,7 +190,7 @@ test.for(['en', 'zh-cn'] as const)(
     expect(style.borderTopLeftRadius).toBe(style.borderBottomLeftRadius)
     expect(card('remote').querySelector('canvas')).not.toBeNull()
     await page.viewport(1200, 650)
-    expect(card('local').getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    expect(card('remote').getBoundingClientRect().bottom).toBeLessThanOrEqual(
       650,
     )
     const updateButton = Array.from(
@@ -186,11 +211,32 @@ test.for(['en', 'zh-cn'] as const)(
     expect(card('local').getBoundingClientRect().top).toBeLessThan(
       card('remote').getBoundingClientRect().top,
     )
+    expect(
+      card('local').querySelector('[role="meter"]')?.getAttribute('aria-label'),
+    ).toBe(m.profile_card_download_share())
+    expect(
+      card('local')
+        .querySelector('[role="meter"]')
+        ?.getAttribute('aria-valuenow'),
+    ).toBe('75')
     for (const width of [390, 320]) {
       await page.viewport(width, 900)
       container.style.width = `${width}px`
       await expect.poll(() => container.scrollWidth).toBeLessThanOrEqual(width)
     }
+    queries.setQueriesData(
+      { queryKey: ['traffic-report'] },
+      {
+        total: { bytes: { upload: 0, download: 0 }, connections: 0 },
+        current_rate: null,
+        rankings: [],
+        topology: null,
+      },
+    )
+    await expect
+      .poll(() => card('local')?.textContent)
+      .toContain(m.profile_card_traffic_empty())
+    expect(card('local').querySelector('[role="meter"]')).toBeNull()
     const unknown = profile('remote', true)
     if (
       unknown.type === 'config' &&

@@ -28,7 +28,12 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import { getProfileSource, getRemoteSource, useProfile } from '@nyanpasu/query'
+import {
+  getProfileSource,
+  getRemoteSource,
+  isConfigItem,
+  useProfile,
+} from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { MeshGradient, meshGradientMeta } from '@paper-design/shaders-react'
@@ -38,6 +43,7 @@ import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
 import { Route as IndexRoute } from '../index'
 import ProfileCardSubscription, {
+  ProfileCardTraffic,
   ProfileCardUpdate,
 } from './profile-card-subscription'
 import { categoryProfiles, isProxyProfile } from './utils'
@@ -224,6 +230,8 @@ const GridViewProfile = memo(function GridViewProfile({
                   profile={profile}
                   featured={featured}
                 />
+              ) : isConfigItem(profile) ? (
+                <ProfileCardTraffic profile={profile} featured={featured} />
               ) : (
                 <p className="text-on-surface-variant text-sm">
                   {getProfileSource(profile)

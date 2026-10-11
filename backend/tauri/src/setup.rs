@@ -221,7 +221,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             )),
             clock: Arc::new(nyanpasu_logging::MonotonicClock::default()),
             service: Arc::new(nyanpasu_core::logs::app::IpcServiceLogs::new(service_ipc)),
-            frontend: Arc::new(nyanpasu_core::logs::frontend::TracingFrontendLogSink),
         },
         core_specs: {
             let paths = paths.clone();
@@ -341,6 +340,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         .install(Arc::new(widget_manager))
         .context("Failed to install the network statistic widget")?;
     drop(span);
+    app.manage(crate::desktop::frontend_events::FrontendTelemetry::new(
+        Arc::new(crate::desktop::frontend_events::TracingFrontendLogSink),
+    ));
     app.manage(client);
 
     Ok(())
@@ -351,6 +353,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
 pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Result<()> {
     let dependencies = crate::unified_rpc::RpcDependencies {
         client: (*app.state::<NyanpasuClient>()).clone(),
+        frontend_telemetry: (*app.state::<crate::desktop::frontend_events::FrontendTelemetry>())
+            .clone(),
         debug_http: (*app.state::<crate::server::debug_http::HttpServerClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),

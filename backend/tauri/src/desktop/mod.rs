@@ -3,6 +3,7 @@
 pub mod app_update;
 pub mod effects;
 mod event_sink;
+pub mod frontend_events;
 pub mod hotkey;
 pub mod main_thread;
 pub mod system_proxy_adapters;

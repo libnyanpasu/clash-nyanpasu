@@ -20,6 +20,7 @@ use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 
 pub struct RpcDependencies {
     pub client: NyanpasuClient,
+    pub frontend_telemetry: crate::desktop::frontend_events::FrontendTelemetry,
     pub debug_http: crate::server::debug_http::HttpServerClient,
     pub storage: Storage,
     pub paths: nyanpasu_paths::PathResolver,
@@ -501,6 +502,9 @@ mod tests {
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client,
+            frontend_telemetry: crate::desktop::frontend_events::FrontendTelemetry::new(Arc::new(
+                crate::desktop::frontend_events::TracingFrontendLogSink,
+            )),
             debug_http,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -855,6 +859,9 @@ mod tests {
                 .await
                 .unwrap()
                 .client,
+            frontend_telemetry: crate::desktop::frontend_events::FrontendTelemetry::new(Arc::new(
+                crate::desktop::frontend_events::TracingFrontendLogSink,
+            )),
             debug_http,
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -989,6 +996,9 @@ mod tests {
             .client;
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
+            frontend_telemetry: crate::desktop::frontend_events::FrontendTelemetry::new(Arc::new(
+                crate::desktop::frontend_events::TracingFrontendLogSink,
+            )),
             debug_http: debug_http.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -1084,7 +1094,7 @@ mod tests {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tmp/dist"),
             ))),
         });
-        use nyanpasu_core::logs::frontend::{FrontendLogSink, SanitizedEvent};
+        use crate::desktop::frontend_events::{FrontendLogSink, FrontendTelemetry, SanitizedEvent};
         #[derive(Default)]
         struct RecordingSink(std::sync::Mutex<Vec<(String, SanitizedEvent)>>);
         impl FrontendLogSink for RecordingSink {
@@ -1097,7 +1107,7 @@ mod tests {
             fn dropped(&self, _: &str, _: u32) {}
         }
         let frontend_events = Arc::new(RecordingSink::default());
-        args.logging.frontend = frontend_events.clone();
+        let frontend_telemetry = FrontendTelemetry::new(frontend_events.clone());
         let (shutdown, tasks) = (args.shutdown.clone(), args.tasks.clone());
         let routes = Arc::new(RpcHttpRoutes::default());
         let debug_http = (crate::server::debug_http::HttpServerClient::spawn_tracked(
@@ -1116,6 +1126,7 @@ mod tests {
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
             client: client.clone(),
+            frontend_telemetry,
             debug_http: debug_http.clone(),
             storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
             paths,
@@ -1165,7 +1176,7 @@ mod tests {
                 .iter()
                 .filter(|(_, event)| event.event.message.contains("error reporting test"))
                 .collect();
-            use nyanpasu_core::logs::frontend::{FrontendEventKind, FrontendEventLevel};
+            use crate::desktop::frontend_events::{FrontendEventKind, FrontendEventLevel};
             let kinds: Vec<_> = fixture
                 .iter()
                 .map(|(_, event)| (event.event.kind, event.event.level))

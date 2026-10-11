@@ -24,7 +24,6 @@ mod effects {
 #[cfg(test)]
 pub(crate) mod effects_test_support;
 mod error;
-pub mod frontend_events;
 pub mod jobs;
 pub mod logs;
 #[cfg(test)]
@@ -231,7 +230,6 @@ struct NyanpasuClientInner {
     app_logs: nyanpasu_logging::LogsClient,
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn crate::logs::app::ServiceLogsPort>,
-    frontend_log: Arc<dyn crate::logs::frontend::FrontendLogSink>,
     application: ApplicationClient,
     session_state: SessionStateClient,
     clash_config: ClashConfigClient,
@@ -468,7 +466,6 @@ impl NyanpasuClient {
             }
         });
         let service_logs = logging.service;
-        let frontend_log = logging.frontend;
         let effects = crate::effects::actor::EffectsClient::spawn(
             crate::effects::actor::EffectsArgs {
                 port: Arc::new(crate::effects::executor::CoreLogCaptureEffects::new(
@@ -587,7 +584,6 @@ impl NyanpasuClient {
                 app_logs,
                 jobs,
                 service_logs,
-                frontend_log,
                 application,
                 session_state,
                 clash_config,

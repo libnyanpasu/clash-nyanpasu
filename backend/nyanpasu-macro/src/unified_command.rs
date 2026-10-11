@@ -99,6 +99,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 http_args.push(quote!(&dependencies.paths));
             } else if state_name.as_deref() == Some("HttpServerClient") {
                 http_args.push(quote!(&dependencies.debug_http));
+            } else if state_name.as_deref() == Some("FrontendTelemetry") {
+                http_args.push(quote!(&dependencies.frontend_telemetry));
             } else {
                 http_supported = false;
             }
@@ -350,6 +352,7 @@ fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
                 "Storage",
                 "PathResolver",
                 "HttpServerClient",
+                "FrontendTelemetry",
             ]
             .iter()
             .any(|name| is_state_of(&argument.ty, name))
@@ -495,6 +498,28 @@ mod tests {
         let expanded = expand(command).unwrap().to_string();
 
         assert!(expanded.contains("& dependencies . debug_http"));
+        assert!(!expanded.contains("RpcError :: unsupported"));
+    }
+
+    #[test]
+    fn frontend_telemetry_uses_host_dependencies_and_keeps_owner_out_of_json() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http, owner)]
+            pub fn report_frontend_events(
+                window: tauri::Window,
+                telemetry: State<'_, FrontendTelemetry>,
+                batch: FrontendEventBatch,
+            ) -> Result<()> { Ok(()) }
+        };
+        let expanded = expand(command).unwrap();
+        syn::parse2::<syn::File>(expanded.clone()).unwrap();
+        let expanded = expanded.to_string();
+
+        assert!(expanded.contains("& dependencies . frontend_telemetry"));
+        assert!(expanded.contains("RpcOwner :: desktop (window . label ())"));
+        assert!(expanded.contains("struct Args { batch : FrontendEventBatch , }"));
+        assert!(!expanded.contains("struct Args { window"));
+        assert!(!expanded.contains("struct Args { telemetry"));
         assert!(!expanded.contains("RpcError :: unsupported"));
     }
 

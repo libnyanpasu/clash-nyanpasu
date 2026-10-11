@@ -1854,10 +1854,10 @@ pub async fn close_log_session(
 #[specta::specta]
 pub fn report_frontend_events(
     window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    batch: nyanpasu_core::logs::frontend::FrontendEventBatch,
+    telemetry: tauri::State<'_, crate::desktop::frontend_events::FrontendTelemetry>,
+    batch: crate::desktop::frontend_events::FrontendEventBatch,
 ) -> Result {
-    client.report_frontend_events(window.label(), batch);
+    telemetry.report(window.label(), batch);
     Ok(())
 }
 

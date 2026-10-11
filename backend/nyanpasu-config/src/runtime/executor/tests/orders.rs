@@ -378,6 +378,44 @@ fn applied_fields_keep_prefilter_known_keys_and_drop_unknown_even_unfiltered() {
     assert_eq!(artifact.final_config.to_json()["custom-unknown"], json!(1));
 }
 
+/// #5678: with the whitelist off, a subscription's `port: 7890` used to reach
+/// the core next to `mixed-port: 7890`; the HTTP listener then took the port
+/// and the mixed listener failed to bind. Nyanpasu owns the proxy ports.
+#[test]
+fn unfiltered_profile_cannot_open_managed_proxy_ports() {
+    let profiles = profiles_with(
+        Some("sub-a"),
+        &[],
+        &[],
+        vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+    );
+    let content = MapContentSource::from_pairs(&[(
+        "sub-a.yaml",
+        "port: 7890\nsocks-port: 7891\ncustom-unknown: 1\nproxies: []\n",
+    )]);
+    let ov = overrides();
+    let mut inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
+    inputs.whitelist_enabled = false;
+
+    let unset = execute(&inputs, &content, &FakeScriptRunner::default())
+        .unwrap()
+        .final_config
+        .to_json();
+    assert!(unset.get("port").is_none());
+    assert!(unset.get("socks-port").is_none());
+    assert_eq!(unset["mixed-port"], json!(7890));
+    assert_eq!(unset["custom-unknown"], json!(1));
+
+    inputs.guard.ports.port = Some(7892);
+    inputs.guard.ports.socks_port = Some(7893);
+    let configured = execute(&inputs, &content, &FakeScriptRunner::default())
+        .unwrap()
+        .final_config
+        .to_json();
+    assert_eq!(configured["port"], json!(7892));
+    assert_eq!(configured["socks-port"], json!(7893));
+}
+
 /// #5609: a global Merge owns `tcp-concurrent` and `unified-delay` once they
 /// are unmanaged; it sets one and leaves the other out.
 #[test]

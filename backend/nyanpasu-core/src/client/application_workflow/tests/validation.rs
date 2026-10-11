@@ -41,7 +41,7 @@ async fn graph(dir: &tempfile::TempDir) -> Graph {
         client::tests::{test_materialization_port, test_typed_config_clients},
         state::profiles::test_support::{MockProfileFsPort, MockSubscriptionFetcher},
     };
-    let (application, _, clash) = test_typed_config_clients(dir).await;
+    let (application, clash) = test_typed_config_clients(dir).await;
     let profiles = crate::client::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),

@@ -101,6 +101,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 http_args.push(quote!(&dependencies.debug_http));
             } else if state_name.as_deref() == Some("FrontendTelemetry") {
                 http_args.push(quote!(&dependencies.frontend_telemetry));
+            } else if state_name.as_deref() == Some("ConfigurationStatusClient") {
+                http_args.push(quote!(&dependencies.configuration_status));
             } else {
                 http_supported = false;
             }
@@ -353,6 +355,7 @@ fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
                 "PathResolver",
                 "HttpServerClient",
                 "FrontendTelemetry",
+                "ConfigurationStatusClient",
             ]
             .iter()
             .any(|name| is_state_of(&argument.ty, name))
@@ -521,6 +524,18 @@ mod tests {
         assert!(!expanded.contains("struct Args { window"));
         assert!(!expanded.contains("struct Args { telemetry"));
         assert!(!expanded.contains("RpcError :: unsupported"));
+    }
+
+    #[test]
+    fn configuration_status_state_is_served_from_the_http_dependencies() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http)]
+            pub fn get_configuration_status(client: State<'_, ConfigurationStatusClient>) -> ConfigurationStatus { todo!() }
+        };
+        let expanded = expand(command).unwrap().to_string();
+        assert!(expanded.contains("& dependencies . configuration_status"));
+        assert!(!expanded.contains("RpcError :: unsupported"));
+        assert!(!expanded.contains("struct Args"));
     }
 
     #[test]

@@ -25,7 +25,6 @@ pub struct ConfigurationStatus {
 pub struct SourceVersions {
     pub application: u64,
     pub clash: u64,
-    pub session: u64,
     pub profiles: u64,
 }
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -66,7 +65,6 @@ impl NyanpasuClient {
         let source_versions = SourceVersions {
             application: self.inner.application.snapshot().version,
             clash: self.inner.clash_config.snapshot().version,
-            session: self.inner.session_state.snapshot().version,
             profiles: self.inner.profiles.snapshot().revision(),
         };
         let runtime = if let Some(recovery) = &journal.recovery {
@@ -109,7 +107,6 @@ impl NyanpasuClient {
                 + sources.event_seq
                 + source_versions.application
                 + source_versions.clash
-                + source_versions.session
                 + source_versions.profiles,
             source_versions,
             runtime,

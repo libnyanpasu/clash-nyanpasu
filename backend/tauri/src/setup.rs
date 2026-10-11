@@ -186,6 +186,13 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths.app_data_dir().as_std_path().to_owned(),
         paths.cache_dir().join("geodata").into_std_path_buf(),
     ));
+    let session =
+        tauri::async_runtime::block_on(crate::desktop::session_state::SessionStateClient::new(
+            paths.session_state_path(),
+            shutdown.child_token(),
+            &tasks,
+        ))?;
+    app.manage(session.clone());
     let span = tracing::info_span!("build_client").entered();
     let ClientSetupOutput {
         client,
@@ -318,7 +325,18 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     ));
     app.manage(crate::window::WindowManager::new(app_handle.clone()));
     app.manage(crate::window::kinds::TrayMenuWindowController::default());
-    forward_actor_events(app_handle.clone(), client.clone(), &shutdown, &tasks);
+    let configuration_status = crate::desktop::configuration_status::ConfigurationStatusClient::new(
+        client.clone(),
+        session,
+    );
+    app.manage(configuration_status.clone());
+    forward_actor_events(
+        app_handle.clone(),
+        client.clone(),
+        configuration_status,
+        &shutdown,
+        &tasks,
+    );
     tauri::async_runtime::spawn(track_until_shutdown(
         &tasks,
         &shutdown,
@@ -355,6 +373,9 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
         client: (*app.state::<NyanpasuClient>()).clone(),
         frontend_telemetry: (*app.state::<crate::desktop::frontend_events::FrontendTelemetry>())
             .clone(),
+        configuration_status: (*app
+            .state::<crate::desktop::configuration_status::ConfigurationStatusClient>())
+        .clone(),
         debug_http: (*app.state::<crate::server::debug_http::HttpServerClient>()).clone(),
         storage: (*app.state::<nyanpasu_core::storage::Storage>()).clone(),
         paths: (*app.state::<PathResolver>()).clone(),
@@ -485,11 +506,11 @@ fn build_application_effects(
 fn forward_actor_events(
     app_handle: tauri::AppHandle,
     client: NyanpasuClient,
+    configuration_client: crate::desktop::configuration_status::ConfigurationStatusClient,
     shutdown: &CancellationToken,
     tasks: &TaskTracker,
 ) {
     let (mut mutations, mut effects, mut sources) = client.subscribe_configuration_changes();
-    let configuration_client = client.clone();
     let configuration_handle = app_handle.clone();
     tauri::async_runtime::spawn(track_until_shutdown(tasks, shutdown, async move {
         loop {

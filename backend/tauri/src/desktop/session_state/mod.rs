@@ -1,6 +1,7 @@
+mod actor;
+
 use std::sync::Arc;
 
-use crate::state::{PersistentStateManagerSetup, StateSnapshot};
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::state::{
@@ -10,12 +11,9 @@ use nyanpasu_config::state::{
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::state::{
-    config_error::{ConfigError, SessionStateStoppedSnafu},
-    session_state::{
-        SessionStateActor, SessionStateActorArgs, SessionStateActorMessage, SessionStateSnapshot,
-    },
-};
+pub use actor::SessionStateSnapshot;
+use actor::{SessionStateActor, SessionStateActorArgs, SessionStateActorMessage};
+use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot, config_error::ConfigError};
 
 #[derive(Clone)]
 pub struct SessionStateClient {
@@ -60,7 +58,7 @@ impl SessionStateClient {
             .await
             .context("failed to spawn session state actor")?
             .0;
-        crate::tasks::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(SessionStateClientInner {
@@ -68,6 +66,30 @@ impl SessionStateClient {
                 snapshot,
             }),
         })
+    }
+
+    pub async fn save_main_window_geometry(
+        &self,
+        geometry: WindowState,
+    ) -> nyanpasu_core::client::Result<nyanpasu_core::client::runtime::MutationOutcome<()>> {
+        use nyanpasu_core::client::runtime::{CommitReceipt, MutationOutcome, RuntimeCommitStatus};
+        let snapshot = self.save_main_window(geometry).await?;
+        Ok(
+            MutationOutcome::from_parts((), Vec::new()).with_commit(CommitReceipt {
+                operation_id: None,
+                domain: "session".into(),
+                source_version: snapshot.version,
+                runtime: RuntimeCommitStatus::Unchanged,
+            }),
+        )
+    }
+
+    pub fn queue_main_window_geometry_save(
+        &self,
+        geometry: WindowState,
+    ) -> nyanpasu_core::client::Result<()> {
+        self.queue_main_window_save(geometry)?;
+        Ok(())
     }
 
     /// The last committed session state. Reads bypass the mailbox, so an
@@ -106,7 +128,7 @@ impl SessionStateClient {
                 reply: None,
             }) {
             Ok(()) => Ok(()),
-            Err(_) => SessionStateStoppedSnafu.fail(),
+            Err(_) => Err(ConfigError::SessionStateStopped),
         }
     }
 
@@ -134,7 +156,7 @@ impl SessionStateClient {
     {
         match self.inner.actor_ref.call(make, None).await {
             Ok(CallResult::Success(result)) => result,
-            Ok(CallResult::SenderError) | Err(_) => SessionStateStoppedSnafu.fail(),
+            Ok(CallResult::SenderError) | Err(_) => Err(ConfigError::SessionStateStopped),
             Ok(CallResult::Timeout) => {
                 unreachable!("session state calls are made without a timeout")
             }
@@ -259,5 +281,72 @@ mod tests {
             .unwrap();
 
         assert_eq!(client.main_window_geometry(), Some(geometry(7)));
+    }
+
+    #[tokio::test]
+    async fn persistence_failure_keeps_the_committed_geometry_and_version() {
+        let dir = tempdir().unwrap();
+        let parent = dir.path().join("state");
+        std::fs::create_dir(&parent).unwrap();
+        let path = Utf8PathBuf::from_path_buf(parent.join("session-state.yaml")).unwrap();
+        let client = SessionStateClient::new(path, CancellationToken::new(), &TaskTracker::new())
+            .await
+            .unwrap();
+        client.save_main_window(geometry(1)).await.unwrap();
+        let before = client.snapshot();
+        std::fs::rename(&parent, dir.path().join("saved-state")).unwrap();
+        std::fs::write(&parent, b"not a directory").unwrap();
+        let error = client
+            .save_main_window_geometry(geometry(2))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            nyanpasu_core::client::ClientError::Config(ConfigError::PersistSessionState { .. })
+        ));
+        assert_eq!(error.to_string(), "failed to persist the session state");
+        let wire = serde_json::to_value(crate::ipc::IpcError::from(error)).unwrap();
+        assert_eq!(
+            wire["kind"],
+            serde_json::json!({"domain": "config", "error": {"kind": "persist_session_state"}})
+        );
+        assert_eq!(wire["message"], "failed to persist the session state");
+        assert!(
+            wire["detail"]
+                .as_str()
+                .unwrap()
+                .contains("PersistSessionState")
+        );
+        assert_eq!(client.snapshot().version, before.version);
+        assert_eq!(client.main_window_geometry(), Some(geometry(1)));
+    }
+
+    #[tokio::test]
+    async fn a_drained_session_owner_keeps_the_original_command_error_payload() {
+        let dir = tempdir().unwrap();
+        let shutdown = CancellationToken::new();
+        let tasks = TaskTracker::new();
+        let client = SessionStateClient::new(temp_config_path(&dir), shutdown.clone(), &tasks)
+            .await
+            .unwrap();
+        shutdown.cancel();
+        tasks.close();
+        tasks.wait().await;
+        let error = client
+            .save_main_window_geometry(geometry(1))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            nyanpasu_core::client::ClientError::Config(ConfigError::SessionStateStopped)
+        ));
+        let wire = serde_json::to_value(crate::ipc::IpcError::from(error)).unwrap();
+        assert_eq!(
+            wire["kind"],
+            serde_json::json!({"domain": "config", "error": {"kind": "session_state_stopped"}})
+        );
+        assert_eq!(wire["message"], "the session state owner stopped");
+        assert_eq!(wire["detail"], "Config(SessionStateStopped)");
+        assert!(client.queue_main_window_geometry_save(geometry(2)).is_err());
     }
 }

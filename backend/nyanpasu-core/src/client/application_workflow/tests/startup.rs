@@ -640,9 +640,26 @@ async fn a_clean_local_start_applies_once_under_a_proven_owner() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn core_construction_does_not_open_window_session_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding()).await;
+    let session_path = args.paths.session_state_path();
+    // A directory cannot be loaded as session YAML. Core construction must not touch it.
+    std::fs::create_dir_all(&session_path).unwrap();
+    let client = NyanpasuClient::try_new_with_args(args)
+        .await
+        .unwrap()
+        .client;
+    assert!(session_path.is_dir());
+    assert_eq!(std::fs::read_dir(&session_path).unwrap().count(), 0);
+    client.request_shutdown();
+    client.wait_shutdown().await;
+}
+
 /// S4 (random port): startup is not a source transaction. A randomly picked
-/// mixed port lands in the runtime binding, and none of the four source
-/// domains changes, neither its version nor its bytes.
+/// mixed port lands in the runtime binding without changing core source
+/// versions or any of the four files. The host tests the session version.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
     let dir = tempfile::tempdir().unwrap();
@@ -676,12 +693,7 @@ async fn a_random_port_start_binds_its_pick_and_rewrites_no_source() {
     (async {
         let versions = async |client: &NyanpasuClient| {
             let versions = client.configuration_status().source_versions;
-            (
-                versions.application,
-                versions.clash,
-                versions.session,
-                versions.profiles,
-            )
+            (versions.application, versions.clash, versions.profiles)
         };
         let (before_versions, before_bytes) = (versions(&client).await, bytes());
 

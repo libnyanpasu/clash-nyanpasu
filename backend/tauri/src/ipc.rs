@@ -2040,15 +2040,15 @@ pub fn get_system_accent_color() -> Result<Option<String>> {
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ConfigurationStatusChanged(
-    pub nyanpasu_core::client::configuration_status::ConfigurationStatus,
+    pub crate::desktop::configuration_status::ConfigurationStatus,
 );
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
 pub fn get_configuration_status(
-    client: State<'_, NyanpasuClient>,
-) -> nyanpasu_core::client::configuration_status::ConfigurationStatus {
+    client: State<'_, crate::desktop::configuration_status::ConfigurationStatusClient>,
+) -> crate::desktop::configuration_status::ConfigurationStatus {
     client.configuration_status()
 }
 #[nyanpasu_macro::rpc(http)]

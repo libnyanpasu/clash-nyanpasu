@@ -10,7 +10,6 @@ use nyanpasu_config::{
     application::{WindowCloseOverride, WindowCloseSettings},
     state::window::WindowState,
 };
-use nyanpasu_core::client::NyanpasuClient;
 use std::collections::HashMap;
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
@@ -104,7 +103,7 @@ impl AppWindow for MainWindow {
 
     fn get_window_state(&self, app_handle: &AppHandle) -> Option<WindowState> {
         app_handle
-            .try_state::<NyanpasuClient>()?
+            .try_state::<crate::desktop::session_state::SessionStateClient>()?
             .main_window_geometry()
     }
 
@@ -257,7 +256,7 @@ pub async fn save_main_window_state_async(
 ) -> Result<()> {
     if let Some(geometry) = MainWindow.capture_state(app_handle)? {
         app_handle
-            .state::<NyanpasuClient>()
+            .state::<crate::desktop::session_state::SessionStateClient>()
             .save_main_window_geometry(geometry)
             .await?;
     }
@@ -269,7 +268,7 @@ pub async fn save_main_window_state_async(
 pub fn save_window_state(app_handle: &AppHandle) -> Result<()> {
     if let Some(geometry) = MainWindow.capture_state(app_handle)? {
         app_handle
-            .state::<NyanpasuClient>()
+            .state::<crate::desktop::session_state::SessionStateClient>()
             .queue_main_window_geometry_save(geometry)?;
     }
     Ok(())

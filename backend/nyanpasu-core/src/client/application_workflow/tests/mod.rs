@@ -329,7 +329,7 @@ async fn workflow_graph_with_clients(
 ) {
     use super::super::tests::{test_materialization_port, test_typed_config_clients};
     use crate::state::profiles::test_support::{MockProfileFsPort, MockSubscriptionFetcher};
-    let (application, _, clash) = test_typed_config_clients(dir).await;
+    let (application, clash) = test_typed_config_clients(dir).await;
     let profiles = super::super::profiles::ProfilesClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
         camino::Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap(),

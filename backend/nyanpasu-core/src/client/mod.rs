@@ -37,13 +37,9 @@ pub mod runtime;
 pub mod runtime_error;
 pub mod runtime_inspection;
 pub(crate) mod runtime_recovery;
-mod session_state;
 mod traffic;
 
-use self::{
-    application::ApplicationClient, clash_config::ClashConfigClient,
-    session_state::SessionStateClient,
-};
+use self::{application::ApplicationClient, clash_config::ClashConfigClient};
 use crate::{
     backup::{
         self, BackupError, BackupInfo, BackupKind, BackupRequest, KEEP_MANUAL_BACKUPS,
@@ -156,7 +152,7 @@ async fn new_typed_config_clients(
     paths: PathResolver,
     shutdown: &tokio_util::sync::CancellationToken,
     tasks: &tokio_util::task::TaskTracker,
-) -> anyhow::Result<(ApplicationClient, SessionStateClient, ClashConfigClient)> {
+) -> anyhow::Result<(ApplicationClient, ClashConfigClient)> {
     let application = ApplicationClient::new(
         mutations.clone(),
         build_channel,
@@ -166,9 +162,6 @@ async fn new_typed_config_clients(
     )
     .await?;
 
-    let session_state =
-        SessionStateClient::new(paths.session_state_path(), shutdown.child_token(), tasks).await?;
-
     let clash_config = ClashConfigClient::new(
         mutations.clone(),
         paths.clash_config_path(),
@@ -177,7 +170,7 @@ async fn new_typed_config_clients(
     )
     .await?;
 
-    Ok((application, session_state, clash_config))
+    Ok((application, clash_config))
 }
 
 /// The fixed core spec tests inject in place of the on-disk lookup.
@@ -231,7 +224,6 @@ struct NyanpasuClientInner {
     jobs: nyanpasu_jobs::JobsClient,
     service_logs: Arc<dyn crate::logs::app::ServiceLogsPort>,
     application: ApplicationClient,
-    session_state: SessionStateClient,
     clash_config: ClashConfigClient,
     profiles: profiles::ProfilesClient,
     fs: Arc<dyn ProfileFsPort>,
@@ -307,12 +299,12 @@ impl NyanpasuClient {
         let mutations = crate::state::mutation::MutationCoordinator::pending();
         let wiring = mutations.clone();
         let (owner_shutdown, owner_tasks) = (shutdown.clone(), tasks.clone());
-        let (application, session_state, clash_config, profiles, ports, fs) = async move {
+        let (application, clash_config, profiles, ports, fs) = async move {
             runtime_paths_for_setup
                 .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
                 .await
                 .context("failed to clean stale runtime candidates")?;
-            let (application, session_state, clash_config) = new_typed_config_clients(
+            let (application, clash_config) = new_typed_config_clients(
                 mutations.clone(),
                 installed_channel,
                 paths.clone(),
@@ -345,7 +337,6 @@ impl NyanpasuClient {
             .await?;
             anyhow::Ok((
                 application,
-                session_state,
                 clash_config,
                 profiles,
                 ports,
@@ -365,7 +356,6 @@ impl NyanpasuClient {
             logging,
             jobs,
             application,
-            session_state,
             clash_config,
             profiles,
             fs,
@@ -411,7 +401,6 @@ impl NyanpasuClient {
         logging: crate::logs::app::LoggingSetup,
         jobs: nyanpasu_jobs::JobsClient,
         application: ApplicationClient,
-        session_state: SessionStateClient,
         clash_config: ClashConfigClient,
         profiles: profiles::ProfilesClient,
         fs: Arc<dyn ProfileFsPort>,
@@ -585,7 +574,6 @@ impl NyanpasuClient {
                 jobs,
                 service_logs,
                 application,
-                session_state,
                 clash_config,
                 profiles,
                 fs,
@@ -828,37 +816,6 @@ impl NyanpasuClient {
         &self,
     ) -> std::result::Result<(), crate::effects::error::EffectsError> {
         self.inner.effects.request_tray_refresh()
-    }
-
-    pub async fn save_main_window_geometry(
-        &self,
-        geometry: nyanpasu_config::state::window::WindowState,
-    ) -> Result<runtime::MutationOutcome<()>> {
-        let snapshot = self.inner.session_state.save_main_window(geometry).await?;
-        Ok(
-            runtime::MutationOutcome::from_parts((), Vec::new()).with_commit(
-                runtime::CommitReceipt {
-                    operation_id: None,
-                    domain: "session".into(),
-                    source_version: snapshot.version,
-                    runtime: runtime::RuntimeCommitStatus::Unchanged,
-                },
-            ),
-        )
-    }
-
-    /// Queues a save of the main window's geometry; nothing waits for it.
-    pub fn queue_main_window_geometry_save(
-        &self,
-        geometry: nyanpasu_config::state::window::WindowState,
-    ) -> Result<()> {
-        self.inner.session_state.queue_main_window_save(geometry)?;
-        Ok(())
-    }
-
-    /// The geometry the main window reopens with, as last saved.
-    pub fn main_window_geometry(&self) -> Option<nyanpasu_config::state::window::WindowState> {
-        self.inner.session_state.main_window_geometry()
     }
 
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {
@@ -1272,7 +1229,6 @@ pub(crate) mod tests {
             ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
             ProfileDefinition, ProfileMetadata, ProfileSource, SubscriptionInfo,
         },
-        state::window::WindowState,
     };
     use std::sync::Mutex as StdMutex;
     use struct_patch::Patch;
@@ -2254,7 +2210,7 @@ pub(crate) mod tests {
 
     pub(crate) async fn test_typed_config_clients(
         dir: &TempDir,
-    ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
+    ) -> (ApplicationClient, ClashConfigClient) {
         let application = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
             ReleaseChannel::Stable,
@@ -2264,13 +2220,6 @@ pub(crate) mod tests {
         )
         .await
         .expect("application client should be created");
-        let session_state = SessionStateClient::new(
-            temp_config_path(dir, "session-state.yaml"),
-            tokio_util::sync::CancellationToken::new(),
-            &tokio_util::task::TaskTracker::new(),
-        )
-        .await
-        .expect("session state client should be created");
         seed_test_clash_config(dir.path().join("clash-config.yaml"));
         let clash_config = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2281,7 +2230,7 @@ pub(crate) mod tests {
         .await
         .expect("clash config client should be created");
 
-        (application, session_state, clash_config)
+        (application, clash_config)
     }
 
     pub(crate) fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort> {
@@ -2394,11 +2343,10 @@ pub(crate) mod tests {
         system_dns: Arc<dyn SystemDnsCache>,
         os_proxy: Arc<dyn OsProxyPort>,
     ) -> NyanpasuClient {
-        let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+        let (application, clash_config) = test_typed_config_clients(dir).await;
         test_client_from_typed_clients(
             dir,
             application,
-            session_state,
             clash_config,
             system_dns,
             Arc::new(MockDirectEgressProbe::new()),
@@ -2411,7 +2359,6 @@ pub(crate) mod tests {
     async fn test_client_from_typed_clients(
         dir: &TempDir,
         application: ApplicationClient,
-        session_state: SessionStateClient,
         clash_config: ClashConfigClient,
         system_dns: Arc<dyn SystemDnsCache>,
         direct_egress: Arc<dyn DirectEgressProbe>,
@@ -2446,7 +2393,6 @@ pub(crate) mod tests {
             ),
             profiles.jobs(),
             application,
-            session_state,
             clash_config,
             profiles,
             Arc::new(MockProfileFsPort::new()),
@@ -2597,13 +2543,6 @@ pub(crate) mod tests {
         )
         .await
         .expect("application client should be created");
-        let session_state = SessionStateClient::new(
-            temp_config_path(&dir, "session-state.yaml"),
-            tokio_util::sync::CancellationToken::new(),
-            &tokio_util::task::TaskTracker::new(),
-        )
-        .await
-        .expect("session state client should be created");
         seed_test_clash_config(dir.path().join("clash-config.yaml"));
         let clash_config = ClashConfigClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -2616,7 +2555,6 @@ pub(crate) mod tests {
         let client = test_client_from_typed_clients(
             &dir,
             application,
-            session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
             Arc::new(MockDirectEgressProbe::new()),
@@ -2728,11 +2666,10 @@ pub(crate) mod tests {
         dir: &TempDir,
         direct_egress: Arc<dyn DirectEgressProbe>,
     ) -> NyanpasuClient {
-        let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+        let (application, clash_config) = test_typed_config_clients(dir).await;
         test_client_from_typed_clients(
             dir,
             application,
-            session_state,
             clash_config,
             Arc::new(NoopSystemDnsCache),
             direct_egress,
@@ -3263,7 +3200,7 @@ pub(crate) mod tests {
         dir: &TempDir,
         fetcher: Arc<dyn SubscriptionFetcher>,
     ) -> NyanpasuClient {
-        let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+        let (application, clash_config) = test_typed_config_clients(dir).await;
         let paths = test_paths(dir.path(), dir.path().join("data"));
         let ports = Arc::new(SessionPortResolver::default());
         let file_service = Arc::new(ProfileFileService::new(
@@ -3299,7 +3236,6 @@ pub(crate) mod tests {
             ),
             profiles.jobs(),
             application,
-            session_state,
             clash_config,
             profiles,
             file_service.clone() as Arc<dyn ProfileFsPort>,
@@ -3390,20 +3326,6 @@ pub(crate) mod tests {
                 .expect("app patch should succeed");
             assert!(client.get_app_config().await.unwrap().enable_system_proxy);
 
-            let window_state = WindowState {
-                width: 1024,
-                height: 768,
-                x: 10,
-                y: 20,
-                maximized: false,
-                fullscreen: false,
-            };
-            client
-                .save_main_window_geometry(window_state.clone())
-                .await
-                .expect("session save should succeed");
-            assert_eq!(client.main_window_geometry(), Some(window_state));
-
             let mut clash_patch = ClashConfig::new_empty_patch();
             clash_patch.enable_tun_mode = Some(true);
             client
@@ -3420,7 +3342,7 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
 
         (async {
-            let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
+            let (application, clash_config) = test_typed_config_clients(&dir).await;
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.theme_color = Some(serde_yaml_ng::from_str("\"#123456\"").unwrap());
             application
@@ -3428,11 +3350,10 @@ pub(crate) mod tests {
                 .await
                 .expect("typed application patch should persist");
             drop(application);
-            drop(session_state);
             drop(clash_config);
 
             let paths = test_paths(dir.path(), dir.path().join("data"));
-            let (loaded, _session_state, _clash_config) = new_typed_config_clients(
+            let (loaded, _clash_config) = new_typed_config_clients(
                 crate::state::mutation::MutationCoordinator::isolated(),
                 ReleaseChannel::Stable,
                 paths,
@@ -4205,8 +4126,8 @@ pub(crate) mod tests {
             // No source moved, so only the receipt advanced the sequence.
             let (was, now) = (&before.source_versions, &failed.source_versions);
             assert_eq!(
-                (was.application, was.clash, was.session, was.profiles),
-                (now.application, now.clash, now.session, now.profiles)
+                (was.application, was.clash, was.profiles),
+                (now.application, now.clash, now.profiles)
             );
             assert_eq!(failed.sources.len(), 1);
             assert_eq!(failed.sources[0].profile, uid);
@@ -4463,7 +4384,7 @@ pub(crate) mod tests {
             .returning(|_, _| Ok(CleanupOutcome::Removed));
 
         (async {
-            let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
+            let (application, clash_config) = test_typed_config_clients(&dir).await;
             let profiles = profiles::ProfilesClient::new(
                 crate::state::mutation::MutationCoordinator::isolated(),
                 temp_config_path(&dir, "profiles.yaml"),
@@ -4492,7 +4413,6 @@ pub(crate) mod tests {
                 ),
                 profiles.jobs(),
                 application,
-                session_state,
                 clash_config,
                 profiles,
                 Arc::new(MockProfileFsPort::new()),

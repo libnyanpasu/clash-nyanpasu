@@ -216,7 +216,7 @@ pub fn run() -> std::io::Result<()> {
         "logging initialized"
     );
     let prepare_span = tracing::info_span!("prepare_app").entered();
-    crate::log_err!(init::init_config(&paths));
+    crate::log_err!(nyanpasu_core::profiles::init_config(&paths));
 
     // Until setup hands over an app handle, a panic can only end the process.
     install_panic_hook(None);

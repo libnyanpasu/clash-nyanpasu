@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
-use nyanpasu_core::{format::Format, migration::modules::profiles::ProfilesFormat};
 use nyanpasu_paths::PathResolver;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
@@ -125,48 +124,6 @@ fn wait_for_migration_output(
         }
     }
     result
-}
-
-/// Initialize all the config files
-/// before tauri setup
-pub fn init_config(paths: &PathResolver) -> Result<()> {
-    // Check if old config dir exist and new config dir is not exist
-    // let mut old_app_dir: Option<PathBuf> = None;
-    // let mut app_dir: Option<PathBuf> = None;
-    // crate::dialog_err!(dirs::old_app_home_dir().map(|_old_app_dir| {
-    //     old_app_dir = Some(_old_app_dir);
-    // }));
-
-    // crate::dialog_err!(dirs::app_home_dir().map(|_app_dir| {
-    //     app_dir = Some(_app_dir);
-    // }));
-
-    // if let (Some(app_dir), Some(old_app_dir)) = (app_dir, old_app_dir) {
-    //     let msg = t!("dialog.migrate");
-    //     if !app_dir.exists() && old_app_dir.exists() && migrate_dialog(msg.to_string().as_str()) {
-    //         if let Err(e) = do_config_migration(&old_app_dir, &app_dir) {
-    //             super::dialog::error_dialog(format!("failed to do migration: {:?}", e))
-    //         }
-    //     }
-    //     if !app_dir.exists() {
-    //         let _ = fs::create_dir_all(app_dir);
-    //     }
-    // }
-
-    let path = paths.profiles_path();
-    if !path.exists() {
-        // Stamped like every later write, since the app refuses to load
-        // an unstamped profiles.yaml.
-        let mut content = Vec::new();
-        ProfilesFormat::default().serialize(
-            &mut content,
-            &nyanpasu_config::profile::Profiles::default(),
-            Some("# Clash Nyanpasu"),
-        )?;
-        fs::write(&path, content).with_context(|| format!("failed to save file \"{path}\""))?;
-    }
-
-    Ok(())
 }
 
 /// The bundled `resources` dir, which only Tauri can locate.

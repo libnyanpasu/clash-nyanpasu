@@ -8,6 +8,7 @@ pub mod frontend_events;
 pub mod hotkey;
 pub(crate) mod icon_cache;
 pub mod main_thread;
+pub(crate) mod proxy_projection;
 pub mod session_state;
 pub mod system_proxy_adapters;
 pub mod ui_effects;

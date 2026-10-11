@@ -37,16 +37,18 @@ fn delay_query(
 }
 
 impl NyanpasuClient {
+    /// Returns untrimmed proxies after checking the API lease and cache freshness.
+    /// Reuses a same-instance snapshot younger than three seconds; otherwise refreshes it.
     pub async fn get_proxies(&self) -> Result<crate::clash::proxies::Proxies> {
-        let proxies = self.inner.proxies.get(false).await?;
-        Ok(proxies.trim_for_frontend(&self.default_latency_test_url().await?))
+        self.inner.proxies.get(false).await
     }
+    /// Forces a refresh through the same proxy owner and returns untrimmed proxies.
     pub async fn refresh_proxies(&self) -> Result<crate::clash::proxies::Proxies> {
-        let proxies = self.inner.proxies.get(true).await?;
-        Ok(proxies.trim_for_frontend(&self.default_latency_test_url().await?))
+        self.inner.proxies.get(true).await
     }
     /// The URL a test without an explicit one uses, as in `delay_query`.
-    async fn default_latency_test_url(&self) -> Result<String> {
+    /// Reads app configuration, propagating its errors, and falls back when the URL is empty.
+    pub async fn default_latency_test_url(&self) -> Result<String> {
         let url = self.get_app_config().await?.default_latency_test;
         Ok(if url.is_empty() {
             FALLBACK_LATENCY_TEST_URL.into()
@@ -90,6 +92,7 @@ impl NyanpasuClient {
     pub fn request_proxy_refresh(&self) {
         self.inner.proxies.request_refresh();
     }
+    /// Returns the untrimmed cached snapshot without refreshing; empty if absent or revoked.
     pub fn proxies_snapshot(&self) -> crate::clash::proxies::Proxies {
         self.inner.proxies.snapshot()
     }

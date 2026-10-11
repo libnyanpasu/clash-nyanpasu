@@ -1136,7 +1136,12 @@ pub async fn clash_api_get_providers_proxies(
 pub async fn get_proxies(
     client: State<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.get_proxies().await?)
+    let proxies = client.get_proxies().await?;
+    let default_url = client.default_latency_test_url().await?;
+    Ok(crate::desktop::proxy_projection::trim_for_frontend(
+        proxies,
+        &default_url,
+    ))
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1145,7 +1150,12 @@ pub async fn get_proxies(
 pub async fn mutate_proxies(
     client: State<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.refresh_proxies().await?)
+    let proxies = client.refresh_proxies().await?;
+    let default_url = client.default_latency_test_url().await?;
+    Ok(crate::desktop::proxy_projection::trim_for_frontend(
+        proxies,
+        &default_url,
+    ))
 }
 
 #[nyanpasu_macro::rpc(http)]

@@ -23,6 +23,7 @@ Put handwritten script source under `scripts/src/`, grouped by responsibility:
 | `generate/`            | Git metadata, data slots and offline map generation                                 |
 | `testing/`             | Browser integration checks requiring a running application                          |
 | `frontend/`            | Frontend workspace package-boundary inventory, policy checks and gate CLI           |
+| `ci/`                  | Pull request change classification for CI                                           |
 | `shared/`              | Small modules reused across script categories, such as logging and repository paths |
 
 Keep Deno configuration, its lockfile, script documentation and editor configuration

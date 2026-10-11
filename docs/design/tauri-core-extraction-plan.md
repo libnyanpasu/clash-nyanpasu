@@ -1,7 +1,7 @@
 # Tauri → nyanpasu-core：GUI 与 CLI 共享 Rust 应用核心
 
 > 本文定义目标架构、职责归属、阶段范围与验收要求，不记录实施流水账。
-> 当前还有哪些代码需要修正、哪些候选尚待验收，见[剩余修正清单](tauri-core-remaining-corrections.md)。
+> 当前阶段状态、实际验证与剩余修正，见[阶段状态与剩余修正](tauri-core-remaining-corrections.md)。
 > 保留 P01–P11 编号作为能力与交付索引；修订计划不等于重做已完成迁移，也不授权改写已发布提交。
 
 ## 1. 唯一主目标
@@ -42,22 +42,22 @@ Tauri GUI                         未来 CLI
 
 **没有 Tauri import、只使用普通 Rust 值，只能说明代码可以脱离 Tauri 编译，不能单独证明它应属于 core。** 同样，当前只有 GUI consumer，也不足以把真正共享的领域基础设施移回 GUI。
 
-| 能力 | 目标 owner | 边界说明 |
-| --- | --- | --- |
-| `NyanpasuClient`、profiles/config、事务与 runtime 工作流 | core | facade 暴露领域操作，不暴露任意 service/ActorRef 查询 |
-| core/daemon 控制、Clash API、出站 HTTP、下载、代理内核更新 | core 及既有中立库 | 这些是领域执行能力，不是此次取消的前端入站 RPC 服务 |
-| storage、backup、配置 migration、日志存储、traffic、geo | core 及既有中立库 | 复用真实实现与持久化约束；不因当前 consumer 单一而移回 GUI |
-| system proxy、DNS、PAC 获取/校验/缓存与 OS URL 安装 | core | 不把这些机制误称为本仓提供了本地 PAC server |
-| effects 调度、desired/revision/health、平台收敛 | core | 只有一个 scheduler；GUI presentation 是可选端口 |
-| `PathResolver`、能力所消费的 FS/process/OS ports | 对应中立库或 core 能力模块 | 显式注入路径和宿主输入，不反查 GUI 构建环境 |
-| 现有 HTTP listener、鉴权、静态资源、dev proxy、RPC/SSE adapters | Tauri/浏览器宿主边界 | 可以不依赖 Tauri 类型，但不是共享 Rust 业务核心 |
-| `ipc.rs`、`unified_rpc.rs`、`IpcError`、owner/envelope、Specta 导出 | 宿主传输边界 | `ClientError`、`RuntimeError`、`ProfilesError` 等领域错误仍留 core |
-| frontend telemetry 批处理、净化、前端 owner 日志写入 | 宿主 | 与 core 的 app/core 日志存储、轮转和查询能力区分 |
-| 前端远程 icon 缓存、data URL/显示相关投影 | 宿主 presentation | 共享网络客户端仍可复用，不把整个 network 能力移回 GUI |
-| 窗口 session state、窗口几何、托盘/widget/主线程 | 宿主 | session 迁出必须同时处理真实版本、status wire 投影与退出前保存 |
-| proxy cache、刷新/选择/失效与订阅 | core | frontend trimming 留宿主；不复制 actor/cache，不拿旧 snapshot 冒充 fresh 查询 |
-| Tauri 应用自身的 updater、feed/mirror/release、安装/重启 | 宿主 | 与代理内核 updater 分开，不能因已有 backend trait 就迁 core |
-| bundle 发现、CLI parse、GUI 单实例、进程退出、全局 subscriber | 宿主 | 实际共享的机制按 consumer 单独评估，不整桶迁 `process` |
+| 能力                                                                | 目标 owner                 | 边界说明                                                                      |
+| ------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------- |
+| `NyanpasuClient`、profiles/config、事务与 runtime 工作流            | core                       | facade 暴露领域操作，不暴露任意 service/ActorRef 查询                         |
+| core/daemon 控制、Clash API、出站 HTTP、下载、代理内核更新          | core 及既有中立库          | 这些是领域执行能力，不是此次取消的前端入站 RPC 服务                           |
+| storage、backup、配置 migration、日志存储、traffic、geo             | core 及既有中立库          | 复用真实实现与持久化约束；不因当前 consumer 单一而移回 GUI                    |
+| system proxy、DNS、PAC 获取/校验/缓存与 OS URL 安装                 | core                       | 不把这些机制误称为本仓提供了本地 PAC server                                   |
+| effects 调度、desired/revision/health、平台收敛                     | core                       | 只有一个 scheduler；GUI presentation 是可选端口                               |
+| `PathResolver`、能力所消费的 FS/process/OS ports                    | 对应中立库或 core 能力模块 | 显式注入路径和宿主输入，不反查 GUI 构建环境                                   |
+| 现有 HTTP listener、鉴权、静态资源、dev proxy、RPC/SSE adapters     | Tauri/浏览器宿主边界       | 可以不依赖 Tauri 类型，但不是共享 Rust 业务核心                               |
+| `ipc.rs`、`unified_rpc.rs`、`IpcError`、owner/envelope、Specta 导出 | 宿主传输边界               | `ClientError`、`RuntimeError`、`ProfilesError` 等领域错误仍留 core            |
+| frontend telemetry 批处理、净化、前端 owner 日志写入                | 宿主                       | 与 core 的 app/core 日志存储、轮转和查询能力区分                              |
+| 前端远程 icon 缓存、data URL/显示相关投影                           | 宿主 presentation          | 共享网络客户端仍可复用，不把整个 network 能力移回 GUI                         |
+| 窗口 session state、窗口几何、托盘/widget/主线程                    | 宿主                       | session 迁出必须同时处理真实版本、status wire 投影与退出前保存                |
+| proxy cache、刷新/选择/失效与订阅                                   | core                       | frontend trimming 留宿主；不复制 actor/cache，不拿旧 snapshot 冒充 fresh 查询 |
+| Tauri 应用自身的 updater、feed/mirror/release、安装/重启            | 宿主                       | 与代理内核 updater 分开，不能因已有 backend trait 就迁 core                   |
+| bundle 发现、CLI parse、GUI 单实例、进程退出、全局 subscriber       | 宿主                       | 实际共享的机制按 consumer 单独评估，不整桶迁 `process`                        |
 
 core 内继续按能力组织，不先创建未来无人使用的目录、trait 或 feature。现有 config、paths、runtime 子模块和 traffic/geodata 库继续复用，不物理吞并它们。
 
@@ -84,16 +84,16 @@ core 内继续按能力组织，不先创建未来无人使用的目录、trait 
 
 下表是既有迁移的责任索引与需保留的设计，不是新的待执行文件搬迁清单。具体剩余增量以[剩余修正清单](tauri-core-remaining-corrections.md)为准。
 
-| Phase | 保留的共享能力 | 不应重新扩大或破坏的边界 |
-| --- | --- | --- |
-| P01 | runtime config 唯一 owner、tasks/blocking helpers、network/identity 输入、binary installation contracts | 不恢复 application/platform，不改变不同调用链的 UA，不重建 resolver，不迁无消费者的 trait |
-| P02 | storage/change subscriptions、consistent backup、配置 migration/legacy schema | host 负责产品入口与退出；同产品 CLI 不需要另造 strict Storage opener，既有 `web:` namespace 保留 |
-| P03 | core/service control、版本契约/错误/parser、OS diagnostics | 原 Tauri version reader 留宿主；不借 move 改路径选择、进程参数、IPC 或 caller budgets |
-| P04 | core/app 日志能力、Clash streams、connections、traffic/geo、direct-egress/network diagnostics | frontend telemetry 与 icon cache 不因曾被迁入就继续留 core；它们由 P09 纠正 |
-| P05 | 代理内核 download/session/updater/manifest/installer ports | 应用自身 updater 与 release policy 整体留宿主；安装目的地政策另行决定 |
-| P06 | system proxy/DNS、autostart owner/port、effects、可选 presentation | 具体 autostart 配置/注册、tray/widget/native adapters 留宿主；保留同步 invalidation 和既有观察 |
-| P07 | profiles FS/fetch/materialization ports、IO errors、content preparation 与原测试 | 保留 fetch-before-commit、symlink/path validation、frozen contents、顺序和设备采集时机 |
-| P08 | async `NyanpasuClient`、typed clients、真实事务/TCC/settlement/startup/recovery、jobs/proxy owners | 不拆坏递归错误和事务闭包，不引临时 callback registry；GUI-only 残余按真实闭包单独纠正 |
+| Phase | 保留的共享能力                                                                                          | 不应重新扩大或破坏的边界                                                                         |
+| ----- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| P01   | runtime config 唯一 owner、tasks/blocking helpers、network/identity 输入、binary installation contracts | 不恢复 application/platform，不改变不同调用链的 UA，不重建 resolver，不迁无消费者的 trait        |
+| P02   | storage/change subscriptions、consistent backup、配置 migration/legacy schema                           | host 负责产品入口与退出；同产品 CLI 不需要另造 strict Storage opener，既有 `web:` namespace 保留 |
+| P03   | core/service control、版本契约/错误/parser、OS diagnostics                                              | 原 Tauri version reader 留宿主；不借 move 改路径选择、进程参数、IPC 或 caller budgets            |
+| P04   | core/app 日志能力、Clash streams、connections、traffic/geo、direct-egress/network diagnostics           | frontend telemetry 与 icon cache 不因曾被迁入就继续留 core；它们由 P09 纠正                      |
+| P05   | 代理内核 download/session/updater/manifest/installer ports                                              | 应用自身 updater 与 release policy 整体留宿主；安装目的地政策另行决定                            |
+| P06   | system proxy/DNS、autostart owner/port、effects、可选 presentation                                      | 具体 autostart 配置/注册、tray/widget/native adapters 留宿主；保留同步 invalidation 和既有观察   |
+| P07   | profiles FS/fetch/materialization ports、IO errors、content preparation 与原测试                        | 保留 fetch-before-commit、symlink/path validation、frozen contents、顺序和设备采集时机           |
+| P08   | async `NyanpasuClient`、typed clients、真实事务/TCC/settlement/startup/recovery、jobs/proxy owners      | 不拆坏递归错误和事务闭包，不引临时 callback registry；GUI-only 残余按真实闭包单独纠正            |
 
 ### 3.1 不能在边界纠正中丢失的行为
 
@@ -110,12 +110,14 @@ core 内继续按能力组织，不先创建未来无人使用的目录、trait 
 
 **交付目标：** core 不再被前端 hosting、telemetry、icon cache 或前端协议适配占据；GUI/browser 原功能保持。
 
-当前职责分为两组，分别形成完整可构建的原子变更：
+**状态：** R0–R5 已完成实现、组合定向验收、独立审查、人工审核和推送；[P09 PR #5717](https://github.com/libnyanpasu/clash-nyanpasu/pull/5717) 已接入原 stack，base 为 P08 #5707。此状态不等于已合并或全平台通过；验证细节和未运行项见[剩余修正 §2](tauri-core-remaining-corrections.md#2-当前状态与下一步的区别)。P10/R6、P11/R7 仍是后续独立范围。
+
+本阶段按两组职责闭合，各自形成完整的原子变更：
 
 1. **归属已明确的纠正：** HTTP hosting 回宿主；frontend telemetry 回宿主并保留真实 sink 注入；icon cache 回 presentation。生产调用者、原测试、manifest/lock、模块声明与文档随各自能力闭合。
-2. **需要先闭合接口的修正：** GUI session state 迁出时保持 status query/event 的真实版本与 final geometry drain；proxy 查询提供 fresh、未裁剪领域数据，宿主负责原 frontend projection。不能只删字段、填零或换一个 getter。
+2. **版本与查询接口闭包：** GUI session state 迁出时保持 status query/event 的真实版本与 final geometry drain；proxy 查询提供遵守原缓存新鲜度契约的未裁剪领域数据，宿主负责原 frontend projection。不能只删字段、填零或用 cached snapshot 替代查询。
 
-`IpcError` 保持宿主 wire error；未交付的 core error 搬迁不继续作为 CLI 前置。已经发布的 HTTP 搬迁需要增量纠正，不自动重写历史。宏实际所需的 `syn full` 是独立依赖声明问题，不与中立 RPC 设计混为一项。
+`IpcError` 保持宿主 wire error；未交付的 core error 搬迁不继续作为 CLI 前置。已经发布的 HTTP 搬迁已通过增量提交纠正，未改写历史。宏实际所需的 `syn full` 是独立依赖声明问题，不与中立 RPC 设计混为一项。
 
 **旧 P09-C2（中立命令/registry/宏重设计）和旧 P09-C3（独立 HTTP 事件总线）取消。** 本节不复用旧 C 编号给相反方向的工作重新命名，也不恢复 catalog/schema DSL。统一 RPC、inventory、`call_rpc` 和 Specta 列表继续属于现有宿主实现。
 
@@ -186,15 +188,15 @@ kernel 目的地政策、无人值守 adapter 需求、生命周期问题：独�
 
 执行方法遵循[测试与审查](../development/testing.md)、[工作流](../development/workflow.md)、[统一 RPC](../development/rpc.md)与[后端包边界](../development/backend-packages.md)。本地运行变更相关的定向测试，全套测试交给 CI；不以旧测试数字代替新候选结果。
 
-| 层次 | 必须证明 | 不能据此声称 |
-| --- | --- | --- |
-| 源码/归属复核 | 唯一 owner、调用闭包、测试保留、无 shim/新 GUI 依赖 | 已编译或实际行为通过 |
-| Cargo 依赖解析/锁比较 | 完整外部 package records 保持，直接依赖随 consumer 迁移 | 所有 features/targets 可编译 |
-| core/host 定向 check、Clippy、format 与测试 | 真实消费者编译、相关行为回归和风格检查 | 全套 CI 或所有平台通过 |
-| 实际 `specta_export::tests::export_typescript_bindings` | 真实生成三份 bindings，核对完整差异 | 仅靠手工 JSON/类型检查就证明协议等价 |
-| `deno task lint:backend-boundaries`、`test:backend-boundaries`、`lint:architecture-ledger` | 依赖方向与现有静态规则成立 | CLI/native 生命周期已经验收 |
-| 独立 Rust consumer | 公开构造与领域 API 真正可达，不需要 GUI/入站 RPC | 所有具体 OS adapters 已适合无人值守 CLI |
-| GUI/browser 与平台验证 | 对应环境中的真实 transport/OS 行为 | 未运行的环境或独立 OPEN 问题已解决 |
+| 层次                                                                                       | 必须证明                                                | 不能据此声称                            |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------- | --------------------------------------- |
+| 源码/归属复核                                                                              | 唯一 owner、调用闭包、测试保留、无 shim/新 GUI 依赖     | 已编译或实际行为通过                    |
+| Cargo 依赖解析/锁比较                                                                      | 完整外部 package records 保持，直接依赖随 consumer 迁移 | 所有 features/targets 可编译            |
+| core/host 定向 check、Clippy、format 与测试                                                | 真实消费者编译、相关行为回归和风格检查                  | 全套 CI 或所有平台通过                  |
+| 实际 `specta_export::tests::export_typescript_bindings`                                    | 真实生成三份 bindings，核对完整差异                     | 仅靠手工 JSON/类型检查就证明协议等价    |
+| `deno task lint:backend-boundaries`、`test:backend-boundaries`、`lint:architecture-ledger` | 依赖方向与现有静态规则成立                              | CLI/native 生命周期已经验收             |
+| 独立 Rust consumer                                                                         | 公开构造与领域 API 真正可达，不需要 GUI/入站 RPC        | 所有具体 OS adapters 已适合无人值守 CLI |
+| GUI/browser 与平台验证                                                                     | 对应环境中的真实 transport/OS 行为                      | 未运行的环境或独立 OPEN 问题已解决      |
 
 测试 filter 必须定位到真实新 owner，0 tests 不能记为通过。生成文件只由实际 exporter 更新；有非预期差异应停止解释，不手改结果强行匹配。原 ignored/browser/平台测试的未运行状态如实保留。
 

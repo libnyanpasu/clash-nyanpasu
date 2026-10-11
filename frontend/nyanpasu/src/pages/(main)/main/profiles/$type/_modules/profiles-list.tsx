@@ -42,41 +42,12 @@ import { ProfileType } from '../../_modules/consts'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
 import { Route as IndexRoute } from '../index'
+import ProfileCardFeatures, { ProfileCardChip } from './profile-card-features'
 import ProfileCardSubscription, {
   ProfileCardTraffic,
   ProfileCardUpdate,
 } from './profile-card-subscription'
 import { categoryProfiles, isProxyProfile } from './utils'
-
-const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
-  return (
-    <span
-      className={cn(
-        'bg-primary-container rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </span>
-  )
-}
-
-const sourceLabelOf = (profile: ProfileItem_Serialize) => {
-  const source = getProfileSource(profile)
-
-  if (!source) {
-    return m.profile_kind_composition()
-  }
-
-  if (source.type === 'remote') {
-    return m.profile_source_remote()
-  }
-
-  return source.binding.type === 'external'
-    ? m.profile_source_external()
-    : m.profile_source_local()
-}
 
 /**
  * The active card's backdrop. It stays still and animates only while the card
@@ -136,10 +107,12 @@ const ActiveGradient = ({
 
 const GridViewProfile = memo(function GridViewProfile({
   profile,
+  profiles,
   index,
   isGlobal,
 }: {
   profile: ProfileItem_Serialize
+  profiles: ProfileItem_Serialize[]
   index: number
   isGlobal: boolean
 }) {
@@ -212,18 +185,18 @@ const GridViewProfile = memo(function GridViewProfile({
               </TextMarquee>
 
               {activeProfile.isActive && (
-                <Chip className="bg-primary text-on-primary shrink-0">
+                <ProfileCardChip className="bg-primary text-on-primary shrink-0">
                   {m.profile_is_active_label()}
-                </Chip>
+                </ProfileCardChip>
               )}
             </CardHeader>
 
             <CardContent className="relative gap-3 p-4">
-              <div className="z-10 flex gap-1" data-slot="profile-card-type">
-                <Chip>{sourceLabelOf(profile)}</Chip>
-
-                {isGlobal && <Chip>{m.profile_global_label()}</Chip>}
-              </div>
+              <ProfileCardFeatures
+                profile={profile}
+                profiles={profiles}
+                isGlobal={isGlobal}
+              />
 
               {remote ? (
                 <ProfileCardSubscription
@@ -431,6 +404,7 @@ export default function ProfilesList({
               <GridViewProfile
                 key={profile.uid}
                 profile={profile}
+                profiles={profiles?.items ?? []}
                 index={index}
                 isGlobal={globalTransforms.has(profile.uid)}
               />

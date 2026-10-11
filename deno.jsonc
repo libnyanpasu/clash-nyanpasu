@@ -161,6 +161,10 @@
       "description": "Check whether build inputs changed since the previous nightly tag",
       "command": "deno run --config scripts/deno.jsonc --allow-run=git --allow-read --allow-write --allow-env=GITHUB_OUTPUT,GITHUB_STEP_SUMMARY scripts/src/release/check-nightly-changes.ts"
     },
+    "check:changed-parts": {
+      "description": "Report which of frontend, backend and scripts changed since the given base; every part without one",
+      "command": "deno run --config scripts/deno.jsonc --allow-run=git --allow-read --allow-write --allow-env=GITHUB_OUTPUT scripts/src/ci/changed-parts.ts"
+    },
     "prepare:nightly": {
       "description": "Prepare the Tauri configuration for a nightly build",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/prepare-nightly.ts"

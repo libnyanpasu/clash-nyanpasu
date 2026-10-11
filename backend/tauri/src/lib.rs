@@ -11,6 +11,7 @@ mod core;
 mod desktop;
 mod event_handler;
 mod ipc;
+mod server;
 mod setup;
 mod specta_export;
 mod storage;

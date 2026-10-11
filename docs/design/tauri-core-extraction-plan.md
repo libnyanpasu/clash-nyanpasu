@@ -110,7 +110,7 @@ core 内继续按能力组织，不先创建未来无人使用的目录、trait 
 
 **交付目标：** core 不再被前端 hosting、telemetry、icon cache 或前端协议适配占据；GUI/browser 原功能保持。
 
-**状态：** R0–R5 已完成实现、组合定向验收、独立审查、人工审核和推送；[P09 PR #5717](https://github.com/libnyanpasu/clash-nyanpasu/pull/5717) 已接入原 stack，base 为 P08 #5707。此状态不等于已合并或全平台通过；验证细节和未运行项见[剩余修正 §2](tauri-core-remaining-corrections.md#2-当前状态与下一步的区别)。P10/R6、P11/R7 仍是后续独立范围。
+**状态：** R0–R5 已完成实现、组合定向验收、独立审查、人工审核和推送；[P09 PR #5717](https://github.com/libnyanpasu/clash-nyanpasu/pull/5717) 已接入原 stack，base 为 P08 #5707。此状态不等于已合并或全平台通过；验证细节和未运行项见[剩余修正 §2](tauri-core-remaining-corrections.md#2-当前状态与下一步的区别)。P10/R6 的两个准备入口也已交付，见下节；P11/R7 的独立 consumer 验收仍待建立。
 
 本阶段按两组职责闭合，各自形成完整的原子变更：
 
@@ -127,12 +127,14 @@ core 内继续按能力组织，不先创建未来无人使用的目录、trait 
 
 **交付目标：** GUI 与非 GUI Rust consumer 不必各自复制相同的领域准备规则，而不是把所有 `init/process/exit` 文件搬入 core。
 
-- `utils/init/mod.rs::init_config`：提取真实配置初始化规则，保留 profiles 文件的 stamp、默认值、错误和已有文件不覆盖语义。
-- `setup.rs::open_traffic_store`：将现有受保护的 traffic store 打开逻辑归入实际消费能力；保留失败降级和已有数据库保护，不能改成无条件打开/重建。
+**状态：** 两个入口已按 C1/C2 分别实现、定向验证、人工审核、提交并推送；[P10 PR #5718](https://github.com/libnyanpasu/clash-nyanpasu/pull/5718) 以 P09 #5717 为 base，已接入原 stack。源码交付不等于全平台验收或合并；外部 consumer 的实际复用证据仍由 P11 建立。
+
+- `nyanpasu_core::profiles::init_config`：真实配置初始化规则已从宿主迁入 core，保留 profiles 文件的 stamp、默认值、错误和已有路径不覆盖语义，宿主调用位置及 log-and-continue 不变。
+- `nyanpasu_core::traffic::open_traffic_store`：现有受保护的 store 打开逻辑已归入 traffic 能力；保留先保护目录再打开数据库、失败降级及选择性重建策略，没有改成盲目 open/rebuild。
 - 资源复制仅在有真实共享 consumer 时考虑提取；source/target 显式传入，bundle 发现及发布布局由宿主决定。它不是 CLI 使用 core 的一律前置。
 - CLI 参数、选择当前 GUI helper executable、migration 子进程启动政策、home-dir 迁移中的产品/提权决策、GUI 单实例、OS session hook、进程退出与全局 subscriber 默认留宿主。另有共享需求时另立窄范围，不整桶迁移。
 
-**P10 不接收 partial-start、constructor-future-drop、native join 或 logger/Windows callback 生命周期的兜底任务。** 这些是独立行为需求，不因取消 HTTP 服务或完成普通构造迁移而解决。
+**D1、D3 的兼容方向已确定：保持各能力迁移前的更新目的地行为与生命周期契约。** P10 不新增 partial-start、constructor-future-drop、native join 或 logger/Windows callback 的强化策略；D2 无人值守需求暂缓。这不是宣称历史风险已修复或所有原行为已验证；若发现迁移引入的具体偏差，应单独恢复原行为，而不是另造框架。详见[决策与暂缓项](tauri-core-remaining-corrections.md#5-已确定的兼容策略与暂缓项)。
 
 验收：同一初始化实现可由两个宿主消费；临时路径下的原行为与失败语义保持；共享准备不反查 Tauri bundle/dist 或 GUI executable。不得拿真实用户配置进行 home 迁移或系统修改验收。
 
@@ -146,7 +148,7 @@ core 内继续按能力组织，不先创建未来无人使用的目录、trait 
 - 复用现有 backend boundary/architecture 任务，按实际缺口增加独立 consumer 检查与必要 CI 接线。计划中的新任务不能写成已经存在或通过。
 - 平台、musl 与真实 OS/进程验证按能力分别报告；`cargo tree --target all` 不是全平台编译，正常 shutdown 测试不是 native join 证明。
 
-发现漏实现，退回具体能力的原子修正；不能在 P11 用“集成”掩盖缺口。独立生命周期问题继续明确列为 OPEN，不写成 P11 已解决。
+发现漏实现或相对迁移前行为的回归，退回具体能力的原子修正；不能在 P11 用“集成”掩盖缺口。D1/D3 以迁移前行为为基线，不扩展产品或生命周期策略；D2 暂缓。正常关闭验证不证明历史异常/native 情形已修复或全部验收。
 
 ## 5. 执行与交付边界
 
@@ -161,7 +163,7 @@ P10 实际共享启动准备
          |
 P11 外部 Rust consumer + 原 GUI/browser 持续验收
 
-kernel 目的地政策、无人值守 adapter 需求、生命周期问题：独立决策，不自动塞入上述阶段
+D1/D3：保持迁移前行为；D2：暂缓，不自动塞入上述阶段
 ```
 
 阶段表示责任归属，不要求重复创建历史 PR。正式交付仍使用明确的 base 和串行 stack；已获准隔离准备的多个候选不是已经整合的代码。候选间 `ipc.rs`、`setup.rs`、`client/mod.rs`、manifest 和 lock 的重叠，须在单独获准的整合步骤处理。
@@ -200,4 +202,4 @@ kernel 目的地政策、无人值守 adapter 需求、生命周期问题：独�
 
 测试 filter 必须定位到真实新 owner，0 tests 不能记为通过。生成文件只由实际 exporter 更新；有非预期差异应停止解释，不手改结果强行匹配。原 ignored/browser/平台测试的未运行状态如实保留。
 
-**本迁移目标完成的条件：** GUI 与非 GUI Rust consumer 使用同一真实应用实现；前端职责不再成为 core 的必填依赖；现有 GUI/browser 功能、wire 和持久化行为保持；相应定向验收与持续门禁有实际结果。独立生命周期和产品政策限制必须列明，不能通过删除计划条目或把工作推给 P11 将其标为完成。
+**本迁移目标完成的条件：** GUI 与非 GUI Rust consumer 使用同一真实应用实现；前端职责不再成为 core 的必填依赖；现有 GUI/browser 功能、wire 和持久化行为保持；相应定向验收与持续门禁有实际结果。D1/D3 保持迁移前行为的兼容要求、历史风险与未验证项，以及 D2 的暂缓状态必须列明；不能把兼容方向已确定、正常关闭通过或暂缓处理写成这些情形已修复或全部完成。

@@ -2,7 +2,8 @@ import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { filesize } from 'filesize'
 import type { ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { CircularProgress } from '@nyanpasu/ui/progress'
+import { LinearProgress } from '@nyanpasu/ui/progress'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import {
   calculateSubscriptionQuota,
@@ -22,6 +23,8 @@ import {
 } from '@nyanpasu/query'
 import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import ProfileCardAction from './profile-card-action'
+import ProfileCardContentSummary from './profile-card-content-summary'
 
 export function ProfileCardUpdate({
   profile,
@@ -48,16 +51,18 @@ export function ProfileCardUpdate({
   const refresh = useLockFn(() => task.execute())
 
   return (
-    <Button
-      variant="raised"
-      className="flex shrink-0 items-center justify-center gap-2 whitespace-nowrap"
-      disabled={disabled}
-      loading={task.isPending}
-      onClick={refresh}
-    >
-      <RefreshRounded className="size-4" />
-      {m.profile_subscription_update()}
-    </Button>
+    <ProfileCardAction label={m.profile_subscription_update()}>
+      <Button
+        icon
+        className="size-9 shrink-0 sm:size-11"
+        disabled={disabled}
+        loading={task.isPending}
+        aria-label={m.profile_subscription_update()}
+        onClick={refresh}
+      >
+        <RefreshRounded className="size-5" aria-hidden />
+      </Button>
+    </ProfileCardAction>
   )
 }
 
@@ -76,7 +81,10 @@ export default function ProfileCardSubscription({
   const remainingLabel = m.profile_card_remaining()
 
   return (
-    <div data-slot="profile-card-subscription" className="flex flex-col gap-2">
+    <div
+      data-slot="profile-card-subscription"
+      className="flex min-h-0 flex-1 flex-col justify-evenly gap-2"
+    >
       {isConfigItem(profile) && (
         <ProfileCardMetric
           featured={featured}
@@ -91,6 +99,7 @@ export default function ProfileCardSubscription({
                 })
               : m.profile_card_quota_unknown()
           }
+          showHint={featured || !quota}
           percent={quota?.remainingPercent}
           percentLabel={remainingLabel}
         >
@@ -104,7 +113,12 @@ export default function ProfileCardSubscription({
         </ProfileCardMetric>
       )}
 
-      <div className="text-on-surface-variant flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      <div
+        className={cn(
+          'text-on-surface-variant flex flex-wrap gap-x-4 gap-y-1 text-xs',
+          !featured && 'hidden',
+        )}
+      >
         {remote?.updated_at ? (
           <span>
             {m.profile_subscription_updated_at({
@@ -136,7 +150,7 @@ function ProfileCardMetric({
   percent,
   percentLabel,
   children,
-  showPercentLabel = false,
+  showHint = true,
 }: {
   featured: boolean
   label: string
@@ -145,62 +159,44 @@ function ProfileCardMetric({
   percent?: number
   percentLabel: string
   children?: ReactNode
-  showPercentLabel?: boolean
+  showHint?: boolean
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-on-surface-variant mb-1 text-sm">{label}</p>
-        {value !== undefined && (
-          <p
-            data-slot="profile-card-remaining"
-            className={cn(
-              'font-medium tabular-nums',
-              featured ? 'text-3xl sm:text-4xl' : 'text-2xl',
-            )}
-          >
-            {value}
-          </p>
-        )}
-        {hint && <p className="text-on-surface-variant mt-1 text-sm">{hint}</p>}
-        {children}
-      </div>
-      {percent !== undefined && (
-        <div className="flex shrink-0 flex-col items-center gap-1">
-          <div
-            data-slot="profile-card-quota"
-            className={cn(
-              'bg-surface/40 relative shrink-0 rounded-full',
-              featured ? 'size-24 sm:size-28' : 'size-20',
-            )}
-            role="meter"
-            aria-label={percentLabel}
-            aria-valuenow={percent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <CircularProgress
-              className="text-primary size-full motion-reduce:[&_circle]:transition-none"
-              value={percent}
-              aria-hidden="true"
-            />
-            <span
-              className={cn(
-                'absolute inset-0 grid place-items-center font-medium tabular-nums',
-                featured ? 'text-2xl' : 'text-lg',
-              )}
-            >
-              {Math.round(percent)}%
-            </span>
-          </div>
-          {showPercentLabel && (
-            <span className="text-on-surface-variant text-xs">
-              {percentLabel}
-            </span>
+    <>
+      <p className="text-on-surface-variant text-sm">{label}</p>
+      {value !== undefined && (
+        <p
+          data-slot="profile-card-remaining"
+          className={cn(
+            'font-medium tabular-nums',
+            featured ? 'text-3xl sm:text-4xl' : 'text-2xl',
           )}
-        </div>
+        >
+          {value}
+        </p>
       )}
-    </div>
+      {showHint && hint && (
+        <p className="text-on-surface-variant text-sm">{hint}</p>
+      )}
+      {children}
+      {percent !== undefined && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div data-slot="profile-card-quota" className="w-full">
+              <LinearProgress
+                className="h-1.5 motion-reduce:[&>div]:transition-none"
+                value={percent}
+                role="meter"
+                aria-label={percentLabel}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {percentLabel} {Math.round(percent)}%{hint ? ` · ${hint}` : ''}
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </>
   )
 }
 
@@ -227,13 +223,12 @@ export function ProfileCardTraffic({
   )
   const usage = report.data?.total
   const total = usage ? usage.bytes.upload + usage.bytes.download : undefined
-  const percent =
-    usage && total && total > 0
-      ? (usage.bytes.download / total) * 100
-      : undefined
 
   return (
-    <div data-slot="profile-card-subscription" className="flex flex-col gap-2">
+    <div
+      data-slot="profile-card-subscription"
+      className="flex min-h-0 flex-1 flex-col justify-evenly gap-2"
+    >
       <ProfileCardMetric
         featured={featured}
         label={m.profile_card_recorded_traffic()}
@@ -247,15 +242,12 @@ export function ProfileCardTraffic({
             ? m.profile_card_traffic_error()
             : !usage || report.isPlaceholderData
               ? m.profile_card_traffic_loading()
-              : total === 0 && usage.connections === 0
-                ? ''
-                : m.topology_connection_count({ count: usage.connections })
+              : ''
         }
-        percent={featured && !report.isPlaceholderData ? percent : undefined}
         percentLabel={m.profile_card_download_share()}
-        showPercentLabel
       />
-      {usage &&
+      {featured &&
+        usage &&
         (usage.bytes.upload > 0 || usage.bytes.download > 0) &&
         !report.isPlaceholderData && (
           <div className="text-on-surface-variant flex flex-wrap gap-x-4 gap-y-1 text-xs">
@@ -271,6 +263,9 @@ export function ProfileCardTraffic({
             </span>
           </div>
         )}
+      {isConfigItem(profile) && profile.config.type === 'file' && (
+        <ProfileCardContentSummary uid={profile.uid} />
+      )}
     </div>
   )
 }

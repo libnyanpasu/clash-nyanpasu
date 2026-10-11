@@ -58,10 +58,12 @@ export default function ProfileCardFeatures({
   profile,
   profiles,
   isGlobal,
+  compact = false,
 }: {
   profile: ProfileItem_Serialize
   profiles: ProfileItem_Serialize[]
   isGlobal: boolean
+  compact?: boolean
 }) {
   const remote = getRemoteSource(profile)
   const source = getProfileSource(profile)
@@ -80,7 +82,7 @@ export default function ProfileCardFeatures({
       className="z-10 flex flex-wrap items-center gap-1"
       data-slot="profile-card-type"
     >
-      <ProfileCardChip className="bg-primary-container/60 text-on-primary-container">
+      <ProfileCardChip className="bg-primary-container/60 text-primary dark:text-primary">
         {source &&
           (source.type === 'remote' ? (
             <CloudDownloadRounded className="size-3.5" aria-hidden />
@@ -90,7 +92,7 @@ export default function ProfileCardFeatures({
         {sourceLabelOf(profile)}
       </ProfileCardChip>
 
-      {remote && remote.option.update_interval_minutes > 0 && (
+      {!compact && remote && remote.option.update_interval_minutes > 0 && (
         <ProfileCardChip
           title={m.profile_card_auto_update_hint({
             minutes: remote.option.update_interval_minutes,
@@ -111,7 +113,7 @@ export default function ProfileCardFeatures({
         </ProfileCardChip>
       )}
 
-      {transforms.length > 0 && (
+      {!compact && transforms.length > 0 && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

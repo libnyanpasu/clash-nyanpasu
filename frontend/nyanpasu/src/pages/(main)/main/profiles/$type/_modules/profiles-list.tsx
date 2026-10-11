@@ -1,5 +1,9 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
 import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
+import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
+import InfoOutlineRounded from '~icons/material-symbols/info-outline-rounded'
+import MoreHorizRounded from '~icons/material-symbols/more-horiz-rounded'
+import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
 import { isEqual } from 'es-toolkit'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -14,6 +18,12 @@ import {
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@nyanpasu/ui/dropdown-menu'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
@@ -36,7 +46,10 @@ import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../../_modules/consts'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
+import OpenLocally from '../detail/_modules/open-locally'
+import ViewContent from '../detail/_modules/view-content'
 import { Route as IndexRoute } from '../index'
+import ProfileCardAction from './profile-card-action'
 import ProfileCardFeatures, { ProfileCardChip } from './profile-card-features'
 import ProfileCardSubscription, {
   ProfileCardTraffic,
@@ -117,6 +130,9 @@ const GridViewProfile = memo(function GridViewProfile({
   const deleteProfile = useDeleteProfile(profile)
 
   const remote = getRemoteSource(profile)
+  const hasFile =
+    profile.type === 'transform' ||
+    (profile.type === 'config' && profile.config.type === 'file')
   const featured = activeProfile.isActive && isProxyProfile(profile)
 
   const isPending = activeProfile.isPending || deleteProfile.isPending
@@ -138,7 +154,11 @@ const GridViewProfile = memo(function GridViewProfile({
           data-active={featured || undefined}
           className={cn(
             'relative isolate flex min-w-0 flex-col justify-between',
-            featured ? 'order-first col-span-full rounded-[2rem]' : 'min-h-40',
+            isProxyProfile(profile)
+              ? featured
+                ? 'order-first col-span-full h-72 rounded-4xl'
+                : 'h-60'
+              : 'min-h-40',
           )}
           asChild
         >
@@ -186,11 +206,19 @@ const GridViewProfile = memo(function GridViewProfile({
               )}
             </CardHeader>
 
-            <CardContent className="relative gap-3 p-4">
+            <CardContent
+              className={cn(
+                'relative min-h-0 flex-1 overflow-hidden px-4',
+                isProxyProfile(profile) && !featured
+                  ? 'gap-1 py-2'
+                  : 'gap-2 py-3',
+              )}
+            >
               <ProfileCardFeatures
                 profile={profile}
                 profiles={profiles}
                 isGlobal={isGlobal}
+                compact={isProxyProfile(profile) && !featured}
               />
 
               {remote ? (
@@ -203,32 +231,87 @@ const GridViewProfile = memo(function GridViewProfile({
               ) : null}
             </CardContent>
 
-            <CardFooter className="relative flex-row flex-wrap gap-1 px-4 pb-3">
-              {remote && (
-                <ProfileCardUpdate profile={profile} disabled={isPending} />
+            <CardFooter className="relative shrink-0 flex-row items-center justify-between gap-1 px-4 pb-3">
+              {isProxyProfile(profile) && !activeProfile.isActive ? (
+                <ProfileCardAction label={m.profile_active_title()}>
+                  <Button
+                    className="bg-primary-container/60 text-on-primary-container flex h-11 shrink-0 items-center gap-1 px-2 text-xs"
+                    disabled={isPending}
+                    aria-label={m.profile_active_title()}
+                    onClick={activeProfile.handleClick}
+                  >
+                    <PowerSettingsNewRounded className="size-5" aria-hidden />
+                    {m.profile_active_title()}
+                  </Button>
+                </ProfileCardAction>
+              ) : (
+                <span />
               )}
-
-              {isProxyProfile(profile) && !activeProfile.isActive && (
-                <Button
-                  variant="raised"
-                  disabled={isPending}
-                  onClick={activeProfile.handleClick}
-                >
-                  {m.profile_active_title()}
-                </Button>
-              )}
-
-              <Button className="flex items-center justify-center" asChild>
-                <Link
-                  to="/main/profiles/$type/detail/$uid"
-                  params={{
-                    type,
-                    uid: profile.uid,
-                  }}
-                >
-                  {m.profile_view_details_title()}
-                </Link>
-              </Button>
+              <div className="flex shrink-0 items-center gap-1">
+                {remote && (
+                  <ProfileCardUpdate profile={profile} disabled={isPending} />
+                )}
+                {hasFile && (
+                  <ProfileCardAction label={m.profile_view_content_title()}>
+                    <ViewContent
+                      profile={profile}
+                      icon
+                      className="size-9 sm:size-11"
+                      disabled={isPending}
+                      aria-label={m.profile_view_content_title()}
+                    >
+                      <EditSquareOutlineRounded
+                        className="size-5"
+                        aria-hidden
+                      />
+                    </ViewContent>
+                  </ProfileCardAction>
+                )}
+                <DropdownMenu align="end">
+                  <ProfileCardAction label={m.navbar_label_more()}>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        icon
+                        className="size-9 sm:size-11"
+                        disabled={isPending}
+                        aria-label={m.navbar_label_more()}
+                      >
+                        <MoreHorizRounded className="size-5" aria-hidden />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </ProfileCardAction>
+                  <DropdownMenuContent>
+                    {hasFile && (
+                      <OpenLocally profile={profile} asChild>
+                        <DropdownMenuItem disabled={isPending}>
+                          {m.profile_open_locally_title()}
+                        </DropdownMenuItem>
+                      </OpenLocally>
+                    )}
+                    <DropdownMenuItem
+                      disabled={isPending}
+                      onSelect={deleteProfile.handleClick}
+                    >
+                      <DeleteForeverOutlineRounded
+                        className="size-4"
+                        aria-hidden
+                      />
+                      {m.profile_delete_title()}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <ProfileCardAction label={m.profile_view_details_title()}>
+                  <Button icon className="size-9 sm:size-11" asChild>
+                    <Link
+                      to="/main/profiles/$type/detail/$uid"
+                      params={{ type, uid: profile.uid }}
+                      aria-label={m.profile_view_details_title()}
+                    >
+                      <InfoOutlineRounded className="size-5" aria-hidden />
+                    </Link>
+                  </Button>
+                </ProfileCardAction>
+              </div>
             </CardFooter>
           </div>
         </Card>

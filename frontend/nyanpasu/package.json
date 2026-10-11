@@ -20,6 +20,13 @@
     "@inlang/paraglide-js": "2.26.0",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.4.0",
+    "@nyanpasu/constants": "workspace:^",
+    "@nyanpasu/hooks": "workspace:^",
+    "@nyanpasu/platform": "workspace:^",
+    "@nyanpasu/query": "workspace:^",
+    "@nyanpasu/rpc": "workspace:^",
+    "@nyanpasu/theme": "workspace:^",
+    "@nyanpasu/ui": "workspace:^",
     "@nyanpasu/utils": "workspace:^",
     "@paper-design/shaders-react": "0.0.81",
     "@tailwindcss/postcss": "4.3.3",
@@ -42,13 +49,7 @@
     "react-markdown": "10.1.0",
     "react-use": "17.6.1",
     "vite-bundle-visualizer": "1.2.1",
-    "@nyanpasu/constants": "workspace:^",
-    "@nyanpasu/hooks": "workspace:^",
-    "@nyanpasu/platform": "workspace:^",
-    "@nyanpasu/query": "workspace:^",
-    "@nyanpasu/rpc": "workspace:^",
-    "@nyanpasu/theme": "workspace:^",
-    "@nyanpasu/ui": "workspace:^"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@csstools/normalize.css": "12.1.1",

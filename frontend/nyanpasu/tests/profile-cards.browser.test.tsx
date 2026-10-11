@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
@@ -82,12 +82,17 @@ test.for(['en', 'zh-cn'] as const)(
     const items = [profile('local', false), profile('remote', true)]
     let current = 'remote'
     const updates: unknown[] = []
+    const edits: string[] = []
     mockIPC((command, args) => {
       const wire = args as {
         method: string
         params: { uid: string; option: unknown }
       }
       const method = command === 'call_rpc' ? wire.method : command
+      if (method === 'read_profile_file') {
+        expect(wire.params.uid).toBe('local')
+        return 'proxies: [{name: Node}]\nproxy-groups: [{name: Group}]\nrules: [MATCH,DIRECT]'
+      }
       if (method === 'get_profiles')
         return { current, items, global_transforms: [], valid: [] }
       if (method === 'activate_profile') {
@@ -112,7 +117,12 @@ test.for(['en', 'zh-cn'] as const)(
           topology: null,
         }
       }
-      if (method === 'delete_clash_connections') return null
+      if (method === 'create_editor_window') {
+        edits.push(wire.params.uid)
+        return null
+      }
+      if (method === 'delete_clash_connections')
+        return { status: 'committed', value: null }
       if (method === 'update_profile') {
         updates.push([wire.params.uid, wire.params.option])
         return { status: 'committed', value: null }
@@ -186,6 +196,39 @@ test.for(['en', 'zh-cn'] as const)(
     expect(card('remote').getBoundingClientRect().top).toBeLessThan(
       card('local').getBoundingClientRect().top,
     )
+    await expect
+      .poll(
+        () =>
+          card('local').querySelector(
+            '[data-slot="profile-card-content-summary"]',
+          )?.textContent,
+      )
+      .toContain(m.profile_card_nodes() + '1')
+    expect(card('remote').getBoundingClientRect().height).toBe(288)
+    expect(card('local').getBoundingClientRect().height).toBe(240)
+    const trafficRows = Array.from(
+      card('local').querySelector('[data-slot="profile-card-subscription"]')!
+        .children,
+    ).map((row) => row.getBoundingClientRect())
+    expect(trafficRows).toHaveLength(3)
+    expect(
+      Math.abs(
+        trafficRows[1].top -
+          trafficRows[0].bottom -
+          (trafficRows[2].top - trafficRows[1].bottom),
+      ),
+    ).toBeLessThanOrEqual(1)
+    expect(card('local').textContent).not.toContain(
+      m.dashboard_widget_traffic_report_download({ value: '' }),
+    )
+    expect(card('local').textContent).not.toContain(
+      m.dashboard_widget_traffic_report_upload({ value: '' }),
+    )
+    expect(
+      card('remote')
+        .querySelector('[role="meter"]')
+        ?.classList.contains('h-1.5'),
+    ).toBe(true)
     const style = getComputedStyle(card('remote'))
     expect(style.borderTopLeftRadius).toBe(style.borderBottomLeftRadius)
     expect(card('remote').querySelector('canvas')).not.toBeNull()
@@ -195,34 +238,92 @@ test.for(['en', 'zh-cn'] as const)(
     )
     const updateButton = Array.from(
       card('remote').querySelectorAll('button'),
-    ).find((button) =>
-      button.textContent?.includes(m.profile_subscription_update()),
+    ).find(
+      (button) =>
+        button.getAttribute('aria-label') === m.profile_subscription_update(),
     )!
-    expect(getComputedStyle(updateButton).display).toBe('flex')
-    expect(getComputedStyle(updateButton).whiteSpace).toBe('nowrap')
+    expect(getComputedStyle(updateButton).display).toBe('grid')
     expect(updateButton.getBoundingClientRect().height).toBeLessThanOrEqual(44)
     updateButton.click()
     await expect.poll(() => updates).toEqual([['remote', null]])
+    const editButton = card('remote').querySelector<HTMLButtonElement>(
+      `button[aria-label="${m.profile_view_content_title()}"]`,
+    )!
+    editButton.click()
+    await expect.poll(() => edits).toEqual(['remote'])
+    await userEvent.click(
+      card('remote').querySelector<HTMLButtonElement>(
+        `button[aria-label="${m.navbar_label_more()}"]`,
+      )!,
+    )
+    await expect
+      .element(
+        page.getByRole('menuitem', { name: m.profile_open_locally_title() }),
+      )
+      .toBeVisible()
+    await expect
+      .element(page.getByRole('menuitem', { name: m.profile_delete_title() }))
+      .toBeVisible()
+    await userEvent.keyboard('{Escape}')
     const activateButton = Array.from(
       card('local').querySelectorAll('button'),
-    ).find((button) => button.textContent?.includes(m.profile_active_title()))!
+    ).find(
+      (button) =>
+        button.getAttribute('aria-label') === m.profile_active_title(),
+    )!
+    const detailsLink = card('local').querySelector<HTMLAnchorElement>(
+      `a[aria-label="${m.profile_view_details_title()}"]`,
+    )!
+    expect(activateButton.getBoundingClientRect().left).toBeLessThan(
+      detailsLink.getBoundingClientRect().left,
+    )
+    expect(activateButton.textContent).toContain(m.profile_active_title())
+    for (const width of [390, 320]) {
+      await page.viewport(width, 900)
+      container.style.width = `${width}px`
+      const summary = card('local').querySelector(
+        '[data-slot="profile-card-content-summary"]',
+      )!
+      const footer = detailsLink.parentElement!.parentElement!
+      expect(summary.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        footer.getBoundingClientRect().top,
+      )
+    }
+    await page.viewport(1200, 650)
+    container.style.width = '1200px'
     activateButton.click()
     await expect.poll(() => card('local').dataset.active).toBe('true')
+    expect(card('local').getBoundingClientRect().height).toBe(288)
+    expect(card('remote').getBoundingClientRect().height).toBe(240)
+    expect(
+      card('local').querySelector(
+        `button[aria-label="${m.profile_active_title()}"]`,
+      ),
+    ).toBeNull()
+    expect(
+      card('local').querySelector(
+        `button[aria-label="${m.profile_is_active_label()}"]`,
+      ),
+    ).toBeNull()
     expect(card('local').getBoundingClientRect().top).toBeLessThan(
       card('remote').getBoundingClientRect().top,
     )
-    expect(
-      card('local').querySelector('[role="meter"]')?.getAttribute('aria-label'),
-    ).toBe(m.profile_card_download_share())
-    expect(
-      card('local')
-        .querySelector('[role="meter"]')
-        ?.getAttribute('aria-valuenow'),
-    ).toBe('75')
+    expect(card('local').querySelector('[role="meter"]')).toBeNull()
     for (const width of [390, 320]) {
       await page.viewport(width, 900)
       container.style.width = `${width}px`
       await expect.poll(() => container.scrollWidth).toBeLessThanOrEqual(width)
+      const summary = card('local').querySelector(
+        '[data-slot="profile-card-content-summary"]',
+      )!
+      const localFooter =
+        card('local').querySelector('a')!.parentElement!.parentElement!
+      expect(summary.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        localFooter.getBoundingClientRect().top,
+      )
+      const footer =
+        card('remote').querySelector('a')!.parentElement!.parentElement!
+      expect(footer.scrollWidth).toBeLessThanOrEqual(footer.clientWidth)
     }
     queries.setQueriesData(
       { queryKey: ['traffic-report'] },

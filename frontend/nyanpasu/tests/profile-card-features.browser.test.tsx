@@ -3,6 +3,7 @@ import { render } from 'vitest-browser-react'
 import { page, userEvent } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import ProfileCardFeatures from '@/pages/(main)/main/profiles/$type/_modules/profile-card-features'
 import { m } from '@/paraglide/messages'
 import { getLocale, overwriteGetLocale } from '@/paraglide/runtime'
@@ -61,13 +62,15 @@ test.for(['en', 'zh-cn'] as const)(
       },
     }
     const view = await render(
-      <div className="bg-surface text-on-surface w-full p-4">
-        <ProfileCardFeatures
-          profile={profile}
-          profiles={transforms}
-          isGlobal={false}
-        />
-      </div>,
+      <TooltipProvider>
+        <div className="bg-surface text-on-surface w-full p-4">
+          <ProfileCardFeatures
+            profile={profile}
+            profiles={transforms}
+            isGlobal={false}
+          />
+        </div>
+      </TooltipProvider>,
     )
     onTestFinished(async () => {
       await view.unmount()
@@ -83,7 +86,7 @@ test.for(['en', 'zh-cn'] as const)(
     const trigger = view.getByRole('button', {
       name: m.profile_card_transform_count({ count: 2 }),
     })
-    await trigger.click()
+    await userEvent.hover(trigger)
     await expect
       .element(page.getByText(m.profile_card_scoped_transforms_title()))
       .toBeVisible()
@@ -94,7 +97,17 @@ test.for(['en', 'zh-cn'] as const)(
       Array.from(details.querySelectorAll('li')).map((row) => row.textContent),
     ).toEqual(['1.Rule overridesYAML', '2.Node orderingJavaScript'])
     await userEvent.keyboard('{Escape}')
-    await expect.element(trigger).toHaveAttribute('aria-expanded', 'false')
+    await expect
+      .poll(() =>
+        document.querySelector('[data-slot="profile-card-transform-details"]'),
+      )
+      .toBeNull()
+    await userEvent.unhover(trigger)
+    trigger.element().focus()
+    await expect
+      .element(page.getByText(m.profile_card_scoped_transforms_title()))
+      .toBeVisible()
+    await userEvent.keyboard('{Escape}')
 
     for (const width of [390, 320]) {
       await page.viewport(width, 700)

@@ -1,8 +1,10 @@
+import CloudDownloadRounded from '~icons/material-symbols/cloud-download-rounded'
+import FolderCodeRounded from '~icons/material-symbols/folder-code-rounded'
 import LayersOutlineRounded from '~icons/material-symbols/layers-outline-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import type { ComponentProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@nyanpasu/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import {
   getProfileSource,
@@ -20,7 +22,7 @@ export const ProfileCardChip = ({
   <span
     className={cn(
       'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap',
-      'bg-surface-variant text-on-surface-variant',
+      'bg-surface-variant/60 text-on-surface-variant backdrop-blur-md',
       className,
     )}
     {...props}
@@ -62,6 +64,7 @@ export default function ProfileCardFeatures({
   isGlobal: boolean
 }) {
   const remote = getRemoteSource(profile)
+  const source = getProfileSource(profile)
   const transforms = scopedTransformsOf(profile)
   const transformLabel = transformLabelOf(profile)
   const sourceCount =
@@ -77,7 +80,13 @@ export default function ProfileCardFeatures({
       className="z-10 flex flex-wrap items-center gap-1"
       data-slot="profile-card-type"
     >
-      <ProfileCardChip className="bg-primary-container text-on-primary-container">
+      <ProfileCardChip className="bg-primary-container/60 text-on-primary-container">
+        {source &&
+          (source.type === 'remote' ? (
+            <CloudDownloadRounded className="size-3.5" aria-hidden />
+          ) : (
+            <FolderCodeRounded className="size-3.5" aria-hidden />
+          ))}
         {sourceLabelOf(profile)}
       </ProfileCardChip>
 
@@ -103,19 +112,20 @@ export default function ProfileCardFeatures({
       )}
 
       {transforms.length > 0 && (
-        <Popover>
-          <PopoverTrigger asChild>
+        <Tooltip>
+          <TooltipTrigger asChild>
             <Button
               type="button"
-              className="bg-surface-variant text-on-surface-variant inline-flex h-auto min-w-0 items-center gap-1 px-3 py-1 text-xs font-bold"
+              className="bg-surface-variant/60 text-on-surface-variant inline-flex h-auto min-w-0 items-center gap-1 px-3 py-1 text-xs font-bold backdrop-blur-md"
             >
               <LayersOutlineRounded className="size-3.5" aria-hidden />
               {m.profile_card_transform_count({ count: transforms.length })}
             </Button>
-          </PopoverTrigger>
-          <PopoverContent
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
             align="start"
-            className="w-72 max-w-[calc(100vw-2rem)] p-4"
+            className="bg-surface text-on-surface w-72 max-w-[calc(100vw-2rem)] rounded-2xl p-4 text-sm"
           >
             <p className="mb-3 text-sm font-medium">
               {m.profile_card_scoped_transforms_title()}
@@ -147,8 +157,8 @@ export default function ProfileCardFeatures({
                 )
               })}
             </ol>
-          </PopoverContent>
-        </Popover>
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {transformLabel && <ProfileCardChip>{transformLabel}</ProfileCardChip>}

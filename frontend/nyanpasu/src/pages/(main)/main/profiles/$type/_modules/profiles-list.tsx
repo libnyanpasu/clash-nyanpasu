@@ -180,7 +180,7 @@ const GridViewProfile = memo(function GridViewProfile({
               </TextMarquee>
 
               {activeProfile.isActive && (
-                <ProfileCardChip className="bg-primary text-on-primary shrink-0">
+                <ProfileCardChip className="bg-primary/60 text-on-primary shrink-0">
                   {m.profile_is_active_label()}
                 </ProfileCardChip>
               )}

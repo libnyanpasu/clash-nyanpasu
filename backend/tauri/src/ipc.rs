@@ -1291,7 +1291,7 @@ pub async fn get_cached_icon(
     paths: State<'_, PathResolver>,
     url: String,
 ) -> Result<IconData> {
-    let (mime, bytes) = nyanpasu_core::icons::get_cached_icon(
+    let (mime, bytes) = crate::desktop::icon_cache::get_cached_icon(
         &url,
         client.clash_info().port,
         paths,

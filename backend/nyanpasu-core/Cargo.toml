@@ -74,8 +74,6 @@ tracing-subscriber = { version = '0.3', features = [
 ] }
 tracing.workspace = true
 serde = { version = '1.0', features = ['derive'] }
-postcard = { version = '1.1', features = ['alloc'] }
-bytes = { version = '1', features = ['serde'] }
 atomicwrites = '0.4.4'
 backon = { version = '1.0.1', features = ['tokio-sleep'] }
 nanoid = '0.5.0'

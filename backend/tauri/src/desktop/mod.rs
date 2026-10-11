@@ -5,6 +5,7 @@ pub mod effects;
 mod event_sink;
 pub mod frontend_events;
 pub mod hotkey;
+pub(crate) mod icon_cache;
 pub mod main_thread;
 pub mod system_proxy_adapters;
 pub mod ui_effects;

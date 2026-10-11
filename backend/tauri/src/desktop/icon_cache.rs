@@ -63,7 +63,7 @@ pub async fn get_cached_icon(
         }
     }
 
-    let client = crate::network::get_reqwest_client(self_proxy_port, user_agent)?;
+    let client = nyanpasu_core::network::get_reqwest_client(self_proxy_port, user_agent)?;
     let response = client.get(url).send().await?.error_for_status()?;
     let mime = response
         .headers()

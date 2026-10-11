@@ -28,15 +28,18 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import { getProfileSource, useProfile } from '@nyanpasu/query'
+import { getProfileSource, getRemoteSource, useProfile } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { MeshGradient } from '@paper-design/shaders-react'
+import { MeshGradient, meshGradientMeta } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../../_modules/consts'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
 import { Route as IndexRoute } from '../index'
+import ProfileCardSubscription, {
+  ProfileCardUpdate,
+} from './profile-card-subscription'
 import { categoryProfiles, isProxyProfile } from './utils'
 
 const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
@@ -82,9 +85,9 @@ const ActiveGradient = ({
 
   const colors = useMemo(
     () =>
-      Object.values(themePalette.schemes.light).map((color) =>
-        hexFromArgb(color),
-      ),
+      Object.values(themePalette.schemes.light)
+        .slice(0, meshGradientMeta.maxColorCount)
+        .map((color) => hexFromArgb(color)),
     [themePalette],
   )
 
@@ -114,7 +117,7 @@ const ActiveGradient = ({
 
   return (
     <MeshGradient
-      className="absolute inset-0 size-full opacity-30"
+      className="pointer-events-none absolute inset-0 size-full opacity-30"
       colors={colors}
       distortion={0.5}
       swirl={0.1}
@@ -139,6 +142,9 @@ const GridViewProfile = memo(function GridViewProfile({
   const activeProfile = useActiveProfile(profile)
   const deleteProfile = useDeleteProfile(profile)
 
+  const remote = getRemoteSource(profile)
+  const featured = activeProfile.isActive && isProxyProfile(profile)
+
   const isPending = activeProfile.isPending || deleteProfile.isPending
 
   const cardRef = useRef<HTMLDivElement>(null)
@@ -154,7 +160,12 @@ const GridViewProfile = memo(function GridViewProfile({
       <RegisterContextMenuTrigger asChild>
         <Card
           data-slot="profile-card"
-          className="relative flex flex-col justify-between"
+          data-profile-uid={profile.uid}
+          data-active={featured || undefined}
+          className={cn(
+            'relative isolate flex min-w-0 flex-col justify-between',
+            featured ? 'order-first col-span-full rounded-[2rem]' : 'min-h-40',
+          )}
           asChild
         >
           <div ref={cardRef}>
@@ -182,27 +193,61 @@ const GridViewProfile = memo(function GridViewProfile({
             {activeProfile.isActive && <ActiveGradient cardRef={cardRef} />}
 
             <CardHeader
-              className="flex items-center justify-between gap-2"
+              className="relative flex flex-col items-start justify-between gap-2 px-4 pt-4 sm:flex-row sm:items-center"
               data-slot="profile-card-title"
             >
-              <TextMarquee className="z-10 min-w-0 flex-1">
+              <TextMarquee
+                className={cn(
+                  'w-full min-w-0 flex-1 sm:w-auto',
+                  featured && 'text-xl sm:text-2xl',
+                )}
+              >
                 {profile.name}
               </TextMarquee>
 
               {activeProfile.isActive && (
-                <Chip className="shrink-0">{m.profile_is_active_label()}</Chip>
+                <Chip className="bg-primary text-on-primary shrink-0">
+                  {m.profile_is_active_label()}
+                </Chip>
               )}
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="relative gap-3 p-4">
               <div className="z-10 flex gap-1" data-slot="profile-card-type">
                 <Chip>{sourceLabelOf(profile)}</Chip>
 
                 {isGlobal && <Chip>{m.profile_global_label()}</Chip>}
               </div>
+
+              {remote ? (
+                <ProfileCardSubscription
+                  profile={profile}
+                  featured={featured}
+                />
+              ) : (
+                <p className="text-on-surface-variant text-sm">
+                  {getProfileSource(profile)
+                    ? m.profile_card_local_description()
+                    : m.profile_card_composition_description()}
+                </p>
+              )}
             </CardContent>
 
-            <CardFooter>
+            <CardFooter className="relative flex-row flex-wrap gap-1 px-4 pb-3">
+              {remote && (
+                <ProfileCardUpdate profile={profile} disabled={isPending} />
+              )}
+
+              {isProxyProfile(profile) && !activeProfile.isActive && (
+                <Button
+                  variant="raised"
+                  disabled={isPending}
+                  onClick={activeProfile.handleClick}
+                >
+                  {m.profile_active_title()}
+                </Button>
+              )}
+
               <Button className="flex items-center justify-center" asChild>
                 <Link
                   to="/main/profiles/$type/detail/$uid"
@@ -286,9 +331,13 @@ const useListOverflows = (
     }
 
     const update = () => {
-      const last = list.lastElementChild ?? list
+      // CSS places the current profile first without changing sortable indices.
       const bottom =
-        last.getBoundingClientRect().bottom -
+        Array.from(list.children).reduce(
+          (bottom, item) =>
+            Math.max(bottom, item.getBoundingClientRect().bottom),
+          list.getBoundingClientRect().top,
+        ) -
         viewport.getBoundingClientRect().top +
         viewport.scrollTop
 
@@ -362,10 +411,9 @@ export default function ProfilesList({
           <div
             ref={gridRef}
             className={cn(
-              'grid content-start gap-2',
+              'grid content-start gap-3',
               'md:grid-cols-2',
-              'lg:grid-cols-3',
-              'dxl:grid-cols-4',
+              'dxl:grid-cols-3',
               className,
             )}
             data-slot="profiles-navigate"

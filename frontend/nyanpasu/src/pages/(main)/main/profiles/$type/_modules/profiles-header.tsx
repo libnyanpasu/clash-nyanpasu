@@ -35,18 +35,18 @@ export default function ProfilesHeader() {
   return (
     <div
       className={cn(
-        'flex items-center gap-2 p-4',
-        'sticky top-0 z-50',
-        'bg-mixed-background',
+        'flex flex-col items-stretch gap-2 p-4',
+        'bg-mixed-background text-on-surface',
       )}
     >
-      {isMobile && <BackButton />}
+      <div className="flex items-center gap-2">
+        {isMobile && <BackButton />}
+        <h1 className="text-2xl font-medium">
+          {messages[type as ProfileType]}
+        </h1>
+      </div>
 
-      {isProfileType ? (
-        <ProfileQuickImport />
-      ) : (
-        <p className="text-lg font-bold">{messages[type as ProfileType]}</p>
-      )}
+      {isProfileType && <ProfileQuickImport />}
     </div>
   )
 }

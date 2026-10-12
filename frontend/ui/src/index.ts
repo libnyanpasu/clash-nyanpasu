@@ -1,3 +1,4 @@
+export * from './accordion'
 export * from './animated-item'
 export { default as AnimatedTabs } from './animated-tabs'
 export * from './animated-tabs'

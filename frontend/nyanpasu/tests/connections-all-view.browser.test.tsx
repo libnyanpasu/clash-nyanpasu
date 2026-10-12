@@ -166,8 +166,14 @@ test('lists live and closed connections in one table', async ({
     onTestFinished,
   )
 
-  await expect.poll(() => container.querySelectorAll('tbody tr').length).toBe(3)
-  const [liveRow, newer, older] = container.querySelectorAll('tbody tr')
+  await expect
+    .poll(
+      () => container.querySelectorAll('tbody tr:not([aria-hidden])').length,
+    )
+    .toBe(3)
+  const [liveRow, newer, older] = container.querySelectorAll(
+    'tbody tr:not([aria-hidden])',
+  )
   expect(liveRow.textContent).toContain('/s')
   expect(newer.textContent).toContain('newer.example')
   expect(newer.textContent).not.toContain('/s')

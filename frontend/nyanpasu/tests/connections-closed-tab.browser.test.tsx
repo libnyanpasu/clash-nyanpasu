@@ -157,7 +157,9 @@ test('a search keeps loading older pages until it finds a match', async ({
   )
 
   await expect.poll(() => container.textContent).toContain('older.example')
-  expect(container.querySelectorAll('tbody tr')).toHaveLength(1)
+  expect(
+    container.querySelectorAll('tbody tr:not([aria-hidden])'),
+  ).toHaveLength(1)
 })
 
 test('column settings hide a column and remember it', async ({
@@ -236,6 +238,8 @@ test('the mock connections setting replaces the traffic history', async ({
   )
 
   await expect
-    .poll(() => container.querySelectorAll('tbody tr').length)
+    .poll(
+      () => container.querySelectorAll('tbody tr:not([aria-hidden])').length,
+    )
     .toBeGreaterThan(0)
 })

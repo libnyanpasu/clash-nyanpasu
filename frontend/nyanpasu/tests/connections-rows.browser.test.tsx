@@ -75,7 +75,7 @@ const sample = (
 ) => ({ connections: [{ ...connection, ...changes }] })
 
 const rowText = (container: HTMLElement) =>
-  container.querySelector('tbody tr')?.textContent ?? ''
+  container.querySelector('tbody tr:not([aria-hidden])')?.textContent ?? ''
 
 test('a row shows the traffic of each new sample', async ({
   onTestFinished,

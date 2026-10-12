@@ -120,8 +120,12 @@ test('double-clicking a closed connection shows its details', async ({
     onTestFinished,
   )
 
-  await expect.poll(() => container.querySelectorAll('tbody tr').length).toBe(1)
-  doubleClick(container.querySelector('tbody tr')!)
+  await expect
+    .poll(
+      () => container.querySelectorAll('tbody tr:not([aria-hidden])').length,
+    )
+    .toBe(1)
+  doubleClick(container.querySelector('tbody tr:not([aria-hidden])')!)
 
   await expect.poll(() => dialog()?.textContent).toContain('/usr/bin/curl')
   expect(dialog()!.textContent).toContain(m.connections_tab_closed())
@@ -148,10 +152,14 @@ test('the details of an active connection stay open after it closes', async ({
     onTestFinished,
   )
 
-  await expect.poll(() => container.querySelectorAll('tbody tr').length).toBe(2)
-  const row = [...container.querySelectorAll('tbody tr')].find((tr) =>
-    tr.textContent?.includes(connection.metadata!.host!),
-  )!
+  await expect
+    .poll(
+      () => container.querySelectorAll('tbody tr:not([aria-hidden])').length,
+    )
+    .toBe(2)
+  const row = [
+    ...container.querySelectorAll('tbody tr:not([aria-hidden])'),
+  ].find((tr) => tr.textContent?.includes(connection.metadata!.host!))!
   doubleClick(row)
 
   await expect.poll(() => dialog()?.textContent).toContain(connection.id)

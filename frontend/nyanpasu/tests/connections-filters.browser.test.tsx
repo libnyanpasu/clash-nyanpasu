@@ -81,10 +81,10 @@ function render(
 }
 
 const rowCount = (container: HTMLElement) =>
-  container.querySelectorAll('tbody tr').length
+  container.querySelectorAll('tbody tr:not([aria-hidden])').length
 
 const hasRow = (container: HTMLElement, text: string) =>
-  [...container.querySelectorAll('tbody tr')].some((tr) =>
+  [...container.querySelectorAll('tbody tr:not([aria-hidden])')].some((tr) =>
     tr.textContent?.includes(text),
   )
 

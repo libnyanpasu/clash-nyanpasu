@@ -1093,6 +1093,7 @@
   "logs_filters": "筛选条件",
   "logs_copied": "已复制",
   "logs_all_levels": "全部级别",
+  "navigation_sidebar_collapse": "收起侧栏",
   "logs_level_sidebar": "日志级别",
   "release_channel_label": "更新渠道",
   "release_channel_stable": "稳定版",

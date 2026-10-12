@@ -142,8 +142,32 @@ export async function resolveSidecar(
   binInfo: BinInfo | Promise<BinInfo>,
   options?: ResolveOptions,
 ): Promise<ResolveInfo> {
-  const { name, version, targetFile, tmpFile, exeFile, downloadURL } =
-    await binInfo;
+  const info = await binInfo;
+  try {
+    return await materializeSidecar(context, info, options);
+  } catch (err) {
+    if (!info.refresh) throw err;
+    const debugLog = context.debugLog ?? (() => {});
+
+    let refreshed: BinInfo;
+    try {
+      refreshed = await info.refresh();
+    } catch (refreshErr) {
+      debugLog(`failed to refresh ${info.name}: ${String(refreshErr)}`);
+      throw err;
+    }
+
+    debugLog(`retrying ${info.name} with version ${refreshed.version}`);
+    return await materializeSidecar(context, refreshed, options);
+  }
+}
+
+async function materializeSidecar(
+  context: ResourceResolverOptions,
+  binInfo: BinInfo,
+  options?: ResolveOptions,
+): Promise<ResolveInfo> {
+  const { name, version, targetFile, tmpFile, exeFile, downloadURL } = binInfo;
   const sidecarPath = path.join(context.sidecarDir, targetFile);
   const versionStampPath = `${sidecarPath}.version`;
   const debugLog = context.debugLog ?? (() => {});

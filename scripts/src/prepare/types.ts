@@ -15,6 +15,11 @@ export interface BinInfo {
   exeFile: string;
   tmpFile: string;
   downloadURL: string;
+  /**
+   * Re-resolves the binary from the live release when the pinned download is
+   * gone, such as after a rolling alpha tag moved past the manifest version.
+   */
+  refresh?: () => Promise<BinInfo>;
 }
 
 export interface VersionManifest {

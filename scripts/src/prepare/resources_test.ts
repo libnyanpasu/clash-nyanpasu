@@ -162,3 +162,122 @@ Deno.test("Meow Alpha version mismatch keeps the previous binary and stamp", asy
     await Deno.remove(root, { recursive: true });
   }
 });
+
+Deno.test("Sidecar refreshes a gone alpha asset from the live release", async () => {
+  const root = await Deno.makeTempDir();
+  const context = resolverContext(root, foreignExecutableTarget());
+  const originalFetch = globalThis.fetch;
+  let refreshCalls = 0;
+  globalThis.fetch = (input) => {
+    const url = String(input);
+    if (url === "https://example.test/stale-alpha") {
+      return Promise.resolve(new Response("gone", { status: 404 }));
+    }
+    if (url === "https://example.test/live-alpha") {
+      return Promise.resolve(
+        new Response(new Uint8Array([0x01, 0x02, 0x03])),
+      );
+    }
+    return Promise.reject(new Error(`unexpected fetch: ${url}`));
+  };
+
+  const targetFile = "clash-rs-alpha-fixture";
+  const pinned: BinInfo = {
+    name: "clash-rs-alpha",
+    version: "alpha-stale",
+    targetFile,
+    tmpFile: "clash-rs-alpha-stale",
+    exeFile: "clash-rs-alpha-stale",
+    downloadURL: "https://example.test/stale-alpha",
+    refresh: () => {
+      refreshCalls++;
+      return Promise.resolve({
+        ...pinned,
+        version: "alpha-live",
+        tmpFile: "clash-rs-alpha-live",
+        exeFile: "clash-rs-alpha-live",
+        downloadURL: "https://example.test/live-alpha",
+      });
+    },
+  };
+
+  try {
+    const result = await resolveSidecar(context, pinned);
+    assertEquals(refreshCalls, 1);
+    assertEquals(result.cached, false);
+    assertEquals(result.version, "alpha-live");
+    assertEquals(result.size, 3);
+    assertEquals(
+      await Deno.readFile(path.join(context.sidecarDir, targetFile)),
+      new Uint8Array([0x01, 0x02, 0x03]),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("Sidecar keeps the pinned asset while it is still available", async () => {
+  const root = await Deno.makeTempDir();
+  const context = resolverContext(root, foreignExecutableTarget());
+  const originalFetch = globalThis.fetch;
+  let refreshCalls = 0;
+  globalThis.fetch = () =>
+    Promise.resolve(new Response(new Uint8Array([0x04, 0x05])));
+
+  const pinned: BinInfo = {
+    name: "clash-rs-alpha",
+    version: "alpha-pinned",
+    targetFile: "clash-rs-alpha-pinned",
+    tmpFile: "clash-rs-alpha-pinned",
+    exeFile: "clash-rs-alpha-pinned",
+    downloadURL: "https://example.test/pinned-alpha",
+    refresh: () => {
+      refreshCalls++;
+      return Promise.reject(new Error("refresh must not run"));
+    },
+  };
+
+  try {
+    const result = await resolveSidecar(context, pinned);
+    assertEquals(refreshCalls, 0);
+    assertEquals(result.version, "alpha-pinned");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("Sidecar reports the pinned download error when refresh fails", async () => {
+  const root = await Deno.makeTempDir();
+  const context = resolverContext(root, foreignExecutableTarget());
+  const originalFetch = globalThis.fetch;
+  let refreshCalls = 0;
+  globalThis.fetch = () =>
+    Promise.resolve(new Response("gone", { status: 404 }));
+
+  const pinned: BinInfo = {
+    name: "meow-alpha",
+    version: "alpha-stale",
+    targetFile: "meow-alpha-fixture",
+    tmpFile: "meow-alpha-stale.tar.gz",
+    exeFile: "meow-alpha-stale/meow",
+    downloadURL: "https://example.test/stale-meow-alpha",
+    refresh: () => {
+      refreshCalls++;
+      return Promise.reject(new Error("live lookup failed"));
+    },
+  };
+
+  try {
+    await assertRejects(
+      () => resolveSidecar(context, pinned),
+      Error,
+      "download failed",
+    );
+    assertEquals(refreshCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await Deno.remove(root, { recursive: true });
+  }
+});

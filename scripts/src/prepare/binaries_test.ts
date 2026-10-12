@@ -208,3 +208,79 @@ Deno.test("nyanpasu-service version and asset derive from its Cargo manifest", a
     await Deno.remove(workspaceRoot, { recursive: true });
   }
 });
+
+Deno.test("Meow Alpha refresh resolves the current rolling tag asset", async () => {
+  const originalFetch = globalThis.fetch;
+  const requested: string[] = [];
+  globalThis.fetch = (input) => {
+    const url = String(input);
+    requested.push(url);
+    return Promise.resolve(
+      new Response("meow-alpha-1fd134a-x86_64-apple-darwin.tar.gz"),
+    );
+  };
+
+  try {
+    const binary = createBinaryResolvers({
+      versionManifest: versionManifest(),
+      sidecarHost: "x86_64-apple-darwin",
+      platform: "darwin",
+      arch: "x64",
+      workspaceRoot: "/workspace",
+    });
+    const pinned = binary.meowAlpha();
+    assertEquals(pinned.version, "alpha-v1");
+    assertEquals(typeof pinned.refresh, "function");
+
+    const refreshed = await pinned.refresh!();
+    assertEquals(requested, [
+      "https://github.com/meow-rs/meow-rs/releases/expanded_assets/Prerelease-Alpha",
+    ]);
+    assertEquals(refreshed.version, "alpha-1fd134a");
+    assertEquals(
+      refreshed.tmpFile,
+      "meow-alpha-1fd134a-x86_64-apple-darwin.tar.gz",
+    );
+    assertEquals(
+      refreshed.downloadURL,
+      "https://github.com/meow-rs/meow-rs/releases/download/Prerelease-Alpha/" +
+        "meow-alpha-1fd134a-x86_64-apple-darwin.tar.gz",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("Mihomo Alpha refresh re-resolves the live version", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input) =>
+    String(input).endsWith("/version.txt")
+      ? Promise.resolve(new Response("alpha-bc76c13"))
+      : Promise.resolve(
+        new Response("mihomo-linux-amd64-v2-alpha-bc76c13.gz"),
+      );
+
+  try {
+    const binary = createBinaryResolvers({
+      versionManifest: versionManifest(),
+      sidecarHost: "x86_64-unknown-linux-gnu",
+      platform: "linux",
+      arch: "x64",
+      workspaceRoot: "/workspace",
+    });
+    const pinned = await binary.mihomoAlpha();
+    assertEquals(pinned.version, "alpha-bc76c13");
+    assertEquals(typeof pinned.refresh, "function");
+
+    const refreshed = await pinned.refresh!();
+    assertEquals(refreshed.version, "alpha-bc76c13");
+    assertEquals(refreshed.tmpFile, "mihomo-alpha-linux-amd64-alpha-bc76c13");
+    assertEquals(
+      refreshed.downloadURL,
+      "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/" +
+        "mihomo-alpha-linux-amd64-alpha-bc76c13",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

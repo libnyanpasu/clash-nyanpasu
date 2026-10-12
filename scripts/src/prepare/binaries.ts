@@ -11,6 +11,8 @@ import type { DebugLog } from "./download.ts";
 
 const MIHOMO_ALPHA_ASSETS_URL =
   "https://github.com/MetaCubeX/mihomo/releases/expanded_assets/Prerelease-Alpha";
+const MEOW_ALPHA_ASSETS_URL =
+  "https://github.com/meow-rs/meow-rs/releases/expanded_assets/Prerelease-Alpha";
 
 export interface BinaryResolverOptions {
   versionManifest: VersionManifest;
@@ -57,6 +59,8 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
   };
 
   const clashRsAlphaManifest: ClashManifest = {
+    // The rolling `latest` tag serves versionless assets, so its URL stays
+    // valid even when the manifest version lags behind.
     URL_PREFIX: "https://github.com/ibigbug/clash-rs/releases/download/latest",
     ARCH_MAPPING: versionManifest.arch_template.clash_rs_alpha,
   };
@@ -145,6 +149,7 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
       exeFile: `${name}${isWin ? ".exe" : ""}`,
       tmpFile: name,
       downloadURL: `${URL_PREFIX}/${name}`,
+      refresh: () => getClashMetaAlphaInfo(),
     };
   }
 
@@ -191,19 +196,35 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
     };
   }
 
-  function getMeowAlphaInfo(): BinInfo {
-    const { URL_PREFIX, VERSION, ARCH_MAPPING } = meowAlphaManifest;
+  function makeMeowAlphaInfo(version: string): BinInfo {
+    const { URL_PREFIX, ARCH_MAPPING } = meowAlphaManifest;
     const mappedArch = mapArch(platform, arch);
-    const assetName = ARCH_MAPPING[mappedArch].replace("{}", VERSION!);
+    const assetName = ARCH_MAPPING[mappedArch].replace("{}", version);
     return {
       name: "meow-alpha",
-      version: VERSION,
+      version,
       targetFile: targetName("meow-alpha"),
       exeFile: platform === "win32"
         ? "meow.exe"
         : `${assetName.replace(/\.tar\.gz$/, "")}/meow`,
       tmpFile: assetName,
       downloadURL: `${URL_PREFIX}/${assetName}`,
+    };
+  }
+
+  function getMeowAlphaInfo(): BinInfo {
+    return {
+      ...makeMeowAlphaInfo(versionManifest.latest.meow_alpha),
+      refresh: async () => {
+        const assetTemplate = meowAlphaManifest.ARCH_MAPPING[
+          mapArch(platform, arch)
+        ];
+        const page = await fetchText(MEOW_ALPHA_ASSETS_URL);
+        const version = extractVersionFromAssetList(page ?? "", assetTemplate);
+        if (!version) throw new Error("cannot resolve meow-alpha version");
+        debugLog(`meow-alpha version: ${version}`);
+        return makeMeowAlphaInfo(version);
+      },
     };
   }
 

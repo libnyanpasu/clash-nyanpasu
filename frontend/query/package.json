@@ -24,7 +24,7 @@
     "semver": "7.7.4"
   },
   "peerDependencies": {
-    "@tanstack/react-query": "5.104.1",
+    "@tanstack/react-query": "5.104.2",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

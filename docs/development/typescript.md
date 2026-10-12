@@ -118,6 +118,12 @@ spacing, shape, motion, and semantic color tokens (`primary`, `surface`,
 `on-surface`, etc.). Preserve
 dark-mode, focus, disabled, loading, and keyboard behavior; avoid a parallel design system.
 
+Use `cva()` from `class-variance-authority` for reusable class definitions, including
+styles without variants. Name these definitions in camelCase with a `Variants`
+suffix and call them at the use site. Do not extract class strings into
+`*_CLASS` or `*_CLASSES` constants. Keep one-use layout classes inline; use `cn()`
+to merge generated classes with caller overrides, not to define reusable styles.
+
 Dashboard widgets must not contain internal scrollbars. Keep content within the
 widget's allocated size with `min-h-0` and `overflow-hidden`; do not use
 `overflow-auto` or `overflow-scroll` to accommodate widget content. Reduce visible

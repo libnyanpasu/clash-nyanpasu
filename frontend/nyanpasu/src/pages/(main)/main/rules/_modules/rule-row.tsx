@@ -1,5 +1,6 @@
 import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
 import ArrowForwardRounded from '~icons/material-symbols/arrow-forward-rounded'
+import { cva } from 'class-variance-authority'
 import { memo, type ReactNode } from 'react'
 import HighlightText from '@nyanpasu/ui/highlight-text'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
@@ -18,8 +19,9 @@ export type RuleSort = (typeof RULE_SORTS)[number]
 export const RULE_ROW_HEIGHT = 56
 
 // Shared by the header and the rows so their columns line up.
-const GRID =
-  'grid grid-cols-[2.5rem_minmax(0,1fr)_4rem_7rem_7rem] items-center gap-x-4 px-4'
+const ruleGridVariants = cva(
+  'grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_7rem_7rem] items-center gap-x-3 px-4',
+)
 
 const Placeholder = () => (
   <span className="text-on-surface-variant/40 text-right">—</span>
@@ -70,7 +72,13 @@ export function RulesHeader({
   const cell = { sort, onSortChange }
 
   return (
-    <div className={cn(GRID, 'h-9')} data-slot="rules-header">
+    <div
+      className={cn(
+        ruleGridVariants(),
+        'bg-surface-variant/20 border-outline-variant/40 h-10 border-b',
+      )}
+      data-slot="rules-header"
+    >
       <HeaderCell value="index" end {...cell}>
         #
       </HeaderCell>
@@ -218,9 +226,9 @@ export const RuleRow = memo(function RuleRow({
   return (
     <div
       className={cn(
-        GRID,
-        'border-outline-variant/25 border-b transition-colors',
-        'hover:bg-primary/5',
+        ruleGridVariants(),
+        'border-outline-variant/20 border-b transition-colors',
+        'hover:bg-on-surface/4',
       )}
       style={{
         height: RULE_ROW_HEIGHT,

@@ -91,7 +91,7 @@ beforeEach(() => {
 })
 
 test.for(['app', 'service'] as const)(
-  '%s footer selects current and archived files through the MDY select',
+  '%s footer selects current and archived files through the dropdown menu',
   async (source, { onTestFinished }) => {
     mocked.source = source
     mocked.listLogFiles.mockResolvedValue(
@@ -120,19 +120,21 @@ test.for(['app', 'service'] as const)(
     const view = await render(<CoreLogsPage />)
     onTestFinished(() => view.unmount())
     await expect.poll(() => mocked.openLogSession.mock.calls.length).toBe(1)
-    const select = view.getByRole('combobox', { name: m.logs_file_label() })
+    const select = view.getByRole('button', { name: m.logs_file_label() })
     expect(select.element().textContent).toContain(m.logs_current_file())
     await select.click()
-    await view.getByRole('option', { name: 'archive.log' }).click()
+    await view.getByRole('menuitemradio', { name: 'archive.log' }).click()
     await expect
       .poll(() => mocked.openLogSession.mock.lastCall)
       .toEqual([
         source,
         { request_id: expect.any(String), file: 'archive.log' },
       ])
-    expect(select.element().textContent).toContain('archive.log')
+    await expect.element(select).toHaveTextContent('archive.log')
     await select.click()
-    await view.getByRole('option', { name: m.logs_current_file() }).click()
+    await view
+      .getByRole('menuitemradio', { name: m.logs_current_file() })
+      .click()
     await expect
       .poll(() => mocked.openLogSession.mock.lastCall)
       .toEqual([source, { request_id: expect.any(String), file: null }])
@@ -249,7 +251,22 @@ test('scrolling to the top loads older records and preserves the visible row', a
       ([query]) => query.direction === 'before',
     ),
   ).toHaveLength(1)
+  const scrollTo = vi.spyOn(viewport, 'scrollTo')
+  onTestFinished(() => scrollTo.mockRestore())
   await view.getByRole('button', { name: m.logs_follow_latest() }).click()
+  await expect
+    .poll(() =>
+      scrollTo.mock.calls.some((args) => {
+        const options: unknown = args[0]
+        return (
+          typeof options === 'object' &&
+          options !== null &&
+          'behavior' in options &&
+          options.behavior === 'smooth'
+        )
+      }),
+    )
+    .toBe(true)
   await expect
     .poll(() => viewport.scrollTop, { timeout: 5_000 })
     .toBeGreaterThan(1000)

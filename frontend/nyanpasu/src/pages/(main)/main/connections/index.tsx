@@ -18,6 +18,7 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { useDeleteClashConnections } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
+import { DataPage, DataPageSurface } from '../_modules/data-page'
 import type { SearchFilter } from '../_modules/traffic-filters'
 import { useSearchTerm } from '../_modules/use-search-term'
 import ActiveViewer from './_modules/active-viewer'
@@ -134,9 +135,9 @@ function RouteComponent() {
       key={scope}
       className={cn(
         'min-h-0 flex-1',
-        // Start the vertical scrollbar below the sticky h-9 table header;
+        // Start the vertical scrollbar below the sticky h-10 table header;
         // Radix pins it to the top with an inline style.
-        '[&>[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:top-9!',
+        '[&>[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:top-10!',
         '[&>[data-slot=scroll-area-scrollbar][data-orientation=vertical]]:h-auto',
       )}
       scrollbars="both"
@@ -181,45 +182,52 @@ function RouteComponent() {
   )
 
   return (
-    <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
-      {scope === 'closed' ? (
-        scrollArea
-      ) : (
-        <RegisterContextMenu>
-          <RegisterContextMenuTrigger asChild>
-            {scrollArea}
-          </RegisterContextMenuTrigger>
+    <DataPage
+      title={m.navbar_label_connections()}
+      toolbar={
+        <ConnectionsToolbar
+          tabs={
+            <ConnectionsStatusTabs
+              value={scope}
+              onValueChange={(next) =>
+                navigate({
+                  search: (previous) => ({ ...previous, scope: next }),
+                  state: keepReturn,
+                })
+              }
+              selection={selection}
+            />
+          }
+          start={<ReturnButton />}
+          selection={selection}
+          onSelectionChange={handleSelectionChange}
+          search={search}
+          onSearchChange={setSearch}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onCloseAll={
+            scope === 'closed' ? undefined : handleCloseAllConnections
+          }
+        />
+      }
+    >
+      <DataPageSurface>
+        {scope === 'closed' ? (
+          scrollArea
+        ) : (
+          <RegisterContextMenu>
+            <RegisterContextMenuTrigger asChild>
+              {scrollArea}
+            </RegisterContextMenuTrigger>
 
-          <RegisterContextMenuContent>
-            <ContextMenuItem onSelect={() => handleCloseAllConnections()}>
-              <CloseRounded className="size-4" />
-              <span>{m.connections_close_all_connections()}</span>
-            </ContextMenuItem>
-          </RegisterContextMenuContent>
-        </RegisterContextMenu>
-      )}
-
-      <ConnectionsToolbar
-        start={<ReturnButton />}
-        tabs={
-          <ConnectionsStatusTabs
-            value={scope}
-            onValueChange={(next) =>
-              navigate({
-                search: (previous) => ({ ...previous, scope: next }),
-                state: keepReturn,
-              })
-            }
-            selection={selection}
-          />
-        }
-        selection={selection}
-        onSelectionChange={handleSelectionChange}
-        search={search}
-        onSearchChange={setSearch}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onCloseAll={scope === 'closed' ? undefined : handleCloseAllConnections}
-      />
-    </div>
+            <RegisterContextMenuContent>
+              <ContextMenuItem onSelect={() => handleCloseAllConnections()}>
+                <CloseRounded className="size-4" />
+                <span>{m.connections_close_all_connections()}</span>
+              </ContextMenuItem>
+            </RegisterContextMenuContent>
+          </RegisterContextMenu>
+        )}
+      </DataPageSurface>
+    </DataPage>
   )
 }

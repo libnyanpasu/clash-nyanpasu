@@ -20,6 +20,10 @@ import {
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import '../src/utils/language'
 import { ReturnButton } from '../src/components/router/return-button'
+import {
+  DataPage,
+  DataPageSurface,
+} from '../src/pages/(main)/main/_modules/data-page'
 import ConnectionsToolbar from '../src/pages/(main)/main/connections/_modules/connections-toolbar'
 import { StatusTabs } from '../src/pages/(main)/main/connections/_modules/status-tabs'
 import { TestQueryProvider } from './query-provider'
@@ -37,10 +41,11 @@ vi.mock('./icon-stub', () => ({
   default: (props: object) => <svg {...props} />,
 }))
 
-// The bar goes on one line from @4xl (896px), the search field widening from
-// @6xl (1152px). 895 is the widest wrapped bar.
-const WRAPPED = [480, 672, 768, 895]
-const ONE_LINE = [896, 1152]
+// The dock's side insets leave a bar 40px narrower than its page on desktop.
+// At 936px the control group can still wrap its chips; it fits on one line at
+// 1152px across the supported locales.
+const WRAPPED = [208, 240, 320, 480, 672, 768, 895, 896, 936]
+const ONE_LINE = [1152]
 
 async function openToolbar(ticket: boolean) {
   // Profile names are unknown here, so the chips show the raw keys.
@@ -60,27 +65,34 @@ async function openToolbar(ticket: boolean) {
   // A jump from the traffic page: a filter, a range and large counts.
   const rootRoute = createRootRoute({
     component: () => (
-      <div data-testid="frame">
-        <ConnectionsToolbar
-          start={<ReturnButton />}
-          tabs={
-            <StatusTabs
-              value="active"
-              onValueChange={() => {}}
-              activeCount={1_234}
-              closedCount={123_456}
+      <div className="flex min-h-0 w-full" data-testid="frame">
+        <DataPage
+          title={m.navbar_label_connections()}
+          toolbar={
+            <ConnectionsToolbar
+              start={<ReturnButton />}
+              tabs={
+                <StatusTabs
+                  value="active"
+                  onValueChange={() => {}}
+                  activeCount={1_234}
+                  closedCount={123_456}
+                />
+              }
+              selection={{
+                range: 'last24_hours',
+                filters: [{ d: 'rule', v: 'DomainSuffix,example.com' }],
+              }}
+              onSelectionChange={() => {}}
+              search=""
+              onSearchChange={() => {}}
+              onOpenSettings={() => {}}
+              onCloseAll={() => {}}
             />
           }
-          selection={{
-            range: 'last24_hours',
-            filters: [{ d: 'rule', v: 'DomainSuffix,example.com' }],
-          }}
-          onSelectionChange={() => {}}
-          search=""
-          onSearchChange={() => {}}
-          onOpenSettings={() => {}}
-          onCloseAll={() => {}}
-        />
+        >
+          <DataPageSurface />
+        </DataPage>
       </div>
     ),
   })
@@ -120,7 +132,23 @@ async function openToolbar(ticket: boolean) {
   }
 
   const frame = view.getByTestId('frame').element() as HTMLElement
-  const row = frame.querySelector('[data-slot=connections-toolbar] > div')!
+  frame.style.height = '640px'
+  const page = frame.querySelector<HTMLElement>('[data-slot=data-page]')!
+  const dock = frame.querySelector<HTMLElement>('[data-slot=data-page-dock]')!
+  const toolbar = frame.querySelector<HTMLElement>(
+    '[data-slot=connections-toolbar]',
+  )!
+  const tabs = frame.querySelector<HTMLElement>(
+    '[data-slot=data-page-controls]',
+  )!
+  const surface = frame.querySelector('[data-slot=data-page-surface]')!
+  const row = toolbar
+  const actions = toolbar.querySelector('[data-slot=connections-actions]')!
+
+  expect(page.getAttribute('aria-label')).toBe(m.navbar_label_connections())
+  expect(frame.querySelector('[data-slot=data-page-header]')).toBeNull()
+  expect(dock.contains(toolbar)).toBe(true)
+  expect(toolbar.contains(tabs)).toBe(true)
 
   // Widths are only meaningful once the bar is drawn in Inter.
   await document.fonts.ready
@@ -129,37 +157,63 @@ async function openToolbar(ticket: boolean) {
   return {
     resize: (width: number) => (frame.style.width = `${width}px`),
     row,
-    // The settings and close-all buttons, which end the bar.
-    iconButtons: [...row.querySelectorAll(':scope > button')].slice(-2),
-    search: row.querySelector('[data-slot=connections-search]')!,
+    page,
+    dock,
+    surface,
+    iconButtons: [...actions.querySelectorAll(':scope > button')],
+    search: row.querySelector('[data-slot=connections-search]')!.parentElement!,
     chips: row.querySelector('[data-slot=connections-filters]')!,
+    tabs,
   }
 }
 
 for (const locale of locales) {
   for (const ticket of [false, true]) {
-    test(`${locale}, ${ticket ? 'with' : 'without'} the way back: no control overflows the bar`, async () => {
+    test(`${locale}, ${ticket ? 'with' : 'without'} the way back: no control overflows the floating dock`, async () => {
       const previous = getLocale()
       setLocale(locale, { reload: false })
       onTestFinished(() => setLocale(previous, { reload: false }))
 
-      const { resize, row, iconButtons, search, chips } =
-        await openToolbar(ticket)
+      const {
+        resize,
+        row,
+        page,
+        dock,
+        surface,
+        iconButtons,
+        search,
+        chips,
+        tabs,
+      } = await openToolbar(ticket)
 
       for (const width of [...WRAPPED, ...ONE_LINE]) {
         resize(width)
 
+        const dockBox = dock.getBoundingClientRect()
+        const surfaceBox = surface.getBoundingClientRect()
+        const rowBox = row.getBoundingClientRect()
         expect(row.scrollWidth, `${width}px`).toBeLessThanOrEqual(
           row.clientWidth,
+        )
+        expect(rowBox.left).toBeGreaterThanOrEqual(dockBox.left)
+        expect(rowBox.right).toBeLessThanOrEqual(dockBox.right)
+        expect(rowBox.top).toBeLessThan(surfaceBox.bottom)
+        expect(surfaceBox.top).toBeLessThan(rowBox.top)
+        expect(dockBox.bottom).toBeLessThanOrEqual(
+          page.getBoundingClientRect().bottom,
         )
 
         // A crowded row wraps the search field rather than squeezing it.
         expect(
           search.getBoundingClientRect().width,
           `${width}px`,
-        ).toBeGreaterThanOrEqual(192)
+        ).toBeGreaterThanOrEqual(Math.min(192, row.clientWidth))
 
-        // A crowded row squeezes the icon buttons before it overflows.
+        // A crowded row wraps the tab group while keeping the icon buttons intact.
+        expect(
+          tabs.getBoundingClientRect().width,
+          `${width}px`,
+        ).toBeGreaterThan(0)
         for (const button of iconButtons) {
           const { width: buttonWidth, right } = button.getBoundingClientRect()
 
@@ -170,13 +224,19 @@ for (const locale of locales) {
         }
       }
 
-      // One line: the bar keeps its single-row height, the chips in it.
+      // The widest layout keeps the chips and tabs visible inside the dock.
       for (const width of ONE_LINE) {
         resize(width)
 
-        expect(row.getBoundingClientRect().height, `${width}px`).toBe(64)
+        expect(row.getBoundingClientRect().height, `${width}px`).toBeLessThan(
+          112,
+        )
         expect(
           chips.getBoundingClientRect().width,
+          `${width}px`,
+        ).toBeGreaterThan(0)
+        expect(
+          tabs.getBoundingClientRect().width,
           `${width}px`,
         ).toBeGreaterThan(0)
       }

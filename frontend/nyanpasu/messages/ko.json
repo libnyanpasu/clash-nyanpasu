@@ -1018,6 +1018,7 @@
   "logs_filters": "필터",
   "logs_copied": "복사됨",
   "logs_all_levels": "모든 수준",
+  "navigation_sidebar_collapse": "사이드바 접기",
   "logs_level_sidebar": "로그 수준",
   "release_channel_label": "업데이트 채널",
   "release_channel_stable": "안정판",

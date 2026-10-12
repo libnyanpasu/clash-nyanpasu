@@ -1,4 +1,5 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
+import { useReducedMotion } from 'motion/react'
 import {
   memo,
   useCallback,
@@ -30,12 +31,13 @@ import type {
 import { Button } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { useDataPageBottomInset } from '../_modules/data-page'
 import FileLogs from './_modules/file-logs'
 import {
   LogClearButton,
   LogEmptyState,
   LogFollowButton,
-  logPanelClass,
+  logPanelVariants,
   LogRecord,
   LogSearch,
 } from './_modules/log-viewer'
@@ -101,6 +103,9 @@ function Viewer({
   const { loadOlder } = logs
   const rows = useDeferredValue(logs.data)
   const deferredSearch = useDeferredValue(search)
+  const bottomInset = useDataPageBottomInset()
+  const reducedMotion = useReducedMotion()
+  const followScrollBehavior = useRef<ScrollBehavior>('auto')
   const [inspected, setInspected] = useState<string | null>(null)
   const inspect = useCallback(
     (key: string) => {
@@ -124,6 +129,8 @@ function Viewer({
       return `${id.generation}:${id.sequence}`
     },
     estimateSize: () => 110,
+    paddingEnd: bottomInset,
+    scrollPaddingEnd: bottomInset,
     overscan: 5,
     useFlushSync: false,
     useAnimationFrameWithResizeObserver: true,
@@ -139,6 +146,8 @@ function Viewer({
   }, [scrollDirection, isBottom, setFollowing])
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
+      // Start instantly; resuming follow mode animates, including size corrections.
+      if (!following) followScrollBehavior.current = 'smooth'
       if (following) anchor.current = null
       if (anchor.current) {
         if (rows !== logs.data) return
@@ -155,11 +164,22 @@ function Viewer({
         }
         anchor.current = null
       } else if (following && rows.length) {
-        rowVirtualizer.scrollToIndex(rows.length - 1, { align: 'end' })
+        rowVirtualizer.scrollToIndex(rows.length - 1, {
+          align: 'end',
+          behavior: reducedMotion ? 'auto' : followScrollBehavior.current,
+        })
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [rows, logs.data, logs.more, following, rowVirtualizer, totalSize])
+  }, [
+    rows,
+    logs.data,
+    logs.more,
+    following,
+    rowVirtualizer,
+    totalSize,
+    reducedMotion,
+  ])
   useEffect(() => {
     if (
       logs.isLoading ||
@@ -289,7 +309,7 @@ function KernelLogs() {
         />
       }
     >
-      <div className={logPanelClass} data-slot="core-logs">
+      <div className={logPanelVariants()} data-slot="core-logs">
         {(logs.isLoading ||
           logs.loadingOlder ||
           error ||

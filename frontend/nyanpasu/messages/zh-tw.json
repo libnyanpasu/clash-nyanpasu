@@ -1093,6 +1093,7 @@
   "logs_filters": "篩選條件",
   "logs_copied": "已複製",
   "logs_all_levels": "全部等級",
+  "navigation_sidebar_collapse": "收起側欄",
   "logs_level_sidebar": "日誌等級",
   "release_channel_label": "更新管道",
   "release_channel_stable": "穩定版",

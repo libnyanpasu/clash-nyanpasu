@@ -5,6 +5,11 @@ import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { expect, test } from 'vitest'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import {
+  DataPage,
+  DataPageSurface,
+  DataPageToolbar,
+} from '../src/pages/(main)/main/_modules/data-page'
 import ConnectionsTable, {
   type ConnectionColumn,
 } from '../src/pages/(main)/main/connections/_modules/connections-table'
@@ -134,8 +139,184 @@ test('switching tabs and back does not focus the row again', async ({
 
   // The returned-to table starts at the top, with nothing highlighted.
   await expect
-    .poll(() => container.querySelector('tbody tr')?.textContent)
+    .poll(
+      () => container.querySelector('tbody tr:not([aria-hidden])')?.textContent,
+    )
     .toBe('row-1')
   await new Promise((resolve) => setTimeout(resolve, 100))
   expect(focused()).toBeNull()
+})
+
+test('the last connection scrolls clear of the dock after it wraps', async ({
+  onTestFinished,
+}) => {
+  const container = document.createElement('div')
+  container.style.cssText = 'display:flex;width:700px;height:500px'
+  document.body.append(container)
+  const root = createRoot(container)
+  let clicked: string | undefined
+  onTestFinished(() => {
+    root.unmount()
+    container.remove()
+    localStorage.clear()
+  })
+
+  const content = (
+    <DataPage
+      title="Connections"
+      toolbar={
+        <DataPageToolbar>
+          <button className="h-12 w-48 shrink-0">Search</button>
+          <button className="h-12 w-48 shrink-0">Tabs</button>
+        </DataPageToolbar>
+      }
+    >
+      <DataPageSurface>
+        <ScrollArea className="min-h-0 flex-1" scrollbars="both" type="always">
+          <div className="min-w-[900px]">
+            <ConnectionsTable
+              settingsKey="connections-columns-dock-test"
+              columns={columns}
+              data={rows}
+              getRowId={rowId}
+              renderRow={(row, props) => (
+                <tr
+                  {...props}
+                  onClick={() => {
+                    clicked = row.id
+                  }}
+                />
+              )}
+              emptyMessage=""
+              settingsOpen={false}
+              onSettingsOpenChange={() => {}}
+            />
+          </div>
+        </ScrollArea>
+      </DataPageSurface>
+    </DataPage>
+  )
+  root.render(content)
+
+  const viewport = () =>
+    container.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!
+  const header = () => container.querySelector<HTMLElement>('thead th')!
+  const dock = () =>
+    container.querySelector<HTMLElement>('[data-slot="data-page-dock"]')!
+  const row = (id: string) =>
+    [
+      ...container.querySelectorAll<HTMLElement>('tbody tr:not([aria-hidden])'),
+    ].find((candidate) => candidate.textContent === id)!
+  await expect.poll(() => viewport()?.scrollHeight ?? 0).toBeGreaterThan(500)
+  for (const width of [700, 260, 700]) {
+    if (width === 260) {
+      // A new page mount must use the same geometry as an existing page.
+      root.render(null)
+      await expect.poll(() => container.childElementCount).toBe(0)
+      root.render(content)
+      await expect.poll(() => dock()?.offsetHeight ?? 0).toBeGreaterThan(0)
+    }
+    container.style.width = `${width}px`
+    await expect.poll(() => dock().offsetHeight).toBe(width === 700 ? 48 : 104)
+    const horizontal = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-scrollbar"][data-orientation="horizontal"]',
+    )!
+    const vertical = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-scrollbar"][data-orientation="vertical"]',
+    )!
+    await expect
+      .poll(
+        () =>
+          dock().getBoundingClientRect().top -
+          (horizontal?.getBoundingClientRect().bottom ?? Infinity),
+      )
+      .toBeCloseTo(8, 0)
+    expect(horizontal.getBoundingClientRect().left).toBeCloseTo(
+      viewport().getBoundingClientRect().left + 12,
+      0,
+    )
+    await expect
+      .poll(() => vertical?.getBoundingClientRect().bottom ?? Infinity)
+      .toBeLessThanOrEqual(horizontal.getBoundingClientRect().top - 8)
+
+    viewport().scrollTop = 44 * 149
+    await expect.poll(() => row('row-150')?.textContent).toBe('row-150')
+    const viewportBox = viewport().getBoundingClientRect()
+    const headerBox = header().getBoundingClientRect()
+    const middleRow = row('row-150')
+    expect(headerBox.top).toBe(viewportBox.top)
+    expect(middleRow.getBoundingClientRect().top).toBeCloseTo(
+      headerBox.bottom,
+      0,
+    )
+    expect(middleRow.getBoundingClientRect().bottom).toBeLessThan(
+      dock().getBoundingClientRect().top,
+    )
+    expect(
+      middleRow.firstElementChild!.getBoundingClientRect().width,
+    ).toBeCloseTo(header().getBoundingClientRect().width, 0)
+    middleRow.click()
+    expect(clicked).toBe('row-150')
+
+    await expect
+      .poll(() => {
+        viewport().scrollTop = viewport().scrollHeight
+        return row('row-300')?.getBoundingClientRect().bottom ?? Infinity
+      })
+      .toBeLessThanOrEqual(dock().getBoundingClientRect().top)
+  }
+})
+
+test('vertical tracks reserve horizontal clearance only when that track exists', async ({
+  onTestFinished,
+}) => {
+  const container = document.createElement('div')
+  container.style.cssText = 'display:flex;width:700px;height:500px'
+  document.body.append(container)
+  const root = createRoot(container)
+  onTestFinished(() => {
+    root.unmount()
+    container.remove()
+  })
+
+  for (const scrollbars of ['vertical', 'both', 'vertical'] as const) {
+    root.render(null)
+    await expect.poll(() => container.childElementCount).toBe(0)
+    root.render(
+      <DataPage
+        title="Tracks"
+        toolbar={
+          <DataPageToolbar>
+            <button className="h-11">Search</button>
+          </DataPageToolbar>
+        }
+      >
+        <DataPageSurface>
+          <ScrollArea
+            className="min-h-0 flex-1"
+            scrollbars={scrollbars}
+            type="always"
+          >
+            <div className="h-[1000px] min-w-[900px]" />
+          </ScrollArea>
+        </DataPageSurface>
+      </DataPage>,
+    )
+    await expect
+      .poll(() => container.querySelector('[data-orientation="vertical"]'))
+      .not.toBeNull()
+    const vertical = container.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-scrollbar"][data-orientation="vertical"]',
+    )!
+    const dock = container.querySelector<HTMLElement>(
+      '[data-slot="data-page-dock"]',
+    )!
+    await expect
+      .poll(
+        () =>
+          dock.getBoundingClientRect().top -
+          vertical.getBoundingClientRect().bottom,
+      )
+      .toBeCloseTo(scrollbars === 'both' ? 32 : 8, 0)
+  }
 })

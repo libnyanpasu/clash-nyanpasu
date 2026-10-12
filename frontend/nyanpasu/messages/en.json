@@ -1093,6 +1093,7 @@
   "logs_filters": "Filters",
   "logs_copied": "Copied",
   "logs_all_levels": "All levels",
+  "navigation_sidebar_collapse": "Collapse sidebar",
   "logs_level_sidebar": "Log levels",
   "release_channel_label": "Update channel",
   "release_channel_stable": "Stable",

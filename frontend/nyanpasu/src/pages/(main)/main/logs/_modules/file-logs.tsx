@@ -1,4 +1,5 @@
 import FilterListRounded from '~icons/material-symbols/filter-list-rounded'
+import { useReducedMotion } from 'motion/react'
 import {
   lazy,
   memo,
@@ -24,13 +25,6 @@ import {
   useScrollArea,
   useScrollAreaViewport,
 } from '@nyanpasu/ui/scroll-area'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@nyanpasu/ui/select'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { useFileLogs } from '@nyanpasu/query'
@@ -42,12 +36,14 @@ import {
   type LogSource,
 } from '@nyanpasu/rpc/types'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { useDataPageBottomInset } from '../../_modules/data-page'
 import { Route } from '../route'
+import { LogFileMenu } from './log-file-menu'
 import {
   LogClearButton,
   LogEmptyState,
   LogFollowButton,
-  logPanelClass,
+  logPanelVariants,
   LogRecord,
   LogSearch,
 } from './log-viewer'
@@ -127,9 +123,6 @@ export default function FileLogs({ source }: { source: LogSource }) {
   useEffect(() => setFollowing(true), [file, filter])
   const logs = useFileLogs(source, file, filter)
   const filterCount = [target, from, to].filter(Boolean).length
-  const fileName = file
-    ? (logs.files.find((entry) => entry.id === file)?.name ?? file)
-    : m.logs_current_file()
   const selectFile = (value: string | null) => {
     setFollowing(true)
     setFile(value)
@@ -149,37 +142,11 @@ export default function FileLogs({ source }: { source: LogSource }) {
       }
       actions={
         <>
-          <div className="w-40 min-w-28 shrink lg:w-56">
-            <Select
-              variant="outlined"
-              value={file ?? 'current'}
-              onValueChange={(value) =>
-                selectFile(value === 'current' ? null : value)
-              }
-            >
-              <SelectTrigger
-                aria-label={m.logs_file_label()}
-                title={fileName}
-                className="h-10 min-w-0 py-2"
-              >
-                <SelectValue
-                  className="truncate pr-4 text-sm"
-                  placeholder={m.logs_file_label()}
-                >
-                  {fileName}
-                </SelectValue>
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="current">{m.logs_current_file()}</SelectItem>
-                {logs.files.map((entry) => (
-                  <SelectItem key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <LogFileMenu
+            file={file}
+            files={logs.files}
+            onValueChange={selectFile}
+          />
           <Modal
             open={filterOpen}
             onOpenChange={(open) => {
@@ -192,7 +159,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
                 icon
                 aria-label={m.logs_filters()}
                 title={m.logs_filters()}
-                className="focus-visible:ring-primary shrink-0 focus-visible:ring-2"
+                className="focus-visible:ring-primary shrink-0 rounded-full focus-visible:ring-2"
               >
                 <FilterListRounded aria-hidden className="size-5" />
                 {filterCount > 0 && (
@@ -291,7 +258,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
         </>
       }
     >
-      <div className={logPanelClass} data-slot="file-logs">
+      <div className={logPanelVariants()} data-slot="file-logs">
         {(logs.loading ||
           logs.loadingOlder ||
           logs.error ||
@@ -371,6 +338,9 @@ function FileRows({
   // the rows keeps that render from blocking scrolling and input. Everything
   // indexing the virtual list reads this one array so the indexes agree.
   const rows = useDeferredValue(logs.rows)
+  const bottomInset = useDataPageBottomInset()
+  const reducedMotion = useReducedMotion()
+  const followScrollBehavior = useRef<ScrollBehavior>('auto')
   // Rows mount in a deferred render, so a remount for another file or
   // filter commits at once instead of rendering the previous rows first.
   const showRows = useDeferredValue(true, false)
@@ -385,6 +355,8 @@ function FileRows({
     count: rows.length,
     getScrollElement: () => viewportRef.current,
     estimateSize: () => 110,
+    paddingEnd: bottomInset,
+    scrollPaddingEnd: bottomInset,
     overscan: 5,
     useFlushSync: false,
     useAnimationFrameWithResizeObserver: true,
@@ -400,6 +372,8 @@ function FileRows({
   }, [scrollDirection, isBottom, setFollowing])
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
+      // Start instantly; resuming follow mode animates, including size corrections.
+      if (!following) followScrollBehavior.current = 'smooth'
       if (following) anchor.current = null
       if (anchor.current) {
         if (rows !== logs.rows) return
@@ -412,11 +386,22 @@ function FileRows({
         }
         anchor.current = null
       } else if (following && rows.length) {
-        virtualizer.scrollToIndex(rows.length - 1, { align: 'end' })
+        virtualizer.scrollToIndex(rows.length - 1, {
+          align: 'end',
+          behavior: reducedMotion ? 'auto' : followScrollBehavior.current,
+        })
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [rows, logs.rows, logs.more, following, virtualizer, totalSize])
+  }, [
+    rows,
+    logs.rows,
+    logs.more,
+    following,
+    virtualizer,
+    totalSize,
+    reducedMotion,
+  ])
   useEffect(() => {
     const latest = rows.at(-1)?.id
     if (!following && latest && lastId.current && latest !== lastId.current) {

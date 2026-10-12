@@ -225,17 +225,15 @@ export function TransformChainEditor({
   const renderedProfiles = dragSession?.profiles ?? candidateProfiles
 
   const chains = useMemo(() => {
-    const active = draft[ColumnType.Active]
-      .map((uid) => renderedProfiles.find((item) => item.uid === uid))
-      .filter((item): item is ScriptOrMergeProfile => Boolean(item))
-
-    const inactive = draft[ColumnType.Inactive]
-      .map((uid) => renderedProfiles.find((item) => item.uid === uid))
-      .filter((item): item is ScriptOrMergeProfile => Boolean(item))
+    const byUid = new Map(renderedProfiles.map((item) => [item.uid, item]))
+    const resolve = (uids: string[]) =>
+      uids
+        .map((uid) => byUid.get(uid))
+        .filter((item): item is ScriptOrMergeProfile => Boolean(item))
 
     return {
-      [ColumnType.Active]: active,
-      [ColumnType.Inactive]: inactive,
+      [ColumnType.Active]: resolve(draft[ColumnType.Active]),
+      [ColumnType.Inactive]: resolve(draft[ColumnType.Inactive]),
     }
   }, [draft, renderedProfiles])
 
@@ -286,22 +284,26 @@ export function TransformChainEditor({
 
   const loadingMessage = m.profile_chain_editor_apply_message()
 
-  const handleToggle = (uid: string) => {
-    if (!editable || savingRef.current || dragSessionRef.current) return
+  // Stable so the memoized columns do not re-render on every drag-over.
+  const handleToggle = useCallback(
+    (uid: string) => {
+      if (!editable || savingRef.current || dragSessionRef.current) return
 
-    const current = draftRef.current
-    const source = current.active.includes(uid)
-      ? ColumnType.Active
-      : ColumnType.Inactive
-    const target =
-      source === ColumnType.Active ? ColumnType.Inactive : ColumnType.Active
+      const current = draftRef.current
+      const source = current.active.includes(uid)
+        ? ColumnType.Active
+        : ColumnType.Inactive
+      const target =
+        source === ColumnType.Active ? ColumnType.Inactive : ColumnType.Active
 
-    publishDraft({
-      ...current,
-      [source]: current[source].filter((item) => item !== uid),
-      [target]: [...current[target], uid],
-    })
-  }
+      publishDraft({
+        ...current,
+        [source]: current[source].filter((item) => item !== uid),
+        [target]: [...current[target], uid],
+      })
+    },
+    [editable, publishDraft],
+  )
 
   return (
     <Card

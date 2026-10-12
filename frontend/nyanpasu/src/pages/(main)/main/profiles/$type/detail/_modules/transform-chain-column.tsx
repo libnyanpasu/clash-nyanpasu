@@ -2,6 +2,7 @@ import AddRounded from '~icons/material-symbols/add-rounded'
 import FormatListNumberedRounded from '~icons/material-symbols/format-list-numbered-rounded'
 import LayersOutlineRounded from '~icons/material-symbols/layers-outline-rounded'
 import RemoveRounded from '~icons/material-symbols/remove-rounded'
+import { memo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { m } from '@/paraglide/messages'
 import { pointerIntersection, type CollisionDetector } from '@dnd-kit/collision'
@@ -66,7 +67,10 @@ function ItemContent({
       }
       className={cn(
         'bg-surface-variant/40 flex min-w-0 items-center gap-3 rounded-2xl py-2.5 pr-2.5 pl-4 select-none',
-        'transition-[background-color,box-shadow,transform] motion-reduce:transition-none',
+        // Only colours transition: dnd-kit animates the item's position itself,
+        // and animating shadows or transforms on every card is costly while the
+        // columns reflow.
+        'transition-colors motion-reduce:transition-none',
         'focus-visible:outline-primary focus-visible:outline-2 focus-visible:outline-offset-2',
         compact && 'gap-2.5 rounded-xl py-2 pr-2 pl-3',
         draggable &&
@@ -122,7 +126,9 @@ function ItemContent({
   )
 }
 
-function Item(props: ItemProps) {
+// Every drag-over commits a new draft, so an item re-renders only when its own
+// props change instead of with the whole editor.
+const Item = memo(function Item(props: ItemProps) {
   // The whole card is the drag source; the pointer sensor ignores the toggle.
   const { ref, isDragging, isDropTarget } = useSortable({
     id: props.profile.uid,
@@ -143,9 +149,9 @@ function Item(props: ItemProps) {
       draggable={!props.saving}
     />
   )
-}
+})
 
-export function TransformChainColumn({
+export const TransformChainColumn = memo(function TransformChainColumn({
   profiles,
   type,
   saving,
@@ -184,7 +190,7 @@ export function TransformChainColumn({
       aria-label={title}
       className={cn(
         'min-w-0 rounded-3xl p-4',
-        'transition-[background-color,box-shadow] motion-reduce:transition-none',
+        'transition-colors motion-reduce:transition-none',
         active ? 'bg-secondary-container/20' : 'bg-surface-variant/20',
         isDropTarget && 'bg-secondary-container/40 ring-primary ring-2',
       )}
@@ -293,4 +299,4 @@ export function TransformChainColumn({
       </div>
     </section>
   )
-}
+})

@@ -4,6 +4,14 @@ import {
   SegmentedButtonItem,
 } from '@nyanpasu/ui/segmented-button'
 import { m } from '@/paraglide/messages'
+import { cn } from '@nyanpasu/utils'
+import {
+  DataPage,
+  dataPageFloatingGroupVariants,
+  DataPageSurface,
+  dataPageTabsVariants,
+  DataPageToolbar,
+} from '../../_modules/data-page'
 import { Route as IndexRoute, LogLevelsLayout } from '../route'
 
 // The page re-renders for every incoming log; the tabs only change with the
@@ -21,8 +29,9 @@ const LogsSourceTabs = memo(function LogsSourceTabs({
   }
   return (
     <SegmentedButton
+      variant="tabs"
       size="sm"
-      className="w-auto shrink-0"
+      className={dataPageTabsVariants()}
       aria-label={m.logs_source_label()}
       value={source}
       onValueChange={(item) => {
@@ -37,7 +46,7 @@ const LogsSourceTabs = memo(function LogsSourceTabs({
         <SegmentedButtonItem
           key={item}
           value={item}
-          className="flex-none whitespace-nowrap"
+          className="flex-none rounded-full whitespace-nowrap"
         >
           {labels[item]}
         </SegmentedButtonItem>
@@ -59,17 +68,34 @@ export function LogsLayout({
 }) {
   return (
     <LogLevelsLayout>
-      <div className="divide-outline-variant flex min-h-0 min-w-0 flex-1 flex-col divide-y">
-        {children}
-        <div
-          className="bg-mixed-background flex min-h-16 shrink-0 flex-wrap items-center gap-3 px-4 py-3"
-          data-slot="logs-toolbar"
-        >
-          <LogsSourceTabs source={source} />
-          {search}
-          {actions}
-        </div>
-      </div>
+      <DataPage
+        title={m.navbar_label_logs()}
+        toolbar={
+          <DataPageToolbar data-slot="logs-toolbar">
+            {search}
+            <div
+              className={cn(
+                dataPageFloatingGroupVariants(),
+                'max-w-full overflow-x-auto',
+              )}
+              data-slot="data-page-controls"
+            >
+              <LogsSourceTabs source={source} />
+            </div>
+            <div
+              className={cn(
+                dataPageFloatingGroupVariants(),
+                'max-w-full flex-wrap',
+              )}
+              data-slot="logs-actions"
+            >
+              {actions}
+            </div>
+          </DataPageToolbar>
+        }
+      >
+        <DataPageSurface>{children}</DataPageSurface>
+      </DataPage>
     </LogLevelsLayout>
   )
 }

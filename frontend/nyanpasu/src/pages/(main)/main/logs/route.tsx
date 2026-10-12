@@ -6,21 +6,19 @@ import InfoRounded from '~icons/material-symbols/info-rounded'
 import SearchRounded from '~icons/material-symbols/search-rounded'
 import StopCircleRounded from '~icons/material-symbols/stop-circle-rounded'
 import WarningRounded from '~icons/material-symbols/warning-rounded'
-import { ComponentProps, memo, PropsWithChildren } from 'react'
+import { memo, type PropsWithChildren } from 'react'
 import { z } from 'zod'
-import { Button } from '@nyanpasu/ui/button'
 import {
-  Sidebar,
-  SidebarLabelItem,
-  SidebarProvider,
-  SidebarToggleButton,
-  useSidebar,
-} from '@nyanpasu/ui/slider-sidebar'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+  NavigationSidebar,
+  NavigationSidebarContent,
+  NavigationSidebarItem,
+  NavigationSidebarToggle,
+} from '@nyanpasu/ui/navigation-sidebar'
+import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { SidebarProvider } from '@nyanpasu/ui/slider-sidebar'
 import { m } from '@/paraglide/messages'
-import { useIsMobileOrTablet } from '@nyanpasu/hooks'
-import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import { dataPageLayoutVariants } from '../_modules/data-page'
 import { LogLevel } from './_modules/consts'
 
 export const Route = createFileRoute('/(main)/main/logs')({
@@ -41,10 +39,6 @@ const LogLevelIcon = {
   [LogLevel.Unknown]: HelpRounded,
 }
 
-const SidebarContent = ({ className, ...props }: ComponentProps<'div'>) => {
-  return <div className={cn('p-2', className)} {...props} />
-}
-
 const LogLevelButton = ({
   level: inputLevel,
   children,
@@ -53,57 +47,24 @@ const LogLevelButton = ({
 
   const Icon = inputLevel ? LogLevelIcon[inputLevel] : ArticleRounded
 
-  const { open, setOpen } = useSidebar()
-
-  const isMobileOrTablet = useIsMobileOrTablet()
-
-  const handleClick = () => {
-    if (isMobileOrTablet) {
-      setOpen(false)
-    }
-  }
-
   return (
-    <Tooltip open={open ? false : undefined}>
-      <TooltipTrigger asChild>
-        <Button
-          variant="basic"
-          data-active={String((inputLevel ?? null) === (level ?? null))}
-          className={cn(
-            'h-12 min-w-0 px-3',
-            'flex items-center gap-2',
-            'text-on-surface-variant data-[active=true]:bg-secondary-container data-[active=true]:text-on-secondary-container',
-            'dark:text-on-surface-variant dark:data-[active=true]:bg-secondary-container dark:data-[active=true]:text-on-secondary-container',
-            'data-[active=false]:bg-transparent',
-            'data-[active=false]:shadow-none',
-            'data-[active=false]:hover:shadow-none',
-            'data-[active=false]:hover:bg-surface-variant/30',
-          )}
-          onClick={handleClick}
-          asChild
+    <NavigationSidebarItem
+      active={(inputLevel ?? null) === (level ?? null)}
+      icon={<Icon className="size-6" />}
+      renderLink={(content) => (
+        <Link
+          to="."
+          search={{
+            source,
+            level: inputLevel,
+          }}
         >
-          <Link
-            to="."
-            search={{
-              source,
-              level: inputLevel,
-            }}
-          >
-            <div className="text-md grid size-6 shrink-0 place-content-center">
-              <Icon aria-hidden className="size-5" />
-            </div>
-
-            <SidebarLabelItem className="capitalize">
-              {children}
-            </SidebarLabelItem>
-          </Link>
-        </Button>
-      </TooltipTrigger>
-
-      <TooltipContent side="right">
-        <p className="capitalize">{children}</p>
-      </TooltipContent>
-    </Tooltip>
+          {content}
+        </Link>
+      )}
+    >
+      <span className="capitalize">{children}</span>
+    </NavigationSidebarItem>
   )
 }
 
@@ -116,33 +77,30 @@ function RouteComponent() {
 const LogLevelsSidebar = memo(function LogLevelsSidebar() {
   return (
     <SidebarProvider defaultOpen={false}>
-      <Sidebar className="divide-outline-variant z-10 flex flex-col divide-y">
-        <SidebarContent className="flex flex-1 flex-col gap-2">
-          <LogLevelButton>{m.logs_all_levels()}</LogLevelButton>
+      <NavigationSidebar>
+        <ScrollArea className="min-h-0 w-full flex-1 [&>div>div]:block!">
+          <NavigationSidebarContent className="pb-16">
+            <LogLevelButton>{m.logs_all_levels()}</LogLevelButton>
 
-          {Object.values(LogLevel).map((item) => (
-            <LogLevelButton key={item} level={item}>
-              {item}
-            </LogLevelButton>
-          ))}
-        </SidebarContent>
+            {Object.values(LogLevel).map((item) => (
+              <LogLevelButton key={item} level={item}>
+                {item}
+              </LogLevelButton>
+            ))}
+          </NavigationSidebarContent>
+        </ScrollArea>
 
-        <SidebarContent className="flex h-16 justify-end">
-          <SidebarToggleButton aria-label={m.logs_level_sidebar()} />
-        </SidebarContent>
-      </Sidebar>
+        <NavigationSidebarToggle aria-label={m.logs_level_sidebar()}>
+          {m.navigation_sidebar_collapse()}
+        </NavigationSidebarToggle>
+      </NavigationSidebar>
     </SidebarProvider>
   )
 })
 
 export function LogLevelsLayout({ children }: PropsWithChildren) {
   return (
-    <div
-      className={cn(
-        'relative flex min-h-0 w-full flex-1 overflow-hidden',
-        'divide-outline-variant divide-x',
-      )}
-    >
+    <div className={dataPageLayoutVariants()}>
       <LogLevelsSidebar />
       {children}
     </div>

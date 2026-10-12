@@ -1,19 +1,31 @@
+import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
 import ArticleRounded from '~icons/material-symbols/article-rounded'
 import CheckRounded from '~icons/material-symbols/check-rounded'
 import ContentCopyRounded from '~icons/material-symbols/content-copy-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeleteSweepRounded from '~icons/material-symbols/delete-sweep-rounded'
-import VerticalAlignBottomRounded from '~icons/material-symbols/vertical-align-bottom-rounded'
+import { cva } from 'class-variance-authority'
 import { memo, useEffect, useId, useState, type ReactNode } from 'react'
 import { Button, buttonVariants } from '@nyanpasu/ui/button'
 import HighlightText from '@nyanpasu/ui/highlight-text'
+import { SearchField } from '@nyanpasu/ui/search-field'
 import { m } from '@/paraglide/messages'
 import { writeClipboardText } from '@/utils/clipboard'
 import { cn } from '@nyanpasu/utils'
+import {
+  dataPageSearchVariants,
+  useDataPageBottomInset,
+} from '../../_modules/data-page'
 import LogJson from './log-json'
 import LogLevelBadge from './log-level-badge'
 
-export const logPanelClass = 'relative flex min-h-0 min-w-0 flex-1 flex-col'
+export const logPanelVariants = cva(
+  'relative flex min-h-0 min-w-0 flex-1 flex-col',
+)
+
+const logFollowButtonVariants = cva(
+  'bg-secondary-container text-on-secondary-container hover:bg-secondary-container dark:bg-secondary-container dark:text-on-secondary-container dark:hover:bg-secondary-container focus-visible:ring-primary size-12 rounded-full shadow-sm hover:brightness-95 focus-visible:ring-2 dark:hover:brightness-105',
+)
 
 export function LogSearch({
   value,
@@ -25,18 +37,15 @@ export function LogSearch({
   placeholder: string
 }) {
   return (
-    <input
-      type="search"
-      className={cn(
-        'bg-surface-variant dark:bg-surface-variant/30',
-        'h-10 min-w-32 flex-1 rounded-full px-4 text-sm outline-none',
-      )}
+    <SearchField
+      className={cn(dataPageSearchVariants(), 'min-w-32 flex-1')}
       data-slot="logs-search"
       aria-label={placeholder}
       placeholder={placeholder}
       value={value}
       maxLength={256}
-      onChange={(event) => onChange(event.target.value)}
+      onValueChange={onChange}
+      clearLabel={m.common_clear()}
     />
   )
 }
@@ -76,7 +85,7 @@ export function LogClearButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="focus-visible:ring-primary shrink-0 focus-visible:ring-2"
+      className="focus-visible:ring-primary shrink-0 rounded-full focus-visible:ring-2"
     >
       <DeleteSweepRounded aria-hidden className="size-5" />
     </Button>
@@ -90,31 +99,37 @@ export function LogFollowButton({
   onClick: () => void
   unseen?: number
 }) {
+  const bottomInset = useDataPageBottomInset()
+
   return (
-    <Button
-      variant="fab"
-      icon
-      onClick={onClick}
-      aria-label={m.logs_follow_latest()}
-      title={m.logs_follow_latest()}
-      className="focus-visible:ring-primary absolute right-4 bottom-4 z-20 overflow-visible focus-visible:ring-2"
+    <div
+      data-slot="logs-follow-button"
+      className="absolute right-3 z-20"
+      style={{ bottom: bottomInset + 12 }}
     >
-      <VerticalAlignBottomRounded aria-hidden className="size-6" />
+      <Button
+        icon
+        onClick={onClick}
+        aria-label={m.logs_follow_latest()}
+        title={m.logs_follow_latest()}
+        className={logFollowButtonVariants()}
+      >
+        <ArrowDownwardRounded aria-hidden className="size-6" />
+      </Button>
       {unseen > 0 && (
-        <span className="bg-primary text-on-primary absolute -top-1 -right-1 rounded-full px-2 text-xs tabular-nums">
+        <span className="bg-primary text-on-primary pointer-events-none absolute -top-1 -right-1 rounded-full px-2 text-xs tabular-nums">
           {unseen > 99 ? '99+' : unseen}
         </span>
       )}
-    </Button>
+    </div>
   )
 }
 
 // Every visible row has two action buttons. The shared Button keeps ripple
 // state and motion per instance, which outweighs the rest of a row, so rows
 // use plain buttons with the same look.
-const rowActionClass = cn(
-  buttonVariants({ icon: true }),
-  'focus-visible:ring-primary shrink-0 focus-visible:ring-2',
+const rowActionVariants = cva(
+  `${buttonVariants({ icon: true })} focus-visible:ring-primary shrink-0 focus-visible:ring-2`,
 )
 
 export const LogRecord = memo(function LogRecord({
@@ -194,7 +209,7 @@ export const LogRecord = memo(function LogRecord({
   const rawText = () =>
     loadedRaw ?? (typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2))
   return (
-    <article className="group/log-record border-outline-variant/50 hover:bg-on-surface/4 focus-within:bg-on-surface/4 border-b px-3 py-2 text-sm transition-colors sm:px-4">
+    <article className="group/log-record border-outline-variant/40 hover:bg-on-surface/4 focus-within:bg-on-surface/4 border-b px-3 py-2 text-sm transition-colors sm:px-4">
       <div className="text-on-surface-variant flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1">
         <time title={timeTitle} className="font-mono text-xs tabular-nums">
           <HighlightText searchText={search}>{time || '—'}</HighlightText>
@@ -208,7 +223,7 @@ export const LogRecord = memo(function LogRecord({
         <div className="ml-auto flex shrink-0 opacity-0 transition-opacity group-focus-within/log-record:opacity-100 group-hover/log-record:opacity-100 [@media(hover:none)]:opacity-100">
           <button
             type="button"
-            className={rowActionClass}
+            className={rowActionVariants()}
             aria-label={copied ? m.logs_copied() : m.logs_copy()}
             title={copied ? m.logs_copied() : m.logs_copy()}
             disabled={copying || loadingRaw}
@@ -245,7 +260,7 @@ export const LogRecord = memo(function LogRecord({
             title={m.logs_view_json()}
             aria-expanded={showing}
             aria-controls={jsonId}
-            className={rowActionClass}
+            className={rowActionVariants()}
             onClick={() => {
               if (expanded !== undefined || !showing) onInspect()
               if (expanded === undefined) setShowJson(!showJson)

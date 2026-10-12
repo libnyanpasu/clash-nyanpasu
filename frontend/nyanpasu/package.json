@@ -80,7 +80,7 @@
     "vite": "8.3.4",
     "vite-plugin-html": "3.2.2",
     "vite-plugin-svgr": "5.2.0",
-    "zod": "4.6.6"
+    "zod": "4.6.7"
   },
   "private": true
 }

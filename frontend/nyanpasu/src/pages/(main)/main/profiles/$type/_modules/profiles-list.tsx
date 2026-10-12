@@ -2,7 +2,6 @@ import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-
 import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
 import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
 import InfoOutlineRounded from '~icons/material-symbols/info-outline-rounded'
-import MoreHorizRounded from '~icons/material-symbols/more-horiz-rounded'
 import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
 import { isEqual } from 'es-toolkit'
 import { AnimatePresence, motion } from 'motion/react'
@@ -18,12 +17,6 @@ import {
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
@@ -46,7 +39,6 @@ import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../../_modules/consts'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
-import OpenLocally from '../detail/_modules/open-locally'
 import ViewContent from '../detail/_modules/view-content'
 import { Route as IndexRoute } from '../index'
 import ProfileCardAction from './profile-card-action'
@@ -247,10 +239,12 @@ const GridViewProfile = memo(function GridViewProfile({
               ) : (
                 <span />
               )}
+
               <div className="flex shrink-0 items-center gap-1">
                 {remote && (
                   <ProfileCardUpdate profile={profile} disabled={isPending} />
                 )}
+
                 {hasFile && (
                   <ProfileCardAction label={m.profile_view_content_title()}>
                     <ViewContent
@@ -267,39 +261,7 @@ const GridViewProfile = memo(function GridViewProfile({
                     </ViewContent>
                   </ProfileCardAction>
                 )}
-                <DropdownMenu align="end">
-                  <ProfileCardAction label={m.navbar_label_more()}>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        icon
-                        className="size-9 sm:size-11"
-                        disabled={isPending}
-                        aria-label={m.navbar_label_more()}
-                      >
-                        <MoreHorizRounded className="size-5" aria-hidden />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </ProfileCardAction>
-                  <DropdownMenuContent>
-                    {hasFile && (
-                      <OpenLocally profile={profile} asChild>
-                        <DropdownMenuItem disabled={isPending}>
-                          {m.profile_open_locally_title()}
-                        </DropdownMenuItem>
-                      </OpenLocally>
-                    )}
-                    <DropdownMenuItem
-                      disabled={isPending}
-                      onSelect={deleteProfile.handleClick}
-                    >
-                      <DeleteForeverOutlineRounded
-                        className="size-4"
-                        aria-hidden
-                      />
-                      {m.profile_delete_title()}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+
                 <ProfileCardAction label={m.profile_view_details_title()}>
                   <Button icon className="size-9 sm:size-11" asChild>
                     <Link

@@ -1,11 +1,42 @@
+import CloudDownloadRounded from '~icons/material-symbols/cloud-download-rounded'
+import LinkRounded from '~icons/material-symbols/link-rounded'
 import NoteStackAddRounded from '~icons/material-symbols/note-stack-add-rounded'
+import UploadFileRounded from '~icons/material-symbols/upload-file-rounded'
 import { useEffect, useState } from 'react'
-import { Button } from '@nyanpasu/ui/button'
+import {
+  FabMenu,
+  FabMenuContent,
+  FabMenuItem,
+  FabMenuTrigger,
+} from '@nyanpasu/ui/fab-menu'
+import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 import { ProfileType } from '../../_modules/consts'
 import { Action, Route as IndexRoute } from '../index'
 import CreateProfileModal from './create-profile-modal'
 import type { CreateKind, CreateSource } from './create-profile-schema'
+
+const SOURCE_ITEMS = [
+  {
+    source: 'remote',
+    icon: CloudDownloadRounded,
+    label: () => m.profile_source_remote(),
+  },
+  {
+    source: 'local',
+    icon: UploadFileRounded,
+    label: () => m.profile_source_local(),
+  },
+  {
+    source: 'external',
+    icon: LinkRounded,
+    label: () => m.profile_source_external(),
+  },
+] as const satisfies readonly {
+  source: CreateSource
+  icon: typeof NoteStackAddRounded
+  label: () => string
+}[]
 
 export default function ImportButton() {
   const { type } = IndexRoute.useParams()
@@ -56,17 +87,27 @@ export default function ImportButton() {
         'group-data-[scroll-direction=down]/profiles-content:-bottom-18',
       )}
     >
-      <Button
-        variant="fab"
-        icon
-        onClick={() => {
-          // transforms are usually written from a template
-          setSource(isProxy ? 'remote' : 'local')
-          setOpen(true)
-        }}
-      >
-        <NoteStackAddRounded className="size-6" />
-      </Button>
+      <FabMenu>
+        <FabMenuContent>
+          {SOURCE_ITEMS.map(({ source: item, icon: Icon, label }) => (
+            <FabMenuItem
+              key={item}
+              icon={<Icon className="size-6" />}
+              onSelect={() => {
+                setSource(item)
+                setOpen(true)
+              }}
+            >
+              {label()}
+            </FabMenuItem>
+          ))}
+        </FabMenuContent>
+
+        <FabMenuTrigger
+          icon={<NoteStackAddRounded className="size-6" />}
+          aria-label={m.profile_import_title()}
+        />
+      </FabMenu>
 
       <CreateProfileModal
         open={open}

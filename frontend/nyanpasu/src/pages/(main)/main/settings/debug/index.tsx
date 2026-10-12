@@ -1,4 +1,5 @@
 import { AnimatePresence } from 'motion/react'
+import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -7,7 +8,6 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../_modules/settings-card'
-import { SettingsTitle } from '../_modules/settings-title'
 import AdvanceToolsSwitch from './_modules/advance-tools-switch'
 import BlockTaskViewer from './_modules/block-task-viewer'
 import ConfigurationStatus from './_modules/configuration-status'
@@ -73,7 +73,7 @@ const AdvanceToolsSettings = () => {
 function RouteComponent() {
   return (
     <>
-      <SettingsTitle>{m.settings_label_debug()}</SettingsTitle>
+      <PageTitle backTo="/main/settings">{m.settings_label_debug()}</PageTitle>
 
       <div className="space-y-4 px-4 pb-4">
         <PathUtilsSettings />

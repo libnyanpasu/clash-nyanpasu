@@ -1,5 +1,6 @@
 import { AnimatePresence } from 'motion/react'
 import { useDeferredValue } from 'react'
+import { PageTitle } from '@/components/page-title'
 import {
   SystemProxyButton,
   TunModeButton,
@@ -15,7 +16,6 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../_modules/settings-card'
-import { SettingsTitle } from '../_modules/settings-title'
 import AutoLaunchSwitch from './_modules/auto-launch-switch'
 import CurrentSystemProxy from './_modules/current-system-proxy'
 import DnsCacheButton from './_modules/dns-cache-button'
@@ -170,7 +170,7 @@ function RouteComponent() {
 
   return (
     <>
-      <SettingsTitle>{m.settings_label_system()}</SettingsTitle>
+      <PageTitle backTo="/main/settings">{m.settings_label_system()}</PageTitle>
 
       <div className="space-y-4 px-4 pb-4">
         <ProxyMode />

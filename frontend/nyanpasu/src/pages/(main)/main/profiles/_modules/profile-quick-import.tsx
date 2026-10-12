@@ -72,8 +72,8 @@ export default function ProfileQuickImport() {
   return (
     <form
       className={cn(
-        'relative flex flex-1 items-center gap-1',
-        'bg-surface h-10 w-full rounded-full pr-1 pl-3',
+        'relative flex flex-none items-center gap-1',
+        'bg-surface h-12 w-full rounded-full pr-1 pl-3',
         'shadow-outline/30 dark:shadow-surface-variant/10 shadow',
       )}
       onSubmit={handleSubmit}
@@ -85,7 +85,7 @@ export default function ProfileQuickImport() {
         name="url"
         render={({ field }) => (
           <input
-            className="h-full flex-1 px-1 text-sm outline-hidden"
+            className="h-full min-w-0 flex-1 px-1 text-sm outline-hidden"
             type="text"
             placeholder={m.profile_quick_import_placeholder()}
             autoComplete="off"

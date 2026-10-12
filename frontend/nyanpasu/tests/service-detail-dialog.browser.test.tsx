@@ -85,10 +85,13 @@ test('service detail shows the key fields and fits the window', async ({
   expect(text).toContain('/etc/nyanpasu-service')
   expect(rawJson()).toBeNull()
 
-  // Wider than the old fixed w-96, still inside the window.
-  const { width } = dialog()!.getBoundingClientRect()
-  expect(width).toBeGreaterThan(384)
-  expect(width).toBeLessThanOrEqual(1280 - 32)
+  // Wider than the old fixed w-96, still inside the window. The modal shares
+  // a layout animation with its trigger, so the dialog starts near the
+  // button width and settles wider: poll for the final size.
+  await expect
+    .poll(() => dialog()!.getBoundingClientRect().width)
+    .toBeGreaterThan(384)
+  expect(dialog()!.getBoundingClientRect().width).toBeLessThanOrEqual(1280 - 32)
 
   await page.getByRole('button', { name: 'Show Raw JSON' }).click()
 

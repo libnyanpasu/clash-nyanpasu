@@ -1,7 +1,7 @@
+import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
-import { SettingsTitle } from '../_modules/settings-title'
 import CustomCssCard from './_modules/custom-css-card'
 import LanguageSelector from './_modules/language-selector'
 import ThemeColorConfig from './_modules/theme-color-config'
@@ -65,7 +65,9 @@ const CustomCssSettings = () => {
 function RouteComponent() {
   return (
     <>
-      <SettingsTitle>{m.settings_user_interface_title()}</SettingsTitle>
+      <PageTitle backTo="/main/settings">
+        {m.settings_user_interface_title()}
+      </PageTitle>
 
       <div className="space-y-4 px-4 pb-4">
         <LanguageSettings />

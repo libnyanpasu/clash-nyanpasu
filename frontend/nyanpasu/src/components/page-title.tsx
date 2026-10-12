@@ -4,9 +4,9 @@ import { ComponentProps, useId } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { useScrollArea } from '@nyanpasu/ui/scroll-area'
 import { cn } from '@nyanpasu/utils'
-import { Link } from '@tanstack/react-router'
+import { Link, LinkProps } from '@tanstack/react-router'
 
-const BackButton = () => {
+const BackButton = ({ to }: { to: LinkProps['to'] }) => {
   return (
     <Button
       icon
@@ -14,7 +14,7 @@ const BackButton = () => {
       className="flex items-center justify-center md:hidden"
       asChild
     >
-      <Link to="/main/settings">
+      <Link to={to}>
         <ArrowBackIosNewRounded className="size-4" />
       </Link>
     </Button>
@@ -39,11 +39,15 @@ const Title = (props: ComponentProps<typeof motion.p>) => {
   )
 }
 
-export function SettingsTitle({
+export function PageTitle({
+  backTo,
   className,
   children,
   ...props
-}: ComponentProps<'div'>) {
+}: ComponentProps<'div'> & {
+  /** Route the mobile back button navigates to. */
+  backTo: LinkProps['to']
+}) {
   const { isPastHeader } = useScrollArea()
 
   const id = useId()
@@ -61,15 +65,15 @@ export function SettingsTitle({
           className,
         )}
         data-show-title={showTopTitle}
-        data-slot="settings-title"
+        data-slot="page-title"
         {...props}
       >
-        <BackButton />
+        <BackButton to={backTo} />
 
         <AnimatePresence initial={false}>
           {showTopTitle && (
             <Title
-              key="settings-title-top"
+              key="page-title-top"
               layoutId={id}
               className="text-xl font-bold"
             >
@@ -81,13 +85,13 @@ export function SettingsTitle({
 
       <div
         className="group flex h-24 px-6 pt-10 pb-4"
-        data-slot="settings-title"
+        data-slot="page-title"
         data-show-title={!showTopTitle}
       >
         <AnimatePresence initial={false}>
           {!showTopTitle && (
             <Title
-              key="settings-title-main"
+              key="page-title-main"
               layoutId={id}
               className="text-3xl font-bold"
             >

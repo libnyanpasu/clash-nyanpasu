@@ -1,5 +1,8 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
 import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
+import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
+import InfoOutlineRounded from '~icons/material-symbols/info-outline-rounded'
+import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
 import { isEqual } from 'es-toolkit'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -28,46 +31,23 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import { getProfileSource, useProfile } from '@nyanpasu/query'
+import { getRemoteSource, isConfigItem, useProfile } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { MeshGradient } from '@paper-design/shaders-react'
+import { MeshGradient, meshGradientMeta } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../../_modules/consts'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
+import ViewContent from '../detail/_modules/view-content'
 import { Route as IndexRoute } from '../index'
+import ProfileCardAction from './profile-card-action'
+import ProfileCardFeatures, { ProfileCardChip } from './profile-card-features'
+import ProfileCardSubscription, {
+  ProfileCardTraffic,
+  ProfileCardUpdate,
+} from './profile-card-subscription'
 import { categoryProfiles, isProxyProfile } from './utils'
-
-const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
-  return (
-    <span
-      className={cn(
-        'bg-primary-container rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </span>
-  )
-}
-
-const sourceLabelOf = (profile: ProfileItem_Serialize) => {
-  const source = getProfileSource(profile)
-
-  if (!source) {
-    return m.profile_kind_composition()
-  }
-
-  if (source.type === 'remote') {
-    return m.profile_source_remote()
-  }
-
-  return source.binding.type === 'external'
-    ? m.profile_source_external()
-    : m.profile_source_local()
-}
 
 /**
  * The active card's backdrop. It stays still and animates only while the card
@@ -82,9 +62,9 @@ const ActiveGradient = ({
 
   const colors = useMemo(
     () =>
-      Object.values(themePalette.schemes.light).map((color) =>
-        hexFromArgb(color),
-      ),
+      Object.values(themePalette.schemes.light)
+        .slice(0, meshGradientMeta.maxColorCount)
+        .map((color) => hexFromArgb(color)),
     [themePalette],
   )
 
@@ -114,7 +94,7 @@ const ActiveGradient = ({
 
   return (
     <MeshGradient
-      className="absolute inset-0 size-full opacity-30"
+      className="pointer-events-none absolute inset-0 size-full opacity-30"
       colors={colors}
       distortion={0.5}
       swirl={0.1}
@@ -127,10 +107,12 @@ const ActiveGradient = ({
 
 const GridViewProfile = memo(function GridViewProfile({
   profile,
+  profiles,
   index,
   isGlobal,
 }: {
   profile: ProfileItem_Serialize
+  profiles: ProfileItem_Serialize[]
   index: number
   isGlobal: boolean
 }) {
@@ -138,6 +120,12 @@ const GridViewProfile = memo(function GridViewProfile({
 
   const activeProfile = useActiveProfile(profile)
   const deleteProfile = useDeleteProfile(profile)
+
+  const remote = getRemoteSource(profile)
+  const hasFile =
+    profile.type === 'transform' ||
+    (profile.type === 'config' && profile.config.type === 'file')
+  const featured = activeProfile.isActive && isProxyProfile(profile)
 
   const isPending = activeProfile.isPending || deleteProfile.isPending
 
@@ -154,7 +142,16 @@ const GridViewProfile = memo(function GridViewProfile({
       <RegisterContextMenuTrigger asChild>
         <Card
           data-slot="profile-card"
-          className="relative flex flex-col justify-between"
+          data-profile-uid={profile.uid}
+          data-active={featured || undefined}
+          className={cn(
+            'relative isolate flex min-w-0 flex-col justify-between',
+            isProxyProfile(profile)
+              ? featured
+                ? 'order-first col-span-full h-72 rounded-4xl'
+                : 'h-60'
+              : 'min-h-40',
+          )}
           asChild
         >
           <div ref={cardRef}>
@@ -182,38 +179,100 @@ const GridViewProfile = memo(function GridViewProfile({
             {activeProfile.isActive && <ActiveGradient cardRef={cardRef} />}
 
             <CardHeader
-              className="flex items-center justify-between gap-2"
+              className="relative flex flex-col items-start justify-between gap-2 px-4 pt-4 sm:flex-row sm:items-center"
               data-slot="profile-card-title"
             >
-              <TextMarquee className="z-10 min-w-0 flex-1">
+              <TextMarquee
+                className={cn(
+                  'w-full min-w-0 flex-1 sm:w-auto',
+                  featured && 'text-xl sm:text-2xl',
+                )}
+              >
                 {profile.name}
               </TextMarquee>
 
               {activeProfile.isActive && (
-                <Chip className="shrink-0">{m.profile_is_active_label()}</Chip>
+                <ProfileCardChip className="bg-primary/60 text-on-primary shrink-0">
+                  {m.profile_is_active_label()}
+                </ProfileCardChip>
               )}
             </CardHeader>
 
-            <CardContent>
-              <div className="z-10 flex gap-1" data-slot="profile-card-type">
-                <Chip>{sourceLabelOf(profile)}</Chip>
+            <CardContent
+              className={cn(
+                'relative min-h-0 flex-1 overflow-hidden px-4',
+                isProxyProfile(profile) && !featured
+                  ? 'gap-1 py-2'
+                  : 'gap-2 py-3',
+              )}
+            >
+              <ProfileCardFeatures
+                profile={profile}
+                profiles={profiles}
+                isGlobal={isGlobal}
+                compact={isProxyProfile(profile) && !featured}
+              />
 
-                {isGlobal && <Chip>{m.profile_global_label()}</Chip>}
-              </div>
+              {remote ? (
+                <ProfileCardSubscription
+                  profile={profile}
+                  featured={featured}
+                />
+              ) : isConfigItem(profile) ? (
+                <ProfileCardTraffic profile={profile} featured={featured} />
+              ) : null}
             </CardContent>
 
-            <CardFooter>
-              <Button className="flex items-center justify-center" asChild>
-                <Link
-                  to="/main/profiles/$type/detail/$uid"
-                  params={{
-                    type,
-                    uid: profile.uid,
-                  }}
+            <CardFooter className="relative shrink-0 flex-row items-center justify-between gap-1">
+              {isProxyProfile(profile) && !activeProfile.isActive ? (
+                <Button
+                  variant="stroked"
+                  className="flex shrink-0 items-center gap-2 px-4 text-xs"
+                  disabled={isPending}
+                  aria-label={m.profile_active_title()}
+                  onClick={activeProfile.handleClick}
                 >
-                  {m.profile_view_details_title()}
-                </Link>
-              </Button>
+                  <PowerSettingsNewRounded aria-hidden />
+                  {m.profile_active_title()}
+                </Button>
+              ) : (
+                <span />
+              )}
+
+              <div className="flex shrink-0 items-center gap-1">
+                {remote && (
+                  <ProfileCardUpdate profile={profile} disabled={isPending} />
+                )}
+
+                {hasFile && (
+                  <ProfileCardAction label={m.profile_view_content_title()}>
+                    <ViewContent
+                      profile={profile}
+                      icon
+                      className="size-9 sm:size-11"
+                      disabled={isPending}
+                      aria-label={m.profile_view_content_title()}
+                    >
+                      <EditSquareOutlineRounded
+                        className="size-5"
+                        aria-hidden
+                      />
+                    </ViewContent>
+                  </ProfileCardAction>
+                )}
+
+                <ProfileCardAction label={m.profile_view_details_title()}>
+                  <Button icon className="size-9 sm:size-11" asChild>
+                    <Link
+                      to="/main/profiles/$type/detail/$uid"
+                      params={{ type, uid: profile.uid }}
+                      aria-label={m.profile_view_details_title()}
+                    >
+                      <InfoOutlineRounded className="size-5" aria-hidden />
+                    </Link>
+                  </Button>
+                </ProfileCardAction>
+              </div>
             </CardFooter>
           </div>
         </Card>
@@ -286,9 +345,13 @@ const useListOverflows = (
     }
 
     const update = () => {
-      const last = list.lastElementChild ?? list
+      // CSS places the current profile first without changing sortable indices.
       const bottom =
-        last.getBoundingClientRect().bottom -
+        Array.from(list.children).reduce(
+          (bottom, item) =>
+            Math.max(bottom, item.getBoundingClientRect().bottom),
+          list.getBoundingClientRect().top,
+        ) -
         viewport.getBoundingClientRect().top +
         viewport.scrollTop
 
@@ -362,10 +425,9 @@ export default function ProfilesList({
           <div
             ref={gridRef}
             className={cn(
-              'grid content-start gap-2',
+              'grid content-start gap-3',
               'md:grid-cols-2',
-              'lg:grid-cols-3',
-              'dxl:grid-cols-4',
+              'dxl:grid-cols-3',
               className,
             )}
             data-slot="profiles-navigate"
@@ -375,6 +437,7 @@ export default function ProfilesList({
               <GridViewProfile
                 key={profile.uid}
                 profile={profile}
+                profiles={profiles?.items ?? []}
                 index={index}
                 isGlobal={globalTransforms.has(profile.uid)}
               />

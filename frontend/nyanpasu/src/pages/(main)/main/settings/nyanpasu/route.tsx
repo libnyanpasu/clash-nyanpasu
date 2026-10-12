@@ -1,9 +1,9 @@
+import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { isMacOS } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
-import { SettingsTitle } from '../_modules/settings-title'
 import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
 import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
 import BreakWhenProxyChangeSelector from './_modules/break-when-proxy-change-selector'
@@ -130,7 +130,9 @@ const KeyboardSettings = () => {
 function RouteComponent() {
   return (
     <>
-      <SettingsTitle>{m.settings_label_nyanpasu()}</SettingsTitle>
+      <PageTitle backTo="/main/settings">
+        {m.settings_label_nyanpasu()}
+      </PageTitle>
 
       <div className="space-y-4 px-4 pb-4">
         <LogSettings />

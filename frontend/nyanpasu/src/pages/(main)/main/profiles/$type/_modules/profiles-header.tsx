@@ -1,27 +1,11 @@
-import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
-import { Button } from '@nyanpasu/ui/button'
+import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
-import { useIsMobile } from '@nyanpasu/hooks'
-import { cn } from '@nyanpasu/utils'
-import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../../_modules/consts'
 import ProfileQuickImport from '../../_modules/profile-quick-import'
 import { Route as IndexRoute } from '../index'
 
-const BackButton = () => {
-  return (
-    <Button icon className="flex items-center justify-center md:hidden" asChild>
-      <Link to="/main/profiles">
-        <ArrowBackIosNewRounded className="size-4" />
-      </Link>
-    </Button>
-  )
-}
-
 export default function ProfilesHeader() {
   const { type } = IndexRoute.useParams()
-
-  const isMobile = useIsMobile()
 
   const isProfileType = type === ProfileType.Profile
 
@@ -33,20 +17,16 @@ export default function ProfilesHeader() {
   } satisfies Record<ProfileType, string>
 
   return (
-    <div
-      className={cn(
-        'flex items-center gap-2 p-4',
-        'sticky top-0 z-50',
-        'bg-mixed-background',
-      )}
-    >
-      {isMobile && <BackButton />}
+    <>
+      <PageTitle backTo="/main/profiles">
+        {messages[type as ProfileType]}
+      </PageTitle>
 
-      {isProfileType ? (
-        <ProfileQuickImport />
-      ) : (
-        <p className="text-lg font-bold">{messages[type as ProfileType]}</p>
+      {isProfileType && (
+        <div className="px-4 pb-4">
+          <ProfileQuickImport />
+        </div>
       )}
-    </div>
+    </>
   )
 }

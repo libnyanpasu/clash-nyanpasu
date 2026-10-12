@@ -10,7 +10,7 @@ use crate::runtime::value::{ConfigObject, ConfigValue};
 use super::{
     GuardInputs, TunFlavor, TunParams,
     error::{InternalSnafu, RuntimePipelineError},
-    value_util::{obj_get, obj_insert},
+    value_util::{obj_get, obj_insert, remove_at},
 };
 
 pub(super) const HANDLE_FIELDS: [&str; 9] = [
@@ -108,7 +108,10 @@ pub(super) fn whitelist_filter(
 
 /// Legacy HANDLE overwrite (enhance/mod.rs:110-116): the keys the typed
 /// overrides force + caller resolved ports, inserted at top level, bypassing
-/// stage-1 whitelist. Unmanaged override fields are not inserted.
+/// stage-1 whitelist. Unmanaged override fields are not inserted. Nyanpasu
+/// owns `port` and `socks-port` like `mixed-port`: an unset one is removed, so
+/// a profile cannot open a listener the user turned off or take the
+/// `mixed-port` before the mixed listener binds (#5678).
 pub(super) fn apply_guard(
     config: &ConfigValue,
     guard: &GuardInputs<'_>,
@@ -132,19 +135,18 @@ pub(super) fn apply_guard(
         "mixed-port",
         ConfigValue::Number(serde_json::Number::from(guard.ports.mixed_port)),
     );
-    if let Some(port) = guard.ports.port {
-        next = obj_insert(
-            &next,
-            "port",
-            ConfigValue::Number(serde_json::Number::from(port)),
-        );
-    }
-    if let Some(port) = guard.ports.socks_port {
-        next = obj_insert(
-            &next,
-            "socks-port",
-            ConfigValue::Number(serde_json::Number::from(port)),
-        );
+    for (key, port) in [
+        ("port", guard.ports.port),
+        ("socks-port", guard.ports.socks_port),
+    ] {
+        next = match port {
+            Some(port) => obj_insert(
+                &next,
+                key,
+                ConfigValue::Number(serde_json::Number::from(port)),
+            ),
+            None => remove_at(&next, &[key.to_string()]).unwrap_or(next),
+        };
     }
     if let Some(controller) = &guard.ports.external_controller {
         next = obj_insert(

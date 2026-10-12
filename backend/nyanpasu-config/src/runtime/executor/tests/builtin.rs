@@ -150,6 +150,28 @@ fn guard_inserts_override_keys_and_resolved_ports() {
     assert_eq!(result["rules"], json!([]));
 }
 
+/// An unset `port`/`socks-port` removes the profile's value; a configured one
+/// replaces it, the same ownership as `mixed-port`.
+#[test]
+fn guard_owns_proxy_ports_like_mixed_port() {
+    let overrides = fixed_overrides();
+    let profile = value(json!({ "port": 7890, "socks-port": 7891, "mixed-port": 1 }));
+
+    let unset = apply_guard(&profile, &guard_inputs(&overrides))
+        .unwrap()
+        .to_json();
+    assert!(unset.get("port").is_none());
+    assert!(unset.get("socks-port").is_none());
+    assert_eq!(unset["mixed-port"], json!(7890));
+
+    let mut configured = guard_inputs(&overrides);
+    configured.ports.port = Some(7892);
+    configured.ports.socks_port = Some(7893);
+    let configured = apply_guard(&profile, &configured).unwrap().to_json();
+    assert_eq!(configured["port"], json!(7892));
+    assert_eq!(configured["socks-port"], json!(7893));
+}
+
 fn guard_inputs(overrides: &ClashGuardOverrides) -> GuardInputs<'_> {
     GuardInputs {
         overrides,

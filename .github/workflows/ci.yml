@@ -14,15 +14,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides which parts the other jobs check. Those jobs keep their matrix and
+  # always report, because the ruleset requires each matrix check by name; a
+  # part a pull request does not touch skips its steps instead of its job.
+  # See "CI checks by changed part" in docs/development/workflow.md.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.classify.outputs.frontend }}
+      backend: ${{ steps.classify.outputs.backend }}
+      scripts: ${{ steps.classify.outputs.scripts }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The pull request merge commit and its first parent, the base tip.
+          fetch-depth: 2
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # The rules live in scripts/src/ci/changed-parts.ts.
+      - name: Classify changed paths
+        id: classify
+        run: deno task check:changed-parts "$BASE"
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
+
   lint:
     name: Lint
+    needs: changes
     strategy:
       matrix:
         targets:
           - os: ubuntu-latest
           - os: macos-latest
           - os: windows-latest
+      fail-fast: false
     runs-on: ${{ matrix.targets.os }}
+    env:
+      FRONTEND: ${{ needs.changes.outputs.frontend }}
+      BACKEND: ${{ needs.changes.outputs.backend }}
+      SCRIPTS: ${{ needs.changes.outputs.scripts }}
+      # Ubuntu runs Prettier for every change; macOS and Windows only lint Rust.
+      RUN: ${{ startsWith(matrix.targets.os, 'ubuntu-') || needs.changes.outputs.backend == 'true' }}
     steps:
       # The nyanpasu-runtime submodule pins `newline_style = "Unix"` in its own
       # rustfmt.toml, but its .gitattributes is only `* text=auto`. Without this,
@@ -30,17 +66,20 @@ jobs:
       # file in it. The submodule's own workflows set the same two options before
       # checkout; the superproject has to do it too now that it vendors the crates.
       - name: Set git to use LF
+        if: env.RUN == 'true'
         run: |
           git config --global core.autocrlf false
           git config --global core.eol lf
 
       - uses: actions/checkout@v7
+        if: env.RUN == 'true'
         with:
           # `backend/nyanpasu-runtime` is a submodule that itself nests
           # `crates/nyanpasu-utils`; `true` would leave that inner path empty.
           submodules: recursive
 
       - name: Rust
+        if: env.BACKEND == 'true'
         run: |
           rustup toolchain install nightly --profile minimal --no-self-update
           rustup default nightly
@@ -50,7 +89,7 @@ jobs:
           rustup show
 
       - name: Tauri dependencies
-        if: startsWith(matrix.targets.os, 'ubuntu-')
+        if: startsWith(matrix.targets.os, 'ubuntu-') && env.BACKEND == 'true'
         run: >-
           sudo apt-get update &&
           sudo apt-get install -y
@@ -63,47 +102,72 @@ jobs:
           xvfb
 
       - uses: maxim-lobanov/setup-xcode@v1
-        if: startsWith(matrix.targets.os, 'macos-')
+        if: startsWith(matrix.targets.os, 'macos-') && env.BACKEND == 'true'
         with:
           xcode-version: 'latest-stable'
 
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
+        if: env.BACKEND == 'true'
         with:
           workspaces: 'backend'
           save-if: ${{ github.event_name == 'push' }}
 
       - name: Install Node.js
+        if: env.RUN == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: latest
 
       - uses: pnpm/action-setup@v6
         name: Install pnpm
+        if: env.RUN == 'true'
         with:
           run_install: false
 
       - uses: denoland/setup-deno@v2
+        if: env.RUN == 'true'
         with:
           deno-version: v2.x
 
       - name: Install dependencies
+        if: env.RUN == 'true'
         run: pnpm install --no-frozen-lockfile
 
+      # Generates the sources the type check reads and the dist tauri-build
+      # validates.
       - name: Prepare fronend
+        if: env.RUN == 'true' && (env.FRONTEND == 'true' || env.BACKEND == 'true')
         run: pnpm -r build # Build frontend
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
 
       - name: Prepare sidecar and resources
+        if: env.BACKEND == 'true'
         run: pnpm prepare:check
 
-      - name: Lint
+      - name: Lint formatting
         if: startsWith(matrix.targets.os, 'ubuntu-')
-        run: pnpm lint # Lint
+        run: pnpm lint:prettier
 
-      - name: Lint
-        if: startsWith(matrix.targets.os, 'ubuntu-') == false
+      - name: Lint frontend
+        if: startsWith(matrix.targets.os, 'ubuntu-') && env.FRONTEND == 'true'
+        run: pnpm run-s lint:oxlint lint:styles lint:ts
+
+      - name: Lint frontend boundaries
+        if: startsWith(matrix.targets.os, 'ubuntu-') && (env.FRONTEND == 'true' || env.SCRIPTS == 'true')
+        run: pnpm lint:frontend-boundaries
+
+      - name: Lint scripts
+        if: startsWith(matrix.targets.os, 'ubuntu-') && env.SCRIPTS == 'true'
+        run: pnpm lint:deno
+
+      - name: Lint backend boundaries
+        if: startsWith(matrix.targets.os, 'ubuntu-') && (env.BACKEND == 'true' || env.SCRIPTS == 'true')
+        run: pnpm run-s lint:architecture-ledger lint:backend-boundaries
+
+      - name: Lint backend
+        if: env.BACKEND == 'true'
         run: pnpm run-p lint:clippy lint:rustfmt # Lint
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
@@ -118,25 +182,28 @@ jobs:
           - os: macos-latest
           - os: windows-latest
       fail-fast: false
-    if: >
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.title, 'crate') ||
-      github.event.pull_request.user.login != 'renovate[bot]'
     runs-on: ${{ matrix.targets.os }}
-    needs: lint
+    needs: [changes, lint]
+    env:
+      FRONTEND: ${{ needs.changes.outputs.frontend }}
+      BACKEND: ${{ needs.changes.outputs.backend }}
+      # A frontend-only change builds the frontend once, on Ubuntu.
+      RUN: ${{ needs.changes.outputs.backend == 'true' || (startsWith(matrix.targets.os, 'ubuntu-') && needs.changes.outputs.frontend == 'true') }}
     steps:
       # Same reason as the lint job: the submodule must not arrive with CRLF.
       - name: Set git to use LF
+        if: env.RUN == 'true'
         run: |
           git config --global core.autocrlf false
           git config --global core.eol lf
 
       - uses: actions/checkout@v7
+        if: env.RUN == 'true'
         with:
           submodules: recursive
 
       - name: Tauri dependencies
-        if: startsWith(matrix.targets.os, 'ubuntu-')
+        if: startsWith(matrix.targets.os, 'ubuntu-') && env.BACKEND == 'true'
         run: >-
           sudo apt-get update &&
           sudo apt-get install -y
@@ -149,52 +216,56 @@ jobs:
           xvfb
 
       - uses: maxim-lobanov/setup-xcode@v1
-        if: startsWith(matrix.targets.os, 'macos-')
+        if: startsWith(matrix.targets.os, 'macos-') && env.BACKEND == 'true'
         with:
           xcode-version: 'latest-stable'
 
       - name: Install Node.js
+        if: env.RUN == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: latest
 
       - name: Install Deno
+        if: env.RUN == 'true'
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
 
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
+        if: env.BACKEND == 'true'
         with:
           workspaces: 'backend'
           save-if: ${{ github.event_name == 'push' }}
 
       - uses: pnpm/action-setup@v6
         name: Install pnpm
+        if: env.RUN == 'true'
         with:
           run_install: false
 
       - name: Install dependencies
+        if: env.RUN == 'true'
         run: pnpm install --no-frozen-lockfile
 
       - name: Prepare sidecar and resources
+        if: env.BACKEND == 'true'
         run: pnpm prepare:check
 
       - name: Prepare frontend
+        if: env.RUN == 'true'
         run: pnpm -r build
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
 
       - name: Build Backend
+        if: env.BACKEND == 'true'
         run: cargo build --release --manifest-path backend/Cargo.toml
 
   test_unit:
     name: Unit Test
-    needs: lint
-    if: >
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.title, 'crate') ||
-      github.event.pull_request.user.login != 'renovate[bot]'
+    needs: [changes, lint]
 
     # we want to run on the latest linux environment
     strategy:
@@ -205,24 +276,33 @@ jobs:
           - windows-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      FRONTEND: ${{ needs.changes.outputs.frontend }}
+      BACKEND: ${{ needs.changes.outputs.backend }}
+      SCRIPTS: ${{ needs.changes.outputs.scripts }}
+      # Frontend tests run in Chromium and only on Ubuntu; backend and script
+      # tests run on every OS.
+      RUN: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.scripts == 'true' || (startsWith(matrix.os, 'ubuntu-') && needs.changes.outputs.frontend == 'true') }}
 
     # the steps our job runs **in order**
     steps:
       # Same reason as the lint job: the submodule must not arrive with CRLF.
       - name: Set git to use LF
+        if: env.RUN == 'true'
         run: |
           git config --global core.autocrlf false
           git config --global core.eol lf
 
       # checkout the code on the workflow runner
       - uses: actions/checkout@v7
+        if: env.RUN == 'true'
         with:
           submodules: recursive
 
       # install system dependencies that Tauri needs to compile on Linux.
       # note the extra dependencies for `tauri-driver` to run which are: `webkit2gtk-driver` and `xvfb`
       - name: Tauri dependencies
-        if: startsWith(matrix.os, 'ubuntu-')
+        if: startsWith(matrix.os, 'ubuntu-') && env.BACKEND == 'true'
         run: >-
           sudo apt-get update &&
           sudo apt-get install -y
@@ -235,44 +315,51 @@ jobs:
           xvfb
 
       - uses: maxim-lobanov/setup-xcode@v1
-        if: startsWith(matrix.os, 'macos-')
+        if: startsWith(matrix.os, 'macos-') && env.BACKEND == 'true'
         with:
           xcode-version: 'latest-stable'
 
       - name: Install Node.js
+        if: env.RUN == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: latest
 
       - name: Install Deno
+        if: env.RUN == 'true'
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
 
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
+        if: env.BACKEND == 'true'
         with:
           workspaces: 'backend'
           save-if: ${{ github.event_name == 'push' }}
 
       - uses: pnpm/action-setup@v6
         name: Install pnpm
+        if: env.RUN == 'true'
         with:
           run_install: false
 
       - name: Install dependencies
+        if: env.RUN == 'true'
         run: pnpm install --no-frozen-lockfile
 
       - name: Prepare sidecar and resources
+        if: env.BACKEND == 'true'
         run: pnpm prepare:check
 
       - name: Prepare frontend
+        if: env.RUN == 'true' && (env.FRONTEND == 'true' || env.BACKEND == 'true')
         run: pnpm -r build
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
 
       - name: Free up disk space
-        if: startsWith(matrix.os, 'ubuntu-')
+        if: startsWith(matrix.os, 'ubuntu-') && env.BACKEND == 'true'
         run: |
           df -h
           sudo rm -rf /usr/share/dotnet
@@ -283,11 +370,22 @@ jobs:
           df -h
 
       - name: Install test browser
+        if: startsWith(matrix.os, 'ubuntu-') && env.FRONTEND == 'true'
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Test
-        run: pnpm test
+      # Each suite runs even when an earlier one failed, as `pnpm test` did.
+      - name: Test frontend
+        if: ${{ !cancelled() && startsWith(matrix.os, 'ubuntu-') && env.FRONTEND == 'true' }}
+        run: pnpm test:frontend
+
+      - name: Test backend
+        if: ${{ !cancelled() && env.BACKEND == 'true' }}
+        run: pnpm test:backend
+
+      - name: Test scripts
+        if: ${{ !cancelled() && env.SCRIPTS == 'true' }}
+        run: pnpm test:scripts
 
       - name: Check typescript bindings freshness
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && env.BACKEND == 'true'
         run: git diff --exit-code -- frontend/rpc/src/tauri-bindings.ts frontend/rpc/src/rpc-bindings.ts frontend/query/src/query-bindings.ts

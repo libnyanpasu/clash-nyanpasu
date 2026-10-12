@@ -223,19 +223,18 @@ const GridViewProfile = memo(function GridViewProfile({
               ) : null}
             </CardContent>
 
-            <CardFooter className="relative shrink-0 flex-row items-center justify-between gap-1 px-4 pb-3">
+            <CardFooter className="relative shrink-0 flex-row items-center justify-between gap-1">
               {isProxyProfile(profile) && !activeProfile.isActive ? (
-                <ProfileCardAction label={m.profile_active_title()}>
-                  <Button
-                    className="bg-primary-container/60 text-on-primary-container flex h-11 shrink-0 items-center gap-1 px-2 text-xs"
-                    disabled={isPending}
-                    aria-label={m.profile_active_title()}
-                    onClick={activeProfile.handleClick}
-                  >
-                    <PowerSettingsNewRounded className="size-5" aria-hidden />
-                    {m.profile_active_title()}
-                  </Button>
-                </ProfileCardAction>
+                <Button
+                  variant="stroked"
+                  className="flex shrink-0 items-center gap-2 px-4 text-xs"
+                  disabled={isPending}
+                  aria-label={m.profile_active_title()}
+                  onClick={activeProfile.handleClick}
+                >
+                  <PowerSettingsNewRounded aria-hidden />
+                  {m.profile_active_title()}
+                </Button>
               ) : (
                 <span />
               )}

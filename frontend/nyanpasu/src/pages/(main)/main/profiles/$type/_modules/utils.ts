@@ -8,6 +8,13 @@ export type TransformProfile = Extract<
   { type: 'transform' }
 >
 
+export const transformLabelOf = (profile: ProfileItem_Serialize) => {
+  if (profile.type !== 'transform') return undefined
+  if (profile.transform.type === 'overlay') return 'YAML'
+
+  return profile.transform.runtime === 'javascript' ? 'JavaScript' : 'Lua'
+}
+
 export type CategoryProfiles = {
   [ProfileType.Profile]: ConfigProfile[]
   [ProfileType.JavaScript]: TransformProfile[]

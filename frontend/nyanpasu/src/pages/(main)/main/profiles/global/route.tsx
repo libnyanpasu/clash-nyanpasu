@@ -17,9 +17,12 @@ function RouteComponent() {
   )
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0">
+    <section
+      data-slot="profile-global-transforms"
+      className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0"
+    >
       <header className="bg-mixed-background sticky top-0 z-50 py-4">
-        <h1 className="text-lg font-bold">
+        <h1 className="text-2xl font-medium">
           {m.profile_global_transform_title()}
         </h1>
         <p className="text-on-surface-variant mt-1 text-sm">
@@ -28,6 +31,7 @@ function RouteComponent() {
       </header>
 
       <TransformChainEditor
+        layout="grouped"
         taskKey="update-global-transforms"
         transforms={transforms}
         onApply={(next) => setGlobalTransforms.mutateAsync(next)}

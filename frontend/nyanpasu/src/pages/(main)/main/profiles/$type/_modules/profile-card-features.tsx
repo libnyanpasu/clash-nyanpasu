@@ -14,6 +14,7 @@ import {
 } from '@nyanpasu/query'
 import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { transformLabelOf } from './utils'
 
 export const ProfileCardChip = ({
   className,
@@ -38,13 +39,6 @@ const sourceLabelOf = (profile: ProfileItem_Serialize) => {
   return source.binding.type === 'external'
     ? m.profile_source_external()
     : m.profile_source_local()
-}
-
-const transformLabelOf = (profile: ProfileItem_Serialize) => {
-  if (profile.type !== 'transform') return undefined
-  if (profile.transform.type === 'overlay') return 'YAML'
-
-  return profile.transform.runtime === 'javascript' ? 'JavaScript' : 'Lua'
 }
 
 const updateIntervalLabel = (minutes: number) => {

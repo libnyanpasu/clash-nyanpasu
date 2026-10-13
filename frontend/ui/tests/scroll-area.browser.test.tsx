@@ -1,7 +1,14 @@
+import { useLayoutEffect } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
-import { ScrollArea, useScrollArea } from '@nyanpasu/ui/scroll-area'
+import {
+  AppContentScrollArea,
+  ScrollArea,
+  useScrollArea,
+  useScrollAreaViewport,
+  useScrollAreaViewportElement,
+} from '@nyanpasu/ui/scroll-area'
 
 const nextFrame = () =>
   new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
@@ -86,3 +93,63 @@ test('scroll consumers re-render only when a scroll flag changes', async ({
   flushSync(() => vi.advanceTimersByTime(1))
   expect(seen.at(-1)!.isScrolling).toBe(false)
 })
+
+test.for([
+  ['ScrollArea', ScrollArea],
+  ['AppContentScrollArea', AppContentScrollArea],
+])(
+  '%s gives layout effects the viewport without re-rendering other consumers',
+  async ([, Area], { onTestFinished }) => {
+    const renders = { ref: 0, scroll: 0 }
+    const layoutElements: (HTMLDivElement | null)[] = []
+
+    // Reads the element where a virtualizer does: in a layout effect.
+    const ElementConsumer = () => {
+      const element = useScrollAreaViewportElement()
+
+      useLayoutEffect(() => {
+        layoutElements.push(element)
+      }, [element])
+
+      return null
+    }
+
+    const RefConsumer = () => {
+      useScrollAreaViewport()
+      renders.ref += 1
+      return null
+    }
+
+    const ScrollConsumer = () => {
+      useScrollArea()
+      renders.scroll += 1
+      return null
+    }
+
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    onTestFinished(() => {
+      root.unmount()
+      container.remove()
+    })
+
+    flushSync(() =>
+      root.render(
+        <Area>
+          <ElementConsumer />
+          <RefConsumer />
+          <ScrollConsumer />
+        </Area>,
+      ),
+    )
+
+    const viewport = container.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    )
+
+    expect(viewport).not.toBeNull()
+    expect(layoutElements).toEqual([null, viewport])
+    expect(renders).toEqual({ ref: 1, scroll: 1 })
+  },
+)

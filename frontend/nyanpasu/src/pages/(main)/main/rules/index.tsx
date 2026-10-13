@@ -1,5 +1,8 @@
 import { memo, useCallback, useDeferredValue, useMemo } from 'react'
-import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import {
+  ScrollArea,
+  useScrollAreaViewportElement,
+} from '@nyanpasu/ui/scroll-area'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import { keepReturn } from '@/components/router/cross-navigation'
 import { ReturnButton } from '@/components/router/return-button'
@@ -83,7 +86,7 @@ const Viewer = memo(function Viewer({
 
   const { proxy } = IndexRoute.useSearch()
 
-  const { viewportRef } = useScrollAreaViewport()
+  const viewportElement = useScrollAreaViewportElement()
 
   const {
     proxies: { data: proxies },
@@ -163,7 +166,7 @@ const Viewer = memo(function Viewer({
     count: items.length,
     paddingEnd: bottomInset,
     scrollPaddingEnd: bottomInset,
-    getScrollElement: () => viewportRef.current,
+    getScrollElement: () => viewportElement,
     estimateSize: () => RULE_ROW_HEIGHT,
     getItemKey: (index) => items[index].index,
     overscan: 10,

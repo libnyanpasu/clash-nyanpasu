@@ -1988,7 +1988,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng 0.10.0 (git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e)",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "single-instance",
  "smol-cancellation-token",
  "snafu",
@@ -5857,7 +5857,7 @@ version = "0.16.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca93e534d1142d1d0dcca6d25fe302508a5dfb40b302802904577725ea0b695b"
 dependencies = [
- "sha2 0.11.0",
+ "sha2 0.11.1",
 ]
 
 [[package]]
@@ -9860,9 +9860,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4"
+checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",

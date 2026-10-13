@@ -18,7 +18,11 @@ import {
 } from '@tanstack/react-router'
 import '../src/utils/language'
 import { ReturnButton } from '../src/components/router/return-button'
-import { trafficSearchSchema } from '../src/pages/(main)/main/topology/_modules/search'
+import {
+  toQuery,
+  trafficSearchSchema,
+} from '../src/pages/(main)/main/topology/_modules/search'
+import { TrafficPageContext } from '../src/pages/(main)/main/topology/_modules/traffic-context'
 import TrafficToolbar from '../src/pages/(main)/main/topology/_modules/traffic-toolbar'
 
 // The tests project registers the app's router (see the navbar test), so the
@@ -33,20 +37,29 @@ vi.mock('./icon-stub', () => ({
 const VIEWPORT_WIDTHS = [320, 480, 672, 768]
 
 async function openToolbar(ticket: boolean) {
+  const search = trafficSearchSchema.parse({
+    filters: [{ d: 'process', v: 'Browser with a long name' }],
+  })
+
   const rootRoute = createRootRoute({
     component: () => (
       <div data-testid="frame">
-        <TrafficToolbar
-          search={trafficSearchSchema.parse({
-            filters: [{ d: 'process', v: 'Browser with a long name' }],
-          })}
-          paused={false}
-          labelOf={(_, key) => ({ text: key, title: key, mono: false })}
-          onSearchChange={() => {}}
-          onPausedChange={() => {}}
-          onViewConnections={() => {}}
-          start={<ReturnButton />}
-        />
+        <TrafficPageContext.Provider
+          value={{
+            search,
+            labelOf: (_, key) => ({ text: key, title: key, mono: false }),
+            query: toQuery(search),
+            empty: false,
+            paused: false,
+            onSearchChange: () => {},
+            onPausedChange: () => {},
+            onViewConnections: () => {},
+          }}
+        >
+          <TrafficToolbar>
+            <ReturnButton />
+          </TrafficToolbar>
+        </TrafficPageContext.Provider>
       </div>
     ),
   })

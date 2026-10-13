@@ -3,20 +3,12 @@ import { useState, type ComponentType, type SVGProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import { m } from '@/paraglide/messages'
-import { usageAmount, type UsageLabel } from '@/utils/traffic-usage'
-import type {
-  Dimension,
-  Metric,
-  Ranking,
-  TrafficQuery,
-} from '@nyanpasu/rpc/types'
-import {
-  setFilter,
-  toggleFilter,
-  type SearchFilter,
-} from '../../_modules/traffic-filters'
+import { usageAmount } from '@/utils/traffic-usage'
+import type { Ranking } from '@nyanpasu/rpc/types'
+import { toggleFilter } from '../../_modules/traffic-filters'
 import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
+import { useTrafficPage } from './traffic-context'
 
 function CountBadge({ count }: { count: number }) {
   return (
@@ -30,25 +22,16 @@ export type RankingCardProps = {
   icon: ComponentType<SVGProps<SVGSVGElement>>
   title: string
   ranking: Ranking
-  query: TrafficQuery
-  /** What the ranking is ordered by, and what each row leads with. */
-  metric: Metric
-  filters: SearchFilter[]
-  labelOf: (dimension: Dimension, key: string) => UsageLabel
-  onFiltersChange: (filters: SearchFilter[]) => void
 }
 
 export default function RankingCard({
   icon: Icon,
   title,
   ranking,
-  query,
-  metric,
-  filters,
-  labelOf,
-  onFiltersChange,
 }: RankingCardProps) {
   const [viewAll, setViewAll] = useState(false)
+  const { search, labelOf, onSearchChange } = useTrafficPage()
+  const { metric, filters } = search
 
   const { dimension } = ranking
 
@@ -88,7 +71,9 @@ export default function RankingCard({
               rank={index}
               active={group.key === selected}
               onSelect={() =>
-                onFiltersChange(toggleFilter(filters, dimension, group.key))
+                onSearchChange({
+                  filters: toggleFilter(filters, dimension, group.key),
+                })
               }
             />
           ))}
@@ -107,18 +92,6 @@ export default function RankingCard({
         onOpenChange={setViewAll}
         title={title}
         dimension={dimension}
-        metric={metric}
-        // Every value of the dimension is a choice, so its own filter stays off.
-        query={{
-          ...query,
-          filters: query.filters.filter((f) => f.dimension !== dimension),
-        }}
-        selected={selected}
-        labelOf={labelOf}
-        onSelect={(key) => {
-          onFiltersChange(setFilter(filters, dimension, key))
-          setViewAll(false)
-        }}
       />
     </Card>
   )

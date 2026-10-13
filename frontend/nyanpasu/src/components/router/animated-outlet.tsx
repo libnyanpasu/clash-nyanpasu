@@ -180,6 +180,24 @@ export function AnimatedOutlet({
   )
 }
 
+/**
+ * Renders child routes with the shared, history-aware slide transition.
+ *
+ * Layout contract: the animated page must fill the available content height,
+ * including when the route contains little content. Give the parent a resolved
+ * height or viewport-derived minimum height and a column flex layout; make this
+ * outlet grow with `flex-1`. Preserve that height chain through any scroll-area
+ * content wrappers. Clip the surrounding scroll surface so sliding pages cannot
+ * overflow into adjacent navigation. Content must still be able to grow and
+ * scroll; `h-full` alone is insufficient when an ancestor has an auto height.
+ *
+ * @example
+ * ```tsx
+ * <div className="flex min-h-full flex-col overflow-clip">
+ *   <AnimatedOutletPreset className="flex flex-1 flex-col" />
+ * </div>
+ * ```
+ */
 export function AnimatedOutletPreset(props: ComponentProps<typeof motion.div>) {
   const matches = useMatches()
   const match = useMatch({ strict: false })

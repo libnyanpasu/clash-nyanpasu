@@ -5,25 +5,19 @@ import { Card } from '@nyanpasu/ui/card'
 import { m } from '@/paraglide/messages'
 import { usageAmount } from '@/utils/traffic-usage'
 import type { Metric } from '@nyanpasu/rpc/types'
-import { setFilter, toggleFilter } from '../../_modules/traffic-filters'
+import { toggleFilter } from '../../_modules/traffic-filters'
 import type { RankingCardProps } from './ranking-card'
 import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
+import { useTrafficPage } from './traffic-context'
 
 const metricLabel = (metric: Metric) =>
   metric === 'bytes' ? m.traffic_stat_total() : m.traffic_stat_connections()
 
-export function RankingView({
-  icon: Icon,
-  title,
-  ranking,
-  query,
-  metric,
-  filters,
-  labelOf,
-  onFiltersChange,
-}: RankingCardProps) {
+export function RankingView({ icon: Icon, title, ranking }: RankingCardProps) {
   const [viewAll, setViewAll] = useState(false)
+  const { search, labelOf, onSearchChange } = useTrafficPage()
+  const { metric, filters } = search
 
   const { dimension } = ranking
   const selected = filters.find((filter) => filter.d === dimension)?.v
@@ -94,7 +88,9 @@ export function RankingView({
               active={group.key === selected}
               layout="table"
               onSelect={() =>
-                onFiltersChange(toggleFilter(filters, dimension, group.key))
+                onSearchChange({
+                  filters: toggleFilter(filters, dimension, group.key),
+                })
               }
             />
           ))}
@@ -113,20 +109,6 @@ export function RankingView({
         onOpenChange={setViewAll}
         title={title}
         dimension={dimension}
-        metric={metric}
-        // Every value of the dimension is a choice, so its own filter stays off.
-        query={{
-          ...query,
-          filters: query.filters.filter(
-            (filter) => filter.dimension !== dimension,
-          ),
-        }}
-        selected={selected}
-        labelOf={labelOf}
-        onSelect={(key) => {
-          onFiltersChange(setFilter(filters, dimension, key))
-          setViewAll(false)
-        }}
       />
     </Card>
   )

@@ -1,7 +1,7 @@
 import LanOutlineRounded from '~icons/material-symbols/lan-outline-rounded'
 import PauseRounded from '~icons/material-symbols/pause-rounded'
 import PlayArrowRounded from '~icons/material-symbols/play-arrow-rounded'
-import type { ReactNode } from 'react'
+import type { PropsWithChildren } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
   SegmentedButton,
@@ -17,14 +17,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { beyondRetention } from '@/utils/traffic-retention'
-import { dimensionName, type UsageLabel } from '@/utils/traffic-usage'
-import type {
-  Dimension,
-  Metric,
-  TrafficRange,
-  TrafficRetention,
-  TrafficScope,
-} from '@nyanpasu/rpc/types'
+import { dimensionName } from '@/utils/traffic-usage'
+import type { Metric, TrafficRange, TrafficScope } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
   dataPageFloatingGroupVariants,
@@ -37,7 +31,7 @@ import {
   RANGES,
   type SearchFilter,
 } from '../../_modules/traffic-filters'
-import { type TrafficSearch } from './search'
+import { useTrafficPage } from './traffic-context'
 
 const SCOPES = {
   all: m.traffic_scope_all,
@@ -50,26 +44,16 @@ const METRICS = {
   connections: m.traffic_metric_connections,
 } satisfies Record<Metric, () => string>
 
-export default function TrafficToolbar({
-  search,
-  retention,
-  paused,
-  labelOf,
-  onSearchChange,
-  onPausedChange,
-  onViewConnections,
-  start,
-}: {
-  search: TrafficSearch
-  retention?: TrafficRetention
-  paused: boolean
-  labelOf: (dimension: Dimension, key: string) => UsageLabel
-  onSearchChange: (update: Partial<TrafficSearch>) => void
-  onPausedChange: (paused: boolean) => void
-  onViewConnections?: () => void
-  /** Rendered before every control, such as the way back after a jump. */
-  start?: ReactNode
-}) {
+export default function TrafficToolbar({ children }: PropsWithChildren) {
+  const {
+    search,
+    retention,
+    paused,
+    labelOf,
+    onSearchChange,
+    onPausedChange,
+    onViewConnections,
+  } = useTrafficPage()
   const { scope, metric, range, filters } = search
 
   const removeFilter = (filter: SearchFilter) =>
@@ -77,7 +61,7 @@ export default function TrafficToolbar({
 
   return (
     <DataPageToolbar className="@container" data-slot="traffic-toolbar">
-      {start}
+      {children}
 
       <div
         className={dataPageFloatingGroupVariants()}

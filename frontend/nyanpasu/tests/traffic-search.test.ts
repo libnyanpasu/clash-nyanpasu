@@ -10,19 +10,20 @@ import {
   toQuery,
   toTopologyRequest,
   trafficSearchSchema,
+  VIEWS,
 } from '../src/pages/(main)/main/topology/_modules/search'
 
-test('an empty search is the last hour of everything', () => {
+test('an empty search is the last hour of everything with no legacy view', () => {
   const search = trafficSearchSchema.parse({})
 
   expect(search).toEqual({
     range: 'last_hour',
     scope: 'all',
     filters: [],
-    view: 'flow',
     metric: 'bytes',
     limit: 7,
   })
+  expect(search).not.toHaveProperty('view')
   expect(toQuery(search)).toEqual({
     range: 'last_hour',
     scope: 'all',
@@ -53,6 +54,25 @@ test('the old proxy parameter and unknown dimensions are not accepted', () => {
   expect(
     trafficSearchSchema.safeParse({ filters: [{ d: 'nope', v: 'x' }] }).success,
   ).toBe(false)
+})
+
+test('legacy URLs may still select any traffic view', () => {
+  expect(VIEWS).toEqual([
+    'overview',
+    'flow',
+    'map',
+    'source',
+    'inbound',
+    'target',
+    'exit',
+    'process',
+  ])
+
+  for (const view of VIEWS) {
+    expect(trafficSearchSchema.parse({ view }).view).toBe(view)
+  }
+
+  expect(trafficSearchSchema.safeParse({ view: 'unknown' }).success).toBe(false)
 })
 
 test('a filter on a dimension that has one replaces it in place', () => {
@@ -103,13 +123,29 @@ test('a range is beyond the retention when it reaches back further', () => {
   expect(beyondRetention('last30_days', undefined)).toBe(false)
 })
 
-test('the flow asks for the template layers, the map for every region', () => {
-  expect(toTopologyRequest(trafficSearchSchema.parse({}))).toEqual({
+test('only flow and map requests include topology', () => {
+  expect(toTopologyRequest(trafficSearchSchema.parse({}))).toBeNull()
+  expect(
+    toTopologyRequest(trafficSearchSchema.parse({ view: 'overview' })),
+  ).toBeNull()
+  for (const view of [
+    'source',
+    'inbound',
+    'target',
+    'exit',
+    'process',
+  ] as const)
+    expect(toTopologyRequest(trafficSearchSchema.parse({ view }))).toBeNull()
+  expect(
+    toTopologyRequest(trafficSearchSchema.parse({ view: 'flow' })),
+  ).toEqual({
     layers: ['origin', 'rule', 'chain', 'exit'],
     limit_per_layer: 7,
   })
   expect(
-    toTopologyRequest(trafficSearchSchema.parse({ layers: 'source' })).layers,
+    toTopologyRequest(
+      trafficSearchSchema.parse({ view: 'flow', layers: 'source' }),
+    )?.layers,
   ).toEqual(['source', 'target', 'exit'])
   expect(toTopologyRequest(trafficSearchSchema.parse({ view: 'map' }))).toEqual(
     {
@@ -122,7 +158,7 @@ test('the flow asks for the template layers, the map for every region', () => {
 
 test('the limit is a count or all, and all asks for no limit', () => {
   const request = (limit: unknown) =>
-    toTopologyRequest(trafficSearchSchema.parse({ limit }))
+    toTopologyRequest(trafficSearchSchema.parse({ view: 'flow', limit }))!
 
   expect(request(undefined).limit_per_layer).toBe(7)
   expect(request(5).limit_per_layer).toBe(5)
@@ -130,7 +166,7 @@ test('the limit is a count or all, and all asks for no limit', () => {
   expect(request('all').limit_per_layer).toBeNull()
   // The map places every region whatever the limit.
   expect(
-    toTopologyRequest(trafficSearchSchema.parse({ view: 'map', limit: 5 }))
+    toTopologyRequest(trafficSearchSchema.parse({ view: 'map', limit: 5 }))!
       .limit_per_layer,
   ).toBeNull()
   expect(trafficSearchSchema.safeParse({ limit: 6 }).success).toBe(false)

@@ -8,7 +8,10 @@ import {
   type ComponentProps,
   type ReactNode,
 } from 'react'
-import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import {
+  useScrollAreaViewport,
+  useScrollAreaViewportElement,
+} from '@nyanpasu/ui/scroll-area'
 import { cn } from '@nyanpasu/utils'
 import {
   columnOrderingFeature,
@@ -184,6 +187,7 @@ function ConnectionsTable<TRow extends RowData>({
   )
 
   const { viewportRef } = useScrollAreaViewport()
+  const viewportElement = useScrollAreaViewportElement()
 
   const table = useTable({
     features,
@@ -213,7 +217,7 @@ function ConnectionsTable<TRow extends RowData>({
     count: rows.length,
     paddingEnd: bottomInset,
     scrollPaddingEnd: bottomInset,
-    getScrollElement: () => viewportRef.current,
+    getScrollElement: () => viewportElement,
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
   })

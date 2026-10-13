@@ -24,6 +24,7 @@ import {
   ScrollArea,
   useScrollArea,
   useScrollAreaViewport,
+  useScrollAreaViewportElement,
 } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
@@ -334,6 +335,7 @@ function FileRows({
 }) {
   const { isBottom, scrollDirection, isTop } = useScrollArea()
   const { viewportRef } = useScrollAreaViewport()
+  const viewportElement = useScrollAreaViewportElement()
   // A page from IPC, or a tail poll, mounts and measures new rows; deferring
   // the rows keeps that render from blocking scrolling and input. Everything
   // indexing the virtual list reads this one array so the indexes agree.
@@ -353,7 +355,7 @@ function FileRows({
   } | null>(null)
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => viewportRef.current,
+    getScrollElement: () => viewportElement,
     estimateSize: () => 110,
     paddingEnd: bottomInset,
     scrollPaddingEnd: bottomInset,

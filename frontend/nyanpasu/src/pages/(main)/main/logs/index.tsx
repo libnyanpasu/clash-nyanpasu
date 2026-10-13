@@ -14,6 +14,7 @@ import {
   ScrollArea,
   useScrollArea,
   useScrollAreaViewport,
+  useScrollAreaViewportElement,
 } from '@nyanpasu/ui/scroll-area'
 import {
   RegisterContextMenu,
@@ -116,6 +117,7 @@ function Viewer({
   )
   const { isBottom, scrollDirection, isTop } = useScrollArea()
   const { viewportRef } = useScrollAreaViewport()
+  const viewportElement = useScrollAreaViewportElement()
   const anchor = useRef<{
     id: CoreLogCursor
     delta: number
@@ -123,7 +125,7 @@ function Viewer({
   } | null>(null)
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => viewportRef.current,
+    getScrollElement: () => viewportElement,
     getItemKey: (index) => {
       const id = rows[index].id
       return `${id.generation}:${id.sequence}`

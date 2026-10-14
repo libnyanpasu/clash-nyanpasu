@@ -1,11 +1,11 @@
 use std::{sync::Arc, time::Instant};
 
+use crate::runtime::binary::{BinaryInstallProgress, PreparedCoreBinary};
 use async_trait::async_trait;
-use nyanpasu_core::runtime::binary::{BinaryInstallProgress, PreparedCoreBinary};
 use tokio_util::sync::CancellationToken;
 
 use super::{ManifestVersion, instance::UpdaterState, shared::CoreTypeMeta};
-use crate::core::download::DownloadStatus;
+use crate::download::DownloadStatus;
 use nyanpasu_config::application::ClashCore;
 
 #[derive(Clone)]
@@ -40,7 +40,7 @@ impl BinaryInstallProgress for UpdaterProgress {
 }
 
 #[async_trait]
-pub(crate) trait UpdaterBackend: Send + Sync + 'static {
+pub trait UpdaterBackend: Send + Sync + 'static {
     async fn fetch_manifest(
         &self,
         mirror: Option<(String, Instant)>,
@@ -60,6 +60,6 @@ pub(crate) trait UpdaterBackend: Send + Sync + 'static {
 }
 
 #[async_trait]
-pub(crate) trait CoreUpdateInstaller: Send + Sync + 'static {
+pub trait CoreUpdateInstaller: Send + Sync + 'static {
     async fn install(&self, artifact: PreparedCoreBinary) -> anyhow::Result<()>;
 }

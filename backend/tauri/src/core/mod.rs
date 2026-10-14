@@ -1,8 +1,6 @@
 pub mod clash;
-pub mod download;
 pub mod manager;
 pub mod tray;
-pub mod updater;
 
 pub(crate) mod proxies;
 

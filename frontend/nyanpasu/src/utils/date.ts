@@ -1,9 +1,10 @@
 import { format, formatDistance, isValid, parseISO } from 'date-fns'
-import { enUS, ko, ru, zhCN, zhTW } from 'date-fns/locale'
+import { enUS, ja, ko, ru, zhCN, zhTW } from 'date-fns/locale'
 import type { Locale } from '@/paraglide/runtime'
 
 const DATE_LOCALES = {
   en: enUS,
+  ja,
   ko,
   ru,
   'zh-cn': zhCN,

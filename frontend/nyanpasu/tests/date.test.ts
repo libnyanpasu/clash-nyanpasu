@@ -24,6 +24,7 @@ test('formats UTC, explicit offsets, and millisecond timestamps as the same inst
 
 test.each([
   ['en', '10 minutes ago', 'in 10 minutes'],
+  ['ja', '10分前', '10分後'],
   ['ko', '10분 전', '10분 후'],
   ['ru', '10 минут назад', 'через 10 минут'],
   ['zh-cn', '10 分钟前', '10 分钟内'],

@@ -447,7 +447,7 @@ export function createRpcClient(
         user_agent?: string | null
         with_proxy: boolean | null
         self_proxy: boolean | null
-        update_interval_minutes: number | null
+        update_interval_minutes: RemoteSyncInterval | null
       } | null,
       transform:
         { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
@@ -484,7 +484,7 @@ export function createRpcClient(
         user_agent?: string | null
         with_proxy: boolean | null
         self_proxy: boolean | null
-        update_interval_minutes: number | null
+        update_interval_minutes: RemoteSyncInterval | null
       } | null,
     ) =>
       typedError<MutationOutcome<null>, IpcError>(
@@ -3260,7 +3260,7 @@ export type ProfileRemoteOptions = {
   user_agent?: string | null
   with_proxy: boolean
   self_proxy: boolean
-  update_interval_minutes: number
+  update_interval_minutes: RemoteSyncInterval
 }
 
 /**
@@ -3844,15 +3844,23 @@ export type RemoteProfileOptionsPatch_Deserialize = {
   user_agent?: string | null
   with_proxy: boolean | null
   self_proxy: boolean | null
-  update_interval_minutes: number | null
+  update_interval_minutes: RemoteSyncInterval | null
 }
 
 export type RemoteProfileOptionsPatch_Serialize = {
   user_agent?: string | null
   with_proxy?: boolean | null
   self_proxy?: boolean | null
-  update_interval_minutes?: number | null
+  update_interval_minutes?: RemoteSyncInterval | null
 }
+
+/**
+ *  Minutes between scheduled syncs of a remote profile.
+ *
+ *  Zero disables automatic sync: no scheduled sync and no startup catch-up.
+ *  Manual sync remains available.
+ */
+export type RemoteSyncInterval = number
 
 export type ReportRequest = {
   query: TrafficQuery

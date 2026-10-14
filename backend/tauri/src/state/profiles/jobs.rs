@@ -139,9 +139,9 @@ impl ProfileJobs {
             let mut definition = JobDefinition::manual(sync_key(uid));
             definition.scope = SCOPE.into();
             definition.name = "Profile sync".into();
-            if running && option.update_interval_minutes > 0 {
+            if running && let Some(minutes) = option.update_interval_minutes.minutes() {
                 definition.schedule = Schedule::Interval {
-                    every_ms: option.update_interval_minutes.saturating_mul(60_000),
+                    every_ms: minutes.get().saturating_mul(60_000),
                 };
             }
             let (actor, uid, replies) = (actor.clone(), uid.clone(), self.replies.clone());
@@ -187,13 +187,12 @@ impl ProfileJobs {
             else {
                 continue;
             };
-            let minutes = option.update_interval_minutes;
-            if minutes == 0 {
+            let Some(minutes) = option.update_interval_minutes.minutes() else {
                 continue;
-            }
+            };
             let overdue = materialized.updated_at.is_none_or(|at| {
                 (time::OffsetDateTime::now_utc() - at).whole_seconds() as i128
-                    >= i128::from(minutes) * 60
+                    >= i128::from(minutes.get()) * 60
             });
             if overdue
                 && let Err(error) = self

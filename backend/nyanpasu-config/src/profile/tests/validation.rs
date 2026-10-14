@@ -242,7 +242,7 @@ fn remote_file_config(uid: &str, file: &str, url: &str, interval_minutes: u64) -
                     },
                     url: Url::parse(url).unwrap(),
                     option: RemoteProfileOptions {
-                        update_interval_minutes: interval_minutes,
+                        update_interval_minutes: RemoteSyncInterval::from_minutes(interval_minutes),
                         ..Default::default()
                     },
                     subscription: SubscriptionInfo::default(),

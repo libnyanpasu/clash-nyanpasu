@@ -1345,7 +1345,8 @@ pub(crate) mod tests {
         clash::config::{ClashConfig, clash_strategy::PortStrategy},
         profile::{
             ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
-            ProfileDefinition, ProfileMetadata, ProfileSource, SubscriptionInfo,
+            ProfileDefinition, ProfileMetadata, ProfileSource, RemoteSyncInterval,
+            SubscriptionInfo,
         },
         state::window::WindowState,
     };
@@ -4123,7 +4124,10 @@ pub(crate) mod tests {
             let ProfileSource::Remote { option, .. } = source else {
                 unreachable!()
             };
-            assert_eq!(option.update_interval_minutes, 360);
+            assert_eq!(
+                option.update_interval_minutes,
+                RemoteSyncInterval::from_minutes(360)
+            );
             assert!(!option.with_proxy);
         });
     }
@@ -4214,7 +4218,7 @@ pub(crate) mod tests {
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let mut patch = RemoteProfileOptions::new_empty_patch();
-            patch.update_interval_minutes = Some(45);
+            patch.update_interval_minutes = Some(RemoteSyncInterval::from_minutes(45));
             let url = url::Url::parse("https://example.com/subs/explicit.yaml").unwrap();
             let uid = client
                 .import_profile(url, None, Some(patch), None)
@@ -4227,7 +4231,10 @@ pub(crate) mod tests {
             else {
                 unreachable!()
             };
-            assert_eq!(option.update_interval_minutes, 45);
+            assert_eq!(
+                option.update_interval_minutes,
+                RemoteSyncInterval::from_minutes(45)
+            );
         });
     }
 
@@ -4246,7 +4253,7 @@ pub(crate) mod tests {
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let mut patch = RemoteProfileOptions::new_empty_patch();
-            patch.update_interval_minutes = Some(0);
+            patch.update_interval_minutes = Some(RemoteSyncInterval::DISABLED);
             let url = url::Url::parse("https://example.com/subs/manual.yaml").unwrap();
             let uid = client
                 .import_profile(url, None, Some(patch), None)
@@ -4259,7 +4266,7 @@ pub(crate) mod tests {
             else {
                 unreachable!()
             };
-            assert_eq!(option.update_interval_minutes, 0);
+            assert_eq!(option.update_interval_minutes, RemoteSyncInterval::DISABLED);
         });
     }
 
@@ -4607,7 +4614,10 @@ pub(crate) mod tests {
             else {
                 unreachable!()
             };
-            assert_eq!(option.update_interval_minutes, 120);
+            assert_eq!(
+                option.update_interval_minutes,
+                RemoteSyncInterval::from_minutes(120)
+            );
         });
     }
 

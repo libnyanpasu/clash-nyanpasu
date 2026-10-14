@@ -404,8 +404,8 @@ mod tests {
     use nyanpasu_config::profile::{
         ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
         ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition, ProfileId,
-        ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, ScriptRuntime,
-        ScriptTransform, SubscriptionInfo, TransformDefinition,
+        ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, RemoteSyncInterval,
+        ScriptRuntime, ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
     use nyanpasu_core::state::ReplaceIfVersionError;
     use struct_patch::Patch as _;
@@ -988,7 +988,10 @@ mod tests {
         let ProfileSource::Remote { option, .. } = source else {
             unreachable!()
         };
-        assert_eq!(option.update_interval_minutes, 120);
+        assert_eq!(
+            option.update_interval_minutes,
+            RemoteSyncInterval::from_minutes(120)
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -1042,7 +1045,10 @@ mod tests {
         let ProfileSource::Remote { option, .. } = source else {
             unreachable!()
         };
-        assert_eq!(option.update_interval_minutes, 60);
+        assert_eq!(
+            option.update_interval_minutes,
+            RemoteSyncInterval::from_minutes(60)
+        );
         assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
         tokio::time::advance(std::time::Duration::from_secs(60 * 60 + 1)).await;
@@ -1064,7 +1070,8 @@ mod tests {
         };
         assert_eq!(subscription.upload, Some(2));
         assert_eq!(
-            option.update_interval_minutes, 60,
+            option.update_interval_minutes,
+            RemoteSyncInterval::from_minutes(60),
             "scheduled refresh must ignore later server suggestions"
         );
     }
@@ -1090,7 +1097,10 @@ mod tests {
         let ProfileSource::Remote { option, .. } = source else {
             unreachable!()
         };
-        assert_eq!(option.update_interval_minutes, 120);
+        assert_eq!(
+            option.update_interval_minutes,
+            RemoteSyncInterval::from_minutes(120)
+        );
     }
 
     #[tokio::test]
@@ -1268,7 +1278,7 @@ mod tests {
             tokio::spawn(async move { refresh_client.refresh(ProfileId("r1".into()), None).await });
         started_rx.await.unwrap();
         let mut patch = RemoteProfileOptions::new_empty_patch();
-        patch.update_interval_minutes = Some(60);
+        patch.update_interval_minutes = Some(RemoteSyncInterval::from_minutes(60));
         client
             .patch_remote_options(ProfileId("r1".into()), patch)
             .await
@@ -1369,7 +1379,7 @@ mod tests {
         client.replace(profiles).await.unwrap();
 
         let mut patch = RemoteProfileOptions::new_empty_patch();
-        patch.update_interval_minutes = Some(0);
+        patch.update_interval_minutes = Some(RemoteSyncInterval::DISABLED);
         client
             .patch_remote_options(ProfileId("r1".into()), patch)
             .await
@@ -1480,6 +1490,78 @@ mod tests {
         .await;
         crate::client::jobs::settled(&client.jobs()).await;
         assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn disabled_auto_sync_skips_startup_catch_up_but_allows_manual_sync() {
+        let _clock = crate::client::jobs::explicit_test_time();
+        let fetch_count = Arc::new(AtomicUsize::new(0));
+        let mut fetcher = MockSubscriptionFetcher::new();
+        let counter = Arc::clone(&fetch_count);
+        fetcher.expect_fetch().returning(move |_, _| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(FetchedSubscription {
+                content: "proxies: []
+"
+                .into(),
+                filename: None,
+                subscription: SubscriptionInfo::default(),
+                suggested_update_interval_minutes: None,
+            })
+        });
+        let dir = tempdir().unwrap();
+        {
+            let client = ProfilesClient::new(
+                crate::state::mutation::MutationCoordinator::isolated(),
+                temp_profiles_path(&dir),
+                Arc::new(MockProfileFsPort::new()),
+                Arc::new(MockSubscriptionFetcher::new()),
+                test_materialization_port(),
+                tokio_util::sync::CancellationToken::new(),
+                &tokio_util::task::TaskTracker::new(),
+            )
+            .await
+            .unwrap();
+            let mut item = remote_config_item("r1");
+            let Some(ProfileSource::Remote {
+                materialized,
+                option,
+                ..
+            }) = item.definition.source_mut()
+            else {
+                unreachable!("the fixture is remote")
+            };
+            materialized.updated_at =
+                Some(time::OffsetDateTime::now_utc() - time::Duration::days(30));
+            option.update_interval_minutes = RemoteSyncInterval::DISABLED;
+            let mut profiles = Profiles::default();
+            profiles.append_item(item);
+            client.replace(profiles).await.unwrap();
+        }
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            test_materialization_port(),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+        client.start_producers().unwrap();
+        crate::client::jobs::settled(&client.jobs()).await;
+        tokio::time::advance(std::time::Duration::from_secs(240 * 60)).await;
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(fetch_count.load(Ordering::SeqCst), 0);
+
+        client
+            .sync(ProfileId("r1".into()), None)
+            .await
+            .expect("manual sync");
+        assert_eq!(fetch_count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -3240,7 +3322,10 @@ mod tests {
             panic!("expected remote");
         };
         assert_eq!(url.as_str(), "https://example.com/subs/my-sub.yaml");
-        assert_eq!(option.update_interval_minutes, 180);
+        assert_eq!(
+            option.update_interval_minutes,
+            RemoteSyncInterval::from_minutes(180)
+        );
         assert_eq!(subscription.upload, Some(9));
         assert_eq!(subscription.download, Some(3));
         assert!(materialized.updated_at.is_some());
@@ -3506,7 +3591,7 @@ mod tests {
         .await
         .unwrap();
         let option = RemoteProfileOptions {
-            update_interval_minutes: 45,
+            update_interval_minutes: RemoteSyncInterval::from_minutes(45),
             ..RemoteProfileOptions::default()
         };
         let report = client
@@ -3526,7 +3611,10 @@ mod tests {
         let ProfileSource::Remote { option, .. } = item.definition.source().unwrap() else {
             unreachable!()
         };
-        assert_eq!(option.update_interval_minutes, 45);
+        assert_eq!(
+            option.update_interval_minutes,
+            RemoteSyncInterval::from_minutes(45)
+        );
     }
 
     #[tokio::test]
@@ -3568,7 +3656,10 @@ mod tests {
         else {
             unreachable!()
         };
-        assert_eq!(option.update_interval_minutes, 240);
+        assert_eq!(
+            option.update_interval_minutes,
+            RemoteSyncInterval::from_minutes(240)
+        );
     }
 
     #[tokio::test]
@@ -3595,7 +3686,7 @@ mod tests {
         .await
         .unwrap();
         let option = RemoteProfileOptions {
-            update_interval_minutes: 0,
+            update_interval_minutes: RemoteSyncInterval::DISABLED,
             ..RemoteProfileOptions::default()
         };
         let report = client
@@ -3614,7 +3705,7 @@ mod tests {
         else {
             unreachable!()
         };
-        assert_eq!(option.update_interval_minutes, 0);
+        assert_eq!(option.update_interval_minutes, RemoteSyncInterval::DISABLED);
     }
 
     // --- T10 §2 producer gating (P1–P5) and §3 source receipts (R1–R5) ---
@@ -4239,7 +4330,7 @@ mod tests {
         started.recv().await.unwrap();
 
         let mut patch = RemoteProfileOptions::new_empty_patch();
-        patch.update_interval_minutes = Some(60);
+        patch.update_interval_minutes = Some(RemoteSyncInterval::from_minutes(60));
         client
             .patch_remote_options(ProfileId("r1".into()), patch)
             .await
@@ -4298,7 +4389,7 @@ mod tests {
         started_rx.recv().await.unwrap();
 
         let mut patch = RemoteProfileOptions::new_empty_patch();
-        patch.update_interval_minutes = Some(60);
+        patch.update_interval_minutes = Some(RemoteSyncInterval::from_minutes(60));
         client
             .patch_remote_options(ProfileId("r1".into()), patch)
             .await

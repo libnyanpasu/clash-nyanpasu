@@ -30,24 +30,26 @@ test('shows the current mode and saves the selected one', async ({
     vi.clearAllMocks()
   })
 
+  const trigger = view.getByRole('button', {
+    name: new RegExp(
+      m.settings_nyanpasu_enhance_break_when_proxy_change_label(),
+    ),
+  })
   await expect
-    .element(
-      view.getByRole('radiogroup', {
-        name: m.settings_nyanpasu_enhance_break_when_proxy_change_label(),
-      }),
-    )
-    .toBeInTheDocument()
+    .poll(() => trigger.element().textContent)
+    .toContain(m.settings_nyanpasu_enhance_break_when_proxy_change_all())
 
+  await trigger.click()
   await expect
     .element(
-      view.getByRole('radio', {
+      view.getByRole('menuitemcheckbox', {
         name: m.settings_nyanpasu_enhance_break_when_proxy_change_all(),
       }),
     )
     .toBeChecked()
 
   await view
-    .getByRole('radio', {
+    .getByRole('menuitemcheckbox', {
       name: m.settings_nyanpasu_enhance_break_when_proxy_change_group(),
     })
     .click()
@@ -67,7 +69,14 @@ test('shows an error when saving fails', async ({ onTestFinished }) => {
   })
 
   await view
-    .getByRole('radio', {
+    .getByRole('button', {
+      name: new RegExp(
+        m.settings_nyanpasu_enhance_break_when_proxy_change_label(),
+      ),
+    })
+    .click()
+  await view
+    .getByRole('menuitemcheckbox', {
       name: m.settings_nyanpasu_enhance_break_when_proxy_change_off(),
     })
     .click()

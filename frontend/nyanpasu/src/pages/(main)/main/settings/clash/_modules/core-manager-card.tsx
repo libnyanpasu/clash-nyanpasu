@@ -3,13 +3,15 @@ import DeployedCodeUpdateOutlineRounded from '~icons/material-symbols/deployed-c
 import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import { isObject } from 'es-toolkit/compat'
 import { filesize } from 'filesize'
-import { AnimatePresence, motion } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { motion } from 'motion/react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { CircularProgress } from '@nyanpasu/ui/progress'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
-import { useBlockTask } from '@/components/providers/block-task-provider'
+import {
+  useBlockTask,
+  useBlockTaskContext,
+} from '@/components/providers/block-task-provider'
 import useCoreIcon from '@/hooks/use-core-icon'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -163,13 +165,36 @@ const UpdateProgressBar = ({
   )
 }
 
+// Every core-manager task key starts with this prefix; a pending one locks the card.
+const CORE_MANAGER_TASK_PREFIX = 'core-manager-'
+
+const SkeletonLine = ({
+  className,
+  children,
+}: {
+  className?: string
+  children?: ReactNode
+}) => (
+  <span
+    data-slot="core-manager-skeleton"
+    className={cn(
+      'bg-surface-variant inline-block animate-pulse rounded-full',
+      className,
+    )}
+  >
+    {children}
+  </span>
+)
+
 const CoreItem = ({
   core,
   item,
+  locked,
   onClick,
 }: {
   core: ClashCore
   item: ClashCoresDetail
+  locked: boolean
   onClick: (core: ClashCore) => void
 }) => {
   const { value: currentCore } = useSetting('core')
@@ -204,17 +229,12 @@ const CoreItem = ({
       variant={isSelected ? 'raised' : 'basic'}
       data-selected={isSelected}
       data-downloading={updateCoreTask.isPending}
+      disabled={locked}
       className={cn(
         'relative h-auto w-full min-w-0 overflow-hidden rounded-2xl p-2 text-left',
         'flex items-center gap-2',
       )}
-      onClick={() => {
-        if (updateCoreTask.isPending) {
-          return
-        }
-
-        onClick(core)
-      }}
+      onClick={() => onClick(core)}
     >
       <UpdateProgressBar
         isPending={updateCoreTask.isPending}
@@ -256,6 +276,7 @@ const CoreItem = ({
                 variant="stroked"
                 icon
                 aria-label={updateActionLabel}
+                disabled={locked}
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -357,12 +378,16 @@ export default function CoreManagerCard() {
     }
   })
 
-  const isLoading =
-    clashCores.isPending ||
-    switchCoreTask.isPending ||
-    restartSidecarTask.isPending
+  const { tasks } = useBlockTaskContext()
 
-  const loadingMessage = m.settings_clash_core_manager_card_loading()
+  const isOperating = Object.values(tasks).some(
+    (task) =>
+      task.status === 'pending' && task.id.startsWith(CORE_MANAGER_TASK_PREFIX),
+  )
+
+  const isLoading = clashCores.isPending || switchCoreTask.isPending
+
+  const isLocked = isOperating || clashCores.isPending || fetchRemote.isPending
 
   const haveNewVersion = hasNewerCoreVersion(
     currentCoreKey,
@@ -382,26 +407,7 @@ export default function CoreManagerCard() {
   const currentCoreUpdate = useCoreUpdateTask(currentCoreKey, currentCore)
 
   return (
-    <SettingsCard data-slot="core-manager-card" className="relative">
-      <AnimatePresence initial={false}>
-        {isLoading && (
-          <motion.div
-            data-slot="core-manager-card-mask"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className={cn(
-              'bg-primary/10 absolute inset-0 z-50 backdrop-blur-3xl',
-              'flex flex-col items-center justify-center gap-4',
-            )}
-          >
-            <CircularProgress className="size-12" indeterminate />
-
-            <p>{loadingMessage}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+    <SettingsCard data-slot="core-manager-card" aria-busy={isLocked}>
       <SettingsCardContent data-slot="core-manager-card-content">
         <div
           className={cn(
@@ -423,11 +429,23 @@ export default function CoreManagerCard() {
           </div>
 
           <div className="relative flex-1">
-            <p className="font-medium">{currentCore?.name}</p>
+            <p className="font-medium">
+              {isLoading ? (
+                <SkeletonLine className="h-5 w-24" />
+              ) : (
+                currentCore?.name
+              )}
+            </p>
 
             <p className="flex items-center gap-1 text-sm">
-              {currentCoreUpdate.task.isPending &&
-              currentCoreUpdate.stateLabel ? (
+              {isLoading ? (
+                <SkeletonLine className="h-4 w-16">
+                  <span className="sr-only">
+                    {m.settings_clash_core_manager_card_loading()}
+                  </span>
+                </SkeletonLine>
+              ) : currentCoreUpdate.task.isPending &&
+                currentCoreUpdate.stateLabel ? (
                 <span className="text-emerald-700">
                   {currentCoreUpdate.stateLabel}
                 </span>
@@ -457,6 +475,7 @@ export default function CoreManagerCard() {
                     variant="stroked"
                     icon
                     aria-label={updateActionLabel}
+                    disabled={isLocked}
                     onClick={() => currentCoreUpdate.task.execute()}
                     loading={currentCoreUpdate.task.isPending}
                   >
@@ -473,6 +492,7 @@ export default function CoreManagerCard() {
                 <Button
                   icon
                   variant="stroked"
+                  disabled={isLocked}
                   onClick={() => restartSidecarTask.execute()}
                 >
                   <RestartAltRounded className="size-5" />
@@ -497,6 +517,7 @@ export default function CoreManagerCard() {
                 key={item.name}
                 core={core as ClashCore}
                 item={item}
+                locked={isLocked}
                 onClick={() => switchCoreTask.execute(core as ClashCore)}
               />
             )
@@ -507,6 +528,7 @@ export default function CoreManagerCard() {
       <SettingsCardFooter className="gap-2">
         <Button
           variant="flat"
+          disabled={isLocked}
           onClick={handleFetchRemote}
           loading={fetchRemote.isPending}
         >

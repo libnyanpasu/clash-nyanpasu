@@ -6,6 +6,7 @@ import { m } from '@/paraglide/messages'
 import CoreManagerCard from '../src/pages/(main)/main/settings/clash/_modules/core-manager-card'
 
 const state = vi.hoisted(() => ({
+  queryPending: false,
   currentCore: 'mihomo',
   cores: {
     mihomo: {
@@ -34,7 +35,7 @@ const state = vi.hoisted(() => ({
 vi.mock('@nyanpasu/query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@nyanpasu/query')>()),
   useClashCores: () => ({
-    query: { data: state.cores, isPending: false },
+    query: { data: state.cores, isPending: state.queryPending },
     updateCore: { mutateAsync: state.updateCore, isPending: false },
     inspectUpdater: state.inspectUpdater,
     refetchVersions: state.refetchVersions,
@@ -119,4 +120,85 @@ test('equal versions do not add update actions to either core card entry', async
       `[aria-label="${m.settings_clash_core_manager_card_click_to_update()}"]`,
     ),
   ).toHaveLength(0)
+})
+
+test('a pending core operation disables every core action until it settles', async ({
+  onTestFinished,
+}) => {
+  state.currentCore = 'mihomo'
+  state.cores = {
+    mihomo: {
+      name: 'Mihomo',
+      currentVersion: 'N/A',
+      latestVersion: 'v1.19.32',
+      versionReadError: true,
+    },
+    'meow-alpha': {
+      name: 'Meow Alpha',
+      currentVersion: 'N/A',
+      latestVersion: 'alpha-3c27aca',
+      versionReadError: true,
+    },
+  }
+  let releaseUpdate = () => {}
+  state.updateCore.mockImplementationOnce(
+    () =>
+      new Promise<number>((resolve) => {
+        releaseUpdate = () => resolve(1)
+      }),
+  )
+  const view = await render(
+    <TooltipProvider>
+      <BlockTaskProvider>
+        <CoreManagerCard />
+      </BlockTaskProvider>
+    </TooltipProvider>,
+  )
+  onTestFinished(async () => view.unmount())
+
+  const reinstallLabel = m.settings_clash_core_manager_card_reinstall_core()
+  await view.getByLabelText(reinstallLabel).nth(0).click()
+
+  await expect
+    .poll(
+      () => view.container.querySelectorAll('button:not([disabled])').length,
+    )
+    .toBe(0)
+  expect(
+    view.container.querySelectorAll(
+      `[aria-label="${reinstallLabel}"]:not([disabled])`,
+    ),
+  ).toHaveLength(0)
+
+  releaseUpdate()
+
+  await expect
+    .poll(
+      () => view.container.querySelectorAll('button:not([disabled])').length,
+    )
+    .toBeGreaterThan(0)
+})
+
+test('loading replaces the current core name and version with skeleton placeholders', async ({
+  onTestFinished,
+}) => {
+  state.queryPending = true
+  const view = await render(
+    <TooltipProvider>
+      <BlockTaskProvider>
+        <CoreManagerCard />
+      </BlockTaskProvider>
+    </TooltipProvider>,
+  )
+  onTestFinished(async () => {
+    state.queryPending = false
+    await view.unmount()
+  })
+
+  expect(
+    view.container.querySelectorAll('[data-slot="core-manager-skeleton"]'),
+  ).toHaveLength(2)
+  expect(
+    view.container.querySelector('[data-slot="core-manager-card"]'),
+  ).toHaveAttribute('aria-busy', 'true')
 })

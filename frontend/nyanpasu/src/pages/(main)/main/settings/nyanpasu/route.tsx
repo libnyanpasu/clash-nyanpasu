@@ -17,7 +17,7 @@ import TrafficRetentionSelector from './_modules/traffic-retention-selector'
 import TrayIconConfig from './_modules/tray-icon-config'
 import TrayMenuModeSelector from './_modules/tray-menu-mode'
 import TrayProxiesSelector from './_modules/tray-proxies-selector'
-import WindowCloseBehaviorCard from './_modules/window-close-behavior'
+import WindowCloseBehaviorCards from './_modules/window-close-behavior'
 
 export const Route = createFileRoute('/(main)/main/settings/nyanpasu')({
   component: RouteComponent,
@@ -109,7 +109,7 @@ const WindowSettings = () => {
       <SettingsLabel>{m.settings_nyanpasu_window_close()}</SettingsLabel>
 
       <SettingsGroup>
-        <WindowCloseBehaviorCard showTrayMenu={trayMenuMode === 'webview'} />
+        <WindowCloseBehaviorCards showTrayMenu={trayMenuMode === 'webview'} />
       </SettingsGroup>
     </div>
   )

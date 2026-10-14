@@ -20,9 +20,9 @@ const ProxyButton = ({
   return (
     <Button
       className={cn(
-        'group h-16 rounded-3xl font-bold text-nowrap',
+        'group h-14 font-semibold text-nowrap',
         'flex items-center justify-between gap-2',
-        'data-[active=false]:bg-white dark:data-[active=false]:bg-black',
+        'data-[active=false]:bg-surface data-[active=false]:text-on-surface',
         className,
       )}
       data-active={String(Boolean(isActive))}

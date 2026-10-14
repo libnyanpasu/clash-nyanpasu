@@ -60,39 +60,41 @@ function WindowCloseRow<V extends string>({
   onChange: (value: V) => void
 }) {
   return (
-    <DropdownMenu align="end">
-      <DropdownMenuTrigger asChild>
-        <SettingsCardContent data-slot={`${slot}-trigger`} asChild>
-          <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
-            <ItemContainer>
-              <ItemLabel>
-                <ItemLabelText>{label}</ItemLabelText>
+    <SettingsCard data-slot={slot}>
+      <DropdownMenu align="end">
+        <DropdownMenuTrigger asChild>
+          <SettingsCardContent data-slot={`${slot}-trigger`} asChild>
+            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
+              <ItemContainer>
+                <ItemLabel>
+                  <ItemLabelText>{label}</ItemLabelText>
 
-                <ItemLabelDescription>{messages[value]}</ItemLabelDescription>
-              </ItemLabel>
+                  <ItemLabelDescription>{messages[value]}</ItemLabelDescription>
+                </ItemLabel>
 
-              <ArrowForwardIosRounded />
-            </ItemContainer>
-          </Button>
-        </SettingsCardContent>
-      </DropdownMenuTrigger>
+                <ArrowForwardIosRounded />
+              </ItemContainer>
+            </Button>
+          </SettingsCardContent>
+        </DropdownMenuTrigger>
 
-      <DropdownMenuContent sideOffset={-16} alignOffset={16}>
-        {Object.entries(messages).map(([key, message]) => (
-          <DropdownMenuCheckboxItem
-            checked={value === key}
-            key={key}
-            onSelect={() => onChange(key as V)}
-          >
-            {message as string}
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <DropdownMenuContent sideOffset={-16} alignOffset={16}>
+          {Object.entries(messages).map(([key, message]) => (
+            <DropdownMenuCheckboxItem
+              checked={value === key}
+              key={key}
+              onSelect={() => onChange(key as V)}
+            >
+              {message as string}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SettingsCard>
   )
 }
 
-export default function WindowCloseBehaviorCard({
+export default function WindowCloseBehaviorCards({
   showTrayMenu,
 }: {
   showTrayMenu: boolean
@@ -126,7 +128,7 @@ export default function WindowCloseBehaviorCard({
   }
 
   return (
-    <SettingsCard data-slot="window-close-behavior-card">
+    <>
       <WindowCloseRow
         slot="window-close-behavior-global"
         label={m.settings_nyanpasu_window_close_global()}
@@ -146,12 +148,16 @@ export default function WindowCloseBehaviorCard({
         />
       ))}
 
-      <p
-        className="text-on-surface-variant px-5 pb-5 text-sm"
-        data-slot="window-close-behavior-description"
-      >
-        {m.settings_nyanpasu_window_close_description()}
-      </p>
-    </SettingsCard>
+      <SettingsCard data-slot="window-close-behavior-description-card">
+        <SettingsCardContent>
+          <p
+            className="text-on-surface-variant text-sm"
+            data-slot="window-close-behavior-description"
+          >
+            {m.settings_nyanpasu_window_close_description()}
+          </p>
+        </SettingsCardContent>
+      </SettingsCard>
+    </>
   )
 }

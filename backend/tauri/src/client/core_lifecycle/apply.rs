@@ -1,10 +1,8 @@
 use nyanpasu_core_manager::OperationId;
 
 use super::CoreLifecycleWorkflow;
-use crate::core::{
-    actor_v2::api::{ApiClient, ApiError},
-    connections::{ConnectionScope, interrupt_connections},
-};
+use crate::core::connections::{ConnectionScope, interrupt_connections};
+use nyanpasu_core::control::api::{ApiClient, ApiError};
 
 #[derive(Default)]
 pub(in crate::client) struct RuntimeApplyOptions {

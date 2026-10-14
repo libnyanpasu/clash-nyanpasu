@@ -1,5 +1,6 @@
 pub mod backup;
 pub mod connections;
+pub mod control;
 pub mod device;
 pub mod diagnostics;
 pub mod error;
@@ -11,6 +12,8 @@ pub mod service;
 pub mod state;
 pub mod storage;
 pub mod tasks;
+#[cfg(windows)]
+pub mod uwp;
 
 /// Smoke test proving the gxhash dev-dependency compiles and runs under the
 /// target-feature flags configured in `.cargo/config.toml`. gxhash fails to

@@ -39,14 +39,16 @@ use super::{
     runtime,
     runtime_error::{OwnerUnavailableSnafu, OwnerUnresponsiveSnafu, RuntimeError, ack_of},
 };
-use crate::core::actor_v2::{
-    CoreClient, CoreStatusProjection,
-    facade::{CoreFacade, ReconcileReport, StopReport},
-    service_actor::{ServiceClient, ServiceHostStatus},
-};
-#[cfg(test)]
-use crate::core::actor_v2::{HandoffReport, endpoint::ExecutionHost};
 use mutation::{MutationJournal, MutationRequest};
+#[cfg(test)]
+use nyanpasu_core::control::{HandoffReport, endpoint::ExecutionHost};
+use nyanpasu_core::{
+    control::{
+        CoreClient, CoreStatusProjection,
+        facade::{CoreFacade, ReconcileReport, StopReport},
+    },
+    service::actor::{ServiceClient, ServiceHostStatus},
+};
 use ports::RuntimeBuildPort;
 use preparation::RuntimePreparation;
 use workflow::ApplicationWorkflow;
@@ -572,7 +574,7 @@ struct ClientInner {
     runtime: runtime::RuntimeSnapshotStore,
     status: watch::Receiver<CoreLifecycleStatus>,
     mutations: watch::Receiver<MutationJournal>,
-    core: crate::core::actor_v2::CoreObserver,
+    core: nyanpasu_core::control::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
 }
 

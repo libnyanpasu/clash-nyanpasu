@@ -14,6 +14,8 @@
 
 use std::{borrow::Cow, sync::Arc, time::Duration};
 
+use serde_yaml_ng as serde_yaml;
+
 use nyanpasu_core_manager::{
     ApplyOutcome, CoreCommandEnvelope, CoreControl, CoreError, CoreErrorKind, CoreKind,
     OperationId, OperationOutput, OperationState,
@@ -412,7 +414,7 @@ fn map_local_status(status: &nyanpasu_core_manager::CoreStatus) -> CoreStatusSna
 // Service host: the daemon's CoreControl behind the IPC v2 wire.
 // ---------------------------------------------------------------------------
 
-pub struct ServiceEndpoint {
+pub(crate) struct ServiceEndpoint {
     client: nyanpasu_ipc::client::Client,
 }
 
@@ -652,9 +654,7 @@ fn app_core_kind_to_type(
 /// (`CoreLifecycleWorkflow::replace_binary`), not the service host's
 /// *applied* kind -- `map_service_status` no longer feeds its `applied_kind`
 /// through this function; see that field's comment (R6b).
-pub(crate) fn wire_core_type_to_kind(
-    core_type: &nyanpasu_utils::core::CoreType,
-) -> Option<CoreKind> {
+pub fn wire_core_type_to_kind(core_type: &nyanpasu_utils::core::CoreType) -> Option<CoreKind> {
     use nyanpasu_utils::core::{ClashCoreType, CoreType};
     match core_type {
         CoreType::Clash(ClashCoreType::Mihomo | ClashCoreType::MihomoAlpha) => {

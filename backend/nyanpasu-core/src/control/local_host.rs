@@ -94,13 +94,22 @@ fn core_spec_with(
 
 #[cfg(test)]
 mod tests {
+    fn test_paths(
+        config: impl AsRef<std::path::Path>,
+        data: impl AsRef<std::path::Path>,
+    ) -> nyanpasu_paths::PathResolver {
+        let utf8 = |path: &std::path::Path| {
+            camino::Utf8PathBuf::from_path_buf(path.to_owned()).expect("test directories are UTF-8")
+        };
+        nyanpasu_paths::PathResolver::with_base_dirs(utf8(config.as_ref()), utf8(data.as_ref()))
+    }
+
     use super::*;
 
     #[tokio::test]
     async fn the_local_host_spawns_under_a_temp_root() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths =
-            crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
+        let paths = test_paths(root.path().join("config"), root.path().join("data"));
 
         let control = build(&paths).await.unwrap();
 
@@ -111,7 +120,7 @@ mod tests {
     #[tokio::test]
     async fn the_local_host_reads_the_typed_config_before_the_legacy_file() {
         let root = tempfile::TempDir::new().unwrap();
-        let paths = crate::client::tests::test_paths(root.path(), root.path().join("data"));
+        let paths = test_paths(root.path(), root.path().join("data"));
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 

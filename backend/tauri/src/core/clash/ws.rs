@@ -16,7 +16,7 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::core::actor_v2::{
+use nyanpasu_core::control::{
     CoreClient,
     api::{ApiClient, ApiError},
 };
@@ -698,7 +698,7 @@ impl Actor for StreamsActor {
                     && let Some(snapshot) = projection.snapshot
                     && matches!(
                         projection.connectivity,
-                        crate::core::actor_v2::EndpointConnectivity::Connected
+                        nyanpasu_core::control::EndpointConnectivity::Connected
                     )
                     && matches!(
                         snapshot.state,
@@ -926,7 +926,7 @@ impl StreamsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::actor_v2::api::tests::{endpoint, server};
+    use crate::core::test_support::{endpoint, server};
     use axum::{Router, extract::WebSocketUpgrade, response::IntoResponse, routing::get};
 
     async fn idle(ws: WebSocketUpgrade) -> impl IntoResponse {

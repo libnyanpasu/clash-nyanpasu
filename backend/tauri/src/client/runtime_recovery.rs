@@ -31,7 +31,7 @@ use nyanpasu_core_manager::CoreKind;
 use nyanpasu_ipc::api::status::CoreStateDetail;
 
 use super::{application_workflow::policy::CoreRunIntent, runtime::RuntimeApplyReceipt};
-use crate::core::actor_v2::{
+use nyanpasu_core::control::{
     CoreStatusProjection,
     endpoint::{ExecutionHost, wire_core_type_to_kind},
     facade::AppliedConfigBinding,
@@ -258,7 +258,7 @@ mod tests {
                 policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
                 keep_http_controller: true,
             },
-            binding: crate::core::actor_v2::facade::AppliedConfigBinding {
+            binding: nyanpasu_core::control::facade::AppliedConfigBinding {
                 revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                     epoch: 4,
                     generation: 11,

@@ -2054,11 +2054,12 @@ mod tests {
         client::runtime_error::RuntimeError,
         state::{
             mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
-            profiles::{ProfileFileError, SubscriptionFetchError},
+            profiles::test_support::mock_profile_file_error,
         },
     };
     use nyanpasu_core::{
-        effects::error::EffectsError, system_dns::SystemDnsError, system_proxy::ports::OsProxyError,
+        effects::error::EffectsError, profiles::error::SubscriptionFetchError,
+        system_dns::SystemDnsError, system_proxy::ports::OsProxyError,
     };
 
     fn wire(error: impl Into<ClientError>) -> serde_json::Value {
@@ -2194,7 +2195,7 @@ mod tests {
 
         let read = wire(ProfilesError::ReadProfileFile {
             uid: ProfileId("p1".into()),
-            source: ProfileFileError::mock("disk full"),
+            source: mock_profile_file_error("disk full"),
         });
         assert_eq!(
             read["kind"]["error"],

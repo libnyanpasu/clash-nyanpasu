@@ -7,24 +7,26 @@ use std::{
     collections::HashSet,
     io::Write,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
+use crate::{
+    device::{DeviceInfoSource, sanitize_for_header},
+    network::{SelfProxyPortSource, get_self_proxy, get_system_proxy},
+};
 use atomicwrites::{AtomicFile, OverwriteBehavior, replace_atomic};
 use nyanpasu_config::profile::{
     ExternalProfilePath, ManagedProfilePath, Profiles, RemoteProfileOptions, SubscriptionInfo,
 };
-use nyanpasu_core::{
-    device::{DeviceInfoSource, sanitize_for_header},
-    network::{SelfProxyPortSource, get_self_proxy, get_system_proxy},
-};
 use serde::{Deserialize, Serialize};
+use serde_yaml_ng as serde_yaml;
 use sha2::{Digest, Sha256};
 use snafu::{OptionExt, ResultExt, ensure};
 use url::Url;
 
-use crate::state::profiles::{
+use super::{
     error::*,
     ports::{
         CleanupOutcome, FetchedSubscription, MaterializationReconcileReport,
@@ -2073,7 +2075,7 @@ impl SubscriptionFetcher for ProfileFileService {
             }
         });
         if let Some(proxy_url) = proxy_url {
-            use nyanpasu_core::network::NyanpasuReqwestProxyExt;
+            use crate::network::NyanpasuReqwestProxyExt;
             builder = builder.swift_set_proxy(&proxy_url);
         }
 
@@ -2151,6 +2153,18 @@ fn parse_suggested_update_interval(headers: &reqwest::header::HeaderMap) -> Opti
     Some(minutes)
 }
 
+/// parse the string
+/// xxx=123123; => 123123
+fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
+    target.split(';').map(str::trim).find_map(|s| {
+        let mut parts = s.splitn(2, '=');
+        match (parts.next(), parts.next()) {
+            (Some(k), Some(v)) if k == key => v.parse::<T>().ok(),
+            _ => None,
+        }
+    })
+}
+
 fn parse_subscription_userinfo(headers: &reqwest::header::HeaderMap) -> SubscriptionInfo {
     let Some(value) = headers
         .get("subscription-userinfo")
@@ -2159,7 +2173,7 @@ fn parse_subscription_userinfo(headers: &reqwest::header::HeaderMap) -> Subscrip
         return SubscriptionInfo::default();
     };
     let raw = value.to_str().unwrap_or("");
-    let field = |key: &str| crate::utils::help::parse_str::<u64>(raw, key);
+    let field = |key: &str| parse_str::<u64>(raw, key);
     SubscriptionInfo {
         upload: field("upload"),
         download: field("download"),
@@ -2227,10 +2241,30 @@ fn decode_rfc5987_filename(value: &str) -> Option<String> {
         .map(|decoded| decoded.into_owned())
 }
 
+#[test]
+fn test_parse_value() {
+    let test_1 = "upload=111; download=2222; total=3333; expire=444";
+    let test_2 = "attachment; filename=Clash.yaml";
+
+    assert_eq!(parse_str::<usize>(test_1, "upload").unwrap(), 111);
+    assert_eq!(parse_str::<usize>(test_1, "download").unwrap(), 2222);
+    assert_eq!(parse_str::<usize>(test_1, "total").unwrap(), 3333);
+    assert_eq!(parse_str::<usize>(test_1, "expire").unwrap(), 444);
+    assert_eq!(
+        parse_str::<String>(test_2, "filename").unwrap(),
+        format!("Clash.yaml")
+    );
+
+    assert_eq!(parse_str::<usize>(test_1, "aaa"), None);
+    assert_eq!(parse_str::<usize>(test_1, "upload1"), None);
+    assert_eq!(parse_str::<usize>(test_1, "expire1"), None);
+    assert_eq!(parse_str::<usize>(test_2, "attachment"), None);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::profiles::ports::SubscriptionFetcher;
+    use crate::profiles::ports::SubscriptionFetcher;
     use axum::{
         Router,
         http::{HeaderMap as AxumHeaderMap, StatusCode, header},
@@ -2250,6 +2284,19 @@ mod tests {
         time::{Duration, Instant},
     };
     use url::Url;
+
+    struct FixedDeviceInfoSource;
+
+    impl DeviceInfoSource for FixedDeviceInfoSource {
+        fn snapshot(&self) -> crate::device::DeviceInfo {
+            crate::device::DeviceInfo {
+                hwid: "0123456789abcdef0123456789abcdef".into(),
+                device_os: "Linux".into(),
+                os_version: "test-os-version".into(),
+                device_model: "Test device".into(),
+            }
+        }
+    }
 
     struct NoProxy;
     impl SelfProxyPortSource for NoProxy {
@@ -2277,14 +2324,19 @@ mod tests {
         self_proxy_port: Arc<dyn SelfProxyPortSource>,
     ) -> (tempfile::TempDir, ProfileFileService) {
         let temp = tempfile::tempdir().unwrap();
-        let paths =
-            crate::client::tests::test_paths(temp.path().join("config"), temp.path().join("data"));
+        let utf8 = |path: &std::path::Path| {
+            camino::Utf8PathBuf::from_path_buf(path.to_owned()).expect("test directories are UTF-8")
+        };
+        let paths = PathResolver::with_base_dirs(
+            utf8(&temp.path().join("config")),
+            utf8(&temp.path().join("data")),
+        );
         (
             temp,
             ProfileFileService::new(
                 paths,
                 self_proxy_port,
-                Arc::new(crate::client::tests::FixedDeviceInfoSource),
+                Arc::new(FixedDeviceInfoSource),
                 "clash-nyanpasu/vtest-product-version".to_owned(),
             ),
         )

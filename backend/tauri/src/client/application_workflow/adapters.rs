@@ -7,6 +7,7 @@ use crate::{client::runtime::PublishRuntimeError, enhance::runtime_snapshot_data
 use async_trait::async_trait;
 use nyanpasu_core::{
     control::local_host::CoreSpecError,
+    profiles::current_closure,
     runtime::config::{
         FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, RuntimeConfigScriptRunner,
         ScriptDirs,
@@ -37,7 +38,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
         use nyanpasu_config::runtime::executor::ProfileContentSource;
         let mut content = super::inputs::FrozenProfileContent::default();
         let source = FsProfileContentSource::new(self.profiles_dir.clone());
-        for uid in crate::state::profiles::ProfilesActor::current_closure(profiles) {
+        for uid in current_closure(profiles) {
             if let Some(source_path) = profiles
                 .items
                 .get(&uid)

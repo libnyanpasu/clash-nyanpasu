@@ -85,6 +85,14 @@ async function mount(
   return view
 }
 
+// The user agent field is the first textbox; the interval is the second one
+// and is only rendered while auto update is on.
+const intervalInput = (view: Awaited<ReturnType<typeof mount>>) =>
+  view.getByRole('textbox').nth(1)
+
+const expectIntervalHidden = (view: Awaited<ReturnType<typeof mount>>) =>
+  expect.poll(() => view.getByRole('textbox').elements().length).toBe(1)
+
 test('update option editor turns auto update off by saving a zero interval', async ({
   onTestFinished,
 }) => {
@@ -100,14 +108,12 @@ test('update option editor turns auto update off by saving a zero interval', asy
 
   await view.getByRole('button', { name: 'Update opts' }).click()
   const autoUpdate = view.getByRole('switch').first()
-  const intervalInput = view.getByRole('textbox').nth(1)
   await expect.element(autoUpdate).toBeChecked()
-  await expect.element(intervalInput).toHaveValue(String(interval))
-  await expect.element(intervalInput).toBeEnabled()
+  await expect.element(intervalInput(view)).toHaveValue(String(interval))
 
   await autoUpdate.click()
   await expect.element(autoUpdate).not.toBeChecked()
-  await expect.element(intervalInput).toBeDisabled()
+  await expectIntervalHidden(view)
   await view.getByRole('button', { name: m.common_save() }).click()
 
   await expect.poll(() => calls.length).toBe(1)
@@ -125,7 +131,7 @@ test('update option editor turns auto update off by saving a zero interval', asy
   })
 })
 
-test('update option editor opens with auto update off and restores a positive interval when switched on', async ({
+test('update option editor hides the interval while auto update is off and saves the default when switched on', async ({
   onTestFinished,
 }) => {
   const calls: RpcCall[] = []
@@ -139,24 +145,22 @@ test('update option editor opens with auto update off and restores a positive in
 
   await view.getByRole('button', { name: 'Update opts' }).click()
   const autoUpdate = view.getByRole('switch').first()
-  const intervalInput = view.getByRole('textbox').nth(1)
   await expect.element(autoUpdate).not.toBeChecked()
-  await expect.element(intervalInput).toBeDisabled()
+  await expectIntervalHidden(view)
 
   await autoUpdate.click()
   await expect.element(autoUpdate).toBeChecked()
-  await expect.element(intervalInput).toBeEnabled()
-  await expect.element(intervalInput).not.toHaveValue('')
+  await expect.element(intervalInput(view)).toHaveValue('')
   await view.getByRole('button', { name: m.common_save() }).click()
 
   await expect.poll(() => calls.length).toBe(1)
   const { patch } = calls[0].params as {
     patch: { update_interval_minutes: number }
   }
-  expect(patch.update_interval_minutes).toBeGreaterThan(0)
+  expect(patch.update_interval_minutes).toBe(120)
 })
 
-test('update option editor requires an interval while auto update is on', async ({
+test('update option editor saves the default interval when the field is cleared', async ({
   onTestFinished,
 }) => {
   const calls: RpcCall[] = []
@@ -169,11 +173,12 @@ test('update option editor requires an interval while auto update is on', async 
   )
 
   await view.getByRole('button', { name: 'Update opts' }).click()
-  await view.getByRole('textbox').nth(1).clear()
+  await intervalInput(view).clear()
   await view.getByRole('button', { name: m.common_save() }).click()
 
-  await expect
-    .element(view.getByText(m.profile_form_option_update_interval_min_error()))
-    .toBeVisible()
-  expect(calls).toHaveLength(0)
+  await expect.poll(() => calls.length).toBe(1)
+  const { patch } = calls[0].params as {
+    patch: { update_interval_minutes: number }
+  }
+  expect(patch.update_interval_minutes).toBe(120)
 })

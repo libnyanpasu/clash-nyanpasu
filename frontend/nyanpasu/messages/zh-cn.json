@@ -450,6 +450,7 @@
   "profile_with_proxy_label": "通过系统代理更新配置",
   "profile_self_proxy_label": "通过 Clash 代理更新配置",
   "profile_update_option_auto_update_label": "自动更新",
+  "profile_update_option_interval_hint": "留空则使用默认的 {minutes} 分钟",
   "profile_update_interval_label": "自动更新间隔 (分钟)",
   "profile_subscription_url_editor_label": "编辑远程 URL",
   "profile_subscription_url_label": "远程 URL",

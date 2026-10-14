@@ -450,6 +450,7 @@
   "profile_with_proxy_label": "Update profile via system proxy",
   "profile_self_proxy_label": "Update profile via clash proxy",
   "profile_update_option_auto_update_label": "Auto Update",
+  "profile_update_option_interval_hint": "Leave empty to use the default {minutes} minutes",
   "profile_update_interval_label": "Auto Update Interval (minutes)",
   "profile_subscription_url_editor_label": "Edit Remote URL",
   "profile_subscription_url_label": "Remote URL",

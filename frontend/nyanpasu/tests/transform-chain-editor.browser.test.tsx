@@ -151,7 +151,16 @@ async function setup(
     )
   const item = (id: string) =>
     view.container.querySelector<HTMLElement>(`[data-uid="${id}"]`)!
-  return { view, writes, ids, column, item, queries }
+  // dnd-kit makes a sortable focusable in a post-commit effect, so a focus call
+  // made as soon as the list renders can be a no-op. Retry until it takes.
+  const focusItem = (id: string) =>
+    expect
+      .poll(() => {
+        item(id).focus()
+        return document.activeElement === item(id)
+      })
+      .toBe(true)
+  return { view, writes, ids, column, item, focusItem, queries }
 }
 
 test.for(['stacked', 'grouped'] as const)(
@@ -249,19 +258,19 @@ test.for(['stacked', 'grouped'] as const)(
   '%s retains keyboard sorting and cancellation',
   async (layout, { onTestFinished }) => {
     await page.viewport(1100, 1000)
-    const { view, writes, ids, item } = await setup(
+    const { view, writes, ids, focusItem } = await setup(
       layout,
       ['dns', 'self', 'warp'],
       onTestFinished,
     )
-    item('self').focus()
+    await focusItem('self')
     await userEvent.keyboard('{Space}')
     for (let i = 0; i < 12; i++) await userEvent.keyboard('{ArrowUp}')
     await expect.poll(() => ids('active')[0]).toBe('self')
     await userEvent.keyboard('{Escape}')
     await expect.poll(() => ids('active')).toEqual(['dns', 'self', 'warp'])
     expect(writes).toHaveLength(0)
-    item('self').focus()
+    await focusItem('self')
     await userEvent.keyboard('{Space}')
     for (let i = 0; i < 12; i++) await userEvent.keyboard('{ArrowUp}')
     await userEvent.keyboard('{Space}')

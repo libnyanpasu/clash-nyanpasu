@@ -251,16 +251,7 @@ test.for(['en', 'zh-cn'] as const)(
     )!
     editButton.click()
     await expect.poll(() => edits).toEqual(['remote'])
-    await userEvent.click(
-      card('remote').querySelector<HTMLButtonElement>(
-        `button[aria-label="${m.navbar_label_more()}"]`,
-      )!,
-    )
-    await expect
-      .element(
-        page.getByRole('menuitem', { name: m.profile_open_locally_title() }),
-      )
-      .toBeVisible()
+    await userEvent.click(card('remote'), { button: 'right' })
     await expect
       .element(page.getByRole('menuitem', { name: m.profile_delete_title() }))
       .toBeVisible()

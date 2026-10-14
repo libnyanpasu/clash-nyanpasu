@@ -6,7 +6,7 @@ import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
 import SwapVertRounded from '~icons/material-symbols/swap-vert-rounded'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
-import { Card } from '@nyanpasu/ui/card'
+import { Card, type CardVariantsProps } from '@nyanpasu/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
@@ -24,6 +24,7 @@ function StatCard({
   value,
   detail,
   hint,
+  variant,
   className,
 }: {
   icon: ComponentType<SVGProps<SVGSVGElement>>
@@ -33,20 +34,22 @@ function StatCard({
   detail?: ReactNode
   /** What the figure means; the card is then a focusable tooltip trigger. */
   hint?: string
+  variant?: CardVariantsProps['variant']
   className?: string
 }) {
   const card = (
     <Card
+      variant={variant}
       className={cn(
-        'flex items-center gap-3 p-3',
+        'flex items-center gap-2 p-2',
         hint && 'focus-visible:ring-primary outline-none focus-visible:ring-2',
         className,
       )}
       data-slot="traffic-stat"
       tabIndex={hint ? 0 : undefined}
     >
-      <div className="bg-secondary-container text-on-secondary-container grid size-10 shrink-0 place-content-center rounded-2xl">
-        <Icon className="size-5" />
+      <div className="bg-secondary-container text-on-secondary-container grid size-8 shrink-0 place-content-center rounded-xl">
+        <Icon className="size-4" />
       </div>
 
       <div className="min-w-0">
@@ -56,7 +59,7 @@ function StatCard({
         </p>
 
         <div className="flex min-w-0 items-end gap-3">
-          <p className="truncate text-xl font-medium tabular-nums">{value}</p>
+          <p className="truncate text-lg font-medium tabular-nums">{value}</p>
 
           {detail}
         </div>
@@ -97,44 +100,47 @@ export default function StatCards({ report }: { report?: TrafficReport }) {
   const bytes = report?.total.bytes
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 xl:grid-cols-8">
-      <StatCard
-        icon={SwapVertRounded}
-        label={m.traffic_stat_total()}
-        value={traffic(bytes && bytes.upload + bytes.download)}
-        detail={
-          bytes && (
-            <p className="text-on-surface-variant shrink-0 text-xs leading-3.5 whitespace-nowrap tabular-nums">
-              <span className="block">
-                <span className="text-outline mr-1">↑</span>
-                {traffic(bytes.upload)}
-              </span>
-
-              <span className="block">
-                <span className="text-outline mr-1">↓</span>
-                {traffic(bytes.download)}
-              </span>
-            </p>
-          )
-        }
-        className="col-span-2"
-      />
-
-      <StatCard
-        icon={CableRounded}
-        label={m.traffic_stat_connections()}
-        value={report?.total.connections.toLocaleString() ?? '—'}
-        hint={m.traffic_stat_connections_hint()}
-      />
-
-      {DISTINCT.map(([dimension, icon]) => (
+    <div className="@container">
+      <div className="grid grid-cols-2 gap-2 @md:grid-cols-4 @4xl:grid-cols-8">
         <StatCard
-          key={dimension}
-          icon={icon}
-          label={dimensionName(dimension)}
-          value={report ? distinctOf(report, dimension) : '—'}
+          icon={SwapVertRounded}
+          label={m.traffic_stat_total()}
+          value={traffic(bytes && bytes.upload + bytes.download)}
+          variant="raised"
+          detail={
+            bytes && (
+              <p className="text-on-surface-variant shrink-0 text-xs leading-3.5 whitespace-nowrap tabular-nums">
+                <span className="block">
+                  <span className="text-outline mr-1">↑</span>
+                  {traffic(bytes.upload)}
+                </span>
+
+                <span className="block">
+                  <span className="text-outline mr-1">↓</span>
+                  {traffic(bytes.download)}
+                </span>
+              </p>
+            )
+          }
+          className="col-span-2"
         />
-      ))}
+
+        <StatCard
+          icon={CableRounded}
+          label={m.traffic_stat_connections()}
+          value={report?.total.connections.toLocaleString() ?? '—'}
+          hint={m.traffic_stat_connections_hint()}
+        />
+
+        {DISTINCT.map(([dimension, icon]) => (
+          <StatCard
+            key={dimension}
+            icon={icon}
+            label={dimensionName(dimension)}
+            value={report ? distinctOf(report, dimension) : '—'}
+          />
+        ))}
+      </div>
     </div>
   )
 }

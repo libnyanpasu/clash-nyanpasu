@@ -1,42 +1,40 @@
+import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState, type ReactNode } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@nyanpasu/ui/segmented-button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@nyanpasu/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import {
   dimensionName,
   largest,
   usageAmount,
   usageValue,
-  type UsageLabel,
 } from '@/utils/traffic-usage'
-import type {
-  Dimension,
-  Metric,
-  Topology,
-  TopologyNode,
-} from '@nyanpasu/rpc/types'
+import type { TopologyNode } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { type SearchFilter } from '../../_modules/traffic-filters'
-import GeographyView from './geography-view'
+import { createFileRoute } from '@tanstack/react-router'
 import {
+  DEFAULT_TEMPLATE,
   LAYER_TEMPLATES,
   LIMITS,
   TEMPLATES,
   type LayerTemplate,
   type Limit,
-} from './search'
-import { usePageTransition } from './transition'
+} from '../_modules/search'
+import { useTrafficPage } from '../_modules/traffic-context'
+import { usePageTransition } from '../_modules/transition'
+import { toggleFilter } from '../../_modules/traffic-filters'
+
+export const Route = createFileRoute('/(main)/main/topology/flow/')({
+  component: TrafficFlowPage,
+})
 
 const tones = [
   'bg-primary-container text-on-primary-container',
@@ -80,34 +78,13 @@ function Presence({
   )
 }
 
-export default function TopologyView({
-  topology,
-  view: mode,
-  onViewChange,
-  metric,
-  template,
-  onTemplateChange,
-  limit,
-  onLimitChange,
-  filters,
-  labelOf,
-  onSelect,
-}: {
-  /** What the page's report returned for the request of the current view. */
-  topology: Topology | null | undefined
-  view: 'flow' | 'map'
-  onViewChange: (view: 'flow' | 'map') => void
-  /** Set for the whole page, in the toolbar. */
-  metric: Metric
-  template: LayerTemplate
-  onTemplateChange: (template: LayerTemplate) => void
-  limit: Limit
-  onLimitChange: (limit: Limit) => void
-  filters: SearchFilter[]
-  labelOf: (dimension: Dimension, key: string) => UsageLabel
-  /** A node or region was picked: its dimension and value become a filter. */
-  onSelect: (dimension: Dimension, key: string) => void
-}) {
+function TrafficFlowPage() {
+  const { search, report, labelOf, onSearchChange } = useTrafficPage()
+  const topology = report?.topology
+  const metric = search.metric
+  const template = search.layers ?? DEFAULT_TEMPLATE
+  const limit = search.limit
+  const filters = search.filters
   const { transition } = usePageTransition()
   const [hovered, setHovered] = useState<string>()
   const layers = LAYER_TEMPLATES[template]
@@ -155,119 +132,83 @@ export default function TopologyView({
   const viewBox = `0 0 ${graphWidth} ${height}`
 
   return (
-    <section className="space-y-4" aria-label={m.topology_title()}>
-      <Card className="p-4 md:p-5">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-4">
-          <SegmentedButton
-            value={mode}
-            onValueChange={(value) => {
-              if (value !== 'flow' && value !== 'map') return
-              onViewChange(value)
-            }}
-            size="sm"
-            className="w-auto shrink-0"
-            aria-label={m.topology_view()}
-          >
-            <SegmentedButtonItem
-              value="flow"
-              className="flex-none whitespace-nowrap"
-            >
-              {m.topology_flow()}
-            </SegmentedButtonItem>
-            <SegmentedButtonItem
-              value="map"
-              className="flex-none whitespace-nowrap"
-            >
-              {m.topology_geo_map()}
-            </SegmentedButtonItem>
-          </SegmentedButton>
-
-          <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-4">
-            {mode === 'flow' && (
-              <div className="w-full sm:w-64">
-                <Select
-                  variant="outlined"
+    <section className="space-y-3" aria-label={m.topology_title()}>
+      <Card className="p-3 md:p-4">
+        <div className="mb-4 flex min-w-0 flex-wrap items-end gap-3">
+          <div className="w-full sm:w-64">
+            <DropdownMenu width="full">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  className="flex h-9 w-full min-w-0 items-center justify-between gap-1 px-3 py-1"
+                  aria-label={m.traffic_layers_label()}
+                >
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {templateName(template)}
+                  </span>
+                  <ArrowDropDownRounded
+                    aria-hidden
+                    className="size-5 shrink-0"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="min-w-64">
+                <DropdownMenuRadioGroup
                   value={template}
                   onValueChange={(next) =>
-                    onTemplateChange(next as LayerTemplate)
+                    onSearchChange({ layers: next as LayerTemplate })
                   }
                 >
-                  <SelectTrigger
-                    className="h-9 min-w-0 py-1"
-                    aria-label={m.traffic_layers_label()}
-                  >
-                    <SelectValue
-                      className="truncate pr-4 text-sm"
-                      placeholder={m.traffic_layers_label()}
-                    >
-                      {templateName(template)}
-                    </SelectValue>
-                  </SelectTrigger>
+                  {TEMPLATES.map((value) => (
+                    <DropdownMenuRadioItem key={value} value={value}>
+                      {templateName(value)}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
-                  <SelectContent className="min-w-64">
-                    {TEMPLATES.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {templateName(value)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {mode === 'flow' && (
-              <div className="w-full sm:w-36">
-                <Select
-                  variant="outlined"
+          <div className="w-full sm:w-36">
+            <DropdownMenu width="full">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  className="flex h-9 w-full min-w-0 items-center justify-between gap-1 px-3 py-1"
+                  aria-label={m.traffic_limit_label()}
+                >
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {limitName(limit)}
+                  </span>
+                  <ArrowDropDownRounded
+                    aria-hidden
+                    className="size-5 shrink-0"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuRadioGroup
                   value={String(limit)}
                   onValueChange={(next) => {
                     const value = LIMITS.find((item) => String(item) === next)
 
-                    if (value !== undefined) onLimitChange(value)
+                    if (value !== undefined) onSearchChange({ limit: value })
                   }}
                 >
-                  <SelectTrigger
-                    className="h-9 min-w-0 py-1"
-                    aria-label={m.traffic_limit_label()}
-                  >
-                    <SelectValue
-                      className="truncate pr-4 text-sm"
-                      placeholder={m.traffic_limit_label()}
-                    >
-                      {limitName(limit)}
-                    </SelectValue>
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    {LIMITS.map((value) => (
-                      <SelectItem key={value} value={String(value)}>
-                        {limitName(value)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+                  {LIMITS.map((value) => (
+                    <DropdownMenuRadioItem key={value} value={String(value)}>
+                      {limitName(value)}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
-        {mode === 'map' ? (
-          <GeographyView
-            topology={topology}
-            metric={metric}
-            selection={
-              filters.find((filter) => filter.d === 'destination_region')?.v
-            }
-            onSelect={(code) => onSelect('destination_region', code)}
-            measuredOnly={filters.some(
-              (filter) =>
-                filter.d === 'destination_basis' && filter.v === 'dialed',
-            )}
-            onMeasuredOnlyChange={() => onSelect('destination_basis', 'dialed')}
-          />
-        ) : !nodes.length ? (
+        {!nodes.length ? (
           <div className="text-on-surface-variant grid min-h-64 place-content-center text-center">
-            {topology && <p className="text-lg">{m.traffic_empty()}</p>}
+            <p className="text-lg">
+              {topology ? m.traffic_empty() : m.traffic_loading_more()}
+            </p>
           </div>
         ) : (
           <div
@@ -368,7 +309,14 @@ export default function TopologyView({
                           : {
                               type: 'button' as const,
                               'aria-pressed': active,
-                              onClick: () => onSelect(dimension, key),
+                              onClick: () =>
+                                onSearchChange({
+                                  filters: toggleFilter(
+                                    search.filters,
+                                    dimension,
+                                    key,
+                                  ),
+                                }),
                             })}
                         aria-label={`${dimensionName(dimension)}: ${text}, ${amount}`}
                         title={`${info?.title ?? text} · ${m.topology_connection_count({ count: node.usage.connections })} · ${usageAmount(node.usage, 'bytes')}`}
@@ -419,11 +367,9 @@ export default function TopologyView({
             </div>
           </div>
         )}
-        {mode === 'flow' && (
-          <p className="text-on-surface-variant mt-3 text-xs leading-relaxed">
-            {m.topology_caption()}
-          </p>
-        )}
+        <p className="text-on-surface-variant mt-3 text-xs leading-relaxed">
+          {m.topology_caption()}
+        </p>
       </Card>
     </section>
   )

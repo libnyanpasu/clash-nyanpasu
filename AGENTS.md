@@ -125,13 +125,14 @@ Read [Testing and review](docs/development/testing.md) for test design and the c
 
 ## 9. Code Style and Repository Conventions
 
-| Area                                                                     | Guide                                                                 |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| Rust formatting, lints, types, and errors                                | [Rust code style](docs/development/rust.md)                           |
-| TS/TSX, React grouping, constants, `data-slot`, UI components, i18n keys | [TypeScript and React code style](docs/development/typescript.md)     |
-| Frontend package ownership and dependency direction                      | [Frontend packages](docs/development/frontend-packages.md)            |
-| Repository scripts and Deno tasks                                        | [Repository scripts](docs/development/scripts.md)                     |
-| GitHub workflow display names                                            | [Development workflow](docs/development/workflow.md#github-workflows) |
+| Area                                                                      | Guide                                                                                              |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Rust formatting, lints, types, and errors                                 | [Rust code style](docs/development/rust.md)                                                        |
+| TS/TSX, React grouping, constants, composition, context, data slots, i18n | [TypeScript and React code style](docs/development/typescript.md)                                  |
+| Frontend package ownership and dependency direction                       | [Frontend packages](docs/development/frontend-packages.md)                                         |
+| Routed pages, page composition, and module scope                          | [Routed pages and modules](docs/development/typescript.md#organize-routed-pages-and-their-modules) |
+| Repository scripts and Deno tasks                                         | [Repository scripts](docs/development/scripts.md)                                                  |
+| GitHub workflow display names                                             | [Development workflow](docs/development/workflow.md#github-workflows)                              |
 
 Formatting and lint passing does not finish the review: semantic naming, reuse, logical grouping, and visual consistency are mandatory review requirements in those guides.
 

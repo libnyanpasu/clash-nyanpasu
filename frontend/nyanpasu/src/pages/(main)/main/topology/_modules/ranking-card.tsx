@@ -3,20 +3,12 @@ import { useState, type ComponentType, type SVGProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import { m } from '@/paraglide/messages'
-import { usageAmount, type UsageLabel } from '@/utils/traffic-usage'
-import type {
-  Dimension,
-  Metric,
-  Ranking,
-  TrafficQuery,
-} from '@nyanpasu/rpc/types'
-import {
-  setFilter,
-  toggleFilter,
-  type SearchFilter,
-} from '../../_modules/traffic-filters'
+import { usageAmount } from '@/utils/traffic-usage'
+import type { Ranking } from '@nyanpasu/rpc/types'
+import { toggleFilter } from '../../_modules/traffic-filters'
 import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
+import { useTrafficPage } from './traffic-context'
 
 function CountBadge({ count }: { count: number }) {
   return (
@@ -26,27 +18,20 @@ function CountBadge({ count }: { count: number }) {
   )
 }
 
+export type RankingCardProps = {
+  icon: ComponentType<SVGProps<SVGSVGElement>>
+  title: string
+  ranking: Ranking
+}
+
 export default function RankingCard({
   icon: Icon,
   title,
   ranking,
-  query,
-  metric,
-  filters,
-  labelOf,
-  onFiltersChange,
-}: {
-  icon: ComponentType<SVGProps<SVGSVGElement>>
-  title: string
-  ranking: Ranking
-  query: TrafficQuery
-  /** What the ranking is ordered by, and what each row leads with. */
-  metric: Metric
-  filters: SearchFilter[]
-  labelOf: (dimension: Dimension, key: string) => UsageLabel
-  onFiltersChange: (filters: SearchFilter[]) => void
-}) {
+}: RankingCardProps) {
   const [viewAll, setViewAll] = useState(false)
+  const { search, labelOf, onSearchChange } = useTrafficPage()
+  const { metric, filters } = search
 
   const { dimension } = ranking
 
@@ -55,27 +40,27 @@ export default function RankingCard({
   const others = ranking.distinct - ranking.groups.length
 
   return (
-    <Card className="flex flex-col gap-2 p-4" data-slot="traffic-ranking">
-      <div className="flex min-w-0 items-center gap-2 px-2">
-        <Icon className="text-on-surface-variant size-5 shrink-0" />
+    <Card className="flex flex-col gap-1.5 p-3" data-slot="traffic-ranking">
+      <div className="flex min-w-0 items-center gap-1.5 px-1">
+        <Icon className="text-on-surface-variant size-4 shrink-0" />
 
         {/* The title group takes the free space: the global unlayered
             `:where(button) { margin: 0 }` beats a `ml-auto` utility here. */}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <h2 className="truncate text-base font-medium">{title}</h2>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <h2 className="truncate text-sm font-medium">{title}</h2>
 
           <CountBadge count={ranking.distinct} />
         </div>
 
         <Button
-          className="h-8 shrink-0 px-3 whitespace-nowrap"
+          className="h-7 shrink-0 px-2 text-xs whitespace-nowrap"
           onClick={() => setViewAll(true)}
         >
           {m.traffic_rank_view_all()}
         </Button>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 flex-col gap-0.5">
         <AnimatePresence initial={false}>
           {ranking.groups.map((group, index) => (
             <RankingRow
@@ -86,14 +71,16 @@ export default function RankingCard({
               rank={index}
               active={group.key === selected}
               onSelect={() =>
-                onFiltersChange(toggleFilter(filters, dimension, group.key))
+                onSearchChange({
+                  filters: toggleFilter(filters, dimension, group.key),
+                })
               }
             />
           ))}
         </AnimatePresence>
 
         {others > 0 && (
-          <p className="text-on-surface-variant truncate px-4 py-2 text-xs tabular-nums">
+          <p className="text-on-surface-variant truncate px-3 py-1.5 text-[11px] tabular-nums">
             {m.traffic_rank_other({ count: others.toLocaleString() })} ·{' '}
             {usageAmount(ranking.other, metric)}
           </p>
@@ -105,18 +92,6 @@ export default function RankingCard({
         onOpenChange={setViewAll}
         title={title}
         dimension={dimension}
-        metric={metric}
-        // Every value of the dimension is a choice, so its own filter stays off.
-        query={{
-          ...query,
-          filters: query.filters.filter((f) => f.dimension !== dimension),
-        }}
-        selected={selected}
-        labelOf={labelOf}
-        onSelect={(key) => {
-          onFiltersChange(setFilter(filters, dimension, key))
-          setViewAll(false)
-        }}
       />
     </Card>
   )

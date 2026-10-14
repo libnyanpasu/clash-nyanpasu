@@ -169,6 +169,11 @@ Never use blanket staging such as `git add .`, `-A`, `--all`, or `*`. If somethi
 
 Every commit must be atomic, complete, and buildable.
 
+When the user requests phased delivery, commit each completed, verified phase as
+work progresses. Split phases by complete behavior, not by arbitrary file batches;
+each commit must build without depending on later phases. Fold corrections into
+the unpushed commit they complete, following the rules below.
+
 - One indivisible task is one commit.
 - Multiple independent tasks are split into multiple commits.
 - Do not commit code you know is broken.

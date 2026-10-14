@@ -1,29 +1,57 @@
 import { keepReturn } from '@/components/router/cross-navigation'
 import { ReturnButton } from '@/components/router/return-button'
 import { useCrossNavigate } from '@/components/router/use-cross-navigate'
-import { createFileRoute } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  redirect,
+  useMatchRoute,
+  useNavigate,
+} from '@tanstack/react-router'
 import { trafficSearchSchema } from './_modules/search'
-import TrafficPage from './_modules/traffic-page'
+import { TRAFFIC_PAGES } from './_modules/traffic-context'
+import TrafficLayout from './_modules/traffic-layout'
 
 export const Route = createFileRoute('/(main)/main/topology')({
   component: RouteComponent,
   validateSearch: trafficSearchSchema,
+  beforeLoad: ({ location, search }) => {
+    // Existing shared map/flow URLs open their new child route.
+    if (
+      location.pathname.replace(/\/$/, '') === '/main/topology' &&
+      search.view &&
+      search.view !== 'overview'
+    ) {
+      const page = TRAFFIC_PAGES.find((page) => page.view === search.view)!
+      throw redirect({
+        from: '/main/topology',
+        to: page.to,
+        search: { ...search, view: undefined },
+        state: keepReturn,
+        replace: true,
+      })
+    }
+  },
 })
 
 function RouteComponent() {
   const search = Route.useSearch()
-  const navigate = Route.useNavigate()
-
+  const navigate = useNavigate()
+  const matchRoute = useMatchRoute()
   const crossNavigate = useCrossNavigate()
-
+  const page =
+    TRAFFIC_PAGES.find(({ to }) =>
+      matchRoute({ to, fuzzy: false, includeSearch: false }),
+    ) ?? TRAFFIC_PAGES[0]
   const { scope, range, filters } = search
 
   return (
-    <TrafficPage
+    <TrafficLayout
+      view={page.view}
       search={search}
       onSearchChange={(update) =>
         navigate({
-          search: (previous) => ({ ...previous, ...update }),
+          to: page.to,
+          search: (previous) => ({ ...previous, ...update, view: undefined }),
           state: keepReturn,
         })
       }

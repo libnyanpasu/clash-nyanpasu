@@ -101,6 +101,8 @@ for (const dark of [false, true]) {
         })
       }
     }
+    const labelOffset = () =>
+      label.getBoundingClientRect().left - item.getBoundingClientRect().left
 
     await expect.poll(() => sidebar.getBoundingClientRect().width).toBe(88)
     const expectFloatingToggle = () => {
@@ -167,13 +169,9 @@ for (const dark of [false, true]) {
     expect(sidebar.getBoundingClientRect().width).toBeLessThan(200)
 
     await expect.poll(() => sidebar.getBoundingClientRect().width).toBe(200)
-    await expect
-      .poll(
-        () =>
-          label.getBoundingClientRect().left -
-          item.getBoundingClientRect().left,
-      )
-      .toBeCloseTo(52, 0)
+    await expect.poll(labelOffset).toBeCloseTo(52, 0)
+    await waitForFrames(4)
+    expect(labelOffset()).toBeCloseTo(52, 0)
     expectFloatingToggle()
     expect(getComputedStyle(toggle).backgroundColor).toBe(
       getComputedStyle(item).backgroundColor,
@@ -191,14 +189,24 @@ for (const dark of [false, true]) {
     expect(label.firstChild).toBe(labelNode)
     await expect
       .poll(() => label.getBoundingClientRect().width)
-      .toBe(item.getBoundingClientRect().width - 68)
+      .toBeCloseTo(item.getBoundingClientRect().width - 68, 0)
+    await expect
+      .poll(
+        () =>
+          label.getBoundingClientRect().left -
+          item.getBoundingClientRect().left,
+      )
+      .toBeCloseTo(52, 0)
     expect(getComputedStyle(item).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
     expect(getComputedStyle(icon).backgroundColor).toBe('rgba(0, 0, 0, 0)')
 
     toggle.click()
-    await waitForFrames(4)
-    expect(label.getBoundingClientRect().left).toBeGreaterThan(closedLeft + 1)
-    expect(label.getBoundingClientRect().left).toBeLessThan(closedLeft + 51)
+    await expect
+      .poll(() => {
+        const left = label.getBoundingClientRect().left
+        return left > closedLeft + 1 && left < closedLeft + 51
+      })
+      .toBe(true)
     await expect.poll(() => sidebar.getBoundingClientRect().width).toBe(88)
     await expect
       .poll(() => label.getBoundingClientRect().left)

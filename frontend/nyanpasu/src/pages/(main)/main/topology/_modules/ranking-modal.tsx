@@ -7,17 +7,17 @@ import {
   useMockTrafficSetting,
 } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
-import type { UsageLabel } from '@/utils/traffic-usage'
 import { useTrafficUsagePages } from '@nyanpasu/query'
 import {
   type Dimension,
-  type Metric,
   type TrafficQuery,
   type UsageGroup,
 } from '@nyanpasu/rpc/types'
+import { setFilter } from '../../_modules/traffic-filters'
 import { mockTrafficGroups } from './mock-traffic'
 import Notice from './notice'
 import RankingRow from './ranking-row'
+import { useTrafficPage } from './traffic-context'
 
 // The next page loads when the end of the list scrolls into view.
 function LoadMore({ onVisible }: { onVisible: () => void }) {
@@ -48,20 +48,18 @@ function LoadMore({ onVisible }: { onVisible: () => void }) {
 type UsageListProps = {
   query: TrafficQuery
   dimension: Dimension
-  metric: Metric
   selected?: string
-  labelOf: (dimension: Dimension, key: string) => UsageLabel
   onSelect: (key: string) => void
 }
 
 function UsageRows({
   groups,
   dimension,
-  metric,
   selected,
-  labelOf,
   onSelect,
 }: Omit<UsageListProps, 'query'> & { groups: UsageGroup[] }) {
+  const { search, labelOf } = useTrafficPage()
+
   return (
     <AnimatePresence initial={false}>
       {groups.map((group, index) => (
@@ -69,7 +67,7 @@ function UsageRows({
           key={group.key}
           label={labelOf(dimension, group.key)}
           usage={group.usage}
-          metric={metric}
+          metric={search.metric}
           rank={index}
           active={group.key === selected}
           onSelect={() => onSelect(group.key)}
@@ -79,14 +77,9 @@ function UsageRows({
   )
 }
 
-function UsageList({
-  query,
-  dimension,
-  metric,
-  selected,
-  labelOf,
-  onSelect,
-}: UsageListProps) {
+function UsageList({ query, dimension, selected, onSelect }: UsageListProps) {
+  const { search } = useTrafficPage()
+  const { metric } = search
   const { data, isError, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useTrafficUsagePages(query, dimension, metric)
 
@@ -98,9 +91,7 @@ function UsageList({
         <UsageRows
           groups={groups}
           dimension={dimension}
-          metric={metric}
           selected={selected}
-          labelOf={labelOf}
           onSelect={onSelect}
         />
 
@@ -123,7 +114,14 @@ function UsageList({
 }
 
 // Dev builds only: every generated group at once, as of when the list opened.
-function MockUsageList({ query, dimension, metric, ...rows }: UsageListProps) {
+function MockUsageList({
+  query,
+  dimension,
+  selected,
+  onSelect,
+}: UsageListProps) {
+  const { search } = useTrafficPage()
+  const { metric } = search
   const now = useMockTrafficNow(true)
 
   const groups = useMemo(
@@ -138,8 +136,8 @@ function MockUsageList({ query, dimension, metric, ...rows }: UsageListProps) {
         <UsageRows
           groups={groups}
           dimension={dimension}
-          metric={metric}
-          {...rows}
+          selected={selected}
+          onSelect={onSelect}
         />
 
         {groups.length === 0 && <Notice>{m.traffic_empty()}</Notice>}
@@ -152,24 +150,26 @@ export default function RankingModal({
   open,
   onOpenChange,
   title,
-  query,
   dimension,
-  metric,
-  selected,
-  labelOf,
-  onSelect,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  query: TrafficQuery
   dimension: Dimension
-  metric: Metric
-  selected?: string
-  labelOf: (dimension: Dimension, key: string) => UsageLabel
-  onSelect: (key: string) => void
 }) {
   const [mocked] = useMockTrafficSetting()
+  const { query, search, onSearchChange } = useTrafficPage()
+  const { filters } = search
+  const selected = filters.find((filter) => filter.d === dimension)?.v
+  // The modal lists every value, so its own filter must not remove candidates.
+  const rankingQuery = {
+    ...query,
+    filters: query.filters.filter((filter) => filter.dimension !== dimension),
+  }
+  const handleSelect = (key: string) => {
+    onSearchChange({ filters: setFilter(filters, dimension, key) })
+    onOpenChange(false)
+  }
 
   const List = mocked ? MockUsageList : UsageList
 
@@ -180,12 +180,10 @@ export default function RankingModal({
           <ModalTitle className="px-4 pt-2 text-xl">{title}</ModalTitle>
 
           <List
-            query={query}
+            query={rankingQuery}
             dimension={dimension}
-            metric={metric}
             selected={selected}
-            labelOf={labelOf}
-            onSelect={onSelect}
+            onSelect={handleSelect}
           />
 
           <div className="flex justify-end">

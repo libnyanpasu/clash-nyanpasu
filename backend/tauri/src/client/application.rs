@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
-use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch};
+use nyanpasu_config::application::{NyanpasuAppConfig, NyanpasuAppConfigPatch, ReleaseChannel};
 use nyanpasu_core::state::{PersistentStateManager, PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -36,7 +36,7 @@ struct ApplicationClientInner {
 impl ApplicationClient {
     pub(crate) async fn new(
         mutations: MutationCoordinator,
-        build_channel: crate::bundle::Channel,
+        build_channel: ReleaseChannel,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
@@ -77,7 +77,7 @@ impl ApplicationClient {
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
-        build_channel: crate::bundle::Channel,
+        build_channel: ReleaseChannel,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> anyhow::Result<Self> {
@@ -109,7 +109,7 @@ impl ApplicationClient {
         .await
         .context("failed to spawn application actor")?
         .0;
-        crate::client::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
+        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor_ref.get_cell());
 
         Ok(Self {
             inner: Arc::new(ApplicationClientInner {
@@ -205,7 +205,7 @@ mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let client = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -242,7 +242,7 @@ mod tests {
         let shutdown = tokio_util::sync::CancellationToken::new();
         let client = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(&dir),
             shutdown.clone(),
             &tokio_util::task::TaskTracker::new(),
@@ -300,7 +300,7 @@ mod tests {
         drop(client);
         let reloaded = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
-            crate::bundle::Channel::Stable,
+            ReleaseChannel::Stable,
             temp_config_path(&dir),
             tokio_util::sync::CancellationToken::new(),
             &tokio_util::task::TaskTracker::new(),
@@ -340,7 +340,7 @@ mod tests {
 
     #[tokio::test]
     async fn release_channel_persists_and_non_nightly_builds_can_leave_nightly() {
-        use crate::bundle::Channel;
+        use nyanpasu_config::application::ReleaseChannel as Channel;
         let (client, dir) = test_client().await;
         for channel in [Channel::Beta, Channel::Stable, Channel::Nightly] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
@@ -380,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn nightly_build_cannot_leave_nightly() {
-        use crate::bundle::Channel;
+        use nyanpasu_config::application::ReleaseChannel as Channel;
         let dir = tempdir().unwrap();
         let nightly = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),
@@ -415,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn release_channel_compiled_nightly_overrides_saved_stable() {
-        use crate::bundle::Channel;
+        use nyanpasu_config::application::ReleaseChannel as Channel;
         let (client, dir) = test_client().await;
         assert_eq!(
             client.snapshot().state.release_channel,
@@ -461,7 +461,7 @@ mod tests {
 
     #[tokio::test]
     async fn release_channel_migrates_old_beta_config_and_keeps_explicit_stable() {
-        use crate::bundle::Channel;
+        use nyanpasu_config::application::ReleaseChannel as Channel;
         let dir = tempdir().unwrap();
         let manager =
             PersistentStateManagerSetup::<NyanpasuAppConfig, ApplicationFormat>::builder()

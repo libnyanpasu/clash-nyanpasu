@@ -14,15 +14,14 @@ use std::{
 
 use camino::{Utf8Path, Utf8PathBuf};
 use nyanpasu_config::{application::ClashCore, profile::ProfileId};
+use nyanpasu_core::error::ErrorPath;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 
 use super::runtime_error::RuntimeError;
 use crate::{
-    core::actor_v2::api::ApiError,
-    enhance::PostProcessingOutput,
-    state::profiles::{ErrorPath, ProfilesError},
+    core::actor_v2::api::ApiError, enhance::PostProcessingOutput, state::profiles::ProfilesError,
 };
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
@@ -366,7 +365,7 @@ pub(crate) async fn write_product(
             .context(CreateRuntimeDirectorySnafu { path: parent })?;
     }
     let path = product.to_path_buf();
-    let written = crate::utils::blocking::join(
+    let written = nyanpasu_core::tasks::blocking::join(
         tokio::task::spawn_blocking(move || {
             atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite)
                 .write(|file| std::io::Write::write_all(file, &bytes))

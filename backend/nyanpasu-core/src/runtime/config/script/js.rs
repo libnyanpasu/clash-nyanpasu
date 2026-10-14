@@ -14,6 +14,7 @@ use boa_runtime::console::{Console, ConsoleState, Logger};
 use boa_utils::module::{combine::CombineModuleLoader, http::HttpModuleLoader};
 use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
 use serde_yaml::Mapping;
+use serde_yaml_ng as serde_yaml;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -403,6 +404,7 @@ mod utils {
 #[cfg(test)]
 mod test {
     use nyanpasu_config::runtime::executor::{StepLogEntry, StepLogLevel};
+    use serde_yaml_ng as serde_yaml;
 
     /// The runner creates its scripts dir where it is told, runs the script
     /// from there and leaves nothing behind.

@@ -4,6 +4,7 @@ use crate::utils;
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
+use nyanpasu_core::diagnostics::EnvironmentCollector as _;
 use nyanpasu_helper::StatisticWidgetVariant;
 use nyanpasu_paths::PathResolver;
 use tauri::utils::platform::current_exe;
@@ -78,7 +79,12 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
             Commands::Collect => {
                 // The core binaries are looked up in the data dir, which the command creates.
                 nyanpasu_paths::create_dir_all(paths.app_data_dir()).unwrap();
-                let envs = crate::utils::collect::collect_envs(paths).unwrap();
+                let envs = crate::utils::collect::OsEnvironmentCollector::new(
+                    crate::consts::BUILD_INFO.clone(),
+                    paths.clone(),
+                )
+                .collect()
+                .unwrap();
                 println!("{envs:#?}");
             }
             Commands::PanicDialog { message } => {
@@ -165,4 +171,29 @@ fn print_version_info() {
     );
     println!("╰{:─^width$}╯", "", width = header_width);
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn statistic_widget_cli_accepts_the_config_variants() {
+        for (argument, expected) in [
+            ("large", StatisticWidgetVariant::Large),
+            ("small", StatisticWidgetVariant::Small),
+        ] {
+            let cli = Cli::try_parse_from(["clash-nyanpasu", "statistic-widget", argument])
+                .expect("the widget process argument must parse");
+            let Some(Commands::StatisticWidget { variant }) = cli.command else {
+                panic!("expected the statistic-widget command");
+            };
+            assert_eq!(variant, expected);
+        }
+    }
+
+    #[test]
+    fn statistic_widget_cli_rejects_unknown_variants() {
+        assert!(Cli::try_parse_from(["clash-nyanpasu", "statistic-widget", "medium"]).is_err());
+    }
 }

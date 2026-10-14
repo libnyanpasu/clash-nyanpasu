@@ -7,8 +7,26 @@ authors.workspace = true
 
 [dependencies]
 nyanpasu-config = { path = '../nyanpasu-config' }
-specta = { version = '^2.0.0-rc.25' }
+boa_utils = { path = '../boa_utils' }
+boa_engine = { workspace = true, features = ['annex-b'] }
+boa_runtime = { version = '0.22', default-features = false, features = ['url'] }
+dunce = '1.0.5'
+mlua = { version = '0.12', features = [
+  'lua54',
+  'async',
+  'serialize',
+  'vendored',
+  'error-send'
+] }
+oxc_allocator = '0.153'
+oxc_ast = '0.153'
+oxc_ast_visit = '0.153'
+oxc_parser = '0.153'
+oxc_span = '0.153'
+oxc_syntax = '0.153'
+serde_json = { version = '1', features = ['preserve_order'] }
 snafu = { workspace = true }
+specta = { version = '2.0.0-rc.25', features = ['derive', 'indexmap'] }
 strum = { version = '0.28', features = ['derive'] }
 anyhow = '1'
 bon = '3'
@@ -18,17 +36,30 @@ dashmap = '6'
 indexmap = { version = '2.2.3', features = ['serde'] }
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util = { version = '0.7', features = ['rt'] }
+ractor = '0.16'
 tracing.workspace = true
 serde = { version = '1.0', features = ['derive'] }
 atomicwrites = '0.4.4'
 camino = { version = '1.1.9', features = ['serde1'] }
 fs-err = { workspace = true }
+hex = '0.4'
+sha2 = '0.11'
+sysinfo = '0.39'
+whoami = '2.0.0'
 serde_yaml_ng = { workspace = true }
-
-[dev-dependencies]
-serde_json = { version = '1', features = ['preserve_order'] }
-tokio = { workspace = true, features = ['full', 'test-util'] }
+nyanpasu-ipc = { workspace = true }
+semver = '1.0'
+clash-api = { workspace = true }
+uuid = '1'
+reqwest = { workspace = true }
+sysproxy = { workspace = true }
+url = '2'
+futures = '0.3'
 tempfile = '3'
+
+[target.'cfg(windows)'.dependencies]
+winreg = '0.56'
 
 [target.'cfg(not(target_env = "musl"))'.dev-dependencies]
 # The desktop AES smoke test does not apply to generic router/musl targets.
@@ -37,3 +68,8 @@ tempfile = '3'
 # dropped in #4908), so gxhash can graduate to a normal dependency once the
 # default HashMap hasher is migrated to it.
 gxhash = { workspace = true }
+
+[dev-dependencies]
+mockall = '0.15'
+test-log = { workspace = true }
+tokio = { workspace = true, features = ['full', 'test-util'] }

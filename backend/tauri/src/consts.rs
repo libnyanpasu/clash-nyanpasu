@@ -1,3 +1,4 @@
+use nyanpasu_core::diagnostics::BuildInfo;
 use once_cell::sync::Lazy;
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
@@ -5,21 +6,6 @@ pub const EDITOR_WINDOW_LABEL: &str = "editor";
 pub const TRAY_MENU_WINDOW_LABEL: &str = "tray-menu";
 pub const APP_NAME: &str = "Clash Nyanpasu";
 pub const APP_EDITOR_NAME: &str = "Clash Nyanpasu - Editor";
-
-#[derive(Debug, serde::Serialize, Clone, specta::Type)]
-pub struct BuildInfo {
-    pub app_name: &'static str,
-    pub app_version: &'static str,
-    pub pkg_version: &'static str,
-    pub commit_hash: &'static str,
-    pub commit_author: &'static str,
-    pub commit_date: &'static str,
-    pub build_date: &'static str,
-    pub build_profile: &'static str,
-    pub build_platform: &'static str,
-    pub rustc_version: &'static str,
-    pub llvm_version: &'static str,
-}
 
 pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(|| BuildInfo {
     app_name: env!("CARGO_PKG_NAME"),

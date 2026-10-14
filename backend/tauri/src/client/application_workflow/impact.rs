@@ -799,7 +799,9 @@ mod tests {
             },
             AppCase {
                 field: "release_channel",
-                mutate: |app| app.release_channel = Some(crate::bundle::Channel::Beta),
+                mutate: |app| {
+                    app.release_channel = Some(nyanpasu_config::application::ReleaseChannel::Beta)
+                },
                 impact: RuntimeImpact::None,
                 owners: &[],
             },

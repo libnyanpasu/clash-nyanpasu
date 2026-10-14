@@ -1,13 +1,17 @@
-use super::{super::runtime, ports::RuntimeBuildPort};
+use super::{
+    super::runtime,
+    error::{BuildArtifactSnafu, RuntimePreparationError, StartScriptRunnerSnafu},
+    ports::RuntimeBuildPort,
+};
 use crate::{
     client::runtime::PublishRuntimeError, core::actor_v2::local_host::CoreSpecError,
     enhance::runtime_snapshot_data_from_artifact,
 };
 use async_trait::async_trait;
-use nyanpasu_core::enhance::{
-    RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
+use nyanpasu_core::runtime::config::{
+    FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder, RuntimeConfigScriptRunner,
+    ScriptDirs,
 };
-use nyanpasu_platform::enhance::{EnhanceScriptRunner, FsProfileContentSource, ScriptDirs};
 use snafu::ResultExt;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
@@ -60,7 +64,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
         inputs: super::inputs::RuntimeInputs,
         resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimePreparationError> {
         let script_dirs = self.scripts.clone();
         let built = tokio::task::spawn_blocking(move || {
             let super::inputs::RuntimeInputs {
@@ -71,16 +75,18 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
             } = inputs;
             let core = app.core;
             let builtin_enabled = app.enable_builtin_enhanced;
-            let scripts = EnhanceScriptRunner::new(script_dirs).context(StartScriptRunnerSnafu)?;
+            let scripts =
+                RuntimeConfigScriptRunner::new(script_dirs).context(StartScriptRunnerSnafu)?;
             let input = RuntimeBuildInput {
                 profiles: profiles.clone(),
                 clash,
                 app,
                 resolved_ports,
             };
-            let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
+            let artifact =
+                RuntimeBuilder::build(&input, &content, &scripts).context(BuildArtifactSnafu)?;
             if strict_transforms {
-                RuntimeBuilder::validate_transforms(&artifact)?;
+                RuntimeBuilder::validate_transforms(&artifact).context(BuildArtifactSnafu)?;
             }
             let data =
                 runtime_snapshot_data_from_artifact(artifact, &profiles, core, builtin_enabled)?;
@@ -89,7 +95,7 @@ impl RuntimeBuildPort for FsRuntimeBuildAdapter {
             )))
         })
         .await;
-        crate::utils::blocking::join(built)
+        nyanpasu_core::tasks::blocking::join(built)
     }
 
     async fn publish(

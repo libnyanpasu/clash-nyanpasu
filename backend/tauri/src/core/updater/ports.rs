@@ -1,13 +1,11 @@
 use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
+use nyanpasu_core::runtime::binary::{BinaryInstallProgress, PreparedCoreBinary};
 use tokio_util::sync::CancellationToken;
 
 use super::{ManifestVersion, instance::UpdaterState, shared::CoreTypeMeta};
-use crate::{
-    client::core_lifecycle::ports::{BinaryInstallProgress, PreparedCoreBinary},
-    core::download::DownloadStatus,
-};
+use crate::core::download::DownloadStatus;
 use nyanpasu_config::application::ClashCore;
 
 #[derive(Clone)]

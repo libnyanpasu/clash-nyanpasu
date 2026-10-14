@@ -214,6 +214,20 @@ pub trait ModuleMigrator: Send + Sync {
     }
 }
 
-pub fn current_version() -> anyhow::Result<Version> {
-    Version::parse(crate::consts::BUILD_INFO.pkg_version).map_err(Into::into)
+pub fn current_version(app_version: &str) -> anyhow::Result<Version> {
+    Version::parse(app_version).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn current_version_parses_the_host_product_version() {
+        assert_eq!(
+            current_version("7.8.9-beta.1").unwrap(),
+            Version::parse("7.8.9-beta.1").unwrap()
+        );
+        assert!(current_version("not a version").is_err());
+    }
 }

@@ -23,6 +23,7 @@ import type {
   RuntimeBuildError,
   RuntimeError,
   RuntimePipelineError,
+  RuntimePreparationError,
   StorageOperationError,
   SystemDnsError,
 } from '@nyanpasu/rpc/types'
@@ -434,7 +435,7 @@ export function runtimeErrorMessage(
     case 'recovery_unresolved':
       return m.error_runtime_recovery_unresolved()
     case 'build_runtime':
-      return buildRuntimeMessage(error.source, profileLabel)
+      return prepareRuntimeMessage(error.source, profileLabel)
     case 'publish_runtime':
       return m.error_runtime_publish_runtime({ path: error.source.path })
     case 'resolve_port':
@@ -553,13 +554,26 @@ function coreReasonMessage(kind: CoreErrorKind): string {
   }
 }
 
+function prepareRuntimeMessage(
+  error: RuntimePreparationError,
+  profileLabel: ProfileLabel = (id) => id,
+): string {
+  switch (error.kind) {
+    case 'build_artifact':
+      return buildRuntimeMessage(error.source, profileLabel)
+    case 'start_script_runner':
+      return m.error_runtime_build_start_script_runner()
+    case 'serialize_final_config':
+    case 'config_not_mapping':
+      return m.error_runtime_render_runtime_config()
+  }
+}
+
 function buildRuntimeMessage(
   error: RuntimeBuildError,
   profileLabel: ProfileLabel = (id) => id,
 ): string {
   switch (error.kind) {
-    case 'start_script_runner':
-      return m.error_runtime_build_start_script_runner()
     case 'validate_profiles':
       return m.error_runtime_build_validate_profiles()
     case 'run_pipeline':
@@ -586,9 +600,6 @@ function buildRuntimeMessage(
           ].join('\n'),
         ),
       ].join('\n\n')
-    case 'serialize_final_config':
-    case 'config_not_mapping':
-      return m.error_runtime_render_runtime_config()
   }
 }
 

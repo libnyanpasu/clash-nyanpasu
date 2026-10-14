@@ -189,7 +189,7 @@ impl WidgetManager {
             }
             link.clone()
         };
-        crate::utils::blocking::join(
+        nyanpasu_core::tasks::blocking::join(
             tokio::task::spawn_blocking(move || {
                 send(
                     &link,

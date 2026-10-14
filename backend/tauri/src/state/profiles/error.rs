@@ -2,63 +2,16 @@
 //! errors the profile commands return. Library causes stay in `source`
 //! (skipped on the wire); they reach the user only through the copied detail.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use nyanpasu_config::profile::{
-    ExternalProfilePath, ManagedProfilePath, ProfileId, ProfilePathError, ProfileRevisionError,
-    ProfileValidationError,
+    ExternalProfilePath, ProfileId, ProfilePathError, ProfileRevisionError, ProfileValidationError,
 };
-use serde::{Serialize, Serializer};
+use nyanpasu_core::error::ErrorPath;
+use serde::Serialize;
 use snafu::Snafu;
 
 use crate::state::mutation::{CommitAborted, NotReady};
-
-/// A filesystem path as it appears in an error. The lossy conversion keeps it
-/// serializable when the path is not valid UTF-8.
-#[derive(Debug, Clone, PartialEq, Eq, specta::Type)]
-pub struct ErrorPath(#[specta(type = String)] PathBuf);
-
-impl Serialize for ErrorPath {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_str(&self.0.display())
-    }
-}
-
-impl std::fmt::Display for ErrorPath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.display().fmt(f)
-    }
-}
-
-impl From<&Path> for ErrorPath {
-    fn from(path: &Path) -> Self {
-        Self(path.to_path_buf())
-    }
-}
-
-impl From<PathBuf> for ErrorPath {
-    fn from(path: PathBuf) -> Self {
-        Self(path)
-    }
-}
-
-impl From<&PathBuf> for ErrorPath {
-    fn from(path: &PathBuf) -> Self {
-        Self(path.clone())
-    }
-}
-
-impl From<&ManagedProfilePath> for ErrorPath {
-    fn from(path: &ManagedProfilePath) -> Self {
-        Self(path.as_path().to_path_buf())
-    }
-}
-
-impl From<&ExternalProfilePath> for ErrorPath {
-    fn from(path: &ExternalProfilePath) -> Self {
-        Self(path.as_path().to_path_buf())
-    }
-}
 
 /// What a path was required to be when it was not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]

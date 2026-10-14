@@ -10,9 +10,7 @@ use crate::{
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
     utils::{
-        candy,
-        collect::EnvInfo,
-        help,
+        candy, help,
         proxy_env::{self, CopyEnvOption},
     },
     window::{
@@ -24,6 +22,8 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use nyanpasu_config::application::ReleaseChannel;
+use nyanpasu_core::diagnostics::EnvInfo;
 use nyanpasu_paths::PathResolver;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, result::Result as StdResult};
@@ -387,12 +387,6 @@ pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<DomainPro
 pub fn is_portable(client: State<'_, NyanpasuClient>) -> Result<bool> {
     Ok(client.is_portable())
 }
-
-// #[tauri::command]
-// #[specta::specta]
-// pub fn get_device_info() -> Result<crate::utils::hwid::DeviceInfo> {
-//     Ok(crate::utils::hwid::get_device_info())
-// }
 
 /// Rebuild-only command: there is no prior state commit, so a failure is a
 /// plain error — the committed/degraded model (spec §6.2) does not apply.
@@ -1181,8 +1175,8 @@ pub async fn clash_api_healthcheck_proxy_provider(
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub fn collect_envs(paths: State<'_, PathResolver>) -> Result<EnvInfo<'static>> {
-    Ok((crate::utils::collect::collect_envs(paths))?)
+pub fn collect_envs(client: State<'_, NyanpasuClient>) -> Result<EnvInfo<'static>> {
+    Ok(client.collect_envs()?)
 }
 
 #[nyanpasu_macro::rpc]
@@ -1387,7 +1381,7 @@ pub mod service {
         pub version: std::borrow::Cow<'static, str>,
         pub status: nyanpasu_ipc::types::ServiceStatus,
         pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
-        pub compat: crate::core::service::compat::ServiceCompat,
+        pub compat: nyanpasu_core::service::ServiceCompat,
         pub phase: crate::core::actor_v2::service_actor::ServicePhase,
         pub restart_attempts: u8,
     }
@@ -1848,9 +1842,9 @@ pub fn report_frontend_events(
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ReleaseChannelInfo {
     /// The feed update checks follow.
-    current: crate::bundle::Channel,
+    current: ReleaseChannel,
     /// The channel of the installed build; a nightly build cannot leave Nightly.
-    installed: crate::bundle::Channel,
+    installed: ReleaseChannel,
 }
 
 #[nyanpasu_macro::rpc]
@@ -1868,7 +1862,7 @@ pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<Re
 #[specta::specta]
 pub async fn set_release_channel(
     client: State<'_, NyanpasuClient>,
-    channel: crate::bundle::Channel,
+    channel: ReleaseChannel,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.set_release_channel(channel).await?)
 }

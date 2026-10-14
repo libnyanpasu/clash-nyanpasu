@@ -14,6 +14,7 @@ use std::{cell::Cell, ffi::c_void};
 use indexmap::IndexMap;
 use mlua::prelude::*;
 use serde_yaml::{Mapping, Value as Yaml};
+use serde_yaml_ng as serde_yaml;
 
 const METATABLE: &str = "nyanpasu.ordered_map.metatable";
 const STORES: &str = "nyanpasu.ordered_map.stores";
@@ -443,7 +444,7 @@ fn convert_table(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enhance::script::create_lua_context;
+    use crate::runtime::config::script::create_lua_context;
 
     /// Runs `script` with `config` loaded from YAML and returns what it
     /// returns, as YAML text.

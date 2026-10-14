@@ -473,12 +473,13 @@ fn no_op_and_session_saves_do_not_dispatch() {
 
 #[test]
 fn rejected_source_never_dispatches() {
-    use crate::{bundle::Channel, client::ClientError, state::config_error::ConfigError};
+    use crate::{client::ClientError, state::config_error::ConfigError};
+    use nyanpasu_config::application::ReleaseChannel as Channel;
     let dir = tempfile::tempdir().unwrap();
     let port = Arc::new(Port::default());
     let mut args = test_client_args_with_endpoint(&dir, TestControlEndpoint::succeeding());
     args.effects = port.clone();
-    args.bundle_metadata.release_channel = Channel::Nightly;
+    args.installed_channel = Channel::Nightly;
     let client = NyanpasuClient::try_new_with_args(args).unwrap();
     tauri::async_runtime::block_on(async {
         let mut nightly = NyanpasuAppConfig::new_empty_patch();

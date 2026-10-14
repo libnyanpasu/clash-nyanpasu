@@ -1,7 +1,6 @@
-use super::super::runtime;
+use super::{super::runtime, error::RuntimePreparationError};
 use crate::{client::runtime::PublishRuntimeError, core::actor_v2::local_host::CoreSpecError};
 use async_trait::async_trait;
-use nyanpasu_core::enhance::RuntimeBuildError;
 use std::sync::Arc;
 
 #[async_trait]
@@ -23,7 +22,7 @@ pub(in crate::client) trait RuntimeBuildPort: Send + Sync + 'static {
         inputs: super::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildError>;
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimePreparationError>;
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot)
     -> Result<(), PublishRuntimeError>;
 }

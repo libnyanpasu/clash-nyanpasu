@@ -12,7 +12,7 @@
         "type": "embedBootstrapper"
       },
       "wix": {
-        "language": ["en-US", "ko-KR", "ru-RU", "zh-CN", "zh-TW"],
+        "language": ["en-US", "ja-JP", "ko-KR", "ru-RU", "zh-CN", "zh-TW"],
         "template": "./templates/installer.wxs",
         "fragmentPaths": ["./templates/cleanup.wxs"]
       },
@@ -21,6 +21,7 @@
         "installerIcon": "icons/icon.ico",
         "languages": [
           "English",
+          "Japanese",
           "Korean",
           "Russian",
           "SimpChinese",

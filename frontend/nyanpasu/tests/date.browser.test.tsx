@@ -6,6 +6,7 @@ import { RelativeTimeCell } from '../src/pages/(main)/main/connections/_modules/
 
 test.each([
   ['en', '10 minutes ago'],
+  ['ja', '10分前'],
   ['ko', '10분 전'],
   ['ru', '10 минут назад'],
   ['zh-cn', '10 分钟前'],

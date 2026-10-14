@@ -1,0 +1,74 @@
+{
+  "_version": 1,
+  "tray": {
+    "copy_env": {
+      "cmd": "環境変数をコピー (Cmd)",
+      "ps": "環境変数をコピー (Pwsh)",
+      "sh": "環境変数をコピー (Shell)"
+    },
+    "no_proxies": "プロキシなし",
+    "select_proxy": "プロキシを選択",
+    "restore_auto_selection": "自動選択に戻す",
+    "dashboard": "Clash Nyanpasu を表示",
+    "direct_mode": "ダイレクトモード",
+    "global_mode": "グローバルモード",
+    "more": {
+      "menu": "その他",
+      "restart_app": "Clash Nyanpasu を再起動",
+      "restart_core": "Clash コアを再起動"
+    },
+    "open_dir": {
+      "menu": "ディレクトリを開く",
+      "app_config_dir": "設定ディレクトリ",
+      "app_data_dir": "データディレクトリ",
+      "core_dir": "コアディレクトリ",
+      "log_dir": "ログディレクトリ"
+    },
+    "proxy_action": {
+      "enabled": "有効",
+      "disabled": "無効"
+    },
+    "quit": "終了",
+    "rule_mode": "ルールモード",
+    "script_mode": "スクリプトモード",
+    "system_proxy": "システムプロキシ",
+    "tun_mode": "TUN モード"
+  },
+  "dialog": {
+    "panic": "この問題を GitHub の Issue トラッカーに報告してください。",
+    "migration_failed": {
+      "open_backups": "バックアップフォルダーを開く",
+      "open_log": "移行ログを開く",
+      "exit": "終了",
+      "backup_kept": "移行の前に、設定を %{path} にバックアップしました。そのフォルダー内の最新の `migration-*` フォルダーが、今回の実行前に取得されたバックアップです。",
+      "recovery": "復旧するには、アプリを終了し、バックアップの `config` フォルダーを設定ディレクトリに上書きコピーして、`data/storage.db` をデータディレクトリ内の同名ファイルに上書きコピーしてください。その後、以前使用していたバージョンをインストールするか、migration.log を添えて新しい Issue を提出してください。",
+      "not_modified": "バックアップを作成できなかったため、設定ファイルは変更されていません。空きディスク容量とフォルダーの権限を確認してから再試行するか、migration.log を添えて新しい Issue を提出してください。"
+    },
+    "migrate": "古いバージョンの設定ファイルが見つかりました。新しいバージョンに移行しますか？\n警告：既存の設定がある場合は、現在の設定が上書きされます",
+    "custom_app_dir_migrate": "アプリのディレクトリを %{path} に設定します。\n現在のアプリのディレクトリを新しい場所に移動しますか？",
+    "warning": {
+      "enable_tun_with_no_permission": "TUN モードには管理者権限またはサービスモードが必要です。どちらも有効になっていないため、TUN モードは正しく動作しません。"
+    },
+    "info": {
+      "grant_core_permission": "TUN モードを正しく動作させるには、Clash コアに管理者権限が必要です。権限を付与しますか？\nこの操作にはパスワードの入力が必要です。"
+    }
+  },
+  "setting": {
+    "connection": {
+      "interrupt": {
+        "proxy": {
+          "label": "プロキシを切り替えたときに接続を中断する"
+        },
+        "profile": {
+          "label": "ファイルを切り替えたときに接続を中断する"
+        },
+        "mode": {
+          "label": "モードを切り替えたときに接続を中断する"
+        }
+      }
+    }
+  },
+  "break_when_proxy_change": "プロキシを切り替えたときに接続を中断する",
+  "break_when_profile_change": "ファイルを切り替えたときに接続を中断する",
+  "break_when_mode_change": "モードを切り替えたときに接続を中断する"
+}

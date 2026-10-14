@@ -45,6 +45,13 @@
     'Microsoft JhengHei UI', 'Microsoft JhengHei', var(--font-sans-fallback);
 }
 
+:root:where(:lang(ja)) {
+  --font-sans:
+    'Inter Variable', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
+    'Yu Gothic UI', 'Noto Sans JP', 'Noto Sans CJK JP', 'Meiryo',
+    var(--font-sans-fallback);
+}
+
 :root:where(:lang(ko)) {
   --font-sans:
     'Inter Variable', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Noto Sans CJK KR',

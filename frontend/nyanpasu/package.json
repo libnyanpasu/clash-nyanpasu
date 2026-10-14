@@ -70,7 +70,7 @@
     "clsx": "2.1.1",
     "core-js": "3.50.0",
     "filesize": "11.0.26",
-    "meta-json-schema": "1.19.31",
+    "meta-json-schema": "1.19.32",
     "monaco-yaml": "5.5.1",
     "nanoid": "6.0.2",
     "postcss-selector-parser": "7.1.6",

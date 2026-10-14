@@ -49,7 +49,7 @@ these YAML files.
 
 | File under `.github/workflows/`     | Display name                                          | Purpose / entry point                                                                                                |
 | ----------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml`                            | `[CI] Lint, Build, and Test`                          | Lint, build, and test pushes and pull requests.                                                                      |
+| `ci.yml`                            | `[CI] Lint, Build, and Test`                          | Lint, build, and test pushes; a pull request checks only the parts it changes.                                       |
 | `daily.yml`                         | `[Maintenance] Update Core Version Manifests`         | Scheduled or manual refresh of core versions on main and v1/dev.                                                     |
 | `stale.yml`                         | `[Maintenance] Close Stale Issues and Pull Requests`  | Scheduled or manual stale issue and pull request maintenance.                                                        |
 | `publish.yml`                       | `[Release] Prepare Version and Draft Release`         | Manual version bump, tag, and draft release creation; publishing the draft starts package builds.                    |
@@ -66,6 +66,32 @@ these YAML files.
 | `deps-upload-release-assets.yaml`   | `[Reusable] Upload Release Assets`                    | Upload artifacts from the current caller run to its release; called by nightly and release workflows.                |
 | `sourceforge-backfill-release.yaml` | `[Maintenance] Backfill SourceForge Release Mirror`   | Manually mirror an existing GitHub release to SourceForge; serialized with release publication.                      |
 | `storage-recovery.yaml`             | `[Maintenance] Debug and Recover Storage Publication` | Check storage or register, retransfer, and verify retained package artifacts without rebuilding.                     |
+
+### CI checks by changed part
+
+`ci.yml` checks a pull request only in the parts it changes. Its `Changes` job
+runs `deno task check:changed-parts HEAD^1` on the merge commit and outputs
+`frontend`, `backend` and `scripts`. The rules are the ordered `CHANGE_RULES`
+table in `scripts/src/ci/changed-parts.ts`: the first rule matching a file
+decides its parts, and a file no rule matches checks every part. Pushes check
+every part.
+
+| Part       | Lint                                                                       | Unit Test                                          | Build Tauri                     |
+| ---------- | -------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------- |
+| any change | Ubuntu: Prettier                                                           | —                                                  | —                               |
+| `frontend` | Ubuntu: oxlint, Stylelint, TypeScript, frontend boundaries                 | Ubuntu: Vitest                                     | Ubuntu: `pnpm -r build`         |
+| `backend`  | every OS: Clippy, rustfmt; Ubuntu: architecture ledger, backend boundaries | every OS: `cargo test`; Ubuntu: bindings freshness | every OS: release `cargo build` |
+| `scripts`  | Ubuntu: `lint:deno`, frontend and backend boundaries                       | every OS: `test:scripts`                           | —                               |
+
+The ruleset requires every matrix check of Lint, Build Tauri and Unit Test by
+name. A job skipped by a job-level `if` reports once without its matrix, so those
+checks would never report and block the pull request. Gate steps on the
+`Changes` outputs instead, and keep every job and matrix entry running.
+
+When moving a directory, adding a root configuration file or changing a
+framework, update `CHANGE_RULES` and its test in the same change, and keep the
+step conditions in `ci.yml` and this table in sync with the checks each part
+needs.
 
 ## Worktrees and resource reuse
 

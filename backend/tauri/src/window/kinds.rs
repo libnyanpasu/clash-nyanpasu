@@ -304,7 +304,11 @@ impl AppWindow for TrayMenuWindow {
             .resizable(false)
             .always_on_top(true)
             .skip_taskbar(true)
-            .decorations(false)
+            // macOS builds it titled, like the main window, so the OS gives
+            // it the same rounded corners and shadow; its traffic lights are
+            // hidden on creation. A borderless window there has square
+            // corners.
+            .decorations(cfg!(target_os = "macos"))
             // Its focus loss dismisses it, so only the focus it gets when it
             // is shown may count as its first.
             .focused_on_create(false)
@@ -319,6 +323,8 @@ impl AppWindow for TrayMenuWindow {
     }
 
     fn on_created(&self, window: &WebviewWindow) {
+        #[cfg(target_os = "macos")]
+        hide_traffic_lights(window);
         if let Some(cursor) = self.cursor {
             place_tray_menu_window(window, cursor);
         }
@@ -336,6 +342,33 @@ impl AppWindow for TrayMenuWindow {
             _ => {}
         }
     }
+}
+
+/// Hides the close, minimize and zoom buttons of a titled window. Queued on
+/// the main thread, so it runs before the window is shown, which is queued
+/// after it.
+#[cfg(target_os = "macos")]
+fn hide_traffic_lights(win: &WebviewWindow) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+
+    let window = win.clone();
+    let _ = win.run_on_main_thread(move || {
+        let Ok(ns_window) = window.ns_window() else {
+            return;
+        };
+        // SAFETY: `ns_window` is the live NSWindow of `window`, and this runs
+        // on the main thread.
+        let ns_window = unsafe { &*ns_window.cast::<NSWindow>() };
+        for kind in [
+            NSWindowButton::CloseButton,
+            NSWindowButton::MiniaturizeButton,
+            NSWindowButton::ZoomButton,
+        ] {
+            if let Some(button) = ns_window.standardWindowButton(kind) {
+                button.setHidden(true);
+            }
+        }
+    });
 }
 
 /// Open a persistent tray menu window for debugging.

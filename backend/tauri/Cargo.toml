@@ -237,10 +237,14 @@ tauri-plugin-global-shortcut = '2.2.0'
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = '0.3.1', features = [
   'NSApplication',
+  'NSButton',
   'NSColor',
   'NSColorSpace',
+  'NSControl',
   'NSResponder',
   'NSRunningApplication',
+  'NSView',
+  'NSWindow',
 ] }
 objc2-foundation = '0.3.1'
 

@@ -2251,7 +2251,7 @@ export type I18nLanguage = I18nLanguage_Serialize | I18nLanguage_Deserialize
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
 export type I18nLanguage_Deserialize =
-  'en' | 'en-US' | 'ko' | 'ru' | 'zh-cn' | 'zh-CN' | 'zh-tw' | 'zh-TW'
+  'en' | 'en-US' | 'ja' | 'ko' | 'ru' | 'zh-cn' | 'zh-CN' | 'zh-tw' | 'zh-TW'
 
 /**
  *  UI language of the application.
@@ -2262,7 +2262,8 @@ export type I18nLanguage_Deserialize =
  *  locale mapping. All of those use lowercase keys, so this enum does too. Legacy
  *  mixed-case spellings are still accepted on read through `serde(alias)`.
  */
-export type I18nLanguage_Serialize = 'en' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
+export type I18nLanguage_Serialize =
+  'en' | 'ja' | 'ko' | 'ru' | 'zh-cn' | 'zh-tw'
 
 export type IconData = {
   data_url: string

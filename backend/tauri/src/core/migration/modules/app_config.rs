@@ -303,6 +303,7 @@ fn canonical_language(value: &Value) -> Option<&'static str> {
     let raw = value.as_str()?;
     let canonical = match raw.to_ascii_lowercase().as_str() {
         "en" | "en-us" => "en",
+        "ja" => "ja",
         "ko" => "ko",
         "ru" => "ru",
         "zh-cn" => "zh-cn",
@@ -433,11 +434,12 @@ mod tests {
         assert_eq!(canonical("zh-TW"), Some("zh-tw"));
         assert_eq!(canonical("en-US"), Some("en"));
         assert_eq!(canonical("EN"), Some("en"));
+        assert_eq!(canonical("JA"), Some("ja"));
     }
 
     #[test]
     fn already_canonical_language_is_noop() {
-        for raw in ["en", "ko", "ru", "zh-cn", "zh-tw"] {
+        for raw in ["en", "ja", "ko", "ru", "zh-cn", "zh-tw"] {
             assert_eq!(canonical_language(&Value::String(raw.to_string())), None);
         }
     }

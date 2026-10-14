@@ -13,6 +13,8 @@ use specta::Type;
 pub enum I18nLanguage {
     #[serde(rename = "en", alias = "en-US")]
     English,
+    #[serde(rename = "ja")]
+    Japanese,
     #[serde(rename = "ko")]
     Korean,
     #[serde(rename = "ru")]
@@ -28,6 +30,7 @@ impl I18nLanguage {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::English => "en",
+            Self::Japanese => "ja",
             Self::Korean => "ko",
             Self::Russian => "ru",
             Self::SimplifiedChinese => "zh-cn",
@@ -40,6 +43,8 @@ pub fn default_i18n_language() -> I18nLanguage {
     let system_locale = nyanpasu_helper::locale::get_system_locale();
     if is_english(&system_locale) {
         I18nLanguage::English
+    } else if is_japanese(&system_locale) {
+        I18nLanguage::Japanese
     } else if is_korean(&system_locale) {
         I18nLanguage::Korean
     } else if is_russian(&system_locale) {
@@ -55,6 +60,10 @@ pub fn default_i18n_language() -> I18nLanguage {
 
 fn is_english(lang: &LanguageTag) -> bool {
     lang.primary_language().eq_ignore_ascii_case("en")
+}
+
+fn is_japanese(lang: &LanguageTag) -> bool {
+    lang.primary_language().eq_ignore_ascii_case("ja")
 }
 
 fn is_korean(lang: &LanguageTag) -> bool {
@@ -136,8 +145,9 @@ mod tests {
         assert!(!is_simplified_chinese(&tag("zh-Hant-TW")));
     }
 
-    const ALL: [I18nLanguage; 5] = [
+    const ALL: [I18nLanguage; 6] = [
         I18nLanguage::English,
+        I18nLanguage::Japanese,
         I18nLanguage::Korean,
         I18nLanguage::Russian,
         I18nLanguage::SimplifiedChinese,
@@ -170,10 +180,13 @@ mod tests {
     }
 
     #[test]
-    fn detects_english_korean_and_russian() {
+    fn detects_english_japanese_korean_and_russian() {
         assert!(is_english(&tag("en")));
         assert!(is_english(&tag("en-US")));
         assert!(is_english(&tag("en-GB")));
+        assert!(is_japanese(&tag("ja")));
+        assert!(is_japanese(&tag("ja-JP")));
+        assert!(!is_japanese(&tag("zh-CN")));
         assert!(is_korean(&tag("ko")));
         assert!(is_korean(&tag("ko-KR")));
         assert!(is_russian(&tag("ru")));

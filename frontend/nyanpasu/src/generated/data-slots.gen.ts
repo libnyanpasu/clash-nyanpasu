@@ -33,7 +33,7 @@ export const DATA_SLOTS = [
   'break-when-profile-change-switch',
   'break-when-profile-change-switch-container',
   'break-when-proxy-change-selector',
-  'break-when-proxy-change-selector-options',
+  'break-when-proxy-change-selector-trigger',
   'button-loading',
   'circular-progress',
   'circular-progress-determinate',

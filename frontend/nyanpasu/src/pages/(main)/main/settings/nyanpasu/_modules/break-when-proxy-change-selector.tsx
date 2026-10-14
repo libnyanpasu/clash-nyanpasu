@@ -1,7 +1,11 @@
+import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
+import { Button } from '@nyanpasu/ui/button'
 import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@nyanpasu/ui/segmented-button'
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -9,6 +13,7 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { useClashSetting } from '@nyanpasu/query'
 import type { ProxyChangeBreakMode } from '@nyanpasu/rpc/types'
 import {
+  ItemContainer,
   ItemLabel,
   ItemLabelDescription,
   ItemLabelText,
@@ -39,35 +44,47 @@ export default function BreakWhenProxyChangeSelector() {
     }
   })
 
+  const current = breakConnection.value?.on_proxy_change
+
   return (
     <SettingsCard data-slot="break-when-proxy-change-selector">
-      <SettingsCardContent>
-        <ItemLabel>
-          <ItemLabelText>
-            {m.settings_nyanpasu_enhance_break_when_proxy_change_label()}
-          </ItemLabelText>
+      <DropdownMenu align="end">
+        <DropdownMenuTrigger asChild disabled={breakConnection.isPending}>
+          <SettingsCardContent
+            data-slot="break-when-proxy-change-selector-trigger"
+            asChild
+          >
+            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
+              <ItemContainer>
+                <ItemLabel>
+                  <ItemLabelText>
+                    {m.settings_nyanpasu_enhance_break_when_proxy_change_label()}
+                  </ItemLabelText>
 
-          <ItemLabelDescription>
-            {m.settings_nyanpasu_enhance_break_when_proxy_change_description()}
-          </ItemLabelDescription>
-        </ItemLabel>
+                  <ItemLabelDescription>
+                    {current ? `${MODE_LABELS[current]()} · ` : null}
+                    {m.settings_nyanpasu_enhance_break_when_proxy_change_description()}
+                  </ItemLabelDescription>
+                </ItemLabel>
 
-        <SegmentedButton
-          data-slot="break-when-proxy-change-selector-options"
-          aria-label={m.settings_nyanpasu_enhance_break_when_proxy_change_label()}
-          value={breakConnection.value?.on_proxy_change}
-          onValueChange={(next) => {
-            if (next) handleChange(next as ProxyChangeBreakMode)
-          }}
-          disabled={breakConnection.isPending}
-        >
+                <ArrowForwardIosRounded />
+              </ItemContainer>
+            </Button>
+          </SettingsCardContent>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent sideOffset={-16} alignOffset={16}>
           {MODES.map((mode) => (
-            <SegmentedButtonItem key={mode} value={mode}>
+            <DropdownMenuCheckboxItem
+              key={mode}
+              checked={current === mode}
+              onSelect={() => handleChange(mode)}
+            >
               {MODE_LABELS[mode]()}
-            </SegmentedButtonItem>
+            </DropdownMenuCheckboxItem>
           ))}
-        </SegmentedButton>
-      </SettingsCardContent>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </SettingsCard>
   )
 }

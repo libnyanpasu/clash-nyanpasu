@@ -1,38 +1,42 @@
+import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import LanOutlineRounded from '~icons/material-symbols/lan-outline-rounded'
 import PauseRounded from '~icons/material-symbols/pause-rounded'
 import PlayArrowRounded from '~icons/material-symbols/play-arrow-rounded'
-import type { ReactNode } from 'react'
+import type { PropsWithChildren } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@nyanpasu/ui/dropdown-menu'
 import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@nyanpasu/ui/segmented-button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@nyanpasu/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { beyondRetention } from '@/utils/traffic-retention'
-import { dimensionName, type UsageLabel } from '@/utils/traffic-usage'
-import type {
-  Dimension,
-  Metric,
-  TrafficRange,
-  TrafficRetention,
-  TrafficScope,
-} from '@nyanpasu/rpc/types'
+import { dimensionName } from '@/utils/traffic-usage'
+import type { Metric, TrafficRange, TrafficScope } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import {
+  dataPageFloatingGroupVariants,
+  dataPageTabsVariants,
+  DataPageToolbar,
+} from '../../_modules/data-page'
 import FilterChips from '../../_modules/filter-chips'
 import {
   rangeName,
   RANGES,
   type SearchFilter,
 } from '../../_modules/traffic-filters'
-import { type TrafficSearch } from './search'
+import { useTrafficPage } from './traffic-context'
+
+// The menu triggers keep the shape of the toolbar's Select pills.
+const triggerClassName =
+  'flex h-9 min-w-0 shrink-0 items-center gap-1 rounded-full px-3'
 
 const SCOPES = {
   all: m.traffic_scope_all,
@@ -45,45 +49,33 @@ const METRICS = {
   connections: m.traffic_metric_connections,
 } satisfies Record<Metric, () => string>
 
-export default function TrafficToolbar({
-  search,
-  retention,
-  paused,
-  labelOf,
-  onSearchChange,
-  onPausedChange,
-  onViewConnections,
-  start,
-}: {
-  search: TrafficSearch
-  retention?: TrafficRetention
-  paused: boolean
-  labelOf: (dimension: Dimension, key: string) => UsageLabel
-  onSearchChange: (update: Partial<TrafficSearch>) => void
-  onPausedChange: (paused: boolean) => void
-  onViewConnections?: () => void
-  /** Rendered before every control, such as the way back after a jump. */
-  start?: ReactNode
-}) {
+export default function TrafficToolbar({ children }: PropsWithChildren) {
+  const {
+    search,
+    retention,
+    paused,
+    labelOf,
+    onSearchChange,
+    onPausedChange,
+    onViewConnections,
+  } = useTrafficPage()
   const { scope, metric, range, filters } = search
 
   const removeFilter = (filter: SearchFilter) =>
     onSearchChange({ filters: filters.filter((item) => item !== filter) })
 
-  // It goes on one line once it is wide enough for every control, the way
-  // back included, whatever the window: the navigation beside the page
-  // takes part of the viewport.
   return (
-    <div
-      className="bg-mixed-background @container shrink-0"
-      data-slot="traffic-toolbar"
-    >
-      <div className="flex min-h-16 flex-wrap items-center gap-x-2 gap-y-2 px-3 py-3 @3xl:flex-nowrap @3xl:gap-3 @3xl:px-4 @3xl:py-0">
-        {start}
+    <DataPageToolbar className="@container" data-slot="traffic-toolbar">
+      {children}
 
+      <div
+        className={dataPageFloatingGroupVariants()}
+        data-slot="traffic-scope"
+      >
         <SegmentedButton
           size="sm"
-          className="w-auto shrink-0"
+          variant="tabs"
+          className={dataPageTabsVariants()}
           aria-label={m.traffic_scope_label()}
           value={scope}
           onValueChange={(next) => {
@@ -97,20 +89,160 @@ export default function TrafficToolbar({
             <SegmentedButtonItem
               key={value}
               value={value}
-              className="flex-none whitespace-nowrap"
+              className="flex-none rounded-full whitespace-nowrap"
             >
               {SCOPES[value]()}
             </SegmentedButtonItem>
           ))}
         </SegmentedButton>
+      </div>
 
+      <div
+        className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2"
+        data-slot="traffic-controls"
+      >
+        <div
+          className={cn(
+            dataPageFloatingGroupVariants(),
+            'max-w-full flex-wrap justify-end',
+          )}
+          data-slot="traffic-metric-range"
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className={cn(triggerClassName, 'w-28')}
+                aria-label={m.traffic_metric_label()}
+                title={METRICS[metric]()}
+              >
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {METRICS[metric]()}
+                </span>
+                <ArrowDropDownRounded aria-hidden className="size-5 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="end"
+              sideOffset={8}
+              collisionPadding={8}
+            >
+              <DropdownMenuRadioGroup
+                value={metric}
+                onValueChange={(next) => {
+                  if (next === 'bytes' || next === 'connections') {
+                    onSearchChange({ metric: next })
+                  }
+                }}
+              >
+                {(Object.keys(METRICS) as Metric[]).map((value) => (
+                  <DropdownMenuRadioItem key={value} value={value}>
+                    {METRICS[value]()}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className={cn(triggerClassName, 'w-32')}
+                aria-label={m.traffic_range_label()}
+                title={rangeName(range)}
+              >
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {rangeName(range)}
+                </span>
+                <ArrowDropDownRounded aria-hidden className="size-5 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="end"
+              sideOffset={8}
+              collisionPadding={8}
+              className="min-w-64"
+            >
+              <DropdownMenuRadioGroup
+                value={range}
+                onValueChange={(next) =>
+                  onSearchChange({ range: next as TrafficRange })
+                }
+              >
+                {RANGES.map((value) => {
+                  const disabled = beyondRetention(value, retention)
+
+                  return (
+                    <DropdownMenuRadioItem
+                      key={value}
+                      value={value}
+                      disabled={disabled}
+                      className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                    >
+                      <span>{rangeName(value)}</span>
+                      {disabled && (
+                        <span className="text-on-surface-variant text-xs">
+                          {m.traffic_range_beyond_retention()}
+                        </span>
+                      )}
+                    </DropdownMenuRadioItem>
+                  )
+                })}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div
+          className={dataPageFloatingGroupVariants()}
+          data-slot="traffic-actions"
+        >
+          {onViewConnections && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  icon
+                  className="rounded-full"
+                  aria-label={m.traffic_view_connections()}
+                  data-slot="traffic-view-connections"
+                  onClick={onViewConnections}
+                >
+                  <LanOutlineRounded />
+                </Button>
+              </TooltipTrigger>
+
+              <TooltipContent>{m.traffic_view_connections()}</TooltipContent>
+            </Tooltip>
+          )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                icon
+                className="rounded-full"
+                aria-label={paused ? m.topology_resume() : m.topology_pause()}
+                aria-pressed={paused}
+                onClick={() => onPausedChange(!paused)}
+              >
+                {paused ? <PlayArrowRounded /> : <PauseRounded />}
+              </Button>
+            </TooltipTrigger>
+
+            <TooltipContent>
+              {paused ? m.topology_resume() : m.topology_pause()}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+
+      {filters.length > 0 && (
         <FilterChips
           className={cn(
-            // When it wraps, the chips take a row of their own under the controls.
-            'order-last basis-full',
-            '@3xl:order-none @3xl:flex-1 @3xl:basis-0',
-            filters.length === 0 && '@max-3xl:hidden',
+            dataPageFloatingGroupVariants(),
+            'order-last min-h-11 basis-full',
           )}
+          data-slot="traffic-filters"
           items={filters.map((filter) => {
             const label = labelOf(filter.d, filter.v)
 
@@ -123,124 +255,7 @@ export default function TrafficToolbar({
           })}
           onClearAll={() => onSearchChange({ filters: [] })}
         />
-
-        {/* What the rankings, the flow and the map all weigh usage by: a view
-            setting like the time range, beside it, while the segmented button
-            keeps the scope, as on the connections page. When the bar wraps,
-            the way back, the scope and the two buttons lead the first row,
-            the two settings follow them onto the next row as space runs out,
-            and the chips take the last row. */}
-        <div className="w-28 shrink-0 @max-3xl:order-1 @3xl:w-36">
-          <Select
-            variant="outlined"
-            value={metric}
-            onValueChange={(next) => {
-              if (next === 'bytes' || next === 'connections') {
-                onSearchChange({ metric: next })
-              }
-            }}
-          >
-            <SelectTrigger
-              className="h-10 min-w-0 py-2"
-              aria-label={m.traffic_metric_label()}
-            >
-              <SelectValue
-                className="truncate pr-4 text-sm"
-                placeholder={m.traffic_metric_label()}
-              >
-                {METRICS[metric]()}
-              </SelectValue>
-            </SelectTrigger>
-
-            <SelectContent>
-              {(Object.keys(METRICS) as Metric[]).map((value) => (
-                <SelectItem key={value} value={value}>
-                  {METRICS[value]()}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="w-32 shrink-0 @max-3xl:order-1 @3xl:w-40">
-          <Select
-            variant="outlined"
-            value={range}
-            onValueChange={(next) =>
-              onSearchChange({ range: next as TrafficRange })
-            }
-          >
-            <SelectTrigger
-              className="h-10 min-w-0 py-2"
-              aria-label={m.traffic_range_label()}
-            >
-              <SelectValue
-                className="truncate pr-4 text-sm"
-                placeholder={m.traffic_range_label()}
-              >
-                {rangeName(range)}
-              </SelectValue>
-            </SelectTrigger>
-
-            <SelectContent className="min-w-64">
-              {RANGES.map((value) => {
-                const disabled = beyondRetention(value, retention)
-
-                return (
-                  <SelectItem
-                    key={value}
-                    value={value}
-                    disabled={disabled}
-                    className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                  >
-                    <span>{rangeName(value)}</span>
-
-                    {disabled && (
-                      <span className="text-on-surface-variant text-xs">
-                        {m.traffic_range_beyond_retention()}
-                      </span>
-                    )}
-                  </SelectItem>
-                )
-              })}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {onViewConnections && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                icon
-                aria-label={m.traffic_view_connections()}
-                data-slot="traffic-view-connections"
-                onClick={onViewConnections}
-              >
-                <LanOutlineRounded />
-              </Button>
-            </TooltipTrigger>
-
-            <TooltipContent>{m.traffic_view_connections()}</TooltipContent>
-          </Tooltip>
-        )}
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              icon
-              aria-label={paused ? m.topology_resume() : m.topology_pause()}
-              aria-pressed={paused}
-              onClick={() => onPausedChange(!paused)}
-            >
-              {paused ? <PlayArrowRounded /> : <PauseRounded />}
-            </Button>
-          </TooltipTrigger>
-
-          <TooltipContent>
-            {paused ? m.topology_resume() : m.topology_pause()}
-          </TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
+      )}
+    </DataPageToolbar>
   )
 }

@@ -2,7 +2,7 @@ import BoltRounded from '~icons/material-symbols/bolt-rounded'
 import KeepOffRounded from '~icons/material-symbols/keep-off-rounded'
 import KeepRounded from '~icons/material-symbols/keep-rounded'
 import { useMemo } from 'react'
-import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import { useScrollAreaViewportElement } from '@nyanpasu/ui/scroll-area'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
@@ -152,11 +152,11 @@ function RouteComponent() {
     }
   }
 
-  const { viewportRef } = useScrollAreaViewport()
+  const viewportElement = useScrollAreaViewportElement()
 
   const virtualizer = useVirtualizer({
     count: currentGroup?.all?.length || 0,
-    getScrollElement: () => viewportRef.current,
+    getScrollElement: () => viewportElement,
     estimateSize: () => 60,
     overscan: 5,
     measureElement: (element) => element?.getBoundingClientRect().height,

@@ -1,6 +1,13 @@
 import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
 import * as React from 'react'
-import { createContext, useContext, useMemo, useRef, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { cn } from '@nyanpasu/utils'
 
 interface ScrollAreaContextValue {
@@ -24,6 +31,12 @@ const ScrollAreaContext = createContext<ScrollAreaContextValue | null>(null)
 const ScrollAreaViewportContext =
   createContext<ScrollAreaViewportContextValue | null>(null)
 
+// The same viewport as state, for consumers that must re-render once it is
+// attached. `undefined` means there is no ScrollArea; `null`, not attached yet.
+const ScrollAreaViewportElementContext = createContext<
+  HTMLDivElement | null | undefined
+>(undefined)
+
 export function useScrollArea() {
   const context = useContext(ScrollAreaContext)
 
@@ -44,6 +57,44 @@ export function useScrollAreaViewport() {
   }
 
   return context
+}
+
+/**
+ * The viewport element, for a virtual list's `getScrollElement`. A child's
+ * layout effects run before React attaches the viewport ref, so a virtualizer
+ * reading `viewportRef` on mount sees `null` and never observes the viewport
+ * unless something else re-renders it. This value re-renders its consumers
+ * once, when the viewport is attached.
+ */
+export function useScrollAreaViewportElement() {
+  const element = useContext(ScrollAreaViewportElementContext)
+
+  if (element === undefined) {
+    throw new Error(
+      'useScrollAreaViewportElement must be used within a ScrollArea component',
+    )
+  }
+
+  return element
+}
+
+// Provides the viewport to both contexts. The ref context never changes, so
+// its consumers never re-render for it.
+function useViewportProvider() {
+  const viewportRef = useRef<HTMLDivElement>(null)
+
+  const [viewportElement, setViewportElement] = useState<HTMLDivElement | null>(
+    null,
+  )
+
+  const viewport = useMemo(() => ({ viewportRef }), [])
+
+  const attachViewport = useCallback((element: HTMLDivElement | null) => {
+    viewportRef.current = element
+    setViewportElement(element)
+  }, [])
+
+  return { viewport, viewportElement, attachViewport }
 }
 
 function useScrollTracking(threshold = 50) {
@@ -152,9 +203,7 @@ export function ScrollArea({
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
   scrollbars?: 'vertical' | 'horizontal' | 'both'
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null)
-
-  const viewport = useMemo(() => ({ viewportRef }), [])
+  const { viewport, viewportElement, attachViewport } = useViewportProvider()
 
   const {
     isTop,
@@ -172,29 +221,31 @@ export function ScrollArea({
 
   return (
     <ScrollAreaViewportContext.Provider value={viewport}>
-      <ScrollAreaContext.Provider value={scrollState}>
-        <Root
-          data-slot="scroll-area"
-          type="scroll"
-          scrollHideDelay={600}
-          className={cn('relative flex min-h-0 flex-col', className)}
-          data-top={String(isTop)}
-          data-scroll-direction={scrollDirection}
-          {...props}
-        >
-          <Viewport ref={viewportRef} onScroll={handleScroll}>
-            {children}
-          </Viewport>
+      <ScrollAreaViewportElementContext.Provider value={viewportElement}>
+        <ScrollAreaContext.Provider value={scrollState}>
+          <Root
+            data-slot="scroll-area"
+            type="scroll"
+            scrollHideDelay={600}
+            className={cn('relative flex min-h-0 flex-col', className)}
+            data-top={String(isTop)}
+            data-scroll-direction={scrollDirection}
+            {...props}
+          >
+            <Viewport ref={attachViewport} onScroll={handleScroll}>
+              {children}
+            </Viewport>
 
-          {(scrollbars === 'vertical' || scrollbars === 'both') && (
-            <ScrollBar orientation="vertical" />
-          )}
-          {(scrollbars === 'horizontal' || scrollbars === 'both') && (
-            <ScrollBar orientation="horizontal" />
-          )}
-          <Corner />
-        </Root>
-      </ScrollAreaContext.Provider>
+            {(scrollbars === 'vertical' || scrollbars === 'both') && (
+              <ScrollBar orientation="vertical" />
+            )}
+            {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+              <ScrollBar orientation="horizontal" />
+            )}
+            <Corner />
+          </Root>
+        </ScrollAreaContext.Provider>
+      </ScrollAreaViewportElementContext.Provider>
     </ScrollAreaViewportContext.Provider>
   )
 }
@@ -236,9 +287,7 @@ export function AppContentScrollArea({
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
   scrollbars?: 'vertical' | 'horizontal' | 'both'
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null)
-
-  const viewport = useMemo(() => ({ viewportRef }), [])
+  const { viewport, viewportElement, attachViewport } = useViewportProvider()
 
   const {
     isTop,
@@ -256,37 +305,39 @@ export function AppContentScrollArea({
 
   return (
     <ScrollAreaViewportContext.Provider value={viewport}>
-      <ScrollAreaContext.Provider value={scrollState}>
-        <Root
-          className={cn(
-            'relative',
-            'flex flex-1 flex-col',
-            'min-h-0',
-            'max-w-screen min-w-0',
-            className,
-          )}
-          data-slot="app-content-scroll-area"
-          type="scroll"
-          scrollHideDelay={600}
-          data-scrolling={String(isScrolling)}
-          data-top={String(isTop)}
-          data-bottom={String(isBottom)}
-          data-scroll-direction={scrollDirection}
-          {...props}
-        >
-          <Viewport ref={viewportRef} onScroll={handleScroll}>
-            {children}
-          </Viewport>
+      <ScrollAreaViewportElementContext.Provider value={viewportElement}>
+        <ScrollAreaContext.Provider value={scrollState}>
+          <Root
+            className={cn(
+              'relative',
+              'flex flex-1 flex-col',
+              'min-h-0',
+              'max-w-screen min-w-0',
+              className,
+            )}
+            data-slot="app-content-scroll-area"
+            type="scroll"
+            scrollHideDelay={600}
+            data-scrolling={String(isScrolling)}
+            data-top={String(isTop)}
+            data-bottom={String(isBottom)}
+            data-scroll-direction={scrollDirection}
+            {...props}
+          >
+            <Viewport ref={attachViewport} onScroll={handleScroll}>
+              {children}
+            </Viewport>
 
-          {(scrollbars === 'vertical' || scrollbars === 'both') && (
-            <ScrollBar orientation="vertical" />
-          )}
-          {(scrollbars === 'horizontal' || scrollbars === 'both') && (
-            <ScrollBar orientation="horizontal" />
-          )}
-          <Corner />
-        </Root>
-      </ScrollAreaContext.Provider>
+            {(scrollbars === 'vertical' || scrollbars === 'both') && (
+              <ScrollBar orientation="vertical" />
+            )}
+            {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+              <ScrollBar orientation="horizontal" />
+            )}
+            <Corner />
+          </Root>
+        </ScrollAreaContext.Provider>
+      </ScrollAreaViewportElementContext.Provider>
     </ScrollAreaViewportContext.Provider>
   )
 }

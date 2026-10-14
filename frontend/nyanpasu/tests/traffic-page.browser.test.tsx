@@ -1,7 +1,12 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { userEvent } from 'vitest/browser'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import {
+  keepReturn,
+  type ReturnTicket,
+} from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import {
@@ -20,15 +25,40 @@ import type {
   UsagePage,
 } from '@nyanpasu/rpc/types'
 import { focusManager, QueryClient } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+  useMatchRoute,
+  useNavigate,
+  type AnyRoute,
+} from '@tanstack/react-router'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { Route as overviewRoute } from '../src/pages/(main)/main/topology'
 import {
   LAYER_TEMPLATES,
-  trafficSearchSchema,
   type LayerTemplate,
   type TrafficSearch,
 } from '../src/pages/(main)/main/topology/_modules/search'
-import TrafficPage from '../src/pages/(main)/main/topology/_modules/traffic-page'
+import {
+  TRAFFIC_PAGES,
+  type TrafficView,
+} from '../src/pages/(main)/main/topology/_modules/traffic-context'
+import TrafficLayout from '../src/pages/(main)/main/topology/_modules/traffic-layout'
+import { Route as exitRoute } from '../src/pages/(main)/main/topology/exit'
+import { Route as flowRoute } from '../src/pages/(main)/main/topology/flow'
+import { Route as inboundRoute } from '../src/pages/(main)/main/topology/inbound'
+import { Route as mapRoute } from '../src/pages/(main)/main/topology/map'
+import { Route as processRoute } from '../src/pages/(main)/main/topology/process'
+import { Route as trafficRoute } from '../src/pages/(main)/main/topology/route'
+import { Route as sourceRoute } from '../src/pages/(main)/main/topology/source'
+import { Route as targetRoute } from '../src/pages/(main)/main/topology/target'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
+
+const productionTrafficRouteComponent = trafficRoute.options.component
 
 // Generated commands take the desktop IPC path that `mockIPC` serves.
 beforeEach(() => vi.stubGlobal('isTauri', true))
@@ -45,6 +75,13 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
 
   return {
     ...original,
+    // Traffic reports use RPC, not live connection-detail frames. Keep the real
+    // animated outlet while leaving that independent stream boundary out here.
+    ClashConnectionDetailsFreezeBoundary: ({
+      children,
+    }: {
+      children: ReactNode
+    }) => children,
     useTrafficReport: (
       ...args: Parameters<typeof original.useTrafficReport>
     ) => {
@@ -141,6 +178,9 @@ const rpc = vi.hoisted(() => ({
   reports: [] as ReportRequest[],
   pages: [] as Array<Record<string, unknown>>,
   unavailable: false,
+  // Pending while set: no traffic report has arrived yet.
+  holdReport: undefined as Promise<void> | undefined,
+  releaseReport: undefined as (() => void) | undefined,
   // Pending while set: the map's report does not arrive until it resolves.
   holdMap: undefined as Promise<void> | undefined,
   emptyTopology: false,
@@ -166,6 +206,7 @@ function mockBackend(pages: Record<string, UsagePage> = {}) {
 
       const { topology } = params.request as ReportRequest
 
+      if (rpc.holdReport) await rpc.holdReport
       if (topology?.layers.includes('source_region')) await rpc.holdMap
 
       return {
@@ -192,56 +233,135 @@ function mockBackend(pages: Record<string, UsagePage> = {}) {
   })
 }
 
-function Page({
-  initial,
+function TestTrafficLayout({
   onViewConnections,
   toolbarStart,
 }: {
-  initial?: Partial<TrafficSearch>
   onViewConnections?: () => void
   toolbarStart?: ReactNode
 }) {
-  const [search, setSearch] = useState(() =>
-    trafficSearchSchema.parse(initial ?? {}),
-  )
+  const search = trafficRoute.useSearch()
+  const navigate = useNavigate()
+  const matchRoute = useMatchRoute()
+  const page =
+    TRAFFIC_PAGES.find(({ to }) =>
+      matchRoute({ to, fuzzy: false, includeSearch: false }),
+    ) ?? TRAFFIC_PAGES[0]
+  const view: TrafficView = page.view
 
   return (
-    <TooltipProvider>
-      <div className="flex h-screen flex-col">
-        <TrafficPage
-          search={search}
-          onSearchChange={(update) =>
-            setSearch((previous) => ({ ...previous, ...update }))
-          }
-          onViewConnections={onViewConnections}
-          toolbarStart={toolbarStart}
-        />
-      </div>
-    </TooltipProvider>
+    <TrafficLayout
+      view={view}
+      search={search}
+      onSearchChange={(update) =>
+        navigate({
+          to: page.to,
+          search: (previous) => ({ ...previous, ...update, view: undefined }),
+          state: keepReturn,
+        })
+      }
+      onViewConnections={onViewConnections}
+      toolbarStart={toolbarStart}
+    />
   )
 }
 
-async function open(
-  onTestFinished: (fn: () => void) => void,
+function initialEntry(initial?: Partial<TrafficSearch>) {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(initial ?? {})) {
+    if (value === undefined || (key === 'view' && value === 'overview'))
+      continue
+
+    params.set(key, typeof value === 'string' ? value : JSON.stringify(value))
+  }
+
+  const query = params.toString()
+  return `/main/topology${query ? `?${query}` : ''}`
+}
+
+function createTestRoute(
+  fileRoute: { options: object },
+  id: string,
+  path: string,
+  parentRoute: AnyRoute,
+) {
+  const getParentRoute = () => parentRoute
+  const route = createRoute({
+    ...fileRoute.options,
+    path,
+    getParentRoute,
+  } as never)
+
+  return route.update({ id, path, getParentRoute } as never)
+}
+
+async function openRoute(
+  onTestFinished: (fn: () => void | Promise<void>) => void,
   initial?: Partial<TrafficSearch>,
   props?: { onViewConnections?: () => void; toolbarStart?: ReactNode },
+  initialState?: { returnTo: ReturnTicket },
 ) {
+  const rootRoute = createRootRoute({
+    component: () => (
+      <div className="flex h-dvh w-dvw">
+        <Outlet />
+      </div>
+    ),
+  })
+  const topologyRoute = createTestRoute(
+    trafficRoute,
+    '/main/topology',
+    '/main/topology',
+    rootRoute,
+  ).update({
+    component: props
+      ? () => <TestTrafficLayout {...props} />
+      : productionTrafficRouteComponent,
+  } as never)
+  const routeTree = rootRoute.addChildren([
+    topologyRoute.addChildren([
+      createTestRoute(overviewRoute, '/', '/', topologyRoute),
+      createTestRoute(flowRoute, '/flow/', '/flow/', topologyRoute),
+      createTestRoute(mapRoute, '/map/', '/map/', topologyRoute),
+      createTestRoute(sourceRoute, '/source/', '/source/', topologyRoute),
+      createTestRoute(inboundRoute, '/inbound/', '/inbound/', topologyRoute),
+      createTestRoute(targetRoute, '/target/', '/target/', topologyRoute),
+      createTestRoute(exitRoute, '/exit/', '/exit/', topologyRoute),
+      createTestRoute(processRoute, '/process/', '/process/', topologyRoute),
+    ] as never),
+  ] as never)
+  const history = createMemoryHistory({
+    initialEntries: [initialEntry(initial)],
+  })
+  if (initialState) history.replace(history.location.href, initialState)
+  const router = createRouter({
+    routeTree: routeTree as unknown as AnyRoute,
+    history,
+    context: {},
+  })
   const queries = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   const view = await render(
     <QueryClientProvider client={queries}>
-      <Page initial={initial} {...props} />
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
     </QueryClientProvider>,
   )
 
   onTestFinished(async () => {
+    rpc.releaseReport?.()
+    rpc.releaseReport = undefined
+    rpc.holdReport = undefined
     await view.unmount()
     queries.clear()
     clearMocks()
     rpc.reports = []
     rpc.pages = []
     rpc.unavailable = false
+    rpc.holdReport = undefined
     rpc.holdMap = undefined
     rpc.emptyTopology = false
     rpc.usageError = false
@@ -252,16 +372,42 @@ async function open(
     backend.intervals = []
   })
 
-  return view
+  return { view, router }
+}
+
+async function open(
+  onTestFinished: (fn: () => void | Promise<void>) => void,
+  initial?: Partial<TrafficSearch>,
+  props?: { onViewConnections?: () => void; toolbarStart?: ReactNode },
+) {
+  return (await openRoute(onTestFinished, initial, props)).view
 }
 
 const last = () => rpc.reports.at(-1)!
+
+// A closed dropdown menu keeps the page hidden from role queries until its
+// exit animation finishes, so wait for the portal to unmount before the next
+// assertion.
+const chooseToolbarMenu = async (
+  view: Awaited<ReturnType<typeof open>>,
+  menu: string,
+  option: string | RegExp,
+) => {
+  await view.getByRole('button', { name: menu }).click()
+  await view.getByRole('menuitemradio', { name: option }).click()
+  await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull()
+}
+
+const sidebarItem = (view: Awaited<ReturnType<typeof open>>, name: string) =>
+  view
+    .getByRole('complementary', { name: m.traffic_sidebar() })
+    .getByRole('link', { name })
 
 test('the first request is the last hour of everything, unfiltered', async ({
   onTestFinished,
 }) => {
   mockBackend()
-  await open(onTestFinished)
+  const view = await open(onTestFinished)
 
   await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
   expect(rpc.reports[0]).toEqual({
@@ -269,13 +415,19 @@ test('the first request is the last hour of everything, unfiltered', async ({
     metric: 'bytes',
     rankings: ['source', 'inbound', 'target', 'exit', 'process'],
     ranking_limit: 5,
-    topology: {
-      layers: ['origin', 'rule', 'chain', 'exit'],
-      limit_per_layer: 7,
-    },
+    topology: null,
   })
-  // One report serves every card: the five rankings are one request.
+  // Overview uses one report for its cards and all five rankings.
   expect(rpc.reports.every((r) => r.rankings.length === 5)).toBe(true)
+  expect(rpc.reports.every((r) => r.ranking_limit === 5)).toBe(true)
+  expect(
+    document.querySelectorAll('[data-slot="traffic-ranking"]'),
+  ).toHaveLength(5)
+  await expect
+    .element(
+      view.getByRole('heading', { name: m.traffic_overview(), level: 1 }),
+    )
+    .toBeInTheDocument()
 
   // Devices counts the distinct sources, not the rows shown.
   await expect
@@ -295,6 +447,189 @@ test('the first request is the last hour of everything, unfiltered', async ({
     ])
 })
 
+test('the route stores category selection and filters in search state', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const { view, router } = await openRoute(onTestFinished, {
+    range: 'last7_days',
+    scope: 'closed',
+  })
+  const routeSearch = () =>
+    router.state.location.search as Record<string, unknown>
+
+  await expect
+    .element(
+      view.getByRole('heading', { name: m.traffic_overview(), level: 1 }),
+    )
+    .toBeInTheDocument()
+  expect(routeSearch()).toEqual(
+    expect.objectContaining({
+      range: 'last7_days',
+      scope: 'closed',
+    }),
+  )
+  expect(routeSearch()).not.toHaveProperty('view')
+
+  await sidebarItem(view, dimensionName('source')).click()
+  await expect
+    .poll(() => router.state.location.pathname.replace(/\/$/, ''))
+    .toBe('/main/topology/source')
+  expect(routeSearch()).not.toHaveProperty('view')
+  const sourceRow = view.getByRole('button', { name: /192\.168\.1\.2/ })
+  await expect.element(sourceRow).toBeInTheDocument()
+  await sourceRow.click()
+  await expect
+    .poll(() => routeSearch().filters)
+    .toEqual([{ d: 'source', v: '192.168.1.2' }])
+
+  await sidebarItem(view, m.topology_flow()).click()
+  await expect
+    .poll(() => router.state.location.pathname.replace(/\/$/, ''))
+    .toBe('/main/topology/flow')
+  await expect
+    .poll(() => routeSearch())
+    .toEqual(
+      expect.objectContaining({
+        range: 'last7_days',
+        scope: 'closed',
+        filters: [{ d: 'source', v: '192.168.1.2' }],
+      }),
+    )
+  expect(routeSearch()).not.toHaveProperty('view')
+  await expect
+    .poll(() => last().topology?.layers)
+    .toEqual(['origin', 'rule', 'chain', 'exit'])
+})
+
+test('a cold source URL shows loading until its first report arrives', async ({
+  onTestFinished,
+}) => {
+  let releaseReport!: () => void
+  rpc.holdReport = new Promise<void>((resolve) => (releaseReport = resolve))
+  rpc.releaseReport = releaseReport
+  mockBackend()
+  const returnTo: ReturnTicket = {
+    page: 'connections',
+    href: '/main/connections/',
+    index: 0,
+  }
+  const { view, router } = await openRoute(
+    onTestFinished,
+    {
+      view: 'source',
+      range: 'last7_days',
+      scope: 'closed',
+    },
+    undefined,
+    { returnTo },
+  )
+
+  await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
+  expect(router.state.location.pathname.replace(/\/$/, '')).toBe(
+    '/main/topology/source',
+  )
+  expect(router.state.location.search).toEqual(
+    expect.objectContaining({ range: 'last7_days', scope: 'closed' }),
+  )
+  expect(router.state.location.search).not.toHaveProperty('view')
+  expect(router.state.location.state.returnTo).toEqual(returnTo)
+  expect(rpc.reports[0].topology).toBeNull()
+  await expect
+    .element(view.getByText(m.traffic_loading_more()))
+    .toBeInTheDocument()
+  await expect
+    .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
+    .not.toBeInTheDocument()
+
+  releaseReport()
+  rpc.releaseReport = undefined
+  rpc.holdReport = undefined
+
+  await expect
+    .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
+    .toBeInTheDocument()
+  await expect
+    .element(view.getByText(m.traffic_loading_more()))
+    .not.toBeInTheDocument()
+})
+
+test('a cold map URL shows loading until its first report arrives', async ({
+  onTestFinished,
+}) => {
+  let releaseReport!: () => void
+  rpc.holdReport = new Promise<void>((resolve) => (releaseReport = resolve))
+  rpc.releaseReport = releaseReport
+  mockBackend()
+  const { view, router } = await openRoute(onTestFinished, { view: 'map' })
+
+  await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
+  expect(router.state.location.pathname.replace(/\/$/, '')).toBe(
+    '/main/topology/map',
+  )
+  expect(rpc.reports[0].topology).toEqual({
+    layers: ['source_region', 'destination_region', 'destination_basis'],
+    limit_per_layer: null,
+  })
+  await expect
+    .element(view.getByText(m.traffic_loading_more()))
+    .toBeInTheDocument()
+  await expect
+    .element(
+      view.getByRole('button', {
+        name: new RegExp(`^${regionName('US')}`),
+      }),
+    )
+    .not.toBeInTheDocument()
+
+  releaseReport()
+  rpc.releaseReport = undefined
+  rpc.holdReport = undefined
+
+  await expect
+    .element(
+      view.getByRole('button', {
+        name: new RegExp(`^${regionName('US')}`),
+      }),
+    )
+    .toBeInTheDocument()
+  await expect
+    .element(view.getByText(m.traffic_loading_more()))
+    .not.toBeInTheDocument()
+})
+
+test('a cold flow URL shows loading until its first report arrives', async ({
+  onTestFinished,
+}) => {
+  let releaseReport!: () => void
+  rpc.holdReport = new Promise<void>((resolve) => (releaseReport = resolve))
+  rpc.releaseReport = releaseReport
+  mockBackend()
+  const { view, router } = await openRoute(onTestFinished, { view: 'flow' })
+
+  await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
+  expect(router.state.location.pathname.replace(/\/$/, '')).toBe(
+    '/main/topology/flow',
+  )
+  expect(rpc.reports[0].topology).toEqual({
+    layers: ['origin', 'rule', 'chain', 'exit'],
+    limit_per_layer: 7,
+  })
+  await expect
+    .element(view.getByText(m.traffic_loading_more()))
+    .toBeInTheDocument()
+  await expect.element(node(view, 'rule', 'rule-1')).not.toBeInTheDocument()
+
+  releaseReport()
+  rpc.releaseReport = undefined
+  rpc.holdReport = undefined
+
+  await expect.element(node(view, 'rule', 'rule-1')).toBeInTheDocument()
+  await expect
+    .element(view.getByText(m.traffic_loading_more()))
+    .not.toBeInTheDocument()
+})
+
 test('the scope and the time range change the next request', async ({
   onTestFinished,
 }) => {
@@ -308,10 +643,26 @@ test('the scope and the time range change the next request', async ({
   await view.getByRole('radio', { name: m.traffic_scope_closed() }).click()
   await expect.poll(() => last().query.scope).toBe('closed')
 
-  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
-  await view
-    .getByRole('option', { name: m.traffic_range_last6_hours() })
-    .click()
+  const rangeTrigger = view.getByRole('button', {
+    name: m.traffic_range_label(),
+  })
+  await rangeTrigger.click()
+  await expect
+    .element(
+      view.getByRole('menuitemradio', {
+        name: m.traffic_range_last_hour(),
+      }),
+    )
+    .toHaveAttribute('aria-checked', 'true')
+  await userEvent.keyboard('{Escape}')
+  await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull()
+  await expect.poll(() => document.activeElement).toBe(rangeTrigger.element())
+
+  await chooseToolbarMenu(
+    view,
+    m.traffic_range_label(),
+    m.traffic_range_last6_hours(),
+  )
   await expect.poll(() => last().query.range).toBe('last6_hours')
   expect(last().query.scope).toBe('closed')
 })
@@ -332,9 +683,71 @@ test('polls every 2 s up to 24 hours, every 10 s beyond, and not when paused', a
   await view.getByRole('button', { name: m.topology_resume() }).click()
   await expect.poll(() => backend.intervals.at(-1)).toBe(2_000)
 
-  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
-  await view.getByRole('option', { name: m.traffic_range_last7_days() }).click()
+  await chooseToolbarMenu(
+    view,
+    m.traffic_range_label(),
+    m.traffic_range_last7_days(),
+  )
   await expect.poll(() => backend.intervals.at(-1)).toBe(10_000)
+})
+
+test('sidebar changes preserve traffic state and the paused report', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished, {
+    range: 'last7_days',
+    scope: 'closed',
+    filters: [
+      { d: 'target', v: 'example.com' },
+      { d: 'exit', v: 'Node-A' },
+    ],
+    metric: 'connections',
+    layers: 'process',
+    limit: 10,
+  })
+  await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
+  await expect.poll(() => backend.intervals.at(-1)).toBe(10_000)
+
+  await view.getByRole('button', { name: m.topology_pause() }).click()
+  await expect.poll(() => backend.intervals.at(-1)).toBe(false)
+
+  await sidebarItem(view, dimensionName('source')).click()
+  await expect
+    .element(
+      view.getByRole('heading', {
+        name: dimensionName('source'),
+        level: 1,
+      }),
+    )
+    .toBeInTheDocument()
+
+  await sidebarItem(view, m.topology_flow()).click()
+  await expect
+    .poll(() => last().topology?.layers)
+    .toEqual(['process', 'target', 'exit'])
+  expect(last()).toEqual(
+    expect.objectContaining({
+      query: {
+        range: 'last7_days',
+        scope: 'closed',
+        filters: [
+          { dimension: 'target', value: 'example.com' },
+          { dimension: 'exit', value: 'Node-A' },
+        ],
+      },
+      metric: 'connections',
+      ranking_limit: 5,
+      topology: {
+        layers: ['process', 'target', 'exit'],
+        limit_per_layer: 10,
+      },
+    }),
+  )
+  await expect.poll(() => backend.intervals.at(-1)).toBe(false)
+  await expect
+    .element(view.getByRole('button', { name: m.topology_resume() }))
+    .toHaveAttribute('aria-pressed', 'true')
 })
 
 test('a ranking row toggles its filter, and a chip or clear all removes it', async ({
@@ -438,8 +851,9 @@ test('ranges longer than the retention are disabled, except all time', async ({
   mockBackend()
   const view = await open(onTestFinished)
 
-  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
-  const option = (name: string | RegExp) => view.getByRole('option', { name })
+  await view.getByRole('button', { name: m.traffic_range_label() }).click()
+  const option = (name: string | RegExp) =>
+    view.getByRole('menuitemradio', { name })
 
   await expect
     .element(option(m.traffic_range_last24_hours()))
@@ -454,6 +868,9 @@ test('ranges longer than the retention are disabled, except all time', async ({
     await expect
       .element(option(new RegExp(name)))
       .toHaveAttribute('aria-disabled', 'true')
+    await expect
+      .element(option(new RegExp(name)))
+      .toHaveAttribute('data-disabled', '')
   }
   await expect
     .element(view.getByText(m.traffic_range_beyond_retention()).first())
@@ -467,17 +884,19 @@ test('a 7 day retention only disables the 30 day range', async ({
   mockBackend()
   const view = await open(onTestFinished)
 
-  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
+  await view.getByRole('button', { name: m.traffic_range_label() }).click()
 
   await expect
     .element(
-      view.getByRole('option', {
+      view.getByRole('menuitemradio', {
         name: new RegExp(m.traffic_range_last30_days()),
       }),
     )
     .toHaveAttribute('aria-disabled', 'true')
   await expect
-    .element(view.getByRole('option', { name: m.traffic_range_last7_days() }))
+    .element(
+      view.getByRole('menuitemradio', { name: m.traffic_range_last7_days() }),
+    )
     .not.toHaveAttribute('aria-disabled', 'true')
 })
 
@@ -560,6 +979,64 @@ test('view all pages through every value and a pick filters and closes', async (
     .not.toBeInTheDocument()
 })
 
+test('a category paginates all values and replaces its selected filter', async ({
+  onTestFinished,
+}) => {
+  const cursor = { usage: usage(1, 2, 1), key: '10.0.0.2' }
+  const empty = usage(0, 0, 0)
+  mockBackend({
+    '': {
+      total: empty,
+      groups: [group('10.0.0.2')],
+      other: empty,
+      next: cursor,
+    },
+    '10.0.0.2': {
+      total: empty,
+      groups: [group('10.0.0.3')],
+      other: empty,
+      next: null,
+    },
+  })
+  const view = await open(onTestFinished, {
+    view: 'source',
+    filters: [
+      { d: 'source', v: '192.168.1.2' },
+      { d: 'target', v: 'example.com' },
+    ],
+  })
+
+  await view.getByRole('button', { name: m.traffic_rank_view_all() }).click()
+  await expect
+    .element(view.getByRole('button', { name: /10\.0\.0\.3/ }))
+    .toBeInTheDocument()
+  expect(rpc.pages).toEqual([
+    {
+      query: {
+        range: 'last_hour',
+        scope: 'all',
+        filters: [{ dimension: 'target', value: 'example.com' }],
+      },
+      groupBy: 'source',
+      metric: 'bytes',
+      after: null,
+      limit: 50,
+    },
+    expect.objectContaining({ after: cursor }),
+  ])
+
+  await view.getByRole('button', { name: /10\.0\.0\.3/ }).click()
+  await expect
+    .poll(() => last().query.filters)
+    .toEqual([
+      { dimension: 'source', value: '10.0.0.3' },
+      { dimension: 'target', value: 'example.com' },
+    ])
+  await expect
+    .element(view.getByRole('button', { name: m.common_close() }))
+    .not.toBeInTheDocument()
+})
+
 const templateName = (template: LayerTemplate) =>
   LAYER_TEMPLATES[template].map(dimensionName).join(' → ')
 
@@ -577,21 +1054,19 @@ const node = (
 const press = (locator: { element: () => Element }) =>
   (locator.element() as HTMLElement).click()
 
-const hover = (locator: { element: () => Element }) =>
-  locator
-    .element()
-    .dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
-
 test('the template and the metric change the topology of the same request', async ({
   onTestFinished,
 }) => {
   mockBackend()
-  const view = await open(onTestFinished)
+  const view = await open(onTestFinished, { view: 'flow' })
   await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
 
   const pick = async (template: LayerTemplate) => {
-    await view.getByRole('combobox', { name: m.traffic_layers_label() }).click()
-    await view.getByRole('option', { name: templateName(template) }).click()
+    await chooseToolbarMenu(
+      view,
+      m.traffic_layers_label(),
+      templateName(template),
+    )
   }
 
   await pick('source')
@@ -612,10 +1087,11 @@ test('the template and the metric change the topology of the same request', asyn
     .poll(() => last().topology?.layers)
     .toEqual(['process', 'target', 'exit'])
 
-  await view.getByRole('combobox', { name: m.traffic_metric_label() }).click()
-  await view
-    .getByRole('option', { name: m.traffic_metric_connections() })
-    .click()
+  await chooseToolbarMenu(
+    view,
+    m.traffic_metric_label(),
+    m.traffic_metric_connections(),
+  )
   await expect.poll(() => last().metric).toBe('connections')
   expect(last().topology?.layers).toEqual(['process', 'target', 'exit'])
 
@@ -628,7 +1104,7 @@ test('a node filters by its layer, the merged node does nothing', async ({
   onTestFinished,
 }) => {
   mockBackend()
-  const view = await open(onTestFinished)
+  const view = await open(onTestFinished, { view: 'flow' })
   await expect.element(node(view, 'rule', 'rule-1')).toBeInTheDocument()
 
   // The merged node is no button, and a click on it changes nothing.
@@ -667,7 +1143,7 @@ test('hovering a node leaves only its adjacent edges lit', async ({
   onTestFinished,
 }) => {
   mockBackend()
-  const view = await open(onTestFinished)
+  const view = await open(onTestFinished, { view: 'flow' })
   const target = node(view, 'rule', 'rule-1')
   await expect.element(target).toBeInTheDocument()
 
@@ -679,7 +1155,10 @@ test('hovering a node leaves only its adjacent edges lit', async ({
   // Three gaps of two by two edges.
   await expect.poll(() => opacities().length).toBe(12)
 
-  hover(target)
+  // Move the real pointer onto the node: a cursor left over the page by an
+  // earlier test would otherwise fire a mouseover on whichever node renders
+  // under it and override the highlight.
+  await target.hover()
   // Two edges come in and two go out; the other eight fade as they animate.
   await expect
     .poll(() => [
@@ -694,7 +1173,7 @@ test('a large flow is drawn static, scrolls inside a capped height and still hig
 }) => {
   mockBackend()
   rpc.extraNodes = 20
-  const view = await open(onTestFinished)
+  const view = await open(onTestFinished, { view: 'flow' })
   const target = node(view, 'rule', 'rule-1')
   await expect.element(target).toBeInTheDocument()
 
@@ -705,7 +1184,7 @@ test('a large flow is drawn static, scrolls inside a capped height and still hig
     document.querySelector<HTMLElement>('[role="region"]')?.style.maxHeight,
   ).toBe('40rem')
 
-  hover(target)
+  await target.hover()
   // 22 edges come in and 22 go out of the node; the rest is dimmed at once.
   await expect
     .poll(
@@ -724,7 +1203,7 @@ test('a dense flow of few rows is drawn from the top of its columns', async ({
   // large, and 16 rows would otherwise still centre the short exit column.
   rpc.extraNodes = 14
   rpc.extraExitNodes = 0
-  const view = await open(onTestFinished)
+  const view = await open(onTestFinished, { view: 'flow' })
   const target = node(view, 'exit', 'exit-3')
   await expect.element(target).toBeInTheDocument()
 
@@ -767,14 +1246,17 @@ test('a paused report is not refetched when the window regains focus', async ({
 
 test('the header controls keep their names', async ({ onTestFinished }) => {
   mockBackend()
-  const view = await open(onTestFinished)
+  const view = await open(onTestFinished, { view: 'flow' })
   await expect.element(node(view, 'rule', 'rule-1')).toBeInTheDocument()
 
   await expect
     .element(view.getByRole('radiogroup', { name: m.topology_view() }))
-    .toBeInTheDocument()
+    .not.toBeInTheDocument()
   await expect
-    .element(view.getByRole('combobox', { name: m.traffic_layers_label() }))
+    .element(sidebarItem(view, m.topology_flow()))
+    .toHaveAttribute('data-active', 'true')
+  await expect
+    .element(view.getByRole('button', { name: m.traffic_layers_label() }))
     .toBeInTheDocument()
   await expect.element(limitSelect(view)).toBeInTheDocument()
 })
@@ -797,16 +1279,18 @@ test('the toolbar shows the connections on demand and starts with its slot', asy
   const scope = view
     .getByRole('radiogroup', { name: m.traffic_scope_label() })
     .element()
+  const scopeGroup = scope.closest('[data-slot="traffic-scope"]')
   expect(start.closest('[data-slot=traffic-toolbar]')).not.toBeNull()
   expect(start.parentElement!.firstElementChild).toBe(start)
-  expect(start.nextElementSibling).toBe(scope)
+  expect(scopeGroup?.contains(scope)).toBe(true)
+  expect(start.nextElementSibling).toBe(scopeGroup)
 })
 
 test('without a handler the toolbar has no connections button', async ({
   onTestFinished,
 }) => {
   mockBackend()
-  const view = await open(onTestFinished)
+  const view = await open(onTestFinished, undefined, {})
   await expect
     .element(view.getByRole('button', { name: m.topology_pause() }))
     .toBeInTheDocument()
@@ -835,18 +1319,19 @@ test('the toolbar metric orders the rankings and the full list', async ({
   await expect.element(inbound).toBeInTheDocument()
   expect(inbound.element().textContent).toContain('mixed3.00 KiB')
 
-  const metric = view.getByRole('combobox', { name: m.traffic_metric_label() })
+  const metric = view.getByRole('button', { name: m.traffic_metric_label() })
   expect(toolbar().contains(metric.element())).toBe(true)
-  await metric.click()
-  await view
-    .getByRole('option', { name: m.traffic_metric_connections() })
-    .click()
+  await chooseToolbarMenu(
+    view,
+    m.traffic_metric_label(),
+    m.traffic_metric_connections(),
+  )
 
   await expect.poll(() => last().metric).toBe('connections')
   // A row leads with the metric and ends its second line with the other one.
-  expect(inbound.element().textContent).toContain(
-    `mixed${m.topology_connection_count({ count: 3 })}`,
-  )
+  await expect
+    .poll(() => inbound.element().textContent)
+    .toContain(`mixed${m.topology_connection_count({ count: 3 })}`)
   expect(inbound.element().textContent).toMatch(/3\.00 KiB$/)
 
   await view
@@ -887,7 +1372,7 @@ test('the measured-only switch filters the map by how destinations were located'
   onTestFinished,
 }) => {
   mockBackend()
-  const view = await open(onTestFinished, { view: 'map' })
+  const { view, router } = await openRoute(onTestFinished, { view: 'map' })
   await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
   // Each region and each basis carries three connections.
   await expect
@@ -906,6 +1391,9 @@ test('the measured-only switch filters the map by how destinations were located'
   await expect
     .poll(() => last().query.filters)
     .toEqual([{ dimension: 'destination_basis', value: 'dialed' }])
+  await expect
+    .poll(() => router.state.location.pathname.replace(/\/$/, ''))
+    .toBe('/main/topology/map')
   await expect.element(measuredOnly).toHaveAttribute('aria-pressed', 'true')
 
   await measuredOnly.click()
@@ -938,21 +1426,23 @@ test('a region placed only by local DNS says so', async ({
 })
 
 const limitSelect = (view: Awaited<ReturnType<typeof open>>) =>
-  view.getByRole('combobox', { name: m.traffic_limit_label() })
+  view.getByRole('button', { name: m.traffic_limit_label() })
 
 test('the limit of nodes per layer changes the request, all asks for none', async ({
   onTestFinished,
 }) => {
   mockBackend()
-  const view = await open(onTestFinished)
+  const { view, router } = await openRoute(onTestFinished, { view: 'flow' })
   await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
 
   const pick = async (name: string) => {
-    await limitSelect(view).click()
-    await view.getByRole('option', { name }).click()
+    await chooseToolbarMenu(view, m.traffic_limit_label(), name)
   }
 
   await pick(m.traffic_limit_top({ count: 10 }))
+  await expect
+    .poll(() => router.state.location.pathname.replace(/\/$/, ''))
+    .toBe('/main/topology/flow')
   await expect.poll(() => last().topology?.limit_per_layer).toBe(10)
 
   await pick(m.traffic_limit_all())
@@ -963,7 +1453,7 @@ test('the limit of nodes per layer changes the request, all asks for none', asyn
   await expect.poll(() => last().topology?.limit_per_layer).toBe(5)
 
   // The map has no limit to choose: it places every region.
-  await view.getByRole('radio', { name: m.topology_geo_map() }).click()
+  await sidebarItem(view, m.topology_geo_map()).click()
   await expect
     .poll(() => last().topology?.layers)
     .toEqual(['source_region', 'destination_region', 'destination_basis'])
@@ -975,13 +1465,13 @@ test('a view switch keeps the figures but never draws the other columns', async 
   onTestFinished,
 }) => {
   mockBackend()
-  const view = await open(onTestFinished)
+  const view = await open(onTestFinished, { view: 'flow' })
   await expect.element(node(view, 'rule', 'rule-1')).toBeInTheDocument()
 
   let release!: () => void
   rpc.holdMap = new Promise<void>((resolve) => (release = resolve))
 
-  await view.getByRole('radio', { name: m.topology_geo_map() }).click()
+  await sidebarItem(view, m.topology_geo_map()).click()
   await expect
     .poll(() => last().topology?.layers)
     .toEqual(['source_region', 'destination_region', 'destination_basis'])
@@ -995,7 +1485,13 @@ test('a view switch keeps the figures but never draws the other columns', async 
       `[aria-label="${m.topology_geo_regions()}"] button`,
     ),
   ).toHaveLength(0)
-  await expect.element(view.getByText('5.00 KiB')).toBeInTheDocument()
+  const totalSummary = document.querySelector(
+    '[data-slot="traffic-content"] > div > p',
+  )
+  expect(totalSummary?.textContent).toContain('5.00 KiB')
+  expect(totalSummary?.textContent).toContain(
+    m.topology_connection_count({ count: 12 }),
+  )
 
   release()
   await expect
@@ -1008,7 +1504,7 @@ test('a view switch keeps the figures but never draws the other columns', async 
 
   // And back: the regions are no columns of the flow either.
   rpc.holdMap = undefined
-  await view.getByRole('radio', { name: m.topology_flow() }).click()
+  await sidebarItem(view, m.topology_flow()).click()
   await expect.element(node(view, 'rule', 'rule-1')).toBeInTheDocument()
 })
 

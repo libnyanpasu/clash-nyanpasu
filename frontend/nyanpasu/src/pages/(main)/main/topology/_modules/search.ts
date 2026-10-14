@@ -33,11 +33,23 @@ export const LAYER_TEMPLATES: Record<LayerTemplate, readonly Dimension[]> = {
 }
 
 // The page state lives in the URL, so a view can be reloaded and shared.
+export const VIEWS = [
+  'overview',
+  'flow',
+  'map',
+  'source',
+  'inbound',
+  'target',
+  'exit',
+  'process',
+] as const
+
 export const trafficSearchSchema = z.object({
   range: z.enum(RANGES).default('last_hour'),
   scope: z.enum(['all', 'active', 'closed']).default('all'),
   filters: z.array(searchFilterSchema).default([]),
-  view: z.enum(['flow', 'map']).default('flow'),
+  // Legacy shared URLs choose a child route through this parameter.
+  view: z.enum(VIEWS).optional(),
   // Name of a topology layer template; the first one when absent.
   layers: z.enum(TEMPLATES).optional(),
   metric: z.enum(['bytes', 'connections']).default('bytes'),
@@ -61,18 +73,20 @@ export const toTopologyRequest = ({
   view,
   layers,
   limit,
-}: Pick<TrafficSearch, 'view' | 'layers' | 'limit'>): TopologyRequest =>
-  view === 'map'
-    ? {
-        // The third layer splits each destination region by how it was located.
-        layers: ['source_region', 'destination_region', 'destination_basis'],
-        // The map places every region, so none merges into "other".
-        limit_per_layer: null,
-      }
-    : {
-        layers: [...LAYER_TEMPLATES[layers ?? DEFAULT_TEMPLATE]],
-        limit_per_layer: limit === 'all' ? null : limit,
-      }
+}: Pick<TrafficSearch, 'view' | 'layers' | 'limit'>): TopologyRequest | null =>
+  view !== 'flow' && view !== 'map'
+    ? null
+    : view === 'map'
+      ? {
+          // The third layer splits each destination region by how it was located.
+          layers: ['source_region', 'destination_region', 'destination_basis'],
+          // The map places every region, so none merges into "other".
+          limit_per_layer: null,
+        }
+      : {
+          layers: [...LAYER_TEMPLATES[layers ?? DEFAULT_TEMPLATE]],
+          limit_per_layer: limit === 'all' ? null : limit,
+        }
 
 // Short ranges move fast; longer ones read from hourly records.
 export const pollInterval = (range: TrafficRange) =>

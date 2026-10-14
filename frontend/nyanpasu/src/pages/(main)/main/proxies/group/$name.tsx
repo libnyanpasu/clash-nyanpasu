@@ -8,7 +8,10 @@ import {
 } from 'motion/react'
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import {
+  useScrollAreaViewport,
+  useScrollAreaViewportElement,
+} from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
 import { useContainerBreakpointValue, useLockFn } from '@nyanpasu/hooks'
@@ -230,6 +233,7 @@ function RouteComponent() {
   )
 
   const { viewportRef } = useScrollAreaViewport()
+  const viewportElement = useScrollAreaViewportElement()
 
   const [searchOpen, setSearchOpen] = useState(false)
 
@@ -316,7 +320,7 @@ function RouteComponent() {
 
   const virtualizer = useVirtualizer({
     count: members.length,
-    getScrollElement: () => viewportRef.current,
+    getScrollElement: () => viewportElement,
     estimateSize: () => NODE_ITEM_HEIGHT,
     overscan: 5,
     lanes,

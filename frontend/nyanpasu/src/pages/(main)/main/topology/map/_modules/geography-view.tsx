@@ -11,9 +11,11 @@ import {
   usageAmount,
   usageValue,
 } from '@/utils/traffic-usage'
-import type { Metric, Topology, Usage } from '@nyanpasu/rpc/types'
+import type { Topology, Usage } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { usePageTransition } from './transition'
+import { useTrafficPage } from '../../_modules/traffic-context'
+import { usePageTransition } from '../../_modules/transition'
+import { toggleFilter } from '../../../_modules/traffic-filters'
 
 const centers: Readonly<Record<string, number[]>> = worldMap.centers
 const shapes: Readonly<Record<string, string>> = worldMap.countries
@@ -224,26 +226,34 @@ function ShareLegend({ percent }: { percent: (share: number) => string }) {
 
 export default function GeographyView({
   topology,
-  metric,
-  selection,
-  onSelect,
-  measuredOnly,
-  onMeasuredOnlyChange,
 }: {
   /**
    * The report's source regions, destination regions and how each destination
    * was located, nothing merged.
    */
   topology: Topology | null | undefined
-  metric: Metric
-  selection?: string
-  onSelect: (code: string) => void
-  measuredOnly: boolean
-  onMeasuredOnlyChange: () => void
 }) {
+  const { search, onSearchChange } = useTrafficPage()
   const { reducedMotion, transition } = usePageTransition()
 
   const [hovered, setHovered] = useState<string | null>(null)
+
+  const metric = search.metric
+  const selection = search.filters.find(
+    (filter) => filter.d === 'destination_region',
+  )?.v
+  const measuredOnly = search.filters.some(
+    (filter) => filter.d === 'destination_basis' && filter.v === 'dialed',
+  )
+
+  const onSelect = (code: string) =>
+    onSearchChange({
+      filters: toggleFilter(search.filters, 'destination_region', code),
+    })
+  const onMeasuredOnlyChange = () =>
+    onSearchChange({
+      filters: toggleFilter(search.filters, 'destination_basis', 'dialed'),
+    })
 
   const map = useRef<HTMLDivElement>(null)
 

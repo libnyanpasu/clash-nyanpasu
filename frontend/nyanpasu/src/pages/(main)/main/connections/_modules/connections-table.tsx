@@ -8,7 +8,10 @@ import {
   type ComponentProps,
   type ReactNode,
 } from 'react'
-import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import {
+  useScrollAreaViewport,
+  useScrollAreaViewportElement,
+} from '@nyanpasu/ui/scroll-area'
 import { cn } from '@nyanpasu/utils'
 import {
   columnOrderingFeature,
@@ -30,6 +33,7 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useLocalStorage } from '@uidotdev/usehooks'
+import { useDataPageBottomInset } from '../../_modules/data-page'
 import {
   focusHighlightStyle,
   useFocusHighlight,
@@ -70,8 +74,8 @@ const renderPlainRow = (_: unknown, props: RowProps) => <tr {...props} />
 
 const COLUMN_SIZING_STORAGE_KEY = 'connections-column-sizing-v2'
 
-// Rows have a fixed height (the cells' h-9), so the virtualizer measures nothing.
-const ROW_HEIGHT = 36
+// Rows have a fixed height (the cells' h-11), so the virtualizer measures nothing.
+const ROW_HEIGHT = 44
 
 // Rows closer than this to the end load the next page.
 const END_REACHED_THRESHOLD = 20
@@ -86,7 +90,6 @@ type BodyRowProps<TRow extends RowData> = {
   // Compared only: the visible columns, in order, and their widths.
   columns: ReadonlyArray<Column<typeof features, TRow>>
   widths: readonly number[]
-  offset: number
   // Highlighted as the row the page was returned to.
   focused: boolean
   renderRow: RenderRow<TRow>
@@ -100,7 +103,6 @@ const BodyRow = memo(
   function BodyRow<TRow extends RowData>({
     row,
     widths,
-    offset,
     focused,
     renderRow,
   }: BodyRowProps<TRow>) {
@@ -112,14 +114,13 @@ const BodyRow = memo(
       'data-focused': focused,
       style: {
         height: `${ROW_HEIGHT}px`,
-        transform: `translateY(${offset}px)`,
         ...(focused && focusHighlightStyle),
       },
       children: row.getVisibleCells().map((cell, index) => (
         <td
           key={cell.id}
           className={cn(
-            'border-outline-variant/25 h-9 max-w-0 truncate border-b px-3',
+            'border-outline-variant/20 h-11 max-w-0 truncate border-b px-3',
             'text-on-surface-variant text-[13px]',
             index === 0 && 'pl-4',
             cell.column.columnDef.meta?.align === 'end' &&
@@ -133,7 +134,6 @@ const BodyRow = memo(
     })
   },
   (prev, next) =>
-    prev.offset === next.offset &&
     prev.focused === next.focused &&
     prev.renderRow === next.renderRow &&
     prev.isRowEqual === next.isRowEqual &&
@@ -187,6 +187,7 @@ function ConnectionsTable<TRow extends RowData>({
   )
 
   const { viewportRef } = useScrollAreaViewport()
+  const viewportElement = useScrollAreaViewportElement()
 
   const table = useTable({
     features,
@@ -210,9 +211,13 @@ function ConnectionsTable<TRow extends RowData>({
 
   const { rows } = table.getRowModel()
 
+  const bottomInset = useDataPageBottomInset()
+
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => viewportRef.current,
+    paddingEnd: bottomInset,
+    scrollPaddingEnd: bottomInset,
+    getScrollElement: () => viewportElement,
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
   })
@@ -276,6 +281,14 @@ function ConnectionsTable<TRow extends RowData>({
   const cellWidths = visibleColumns.map(
     (column) => column.getSize() + extraWidthPerColumn,
   )
+  const firstVirtualItem = virtualItems[0]
+  const lastVirtualItem = virtualItems.at(-1)
+  const totalVirtualSize = rowVirtualizer.getTotalSize()
+  const topSpacer = firstVirtualItem?.start ?? 0
+  const bottomSpacer = Math.max(
+    0,
+    totalVirtualSize - (lastVirtualItem?.end ?? 0),
+  )
 
   const settingsModal = (
     <ColumnSettingsModal
@@ -317,13 +330,14 @@ function ConnectionsTable<TRow extends RowData>({
         className="mx-auto min-h-full"
         data-slot="connections-virtual-container"
         style={{
-          height: `${rowVirtualizer.getTotalSize()}px`,
+          // The sticky h-10 header occupies space before the virtual rows.
+          height: `${rowVirtualizer.getTotalSize() + 40}px`,
         }}
       >
         <table
-          className="divide-outline-variant w-full table-fixed border-separate border-spacing-0"
+          className="w-full table-fixed border-separate border-spacing-0"
           data-slot="connections-virtual-table"
-          style={{ width: tableRenderWidth }}
+          style={{ width: tableRenderWidth, height: totalVirtualSize + 40 }}
         >
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -338,8 +352,8 @@ function ConnectionsTable<TRow extends RowData>({
                       key={header.id}
                       colSpan={header.colSpan}
                       className={cn(
-                        'group/th bg-mixed-background sticky top-0 z-20 h-9 p-0',
-                        'border-outline-variant border-b',
+                        'group/th bg-mixed-background sticky top-0 z-20 h-10 p-0',
+                        'border-outline-variant/25 border-b',
                       )}
                       style={{ width: header.getSize() + extraWidthPerColumn }}
                     >
@@ -400,7 +414,15 @@ function ConnectionsTable<TRow extends RowData>({
 
           <tbody className="select-text" data-slot="connections-virtual-tbody">
             <RowsTickContext.Provider value={data}>
-              {virtualItems.map((virtualRow, index) => {
+              <tr aria-hidden="true" className="h-0">
+                <td
+                  className="h-0 border-0 p-0"
+                  colSpan={Math.max(visibleColumnCount, 1)}
+                  style={{ height: topSpacer }}
+                />
+              </tr>
+
+              {virtualItems.map((virtualRow) => {
                 const row = rows[virtualRow.index]
 
                 if (!row) {
@@ -413,13 +435,20 @@ function ConnectionsTable<TRow extends RowData>({
                     row={row}
                     columns={visibleColumns}
                     widths={cellWidths}
-                    offset={virtualRow.start - index * virtualRow.size}
                     focused={row.id === focusedRowId}
                     renderRow={renderRow}
                     isRowEqual={isRowEqual}
                   />
                 )
               })}
+
+              <tr aria-hidden="true" className="h-0">
+                <td
+                  className="h-0 border-0 p-0"
+                  colSpan={Math.max(visibleColumnCount, 1)}
+                  style={{ height: bottomSpacer }}
+                />
+              </tr>
             </RowsTickContext.Provider>
           </tbody>
         </table>

@@ -118,6 +118,12 @@ spacing, shape, motion, and semantic color tokens (`primary`, `surface`,
 `on-surface`, etc.). Preserve
 dark-mode, focus, disabled, loading, and keyboard behavior; avoid a parallel design system.
 
+Use `cva()` from `class-variance-authority` for reusable class definitions, including
+styles without variants. Name these definitions in camelCase with a `Variants`
+suffix and call them at the use site. Do not extract class strings into
+`*_CLASS` or `*_CLASSES` constants. Keep one-use layout classes inline; use `cn()`
+to merge generated classes with caller overrides, not to define reusable styles.
+
 Dashboard widgets must not contain internal scrollbars. Keep content within the
 widget's allocated size with `min-h-0` and `overflow-hidden`; do not use
 `overflow-auto` or `overflow-scroll` to accommodate widget content. Reduce visible
@@ -134,6 +140,92 @@ Oxlint enforces this boundary with `no-restricted-imports`: `radix-ui` and
 `@radix-ui/*` imports belong inside `frontend/ui/`, not feature/page modules.
 This prevents bypassing project styling; it cannot judge Material You fidelity or
 whether a new component should have reused an existing one.
+
+## Compose components around their responsibilities
+
+- For compound controls, keep the meaningful parts visible in JSX and follow the
+  existing project/Radix composition, such as `Select`, `SelectTrigger`,
+  `SelectContent`, and `SelectItem`. Prefer this over one opaque component whose
+  props describe every part of the control.
+- Add a wrapper when it owns reusable behavior, accessibility, a styling contract,
+  or a domain concept. Do not add layers that only rename a component, forward the
+  same props, or introduce another layout element. Reuse the existing UI wrapper
+  directly when it already provides the needed behavior and styling. Even when
+  intermediate components have their own purpose, avoid serially forwarding the
+  same state and callbacks through each layer when their descendants can read
+  shared values from an appropriately scoped context.
+- Keep component props focused on that component's responsibility. Do not make a
+  single component switch between unrelated layouts or behaviors through a large
+  collection of optional props. Compose focused components at the page or feature
+  boundary instead; keep one-off composition local.
+- Keep state with the nearest component that owns it. When several descendants
+  need the same feature state or callbacks, provide them through a feature-scoped
+  context and a named hook in the nearest shared module. Keep state and callbacks
+  as direct props when they serve only one child; do not create broad application
+  context for page-specific state. Keep transient interaction state, such as hover
+  or dialog-open state, local to the component that uses it.
+
+For example, compose a select from its semantic parts:
+
+```tsx
+<Select value={range} onValueChange={onRangeChange}>
+  <SelectTrigger aria-label="Time range">
+    <SelectValue placeholder="Choose a range" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="last_hour">Last hour</SelectItem>
+    <SelectItem value="last24_hours">Last 24 hours</SelectItem>
+  </SelectContent>
+</Select>
+```
+
+Use a feature-scoped context and hook when multiple descendants share state or
+callbacks; expose only the values they share. Keep each page's composition and
+page-specific data selection in its route.
+
+## Organize routed pages and their modules
+
+- A feature with distinct navigable pages must use nested file routes and a
+  route outlet, rather than a large conditional page component under `_modules/`.
+  The parent `route.tsx` owns the shared layout and state that must survive child
+  navigation, such as filters, scope, time range, and paused updates.
+- Use the project's `AnimatedOutletPreset` from
+  `@/components/router/animated-outlet` as the default outlet for nested app pages.
+  It supplies the shared route transitions and history direction; do not build
+  page-specific animation wrappers. Use a plain `Outlet` only when the route has
+  a concrete reason to omit transitions. Keep the surrounding scroll surface
+  clipped (`overflow-clip`) so entering and exiting pages cannot spill into the
+  sidebar or create horizontal overflow, and preserve content sizing and spacing
+  inside the animated wrapper. The animated page must fill the available content
+  height, even on short routes: provide a resolved height or viewport-derived
+  minimum height on its parent, use a column flex layout, and let the outlet grow
+  with `flex-1`. Carry this height chain through scroll-area content wrappers;
+  `h-full` on a child of an auto-height parent is insufficient. Keep long content
+  scrollable rather than fixing every page to the viewport height. See the
+  component's JSDoc for the layout contract.
+- Place a child page in its own directory with `index.tsx`, for example
+  `topology/source/index.tsx`, instead of a flat `topology/source.tsx`. Place
+  modules used only by that page in `topology/source/_modules/`.
+- The `index.tsx` must define the named page component and own its composition,
+  including data selection, loading, and empty states. Do not make it a one-line
+  forwarding wrapper around a separate generic page controller. Reuse focused
+  presentational components and hooks instead.
+- Determine production module scope from its actual consumers. Components,
+  hooks, and helpers used only by the map belong in `topology/map/_modules/`;
+  those used only by connection paths belong in `topology/flow/_modules/`.
+  Do not keep page-specific modules in the parent's `_modules/` or promote them
+  there for hypothetical future reuse. Test files still follow the package's
+  `tests/` layout described in the testing guide.
+- Place shared feature modules in the nearest common ancestor's `_modules/`,
+  for example `topology/_modules/traffic-context.tsx`. Do not place helper files
+  alongside route files or use a leading `-` to hide them from route generation.
+  The app's existing route generator ignores `_modules/`.
+- Use router links for page navigation and preserve the parent's typed search
+  state and cross-navigation return ticket. Keep shared query and polling owners
+  in the parent so child navigation does not reset pause state or duplicate
+  subscriptions. Redirect existing shared URLs when paths change.
+- Regenerate the route tree through the app's existing Vite route plugin; never
+  hand-edit generated route declarations.
 
 ## Organize i18n messages by feature
 

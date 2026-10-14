@@ -1,5 +1,9 @@
 import { memo, useCallback, useDeferredValue, useMemo } from 'react'
-import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import {
+  ScrollArea,
+  useScrollAreaViewportElement,
+} from '@nyanpasu/ui/scroll-area'
+import { SearchField } from '@nyanpasu/ui/search-field'
 import { keepReturn } from '@/components/router/cross-navigation'
 import { ReturnButton } from '@/components/router/return-button'
 import {
@@ -13,9 +17,15 @@ import {
   useCurrentProfileUid,
 } from '@nyanpasu/query'
 import { type Bytes, type ClashRule } from '@nyanpasu/rpc/types'
-import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import {
+  DataPage,
+  dataPageSearchVariants,
+  DataPageSurface,
+  DataPageToolbar,
+  useDataPageBottomInset,
+} from '../_modules/data-page'
 import { useFocusHighlight } from '../_modules/focus-highlight'
 import { ruleLabel } from '../_modules/traffic-filters'
 import { useSearchTerm } from '../_modules/use-search-term'
@@ -76,7 +86,7 @@ const Viewer = memo(function Viewer({
 
   const { proxy } = IndexRoute.useSearch()
 
-  const { viewportRef } = useScrollAreaViewport()
+  const viewportElement = useScrollAreaViewportElement()
 
   const {
     proxies: { data: proxies },
@@ -150,9 +160,13 @@ const Viewer = memo(function Viewer({
 
   const items = byLive ?? byTotal ?? entries
 
+  const bottomInset = useDataPageBottomInset()
+
   const rowVirtualizer = useVirtualizer({
     count: items.length,
-    getScrollElement: () => viewportRef.current,
+    paddingEnd: bottomInset,
+    scrollPaddingEnd: bottomInset,
+    getScrollElement: () => viewportElement,
     estimateSize: () => RULE_ROW_HEIGHT,
     getItemKey: (index) => items[index].index,
     overscan: 10,
@@ -203,7 +217,7 @@ const Viewer = memo(function Viewer({
 
   return (
     <div
-      className="relative mx-auto max-w-7xl"
+      className="relative w-full"
       data-slot="rules-virtual-container"
       style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
     >
@@ -273,35 +287,36 @@ function RouteComponent() {
   const showRules = useDeferredValue(true, false)
 
   return (
-    <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
-      <div className="bg-mixed-background shrink-0">
-        <div className="mx-auto max-w-7xl">
-          <RulesHeader sort={sort} onSortChange={handleSortChange} />
-        </div>
-      </div>
+    <DataPage
+      title={m.navbar_label_rules()}
+      toolbar={
+        <DataPageToolbar data-slot="rules-search">
+          <ReturnButton />
 
-      <ScrollArea className="min-h-0 flex-1" type="hover">
-        {showRules && <Viewer search={deferredSearch} sort={sort} />}
-      </ScrollArea>
+          <SearchField
+            className={dataPageSearchVariants({
+              className: 'min-w-0 flex-1 basis-48',
+            })}
+            data-slot="rules-search-input-field"
+            placeholder={m.rules_search_placeholder()}
+            clearLabel={m.common_clear()}
+            value={search}
+            onValueChange={setSearch}
+          />
+        </DataPageToolbar>
+      }
+    >
+      <DataPageSurface className="@container overflow-hidden">
+        <ScrollArea className="min-h-0 flex-1" scrollbars="horizontal">
+          <div className="flex h-full min-h-0 min-w-[35rem] flex-1 flex-col">
+            <RulesHeader sort={sort} onSortChange={handleSortChange} />
 
-      <div
-        className="bg-mixed-background @container flex h-16 shrink-0 items-center gap-3 px-4"
-        data-slot="rules-search"
-      >
-        <ReturnButton />
-
-        <input
-          type="text"
-          className={cn(
-            'bg-surface-variant dark:bg-surface-variant/30',
-            'h-10 min-w-0 flex-1 rounded-full px-4 pr-10 text-sm outline-none',
-          )}
-          data-slot="rules-search-input-field"
-          placeholder={m.rules_search_placeholder()}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-    </div>
+            <ScrollArea className="min-h-0 flex-1" type="hover">
+              {showRules && <Viewer search={deferredSearch} sort={sort} />}
+            </ScrollArea>
+          </div>
+        </ScrollArea>
+      </DataPageSurface>
+    </DataPage>
   )
 }

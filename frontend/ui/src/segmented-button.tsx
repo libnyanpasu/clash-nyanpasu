@@ -1,6 +1,6 @@
 import Check from '~icons/material-symbols/check-rounded'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { motion } from 'motion/react'
+import { motion, useReducedMotion } from 'motion/react'
 import { ToggleGroup as ToggleGroupPrimitive } from 'radix-ui'
 import {
   ComponentProps,
@@ -153,6 +153,7 @@ export const SegmentedButton = ({
   children,
   ...rest
 }: SegmentedButtonProps) => {
+  const reducedMotion = useReducedMotion()
   const rootRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef(new Map<string, HTMLButtonElement>())
   const [pillRect, setPillRect] = useState<PillRect>(null)
@@ -273,9 +274,9 @@ export const SegmentedButton = ({
             initial={false}
             animate={{ x: pillRect!.x, width: pillRect!.width }}
             transition={
-              hasMeasured
-                ? { type: 'spring', bounce: 0.15, duration: 0.45 }
-                : { duration: 0 }
+              reducedMotion || !hasMeasured
+                ? { duration: 0 }
+                : { type: 'spring', bounce: 0.15, duration: 0.45 }
             }
             onAnimationStart={() => {
               if (!hasMeasured) setHasMeasured(true)

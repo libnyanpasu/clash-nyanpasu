@@ -18,7 +18,11 @@ import {
 } from '@tanstack/react-router'
 import '../src/utils/language'
 import { ReturnButton } from '../src/components/router/return-button'
-import { trafficSearchSchema } from '../src/pages/(main)/main/topology/_modules/search'
+import {
+  toQuery,
+  trafficSearchSchema,
+} from '../src/pages/(main)/main/topology/_modules/search'
+import { TrafficPageContext } from '../src/pages/(main)/main/topology/_modules/traffic-context'
 import TrafficToolbar from '../src/pages/(main)/main/topology/_modules/traffic-toolbar'
 
 // The tests project registers the app's router (see the navbar test), so the
@@ -30,24 +34,32 @@ vi.mock('./icon-stub', () => ({
   default: (props: object) => <svg {...props} />,
 }))
 
-// The bar goes on one line from @3xl (768px). 767 is the widest wrapped bar,
-// 768 the narrowest single line.
-const WRAPPED = [480, 672, 767]
-const ONE_LINE = 768
+const VIEWPORT_WIDTHS = [320, 480, 672, 768]
 
 async function openToolbar(ticket: boolean) {
+  const search = trafficSearchSchema.parse({
+    filters: [{ d: 'process', v: 'Browser with a long name' }],
+  })
+
   const rootRoute = createRootRoute({
     component: () => (
       <div data-testid="frame">
-        <TrafficToolbar
-          search={trafficSearchSchema.parse({})}
-          paused={false}
-          labelOf={(_, key) => ({ text: key, title: key, mono: false })}
-          onSearchChange={() => {}}
-          onPausedChange={() => {}}
-          onViewConnections={() => {}}
-          start={<ReturnButton />}
-        />
+        <TrafficPageContext.Provider
+          value={{
+            search,
+            labelOf: (_, key) => ({ text: key, title: key, mono: false }),
+            query: toQuery(search),
+            empty: false,
+            paused: false,
+            onSearchChange: () => {},
+            onPausedChange: () => {},
+            onViewConnections: () => {},
+          }}
+        >
+          <TrafficToolbar>
+            <ReturnButton />
+          </TrafficToolbar>
+        </TrafficPageContext.Provider>
       </div>
     ),
   })
@@ -84,11 +96,13 @@ async function openToolbar(ticket: boolean) {
   }
 
   const frame = view.getByTestId('frame').element() as HTMLElement
-  const row = frame.querySelector('[data-slot=traffic-toolbar] > div')!
+  const toolbar = frame.querySelector<HTMLElement>(
+    '[data-slot=traffic-toolbar]',
+  )!
 
   // Widths are only meaningful once the bar is drawn in Inter.
   await document.fonts.ready
-  expect(getComputedStyle(row).fontFamily).toMatch(/^"Inter Variable"/)
+  expect(getComputedStyle(toolbar).fontFamily).toMatch(/^"Inter Variable"/)
   expect(
     [...document.fonts].some(
       (face) =>
@@ -97,37 +111,87 @@ async function openToolbar(ticket: boolean) {
     ),
   ).toBe(true)
 
+  await expect
+    .element(view.getByRole('button', { name: m.traffic_metric_label() }))
+    .toHaveAttribute('title', m.traffic_metric_bytes())
+  await expect
+    .element(view.getByRole('button', { name: m.traffic_range_label() }))
+    .toHaveAttribute('title', m.traffic_range_last_hour())
+
   return {
     resize: (width: number) => (frame.style.width = `${width}px`),
-    row,
+    toolbar,
+    scope: toolbar.querySelector<HTMLElement>('[data-slot=traffic-scope]')!,
+    controls: toolbar.querySelector<HTMLElement>(
+      '[data-slot=traffic-controls]',
+    )!,
+    filters: toolbar.querySelector<HTMLElement>('[data-slot=traffic-filters]')!,
     pause: pause.element(),
   }
 }
 
 for (const locale of locales) {
   for (const ticket of [false, true]) {
-    test(`${locale}, ${ticket ? 'with' : 'without'} the way back: no control overflows the bar`, async () => {
+    test(`${locale}, ${ticket ? 'with' : 'without'} the way back: controls fit and filters dock below`, async () => {
       const previous = getLocale()
       setLocale(locale, { reload: false })
       onTestFinished(() => setLocale(previous, { reload: false }))
 
-      const { resize, row, pause } = await openToolbar(ticket)
+      const { resize, toolbar, scope, controls, filters, pause } =
+        await openToolbar(ticket)
 
-      for (const width of [...WRAPPED, ONE_LINE]) {
+      for (const width of VIEWPORT_WIDTHS) {
         resize(width)
 
-        expect(row.scrollWidth, `${width}px`).toBeLessThanOrEqual(
-          row.clientWidth,
+        expect(toolbar.scrollWidth, `${width}px toolbar`).toBeLessThanOrEqual(
+          toolbar.clientWidth,
         )
         expect(
           pause.getBoundingClientRect().right,
           `${width}px`,
-        ).toBeLessThanOrEqual(row.getBoundingClientRect().right)
+        ).toBeLessThanOrEqual(toolbar.getBoundingClientRect().right)
+
+        const toolbarBounds = toolbar.getBoundingClientRect()
+        const scopeBounds = scope.getBoundingClientRect()
+        const controlsBounds = controls.getBoundingClientRect()
+        const filtersBounds = filters.getBoundingClientRect()
+
+        expect(scopeBounds.left, `${width}px scope`).toBeGreaterThanOrEqual(
+          toolbarBounds.left,
+        )
+        expect(controlsBounds.right, `${width}px controls`).toBeLessThanOrEqual(
+          toolbarBounds.right,
+        )
+        expect(
+          filtersBounds.top,
+          `${width}px filters below controls`,
+        ).toBeGreaterThanOrEqual(
+          Math.max(scopeBounds.bottom, controlsBounds.bottom),
+        )
+        expect(filtersBounds.right, `${width}px filters`).toBeLessThanOrEqual(
+          toolbarBounds.right,
+        )
+
+        for (const slot of [
+          'traffic-scope',
+          'traffic-metric-range',
+          'traffic-actions',
+          'traffic-filters',
+        ]) {
+          const pill = toolbar.querySelector<HTMLElement>(
+            `[data-slot=${slot}]`,
+          )!
+          expect(
+            pill.getBoundingClientRect().height,
+            `${width}px ${slot}`,
+          ).toBe(44)
+        }
       }
 
-      // One line: the bar keeps its single-row height.
-      resize(ONE_LINE)
-      expect(row.getBoundingClientRect().height).toBe(64)
+      resize(768)
+      expect(controls.getBoundingClientRect().top).toBe(
+        scope.getBoundingClientRect().top,
+      )
     })
   }
 }

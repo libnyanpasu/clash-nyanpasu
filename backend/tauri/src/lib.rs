@@ -5,17 +5,15 @@
 // This lint was needed by ambassador
 #![allow(clippy::duplicated_attributes)]
 mod bundle;
-mod client;
 mod cmds;
 mod consts;
 mod core;
-mod enhance;
+mod desktop;
 mod event_handler;
 mod ipc;
 mod server;
 mod setup;
 mod specta_export;
-mod state;
 mod storage;
 mod unified_rpc;
 

@@ -97,6 +97,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 http_args.push(quote!(&dependencies.storage));
             } else if state_name.as_deref() == Some("PathResolver") {
                 http_args.push(quote!(&dependencies.paths));
+            } else if state_name.as_deref() == Some("HttpServerClient") {
+                http_args.push(quote!(&dependencies.debug_http));
             } else {
                 http_supported = false;
             }
@@ -343,9 +345,14 @@ fn can_share_with_http(signature: &syn::Signature, owner: bool) -> bool {
             return false;
         }
         if is_state(&argument.ty) {
-            if !["NyanpasuClient", "Storage", "PathResolver"]
-                .iter()
-                .any(|name| is_state_of(&argument.ty, name))
+            if ![
+                "NyanpasuClient",
+                "Storage",
+                "PathResolver",
+                "HttpServerClient",
+            ]
+            .iter()
+            .any(|name| is_state_of(&argument.ty, name))
             {
                 return false;
             }
@@ -476,6 +483,18 @@ mod tests {
         let expanded = expand(command).unwrap().to_string();
 
         assert!(expanded.contains("& dependencies . paths"));
+        assert!(!expanded.contains("RpcError :: unsupported"));
+    }
+
+    #[test]
+    fn the_http_server_state_is_served_from_the_http_dependencies() {
+        let command = syn::parse_quote! {
+            #[nyanpasu_macro::rpc(http)]
+            pub async fn get_debug_http_status(debug_http: State<'_, HttpServerClient>) -> Result<DebugHttpStatus> { todo!() }
+        };
+        let expanded = expand(command).unwrap().to_string();
+
+        assert!(expanded.contains("& dependencies . debug_http"));
         assert!(!expanded.contains("RpcError :: unsupported"));
     }
 

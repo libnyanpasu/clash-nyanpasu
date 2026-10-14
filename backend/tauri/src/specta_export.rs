@@ -14,7 +14,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         // in the schema builder below and dispatch through call_rpc.
         .commands(collect_commands![unified_rpc::call_rpc])
         .events(collect_events![
-            crate::client::app_update::AppUpdateStateChanged,
+            crate::desktop::app_update::AppUpdateStateChanged,
             core::status_events::CoreLogsChanged,
             core::status_events::ClashWsEvent,
             window::WindowMessageEvent,
@@ -183,7 +183,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         ],
     )
     .events(collect_events![
-        crate::client::app_update::AppUpdateStateChanged,
+        crate::desktop::app_update::AppUpdateStateChanged,
         core::status_events::CoreLogsChanged,
         core::status_events::ClashWsEvent,
         window::WindowMessageEvent,
@@ -205,7 +205,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     .typ::<nyanpasu_config::profile::ProfileMetadataPatch>()
     .typ::<nyanpasu_config::profile::RemoteProfileOptionsPatch>()
     .typ::<nyanpasu_config::profile::ProfileValidationError>()
-    .typ::<crate::client::StateChanged>()
+    .typ::<crate::desktop::StateChanged>()
     .build(TanstackQueryFramework::React);
 
     let (query_bindings, builder) = command_set;

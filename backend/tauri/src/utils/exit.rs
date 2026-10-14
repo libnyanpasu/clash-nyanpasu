@@ -3,7 +3,7 @@
 //! and asks Tauri to exit again once every owner has finished.
 use tauri::{AppHandle, ExitRequestApi, Manager, RESTART_EXIT_CODE, process::current_binary};
 
-use crate::client::NyanpasuClient;
+use nyanpasu_core::client::NyanpasuClient;
 
 /// What the app does once its owners have shut down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,14 +190,14 @@ pub fn shutdown_on_main_thread(app_handle: &AppHandle) {
         return;
     };
     let (done, work) = app_handle
-        .state::<std::sync::Arc<crate::client::MainThreadHandoff>>()
+        .state::<std::sync::Arc<crate::desktop::MainThreadHandoff>>()
         .take_over();
     client.request_shutdown();
     tauri::async_runtime::spawn(async move {
         client.wait_shutdown().await;
-        let _ = done.send(crate::client::MainThreadWork::Done);
+        let _ = done.send(crate::desktop::MainThreadWork::Done);
     });
-    while let Ok(crate::client::MainThreadWork::Run(task)) = work.recv() {
+    while let Ok(crate::desktop::MainThreadWork::Run(task)) = work.recv() {
         task();
     }
     app_handle.cleanup_before_exit();

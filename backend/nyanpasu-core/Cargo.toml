@@ -7,6 +7,10 @@ authors.workspace = true
 
 [dependencies]
 nyanpasu-core-manager = { workspace = true }
+nyanpasu-jobs = { path = '../nyanpasu-runtime/crates/nyanpasu-jobs', features = [
+  'specta'
+] }
+seahash = { version = '4.1', features = ['use_std'] }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-utils = { workspace = true }
 runas = { workspace = true }

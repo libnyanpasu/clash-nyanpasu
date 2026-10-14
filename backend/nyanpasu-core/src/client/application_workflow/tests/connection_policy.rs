@@ -1,0 +1,1085 @@
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
+
+use axum::{Router, extract::State, http::StatusCode, routing::delete};
+use futures_util::FutureExt;
+use nyanpasu_config::clash::config::overrides::{ClashGuardOverridesPatch, Mode};
+use nyanpasu_core_manager::{CoreError, OperationId};
+use nyanpasu_ipc::api::{
+    core::v2::{CoreApiConnection, OperationInfo},
+    status::{CoreControllerInfo, CoreStateDetail},
+};
+use struct_patch::Patch as _;
+use tokio::sync::Notify;
+
+use crate::{
+    client::{
+        NyanpasuClient,
+        tests::{TestControlEndpoint, test_client_args_with_endpoint},
+    },
+    control::endpoint::{ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost},
+};
+
+#[derive(Default)]
+struct Calls {
+    events: Mutex<Vec<&'static str>>,
+    fail_close: AtomicBool,
+    hold_close: AtomicBool,
+    entered: Notify,
+    release: Notify,
+}
+
+struct Endpoint {
+    delegate: Arc<TestControlEndpoint>,
+    binding: Mutex<Option<CoreApiConnection>>,
+    replace: AtomicBool,
+    report_restart: AtomicBool,
+    calls: Arc<Calls>,
+    api_queries: AtomicUsize,
+    fail_monitor_subscription: AtomicBool,
+}
+
+impl Endpoint {
+    fn outcome(&self, mut operation: OperationInfo) -> OperationInfo {
+        if let Some(nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(outcome)) =
+            &mut operation.output
+        {
+            outcome.outcome = if self.report_restart.load(Ordering::SeqCst) {
+                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Restarted
+            } else {
+                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Patched
+            };
+        }
+        operation
+    }
+}
+
+#[async_trait::async_trait]
+impl ControlEndpoint for Endpoint {
+    fn host(&self) -> ExecutionHost {
+        ExecutionHost::Local
+    }
+    async fn api_connection(&self) -> Result<Option<CoreApiConnection>, CoreError> {
+        self.api_queries.fetch_add(1, Ordering::SeqCst);
+        Ok(self.binding.lock().unwrap().clone())
+    }
+    async fn api_changes(&self) -> Result<Option<crate::control::endpoint::ApiChanges>, CoreError> {
+        if self.fail_monitor_subscription.load(Ordering::SeqCst) {
+            return Err(CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::BackendUnavailable,
+                "scripted: monitor subscription unavailable",
+                true,
+            ));
+        }
+        Ok(None)
+    }
+    async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
+        self.calls.events.lock().unwrap().push("reconcile");
+        let result = self.delegate.submit(submission).await;
+        if self.replace.load(Ordering::SeqCst) {
+            self.binding.lock().unwrap().as_mut().unwrap().instance_id = "replacement".into();
+        }
+        result.map(|operation| self.outcome(operation))
+    }
+    async fn wait_operation(
+        &self,
+        id: OperationId,
+        timeout: std::time::Duration,
+    ) -> Option<OperationInfo> {
+        self.delegate
+            .wait_operation(id, timeout)
+            .await
+            .map(|operation| self.outcome(operation))
+    }
+    async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
+        self.delegate.status().await
+    }
+}
+
+struct Fixture {
+    client: NyanpasuClient,
+    endpoint: Arc<Endpoint>,
+    calls: Arc<Calls>,
+    server: tokio::task::JoinHandle<()>,
+    _dir: tempfile::TempDir,
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        self.server.abort();
+    }
+}
+impl Fixture {
+    async fn new(fail_reconcile: bool) -> Self {
+        Self::with_installer(
+            fail_reconcile,
+            Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+        )
+        .await
+    }
+
+    async fn with_installer(
+        fail_reconcile: bool,
+        installer: Arc<dyn crate::runtime::binary::BinaryInstaller>,
+    ) -> Self {
+        Self::with_monitor_subscription(fail_reconcile, installer, false).await
+    }
+
+    async fn with_monitor_subscription(
+        fail_reconcile: bool,
+        installer: Arc<dyn crate::runtime::binary::BinaryInstaller>,
+        fail_monitor_subscription: bool,
+    ) -> Self {
+        let calls = Arc::new(Calls::default());
+        let (url, server) = (async {
+            let router = Router::new()
+                .route(
+                    "/connections",
+                    delete(|State(calls): State<Arc<Calls>>| async move {
+                        calls.events.lock().unwrap().push("close");
+                        if calls.hold_close.load(Ordering::SeqCst) {
+                            calls.entered.notify_one();
+                            calls.release.notified().await;
+                        }
+                        if calls.fail_close.load(Ordering::SeqCst) {
+                            StatusCode::SERVICE_UNAVAILABLE
+                        } else {
+                            StatusCode::NO_CONTENT
+                        }
+                    }),
+                )
+                .with_state(calls.clone());
+            crate::client::proxies_test_support::server(router).await
+        })
+        .await;
+        let endpoint = Arc::new(Endpoint {
+            delegate: if fail_reconcile {
+                TestControlEndpoint::failing()
+            } else {
+                TestControlEndpoint::succeeding()
+            },
+            binding: Mutex::new(Some(CoreApiConnection {
+                instance_id: "source".into(),
+                controller: CoreControllerInfo::Http(url),
+                secret: None,
+            })),
+            replace: AtomicBool::new(false),
+            report_restart: AtomicBool::new(false),
+            calls: calls.clone(),
+            api_queries: AtomicUsize::new(0),
+            fail_monitor_subscription: AtomicBool::new(fail_monitor_subscription),
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let mut args = test_client_args_with_endpoint(&dir, endpoint.clone()).await;
+        args.binary_installer = installer;
+        let client = NyanpasuClient::try_new_with_args(args)
+            .await
+            .unwrap()
+            .client;
+        (endpoint.delegate.prime(&client)).await;
+        calls.events.lock().unwrap().clear();
+        endpoint.api_queries.store(0, Ordering::SeqCst);
+        Self {
+            client,
+            endpoint,
+            calls,
+            server,
+            _dir: dir,
+        }
+    }
+}
+fn mode_patch() -> ClashGuardOverridesPatch {
+    ClashGuardOverridesPatch {
+        mode: Some(Mode::Global),
+        ..Default::default()
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mode_interruption_follows_same_instance_reconcile_once() {
+    let f = Fixture::new(false).await;
+    (async {
+        let outcome = f
+            .client
+            .patch_runtime_overrides(mode_patch())
+            .await
+            .unwrap();
+        assert!(outcome.degradations().is_empty());
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        let repeated = f
+            .client
+            .patch_runtime_overrides(mode_patch())
+            .await
+            .unwrap();
+        assert!(repeated.degradations().is_empty());
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "close", "reconcile", "close"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn disabled_policy_and_non_mode_patches_do_not_close_connections() {
+    let f = Fixture::new(false).await;
+    (async {
+        let outcome = f
+            .client
+            .patch_runtime_overrides(ClashGuardOverridesPatch {
+                ipv6: Some(true),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(outcome.degradations().is_empty());
+        let mut config = f.client.get_clash_config().await.unwrap();
+        config.break_connection.on_mode_change = false;
+        f.client
+            .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
+                break_connection: config.break_connection.into_patch(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let outcome = f
+            .client
+            .patch_runtime_overrides(mode_patch())
+            .await
+            .unwrap();
+        assert!(outcome.degradations().is_empty());
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "reconcile"]);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn failed_reconcile_never_closes_connections() {
+    let f = Fixture::new(true).await;
+    (async {
+        let outcome = f
+            .client
+            .patch_runtime_overrides(mode_patch())
+            .await
+            .unwrap();
+        assert_eq!(outcome.degradations().len(), 1);
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::RuntimeDeferred { .. }
+        ));
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn replacement_at_the_same_url_never_receives_source_interruption() {
+    for reported in [false, true] {
+        let f = Fixture::new(false).await;
+        f.endpoint.replace.store(true, Ordering::SeqCst);
+        f.endpoint.report_restart.store(reported, Ordering::SeqCst);
+        (async {
+            let outcome = f
+                .client
+                .patch_runtime_overrides(mode_patch())
+                .await
+                .unwrap();
+            if reported {
+                assert!(outcome.degradations().is_empty());
+            } else {
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+                ));
+            }
+            assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+        })
+        .await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn close_failure_is_committed_degraded_and_not_replayed() {
+    let f = Fixture::new(false).await;
+    f.calls.fail_close.store(true, Ordering::SeqCst);
+    (async {
+        let outcome = f
+            .client
+            .patch_runtime_overrides(mode_patch())
+            .await
+            .unwrap();
+        assert_eq!(outcome.degradations().len(), 1);
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+        ));
+        assert!(!outcome.degradations()[0].retryable);
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        assert_eq!(
+            serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
+            "global"
+        );
+    }).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn missing_source_is_degraded_but_confirmed_stopped_startup_needs_no_close() {
+    for stopped in [false, true] {
+        let f = Fixture::new(false).await;
+        *f.endpoint.binding.lock().unwrap() = None;
+        if stopped {
+            f.endpoint
+                .delegate
+                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+        }
+        (async {
+            let outcome = f
+                .client
+                .patch_runtime_overrides(mode_patch())
+                .await
+                .unwrap();
+            if stopped {
+                assert!(outcome.degradations().is_empty());
+            } else {
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+                ));
+            }
+            assert_eq!(
+                *f.calls.events.lock().unwrap(),
+                if stopped {
+                    Vec::<&str>::new()
+                } else {
+                    vec!["reconcile"]
+                }
+            );
+        })
+        .await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lifecycle_work_cannot_overtake_pending_interruption() {
+    let f = Fixture::new(false).await;
+    f.calls.hold_close.store(true, Ordering::SeqCst);
+    (async {
+        let first = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.patch_runtime_overrides(mode_patch()).await })
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            f.calls.entered.notified(),
+        )
+        .await
+        .unwrap();
+        let next = {
+            let client = f.client.clone();
+            tokio::spawn(async move {
+                client
+                    .patch_runtime_overrides(ClashGuardOverridesPatch {
+                        ipv6: Some(true),
+                        ..Default::default()
+                    })
+                    .await
+            })
+        };
+        assert!(!next.is_finished());
+
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        f.calls.release.notify_one();
+        assert!(first.await.unwrap().unwrap().degradations().is_empty());
+        assert!(next.await.unwrap().unwrap().degradations().is_empty());
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "close", "reconcile"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn controller_rotation_invalidates_source_without_closing_through_new_credentials() {
+    let f = Fixture::new(false).await;
+    // Simulate an independently retired source lease, not a confirmed process replacement.
+    f.endpoint.calls.hold_close.store(true, Ordering::SeqCst);
+    (async {
+        let first = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.patch_runtime_overrides(mode_patch()).await })
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            f.calls.entered.notified(),
+        )
+        .await
+        .unwrap();
+        f.endpoint.binding.lock().unwrap().as_mut().unwrap().secret = Some("rotated".into());
+        f.calls.release.notify_one();
+        let outcome = first.await.unwrap().unwrap();
+        assert!(matches!(
+            outcome.degradations()[0].reason,
+            crate::client::runtime::DegradationReason::ModeInterruptionFailed { .. }
+        ));
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+    })
+    .await;
+}
+
+async fn add_profile(f: &Fixture) -> nyanpasu_config::profile::ProfileId {
+    f.client
+        .add_profile(
+            crate::client::tests::minimal_file_profile_request(),
+            Some("proxies: []\n".into()),
+        )
+        .await
+        .unwrap()
+        .into_value()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn profile_activation_and_deselection_interrupt_only_actual_current_changes() {
+    let f = Fixture::new(false).await;
+    (async {
+        let uid = add_profile(&f).await;
+        assert!(
+            f.client
+                .activate_profile(Some(uid.clone()))
+                .await
+                .unwrap()
+                .degradations()
+                .is_empty()
+        );
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        f.calls.events.lock().unwrap().clear();
+        assert!(
+            f.client
+                .activate_profile(Some(uid.clone()))
+                .await
+                .unwrap()
+                .degradations()
+                .is_empty()
+        );
+        let other = add_profile(&f).await;
+        assert!(
+            f.client
+                .delete_profile(other)
+                .await
+                .unwrap()
+                .degradations()
+                .is_empty()
+        );
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+        assert!(f.client.delete_profile(uid.clone()).await.is_err());
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+        f.calls.events.lock().unwrap().clear();
+        assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
+        assert!(
+            f.client
+                .activate_profile(None)
+                .await
+                .unwrap()
+                .degradations()
+                .is_empty()
+        );
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn profile_autoactivation_uses_policy_and_does_not_interrupt_an_existing_selection() {
+    for enabled in [false, true] {
+        let f = Fixture::new(false).await;
+        (async {
+            let mut config = f.client.get_clash_config().await.unwrap();
+            config.break_connection.on_profile_change = enabled;
+            f.client
+                .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
+                    break_connection: config.break_connection.into_patch(),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            let first = f
+                .client
+                .create_profile(
+                    crate::client::tests::minimal_file_profile_request(),
+                    Some("proxies: []\n".into()),
+                )
+                .await
+                .unwrap();
+            assert!(first.degradations().is_empty());
+            assert_eq!(
+                *f.calls.events.lock().unwrap(),
+                if enabled {
+                    vec!["reconcile", "close"]
+                } else {
+                    vec!["reconcile"]
+                }
+            );
+            f.calls.events.lock().unwrap().clear();
+            f.client
+                .create_profile(
+                    crate::client::tests::minimal_file_profile_request(),
+                    Some("proxies: []\n".into()),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                f.client.get_profiles().await.unwrap().current,
+                Some(first.into_value())
+            );
+            assert!(f.calls.events.lock().unwrap().is_empty());
+        })
+        .await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn profile_reconcile_rejects_selection_but_interruption_failure_preserves_commit() {
+    for fail_reconcile in [false, true] {
+        let f = Fixture::new(fail_reconcile).await;
+        f.calls.fail_close.store(!fail_reconcile, Ordering::SeqCst);
+        (async {
+            let uid = add_profile(&f).await;
+            let result = f.client.activate_profile(Some(uid.clone())).await;
+            if fail_reconcile {
+                assert!(result.is_err());
+                assert!(f.client.get_profiles().await.unwrap().current.is_none());
+                assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+            } else {
+                assert!(matches!(
+                    result.unwrap().degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
+                assert_eq!(f.client.get_profiles().await.unwrap().current, Some(uid));
+                assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+            }
+        })
+        .await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn profile_replacement_never_receives_source_interruption() {
+    for reported in [false, true] {
+        let f = Fixture::new(false).await;
+        f.endpoint.replace.store(true, Ordering::SeqCst);
+        f.endpoint.report_restart.store(reported, Ordering::SeqCst);
+        (async {
+            let uid = add_profile(&f).await;
+            let outcome = f.client.activate_profile(Some(uid)).await.unwrap();
+            if reported {
+                assert!(outcome.degradations().is_empty());
+            } else {
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
+            }
+            assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile"]);
+        })
+        .await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn profile_mutations_cannot_overtake_pending_interruption() {
+    let f = Fixture::new(false).await;
+    (async {
+        let uid = add_profile(&f).await;
+        f.calls.hold_close.store(true, Ordering::SeqCst);
+        let first = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            f.calls.entered.notified(),
+        )
+        .await
+        .unwrap();
+        let next = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(None).await })
+        };
+        assert!(!next.is_finished());
+
+        // The deselection is already committed; what queues is its apply.
+        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        f.calls.hold_close.store(false, Ordering::SeqCst);
+        f.calls.release.notify_one();
+        assert!(first.await.unwrap().unwrap().degradations().is_empty());
+        assert!(next.await.unwrap().unwrap().degradations().is_empty());
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "close", "reconcile", "close"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rejected_profile_activation_does_not_reconcile_or_interrupt() {
+    let f = Fixture::new(false).await;
+    (async {
+        assert!(
+            f.client
+                .activate_profile(Some(nyanpasu_config::profile::ProfileId("missing".into())))
+                .await
+                .is_err()
+        );
+        assert!(f.calls.events.lock().unwrap().is_empty());
+        assert!(f.client.get_profiles().await.unwrap().current.is_none());
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn profile_missing_source_is_degraded_but_stopped_core_needs_no_interruption() {
+    for stopped in [false, true] {
+        let f = Fixture::new(false).await;
+        *f.endpoint.binding.lock().unwrap() = None;
+        if stopped {
+            f.endpoint
+                .delegate
+                .set_status(Some(CoreStateDetail::Stopped { reason: None }), None);
+        }
+        (async {
+            let uid = add_profile(&f).await;
+            let outcome = f.client.activate_profile(Some(uid)).await.unwrap();
+            if stopped {
+                assert!(outcome.degradations().is_empty());
+            } else {
+                assert!(matches!(
+                    outcome.degradations()[0].reason,
+                    crate::client::runtime::DegradationReason::ProfileInterruptionFailed { .. }
+                ));
+            }
+            assert_eq!(
+                *f.calls.events.lock().unwrap(),
+                if stopped {
+                    Vec::<&str>::new()
+                } else {
+                    vec!["reconcile"]
+                }
+            );
+        })
+        .await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
+    let mut f = Fixture::with_monitor_subscription(
+        false,
+        Arc::new(crate::client::core_lifecycle::adapters::FsBinaryInstaller),
+        true,
+    )
+    .await;
+    (async {
+        // Every monitor fails before its authority-check timer is created.
+        // Stop consumers and observe real revocation before counting reads.
+        let shutdown = tokio_util::sync::CancellationToken::new();
+        let tasks = tokio_util::task::TaskTracker::new();
+        let stopped_geo = crate::geo::GeoIndexClient::spawn(
+            crate::geo::GeoIndexArgs {
+                source: Arc::new(crate::client::tests::NoopCountryIndexSource),
+                core: f.client.inner.core_api.clone(),
+            },
+            shutdown.clone(),
+            &tasks,
+        )
+        .await
+        .unwrap();
+        let mut geo_index = f.client.inner._geo_index.subscribe();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            shutdown.cancel();
+            tasks.close();
+            tasks.wait().await;
+            Arc::get_mut(&mut f.client.inner).unwrap()._geo_index = stopped_geo;
+            while geo_index.changed().await.is_ok() {}
+        })
+        .await
+        .expect("geo owner stops");
+        f.client.inner.proxies.stop_for_test().await.unwrap();
+        let api = f.client.inner.core_api.api_client().await.unwrap();
+        api.cancelled().await;
+        f.client.inner.core_api.refresh_status().await.unwrap();
+        f.endpoint.api_queries.store(0, Ordering::SeqCst);
+
+        let uid = add_profile(&f).await;
+        let mut config = f.client.get_clash_config().await.unwrap();
+        config.break_connection.on_profile_change = false;
+        f.client
+            .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
+                break_connection: config.break_connection.clone().into_patch(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        f.client.activate_profile(Some(uid.clone())).await.unwrap();
+        assert_eq!(f.endpoint.api_queries.load(Ordering::SeqCst), 0);
+
+        config.break_connection.on_profile_change = true;
+        f.client
+            .patch_clash_config(nyanpasu_config::clash::config::ClashConfigPatch {
+                break_connection: config.break_connection.into_patch(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        f.client.activate_profile(Some(uid)).await.unwrap();
+        f.client
+            .create_profile(
+                crate::client::tests::minimal_file_profile_request(),
+                Some("proxies: []\n".into()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(f.endpoint.api_queries.load(Ordering::SeqCst), 0);
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "reconcile"]);
+
+        // The source remains available when a selection actually changes.
+        f.endpoint
+            .fail_monitor_subscription
+            .store(false, Ordering::SeqCst);
+        f.client.activate_profile(None).await.unwrap();
+        assert!(f.endpoint.api_queries.load(Ordering::SeqCst) > 0);
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "reconcile", "reconcile", "close"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cancelled_profile_waiter_keeps_admission_and_reconcile_does_not_replay_interruption() {
+    let f = Fixture::new(false).await;
+    (async {
+        let uid = add_profile(&f).await;
+        f.calls.hold_close.store(true, Ordering::SeqCst);
+        let first = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            f.calls.entered.notified(),
+        )
+        .await
+        .unwrap();
+        let workflow = &f.client.inner.application_workflow;
+        let active = workflow.status().active.unwrap();
+        first.abort();
+        assert!(first.await.unwrap_err().is_cancelled());
+        // Polling once sends the reconcile, so it waits behind the held
+        // interruption.
+        let mut reconcile = Box::pin(workflow.reconcile());
+        assert!(reconcile.as_mut().now_or_never().is_none());
+        let next = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(None).await })
+        };
+        assert_eq!(workflow.status().active, Some(active));
+        // The same-domain deselection is still waiting in the source actor.
+        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        f.calls.hold_close.store(false, Ordering::SeqCst);
+        f.calls.release.notify_one();
+        reconcile.await.unwrap();
+        assert!(next.await.unwrap().unwrap().degradations().is_empty());
+        assert!(workflow.mutation_journal().completed.iter().any(|receipt| {
+            receipt.operation_id == active
+                && receipt.conclusion
+                    == crate::client::application_workflow::mutation::MutationConclusion::Confirmed
+        }));
+        assert_eq!(
+            *f.calls.events.lock().unwrap(),
+            ["reconcile", "close", "reconcile", "reconcile", "close"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn shutdown_rejects_a_queued_profile_apply_and_waits_for_close() {
+    let f = Fixture::new(false).await;
+    (async {
+        let uid = add_profile(&f).await;
+        f.calls.hold_close.store(true, Ordering::SeqCst);
+        let first = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            f.calls.entered.notified(),
+        )
+        .await
+        .unwrap();
+        let mut next = Box::pin(f.client.activate_profile(None));
+        assert!(next.as_mut().now_or_never().is_none());
+        f.client.request_shutdown();
+        let mut shutdown = Box::pin(f.client.wait_shutdown());
+        assert!(shutdown.as_mut().now_or_never().is_none());
+        assert!(f.client.get_profiles().await.unwrap().current.is_some());
+        assert!(shutdown.as_mut().now_or_never().is_none());
+        f.calls.hold_close.store(false, Ordering::SeqCst);
+        f.calls.release.notify_one();
+        assert!(next.await.is_err());
+        assert!(first.await.unwrap().unwrap().degradations().is_empty());
+        shutdown.await;
+        assert_eq!(
+            f.calls
+                .events
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|event| **event == "close")
+                .count(),
+            1
+        );
+    })
+    .await;
+}
+
+#[derive(Default)]
+struct CountingInstaller(AtomicUsize);
+
+#[async_trait::async_trait]
+impl crate::runtime::binary::BinaryInstaller for CountingInstaller {
+    async fn install(
+        &self,
+        _: &crate::runtime::binary::PreparedCoreBinary,
+    ) -> Result<(), crate::runtime::binary::InstallCoreBinaryError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn profile_interruption_serializes_mode_host_and_binary_operations() {
+    let installer = Arc::new(CountingInstaller::default());
+    let f = Fixture::with_installer(false, installer.clone()).await;
+    (async {
+        let uid = add_profile(&f).await;
+        f.calls.hold_close.store(true, Ordering::SeqCst);
+        let first = {
+            let client = f.client.clone();
+            tokio::spawn(async move { client.activate_profile(Some(uid)).await })
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            f.calls.entered.notified(),
+        )
+        .await
+        .unwrap();
+        let before = serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides)
+            .unwrap()["mode"]
+            .clone();
+        let next_mode = if before == "global" {
+            Mode::Rule
+        } else {
+            Mode::Global
+        };
+        let mode = {
+            let client = f.client.clone();
+            tokio::spawn(async move {
+                client
+                    .patch_runtime_overrides(ClashGuardOverridesPatch {
+                        mode: Some(next_mode),
+                        ..Default::default()
+                    })
+                    .await
+            })
+        };
+        // Polling once sends each request, so both wait behind the held
+        // interruption.
+        let mut host = Box::pin(
+            f.client
+                .inner
+                .application_workflow
+                .change_host(ExecutionHost::Local),
+        );
+        assert!(host.as_mut().now_or_never().is_none());
+        let staging = Arc::new(tempfile::tempdir().unwrap());
+        let progress = Arc::new(super::Progress::default());
+        let artifact = crate::runtime::binary::PreparedCoreBinary {
+            target: f.client.get_app_config().await.unwrap().core,
+            source: staging.path().join("prepared-core"),
+            destination: f._dir.path().join("installed-core"),
+            staging,
+            progress: progress.clone(),
+        };
+        let mut install = Box::pin(f.client.inner.application_workflow.replace_binary(artifact));
+        assert!(install.as_mut().now_or_never().is_none());
+        // A queued Try has not committed its source.
+        assert_eq!(
+            serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
+            before
+        );
+        assert_eq!(installer.0.load(Ordering::SeqCst), 0);
+        assert_eq!(*f.calls.events.lock().unwrap(), ["reconcile", "close"]);
+        f.calls.hold_close.store(false, Ordering::SeqCst);
+        f.calls.release.notify_one();
+        assert!(first.await.unwrap().unwrap().degradations().is_empty());
+        assert!(mode.await.unwrap().unwrap().degradations().is_empty());
+        host.await.unwrap();
+        install.await.unwrap();
+        assert_eq!(
+            serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["mode"],
+            serde_json::to_value(next_mode).unwrap()
+        );
+        assert_eq!(installer.0.load(Ordering::SeqCst), 1);
+        assert!(progress.0.load(Ordering::SeqCst));
+    }).await;
+}
+
+struct RecordingBuilder {
+    delegate: super::adapters::FsRuntimeBuildAdapter,
+    inputs: Mutex<
+        Vec<(
+            Arc<nyanpasu_config::profile::Profiles>,
+            nyanpasu_config::clash::config::ClashConfig,
+        )>,
+    >,
+    fail_build: bool,
+    fail_publish: bool,
+}
+
+#[async_trait::async_trait]
+impl super::ports::RuntimeBuildPort for RecordingBuilder {
+    async fn capture_content(
+        &self,
+        profiles: &nyanpasu_config::profile::Profiles,
+    ) -> super::super::inputs::FrozenProfileContent {
+        self.delegate.capture_content(profiles).await
+    }
+
+    fn core_spec(
+        &self,
+        core: &nyanpasu_config::application::ClashCore,
+    ) -> Result<nyanpasu_core_manager::CoreSpec, crate::control::local_host::CoreSpecError> {
+        self.delegate.core_spec(core)
+    }
+    async fn build(
+        &self,
+        revision: crate::client::runtime::RuntimeRevision,
+        inputs: crate::client::application_workflow::inputs::RuntimeInputs,
+        ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
+        strict_transforms: bool,
+    ) -> Result<
+        Arc<crate::client::runtime::RuntimeSnapshot>,
+        crate::client::application_workflow::error::RuntimePreparationError,
+    > {
+        self.inputs
+            .lock()
+            .unwrap()
+            .push((inputs.profiles.clone(), inputs.clash.clone()));
+        if self.fail_build {
+            return Err(crate::client::application_workflow::error::RuntimePreparationError::ConfigNotMapping);
+        }
+        self.delegate
+            .build(revision, inputs, ports, strict_transforms)
+            .await
+    }
+    async fn publish(
+        &self,
+        snapshot: &crate::client::runtime::RuntimeSnapshot,
+    ) -> Result<(), crate::client::runtime::PublishRuntimeError> {
+        if self.fail_publish {
+            return Err(super::scripted_publish_failure());
+        }
+        self.delegate.publish(snapshot).await
+    }
+}
+
+impl RecordingBuilder {
+    fn new(f: &Fixture, fail_build: bool, fail_publish: bool) -> Arc<Self> {
+        Arc::new(Self {
+            delegate: super::adapters::FsRuntimeBuildAdapter {
+                core_specs: Arc::new(crate::client::runtime_core_spec),
+                profiles_dir: f.client.inner.profiles_dir.clone(),
+                paths: crate::client::tests::test_runtime_paths(&f._dir),
+                scripts: crate::runtime::config::ScriptDirs::under(f._dir.path()),
+            },
+            inputs: Mutex::new(Vec::new()),
+            fail_build,
+            fail_publish,
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
+    use crate::client::core_lifecycle::ports::RuntimePreparationPort;
+    use nyanpasu_config::clash::config::ClashControlChannel;
+    let f = Fixture::new(false).await;
+    (async {
+        let first = add_profile(&f).await;
+        let second = add_profile(&f).await;
+        let committed = f
+            .client
+            .inner
+            .profiles
+            .set_current(Some(first.clone()))
+            .await
+            .unwrap();
+        f.client
+            .inner
+            .profiles
+            .set_current(Some(second.clone()))
+            .await
+            .unwrap();
+        let mut original = f.client.get_clash_config().await.unwrap();
+        original.clash_control_channel = ClashControlChannel::HttpOnly;
+        original.clash_ipc_disable_http_controller = false;
+        let mut newer = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+        newer.clash_control_channel = Some(ClashControlChannel::PreferIpc);
+        newer.clash_ipc_disable_http_controller = Some(true);
+        f.client.patch_clash_config(newer).await.unwrap();
+        let builder = RecordingBuilder::new(&f, false, false);
+        let mut preparation = super::RuntimePreparation::new(
+            f.client.inner.application.snapshot_handle(),
+            f.client.inner.clash_config.snapshot_handle(),
+            f.client.inner.profiles.snapshot_handle(),
+            builder.clone(),
+            f.client.inner.ports.clone(),
+        );
+        let prepared = preparation
+            .prepare_committed(committed.snapshot.clone(), original)
+            .await
+            .unwrap();
+        assert_eq!(
+            prepared.intent.local_ipc.policy,
+            nyanpasu_core_manager::LocalIpcPolicy::Disable
+        );
+        assert!(prepared.intent.local_ipc.keep_http_controller);
+        assert_eq!(prepared.snapshot.revision.get(), 1);
+        let latest = preparation.prepare_latest().await.unwrap();
+        assert_eq!(
+            latest.intent.local_ipc.policy,
+            nyanpasu_core_manager::LocalIpcPolicy::Prefer
+        );
+        assert!(!latest.intent.local_ipc.keep_http_controller);
+        assert_eq!(latest.snapshot.revision.get(), 2);
+        let inputs = builder.inputs.lock().unwrap();
+        assert!(Arc::ptr_eq(&inputs[0].0, &committed.snapshot));
+        assert_eq!(inputs[0].0.current, Some(first));
+        assert_eq!(
+            inputs[0].1.clash_control_channel,
+            ClashControlChannel::HttpOnly
+        );
+        assert_eq!(inputs[1].0.current, Some(second));
+        assert_eq!(
+            inputs[1].1.clash_control_channel,
+            ClashControlChannel::PreferIpc
+        );
+    })
+    .await;
+}

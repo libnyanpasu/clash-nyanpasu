@@ -1,6 +1,7 @@
 //! ProfilesActor: single owner of the profiles document.
 //! Tauri-free; every filesystem/network effect goes through the ports.
 
+use nyanpasu_core::migration::modules::profiles::ProfilesFormat;
 use std::{collections::HashMap, sync::Arc};
 
 use nyanpasu_config::profile::{
@@ -25,7 +26,6 @@ use crate::{
         },
         policy::CommandClass,
     },
-    core::migration::modules::profiles::ProfilesFormat,
     state::mutation::{CommitAborted, MutationCoordinator},
 };
 use nyanpasu_core_manager::OperationId;

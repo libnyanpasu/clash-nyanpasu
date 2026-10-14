@@ -281,7 +281,7 @@ default = ['custom-protocol', 'default-meta', 'nesting']
 nightly = ['devtools', 'deadlock-detection']
 custom-protocol = ['tauri/custom-protocol']
 verge-dev = []
-default-meta = []
+default-meta = ['nyanpasu-core/default-meta']
 devtools = ['tauri/devtools']
 deadlock-detection = ['parking_lot/deadlock_detection']
 # Writes a Chrome trace of the app's spans to the logs directory; see

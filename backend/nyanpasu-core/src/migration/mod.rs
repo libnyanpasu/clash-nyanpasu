@@ -55,7 +55,7 @@ impl Ctx {
     #[cfg(test)]
     pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         Self {
-            paths: crate::client::tests::test_paths(app_config_dir, app_data_dir),
+            paths: crate::migration::test_paths(app_config_dir, app_data_dir),
         }
     }
 
@@ -100,6 +100,17 @@ impl Ctx {
     }
 }
 
+#[cfg(test)]
+fn test_paths(
+    config: impl AsRef<std::path::Path>,
+    data: impl AsRef<std::path::Path>,
+) -> PathResolver {
+    let utf8 = |path: &std::path::Path| {
+        camino::Utf8PathBuf::from_path_buf(path.to_owned()).expect("test directories are UTF-8")
+    };
+    PathResolver::with_base_dirs(utf8(config.as_ref()), utf8(data.as_ref()))
+}
+
 /// What a step's check found on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepCheck {
@@ -132,19 +143,19 @@ pub enum MigrationCheckError {
     Parse {
         path: PathBuf,
         #[source]
-        source: serde_yaml::Error,
+        source: serde_yaml_ng::Error,
     },
     #[error("failed to read the key-value storage at {}", path.display())]
     Storage {
         path: PathBuf,
         #[source]
-        source: crate::core::storage::StorageOperationError,
+        source: crate::storage::StorageOperationError,
     },
     #[error("failed to read the stamp of {}", path.display())]
     Stamp {
         path: PathBuf,
         #[source]
-        source: nyanpasu_core::format::StampError,
+        source: crate::format::StampError,
     },
     /// Readable and well-formed, but in no shape the step knows.
     #[error("{0}")]

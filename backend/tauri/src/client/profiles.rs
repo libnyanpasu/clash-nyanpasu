@@ -2,6 +2,7 @@
 //! snapshot handle; writes go through the actor with no RPC timeout.
 
 use crate::state::mutation::MutationCoordinator;
+use nyanpasu_core::migration::modules::profiles::ProfilesFormat;
 
 use std::{sync::Arc, time::Duration};
 
@@ -15,14 +16,11 @@ use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{
-    core::migration::modules::profiles::ProfilesFormat,
-    state::profiles::{
-        CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-        ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu, ReorderOp,
-        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
-        sources::SourcesSnapshot,
-    },
+use crate::state::profiles::{
+    CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
+    ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu, ReorderOp,
+    ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+    sources::SourcesSnapshot,
 };
 
 #[derive(Clone)]

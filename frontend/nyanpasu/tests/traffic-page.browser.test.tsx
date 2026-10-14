@@ -1062,8 +1062,11 @@ test('the template and the metric change the topology of the same request', asyn
   await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
 
   const pick = async (template: LayerTemplate) => {
-    await view.getByRole('combobox', { name: m.traffic_layers_label() }).click()
-    await view.getByRole('option', { name: templateName(template) }).click()
+    await chooseToolbarMenu(
+      view,
+      m.traffic_layers_label(),
+      templateName(template),
+    )
   }
 
   await pick('source')
@@ -1253,7 +1256,7 @@ test('the header controls keep their names', async ({ onTestFinished }) => {
     .element(sidebarItem(view, m.topology_flow()))
     .toHaveAttribute('data-active', 'true')
   await expect
-    .element(view.getByRole('combobox', { name: m.traffic_layers_label() }))
+    .element(view.getByRole('button', { name: m.traffic_layers_label() }))
     .toBeInTheDocument()
   await expect.element(limitSelect(view)).toBeInTheDocument()
 })
@@ -1423,7 +1426,7 @@ test('a region placed only by local DNS says so', async ({
 })
 
 const limitSelect = (view: Awaited<ReturnType<typeof open>>) =>
-  view.getByRole('combobox', { name: m.traffic_limit_label() })
+  view.getByRole('button', { name: m.traffic_limit_label() })
 
 test('the limit of nodes per layer changes the request, all asks for none', async ({
   onTestFinished,
@@ -1433,8 +1436,7 @@ test('the limit of nodes per layer changes the request, all asks for none', asyn
   await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
 
   const pick = async (name: string) => {
-    await limitSelect(view).click()
-    await view.getByRole('option', { name }).click()
+    await chooseToolbarMenu(view, m.traffic_limit_label(), name)
   }
 
   await pick(m.traffic_limit_top({ count: 10 }))

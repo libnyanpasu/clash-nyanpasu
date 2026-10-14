@@ -1,13 +1,15 @@
+import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState, type ReactNode } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@nyanpasu/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import {
   dimensionName,
@@ -134,65 +136,71 @@ function TrafficFlowPage() {
       <Card className="p-3 md:p-4">
         <div className="mb-4 flex min-w-0 flex-wrap items-end gap-3">
           <div className="w-full sm:w-64">
-            <Select
-              variant="outlined"
-              value={template}
-              onValueChange={(next) =>
-                onSearchChange({ layers: next as LayerTemplate })
-              }
-            >
-              <SelectTrigger
-                className="h-9 min-w-0 py-1"
-                aria-label={m.traffic_layers_label()}
-              >
-                <SelectValue
-                  className="truncate pr-4 text-sm"
-                  placeholder={m.traffic_layers_label()}
+            <DropdownMenu width="full">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  className="flex h-9 w-full min-w-0 items-center justify-between gap-1 px-3 py-1"
+                  aria-label={m.traffic_layers_label()}
                 >
-                  {templateName(template)}
-                </SelectValue>
-              </SelectTrigger>
-
-              <SelectContent className="min-w-64">
-                {TEMPLATES.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {templateName(value)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {templateName(template)}
+                  </span>
+                  <ArrowDropDownRounded
+                    aria-hidden
+                    className="size-5 shrink-0"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="min-w-64">
+                <DropdownMenuRadioGroup
+                  value={template}
+                  onValueChange={(next) =>
+                    onSearchChange({ layers: next as LayerTemplate })
+                  }
+                >
+                  {TEMPLATES.map((value) => (
+                    <DropdownMenuRadioItem key={value} value={value}>
+                      {templateName(value)}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="w-full sm:w-36">
-            <Select
-              variant="outlined"
-              value={String(limit)}
-              onValueChange={(next) => {
-                const value = LIMITS.find((item) => String(item) === next)
-
-                if (value !== undefined) onSearchChange({ limit: value })
-              }}
-            >
-              <SelectTrigger
-                className="h-9 min-w-0 py-1"
-                aria-label={m.traffic_limit_label()}
-              >
-                <SelectValue
-                  className="truncate pr-4 text-sm"
-                  placeholder={m.traffic_limit_label()}
+            <DropdownMenu width="full">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  className="flex h-9 w-full min-w-0 items-center justify-between gap-1 px-3 py-1"
+                  aria-label={m.traffic_limit_label()}
                 >
-                  {limitName(limit)}
-                </SelectValue>
-              </SelectTrigger>
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {limitName(limit)}
+                  </span>
+                  <ArrowDropDownRounded
+                    aria-hidden
+                    className="size-5 shrink-0"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuRadioGroup
+                  value={String(limit)}
+                  onValueChange={(next) => {
+                    const value = LIMITS.find((item) => String(item) === next)
 
-              <SelectContent>
-                {LIMITS.map((value) => (
-                  <SelectItem key={value} value={String(value)}>
-                    {limitName(value)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                    if (value !== undefined) onSearchChange({ limit: value })
+                  }}
+                >
+                  {LIMITS.map((value) => (
+                    <DropdownMenuRadioItem key={value} value={String(value)}>
+                      {limitName(value)}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 

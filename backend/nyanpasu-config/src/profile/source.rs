@@ -118,6 +118,7 @@ pub struct RemoteProfileOptions {
     #[serde(default = "default_true")]
     pub self_proxy: bool,
 
+    /// Minutes between scheduled refreshes; `0` turns automatic updates off.
     #[serde(default = "default_update_interval_minutes")]
     pub update_interval_minutes: u64,
 }

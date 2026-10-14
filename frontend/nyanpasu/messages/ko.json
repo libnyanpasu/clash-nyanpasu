@@ -419,6 +419,7 @@
   "profile_user_agent_label": "사용자 에이전트 (UA)",
   "profile_with_proxy_label": "시스템 프록시 사용",
   "profile_self_proxy_label": "Clash 프록시 사용",
+  "profile_update_option_auto_update_label": "자동 업데이트",
   "profile_update_interval_label": "자동 업데이트 간격(분)",
   "profile_subscription_url_editor_label": "구독 URL 편집",
   "profile_subscription_url_label": "구독 URL",

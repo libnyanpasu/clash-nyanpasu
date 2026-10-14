@@ -317,20 +317,29 @@ fn transform_target_must_exist() {
 }
 
 #[test]
-fn remote_source_rejects_unsupported_scheme_and_zero_interval() {
-    let profiles = profiles_with(vec![
-        remote_file_config("ftp", "ftp.yaml", "ftp://example.com/a.yaml", 120),
-        remote_file_config("zero", "zero.yaml", "https://example.com/b.yaml", 0),
-    ]);
+fn remote_source_rejects_unsupported_scheme() {
+    let profiles = profiles_with(vec![remote_file_config(
+        "ftp",
+        "ftp.yaml",
+        "ftp://example.com/a.yaml",
+        120,
+    )]);
     let errors = profiles.validate().unwrap_err();
     assert!(has_error(&errors, |e| matches!(
         e,
         ProfileValidationError::UnsupportedRemoteUrlScheme { .. }
     )));
-    assert!(has_error(&errors, |e| matches!(
-        e,
-        ProfileValidationError::RemoteUpdateIntervalIsZero { .. }
-    )));
+}
+
+#[test]
+fn remote_source_accepts_zero_interval_as_auto_update_off() {
+    let profiles = profiles_with(vec![remote_file_config(
+        "manual",
+        "manual.yaml",
+        "https://example.com/a.yaml",
+        0,
+    )]);
+    profiles.validate().unwrap();
 }
 
 #[test]

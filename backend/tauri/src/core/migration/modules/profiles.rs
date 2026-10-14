@@ -703,12 +703,6 @@ fn migrate_remote_options(uid: &str, option: Option<&Value>) -> Result<Mapping, 
                 })?,
                 Some(_) => return Err(fail("option.update_interval", "must be an integer")),
             };
-            if interval == 0 {
-                return Err(fail(
-                    "option.update_interval",
-                    "zero interval is not representable in the clean schema; fix the profile before migrating",
-                ));
-            }
             out.insert("update_interval_minutes".into(), Value::from(interval));
         }
         Some(_) => return Err(fail("option", "option must be a mapping")),
@@ -1340,6 +1334,15 @@ config:
     }
 
     #[test]
+    fn remote_option_zero_interval_keeps_auto_update_off() {
+        let out = migrated(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {update_interval: 0}\n",
+        );
+        let option = out["config"]["source"]["option"].as_mapping().unwrap();
+        assert_eq!(option["update_interval_minutes"], Value::from(0));
+    }
+
+    #[test]
     fn remote_option_null_fails_explicitly() {
         let err = migrate_item_for_test(item(
             "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: null\n",
@@ -1370,7 +1373,7 @@ config:
         assert_eq!(err.field_path, "url");
 
         let err = migrate_item_for_test(item(
-            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {update_interval: 0}\n",
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: {update_interval: -1}\n",
         ))
         .unwrap_err();
         assert_eq!(err.field_path, "option.update_interval");

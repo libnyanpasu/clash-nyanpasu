@@ -419,6 +419,7 @@
   "profile_user_agent_label": "Пользовательский агент (UA)",
   "profile_with_proxy_label": "Использовать системный прокси",
   "profile_self_proxy_label": "Использовать прокси Clash",
+  "profile_update_option_auto_update_label": "Автоматическое обновление",
   "profile_update_interval_label": "Интервал автоматического обновления (минуты)",
   "profile_subscription_url_editor_label": "Редактировать URL подписки",
   "profile_subscription_url_label": "URL подписки",

@@ -4232,22 +4232,34 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn facade_import_rejects_explicit_zero_interval_before_fetch() {
+    fn facade_import_keeps_explicit_zero_interval_as_auto_update_off() {
         let dir = tempdir().unwrap();
         let mut fetcher = MockSubscriptionFetcher::new();
-        fetcher.expect_fetch().times(0);
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: None,
+                suggested_update_interval_minutes: Some(360),
+            })
+        });
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.update_interval_minutes = Some(0);
-            let url = url::Url::parse("https://example.com/subs/invalid.yaml").unwrap();
-            assert!(
-                client
-                    .import_profile(url, None, Some(patch), None)
-                    .await
-                    .is_err()
-            );
-            assert!(client.get_profiles().await.unwrap().items.is_empty());
+            let url = url::Url::parse("https://example.com/subs/manual.yaml").unwrap();
+            let uid = client
+                .import_profile(url, None, Some(patch), None)
+                .await
+                .expect("import")
+                .into_value();
+            let snapshot = client.get_profiles().await.unwrap();
+            let ProfileSource::Remote { option, .. } =
+                snapshot.items[&uid].definition.source().unwrap()
+            else {
+                unreachable!()
+            };
+            assert_eq!(option.update_interval_minutes, 0);
         });
     }
 

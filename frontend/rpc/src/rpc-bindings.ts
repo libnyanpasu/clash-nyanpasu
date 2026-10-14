@@ -3349,7 +3349,6 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3364,7 +3363,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3379,7 +3377,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3400,7 +3397,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
     })
@@ -3420,7 +3416,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       UnsupportedRemoteUrlScheme?: never
     })
@@ -3438,7 +3433,6 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3458,7 +3452,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3479,7 +3472,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3500,7 +3492,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3520,7 +3511,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3540,7 +3530,6 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3561,7 +3550,6 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3582,28 +3570,8 @@ export type ProfileValidationError =
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
       ItemKeyMismatch?: never
-      RemoteUpdateIntervalIsZero?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
-    })
-  | ({
-      RemoteUpdateIntervalIsZero: {
-        profile: ProfileId
-      }
-    } & {
-      CompositionBaseAlsoContributor?: never
-      CompositionDuplicateContributor?: never
-      CompositionMemberNotDirectFileConfig?: never
-      CompositionMemberNotFound?: never
-      CompositionSelfReference?: never
-      CurrentNotConfig?: never
-      CurrentNotFound?: never
-      DuplicateMaterializedFile?: never
-      EmptyCompositionConfig?: never
-      ItemKeyMismatch?: never
-      TransformTargetNotFound?: never
-      TransformTargetNotTransform?: never
-      UnsupportedRemoteUrlScheme?: never
     })
 
 /**  What a profile command failed with. */

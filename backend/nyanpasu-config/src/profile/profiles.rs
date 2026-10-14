@@ -329,9 +329,6 @@ pub enum ProfileValidationError {
 
     #[error("remote URL scheme is not supported for {profile}: {scheme}")]
     UnsupportedRemoteUrlScheme { profile: ProfileId, scheme: String },
-
-    #[error("remote update interval must be greater than zero: {profile}")]
-    RemoteUpdateIntervalIsZero { profile: ProfileId },
 }
 
 fn validate_transforms(
@@ -447,18 +444,13 @@ fn validate_source(
     source: &ProfileSource,
     errors: &mut Vec<ProfileValidationError>,
 ) {
-    if let ProfileSource::Remote { url, option, .. } = source {
-        if !matches!(url.scheme(), "http" | "https") {
-            errors.push(ProfileValidationError::UnsupportedRemoteUrlScheme {
-                profile: profile.clone(),
-                scheme: url.scheme().to_owned(),
-            });
-        }
-        if option.update_interval_minutes == 0 {
-            errors.push(ProfileValidationError::RemoteUpdateIntervalIsZero {
-                profile: profile.clone(),
-            });
-        }
+    if let ProfileSource::Remote { url, .. } = source
+        && !matches!(url.scheme(), "http" | "https")
+    {
+        errors.push(ProfileValidationError::UnsupportedRemoteUrlScheme {
+            profile: profile.clone(),
+            scheme: url.scheme().to_owned(),
+        });
     }
 }
 

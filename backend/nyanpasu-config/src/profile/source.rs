@@ -1,3 +1,5 @@
+use std::num::NonZeroU64;
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use struct_patch::Patch;
@@ -118,8 +120,8 @@ pub struct RemoteProfileOptions {
     #[serde(default = "default_true")]
     pub self_proxy: bool,
 
-    #[serde(default = "default_update_interval_minutes")]
-    pub update_interval_minutes: u64,
+    #[serde(default)]
+    pub update_interval_minutes: RemoteSyncInterval,
 }
 
 #[allow(dead_code)]
@@ -130,7 +132,7 @@ struct ProfileRemoteOptions {
     user_agent: Option<String>,
     with_proxy: bool,
     self_proxy: bool,
-    update_interval_minutes: u64,
+    update_interval_minutes: RemoteSyncInterval,
 }
 
 impl Default for RemoteProfileOptions {
@@ -139,8 +141,40 @@ impl Default for RemoteProfileOptions {
             user_agent: None,
             with_proxy: true,
             self_proxy: true,
-            update_interval_minutes: default_update_interval_minutes(),
+            update_interval_minutes: RemoteSyncInterval::default(),
         }
+    }
+}
+
+/// Minutes between scheduled syncs of a remote profile.
+///
+/// Zero disables automatic sync: no scheduled sync and no startup catch-up.
+/// Manual sync remains available.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(transparent)]
+#[repr(transparent)]
+pub struct RemoteSyncInterval(u64);
+
+impl RemoteSyncInterval {
+    pub const DISABLED: Self = Self(0);
+
+    pub const fn from_minutes(minutes: u64) -> Self {
+        Self(minutes)
+    }
+
+    /// The scheduled sync period, or `None` when automatic sync is disabled.
+    pub const fn minutes(self) -> Option<NonZeroU64> {
+        NonZeroU64::new(self.0)
+    }
+
+    pub const fn is_auto_sync_disabled(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl Default for RemoteSyncInterval {
+    fn default() -> Self {
+        Self(120)
     }
 }
 
@@ -188,10 +222,6 @@ impl SubscriptionInfo {
 
 fn default_true() -> bool {
     true
-}
-
-fn default_update_interval_minutes() -> u64 {
-    120
 }
 
 mod specta_wire {

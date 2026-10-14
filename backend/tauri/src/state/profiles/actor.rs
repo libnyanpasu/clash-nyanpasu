@@ -7,8 +7,8 @@ use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
     ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition,
     ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata, ProfileMetadataPatch,
-    ProfileSource, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch, ScriptRuntime,
-    ScriptTransform, SubscriptionInfo, TransformDefinition, TransformKind,
+    ProfileSource, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch, RemoteSyncInterval,
+    ScriptRuntime, ScriptTransform, SubscriptionInfo, TransformDefinition, TransformKind,
 };
 use nyanpasu_core::state::{
     PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
@@ -2102,7 +2102,8 @@ impl Actor for ProfilesActor {
                         if !pending.update_interval_explicit
                             && let Some(minutes) = suggested_update_interval_minutes
                         {
-                            option.update_interval_minutes = minutes;
+                            option.update_interval_minutes =
+                                RemoteSyncInterval::from_minutes(minutes);
                         }
                         let mut metadata = pending.metadata;
                         if let Some(name) = synced_name(metadata.custom_name, &filename) {
@@ -2489,7 +2490,7 @@ mod tests {
                     else {
                         unreachable!("the fixture is remote")
                     };
-                    option.update_interval_minutes += 1;
+                    option.update_interval_minutes = RemoteSyncInterval::DISABLED;
                 }),
                 reconcile,
             ),
@@ -2504,7 +2505,7 @@ mod tests {
                     else {
                         unreachable!("the fixture is remote")
                     };
-                    option.update_interval_minutes += 1;
+                    option.update_interval_minutes = RemoteSyncInterval::DISABLED;
                 }),
                 None,
             ),

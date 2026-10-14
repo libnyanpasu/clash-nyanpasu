@@ -2241,7 +2241,7 @@ mod tests {
     use nyanpasu_config::profile::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
         ProfileDefinition, ProfileId, ProfileItem, ProfileMetadata, ProfileSource, Profiles,
-        RemoteProfileOptions,
+        RemoteProfileOptions, RemoteSyncInterval,
     };
     use std::{
         sync::{
@@ -2357,7 +2357,7 @@ mod tests {
             user_agent: None,
             with_proxy,
             self_proxy,
-            update_interval_minutes: 120,
+            update_interval_minutes: RemoteSyncInterval::from_minutes(120),
         }
     }
 

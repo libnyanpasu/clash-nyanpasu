@@ -1,5 +1,5 @@
 //! Leaf patch semantics for `RemoteProfileOptions`.
-use crate::profile::{RemoteProfileOptions, RemoteProfileOptionsPatch};
+use crate::profile::{RemoteProfileOptions, RemoteProfileOptionsPatch, RemoteSyncInterval};
 use struct_patch::Patch;
 
 #[test]
@@ -28,7 +28,10 @@ fn legacy_update_interval_alias_is_gone() {
     // The clean model drops the `update_interval` alias; only the canonical name decodes.
     let patch: RemoteProfileOptionsPatch =
         serde_yaml_ng::from_str("update_interval_minutes: 240\n").expect("canonical decodes");
-    assert_eq!(patch.update_interval_minutes, Some(240));
+    assert_eq!(
+        patch.update_interval_minutes,
+        Some(RemoteSyncInterval::from_minutes(240))
+    );
 
     let alias: RemoteProfileOptionsPatch =
         serde_yaml_ng::from_str("update_interval: 240\n").expect("unknown key is ignored");
@@ -50,4 +53,24 @@ fn diff_surfaces_only_changed_fields() {
     assert_eq!(patch.update_interval_minutes, None);
     assert_eq!(patch.user_agent, None);
     assert_eq!(patch.self_proxy, None);
+}
+
+#[test]
+fn sync_interval_is_a_plain_minute_count_where_zero_disables_auto_sync() {
+    let opts: RemoteProfileOptions = serde_yaml_ng::from_str(
+        "update_interval_minutes: 0
+",
+    )
+    .expect("zero decodes");
+    assert!(opts.update_interval_minutes.is_auto_sync_disabled());
+    assert_eq!(opts.update_interval_minutes.minutes(), None);
+    assert_eq!(
+        serde_yaml_ng::to_string(&opts.update_interval_minutes).unwrap(),
+        "0
+"
+    );
+
+    let default = RemoteProfileOptions::default().update_interval_minutes;
+    assert!(!default.is_auto_sync_disabled());
+    assert_eq!(default.minutes().map(|m| m.get()), Some(120));
 }

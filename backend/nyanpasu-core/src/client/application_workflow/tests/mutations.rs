@@ -4566,33 +4566,7 @@ async fn no_op_and_session_saves_do_not_dispatch() {
     .unwrap()
     .clone();
     assert!(processed.effects.is_empty());
-    let session_path = temp_path(&f._dir, "session-state.yaml");
-    let session = crate::client::session_state::SessionStateClient::new(
-        session_path.clone(),
-        f.shutdown.clone(),
-        &f.tasks,
-    )
-    .await
-    .unwrap();
-    let geometry = nyanpasu_config::state::window::WindowState {
-        width: 800,
-        height: 600,
-        x: 0,
-        y: 0,
-        maximized: false,
-        fullscreen: false,
-    };
-    session.save_main_window(geometry.clone()).await.unwrap();
     assert_eq!(application.snapshot().state.language, before.state.language);
-    assert_eq!(session.main_window_geometry(), Some(geometry.clone()));
-    let persisted: nyanpasu_config::state::PersistentState =
-        serde_yaml_ng::from_slice(&std::fs::read(session_path).unwrap()).unwrap();
-    assert_eq!(
-        persisted
-            .window_state
-            .get(&nyanpasu_config::state::window::WindowLabel("main".into(),)),
-        Some(&geometry)
-    );
     assert_eq!(f.notifications.bound(), 0);
     assert_eq!(f.notifications.full(), 0);
     f.shutdown.cancel();

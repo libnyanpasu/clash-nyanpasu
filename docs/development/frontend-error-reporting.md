@@ -57,7 +57,7 @@ redaction.
 ## Validation
 
 ```sh
-cargo test --manifest-path backend/Cargo.toml -p nyanpasu-core --all-features logs::frontend
+cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features desktop::frontend_events
 pnpm test:frontend error-reporting
 cargo test --manifest-path backend/Cargo.toml -p clash-nyanpasu --all-features unified_rpc::tests::browser_debug_page_and_real_rpc -- --exact --ignored --nocapture
 ```

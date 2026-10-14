@@ -6,7 +6,6 @@ use {
     crate::logs::{
         RedbCoreLogStore,
         app::{LoggingSetup, ServiceLogsPort},
-        frontend::TracingFrontendLogSink,
     },
     async_trait::async_trait,
     std::sync::Arc,
@@ -77,6 +76,5 @@ pub(crate) fn test_setup(directory: std::path::PathBuf) -> LoggingSetup {
         files: Arc::new(FsLogFiles::new(directory, "clash-nyanpasu".into())),
         clock: Arc::new(MonotonicClock::default()),
         service: Arc::new(Unavailable),
-        frontend: Arc::new(TracingFrontendLogSink),
     }
 }

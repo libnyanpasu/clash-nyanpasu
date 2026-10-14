@@ -1,10 +1,9 @@
-use crate::state::{PersistentStateManager, VersionedState};
 use nyanpasu_config::state::{PersistentState, PersistentStatePatch};
+use nyanpasu_core::state::{PersistentStateManager, VersionedState};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
-use snafu::ResultExt as _;
 use struct_patch::Patch;
 
-use crate::state::config_error::{ConfigError, PersistSessionStateSnafu};
+use nyanpasu_core::state::config_error::ConfigError;
 
 #[derive(Debug, Clone)]
 pub struct SessionStateSnapshot {
@@ -62,7 +61,7 @@ impl SessionStateActor {
             .manager
             .upsert(next)
             .await
-            .context(PersistSessionStateSnafu)?;
+            .map_err(|source| ConfigError::PersistSessionState { source })?;
         Ok(Self::snapshot(state))
     }
 }

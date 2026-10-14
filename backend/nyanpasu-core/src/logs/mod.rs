@@ -2,7 +2,6 @@ mod actor;
 pub mod app;
 pub mod archive;
 mod codec;
-pub mod frontend;
 pub mod logging;
 mod model;
 mod ports;

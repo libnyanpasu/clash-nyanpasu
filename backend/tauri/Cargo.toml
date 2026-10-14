@@ -74,6 +74,7 @@ specta-serde = '0.0.12'
 
 # Data Structures
 dashmap = '6'
+bytes = { version = '1', features = ['serde'] }
 indexmap = { version = '2.2.3', features = ['serde'] }
 rustc-hash = '2.1'
 
@@ -104,6 +105,7 @@ sysproxy = { workspace = true }
 # Serialization
 serde = { version = '1.0', features = ['derive', 'rc'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }
+postcard = { version = '1.1', features = ['alloc'] }
 # Kept as a direct dependency rather than inherited: Cargo's workspace
 # inheritance does not allow `package` renames at the member site.
 serde_yaml = { version = '0.10', package = 'serde_yaml_ng', git = 'https://github.com/libnyanpasu/serde-yaml-ng.git', rev = '363da138dc97f90ef0a356f971c2dc1d8fe04c9e', features = [

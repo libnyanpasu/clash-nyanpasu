@@ -96,6 +96,20 @@ pub trait FrontendLogSink: Send + Sync + 'static {
     fn dropped(&self, owner: &str, count: u32);
 }
 
+/// Host-owned reporting adapter shared by desktop and HTTP commands.
+#[derive(Clone)]
+pub struct FrontendTelemetry(std::sync::Arc<dyn FrontendLogSink>);
+
+impl FrontendTelemetry {
+    pub fn new(sink: std::sync::Arc<dyn FrontendLogSink>) -> Self {
+        Self(sink)
+    }
+
+    pub fn report(&self, owner: &str, batch: FrontendEventBatch) {
+        report(self.0.as_ref(), owner, batch);
+    }
+}
+
 /// Writes frontend events through the process `tracing` subscriber, which
 /// owns the application log files.
 pub struct TracingFrontendLogSink;

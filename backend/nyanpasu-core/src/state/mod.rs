@@ -3,7 +3,6 @@ pub mod clash_config;
 pub mod config_error;
 pub mod mutation;
 pub mod profiles;
-pub mod session_state;
 
 pub mod ack;
 pub mod builder;

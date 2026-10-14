@@ -1136,7 +1136,12 @@ pub async fn clash_api_get_providers_proxies(
 pub async fn get_proxies(
     client: State<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.get_proxies().await?)
+    let proxies = client.get_proxies().await?;
+    let default_url = client.default_latency_test_url().await?;
+    Ok(crate::desktop::proxy_projection::trim_for_frontend(
+        proxies,
+        &default_url,
+    ))
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1145,7 +1150,12 @@ pub async fn get_proxies(
 pub async fn mutate_proxies(
     client: State<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_core::clash::proxies::Proxies> {
-    Ok(client.refresh_proxies().await?)
+    let proxies = client.refresh_proxies().await?;
+    let default_url = client.default_latency_test_url().await?;
+    Ok(crate::desktop::proxy_projection::trim_for_frontend(
+        proxies,
+        &default_url,
+    ))
 }
 
 #[nyanpasu_macro::rpc(http)]
@@ -1291,7 +1301,7 @@ pub async fn get_cached_icon(
     paths: State<'_, PathResolver>,
     url: String,
 ) -> Result<IconData> {
-    let (mime, bytes) = nyanpasu_core::icons::get_cached_icon(
+    let (mime, bytes) = crate::desktop::icon_cache::get_cached_icon(
         &url,
         client.clash_info().port,
         paths,
@@ -1854,10 +1864,10 @@ pub async fn close_log_session(
 #[specta::specta]
 pub fn report_frontend_events(
     window: tauri::Window,
-    client: tauri::State<'_, NyanpasuClient>,
-    batch: nyanpasu_core::logs::frontend::FrontendEventBatch,
+    telemetry: tauri::State<'_, crate::desktop::frontend_events::FrontendTelemetry>,
+    batch: crate::desktop::frontend_events::FrontendEventBatch,
 ) -> Result {
-    client.report_frontend_events(window.label(), batch);
+    telemetry.report(window.label(), batch);
     Ok(())
 }
 
@@ -2040,15 +2050,15 @@ pub fn get_system_accent_color() -> Result<Option<String>> {
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ConfigurationStatusChanged(
-    pub nyanpasu_core::client::configuration_status::ConfigurationStatus,
+    pub crate::desktop::configuration_status::ConfigurationStatus,
 );
 
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
 pub fn get_configuration_status(
-    client: State<'_, NyanpasuClient>,
-) -> nyanpasu_core::client::configuration_status::ConfigurationStatus {
+    client: State<'_, crate::desktop::configuration_status::ConfigurationStatusClient>,
+) -> crate::desktop::configuration_status::ConfigurationStatus {
     client.configuration_status()
 }
 #[nyanpasu_macro::rpc(http)]

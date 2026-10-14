@@ -186,19 +186,7 @@ async fn no_op_and_session_saves_persist_source_state() {
     {
         let current = client.get_app_config().await.unwrap().language;
         client.patch_app_config(language(current)).await.unwrap();
-        client
-            .save_main_window_geometry(nyanpasu_config::state::window::WindowState {
-                width: 800,
-                height: 600,
-                x: 0,
-                y: 0,
-                maximized: false,
-                fullscreen: false,
-            })
-            .await
-            .unwrap();
         assert_eq!(client.get_app_config().await.unwrap().language, current);
-        assert_eq!(client.main_window_geometry().unwrap().width, 800);
         client.request_shutdown();
         client.wait_shutdown().await;
     }

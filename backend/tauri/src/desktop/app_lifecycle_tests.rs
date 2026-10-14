@@ -105,6 +105,7 @@ impl ControlEndpoint for RecordingCore {
 /// Effects that apply at once, or park the next plan until released.
 #[derive(Default)]
 struct HeldEffects {
+    applications: AtomicUsize,
     hold: AtomicBool,
     applying: Notify,
     release: Notify,
@@ -117,6 +118,7 @@ impl ApplicationEffectsPort for HeldEffects {
         revision: EffectRevision,
         plan: ApplicationEffectPlan,
     ) -> Vec<EffectStatus> {
+        self.applications.fetch_add(1, Ordering::SeqCst);
         if self.hold.swap(false, Ordering::SeqCst) {
             self.applying.notify_one();
             self.release.notified().await;
@@ -168,6 +170,9 @@ impl ShortcutRegistrar for CountingRegistrar {
 /// token, the way the composition root wires one.
 struct Graph {
     client: NyanpasuClient,
+    session: crate::desktop::session_state::SessionStateClient,
+    session_path: camino::Utf8PathBuf,
+    configuration_status: crate::desktop::configuration_status::ConfigurationStatusClient,
     core: Arc<RecordingCore>,
     effects: Arc<HeldEffects>,
     registrar: Arc<CountingRegistrar>,
@@ -213,12 +218,28 @@ impl Graph {
         )
         .await
         .unwrap();
+        let session_path = args.paths.session_state_path();
+        let session = crate::desktop::session_state::SessionStateClient::new(
+            session_path.clone(),
+            args.shutdown.child_token(),
+            &args.tasks,
+        )
+        .await
+        .unwrap();
         let client = NyanpasuClient::try_new_with_args(args)
             .await
             .unwrap()
             .client;
+        let configuration_status =
+            crate::desktop::configuration_status::ConfigurationStatusClient::new(
+                client.clone(),
+                session.clone(),
+            );
         Self {
             client,
+            session,
+            session_path,
+            configuration_status,
             core,
             effects,
             registrar,
@@ -358,18 +379,169 @@ async fn a_stuck_owner_holds_back_no_other_and_the_wait_keeps_waiting() {
 async fn the_final_geometry_queued_before_the_cancel_is_written() {
     let g = Graph::new().await;
 
-    g.client
+    g.session
         .queue_main_window_geometry_save(geometry(1234))
         .unwrap();
     g.client.request_shutdown();
     assert!(g.stopped_within(SETTLE).await);
 
-    assert_eq!(g.client.main_window_geometry(), Some(geometry(1234)));
+    assert_eq!(g.session.main_window_geometry(), Some(geometry(1234)));
     assert!(
-        g.client
+        g.session
             .queue_main_window_geometry_save(geometry(4321))
             .is_err(),
         "the session owner has drained"
     );
-    assert_eq!(g.client.main_window_geometry(), Some(geometry(1234)));
+    assert_eq!(g.session.main_window_geometry(), Some(geometry(1234)));
+    let persisted: nyanpasu_config::state::PersistentState =
+        serde_yaml::from_slice(&std::fs::read(&g.session_path).unwrap()).unwrap();
+    assert_eq!(
+        persisted
+            .window_state
+            .get(&nyanpasu_config::state::window::WindowLabel("main".into())),
+        Some(&geometry(1234))
+    );
+    let restored = crate::desktop::session_state::SessionStateClient::new(
+        g.session_path.clone(),
+        tokio_util::sync::CancellationToken::new(),
+        &tokio_util::task::TaskTracker::new(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(restored.main_window_geometry(), Some(geometry(1234)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn configuration_status_query_and_event_keep_the_committed_session_version() {
+    let g = Graph::unbooted().await;
+    let before = g.configuration_status.configuration_status();
+    let receipt = g
+        .session
+        .save_main_window_geometry(geometry(800))
+        .await
+        .unwrap();
+    let committed = g.session.snapshot().version;
+    let query = g.configuration_status.configuration_status();
+    let event =
+        crate::ipc::ConfigurationStatusChanged(g.configuration_status.configuration_status());
+    assert!(committed > before.source_versions.session);
+    assert_eq!(query.source_versions.session, committed);
+    assert_eq!(
+        query.event_seq,
+        g.client.configuration_status().event_seq + committed
+    );
+    assert!(query.event_seq > before.event_seq);
+    assert_eq!(
+        serde_json::to_value(&query).unwrap(),
+        serde_json::to_value(&event.0).unwrap()
+    );
+    let commits = match &receipt {
+        nyanpasu_core::client::runtime::MutationOutcome::Committed { commits, .. }
+        | nyanpasu_core::client::runtime::MutationOutcome::CommittedDegraded { commits, .. } => {
+            commits
+        }
+    };
+    assert_eq!(commits.len(), 1);
+    let commit = &commits[0];
+    assert_eq!(commit.domain, "session");
+    assert_eq!(commit.source_version, committed);
+    assert_eq!(commit.operation_id, None);
+    assert!(matches!(
+        commit.runtime,
+        nyanpasu_core::client::runtime::RuntimeCommitStatus::Unchanged
+    ));
+    assert!(receipt.degradations().is_empty());
+    g.session
+        .save_main_window_geometry(geometry(1024))
+        .await
+        .unwrap();
+    assert_eq!(
+        query.source_versions.session, committed,
+        "an old reply keeps its captured version"
+    );
+    assert_eq!(event.0.source_versions.session, committed);
+    assert!(g.configuration_status.configuration_status().event_seq > query.event_seq);
+    g.client.request_shutdown();
+    g.client.wait_shutdown().await;
+}
+
+/// The session portions of the old core facade/effect/workflow tests now run
+/// beside the real core graph, without dispatching a core mutation or effect.
+#[tokio::test(flavor = "multi_thread")]
+async fn session_saves_persist_source_state_without_core_notifications() {
+    let g = Graph::unbooted().await;
+    let current = g.client.get_app_config().await.unwrap().language;
+    let (mut mutations, mut effects, mut sources) = g.client.subscribe_configuration_changes();
+    mutations.borrow_and_update();
+    effects.borrow_and_update();
+    sources.borrow_and_update();
+    let before = g.client.configuration_status();
+    let geometry = WindowState {
+        width: 800,
+        height: 600,
+        x: 0,
+        y: 0,
+        maximized: false,
+        fullscreen: false,
+    };
+    g.session.save_main_window(geometry.clone()).await.unwrap();
+    assert_eq!(g.client.get_app_config().await.unwrap().language, current);
+    assert_eq!(g.session.main_window_geometry(), Some(geometry.clone()));
+    assert_eq!(g.session.main_window_geometry().unwrap().width, 800);
+    let persisted: nyanpasu_config::state::PersistentState =
+        serde_yaml::from_slice(&std::fs::read(&g.session_path).unwrap()).unwrap();
+    assert_eq!(
+        persisted
+            .window_state
+            .get(&nyanpasu_config::state::window::WindowLabel("main".into(),)),
+        Some(&geometry)
+    );
+    assert_eq!(g.client.configuration_status().event_seq, before.event_seq);
+    assert!(!mutations.has_changed().unwrap());
+    assert!(!effects.has_changed().unwrap());
+    assert!(!sources.has_changed().unwrap());
+    assert!(g.client.configuration_status().effects.is_empty());
+    assert_eq!(g.effects.applications.load(Ordering::SeqCst), 0);
+    assert_eq!(g.core.delegate.submissions(), 0);
+    let window_state = WindowState {
+        width: 1024,
+        height: 768,
+        x: 10,
+        y: 20,
+        maximized: false,
+        fullscreen: false,
+    };
+    g.session
+        .save_main_window_geometry(window_state.clone())
+        .await
+        .expect("session save should succeed");
+    assert_eq!(g.session.main_window_geometry(), Some(window_state));
+    g.client.request_shutdown();
+    g.client.wait_shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn startup_reconcile_rewrites_neither_session_bytes_nor_version() {
+    let g = Graph::unbooted().await;
+    g.session
+        .save_main_window_geometry(geometry(800))
+        .await
+        .unwrap();
+    let before_version = g
+        .configuration_status
+        .configuration_status()
+        .source_versions
+        .session;
+    let before_bytes = std::fs::read(&g.session_path).unwrap();
+    g.core.delegate.prime(&g.client).await;
+    assert_eq!(
+        g.configuration_status
+            .configuration_status()
+            .source_versions
+            .session,
+        before_version
+    );
+    assert_eq!(std::fs::read(&g.session_path).unwrap(), before_bytes);
+    g.client.request_shutdown();
+    g.client.wait_shutdown().await;
 }

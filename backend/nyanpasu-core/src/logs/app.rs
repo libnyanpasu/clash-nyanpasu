@@ -15,7 +15,6 @@ pub struct LoggingSetup {
     pub files: Arc<dyn LogFiles>,
     pub clock: Arc<dyn Clock>,
     pub service: Arc<dyn ServiceLogsPort>,
-    pub frontend: Arc<dyn super::frontend::FrontendLogSink>,
 }
 #[async_trait]
 pub trait ServiceLogsPort: Send + Sync + 'static {

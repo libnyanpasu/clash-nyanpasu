@@ -36,6 +36,12 @@ async function setup(onTestFinished: (fn: () => Promise<void>) => void) {
     await view.unmount()
     vi.clearAllMocks()
   })
+  await view
+    .getByRole('button', {
+      name: m.settings_clash_latency_test_label(),
+      exact: false,
+    })
+    .click()
   return {
     view,
     url: view.getByRole('textbox', {
@@ -147,4 +153,21 @@ test('reset restores the saved values', async ({ onTestFinished }) => {
   await expect.element(url).toHaveValue('http://www.gstatic.com/generate_204')
   await expect.element(timeout).toHaveValue('5')
   expect(backend.upsert).not.toHaveBeenCalled()
+})
+
+test('the row summarizes the saved URL and timeout', async ({
+  onTestFinished,
+}) => {
+  backend.values = {
+    default_latency_test: 'https://cp.cloudflare.com/generate_204',
+    default_latency_timeout_ms: 8000,
+  }
+  const view = await render(<LatencyTestConfig />)
+  onTestFinished(async () => {
+    await view.unmount()
+    vi.clearAllMocks()
+  })
+  await expect
+    .element(view.getByText('https://cp.cloudflare.com/generate_204 · 8s'))
+    .toBeInTheDocument()
 })

@@ -160,6 +160,8 @@ export const DATA_SLOTS = [
   'language-settings-container',
   'latency-test-config',
   'latency-test-settings-container',
+  'latency-test-timeout-form',
+  'latency-test-url-form',
   'launcher-menu',
   'launcher-menu-chip-button',
   'launcher-menu-group',

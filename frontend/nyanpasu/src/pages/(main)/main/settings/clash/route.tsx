@@ -119,11 +119,7 @@ const LatencyTestSettings = () => {
       <SettingsLabel>{m.settings_clash_latency_test_label()}</SettingsLabel>
 
       <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <LatencyTestConfig />
-          </SettingsCardContent>
-        </SettingsCard>
+        <LatencyTestConfig />
       </SettingsGroup>
     </div>
   )

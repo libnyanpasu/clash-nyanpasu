@@ -102,19 +102,52 @@ Feature/refactoring work runs in isolated git worktrees by default. Working in t
 - Summarize the relevant costs and benefits, state a recommendation, then ask the user whether to work in a worktree or the current checkout. Wait for their choice before implementation; if they have already specified a choice for the task, follow it without asking again.
 - Keep isolated worktrees as the recommended default for feature/refactoring work. Small, isolated edits may be cheaper in the current checkout; broad changes or concurrent work strengthen the case for a worktree. The assessment adds a user-selectable alternative, not a replacement for the isolation and resource reuse policy.
 
-When the user chooses a worktree, its location is the developer's choice (any path outside the repo tree). Worktrees share the main `.git`. The rule: reuse expensive **branch-independent** assets from the main checkout via symlink, and regenerate everything **branch-dependent** per worktree.
+When the user chooses a worktree, choose a path outside the repo tree using the existing filesystem policy below; respect any location the developer has explicitly selected. Worktrees share the main `.git`. Reuse expensive **branch-independent** assets from the main checkout via symlink. Each worktree owns its **branch-dependent** outputs; its Cargo target may start as an independent copy-on-write (CoW) clone of an existing target.
+
+### Filesystem and location policy
+
+Inspect the filesystem containing the project and the volume containing the source target before creating a worktree. Check the proposed destination's existing parent as well: a matching filesystem type on two different volumes does not establish clone support. Prefer an existing parent outside the repo tree on the same clone-capable volume. On Windows, if the project is on ReFS, create the worktree on that same ReFS volume rather than defaulting to a worktree directory on NTFS. If the developer explicitly chooses a different location, explain any loss of cloning and use an independent target there.
+
+Use existing filesystem capabilities only. Do not reformat or repartition disks, create or mount VHD/VHDX images, add filesystems or mount points, create snapshot datasets/subvolumes, move existing checkouts or caches, or change global environment variables or tool configuration to enable reuse. Creating a new worktree and its own target under an existing parent is the intended operation; reorganizing the developer's existing directories is not.
+
+Before preparing the target, tell the user which filesystem and source/destination volume were detected, which native reuse method will be used, and whether that method was previously used or verified for this project and these paths. Prefer an existing applicable method rather than introducing a different one. A previous successful clone or probe may establish support while the relevant volumes, OS and copy tool remain applicable; recheck when those conditions change. This is a status explanation, not a separate approval step after the worktree choice is already authorized. If native cloning is unsupported or cannot be verified with existing tools, briefly explain that target reuse will be skipped and build independently. Do not pursue VHDs, filesystem changes or other storage workarounds.
+
+| Existing environment                                             | Target reuse in a new worktree                                 | Conditions                                                                                                                         |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Windows ReFS                                                     | CoW clone into the worktree's own `backend/target/`            | Source and destination on the same ReFS volume; verify that the OS and copy operation support block cloning                        |
+| Windows NTFS                                                     | Independent target, built as needed                            | No native ReFS-style block cloning; do not substitute hardlinks or provision another volume                                        |
+| macOS APFS                                                       | CoW clone into the worktree's own target                       | Source and destination on the same APFS volume, not merely in the same APFS container                                              |
+| Linux Btrfs                                                      | File reflinks into the worktree's own target                   | Existing filesystem supports reflinks; no new subvolume or snapshot setup                                                          |
+| Linux XFS                                                        | File reflinks into the worktree's own target                   | Existing filesystem has reflink enabled; do not reformat an older volume to enable it                                              |
+| Linux ZFS                                                        | File block clones when supported; otherwise independent target | Existing pool features, OS and copy tool must support the actual operation; do not create datasets or snapshots for worktree setup |
+| Linux ext4, macOS HFS+, or unsupported/cross-volume destinations | Independent target, built as needed                            | No verified native CoW clone for the selected paths                                                                                |
+
+Use a small disposable file under the selected existing parents to verify clone support when it is not already established. A fast copy or a successful command alone does not prove shared blocks. A clone-only API/operation must succeed, or filesystem extent information must confirm sharing; modifying the destination must leave the source unchanged. Do not install system tools or change system settings just to run the probe. If cloning cannot be established, report the limitation and build an independent target instead of silently copying a large target tree.
+
+Native operations include [ReFS block cloning](https://learn.microsoft.com/en-us/windows-server/storage/refs/block-cloning), [APFS cloning](https://developer.apple.com/documentation/foundation/about-apple-file-system), and [Btrfs reflinks](https://btrfs.readthedocs.io/en/stable/Reflink.html). On Linux, GNU `cp -a --reflink=always <source-target> <new-target>` requests reflinks and preserves attributes and links within the destination; the destination must not already exist. It fails when cloning is unsupported. Windows [Robocopy](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/robocopy/) and macOS [cp -c](https://github.com/apple-oss-distributions/file_cmds/blob/main/cp/cp.1) can fall back to ordinary copying, so their successful exit status alone is insufficient to establish CoW reuse. Do not use a full-copy fallback as the default for target seeding.
 
 ### Reuse policy
 
-| Path (repo-relative)       | Approx size  | Policy                          | Reason                                                                                                                                         |
-| -------------------------- | ------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/tauri/sidecar/`   | ~213M        | **Symlink → main**              | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `deno task prepare:check` is slow |
-| `backend/tauri/resources/` | ~21M         | **Symlink → main**              | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                          |
-| `node_modules/`            | ~1.5G        | **Independent `pnpm install`**  | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                            |
-| `backend/target/`          | ~50G         | **Independent — never symlink** | sharing causes Cargo incremental-fingerprint churn + concurrent build-lock waits across diverged source trees                                  |
-| `backend/tauri/tmp/dist/`  | build output | **Independent — never symlink** | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                     |
+| Path (repo-relative)       | Approx size             | Policy                                                                  | Reason                                                                                                                                         |
+| -------------------------- | ----------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tauri/sidecar/`   | ~213M                   | **Symlink → main**                                                      | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `deno task prepare:check` is slow |
+| `backend/tauri/resources/` | ~21M                    | **Symlink → main**                                                      | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                          |
+| `node_modules/`            | ~1.5G                   | **Independent `pnpm install`**                                          | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                            |
+| `backend/target/`          | tens to hundreds of GiB | **Independent CoW clone when supported; otherwise build independently** | Clones share unchanged data blocks while keeping files and Cargo locks independent; never share a writable target directory                    |
+| `backend/tauri/tmp/dist/`  | build output            | **Independent — never symlink**                                         | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                     |
 
 Only `sidecar/` and `resources/` are symlink candidates.
+
+### Reuse Cargo target through CoW
+
+- Seed a new, absent `backend/target/` from a suitable existing target on the same clone-capable volume. Do not overwrite an existing worktree's target. A clone creates independent files; it must not hardlink destination files back to the source, use a symlink/junction to the source target, or point multiple worktrees at one `CARGO_TARGET_DIR`. Hardlinks between files entirely inside the new target may be preserved.
+- Clone only while the source target is not being written by Cargo, rustc, rust-analyzer, or other build tools. A recursive file clone is not an atomic directory snapshot. Do not stop the developer's running processes to obtain a seed; if the source cannot be kept idle, skip seeding and build independently.
+- Prefer a source built with the same resolved Rust toolchain version, target triple, lockfile, profile, features, and rustflags. Reuse an already suitable target; do not clean or rebuild the main checkout just to prepare a seed. Preserve timestamps, permissions and link semantics, and ensure copied links do not redirect writes to the source target.
+- Treat the clone as a build cache, not a completed build for the new worktree. Cargo must validate it through the relevant build/check/test command before use. Absolute paths, build-script outputs and source timestamps can cause rebuilding even at the same commit. Do not rewrite Cargo fingerprints or cached paths to force reuse.
+- Cloning saves initial data duplication, not every future build's space: rewritten or newly generated artifacts need storage. Directory size sums can double-count hardlinks and CoW data; assess savings through filesystem allocation information or measured volume-space changes.
+- Keep `node_modules/` installation and `backend/tauri/tmp/dist/` generation independent. Do not extend target cloning into a shared frontend output directory.
+
+For changes to worktree preparation tooling, verify clone support and write isolation with disposable files, then verify Cargo behavior after seeding: build/check/test as appropriate, rebuild after a source change, build two worktrees concurrently, and remove one without modifying the seed or the other worktree. Test the unsupported-filesystem path as well: it must leave a usable independent worktree without provisioning storage or performing an unannounced full target copy.
 
 ### Gitignored build prerequisites a fresh worktree lacks
 
@@ -126,16 +159,20 @@ Only `sidecar/` and `resources/` are symlink candidates.
 
 ### Create a worktree
 
-Commands shown for Windows / PowerShell (dir symlinks need Developer Mode, no elevation). `<worktree-path>` and `<type>/<name>` are yours to choose.
+Commands shown for Windows / PowerShell (dir symlinks need Developer Mode, no elevation). Use symlinks only if the developer's existing settings permit them; do not enable Developer Mode or elevate to change the system for worktree setup. Choose `<worktree-path>` according to the filesystem policy above and `<type>/<name>` according to the task's branch convention. After creating the worktree, seed its target according to the CoW policy when supported, before launching build tools; otherwise leave it to Cargo to create independently.
 
 ```powershell
 $main = git rev-parse --show-toplevel                 # capture main checkout root
 git worktree add <worktree-path> -b <type>/<name>
 cd <worktree-path>
 
-# Reuse branch-independent downloads (symlink back to main)
+# Reuse downloads only when existing settings allow directory symlinks
 New-Item -ItemType SymbolicLink backend/tauri/sidecar   -Target "$main/backend/tauri/sidecar"
 New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/tauri/resources"
+# Otherwise prepare independent downloads: deno task prepare:check
+
+# Seed backend/target through verified CoW cloning when supported.
+# Otherwise let Cargo create it; never link it back to the main target.
 
 pnpm install
 
@@ -155,7 +192,7 @@ git worktree prune
 git worktree list
 ```
 
-Removal reclaims only the worktree's own files and its symlinks (pointers back to main) — it never touches the main checkout's real `sidecar/` / `resources/`.
+Removal reclaims only the worktree's own files and its symlinks (pointers back to main) — it never touches the main checkout's real `sidecar/` / `resources/` or another target. For CoW target clones, shared data blocks remain allocated while another file still references them; deleting a clone releases only allocations no longer referenced.
 
 ## Git commits
 

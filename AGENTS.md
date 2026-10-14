@@ -141,7 +141,9 @@ Formatting and lint passing does not finish the review: semantic naming, reuse, 
 Follow [Worktrees and resource reuse](docs/development/workflow.md#worktrees-and-resource-reuse).
 
 - Before implementing feature/refactoring work, assess the cost, recommend a worktree or the current checkout, and ask the user unless they have already chosen.
-- In a worktree, only `backend/tauri/sidecar/` and `backend/tauri/resources/` may be symlinked to the main checkout. Never share `backend/target/` or `backend/tauri/tmp/dist/`.
+- Inspect the existing filesystem before choosing a worktree location. On Windows, a project on ReFS gets a worktree on the same ReFS volume so its Cargo target can be reused through an independent copy-on-write clone. Follow the guide for other filesystems and unsupported-clone fallback; do not change the developer's system configuration or existing directory layout to enable reuse.
+- Tell the user which target reuse method will be used and whether it was previously used or verified for the selected paths. Prefer an existing applicable method; if native cloning is unsupported or cannot be verified, skip reuse and explain briefly rather than provisioning storage or pursuing workarounds.
+- In a worktree, only `backend/tauri/sidecar/` and `backend/tauri/resources/` may be symlinked to the main checkout. Each worktree owns its writable `backend/target/` and `backend/tauri/tmp/dist/`; target clones may share filesystem data blocks, never writable files through symlinks, junctions, hardlinks, or a common `CARGO_TARGET_DIR`.
 
 ## 11. Git Commits
 

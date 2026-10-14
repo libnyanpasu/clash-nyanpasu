@@ -18,7 +18,7 @@ use super::{
     ports::{Clock, LocalSourceLocation, ProfileSelection, RetentionPolicy},
     source::frame_from_snapshot,
 };
-use crate::core::clash::ws::ClashConnectionsFrame;
+use crate::clash::ws::ClashConnectionsFrame;
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(30);
 /// Dimension combinations that no usage row refers to are collected at most this often.

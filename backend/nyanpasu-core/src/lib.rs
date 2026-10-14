@@ -1,10 +1,14 @@
 pub mod backup;
+pub mod clash;
 pub mod connections;
 pub mod control;
 pub mod device;
 pub mod diagnostics;
 pub mod error;
 pub mod format;
+pub mod geo;
+pub mod icons;
+pub mod logs;
 pub mod migration;
 pub mod network;
 pub mod runtime;
@@ -12,6 +16,7 @@ pub mod service;
 pub mod state;
 pub mod storage;
 pub mod tasks;
+pub mod traffic;
 #[cfg(windows)]
 pub mod uwp;
 

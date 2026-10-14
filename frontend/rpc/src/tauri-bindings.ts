@@ -101,7 +101,9 @@ export type ClashCoreType =
   | 'meow'
   | 'meow-alpha'
 
-export type ClashWsEvent = {
+export type ClashWsEvent = ClashWsEventPayload
+
+export type ClashWsEventPayload = {
   sequence: number
   update: ClashWsUpdate
 }

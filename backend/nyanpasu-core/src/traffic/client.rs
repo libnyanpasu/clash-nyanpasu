@@ -31,7 +31,7 @@ impl TrafficClient {
         tasks: &TaskTracker,
     ) -> Result<Self> {
         let (actor, _) = Actor::spawn(None, TrafficActor, args).await?;
-        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor })))
     }
 

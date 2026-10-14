@@ -1,7 +1,7 @@
 use crate::{
     client::{
-        ClientError, DirectEgress, NyanpasuClient, RuntimeError, SystemDnsError,
-        effects::error::EffectsError, system_proxy::ports::OsProxyError,
+        ClientError, NyanpasuClient, RuntimeError, SystemDnsError, effects::error::EffectsError,
+        system_proxy::ports::OsProxyError,
     },
     core::{updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
@@ -9,10 +9,7 @@ use crate::{
         config_error::ConfigError,
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
-    utils::{
-        candy, help,
-        proxy_env::{self, CopyEnvOption},
-    },
+    utils::{help, proxy_env},
     window::{
         WindowManager,
         kinds::{self, EditorWindow, EditorWindowType, MainWindow},
@@ -25,7 +22,8 @@ use log::debug;
 use nyanpasu_config::application::ReleaseChannel;
 use nyanpasu_core::{
     backup,
-    diagnostics::EnvInfo,
+    diagnostics::{EnvInfo, direct_egress::DirectEgress},
+    network::proxy_env::CopyEnvOption,
     storage::{Storage, StorageOperationError, WebStorage},
 };
 use nyanpasu_paths::PathResolver;
@@ -743,7 +741,13 @@ pub async fn url_delay_test(
     url: String,
     expected_status: u16,
 ) -> Result<Option<u64>> {
-    Ok(crate::utils::net::url_delay_test(&url, expected_status, client.clash_info().port).await)
+    Ok(nyanpasu_core::diagnostics::net::url_delay_test(
+        &url,
+        expected_status,
+        client.clash_info().port,
+        &format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.pkg_version),
+    )
+    .await)
 }
 
 #[nyanpasu_macro::rpc]
@@ -754,7 +758,11 @@ pub async fn url_delay_test(
 pub async fn get_ipsb_asn(
     client: State<'_, NyanpasuClient>,
 ) -> Result<specta_typescript::Any<serde_json::Value>> {
-    let value = crate::utils::net::get_ipsb_asn(client.clash_info().port).await?;
+    let value = nyanpasu_core::diagnostics::net::get_ipsb_asn(
+        client.clash_info().port,
+        &format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.pkg_version),
+    )
+    .await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
 }
@@ -1000,7 +1008,7 @@ pub async fn collect_logs(app_handle: AppHandle, paths: State<'_, PathResolver>)
         .save_file(move |file_path| match file_path {
             Some(path) if path.as_path().is_some() => {
                 debug!("{path:#?}");
-                match candy::collect_logs(path.as_path().unwrap(), &paths) {
+                match nyanpasu_core::logs::archive::collect_logs(path.as_path().unwrap(), &paths) {
                     Ok(_) => (),
                     Err(err) => {
                         log::error!(target: "app", "{err:?}");
@@ -1047,7 +1055,7 @@ pub async fn clash_api_get_proxy_delay(
 #[specta::specta]
 pub async fn clash_api_get_configs(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::ClashConfig> {
+) -> Result<nyanpasu_core::clash::api::ClashConfig> {
     Ok(client.clash_configs().await?)
 }
 
@@ -1066,7 +1074,7 @@ pub async fn clash_api_delete_connections(
 #[specta::specta]
 pub async fn clash_api_get_version(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::ClashVersion> {
+) -> Result<nyanpasu_core::clash::api::ClashVersion> {
     Ok(client.clash_version().await?)
 }
 
@@ -1075,7 +1083,7 @@ pub async fn clash_api_get_version(
 #[specta::specta]
 pub async fn clash_api_get_rules(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::RulesRes> {
+) -> Result<nyanpasu_core::clash::api::RulesRes> {
     Ok(client.clash_rules().await?)
 }
 
@@ -1084,7 +1092,7 @@ pub async fn clash_api_get_rules(
 #[specta::specta]
 pub async fn clash_api_get_providers_rules(
     client: State<'_, NyanpasuClient>,
-) -> Result<clash::api::ProvidersRulesRes> {
+) -> Result<nyanpasu_core::clash::api::ProvidersRulesRes> {
     Ok(client.clash_rule_providers().await?)
 }
 
@@ -1124,7 +1132,7 @@ pub async fn clash_api_get_providers_proxies(
 #[specta::specta]
 pub async fn get_proxies(
     client: State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::proxies::Proxies> {
+) -> Result<nyanpasu_core::clash::proxies::Proxies> {
     Ok(client.get_proxies().await?)
 }
 
@@ -1133,7 +1141,7 @@ pub async fn get_proxies(
 #[specta::specta]
 pub async fn mutate_proxies(
     client: State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::proxies::Proxies> {
+) -> Result<nyanpasu_core::clash::proxies::Proxies> {
     Ok(client.refresh_proxies().await?)
 }
 
@@ -1280,8 +1288,13 @@ pub async fn get_cached_icon(
     paths: State<'_, PathResolver>,
     url: String,
 ) -> Result<IconData> {
-    let (mime, bytes) =
-        crate::service::icon::get_cached_icon(&url, client.clash_info().port, paths).await?;
+    let (mime, bytes) = nyanpasu_core::icons::get_cached_icon(
+        &url,
+        client.clash_info().port,
+        paths,
+        &format!("clash-nyanpasu/{}", crate::consts::BUILD_INFO.pkg_version),
+    )
+    .await?;
     Ok(IconData {
         data_url: format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes)),
     })
@@ -1603,7 +1616,7 @@ pub fn clear_storage(storage: State<'_, Storage>) -> Result {
 #[specta::specta]
 pub async fn get_clash_ws_snapshot(
     client: tauri::State<'_, NyanpasuClient>,
-) -> Result<crate::core::clash::ws::ClashWsSnapshot> {
+) -> Result<nyanpasu_core::clash::ws::ClashWsSnapshot> {
     Ok(client.clash_ws_snapshot().await?)
 }
 
@@ -1612,8 +1625,8 @@ pub async fn get_clash_ws_snapshot(
 #[specta::specta]
 pub async fn query_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
-    query: crate::core::logs::CoreLogQuery,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogPage> {
+    query: nyanpasu_core::logs::CoreLogQuery,
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogPage> {
     client.query_core_logs(query).await
 }
 
@@ -1622,8 +1635,8 @@ pub async fn query_core_logs(
 #[specta::specta]
 pub async fn get_core_log(
     client: tauri::State<'_, NyanpasuClient>,
-    cursor: crate::core::logs::CoreLogCursor,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogRecord> {
+    cursor: nyanpasu_core::logs::CoreLogCursor,
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogRecord> {
     client.get_core_log(cursor).await
 }
 
@@ -1632,7 +1645,7 @@ pub async fn get_core_log(
 #[specta::specta]
 pub async fn get_core_log_status(
     client: tauri::State<'_, NyanpasuClient>,
-) -> crate::core::logs::CoreLogResult<crate::core::logs::CoreLogStatus> {
+) -> nyanpasu_core::logs::CoreLogResult<nyanpasu_core::logs::CoreLogStatus> {
     client.get_core_log_status().await
 }
 
@@ -1641,7 +1654,7 @@ pub async fn get_core_log_status(
 #[specta::specta]
 pub async fn clear_core_logs(
     client: tauri::State<'_, NyanpasuClient>,
-) -> crate::core::logs::CoreLogResult<()> {
+) -> nyanpasu_core::logs::CoreLogResult<()> {
     client.clear_core_logs().await
 }
 
@@ -1724,9 +1737,9 @@ pub async fn query_traffic_active_connection_ids(
 #[specta::specta]
 pub async fn set_clash_ws_recording(
     client: tauri::State<'_, NyanpasuClient>,
-    kind: crate::core::clash::ws::ClashWsKind,
+    kind: nyanpasu_core::clash::ws::ClashWsKind,
     enabled: bool,
-) -> Result<crate::core::clash::ws::ClashWsRecording> {
+) -> Result<nyanpasu_core::clash::ws::ClashWsRecording> {
     Ok(client.set_clash_ws_recording(kind, enabled).await?)
 }
 
@@ -1735,7 +1748,7 @@ pub async fn set_clash_ws_recording(
 #[specta::specta]
 pub async fn clear_clash_ws_history(
     client: tauri::State<'_, NyanpasuClient>,
-    kind: crate::core::clash::ws::ClashWsKind,
+    kind: nyanpasu_core::clash::ws::ClashWsKind,
 ) -> Result {
     client.clear_clash_ws_history(kind).await?;
     Ok(())
@@ -1753,7 +1766,7 @@ pub async fn subscribe_clash_connection_details(
         '_,
         crate::core::clash::connection_details::ConnectionDetailSubscriptions,
     >,
-    on_frame: tauri::ipc::Channel<crate::core::clash::ws::ClashConnectionDetails>,
+    on_frame: tauri::ipc::Channel<nyanpasu_core::clash::ws::ClashConnectionDetails>,
 ) -> Result<crate::core::clash::connection_details::SubscriptionId> {
     let receiver = client.subscribe_clash_connection_details();
     let parent = client.shutdown_child_token();
@@ -1787,7 +1800,7 @@ pub fn unsubscribe_clash_connection_details(
 #[specta::specta]
 pub async fn list_log_files(
     client: tauri::State<'_, NyanpasuClient>,
-    source: crate::client::logs::LogSource,
+    source: nyanpasu_core::logs::app::LogSource,
 ) -> nyanpasu_logging::LogResult<Vec<nyanpasu_logging::LogFileInfo>> {
     client.list_log_files(source).await
 }
@@ -1797,7 +1810,7 @@ pub async fn list_log_files(
 pub async fn open_log_session(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
-    source: crate::client::logs::LogSource,
+    source: nyanpasu_core::logs::app::LogSource,
     request: nyanpasu_logging::OpenLogs,
 ) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogSession> {
     client
@@ -1810,7 +1823,7 @@ pub async fn open_log_session(
 pub async fn query_logs(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
-    source: crate::client::logs::LogSource,
+    source: nyanpasu_core::logs::app::LogSource,
     request: nyanpasu_logging::QueryLogs,
 ) -> nyanpasu_logging::LogResult<nyanpasu_logging::LogPage> {
     client
@@ -1823,7 +1836,7 @@ pub async fn query_logs(
 pub async fn close_log_session(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
-    source: crate::client::logs::LogSource,
+    source: nyanpasu_core::logs::app::LogSource,
     session: String,
 ) -> nyanpasu_logging::LogResult<()> {
     client
@@ -1836,7 +1849,7 @@ pub async fn close_log_session(
 pub fn report_frontend_events(
     window: tauri::Window,
     client: tauri::State<'_, NyanpasuClient>,
-    batch: crate::client::frontend_events::FrontendEventBatch,
+    batch: nyanpasu_core::logs::frontend::FrontendEventBatch,
 ) -> Result {
     client.report_frontend_events(window.label(), batch);
     Ok(())

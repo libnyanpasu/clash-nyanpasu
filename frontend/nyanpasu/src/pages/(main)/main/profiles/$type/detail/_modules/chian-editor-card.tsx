@@ -5,14 +5,12 @@ import { AnimatedItem } from '@nyanpasu/ui/animated-item'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { CircularProgress } from '@nyanpasu/ui/progress'
-import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { move } from '@dnd-kit/helpers'
-import { DragDropProvider, useDroppable } from '@dnd-kit/react'
-import { useSortable } from '@dnd-kit/react/sortable'
+import { DragDropProvider, KeyboardSensor, PointerSensor } from '@dnd-kit/react'
 import {
   scopedTransformsOf,
   useProfile,
@@ -21,12 +19,32 @@ import {
 import { type ProfileDefinition_Deserialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
+  categoryProfiles,
   isChainProfile,
   type ConfigProfile,
   type TransformProfile,
 } from '../../_modules/utils'
+import {
+  TransformChainColumn,
+  type TransformChainLayout,
+} from './transform-chain-column'
 
 type ScriptOrMergeProfile = TransformProfile
+
+// The whole card is the drag source, so the default mouse activation would
+// require a press-and-hold; touch keeps its delay to stay scrollable.
+const SENSORS = [
+  PointerSensor.configure({
+    activationConstraints: (event, source) => {
+      if (event.pointerType === 'mouse') return undefined
+
+      const defaults = PointerSensor.defaults.activationConstraints
+
+      return typeof defaults === 'function' ? defaults(event, source) : defaults
+    },
+  }),
+  KeyboardSensor,
+]
 
 enum ColumnType {
   Active = 'active',
@@ -34,12 +52,6 @@ enum ColumnType {
 }
 
 const COLUMN_TYPES = [ColumnType.Active, ColumnType.Inactive] as const
-
-// CollisionPriority.Low in @dnd-kit/abstract 0.5.0, which neither @dnd-kit/react
-// nor @dnd-kit/dom re-exports. A column must lose to the items inside it,
-// otherwise a pointer resting on an item but nearer the column centre drops at
-// the column edge instead.
-const COLUMN_COLLISION_PRIORITY = 1
 
 type ChainColumns = Record<ColumnType, string[]>
 
@@ -92,107 +104,6 @@ const reconcileCandidates = (
   }
 }
 
-const ItemButton = ({
-  profile,
-  buttonRef,
-  disabled,
-}: {
-  profile: ScriptOrMergeProfile
-  buttonRef?: (element: Element | null) => void
-  disabled?: boolean
-}) => (
-  <Button
-    className="bg-secondary-container/30 h-14 w-full rounded-2xl text-left"
-    variant="raised"
-    disabled={disabled}
-    asChild
-  >
-    <button ref={buttonRef} disabled={disabled}>
-      <TextMarquee className="pointer-events-none">{profile.name}</TextMarquee>
-    </button>
-  </Button>
-)
-
-const Item = ({
-  profile,
-  index,
-  column,
-  saving,
-}: {
-  profile: ScriptOrMergeProfile
-  index: number
-  column: ColumnType
-  saving: boolean
-}) => {
-  const { ref } = useSortable({
-    id: profile.uid,
-    index,
-    // The group names the list this item belongs to: move() resolves the target
-    // column by looking the group up as a key of the draft record.
-    group: column,
-    type: 'item',
-    accept: ['item'],
-    disabled: saving,
-  })
-
-  return <ItemButton profile={profile} buttonRef={ref} disabled={saving} />
-}
-
-const Column = ({
-  profiles,
-  type,
-  saving,
-  readOnly,
-}: {
-  profiles: ScriptOrMergeProfile[]
-  type: ColumnType
-  saving: boolean
-  readOnly: boolean
-}) => {
-  const { ref } = useDroppable({
-    id: type,
-    type: 'column',
-    accept: ['item'],
-    collisionPriority: COLUMN_COLLISION_PRIORITY,
-    disabled: saving || readOnly,
-  })
-
-  const message = {
-    [ColumnType.Active]: m.profile_chain_editor_active_column(),
-    [ColumnType.Inactive]: m.profile_chain_editor_inactive_column(),
-  }
-
-  return (
-    <Card variant="outline" asChild>
-      <div ref={ref}>
-        <CardHeader>{message[type]}</CardHeader>
-
-        <CardContent>
-          {profiles.map((profile, index) =>
-            readOnly ? (
-              // Duplicate uids would otherwise register two sortables under one
-              // id, so a read-only column renders plain buttons.
-              <ItemButton
-                key={`${profile.uid}-${index}`}
-                profile={profile}
-                disabled
-              />
-            ) : (
-              <Item
-                key={profile.uid}
-                profile={profile}
-                index={index}
-                column={type}
-                saving={saving}
-              />
-            ),
-          )}
-        </CardContent>
-      </div>
-    </Card>
-  )
-}
-
 export default function ChianEditorCard({
   profile,
 }: {
@@ -208,6 +119,7 @@ export default function ChianEditorCard({
   return (
     <TransformChainEditor
       key={profile.uid}
+      layout="stacked"
       className="col-span-2 md:col-span-4"
       taskKey={`update-chain-${profile.uid}`}
       transforms={transforms}
@@ -225,18 +137,20 @@ export default function ChianEditorCard({
   )
 }
 
-/** Two-column editor for an ordered transform chain. */
+/** Shared drag-and-drop editor for scoped and global transforms. */
 export function TransformChainEditor({
   transforms: currentTransforms,
   taskKey,
   onApply,
   className,
+  layout,
 }: {
   /** The persisted chain, in order. */
   transforms: string[]
   taskKey: string
   onApply: (transforms: string[]) => Promise<unknown>
   className?: string
+  layout: TransformChainLayout
 }) {
   const {
     query: { data: profiles },
@@ -245,10 +159,14 @@ export function TransformChainEditor({
   const dataReady = profiles != null
 
   // Candidate chain items = every Transform profile (Overlay / Script).
-  const candidateProfiles = useMemo<ScriptOrMergeProfile[]>(
-    () => (profiles?.items ?? []).filter(isChainProfile),
-    [profiles?.items],
-  )
+  const candidateProfiles = useMemo<ScriptOrMergeProfile[]>(() => {
+    const candidates = (profiles?.items ?? []).filter(isChainProfile)
+    if (layout === 'stacked') return candidates
+
+    return Object.values(categoryProfiles(candidates))
+      .flat()
+      .filter(isChainProfile)
+  }, [profiles?.items, layout])
 
   const candidateUids = useMemo(
     () => candidateProfiles.map((item) => item.uid),
@@ -307,17 +225,15 @@ export function TransformChainEditor({
   const renderedProfiles = dragSession?.profiles ?? candidateProfiles
 
   const chains = useMemo(() => {
-    const active = draft[ColumnType.Active]
-      .map((uid) => renderedProfiles.find((item) => item.uid === uid))
-      .filter((item): item is ScriptOrMergeProfile => Boolean(item))
-
-    const inactive = draft[ColumnType.Inactive]
-      .map((uid) => renderedProfiles.find((item) => item.uid === uid))
-      .filter((item): item is ScriptOrMergeProfile => Boolean(item))
+    const byUid = new Map(renderedProfiles.map((item) => [item.uid, item]))
+    const resolve = (uids: string[]) =>
+      uids
+        .map((uid) => byUid.get(uid))
+        .filter((item): item is ScriptOrMergeProfile => Boolean(item))
 
     return {
-      [ColumnType.Active]: active,
-      [ColumnType.Inactive]: inactive,
+      [ColumnType.Active]: resolve(draft[ColumnType.Active]),
+      [ColumnType.Inactive]: resolve(draft[ColumnType.Inactive]),
     }
   }, [draft, renderedProfiles])
 
@@ -368,12 +284,47 @@ export function TransformChainEditor({
 
   const loadingMessage = m.profile_chain_editor_apply_message()
 
+  // Stable so the memoized columns do not re-render on every drag-over.
+  const handleToggle = useCallback(
+    (uid: string) => {
+      if (!editable || savingRef.current || dragSessionRef.current) return
+
+      const current = draftRef.current
+      const source = current.active.includes(uid)
+        ? ColumnType.Active
+        : ColumnType.Inactive
+      const target =
+        source === ColumnType.Active ? ColumnType.Inactive : ColumnType.Active
+
+      publishDraft({
+        ...current,
+        [source]: current[source].filter((item) => item !== uid),
+        [target]: [...current[target], uid],
+      })
+    },
+    [editable, publishDraft],
+  )
+
   return (
-    <Card className={cn('relative', className)}>
+    <Card
+      data-slot="profile-chain-editor"
+      data-layout={layout}
+      className={cn('relative', className)}
+    >
+      {layout === 'stacked' && (
+        <CardHeader className="flex-col items-start gap-1">
+          <h2 className="text-lg font-medium">
+            {m.profile_chain_editor_title()}
+          </h2>
+          <p className="text-on-surface-variant text-sm">
+            {m.profile_chain_editor_scoped_hint()}
+          </p>
+        </CardHeader>
+      )}
       <AnimatePresence initial={false}>
         {saving && (
           <motion.div
-            data-slot="core-manager-card-mask"
+            data-slot="profile-chain-editor-saving-mask"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -398,8 +349,15 @@ export function TransformChainEditor({
         </CardContent>
       )}
 
-      <CardContent className="grid sm:grid-cols-2">
+      <CardContent
+        data-slot="profile-chain-editor-columns"
+        className={cn(
+          'grid',
+          layout === 'grouped' && 'md:grid-cols-[1.25fr_1fr]',
+        )}
+      >
         <DragDropProvider
+          sensors={SENSORS}
           onBeforeDragStart={(event) => {
             if (!editable || savingRef.current) event.preventDefault()
           }}
@@ -439,27 +397,41 @@ export function TransformChainEditor({
             setDragSession(null)
           }}
         >
-          <Column
+          <TransformChainColumn
             profiles={chains.active}
             type={ColumnType.Active}
             saving={saving}
             readOnly={!editable && !dragSession}
+            layout={layout}
+            onToggle={handleToggle}
+            actionsDisabled={actionsDisabled}
           />
 
-          <Column
+          <TransformChainColumn
             profiles={chains.inactive}
             type={ColumnType.Inactive}
             saving={saving}
             readOnly={!editable && !dragSession}
+            layout={layout}
+            onToggle={handleToggle}
+            actionsDisabled={actionsDisabled}
           />
         </DragDropProvider>
       </CardContent>
+
+      <p
+        data-slot="profile-chain-editor-drag-hint"
+        className="text-on-surface-variant px-4 pb-4 text-xs"
+      >
+        {m.profile_chain_editor_drag_hint()}
+      </p>
 
       <AnimatePresence>
         {dataReady && isChanged && (
           <AnimatedItem>
             <CardFooter className="gap-1">
               <Button
+                variant="flat"
                 className="flex items-center gap-2"
                 onClick={handleApply}
                 disabled={actionsDisabled}

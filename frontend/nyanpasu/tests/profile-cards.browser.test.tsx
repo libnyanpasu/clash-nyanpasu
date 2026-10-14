@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
@@ -251,6 +251,11 @@ test.for(['en', 'zh-cn'] as const)(
     )!
     editButton.click()
     await expect.poll(() => edits).toEqual(['remote'])
+    await userEvent.click(card('remote'), { button: 'right' })
+    await expect
+      .element(page.getByRole('menuitem', { name: m.profile_delete_title() }))
+      .toBeVisible()
+    await userEvent.keyboard('{Escape}')
     const activateButton = Array.from(
       card('local').querySelectorAll('button'),
     ).find(

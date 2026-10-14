@@ -105,13 +105,16 @@ test('live state replaces admission history and selecting a run loads its logs',
   const buttons = container.querySelectorAll('button')
   expect(buttons).toHaveLength(2)
   expect(buttons[0].textContent).toContain(m.profile_sync_running())
-  expect(buttons[0].getAttribute('aria-pressed')).toBe('true')
+  expect(buttons[0].getAttribute('aria-expanded')).toBe('true')
+  expect(buttons[1].getAttribute('aria-expanded')).toBe('false')
   expect(container.textContent).toContain(
     m.profile_sync_retention({ count: 10 }),
   )
   buttons[1].click()
   await expect.poll(() => container.textContent).toContain('failed log')
   expect(container.textContent).toContain('HTTP 403')
+  expect(buttons[0].getAttribute('aria-expanded')).toBe('false')
+  expect(buttons[1].getAttribute('aria-expanded')).toBe('true')
   expect(requested).toEqual(['active', 'failed'])
 })
 

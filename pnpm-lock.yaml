@@ -307,6 +307,9 @@ importers:
 
   frontend/nyanpasu:
     dependencies:
+      '@dnd-kit/collision':
+        specifier: 0.5.0
+        version: 0.5.0
       '@dnd-kit/core':
         specifier: 6.3.1
         version: 6.3.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

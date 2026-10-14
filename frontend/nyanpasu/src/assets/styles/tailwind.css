@@ -35,34 +35,34 @@
 
 :root:where(:lang(zh-cn)) {
   --font-sans:
-    'Inter Variable', 'PingFang SC', 'Noto Sans SC', 'Noto Sans CJK SC',
-    'Microsoft YaHei UI', 'Microsoft YaHei', var(--font-sans-fallback);
+    'Inter Variable', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei UI',
+    'Microsoft YaHei', 'Noto Sans CJK SC', var(--font-sans-fallback);
 }
 
 :root:where(:lang(zh-tw)) {
   --font-sans:
-    'Inter Variable', 'PingFang TC', 'Noto Sans TC', 'Noto Sans CJK TC',
-    'Microsoft JhengHei UI', 'Microsoft JhengHei', var(--font-sans-fallback);
+    'Inter Variable', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei UI',
+    'Microsoft JhengHei', 'Noto Sans CJK TC', var(--font-sans-fallback);
 }
 
 :root:where(:lang(ja)) {
   --font-sans:
-    'Inter Variable', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
-    'Yu Gothic UI', 'Noto Sans JP', 'Noto Sans CJK JP', 'Meiryo',
+    'Inter Variable', 'Hiragino Sans', 'Noto Sans JP',
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', 'Noto Sans CJK JP',
     var(--font-sans-fallback);
 }
 
 :root:where(:lang(ko)) {
   --font-sans:
-    'Inter Variable', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Noto Sans CJK KR',
-    'Malgun Gothic', var(--font-sans-fallback);
+    'Inter Variable', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic',
+    'Noto Sans CJK KR', var(--font-sans-fallback);
 }
 
 @theme {
   --font-sans: 'Inter Variable', var(--font-sans-fallback);
   --font-mono:
     'Cascadia Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, 'Liberation Mono', 'Courier New', '等距更纱黑体 SC', monospace,
+    Consolas, 'Liberation Mono', 'Courier New', 'Sarasa Mono SC', monospace,
     'Color Emoji Flags', 'Color Emoji';
   --custom-text-shadow:
     0px 0px 1px rgb(0 0 0 / 20%), 0px 0px 1px rgb(1 0 5 / 10%);

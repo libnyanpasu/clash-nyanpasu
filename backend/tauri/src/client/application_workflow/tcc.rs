@@ -13,6 +13,7 @@
 //! failure may still commit, the validator port asks the core about the
 //! candidate, and `runtime_recovery` decides whether a restore actually
 //! landed.
+use nyanpasu_core::effects::convergence::{OutcomeClass, next_wait};
 
 use std::sync::Arc;
 
@@ -38,7 +39,6 @@ use super::{
     workflow::ApplicationWorkflow,
 };
 use crate::client::{
-    convergence::{OutcomeClass, next_wait},
     core_lifecycle::{RuntimeSubmission, effective_host, ports::RuntimePreparationPort},
     runtime::{DegradationReason, InterruptFailure},
     runtime_error::{
@@ -231,7 +231,8 @@ impl ApplicationWorkflow {
             )
             .1;
             if unserviceable && deferred.attempts_remaining > 0 {
-                deferred.health = crate::client::convergence::ConvergenceHealth::WaitingDependency;
+                deferred.health =
+                    nyanpasu_core::effects::convergence::ConvergenceHealth::WaitingDependency;
                 deferred.next_attempt =
                     Some(tokio::time::Instant::now() + std::time::Duration::from_secs(5));
             }
@@ -321,7 +322,7 @@ impl ApplicationWorkflow {
 
     /// One attempt at the committed target the live attempt carries.
     async fn retry_committed_target(&mut self, explicit: bool) {
-        use crate::client::convergence::{ConvergenceHealth, RETRY_DELAYS};
+        use nyanpasu_core::effects::convergence::{ConvergenceHealth, RETRY_DELAYS};
         // A mutation's target keeps T8's fixed wait between dependency
         // results; `waits` still counts them.
         let target = self.committed_target();
@@ -1354,9 +1355,9 @@ impl ApplicationWorkflow {
             attempts: previous.as_ref().map_or(0, |p| p.attempts),
             waits: previous.as_ref().map_or(0, |p| p.waits),
             health: if attempts_remaining > 0 {
-                crate::client::convergence::ConvergenceHealth::RetryScheduled
+                nyanpasu_core::effects::convergence::ConvergenceHealth::RetryScheduled
             } else {
-                crate::client::convergence::ConvergenceHealth::Blocked
+                nyanpasu_core::effects::convergence::ConvergenceHealth::Blocked
             },
             next_attempt: previous.and_then(|p| p.next_attempt).or_else(|| {
                 (attempts_remaining > 0)

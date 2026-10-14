@@ -1,13 +1,11 @@
 //! Read-only configuration status. No repair or retry occurs on inspection.
-use super::{
-    NyanpasuClient,
-    convergence::ConvergenceHealth,
-    effects::{
-        plan::EffectKind,
-        status::{EffectFailureCode, EffectHealth},
-    },
-};
+use super::NyanpasuClient;
 use crate::state::profiles::sources::{SourceStatus, SourcesSnapshot};
+use nyanpasu_core::effects::{
+    EffectKind,
+    convergence::ConvergenceHealth,
+    status::{EffectFailureCode, EffectHealth},
+};
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ConfigurationStatus {
@@ -154,7 +152,7 @@ impl NyanpasuClient {
         &self,
     ) -> (
         tokio::sync::watch::Receiver<super::application_workflow::mutation::MutationJournal>,
-        tokio::sync::watch::Receiver<super::effects::actor::EffectsSnapshot>,
+        tokio::sync::watch::Receiver<nyanpasu_core::effects::actor::EffectsSnapshot>,
         tokio::sync::watch::Receiver<SourcesSnapshot>,
     ) {
         (

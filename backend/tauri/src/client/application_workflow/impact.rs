@@ -209,7 +209,7 @@ impl RequestedRuntimeFields {
 /// behaviour that users depend on (roadmap C7/D6).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct MutationHints {
-    pub requested_owners: Vec<crate::client::effects::plan::EffectKind>,
+    pub requested_owners: Vec<nyanpasu_core::effects::EffectKind>,
     /// The request carried a `mode` field, whether or not the value moved.
     ///
     /// This is the repeated-mode command semantics: re-submitting the current
@@ -567,12 +567,11 @@ mod tests {
     use nyanpasu_helper::StatisticWidgetVariant;
     use struct_patch::Patch as _;
 
-    use crate::{
-        client::effects::{
-            plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan, EffectKind},
-            status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
-        },
-        enhance::golden_support,
+    use crate::enhance::golden_support;
+    use nyanpasu_core::effects::{
+        EffectKind,
+        plan::{ApplicationEffect, ApplicationEffectInputs, ApplicationEffectPlan},
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus},
     };
 
     /// `NyanpasuAppConfig::default()` reads the system locale and the platform

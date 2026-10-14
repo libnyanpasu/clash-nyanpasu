@@ -14,15 +14,15 @@ use tokio_util::sync::CancellationToken;
 use snafu::{IntoError as _, ResultExt as _};
 
 use super::{
-    SystemProxyStatus,
+    ProxyGuardDesired, SystemProxyDesired, SystemProxyStatus,
     error::{
         ApplyAutoLaunchSnafu, ApplyPacKeepingStaleSnafu, ApplyPacSnafu, ApplyProxySnafu,
         PacFallback, RestorePacSnafu, RestoreProxySnafu, ShutDownSnafu, SystemProxyError,
     },
     ports::{AutoLaunchPort, OsProxyConfig, OsProxyPort, PacError, PacPort},
 };
-use crate::client::effects::{
-    plan::{EffectKind, ProxyGuardDesired, SystemProxyDesired},
+use crate::effects::{
+    EffectKind,
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
 };
 
@@ -805,5 +805,5 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    nyanpasu_core::tasks::blocking::join(tokio::task::spawn_blocking(work).await)
+    crate::tasks::blocking::join(tokio::task::spawn_blocking(work).await)
 }

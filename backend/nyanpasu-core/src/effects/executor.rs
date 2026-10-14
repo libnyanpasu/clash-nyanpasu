@@ -1,106 +1,41 @@
-//! The implementation of [`ApplicationEffectsPort`]: it fans one plan out to
-//! the owner of each effect. Inside the client, [`CoreLogCaptureEffects`] adds
-//! the Core log owners the client spawns itself.
-//!
-//! The fan-out is by capability, not by lookup — there is no `get::<T>()` here,
-//! so the facade keeps one dependency and this stays a dispatcher rather than a
-//! service locator.
+//! Dispatches each effect in plan order to its explicit owner.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 
 use super::{
-    plan::{
-        ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
-        SystemProxyDesired, TrayRefresh, TrayView,
-    },
-    ports::ApplicationEffectsPort,
-    status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
+    plan::{ApplicationEffect, ApplicationEffectPlan, LoggerDesired},
+    ports::{ApplicationEffectsPort, PresentationEffectsPort, PresentationRequest},
 };
-use crate::client::{
-    hotkey::{
-        HotkeyClient,
-        error::InvalidBindingsSnafu,
-        ports::{AcceleratorValidator, HotkeyBindings},
-    },
-    system_proxy::SystemProxyClient,
-    ui_effects::ports::{LocaleSink, TrayRefresher, WidgetController},
-};
-use nyanpasu_config::application::{I18nLanguage, NetworkStatisticWidgetConfig};
-use nyanpasu_core::{
+use crate::{
     clash::ws::StreamsClient,
+    effects::{
+        EffectKind,
+        status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
+    },
     logs::{
         CoreLogsClient,
         logging::{LogRotation, LoggerRefresher},
     },
+    system_proxy::{ProxyGuardDesired, SystemProxyClient, SystemProxyDesired},
 };
 
 pub struct ApplicationEffectExecutor {
     system_proxy: SystemProxyClient,
-    hotkeys: HotkeyClient,
-    accelerators: Arc<dyn AcceleratorValidator>,
-    locale: Arc<dyn LocaleSink>,
     logger: Arc<dyn LoggerRefresher>,
-    widget: Arc<dyn WidgetController>,
-    tray: Arc<dyn TrayRefresher>,
-    /// A full tray rebuild failed and nothing has rebuilt the menu since.
-    ///
-    /// The tray is the one effect with no desired value to re-send, so a
-    /// failed rebuild has nowhere else to be remembered. Without this, a
-    /// partial refresh arriving afterwards would report the menu healthy while
-    /// it is still built from the values the failed rebuild was replacing.
-    tray_full_pending: AtomicBool,
+    presentation: Option<Arc<dyn PresentationEffectsPort>>,
 }
 
 impl ApplicationEffectExecutor {
     pub fn new(
         system_proxy: SystemProxyClient,
-        hotkeys: HotkeyClient,
-        accelerators: Arc<dyn AcceleratorValidator>,
-        locale: Arc<dyn LocaleSink>,
         logger: Arc<dyn LoggerRefresher>,
-        widget: Arc<dyn WidgetController>,
-        tray: Arc<dyn TrayRefresher>,
+        presentation: Option<Arc<dyn PresentationEffectsPort>>,
     ) -> Self {
         Self {
             system_proxy,
-            hotkeys,
-            accelerators,
-            locale,
             logger,
-            widget,
-            tray,
-            tray_full_pending: AtomicBool::new(false),
+            presentation,
         }
-    }
-
-    /// The facade rejects an unparsable list before it is committed, so getting
-    /// one here means it arrived from somewhere else — a migration, or a file
-    /// edited by hand. The config stays as written and the effect degrades.
-    async fn apply_hotkeys(&self, revision: EffectRevision, raw: &[String]) -> EffectStatus {
-        match HotkeyBindings::parse(raw, self.accelerators.as_ref()) {
-            Ok(desired) => self.hotkeys.reconcile(revision, desired).await,
-            Err(error) => {
-                let error = InvalidBindingsSnafu {
-                    rejected: vec![error],
-                }
-                .build();
-                degraded(
-                    EffectKind::Hotkeys,
-                    revision,
-                    error.code(),
-                    failure_text(&error),
-                    error.retryable(),
-                )
-            }
-        }
-    }
-
-    fn apply_locale(&self, revision: EffectRevision, language: I18nLanguage) -> EffectStatus {
-        self.locale.set_locale(language);
-        healthy(EffectKind::Locale, revision)
     }
 
     fn apply_logger(&self, revision: EffectRevision, desired: &LoggerDesired) -> EffectStatus {
@@ -119,61 +54,6 @@ impl ApplicationEffectExecutor {
                 EffectKind::Logger,
                 revision,
                 EffectFailureCode::LoggerRefreshFailed,
-                failure_text(&error),
-                true,
-            ),
-        }
-    }
-
-    async fn apply_widget(
-        &self,
-        revision: EffectRevision,
-        config: NetworkStatisticWidgetConfig,
-    ) -> EffectStatus {
-        match self.widget.apply(config).await {
-            Ok(()) => healthy(EffectKind::Widget, revision),
-            // Not yet installed is a startup-ordering fact rather than a widget
-            // failure, and its code lets a caller tell them apart. A disable
-            // whose stop ran out of time leaves the old widget owned, and the
-            // next reconcile stops it again: every failure is worth a retry.
-            Err(error) => degraded(
-                EffectKind::Widget,
-                revision,
-                error.code(),
-                failure_text(&error),
-                true,
-            ),
-        }
-    }
-
-    async fn apply_tray(
-        &self,
-        revision: EffectRevision,
-        refresh: TrayRefresh,
-        view: TrayView,
-    ) -> EffectStatus {
-        // Full dominates part. A partial refresh re-reads the values of a menu
-        // that is already built; it cannot finish a rebuild an earlier full
-        // refresh started and failed, so while one is outstanding every
-        // request is widened to a full one.
-        let refresh = match self.tray_full_pending.load(Ordering::SeqCst) {
-            true => TrayRefresh::Full,
-            false => refresh,
-        };
-        let result = match refresh {
-            TrayRefresh::Full => self.tray.refresh_full(view).await,
-            TrayRefresh::Part => self.tray.refresh_part(view).await,
-        };
-        if refresh == TrayRefresh::Full {
-            self.tray_full_pending
-                .store(result.is_err(), Ordering::SeqCst);
-        }
-        match result {
-            Ok(()) => healthy(EffectKind::Tray, revision),
-            Err(error) => degraded(
-                EffectKind::Tray,
-                revision,
-                error.code(),
                 failure_text(&error),
                 true,
             ),
@@ -200,7 +80,6 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
         let mut statuses = Vec::with_capacity(plan.effects().len());
         for effect in plan.effects() {
             let status = match effect {
-                ApplicationEffect::Locale(language) => self.apply_locale(revision, *language),
                 ApplicationEffect::Logger(desired) => self.apply_logger(revision, desired),
                 ApplicationEffect::CoreLogLevel(_) | ApplicationEffect::CoreLogStorage(_) => {
                     unreachable!("CoreLogCaptureEffects applies the Core log effects")
@@ -231,10 +110,43 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                             )
                         })
                 }
-                ApplicationEffect::Hotkeys(desired) => self.apply_hotkeys(revision, desired).await,
-                ApplicationEffect::Widget(config) => self.apply_widget(revision, *config).await,
-                ApplicationEffect::Tray(refresh, view) => {
-                    self.apply_tray(revision, *refresh, *view).await
+                ApplicationEffect::Locale(_)
+                | ApplicationEffect::Hotkeys(_)
+                | ApplicationEffect::Widget(_)
+                | ApplicationEffect::Tray(..) => {
+                    let kind = effect.kind();
+                    match &self.presentation {
+                        Some(presentation) => {
+                            let request = match effect {
+                                ApplicationEffect::Locale(language) => {
+                                    PresentationRequest::Locale(*language)
+                                }
+                                ApplicationEffect::Hotkeys(desired) => {
+                                    PresentationRequest::Hotkeys(desired.clone())
+                                }
+                                ApplicationEffect::Widget(config) => {
+                                    PresentationRequest::Widget(*config)
+                                }
+                                ApplicationEffect::Tray(refresh, application, clash) => {
+                                    PresentationRequest::Tray {
+                                        refresh: *refresh,
+                                        application: application.clone(),
+                                        clash: clash.clone(),
+                                    }
+                                }
+                                _ => unreachable!("matched presentation effects"),
+                            };
+                            presentation.apply(revision, request).await
+                        }
+                        None => EffectStatus {
+                            kind,
+                            desired_revision: revision,
+                            applied_revision: EffectRevision::default(),
+                            health: EffectHealth::Unsupported {
+                                code: EffectFailureCode::PresentationUnsupported,
+                            },
+                        },
+                    }
                 }
             };
             statuses.push(status);
@@ -247,14 +159,14 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
 /// other effect to the executor. The client spawns the Core log owners after
 /// the composition root has built the executor, so the client wraps the
 /// executor instead of joining it.
-pub(crate) struct CoreLogCaptureEffects {
+pub struct CoreLogCaptureEffects {
     executor: Arc<dyn ApplicationEffectsPort>,
     streams: StreamsClient,
     storage: CoreLogsClient,
 }
 
 impl CoreLogCaptureEffects {
-    pub(crate) fn new(
+    pub fn new(
         executor: Arc<dyn ApplicationEffectsPort>,
         streams: StreamsClient,
         storage: CoreLogsClient,

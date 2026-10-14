@@ -10,17 +10,17 @@ use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
+    convergence::{ConvergenceHealth, RetryBudget},
     error::{EffectsError, EffectsStoppedSnafu},
     plan::{
         ApplicationEffect, ApplicationEffectFields, ApplicationEffectInputs, ApplicationEffectPlan,
-        ClashEffectFields, EffectKind, TrayRefresh,
+        ClashEffectFields, TrayRefresh,
     },
-    ports::{ApplicationEffectsPort, CommitNotifications},
-    status::{EffectHealth, EffectRevision, EffectStatus},
+    ports::{ApplicationEffectsPort, CommitNotifications, EffectInvalidationSink},
 };
-use crate::client::{
-    UiEventSink,
-    convergence::{ConvergenceHealth, RetryBudget},
+use crate::effects::{
+    EffectKind,
+    status::{EffectHealth, EffectRevision, EffectStatus},
 };
 
 #[derive(Clone, Debug, Default)]
@@ -64,14 +64,14 @@ impl Entry {
 }
 
 #[derive(Clone)]
-pub(crate) struct EffectsClient {
+pub struct EffectsClient {
     actor: ActorRef<Message>,
     status: watch::Receiver<EffectsSnapshot>,
 }
 
-pub(crate) struct EffectsArgs {
+pub struct EffectsArgs {
     pub port: Arc<dyn ApplicationEffectsPort>,
-    pub ui: Arc<dyn UiEventSink>,
+    pub invalidation: Option<Arc<dyn EffectInvalidationSink>>,
     pub initial: ApplicationEffectInputs,
     /// Once cancelled, nothing new is queued, retried or started; the groups
     /// already running are awaited before the actor stops.
@@ -87,7 +87,7 @@ type WakeUp = tokio::task::JoinHandle<Result<(), ractor::MessagingErr<Message>>>
 
 struct State {
     port: Arc<dyn ApplicationEffectsPort>,
-    ui: Arc<dyn UiEventSink>,
+    invalidation: Option<Arc<dyn EffectInvalidationSink>>,
     /// The latest slice of each owner, side by side.
     desired: ApplicationEffectInputs,
     revision: u64,
@@ -204,7 +204,8 @@ impl State {
         {
             effects.push(ApplicationEffect::Tray(
                 TrayRefresh::Part,
-                self.desired.tray_view(),
+                self.desired.app.clone(),
+                self.desired.clash.clone(),
             ));
         }
         if effects.is_empty() {
@@ -214,10 +215,10 @@ impl State {
         let revision = EffectRevision::new(self.revision);
         for mut effect in effects {
             let kind = effect.kind();
-            if let ApplicationEffect::Tray(refresh, _) = &mut effect
+            if let ApplicationEffect::Tray(refresh, ..) = &mut effect
                 && matches!(
                     self.pending.get(&kind),
-                    Some(ApplicationEffect::Tray(TrayRefresh::Full, _))
+                    Some(ApplicationEffect::Tray(TrayRefresh::Full, ..))
                 )
             {
                 *refresh = TrayRefresh::Full;
@@ -301,11 +302,13 @@ impl State {
                 entry.health = ConvergenceHealth::Pending;
             }
             let port = self.port.clone();
-            let ui = self.ui.clone();
+            let invalidation = self.invalidation.clone();
             let actor = myself.clone();
             self.active[index] = Some(tokio::spawn(async move {
-                if index == 2 {
-                    ui.refresh_clash();
+                if index == 2
+                    && let Some(invalidation) = invalidation
+                {
+                    invalidation.before_visual_apply();
                 }
                 let statuses = port
                     .apply(revision, ApplicationEffectPlan::from_effects(effects))
@@ -334,7 +337,7 @@ impl Actor for EffectsActor {
     ) -> Result<State, ActorProcessingErr> {
         Ok(State {
             port: args.dependencies.port,
-            ui: args.dependencies.ui,
+            invalidation: args.dependencies.invalidation,
             desired: args.dependencies.initial,
             revision: 0,
             pending: BTreeMap::new(),
@@ -517,7 +520,7 @@ impl EffectsClient {
             },
         )
         .await?;
-        nyanpasu_core::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
+        crate::tasks::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self {
             actor,
             status: receiver,

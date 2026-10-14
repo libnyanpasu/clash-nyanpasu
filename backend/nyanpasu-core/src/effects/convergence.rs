@@ -12,7 +12,7 @@ pub enum ConvergenceHealth {
     RecoveryRequired,
 }
 
-pub(crate) const RETRY_DELAYS: [Duration; 3] = [
+pub const RETRY_DELAYS: [Duration; 3] = [
     Duration::from_secs(1),
     Duration::from_secs(5),
     Duration::from_secs(30),
@@ -49,7 +49,7 @@ pub(crate) const REESTABLISH_WAIT_DELAYS: [Duration; 5] = [
 
 /// How an attempt ended, as far as its target's schedule is concerned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OutcomeClass {
+pub enum OutcomeClass {
     /// It built, checked or submitted the target. Scheduled by the retry
     /// budget, and the only thing besides a new identity that ends waiting.
     Application,
@@ -62,7 +62,7 @@ pub(crate) enum OutcomeClass {
 /// attempt resets nothing: a dependency can go missing inside one, so only
 /// an application result leaves the backoff (and its delay is the retry
 /// budget's to choose, so none is given here).
-pub(crate) fn next_wait(waits: u8, class: OutcomeClass) -> (Duration, u8) {
+pub fn next_wait(waits: u8, class: OutcomeClass) -> (Duration, u8) {
     match class {
         OutcomeClass::Application => (Duration::ZERO, 0),
         OutcomeClass::Dependency => {

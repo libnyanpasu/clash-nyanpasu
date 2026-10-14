@@ -558,6 +558,9 @@ test('an effect failure is localized by its code', () => {
   expect(effectFailureMessage('hotkey_partial_registration')).toBe(
     m.effect_failure_hotkey_partial_registration(),
   )
+  expect(effectFailureMessage('presentation_unsupported')).toBe(
+    m.effect_failure_presentation_unsupported(),
+  )
 })
 
 test('a failed system proxy write names the address it was going to', () => {

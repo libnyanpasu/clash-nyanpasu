@@ -3432,7 +3432,7 @@ async fn a_gui_save_never_reaches_the_runtime() {
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
         f.client.clone(),
-        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        Arc::new(crate::client::effects_test_support::NoopCommitNotifications),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
@@ -3481,7 +3481,7 @@ async fn the_source_takes_the_runtime_only_into_requests_that_reach_it() {
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
         f.client.clone(),
-        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        Arc::new(crate::client::effects_test_support::NoopCommitNotifications),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
@@ -3895,7 +3895,7 @@ async fn application_actor_rejection_keeps_source_version_and_bytes() {
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
         f.client.clone(),
-        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        Arc::new(crate::client::effects_test_support::NoopCommitNotifications),
     );
     let snapshot = f.application.snapshot_handle();
     let before = snapshot.load();
@@ -3931,7 +3931,7 @@ async fn application_actor_prepare_does_not_block_committed_reads() {
     let mutations = crate::state::mutation::MutationCoordinator::pending();
     mutations.connect(
         f.client.clone(),
-        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        Arc::new(crate::client::effects_test_support::NoopCommitNotifications),
     );
     let application = crate::client::application::ApplicationClient::from_manager(
         mutations,
@@ -4042,7 +4042,7 @@ async fn native_store_failure_refuses_the_save_without_scheduling_retries() {
 
 #[tokio::test]
 async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::effects::convergence::ConvergenceHealth;
     let f = deferred_fixture().await;
     let source = f.clash.snapshot_handle().load().version;
     for remaining in [2, 1, 0] {
@@ -4085,7 +4085,7 @@ async fn runtime_automatic_budget_exhausts_and_retry_now_never_writes_source() {
 
 #[tokio::test]
 async fn runtime_retry_waits_for_check_dependency_without_spending_apply_budget() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::effects::convergence::ConvergenceHealth;
     let f = deferred_fixture().await;
     f.endpoint.set_failure(None);
     f.endpoint
@@ -4141,7 +4141,7 @@ async fn dependency_retries_count_waits_until_an_application_result() {
 /// user's back. It waits for the owner instead, and spends nothing.
 #[tokio::test]
 async fn an_automatic_retry_never_moves_the_runtime_to_another_host() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::effects::convergence::ConvergenceHealth;
     let service = TestControlEndpoint::succeeding_on(ExecutionHost::Service);
     let mut f = fixture_with_hosts(true, Some(service.clone())).await;
     f.endpoint.set_failure(Some("queue_full"));
@@ -4191,7 +4191,7 @@ async fn an_automatic_retry_never_moves_the_runtime_to_another_host() {
 
 #[tokio::test]
 async fn stopped_runtime_is_not_started_by_retry_now() {
-    use crate::client::convergence::ConvergenceHealth;
+    use nyanpasu_core::effects::convergence::ConvergenceHealth;
     let f = deferred_fixture().await;
     f.endpoint.set_failure(None);
     f.endpoint
@@ -4503,7 +4503,7 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
     let coordinator = crate::state::mutation::MutationCoordinator::pending();
     coordinator.connect(
         f.client.clone(),
-        Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+        Arc::new(crate::client::effects_test_support::NoopCommitNotifications),
     );
     let (commit, degradations) = coordinator.committed(
         Some(operation_id),
@@ -4520,4 +4520,149 @@ async fn a_runtime_owner_gone_after_the_try_leaves_the_commit_to_recover() {
         degradations[0].reason,
         crate::client::runtime::DegradationReason::RuntimeRecoveryRequired { .. }
     ));
+}
+
+/// The real effects owner processes the unchanged application publication
+/// without planning effects. Session persistence and the workflow's absence
+/// of runtime notifications are checked separately, without a mailbox barrier.
+#[tokio::test]
+async fn no_op_and_session_saves_do_not_dispatch() {
+    use crate::client::effects_test_support::MockApplicationEffectsPort;
+    use nyanpasu_core::effects::{
+        actor::{EffectsArgs, EffectsClient},
+        plan::ApplicationEffectInputs,
+    };
+    use struct_patch::Patch;
+    let f = fixture().await;
+    let mut port = MockApplicationEffectsPort::new();
+    port.expect_apply().never();
+    let effects = EffectsClient::spawn(
+        EffectsArgs {
+            port: Arc::new(port),
+            invalidation: None,
+            initial: ApplicationEffectInputs::project(
+                &f.application.snapshot_handle().load().state,
+                &f.clash.snapshot_handle().load().state,
+                None,
+            ),
+            shutdown: f.shutdown.child_token(),
+        },
+        &f.tasks,
+    )
+    .await
+    .unwrap();
+    let mut observed = effects.subscribe();
+    let event_seq = observed.borrow().event_seq;
+    let mutations = crate::state::mutation::MutationCoordinator::pending();
+    mutations.connect(f.client.clone(), Arc::new(effects));
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        ReleaseChannel::Stable,
+        f.shutdown.clone(),
+        &f.tasks,
+    )
+    .await
+    .unwrap();
+    let before = application.snapshot();
+    let mut patch = NyanpasuAppConfig::new_empty_patch();
+    patch.language = Some(before.state.language);
+    application.patch(patch).await.unwrap();
+    let processed = tokio::time::timeout(
+        Duration::from_secs(5),
+        observed.wait_for(|snapshot| snapshot.event_seq > event_seq),
+    )
+    .await
+    .expect("the effects owner processes the unchanged application publication")
+    .unwrap()
+    .clone();
+    assert!(processed.effects.is_empty());
+    let session_path = temp_path(&f._dir, "session-state.yaml");
+    let session = crate::client::session_state::SessionStateClient::new(
+        session_path.clone(),
+        f.shutdown.clone(),
+        &f.tasks,
+    )
+    .await
+    .unwrap();
+    let geometry = nyanpasu_config::state::window::WindowState {
+        width: 800,
+        height: 600,
+        x: 0,
+        y: 0,
+        maximized: false,
+        fullscreen: false,
+    };
+    session.save_main_window(geometry.clone()).await.unwrap();
+    assert_eq!(application.snapshot().state.language, before.state.language);
+    assert_eq!(session.main_window_geometry(), Some(geometry.clone()));
+    let persisted: nyanpasu_config::state::PersistentState =
+        serde_yaml::from_slice(&std::fs::read(session_path).unwrap()).unwrap();
+    assert_eq!(
+        persisted
+            .window_state
+            .get(&nyanpasu_config::state::window::WindowLabel(
+                crate::consts::MAIN_WINDOW_LABEL.into(),
+            )),
+        Some(&geometry)
+    );
+    assert_eq!(f.notifications.bound(), 0);
+    assert_eq!(f.notifications.full(), 0);
+    f.shutdown.cancel();
+    f.tasks.close();
+    f.tasks.wait().await;
+}
+
+/// The channel validator runs in the source actor, not in the workflow.
+/// The existing strict notification fixture rejects any source publication;
+/// the facade rejection assertion remains in effects/tests.
+#[tokio::test]
+async fn rejected_source_never_dispatches() {
+    use crate::state::config_error::ConfigError;
+    use nyanpasu_config::application::{I18nLanguage, ReleaseChannel as Channel};
+    use struct_patch::Patch;
+    let mut f = fixture().await;
+    let mut initial = f.application.snapshot().as_ref().clone();
+    initial.release_channel = Some(Channel::Nightly);
+    assert!(matches!(
+        f.application
+            .replace_if_version(f.application.snapshot_handle().load().version, initial)
+            .await
+            .unwrap(),
+        ReplaceIfVersionResult::Replaced
+    ));
+    let mutations = crate::state::mutation::MutationCoordinator::pending();
+    mutations.connect(f.client.clone(), f.notifications.clone());
+    let application = crate::client::application::ApplicationClient::from_manager(
+        mutations,
+        f.application,
+        Channel::Nightly,
+        f.shutdown.clone(),
+        &f.tasks,
+    )
+    .await
+    .unwrap();
+    let before = application.snapshot();
+    let bytes = std::fs::read(&f.app_path).unwrap();
+    let mut rejected = NyanpasuAppConfig::new_empty_patch();
+    rejected.language = Some(I18nLanguage::Korean);
+    rejected.release_channel = Some(Some(Channel::Stable));
+    assert!(matches!(
+        application.patch(rejected).await,
+        Err(ConfigError::LeaveNightlyChannel {
+            to: Channel::Stable
+        })
+    ));
+    assert_ne!(application.snapshot().state.language, I18nLanguage::Korean);
+    assert_eq!(
+        serde_json::to_value(application.snapshot().state).unwrap(),
+        serde_json::to_value(before.state).unwrap()
+    );
+    assert_eq!(application.snapshot().version, before.version);
+    assert_eq!(std::fs::read(&f.app_path).unwrap(), bytes);
+    assert_eq!(f.notifications.bound(), 0);
+    assert_eq!(f.notifications.full(), 0);
+    f.shutdown.cancel();
+    f.tasks.close();
+    f.tasks.wait().await;
 }

@@ -1,6 +1,8 @@
 //! Setup logic for the app
 use nyanpasu_core::{
     diagnostics::direct_egress::HttpDirectEgressProbe,
+    effects::executor::ApplicationEffectExecutor,
+    hotkey::HotkeyAction,
     logs::logging::{ReloadSignal, TracingLoggerRefresher},
     tasks::track_until_shutdown,
 };
@@ -8,28 +10,31 @@ use nyanpasu_paths::PathResolver;
 use std::sync::Arc;
 
 use crate::client::{
-    ClientSetupArgs, MainThreadExecutor, NyanpasuClient, OsSystemDnsCache, RuntimePaths,
-    TauriMainThread, TauriUiEventSink,
-    effects::executor::ApplicationEffectExecutor,
+    ClientSetupArgs, MainThreadExecutor, NyanpasuClient, RuntimePaths, TauriMainThread,
+    TauriUiEventSink,
+    effects::presentation::TauriPresentationEffects,
     hotkey::{
         HotkeyArgs, HotkeyClient,
         adapters::{
             ChannelActionSink, PlatformAcceleratorValidator, TauriShortcutRegistrar,
             TauriWindowControl,
         },
-        ports::HotkeyAction,
     },
-    system_proxy::{
-        SystemProxyArgs, SystemProxyClient,
-        adapters::{AutoLaunchBackend, AutoLaunchConfig, HttpPacBackend, SysproxyOsProxy},
-        ports::OsProxyPort,
-    },
+    system_proxy_adapters::{AutoLaunchBackend, AutoLaunchConfig},
     ui_effects::{
         adapters::{RustI18nLocaleSink, TauriTrayRefresher, TauriWidgetController},
         ports::LocaleSink,
     },
 };
 use anyhow::Context;
+use nyanpasu_core::{
+    system_dns::OsSystemDnsCache,
+    system_proxy::{
+        SystemProxyArgs, SystemProxyClient,
+        adapters::{HttpPacBackend, SysproxyOsProxy},
+        ports::OsProxyPort,
+    },
+};
 use nyanpasu_traffic::{RedbTrafficStore, TrafficStore};
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -390,12 +395,14 @@ fn build_application_effects(
     let widget = Arc::new(TauriWidgetController::default());
     let executor = Arc::new(ApplicationEffectExecutor::new(
         system_proxy,
-        hotkeys,
-        Arc::new(PlatformAcceleratorValidator),
-        Arc::new(RustI18nLocaleSink),
         Arc::new(TracingLoggerRefresher::new(logger_reload)),
-        widget.clone(),
-        Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
+        Some(Arc::new(TauriPresentationEffects::new(
+            hotkeys,
+            Arc::new(PlatformAcceleratorValidator),
+            Arc::new(RustI18nLocaleSink),
+            widget.clone(),
+            Arc::new(TauriTrayRefresher::<tauri::Wry>::new(app_handle.clone())),
+        ))),
     ));
     Ok((executor, widget))
 }

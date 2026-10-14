@@ -1,19 +1,20 @@
+import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import LanOutlineRounded from '~icons/material-symbols/lan-outline-rounded'
 import PauseRounded from '~icons/material-symbols/pause-rounded'
 import PlayArrowRounded from '~icons/material-symbols/play-arrow-rounded'
 import type { PropsWithChildren } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@nyanpasu/ui/dropdown-menu'
+import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@nyanpasu/ui/segmented-button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@nyanpasu/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { beyondRetention } from '@/utils/traffic-retention'
@@ -32,6 +33,10 @@ import {
   type SearchFilter,
 } from '../../_modules/traffic-filters'
 import { useTrafficPage } from './traffic-context'
+
+// The menu triggers keep the shape of the toolbar's Select pills.
+const triggerClassName =
+  'flex h-9 min-w-0 shrink-0 items-center gap-1 rounded-full px-3'
 
 const SCOPES = {
   all: m.traffic_scope_all,
@@ -103,84 +108,90 @@ export default function TrafficToolbar({ children }: PropsWithChildren) {
           )}
           data-slot="traffic-metric-range"
         >
-          <div className="w-28 shrink-0">
-            <Select
-              variant="outlined"
-              value={metric}
-              onValueChange={(next) => {
-                if (next === 'bytes' || next === 'connections') {
-                  onSearchChange({ metric: next })
-                }
-              }}
-            >
-              <SelectTrigger
-                className="h-9 min-w-0 rounded-full px-3 py-0"
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className={cn(triggerClassName, 'w-28')}
                 aria-label={m.traffic_metric_label()}
                 title={METRICS[metric]()}
               >
-                <SelectValue
-                  className="truncate pr-4 text-sm"
-                  placeholder={m.traffic_metric_label()}
-                >
+                <span className="min-w-0 flex-1 truncate text-left">
                   {METRICS[metric]()}
-                </SelectValue>
-              </SelectTrigger>
-
-              <SelectContent>
-                {(Object.keys(METRICS) as Metric[]).map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {METRICS[value]()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="w-32 shrink-0">
-            <Select
-              variant="outlined"
-              value={range}
-              onValueChange={(next) =>
-                onSearchChange({ range: next as TrafficRange })
-              }
+                </span>
+                <ArrowDropDownRounded aria-hidden className="size-5 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="end"
+              sideOffset={8}
+              collisionPadding={8}
             >
-              <SelectTrigger
-                className="h-9 min-w-0 rounded-full px-3 py-0"
+              <DropdownMenuRadioGroup
+                value={metric}
+                onValueChange={(next) => {
+                  if (next === 'bytes' || next === 'connections') {
+                    onSearchChange({ metric: next })
+                  }
+                }}
+              >
+                {(Object.keys(METRICS) as Metric[]).map((value) => (
+                  <DropdownMenuRadioItem key={value} value={value}>
+                    {METRICS[value]()}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className={cn(triggerClassName, 'w-32')}
                 aria-label={m.traffic_range_label()}
                 title={rangeName(range)}
               >
-                <SelectValue
-                  className="truncate pr-4 text-sm"
-                  placeholder={m.traffic_range_label()}
-                >
+                <span className="min-w-0 flex-1 truncate text-left">
                   {rangeName(range)}
-                </SelectValue>
-              </SelectTrigger>
-
-              <SelectContent className="min-w-64">
+                </span>
+                <ArrowDropDownRounded aria-hidden className="size-5 shrink-0" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="end"
+              sideOffset={8}
+              collisionPadding={8}
+              className="min-w-64"
+            >
+              <DropdownMenuRadioGroup
+                value={range}
+                onValueChange={(next) =>
+                  onSearchChange({ range: next as TrafficRange })
+                }
+              >
                 {RANGES.map((value) => {
                   const disabled = beyondRetention(value, retention)
 
                   return (
-                    <SelectItem
+                    <DropdownMenuRadioItem
                       key={value}
                       value={value}
                       disabled={disabled}
                       className="data-disabled:pointer-events-none data-disabled:opacity-50"
                     >
                       <span>{rangeName(value)}</span>
-
                       {disabled && (
                         <span className="text-on-surface-variant text-xs">
                           {m.traffic_range_beyond_retention()}
                         </span>
                       )}
-                    </SelectItem>
+                    </DropdownMenuRadioItem>
                   )
                 })}
-              </SelectContent>
-            </Select>
-          </div>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div

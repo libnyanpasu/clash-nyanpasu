@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { userEvent } from 'vitest/browser'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import {
   keepReturn,
@@ -384,6 +385,19 @@ async function open(
 
 const last = () => rpc.reports.at(-1)!
 
+// A closed dropdown menu keeps the page hidden from role queries until its
+// exit animation finishes, so wait for the portal to unmount before the next
+// assertion.
+const chooseToolbarMenu = async (
+  view: Awaited<ReturnType<typeof open>>,
+  menu: string,
+  option: string | RegExp,
+) => {
+  await view.getByRole('button', { name: menu }).click()
+  await view.getByRole('menuitemradio', { name: option }).click()
+  await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull()
+}
+
 const sidebarItem = (view: Awaited<ReturnType<typeof open>>, name: string) =>
   view
     .getByRole('complementary', { name: m.traffic_sidebar() })
@@ -629,10 +643,26 @@ test('the scope and the time range change the next request', async ({
   await view.getByRole('radio', { name: m.traffic_scope_closed() }).click()
   await expect.poll(() => last().query.scope).toBe('closed')
 
-  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
-  await view
-    .getByRole('option', { name: m.traffic_range_last6_hours() })
-    .click()
+  const rangeTrigger = view.getByRole('button', {
+    name: m.traffic_range_label(),
+  })
+  await rangeTrigger.click()
+  await expect
+    .element(
+      view.getByRole('menuitemradio', {
+        name: m.traffic_range_last_hour(),
+      }),
+    )
+    .toHaveAttribute('aria-checked', 'true')
+  await userEvent.keyboard('{Escape}')
+  await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull()
+  await expect.poll(() => document.activeElement).toBe(rangeTrigger.element())
+
+  await chooseToolbarMenu(
+    view,
+    m.traffic_range_label(),
+    m.traffic_range_last6_hours(),
+  )
   await expect.poll(() => last().query.range).toBe('last6_hours')
   expect(last().query.scope).toBe('closed')
 })
@@ -653,8 +683,11 @@ test('polls every 2 s up to 24 hours, every 10 s beyond, and not when paused', a
   await view.getByRole('button', { name: m.topology_resume() }).click()
   await expect.poll(() => backend.intervals.at(-1)).toBe(2_000)
 
-  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
-  await view.getByRole('option', { name: m.traffic_range_last7_days() }).click()
+  await chooseToolbarMenu(
+    view,
+    m.traffic_range_label(),
+    m.traffic_range_last7_days(),
+  )
   await expect.poll(() => backend.intervals.at(-1)).toBe(10_000)
 })
 
@@ -818,8 +851,9 @@ test('ranges longer than the retention are disabled, except all time', async ({
   mockBackend()
   const view = await open(onTestFinished)
 
-  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
-  const option = (name: string | RegExp) => view.getByRole('option', { name })
+  await view.getByRole('button', { name: m.traffic_range_label() }).click()
+  const option = (name: string | RegExp) =>
+    view.getByRole('menuitemradio', { name })
 
   await expect
     .element(option(m.traffic_range_last24_hours()))
@@ -834,6 +868,9 @@ test('ranges longer than the retention are disabled, except all time', async ({
     await expect
       .element(option(new RegExp(name)))
       .toHaveAttribute('aria-disabled', 'true')
+    await expect
+      .element(option(new RegExp(name)))
+      .toHaveAttribute('data-disabled', '')
   }
   await expect
     .element(view.getByText(m.traffic_range_beyond_retention()).first())
@@ -847,17 +884,19 @@ test('a 7 day retention only disables the 30 day range', async ({
   mockBackend()
   const view = await open(onTestFinished)
 
-  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
+  await view.getByRole('button', { name: m.traffic_range_label() }).click()
 
   await expect
     .element(
-      view.getByRole('option', {
+      view.getByRole('menuitemradio', {
         name: new RegExp(m.traffic_range_last30_days()),
       }),
     )
     .toHaveAttribute('aria-disabled', 'true')
   await expect
-    .element(view.getByRole('option', { name: m.traffic_range_last7_days() }))
+    .element(
+      view.getByRole('menuitemradio', { name: m.traffic_range_last7_days() }),
+    )
     .not.toHaveAttribute('aria-disabled', 'true')
 })
 
@@ -1015,11 +1054,6 @@ const node = (
 const press = (locator: { element: () => Element }) =>
   (locator.element() as HTMLElement).click()
 
-const hover = (locator: { element: () => Element }) =>
-  locator
-    .element()
-    .dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
-
 test('the template and the metric change the topology of the same request', async ({
   onTestFinished,
 }) => {
@@ -1050,10 +1084,11 @@ test('the template and the metric change the topology of the same request', asyn
     .poll(() => last().topology?.layers)
     .toEqual(['process', 'target', 'exit'])
 
-  await view.getByRole('combobox', { name: m.traffic_metric_label() }).click()
-  await view
-    .getByRole('option', { name: m.traffic_metric_connections() })
-    .click()
+  await chooseToolbarMenu(
+    view,
+    m.traffic_metric_label(),
+    m.traffic_metric_connections(),
+  )
   await expect.poll(() => last().metric).toBe('connections')
   expect(last().topology?.layers).toEqual(['process', 'target', 'exit'])
 
@@ -1117,7 +1152,10 @@ test('hovering a node leaves only its adjacent edges lit', async ({
   // Three gaps of two by two edges.
   await expect.poll(() => opacities().length).toBe(12)
 
-  hover(target)
+  // Move the real pointer onto the node: a cursor left over the page by an
+  // earlier test would otherwise fire a mouseover on whichever node renders
+  // under it and override the highlight.
+  await target.hover()
   // Two edges come in and two go out; the other eight fade as they animate.
   await expect
     .poll(() => [
@@ -1143,7 +1181,7 @@ test('a large flow is drawn static, scrolls inside a capped height and still hig
     document.querySelector<HTMLElement>('[role="region"]')?.style.maxHeight,
   ).toBe('40rem')
 
-  hover(target)
+  await target.hover()
   // 22 edges come in and 22 go out of the node; the rest is dimmed at once.
   await expect
     .poll(
@@ -1278,18 +1316,19 @@ test('the toolbar metric orders the rankings and the full list', async ({
   await expect.element(inbound).toBeInTheDocument()
   expect(inbound.element().textContent).toContain('mixed3.00 KiB')
 
-  const metric = view.getByRole('combobox', { name: m.traffic_metric_label() })
+  const metric = view.getByRole('button', { name: m.traffic_metric_label() })
   expect(toolbar().contains(metric.element())).toBe(true)
-  await metric.click()
-  await view
-    .getByRole('option', { name: m.traffic_metric_connections() })
-    .click()
+  await chooseToolbarMenu(
+    view,
+    m.traffic_metric_label(),
+    m.traffic_metric_connections(),
+  )
 
   await expect.poll(() => last().metric).toBe('connections')
   // A row leads with the metric and ends its second line with the other one.
-  expect(inbound.element().textContent).toContain(
-    `mixed${m.topology_connection_count({ count: 3 })}`,
-  )
+  await expect
+    .poll(() => inbound.element().textContent)
+    .toContain(`mixed${m.topology_connection_count({ count: 3 })}`)
   expect(inbound.element().textContent).toMatch(/3\.00 KiB$/)
 
   await view

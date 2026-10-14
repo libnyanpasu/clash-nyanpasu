@@ -112,10 +112,10 @@ async function openToolbar(ticket: boolean) {
   ).toBe(true)
 
   await expect
-    .element(view.getByRole('combobox', { name: m.traffic_metric_label() }))
+    .element(view.getByRole('button', { name: m.traffic_metric_label() }))
     .toHaveAttribute('title', m.traffic_metric_bytes())
   await expect
-    .element(view.getByRole('combobox', { name: m.traffic_range_label() }))
+    .element(view.getByRole('button', { name: m.traffic_range_label() }))
     .toHaveAttribute('title', m.traffic_range_last_hour())
 
   return {

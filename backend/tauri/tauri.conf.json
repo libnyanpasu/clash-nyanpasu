@@ -19,6 +19,7 @@
       "nsis": {
         "displayLanguageSelector": true,
         "installerIcon": "icons/icon.ico",
+        "sidebarImage": "templates/nsis-sidebar.bmp",
         "languages": [
           "English",
           "Japanese",

@@ -12,10 +12,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dnd-kit/collision": "0.5.0",
+    "@dnd-kit/collision": "0.5.1",
     "@dnd-kit/core": "6.3.1",
-    "@dnd-kit/helpers": "0.5.0",
-    "@dnd-kit/react": "0.5.0",
+    "@dnd-kit/helpers": "0.5.1",
+    "@dnd-kit/react": "0.5.1",
     "@fontsource-variable/inter": "5.3.0",
     "@hookform/resolvers": "5.9.1",
     "@inlang/paraglide-js": "2.28.0",

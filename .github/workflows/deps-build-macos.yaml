@@ -137,6 +137,9 @@ jobs:
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
           NODE_OPTIONS: '--max_old_space_size=4096'
 
+      - name: Finalize DMG layout
+        run: deno task finalize:macos-dmg
+
       - name: Rename updater files
         run: |
           deno task upload-macos-updater

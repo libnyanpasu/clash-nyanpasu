@@ -27,7 +27,7 @@
     },
     "test:release": {
       "description": "Test release preparation, publishing, finalization, and channel selection",
-      "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/check-nightly-changes_test.ts scripts/src/release/publish_test.ts scripts/src/release/prepare-release_test.ts scripts/src/release/finalize-linux-release_test.ts scripts/src/updater/release-channel_test.ts"
+      "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/check-nightly-changes_test.ts scripts/src/release/publish_test.ts scripts/src/release/prepare-release_test.ts scripts/src/release/finalize-linux-release_test.ts scripts/src/release/finalize-macos-dmg_test.ts scripts/src/updater/release-channel_test.ts"
     },
     "test:manifest": {
       "description": "Test core version manifest resolution and Meow asset integrity metadata",
@@ -44,6 +44,10 @@
     "test:linux-release": {
       "description": "Test Linux release package finalization",
       "command": "deno test --config scripts/deno.jsonc -A scripts/src/release/finalize-linux-release_test.ts"
+    },
+    "finalize:macos-dmg": {
+      "description": "Keep the hidden DMG background inside the Finder scroll bounds",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/finalize-macos-dmg.ts"
     },
     "test:architecture-ledger": {
       "description": "Test architecture ledger analysis and reporting",

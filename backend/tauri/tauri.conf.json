@@ -58,7 +58,22 @@
       "minimumSystemVersion": "12.6",
       "exceptionDomain": "",
       "signingIdentity": null,
-      "entitlements": null
+      "entitlements": null,
+      "dmg": {
+        "background": "templates/dmg-background.png",
+        "windowSize": {
+          "width": 836,
+          "height": 503
+        },
+        "appPosition": {
+          "x": 530,
+          "y": 252
+        },
+        "applicationFolderPosition": {
+          "x": 235,
+          "y": 252
+        }
+      }
     },
     "linux": {
       "deb": {

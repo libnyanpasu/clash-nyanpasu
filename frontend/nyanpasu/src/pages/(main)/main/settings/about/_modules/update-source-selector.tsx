@@ -1,3 +1,4 @@
+import DnsRounded from '~icons/material-symbols/dns-rounded'
 import { useState } from 'react'
 import { SwitchItem } from '@nyanpasu/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
@@ -12,11 +13,8 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { isBrowser } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import { type UpdateSource } from '@nyanpasu/rpc/types'
-import {
-  SettingsCard,
-  SettingsCardContent,
-  SettingsCardHeader,
-} from '../../_modules/settings-card'
+import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import AboutCardHeader from './about-card-header'
 
 const SOURCES: UpdateSource[] = ['nyanpasu', 'github', 'ghfast', 'sourceforge']
 
@@ -130,11 +128,9 @@ export default function UpdateSourceSelector() {
   if (isBrowser()) {
     return (
       <SettingsCard data-slot="about-package-source-card">
-        <SettingsCardHeader>
-          <h2 className="text-base font-semibold">
-            {m.update_sources_title()}
-          </h2>
-        </SettingsCardHeader>
+        <AboutCardHeader icon={DnsRounded}>
+          {m.update_sources_title()}
+        </AboutCardHeader>
         <SettingsCardContent className="pt-2">
           <p className="text-on-surface-variant text-sm">
             {m.settings_about_update_desktop_only()}
@@ -187,9 +183,9 @@ function UpdateSourceSelectorControls() {
 
   return (
     <SettingsCard data-slot="about-package-source-card">
-      <SettingsCardHeader>
-        <h2 className="text-base font-semibold">{m.update_sources_title()}</h2>
-      </SettingsCardHeader>
+      <AboutCardHeader icon={DnsRounded}>
+        {m.update_sources_title()}
+      </AboutCardHeader>
       <SettingsCardContent className="gap-3 pt-2">
         <p className="text-on-surface-variant text-sm">
           {m.update_sources_description()}

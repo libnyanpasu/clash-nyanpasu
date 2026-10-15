@@ -16,17 +16,20 @@ export default function NyanpasuVersion({
       className="space-y-2 md:row-span-2"
       data-slot="about-version-card"
     >
-      <SettingsCardContent className="items-center gap-4">
-        <div className="p-4">
+      <SettingsCardContent className="p-3 pb-0">
+        <div
+          className="flex flex-col items-center gap-3 px-5 py-6"
+          data-slot="about-version-hero"
+        >
           <AnimatedLogo className="size-32" indeterminate />
-        </div>
 
-        <div className="truncate text-base font-bold">
-          Clash Nyanpasu~(∠・ω&lt; )⌒☆
-        </div>
+          <div className="text-on-surface max-w-full truncate text-xl font-semibold">
+            Clash Nyanpasu~(∠・ω&lt; )⌒☆
+          </div>
 
-        <div className="text-sm font-semibold">
-          {m.settings_label_about_version({ version: currentVersion })}
+          <span className="bg-surface-variant text-on-surface-variant rounded-full px-3 py-1 text-sm font-medium">
+            {m.settings_label_about_version({ version: currentVersion })}
+          </span>
         </div>
       </SettingsCardContent>
 

@@ -1,5 +1,12 @@
+import CheckCircleRounded from '~icons/material-symbols/check-circle-rounded'
+import DeployedCodeUpdateOutlineRounded from '~icons/material-symbols/deployed-code-update-outline-rounded'
+import DownloadRounded from '~icons/material-symbols/download-rounded'
+import ErrorRounded from '~icons/material-symbols/error-rounded'
+import SyncRounded from '~icons/material-symbols/sync-rounded'
+import UpdateRounded from '~icons/material-symbols/update-rounded'
+import { cva } from 'class-variance-authority'
 import { filesize } from 'filesize'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import Markdown from 'react-markdown'
 import { ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Button, type ButtonProps } from '@nyanpasu/ui/button'
@@ -21,6 +28,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { isTauri } from '@nyanpasu/platform'
+import { cn } from '@nyanpasu/utils'
 import {
   SettingsCardContent,
   SettingsCardFooter,
@@ -48,6 +56,53 @@ function sourceLabel(source: string | null | undefined) {
   if (source === 'ghfast') return m.update_source_ghfast()
   return null
 }
+
+const updateStatusVariants = cva(
+  'flex items-center gap-4 rounded-[28px] p-4 transition-colors',
+  {
+    variants: {
+      tone: {
+        neutral:
+          'bg-surface-variant/30 text-on-surface dark:bg-surface-variant/10',
+        primary: 'bg-primary-container text-on-primary-container',
+        error: 'bg-error-container text-on-error-container',
+      },
+    },
+    defaultVariants: { tone: 'neutral' },
+  },
+)
+
+const updateStatusIconVariants = cva(
+  'grid size-12 shrink-0 place-content-center rounded-full',
+  {
+    variants: {
+      tone: {
+        neutral: 'bg-primary-container text-on-primary-container',
+        primary: 'bg-primary text-on-primary',
+        error: 'bg-error text-on-error',
+      },
+    },
+    defaultVariants: { tone: 'neutral' },
+  },
+)
+
+const updateProgressVariants = cva(
+  'bg-surface-variant/30 dark:bg-surface-variant/10 flex flex-col gap-3 rounded-[20px] p-4',
+)
+
+const STATUS_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  up_to_date: CheckCircleRounded,
+  available: DownloadRounded,
+  downloading: DownloadRounded,
+  ready: DeployedCodeUpdateOutlineRounded,
+  failed: ErrorRounded,
+  checking: SyncRounded,
+  cancelling: SyncRounded,
+  verifying: SyncRounded,
+  installing: SyncRounded,
+}
+
+const SPINNING_PHASES = ['checking', 'cancelling', 'verifying', 'installing']
 
 type UpdateActionButtonProps = Omit<ButtonProps, 'children' | 'loading'> & {
   status: string
@@ -160,6 +215,25 @@ export default function UpdateControls({
   }
 
   const statusLabel = phaseLabel[phase] ?? phaseLabel.failed
+
+  const tone = (() => {
+    if (phase === 'failed') return 'error'
+    if (phase === 'available' || phase === 'ready') return 'primary'
+    return 'neutral'
+  })()
+  const StatusIcon = STATUS_ICONS[phase] ?? UpdateRounded
+  const showStatus = Boolean(snapshot?.supported) && phase !== 'idle'
+  const statusTitle = release
+    ? m.settings_about_update_version({ version: release.version })
+    : statusLabel
+  const statusDetail = release
+    ? [
+        statusLabel,
+        release.date ? new Date(release.date).toLocaleDateString() : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null
 
   const action = (() => {
     if (!isDesktop) {
@@ -285,77 +359,50 @@ export default function UpdateControls({
   return (
     <>
       <SettingsCardContent
-        className="gap-4 pt-0 pb-2"
+        className="gap-3 pt-0 pb-2"
         data-slot="about-update-controls"
         data-phase={phase}
       >
-        <div className="flex w-full flex-col items-center gap-4">
-          <div className="w-full min-w-0 text-center">
-            {release && (
-              <p className="text-on-surface-variant mt-1 text-sm">
-                {m.settings_about_update_version({ version: release.version })}
-                {release.date
-                  ? ` · ${new Date(release.date).toLocaleDateString()}`
-                  : ''}
-              </p>
-            )}
+        {isDesktop && showStatus && (
+          <div
+            className={updateStatusVariants({ tone })}
+            data-slot="about-update-status"
+          >
+            <div className={updateStatusIconVariants({ tone })}>
+              <StatusIcon
+                className={cn(
+                  'size-6',
+                  SPINNING_PHASES.includes(phase) && 'animate-spin',
+                )}
+              />
+            </div>
+
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-base font-medium">
+                {statusTitle}
+              </span>
+
+              {statusDetail && (
+                <span className="truncate text-sm opacity-80">
+                  {statusDetail}
+                </span>
+              )}
+
+              {snapshot?.error && (
+                <span className="text-sm" role="alert">
+                  {snapshot.error}
+                </span>
+              )}
+            </div>
           </div>
-          {release?.body && (
-            <Modal open={changelogOpen} onOpenChange={setChangelogOpen}>
-              <ModalTrigger asChild>
-                <Button className="w-full" variant="flat">
-                  {m.settings_about_update_changelog()}
-                </Button>
-              </ModalTrigger>
-              <ModalContent>
-                <Card className="flex max-h-[90dvh] max-w-3xl min-w-80 flex-col">
-                  <CardHeader className="shrink-0">
-                    <ModalTitle>
-                      {m.settings_about_update_changelog_title({
-                        version: release.version,
-                      })}
-                    </ModalTitle>
-                  </CardHeader>
-                  <CardContent
-                    asChild
-                    className="min-h-0 flex-1 overflow-hidden"
-                  >
-                    <ScrollArea className="max-h-[65dvh]">
-                      <Markdown
-                        components={{
-                          a(props) {
-                            const { children, node, ...rest } = props
-                            return (
-                              <a
-                                {...rest}
-                                onClick={(event) => {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                  if (typeof node?.properties.href === 'string')
-                                    openExternal(node.properties.href)
-                                }}
-                              >
-                                {children}
-                              </a>
-                            )
-                          },
-                        }}
-                      >
-                        {release.body}
-                      </Markdown>
-                    </ScrollArea>
-                  </CardContent>
-                  <CardFooter className="shrink-0 justify-end">
-                    <ModalClose>{m.common_close()}</ModalClose>
-                  </CardFooter>
-                </Card>
-              </ModalContent>
-            </Modal>
-          )}
-        </div>
+        )}
 
         {(phase === 'downloading' || phase === 'cancelling') && (
-          <div className="flex flex-col gap-2" aria-live="polite">
+          <div
+            className={updateProgressVariants()}
+            data-slot="about-update-progress"
+            aria-live="polite"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span>
                 {filesize(snapshot?.downloaded ?? 0, { standard: 'iec' })}
@@ -367,11 +414,13 @@ export default function UpdateControls({
                 {filesize(snapshot?.speed ?? 0, { standard: 'iec' })}/s
               </span>
             </div>
+
             <LinearProgress
               className="w-full"
               value={progress}
               indeterminate={progress === undefined}
             />
+
             {sourceLabel(snapshot?.source) && (
               <p className="text-on-surface-variant text-xs">
                 {m.settings_about_update_current_source({
@@ -381,23 +430,82 @@ export default function UpdateControls({
             )}
           </div>
         )}
+
         {phase === 'verifying' && (
-          <LinearProgress className="w-full" indeterminate />
+          <div className={updateProgressVariants()}>
+            <LinearProgress className="w-full" indeterminate />
+          </div>
         )}
+
         {phase === 'installing' && (
-          <p className="text-on-surface-variant text-sm" aria-live="polite">
+          <p
+            className="text-on-surface-variant px-1 text-sm"
+            aria-live="polite"
+          >
             {m.settings_about_update_installing_description()}
           </p>
         )}
-        {snapshot?.error && (
-          <p className="text-error text-sm" role="alert">
+
+        {!showStatus && snapshot?.error && (
+          <p className="text-error px-1 text-sm" role="alert">
             {snapshot.error}
           </p>
         )}
+
         {snapshot?.supported === false && (
-          <p className="text-on-surface-variant text-sm">
+          <p className="text-on-surface-variant px-1 text-sm">
             {m.settings_about_update_unsupported()}
           </p>
+        )}
+
+        {release?.body && (
+          <Modal open={changelogOpen} onOpenChange={setChangelogOpen}>
+            <ModalTrigger asChild>
+              <Button className="w-full" variant="basic">
+                {m.settings_about_update_changelog()}
+              </Button>
+            </ModalTrigger>
+            <ModalContent>
+              <Card className="flex max-h-[90dvh] max-w-3xl min-w-80 flex-col">
+                <CardHeader className="shrink-0">
+                  <ModalTitle>
+                    {m.settings_about_update_changelog_title({
+                      version: release.version,
+                    })}
+                  </ModalTitle>
+                </CardHeader>
+                <CardContent asChild className="min-h-0 flex-1 overflow-hidden">
+                  <ScrollArea className="max-h-[65dvh]">
+                    <Markdown
+                      components={{
+                        a(props) {
+                          const { children, node, ...rest } = props
+                          return (
+                            <a
+                              {...rest}
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                if (typeof node?.properties.href === 'string')
+                                  openExternal(node.properties.href)
+                              }}
+                            >
+                              {children}
+                            </a>
+                          )
+                        },
+                      }}
+                    >
+                      {release.body}
+                    </Markdown>
+                  </ScrollArea>
+                </CardContent>
+                <CardFooter className="shrink-0 justify-end">
+                  <ModalClose>{m.common_close()}</ModalClose>
+                </CardFooter>
+              </Card>
+            </ModalContent>
+          </Modal>
         )}
       </SettingsCardContent>
       {action && (
@@ -405,7 +513,7 @@ export default function UpdateControls({
           <div className="flex w-full flex-col gap-2">
             {(phase === 'available' || phase === 'ready') && (
               <Button
-                variant="stroked"
+                variant="basic"
                 className="w-full"
                 disabled={isPending}
                 onClick={checkUpdate}

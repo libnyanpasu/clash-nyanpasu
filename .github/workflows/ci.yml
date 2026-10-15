@@ -113,6 +113,20 @@ jobs:
           workspaces: 'backend'
           save-if: ${{ github.event_name == 'push' }}
 
+      # Git dependencies are cloned from GitHub, which sometimes resets the
+      # connection mid-clone; cargo does not retry that, so retry it here
+      # instead of failing the lint.
+      - name: Fetch Rust dependencies
+        if: env.BACKEND == 'true'
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            cargo fetch --manifest-path backend/Cargo.toml && exit 0
+            echo "cargo fetch failed (attempt $attempt of 3)"
+            sleep $((attempt * 15))
+          done
+          exit 1
+
       - name: Install Node.js
         if: env.RUN == 'true'
         uses: actions/setup-node@v7

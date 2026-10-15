@@ -60,7 +60,16 @@ impl ApplicationClient {
         };
 
         let mut initial = manager.snapshot_handle().load().state.clone();
-        let channel = build_channel.resolve(initial.release_channel);
+        let channel = match initial.release_channel {
+            // The preference was saved by a nightly build, so a stable or beta
+            // build installed over it follows its own channel.
+            Some(crate::bundle::Channel::Nightly)
+                if build_channel != crate::bundle::Channel::Nightly =>
+            {
+                build_channel
+            }
+            preference => build_channel.resolve(preference),
+        };
         if initial.release_channel != Some(channel) {
             initial.release_channel = Some(channel);
             manager
@@ -339,9 +348,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn release_channel_persists_and_non_nightly_builds_can_leave_nightly() {
+    async fn release_channel_persists_and_non_nightly_builds_can_choose_nightly() {
         use crate::bundle::Channel;
-        let (client, dir) = test_client().await;
+        let (client, _dir) = test_client().await;
         for channel in [Channel::Beta, Channel::Stable, Channel::Nightly] {
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.release_channel = Some(Some(channel));
@@ -350,10 +359,18 @@ mod tests {
                 Some(channel)
             );
         }
-        drop(client);
-        // A stable or beta build installed over a Nightly preference keeps it
-        // until the user leaves, and is allowed to leave.
+    }
+
+    #[tokio::test]
+    async fn non_nightly_build_installed_over_nightly_follows_its_own_channel() {
+        use crate::bundle::Channel;
         for build in [Channel::Stable, Channel::Beta] {
+            let (client, dir) = test_client().await;
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.release_channel = Some(Some(Channel::Nightly));
+            client.patch(patch).await.unwrap();
+            drop(client);
+
             let reloaded = ApplicationClient::new(
                 crate::state::mutation::MutationCoordinator::isolated(),
                 build,
@@ -363,18 +380,19 @@ mod tests {
             )
             .await
             .unwrap();
-            assert_eq!(
-                reloaded.snapshot().state.release_channel,
-                Some(Channel::Nightly)
-            );
-            for channel in [build, Channel::Nightly] {
-                let mut patch = NyanpasuAppConfig::new_empty_patch();
-                patch.release_channel = Some(Some(channel));
-                assert_eq!(
-                    reloaded.patch(patch).await.unwrap().state.release_channel,
-                    Some(channel)
-                );
-            }
+            assert_eq!(reloaded.snapshot().state.release_channel, Some(build));
+            // The corrected channel is persisted, not only held in memory.
+            drop(reloaded);
+            let persisted = ApplicationClient::new(
+                crate::state::mutation::MutationCoordinator::isolated(),
+                build,
+                temp_config_path(&dir),
+                tokio_util::sync::CancellationToken::new(),
+                &tokio_util::task::TaskTracker::new(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(persisted.snapshot().state.release_channel, Some(build));
         }
     }
 

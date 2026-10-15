@@ -193,7 +193,7 @@ export default function TextMarquee({
       {shouldAnimate ? (
         <div
           ref={contentRef}
-          className="flex whitespace-nowrap"
+          className="relative flex whitespace-nowrap"
           data-slot="text-marquee-content"
         >
           <span
@@ -204,7 +204,11 @@ export default function TextMarquee({
             {children}
           </span>
 
+          {/* Out of flow so the second copy does not widen the container's
+              intrinsic size: a wider animated layout would let the text fit,
+              switch the marquee off and shrink it again, flickering forever. */}
           <span
+            className="absolute top-0 left-full"
             style={{
               paddingLeft: gap,
             }}

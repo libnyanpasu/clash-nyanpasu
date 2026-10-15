@@ -202,7 +202,7 @@ impl WindowManager {
 
         #[cfg(target_os = "linux")]
         let win_res = {
-            let decorations = config.decorations.unwrap_or(true);
+            let decorations = config.decorations.unwrap_or(false);
             builder.decorations(decorations).build()
         };
 

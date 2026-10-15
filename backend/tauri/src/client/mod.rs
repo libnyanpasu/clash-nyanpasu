@@ -30,6 +30,7 @@ mod session_state;
 mod system_dns;
 pub mod system_proxy;
 mod traffic;
+mod transparent_proxy;
 pub mod ui_effects;
 
 use self::{
@@ -50,11 +51,14 @@ use crate::{
         storage::Storage,
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
-    state::profiles::{
-        CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
-        ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu, RemoteProfileNeedsImportSnafu,
-        ReorderOp,
-        ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+    state::{
+        config_error::ConfigError,
+        profiles::{
+            CommitReport, NewProfileRequest, ProfileFileNotYamlSnafu, ProfileHasNoFileSnafu,
+            ProfileNotFoundSnafu, ProfilesError, ReadProfileFileSnafu,
+            RemoteProfileNeedsImportSnafu, ReorderOp,
+            ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
+        },
     },
 };
 use anyhow::Context as _;
@@ -455,10 +459,11 @@ impl NyanpasuClient {
         let frontend_log = logging.frontend;
         let effects = effects::actor::EffectsClient::spawn(
             effects::actor::EffectsArgs {
-                port: Arc::new(effects::executor::CoreLogCaptureEffects::new(
+                port: Arc::new(effects::executor::CoreRuntimeEffects::new(
                     effects,
                     streams.clone(),
                     core_logs.clone(),
+                    core_v2.clone(),
                 )),
                 ui: ui_sink,
                 initial: effects::plan::ApplicationEffectInputs::project(
@@ -889,6 +894,18 @@ impl NyanpasuClient {
         if let Some(hotkeys) = patch.hotkeys.as_deref() {
             hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_ref())?;
         }
+        let mut candidate = self.inner.application.snapshot().state;
+        candidate.apply(patch.clone());
+        let clash = self.inner.clash_config.snapshot().state;
+        clash
+            .validate_transparent_proxy(candidate.core, cfg!(target_os = "linux"))
+            .map_err(|source| ConfigError::InvalidTransparentProxy { source })?;
+        if !(clash.transparent_proxy.mode
+            == nyanpasu_config::clash::config::TransparentProxyMode::Disabled
+            || candidate.enable_service_mode)
+        {
+            return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
+        }
         let client = self.inner.application.clone();
         Ok(client.patch(patch).await?.outcome())
     }
@@ -964,6 +981,18 @@ impl NyanpasuClient {
         &self,
         patch: ClashConfigPatch,
     ) -> Result<runtime::MutationOutcome<()>> {
+        let mut candidate = self.inner.clash_config.snapshot().state;
+        candidate.apply(patch.clone());
+        let application = self.inner.application.snapshot().state;
+        candidate
+            .validate_transparent_proxy(application.core, cfg!(target_os = "linux"))
+            .map_err(|source| ConfigError::InvalidTransparentProxy { source })?;
+        if candidate.transparent_proxy.mode
+            != nyanpasu_config::clash::config::TransparentProxyMode::Disabled
+            && !application.enable_service_mode
+        {
+            return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
+        }
         let client = self.inner.clash_config.clone();
         Ok(client.patch(patch).await?.outcome())
     }

@@ -148,6 +148,27 @@ pub(super) fn apply_guard(
             None => remove_at(&next, &[key.to_string()]).unwrap_or(next),
         };
     }
+    if let Some(port) = guard.ports.redir_port {
+        next = obj_insert(
+            &next,
+            "redir-port",
+            ConfigValue::Number(serde_json::Number::from(port)),
+        );
+    }
+    if let Some(port) = guard.ports.tproxy_port {
+        next = obj_insert(
+            &next,
+            "tproxy-port",
+            ConfigValue::Number(serde_json::Number::from(port)),
+        );
+    }
+    if let Some(mark) = guard.routing_mark {
+        next = obj_insert(
+            &next,
+            "routing-mark",
+            ConfigValue::Number(serde_json::Number::from(mark)),
+        );
+    }
     if let Some(controller) = &guard.ports.external_controller {
         next = obj_insert(
             &next,

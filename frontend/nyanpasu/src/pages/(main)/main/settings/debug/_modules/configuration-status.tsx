@@ -56,6 +56,7 @@ function effectLabel(kind: EffectKind) {
     logger: m.settings_nyanpasu_app_log_level_label,
     core_log_level: m.settings_clash_settings_log_level_label,
     core_log_storage: m.configuration_core_log_storage,
+    transparent_proxy: m.configuration_transparent_proxy,
     widget: m.settings_nyanpasu_network_statistic_widget_label,
     tray: m.configuration_tray,
   }

@@ -91,6 +91,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_app_update_state,
             ipc::get_release_channel,
             ipc::get_system_accent_color,
+            ipc::get_transparent_proxy_status,
         ],
         collect_commands![
             ipc::write_clipboard_text,

@@ -53,6 +53,7 @@ pub struct ApplicationEffectFields {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClashEffectFields {
+    pub transparent_proxy: nyanpasu_config::clash::config::TransparentProxyConfig,
     pub mode: Mode,
     pub enable_tun_mode: bool,
     pub log_level: LogLevel,
@@ -89,6 +90,7 @@ impl From<&NyanpasuAppConfig> for ApplicationEffectFields {
 impl From<&ClashConfig> for ClashEffectFields {
     fn from(clash: &ClashConfig) -> Self {
         Self {
+            transparent_proxy: clash.transparent_proxy.clone(),
             mode: clash.overrides.mode(),
             enable_tun_mode: clash.enable_tun_mode,
             log_level: clash.overrides.log_level(),
@@ -126,6 +128,20 @@ impl ApplicationEffectInputs {
             },
             core_log_level: self.clash.log_level,
             core_log_storage: app.core_logs,
+            transparent_proxy: TransparentProxyDesired {
+                config: self.clash.transparent_proxy.clone(),
+                port: self.ports.as_ref().and_then(|ports| {
+                    match self.clash.transparent_proxy.mode {
+                        nyanpasu_config::clash::config::TransparentProxyMode::Disabled => None,
+                        nyanpasu_config::clash::config::TransparentProxyMode::Redir => {
+                            ports.redir_port
+                        }
+                        nyanpasu_config::clash::config::TransparentProxyMode::Tproxy => {
+                            ports.tproxy_port
+                        }
+                    }
+                }),
+            },
             auto_launch: app.enable_auto_launch,
             system_proxy: SystemProxyDesired {
                 enabled: app.enable_system_proxy,
@@ -182,12 +198,19 @@ pub enum EffectKind {
     Logger,
     CoreLogLevel,
     CoreLogStorage,
+    TransparentProxy,
     AutoLaunch,
     SystemProxy,
     ProxyGuard,
     Hotkeys,
     Widget,
     Tray,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransparentProxyDesired {
+    pub config: nyanpasu_config::clash::config::TransparentProxyConfig,
+    pub port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,6 +290,7 @@ struct ApplicationDesired {
     core_log_level: LogLevel,
     /// Rotation and compression of the stored Core logs.
     core_log_storage: CoreLogSettings,
+    transparent_proxy: TransparentProxyDesired,
     auto_launch: bool,
     system_proxy: SystemProxyDesired,
     /// Split from `system_proxy` on purpose: changing only the interval must
@@ -299,6 +323,7 @@ pub enum ApplicationEffect {
     Logger(LoggerDesired),
     CoreLogLevel(LogLevel),
     CoreLogStorage(CoreLogSettings),
+    TransparentProxy(TransparentProxyDesired),
     AutoLaunch(bool),
     SystemProxy(SystemProxyDesired),
     ProxyGuard(ProxyGuardDesired),
@@ -314,6 +339,7 @@ impl ApplicationEffect {
             Self::Logger(_) => EffectKind::Logger,
             Self::CoreLogLevel(_) => EffectKind::CoreLogLevel,
             Self::CoreLogStorage(_) => EffectKind::CoreLogStorage,
+            Self::TransparentProxy(_) => EffectKind::TransparentProxy,
             Self::AutoLaunch(_) => EffectKind::AutoLaunch,
             Self::SystemProxy(_) => EffectKind::SystemProxy,
             Self::ProxyGuard(_) => EffectKind::ProxyGuard,
@@ -370,6 +396,7 @@ impl ApplicationEffectPlan {
             logger,
             core_log_level,
             core_log_storage,
+            transparent_proxy,
             auto_launch,
             system_proxy,
             proxy_guard,
@@ -385,6 +412,7 @@ impl ApplicationEffectPlan {
         effects.extend(logger.map(ApplicationEffect::Logger));
         effects.extend(core_log_level.map(ApplicationEffect::CoreLogLevel));
         effects.extend(core_log_storage.map(ApplicationEffect::CoreLogStorage));
+        effects.extend(transparent_proxy.map(ApplicationEffect::TransparentProxy));
         effects.extend(auto_launch.map(ApplicationEffect::AutoLaunch));
         effects.extend(system_proxy.map(ApplicationEffect::SystemProxy));
         effects.extend(proxy_guard.map(ApplicationEffect::ProxyGuard));
@@ -443,6 +471,8 @@ mod tests {
                 core: ClashCore::Mihomo,
             },
             clash: ClashEffectFields {
+                transparent_proxy: nyanpasu_config::clash::config::TransparentProxyConfig::default(
+                ),
                 mode: Mode::Rule,
                 enable_tun_mode: false,
                 log_level: LogLevel::Info,
@@ -756,6 +786,7 @@ mod tests {
                 EffectKind::Logger,
                 EffectKind::CoreLogLevel,
                 EffectKind::CoreLogStorage,
+                EffectKind::TransparentProxy,
                 EffectKind::AutoLaunch,
                 EffectKind::SystemProxy,
                 EffectKind::ProxyGuard,

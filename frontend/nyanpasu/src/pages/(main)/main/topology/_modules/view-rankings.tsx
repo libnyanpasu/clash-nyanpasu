@@ -32,6 +32,7 @@ export default function ViewRankings() {
             ranking && (
               <RankingCard
                 key={dimension}
+                dimension={dimension}
                 icon={icon}
                 title={title()}
                 ranking={ranking}

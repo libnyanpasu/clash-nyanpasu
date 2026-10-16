@@ -25,7 +25,7 @@ function TrafficOverviewPage() {
       (item) => item.dimension === dimension,
     )
 
-    return ranking ? [{ icon, title, ranking }] : []
+    return ranking ? [{ dimension, icon, title, ranking }] : []
   })
   const single = rankings.filter(({ ranking }) => ranking.distinct === 1)
 
@@ -39,10 +39,11 @@ function TrafficOverviewPage() {
         ) : (
           <div className="grid grid-cols-1 items-start gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
             {rankings.map(
-              ({ icon, title, ranking }) =>
+              ({ dimension, icon, title, ranking }) =>
                 ranking.distinct !== 1 && (
                   <RankingCard
-                    key={ranking.dimension}
+                    key={dimension}
+                    dimension={dimension}
                     icon={icon}
                     title={title()}
                     ranking={ranking}

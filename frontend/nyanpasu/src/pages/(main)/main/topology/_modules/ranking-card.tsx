@@ -1,14 +1,19 @@
 import { AnimatePresence } from 'motion/react'
-import { useState, type ComponentType, type SVGProps } from 'react'
+import type { ComponentType, SVGProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
+import { keepReturn } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { usageAmount } from '@/utils/traffic-usage'
 import type { Ranking, Usage } from '@nyanpasu/rpc/types'
+import { Link } from '@tanstack/react-router'
 import { toggleFilter } from '../../_modules/traffic-filters'
-import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
-import { useTrafficPage } from './traffic-context'
+import {
+  useTrafficPage,
+  withoutTrafficView,
+  type RankingDimension,
+} from './traffic-context'
 
 function CountBadge({ count }: { count: number }) {
   return (
@@ -31,7 +36,7 @@ const without = (usage: Usage, part: Usage): Usage => ({
  * dimension, so the value's group is the report's total. Outside the top
  * groups, it is pinned below them and leaves the "other" line.
  */
-export function useRankingSelection(ranking: Ranking) {
+function useRankingSelection(ranking: Ranking) {
   const { search, report } = useTrafficPage()
 
   const selected = search.filters.find(
@@ -55,22 +60,19 @@ export function useRankingSelection(ranking: Ranking) {
   }
 }
 
-export type RankingCardProps = {
-  icon: ComponentType<SVGProps<SVGSVGElement>>
-  title: string
-  ranking: Ranking
-}
-
 export default function RankingCard({
+  dimension,
   icon: Icon,
   title,
   ranking,
-}: RankingCardProps) {
-  const [viewAll, setViewAll] = useState(false)
+}: {
+  dimension: RankingDimension
+  icon: ComponentType<SVGProps<SVGSVGElement>>
+  title: string
+  ranking: Ranking
+}) {
   const { search, labelOf, onSearchChange } = useTrafficPage()
   const { metric, filters } = search
-
-  const { dimension } = ranking
 
   const { selected, pinned, others, other } = useRankingSelection(ranking)
 
@@ -90,11 +92,20 @@ export default function RankingCard({
           <CountBadge count={ranking.distinct} />
         </div>
 
+        {/* A link centers its text itself; a button gets it from the native element. */}
         <Button
-          className="h-7 shrink-0 px-2 text-xs whitespace-nowrap"
-          onClick={() => setViewAll(true)}
+          asChild
+          className="inline-flex h-7 shrink-0 items-center px-2 text-xs whitespace-nowrap"
         >
-          {m.traffic_rank_view_all()}
+          <Link
+            from="/main/topology"
+            to="/main/topology/$dimension"
+            params={{ dimension }}
+            search={withoutTrafficView}
+            state={keepReturn}
+          >
+            {m.traffic_rank_view_all()}
+          </Link>
         </Button>
       </div>
 
@@ -132,13 +143,6 @@ export default function RankingCard({
           </p>
         )}
       </div>
-
-      <RankingModal
-        open={viewAll}
-        onOpenChange={setViewAll}
-        title={title}
-        dimension={dimension}
-      />
     </Card>
   )
 }

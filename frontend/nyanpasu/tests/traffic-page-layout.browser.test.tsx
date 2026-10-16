@@ -94,9 +94,10 @@ const group = (key: string, bytes = 1024): UsageGroup => ({
 const ranking = (
   dimension: TrafficReport['rankings'][number]['dimension'],
   groups: UsageGroup[],
+  distinct = groups.length,
 ): TrafficReport['rankings'][number] => ({
   dimension,
-  distinct: groups.length,
+  distinct,
   groups,
   other: usage(512, 512, 1),
 })
@@ -105,11 +106,12 @@ const report: TrafficReport = {
   total: usage(1024, 4096, 12),
   current_rate: null,
   rankings: [
-    ranking('source', [group('192.168.1.2')]),
+    // Three rankings with others and two of a single value.
+    ranking('source', [group('192.168.1.2')], 4),
     ranking('inbound', [group('mixed')]),
-    ranking('target', [group('example.com')]),
+    ranking('target', [group('example.com')], 9),
     ranking('exit', [group('Node-A')]),
-    ranking('process', [group('C:/Tools/curl.exe')]),
+    ranking('process', [group('C:/Tools/curl.exe')], 6),
   ],
   topology: null,
 }
@@ -319,10 +321,13 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       .poll(
         () => document.querySelectorAll('[data-slot="traffic-stat"]').length,
       )
-      .toBe(7)
+      .toBe(8)
     expect(
       document.querySelectorAll('[data-slot="traffic-ranking"]').length,
-    ).toBe(5)
+    ).toBe(3)
+    expect(
+      document.querySelectorAll('[data-slot="traffic-single-values"]').length,
+    ).toBe(1)
 
     await sidebarItem(view, m.topology_geo_map()).click()
     await expect
@@ -423,14 +428,14 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
     }
 
     const rankingCards = pageRoot.querySelectorAll<HTMLElement>(
-      '[data-slot="traffic-ranking"]',
+      '[data-slot="traffic-ranking"], [data-slot="traffic-single-values"]',
     )
     const paddingBottom = Number.parseFloat(
       getComputedStyle(content).paddingBottom,
     )
     expect(paddingBottom).toBeGreaterThanOrEqual(dock.clientHeight + 32)
     // Masonry columns can place the lowest card before the last DOM entry.
-    expect(rankingCards.length).toBe(5)
+    expect(rankingCards.length).toBe(4)
     for (const card of rankingCards) {
       expect(card.getBoundingClientRect().bottom).toBeLessThanOrEqual(
         dock.getBoundingClientRect().top - 8,

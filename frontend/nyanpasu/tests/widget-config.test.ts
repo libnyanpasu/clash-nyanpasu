@@ -220,10 +220,14 @@ test('quota wave options restore saved choices and keep defaults for older or in
     version: 1,
     byInstance: {
       old: { type: WidgetId.SubscriptionQuota },
-      single: {
+      outline: {
+        type: WidgetId.SubscriptionQuota,
+        waveStyle: 'outline',
+        animateWave: false,
+      },
+      retired: {
         type: WidgetId.SubscriptionQuota,
         waveStyle: 'single',
-        animateWave: false,
       },
       invalid: {
         type: WidgetId.SubscriptionQuota,
@@ -239,8 +243,11 @@ test('quota wave options restore saved choices and keep defaults for older or in
     getWidgetConfig(storage, 'invalid', WidgetId.SubscriptionQuota),
   ).toEqual(DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota])
   expect(
-    getWidgetConfig(storage, 'single', WidgetId.SubscriptionQuota),
-  ).toMatchObject({ waveStyle: 'single', animateWave: false })
+    getWidgetConfig(storage, 'retired', WidgetId.SubscriptionQuota),
+  ).toEqual(DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota])
+  expect(
+    getWidgetConfig(storage, 'outline', WidgetId.SubscriptionQuota),
+  ).toMatchObject({ waveStyle: 'outline', animateWave: false })
 })
 
 test('both proxy widgets default to flex while status preserves an explicit equal layout', () => {

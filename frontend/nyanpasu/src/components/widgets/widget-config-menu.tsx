@@ -196,14 +196,14 @@ function ConfigFieldRows({
               value={config.waveStyle}
               options={[
                 {
-                  value: 'single',
+                  value: 'filled',
                   label:
-                    m.dashboard_widget_subscription_quota_config_wave_single(),
+                    m.dashboard_widget_subscription_quota_config_wave_filled(),
                 },
                 {
-                  value: 'double',
+                  value: 'outline',
                   label:
-                    m.dashboard_widget_subscription_quota_config_wave_double(),
+                    m.dashboard_widget_subscription_quota_config_wave_outline(),
                 },
               ]}
               disabled={disabled || !config.showProgress}

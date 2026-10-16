@@ -41,6 +41,8 @@ type RankingConfig = ReportWidgetConfig & {
   hideNames: boolean
 }
 
+export type SubscriptionQuotaWaveStyle = 'filled' | 'outline'
+
 export type ProviderReference = { kind: 'proxy' | 'rule'; name: string }
 
 export type WidgetConfigs = {
@@ -49,7 +51,7 @@ export type WidgetConfigs = {
     target: SubscriptionTarget
     showExpiry: boolean
     showProgress: boolean
-    waveStyle: 'single' | 'double'
+    waveStyle: SubscriptionQuotaWaveStyle
     animateWave: boolean
     expiryWarningDays: number
     quotaWarningPercent: number
@@ -119,7 +121,7 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
     target: { kind: 'current' },
     showExpiry: true,
     showProgress: true,
-    waveStyle: 'double',
+    waveStyle: 'filled',
     animateWave: true,
     expiryWarningDays: 7,
     quotaWarningPercent: 20,
@@ -282,7 +284,7 @@ export function normalizeWidgetConfigStorage(
           ['both', 'proxy', 'rule'].includes(candidate)) ||
         (key === 'unit' && (candidate === 'bytes' || candidate === 'bits')) ||
         (key === 'waveStyle' &&
-          (candidate === 'single' || candidate === 'double')) ||
+          (candidate === 'filled' || candidate === 'outline')) ||
         (key === 'buttons' &&
           (candidate === 'both' ||
             candidate === 'system' ||

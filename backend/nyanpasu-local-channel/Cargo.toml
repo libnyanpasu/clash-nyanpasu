@@ -23,7 +23,7 @@ interprocess = '2.4.5'
 serde = { version = '1', features = ['derive'] }
 postcard = { version = '1.1', default-features = false, features = ['use-std'] }
 snafu = { workspace = true }
-getrandom = { version = '0.3', features = ['std'] }
+getrandom = { version = '0.4', features = ['std'] }
 tokio = { version = '1', features = ['rt', 'sync', 'io-util'], optional = true }
 tokio-util = { version = '0.7', features = ['codec'], optional = true }
 futures-util = { version = '0.3', default-features = false, optional = true }

@@ -6733,6 +6733,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-local-channel"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "getrandom 0.3.4",
+ "interprocess",
+ "libc",
+ "postcard",
+ "serde",
+ "snafu",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "widestring 1.2.1",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "nyanpasu-logging"
 version = "0.1.1"
 dependencies = [

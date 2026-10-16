@@ -13,6 +13,7 @@ members = [
   'nyanpasu-geodata',
   'nyanpasu-panics',
   'nyanpasu-platform',
+  'nyanpasu-local-channel',
   # Test-only deterministic fake clash core. Never packaged as a production
   # sidecar/resource (see tauri.conf.json externalBin / resources).
   'fake-core',

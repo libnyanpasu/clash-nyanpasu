@@ -147,6 +147,34 @@ jobs:
     with:
       tag: ${{ github.event.release.tag_name }}
 
+  notify_website:
+    name: Trigger Website Release Deployment
+    needs: [upload_release_assets]
+    if: github.repository == 'libnyanpasu/clash-nyanpasu'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Create website app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: libnyanpasu
+          repositories: libnyanpasu.github.io
+          permission-contents: write
+
+      - name: Notify website of completed release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          jq -n --arg tag "$RELEASE_TAG" \
+            '{event_type: "clash-nyanpasu-release", client_payload: {tag: $tag}}' \
+            | gh api --method POST repos/libnyanpasu/libnyanpasu.github.io/dispatches --input -
+
   updater:
     name: Create Updater
     needs: [upload_release_assets]

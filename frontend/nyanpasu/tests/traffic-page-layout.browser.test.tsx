@@ -417,16 +417,20 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
         .toBeLessThan(2)
     }
 
-    const lastEntry = pageRoot.querySelectorAll<HTMLElement>(
-      '[data-slot="traffic-view-entry"]',
-    )[1]
+    const rankingCards = pageRoot.querySelectorAll<HTMLElement>(
+      '[data-slot="traffic-ranking"]',
+    )
     const paddingBottom = Number.parseFloat(
       getComputedStyle(content).paddingBottom,
     )
     expect(paddingBottom).toBeGreaterThanOrEqual(dock.clientHeight + 32)
-    expect(lastEntry.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      dock.getBoundingClientRect().top - 8,
-    )
+    // Masonry columns can place the lowest card before the last DOM entry.
+    expect(rankingCards.length).toBe(5)
+    for (const card of rankingCards) {
+      expect(card.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        dock.getBoundingClientRect().top - 8,
+      )
+    }
   }
 })
 

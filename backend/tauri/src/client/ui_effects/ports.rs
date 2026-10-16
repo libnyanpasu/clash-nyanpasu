@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
-use nyanpasu_egui::{ipc::WidgetIpcError, widget::StatisticWidgetVariant};
+use nyanpasu_widget_protocol::{StatisticWidgetVariant, ipc::WidgetIpcError};
 use snafu::Snafu;
 use tokio::time::Instant;
 

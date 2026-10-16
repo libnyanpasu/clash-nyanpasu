@@ -1,10 +1,7 @@
 #![allow(dead_code)]
 use std::sync::{Arc, LazyLock};
 
-use crate::{
-    ipc::Message,
-    utils::svg::{SvgExt, render_svg_with_current_color_replace},
-};
+use crate::utils::svg::{SvgExt, render_svg_with_current_color_replace};
 use eframe::{
     egui::{
         self, Color32, CornerRadius, Id, Image, Label, Layout, Margin, Sense, Stroke, Style,
@@ -13,6 +10,7 @@ use eframe::{
     },
     epaint::CornerRadiusF32,
 };
+use nyanpasu_widget_protocol::{LogoPreset, Message, ipc};
 use parking_lot::RwLock;
 
 // Presets
@@ -101,15 +99,6 @@ fn use_dark_purple_accent(style: &mut Style) {
     };
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LogoPreset {
-    #[default]
-    Default,
-    System,
-    Tun,
-}
-
 #[derive(Debug)]
 pub struct NyanpasuNetworkStatisticLargeWidgetInner {
     // data fields
@@ -140,7 +129,7 @@ impl NyanpasuNetworkStatisticLargeWidget {
         setup_fonts(&cc.egui_ctx);
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        let rx = crate::ipc::setup_ipc_receiver_with_env().unwrap();
+        let rx = ipc::setup_ipc_receiver_with_env().unwrap();
         let widget = NyanpasuNetworkStatisticLargeWidget {
             inner: Arc::new(RwLock::new(NyanpasuNetworkStatisticLargeWidgetInner {
                 egui_ctx: cc.egui_ctx.clone(),
@@ -152,25 +141,8 @@ impl NyanpasuNetworkStatisticLargeWidget {
             })),
         };
         let this = widget.clone();
-        std::thread::spawn(move || {
-            loop {
-                match rx.recv() {
-                    Ok(msg) => {
-                        println!("Received message: {msg:?}");
-                        let _ = this.handle_message(msg);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to receive message: {e}");
-                        if matches!(
-                            e,
-                            ipc_channel::IpcError::Disconnected | ipc_channel::IpcError::Io(_)
-                        ) {
-                            let _ = this.handle_message(Message::Stop);
-                            break;
-                        }
-                    }
-                }
-            }
+        ipc::spawn_receiver(rx, move |msg| {
+            let _ = this.handle_message(msg);
         });
         widget
     }

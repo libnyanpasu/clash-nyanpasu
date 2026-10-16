@@ -4,8 +4,8 @@ use crate::utils;
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
-use nyanpasu_helper::StatisticWidgetVariant;
 use nyanpasu_paths::PathResolver;
+use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tauri::utils::platform::current_exe;
 
 mod migrate;

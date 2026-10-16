@@ -3,9 +3,10 @@ pub mod network_statistic_small;
 
 use std::path::PathBuf;
 
+use nyanpasu_widget_protocol::StatisticWidgetVariant;
+
 pub use network_statistic_large::NyanpasuNetworkStatisticLargeWidget;
 pub use network_statistic_small::NyanpasuNetworkStatisticSmallWidget;
-pub use nyanpasu_helper::StatisticWidgetVariant;
 
 #[allow(dead_code)]
 fn get_window_state_path() -> std::io::Result<PathBuf> {

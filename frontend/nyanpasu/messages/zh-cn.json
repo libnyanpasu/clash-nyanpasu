@@ -973,6 +973,7 @@
   "dashboard_add_widget": "添加小组件",
   "dashboard_widget_library_search": "搜索小组件",
   "dashboard_widget_library_search_clear": "清除小组件搜索",
+  "dashboard_widget_library_add_entry": "添加 {name}",
   "dashboard_widget_library_no_results": "未找到小组件",
   "editor_before_close_message": "你尚未保存编辑的内容，确定要关闭编辑器吗？",
   "editor_validate_error_message": "请修复错误后再保存内容",

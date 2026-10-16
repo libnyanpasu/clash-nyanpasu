@@ -971,6 +971,7 @@
   "dashboard_add_widget": "ウィジェットを追加",
   "dashboard_widget_library_search": "ウィジェットを検索",
   "dashboard_widget_library_search_clear": "検索をクリア",
+  "dashboard_widget_library_add_entry": "{name} を追加",
   "dashboard_widget_library_no_results": "ウィジェットが見つかりません",
   "editor_before_close_message": "編集内容は保存されていません。エディターを閉じてもよろしいですか？",
   "editor_validate_error_message": "内容を保存する前にエラーを修正してください",

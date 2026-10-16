@@ -10,6 +10,7 @@ import ContextMenuProvider, {
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
+import { WidgetId } from '@/components/widgets/consts'
 import {
   DashboardProvider,
   useDashboardContext,
@@ -20,30 +21,34 @@ import { createRpcClient } from '@nyanpasu/rpc'
 import { QueryClient } from '@tanstack/react-query'
 import { TestQueryProvider } from './query-provider'
 
-// Card data is irrelevant to the overlay lifecycle. Keep the real source grid
-// and draggable DOM while rendering one static card without business queries.
+// The library lists every rendered widget; keep one entry so the lifecycle
+// checks stay independent of the widget catalog.
 vi.mock('@/components/widgets/consts', async (importOriginal) => {
   const original =
     await importOriginal<typeof import('@/components/widgets/consts')>()
-  const { DndGridItem } = await import('@nyanpasu/ui/dnd-grid')
   return {
     ...original,
     RENDER_MAP: {
-      [original.WidgetId.TrafficDown]: ({ id }: { id: string }) => (
-        <DndGridItem id={id} minW={2} minH={2}>
-          <div
-            data-testid="source-card"
-            style={{ width: '100%', height: '100%', background: '#ddd' }}
-          >
-            Preview card
-          </div>
-        </DndGridItem>
-      ),
+      [original.WidgetId.TrafficDown]: () => null,
     },
   }
 })
 
-function Harness({ onPageAction }: { onPageAction: () => void }) {
+const entryName = () =>
+  m.dashboard_widget_library_add_entry({
+    name: m.dashboard_widget_traffic_download(),
+  })
+
+const libraryEntry = () =>
+  document.querySelector<HTMLElement>('[data-slot=widget-sheet-entry]')
+
+function Harness({
+  onPageAction,
+  placed,
+}: {
+  onPageAction: () => void
+  placed: boolean
+}) {
   const { setOpenSheet } = useDashboardContext()
   const root = useDndGridRoot()
   const [clicks, setClicks] = useState(0)
@@ -92,14 +97,17 @@ function Harness({ onPageAction }: { onPageAction: () => void }) {
         </RegisterContextMenuContent>
       </RegisterContextMenu>
       <WidgetSheet
-        onSourceDragStart={() => setOpenSheet(false)}
+        placedTypes={new Set(placed ? [WidgetId.TrafficDown] : [])}
         onAdd={() => setDrops((value) => value + 1)}
       />
     </>
   )
 }
 
-async function mount(onFinished: (callback: () => void) => void) {
+async function mount(
+  onFinished: (callback: () => void) => void,
+  { placed = false } = {},
+) {
   const onPageAction = vi.fn()
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -127,7 +135,7 @@ async function mount(onFinished: (callback: () => void) => void) {
         <ContextMenuProvider>
           <div>
             <DndGridRoot>
-              <Harness onPageAction={onPageAction} />
+              <Harness onPageAction={onPageAction} placed={placed} />
             </DndGridRoot>
           </div>
         </ContextMenuProvider>
@@ -169,7 +177,9 @@ test('dragging a source out closes the library and restores page clicks', async 
 }) => {
   const onPageAction = await mount(onTestFinished)
   await userEvent.click(page.getByRole('button', { name: 'Open library' }))
-  await expect.element(page.getByTestId('source-card')).toBeVisible()
+  await expect
+    .element(page.getByRole('button', { name: entryName() }))
+    .toBeVisible()
   await expect
     .poll(() => {
       const drawer = document.querySelector<HTMLElement>(
@@ -181,10 +191,10 @@ test('dragging a source out closes the library and restores page clicks', async 
   // The modal overlay covers the destination until the first drag movement
   // closes the library. Move there without waiting for target actionability.
   await page
-    .getByTestId('source-card')
+    .elementLocator(libraryEntry()!)
     .dropTo(page.getByTestId('page-action'), {
       force: true,
-      sourcePosition: { x: 80, y: 50 },
+      sourcePosition: { x: 24, y: 20 },
     })
   await expect.element(page.getByTestId('drops')).toHaveTextContent('1')
   await expect.element(page.getByTestId('drag-state')).toHaveTextContent('idle')
@@ -208,7 +218,7 @@ test('dragging a source out closes the library and restores page clicks', async 
   await expect.element(page.getByTestId('clicks')).toHaveTextContent('1')
 })
 
-test('search filters localized widget names and preserves add actions', async ({
+test('search filters localized widget names and adding closes the library', async ({
   onTestFinished,
 }) => {
   await mount(onTestFinished)
@@ -225,18 +235,20 @@ test('search filters localized widget names and preserves add actions', async ({
   await expect
     .poll(() => drawerElement.getBoundingClientRect().width)
     .toBe(Math.min(window.innerWidth - 16, 960))
+  // A short library keeps the drawer only as tall as its entries.
   await expect
     .poll(() => drawerElement.getBoundingClientRect().height)
-    .toBeCloseTo(window.innerHeight * 0.85, 0)
+    .toBeLessThan(window.innerHeight * 0.5)
 
   await userEvent.type(search, m.dashboard_widget_traffic_download())
-  await expect.element(page.getByTestId('source-card')).toBeVisible()
+  const add = page.getByRole('button', { name: entryName() })
+  await expect.element(add).toBeVisible()
   await expect
-    .element(page.getByRole('button', { name: m.dashboard_add_widget() }))
+    .element(page.getByText(m.dashboard_widget_traffic_download()))
     .toBeVisible()
 
   await userEvent.type(search, ' no match')
-  await expect.element(page.getByTestId('source-card')).not.toBeInTheDocument()
+  await expect.element(add).not.toBeInTheDocument()
   await expect
     .element(page.getByText(m.dashboard_widget_library_no_results()))
     .toBeVisible()
@@ -247,16 +259,28 @@ test('search filters localized widget names and preserves add actions', async ({
     }),
   )
   await expect.element(search).toHaveValue('')
-  await expect.element(page.getByTestId('source-card')).toBeVisible()
+  await expect.element(add).toBeVisible()
 
-  await userEvent.click(
-    page.getByRole('button', { name: m.dashboard_add_widget() }),
-  )
+  await userEvent.click(add)
   await expect.element(page.getByTestId('drops')).toHaveTextContent('1')
-  await expect.element(drawer).toBeVisible()
+  await expect.element(drawer).not.toBeInTheDocument()
 })
 
-test('narrow viewports keep the drawer and widget preview inside the screen', async ({
+test('placed widgets are marked but can be added again', async ({
+  onTestFinished,
+}) => {
+  await mount(onTestFinished, { placed: true })
+  await userEvent.click(page.getByRole('button', { name: 'Open library' }))
+
+  const add = page.getByRole('button', { name: entryName() })
+  await expect.element(add).toBeEnabled()
+  expect(libraryEntry()?.dataset.placed).toBe('true')
+
+  await userEvent.click(add)
+  await expect.element(page.getByTestId('drops')).toHaveTextContent('1')
+})
+
+test('narrow viewports keep the drawer and library entries inside the screen', async ({
   onTestFinished,
 }) => {
   await page.viewport(900, 600)
@@ -271,6 +295,7 @@ test('narrow viewports keep the drawer and widget preview inside the screen', as
     name: m.dashboard_widget_library_search(),
   })
   const heading = page.getByRole('heading', { name: m.dashboard_add_widget() })
+  const add = page.getByRole('button', { name: entryName() })
 
   for (const [width, height] of [
     [320, 640],
@@ -279,39 +304,26 @@ test('narrow viewports keep the drawer and widget preview inside the screen', as
     await page.viewport(width, height)
     await expect.element(search).toBeVisible()
     await expect.element(heading).toBeVisible()
-    await expect.element(page.getByTestId('source-card')).toBeVisible()
+    await expect.element(add).toBeVisible()
     await expect
       .poll(() => drawer.getBoundingClientRect().width)
       .toBe(width - 16)
     await expect
       .poll(() => drawer.getBoundingClientRect().height)
-      .toBeCloseTo(height * 0.85, 0)
+      .toBeLessThanOrEqual(height * 0.85 + 1)
     await expect
       .poll(() => drawer.getBoundingClientRect().bottom)
       .toBeCloseTo(height, 0)
 
     const drawerRect = drawer.getBoundingClientRect()
-    const grid = drawer.querySelector<HTMLElement>(
-      '[data-slot=dnd-grid-container]',
-    )!
-    const gridRect = grid.getBoundingClientRect()
-    const card = page
-      .getByTestId('source-card')
-      .element()
-      .closest('[role=button]')!
-    const cardRect = card.getBoundingClientRect()
-    const addButton = drawer.querySelector<HTMLButtonElement>(
-      'button[aria-label="Add Widget"]',
-    )!
-    const addRect = addButton.getBoundingClientRect()
+    const entryRect = libraryEntry()!.getBoundingClientRect()
+    const addRect = add.element().getBoundingClientRect()
 
     expect(drawerRect.left).toBeGreaterThanOrEqual(0)
     expect(drawerRect.right).toBeLessThanOrEqual(width)
-    expect(drawerRect.bottom).toBeCloseTo(height, 0)
-    expect(cardRect.left).toBeGreaterThanOrEqual(gridRect.left - 1)
-    expect(cardRect.right).toBeLessThanOrEqual(gridRect.right + 1)
-    expect(addRect.left).toBeGreaterThanOrEqual(gridRect.left - 1)
-    expect(addRect.right).toBeLessThanOrEqual(gridRect.right + 1)
+    expect(entryRect.left).toBeGreaterThanOrEqual(drawerRect.left)
+    expect(entryRect.right).toBeLessThanOrEqual(drawerRect.right)
+    expect(addRect.right).toBeLessThanOrEqual(entryRect.right)
     expect(drawer.scrollWidth).toBeLessThanOrEqual(drawer.clientWidth)
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
     expect(document.documentElement.scrollHeight).toBeLessThanOrEqual(height)

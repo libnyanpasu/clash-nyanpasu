@@ -973,6 +973,7 @@
   "dashboard_add_widget": "Add Widget",
   "dashboard_widget_library_search": "Search widgets",
   "dashboard_widget_library_search_clear": "Clear widget search",
+  "dashboard_widget_library_add_entry": "Add {name}",
   "dashboard_widget_library_no_results": "No widgets found",
   "editor_before_close_message": "You have not saved the edited content, are you sure you want to close the editor?",
   "editor_validate_error_message": "Please fix the error before saving content",

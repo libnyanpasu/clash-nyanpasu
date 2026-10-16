@@ -5,6 +5,8 @@ import {
   DndGrid,
   DndGridItem,
   DndGridRoot,
+  DndGridSource,
+  useDndGridRoot,
   type DndGridItemType,
 } from '@nyanpasu/ui/dnd-grid'
 
@@ -132,6 +134,80 @@ test.for([
     }
   },
 )
+
+test('a list source sizes its preview by the destination grid and drops there', async ({
+  onTestFinished,
+}) => {
+  const onDrop = vi.fn()
+  const { container, root } = mountContainer(onTestFinished)
+
+  function DragSize() {
+    const dims = useDndGridRoot()?.activeDrag?.dims
+    return <output>{dims ? `${dims.width}x${dims.height}` : 'idle'}</output>
+  }
+
+  function Harness() {
+    const [open, setOpen] = useState(true)
+    return (
+      <DndGridRoot>
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            width: 600,
+            height: 400,
+          }}
+        >
+          <DndGrid
+            gridId="target"
+            items={[]}
+            disabled={false}
+            minCellSize={100}
+            gap={0}
+            onExternalDrop={onDrop}
+            className="target"
+          >
+            {() => null}
+          </DndGrid>
+        </div>
+        {open && (
+          <DndGridSource
+            itemId="widget"
+            dragIdPrefix="library:"
+            w={2}
+            h={1}
+            onSourceDragStart={() => setOpen(false)}
+            className="list-source"
+            style={{ position: 'fixed', left: 0, top: 450, width: 200 }}
+          >
+            Widget
+          </DndGridSource>
+        )}
+        <DragSize />
+      </DndGridRoot>
+    )
+  }
+
+  await act(async () => root.render(<Harness />))
+  const source = container.querySelector('.list-source')!
+  await act(async () => {
+    pointer(source, 'pointerdown', 30, 460)
+  })
+  await act(async () => {
+    pointer(document, 'pointermove', 40, 460)
+  })
+  await expect.poll(() => container.querySelector('.list-source')).toBeNull()
+  expect(container.querySelector('output')?.textContent).toBe('200x100')
+  await act(async () => {
+    pointer(document, 'pointermove', 330, 230)
+  })
+  await act(async () => {
+    pointer(document, 'pointerup', 330, 230)
+  })
+
+  expect(onDrop).toHaveBeenCalledExactlyOnceWith('widget', { x: 3, y: 2 })
+})
 
 test.for([
   { disabled: false, animates: true },

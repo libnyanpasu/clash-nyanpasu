@@ -121,8 +121,7 @@ function DashboardDragOverlay({
 }
 
 const WidgetRender = () => {
-  const { isEditing, setOpenSheet, configLoading, configReadError } =
-    useDashboardContext()
+  const { isEditing, configLoading, configReadError } = useDashboardContext()
 
   const [
     layoutStorage,
@@ -174,6 +173,11 @@ const WidgetRender = () => {
 
   const displayItemsRef = useRef(displayItems)
   displayItemsRef.current = displayItems
+
+  const placedTypes = useMemo(
+    () => new Set(displayItems.map(({ type }) => type)),
+    [displayItems],
+  )
 
   const handleSizeChange = useCallback((newSize: GridSize) => {
     gridSizeRef.current = newSize
@@ -319,10 +323,7 @@ const WidgetRender = () => {
 
       <DashboardDragOverlay displayItems={displayItems} />
 
-      <WidgetSheet
-        onAdd={addWidgetFromSheet}
-        onSourceDragStart={() => setOpenSheet(false)}
-      />
+      <WidgetSheet placedTypes={placedTypes} onAdd={addWidgetFromSheet} />
     </DndGridRoot>
   )
 }

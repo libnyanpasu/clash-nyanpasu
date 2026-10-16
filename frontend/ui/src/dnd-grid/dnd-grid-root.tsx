@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/core'
 import {
   DndGridRootContext,
+  isDndGridSourceData,
   type ActiveDrag,
   type GridRegistration,
 } from './root-context'
@@ -102,6 +103,41 @@ export function DndGridRoot({ children }: PropsWithChildren) {
   )
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
+    const startSourceDrag = (
+      itemId: string,
+      onSourceDragStart?: () => void,
+    ) => {
+      pointerRef.current = null
+      // Capture before onSourceDragStart may unmount the source
+      pendingSourceRef.current = {
+        itemId,
+      }
+      onSourceDragStart?.()
+    }
+
+    const source = e.active.data.current
+    if (isDndGridSourceData(source)) {
+      // A source has no cells; size the preview by a grid it can drop into.
+      const destination = [...gridsRef.current.values()].find(
+        (reg) => !reg.sourceOnly,
+      )
+      if (!destination) {
+        return
+      }
+
+      const { cellW, cellH, gap } = destination.getCellSize()
+      startSourceDrag(source.itemId, source.onDragStart)
+      setActiveDrag({
+        itemId: source.itemId,
+        dragIdPrefix: source.dragIdPrefix,
+        dims: {
+          width: source.w * cellW + (source.w - 1) * gap,
+          height: source.h * cellH + (source.h - 1) * gap,
+        },
+      })
+      return
+    }
+
     const activeId = String(e.active.id)
     const found = findGrid(gridsRef.current, activeId)
     if (!found) {
@@ -117,12 +153,7 @@ export function DndGridRoot({ children }: PropsWithChildren) {
     const h = data?.h ?? 2
 
     if (sourceOnly) {
-      pointerRef.current = null
-      // Capture before onSourceDragStart may unmount the grid
-      pendingSourceRef.current = {
-        itemId: plainId,
-      }
-      onSourceDragStart?.()
+      startSourceDrag(plainId, onSourceDragStart)
     } else {
       reg.handleDragStart(e)
     }

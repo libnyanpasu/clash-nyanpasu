@@ -16,6 +16,20 @@ export type GridRegistration = {
   onSourceDragStart?: () => void
 }
 
+/** Drag data of a `DndGridSource`; the grid under the release point adds the item. */
+export type DndGridSourceData = {
+  kind: 'dnd-grid-source'
+  itemId: string
+  dragIdPrefix: string
+  w: number
+  h: number
+  onDragStart?: () => void
+}
+
+export function isDndGridSourceData(data: unknown): data is DndGridSourceData {
+  return (data as DndGridSourceData | undefined)?.kind === 'dnd-grid-source'
+}
+
 export type ActiveDrag = {
   itemId: string
   dragIdPrefix: string

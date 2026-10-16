@@ -29,6 +29,20 @@ export const DrawerTitle = DialogPrimitive.Title
 
 export const DrawerClose = DialogPrimitive.Close
 
+export function DrawerHandle({ className, ...props }: ComponentProps<'span'>) {
+  return (
+    <span
+      {...props}
+      aria-hidden
+      data-slot="drawer-handle"
+      className={cn(
+        'bg-outline-variant mx-auto mt-2 block h-1 w-8 shrink-0 rounded-full',
+        className,
+      )}
+    />
+  )
+}
+
 function DrawerSurface({
   className,
   children,
@@ -44,18 +58,18 @@ function DrawerSurface({
       inert={!open}
       aria-hidden={!open || undefined}
       className={cn(
-        'fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full flex-col rounded-t-2xl',
-        'dark:bg-surface/30 bg-surface-variant/30 backdrop-blur-3xl',
-        'dark:border-surface-variant/50 border-surface/50 border',
+        'fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full flex-col rounded-t-3xl',
+        'bg-surface text-on-surface',
         className,
       )}
       initial={reducedMotion ? { opacity: 0 } : { y: '100%' }}
       animate={{ y: 0, opacity: 1 }}
       exit={reducedMotion ? { opacity: 0 } : { y: '100%' }}
-      transition={{
-        duration: reducedMotion ? 0 : open ? 0.26 : 0.18,
-        ease: [0.22, 1, 0.36, 1],
-      }}
+      transition={
+        reducedMotion
+          ? { duration: 0 }
+          : { type: 'spring', stiffness: 380, damping: 40 }
+      }
     >
       {children}
     </motion.div>

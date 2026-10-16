@@ -943,6 +943,7 @@
   "dashboard_add_widget": "Добавить компонент",
   "dashboard_widget_library_search": "Поиск виджетов",
   "dashboard_widget_library_search_clear": "Очистить поиск виджетов",
+  "dashboard_widget_library_add_entry": "Добавить {name}",
   "dashboard_widget_library_no_results": "Виджеты не найдены",
   "editor_before_close_message": "Вы не сохранили измененное содержимое, вы уверены, что хотите закрыть редактор?",
   "editor_validate_error_message": "Пожалуйста, исправьте ошибки перед сохранением содержимого",

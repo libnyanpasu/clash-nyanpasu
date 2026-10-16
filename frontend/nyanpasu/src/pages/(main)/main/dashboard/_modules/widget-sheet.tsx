@@ -1,17 +1,28 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
+import AppsRounded from '~icons/material-symbols/apps-rounded'
+import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
+import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
+import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
-import { useState } from 'react'
+import CloudSyncRounded from '~icons/material-symbols/cloud-sync-rounded'
+import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
+import DnsRounded from '~icons/material-symbols/dns-rounded'
+import DoneRounded from '~icons/material-symbols/done-rounded'
+import EventRepeatRounded from '~icons/material-symbols/event-repeat-rounded'
+import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
+import NetworkCheckRounded from '~icons/material-symbols/network-check-rounded'
+import RouteRounded from '~icons/material-symbols/route-rounded'
+import RuleFolderRounded from '~icons/material-symbols/rule-folder-rounded'
+import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
+import { cva } from 'class-variance-authority'
+import { useState, type ComponentType } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import {
-  DndGrid,
-  useDndGridContext,
-  type DndGridItemType,
-  type GridSize,
-} from '@nyanpasu/ui/dnd-grid'
+import { DndGridSource } from '@nyanpasu/ui/dnd-grid'
 import {
   Drawer,
   DrawerClose,
   DrawerContent,
+  DrawerHandle,
   DrawerTitle,
 } from '@nyanpasu/ui/drawer'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
@@ -24,8 +35,6 @@ import {
 } from '@/components/widgets/consts'
 import { useDashboardContext } from '@/components/widgets/provider'
 import { m } from '@/paraglide/messages'
-import { cn } from '@nyanpasu/utils'
-import { layoutWidgetSheet } from './widget-sheet-layout'
 
 const WIDGET_TITLE_MAP: Record<WidgetId, () => string> = {
   [WidgetId.TrafficDown]: m.dashboard_widget_traffic_download,
@@ -47,54 +56,106 @@ const WIDGET_TITLE_MAP: Record<WidgetId, () => string> = {
   [WidgetId.ProviderUpdates]: m.dashboard_widget_provider_updates_title,
 }
 
-const PREVIEW_CELL_SIZE = 64
-const PREVIEW_GAP = 16
-const MIN_GRID_COLUMNS = Math.max(
-  ...Object.values(WIDGET_MIN_SIZE_MAP).map(({ minW }) => minW),
-)
+// The icon each widget shows beside its own title.
+const WIDGET_ICON_MAP: Record<
+  WidgetId,
+  ComponentType<{ className?: string }>
+> = {
+  [WidgetId.TrafficDown]: ArrowDownwardRounded,
+  [WidgetId.TrafficUp]: ArrowUpwardRounded,
+  [WidgetId.Connections]: SettingsEthernetRounded,
+  [WidgetId.Memory]: MemoryOutlineRounded,
+  [WidgetId.ProxyShortcuts]: SettingsEthernetRounded,
+  [WidgetId.CoreShortcuts]: MemoryOutlineRounded,
+  [WidgetId.SubscriptionQuota]: DataUsageRounded,
+  [WidgetId.SubscriptionSchedule]: EventRepeatRounded,
+  [WidgetId.ProxyMode]: RouteRounded,
+  [WidgetId.RecentTraffic]: DataUsageRounded,
+  [WidgetId.OriginTraffic]: AppsRounded,
+  [WidgetId.ExitTraffic]: CallSplitRounded,
+  [WidgetId.TargetTraffic]: DnsRounded,
+  [WidgetId.RuleTraffic]: RuleFolderRounded,
+  [WidgetId.ActiveConnections]: NetworkCheckRounded,
+  [WidgetId.ProviderUpdates]: CloudSyncRounded,
+}
 
-function SheetWidget({
+const widgetEntryAddVariants = cva('size-9 shrink-0 shadow-none', {
+  variants: {
+    placed: {
+      true: 'bg-secondary-container text-on-secondary-container hover:bg-secondary-container',
+      false: 'bg-surface-variant text-on-surface hover:bg-surface-variant',
+    },
+  },
+})
+
+// The size a widget takes when it is added, as placeWidget prefers it.
+function widgetSize(id: WidgetId) {
+  const { minW, minH } = WIDGET_MIN_SIZE_MAP[id]
+  return WIDGET_RECOMMENDED_SIZE_MAP[id] ?? { w: minW, h: minH }
+}
+
+function WidgetEntry({
   id,
+  placed,
   onAdd,
+  onDragStart,
 }: {
   id: WidgetId
+  placed: boolean
   onAdd: (id: WidgetId) => void
+  onDragStart: () => void
 }) {
-  const { displayItems, getItemRect, isOverlay } = useDndGridContext()
-  const item = displayItems.find((entry) => entry.id === id)
-  const rect = item ? getItemRect(item) : null
-  const WidgetComponent = RENDER_MAP[id]
+  const title = WIDGET_TITLE_MAP[id]()
+  const Icon = WIDGET_ICON_MAP[id]
+  const { w, h } = widgetSize(id)
+
   return (
-    <>
-      <WidgetComponent id={id} />
-      {rect && !isOverlay && (
-        <Button
-          variant="raised"
-          icon
-          className="absolute z-10 size-7"
-          style={{ left: rect.left + rect.width - 32, top: rect.top + 4 }}
-          aria-label={m.dashboard_add_widget()}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => onAdd(id)}
-        >
-          <AddRounded className="size-4" />
-        </Button>
-      )}
-    </>
+    <DndGridSource
+      itemId={id}
+      dragIdPrefix="sheet:"
+      w={w}
+      h={h}
+      onSourceDragStart={onDragStart}
+      className="bg-surface-variant/40 flex min-w-0 items-center gap-3 rounded-2xl py-2 pr-2 pl-4"
+      data-slot="widget-sheet-entry"
+      data-placed={placed || undefined}
+    >
+      <Icon className="text-on-surface-variant size-5 shrink-0" />
+
+      <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
+
+      <span className="text-on-surface-variant text-xs tabular-nums">
+        {w}×{h}
+      </span>
+
+      <Button
+        variant="raised"
+        icon
+        className={widgetEntryAddVariants({ placed })}
+        aria-label={m.dashboard_widget_library_add_entry({ name: title })}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => onAdd(id)}
+      >
+        {placed ? (
+          <DoneRounded className="size-5" />
+        ) : (
+          <AddRounded className="size-5" />
+        )}
+      </Button>
+    </DndGridSource>
   )
 }
 
 export function WidgetSheet({
+  placedTypes,
   onAdd,
-  onSourceDragStart,
 }: {
+  placedTypes: ReadonlySet<WidgetId>
   onAdd: (id: WidgetId) => void
-  onSourceDragStart: () => void
 }) {
   const { openSheet, setOpenSheet } = useDashboardContext()
 
   const [search, setSearch] = useState('')
-  const [gridSize, setGridSize] = useState<GridSize>()
 
   const query = search.trim().toLocaleLowerCase()
   const filteredIds = (Object.keys(RENDER_MAP) as WidgetId[]).filter(
@@ -102,31 +163,21 @@ export function WidgetSheet({
       !query || WIDGET_TITLE_MAP[id]().toLocaleLowerCase().includes(query),
   )
 
-  const gridColumns = gridSize
-    ? Math.max(MIN_GRID_COLUMNS, gridSize.cols)
-    : undefined
-
-  const sheetItems: DndGridItemType<WidgetId>[] = gridColumns
-    ? layoutWidgetSheet(
-        filteredIds,
-        gridColumns,
-        WIDGET_MIN_SIZE_MAP,
-        WIDGET_RECOMMENDED_SIZE_MAP,
-      )
-    : []
-
-  const contentRows = sheetItems.reduce(
-    (rows, item) => Math.max(rows, item.y + item.h),
-    1,
-  )
+  // Close the library so the new widget appears on the dashboard in view.
+  const handleAdd = (id: WidgetId) => {
+    onAdd(id)
+    setOpenSheet(false)
+  }
 
   return (
     <Drawer open={openSheet} onOpenChange={setOpenSheet}>
       <DrawerContent
-        className="h-[85dvh] max-h-[85dvh] min-h-0 w-[calc(100%-1rem)] max-w-[960px]"
+        className="max-h-[85dvh] min-h-0 w-[calc(100%-1rem)] max-w-[960px]"
         aria-describedby={undefined}
       >
-        <div className="shrink-0 p-4 pb-3">
+        <DrawerHandle />
+
+        <div className="shrink-0 px-4 pt-2 pb-3">
           <div className="flex items-center justify-between gap-4">
             <DrawerTitle className="text-lg font-semibold">
               {m.dashboard_add_widget()}
@@ -153,45 +204,23 @@ export function WidgetSheet({
           />
         </div>
 
-        <ScrollArea
-          className={cn(
-            'min-h-0 flex-1',
-            '[&_[data-slot=scroll-area-viewport]>div]:block!',
-            '[&_[data-slot=scroll-area-viewport]>div]:h-full',
-          )}
-        >
+        <ScrollArea className="min-h-0 flex-1">
           <div
-            className="relative flex w-full flex-col px-3"
-            style={{
-              height: Math.max(
-                PREVIEW_CELL_SIZE,
-                contentRows * (PREVIEW_CELL_SIZE + PREVIEW_GAP) - PREVIEW_GAP,
-              ),
-            }}
+            className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-2 px-4 pb-4"
+            data-slot="widget-sheet-library"
           >
-            <DndGrid
-              gridId="sheet"
-              className="min-h-0 flex-1"
-              items={sheetItems}
-              minCellSize={64}
-              gap={PREVIEW_GAP}
-              size={
-                gridColumns
-                  ? { cols: gridColumns, rows: contentRows }
-                  : undefined
-              }
-              disabled={false}
-              sourceOnly
-              dragIdPrefix="sheet:"
-              onSourceDragStart={onSourceDragStart}
-              onSizeChange={(size) => setGridSize(size)}
-            >
-              {(item) => {
-                return <SheetWidget id={item.id as WidgetId} onAdd={onAdd} />
-              }}
-            </DndGrid>
+            {filteredIds.map((id) => (
+              <WidgetEntry
+                key={id}
+                id={id}
+                placed={placedTypes.has(id)}
+                onAdd={handleAdd}
+                onDragStart={() => setOpenSheet(false)}
+              />
+            ))}
+
             {filteredIds.length === 0 && (
-              <p className="text-on-surface-variant pointer-events-none absolute inset-0 grid place-items-center text-sm">
+              <p className="text-on-surface-variant col-span-full py-4 text-center text-sm">
                 {m.dashboard_widget_library_no_results()}
               </p>
             )}

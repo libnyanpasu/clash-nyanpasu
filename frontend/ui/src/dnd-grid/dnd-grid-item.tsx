@@ -10,7 +10,7 @@ import { PropsWithChildren, useLayoutEffect, useRef } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { cn } from '@nyanpasu/utils'
 import { useDndGridContext } from './context'
-import type { GridItemConstraints } from './types'
+import type { GridItemConstraints, ItemRect } from './types'
 
 const SPRING_OPTIONS = {
   stiffness: 350,
@@ -25,6 +25,12 @@ const RESIZE_SPRING = {
 
 const INSTANT = {
   duration: 0,
+} as Transition
+
+const PRESENCE_SPRING = {
+  type: 'spring',
+  stiffness: 420,
+  damping: 34,
 } as Transition
 
 export type DndGridItemProps<T extends string> = PropsWithChildren<{
@@ -145,6 +151,9 @@ function DndGridItemDraggable<T extends string>({
   // before any resize interaction can occur.
   constraintsMapRef.current[id] = { minW, minH, maxW, maxH }
 
+  const isPresent = useIsPresent()
+  const reducedMotion = useReducedMotion()
+
   const item = displayItems.find((i) => i.id === id)
 
   // Disable drag while any item is being resized
@@ -173,26 +182,43 @@ function DndGridItemDraggable<T extends string>({
     springY.set(0)
   }, [dropInfo, item, getItemRect, springX, springY])
 
-  if (!item) {
+  // A removed item stays until its exit animation finishes. Keep it where it
+  // was: a new target, such as after a grid resize, would stall the exit.
+  const exitRectRef = useRef<ItemRect | null>(null)
+  const presentRect = item && isPresent ? getItemRect(item) : null
+  if (presentRect) {
+    exitRectRef.current = presentRect
+  }
+  const rect = isPresent ? presentRect : exitRectRef.current
+
+  if (!rect) {
     return null
   }
 
-  const rect = getItemRect(item)
   const isActiveItem = activeItemId === id
   const isResizing = resizingItemId === id
+
+  const position = {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  }
+  // Items appear and leave with a pop only while the grid is being edited,
+  // not when a layout loads or adapts to a new size. The exit stays defined
+  // and turns instant instead: motion never finishes an exit that appears
+  // in the same render that removes the item.
+  const hidden = reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.85 }
+  const presence = disabled || reducedMotion ? INSTANT : PRESENCE_SPRING
 
   return (
     <motion.div
       ref={setNodeRef}
-      initial={false}
-      animate={{
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-      }}
-      transition={
-        isResizing
+      initial={disabled ? false : { ...position, ...hidden }}
+      animate={{ ...position, opacity: 1, scale: 1 }}
+      exit={hidden}
+      transition={{
+        ...(isResizing
           ? {
               left: RESIZE_SPRING,
               top: RESIZE_SPRING,
@@ -204,13 +230,18 @@ function DndGridItemDraggable<T extends string>({
               top: INSTANT,
               width: INSTANT,
               height: INSTANT,
-            }
-      }
+            }),
+        opacity: presence,
+        scale: presence,
+      }}
       className={cn('group', className)}
       style={{
         position: 'absolute',
         touchAction: 'none',
-        opacity: isActiveItem ? 0 : 1,
+        // Opacity belongs to the presence animation; hide the dragged item
+        // without animating it.
+        visibility: isActiveItem ? 'hidden' : undefined,
+        pointerEvents: isPresent ? undefined : 'none',
         x: springX,
         y: springY,
       }}

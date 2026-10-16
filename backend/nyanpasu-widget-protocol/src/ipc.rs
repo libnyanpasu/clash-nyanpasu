@@ -5,10 +5,8 @@ use snafu::{OptionExt as _, ResultExt as _, Snafu};
 use crate::Message;
 
 /// The environment variable through which the application tells a widget
-/// process the name of the one-shot server to connect to. The name is part of
-/// the contract with already built widget binaries, so it keeps its egui-era
-/// value.
-pub const IPC_SERVER_ENV: &str = "NYANPASU_EGUI_IPC_SERVER";
+/// process the name of the one-shot server to connect to.
+pub const IPC_SERVER_ENV: &str = "NYANPASU_WIDGET_IPC_SERVER";
 
 /// Why an end of the widget channel could not be set up or used.
 #[derive(Debug, Snafu)]

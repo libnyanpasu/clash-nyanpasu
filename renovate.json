@@ -54,10 +54,6 @@
       "matchPackageNames": ["/objc2/"]
     },
     {
-      "groupName": "egui packages",
-      "matchPackageNames": ["/egui/", "/eframe/"]
-    },
-    {
       "groupName": "Testing packages",
       "matchPackageNames": ["/vitest/", "/cypress/", "/wdio/"]
     }

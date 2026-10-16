@@ -4,7 +4,6 @@ members = [
   'tauri',
   'boa_utils',
   'nyanpasu-macro',
-  'nyanpasu-egui',
   'nyanpasu-core',
   'nyanpasu-paths',
   'nyanpasu-helper',

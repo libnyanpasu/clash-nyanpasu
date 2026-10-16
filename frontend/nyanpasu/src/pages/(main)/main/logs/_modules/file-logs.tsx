@@ -47,6 +47,8 @@ import {
   logPanelVariants,
   LogRecord,
   LogSearch,
+  LogVirtualItem,
+  useEnteringRows,
 } from './log-viewer'
 import { LogsLayout } from './logs-layout'
 
@@ -65,6 +67,8 @@ function errorMessage(error: LogError) {
   }
 }
 const DateTimeField = lazy(() => import('@nyanpasu/ui/date-time-field'))
+
+const logRowKey = (row: LogRow) => row.id
 
 // A row formats its time once when it mounts, not on every list render.
 const FileLogRecord = memo(function FileLogRecord({
@@ -346,6 +350,7 @@ function FileRows({
   // Rows mount in a deferred render, so a remount for another file or
   // filter commits at once instead of rendering the previous rows first.
   const showRows = useDeferredValue(true, false)
+  const isEntering = useEnteringRows(rows, logRowKey)
   const stopFollowing = useCallback(() => setFollowing(false), [setFollowing])
   const lastId = useRef<string | undefined>(undefined)
   const anchor = useRef<{
@@ -458,12 +463,11 @@ function FileRows({
             const row = rows[item.index]
             if (!row) return null
             return (
-              <div
+              <LogVirtualItem
                 key={row.id}
                 ref={virtualizer.measureElement}
                 data-index={item.index}
-                data-slot="logs-virtual-item"
-                className="absolute top-0 left-0 w-full select-text"
+                entering={isEntering(row)}
                 style={{
                   transform: `translateY(${item.start}px)`,
                 }}
@@ -473,7 +477,7 @@ function FileRows({
                   search={search}
                   onInspect={stopFollowing}
                 />
-              </div>
+              </LogVirtualItem>
             )
           })}
       </div>

@@ -41,6 +41,8 @@ import {
   logPanelVariants,
   LogRecord,
   LogSearch,
+  LogVirtualItem,
+  useEnteringRows,
 } from './_modules/log-viewer'
 import { LogsLayout } from './_modules/logs-layout'
 import { Route as IndexRoute } from './route'
@@ -49,6 +51,9 @@ export const Route = createFileRoute('/(main)/main/logs/')({
   component: RouteComponent,
 })
 type CoreLogs = ReturnType<typeof useClashLogs>
+
+const coreLogRowKey = (row: CoreLogRow) =>
+  `${row.id.generation}:${row.id.sequence}`
 
 const CoreRecord = memo(function CoreRecord({
   row,
@@ -126,10 +131,7 @@ function Viewer({
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => viewportElement,
-    getItemKey: (index) => {
-      const id = rows[index].id
-      return `${id.generation}:${id.sequence}`
-    },
+    getItemKey: (index) => coreLogRowKey(rows[index]),
     estimateSize: () => 110,
     paddingEnd: bottomInset,
     scrollPaddingEnd: bottomInset,
@@ -139,6 +141,7 @@ function Viewer({
   })
   const totalSize = rowVirtualizer.getTotalSize()
   const showRows = useDeferredValue(true, false)
+  const isEntering = useEnteringRows(rows, coreLogRowKey)
 
   useEffect(() => {
     rowVirtualizer.measure()
@@ -252,12 +255,11 @@ function Viewer({
             if (!row) return null
             const key = String(item.key)
             return (
-              <div
+              <LogVirtualItem
                 key={item.key}
                 ref={rowVirtualizer.measureElement}
                 data-index={item.index}
-                data-slot="logs-virtual-item"
-                className="absolute top-0 left-0 w-full select-text"
+                entering={isEntering(row)}
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <CoreRecord
@@ -267,7 +269,7 @@ function Viewer({
                   search={deferredSearch}
                   onInspect={inspect}
                 />
-              </div>
+              </LogVirtualItem>
             )
           })}
       </div>

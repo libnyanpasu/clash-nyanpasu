@@ -177,6 +177,33 @@ test('zero discarded logs do not render a stray header or text node', async ({
   ).toBe('')
 })
 
+test('rows enter when the data adds them, not when scrolling mounts them', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  const { view, viewport } = await mountPage()
+  onTestFinished(() => view.unmount())
+  const item = (text: string) =>
+    view
+      .getByText(text, { exact: true })
+      .element()
+      .closest('[data-slot="logs-virtual-item"]')!
+  await expect
+    .element(view.getByText('record 220', { exact: true }))
+    .toBeInTheDocument()
+  expect(item('record 220').className).toContain('animate-log-row-enter')
+  expect(view.container.textContent).not.toContain('record 201')
+  vi.advanceTimersByTime(1000)
+  viewport.scrollTop = 0
+  await expect
+    .element(view.getByText('record 201', { exact: true }))
+    .toBeInTheDocument()
+  expect(item('record 201').className).not.toContain('animate-log-row-enter')
+})
+
 test('scrolling to the top loads older records and preserves the visible row', async ({
   onTestFinished,
 }) => {

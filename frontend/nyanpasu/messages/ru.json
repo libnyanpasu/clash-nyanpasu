@@ -54,6 +54,7 @@
   "traffic_rank_view_all": "Показать все",
   "traffic_rank_other": "Ещё {count}",
   "traffic_rank_single": "Единственное значение",
+  "traffic_view_rankings": "Лидеры при этих фильтрах",
   "traffic_profile_deleted": "{uid} (удалён)",
   "traffic_unavailable": "Запись трафика недоступна, поэтому использование показать нельзя.",
   "traffic_empty": "За этот период трафик не записан.",

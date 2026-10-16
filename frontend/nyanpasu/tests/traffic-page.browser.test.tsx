@@ -1183,6 +1183,52 @@ test('a node filters by its layer, the merged node does nothing', async ({
     .toEqual([{ dimension: 'exit', value: 'exit-3' }])
 })
 
+test('the flow and the map show the top rankings their picks filter', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'flow' })
+  const rankings = view.getByRole('region', { name: m.traffic_view_rankings() })
+
+  await expect.element(node(view, 'rule', 'rule-1')).toBeInTheDocument()
+  await expect
+    .poll(() =>
+      [
+        ...document.querySelectorAll(
+          '[data-slot="traffic-view-rankings"] [data-slot="traffic-ranking"] h2',
+        ),
+      ].map((title) => title.textContent),
+    )
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_exit(),
+    ])
+
+  // A node filters the rankings beside it, and a ranking row the drawing.
+  await press(node(view, 'rule', 'rule-1'))
+  await expect
+    .poll(() => last().query.filters)
+    .toEqual([{ dimension: 'rule', value: 'rule-1' }])
+  await rankings.getByRole('button', { name: /^example\.com/ }).click()
+  await expect
+    .poll(() => last().query.filters)
+    .toEqual([
+      { dimension: 'rule', value: 'rule-1' },
+      { dimension: 'target', value: 'example.com' },
+    ])
+  expect(last().topology).not.toBeNull()
+
+  await sidebarItem(view, m.topology_geo_map()).click()
+  await expect
+    .element(
+      view
+        .getByRole('region', { name: m.traffic_view_rankings() })
+        .getByRole('button', { name: /^example\.com/ }),
+    )
+    .toHaveAttribute('aria-pressed', 'true')
+})
+
 test('hovering a node leaves only its adjacent edges lit', async ({
   onTestFinished,
 }) => {
@@ -1198,6 +1244,12 @@ test('hovering a node leaves only its adjacent edges lit', async ({
 
   // Three gaps of two by two edges.
   await expect.poll(() => opacities().length).toBe(12)
+
+  // Without the stylesheet the nodes are not absolutely positioned and spill
+  // over the rankings below the drawing, which would take the pointer.
+  document.querySelector<HTMLElement>(
+    '[data-slot="traffic-view-rankings"]',
+  )!.style.pointerEvents = 'none'
 
   // Move the real pointer onto the node: a cursor left over the page by an
   // earlier test would otherwise fire a mouseover on whichever node renders

@@ -76,6 +76,7 @@
   "traffic_rank_view_all": "查看全部",
   "traffic_rank_other": "其他 {count} 项",
   "traffic_rank_single": "仅有一个取值",
+  "traffic_view_rankings": "当前筛选下的排行",
   "traffic_profile_deleted": "{uid} (已删除)",
   "traffic_unavailable": "流量记录暂不可用，无法显示用量。",
   "traffic_empty": "当前范围内没有流量记录。",

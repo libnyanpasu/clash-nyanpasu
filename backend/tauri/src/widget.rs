@@ -8,7 +8,6 @@ use crate::client::{
     },
 };
 
-use nyanpasu_paths::PathResolver;
 use nyanpasu_widget_protocol::{
     Message, StatisticMessage, StatisticWidgetVariant,
     ipc::{
@@ -410,9 +409,7 @@ fn send(link: &SharedLink, message: Message) -> Result<(), WidgetSendError> {
 }
 
 /// The widget binary: this executable, relaunched with `statistic-widget`.
-struct ProcessWidgetHost {
-    paths: PathResolver,
-}
+struct ProcessWidgetHost;
 
 impl WidgetHost for ProcessWidgetHost {
     fn spawn(&self, widget: StatisticWidgetVariant) -> Result<SpawnedWidget, WidgetError> {
@@ -422,15 +419,10 @@ impl WidgetHost for ProcessWidgetHost {
         // spawn a process to run the widget
         let variant = format!("{widget}");
         tracing::debug!("Spawning widget process for {}...", variant);
-        let widget_win_state_path = self
-            .paths
-            .app_data_dir()
-            .join(format!("widget_{variant}.state"));
         let child = tokio::process::Command::new(current_exe)
             .arg("statistic-widget")
             .arg(&variant)
             .env(IPC_SERVER_ENV, &server_name)
-            .env("NYANPASU_EGUI_WINDOW_STATE_PATH", widget_win_state_path)
             .stdin(std::process::Stdio::inherit())
             .stdout(os_pipe::dup_stdout().context(DuplicateStdioSnafu)?)
             .stderr(os_pipe::dup_stderr().context(DuplicateStdioSnafu)?)
@@ -487,9 +479,8 @@ pub async fn setup(
     ws_connections_receiver: BroadcastReceiver<ClashConnectionsConnectorEvent>,
     shutdown: CancellationToken,
     tasks: &TaskTracker,
-    paths: PathResolver,
 ) -> anyhow::Result<WidgetManager> {
-    let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost { paths }), shutdown, tasks);
+    let widget_manager = WidgetManager::new(Arc::new(ProcessWidgetHost), shutdown, tasks);
     widget_manager.register_listener(ws_connections_receiver);
     Ok(widget_manager)
 }

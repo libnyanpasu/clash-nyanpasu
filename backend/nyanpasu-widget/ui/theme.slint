@@ -1,8 +1,8 @@
 import { Palette } from "std-widgets.slint";
 import "../assets/Inter-Regular.ttf";
 
-// Design tokens shared by both widget windows. The colors are the Material 3
-// purple palette of the egui widget; its translucent fills used alpha 128.
+// Design tokens shared by both widget windows: the Material 3 purple palette,
+// with translucent fills at half alpha.
 export global Theme {
     // The family name inside Inter-Regular.ttf, the 18pt optical size of
     // Inter 4. Slint matches it exactly and falls back to a system font
@@ -24,7 +24,7 @@ export global Theme {
     out property <length> badge-size: 20px;
     out property <length> icon-size: 12px;
     // Inter at 9px keeps the widest values ("888.88 MB" and "888.88 MB/s")
-    // inside their cells; at egui's 10px "345.68 kB/s" did not fit.
+    // inside their cells; at 10px they do not fit.
     out property <length> value-font-size: 9px;
     out property <length> compact-font-size: 8px;
 }

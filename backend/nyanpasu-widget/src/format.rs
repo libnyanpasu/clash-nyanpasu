@@ -50,7 +50,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn formats_totals_and_speeds_like_the_egui_widget() {
+    fn formats_decimal_totals_and_speeds() {
         let text = StatisticText::from(&StatisticMessage {
             download_total: 123_456_789,
             upload_total: 999,

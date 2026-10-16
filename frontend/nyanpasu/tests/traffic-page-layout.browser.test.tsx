@@ -430,6 +430,37 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
   }
 })
 
+test('the flow card fills the page down to its bottom inset', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished)
+  await sidebarItem(view, m.topology_flow()).click()
+  await expect
+    .element(view.getByRole('heading', { name: m.topology_flow(), level: 1 }))
+    .toBeInTheDocument()
+
+  const content = document.querySelector<HTMLElement>(
+    '[data-slot="traffic-content"]',
+  )!
+  const inset = parseFloat(getComputedStyle(content).paddingBottom)
+
+  // The card reaches the content's bottom padding, nothing else is left below.
+  await expect
+    .poll(() => {
+      const card = document.querySelector<HTMLElement>(
+        '[data-slot="flow-card"]',
+      )
+
+      return card
+        ? content.getBoundingClientRect().bottom -
+            inset -
+            card.getBoundingClientRect().bottom
+        : Infinity
+    })
+    .toBeLessThanOrEqual(1)
+})
+
 test('all eight sidebar entries select the matching page view', async ({
   onTestFinished,
 }) => {

@@ -1051,8 +1051,11 @@ const node = (
 
 // The browser tests run without the stylesheet, so the positioned nodes are not
 // where they are drawn; the events go to the elements directly.
+// A node of the flow is an SVG element, which has no `click()` of its own.
 const press = (locator: { element: () => Element }) =>
-  (locator.element() as HTMLElement).click()
+  locator
+    .element()
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 
 test('the template and the metric change the topology of the same request', async ({
   onTestFinished,
@@ -1147,28 +1150,27 @@ test('hovering a node leaves only its adjacent edges lit', async ({
   const target = node(view, 'rule', 'rule-1')
   await expect.element(target).toBeInTheDocument()
 
-  const opacities = () =>
-    [...document.querySelectorAll('[role="region"] svg path')].map((path) =>
-      Number(getComputedStyle(path).opacity),
-    )
+  const bands = () => [
+    ...document.querySelectorAll('[data-slot="sankey-bands"] path'),
+  ]
 
   // Three gaps of two by two edges.
-  await expect.poll(() => opacities().length).toBe(12)
+  await expect.poll(() => bands().length).toBe(12)
 
   // Move the real pointer onto the node: a cursor left over the page by an
   // earlier test would otherwise fire a mouseover on whichever node renders
   // under it and override the highlight.
   await target.hover()
-  // Two edges come in and two go out; the other eight fade as they animate.
+  // Two edges come in and two go out; the other eight are dimmed.
   await expect
     .poll(() => [
-      opacities().filter((o) => o > 0.5).length,
-      opacities().filter((o) => o < 0.1).length,
+      bands().filter((path) => !path.hasAttribute('data-dim')).length,
+      bands().filter((path) => path.hasAttribute('data-dim')).length,
     ])
     .toEqual([4, 8])
 })
 
-test('a large flow is drawn static, scrolls inside a capped height and still highlights', async ({
+test('a large flow is drawn and still highlights', async ({
   onTestFinished,
 }) => {
   mockBackend()
@@ -1177,21 +1179,16 @@ test('a large flow is drawn static, scrolls inside a capped height and still hig
   const target = node(view, 'rule', 'rule-1')
   await expect.element(target).toBeInTheDocument()
 
-  const paths = () => [...document.querySelectorAll('[role="region"] svg path')]
+  const bands = () => [
+    ...document.querySelectorAll('[data-slot="sankey-bands"] path'),
+  ]
   // Three gaps of 22 by 22 edges.
-  await expect.poll(() => paths().length).toBe(1452)
-  expect(
-    document.querySelector<HTMLElement>('[role="region"]')?.style.maxHeight,
-  ).toBe('40rem')
+  await expect.poll(() => bands().length).toBe(1452)
 
   await target.hover()
-  // 22 edges come in and 22 go out of the node; the rest is dimmed at once.
+  // 22 edges come in and 22 go out of the node; the rest is dimmed.
   await expect
-    .poll(
-      () =>
-        paths().filter((path) => Number(getComputedStyle(path).opacity) > 0.5)
-          .length,
-    )
+    .poll(() => bands().filter((path) => !path.hasAttribute('data-dim')).length)
     .toBe(44)
 })
 
@@ -1207,9 +1204,11 @@ test('a dense flow of few rows is drawn from the top of its columns', async ({
   const target = node(view, 'exit', 'exit-3')
   await expect.element(target).toBeInTheDocument()
 
-  const paths = () => [...document.querySelectorAll('[role="region"] svg path')]
-  await expect.poll(() => paths().length).toBe(544)
-  expect(target.element().style.top).toBe('0px')
+  const bands = () => [
+    ...document.querySelectorAll('[data-slot="sankey-bands"] path'),
+  ]
+  await expect.poll(() => bands().length).toBe(544)
+  expect(target.element().querySelector('rect')?.getAttribute('y')).toBe('0')
 })
 
 test('the largest value does not spread the values into a call', () => {

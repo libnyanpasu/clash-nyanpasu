@@ -129,7 +129,7 @@ Shared backend code follows [Backend packages](backend-packages.md):
 `nyanpasu-core` owns use cases, typed actor clients and consumed ports;
 `nyanpasu-platform` implements infrastructure ports and may depend on core.
 Core must not depend on platform in production. Neither neutral crate nor
-`nyanpasu-config` may depend on Tauri or egui/eframe. Tauri is a host composition
+`nyanpasu-config` may depend on Tauri, egui/eframe or Slint. Tauri is a host composition
 root and GUI/transport adapter; Tauri-specific implementations stay at that
 boundary. Move complete existing call paths and update callers without retaining
 old-path wrappers solely to avoid import changes. Run

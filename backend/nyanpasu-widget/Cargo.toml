@@ -1,0 +1,54 @@
+[package]
+name = 'nyanpasu-widget'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
+  'ipc',
+] }
+slint = { version = '=1.18.1', default-features = false, features = [
+  'std',
+  'compat-1-2',
+  'renderer-software',
+] }
+# The winit backend is used directly rather than through slint's
+# `backend-winit`: Slint's backend selector always enables the backend's muda
+# menu support, and muda 0.19 defines the same Objective-C classes as the muda
+# 0.20 Tauri links, so macOS builds of the application fail to link. Slint's
+# internal crates only stay compatible within a release, hence the exact pin.
+i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
+  'renderer-software',
+] }
+humansize = '2'
+clap = { version = '4', features = ['derive'] }
+snafu = { workspace = true }
+
+# softbuffer 0.4 only keeps per-pixel alpha on Windows, so the other platforms
+# render through OpenGL. Windows does not link it at all: a GL driver costs the
+# widget about 45 MB of working set.
+[target.'cfg(not(windows))'.dependencies]
+i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
+  'renderer-femtovg',
+] }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
+  'x11',
+  'wayland',
+] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = '0.61', features = ['Win32_UI_Input_Ime'] }
+
+[dev-dependencies]
+# The version Slint renders SVGs with, to rasterize reference images.
+resvg = { version = '0.48.1', default-features = false }
+
+[build-dependencies]
+slint-build = { version = '=1.18.1', default-features = false, features = [
+  'compat-1-18',
+] }

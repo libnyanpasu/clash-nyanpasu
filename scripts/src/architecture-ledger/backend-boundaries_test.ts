@@ -16,6 +16,18 @@ Deno.test("transitive GUI and host dependencies invalidate neutral packages", ()
     dependencyViolations("nyanpasu-platform", "tauri-specta v2.0.0\n"),
     ["nyanpasu-platform must not depend on tauri-specta"],
   );
+  assertEquals(
+    dependencyViolations(
+      "nyanpasu-core",
+      "nyanpasu-widget v0.1.0\nslint v1.18.1\ni-slint-core v1.18.1\nwinit v0.30.13\n",
+    ),
+    [
+      "nyanpasu-core must not depend on nyanpasu-widget",
+      "nyanpasu-core must not depend on slint",
+      "nyanpasu-core must not depend on i-slint-core",
+      "nyanpasu-core must not depend on winit",
+    ],
+  );
 });
 
 Deno.test("core consumes ports while platform implements them", () => {
@@ -30,7 +42,7 @@ Deno.test("domain, actor, script and storage dependencies remain available", () 
   assertEquals(
     dependencyViolations(
       "nyanpasu-platform",
-      "nyanpasu-config v0.1.0\nractor v0.16\nboa_engine v0.22\nmlua v0.12\ntokio v1.0\n",
+      "nyanpasu-config v0.1.0\nnyanpasu-widget-protocol v0.1.0\nractor v0.16\nboa_engine v0.22\nmlua v0.12\ntokio v1.0\n",
     ),
     [],
   );

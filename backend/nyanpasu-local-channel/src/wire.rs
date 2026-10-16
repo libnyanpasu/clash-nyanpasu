@@ -68,6 +68,7 @@ pub(crate) enum ServerReply {
 }
 
 /// What the server makes of one connection's opening frame.
+#[cfg(any(feature = "tokio", test))]
 #[derive(Debug)]
 pub(crate) enum Verdict {
     /// The child: reply `Accepted` and hand out the channel.
@@ -79,6 +80,7 @@ pub(crate) enum Verdict {
     Fail(RejectReason, HandshakeError),
 }
 
+#[cfg(any(feature = "tokio", test))]
 impl Verdict {
     pub(crate) fn reply(&self) -> Option<ServerReply> {
         match self {
@@ -91,6 +93,7 @@ impl Verdict {
 
 /// Judges an opening frame. The token is checked before anything else the
 /// client claims, so only the child learns why it was refused.
+#[cfg(any(feature = "tokio", test))]
 pub(crate) fn judge(frame: &[u8], token: &Token, fingerprint: u64) -> Verdict {
     let Ok(hello) = postcard::from_bytes::<ClientHello>(frame) else {
         return Verdict::Ignore(None);
@@ -161,6 +164,7 @@ impl Fnv1a {
 }
 
 /// Compares in time independent of where the tokens differ.
+#[cfg(any(feature = "tokio", test))]
 pub(crate) fn tokens_equal(a: &Token, b: &Token) -> bool {
     let difference = a.iter().zip(b).fold(0_u8, |acc, (x, y)| acc | (x ^ y));
     std::hint::black_box(difference) == 0

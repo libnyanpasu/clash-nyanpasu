@@ -4,17 +4,26 @@
 //! current user alone. Unix: a socket file `<leaf>.sock` in a directory only the
 //! current user can enter. The Linux abstract namespace is avoided on purpose:
 //! it has no permissions, so any local user could connect.
+//!
+//! Only the server, behind the `tokio` feature, makes names and listeners; a
+//! blocking client only turns a name into a socket address.
 
-use interprocess::local_socket::{ListenerOptions, Name};
+#[cfg(feature = "tokio")]
+use interprocess::local_socket::ListenerOptions;
+use interprocess::local_socket::Name;
+#[cfg(any(feature = "tokio", test))]
 use snafu::{ResultExt as _, ensure};
 
+#[cfg(any(feature = "tokio", test))]
 use crate::error::{ServerError, server_error};
 
 /// Short enough that the longest leaf fits `sockaddr_un` under macOS's
 /// 49-byte `$TMPDIR`, the longest directory a socket lands in.
+#[cfg(any(feature = "tokio", test))]
 const MAX_PREFIX_LEN: usize = 16;
 
 /// A fresh name for a server, in the form the bootstrap carries.
+#[cfg(any(feature = "tokio", test))]
 pub(crate) fn new_name(prefix: &str) -> Result<String, ServerError> {
     ensure!(
         !prefix.is_empty()
@@ -31,27 +40,31 @@ pub(crate) fn new_name(prefix: &str) -> Result<String, ServerError> {
 
 /// `<prefix>-<pid>-<16 hex digits>`: the pid tells whose socket it is, the
 /// random part keeps every name new.
+#[cfg(any(feature = "tokio", test))]
 fn leaf(prefix: &str, pid: u32, random: &[u8; 8]) -> String {
     let random: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
     format!("{prefix}-{pid}-{random}")
 }
 
-pub(crate) use platform::{listener_options, socket_name};
+#[cfg(feature = "tokio")]
+pub(crate) use platform::listener_options;
+pub(crate) use platform::socket_name;
 
 #[cfg(windows)]
 mod platform {
     use std::{ffi::OsString, io};
 
-    use interprocess::{
-        local_socket::{GenericNamespaced, ToNsName as _},
-        os::windows::{
-            local_socket::ListenerOptionsExt as _, security_descriptor::SecurityDescriptor,
-        },
+    use interprocess::local_socket::{GenericNamespaced, ToNsName as _};
+    #[cfg(feature = "tokio")]
+    use interprocess::os::windows::{
+        local_socket::ListenerOptionsExt as _, security_descriptor::SecurityDescriptor,
     };
+    #[cfg(feature = "tokio")]
     use widestring::U16CString;
 
     use super::*;
 
+    #[cfg(any(feature = "tokio", test))]
     pub(crate) fn name_for(leaf: String) -> Result<String, ServerError> {
         Ok(leaf)
     }
@@ -60,6 +73,7 @@ mod platform {
         OsString::from(name).to_ns_name::<GenericNamespaced>()
     }
 
+    #[cfg(feature = "tokio")]
     pub(crate) fn listener_options(name: &str) -> Result<ListenerOptions<'static>, ServerError> {
         let sddl = current_user_sddl().context(server_error::AccessControlSnafu)?;
         let sddl = U16CString::from_str(&sddl)
@@ -74,10 +88,12 @@ mod platform {
     }
 
     /// A protected DACL with one entry: full access for the user this process runs as.
+    #[cfg(any(feature = "tokio", test))]
     pub(crate) fn current_user_sddl() -> io::Result<String> {
         Ok(format!("D:P(A;;GA;;;{})", current_user_sid()?))
     }
 
+    #[cfg(any(feature = "tokio", test))]
     fn current_user_sid() -> io::Result<String> {
         use std::{
             os::windows::io::{AsRawHandle as _, FromRawHandle as _, OwnedHandle},
@@ -143,21 +159,24 @@ mod platform {
 
 #[cfg(unix)]
 mod platform {
+    #[cfg(any(feature = "tokio", test))]
     use std::{
         ffi::OsString,
         fs::DirBuilder,
-        io,
         os::unix::fs::{DirBuilderExt as _, MetadataExt as _},
-        path::{Path, PathBuf},
+        path::Path,
     };
+    use std::{io, path::PathBuf};
 
     use interprocess::local_socket::{GenericFilePath, ToFsName as _};
 
     use super::*;
 
     /// The longest path `sockaddr_un` holds, without its terminating NUL.
+    #[cfg(any(feature = "tokio", test))]
     const MAX_SOCKET_PATH_LEN: usize = if cfg!(target_os = "linux") { 107 } else { 103 };
 
+    #[cfg(any(feature = "tokio", test))]
     pub(crate) fn name_for(leaf: String) -> Result<String, ServerError> {
         // SAFETY: geteuid has no preconditions and cannot fail.
         let uid = unsafe { libc::geteuid() };
@@ -173,6 +192,7 @@ mod platform {
         PathBuf::from(name).to_fs_name::<GenericFilePath>()
     }
 
+    #[cfg(feature = "tokio")]
     pub(crate) fn listener_options(name: &str) -> Result<ListenerOptions<'static>, ServerError> {
         let name = socket_name(name).context(server_error::ListenSnafu { name })?;
         // Name reclamation, on by default, removes the socket file when the
@@ -180,6 +200,7 @@ mod platform {
         Ok(ListenerOptions::new().name(name))
     }
 
+    #[cfg(any(feature = "tokio", test))]
     pub(crate) fn socket_path(dir: &Path, leaf: &str) -> Result<String, ServerError> {
         let path = dir.join(format!("{leaf}.sock"));
         ensure!(
@@ -197,6 +218,7 @@ mod platform {
     ///
     /// Using a private directory as it is keeps the path short: under macOS's
     /// `$TMPDIR` an extra directory level would overflow `sockaddr_un`.
+    #[cfg(any(feature = "tokio", test))]
     pub(crate) fn choose_socket_dir(
         runtime_dir: Option<OsString>,
         temp_dir: &Path,
@@ -227,6 +249,7 @@ mod platform {
     }
 
     /// A real directory (not a link to one), owned by `uid`, that no one else can access.
+    #[cfg(any(feature = "tokio", test))]
     fn is_private(dir: &Path, uid: libc::uid_t) -> bool {
         dir.symlink_metadata().is_ok_and(|metadata| {
             metadata.file_type().is_dir() && metadata.uid() == uid && metadata.mode() & 0o077 == 0

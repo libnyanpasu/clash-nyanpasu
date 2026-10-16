@@ -6,7 +6,7 @@ import { m } from '@/paraglide/messages'
 import { usageAmount } from '@/utils/traffic-usage'
 import type { Metric } from '@nyanpasu/rpc/types'
 import { toggleFilter } from '../../_modules/traffic-filters'
-import type { RankingCardProps } from './ranking-card'
+import { useRankingSelection, type RankingCardProps } from './ranking-card'
 import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
 import { useTrafficPage } from './traffic-context'
@@ -20,8 +20,7 @@ export function RankingView({ icon: Icon, title, ranking }: RankingCardProps) {
   const { metric, filters } = search
 
   const { dimension } = ranking
-  const selected = filters.find((filter) => filter.d === dimension)?.v
-  const others = ranking.distinct - ranking.groups.length
+  const { selected, pinned, others, other } = useRankingSelection(ranking)
   const secondaryMetric = metric === 'bytes' ? 'connections' : 'bytes'
 
   return (
@@ -94,12 +93,29 @@ export function RankingView({ icon: Icon, title, ranking }: RankingCardProps) {
               }
             />
           ))}
+
+          {pinned && (
+            <RankingRow
+              key={pinned.key}
+              label={labelOf(dimension, pinned.key)}
+              usage={pinned.usage}
+              metric={metric}
+              rank={null}
+              active
+              layout="table"
+              onSelect={() =>
+                onSearchChange({
+                  filters: toggleFilter(filters, dimension, pinned.key),
+                })
+              }
+            />
+          )}
         </AnimatePresence>
 
         {others > 0 && (
           <p className="text-on-surface-variant truncate px-3 py-1.5 text-[11px] tabular-nums">
             {m.traffic_rank_other({ count: others.toLocaleString() })} ·{' '}
-            {usageAmount(ranking.other, metric)}
+            {usageAmount(other, metric)}
           </p>
         )}
       </div>

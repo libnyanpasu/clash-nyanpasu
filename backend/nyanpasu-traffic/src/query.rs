@@ -102,7 +102,8 @@ pub struct UsageGroup {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Ranking {
     pub dimension: Dimension,
-    /// Distinct values of the dimension among the filtered rows.
+    /// Distinct values of the dimension among the rows the ranking counts: those matching every
+    /// filter except one on this dimension.
     pub distinct: u64,
     /// Heaviest first.
     pub groups: Vec<UsageGroup>,
@@ -144,25 +145,62 @@ pub fn filter_rows<'a>(
     })
 }
 
+/// The rows a ranking of `dimension` counts: those that satisfy every filter except the one on
+/// `dimension`, so a filtered value keeps its alternatives beside it.
+pub fn ranking_rows<'a>(
+    rows: impl IntoIterator<Item = Row<'a>>,
+    filters: &[TrafficFilter],
+    dimension: Dimension,
+) -> impl Iterator<Item = Row<'a>> {
+    rows.into_iter().filter(move |(dimensions, _, _)| {
+        filters
+            .iter()
+            .filter(|f| f.dimension != dimension)
+            .all(|f| group_key(dimensions, f.dimension) == f.value)
+    })
+}
+
+/// The total, the rate and the topology cover the rows that satisfy every filter; each ranking
+/// covers its [`ranking_rows`].
 pub fn report<'a>(
     rows: impl IntoIterator<Item = Row<'a>>,
     request: &ReportRequest,
 ) -> TrafficReport {
-    let rows: Vec<Row<'a>> = filter_rows(rows, &request.query.filters).collect();
+    let filters = &request.query.filters;
+    // One pass sorts the rows: those matching every filter count everywhere, and those missing
+    // only the filter on a ranked dimension count in that ranking alone.
+    let ranked_filter: Vec<bool> = filters
+        .iter()
+        .map(|f| request.rankings.contains(&f.dimension))
+        .collect();
+    let mut matched: Vec<Row<'a>> = Vec::new();
+    let mut near: Vec<Vec<Row<'a>>> = vec![Vec::new(); filters.len()];
+    for row in rows {
+        match miss(row.0, filters) {
+            Miss::None => matched.push(row),
+            Miss::Only(i) if ranked_filter[i] => near[i].push(row),
+            Miss::Only(_) | Miss::Many => {}
+        }
+    }
     // Only live connections have a rate, and a closed-only view has none of them.
     let rated = request.query.scope != TrafficScope::Closed;
     let limit = request.ranking_limit.clamp(1, MAX_LIMIT);
 
     TrafficReport {
-        total: sum(rows.iter().map(|(_, usage, _)| usage)),
+        total: sum(matched.iter().map(|(_, usage, _)| usage)),
         current_rate: rated
-            .then(|| sum_rates(rows.iter().map(|(_, _, rate)| rate)))
+            .then(|| sum_rates(matched.iter().map(|(_, _, rate)| rate)))
             .flatten(),
         rankings: request
             .rankings
             .iter()
             .map(|&dimension| {
-                let mut groups = ranked(&rows, dimension, rated, request.metric);
+                let near = filters
+                    .iter()
+                    .position(|f| f.dimension == dimension)
+                    .map_or(&[][..], |i| &near[i]);
+                let mut groups =
+                    ranked(matched.iter().chain(near), dimension, rated, request.metric);
                 let distinct = groups.len() as u64;
                 let other = sum(groups
                     .split_off(limit.min(groups.len()))
@@ -178,7 +216,8 @@ pub fn report<'a>(
             .collect(),
         topology: request.topology.as_ref().map(|t| {
             topology::project(
-                rows.iter()
+                matched
+                    .iter()
                     .map(|(dimensions, usage, _)| (*dimensions, *usage)),
                 &t.layers,
                 request.metric,
@@ -186,6 +225,27 @@ pub fn report<'a>(
             )
         }),
     }
+}
+
+/// Which filters a row fails.
+enum Miss {
+    None,
+    /// Only the filter at this index.
+    Only(usize),
+    Many,
+}
+
+fn miss(dimensions: &Dimensions, filters: &[TrafficFilter]) -> Miss {
+    let mut miss = Miss::None;
+    for (i, f) in filters.iter().enumerate() {
+        if group_key(dimensions, f.dimension) != f.value {
+            if !matches!(miss, Miss::None) {
+                return Miss::Many;
+            }
+            miss = Miss::Only(i);
+        }
+    }
+    miss
 }
 
 /// The `limit` groups ranked by `metric` after `after`, or the top ones; the rest after the page
@@ -242,14 +302,23 @@ pub fn usage_by_keys<'a>(
 }
 
 /// Every group of `dimension`, heaviest by `metric` first; equal amounts rank by key.
-fn ranked(rows: &[Row<'_>], dimension: Dimension, rated: bool, metric: Metric) -> Vec<UsageGroup> {
+fn ranked<'r, 'a: 'r>(
+    rows: impl IntoIterator<Item = &'r Row<'a>>,
+    dimension: Dimension,
+    rated: bool,
+    metric: Metric,
+) -> Vec<UsageGroup> {
     let mut groups = grouped(rows, dimension, rated);
     groups.sort_by(|a, b| rank(metric, (&a.key, &a.usage), (&b.key, &b.usage)));
     groups
 }
 
 /// Every group of `dimension`, in no particular order.
-fn grouped(rows: &[Row<'_>], dimension: Dimension, rated: bool) -> Vec<UsageGroup> {
+fn grouped<'r, 'a: 'r>(
+    rows: impl IntoIterator<Item = &'r Row<'a>>,
+    dimension: Dimension,
+    rated: bool,
+) -> Vec<UsageGroup> {
     let mut groups: HashMap<String, UsageGroup> = HashMap::new();
     for (dimensions, usage, rate) in rows {
         let group = groups
@@ -400,6 +469,65 @@ mod tests {
         );
         assert_eq!(r.total, usage(10, 20, 1));
         assert_eq!(keys(&r.rankings[0].groups), ["curl"]);
+    }
+
+    #[test]
+    fn a_ranking_ignores_the_filter_on_its_own_dimension() {
+        let f = Fixture::new();
+        let r = report(
+            f.rows(),
+            &request(
+                query(&[(Dimension::Process, "firefox")], TrafficScope::All),
+                &[Dimension::Process, Dimension::Target],
+                10,
+            ),
+        );
+        assert_eq!(r.total, usage(4, 8, 1));
+        let process = &r.rankings[0];
+        assert_eq!(keys(&process.groups), ["curl", "firefox", "wget"]);
+        assert_eq!(process.distinct, 3);
+        // The filtered value's group is the total.
+        assert_eq!(process.groups[1].usage, r.total);
+        assert_eq!(keys(&r.rankings[1].groups), ["a.com"]);
+    }
+
+    #[test]
+    fn a_ranking_keeps_the_filters_on_other_dimensions() {
+        let f = Fixture::new();
+        let r = report(
+            f.rows(),
+            &request(
+                query(
+                    &[(Dimension::Process, "curl"), (Dimension::Exit, "Node-B")],
+                    TrafficScope::All,
+                ),
+                &[Dimension::Process, Dimension::Exit, Dimension::Target],
+                10,
+            ),
+        );
+        assert_eq!(r.total, usage(0, 0, 1));
+        // Node-B carries curl and wget; curl reaches Node-A and Node-B.
+        assert_eq!(keys(&r.rankings[0].groups), ["wget", "curl"]);
+        assert_eq!(keys(&r.rankings[1].groups), ["Node-A", "Node-B"]);
+        assert_eq!(keys(&r.rankings[2].groups), ["b.com"]);
+    }
+
+    #[test]
+    fn usage_pages_list_the_alternatives_of_a_filtered_dimension() {
+        let f = Fixture::new();
+        let filters = query(
+            &[(Dimension::Process, "wget"), (Dimension::Profile, "p2")],
+            TrafficScope::All,
+        )
+        .filters;
+        let page = usage_page(
+            ranking_rows(f.rows(), &filters, Dimension::Process),
+            Dimension::Process,
+            Metric::Bytes,
+            None,
+            10,
+        );
+        assert_eq!(keys(&page.groups), ["firefox", "wget"]);
     }
 
     #[test]

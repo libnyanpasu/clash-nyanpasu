@@ -161,11 +161,6 @@ export default function RankingModal({
   const { query, search, onSearchChange } = useTrafficPage()
   const { filters } = search
   const selected = filters.find((filter) => filter.d === dimension)?.v
-  // The modal lists every value, so its own filter must not remove candidates.
-  const rankingQuery = {
-    ...query,
-    filters: query.filters.filter((filter) => filter.dimension !== dimension),
-  }
   const handleSelect = (key: string) => {
     onSearchChange({ filters: setFilter(filters, dimension, key) })
     onOpenChange(false)
@@ -180,7 +175,7 @@ export default function RankingModal({
           <ModalTitle className="px-4 pt-2 text-xl">{title}</ModalTitle>
 
           <List
-            query={rankingQuery}
+            query={query}
             dimension={dimension}
             selected={selected}
             onSelect={handleSelect}

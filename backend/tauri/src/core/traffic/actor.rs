@@ -8,7 +8,7 @@ use nyanpasu_traffic::{
     ClosedCursor, ClosedPage, ClosedSelection, Dimension, Frame, Metric, Prune, ReportRequest, Row,
     Session, Tier, TrafficError, TrafficFilter, TrafficQuery, TrafficRange, TrafficReport,
     TrafficResult, TrafficScope, TrafficStore, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
-    check_filters, filter_rows, merge_closed_page, report, usage_by_keys, usage_page,
+    check_filters, filter_rows, merge_closed_page, ranking_rows, report, usage_by_keys, usage_page,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
@@ -243,7 +243,7 @@ impl State {
         query.check()?;
         self.with_rows(&query, |rows| {
             usage_page(
-                filter_rows(rows, &query.filters),
+                ranking_rows(rows, &query.filters, dimension),
                 dimension,
                 metric,
                 after.as_ref(),

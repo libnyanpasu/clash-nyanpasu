@@ -802,6 +802,24 @@ test('a ranking row toggles its filter, and a chip or clear all removes it', asy
     .not.toBeInTheDocument()
 })
 
+test('a filtered value outside the top groups stays pinned below them', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished, {
+    filters: [{ d: 'target', v: 'elsewhere.com' }],
+  })
+  const pinned = view.getByRole('button', { name: /^elsewhere\.com/ })
+
+  await expect.element(pinned).toHaveAttribute('aria-pressed', 'true')
+  await expect
+    .element(view.getByRole('button', { name: /^example\.com/ }))
+    .toHaveAttribute('aria-pressed', 'false')
+
+  await pinned.click()
+  await expect.poll(() => last().query.filters).toEqual([])
+})
+
 test('labels: process file name, monospace addresses, unknown and deleted profile', async ({
   onTestFinished,
 }) => {
@@ -953,11 +971,14 @@ test('view all pages through every value and a pick filters and closes', async (
     .toBeInTheDocument()
   expect(rpc.pages).toEqual([
     {
-      // The dimension's own filter is off: every value is a choice.
+      // The backend lists every value of the filtered dimension as a choice.
       query: {
         range: 'last_hour',
         scope: 'closed',
-        filters: [{ dimension: 'inbound', value: 'mixed' }],
+        filters: [
+          { dimension: 'target', value: 'example.com' },
+          { dimension: 'inbound', value: 'mixed' },
+        ],
       },
       groupBy: 'target',
       metric: 'bytes',
@@ -1015,7 +1036,10 @@ test('a category paginates all values and replaces its selected filter', async (
       query: {
         range: 'last_hour',
         scope: 'all',
-        filters: [{ dimension: 'target', value: 'example.com' }],
+        filters: [
+          { dimension: 'source', value: '192.168.1.2' },
+          { dimension: 'target', value: 'example.com' },
+        ],
       },
       groupBy: 'source',
       metric: 'bytes',

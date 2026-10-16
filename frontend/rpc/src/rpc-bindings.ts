@@ -3815,7 +3815,10 @@ export type QueryLogs = {
 
 export type Ranking = {
   dimension: Dimension
-  /**  Distinct values of the dimension among the filtered rows. */
+  /**
+   *  Distinct values of the dimension among the rows the ranking counts: those matching every
+   *  filter except one on this dimension.
+   */
   distinct: number
   /**  Heaviest first. */
   groups: UsageGroup[]

@@ -8,14 +8,13 @@ use crate::client::{
     },
 };
 
-use nyanpasu_egui::{
-    ipc::{
-        IpcSender, Message, StatisticMessage, WidgetIpcError, create_ipc_server, release_server,
-        send_message,
-    },
-    widget::StatisticWidgetVariant,
-};
 use nyanpasu_paths::PathResolver;
+use nyanpasu_widget_protocol::{
+    Message, StatisticMessage, StatisticWidgetVariant,
+    ipc::{
+        IPC_SERVER_ENV, IpcSender, WidgetIpcError, create_ipc_server, release_server, send_message,
+    },
+};
 use snafu::{IntoError as _, OptionExt as _, ResultExt as _, Snafu, ensure};
 use std::{
     sync::{Arc, Mutex as StdMutex, atomic::AtomicBool},
@@ -430,7 +429,7 @@ impl WidgetHost for ProcessWidgetHost {
         let child = tokio::process::Command::new(current_exe)
             .arg("statistic-widget")
             .arg(&variant)
-            .env("NYANPASU_EGUI_IPC_SERVER", &server_name)
+            .env(IPC_SERVER_ENV, &server_name)
             .env("NYANPASU_EGUI_WINDOW_STATE_PATH", widget_win_state_path)
             .stdin(std::process::Stdio::inherit())
             .stdout(os_pipe::dup_stdout().context(DuplicateStdioSnafu)?)

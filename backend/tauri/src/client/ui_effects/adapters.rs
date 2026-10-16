@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
-use nyanpasu_helper::StatisticWidgetVariant;
+use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use snafu::{OptionExt as _, ResultExt as _};
 
 use super::ports::{

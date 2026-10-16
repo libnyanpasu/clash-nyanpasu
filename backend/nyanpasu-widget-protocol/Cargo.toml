@@ -1,0 +1,24 @@
+[package]
+name = 'nyanpasu-widget-protocol'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+# The channel between the application and a widget process. Crates that only
+# need the message and variant types, such as nyanpasu-config, leave it off.
+ipc = ['dep:ipc-channel', 'dep:snafu']
+
+[dependencies]
+clap = { version = '4', features = ['derive'] }
+serde = { version = '1', features = ['derive'] }
+specta = { version = '^2.0.0-rc.25', features = ['derive'] }
+ipc-channel = { version = '0.23', optional = true }  # for IPC between the Widget process and the GUI process
+snafu = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = '1'
+# The encoding ipc-channel puts on the wire, to pin the message layout.
+postcard = { version = '1.1', default-features = false, features = ['use-std'] }

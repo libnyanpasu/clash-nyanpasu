@@ -1948,7 +1948,6 @@ dependencies = [
  "nyanpasu-core-manager",
  "nyanpasu-egui",
  "nyanpasu-geodata",
- "nyanpasu-helper",
  "nyanpasu-ipc",
  "nyanpasu-jobs",
  "nyanpasu-logging",
@@ -1958,6 +1957,7 @@ dependencies = [
  "nyanpasu-platform",
  "nyanpasu-traffic",
  "nyanpasu-utils",
+ "nyanpasu-widget-protocol",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "once_cell",
@@ -6586,6 +6586,7 @@ dependencies = [
  "language-tags",
  "nyanpasu-helper",
  "nyanpasu-utils",
+ "nyanpasu-widget-protocol",
  "port_scanner",
  "rmp-serde",
  "serde",
@@ -6684,15 +6685,12 @@ dependencies = [
  "egui_extras",
  "humansize",
  "image",
- "ipc-channel",
- "nyanpasu-helper",
+ "nyanpasu-widget-protocol",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "parking_lot",
  "resvg 0.48.1",
- "serde",
- "snafu",
  "specta",
  "usvg 0.48.1",
 ]
@@ -6718,10 +6716,7 @@ dependencies = [
 name = "nyanpasu-helper"
 version = "0.1.0"
 dependencies = [
- "clap",
  "language-tags",
- "serde",
- "specta",
  "sys-locale",
  "thiserror 2.0.21",
 ]
@@ -6912,6 +6907,19 @@ dependencies = [
  "tracing",
  "tracing-attributes",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "nyanpasu-widget-protocol"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "ipc-channel",
+ "postcard",
+ "serde",
+ "serde_json",
+ "snafu",
+ "specta",
 ]
 
 [[package]]

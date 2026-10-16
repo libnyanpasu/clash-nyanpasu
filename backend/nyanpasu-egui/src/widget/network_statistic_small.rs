@@ -7,7 +7,7 @@ use eframe::egui::{
 };
 use parking_lot::RwLock;
 
-use crate::ipc::Message;
+use nyanpasu_widget_protocol::{Message, ipc};
 
 // Presets
 const STATUS_ICON_CONTAINER_WIDTH: f32 = 20.0;
@@ -108,7 +108,7 @@ impl NyanpasuNetworkStatisticSmallWidget {
         setup_fonts(&cc.egui_ctx);
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        let rx = crate::ipc::setup_ipc_receiver_with_env().unwrap();
+        let rx = ipc::setup_ipc_receiver_with_env().unwrap();
         let widget = Self {
             state: Arc::new(RwLock::new(NyanpasuNetworkStatisticSmallWidgetState {
                 egui_ctx: cc.egui_ctx.clone(),
@@ -117,25 +117,8 @@ impl NyanpasuNetworkStatisticSmallWidget {
             })),
         };
         let this = widget.clone();
-        std::thread::spawn(move || {
-            loop {
-                match rx.recv() {
-                    Ok(msg) => {
-                        println!("Received message: {msg:?}");
-                        let _ = this.handle_message(msg);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to receive message: {e}");
-                        if matches!(
-                            e,
-                            ipc_channel::IpcError::Disconnected | ipc_channel::IpcError::Io(_)
-                        ) {
-                            let _ = this.handle_message(Message::Stop);
-                            break;
-                        }
-                    }
-                }
-            }
+        ipc::spawn_receiver(rx, move |msg| {
+            let _ = this.handle_message(msg);
         });
         widget
     }

@@ -17,6 +17,7 @@ snapshot-persistence = ['dep:rmp-serde', 'dep:zstd']
 
 [dependencies]
 nyanpasu-helper = { path = '../nyanpasu-helper' }
+nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol' }
 nyanpasu-utils.workspace = true
 
 snafu.workspace = true

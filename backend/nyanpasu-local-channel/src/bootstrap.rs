@@ -25,6 +25,7 @@ impl Bootstrap {
     /// The environment variable the parent conventionally passes the bootstrap in.
     pub const ENV: &'static str = "NYANPASU_LOCAL_CHANNEL";
 
+    #[cfg(any(feature = "tokio", test))]
     pub(crate) fn new(name: String, token: Token) -> Self {
         Self { name, token }
     }

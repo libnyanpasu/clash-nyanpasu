@@ -5,12 +5,14 @@ and concrete infrastructure implementations live in separate neutral crates.
 See the [extraction plan](../design/application-platform-extraction.md) for the
 remaining migration graph; this guide defines the current dependency rules.
 
-| Package             | Owns                                                                                             | Must not depend on                                  |
-| ------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `nyanpasu-config`   | Domain models, profile validation, pure runtime executor and its ports                           | Tauri or egui/eframe                                |
-| `nyanpasu-core`     | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and state transactions | Platform implementation crate, Tauri or egui/eframe |
-| `nyanpasu-platform` | Concrete script, filesystem, process and OS adapters                                             | Tauri host or egui/eframe                           |
-| `backend/tauri`     | Desktop composition root, concrete Tauri adapters, GUI lifecycle and IPC                         | No reverse dependency from neutral crates           |
+| Package                    | Owns                                                                                             | Must not depend on                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| `nyanpasu-config`          | Domain models, profile validation, pure runtime executor and its ports                           | Tauri, egui/eframe or Slint                                |
+| `nyanpasu-core`            | NyanpasuClient, use cases, typed actor clients, workflows, consumed ports and state transactions | Platform implementation crate, Tauri, egui/eframe or Slint |
+| `nyanpasu-platform`        | Concrete script, filesystem, process and OS adapters                                             | Tauri host, egui/eframe or Slint                           |
+| `nyanpasu-widget-protocol` | Render-free statistic widget contract: variants, messages and the optional `ipc` channel         | Tauri, egui/eframe or Slint                                |
+| `nyanpasu-widget`          | Statistic widget process frontend, rendered with Slint                                           | Tauri; no neutral crate may depend on it                   |
+| `backend/tauri`            | Desktop composition root, concrete Tauri adapters, GUI lifecycle and IPC                         | No reverse dependency from neutral crates                  |
 
 The core crate receives dependencies through constructors, function
 arguments or actor startup parameters. Platform can depend on core to

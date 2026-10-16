@@ -253,7 +253,6 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         client.subscribe_clash_connections(),
         shutdown.child_token(),
         &tasks,
-        paths,
     ))
     .context("Failed to setup the network statistic widget")?;
     widget_controller

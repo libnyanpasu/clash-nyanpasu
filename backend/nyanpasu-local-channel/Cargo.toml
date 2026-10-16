@@ -1,0 +1,63 @@
+[package]
+name = 'nyanpasu-local-channel'
+version = '0.1.0'
+description = 'Typed, bidirectional channels between a process and the child it starts, over local sockets'
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# The async server and client. A child without a Tokio runtime uses `blocking` alone.
+tokio = [
+  'dep:tokio',
+  'dep:tokio-util',
+  'dep:futures-util',
+  'dep:bytes',
+  'interprocess/tokio'
+]
+
+[dependencies]
+interprocess = '2.4.5'
+serde = { version = '1', features = ['derive'] }
+postcard = { version = '1.1', default-features = false, features = ['use-std'] }
+snafu = { workspace = true }
+getrandom = { version = '0.4', features = ['std'] }
+tokio = { version = '1', features = ['rt', 'sync', 'io-util'], optional = true }
+tokio-util = { version = '0.7', features = ['codec'], optional = true }
+futures-util = { version = '0.3', default-features = false, optional = true }
+bytes = { version = '1', optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = '0.2'
+
+[target.'cfg(windows)'.dependencies]
+widestring = '1'
+windows-sys = { version = '0.61', features = [
+  'Win32_Foundation',
+  'Win32_Security',
+  'Win32_Security_Authorization',
+  'Win32_System_Threading',
+] }
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = '0.61', features = [
+  'Win32_Foundation',
+  'Win32_Security',
+  'Win32_Security_Authorization',
+  'Win32_Storage_FileSystem',
+  'Win32_System_Threading',
+] }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tempfile = '3'
+
+[[test]]
+name = 'e2e'
+required-features = ['tokio']
+
+[[test]]
+name = 'stress'
+required-features = ['tokio']

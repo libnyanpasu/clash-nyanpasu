@@ -3,7 +3,7 @@ use nyanpasu_config::application::{
     NetworkStatisticWidgetConfig as AppNetworkStatisticWidgetConfig, NyanpasuAppConfig,
     WindowCloseOverride,
 };
-use nyanpasu_helper::StatisticWidgetVariant;
+use nyanpasu_widget_protocol::StatisticWidgetVariant;
 
 pub(super) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<NyanpasuAppConfig> {
     let mut next = NyanpasuAppConfig::default();

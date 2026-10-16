@@ -1,0 +1,12 @@
+export enum LogoPreset { default, system, tun }
+
+// What the application sent last, already formatted. Rust writes it and both
+// windows read it, so the IPC wiring does not depend on the window variant.
+export global StatisticData {
+    in property <string> download-total;
+    in property <string> upload-total;
+    in property <string> download-speed;
+    in property <string> upload-speed;
+    // The protocol carries it, but neither window draws it yet.
+    in property <LogoPreset> logo;
+}

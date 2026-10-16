@@ -4,8 +4,8 @@ use crate::utils;
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
-use nyanpasu_helper::StatisticWidgetVariant;
 use nyanpasu_paths::PathResolver;
+use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tauri::utils::platform::current_exe;
 
 mod migrate;
@@ -85,7 +85,7 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
                 crate::utils::dialog::panic_dialog(message);
             }
             Commands::StatisticWidget { variant } => {
-                nyanpasu_egui::widget::start_statistic_widget(*variant)
+                nyanpasu_widget::start_statistic_widget(*variant)
                     .expect("Failed to start statistic widget");
             }
         }

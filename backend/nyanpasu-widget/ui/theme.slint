@@ -1,0 +1,30 @@
+import { Palette } from "std-widgets.slint";
+import "../assets/Inter-Regular.ttf";
+
+// Design tokens shared by both widget windows: the Material 3 purple palette,
+// with translucent fills at half alpha.
+export global Theme {
+    // The family name inside Inter-Regular.ttf, the 18pt optical size of
+    // Inter 4. Slint matches it exactly and falls back to a system font
+    // without a word when it does not match.
+    out property <string> font-family: "Inter 18pt";
+
+    out property <color> text: #fef7ff;
+    // The large widget is always dark.
+    out property <color> surface: #1d1b20.with-alpha(0.5);
+    out property <color> sheet: #49454f.with-alpha(0.5);
+    out property <color> accent: #4f378b;
+    out property <color> logo-badge: #4f378b.with-alpha(0.5);
+
+    // The small widget is opaque and follows the system color scheme.
+    out property <bool> compact-light: Palette.color-scheme == ColorScheme.light;
+    out property <color> compact-surface: compact-light ? #eaddff : #1d1b20;
+    out property <color> compact-text: compact-light ? #1d1b20 : #fef7ff;
+
+    out property <length> badge-size: 20px;
+    out property <length> icon-size: 12px;
+    // Inter at 9px keeps the widest values ("888.88 MB" and "888.88 MB/s")
+    // inside their cells; at 10px they do not fit.
+    out property <length> value-font-size: 9px;
+    out property <length> compact-font-size: 8px;
+}

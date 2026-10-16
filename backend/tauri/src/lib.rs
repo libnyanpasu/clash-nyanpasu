@@ -141,8 +141,6 @@ pub fn run() -> std::io::Result<()> {
     let mut profilers = utils::profiling::Profilers::default();
     #[cfg(feature = "dhat-heap")]
     profilers.start_heap(&paths);
-    // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
-    tauri::async_runtime::set(nyanpasu_utils::runtime::get_runtime_handle());
 
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
@@ -162,6 +160,10 @@ pub fn run() -> std::io::Result<()> {
         // Parse commands
         cmds::parse(&paths).unwrap();
     };
+    // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
+    // Only the GUI needs it: the subcommands above exit without it, and building
+    // it starts a worker thread per CPU.
+    tauri::async_runtime::set(nyanpasu_utils::runtime::get_runtime_handle());
     #[cfg(feature = "verge-dev")]
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");
 

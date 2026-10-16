@@ -11,7 +11,7 @@ use nyanpasu_config::{
     application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NyanpasuAppConfig},
     runtime::executor::ResolvedPortBindings,
 };
-use nyanpasu_helper::StatisticWidgetVariant;
+use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
@@ -19,7 +19,7 @@ use super::{
     ports::{
         LocaleSink, LogRotation, LoggerError, LoggerRefresher, MockLocaleSink, MockLoggerRefresher,
         MockTrayRefresher, MockWidgetController, MockWidgetRuntime, TrayError, TrayRefresher,
-        WIDGET_STOP_BOUND, WidgetController, WidgetError,
+        WidgetController, WidgetError,
     },
 };
 use crate::client::{
@@ -544,14 +544,12 @@ fn widget_health(statuses: Vec<EffectStatus>) -> EffectHealth {
     status.health
 }
 
-/// A start whose cleanup could not release the handshake leaves the widget
-/// owned in `Starting`, which is not running. Every disable retries that
-/// cleanup and stays degraded until the worker is seen to end; once nothing
-/// is owned, a disable is a clean no-op.
-#[tokio::test(start_paused = true)]
-async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
+/// A widget that dies before it connects fails the start, and the start's
+/// cleanup leaves nothing owned: the handshake ended with the start, so a
+/// later disable is a clean no-op.
+#[tokio::test]
+async fn a_widget_that_never_started_leaves_nothing_for_the_disable() {
     let host = crate::widget::tests::FakeWidgetHost::blocking();
-    host.refuse_release();
     let manager = crate::widget::WidgetManager::new(
         host.clone(),
         CancellationToken::new(),
@@ -575,11 +573,7 @@ async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
         ),
         ..NyanpasuAppConfig::default()
     });
-    let disable = || ApplicationEffectPlan::diff(&enabled, &disabled);
 
-    // The child dies before it connects and the release reaches nothing, so
-    // the start fails and its cleanup runs out of time on the blocked worker.
-    // That worker also keeps the paused clock from moving on its own.
     let mut starting = std::pin::pin!(executor.apply(
         EffectRevision::new(1),
         ApplicationEffectPlan::diff(&disabled, &enabled)
@@ -589,11 +583,6 @@ async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
         () = host.spawned.notified() => {}
     }
     host.exit();
-    tokio::select! {
-        statuses = &mut starting => panic!("the start ended before its cleanup: {statuses:?}"),
-        () = host.released.notified() => {}
-    }
-    tokio::time::advance(WIDGET_STOP_BOUND).await;
     assert!(
         matches!(
             widget_health(starting.await),
@@ -602,38 +591,25 @@ async fn disabling_retries_the_cleanup_of_a_widget_that_never_started() {
         ),
         "the start failed"
     );
-    assert_eq!(manager.owned().await, Some("starting"));
-
-    let mut disabling = std::pin::pin!(executor.apply(EffectRevision::new(2), disable()));
-    tokio::select! {
-        statuses = &mut disabling => panic!("disabled without a cleanup: {statuses:?}"),
-        () = host.released.notified() => {}
-    }
-    tokio::time::advance(WIDGET_STOP_BOUND).await;
-    assert_eq!(
-        widget_health(disabling.await),
-        EffectHealth::Degraded {
-            code: EffectFailureCode::WidgetApplyFailed,
-            message: "widget handshake worker still blocked".into(),
-            retryable: true,
-        }
-    );
-    assert_eq!(manager.owned().await, Some("starting"));
-
-    // Once the handshake ends, the next disable sees the worker gone.
-    host.unblock();
-    assert_eq!(
-        widget_health(executor.apply(EffectRevision::new(3), disable()).await),
-        EffectHealth::Healthy
-    );
     assert_eq!(manager.owned().await, None);
+    assert_eq!(host.events(), ["spawn", "handshake dropped"]);
 
-    let before = host.events();
     assert_eq!(
-        widget_health(executor.apply(EffectRevision::new(4), disable()).await),
+        widget_health(
+            executor
+                .apply(
+                    EffectRevision::new(2),
+                    ApplicationEffectPlan::diff(&enabled, &disabled)
+                )
+                .await
+        ),
         EffectHealth::Healthy
     );
-    assert_eq!(host.events(), before, "nothing was left to stop");
+    assert_eq!(
+        host.events(),
+        ["spawn", "handshake dropped"],
+        "nothing was left to stop"
+    );
 }
 
 #[tokio::test]
@@ -1301,8 +1277,8 @@ async fn effects_with_a_widget_starting(
 }
 
 /// X5c (V25): the token ends a handshake the widget never completes. The
-/// child is killed, the handshake released and the worker seen to end, and
-/// the widget's process-boundary bounds still apply.
+/// handshake stops listening, the child is killed, and the widget's
+/// process-boundary bounds still apply.
 #[tokio::test]
 async fn the_shutdown_ends_a_widget_handshake_and_reaps_the_child() {
     let shutdown = Shutdown::new();
@@ -1318,10 +1294,7 @@ async fn the_shutdown_ends_a_widget_handshake_and_reaps_the_child() {
         "the effects group ends with the handshake"
     );
     assert_eq!(manager.owned().await, None);
-    assert_eq!(
-        host.events(),
-        vec!["spawn", "kill", "release", "handshake released"]
-    );
+    assert_eq!(host.events(), vec!["spawn", "handshake dropped", "kill"]);
 }
 
 /// The refresher owns no logger of its own: it forwards to the reload channel

@@ -32,7 +32,7 @@
     "@paper-design/shaders-react": "0.0.81",
     "@tailwindcss/postcss": "4.3.3",
     "@tanstack/react-table": "9.3.1",
-    "@tanstack/react-virtual": "3.14.20",
+    "@tanstack/react-virtual": "3.14.21",
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.12.2",
     "@uidotdev/usehooks": "2.4.1",
@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@csstools/normalize.css": "12.1.1",
-    "@iconify/json": "2.2.543",
+    "@iconify/json": "2.2.544",
     "@monaco-editor/react": "4.7.0",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query": "5.104.3",

@@ -1,0 +1,60 @@
+import { Theme } from "theme.slint";
+import { StatisticData } from "state.slint";
+import { WidgetWindow, WidgetSurface, LogoBadge, StatPill } from "components.slint";
+
+// Totals and speeds of both directions next to the logo. The rows are the
+// directions and the columns sized to the widest value of their kind.
+export component LargeWidget inherits WidgetWindow {
+    out property <bool> values-fit: download-total.fits && upload-total.fits
+        && download-speed.fits && upload-speed.fits;
+    width: 206px;
+    height: 60px;
+
+    WidgetSurface {
+        background: Theme.surface;
+        border-radius: 12px;
+
+        HorizontalLayout {
+            padding-left: 5px;
+            padding-right: 5px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            spacing: 4px;
+
+            LogoBadge {
+                width: 44px;
+                logo-height: 28px;
+            }
+
+            VerticalLayout {
+                width: 68px;
+                spacing: 4px;
+
+                download-total := StatPill {
+                    icon: @image-url("../assets/download.svg");
+                    value: StatisticData.download-total;
+                }
+
+                upload-total := StatPill {
+                    icon: @image-url("../assets/upload.svg");
+                    value: StatisticData.upload-total;
+                }
+            }
+
+            VerticalLayout {
+                width: 76px;
+                spacing: 4px;
+
+                download-speed := StatPill {
+                    icon: @image-url("../assets/down.svg");
+                    value: StatisticData.download-speed;
+                }
+
+                upload-speed := StatPill {
+                    icon: @image-url("../assets/up.svg");
+                    value: StatisticData.upload-speed;
+                }
+            }
+        }
+    }
+}

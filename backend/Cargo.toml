@@ -4,7 +4,6 @@ members = [
   'tauri',
   'boa_utils',
   'nyanpasu-macro',
-  'nyanpasu-egui',
   'nyanpasu-core',
   'nyanpasu-paths',
   'nyanpasu-helper',
@@ -13,6 +12,9 @@ members = [
   'nyanpasu-geodata',
   'nyanpasu-panics',
   'nyanpasu-platform',
+  'nyanpasu-local-channel',
+  'nyanpasu-widget-protocol',
+  'nyanpasu-widget',
   # Test-only deterministic fake clash core. Never packaged as a production
   # sidecar/resource (see tauri.conf.json externalBin / resources).
   'fake-core',

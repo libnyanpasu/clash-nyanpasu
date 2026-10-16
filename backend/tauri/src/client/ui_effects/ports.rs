@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
-use nyanpasu_egui::{ipc::WidgetIpcError, widget::StatisticWidgetVariant};
+use nyanpasu_widget_protocol::{StatisticWidgetVariant, ipc::WidgetIpcError};
 use snafu::Snafu;
 use tokio::time::Instant;
 
@@ -93,9 +93,9 @@ pub const WIDGET_STOP_BOUND: Duration = Duration::from_secs(3);
 ///
 /// A controller that has not been handed its runtime yet is a startup
 /// ordering fact the caller can retry, while every other variant names a step
-/// of starting or stopping the widget itself. `StillOwned` and
-/// `HandshakeBlocked` are a stop that ran out of time: the widget is still
-/// owned, and the caller must not report it gone.
+/// of starting or stopping the widget itself. `StillOwned` is a stop that
+/// ran out of time: the widget is still owned, and the caller must not report
+/// it gone.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum WidgetError {
@@ -121,8 +121,6 @@ pub enum WidgetError {
     },
     #[snafu(display("the widget did not connect back"))]
     ConnectWidget { source: WidgetIpcError },
-    #[snafu(display("the widget connected without handing over a sender"))]
-    MissingWidgetSender,
     #[snafu(display("the widget process exited before it connected: {status}"))]
     WidgetExited { status: String },
     #[snafu(display("could not wait for the widget process"))]
@@ -131,8 +129,6 @@ pub enum WidgetError {
     ShutdownBeforeConnect,
     #[snafu(display("widget process still owned, exit not confirmed"))]
     StillOwned,
-    #[snafu(display("widget handshake worker still blocked"))]
-    HandshakeBlocked,
 }
 
 impl WidgetError {

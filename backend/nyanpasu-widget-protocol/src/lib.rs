@@ -83,7 +83,7 @@ mod tests {
         }
     }
 
-    /// The bytes ipc-channel sends: the variant index, then the fields in
+    /// The payload nyanpasu-local-channel frames: the variant index, then the fields in
     /// declaration order.
     #[test]
     fn messages_keep_their_wire_layout() {

@@ -37,7 +37,7 @@ pub enum WidgetError {
 /// process, on the main thread.
 pub fn start_statistic_widget(variant: StatisticWidgetVariant) -> Result<(), WidgetError> {
     // Connect first: an application that is not there gets no window at all.
-    let rx = ipc::setup_ipc_receiver_with_env().context(ConnectApplicationSnafu)?;
+    let rx = ipc::connect_with_env().context(ConnectApplicationSnafu)?;
     platform::select_backend().context(SelectBackendSnafu)?;
     match variant {
         StatisticWidgetVariant::Large => {

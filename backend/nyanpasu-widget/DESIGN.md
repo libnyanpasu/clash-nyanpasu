@@ -21,9 +21,10 @@ premultiplied again.
 
 - `nyanpasu-widget-protocol` (separate crate): the render-free contract,
   `Message`, `StatisticMessage`, `LogoPreset` and `StatisticWidgetVariant`,
-  and behind the `ipc` feature the ipc-channel server, handshake and receiver
-  loop with `IPC_SERVER_ENV`. `nyanpasu-config` uses the types without the
-  feature, so it depends on no IPC or GUI crate.
+  and the channel over `nyanpasu-local-channel`: behind the `ipc` feature
+  the widget's blocking client and receiver loop, behind `ipc-host` the
+  application's Tokio server and sender. `nyanpasu-config` uses the types
+  without either feature, so it depends on no IPC or GUI crate.
 - `ui/theme.slint`: colours, sizes and fonts of both windows.
 - `ui/state.slint`: the `StatisticData` global the application's data flows
   into, and the `LogoPreset` enum.

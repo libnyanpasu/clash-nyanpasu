@@ -363,3 +363,79 @@ test.for(['en', 'zh-cn'] as const)(
     expect(card('remote').querySelector('[role="meter"]')).toBeNull()
   },
 )
+
+test('reorders profiles by dragging the whole card', async ({
+  onTestFinished,
+}) => {
+  await page.viewport(1200, 900)
+  vi.stubGlobal('isTauri', true)
+  const items = ['first', 'second', 'third'].map((uid) => ({
+    ...profile(uid, false),
+    name: uid,
+  }))
+  const reorders: unknown[] = []
+  mockIPC((command, args) => {
+    const wire = args as { method: string; params: { list: string[] } }
+    const method = command === 'call_rpc' ? wire.method : command
+    if (method === 'get_profiles')
+      return { current: null, items, global_transforms: [], valid: [] }
+    if (method === 'read_profile_file') return 'proxies: []'
+    if (method === 'query_traffic_report')
+      return {
+        total: { bytes: { upload: 0, download: 0 }, connections: 0 },
+        current_rate: null,
+        rankings: [],
+        topology: null,
+      }
+    if (method === 'reorder_profiles_by_list') {
+      reorders.push(wire.params.list)
+      return { status: 'committed', value: null }
+    }
+    throw new Error(`Unexpected RPC ${method}`)
+  })
+  const queries = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const container = document.createElement('div')
+  container.style.width = '960px'
+  document.body.append(container)
+  const root = createRoot(container)
+  const route = createRootRoute({
+    component: () => (
+      <TestQueryProvider client={queries}>
+        <BlockTaskProvider>
+          <TooltipProvider>
+            <ContextMenuProvider>
+              <ScrollArea>
+                <ProfilesList className="p-4 pt-0" />
+              </ScrollArea>
+            </ContextMenuProvider>
+          </TooltipProvider>
+        </BlockTaskProvider>
+      </TestQueryProvider>
+    ),
+  })
+  const router = createRouter({
+    routeTree: route,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  root.render(<RouterProvider router={router} />)
+  onTestFinished(() => {
+    root.unmount()
+    container.remove()
+    queries.clear()
+    vi.unstubAllGlobals()
+  })
+
+  const card = (uid: string) =>
+    container.querySelector<HTMLElement>(`[data-profile-uid="${uid}"]`)
+  await expect.poll(() => card('third')).not.toBeNull()
+
+  // Grab the card body rather than any dedicated handle.
+  const body = card('third')!.querySelector<HTMLElement>(
+    '[data-slot="profile-card-title"]',
+  )!
+  await userEvent.dragAndDrop(body, card('first')!)
+
+  await expect.poll(() => reorders).toEqual([['third', 'first', 'second']])
+})

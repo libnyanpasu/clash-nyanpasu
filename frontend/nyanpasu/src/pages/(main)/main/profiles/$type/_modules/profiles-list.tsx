@@ -27,6 +27,7 @@ import {
 } from '@/components/providers/context-menu-provider'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
+import { WHOLE_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
@@ -131,10 +132,11 @@ const GridViewProfile = memo(function GridViewProfile({
 
   const cardRef = useRef<HTMLDivElement>(null)
 
-  const { isDragging: _isDragging } = useSortable({
+  // The whole card is the drag source; the pointer sensor ignores its buttons.
+  const { isDragging } = useSortable({
     id: profile.uid,
     index,
-    element: cardRef.current,
+    element: cardRef,
   })
 
   return (
@@ -144,13 +146,15 @@ const GridViewProfile = memo(function GridViewProfile({
           data-slot="profile-card"
           data-profile-uid={profile.uid}
           data-active={featured || undefined}
+          data-dragging={isDragging || undefined}
           className={cn(
-            'relative isolate flex min-w-0 flex-col justify-between',
+            'relative isolate flex min-w-0 cursor-grab flex-col justify-between select-none active:cursor-grabbing',
             isProxyProfile(profile)
               ? featured
                 ? 'order-first col-span-full h-72 rounded-4xl'
                 : 'h-60'
               : 'min-h-40',
+            isDragging && 'shadow-lg',
           )}
           asChild
         >
@@ -400,6 +404,7 @@ export default function ProfilesList({
         {...props}
       >
         <DragDropProvider
+          sensors={WHOLE_ITEM_DRAG_SENSORS}
           onDragEnd={(event) => {
             const filteredUids = filteredProfiles.map((profile) => profile.uid)
 

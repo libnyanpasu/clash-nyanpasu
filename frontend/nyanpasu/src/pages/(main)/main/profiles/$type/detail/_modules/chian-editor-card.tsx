@@ -8,9 +8,10 @@ import { CircularProgress } from '@nyanpasu/ui/progress'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
+import { WHOLE_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
 import { message } from '@/utils/notification'
 import { move } from '@dnd-kit/helpers'
-import { DragDropProvider, KeyboardSensor, PointerSensor } from '@dnd-kit/react'
+import { DragDropProvider } from '@dnd-kit/react'
 import {
   scopedTransformsOf,
   useProfile,
@@ -30,21 +31,6 @@ import {
 } from './transform-chain-column'
 
 type ScriptOrMergeProfile = TransformProfile
-
-// The whole card is the drag source, so the default mouse activation would
-// require a press-and-hold; touch keeps its delay to stay scrollable.
-const SENSORS = [
-  PointerSensor.configure({
-    activationConstraints: (event, source) => {
-      if (event.pointerType === 'mouse') return undefined
-
-      const defaults = PointerSensor.defaults.activationConstraints
-
-      return typeof defaults === 'function' ? defaults(event, source) : defaults
-    },
-  }),
-  KeyboardSensor,
-]
 
 enum ColumnType {
   Active = 'active',
@@ -357,7 +343,7 @@ export function TransformChainEditor({
         )}
       >
         <DragDropProvider
-          sensors={SENSORS}
+          sensors={WHOLE_ITEM_DRAG_SENSORS}
           onBeforeDragStart={(event) => {
             if (!editable || savingRef.current) event.preventDefault()
           }}

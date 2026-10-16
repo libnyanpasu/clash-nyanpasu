@@ -85,7 +85,7 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
                 crate::utils::dialog::panic_dialog(message);
             }
             Commands::StatisticWidget { variant } => {
-                nyanpasu_egui::widget::start_statistic_widget(*variant)
+                nyanpasu_widget::start_statistic_widget(*variant)
                     .expect("Failed to start statistic widget");
             }
         }

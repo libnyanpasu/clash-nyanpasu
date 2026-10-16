@@ -1,11 +1,6 @@
 #![allow(dead_code)]
 use tauri::{AppHandle, Event, Runtime};
 
-pub enum WidgetInstance {
-    Small(nyanpasu_egui::widget::NyanpasuNetworkStatisticSmallWidget),
-    Large(nyanpasu_egui::widget::NyanpasuNetworkStatisticLargeWidget),
-}
-
 #[tracing::instrument(skip(_app_handle))]
 pub(super) fn on_network_statistic_config_changed<R: Runtime>(
     _app_handle: &AppHandle<R>,

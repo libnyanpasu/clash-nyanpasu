@@ -39,7 +39,7 @@ nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-config = { path = '../nyanpasu-config' }
 nyanpasu-platform = { path = '../nyanpasu-platform' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
-nyanpasu-egui = { path = '../nyanpasu-egui' }
+nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
   'ipc',
 ] }

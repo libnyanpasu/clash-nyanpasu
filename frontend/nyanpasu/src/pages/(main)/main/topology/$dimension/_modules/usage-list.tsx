@@ -1,13 +1,13 @@
-import { AnimatePresence } from 'motion/react'
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import {
   useMockTrafficNow,
   useMockTrafficSetting,
 } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
+import type { UsageLabel } from '@/utils/traffic-usage'
 import { useTrafficUsagePages } from '@nyanpasu/query'
-import type { Dimension, UsageGroup } from '@nyanpasu/rpc/types'
+import type { Dimension, Metric, UsageGroup } from '@nyanpasu/rpc/types'
 import { mockTrafficGroups } from '../../_modules/mock-traffic'
 import Notice from '../../_modules/notice'
 import RankingRow from '../../_modules/ranking-row'
@@ -45,34 +45,72 @@ type UsageListProps = {
   onSelect: (key: string) => void
 }
 
+type LabelOf = (dimension: Dimension, key: string) => UsageLabel
+
+/**
+ * A row reads nothing from the page context and keeps its props across
+ * renders, so neither a polled report nor another loaded page re-renders the
+ * rows already shown. The listing is not polled, so its rows do not animate.
+ */
+const UsageRow = memo(function UsageRow({
+  group,
+  rank,
+  active,
+  dimension,
+  metric,
+  labelOf,
+  onSelect,
+}: {
+  group: UsageGroup
+  rank: number
+  active: boolean
+  dimension: Dimension
+  metric: Metric
+  labelOf: LabelOf
+  onSelect: (key: string) => void
+}) {
+  return (
+    <RankingRow
+      label={labelOf(dimension, group.key)}
+      usage={group.usage}
+      metric={metric}
+      rank={rank}
+      active={active}
+      layout="table"
+      animated={false}
+      onSelect={() => onSelect(group.key)}
+    />
+  )
+})
+
 function UsageRows({
   groups,
   dimension,
   selected,
   onSelect,
-}: UsageListProps & { groups: UsageGroup[] }) {
-  const { search, labelOf } = useTrafficPage()
-
-  return (
-    <AnimatePresence initial={false}>
-      {groups.map((group, index) => (
-        <RankingRow
-          key={group.key}
-          label={labelOf(dimension, group.key)}
-          usage={group.usage}
-          metric={search.metric}
-          rank={index}
-          active={group.key === selected}
-          layout="table"
-          onSelect={() => onSelect(group.key)}
-        />
-      ))}
-    </AnimatePresence>
-  )
+  metric,
+  labelOf,
+}: UsageListProps & {
+  groups: UsageGroup[]
+  metric: Metric
+  labelOf: LabelOf
+}) {
+  return groups.map((group, index) => (
+    <UsageRow
+      key={group.key}
+      group={group}
+      rank={index}
+      active={group.key === selected}
+      dimension={dimension}
+      metric={metric}
+      labelOf={labelOf}
+      onSelect={onSelect}
+    />
+  ))
 }
 
 function RecordedUsageList({ dimension, selected, onSelect }: UsageListProps) {
-  const { query, search } = useTrafficPage()
+  const { query, search, labelOf } = useTrafficPage()
 
   // The backend ignores the filter on the listed dimension. Leaving it out of
   // the request keeps the loaded pages, and the place read, when a row is picked.
@@ -87,7 +125,10 @@ function RecordedUsageList({ dimension, selected, onSelect }: UsageListProps) {
   const { data, isError, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useTrafficUsagePages(listQuery, dimension, search.metric)
 
-  const groups = data?.pages.flatMap((page) => page.groups) ?? []
+  const groups = useMemo(
+    () => data?.pages.flatMap((page) => page.groups) ?? [],
+    [data],
+  )
 
   return (
     <>
@@ -96,6 +137,8 @@ function RecordedUsageList({ dimension, selected, onSelect }: UsageListProps) {
         dimension={dimension}
         selected={selected}
         onSelect={onSelect}
+        metric={search.metric}
+        labelOf={labelOf}
       />
 
       {hasNextPage && !isFetchingNextPage && (
@@ -117,7 +160,7 @@ function RecordedUsageList({ dimension, selected, onSelect }: UsageListProps) {
 
 // Dev builds only: every generated group at once, as of when the list opened.
 function MockUsageList({ dimension, selected, onSelect }: UsageListProps) {
-  const { query, search } = useTrafficPage()
+  const { query, search, labelOf } = useTrafficPage()
   const { metric } = search
   const now = useMockTrafficNow(true)
 
@@ -134,6 +177,8 @@ function MockUsageList({ dimension, selected, onSelect }: UsageListProps) {
         dimension={dimension}
         selected={selected}
         onSelect={onSelect}
+        metric={metric}
+        labelOf={labelOf}
       />
 
       {groups.length === 0 && <Notice>{m.traffic_empty()}</Notice>}

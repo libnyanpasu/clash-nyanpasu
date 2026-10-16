@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { Card } from '@nyanpasu/ui/card'
 import {
   SegmentedButton,
@@ -47,6 +48,12 @@ function RankingsPage() {
     (item) => item.dimension === dimension,
   )?.distinct
   const selected = filters.find((filter) => filter.d === dimension)?.v
+  // Stable across polls, so the listing does not re-render with each report.
+  const onSelect = useCallback(
+    (key: string) =>
+      onSearchChange({ filters: toggleFilter(filters, dimension, key) }),
+    [onSearchChange, filters, dimension],
+  )
   const secondaryMetric = metric === 'bytes' ? 'connections' : 'bytes'
 
   return (
@@ -129,11 +136,7 @@ function RankingsPage() {
             <UsageList
               dimension={dimension}
               selected={selected}
-              onSelect={(key) =>
-                onSearchChange({
-                  filters: toggleFilter(filters, dimension, key),
-                })
-              }
+              onSelect={onSelect}
             />
           </div>
         </Card>

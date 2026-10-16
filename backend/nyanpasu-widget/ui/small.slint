@@ -1,0 +1,39 @@
+import { Theme } from "theme.slint";
+import { StatisticData } from "state.slint";
+import { WidgetWindow, WidgetSurface, LogoBadge, CompactValue } from "components.slint";
+
+// Upload and download speed next to the logo, on a pill.
+export component SmallWidget inherits WidgetWindow {
+    out property <bool> values-fit: upload-speed.fits && download-speed.fits;
+    width: 80px;
+    height: 32px;
+
+    WidgetSurface {
+        background: Theme.compact-surface;
+        border-radius: self.height / 2;
+
+        HorizontalLayout {
+            padding: 4px;
+            // The widest value, "888.88 MB/s", needs the cell 4px padding
+            // leaves too narrow. It reaches into the rounded end, where the
+            // pill is still wide enough at the text's height.
+            padding-right: 2px;
+            spacing: 1px;
+
+            LogoBadge {
+                width: 24px;
+                logo-height: 14px;
+            }
+
+            VerticalLayout {
+                upload-speed := CompactValue {
+                    text: StatisticData.upload-speed;
+                }
+
+                download-speed := CompactValue {
+                    text: StatisticData.download-speed;
+                }
+            }
+        }
+    }
+}

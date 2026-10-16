@@ -475,7 +475,7 @@ test('the full listing of a ranking mounts only the rows in view', async ({
   expect(rows.querySelectorAll('button').length).toBeLessThan(40)
 })
 
-test('the flow card fills the page down to its bottom inset', async ({
+test('the flow card and its rankings fill the page down to its bottom inset', async ({
   onTestFinished,
 }) => {
   mockBackend()
@@ -490,17 +490,26 @@ test('the flow card fills the page down to its bottom inset', async ({
   )!
   const inset = parseFloat(getComputedStyle(content).paddingBottom)
 
-  // The card reaches the content's bottom padding, nothing else is left below.
+  // The card grows down to the rankings under it, and they reach the
+  // content's bottom padding, nothing else is left below.
   await expect
     .poll(() => {
       const card = document.querySelector<HTMLElement>(
         '[data-slot="flow-card"]',
       )
+      const rankings = document.querySelector<HTMLElement>(
+        '[data-slot="traffic-view-rankings"]',
+      )
 
-      return card
-        ? content.getBoundingClientRect().bottom -
-            inset -
-            card.getBoundingClientRect().bottom
+      return card && rankings
+        ? Math.max(
+            content.getBoundingClientRect().bottom -
+              inset -
+              rankings.getBoundingClientRect().bottom,
+            rankings.getBoundingClientRect().top -
+              card.getBoundingClientRect().bottom -
+              parseFloat(getComputedStyle(card.parentElement!).rowGap),
+          )
         : Infinity
     })
     .toBeLessThanOrEqual(1)

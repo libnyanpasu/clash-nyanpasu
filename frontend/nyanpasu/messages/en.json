@@ -76,6 +76,7 @@
   "traffic_rank_view_all": "View all",
   "traffic_rank_other": "{count} others",
   "traffic_rank_single": "Only one value",
+  "traffic_view_rankings": "Top usage under these filters",
   "traffic_profile_deleted": "{uid} (deleted)",
   "traffic_unavailable": "Traffic recording is unavailable, so no usage can be shown.",
   "traffic_empty": "No traffic was recorded in this range.",

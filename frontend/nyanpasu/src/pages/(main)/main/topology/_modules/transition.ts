@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useMedia } from 'react-use'
 
 /**
@@ -7,11 +8,13 @@ import { useMedia } from 'react-use'
 export function usePageTransition() {
   const reducedMotion = useMedia('(prefers-reduced-motion: reduce)', false)
 
-  return {
-    reducedMotion,
-    transition: {
+  const transition = useMemo(
+    () => ({
       duration: reducedMotion ? 0 : 0.32,
       ease: [0.2, 0, 0, 1] as const,
-    },
-  }
+    }),
+    [reducedMotion],
+  )
+
+  return { reducedMotion, transition }
 }

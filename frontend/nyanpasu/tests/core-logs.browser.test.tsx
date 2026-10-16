@@ -177,6 +177,98 @@ test('zero discarded logs do not render a stray header or text node', async ({
   ).toBe('')
 })
 
+function pendingLatestPage() {
+  let finish!: () => void
+  mocked.queryCoreLogs.mockImplementation(
+    (query: CoreLogQuery) =>
+      new Promise((resolve) => {
+        finish = () =>
+          resolve(
+            ok({
+              rows: query.direction === 'latest' ? rows(201, 20) : [],
+              cursor: cursor(201),
+              more: false,
+              status,
+            }),
+          )
+      }),
+  )
+  return () => finish()
+}
+
+test('a fast first page shows neither the loading status nor the empty state', async ({
+  onTestFinished,
+}) => {
+  const finish = pendingLatestPage()
+  const flashed = new Set<string>()
+  const observer = new MutationObserver(() => {
+    const text = document.body.textContent ?? ''
+    for (const message of [m.logs_loading(), m.logs_empty_message()])
+      if (text.includes(message)) flashed.add(message)
+  })
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  })
+  onTestFinished(() => observer.disconnect())
+  const { view } = await mountPage()
+  onTestFinished(() => view.unmount())
+  await expect.poll(() => mocked.queryCoreLogs.mock.calls.length).toBe(1)
+  finish()
+  await expect
+    .element(view.getByText('record 220', { exact: true }))
+    .toBeInTheDocument()
+  expect([...flashed]).toEqual([])
+})
+
+test('a slow first page announces that logs are loading', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  const finish = pendingLatestPage()
+  const { view } = await mountPage()
+  onTestFinished(() => view.unmount())
+  await expect.poll(() => mocked.queryCoreLogs.mock.calls.length).toBe(1)
+  vi.advanceTimersByTime(1000)
+  await expect.element(view.getByText(m.logs_loading())).toBeInTheDocument()
+  finish()
+  await expect
+    .element(view.getByText('record 220', { exact: true }))
+    .toBeInTheDocument()
+  expect(view.container.textContent).not.toContain(m.logs_loading())
+})
+
+test('rows enter when the data adds them, not when scrolling mounts them', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  const { view, viewport } = await mountPage()
+  onTestFinished(() => view.unmount())
+  const item = (text: string) =>
+    view
+      .getByText(text, { exact: true })
+      .element()
+      .closest('[data-slot="logs-virtual-item"]')!
+  await expect
+    .element(view.getByText('record 220', { exact: true }))
+    .toBeInTheDocument()
+  expect(item('record 220').className).toContain('animate-log-row-enter')
+  expect(view.container.textContent).not.toContain('record 201')
+  vi.advanceTimersByTime(1000)
+  viewport.scrollTop = 0
+  await expect
+    .element(view.getByText('record 201', { exact: true }))
+    .toBeInTheDocument()
+  expect(item('record 201').className).not.toContain('animate-log-row-enter')
+})
+
 test('scrolling to the top loads older records and preserves the visible row', async ({
   onTestFinished,
 }) => {

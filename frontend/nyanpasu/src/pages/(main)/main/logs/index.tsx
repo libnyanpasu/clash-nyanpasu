@@ -41,6 +41,9 @@ import {
   logPanelVariants,
   LogRecord,
   LogSearch,
+  LogVirtualItem,
+  useEnteringRows,
+  useSlowLoading,
 } from './_modules/log-viewer'
 import { LogsLayout } from './_modules/logs-layout'
 import { Route as IndexRoute } from './route'
@@ -49,6 +52,9 @@ export const Route = createFileRoute('/(main)/main/logs/')({
   component: RouteComponent,
 })
 type CoreLogs = ReturnType<typeof useClashLogs>
+
+const coreLogRowKey = (row: CoreLogRow) =>
+  `${row.id.generation}:${row.id.sequence}`
 
 const CoreRecord = memo(function CoreRecord({
   row,
@@ -126,10 +132,7 @@ function Viewer({
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => viewportElement,
-    getItemKey: (index) => {
-      const id = rows[index].id
-      return `${id.generation}:${id.sequence}`
-    },
+    getItemKey: (index) => coreLogRowKey(rows[index]),
     estimateSize: () => 110,
     paddingEnd: bottomInset,
     scrollPaddingEnd: bottomInset,
@@ -139,6 +142,7 @@ function Viewer({
   })
   const totalSize = rowVirtualizer.getTotalSize()
   const showRows = useDeferredValue(true, false)
+  const isEntering = useEnteringRows(rows, coreLogRowKey)
 
   useEffect(() => {
     rowVirtualizer.measure()
@@ -236,7 +240,8 @@ function Viewer({
 
   return (
     <div data-slot="core-logs-viewer">
-      {!rows.length && !logs.isLoading && (
+      {/* The deferred rows lag behind the loaded ones. */}
+      {!logs.data.length && !logs.isLoading && (
         <LogEmptyState>
           {logs.more ? m.logs_search_incomplete() : m.logs_empty_message()}
         </LogEmptyState>
@@ -252,12 +257,11 @@ function Viewer({
             if (!row) return null
             const key = String(item.key)
             return (
-              <div
+              <LogVirtualItem
                 key={item.key}
                 ref={rowVirtualizer.measureElement}
                 data-index={item.index}
-                data-slot="logs-virtual-item"
-                className="absolute top-0 left-0 w-full select-text"
+                entering={isEntering(row)}
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <CoreRecord
@@ -267,7 +271,7 @@ function Viewer({
                   search={deferredSearch}
                   onInspect={inspect}
                 />
-              </div>
+              </LogVirtualItem>
             )
           })}
       </div>
@@ -292,6 +296,7 @@ function KernelLogs() {
   })
   const canClear = Boolean(logs.status?.head)
   const error = logs.error || logs.status?.error
+  const slowLoading = useSlowLoading(logs.isLoading)
 
   return (
     <LogsLayout
@@ -312,7 +317,7 @@ function KernelLogs() {
       }
     >
       <div className={logPanelVariants()} data-slot="core-logs">
-        {(logs.isLoading ||
+        {(slowLoading ||
           logs.loadingOlder ||
           error ||
           Boolean(logs.status?.discarded)) && (
@@ -320,7 +325,7 @@ function KernelLogs() {
             className="text-on-surface-variant flex flex-wrap items-center gap-2 px-4 py-2 text-xs"
             role="status"
           >
-            {logs.isLoading && <span>{m.logs_loading()}</span>}
+            {slowLoading && <span>{m.logs_loading()}</span>}
             {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
             {error && (
               <>

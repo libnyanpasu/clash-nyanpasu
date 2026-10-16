@@ -395,10 +395,13 @@ export function DndGrid<T extends string = string>({
         </AnimatePresence>
 
         {/* Items render once the cells are measured, not first in a 1x1 grid. */}
-        {computedSize &&
-          effectiveDisplayItems.map((item) => (
-            <Fragment key={item.id}>{children(item)}</Fragment>
-          ))}
+        {computedSize && (
+          <AnimatePresence initial={false}>
+            {effectiveDisplayItems.map((item) => (
+              <Fragment key={item.id}>{children(item)}</Fragment>
+            ))}
+          </AnimatePresence>
+        )}
       </div>
 
       {!isManaged && (

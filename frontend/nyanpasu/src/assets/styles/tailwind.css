@@ -119,6 +119,9 @@
     cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
   --animate-linear-progress-secondary: linear-progress-secondary 2.1s
     cubic-bezier(0.165, 0.84, 0.44, 1) 1.15s infinite;
+
+  /* Log Row Entrance */
+  --animate-log-row-enter: log-row-enter 300ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Custom Mixed Colors (light) */
@@ -277,5 +280,17 @@
       var(--color-primary) 12%,
       transparent
     );
+  }
+}
+
+/*
+ * A log row the data adds (see logs/_modules/log-viewer.tsx) rises into
+ * place. It moves with `translate`, which composes with the virtual list's
+ * inline `transform` instead of replacing it.
+ */
+@keyframes log-row-enter {
+  from {
+    opacity: 0;
+    translate: 0 8px;
   }
 }

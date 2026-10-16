@@ -46,7 +46,7 @@ function SubscriptionQuotaPreview({ id }: { id: string }) {
       minH={2}
     >
       <Card className="relative isolate flex size-full flex-col">
-        <SubscriptionQuotaWave percent={68} waveStyle="double" animateWave />
+        <SubscriptionQuotaWave percent={68} waveStyle="filled" animateWave />
         <WidgetHeader>
           <WidgetTitle icon={DataUsageRounded}>
             {m.dashboard_widget_subscription_quota_title()}

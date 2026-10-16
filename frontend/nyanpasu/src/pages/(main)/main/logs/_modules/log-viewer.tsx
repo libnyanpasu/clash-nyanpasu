@@ -5,7 +5,15 @@ import ContentCopyRounded from '~icons/material-symbols/content-copy-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeleteSweepRounded from '~icons/material-symbols/delete-sweep-rounded'
 import { cva } from 'class-variance-authority'
-import { memo, useEffect, useId, useState, type ReactNode } from 'react'
+import {
+  memo,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react'
 import { Button, buttonVariants } from '@nyanpasu/ui/button'
 import HighlightText from '@nyanpasu/ui/highlight-text'
 import { SearchField } from '@nyanpasu/ui/search-field'
@@ -122,6 +130,80 @@ export function LogFollowButton({
         </span>
       )}
     </div>
+  )
+}
+
+// Most loads finish within a few frames; announcing one sooner only flashes
+// the status line and shifts the rows that are about to enter.
+const LOG_LOADING_DELAY_MS = 400
+
+/** Whether a load has lasted long enough to announce. */
+export function useSlowLoading(loading: boolean) {
+  const [slow, setSlow] = useState(false)
+
+  useEffect(() => {
+    setSlow(false)
+    if (!loading) return
+    const timer = setTimeout(() => setSlow(true), LOG_LOADING_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [loading])
+
+  return loading && slow
+}
+
+// Matches `--animate-log-row-enter`.
+const LOG_ROW_ENTER_MS = 300
+
+/**
+ * Tells whether a row arrived within the entrance window. A virtual list also
+ * mounts rows as it scrolls to them, so mounting alone does not make a row
+ * new; the window still covers rows mounted right after they arrive, such as
+ * the latest rows the list jumps to after rendering its first page from the
+ * top.
+ */
+export function useEnteringRows<T>(
+  rows: readonly T[],
+  getKey: (row: T) => string,
+) {
+  const settled = useRef<ReadonlySet<string>>(new Set())
+
+  useEffect(() => {
+    // Each update settles on its own; resetting a single timer would keep
+    // a steady stream of logs entering forever.
+    setTimeout(() => {
+      settled.current = new Set(rows.map(getKey))
+    }, LOG_ROW_ENTER_MS)
+  }, [rows, getKey])
+
+  return (row: T) => !settled.current.has(getKey(row))
+}
+
+const logVirtualItemVariants = cva('absolute top-0 left-0 w-full select-text', {
+  variants: {
+    entering: {
+      true: 'animate-log-row-enter motion-reduce:animate-none',
+    },
+  },
+})
+
+/**
+ * A row positioned by the virtual list. A row that arrives with the data
+ * rises into place; the choice is kept from mount so later list renders
+ * neither cut the entrance short nor replay it.
+ */
+export function LogVirtualItem({
+  entering,
+  className,
+  ...props
+}: ComponentProps<'div'> & { entering: boolean }) {
+  const [enter] = useState(entering)
+
+  return (
+    <div
+      data-slot="logs-virtual-item"
+      className={cn(logVirtualItemVariants({ entering: enter }), className)}
+      {...props}
+    />
   )
 }
 

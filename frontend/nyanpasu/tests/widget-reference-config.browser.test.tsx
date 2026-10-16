@@ -388,7 +388,7 @@ test('report widgets save independent range and profile filters per instance', a
   expect(backend.writes.length).toBeGreaterThanOrEqual(4)
 })
 
-test('quota wave controls save single-wave and static choices independently', async ({
+test('quota wave controls save outline-wave and static choices independently', async ({
   onTestFinished,
 }) => {
   const view = mount(onTestFinished, [quotaItem])
@@ -397,12 +397,12 @@ test('quota wave controls save single-wave and static choices independently', as
   const dialog = await openMenu()
   await dialog
     .getByRole('button', {
-      name: `${m.dashboard_widget_subscription_quota_config_wave_style()}: ${m.dashboard_widget_subscription_quota_config_wave_double()}`,
+      name: `${m.dashboard_widget_subscription_quota_config_wave_style()}: ${m.dashboard_widget_subscription_quota_config_wave_filled()}`,
     })
     .click()
   await expect
     .poll(() => saved().byInstance[quotaItem.id])
-    .toMatchObject({ waveStyle: 'single', animateWave: true })
+    .toMatchObject({ waveStyle: 'outline', animateWave: true })
   await dialog
     .getByRole('switch', {
       name: m.dashboard_widget_subscription_quota_config_wave_animation(),
@@ -410,5 +410,5 @@ test('quota wave controls save single-wave and static choices independently', as
     .click()
   await expect
     .poll(() => saved().byInstance[quotaItem.id])
-    .toMatchObject({ waveStyle: 'single', animateWave: false })
+    .toMatchObject({ waveStyle: 'outline', animateWave: false })
 })

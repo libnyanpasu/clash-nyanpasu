@@ -530,7 +530,7 @@ test('quota renders a straight waterline when animation is disabled', async ({
 }) => {
   cacheWidgetConfig({
     ...DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota],
-    waveStyle: 'double',
+    waveStyle: 'outline',
     animateWave: false,
   })
   mount(onTestFinished, SubscriptionQuotaWidget)
@@ -540,6 +540,36 @@ test('quota renders a straight waterline when animation is disabled', async ({
   expect(wave.getAnimations({ subtree: true })).toHaveLength(0)
   const outline = wave.querySelector<SVGPathElement>('path[fill="none"]')!
   expect(outline.getBBox().height).toBe(0)
+})
+
+test('quota fills the default wave with two layers that drift in opposite directions', async ({
+  onTestFinished,
+}) => {
+  mount(onTestFinished, SubscriptionQuotaWidget)
+  await expect.element(page.getByText('70%')).toBeVisible()
+  const wave = document.querySelector('[data-slot="subscription-quota-wave"]')!
+  expect(wave.querySelectorAll('svg path')).toHaveLength(2)
+  expect(wave.querySelector('[fill="none"]')).toBeNull()
+  expect(
+    wave
+      .getAnimations({ subtree: true })
+      .map((animation) => (animation.effect as KeyframeEffect).getTiming())
+      .map(({ direction }) => direction),
+  ).toEqual(['normal', 'reverse'])
+})
+
+test('quota keeps the outlined wave as an option with its own drawing', async ({
+  onTestFinished,
+}) => {
+  cacheWidgetConfig({
+    ...DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota],
+    waveStyle: 'outline',
+  })
+  mount(onTestFinished, SubscriptionQuotaWidget)
+  await expect.element(page.getByText('70%')).toBeVisible()
+  const wave = document.querySelector('[data-slot="subscription-quota-wave"]')!
+  expect(wave.querySelectorAll('svg')).toHaveLength(2)
+  expect(wave.querySelectorAll('path[fill="none"]')).toHaveLength(2)
 })
 
 test('quota checks an unconfirmed refresh from its header before allowing another update', async ({

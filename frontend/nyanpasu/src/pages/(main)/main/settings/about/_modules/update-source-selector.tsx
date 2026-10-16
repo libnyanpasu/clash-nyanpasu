@@ -5,9 +5,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
+import { WHOLE_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
 import { message } from '@/utils/notification'
 import { move } from '@dnd-kit/helpers'
-import { DragDropProvider, KeyboardSensor, PointerSensor } from '@dnd-kit/react'
+import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { useLockFn } from '@nyanpasu/hooks'
 import { isBrowser } from '@nyanpasu/platform'
@@ -24,20 +25,6 @@ const SOURCE_HOSTS: Record<UpdateSource, string> = {
   ghfast: 'ghfast.top',
   sourceforge: 'sourceforge.net',
 }
-
-// Without a drag handle, the default mouse activation requires a press-and-hold.
-const SENSORS = [
-  PointerSensor.configure({
-    activationConstraints: (event, source) => {
-      if (event.pointerType === 'mouse') return undefined
-
-      const defaults = PointerSensor.defaults.activationConstraints
-
-      return typeof defaults === 'function' ? defaults(event, source) : defaults
-    },
-  }),
-  KeyboardSensor,
-]
 
 function SortableSource({
   source,
@@ -191,7 +178,7 @@ function UpdateSourceSelectorControls() {
           {m.update_sources_description()}
         </p>
         <DragDropProvider
-          sensors={SENSORS}
+          sensors={WHOLE_ITEM_DRAG_SENSORS}
           onDragEnd={async (event) => {
             if (isDisabled || event.canceled) return
             const next = move(enabledSources, event)

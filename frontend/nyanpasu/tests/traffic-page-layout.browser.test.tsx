@@ -417,17 +417,52 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
         .toBeLessThan(2)
     }
 
-    const lastEntry = pageRoot.querySelectorAll<HTMLElement>(
-      '[data-slot="traffic-view-entry"]',
-    )[1]
+    const rankingCards = pageRoot.querySelectorAll<HTMLElement>(
+      '[data-slot="traffic-ranking"]',
+    )
     const paddingBottom = Number.parseFloat(
       getComputedStyle(content).paddingBottom,
     )
     expect(paddingBottom).toBeGreaterThanOrEqual(dock.clientHeight + 32)
-    expect(lastEntry.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      dock.getBoundingClientRect().top - 8,
-    )
+    // Masonry columns can place the lowest card before the last DOM entry.
+    expect(rankingCards.length).toBe(5)
+    for (const card of rankingCards) {
+      expect(card.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+        dock.getBoundingClientRect().top - 8,
+      )
+    }
   }
+})
+
+test('the flow card fills the page down to its bottom inset', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished)
+  await sidebarItem(view, m.topology_flow()).click()
+  await expect
+    .element(view.getByRole('heading', { name: m.topology_flow(), level: 1 }))
+    .toBeInTheDocument()
+
+  const content = document.querySelector<HTMLElement>(
+    '[data-slot="traffic-content"]',
+  )!
+  const inset = parseFloat(getComputedStyle(content).paddingBottom)
+
+  // The card reaches the content's bottom padding, nothing else is left below.
+  await expect
+    .poll(() => {
+      const card = document.querySelector<HTMLElement>(
+        '[data-slot="flow-card"]',
+      )
+
+      return card
+        ? content.getBoundingClientRect().bottom -
+            inset -
+            card.getBoundingClientRect().bottom
+        : Infinity
+    })
+    .toBeLessThanOrEqual(1)
 })
 
 test('all eight sidebar entries select the matching page view', async ({

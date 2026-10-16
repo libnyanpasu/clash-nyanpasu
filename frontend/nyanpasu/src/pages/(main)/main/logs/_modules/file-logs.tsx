@@ -47,6 +47,9 @@ import {
   logPanelVariants,
   LogRecord,
   LogSearch,
+  LogVirtualItem,
+  useEnteringRows,
+  useSlowLoading,
 } from './log-viewer'
 import { LogsLayout } from './logs-layout'
 
@@ -65,6 +68,8 @@ function errorMessage(error: LogError) {
   }
 }
 const DateTimeField = lazy(() => import('@nyanpasu/ui/date-time-field'))
+
+const logRowKey = (row: LogRow) => row.id
 
 // A row formats its time once when it mounts, not on every list render.
 const FileLogRecord = memo(function FileLogRecord({
@@ -123,6 +128,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
   )
   useEffect(() => setFollowing(true), [file, filter])
   const logs = useFileLogs(source, file, filter)
+  const slowLoading = useSlowLoading(logs.loading)
   const filterCount = [target, from, to].filter(Boolean).length
   const selectFile = (value: string | null) => {
     setFollowing(true)
@@ -260,7 +266,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
       }
     >
       <div className={logPanelVariants()} data-slot="file-logs">
-        {(logs.loading ||
+        {(slowLoading ||
           logs.loadingOlder ||
           logs.error ||
           logs.page?.partial ||
@@ -271,7 +277,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
             role="status"
           >
             {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
-            {logs.loading && (
+            {slowLoading && (
               <span>
                 {m.logs_loading()}
                 {logs.page &&
@@ -346,6 +352,7 @@ function FileRows({
   // Rows mount in a deferred render, so a remount for another file or
   // filter commits at once instead of rendering the previous rows first.
   const showRows = useDeferredValue(true, false)
+  const isEntering = useEnteringRows(rows, logRowKey)
   const stopFollowing = useCallback(() => setFollowing(false), [setFollowing])
   const lastId = useRef<string | undefined>(undefined)
   const anchor = useRef<{
@@ -458,12 +465,11 @@ function FileRows({
             const row = rows[item.index]
             if (!row) return null
             return (
-              <div
+              <LogVirtualItem
                 key={row.id}
                 ref={virtualizer.measureElement}
                 data-index={item.index}
-                data-slot="logs-virtual-item"
-                className="absolute top-0 left-0 w-full select-text"
+                entering={isEntering(row)}
                 style={{
                   transform: `translateY(${item.start}px)`,
                 }}
@@ -473,7 +479,7 @@ function FileRows({
                   search={search}
                   onInspect={stopFollowing}
                 />
-              </div>
+              </LogVirtualItem>
             )
           })}
       </div>

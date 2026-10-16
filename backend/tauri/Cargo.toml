@@ -41,7 +41,7 @@ nyanpasu-platform = { path = '../nyanpasu-platform' }
 nyanpasu-utils = { workspace = true, features = ['atomic_fs'] }
 nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
-  'ipc',
+  'ipc-host',
 ] }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
 nyanpasu-geodata = { path = '../nyanpasu-geodata' }

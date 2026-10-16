@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use nyanpasu_widget_protocol::{
     Message, StatisticMessage,
-    ipc::{self, IpcReceiver},
+    ipc::{self, WidgetReceiver},
 };
 use slint::{EventLoopError, Weak};
 use snafu::ResultExt as _;
@@ -15,7 +15,7 @@ const STOP_GRACE: Duration = Duration::from_secs(5);
 
 /// Shows the application's messages from `rx` in `view` and runs the event
 /// loop until the application stops the widget or goes away.
-pub(crate) fn run(view: impl StatisticView, rx: IpcReceiver<Message>) -> Result<(), WidgetError> {
+pub(crate) fn run(view: impl StatisticView, rx: WidgetReceiver) -> Result<(), WidgetError> {
     view.show_statistic(StatisticText::from(&StatisticMessage::default()));
     let weak = view.as_weak();
     ipc::spawn_receiver(rx, move |message| {

@@ -20,12 +20,15 @@ The application starts the widget as `clash-nyanpasu statistic-widget
 standalone. Either way the process connects back to the application before it
 opens a window:
 
-1. the parent creates an ipc-channel one-shot server and passes its name in
-   `NYANPASU_WIDGET_IPC_SERVER` (`IPC_SERVER_ENV` in
-   `nyanpasu_widget_protocol::ipc`, behind the protocol crate's `ipc` feature);
-2. the widget sends an `IpcSender<Message>` through it;
+1. the parent creates a `nyanpasu-local-channel` one-shot server and passes
+   its bootstrap in `NYANPASU_LOCAL_CHANNEL` (`Bootstrap::ENV`);
+2. the widget connects with the blocking client on its receiver thread, so
+   the widget binary links no async runtime;
 3. the parent sends `Message::UpdateStatistic` / `UpdateLogo` and finally
    `Message::Stop`. A closed channel counts as `Stop`.
+
+`nyanpasu_widget_protocol::ipc` wraps both ends: the `ipc` feature is the
+widget's, `ipc-host` adds the application's Tokio server.
 
 Without the variable, or without a server to connect to, the widget never
 opens a window: the standalone binary returns the error (exit code 1), and the

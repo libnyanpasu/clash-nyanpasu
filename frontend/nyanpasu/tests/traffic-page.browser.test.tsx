@@ -120,7 +120,7 @@ const report: TrafficReport = {
     ranking('inbound', [group('mixed')]),
     ranking('target', [group('example.com', 4096), group('api.example.com')]),
     ranking('exit', [group('Node-A')]),
-    ranking('process', [group('C:/Tools/curl.exe')]),
+    ranking('process', [group('C:/Tools/curl.exe')], 3),
   ],
   topology: null,
 }
@@ -413,23 +413,39 @@ test('the first request is the last hour of everything, unfiltered', async ({
   expect(rpc.reports[0]).toEqual({
     query: { range: 'last_hour', scope: 'all', filters: [] },
     metric: 'bytes',
-    rankings: ['source', 'inbound', 'target', 'exit', 'process'],
+    rankings: ['process', 'target', 'exit', 'source', 'inbound'],
     ranking_limit: 5,
     topology: null,
   })
   // Overview uses one report for its cards and all five rankings.
   expect(rpc.reports.every((r) => r.rankings.length === 5)).toBe(true)
   expect(rpc.reports.every((r) => r.ranking_limit === 5)).toBe(true)
-  expect(
-    document.querySelectorAll('[data-slot="traffic-ranking"]'),
-  ).toHaveLength(5)
+  // The exit and the inbound have one value each, so they share a card.
+  await expect
+    .poll(() =>
+      [...document.querySelectorAll('[data-slot="traffic-ranking"] h2')].map(
+        (title) => title.textContent,
+      ),
+    )
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_source(),
+    ])
+  const single = view.getByRole('group', { name: m.traffic_rank_single() })
+  await expect
+    .element(single.getByRole('button', { name: /Node-A/ }))
+    .toBeInTheDocument()
+  await expect
+    .element(single.getByRole('button', { name: /mixed/ }))
+    .toBeInTheDocument()
   await expect
     .element(
       view.getByRole('heading', { name: m.traffic_overview(), level: 1 }),
     )
     .toBeInTheDocument()
 
-  // Devices counts the distinct sources, not the rows shown.
+  // No current rate here; devices count the distinct sources, not the rows.
   await expect
     .poll(() =>
       [...document.querySelectorAll('[data-slot="traffic-stat"]')].map(
@@ -439,11 +455,12 @@ test('the first request is the last hour of everything, unfiltered', async ({
     .toEqual([
       expect.stringContaining('5.00 KiB'),
       expect.stringContaining('12'),
-      expect.stringContaining('7'),
-      expect.stringContaining('1'),
-      expect.stringContaining('2'),
-      expect.stringContaining('1'),
-      expect.stringContaining('1'),
+      `${m.traffic_stat_rate()}—`,
+      `${dimensionName('process')}3`,
+      `${dimensionName('target')}2`,
+      `${dimensionName('exit')}1`,
+      `${dimensionName('source')}7`,
+      `${dimensionName('inbound')}1`,
     ])
 })
 
@@ -757,6 +774,9 @@ test('a ranking row toggles its filter, and a chip or clear all removes it', asy
   const view = await open(onTestFinished)
   const filters = view.getByRole('group', { name: m.traffic_filters_label() })
   const example = view.getByRole('button', { name: /^example\.com/ })
+  const mixed = view
+    .getByRole('group', { name: m.traffic_rank_single() })
+    .getByRole('button', { name: /mixed/ })
   await expect.element(example).toHaveAttribute('aria-pressed', 'false')
 
   await example.click()
@@ -774,7 +794,7 @@ test('a ranking row toggles its filter, and a chip or clear all removes it', asy
     .poll(() => last().query.filters)
     .toEqual([{ dimension: 'target', value: 'api.example.com' }])
 
-  await view.getByRole('button', { name: /^mixed/ }).click()
+  await mixed.click()
   await expect.poll(() => last().query.filters).toHaveLength(2)
 
   await view
@@ -789,11 +809,11 @@ test('a ranking row toggles its filter, and a chip or clear all removes it', asy
     .toEqual([{ dimension: 'inbound', value: 'mixed' }])
 
   // The same row again takes the filter off.
-  await view.getByRole('button', { name: /^mixed/ }).click()
+  await mixed.click()
   await expect.poll(() => last().query.filters).toEqual([])
 
   await view.getByRole('button', { name: /^example\.com/ }).click()
-  await view.getByRole('button', { name: /^mixed/ }).click()
+  await mixed.click()
   await expect.poll(() => last().query.filters).toHaveLength(2)
   await view.getByRole('button', { name: m.traffic_filter_clear_all() }).click()
   await expect.poll(() => last().query.filters).toEqual([])
@@ -960,10 +980,10 @@ test('view all pages through every value and a pick filters and closes', async (
     ],
   })
 
-  // The host card is the third of the five.
+  // The host card is the second.
   await view
     .getByRole('button', { name: m.traffic_rank_view_all() })
-    .nth(2)
+    .nth(1)
     .click()
 
   await expect
@@ -1338,10 +1358,10 @@ test('the toolbar metric orders the rankings and the full list', async ({
   const view = await open(onTestFinished)
   const toolbar = () =>
     document.querySelector<HTMLElement>('[data-slot="traffic-toolbar"]')!
-  const inbound = view.getByRole('button', { name: /^mixed/ })
+  const host = view.getByRole('button', { name: /^api\.example\.com/ })
 
-  await expect.element(inbound).toBeInTheDocument()
-  expect(inbound.element().textContent).toContain('mixed3.00 KiB')
+  await expect.element(host).toBeInTheDocument()
+  expect(host.element().textContent).toContain('api.example.com3.00 KiB')
 
   const metric = view.getByRole('button', { name: m.traffic_metric_label() })
   expect(toolbar().contains(metric.element())).toBe(true)
@@ -1354,9 +1374,9 @@ test('the toolbar metric orders the rankings and the full list', async ({
   await expect.poll(() => last().metric).toBe('connections')
   // A row leads with the metric and ends its second line with the other one.
   await expect
-    .poll(() => inbound.element().textContent)
-    .toContain(`mixed${m.topology_connection_count({ count: 3 })}`)
-  expect(inbound.element().textContent).toMatch(/3\.00 KiB$/)
+    .poll(() => host.element().textContent)
+    .toContain(`api.example.com${m.topology_connection_count({ count: 3 })}`)
+  expect(host.element().textContent).toMatch(/3\.00 KiB$/)
 
   await view
     .getByRole('button', { name: m.traffic_rank_view_all() })
@@ -1585,7 +1605,7 @@ test('the stat card with a hint and a ranking row reveal their tooltip on focus'
 
   const cards = () =>
     document.querySelectorAll<HTMLElement>('[data-slot="traffic-stat"]')
-  await expect.poll(() => cards().length).toBe(7)
+  await expect.poll(() => cards().length).toBe(8)
   expect(cards()[1].tabIndex).toBe(0)
   expect(cards()[2].tabIndex).toBe(-1)
 

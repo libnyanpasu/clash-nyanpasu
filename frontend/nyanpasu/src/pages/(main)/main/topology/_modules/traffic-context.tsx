@@ -17,18 +17,13 @@ import type {
 } from '@nyanpasu/rpc/types'
 import type { TrafficSearch } from './search'
 
+// By how often a dimension answers "what uses the traffic" on a desktop.
 export const RANKINGS = [
   {
-    dimension: 'source',
-    to: '/main/topology/source',
-    icon: DevicesRounded,
-    title: m.traffic_rank_source,
-  },
-  {
-    dimension: 'inbound',
-    to: '/main/topology/inbound',
-    icon: LoginRounded,
-    title: m.traffic_rank_inbound,
+    dimension: 'process',
+    to: '/main/topology/process',
+    icon: AppsRounded,
+    title: m.traffic_rank_process,
   },
   {
     dimension: 'target',
@@ -43,10 +38,16 @@ export const RANKINGS = [
     title: m.traffic_rank_exit,
   },
   {
-    dimension: 'process',
-    to: '/main/topology/process',
-    icon: AppsRounded,
-    title: m.traffic_rank_process,
+    dimension: 'source',
+    to: '/main/topology/source',
+    icon: DevicesRounded,
+    title: m.traffic_rank_source,
+  },
+  {
+    dimension: 'inbound',
+    to: '/main/topology/inbound',
+    icon: LoginRounded,
+    title: m.traffic_rank_inbound,
   },
 ] as const
 

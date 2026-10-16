@@ -93,9 +93,10 @@ const group = (key: string, bytes = 1024): UsageGroup => ({
 const ranking = (
   dimension: TrafficReport['rankings'][number]['dimension'],
   groups: UsageGroup[],
+  distinct = groups.length,
 ): TrafficReport['rankings'][number] => ({
   dimension,
-  distinct: groups.length,
+  distinct,
   groups,
   other: usage(512, 512, 1),
 })
@@ -104,11 +105,12 @@ const report: TrafficReport = {
   total: usage(1024, 4096, 12),
   current_rate: null,
   rankings: [
-    ranking('source', [group('192.168.1.2')]),
+    // Three rankings with others and two of a single value.
+    ranking('source', [group('192.168.1.2')], 4),
     ranking('inbound', [group('mixed')]),
-    ranking('target', [group('example.com')]),
+    ranking('target', [group('example.com')], 9),
     ranking('exit', [group('Node-A')]),
-    ranking('process', [group('C:/Tools/curl.exe')]),
+    ranking('process', [group('C:/Tools/curl.exe')], 6),
   ],
   topology: null,
 }
@@ -317,10 +319,13 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       .poll(
         () => document.querySelectorAll('[data-slot="traffic-stat"]').length,
       )
-      .toBe(7)
+      .toBe(8)
     expect(
       document.querySelectorAll('[data-slot="traffic-ranking"]').length,
-    ).toBe(5)
+    ).toBe(3)
+    expect(
+      document.querySelectorAll('[data-slot="traffic-single-values"]').length,
+    ).toBe(1)
 
     await sidebarItem(view, m.topology_geo_map()).click()
     await expect

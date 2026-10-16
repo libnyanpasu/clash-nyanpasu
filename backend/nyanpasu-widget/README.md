@@ -1,0 +1,48 @@
+# nyanpasu-widget
+
+The network statistic widget: a small frameless, always-on-top window that
+shows the traffic totals and speeds the application sends it. It runs in its
+own process so the main window's webview and GPU state never load into it,
+and it is written in [Slint](https://slint.dev) with the software renderer on
+Windows to stay under 30 MB of working set.
+
+Two windows share one set of components:
+
+| Variant | Logical size | Content                                                   |
+| ------- | ------------ | --------------------------------------------------------- |
+| `large` | 206 × 60     | logo, download/upload totals and speeds, translucent card |
+| `small` | 80 × 32      | logo, upload/download speeds, follows the system theme    |
+
+## Running
+
+The application starts the widget as `clash-nyanpasu statistic-widget
+<large|small>`; `nyanpasu-statistic-widget <large|small>` runs the same code
+standalone. Either way the process connects back to the application before it
+opens a window:
+
+1. the parent creates an ipc-channel one-shot server and passes its name in
+   `NYANPASU_WIDGET_IPC_SERVER` (`IPC_SERVER_ENV` in
+   `nyanpasu_widget_protocol::ipc`, behind the protocol crate's `ipc` feature);
+2. the widget sends an `IpcSender<Message>` through it;
+3. the parent sends `Message::UpdateStatistic` / `UpdateLogo` and finally
+   `Message::Stop`. A closed channel counts as `Stop`.
+
+Without the variable, or without a server to connect to, the widget never
+opens a window: the standalone binary returns the error (exit code 1), and the
+application's subcommand panics with it (exit code 101).
+
+The renderer is `software` on Windows and `femtovg` (OpenGL) elsewhere.
+`SLINT_BACKEND` overrides it, e.g. `SLINT_BACKEND=winit-software` where no GL
+driver is usable.
+
+## Tests
+
+`cargo test -p nyanpasu-widget` covers the value formatting and renders both
+windows headless at scale 1, 1.5 and 2. The render test checks the transparent
+corners and the translucent card, compares the logo pixel by pixel with
+`logo.svg` rasterized by resvg, and checks that the widest values
+("888.88 MB", "888.88 MB/s") fit their cells while one more character does
+not.
+
+See [DESIGN.md](DESIGN.md) for the resource budget, the renderer choice per
+platform and the open Linux/macOS work.

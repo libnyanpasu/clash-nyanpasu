@@ -43,6 +43,7 @@ import {
   LogSearch,
   LogVirtualItem,
   useEnteringRows,
+  useSlowLoading,
 } from './_modules/log-viewer'
 import { LogsLayout } from './_modules/logs-layout'
 import { Route as IndexRoute } from './route'
@@ -239,7 +240,8 @@ function Viewer({
 
   return (
     <div data-slot="core-logs-viewer">
-      {!rows.length && !logs.isLoading && (
+      {/* The deferred rows lag behind the loaded ones. */}
+      {!logs.data.length && !logs.isLoading && (
         <LogEmptyState>
           {logs.more ? m.logs_search_incomplete() : m.logs_empty_message()}
         </LogEmptyState>
@@ -294,6 +296,7 @@ function KernelLogs() {
   })
   const canClear = Boolean(logs.status?.head)
   const error = logs.error || logs.status?.error
+  const slowLoading = useSlowLoading(logs.isLoading)
 
   return (
     <LogsLayout
@@ -314,7 +317,7 @@ function KernelLogs() {
       }
     >
       <div className={logPanelVariants()} data-slot="core-logs">
-        {(logs.isLoading ||
+        {(slowLoading ||
           logs.loadingOlder ||
           error ||
           Boolean(logs.status?.discarded)) && (
@@ -322,7 +325,7 @@ function KernelLogs() {
             className="text-on-surface-variant flex flex-wrap items-center gap-2 px-4 py-2 text-xs"
             role="status"
           >
-            {logs.isLoading && <span>{m.logs_loading()}</span>}
+            {slowLoading && <span>{m.logs_loading()}</span>}
             {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
             {error && (
               <>

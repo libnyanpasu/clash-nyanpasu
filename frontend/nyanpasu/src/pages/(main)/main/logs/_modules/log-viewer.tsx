@@ -133,6 +133,24 @@ export function LogFollowButton({
   )
 }
 
+// Most loads finish within a few frames; announcing one sooner only flashes
+// the status line and shifts the rows that are about to enter.
+const LOG_LOADING_DELAY_MS = 400
+
+/** Whether a load has lasted long enough to announce. */
+export function useSlowLoading(loading: boolean) {
+  const [slow, setSlow] = useState(false)
+
+  useEffect(() => {
+    setSlow(false)
+    if (!loading) return
+    const timer = setTimeout(() => setSlow(true), LOG_LOADING_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [loading])
+
+  return loading && slow
+}
+
 // Matches `--animate-log-row-enter`.
 const LOG_ROW_ENTER_MS = 300
 

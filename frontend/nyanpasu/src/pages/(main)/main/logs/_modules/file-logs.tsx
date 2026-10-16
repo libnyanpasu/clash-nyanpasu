@@ -49,6 +49,7 @@ import {
   LogSearch,
   LogVirtualItem,
   useEnteringRows,
+  useSlowLoading,
 } from './log-viewer'
 import { LogsLayout } from './logs-layout'
 
@@ -127,6 +128,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
   )
   useEffect(() => setFollowing(true), [file, filter])
   const logs = useFileLogs(source, file, filter)
+  const slowLoading = useSlowLoading(logs.loading)
   const filterCount = [target, from, to].filter(Boolean).length
   const selectFile = (value: string | null) => {
     setFollowing(true)
@@ -264,7 +266,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
       }
     >
       <div className={logPanelVariants()} data-slot="file-logs">
-        {(logs.loading ||
+        {(slowLoading ||
           logs.loadingOlder ||
           logs.error ||
           logs.page?.partial ||
@@ -275,7 +277,7 @@ export default function FileLogs({ source }: { source: LogSource }) {
             role="status"
           >
             {logs.loadingOlder && <span>{m.logs_load_older()}…</span>}
-            {logs.loading && (
+            {slowLoading && (
               <span>
                 {m.logs_loading()}
                 {logs.page &&

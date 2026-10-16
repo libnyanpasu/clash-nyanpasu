@@ -105,20 +105,67 @@ test('the map splits regions by basis and leaves unknown regions without one', (
   }
 })
 
-test('filters, including the basis, select every report part alike', () => {
+test('filters, including the basis, select the topology and other rankings', () => {
   const report = mockTrafficReport(
     request({
       filters: [{ dimension: 'destination_basis', value: 'dialed' }],
-      rankings: ['destination_basis'],
+      rankings: ['source_region'],
       topology: map.topology,
     }),
     NOW,
   )
 
-  expect(report.rankings[0].groups.map((g) => g.key)).toEqual(['dialed'])
+  expect(
+    sum(
+      report.rankings[0].groups
+        .map((g) => g.usage)
+        .concat(report.rankings[0].other),
+    ),
+  ).toEqual(report.total)
   expect(
     report.topology!.nodes.filter((n) => n.layer === 2).map((n) => n.key),
   ).toEqual(['dialed'])
+})
+
+test('a ranking ignores the filter on its own dimension', () => {
+  const all = mockTrafficReport(request({ rankings: ['target'] }), NOW)
+  const [first, second] = all.rankings[0].groups
+  const filtered = mockTrafficReport(
+    request({
+      filters: [{ dimension: 'target', value: second.key }],
+      rankings: ['target', 'exit'],
+    }),
+    NOW,
+  )
+  const [target, exit] = filtered.rankings
+
+  expect(target.groups.map((g) => g.key).slice(0, 2)).toEqual([
+    first.key,
+    second.key,
+  ])
+  expect(target.groups[1].usage).toEqual(filtered.total)
+  expect(sum(exit.groups.map((g) => g.usage).concat(exit.other))).toEqual(
+    filtered.total,
+  )
+  expect(
+    mockTrafficGroups(
+      { range: 'last_hour', scope: 'all', filters: [] },
+      'target',
+      'bytes',
+      NOW,
+    ),
+  ).toEqual(
+    mockTrafficGroups(
+      {
+        range: 'last_hour',
+        scope: 'all',
+        filters: [{ dimension: 'target', value: second.key }],
+      },
+      'target',
+      'bytes',
+      NOW,
+    ),
+  )
 })
 
 test('only live connections have a rate, and closed ones none', () => {

@@ -30,6 +30,7 @@ import {
 } from '../_modules/search'
 import { useTrafficPage } from '../_modules/traffic-context'
 import { usePageTransition } from '../_modules/transition'
+import ViewRankings from '../_modules/view-rankings'
 import { toggleFilter } from '../../_modules/traffic-filters'
 
 export const Route = createFileRoute('/(main)/main/topology/flow/')({
@@ -371,6 +372,8 @@ function TrafficFlowPage() {
           {m.topology_caption()}
         </p>
       </Card>
+
+      <ViewRankings />
     </section>
   )
 }

@@ -3,6 +3,7 @@ import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import Notice from '../_modules/notice'
 import { useTrafficPage } from '../_modules/traffic-context'
+import ViewRankings from '../_modules/view-rankings'
 import GeographyView from './_modules/geography-view'
 
 export const Route = createFileRoute('/(main)/main/topology/map/')({
@@ -15,8 +16,12 @@ function TrafficMapPage() {
   if (!report) return <Notice>{m.traffic_loading_more()}</Notice>
 
   return (
-    <Card className="p-3 md:p-4">
-      <GeographyView topology={report.topology} />
-    </Card>
+    <>
+      <Card className="p-3 md:p-4">
+        <GeographyView topology={report.topology} />
+      </Card>
+
+      <ViewRankings />
+    </>
   )
 }

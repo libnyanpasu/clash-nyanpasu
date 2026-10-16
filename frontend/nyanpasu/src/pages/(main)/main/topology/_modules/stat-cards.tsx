@@ -1,9 +1,5 @@
-import AppsRounded from '~icons/material-symbols/apps-rounded'
 import CableRounded from '~icons/material-symbols/cable-rounded'
-import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
-import DevicesRounded from '~icons/material-symbols/devices-rounded'
-import DnsRounded from '~icons/material-symbols/dns-rounded'
-import LoginRounded from '~icons/material-symbols/login-rounded'
+import SpeedRounded from '~icons/material-symbols/speed-rounded'
 import SwapVertRounded from '~icons/material-symbols/swap-vert-rounded'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
 import { Card, type CardVariantsProps } from '@nyanpasu/ui/card'
@@ -11,8 +7,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
 import { dimensionName } from '@/utils/traffic-usage'
-import type { Dimension, TrafficReport } from '@nyanpasu/rpc/types'
+import type { TrafficReport } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { RANKINGS } from './traffic-context'
 
 /**
  * A label over its figure, one line each, so that every card has the same
@@ -53,7 +50,6 @@ function StatCard({
       </div>
 
       <div className="min-w-0">
-        {/* At eight columns, a long label is cut short. */}
         <p className="text-on-surface-variant truncate text-xs" title={label}>
           {label}
         </p>
@@ -78,30 +74,49 @@ function StatCard({
   )
 }
 
-const distinctOf = (report: TrafficReport, dimension: Dimension) =>
-  report.rankings
-    .find((ranking) => ranking.dimension === dimension)
-    ?.distinct.toLocaleString() ?? '—'
+/** Upload over download, beside a figure. */
+function UpDown({
+  upload,
+  download,
+  className,
+}: {
+  upload: string
+  download: string
+  className?: string
+}) {
+  return (
+    <p
+      className={cn(
+        'text-on-surface-variant shrink-0 text-xs leading-3.5 whitespace-nowrap tabular-nums',
+        className,
+      )}
+    >
+      <span className="block">
+        <span className="text-outline mr-1">↑</span>
+        {upload}
+      </span>
 
-// One count per ranking card below. With the traffic card two columns wide,
-// the rows are full at two, four and eight columns.
-const DISTINCT = [
-  ['source', DevicesRounded],
-  ['inbound', LoginRounded],
-  ['target', DnsRounded],
-  ['exit', CallSplitRounded],
-  ['process', AppsRounded],
-] as const
+      <span className="block">
+        <span className="text-outline mr-1">↓</span>
+        {download}
+      </span>
+    </p>
+  )
+}
 
 export default function StatCards({ report }: { report?: TrafficReport }) {
   const traffic = (bytes?: number) =>
     bytes === undefined ? '—' : parseTraffic(bytes).join(' ')
+  const speed = (bytes?: number) =>
+    bytes === undefined ? '—' : `${traffic(bytes)}/s`
 
   const bytes = report?.total.bytes
+  // Closed connections have no rate.
+  const rate = report?.current_rate ?? undefined
 
   return (
-    <div className="@container">
-      <div className="grid grid-cols-2 gap-2 @md:grid-cols-4 @4xl:grid-cols-8">
+    <div className="@container flex flex-col gap-2">
+      <div className="grid grid-cols-2 gap-2 @md:grid-cols-4">
         <StatCard
           icon={SwapVertRounded}
           label={m.traffic_stat_total()}
@@ -109,17 +124,10 @@ export default function StatCards({ report }: { report?: TrafficReport }) {
           variant="raised"
           detail={
             bytes && (
-              <p className="text-on-surface-variant shrink-0 text-xs leading-3.5 whitespace-nowrap tabular-nums">
-                <span className="block">
-                  <span className="text-outline mr-1">↑</span>
-                  {traffic(bytes.upload)}
-                </span>
-
-                <span className="block">
-                  <span className="text-outline mr-1">↓</span>
-                  {traffic(bytes.download)}
-                </span>
-              </p>
+              <UpDown
+                upload={traffic(bytes.upload)}
+                download={traffic(bytes.download)}
+              />
             )
           }
           className="col-span-2"
@@ -132,12 +140,35 @@ export default function StatCards({ report }: { report?: TrafficReport }) {
           hint={m.traffic_stat_connections_hint()}
         />
 
-        {DISTINCT.map(([dimension, icon]) => (
+        <StatCard
+          icon={SpeedRounded}
+          label={m.traffic_stat_rate()}
+          value={speed(rate && rate.upload + rate.download)}
+          detail={
+            rate && (
+              // Only a wide card has room for both beside the figure.
+              <UpDown
+                upload={speed(rate.upload)}
+                download={speed(rate.download)}
+                className="hidden @5xl:block"
+              />
+            )
+          }
+        />
+      </div>
+
+      {/* One count per ranking, in the order of the ranking cards. */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2">
+        {RANKINGS.map(({ dimension, icon }) => (
           <StatCard
             key={dimension}
             icon={icon}
             label={dimensionName(dimension)}
-            value={report ? distinctOf(report, dimension) : '—'}
+            value={
+              report?.rankings
+                .find((ranking) => ranking.dimension === dimension)
+                ?.distinct.toLocaleString() ?? '—'
+            }
           />
         ))}
       </div>

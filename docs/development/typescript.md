@@ -204,8 +204,8 @@ page-specific data selection in its route.
   scrollable rather than fixing every page to the viewport height. See the
   component's JSDoc for the layout contract.
 - Place a child page in its own directory with `index.tsx`, for example
-  `topology/source/index.tsx`, instead of a flat `topology/source.tsx`. Place
-  modules used only by that page in `topology/source/_modules/`.
+  `topology/flow/index.tsx`, instead of a flat `topology/flow.tsx`. Place
+  modules used only by that page in `topology/flow/_modules/`.
 - The `index.tsx` must define the named page component and own its composition,
   including data selection, loading, and empty states. Do not make it a one-line
   forwarding wrapper around a separate generic page controller. Reuse focused

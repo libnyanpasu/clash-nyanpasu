@@ -19,7 +19,7 @@ import { m } from '@/paraglide/messages'
 import { usageAmount } from '@/utils/traffic-usage'
 import { useLocalIpProbe, useSetting, useTrafficReport } from '@nyanpasu/query'
 import { type ReportRequest } from '@nyanpasu/rpc/types'
-import { Link } from '@tanstack/react-router'
+import { Link, useParams } from '@tanstack/react-router'
 import {
   DataPage,
   dataPageLayoutVariants,
@@ -122,6 +122,9 @@ export default function TrafficLayout({
     report.total.connections === 0 &&
     report.total.bytes.upload + report.total.bytes.download === 0
   const title = TRAFFIC_PAGES.find((page) => page.view === view)!.title()
+  // The rankings entry stays on the dimension it shows, else opens the first.
+  const dimension =
+    useParams({ strict: false }).dimension ?? RANKINGS[0].dimension
 
   return (
     <TrafficPageContext
@@ -152,6 +155,7 @@ export default function TrafficLayout({
                       <Link
                         from="/main/topology"
                         to={to}
+                        params={{ dimension }}
                         search={withoutTrafficView}
                         state={keepReturn}
                       >

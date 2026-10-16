@@ -51,13 +51,9 @@ import { Route as mainMainProvidersProxiesKeyRouteImport } from './pages/(main)/
 import { Route as mainMainProvidersRulesKeyRouteImport } from './pages/(main)/main/providers/rules/$key'
 import { Route as mainMainProxiesGroupNameRouteImport } from './pages/(main)/main/proxies/group/$name'
 import { Route as mainMainSettingsDebugIndexRouteImport } from './pages/(main)/main/settings/debug/index'
-import { Route as mainMainTopologyExitIndexRouteImport } from './pages/(main)/main/topology/exit/index'
+import { Route as mainMainTopologyDimensionIndexRouteImport } from './pages/(main)/main/topology/$dimension/index'
 import { Route as mainMainTopologyFlowIndexRouteImport } from './pages/(main)/main/topology/flow/index'
-import { Route as mainMainTopologyInboundIndexRouteImport } from './pages/(main)/main/topology/inbound/index'
 import { Route as mainMainTopologyMapIndexRouteImport } from './pages/(main)/main/topology/map/index'
-import { Route as mainMainTopologyProcessIndexRouteImport } from './pages/(main)/main/topology/process/index'
-import { Route as mainMainTopologySourceIndexRouteImport } from './pages/(main)/main/topology/source/index'
-import { Route as mainMainTopologyTargetIndexRouteImport } from './pages/(main)/main/topology/target/index'
 import { Route as trayMenuTrayMenuProxiesGroupNameRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/$name'
 import { Route as mainMainProfilesTypeDetailUidRouteImport } from './pages/(main)/main/profiles/$type/detail/$uid'
 
@@ -290,10 +286,10 @@ const mainMainSettingsDebugIndexRoute =
     path: '/',
     getParentRoute: () => mainMainSettingsDebugRouteRoute,
   } as any)
-const mainMainTopologyExitIndexRoute =
-  mainMainTopologyExitIndexRouteImport.update({
-    id: '/exit/',
-    path: '/exit/',
+const mainMainTopologyDimensionIndexRoute =
+  mainMainTopologyDimensionIndexRouteImport.update({
+    id: '/$dimension/',
+    path: '/$dimension/',
     getParentRoute: () => mainMainTopologyRouteRoute,
   } as any)
 const mainMainTopologyFlowIndexRoute =
@@ -302,34 +298,10 @@ const mainMainTopologyFlowIndexRoute =
     path: '/flow/',
     getParentRoute: () => mainMainTopologyRouteRoute,
   } as any)
-const mainMainTopologyInboundIndexRoute =
-  mainMainTopologyInboundIndexRouteImport.update({
-    id: '/inbound/',
-    path: '/inbound/',
-    getParentRoute: () => mainMainTopologyRouteRoute,
-  } as any)
 const mainMainTopologyMapIndexRoute =
   mainMainTopologyMapIndexRouteImport.update({
     id: '/map/',
     path: '/map/',
-    getParentRoute: () => mainMainTopologyRouteRoute,
-  } as any)
-const mainMainTopologyProcessIndexRoute =
-  mainMainTopologyProcessIndexRouteImport.update({
-    id: '/process/',
-    path: '/process/',
-    getParentRoute: () => mainMainTopologyRouteRoute,
-  } as any)
-const mainMainTopologySourceIndexRoute =
-  mainMainTopologySourceIndexRouteImport.update({
-    id: '/source/',
-    path: '/source/',
-    getParentRoute: () => mainMainTopologyRouteRoute,
-  } as any)
-const mainMainTopologyTargetIndexRoute =
-  mainMainTopologyTargetIndexRouteImport.update({
-    id: '/target/',
-    path: '/target/',
     getParentRoute: () => mainMainTopologyRouteRoute,
   } as any)
 const trayMenuTrayMenuProxiesGroupNameRoute =
@@ -388,13 +360,9 @@ export interface FileRoutesByFullPath {
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
   '/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
-  '/main/topology/exit/': typeof mainMainTopologyExitIndexRoute
+  '/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
-  '/main/topology/inbound/': typeof mainMainTopologyInboundIndexRoute
   '/main/topology/map/': typeof mainMainTopologyMapIndexRoute
-  '/main/topology/process/': typeof mainMainTopologyProcessIndexRoute
-  '/main/topology/source/': typeof mainMainTopologySourceIndexRoute
-  '/main/topology/target/': typeof mainMainTopologyTargetIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
 }
 export interface FileRoutesByTo {
@@ -428,13 +396,9 @@ export interface FileRoutesByTo {
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/main/profiles/$type': typeof mainMainProfilesTypeIndexRoute
   '/main/settings/debug': typeof mainMainSettingsDebugIndexRoute
-  '/main/topology/exit': typeof mainMainTopologyExitIndexRoute
+  '/main/topology/$dimension': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow': typeof mainMainTopologyFlowIndexRoute
-  '/main/topology/inbound': typeof mainMainTopologyInboundIndexRoute
   '/main/topology/map': typeof mainMainTopologyMapIndexRoute
-  '/main/topology/process': typeof mainMainTopologyProcessIndexRoute
-  '/main/topology/source': typeof mainMainTopologySourceIndexRoute
-  '/main/topology/target': typeof mainMainTopologyTargetIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
 }
 export interface FileRoutesById {
@@ -482,13 +446,9 @@ export interface FileRoutesById {
   '/(tray-menu)/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/(main)/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
   '/(main)/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
-  '/(main)/main/topology/exit/': typeof mainMainTopologyExitIndexRoute
+  '/(main)/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/(main)/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
-  '/(main)/main/topology/inbound/': typeof mainMainTopologyInboundIndexRoute
   '/(main)/main/topology/map/': typeof mainMainTopologyMapIndexRoute
-  '/(main)/main/topology/process/': typeof mainMainTopologyProcessIndexRoute
-  '/(main)/main/topology/source/': typeof mainMainTopologySourceIndexRoute
-  '/(main)/main/topology/target/': typeof mainMainTopologyTargetIndexRoute
   '/(main)/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
 }
 export interface FileRouteTypes {
@@ -536,13 +496,9 @@ export interface FileRouteTypes {
     | '/tray-menu/proxies/group/$name'
     | '/main/profiles/$type/'
     | '/main/settings/debug/'
-    | '/main/topology/exit/'
+    | '/main/topology/$dimension/'
     | '/main/topology/flow/'
-    | '/main/topology/inbound/'
     | '/main/topology/map/'
-    | '/main/topology/process/'
-    | '/main/topology/source/'
-    | '/main/topology/target/'
     | '/main/profiles/$type/detail/$uid'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -576,13 +532,9 @@ export interface FileRouteTypes {
     | '/tray-menu/proxies/group/$name'
     | '/main/profiles/$type'
     | '/main/settings/debug'
-    | '/main/topology/exit'
+    | '/main/topology/$dimension'
     | '/main/topology/flow'
-    | '/main/topology/inbound'
     | '/main/topology/map'
-    | '/main/topology/process'
-    | '/main/topology/source'
-    | '/main/topology/target'
     | '/main/profiles/$type/detail/$uid'
   id:
     | '__root__'
@@ -629,13 +581,9 @@ export interface FileRouteTypes {
     | '/(tray-menu)/tray-menu/proxies/group/$name'
     | '/(main)/main/profiles/$type/'
     | '/(main)/main/settings/debug/'
-    | '/(main)/main/topology/exit/'
+    | '/(main)/main/topology/$dimension/'
     | '/(main)/main/topology/flow/'
-    | '/(main)/main/topology/inbound/'
     | '/(main)/main/topology/map/'
-    | '/(main)/main/topology/process/'
-    | '/(main)/main/topology/source/'
-    | '/(main)/main/topology/target/'
     | '/(main)/main/profiles/$type/detail/$uid'
   fileRoutesById: FileRoutesById
 }
@@ -941,11 +889,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsDebugIndexRouteImport
       parentRoute: typeof mainMainSettingsDebugRouteRoute
     }
-    '/(main)/main/topology/exit/': {
-      id: '/(main)/main/topology/exit/'
-      path: '/exit'
-      fullPath: '/main/topology/exit/'
-      preLoaderRoute: typeof mainMainTopologyExitIndexRouteImport
+    '/(main)/main/topology/$dimension/': {
+      id: '/(main)/main/topology/$dimension/'
+      path: '/$dimension'
+      fullPath: '/main/topology/$dimension/'
+      preLoaderRoute: typeof mainMainTopologyDimensionIndexRouteImport
       parentRoute: typeof mainMainTopologyRouteRoute
     }
     '/(main)/main/topology/flow/': {
@@ -955,39 +903,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainTopologyFlowIndexRouteImport
       parentRoute: typeof mainMainTopologyRouteRoute
     }
-    '/(main)/main/topology/inbound/': {
-      id: '/(main)/main/topology/inbound/'
-      path: '/inbound'
-      fullPath: '/main/topology/inbound/'
-      preLoaderRoute: typeof mainMainTopologyInboundIndexRouteImport
-      parentRoute: typeof mainMainTopologyRouteRoute
-    }
     '/(main)/main/topology/map/': {
       id: '/(main)/main/topology/map/'
       path: '/map'
       fullPath: '/main/topology/map/'
       preLoaderRoute: typeof mainMainTopologyMapIndexRouteImport
-      parentRoute: typeof mainMainTopologyRouteRoute
-    }
-    '/(main)/main/topology/process/': {
-      id: '/(main)/main/topology/process/'
-      path: '/process'
-      fullPath: '/main/topology/process/'
-      preLoaderRoute: typeof mainMainTopologyProcessIndexRouteImport
-      parentRoute: typeof mainMainTopologyRouteRoute
-    }
-    '/(main)/main/topology/source/': {
-      id: '/(main)/main/topology/source/'
-      path: '/source'
-      fullPath: '/main/topology/source/'
-      preLoaderRoute: typeof mainMainTopologySourceIndexRouteImport
-      parentRoute: typeof mainMainTopologyRouteRoute
-    }
-    '/(main)/main/topology/target/': {
-      id: '/(main)/main/topology/target/'
-      path: '/target'
-      fullPath: '/main/topology/target/'
-      preLoaderRoute: typeof mainMainTopologyTargetIndexRouteImport
       parentRoute: typeof mainMainTopologyRouteRoute
     }
     '/(tray-menu)/tray-menu/proxies/group/$name': {
@@ -1153,24 +1073,16 @@ const mainMainSettingsRouteRouteWithChildren =
 
 interface mainMainTopologyRouteRouteChildren {
   mainMainTopologyIndexRoute: typeof mainMainTopologyIndexRoute
-  mainMainTopologyExitIndexRoute: typeof mainMainTopologyExitIndexRoute
+  mainMainTopologyDimensionIndexRoute: typeof mainMainTopologyDimensionIndexRoute
   mainMainTopologyFlowIndexRoute: typeof mainMainTopologyFlowIndexRoute
-  mainMainTopologyInboundIndexRoute: typeof mainMainTopologyInboundIndexRoute
   mainMainTopologyMapIndexRoute: typeof mainMainTopologyMapIndexRoute
-  mainMainTopologyProcessIndexRoute: typeof mainMainTopologyProcessIndexRoute
-  mainMainTopologySourceIndexRoute: typeof mainMainTopologySourceIndexRoute
-  mainMainTopologyTargetIndexRoute: typeof mainMainTopologyTargetIndexRoute
 }
 
 const mainMainTopologyRouteRouteChildren: mainMainTopologyRouteRouteChildren = {
   mainMainTopologyIndexRoute: mainMainTopologyIndexRoute,
-  mainMainTopologyExitIndexRoute: mainMainTopologyExitIndexRoute,
+  mainMainTopologyDimensionIndexRoute: mainMainTopologyDimensionIndexRoute,
   mainMainTopologyFlowIndexRoute: mainMainTopologyFlowIndexRoute,
-  mainMainTopologyInboundIndexRoute: mainMainTopologyInboundIndexRoute,
   mainMainTopologyMapIndexRoute: mainMainTopologyMapIndexRoute,
-  mainMainTopologyProcessIndexRoute: mainMainTopologyProcessIndexRoute,
-  mainMainTopologySourceIndexRoute: mainMainTopologySourceIndexRoute,
-  mainMainTopologyTargetIndexRoute: mainMainTopologyTargetIndexRoute,
 }
 
 const mainMainTopologyRouteRouteWithChildren =

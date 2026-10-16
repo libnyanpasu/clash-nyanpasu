@@ -1,14 +1,19 @@
 import { AnimatePresence } from 'motion/react'
-import { useState, type ComponentType, type SVGProps } from 'react'
+import type { ComponentType, SVGProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
+import { keepReturn } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { usageAmount } from '@/utils/traffic-usage'
-import type { Ranking } from '@nyanpasu/rpc/types'
+import type { Ranking, Usage } from '@nyanpasu/rpc/types'
+import { Link } from '@tanstack/react-router'
 import { toggleFilter } from '../../_modules/traffic-filters'
-import RankingModal from './ranking-modal'
 import RankingRow from './ranking-row'
-import { useTrafficPage } from './traffic-context'
+import {
+  useTrafficPage,
+  withoutTrafficView,
+  type RankingDimension,
+} from './traffic-context'
 
 function CountBadge({ count }: { count: number }) {
   return (
@@ -18,26 +23,61 @@ function CountBadge({ count }: { count: number }) {
   )
 }
 
-export type RankingCardProps = {
-  icon: ComponentType<SVGProps<SVGSVGElement>>
-  title: string
-  ranking: Ranking
+const without = (usage: Usage, part: Usage): Usage => ({
+  bytes: {
+    upload: Math.max(0, usage.bytes.upload - part.bytes.upload),
+    download: Math.max(0, usage.bytes.download - part.bytes.download),
+  },
+  connections: Math.max(0, usage.connections - part.connections),
+})
+
+/**
+ * The filtered value of a ranking. A ranking ignores the filter on its own
+ * dimension, so the value's group is the report's total. Outside the top
+ * groups, it is pinned below them and leaves the "other" line.
+ */
+function useRankingSelection(ranking: Ranking) {
+  const { search, report } = useTrafficPage()
+
+  const selected = search.filters.find(
+    (filter) => filter.d === ranking.dimension,
+  )?.v
+  const pinned =
+    selected !== undefined &&
+    report &&
+    !ranking.groups.some((group) => group.key === selected)
+      ? { key: selected, usage: report.total }
+      : undefined
+
+  return {
+    selected,
+    pinned,
+    others: Math.max(
+      0,
+      ranking.distinct - ranking.groups.length - (pinned ? 1 : 0),
+    ),
+    other: pinned ? without(ranking.other, pinned.usage) : ranking.other,
+  }
 }
 
 export default function RankingCard({
+  dimension,
   icon: Icon,
   title,
   ranking,
-}: RankingCardProps) {
-  const [viewAll, setViewAll] = useState(false)
+}: {
+  dimension: RankingDimension
+  icon: ComponentType<SVGProps<SVGSVGElement>>
+  title: string
+  ranking: Ranking
+}) {
   const { search, labelOf, onSearchChange } = useTrafficPage()
   const { metric, filters } = search
 
-  const { dimension } = ranking
+  const { selected, pinned, others, other } = useRankingSelection(ranking)
 
-  const selected = filters.find((filter) => filter.d === dimension)?.v
-
-  const others = ranking.distinct - ranking.groups.length
+  const toggle = (key: string) =>
+    onSearchChange({ filters: toggleFilter(filters, dimension, key) })
 
   return (
     <Card className="flex flex-col gap-1.5 p-3" data-slot="traffic-ranking">
@@ -52,11 +92,20 @@ export default function RankingCard({
           <CountBadge count={ranking.distinct} />
         </div>
 
+        {/* A link centers its text itself; a button gets it from the native element. */}
         <Button
-          className="h-7 shrink-0 px-2 text-xs whitespace-nowrap"
-          onClick={() => setViewAll(true)}
+          asChild
+          className="inline-flex h-7 shrink-0 items-center px-2 text-xs whitespace-nowrap"
         >
-          {m.traffic_rank_view_all()}
+          <Link
+            from="/main/topology"
+            to="/main/topology/$dimension"
+            params={{ dimension }}
+            search={withoutTrafficView}
+            state={keepReturn}
+          >
+            {m.traffic_rank_view_all()}
+          </Link>
         </Button>
       </div>
 
@@ -70,29 +119,30 @@ export default function RankingCard({
               metric={metric}
               rank={index}
               active={group.key === selected}
-              onSelect={() =>
-                onSearchChange({
-                  filters: toggleFilter(filters, dimension, group.key),
-                })
-              }
+              onSelect={() => toggle(group.key)}
             />
           ))}
+
+          {pinned && (
+            <RankingRow
+              key={pinned.key}
+              label={labelOf(dimension, pinned.key)}
+              usage={pinned.usage}
+              metric={metric}
+              rank={null}
+              active
+              onSelect={() => toggle(pinned.key)}
+            />
+          )}
         </AnimatePresence>
 
         {others > 0 && (
           <p className="text-on-surface-variant truncate px-3 py-1.5 text-[11px] tabular-nums">
             {m.traffic_rank_other({ count: others.toLocaleString() })} ·{' '}
-            {usageAmount(ranking.other, metric)}
+            {usageAmount(other, metric)}
           </p>
         )}
       </div>
-
-      <RankingModal
-        open={viewAll}
-        onOpenChange={setViewAll}
-        title={title}
-        dimension={dimension}
-      />
     </Card>
   )
 }

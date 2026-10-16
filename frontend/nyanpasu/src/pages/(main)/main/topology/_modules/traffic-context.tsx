@@ -4,11 +4,12 @@ import DashboardRounded from '~icons/material-symbols/dashboard-rounded'
 import DevicesRounded from '~icons/material-symbols/devices-rounded'
 import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LanOutlineRounded from '~icons/material-symbols/lan-outline-rounded'
+import LeaderboardRounded from '~icons/material-symbols/leaderboard-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
 import PublicRounded from '~icons/material-symbols/public-rounded'
 import { createContext, useContext } from 'react'
 import { m } from '@/paraglide/messages'
-import { dimensionName, type UsageLabel } from '@/utils/traffic-usage'
+import type { UsageLabel } from '@/utils/traffic-usage'
 import type {
   Dimension,
   TrafficQuery,
@@ -17,36 +18,32 @@ import type {
 } from '@nyanpasu/rpc/types'
 import type { TrafficSearch } from './search'
 
+// By how often a dimension answers "what uses the traffic" on a desktop.
 export const RANKINGS = [
   {
-    dimension: 'source',
-    to: '/main/topology/source',
-    icon: DevicesRounded,
-    title: m.traffic_rank_source,
-  },
-  {
-    dimension: 'inbound',
-    to: '/main/topology/inbound',
-    icon: LoginRounded,
-    title: m.traffic_rank_inbound,
+    dimension: 'process',
+    icon: AppsRounded,
+    title: m.traffic_rank_process,
   },
   {
     dimension: 'target',
-    to: '/main/topology/target',
     icon: DnsRounded,
     title: m.traffic_rank_target,
   },
   {
     dimension: 'exit',
-    to: '/main/topology/exit',
     icon: CallSplitRounded,
     title: m.traffic_rank_exit,
   },
   {
-    dimension: 'process',
-    to: '/main/topology/process',
-    icon: AppsRounded,
-    title: m.traffic_rank_process,
+    dimension: 'source',
+    icon: DevicesRounded,
+    title: m.traffic_rank_source,
+  },
+  {
+    dimension: 'inbound',
+    icon: LoginRounded,
+    title: m.traffic_rank_inbound,
   },
 ] as const
 
@@ -73,13 +70,15 @@ export const TRAFFIC_PAGES = [
     title: m.traffic_overview,
   },
   ...ANALYSIS_VIEWS,
-  ...RANKINGS.map(({ dimension, to, icon }) => ({
-    view: dimension,
-    to,
-    icon,
-    title: () => dimensionName(dimension),
-  })),
+  {
+    view: 'rankings',
+    to: '/main/topology/$dimension',
+    icon: LeaderboardRounded,
+    title: m.traffic_rankings,
+  },
 ] as const
+
+export type RankingDimension = (typeof RANKINGS)[number]['dimension']
 
 export type TrafficView = (typeof TRAFFIC_PAGES)[number]['view']
 

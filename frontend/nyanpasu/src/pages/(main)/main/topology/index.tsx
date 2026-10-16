@@ -4,6 +4,7 @@ import { m } from '@/paraglide/messages'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import Notice from './_modules/notice'
 import RankingCard from './_modules/ranking-card'
+import SingleValueCard from './_modules/single-value-card'
 import StatCards from './_modules/stat-cards'
 import {
   ANALYSIS_VIEWS,
@@ -19,6 +20,15 @@ export const Route = createFileRoute('/(main)/main/topology/')({
 function TrafficOverviewPage() {
   const { report, empty } = useTrafficPage()
 
+  const rankings = RANKINGS.flatMap(({ dimension, icon, title }) => {
+    const ranking = report?.rankings.find(
+      (item) => item.dimension === dimension,
+    )
+
+    return ranking ? [{ dimension, icon, title, ranking }] : []
+  })
+  const single = rankings.filter(({ ranking }) => ranking.distinct === 1)
+
   return (
     <>
       <StatCards report={report} />
@@ -28,22 +38,20 @@ function TrafficOverviewPage() {
           <Notice>{m.traffic_empty()}</Notice>
         ) : (
           <div className="grid grid-cols-1 items-start gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
-            {RANKINGS.map(({ dimension, icon, title }) => {
-              const ranking = report.rankings.find(
-                (item) => item.dimension === dimension,
-              )
-
-              return (
-                ranking && (
+            {rankings.map(
+              ({ dimension, icon, title, ranking }) =>
+                ranking.distinct !== 1 && (
                   <RankingCard
                     key={dimension}
+                    dimension={dimension}
                     icon={icon}
                     title={title()}
                     ranking={ranking}
                   />
-                )
-              )
-            })}
+                ),
+            )}
+
+            {single.length > 0 && <SingleValueCard items={single} />}
 
             <div className="flex flex-col gap-3">
               {ANALYSIS_VIEWS.map(({ view, icon: Icon, title, to }) => (

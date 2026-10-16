@@ -10,6 +10,7 @@ import {
   searchFilterSchema,
   toTrafficFilters,
 } from '../../_modules/traffic-filters'
+import type { TrafficView } from './traffic-context'
 
 export const TEMPLATES = ['origin', 'source', 'inbound', 'process'] as const
 
@@ -73,7 +74,9 @@ export const toTopologyRequest = ({
   view,
   layers,
   limit,
-}: Pick<TrafficSearch, 'view' | 'layers' | 'limit'>): TopologyRequest | null =>
+}: Pick<TrafficSearch, 'layers' | 'limit'> & {
+  view: TrafficView
+}): TopologyRequest | null =>
   view !== 'flow' && view !== 'map'
     ? null
     : view === 'map'

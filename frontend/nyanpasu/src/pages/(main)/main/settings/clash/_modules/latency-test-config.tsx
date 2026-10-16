@@ -71,7 +71,7 @@ const LatencyUrlForm = ({
   onSubmit,
 }: {
   form: UseFormReturn<UrlFormValues>
-  onSubmit: (event?: BaseSyntheticEvent) => Promise<void>
+  onSubmit: (event?: BaseSyntheticEvent) => Promise<unknown>
 }) => {
   const id = useId()
   const errorId = `${id}-url-error`
@@ -120,7 +120,7 @@ const LatencyTimeoutForm = ({
   onSubmit,
 }: {
   form: UseFormReturn<TimeoutFormValues>
-  onSubmit: (event?: BaseSyntheticEvent) => Promise<void>
+  onSubmit: (event?: BaseSyntheticEvent) => Promise<unknown>
 }) => {
   const id = useId()
   const errorId = `${id}-timeout-error`
@@ -210,8 +210,12 @@ export default function LatencyTestConfig() {
       }
 
       urlForm.reset({ url })
+
+      return true
     } catch (error) {
       reportError(error)
+
+      return false
     }
   })
 
@@ -224,8 +228,12 @@ export default function LatencyTestConfig() {
       }
 
       timeoutForm.reset({ timeout: data.timeout })
+
+      return true
     } catch (error) {
       reportError(error)
+
+      return false
     }
   })
 
@@ -243,7 +251,15 @@ export default function LatencyTestConfig() {
     timeoutForm.reset({ timeout: savedSeconds })
   }
 
-  const handleApply = () => Promise.all([submitUrl(), submitTimeout()])
+  // A submit resolves `undefined` when validation rejects its form, so the
+  // dialog closes only after both forms are saved.
+  const handleApply = async () => {
+    const saved = await Promise.all([submitUrl(), submitTimeout()])
+
+    if (saved.every(Boolean)) {
+      setOpen(false)
+    }
+  }
 
   return (
     <SettingsCard data-slot="latency-test-config">

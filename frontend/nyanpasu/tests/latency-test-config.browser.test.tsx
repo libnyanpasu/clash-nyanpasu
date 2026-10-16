@@ -36,14 +36,18 @@ async function setup(onTestFinished: (fn: () => Promise<void>) => void) {
     await view.unmount()
     vi.clearAllMocks()
   })
-  await view
-    .getByRole('button', {
-      name: m.settings_clash_latency_test_label(),
-      exact: false,
-    })
-    .click()
+  const open = () =>
+    view
+      .getByRole('button', {
+        name: m.settings_clash_latency_test_label(),
+        exact: false,
+      })
+      .click()
+  await open()
   return {
     view,
+    open,
+    dialog: view.getByRole('dialog'),
     url: view.getByRole('textbox', {
       name: m.settings_clash_latency_test_url_label(),
     }),
@@ -89,12 +93,13 @@ for (const value of ['0', '31']) {
   test(`rejects timeout ${value} without saving`, async ({
     onTestFinished,
   }) => {
-    const { timeout, apply, view } = await setup(onTestFinished)
+    const { timeout, apply, view, dialog } = await setup(onTestFinished)
     await timeout.fill(value)
     await apply().click()
     await expect
       .element(view.getByText(m.settings_clash_latency_test_invalid_timeout()))
       .toBeInTheDocument()
+    await expect.element(dialog).toBeInTheDocument()
     expect(backend.upsert).not.toHaveBeenCalled()
   })
 }
@@ -103,7 +108,7 @@ for (const value of ['ftp://x', 'https://[', 'https://example.com:99999']) {
   test(`rejects the URL ${value} without saving`, async ({
     onTestFinished,
   }) => {
-    const { url, apply, view } = await setup(onTestFinished)
+    const { url, apply, view, dialog } = await setup(onTestFinished)
     await url.fill(value)
     await apply().click()
     const error = view.getByText(m.settings_clash_latency_test_invalid_url())
@@ -112,23 +117,73 @@ for (const value of ['ftp://x', 'https://[', 'https://example.com:99999']) {
     await expect
       .element(url)
       .toHaveAttribute('aria-describedby', error.element().id)
+    await expect.element(dialog).toBeInTheDocument()
     expect(backend.upsert).not.toHaveBeenCalled()
   })
 }
 
 test('an empty URL restores the default', async ({ onTestFinished }) => {
-  const { url, apply } = await setup(onTestFinished)
+  const { url, apply, open, dialog } = await setup(onTestFinished)
   await url.fill('https://cp.cloudflare.com/generate_204')
   await apply().click()
   await expect.poll(() => backend.upsert.mock.calls.length).toBe(1)
+  await expect.element(dialog).not.toBeInTheDocument()
   backend.upsert.mockClear()
 
+  await open()
   await url.clear()
   await apply().click()
   await expect
     .poll(() => backend.upsert.mock.calls)
     .toEqual([['default_latency_test', 'http://www.gstatic.com/generate_204']])
+  await expect.element(dialog).not.toBeInTheDocument()
+
+  await open()
   await expect.element(url).toHaveValue('http://www.gstatic.com/generate_204')
+})
+
+test('apply closes the dialog after saving', async ({ onTestFinished }) => {
+  const { url, timeout, apply, dialog } = await setup(onTestFinished)
+  await url.fill('https://cp.cloudflare.com/generate_204')
+  await timeout.fill('8')
+  await apply().click()
+  await expect.element(dialog).not.toBeInTheDocument()
+  expect(backend.upsert.mock.calls).toEqual([
+    ['default_latency_test', 'https://cp.cloudflare.com/generate_204'],
+    ['default_latency_timeout_ms', 8000],
+  ])
+})
+
+test('apply keeps the dialog open with only the rejected value unsaved', async ({
+  onTestFinished,
+}) => {
+  const { url, timeout, apply, view, dialog } = await setup(onTestFinished)
+  await url.fill('https://cp.cloudflare.com/generate_204')
+  await timeout.fill('31')
+  await apply().click()
+  await expect
+    .poll(() => backend.upsert.mock.calls)
+    .toEqual([
+      ['default_latency_test', 'https://cp.cloudflare.com/generate_204'],
+    ])
+  await expect
+    .element(view.getByText(m.settings_clash_latency_test_invalid_timeout()))
+    .toBeInTheDocument()
+  await expect.element(dialog).toBeInTheDocument()
+  await expect.element(timeout).toHaveValue('31')
+})
+
+test('apply keeps the dialog open when saving fails', async ({
+  onTestFinished,
+}) => {
+  const { timeout, apply, dialog } = await setup(onTestFinished)
+  backend.upsert.mockRejectedValueOnce(new Error('save failed'))
+  await timeout.fill('8')
+  await apply().click()
+  await expect.poll(() => backend.upsert.mock.calls.length).toBe(1)
+  await expect.element(apply()).toBeEnabled()
+  await expect.element(dialog).toBeInTheDocument()
+  await expect.element(timeout).toHaveValue('8')
 })
 
 test('an invalid timeout is described by its error', async ({

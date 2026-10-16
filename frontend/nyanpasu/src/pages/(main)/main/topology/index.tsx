@@ -18,7 +18,7 @@ function TrafficOverviewPage() {
       (item) => item.dimension === dimension,
     )
 
-    return ranking ? [{ icon, title, ranking }] : []
+    return ranking ? [{ dimension, icon, title, ranking }] : []
   })
   const single = rankings.filter(({ ranking }) => ranking.distinct === 1)
 
@@ -35,14 +35,15 @@ function TrafficOverviewPage() {
             data-slot="traffic-overview-masonry"
           >
             {rankings.map(
-              ({ icon, title, ranking }) =>
+              ({ dimension, icon, title, ranking }) =>
                 ranking.distinct !== 1 && (
                   <div
-                    key={ranking.dimension}
+                    key={dimension}
                     className="break-inside-avoid pb-3"
                     data-slot="traffic-overview-masonry-item"
                   >
                     <RankingCard
+                      dimension={dimension}
                       icon={icon}
                       title={title()}
                       ranking={ranking}

@@ -14,11 +14,11 @@ import {
   mockTrafficGroups,
   mockTrafficReport,
 } from '@/pages/(main)/main/topology/_modules/mock-traffic'
+import { Route as RankingsRoute } from '@/pages/(main)/main/topology/$dimension'
 import { Route as FlowRoute } from '@/pages/(main)/main/topology/flow'
 import { Route as OverviewRoute } from '@/pages/(main)/main/topology/index'
 import { Route as MapRoute } from '@/pages/(main)/main/topology/map'
 import { Route as TopologyRoute } from '@/pages/(main)/main/topology/route'
-import { Route as TargetRoute } from '@/pages/(main)/main/topology/target'
 import type {
   Dimension,
   Metric,
@@ -40,16 +40,15 @@ import { TestQueryProvider as QueryClientProvider } from '../tests/query-provide
 import { measureFrames, onProfilerRender, summarize } from './measure'
 
 // Opens the traffic pages, feeds them polled reports, switches to them from
-// the overview, opens the full listing of a ranking and loads more of it, and
-// toggles a filter on the overview, reporting the frame drops of each. See
-// `perf/README.md`.
+// the overview, loads more of the rankings listing and toggles a filter on
+// the overview, reporting the frame drops of each. See `perf/README.md`.
 
 const env = import.meta.env
 const SWITCHES = Number(env.VITE_PERF_SWITCHES ?? 12)
 const WARMUP = 2
 const THROTTLE = Number(env.VITE_PERF_THROTTLE ?? 1)
-// Hosts the target ranking's listing can show, loaded a page at a time as the
-// real listing is; enough for every measured page load by default.
+// Hosts the rankings page can list, loaded a page at a time as the real
+// listing is; enough for every measured page load by default.
 const GROUPS = Number(env.VITE_PERF_TRAFFIC_GROUPS ?? 1000)
 const PAGE_SIZE = 50
 
@@ -103,7 +102,7 @@ function prepare(tick: number) {
   }
 }
 
-// A long tail of hosts for the target ranking's listing.
+// A long tail of hosts for the rankings page.
 const hosts: UsageGroup[] = Array.from({ length: GROUPS }, (_, index) => ({
   key: `host-${index}.example.com`,
   usage: {
@@ -238,7 +237,7 @@ function createTrafficRouter() {
           child(OverviewRoute, '/') as never,
           child(FlowRoute, '/flow/') as never,
           child(MapRoute, '/map/') as never,
-          child(TargetRoute, '/target/') as never,
+          child(RankingsRoute, '/$dimension/') as never,
         ]),
         createRoute({
           path: '/main/blank',
@@ -260,18 +259,6 @@ const PATHS: Record<string, string> = {
 }
 
 const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-// The listing opens from "View all" on the ranking page and closes from the
-// dialog's last button.
-const listingOpen = () => document.querySelector('[data-slot="modal-content"]')
-const openListing = () =>
-  document
-    .querySelector<HTMLButtonElement>(
-      '[data-slot="traffic-ranking-view"] button',
-    )!
-    .click()
-const closeListing = () =>
-  [...listingOpen()!.querySelectorAll('button')].at(-1)!.click()
 
 // Every page at a 4x slowdown takes longer than the default five minutes.
 test(`traffic pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {
@@ -357,38 +344,13 @@ test(`traffic pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {
       report(`switch:${page}`, switches)
     }
 
+    // The next page of the listing, below the rows already shown.
     if (page === 'rankings') {
-      // Opening the ranking's full listing.
-      const listingOpens = []
-      for (let i = 1; i <= SWITCHES; i++) {
-        listingOpens.push(await measureFrames(openListing, 900))
-        closeListing()
-        await expect.poll(listingOpen).toBeNull()
-        await settle(300)
-      }
-      report('open:listing', listingOpens)
-
-      // A polled report arriving behind the open listing.
-      openListing()
-      await expect.poll(listingOpen).toBeTruthy()
-      await settle(900)
-      const listingPolls = []
-      for (let i = 1; i <= SWITCHES; i++) {
-        tick += 1
-        prepare(tick)
-        listingPolls.push(await measureFrames(() => reports.publish(tick), 900))
-      }
-      report('poll:listing', listingPolls)
-
-      // The next page of the listing, below the rows already shown.
       const appends = []
       for (let i = 1; i <= SWITCHES; i++) {
         appends.push(await measureFrames(() => listing.more(), 900))
       }
-      report('append:listing', appends)
-
-      closeListing()
-      await expect.poll(listingOpen).toBeNull()
+      report('append:rankings', appends)
     }
 
     await home()

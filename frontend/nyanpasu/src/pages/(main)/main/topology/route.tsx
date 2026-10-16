@@ -9,28 +9,37 @@ import {
   useNavigate,
 } from '@tanstack/react-router'
 import { trafficSearchSchema, type TrafficSearch } from './_modules/search'
-import { TRAFFIC_PAGES } from './_modules/traffic-context'
+import { RANKINGS, TRAFFIC_PAGES } from './_modules/traffic-context'
 import TrafficLayout from './_modules/traffic-layout'
 
 export const Route = createFileRoute('/(main)/main/topology')({
   component: RouteComponent,
   validateSearch: trafficSearchSchema,
   beforeLoad: ({ location, search }) => {
-    // Existing shared map/flow URLs open their new child route.
+    // Existing shared URLs choose a child route through their view.
+    const { view } = search
     if (
-      location.pathname.replace(/\/$/, '') === '/main/topology' &&
-      search.view &&
-      search.view !== 'overview'
+      location.pathname.replace(/\/$/, '') !== '/main/topology' ||
+      !view ||
+      view === 'overview'
     ) {
-      const page = TRAFFIC_PAGES.find((page) => page.view === search.view)!
-      throw redirect({
-        from: '/main/topology',
-        to: page.to,
-        search: { ...search, view: undefined },
-        state: keepReturn,
-        replace: true,
-      })
+      return
     }
+    const ranking = RANKINGS.find(({ dimension }) => dimension === view)
+    throw redirect({
+      from: '/main/topology',
+      ...(ranking
+        ? {
+            to: '/main/topology/$dimension',
+            params: { dimension: ranking.dimension },
+          }
+        : {
+            to: view === 'flow' ? '/main/topology/flow' : '/main/topology/map',
+          }),
+      search: { ...search, view: undefined },
+      state: keepReturn,
+      replace: true,
+    })
   },
 })
 

@@ -33,14 +33,10 @@ import { TestQueryProvider as QueryClientProvider } from './query-provider'
 import '../src/utils/language'
 import { Route as overviewRoute } from '../src/pages/(main)/main/topology'
 import type { TrafficSearch } from '../src/pages/(main)/main/topology/_modules/search'
-import { Route as exitRoute } from '../src/pages/(main)/main/topology/exit'
+import { Route as rankingsRoute } from '../src/pages/(main)/main/topology/$dimension'
 import { Route as flowRoute } from '../src/pages/(main)/main/topology/flow'
-import { Route as inboundRoute } from '../src/pages/(main)/main/topology/inbound'
 import { Route as mapRoute } from '../src/pages/(main)/main/topology/map'
-import { Route as processRoute } from '../src/pages/(main)/main/topology/process'
 import { Route as trafficRoute } from '../src/pages/(main)/main/topology/route'
-import { Route as sourceRoute } from '../src/pages/(main)/main/topology/source'
-import { Route as targetRoute } from '../src/pages/(main)/main/topology/target'
 
 vi.mock('./icon-stub', () => ({
   default: (props: object) => <svg {...props} />,
@@ -167,8 +163,12 @@ function mockBackend() {
 
     if (method === 'query_traffic_usage') {
       return {
-        total: usage(0, 0, 0),
-        groups: backend.usage,
+        total: report.total,
+        groups: backend.usage.length
+          ? backend.usage
+          : (report.rankings.find(
+              ({ dimension }) => dimension === params.groupBy,
+            )?.groups ?? []),
         other: usage(0, 0, 0),
         next: null,
       }
@@ -230,11 +230,12 @@ async function open(
       createTestRoute(overviewRoute, '/', '/', topologyRoute),
       createTestRoute(flowRoute, '/flow/', '/flow/', topologyRoute),
       createTestRoute(mapRoute, '/map/', '/map/', topologyRoute),
-      createTestRoute(sourceRoute, '/source/', '/source/', topologyRoute),
-      createTestRoute(inboundRoute, '/inbound/', '/inbound/', topologyRoute),
-      createTestRoute(targetRoute, '/target/', '/target/', topologyRoute),
-      createTestRoute(exitRoute, '/exit/', '/exit/', topologyRoute),
-      createTestRoute(processRoute, '/process/', '/process/', topologyRoute),
+      createTestRoute(
+        rankingsRoute,
+        '/$dimension/',
+        '/$dimension/',
+        topologyRoute,
+      ),
     ] as never),
   ] as never)
   const router = createRouter({
@@ -346,17 +347,25 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       .toBe(0)
     expect(content.textContent).toContain(summary)
 
-    const source = dimensionName('source')
-    await sidebarItem(view, source).click()
+    const rankings = m.traffic_rankings()
+    await sidebarItem(view, rankings).click()
     await expect
-      .element(view.getByRole('heading', { name: source, level: 1 }))
+      .element(view.getByRole('heading', { name: rankings, level: 1 }))
       .toBeInTheDocument()
+    await expect
+      .poll(
+        () =>
+          document.querySelectorAll('[data-slot="traffic-ranking-list"]')
+            .length,
+      )
+      .toBe(1)
+    await view.getByRole('radio', { name: dimensionName('source') }).click()
     await expect
       .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
       .toBeInTheDocument()
     expect(content.textContent).toContain(summary)
     await expect
-      .element(sidebarItem(view, source))
+      .element(sidebarItem(view, rankings))
       .toHaveAttribute('data-active', 'true')
 
     // A short category still fills the viewport, including its animated page.
@@ -453,7 +462,7 @@ test('the full listing of a ranking mounts only the rows in view', async ({
   )
   const view = await open(onTestFinished)
   await view
-    .getByRole('button', { name: m.traffic_rank_view_all() })
+    .getByRole('link', { name: m.traffic_rank_view_all() })
     .first()
     .click()
   await expect
@@ -469,10 +478,19 @@ test('the full listing of a ranking mounts only the rows in view', async ({
     '[data-slot="scroll-area-viewport"]',
   )!
   viewport.scrollTop = viewport.scrollHeight
-  await expect
-    .element(view.getByRole('button', { name: /host-299\.example\.com/ }))
-    .toBeInTheDocument()
+  const last = view.getByRole('button', { name: /host-299\.example\.com/ })
+  await expect.element(last).toBeInTheDocument()
   expect(rows.querySelectorAll('button').length).toBeLessThan(40)
+  // The list starts below the page heading and tabs; the last row still
+  // lands inside the viewport rather than beside a blank stretch.
+  await expect
+    .poll(() => {
+      const bounds = viewport.getBoundingClientRect()
+      const row = last.element().getBoundingClientRect()
+
+      return row.top >= bounds.top && row.bottom <= bounds.bottom
+    })
+    .toBe(true)
 })
 
 test('the flow card and its rankings fill the page down to its bottom inset', async ({
@@ -515,7 +533,7 @@ test('the flow card and its rankings fill the page down to its bottom inset', as
     .toBeLessThanOrEqual(1)
 })
 
-test('all eight sidebar entries select the matching page view', async ({
+test('all four sidebar entries select the matching page view', async ({
   onTestFinished,
 }) => {
   mockBackend()
@@ -524,11 +542,7 @@ test('all eight sidebar entries select the matching page view', async ({
     ['overview', m.traffic_overview()],
     ['flow', m.topology_flow()],
     ['map', m.topology_geo_map()],
-    ['source', dimensionName('source')],
-    ['inbound', dimensionName('inbound')],
-    ['target', dimensionName('target')],
-    ['exit', dimensionName('exit')],
-    ['process', dimensionName('process')],
+    ['rankings', m.traffic_rankings()],
   ] as const
 
   for (const [value, label] of entries) {
@@ -547,9 +561,12 @@ test('all eight sidebar entries select the matching page view', async ({
       await expect
         .poll(() => rpc.reports.at(-1)?.topology?.layers)
         .toEqual(['origin', 'rule', 'chain', 'exit'])
-    } else if (value !== 'overview') {
-      const ranking = report.rankings.find((item) => item.dimension === value)!
-      const rowName = usageLabel(value, ranking.groups[0]!.key).text
+    } else if (value === 'rankings') {
+      // The rankings open on the first dimension.
+      const ranking = report.rankings.find(
+        (item) => item.dimension === 'process',
+      )!
+      const rowName = usageLabel('process', ranking.groups[0]!.key).text
       await expect
         .element(
           view.getByRole('button', {

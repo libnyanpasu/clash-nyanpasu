@@ -7,6 +7,7 @@ import {
 } from '@nyanpasu/ui/segmented-button'
 import { Switch } from '@nyanpasu/ui/switch'
 import { ErrorMessage } from '@/components/error-message'
+import { PageTitle } from '@/components/page-title'
 import {
   StepLabel,
   stepParts,
@@ -63,29 +64,30 @@ function RouteComponent() {
   }, [queryClient])
 
   return (
-    <section className="@container flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0">
-      <header className="bg-mixed-background sticky top-0 z-50 flex items-center justify-between gap-4 py-4">
-        <h1 className="text-lg font-bold">{m.inspect_title()}</h1>
-        <label className="flex items-center gap-2 text-sm">
+    <section className="@container flex min-w-0 flex-1 flex-col">
+      <PageTitle backTo="/main/profiles">{m.inspect_title()}</PageTitle>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 pb-4">
+        <label className="flex items-center justify-end gap-2 text-sm">
           {m.inspect_last_applied()}
           <Switch checked={appliedView} onCheckedChange={setAppliedView} />
         </label>
-      </header>
-      {inspection.isPending && <p role="status">{m.inspect_loading()}</p>}
-      {inspection.isError && (
-        <p role="alert">
-          {m.inspect_error()} <ErrorMessage error={inspection.error} />
-        </p>
-      )}
-      {!inspection.isError && inspection.data === null && (
-        <p role="status">{m.inspect_empty()}</p>
-      )}
-      {!inspection.isError && inspection.data && (
-        <SnapshotBrowser
-          key={inspection.data.snapshot_id}
-          snapshot={inspection.data}
-        />
-      )}
+        {inspection.isPending && <p role="status">{m.inspect_loading()}</p>}
+        {inspection.isError && (
+          <p role="alert">
+            {m.inspect_error()} <ErrorMessage error={inspection.error} />
+          </p>
+        )}
+        {!inspection.isError && inspection.data === null && (
+          <p role="status">{m.inspect_empty()}</p>
+        )}
+        {!inspection.isError && inspection.data && (
+          <SnapshotBrowser
+            key={inspection.data.snapshot_id}
+            snapshot={inspection.data}
+          />
+        )}
+      </div>
     </section>
   )
 }

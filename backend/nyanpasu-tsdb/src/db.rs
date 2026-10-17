@@ -11,11 +11,12 @@ use crate::{
     budget::{MemoryBudget, Reservation},
     lifecycle::{self, OpenError},
     storage::{Durability, Storage},
-    time::Span,
     version::{CaptureError, Registry, Snapshot},
     write::{
         BeginBatchSnafu, CommitSnafu, EventSeq, Input, InvalidInputSnafu, RecoveryNeededSnafu,
-        StageSnafu, WriteError, Written, commit,
+        StageSnafu, WriteError, Written,
+        chunking::Shape,
+        commit,
         stage::{self, Context, Counted},
     },
 };
@@ -34,11 +35,12 @@ pub struct Tsdb<S: Storage> {
     shared: Arc<Shared<S>>,
     schema: Arc<Schema>,
     profile: Profile,
-    /// The bucket width of each tier.
-    buckets: Box<[Span]>,
+    shape: Shape,
     head_budget: MemoryBudget,
     /// The current head's bytes, reserved from `head_budget`.
     head: Reservation,
+    /// Staging, encode buffers and the copies a new version makes (§7.4).
+    staging_budget: MemoryBudget,
     incarnation: u64,
     next_event_seq: u64,
     /// When the last durable commit since the open was made; `None` before the first.
@@ -52,14 +54,6 @@ impl<S: Storage> Tsdb<S> {
     /// `backend_cache`, creating it if the storage holds none (see `lifecycle`).
     pub fn open(storage: S, schema: Schema, profile: Profile) -> Result<Self, OpenError> {
         let opened = lifecycle::open(storage, &schema, &profile)?;
-        let buckets = schema
-            .series
-            .iter()
-            .flat_map(|series| &series.tiers)
-            .map(|tier| {
-                Span::from_duration(tier.bucket).expect("a valid schema's buckets are positive")
-            })
-            .collect();
         let schema = Arc::new(schema);
         Ok(Self {
             shared: Arc::new(Shared {
@@ -68,9 +62,10 @@ impl<S: Storage> Tsdb<S> {
                 query_budget: MemoryBudget::new(profile.query),
             }),
             schema,
-            buckets,
+            shape: opened.shape,
             head_budget: opened.head_budget,
             head: opened.head,
+            staging_budget: opened.staging_budget,
             incarnation: opened.incarnation,
             next_event_seq: 0,
             last_durable: None,
@@ -114,9 +109,10 @@ impl<S: Storage> Tsdb<S> {
         let context = Context {
             schema: &self.schema,
             profile: &self.profile,
-            buckets: &self.buckets,
+            shape: &self.shape,
             current: &current,
             head_budget: &self.head_budget,
+            staging_budget: &self.staging_budget,
         };
         let staged = stage::stage(&mut batch, &context, input).context(StageSnafu)?;
         let bytes = batch.written();
@@ -195,6 +191,14 @@ impl<S: Storage> Tsdb<S> {
 
     pub(crate) fn head_reserved(&self) -> u64 {
         self.head.bytes()
+    }
+
+    pub(crate) fn staging_reserved(&self) -> u64 {
+        self.staging_budget.reserved()
+    }
+
+    pub(crate) fn shape(&self) -> &Shape {
+        &self.shape
     }
 
     pub(crate) fn incarnation(&self) -> u64 {

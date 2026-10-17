@@ -49,6 +49,25 @@ The design says its code sketches show shape, not the final API. Where the code 
   namespace. The consumer's auxiliary state refers to its own key in the same transaction, and
   an unpin never resolves labels, which could name another combination after a fold or a
   change of the catalog budget (§5.3).
+- Journal records are framed: a header, then one postcard item per row or per combination.
+  Chunking and opening read them one item at a time, so their memory does not grow with a
+  record's rows. Event records are sorted by key, incarnation and sequence, and are kept
+  per stream and extent, so that a record's bytes belong to one extent (§9.1).
+- An extent is numbered: its bucket or key divided by the extent width. A start time could
+  overflow at the edges of `i64`.
+- In an event chunk, `FoldedLabel` and `Identity` columns are low-cardinality bytes. An
+  identity is a one-byte tag followed by its 16 bytes or its text.
+- An event stream has at most 61 columns, because its chunks add the key, the incarnation and
+  the sequence.
+- A commit plans from sizes before it builds anything: it reserves the plan's peak from
+  staging, builds only the sources the head keeps, and writes a chunked source straight from
+  the current pages and the batch's deltas. Staging resolves a batch's event rows in the
+  order chunks keep them.
+- A stream with more records in one extent than staging can merge at once is chunked in
+  groups, each a sorted run of its own. A trigger whose chunk build does not fit what staging
+  has left beside the batch waits for a later commit; head pressure and the journal cap still
+  chunk. Opening refuses a staging budget below the widest chunk build plus the plan of a
+  full head, so every trigger can fire.
 
 ## Errors
 
@@ -133,6 +152,8 @@ Crates offering a stable hash trait were considered and rejected:
   per value and per combination, and is loaded by scanning them.
 - Compacting a dictionary's heap. Released values leave holes until the next load, so a
   long-running gateway with heavy label churn grows its heap until it restarts.
+- Stream epochs (§1, §8.3). Until the lifecycle defines them, every extent of an
+  `ExtentSpec::Epoch` stream is epoch 0.
 - The incarnation counter kept outside the database for tmpfs hosts (§8.3), which only the
   untested tier-2 profile needs.
 - Consumers: traffic, core logs and job logs, and migration of the traffic database.

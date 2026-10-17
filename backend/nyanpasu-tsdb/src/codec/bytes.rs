@@ -30,7 +30,7 @@ use super::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq, EnumDiscriminants)]
 #[strum_discriminants(name(BytesHintKind), derive(FromRepr))]
 #[repr(u8)]
-pub(crate) enum BytesHint {
+pub enum BytesHint {
     /// `Dict`, `FoldedLabel` and `Identity` columns: few distinct values, or values of one
     /// width such as tagged UUIDs. Dictionary, plain and fixed are all tried.
     LowCardinality = 1,

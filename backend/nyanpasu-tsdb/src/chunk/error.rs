@@ -15,7 +15,7 @@ use crate::{ErrorKind, budget::BudgetExceeded, codec::DecodeError, storage::Stor
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub(crate) enum BuildError {
+pub enum BuildError {
     #[snafu(display("failed to write fragment {index}"))]
     WriteFragment { index: u32, source: StorageError },
 
@@ -91,7 +91,7 @@ pub(crate) enum BuildError {
 }
 
 impl BuildError {
-    pub(crate) fn kind(&self) -> ErrorKind {
+    pub fn kind(&self) -> ErrorKind {
         match self {
             Self::WriteFragment { source, .. } => source.kind(),
             // zstd fails only when it cannot allocate its context's memory; nothing is
@@ -118,7 +118,7 @@ impl BuildError {
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub(crate) enum PlanError {
+pub enum PlanError {
     #[snafu(display("a chunk has at most {MAX_COLUMNS} columns, not {columns}"))]
     PlanColumns { columns: usize },
 
@@ -127,7 +127,7 @@ pub(crate) enum PlanError {
 }
 
 impl PlanError {
-    pub(crate) fn kind(&self) -> ErrorKind {
+    pub fn kind(&self) -> ErrorKind {
         ErrorKind::Local
     }
 }

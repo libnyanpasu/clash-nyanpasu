@@ -38,14 +38,14 @@ pub(crate) const MINUTE: TierId = TierId(0);
 pub(crate) const HOUR: TierId = TierId(1);
 pub(crate) const CLOSED: StreamId = StreamId(0);
 pub(crate) const LOGS: StreamId = StreamId(1);
-const RULE: LabelId = LabelId(0);
-const PROCESS: LabelId = LabelId(1);
-const TARGET: LabelId = LabelId(2);
+pub(crate) const RULE: LabelId = LabelId(0);
+pub(crate) const PROCESS: LabelId = LabelId(1);
+pub(crate) const TARGET: LabelId = LabelId(2);
 /// A label only events carry.
-const HOST: LabelId = LabelId(3);
+pub(crate) const HOST: LabelId = LabelId(3);
 
-const MINUTE_MS: i64 = 60_000;
-const HOUR_MS: i64 = 60 * MINUTE_MS;
+pub(crate) const MINUTE_MS: i64 = 60_000;
+pub(crate) const HOUR_MS: i64 = 60 * MINUTE_MS;
 
 /// How long a test waits for something that must happen. It bounds a failure; it is never
 /// what makes a passing test pass.
@@ -53,8 +53,8 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// How long a test watches for something that must not happen.
 const GRACE: Duration = Duration::from_millis(100);
 
-const UUID: &[u8] = b"67e55044-10b1-426f-9247-bb680e5fe0c8";
-const LABELS: &[&[u8]] = &[b"match", b"curl", b"a.com"];
+pub(crate) const UUID: &[u8] = b"67e55044-10b1-426f-9247-bb680e5fe0c8";
+pub(crate) const LABELS: &[&[u8]] = &[b"match", b"curl", b"a.com"];
 
 /// Traffic-like: the target folds first, then the whole combination (§11.1, §14.1). The
 /// `closed` stream has a column of every type.
@@ -117,22 +117,22 @@ pub(crate) fn schema() -> Schema {
     schema
 }
 
-fn open_with(disk: &MemoryDisk, profile: Profile) -> Tsdb<MemoryStorage> {
+pub(crate) fn open_with(disk: &MemoryDisk, profile: Profile) -> Tsdb<MemoryStorage> {
     Tsdb::open(disk.open().unwrap(), schema(), profile).unwrap()
 }
 
-fn open(disk: &MemoryDisk) -> Tsdb<MemoryStorage> {
+pub(crate) fn open(disk: &MemoryDisk) -> Tsdb<MemoryStorage> {
     open_with(disk, Profile::desktop())
 }
 
 /// Closes the dataset cleanly and opens it again.
-fn reopen(tsdb: Tsdb<MemoryStorage>, disk: &MemoryDisk) -> Tsdb<MemoryStorage> {
+pub(crate) fn reopen(tsdb: Tsdb<MemoryStorage>, disk: &MemoryDisk) -> Tsdb<MemoryStorage> {
     drop(tsdb.into_storage());
     open(disk)
 }
 
 /// Every entry of every namespace.
-fn dump(read: &impl StorageRead) -> Vec<(u8, Vec<u8>, Vec<u8>)> {
+pub(crate) fn dump(read: &impl StorageRead) -> Vec<(u8, Vec<u8>, Vec<u8>)> {
     let mut entries = Vec::new();
     for ns in 0..=u8::MAX {
         read.scan(Ns(ns), KeyRange::All, Direction::Forward, |key, value| {
@@ -144,11 +144,11 @@ fn dump(read: &impl StorageRead) -> Vec<(u8, Vec<u8>, Vec<u8>)> {
     entries
 }
 
-fn dump_storage<S: Storage>(tsdb: &Tsdb<S>) -> Vec<(u8, Vec<u8>, Vec<u8>)> {
+pub(crate) fn dump_storage<S: Storage>(tsdb: &Tsdb<S>) -> Vec<(u8, Vec<u8>, Vec<u8>)> {
     dump(&tsdb.storage().snapshot().unwrap())
 }
 
-fn batch<'a>(
+pub(crate) fn batch<'a>(
     batch_id: u64,
     series: &'a [SeriesPoint<'a>],
     events: &'a [EventRow<'a>],
@@ -163,7 +163,10 @@ fn batch<'a>(
     }
 }
 
-fn point(labels: &'static [&'static [u8]], fields: &'static [u64]) -> SeriesPoint<'static> {
+pub(crate) fn point(
+    labels: &'static [&'static [u8]],
+    fields: &'static [u64],
+) -> SeriesPoint<'static> {
     SeriesPoint {
         tier: HOUR,
         at: Timestamp(0),
@@ -173,7 +176,11 @@ fn point(labels: &'static [&'static [u8]], fields: &'static [u64]) -> SeriesPoin
 }
 
 /// Writes one series point and one log line.
-fn write_simple<S: Storage>(tsdb: &mut Tsdb<S>, batch_id: u64, durability: Durability) -> Written {
+pub(crate) fn write_simple<S: Storage>(
+    tsdb: &mut Tsdb<S>,
+    batch_id: u64,
+    durability: Durability,
+) -> Written {
     let seq = tsdb.next_event_seq();
     let row = EventRow {
         stream: LOGS,
@@ -187,7 +194,7 @@ fn write_simple<S: Storage>(tsdb: &mut Tsdb<S>, batch_id: u64, durability: Durab
 }
 
 /// A `closed` row: every column set, the series value given.
-fn closed_values(series: Value<'static>) -> [Value<'static>; 10] {
+pub(crate) fn closed_values(series: Value<'static>) -> [Value<'static>; 10] {
     [
         Value::I64(5),
         Value::U64(10),
@@ -202,7 +209,7 @@ fn closed_values(series: Value<'static>) -> [Value<'static>; 10] {
     ]
 }
 
-fn closed_row<'a>(seq: EventSeq, values: &'a [Value<'a>]) -> EventRow<'a> {
+pub(crate) fn closed_row<'a>(seq: EventSeq, values: &'a [Value<'a>]) -> EventRow<'a> {
     EventRow {
         stream: CLOSED,
         key: 1,
@@ -526,56 +533,65 @@ fn a_batch_with_invalid_input_changes_nothing() {
     assert!(!tsdb.registry().needs_recovery());
 }
 
-/// A batch that fails after it wrote catalog records into its transaction: the head budget
-/// has no room for it.
+/// A batch that fails after it wrote catalog and journal records into its transaction: the
+/// staging budget has no room even for one chunk build.
 #[test]
 fn a_batch_that_fails_part_way_changes_nothing() {
     let disk = MemoryDisk::new();
     let mut tsdb = open(&disk);
     write_simple(&mut tsdb, 1, Durability::Durable);
-    let full = tsdb.current().head.bytes();
     drop(tsdb.into_storage());
+    // The least staging an open accepts: the batch below resolves its points into the
+    // catalog draft, then cannot reserve their deltas.
+    let schema = schema();
+    let head = 64 * 1024;
+    let staging = crate::write::chunking::least_staging(
+        &schema,
+        &crate::write::chunking::Shape::new(&schema),
+        head,
+    );
     let profile = Profile {
-        head: full,
-        event_buffer_bytes: 1,
+        head,
+        staging,
         ..Profile::desktop()
     };
     let mut tsdb = open_with(&disk, profile);
     let (before, storage) = (tsdb.current(), dump_storage(&tsdb));
+    let head = tsdb.head_reserved();
 
-    let points = [point(&[b"new", b"git", b"b.com"], &[1, 1])];
+    // Each point takes 8 bytes of scratch, and its deltas 20 more.
+    let targets = staging as usize / 10;
+    let points: Vec<SeriesPoint<'static>> = (0..targets)
+        .map(|index| {
+            let target: &'static [u8] = Vec::leak(format!("t{index}").into_bytes());
+            point(Vec::leak(vec![&b"new"[..], b"git", target]), &[1, 1])
+        })
+        .collect();
     let error = tsdb
         .write(&batch(2, &points, &[]), Durability::Durable)
         .unwrap_err();
-    let WriteError::Stage {
-        source: StageError::ReserveHead { source },
-    } = &error
-    else {
-        panic!("unexpected error {error:?}");
-    };
-    assert_eq!(source.available, 0);
+    assert!(
+        matches!(
+            error,
+            WriteError::Stage {
+                source: StageError::ReserveStaging { .. }
+            }
+        ),
+        "{error:?}"
+    );
     assert_eq!(error.kind(), ErrorKind::Local);
     assert!(Arc::ptr_eq(&before, &tsdb.current()));
     assert_eq!(tsdb.current().catalog.find_label(RULE, b"new"), None);
     assert!(tsdb.registry().pending().is_none());
-    assert_eq!(tsdb.head_reserved(), full);
+    assert_eq!(tsdb.head_reserved(), head);
+    assert_eq!(tsdb.staging_reserved(), 0);
     assert_eq!(dump_storage(&tsdb), storage);
     assert!(!tsdb.registry().needs_recovery());
 
-    // Nothing was applied, so the same batch id is still free, here for a batch that does
-    // not grow the head.
-    let aux = [AuxOp::Put {
-        key: b"session",
-        value: b"1",
-    }];
+    // Nothing was applied, so the same batch id is still free.
+    let mut tsdb = reopen(tsdb, &disk);
     let written = tsdb
-        .write(
-            &Input {
-                aux: &aux,
-                ..batch(2, &[], &[])
-            },
-            Durability::Durable,
-        )
+        .write(&batch(2, &points, &[]), Durability::Durable)
         .unwrap();
     assert_eq!(written.publication, 2);
 }
@@ -720,8 +736,7 @@ fn a_fold_fills_the_folded_labels_and_a_full_catalog_stores_label_0() {
 
         let current = tsdb.current();
         let segment = &current.head.events(CLOSED).segments()[0];
-        let record = segment.record();
-        let stored = &record.rows[0];
+        let stored = segment.record().rows().next().unwrap();
         assert_eq!((stored.key, stored.incarnation, stored.seq), (7, 1, 0));
         let (combo, host, kept) = if folded {
             // Every dimension folded: the whole-overflow combination, which keeps the
@@ -1159,10 +1174,15 @@ fn durability_follows_the_profile() {
         assert_eq!(tsdb.durability_due(Timestamp(1)), Durability::Durable);
     }
 
-    let mobile = Profile::mobile();
+    // This schema's widest chunk build, a `closed` record's of every column type, does not fit
+    // the mobile staging budget beside the plan of a full head, so the staging is raised.
+    let mobile = Profile {
+        staging: 2 * 1024 * 1024,
+        ..Profile::mobile()
+    };
     let interval = mobile.durable_interval.unwrap().as_millis() as i64;
     let disk = MemoryDisk::new();
-    let mut tsdb = open_with(&disk, mobile);
+    let mut tsdb = open_with(&disk, mobile.clone());
     // No durable commit is dated yet.
     assert_eq!(tsdb.durability_due(Timestamp(0)), Durability::Durable);
     let durable = |batch_id, now| Input {
@@ -1191,7 +1211,7 @@ fn durability_follows_the_profile() {
         &disk,
         Profile {
             durable_after_bytes: 200,
-            ..Profile::mobile()
+            ..mobile.clone()
         },
     );
     tsdb.write(&durable(1, 0), Durability::Durable).unwrap();

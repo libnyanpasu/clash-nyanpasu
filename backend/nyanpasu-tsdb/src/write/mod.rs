@@ -13,12 +13,13 @@
 //! `commit` registers the pending version, commits without holding the registry lock, then
 //! publishes.
 
-mod chunking;
+pub(crate) mod chunking;
 pub(crate) mod commit;
 pub(crate) mod stage;
 
 use snafu::{ResultExt, Snafu, ensure};
 
+use self::chunking::RowProblem;
 pub use self::stage::StageError;
 use crate::{
     ColumnType, ErrorKind, Schema, StreamId, TierId, Timestamp,
@@ -256,6 +257,21 @@ impl Input<'_> {
                     (ty, _) => return ValueTypeSnafu { row, column, ty }.fail(),
                 }
             }
+            // A row that cannot be chunked would make chunking its stream fail forever.
+            match chunking::check_row(schema, stream, input.values) {
+                Ok(()) => {}
+                Err(RowProblem::ValueTooLong { column, len, limit }) => {
+                    let column = stream.columns[column].name;
+                    return ValueTooLongSnafu {
+                        row,
+                        column,
+                        len,
+                        limit,
+                    }
+                    .fail();
+                }
+                Err(RowProblem::TooLarge) => return RowTooLargeSnafu { row }.fail(),
+            }
         }
         for (pin, op) in self.pins.iter().enumerate() {
             let key = match *op {
@@ -409,6 +425,23 @@ pub enum InputError {
         count: usize,
         expected: usize,
     },
+
+    /// A value its chunk column cannot hold: past 16 KiB in a `Dict`, `Identity` or
+    /// `FoldedLabel` column (the series label a fold would keep), or past 4 MiB in a `Text`
+    /// column.
+    #[snafu(display(
+        "event row {row} has {len} bytes for column `{column}`, which holds at most {limit}"
+    ))]
+    ValueTooLong {
+        row: usize,
+        column: &'static str,
+        len: usize,
+        limit: usize,
+    },
+
+    /// The row alone does not fit a chunk (§4.3).
+    #[snafu(display("event row {row} alone does not fit a chunk"))]
+    RowTooLarge { row: usize },
 
     #[snafu(display("pin {pin} has {count} labels, but the series has {expected}"))]
     PinLabelCount {
@@ -755,6 +788,58 @@ mod tests {
                 ty: ColumnType::Series
             })
         );
+    }
+
+    // A row its chunk cannot hold would make chunking its stream fail forever, so it is
+    // refused up front.
+    #[test]
+    fn a_row_a_chunk_cannot_hold_is_refused() {
+        let limit = crate::codec::MAX_INLINE_VALUE_LEN;
+        let long: &'static [u8] = Vec::leak(vec![b'x'; limit + 1]);
+        let with = |index: usize, value: Value<'static>| {
+            let mut values = full_values();
+            values[index] = value;
+            check_row(values)
+        };
+        // A dictionary value, and an identity with its tag byte.
+        assert_eq!(with(8, Value::Bytes(&long[..limit])), Ok(()));
+        assert_eq!(
+            with(8, Value::Bytes(long)),
+            Err(InputError::ValueTooLong {
+                row: 0,
+                column: "kind",
+                len: limit + 1,
+                limit
+            })
+        );
+        assert_eq!(
+            with(5, Value::Bytes(&long[..limit])),
+            Err(InputError::ValueTooLong {
+                row: 0,
+                column: "id",
+                len: limit + 1,
+                limit
+            })
+        );
+        // The target a fold would keep in the folded-label column.
+        let labels: &'static [&'static [u8]] = Vec::leak(vec![&b"match"[..], b"curl", long]);
+        assert_eq!(
+            with(2, Value::Series(labels)),
+            Err(InputError::ValueTooLong {
+                row: 0,
+                column: "target_kept",
+                len: limit + 1,
+                limit
+            })
+        );
+        // A text value as long as a chunk is allowed, but the row then exceeds the chunk.
+        let text: &'static [u8] = Vec::leak(vec![b'x'; crate::chunk::format::MAX_LARGE_VALUE_LEN]);
+        assert_eq!(
+            with(6, Value::Bytes(text)),
+            Err(InputError::RowTooLarge { row: 0 })
+        );
+        let error = with(6, Value::Bytes(text)).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Local);
     }
 
     #[test]

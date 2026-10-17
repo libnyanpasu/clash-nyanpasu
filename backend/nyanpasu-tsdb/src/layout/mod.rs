@@ -3,7 +3,7 @@
 //! version (§0.3 rule 6).
 
 pub(crate) mod keys;
-mod manifest;
+pub(crate) mod manifest;
 pub(crate) mod meta;
 pub(crate) mod record;
 
@@ -21,17 +21,9 @@ pub(crate) const COMBO_INDEX: Ns = Ns(3);
 pub(crate) const PINS: Ns = Ns(4);
 /// Journal records not yet in chunks: source and journal sequence → deltas (§4.2).
 pub(crate) const JOURNAL: Ns = Ns(5);
-/// The chunk manifest.
-#[allow(
-    dead_code,
-    reason = "reserved for the manifest, which L0 chunking writes"
-)]
+/// The chunk manifest: (stream, extent, chunk id) → chunk record (see `manifest`).
 pub(crate) const MANIFEST: Ns = Ns(6);
-/// The extents of each tier and stream.
-#[allow(
-    dead_code,
-    reason = "reserved for the extents, which L0 chunking writes"
-)]
+/// The extents of each tier and stream: (stream, extent) → its chunk and journal bytes.
 pub(crate) const EXTENTS: Ns = Ns(7);
 /// The consumer's pin keys: pin key → the combination pinned under it (§5.3).
 pub(crate) const PIN_KEYS: Ns = Ns(8);

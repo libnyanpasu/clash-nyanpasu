@@ -29,12 +29,9 @@
 //!
 //! Merging these records into catalog chunks (§5.1) is deferred.
 
-use std::{borrow::Cow, fmt, marker::PhantomData, ops::ControlFlow};
+use std::{borrow::Cow, ops::ControlFlow};
 
-use serde::{
-    Deserialize, Deserializer, Serialize,
-    de::{Error as _, SeqAccess, Visitor},
-};
+use serde::{Deserialize, Deserializer, Serialize};
 use snafu::{ResultExt, ensure};
 
 use super::{
@@ -56,7 +53,7 @@ use crate::{
     layout::{
         COMBO_INDEX, COMBOS, LABELS, PIN_KEYS, PINS,
         keys::{KeyBuf, KeyError, KeyReader},
-        record::{self, encode},
+        record::{self, bounded, encode},
     },
     schema::MAX_DIMENSIONS,
     storage::{Direction, KeyRange, StorageError, StorageRead, StorageWrite},
@@ -82,43 +79,6 @@ fn combo_labels<'de, 'a, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Cow<'a, [u32]>, D::Error> {
     bounded::<_, _, MAX_DIMENSIONS>(deserializer).map(Cow::Owned)
-}
-
-/// Deserializes a list of at most `N` elements. A longer one fails as soon as its length
-/// prefix says so, or, when the input could not hold that many, at element `N + 1`: either
-/// way before the list holds more than `N`. serde's own `Vec` is bounded by the input alone
-/// (see `chunk::format`, whose directory lists are bounded the same way).
-fn bounded<'de, D, T, const N: usize>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    struct Bounded<T, const N: usize>(PhantomData<T>);
-
-    impl<'de, T: Deserialize<'de>, const N: usize> Visitor<'de> for Bounded<T, N> {
-        type Value = Vec<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(formatter, "at most {N} elements")
-        }
-
-        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<T>, A::Error> {
-            let hint = seq.size_hint().unwrap_or(0);
-            if hint > N {
-                return Err(A::Error::invalid_length(hint, &self));
-            }
-            let mut elements = Vec::with_capacity(hint);
-            while let Some(element) = seq.next_element()? {
-                if elements.len() == N {
-                    return Err(A::Error::invalid_length(N + 1, &self));
-                }
-                elements.push(element);
-            }
-            Ok(elements)
-        }
-    }
-
-    deserializer.deserialize_seq(Bounded::<T, N>(PhantomData))
 }
 
 /// The reverse lookup's answer for the label ids in the key.

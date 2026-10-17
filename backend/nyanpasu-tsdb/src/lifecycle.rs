@@ -1,7 +1,9 @@
 //! The owner's lifecycle (§7.5, §9.3, §10.2):
 //!
 //! - open: create or check the dataset, increment the incarnation and commit it durably,
-//!   load the catalog, rebuild the head;
+//!   load the catalog, rebuild the head within its budget, then chunk the sources it leaves
+//!   out and fold or chunk the journal below its cap, as after the profile shrank, in a
+//!   durable commit (§4.2);
 //! - recovery after an unknown commit or a failed backend: revoke snapshots, close by
 //!   dropping the backend, wait until their reservations are returned, reopen, rebuild;
 //! - the unavailable state, retried at the owner's next scheduled commit;
@@ -18,7 +20,7 @@ use crate::{
     ErrorKind, Profile, ProfileError, Schema, SchemaError,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::{Catalog, LoadError},
-    head::{Head, RebuildError},
+    head::{Head, HeadUpdate, JournalSources, RebuildError, Rebuilt},
     layout::meta::{
         FormatRecord, MetaError, STORE_FORMAT, StateRecord, read_format, read_state, write_format,
         write_state,
@@ -28,6 +30,7 @@ use crate::{
         StorageWrite,
     },
     version::Version,
+    write::chunking::{ChunkingError, Execution, Planning, Shape, least_staging, widest_build},
 };
 
 /// An opened dataset, before the facade wraps it.
@@ -35,9 +38,11 @@ pub(crate) struct Opened<S> {
     pub(crate) storage: S,
     pub(crate) version: Version,
     pub(crate) incarnation: u64,
+    pub(crate) shape: Shape,
     pub(crate) head_budget: MemoryBudget,
     /// The head's bytes, reserved from `head_budget`.
     pub(crate) head: Reservation,
+    pub(crate) staging_budget: MemoryBudget,
 }
 
 /// Opens the dataset in `storage`, which the host built with the profile's backend cache,
@@ -49,28 +54,202 @@ pub(crate) fn open<S: Storage>(
 ) -> Result<Opened<S>, OpenError> {
     schema.validate().context(InvalidSchemaSnafu)?;
     profile.validate().context(InvalidProfileSnafu)?;
+    let shape = Shape::new(schema);
+    // Below one record's chunk build beside the plan of a full head, a trigger would wait
+    // forever and the head would fill: no commit could chunk.
+    let needed = least_staging(schema, &shape, profile.head);
+    ensure!(
+        profile.staging >= needed,
+        StagingTooSmallSnafu {
+            staging: profile.staging,
+            needed
+        }
+    );
     let state = commit_incarnation(&storage, schema)?;
 
     let snapshot = storage.snapshot().context(OpenSnapshotSnafu)?;
     let catalog = Catalog::load(&snapshot, schema, profile.catalog).context(LoadCatalogSnafu)?;
-    let head = Head::rebuild(&snapshot, schema, &catalog, &state).context(RebuildHeadSnafu)?;
-    drop(snapshot);
-
     let head_budget = MemoryBudget::new(profile.head);
-    let reservation = head_budget
-        .try_reserve("head", head.bytes())
-        .context(ReserveHeadSnafu)?;
+    let rebuilt = Head::rebuild_within(&snapshot, schema, &catalog, &state, &head_budget, &shape)
+        .context(RebuildHeadSnafu)?;
+    let staging_budget = MemoryBudget::new(profile.staging);
+    let settled = Opening {
+        schema,
+        profile,
+        shape: &shape,
+        staging_budget: &staging_budget,
+        catalog: &catalog,
+    }
+    .settle(&storage, &snapshot, state, rebuilt)?;
+    drop(snapshot);
     Ok(Opened {
         storage,
         version: Version {
-            publication: state.publication,
+            publication: settled.state.publication,
             catalog,
-            head,
+            head: settled.head,
         },
-        incarnation: state.incarnation,
+        incarnation: settled.state.incarnation,
+        shape,
         head_budget,
-        head: reservation,
+        head: settled.reservation,
+        staging_budget,
     })
+}
+
+/// What bringing a rebuilt head within the profile needs on open.
+struct Opening<'a> {
+    schema: &'a Schema,
+    profile: &'a Profile,
+    shape: &'a Shape,
+    staging_budget: &'a MemoryBudget,
+    catalog: &'a Catalog,
+}
+
+/// The dataset as opening leaves it.
+struct Settled {
+    state: StateRecord,
+    head: Head,
+    /// The head's bytes, reserved from the head budget.
+    reservation: Reservation,
+}
+
+impl Opening<'_> {
+    /// Brings the head rebuilt from `snapshot` within both limits of §4.2 in one durable
+    /// commit, when it is not, as after the profile shrank: the sources the rebuild left out
+    /// of the head budget are chunked record by record, and the journal is folded or
+    /// chunked below its cap, as a commit would, even when the head fits.
+    fn settle<S: Storage>(
+        &self,
+        storage: &S,
+        snapshot: &S::Snapshot,
+        state: StateRecord,
+        rebuilt: Rebuilt,
+    ) -> Result<Settled, OpenError> {
+        let Rebuilt {
+            head,
+            mut reservation,
+        } = rebuilt;
+        let mut batch = None;
+        let mut next_chunk = state.next_chunk;
+        let mut next_seq = state.next_journal_seq;
+        let mut absorbed = 0;
+        if self.leaves_out(snapshot, &head)? {
+            let staging = self
+                .staging_budget
+                .try_reserve("staging", widest_build(self.schema, self.shape))
+                .context(ReserveStagingSnafu)?;
+            let mut execution = Execution {
+                batch: batch.insert(storage.batch().context(BeginChunkingSnafu)?),
+                schema: self.schema,
+                shape: self.shape,
+                next_chunk,
+                next_seq,
+            };
+            let mut sources = JournalSources::new(snapshot);
+            while let Some(source) = sources.next_source().context(FindLeftOutSnafu)? {
+                if !head.holds(source) {
+                    absorbed += execution
+                        .absorb(snapshot, self.catalog, source)
+                        .context(ChunkLeftOutSnafu)?;
+                }
+            }
+            next_chunk = execution.next_chunk;
+            next_seq = execution.next_seq;
+            drop(staging);
+        }
+        // The rebuild checked that the snapshot's records add up to the state's bytes, and
+        // these are some of them.
+        let journal_bytes = state
+            .journal_bytes
+            .checked_sub(absorbed)
+            .context(CountJournalSnafu)?;
+
+        let update = HeadUpdate::default();
+        let mut staging = self
+            .staging_budget
+            .try_reserve("staging", 0)
+            .context(ReserveStagingSnafu)?;
+        let plan = Planning {
+            schema: self.schema,
+            profile: self.profile,
+            shape: self.shape,
+            current: &head,
+            update: &update,
+            journal_bytes,
+            // The rebuild kept the head within its budget.
+            head_limit: self.profile.head,
+            staging_available: self
+                .profile
+                .staging
+                .saturating_sub(self.staging_budget.reserved()),
+        }
+        .plan_commit(None, &mut staging)
+        .context(ReserveStagingSnafu)?;
+        if batch.is_none() && plan.is_empty() {
+            return Ok(Settled {
+                state,
+                head,
+                reservation,
+            });
+        }
+        staging
+            .try_grow(plan.staging)
+            .context(ReserveStagingSnafu)?;
+        let mut batch = match batch {
+            Some(batch) => batch,
+            None => storage.batch().context(BeginChunkingSnafu)?,
+        };
+        let executed = Execution {
+            batch: &mut batch,
+            schema: self.schema,
+            shape: self.shape,
+            next_chunk,
+            next_seq,
+        }
+        .run(&plan, &head, update)
+        .context(CapJournalSnafu)?;
+        drop(plan);
+        let state = StateRecord {
+            next_chunk: executed.next_chunk,
+            next_journal_seq: executed.next_seq,
+            journal_bytes: journal_bytes
+                .checked_add(executed.journal_added)
+                .and_then(|bytes| bytes.checked_sub(executed.journal_removed))
+                .context(CountJournalSnafu)?,
+            ..state
+        };
+        write_state(&mut batch, &state).context(WriteChunkedStateSnafu)?;
+        batch
+            .commit(Durability::Durable)
+            .context(CommitChunksSnafu)?;
+        drop(staging);
+        // Chunking drops sources and folding keeps a source's bytes, so the head shrinks
+        // into its reservation.
+        let head = executed.head;
+        debug_assert!(
+            head.bytes() <= reservation.bytes(),
+            "the opening grew the head"
+        );
+        reservation.shrink(reservation.bytes().saturating_sub(head.bytes()));
+        Ok(Settled {
+            state,
+            head,
+            reservation,
+        })
+    }
+
+    /// Whether the journal of `snapshot` has a source `head` does not hold: one the rebuild
+    /// left out of the head budget.
+    fn leaves_out(&self, snapshot: &impl StorageRead, head: &Head) -> Result<bool, OpenError> {
+        let mut sources = JournalSources::new(snapshot);
+        while let Some(source) = sources.next_source().context(FindLeftOutSnafu)? {
+            if !head.holds(source) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
 }
 
 /// Creates the dataset or checks that it was written in this format and schema, then
@@ -154,6 +333,14 @@ pub enum OpenError {
     #[snafu(display("invalid profile"))]
     InvalidProfile { source: ProfileError },
 
+    /// The profile's staging budget cannot hold the chunk build of one record of the widest
+    /// stream or tier of the schema beside the plan of a full head, so a trigger could wait
+    /// forever (§7.4).
+    #[snafu(display(
+        "the staging budget of {staging} bytes cannot hold a chunk build of {needed} bytes"
+    ))]
+    StagingTooSmall { staging: u64, needed: u64 },
+
     #[snafu(display("failed to begin the transaction that opens the dataset"))]
     BeginBatch { source: StorageError },
 
@@ -211,10 +398,35 @@ pub enum OpenError {
     #[snafu(display("failed to rebuild the head from the journal"))]
     RebuildHead { source: RebuildError },
 
-    /// The journal holds more than the head budget, as after the profile shrank. Until L0
-    /// chunking, nothing can make it smaller.
-    #[snafu(display("the head does not fit its budget"))]
-    ReserveHead { source: BudgetExceeded },
+    /// The staging budget cannot hold the chunking or folding that brings the head and the
+    /// journal within their limits.
+    #[snafu(display("the staging budget has no room to bring the journal within its limits"))]
+    ReserveStaging { source: BudgetExceeded },
+
+    #[snafu(display("failed to begin the transaction that brings the journal within its limits"))]
+    BeginChunking { source: StorageError },
+
+    #[snafu(display("failed to find the sources left out of the head"))]
+    FindLeftOut { source: RebuildError },
+
+    #[snafu(display("failed to chunk the sources left out of the head"))]
+    ChunkLeftOut { source: ChunkingError },
+
+    #[snafu(display("failed to fold or chunk the journal below its cap"))]
+    CapJournal { source: ChunkingError },
+
+    /// The journal bytes the opening removes or adds take the state record's count below
+    /// zero or past `u64::MAX`: the count is damaged.
+    #[snafu(display("the state record cannot count the journal bytes the opening changed"))]
+    CountJournal,
+
+    #[snafu(display(
+        "failed to write the state record after bringing the journal within its limits"
+    ))]
+    WriteChunkedState { source: StorageError },
+
+    #[snafu(display("failed to commit what brings the journal within its limits"))]
+    CommitChunks { source: CommitFailure },
 }
 
 impl OpenError {
@@ -222,19 +434,24 @@ impl OpenError {
         match self {
             Self::InvalidSchema { source } => source.kind(),
             Self::InvalidProfile { source } => source.kind(),
+            Self::StagingTooSmall { .. } => ErrorKind::Local,
             Self::BeginBatch { source }
             | Self::ScanStorage { source, .. }
             | Self::WriteFormat { source }
             | Self::WriteState { source }
-            | Self::OpenSnapshot { source } => source.kind(),
+            | Self::OpenSnapshot { source }
+            | Self::BeginChunking { source }
+            | Self::WriteChunkedState { source } => source.kind(),
             Self::ReadFormat { source } | Self::ReadState { source } => source.kind(),
-            Self::MissingFormat { .. } => ErrorKind::Corrupted,
+            Self::MissingFormat { .. } | Self::CountJournal => ErrorKind::Corrupted,
             Self::StoreFormat { .. } | Self::SchemaMismatch { .. } => ErrorKind::Local,
             Self::IncarnationOverflow => ErrorKind::Corrupted,
-            Self::CommitIncarnation { source } => source.kind(),
+            Self::CommitIncarnation { source } | Self::CommitChunks { source } => source.kind(),
             Self::LoadCatalog { source } => source.kind(),
             Self::RebuildHead { source } => source.kind(),
-            Self::ReserveHead { source } => source.kind(),
+            Self::ReserveStaging { source } => source.kind(),
+            Self::FindLeftOut { source } => source.kind(),
+            Self::ChunkLeftOut { source } | Self::CapJournal { source } => source.kind(),
         }
     }
 }

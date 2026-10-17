@@ -20,6 +20,8 @@ use crate::{
 ///
 /// On a failure the pending version is withdrawn and its reservation returned, whether or
 /// not the batch applied: after an unknown outcome the owner recovers from storage (§7.5).
+/// The staging memory is returned once the version is published or withdrawn: the copies it
+/// covered are then held once, by the current version or by the snapshots that reserved them.
 pub(crate) fn commit(
     batch: impl StorageWrite,
     staged: Staged,
@@ -30,13 +32,16 @@ pub(crate) fn commit(
     let Staged {
         version,
         growth,
+        staging,
         written,
     } = staged;
     let pending = registry.register(version, growth);
     if let Err(failure) = batch.commit(durability) {
         pending.fail(&failure);
+        drop(staging);
         return Err(failure);
     }
     pending.publish(head);
+    drop(staging);
     Ok(written)
 }

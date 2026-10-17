@@ -1,0 +1,21 @@
+[package]
+name = 'nyanpasu-tsdb'
+version = '0.1.0'
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+# The redb backend (design §3.4). The port, the core and the in-memory backend
+# build without it.
+redb = []
+
+[dependencies]
+# The schema fingerprint is the hash of the schema's postcard encoding, whose wire
+# format is specified and stable (schema.rs).
+postcard = { version = '1.1', default-features = false, features = ['use-std'] }
+serde = { version = '1', features = ['derive'] }
+snafu.workspace = true
+
+[dev-dependencies]
+proptest = { version = '1', default-features = false, features = ['std'] }

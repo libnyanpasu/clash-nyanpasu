@@ -1329,6 +1329,7 @@ pub mod uwp {
 #[specta::specta]
 pub async fn set_tray_icon(
     app_handle: tauri::AppHandle,
+    client: State<'_, NyanpasuClient>,
     paths: State<'_, PathResolver>,
     mode: TrayIcon,
     path: Option<PathBuf>,
@@ -1338,6 +1339,8 @@ pub async fn set_tray_icon(
     // tray is queued.
     (crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(paths, &mode)))?;
     (crate::core::tray::Tray::request(&app_handle, crate::core::tray::TrayWork::PART))?;
+    // The widget logo may show the tray's icons.
+    client.request_widget_logo_refresh()?;
     Ok(())
 }
 
@@ -1350,16 +1353,7 @@ pub async fn set_tray_icon_from_bytes(
     mode: TrayIcon,
     bytes_base64: String,
 ) -> Result {
-    const MAX_ICON_BYTES: usize = 1024 * 1024;
-    if bytes_base64.len() > MAX_ICON_BYTES.div_ceil(3) * 4 {
-        return Err("Tray icon image exceeds the 1 MiB limit".to_owned().into());
-    }
-    let bytes = BASE64_STANDARD
-        .decode(bytes_base64)
-        .map_err(anyhow::Error::from)?;
-    if bytes.len() > MAX_ICON_BYTES {
-        return Err("Tray icon image exceeds the 1 MiB limit".to_owned().into());
-    }
+    let bytes = decode_icon_upload(&bytes_base64, "Tray")?;
     crate::core::tray::icon::set_icon_from_bytes(paths, mode, &bytes)?;
     crate::core::tray::icon::check_icon(&crate::core::tray::icon::get_icon(paths, &mode))?;
     client.request_tray_refresh()?;
@@ -1372,6 +1366,72 @@ pub async fn set_tray_icon_from_bytes(
 pub async fn is_tray_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> {
     let icon_path = crate::core::tray::icon::tray_icons_path(paths, mode.as_str());
     Ok(tokio::fs::metadata(icon_path).await.is_ok())
+}
+
+/// Decodes an uploaded icon of at most 1 MiB. `kind` names the icon in the
+/// error.
+fn decode_icon_upload(bytes_base64: &str, kind: &str) -> Result<Vec<u8>> {
+    const MAX_ICON_BYTES: usize = 1024 * 1024;
+    let too_large = || Err(format!("{kind} icon image exceeds the 1 MiB limit").into());
+    if bytes_base64.len() > MAX_ICON_BYTES.div_ceil(3) * 4 {
+        return too_large();
+    }
+    let bytes = BASE64_STANDARD
+        .decode(bytes_base64)
+        .map_err(anyhow::Error::from)?;
+    if bytes.len() > MAX_ICON_BYTES {
+        return too_large();
+    }
+    Ok(bytes)
+}
+
+/// The statistic widget's own icon for `mode`, or the bundled one.
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_widget_icon(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<IconData> {
+    let bytes = crate::core::widget_logo::get_raw_icon(paths, mode);
+    Ok(IconData {
+        data_url: format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes)),
+    })
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn is_widget_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> {
+    Ok(crate::core::widget_logo::is_icon_set(paths, mode))
+}
+
+/// Sets the statistic widget's own icon for `mode` from a file, or resets it
+/// to the bundled one when `path` is `None`.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn set_widget_icon(
+    client: State<'_, NyanpasuClient>,
+    paths: State<'_, PathResolver>,
+    mode: TrayIcon,
+    path: Option<PathBuf>,
+) -> Result {
+    crate::core::widget_logo::set_icon(paths, mode, path)?;
+    client.request_widget_logo_refresh()?;
+    Ok(())
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn set_widget_icon_from_bytes(
+    client: State<'_, NyanpasuClient>,
+    paths: State<'_, PathResolver>,
+    mode: TrayIcon,
+    bytes_base64: String,
+) -> Result {
+    let bytes = decode_icon_upload(&bytes_base64, "Widget")?;
+    crate::core::widget_logo::set_icon_from_bytes(paths, mode, &bytes)?;
+    client.request_widget_logo_refresh()?;
+    Ok(())
 }
 
 pub mod service {

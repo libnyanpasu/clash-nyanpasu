@@ -284,6 +284,7 @@
   "settings_nyanpasu_network_statistic_widget_disabled": "無効",
   "settings_nyanpasu_network_statistic_widget_large": "詳細",
   "settings_nyanpasu_network_statistic_widget_small": "コンパクト",
+  "settings_nyanpasu_network_statistic_widget_logo_label": "ウィジェットのアイコン",
   "settings_nyanpasu_enhance_label": "拡張機能",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_label": "内蔵スクリプトを有効化",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_description": "内蔵スクリプトを適用して、有効なファイルを前処理・変更します。",

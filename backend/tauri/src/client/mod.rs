@@ -908,6 +908,13 @@ impl NyanpasuClient {
         self.inner.effects.request_tray_refresh()
     }
 
+    /// Resolves the widget logo again after an icon file changed.
+    pub fn request_widget_logo_refresh(
+        &self,
+    ) -> std::result::Result<(), effects::error::EffectsError> {
+        self.inner.effects.request_widget_logo_refresh()
+    }
+
     pub async fn save_main_window_geometry(
         &self,
         geometry: nyanpasu_config::state::window::WindowState,

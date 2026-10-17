@@ -254,6 +254,7 @@
   "settings_nyanpasu_network_statistic_widget_disabled": "Отключено",
   "settings_nyanpasu_network_statistic_widget_large": "Подробный",
   "settings_nyanpasu_network_statistic_widget_small": "Компактный",
+  "settings_nyanpasu_network_statistic_widget_logo_label": "Значок виджета",
   "settings_nyanpasu_enhance_label": "Расширения",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_label": "Включить встроенные скрипты",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_description": "Использовать встроенные скриптовые расширения для обработки профиля",

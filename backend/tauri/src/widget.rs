@@ -10,7 +10,7 @@ use crate::client::{
 
 use futures::future::BoxFuture;
 use nyanpasu_widget_protocol::{
-    Message, StatisticMessage, StatisticWidgetVariant,
+    Logo, Message, StatisticMessage, StatisticWidgetVariant,
     ipc::{Bootstrap, WidgetIpcError, WidgetSender, accept, create_server, send_message},
 };
 use snafu::{IntoError as _, ResultExt as _, Snafu, ensure};
@@ -82,6 +82,8 @@ type SharedLink = Arc<dyn WidgetLink>;
 pub struct WidgetManager {
     host: Arc<dyn WidgetHost>,
     instance: Arc<Mutex<Option<WidgetInstance>>>,
+    /// The logo every started widget is sent once it connects.
+    logo: Arc<std::sync::Mutex<Logo>>,
     listener_initd: Arc<AtomicBool>,
     /// Once cancelled, no widget starts, a handshake in progress ends, and
     /// the tracked stop reaps whatever is owned.
@@ -112,6 +114,7 @@ impl WidgetManager {
         let manager = Self {
             host,
             instance: Arc::new(Mutex::new(None)),
+            logo: Arc::default(),
             listener_initd: Arc::new(AtomicBool::new(false)),
             shutdown,
         };
@@ -225,7 +228,16 @@ impl WidgetManager {
         match linked {
             Ok(link) => {
                 if let Some(WidgetInstance::Starting { process }) = instance.take() {
-                    instance.replace(WidgetInstance::Running { link, process });
+                    instance.replace(WidgetInstance::Running {
+                        link: link.clone(),
+                        process,
+                    });
+                }
+                // Before the start returns, so no logo set meanwhile can be
+                // overtaken by this older one.
+                let logo = self.logo.lock().unwrap().clone();
+                if let Err(error) = send(&link, Message::UpdateLogo(logo)).await {
+                    tracing::warn!("failed to send the logo to the widget: {error}");
                 }
                 Ok(())
             }
@@ -292,6 +304,24 @@ impl WidgetManager {
         }
         *slot = None;
         Ok(())
+    }
+
+    /// Remembers `logo` and sends it to the running widget.
+    pub async fn set_logo(&self, logo: Logo) {
+        *self.logo.lock().unwrap() = logo.clone();
+        let link = {
+            let mut instance = self.instance.lock().await;
+            let Some(WidgetInstance::Running { link, process }) = instance.as_mut() else {
+                return;
+            };
+            if has_exited(process) {
+                return;
+            }
+            link.clone()
+        };
+        if let Err(error) = send(&link, Message::UpdateLogo(logo)).await {
+            tracing::warn!("failed to send the logo to the widget: {error}");
+        }
     }
 
     pub async fn is_running(&self) -> bool {
@@ -654,7 +684,8 @@ pub(crate) mod tests {
     }
 
     /// The manager's own messages reach the widget's receiver loop over a
-    /// real channel, and `Stop` ends the widget.
+    /// real channel, and `Stop` ends the widget. The logo set before the
+    /// start arrives first, and one set later follows.
     #[tokio::test]
     async fn a_real_channel_carries_updates_and_stop_to_the_widget() {
         let (received, messages) = std::sync::mpsc::channel();
@@ -662,8 +693,12 @@ pub(crate) mod tests {
             received: StdMutex::new(Some(received)),
         });
         let manager = WidgetManager::new(host, CancellationToken::new(), &TaskTracker::new());
+        let tun = Logo::Builtin(nyanpasu_widget_protocol::LogoPreset::Tun);
+        manager.set_logo(tun.clone()).await;
         manager.start(StatisticWidgetVariant::Large).await.unwrap();
         assert!(manager.is_running().await);
+        let image = Logo::Image(vec![0x89, b'P', b'N', b'G']);
+        manager.set_logo(image.clone()).await;
 
         let link = match manager.instance.lock().await.as_ref() {
             Some(WidgetInstance::Running { link, .. }) => link.clone(),
@@ -675,6 +710,8 @@ pub(crate) mod tests {
         drop(link);
         manager.stop(within(Duration::from_secs(5))).await.unwrap();
 
+        assert!(matches!(messages.recv().unwrap(), Message::UpdateLogo(logo) if logo == tun));
+        assert!(matches!(messages.recv().unwrap(), Message::UpdateLogo(logo) if logo == image));
         assert!(matches!(
             messages.recv().unwrap(),
             Message::UpdateStatistic(_)

@@ -284,6 +284,7 @@
   "settings_nyanpasu_network_statistic_widget_disabled": "Disabled",
   "settings_nyanpasu_network_statistic_widget_large": "Detailed",
   "settings_nyanpasu_network_statistic_widget_small": "Compact",
+  "settings_nyanpasu_network_statistic_widget_logo_label": "Widget Logo",
   "settings_nyanpasu_enhance_label": "Enhance",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_label": "Enable Built-in Script Enhancements",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_description": "Applies built-in scripts to preprocess and modify active profiles.",

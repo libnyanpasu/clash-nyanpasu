@@ -284,6 +284,7 @@
   "settings_nyanpasu_network_statistic_widget_disabled": "停用",
   "settings_nyanpasu_network_statistic_widget_large": "詳細",
   "settings_nyanpasu_network_statistic_widget_small": "簡潔",
+  "settings_nyanpasu_network_statistic_widget_logo_label": "懸浮窗圖示",
   "settings_nyanpasu_enhance_label": "增強功能",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_label": "啟用內建指令碼支援",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_description": "使用內建的指令碼增強功能處理設定檔。",

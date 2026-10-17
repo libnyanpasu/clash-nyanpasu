@@ -284,6 +284,7 @@
   "settings_nyanpasu_network_statistic_widget_disabled": "禁用",
   "settings_nyanpasu_network_statistic_widget_large": "详细",
   "settings_nyanpasu_network_statistic_widget_small": "简洁",
+  "settings_nyanpasu_network_statistic_widget_logo_label": "悬浮窗图标",
   "settings_nyanpasu_enhance_label": "增强功能",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_label": "启用内置脚本支持",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_description": "使用内置的脚本增强功能处理配置文件。",

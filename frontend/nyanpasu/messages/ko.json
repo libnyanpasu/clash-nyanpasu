@@ -254,6 +254,7 @@
   "settings_nyanpasu_network_statistic_widget_disabled": "사용 안 함",
   "settings_nyanpasu_network_statistic_widget_large": "상세",
   "settings_nyanpasu_network_statistic_widget_small": "간략",
+  "settings_nyanpasu_network_statistic_widget_logo_label": "위젯 아이콘",
   "settings_nyanpasu_enhance_label": "확장 기능",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_label": "내장 확장 기능 사용",
   "settings_nyanpasu_enhance_enable_builtin_enhanced_description": "내장 스크립트 확장 기능을 사용하여 프로필을 처리합니다",

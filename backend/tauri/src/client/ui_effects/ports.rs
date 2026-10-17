@@ -6,12 +6,17 @@
 
 use std::time::Duration;
 
-use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
-use nyanpasu_widget_protocol::{StatisticWidgetVariant, ipc::WidgetIpcError};
+use nyanpasu_config::application::{
+    I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NetworkStatisticWidgetLogoSource,
+};
+use nyanpasu_widget_protocol::{Logo, StatisticWidgetVariant, ipc::WidgetIpcError};
 use snafu::Snafu;
 use tokio::time::Instant;
 
-use crate::client::effects::{plan::TrayView, status::EffectFailureCode};
+use crate::client::effects::{
+    plan::{TrayView, WidgetLogoState},
+    status::EffectFailureCode,
+};
 
 /// The process-wide i18n locale that the tray menu labels are rendered from.
 /// Setting it cannot fail.
@@ -145,6 +150,13 @@ impl WidgetError {
 #[cfg_attr(test, mockall::automock)]
 pub trait WidgetController: Send + Sync + 'static {
     async fn apply(&self, config: NetworkStatisticWidgetConfig) -> Result<(), WidgetError>;
+    /// Shows the icon of `state` from `source`: in the running widget now,
+    /// and in every widget started later.
+    async fn show_logo(
+        &self,
+        source: NetworkStatisticWidgetLogoSource,
+        state: WidgetLogoState,
+    ) -> Result<(), WidgetError>;
 }
 
 /// The widget process itself, as the controller uses it.
@@ -158,4 +170,7 @@ pub trait WidgetRuntime: Send + Sync + 'static {
     async fn start(&self, variant: StatisticWidgetVariant) -> Result<(), WidgetError>;
     async fn stop(&self, deadline: Instant) -> Result<(), WidgetError>;
     async fn is_running(&self) -> bool;
+    /// Remembers `logo` for every later start and sends it to the running
+    /// widget. A send that fails is only logged, as a traffic sample is.
+    async fn set_logo(&self, logo: Logo);
 }

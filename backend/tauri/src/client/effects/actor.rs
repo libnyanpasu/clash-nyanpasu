@@ -129,8 +129,9 @@ enum Slice {
     Ports(Option<ResolvedPortBindings>),
     /// A profile commit does not change effect inputs, but refreshes the tray.
     Profiles,
-    /// An explicit request to redraw the tray after an external icon change.
-    TrayRefresh,
+    /// A tray or widget icon file changed: the widget logo is resolved again,
+    /// and the tray redraws when the publish asks for a refresh.
+    Icons,
 }
 
 fn group(kind: EffectKind) -> usize {
@@ -138,7 +139,11 @@ fn group(kind: EffectKind) -> usize {
         // One owner: the system proxy actor also applies auto-launch.
         EffectKind::SystemProxy | EffectKind::ProxyGuard | EffectKind::AutoLaunch => 0,
         EffectKind::Hotkeys => 1,
-        EffectKind::Locale | EffectKind::Logger | EffectKind::Widget | EffectKind::Tray => 2,
+        EffectKind::Locale
+        | EffectKind::Logger
+        | EffectKind::Widget
+        | EffectKind::WidgetLogo
+        | EffectKind::Tray => 2,
         // One owner: the client's wrapper applies both to the Core log owners.
         EffectKind::CoreLogLevel | EffectKind::CoreLogStorage => 3,
     }
@@ -364,7 +369,8 @@ impl Actor for EffectsActor {
                     Slice::Application(app) => inputs.app = *app,
                     Slice::Clash(clash) => inputs.clash = clash,
                     Slice::Ports(ports) => inputs.ports = ports,
-                    Slice::Profiles | Slice::TrayRefresh => {}
+                    Slice::Icons => inputs.icon_revision += 1,
+                    Slice::Profiles => {}
                 }
                 let changed: Vec<_> = ApplicationEffectPlan::diff(&state.desired, &inputs)
                     .effects()
@@ -531,11 +537,22 @@ impl EffectsClient {
             .context(EffectsStoppedSnafu)
     }
 
+    /// A tray icon file changed: the tray redraws, and the widget logo follows
+    /// in case it shows the tray's icons.
     pub fn request_tray_refresh(&self) -> Result<(), EffectsError> {
+        self.publish_icons(true)
+    }
+
+    /// A widget icon file changed.
+    pub fn request_widget_logo_refresh(&self) -> Result<(), EffectsError> {
+        self.publish_icons(false)
+    }
+
+    fn publish_icons(&self, refresh_tray: bool) -> Result<(), EffectsError> {
         self.actor
             .cast(Message::Publish {
-                slice: Slice::TrayRefresh,
-                refresh: true,
+                slice: Slice::Icons,
+                refresh: refresh_tray,
                 full: false,
                 requested: Vec::new(),
             })

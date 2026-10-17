@@ -164,13 +164,13 @@ export default memo(function ProxyNodeButton({
             loading={delayTask.isPending}
             asChild
           >
-            {delay !== undefined && delay > 0 ? (
-              <DelayChip delay={delay} />
-            ) : (
-              <span>
+            <span>
+              {delay !== undefined && delay > 0 ? (
+                <DelayChip delay={delay} />
+              ) : (
                 <FlashOnRounded className="py-1" />
-              </span>
-            )}
+              )}
+            </span>
           </Button>
         </div>
       </Button>

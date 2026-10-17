@@ -104,6 +104,48 @@ test('the delay chip shows the delay the page computed', async () => {
     .toBe('77 ms')
 })
 
+test('retesting a measured node shows loading until the test finishes', async () => {
+  const measurement = Promise.withResolvers<void>()
+  const onSelect = vi.fn(async () => {})
+  const onDelayTest = vi.fn(() => measurement.promise)
+  const screen = await render(
+    <BlockTaskProvider>
+      <TooltipProvider>
+        <ProxyNodeButton
+          proxy={proxy}
+          selectable
+          fixed={false}
+          onSelect={onSelect}
+          onDelayTest={onDelayTest}
+          history={proxy.history}
+          delay={189}
+        />
+      </TooltipProvider>
+    </BlockTaskProvider>,
+  )
+
+  try {
+    await screen.getByText('189 ms').click()
+    await expect.poll(() => onDelayTest).toHaveBeenCalledWith(proxy)
+    await expect
+      .poll(() =>
+        screen.container.querySelector('[data-slot="button-loading"]'),
+      )
+      .not.toBeNull()
+    expect(onSelect).not.toHaveBeenCalled()
+
+    measurement.resolve()
+    await expect
+      .poll(() =>
+        screen.container.querySelector('[data-slot="button-loading"]'),
+      )
+      .toBeNull()
+    await expect.element(screen.getByText('189 ms')).toBeVisible()
+  } finally {
+    measurement.resolve()
+  }
+})
+
 test('a nested group member shows its leaf node', async () => {
   const { screen } = await renderButton(true, false, proxy, {
     delay: 42,

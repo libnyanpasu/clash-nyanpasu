@@ -336,6 +336,9 @@ impl WindowManager {
                         windows.close(&event_label);
                     }
                 }
+                // Minimizing and restoring resize the window, whoever does it:
+                // the taskbar and the title bar never go through the manager.
+                WindowEvent::Resized(_) => follow_minimized(&window),
                 WindowEvent::Destroyed => {
                     tracing::debug!("window {} destroyed, removing from the table", event_label);
                     if let Some(windows) = handle.try_state::<WindowManager>() {
@@ -410,6 +413,8 @@ fn apply(handle: &AppHandle, label: &str) {
             crate::utils::dock::macos::show_dock_icon();
         }
 
+        // The webview is in sight before its window, so it has drawn by then.
+        engine::set_in_sight(&window, true);
         trace_err!(window.unminimize(), "set win unminimize");
         trace_err!(window.show(), "set win visible");
         trace_err!(window.set_focus(), "set win focus");
@@ -429,8 +434,23 @@ fn apply(handle: &AppHandle, label: &str) {
             WindowCloseBehavior::Destroy => trace_err!(window.destroy(), "destroy window"),
             WindowCloseBehavior::Hide if actions.dismiss => {
                 trace_err!(window.hide(), "hide window");
+                engine::set_in_sight(&window, false);
             }
             WindowCloseBehavior::Hide => {}
         }
+    }
+}
+
+/// Puts the webview out of sight when its window is minimized, and back when
+/// a shown window is restored. Run inline from the window's listener, so a
+/// restore by the taskbar reaches the webview while the window handles it,
+/// which is the earliest anything can; that is safe because it only reads the
+/// window and sets its webview, which dispatches no event for the window. A
+/// hidden window is left to [`apply`], which hides it and shows it.
+fn follow_minimized(window: &WebviewWindow) {
+    if window.is_minimized().unwrap_or(false) {
+        engine::set_in_sight(window, false);
+    } else if window.is_visible().unwrap_or(false) {
+        engine::set_in_sight(window, true);
     }
 }

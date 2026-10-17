@@ -27,6 +27,7 @@ vi.mock('@nyanpasu/query', () => ({
   useCurrentProfileUid: () => 'profile',
   useCachedIcon: () => ({ data: undefined }),
   useTrayIcon: () => ({ data: undefined }),
+  useWidgetIcon: () => ({ data: undefined }),
 }))
 
 vi.mock('../src/pages/(main)/main/rules/_modules/use-rule-stats', () => ({

@@ -4,9 +4,7 @@ import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { CircularProgress } from '@nyanpasu/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
-import { TrayImage } from '@/components/ui/image'
 import { m } from '@/paraglide/messages'
-import { queries } from '@/services/rpc'
 import {
   DragDropProvider,
   DragOverlay,
@@ -19,6 +17,7 @@ import { unwrapQueryOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { useQuery } from '@tanstack/react-query'
 import { SettingsLabel } from '../../_modules/settings-card'
+import { useIconSetStore } from './icon-set-store'
 
 export type TrayIconStateMode = 'normal' | 'tun' | 'system_proxy'
 
@@ -122,7 +121,9 @@ const StateSlot = ({
 }) => {
   const reducedMotion = useReducedMotion()
 
-  const isIconSetQuery = queries.isTrayIconSet(mode)
+  const store = useIconSetStore()
+
+  const isIconSetQuery = store.isSetQuery(mode)
   const isIconSet = useQuery(
     unwrapQueryOptions(isIconSetQuery, isIconSetQuery.queryFn!),
   )
@@ -149,7 +150,7 @@ const StateSlot = ({
         transition={transition}
         className="my-1 flex size-12 items-center justify-center"
       >
-        <TrayImage className="size-11" mode={mode} />
+        <store.Image className="size-11" mode={mode} />
       </motion.span>
 
       <span

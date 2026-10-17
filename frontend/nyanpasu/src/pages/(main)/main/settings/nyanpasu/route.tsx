@@ -12,6 +12,9 @@ import HotkeyManager from './_modules/hotket-manager'
 import LocalIpProbeSwitch from './_modules/local-ip-probe-switch'
 import LogFileConfig from './_modules/log-file-config'
 import LogLevelSelector from './_modules/log-level-selector'
+import NetworkStatisticWidgetIconConfig from './_modules/network-statistic-widget-icon-config'
+import NetworkStatisticWidgetLogoFollowStateSwitch from './_modules/network-statistic-widget-logo-follow-state-switch'
+import NetworkStatisticWidgetLogoSourceSelector from './_modules/network-statistic-widget-logo-source-selector'
 import NetworkStatisticWidgetSelector from './_modules/network-statistic-widget-selector'
 import TrafficRetentionSelector from './_modules/traffic-retention-selector'
 import TrayIconConfig from './_modules/tray-icon-config'
@@ -52,6 +55,12 @@ const TrafficSettings = () => {
 }
 
 const SystemWidgetSettings = () => {
+  const { value: widget } = useSetting('network_statistic_widget')
+  const { value: logo } = useSetting('network_statistic_widget_logo')
+
+  // The logo settings only matter while a widget shows.
+  const enabled = widget?.kind === 'enabled'
+
   return (
     <div data-slot="app-settings-container">
       <SettingsLabel>
@@ -60,7 +69,15 @@ const SystemWidgetSettings = () => {
 
       <SettingsGroup>
         <NetworkStatisticWidgetSelector />
+
+        {enabled && <NetworkStatisticWidgetLogoFollowStateSwitch />}
+
+        {enabled && <NetworkStatisticWidgetLogoSourceSelector />}
       </SettingsGroup>
+
+      {enabled && logo?.source === 'widget' && (
+        <NetworkStatisticWidgetIconConfig />
+      )}
     </div>
   )
 }

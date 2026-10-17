@@ -7,18 +7,11 @@ import { Button } from '@nyanpasu/ui/button'
 import { MaterialShape } from '@nyanpasu/ui/material-shape'
 import { CircularProgress } from '@nyanpasu/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
-import { TrayImage } from '@/components/ui/image'
 import { m } from '@/paraglide/messages'
-import { mutations, queries } from '@/services/rpc'
 import { pickFile, type SelectedFile } from '@/utils/file-picker'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isWindows } from '@nyanpasu/platform'
-import {
-  invokeMutation,
-  unwrapQueryOptions,
-  useTrayIcon,
-} from '@nyanpasu/query'
+import { invokeMutation, unwrapQueryOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import catNormal from '@root/backend/tauri/icons/tray/cat/normal.png'
 import catSystemProxy from '@root/backend/tauri/icons/tray/cat/system-proxy.png'
@@ -32,6 +25,7 @@ import {
   SettingsCardContent,
   SettingsLabel,
 } from '../../_modules/settings-card'
+import { useIconSetStore, type IconSetStore } from './icon-set-store'
 import {
   TrayIconEditor,
   type TrayIconLibraryItem,
@@ -70,18 +64,16 @@ const imageBase64 = async (url: string) => {
   return bytesToBase64(new Uint8Array(await response.arrayBuffer()))
 }
 
-const setTrayIconFromSelection = async (
+const setIconFromSelection = async (
+  store: IconSetStore,
   mode: TrayIconMode,
   selected: SelectedFile,
 ) => {
   if (selected.type === 'path') {
-    await invokeMutation(mutations.setTrayIcon, [mode, selected.path])
+    await invokeMutation(store.setIcon, [mode, selected.path])
   } else {
     const bytes = new Uint8Array(await selected.file.arrayBuffer())
-    await invokeMutation(mutations.setTrayIconFromBytes, [
-      mode,
-      bytesToBase64(bytes),
-    ])
+    await invokeMutation(store.setIconFromBytes, [mode, bytesToBase64(bytes)])
   }
 }
 
@@ -112,13 +104,15 @@ const isSamePixels = (a: ImageData, b: ImageData) =>
   a.data.every((value, index) => value === b.data[index])
 
 const useActivePreset = () => {
-  const normal = useTrayIcon(TrayIconMode.normal).data?.data_url
-  const tun = useTrayIcon(TrayIconMode.tun).data?.data_url
-  const systemProxy = useTrayIcon(TrayIconMode.system_proxy).data?.data_url
+  const store = useIconSetStore()
+
+  const normal = store.useIcon(TrayIconMode.normal).data?.data_url
+  const tun = store.useIcon(TrayIconMode.tun).data?.data_url
+  const systemProxy = store.useIcon(TrayIconMode.system_proxy).data?.data_url
   const urls = [normal, tun, systemProxy]
 
   return useQuery({
-    queryKey: ['trayActivePreset', ...urls],
+    queryKey: ['iconSetActivePreset', store.iconKey, ...urls],
     enabled: urls.every(Boolean),
     queryFn: async (): Promise<ActivePreset> => {
       const current = await Promise.all(urls.map((url) => imagePixels(url!)))
@@ -217,10 +211,11 @@ const TrayIconItem = ({
   disabled: boolean
   onBusyChange: (busy: boolean) => void
 }) => {
+  const store = useIconSetStore()
+
   const [iconVersion, setIconVersion] = useState(0)
 
-  const isIconSetQuery = queries.isTrayIconSet(mode)
-  const setTrayIcon = mutations.setTrayIcon
+  const isIconSetQuery = store.isSetQuery(mode)
   const isIconSet = useQuery(
     unwrapQueryOptions(isIconSetQuery, isIconSetQuery.queryFn!),
   )
@@ -236,16 +231,16 @@ const TrayIconItem = ({
 
       setIsLoading(true)
 
-      await setTrayIconFromSelection(mode, selected)
+      await setIconFromSelection(store, mode, selected)
       await isIconSet.refetch()
       setIconVersion((prev) => prev + 1)
 
-      message(m.settings_nyanpasu_tray_icon_set_success(), {
+      message(store.messages.setSuccess(), {
         kind: 'info',
       })
     } catch (e) {
       console.error(e)
-      message(m.settings_nyanpasu_tray_icon_set_failed(), {
+      message(store.messages.setFailed(), {
         kind: 'error',
         error: e,
       })
@@ -259,7 +254,7 @@ const TrayIconItem = ({
     onBusyChange(true)
     try {
       // null means reset
-      await invokeMutation(setTrayIcon, [mode, null])
+      await invokeMutation(store.setIcon, [mode, null])
       await isIconSet.refetch()
       setIconVersion((prev) => prev + 1)
 
@@ -315,7 +310,7 @@ const TrayIconItem = ({
           disabled={disabled}
         >
           <MaterialShape className="bg-surface-variant size-12 shrink-0">
-            <TrayImage className="size-8" mode={mode} version={iconVersion} />
+            <store.Image className="size-8" mode={mode} version={iconVersion} />
           </MaterialShape>
 
           <div className="flex flex-1 flex-col">
@@ -367,6 +362,8 @@ const TrayIconItem = ({
 export default function TrayIconConfig() {
   const queryClient = useQueryClient()
 
+  const store = useIconSetStore()
+
   const [isEditing, setIsEditing] = useState(false)
   const [applyingPreset, setApplyingPreset] = useState<TrayPreset>()
   const [pendingMode, setPendingMode] = useState<TrayIconStateMode>()
@@ -388,8 +385,8 @@ export default function TrayIconConfig() {
   const refreshIcons = (modes: TrayIconMode[]) =>
     Promise.all(
       modes.flatMap((mode) => [
-        queryClient.invalidateQueries({ queryKey: ['getTrayIcon', mode] }),
-        queryClient.invalidateQueries({ queryKey: ['isTrayIconSet', mode] }),
+        queryClient.invalidateQueries({ queryKey: [store.iconKey, mode] }),
+        queryClient.invalidateQueries({ queryKey: [store.isSetKey, mode] }),
       ]),
     )
 
@@ -405,12 +402,12 @@ export default function TrayIconConfig() {
           })),
         )
         for (const { mode, base64 } of icons) {
-          await invokeMutation(mutations.setTrayIconFromBytes, [mode, base64])
+          await invokeMutation(store.setIconFromBytes, [mode, base64])
         }
         setChosenMode(preset)
-        message(m.settings_nyanpasu_tray_icon_set_success(), { kind: 'info' })
+        message(store.messages.setSuccess(), { kind: 'info' })
       } catch (error) {
-        message(m.settings_nyanpasu_tray_icon_set_failed(), {
+        message(store.messages.setFailed(), {
           kind: 'error',
           error,
         })
@@ -459,14 +456,14 @@ export default function TrayIconConfig() {
     return updateStateIcon(
       mode,
       async () => {
-        await invokeMutation(mutations.setTrayIconFromBytes, [
+        await invokeMutation(store.setIconFromBytes, [
           mode,
           await imageBase64(item.src),
         ])
 
-        return m.settings_nyanpasu_tray_icon_set_success()
+        return store.messages.setSuccess()
       },
-      m.settings_nyanpasu_tray_icon_set_failed(),
+      store.messages.setFailed(),
     )
   }
 
@@ -477,11 +474,11 @@ export default function TrayIconConfig() {
         const selected = await pickFile(null, IMAGE_FILTERS)
         if (!selected) return null
 
-        await setTrayIconFromSelection(mode as TrayIconMode, selected)
+        await setIconFromSelection(store, mode as TrayIconMode, selected)
 
-        return m.settings_nyanpasu_tray_icon_set_success()
+        return store.messages.setSuccess()
       },
-      m.settings_nyanpasu_tray_icon_set_failed(),
+      store.messages.setFailed(),
     )
 
   const presetLabels = {
@@ -505,8 +502,7 @@ export default function TrayIconConfig() {
     })),
   )
 
-  // Presets are Windows-only; other platforms keep the per-state editor.
-  if (!isWindows) {
+  if (!store.presets) {
     return Object.values(TrayIconMode).map((mode) => (
       <TrayIconItem
         key={mode}
@@ -524,13 +520,11 @@ export default function TrayIconConfig() {
         aria-busy={busy}
         className="flex flex-col"
       >
-        <SettingsLabel>
-          {m.settings_nyanpasu_tray_icon_preset_title()}
-        </SettingsLabel>
+        <SettingsLabel>{store.messages.presetTitle()}</SettingsLabel>
 
         <div
           role="radiogroup"
-          aria-label={m.settings_nyanpasu_tray_icon()}
+          aria-label={store.messages.label()}
           className="grid grid-cols-1 gap-3 sm:grid-cols-3"
         >
           {(Object.keys(TRAY_PRESETS) as TrayPreset[]).map((preset) => (

@@ -132,7 +132,7 @@ impl IntValue for u32 {
 /// [`BytesEncoding`]: super::bytes::BytesEncoding
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromRepr, VariantArray)]
 #[repr(u8)]
-pub(crate) enum IntEncoding {
+pub enum IntEncoding {
     Raw = 5,
     Constant = 1,
     FrameOfReference = 4,

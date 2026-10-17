@@ -283,7 +283,6 @@ pub struct Snapshot<S: Storage> {
     reservation: Reservation,
 }
 
-#[allow(dead_code, reason = "the queries read the snapshot through these")]
 impl<S: Storage> Snapshot<S> {
     pub(crate) fn storage(&self) -> &S::Snapshot {
         &self.storage

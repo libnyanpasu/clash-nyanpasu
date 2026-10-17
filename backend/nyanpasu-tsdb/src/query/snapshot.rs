@@ -3,4 +3,91 @@
 //! - the storage snapshot, plus the catalog and head of one publication;
 //! - a budget reservation sized to the bytes of that head and catalog at capture.
 //!
-//! Scans check for revocation at the boundary of each column block and row batch.
+//! The accessors here read the snapshot's catalog, so that a consumer can build filters from
+//! label values and render the label ids of group keys and combinations. Ids are those of
+//! this snapshot's catalog: after a release, a later one may give an id to another value
+//! (§5.3).
+//!
+//! Revoking snapshots (§7.4, §7.5) does not exist yet. A scan of a backend that was closed
+//! under it fails at its next read.
+
+use crate::{LabelId, Snapshot, storage::Storage, write::ComboId};
+
+impl<S: Storage> Snapshot<S> {
+    /// The value of label `id` of `dimension`, as it was written. `None` for the overflow
+    /// marker, 0, for an id the catalog does not hold, and for a label the schema does not
+    /// have.
+    pub fn label(&self, dimension: LabelId, id: u32) -> Option<&[u8]> {
+        self.has_label(dimension)
+            .then(|| self.version().catalog.label(dimension, id))
+            .flatten()
+    }
+
+    /// The id of `value` in `dimension`, if the catalog holds it.
+    pub fn find_label(&self, dimension: LabelId, value: &[u8]) -> Option<u32> {
+        self.has_label(dimension)
+            .then(|| self.version().catalog.find_label(dimension, value))
+            .flatten()
+    }
+
+    /// The label ids of combination `combo`, one per series dimension in
+    /// [`SeriesSpec::dimensions`](crate::SeriesSpec::dimensions) order. A dimension the fold
+    /// ladder replaced holds the overflow marker, 0, and combination 0, the whole overflow,
+    /// holds 0 in every one (§5.2). `None` for an id the catalog does not hold.
+    pub fn combination(&self, combo: ComboId) -> Option<impl ExactSizeIterator<Item = u32> + '_> {
+        self.version().catalog.combo(combo.get())
+    }
+
+    fn has_label(&self, dimension: LabelId) -> bool {
+        usize::from(dimension.0) < self.schema().labels.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        LabelId,
+        db::tests::{LABELS, PROCESS, RULE, TARGET, open, point},
+        query::series::tests::{at, write},
+        storage::memory::MemoryDisk,
+        write::ComboId,
+    };
+
+    #[test]
+    fn labels_and_combinations_read_the_snapshots_catalog() {
+        let disk = MemoryDisk::new();
+        let mut tsdb = open(&disk);
+        let combo = write(&mut tsdb, 1, &[at(point(LABELS, &[1, 2]), 0)])[0];
+        let snapshot = tsdb.reader().capture().unwrap();
+
+        let ids: Vec<u32> = snapshot.combination(combo).unwrap().collect();
+        let values: Vec<&[u8]> = [RULE, PROCESS, TARGET]
+            .into_iter()
+            .zip(&ids)
+            .map(|(dimension, &id)| snapshot.label(dimension, id).unwrap())
+            .collect();
+        assert_eq!(values, LABELS);
+        for (dimension, (&value, &id)) in [RULE, PROCESS, TARGET]
+            .into_iter()
+            .zip(LABELS.iter().zip(&ids))
+        {
+            assert_eq!(snapshot.find_label(dimension, value), Some(id));
+        }
+
+        // The whole overflow, the overflow marker, and what the catalog does not hold.
+        let overflow: Vec<u32> = snapshot.combination(ComboId::new(0)).unwrap().collect();
+        assert_eq!(overflow, [0, 0, 0]);
+        assert_eq!(snapshot.label(RULE, 0), None);
+        assert!(
+            snapshot
+                .combination(ComboId::new(combo.get() + 1))
+                .is_none()
+        );
+        assert_eq!(snapshot.find_label(RULE, b"curl"), None);
+        assert_eq!(snapshot.label(RULE, ids[0] + 1), None);
+        // A label the schema does not have is no value, not a panic.
+        let missing = LabelId(99);
+        assert_eq!(snapshot.label(missing, 1), None);
+        assert_eq!(snapshot.find_label(missing, b"match"), None);
+    }
+}

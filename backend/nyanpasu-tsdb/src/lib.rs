@@ -40,6 +40,10 @@ pub use db::{Reader, Tsdb};
 pub use error::ErrorKind;
 pub use lifecycle::OpenError;
 pub use profile::{Profile, ProfileError};
+pub use query::{
+    FieldMask, Group, GroupKey, GroupList, GroupRequest, KeyPart, LabelFilter, LabelMap,
+    SeriesGroups, SeriesQuery, SeriesQueryError,
+};
 pub use retention::{Retention, RetentionPolicy};
 pub use schema::{
     Aggregate, ColumnSpec, ColumnType, EventKey, EventStreamSpec, ExtentSpec, FieldSpec, LabelId,

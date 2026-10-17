@@ -162,7 +162,7 @@ pub fn run() -> std::io::Result<()> {
     };
     // Reuse nyanpasu-utils' process-lived runtime before Tauri initializes its own.
     // Only the GUI needs it: the subcommands above exit without it, and building
-    // it starts a worker thread per CPU.
+    // it starts a worker thread per CPU, at most four.
     tauri::async_runtime::set(nyanpasu_utils::runtime::get_runtime_handle());
     #[cfg(feature = "verge-dev")]
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");

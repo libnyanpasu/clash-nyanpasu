@@ -38,7 +38,7 @@ export function LauncherMenuGroup({
       data-slot="launcher-menu-group"
       className={cn(
         'flex flex-col gap-0.5',
-        '*:bg-surface *:rounded-md *:border-0',
+        '*:bg-surface *:border-on-surface/10 *:rounded-md *:border',
         '*:first:rounded-t-3xl *:last:rounded-b-3xl',
         className,
       )}

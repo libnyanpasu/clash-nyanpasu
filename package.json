@@ -103,7 +103,7 @@
     "@types/react-dom": "19.3.0",
     "vite-plugin-svgr": "5.2.0",
     "vitest-browser-react": "2.3.0",
-    "@tanstack/react-query": "5.104.3",
+    "@tanstack/react-query": "5.104.4",
     "@tauri-apps/api": "2.12.4",
     "clsx": "2.1.1",
     "tailwind-merge": "3.7.0",

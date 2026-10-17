@@ -137,6 +137,7 @@ const GridViewProfile = memo(function GridViewProfile({
     id: profile.uid,
     index,
     element: cardRef,
+    disabled: activeProfile.isActive,
   })
 
   return (
@@ -148,7 +149,8 @@ const GridViewProfile = memo(function GridViewProfile({
           data-active={featured || undefined}
           data-dragging={isDragging || undefined}
           className={cn(
-            'relative isolate flex min-w-0 cursor-grab flex-col justify-between select-none active:cursor-grabbing',
+            'relative isolate flex min-w-0 cursor-default flex-col justify-between select-none',
+            !activeProfile.isActive && 'active:cursor-grabbing',
             isProxyProfile(profile)
               ? featured
                 ? 'order-first col-span-full h-72 rounded-4xl'

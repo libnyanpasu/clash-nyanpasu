@@ -251,7 +251,8 @@ test.for(['en', 'zh-cn'] as const)(
     )!
     editButton.click()
     await expect.poll(() => edits).toEqual(['remote'])
-    await userEvent.click(card('remote'), { button: 'right' })
+    // Dragging is disabled, but the active card still has a context menu.
+    await userEvent.click(card('remote'), { button: 'right', force: true })
     await expect
       .element(page.getByRole('menuitem', { name: m.profile_delete_title() }))
       .toBeVisible()
@@ -378,7 +379,7 @@ test('reorders profiles by dragging the whole card', async ({
     const wire = args as { method: string; params: { list: string[] } }
     const method = command === 'call_rpc' ? wire.method : command
     if (method === 'get_profiles')
-      return { current: null, items, global_transforms: [], valid: [] }
+      return { current: 'second', items, global_transforms: [], valid: [] }
     if (method === 'read_profile_file') return 'proxies: []'
     if (method === 'query_traffic_report')
       return {
@@ -430,6 +431,12 @@ test('reorders profiles by dragging the whole card', async ({
   const card = (uid: string) =>
     container.querySelector<HTMLElement>(`[data-profile-uid="${uid}"]`)
   await expect.poll(() => card('third')).not.toBeNull()
+
+  const activeBody = card('second')!.querySelector<HTMLElement>(
+    '[data-slot="profile-card-title"]',
+  )!
+  await userEvent.dragAndDrop(activeBody, card('first')!)
+  expect(reorders).toEqual([])
 
   // Grab the card body rather than any dedicated handle.
   const body = card('third')!.querySelector<HTMLElement>(

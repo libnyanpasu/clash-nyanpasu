@@ -103,6 +103,7 @@ Each public operation returns the error type of its module:
 | writing a batch      | `write::WriteError`, with `InputError` and `StageError` |
 | capturing a snapshot | `version::CaptureError`                                 |
 | summing series       | `query::SeriesQueryError`                               |
+| scanning events      | `query::EventScanError`                                 |
 | maintaining          | `maintain::MaintainError`                               |
 
 ## Data mapping and variants

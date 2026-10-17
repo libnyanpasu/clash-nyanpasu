@@ -18,9 +18,15 @@ use crate::LabelId;
 #[cfg(doc)]
 use crate::Snapshot;
 
-pub use self::series::{
-    FieldMask, Group, GroupKey, GroupList, GroupRequest, KeyPart, LabelMap, SeriesGroups,
-    SeriesQuery, SeriesQueryError,
+pub use self::{
+    events::{
+        Event, EventCondition, EventCursor, EventFilter, EventPage, EventPredicate, EventQuery,
+        EventScanError, EventValue,
+    },
+    series::{
+        FieldMask, Group, GroupKey, GroupList, GroupRequest, KeyPart, LabelMap, SeriesGroups,
+        SeriesQuery, SeriesQueryError,
+    },
 };
 
 /// Admits a row by its label of one series dimension: one of `ids`, or, when `exclude` is

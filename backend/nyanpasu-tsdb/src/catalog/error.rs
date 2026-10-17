@@ -16,7 +16,7 @@ use crate::{
 
 /// What is wrong with a stored catalog record.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CatalogProblem {
+pub enum CatalogProblem {
     /// The value is not one record of a known format.
     Encoding { problem: RecordProblem },
     /// A combination has another number of labels than the series has dimensions.
@@ -44,7 +44,7 @@ pub(crate) enum CatalogProblem {
 /// Loading the catalog from a snapshot.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub(crate) enum LoadError {
+pub enum LoadError {
     #[snafu(display("failed to scan the label values"))]
     ScanLabels { source: StorageError },
 
@@ -78,7 +78,7 @@ pub(crate) enum LoadError {
 }
 
 impl LoadError {
-    pub(crate) fn kind(&self) -> ErrorKind {
+    pub fn kind(&self) -> ErrorKind {
         match self {
             Self::ScanLabels { source } | Self::ScanCombos { source } => source.kind(),
             Self::ReserveMemory { source } => source.kind(),
@@ -91,7 +91,7 @@ impl LoadError {
 /// Resolving a combination or a label value in a draft.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub(crate) enum ResolveError {
+pub enum ResolveError {
     #[snafu(display("failed to read the reverse lookup of combinations"))]
     ReadComboIndex { source: StorageError },
 
@@ -118,7 +118,7 @@ pub(crate) enum ResolveError {
 }
 
 impl ResolveError {
-    pub(crate) fn kind(&self) -> ErrorKind {
+    pub fn kind(&self) -> ErrorKind {
         match self {
             Self::ReadComboIndex { source }
             | Self::WriteLabel { source, .. }
@@ -132,7 +132,7 @@ impl ResolveError {
 /// Reading, pinning or unpinning a combination's pins.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub(crate) enum PinError {
+pub enum PinError {
     #[snafu(display("failed to read pin key {key:02x?}"))]
     ReadKey {
         key: Box<[u8]>,
@@ -179,7 +179,7 @@ pub(crate) enum PinError {
 }
 
 impl PinError {
-    pub(crate) fn kind(&self) -> ErrorKind {
+    pub fn kind(&self) -> ErrorKind {
         match self {
             Self::ReadKey { source, .. }
             | Self::WriteKey { source, .. }
@@ -198,7 +198,7 @@ impl PinError {
 /// Releasing a combination or a label value in a draft.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub(crate) enum ReleaseError {
+pub enum ReleaseError {
     /// Debug builds check that a released combination is not pinned.
     #[cfg(debug_assertions)]
     #[snafu(display("failed to check the pins of combination {id}"))]
@@ -222,7 +222,7 @@ pub(crate) enum ReleaseError {
 }
 
 impl ReleaseError {
-    pub(crate) fn kind(&self) -> ErrorKind {
+    pub fn kind(&self) -> ErrorKind {
         match self {
             #[cfg(debug_assertions)]
             Self::CheckPin { source, .. } => source.kind(),

@@ -41,6 +41,14 @@ The design says its code sketches show shape, not the final API. Where the code 
   (§13).
 - Checksums use CRC32 through `crc32fast`. The crate is already in the workspace and
   detects the hardware instruction at runtime, which is what §6.1 asks of XXH3 or CRC32C.
+- A consumer writes a batch with one call, `Tsdb::write`, which stages, registers, commits
+  and publishes it. The store owns the transaction, so the consumer never holds it across its
+  own code (§4.4 sketches a stage and a commit around a transaction the consumer opens).
+- A pin is named by a key the consumer chooses (`PinOp::Pin { key, labels }`,
+  `PinOp::Unpin { key }`), stored with the combination it pins in the store's `PIN_KEYS`
+  namespace. The consumer's auxiliary state refers to its own key in the same transaction, and
+  an unpin never resolves labels, which could name another combination after a fold or a
+  change of the catalog budget (§5.3).
 
 ## Errors
 

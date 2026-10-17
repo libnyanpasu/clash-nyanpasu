@@ -11,11 +11,16 @@ repository.workspace = true
 redb = []
 
 [dependencies]
+crc32fast = '1'
 # The schema fingerprint is the hash of the schema's postcard encoding, whose wire
 # format is specified and stable (schema.rs).
 postcard = { version = '1.1', default-features = false, features = ['use-std'] }
 serde = { version = '1', features = ['derive'] }
 snafu.workspace = true
+# Derives the stored tags of enums, and the lists of their variants.
+strum = { version = '0.28', features = ['derive'] }
+zerocopy = '0.8'
+zstd = '0.14'
 
 [dev-dependencies]
 proptest = { version = '1', default-features = false, features = ['std'] }

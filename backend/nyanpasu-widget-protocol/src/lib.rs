@@ -31,6 +31,7 @@ impl std::fmt::Display for StatisticWidgetVariant {
     }
 }
 
+/// A state of the bundled cat logo, which has a colour per proxy state.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LogoPreset {
@@ -38,6 +39,21 @@ pub enum LogoPreset {
     Default,
     System,
     Tun,
+}
+
+/// The logo a widget shows.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub enum Logo {
+    /// The bundled cat, drawn from its vector source.
+    Builtin(LogoPreset),
+    /// A PNG image, rasterized by the widget at the size it is drawn at.
+    Image(Vec<u8>),
+}
+
+impl Default for Logo {
+    fn default() -> Self {
+        Self::Builtin(LogoPreset::Default)
+    }
 }
 
 #[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
@@ -52,7 +68,7 @@ pub struct StatisticMessage {
 pub enum Message {
     Stop,
     UpdateStatistic(StatisticMessage),
-    UpdateLogo(LogoPreset),
+    UpdateLogo(Logo),
 }
 
 #[cfg(test)]
@@ -96,9 +112,22 @@ mod tests {
         for (message, bytes) in [
             (Message::Stop, vec![0]),
             (statistic, vec![1, 1, 2, 3, 4]),
-            (Message::UpdateLogo(LogoPreset::Default), vec![2, 0]),
-            (Message::UpdateLogo(LogoPreset::System), vec![2, 1]),
-            (Message::UpdateLogo(LogoPreset::Tun), vec![2, 2]),
+            (
+                Message::UpdateLogo(Logo::Builtin(LogoPreset::Default)),
+                vec![2, 0, 0],
+            ),
+            (
+                Message::UpdateLogo(Logo::Builtin(LogoPreset::System)),
+                vec![2, 0, 1],
+            ),
+            (
+                Message::UpdateLogo(Logo::Builtin(LogoPreset::Tun)),
+                vec![2, 0, 2],
+            ),
+            (
+                Message::UpdateLogo(Logo::Image(vec![0x89, b'P'])),
+                vec![2, 1, 2, 0x89, b'P'],
+            ),
         ] {
             assert_eq!(postcard::to_stdvec(&message).unwrap(), bytes);
             let decoded: Message = postcard::from_bytes(&bytes).unwrap();

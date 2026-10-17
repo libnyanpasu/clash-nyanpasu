@@ -21,6 +21,10 @@ export global Theme {
     out property <color> compact-surface: compact-light ? #eaddff : #1d1b20;
     out property <color> compact-text: compact-light ? #1d1b20 : #fef7ff;
 
+    // The logo badges of the two windows. Rust rasterizes image logos at
+    // these sizes times the scale factor.
+    out property <length> large-logo-size: 44px;
+    out property <length> small-logo-size: 24px;
     out property <length> badge-size: 20px;
     out property <length> icon-size: 12px;
     // Inter at 9px keeps the widest values ("888.88 MB" and "888.88 MB/s")

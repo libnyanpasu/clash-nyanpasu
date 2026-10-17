@@ -7040,9 +7040,11 @@ name = "nyanpasu-widget"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "fast_image_resize",
  "humansize",
  "i-slint-backend-winit",
  "nyanpasu-widget-protocol",
+ "png 0.18.1",
  "resvg",
  "slint",
  "slint-build",

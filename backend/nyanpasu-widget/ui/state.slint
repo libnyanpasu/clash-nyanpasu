@@ -7,6 +7,13 @@ export global StatisticData {
     in property <string> upload-total;
     in property <string> download-speed;
     in property <string> upload-speed;
-    // The protocol carries it, but neither window draws it yet.
+    // The state of the bundled cat, drawn unless an image logo is shown.
     in property <LogoPreset> logo;
+    // Whether the logo is an image rather than the bundled cat.
+    in property <bool> logo-image-shown;
+    // The image logo as decoded, kept for rasterizing it again when the
+    // scale factor changes. Never drawn.
+    in property <image> logo-source;
+    // The image logo rasterized at the badge's physical size.
+    in property <image> logo-image;
 }

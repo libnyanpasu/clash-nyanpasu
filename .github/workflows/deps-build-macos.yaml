@@ -43,6 +43,8 @@ jobs:
   build:
     runs-on: macos-latest
     env:
+      # Generate Finder layout metadata (.DS_Store) required by DMG finalization.
+      TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
       # Archive uploads are temporarily paused; packages are published on GitHub.
       ARCHIVE_UPLOAD_ENABLED: 'false'
 

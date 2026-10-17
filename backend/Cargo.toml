@@ -87,6 +87,11 @@ fs-err = { version = '3.1.2', features = ['tokio'] }
 gxhash = '3'
 
 [patch.crates-io]
+# softbuffer 0.4.8 with its CoreGraphics backend reading the top byte as
+# premultiplied alpha, so the statistic widget's software renderer keeps
+# per-pixel transparency on macOS. Drop it once Slint moves to a softbuffer
+# release with the `AlphaMode` API.
+softbuffer = { git = 'https://github.com/libnyanpasu/softbuffer', rev = '6aec276d8b3a60eba555d620ac8e90df53a4f3ad' }
 
 [profile.release]
 panic = 'unwind'

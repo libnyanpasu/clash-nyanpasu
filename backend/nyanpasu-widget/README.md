@@ -4,7 +4,7 @@ The network statistic widget: a small frameless, always-on-top window that
 shows the traffic totals and speeds the application sends it. It runs in its
 own process so the main window's webview and GPU state never load into it,
 and it is written in [Slint](https://slint.dev) with the software renderer on
-Windows to stay under 30 MB of working set.
+Windows and macOS to stay under 30 MB of working set.
 
 Two windows share one set of components:
 
@@ -34,9 +34,9 @@ Without the variable, or without a server to connect to, the widget never
 opens a window: the standalone binary returns the error (exit code 1), and the
 application's subcommand panics with it (exit code 101).
 
-The renderer is `software` on Windows and `femtovg` (OpenGL) elsewhere.
-`SLINT_BACKEND` overrides it, e.g. `SLINT_BACKEND=winit-software` where no GL
-driver is usable.
+The renderer is `software` on Windows and macOS and `femtovg` (OpenGL) on
+Linux. `SLINT_BACKEND` overrides it, e.g. `SLINT_BACKEND=winit-software` on
+Linux where no GL driver is usable.
 
 ## Tests
 
@@ -48,4 +48,4 @@ corners and the translucent card, compares the logo pixel by pixel with
 not.
 
 See [DESIGN.md](DESIGN.md) for the resource budget, the renderer choice per
-platform and the open Linux/macOS work.
+platform, the macOS measurements and the open Linux work.

@@ -56,6 +56,11 @@
     {
       "groupName": "Testing packages",
       "matchPackageNames": ["/vitest/", "/cypress/", "/wdio/"]
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["ubuntu"],
+      "enabled": false
     }
   ],
   "prConcurrentLimit": 30,

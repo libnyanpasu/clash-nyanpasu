@@ -3,10 +3,12 @@ import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
+import { ClashCores } from '@nyanpasu/query'
 import CoreManagerCard from '../src/pages/(main)/main/settings/clash/_modules/core-manager-card'
 
 const state = vi.hoisted(() => ({
   queryPending: false,
+  queryFetching: false,
   currentCore: 'mihomo',
   cores: {
     mihomo: {
@@ -35,7 +37,11 @@ const state = vi.hoisted(() => ({
 vi.mock('@nyanpasu/query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@nyanpasu/query')>()),
   useClashCores: () => ({
-    query: { data: state.cores, isPending: state.queryPending },
+    query: {
+      data: state.queryPending ? undefined : state.cores,
+      isPending: state.queryPending,
+      isFetching: state.queryFetching,
+    },
     updateCore: { mutateAsync: state.updateCore, isPending: false },
     inspectUpdater: state.inspectUpdater,
     refetchVersions: state.refetchVersions,
@@ -179,26 +185,35 @@ test('a pending core operation disables every core action until it settles', asy
     .toBeGreaterThan(0)
 })
 
-test('loading replaces the current core name and version with skeleton placeholders', async ({
-  onTestFinished,
-}) => {
-  state.queryPending = true
-  const view = await render(
-    <TooltipProvider>
-      <BlockTaskProvider>
-        <CoreManagerCard />
-      </BlockTaskProvider>
-    </TooltipProvider>,
-  )
-  onTestFinished(async () => {
-    state.queryPending = false
-    await view.unmount()
-  })
+test.for(['pending', 'fetching'])(
+  '%s shows every core name and icon with only version skeletons',
+  async (phase, { onTestFinished }) => {
+    state.queryPending = phase === 'pending'
+    state.queryFetching = phase === 'fetching'
+    const view = await render(
+      <TooltipProvider>
+        <BlockTaskProvider>
+          <CoreManagerCard />
+        </BlockTaskProvider>
+      </TooltipProvider>,
+    )
+    onTestFinished(async () => {
+      state.queryPending = false
+      state.queryFetching = false
+      await view.unmount()
+    })
 
-  expect(
-    view.container.querySelectorAll('[data-slot="core-manager-skeleton"]'),
-  ).toHaveLength(2)
-  expect(
-    view.container.querySelector('[data-slot="core-manager-card"]'),
-  ).toHaveAttribute('aria-busy', 'true')
-})
+    expect(
+      view.container.querySelectorAll('[data-slot="core-manager-skeleton"]'),
+    ).toHaveLength(Object.keys(ClashCores).length)
+    for (const name of Object.values(ClashCores)) {
+      await expect.element(view.getByText(name, { exact: true })).toBeVisible()
+      await expect
+        .element(view.getByAltText(name, { exact: true }))
+        .toBeVisible()
+    }
+    expect(
+      view.container.querySelector('[data-slot="core-manager-card"]'),
+    ).toHaveAttribute('aria-busy', phase === 'pending' ? 'true' : 'false')
+  },
+)

@@ -1,10 +1,10 @@
-import { clamp, motion, Transition } from 'motion/react'
-import { ComponentProps } from 'react'
+import { clamp } from 'motion/react'
+import { ComponentProps, useRef } from 'react'
 import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 
-const EDGE_OFFSET_PX = 16
-const PADDING_PX = 8
+const THUMB_TARGET_SIZE_PX = 48
+const THUMB_GAP_OFFSET_PX = 8
 
 export function Slider({
   className,
@@ -16,8 +16,9 @@ export function Slider({
   step = 1,
   onValueChange,
   onValueCommit,
-  onMouseUp,
-  onTouchEnd,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
   onKeyUp,
   onBlur,
   ...props
@@ -46,28 +47,31 @@ export function Slider({
   })
 
   const currentValue = clamp(min, max, rawValue ?? min)
+  const pendingValue = useRef<number | null>(null)
 
   const percentage =
     max === min ? 0 : ((currentValue - min) / (max - min)) * 100
 
   const ratio = percentage / 100
 
-  const thumbOffsetPx = EDGE_OFFSET_PX + PADDING_PX
+  // Match the invisible native thumb's travel to the visible handle exactly.
+  const thumbOffsetPx = THUMB_TARGET_SIZE_PX / 2
   const thumbLeft = `calc(${thumbOffsetPx}px + (100% - ${thumbOffsetPx * 2}px) * ${ratio})`
-  const rangeWidth = `calc(${thumbLeft} - ${PADDING_PX}px)`
-  const trackWidth = `calc(100% - ${thumbLeft} - ${PADDING_PX}px)`
-
-  const motionTransition: Transition = disabled
-    ? { duration: 0 }
-    : { type: 'spring' as const, stiffness: 380, damping: 35, mass: 0.2 }
+  const rangeWidth = `calc(${thumbLeft} - ${THUMB_GAP_OFFSET_PX}px)`
+  const trackWidth = `calc(100% - ${thumbLeft} - ${THUMB_GAP_OFFSET_PX}px)`
 
   const handleValueChange: ComponentProps<'input'>['onChange'] = (event) => {
     const nextValue = clamp(min, max, Number(event.target.value))
+    pendingValue.current = nextValue
     setRawValue(nextValue)
   }
 
   const commitValue = () => {
-    onValueCommit?.(currentValue)
+    if (pendingValue.current === null) return
+
+    const nextValue = pendingValue.current
+    pendingValue.current = null
+    onValueCommit?.(nextValue)
   }
 
   return (
@@ -75,46 +79,33 @@ export function Slider({
       data-slot="slider"
       data-disabled={String(disabled)}
       className={cn(
-        'relative flex w-full touch-none items-center justify-between select-none',
-        'h-4 data-[disabled=true]:opacity-50',
+        'relative flex h-12 w-full touch-none items-center select-none',
+        'has-focus-visible:ring-primary rounded-full has-focus-visible:ring-2 has-focus-visible:ring-offset-2 data-[disabled=true]:opacity-50',
         className,
       )}
     >
-      <motion.span
+      <span
         data-slot="slider-range"
-        className={cn(
-          'bg-primary absolute inset-y-0 left-0 select-none',
-          'rounded-l-full rounded-r-sm',
-        )}
-        animate={{
+        className="bg-primary pointer-events-none absolute left-0 h-4 rounded-l-full rounded-r-xs"
+        style={{
           width: rangeWidth,
-          borderRadius: '12px 4px 4px 12px',
         }}
-        transition={motionTransition}
       />
 
-      <motion.span
+      <span
         data-slot="slider-track"
-        className={cn(
-          'bg-surface-variant absolute inset-y-0 right-0 select-none',
-        )}
-        animate={{
+        className="bg-secondary-container pointer-events-none absolute right-0 h-4 rounded-l-xs rounded-r-full"
+        style={{
           width: trackWidth,
-          borderRadius: '4px 12px 12px 4px',
         }}
-        transition={motionTransition}
       />
 
-      <motion.span
+      <span
         data-slot="slider-thumb"
-        className={cn(
-          'bg-primary pointer-events-none absolute top-1/2 h-10 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full',
-          'transition-[color,box-shadow] select-none',
-        )}
-        animate={{
+        className="bg-primary pointer-events-none absolute top-1/2 h-11 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{
           left: thumbLeft,
         }}
-        transition={motionTransition}
       />
 
       <input
@@ -125,13 +116,19 @@ export function Slider({
         value={currentValue}
         disabled={disabled}
         onChange={handleValueChange}
-        onMouseUp={(event) => {
-          commitValue()
-          onMouseUp?.(event)
+        onPointerDown={(event) => {
+          onPointerDown?.(event)
+          if (!event.defaultPrevented && !disabled) {
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }
         }}
-        onTouchEnd={(event) => {
+        onPointerUp={(event) => {
           commitValue()
-          onTouchEnd?.(event)
+          onPointerUp?.(event)
+        }}
+        onPointerCancel={(event) => {
+          commitValue()
+          onPointerCancel?.(event)
         }}
         onKeyUp={(event) => {
           commitValue()
@@ -141,7 +138,7 @@ export function Slider({
           commitValue()
           onBlur?.(event)
         }}
-        className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0 disabled:cursor-not-allowed"
+        className="absolute inset-0 m-0 h-full w-full cursor-pointer touch-none appearance-none bg-transparent opacity-0 disabled:cursor-not-allowed [&::-moz-range-thumb]:size-12 [&::-moz-range-thumb]:border-0 [&::-webkit-slider-thumb]:size-12 [&::-webkit-slider-thumb]:appearance-none"
         {...props}
       />
     </div>

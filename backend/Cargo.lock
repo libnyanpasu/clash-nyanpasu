@@ -7009,9 +7009,11 @@ dependencies = [
  "crc32fast",
  "postcard",
  "proptest",
+ "redb",
  "serde",
  "snafu 0.9.2",
  "strum",
+ "tempfile",
  "zerocopy",
  "zstd 0.14.2",
 ]

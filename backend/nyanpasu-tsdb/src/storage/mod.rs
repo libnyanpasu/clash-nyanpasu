@@ -57,7 +57,7 @@ pub mod memory;
 pub mod redb;
 
 #[cfg(test)]
-mod conformance;
+pub(crate) mod conformance;
 
 /// The largest fragment the store writes. Fragments stay this small so that reading one
 /// column block never reads a whole chunk: redb gives each value of a page or more its own

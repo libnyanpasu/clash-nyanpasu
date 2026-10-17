@@ -121,6 +121,10 @@ Crates offering a stable hash trait were considered and rejected:
   for a measurement on the mobile profile.
 - The extensions of §13: the day tier, catalog paging, the segment-file backend, trained
   dictionaries, LZ4, n-gram filters, and a hard bound on merge fan-in.
+- Merging catalog records into catalog chunks (§5.1). The catalog is stored as one record
+  per value and per combination, and is loaded by scanning them.
+- Compacting a dictionary's heap. Released values leave holes until the next load, so a
+  long-running gateway with heavy label churn grows its heap until it restarts.
 - The incarnation counter kept outside the database for tmpfs hosts (§8.3), which only the
   untested tier-2 profile needs.
 - Consumers: traffic, core logs and job logs, and migration of the traffic database.

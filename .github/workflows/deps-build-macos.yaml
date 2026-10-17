@@ -43,8 +43,6 @@ jobs:
   build:
     runs-on: macos-latest
     env:
-      # Generate Finder layout metadata (.DS_Store) required by DMG finalization.
-      TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
       # Archive uploads are temporarily paused; packages are published on GitHub.
       ARCHIVE_UPLOAD_ENABLED: 'false'
 
@@ -138,9 +136,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
           NODE_OPTIONS: '--max_old_space_size=4096'
-
-      - name: Finalize DMG layout
-        run: deno task finalize:macos-dmg
 
       - name: Rename updater files
         run: |

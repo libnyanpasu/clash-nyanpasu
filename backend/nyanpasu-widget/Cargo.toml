@@ -27,16 +27,13 @@ humansize = '2'
 clap = { version = '4', features = ['derive'] }
 snafu = { workspace = true }
 
-# softbuffer 0.4 only keeps per-pixel alpha on Windows, so the other platforms
-# render through OpenGL. Windows does not link it at all: a GL driver costs the
-# widget about 45 MB of working set.
-[target.'cfg(not(windows))'.dependencies]
-i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
-  'renderer-femtovg',
-] }
-
+# softbuffer keeps per-pixel alpha on Windows and, with the workspace's
+# softbuffer patch, on macOS; Linux renders through OpenGL. The other platforms
+# do not link it at all: a GL driver costs the widget about 45 MB of working set
+# on Windows and about 54 MiB on macOS.
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
+  'renderer-femtovg',
   'x11',
   'wayland',
 ] }

@@ -50,7 +50,7 @@ premultiplied again.
 | Platform | Renderer         | Transparency source                                                                                        |
 | -------- | ---------------- | ---------------------------------------------------------------------------------------------------------- |
 | Windows  | software         | softbuffer 0.4.8 `BitBlt` + winit's `DwmEnableBlurBehindWindow`; DWM composites the 32 bpp data with alpha |
-| macOS    | femtovg (OpenGL) | GL surface with alpha (source reading, not run)                                                            |
+| macOS    | software         | softbuffer 0.4.8 patched to `kCGImageAlphaPremultipliedFirst`; winit makes the `NSWindow` non-opaque       |
 | Linux    | femtovg (OpenGL) | GL surface with alpha, X11 with a compositor (source reading, not run)                                     |
 
 On Windows the process also:
@@ -119,17 +119,61 @@ worker thread per CPU, before parsing the subcommand; it now builds it only
 for the GUI. That removed 32 threads from the widget process and about 30 ms
 from its startup.
 
-## Open work: Linux and macOS
+## Measured on macOS
 
-Not implemented yet. The working-set goal is currently met only on Windows:
-the femtovg path loads a GL driver (about 70 MiB on Windows with NVIDIA;
-Linux and macOS have not been measured).
+Apple M3, macOS 27, built-in display at 2×, release builds of the standalone
+widget driven by a fake application over the widget channel (large / small).
+Memory is `phys_footprint`, the figure Activity Monitor shows; power is the
+process's `ri_energy_nj` delta. 1 update/s is the median of 3 runs, the other
+rows are single runs:
 
-The software renderer would meet the goal everywhere, but softbuffer 0.4.8,
-which Slint 1.18.1 presents through, has per-pixel alpha only on Windows.
+| Metric                        | femtovg (OpenGL) | software (patched softbuffer) |
+| ----------------------------- | ---------------- | ----------------------------- |
+| Footprint at 1 update/s       | 77.9 / 76.7 MiB  | 16.3 / 16.1 MiB               |
+| of which graphics (GL driver) | 54.4 / 54.4 MiB  | 0.02 / 0.02 MiB               |
+| CPU at 1 update/s             | 4.1 / 4.1 ms/s   | 4.6 / 2.7 ms/s                |
+| Power at 1 update/s           | 0.67 / 0.49 mW   | 0.98 / 0.32 mW                |
+| CPU at 10 updates/s           | 41.6 / 33.0 ms/s | 42.6 / 24.6 ms/s              |
+| Footprint after 30 s idle     | 24.8 / 23.4 MiB  | 17.4 / 16.2 MiB               |
+| Spawn to IPC handshake        | about 8 ms       | about 9 ms                    |
+
+The GL driver gives its memory back only after about 30 s without a frame, so
+a widget updated every second keeps it. `screencapture -l` of both renderers
+shows the same transparent corners (alpha 0) and translucent large card (alpha
+127). Without the patch the software renderer draws them opaque black.
+
+softbuffer 0.4.8's CoreGraphics backend creates its image with
+`kCGImageAlphaNoneSkipFirst`, which ignores the alpha byte. The workspace
+patches softbuffer with
+[libnyanpasu/softbuffer@`nyanpasu/v0.4.8-cg-premultiplied-alpha`](https://github.com/libnyanpasu/softbuffer/tree/nyanpasu/v0.4.8-cg-premultiplied-alpha),
+which uses `kCGImageAlphaPremultipliedFirst` instead. Slint's software
+renderer writes premultiplied ARGB and never a colour channel above its alpha,
+so CoreGraphics clamping such pixels (softbuffer issue #356) does not apply.
+Tauri only uses softbuffer on Windows, so the patch reaches nothing else.
 softbuffer's master branch has an `AlphaMode` API (PR #321), but it is
-unreleased and changes the 0.4 API that both Slint 1.18.1 and
-tauri-runtime-wry 2.12 use, so it cannot be patched in.
+unreleased and changes the 0.4 API that Slint 1.18.1 uses.
+
+The software renderer's colours are colour-managed, femtovg's are not. On a
+Display P3 screen the small widget's `#eaddff` captures as (232, 221, 252) in
+software, which is `#eaddff` converted from sRGB to Display P3, and as
+(234, 221, 255) in femtovg. softbuffer tags its image with device RGB, which
+macOS treats as sRGB, so Core Animation converts it to the display's colour
+space; the GL surface carries no colour space, so its sRGB values pass through
+as display values and look slightly more saturated, as on Windows, which does
+not colour-manage either. On an sRGB display both are identical.
+
+Still to check on macOS:
+
+- no flicker while dragging or updating;
+- correct scale when moving between displays with different
+  `contentsScale`;
+- no window shadow.
+
+## Open work: Linux
+
+Not implemented yet. The femtovg path loads a GL driver (about 70 MiB on
+Windows with NVIDIA, about 54 MiB on macOS; Linux has not been measured), and
+softbuffer 0.4.8 has no per-pixel alpha on Linux.
 
 ### Linux
 
@@ -151,33 +195,7 @@ tauri-runtime-wry 2.12 use, so it cannot be patched in.
   fontique. A cross check from Windows can skip the build script with
   `--config "target.x86_64-unknown-linux-gnu.fontconfig.rustc-link-lib=['fontconfig']"`.
 
-### macOS
-
-- softbuffer 0.4.8's CoreGraphics backend creates its image with
-  `kCGImageAlphaNoneSkipFirst` (`src/backends/cg.rs`), which is opaque.
-  winit already makes a transparent `NSWindow` non-opaque with a clear
-  background.
-- **Plan:** a one-line fork of softbuffer 0.4.8 using
-  `kCGImageAlphaPremultipliedFirst`, applied with `[patch.crates-io]` until
-  Slint moves to a softbuffer release with `AlphaMode`. Slint's software
-  renderer never writes a colour channel above its alpha, so CoreGraphics'
-  clamping of such pixels (softbuffer issue #356) should not matter.
-  Confidence: medium, not tried on hardware. Check before adopting:
-  - the window corners and the large card's translucency in a
-    `screencapture` sample;
-  - no flicker while dragging or updating;
-  - correct scale when moving between displays with different
-    `contentsScale`;
-  - colour space (sRGB vs display P3);
-  - no window shadow;
-  - working set and CPU against the femtovg build.
-
-  If it does not work, fall back to `layer.cornerRadius` with an opaque card.
-
-- The macOS code (activation policy, renderer default) has only been checked
-  against the Slint and winit sources; it has not been compiled locally.
-
-### Upstream
+## Upstream
 
 Report premultiplied alpha for the Win32 and X11 backends in softbuffer and
 help Slint move to softbuffer 0.5; drop the fork once that ships.

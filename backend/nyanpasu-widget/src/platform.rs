@@ -1,13 +1,18 @@
 use i_slint_backend_winit::{Backend, winit::window::WindowAttributes};
 use slint::PlatformError;
 
-/// The renderer unless `SLINT_BACKEND` names one. Windows renders in software:
-/// softbuffer keeps per-pixel alpha there and no GPU driver gets loaded.
-/// Elsewhere softbuffer 0.4 has no alpha, so the window renders through
-/// OpenGL. Slint 1.18 only falls back to the software renderer when the GL one
-/// cannot be constructed; without a usable driver, `SLINT_BACKEND=winit-software`
-/// forces it.
-const DEFAULT_RENDERER: &str = if cfg!(windows) { "software" } else { "femtovg" };
+/// The renderer unless `SLINT_BACKEND` names one. Windows and macOS render in
+/// software: softbuffer keeps per-pixel alpha there (on macOS through the
+/// workspace's softbuffer patch) and no GPU driver gets loaded. On Linux
+/// softbuffer 0.4 has no alpha, so the window renders through OpenGL. Slint
+/// 1.18 only falls back to the software renderer when the GL one cannot be
+/// constructed; without a usable driver, `SLINT_BACKEND=winit-software` forces
+/// it.
+const DEFAULT_RENDERER: &str = if cfg!(any(windows, target_os = "macos")) {
+    "software"
+} else {
+    "femtovg"
+};
 
 /// Makes the winit backend the process's Slint platform. On Windows it also
 /// disables the IME for the whole process, which only works before the first

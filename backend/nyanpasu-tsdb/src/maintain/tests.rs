@@ -344,7 +344,7 @@ fn age_expires_whole_extents_and_cleanup_deletes_their_chunks() {
 
     // Three days back from day 6: days 0 to 2 end by then, day 3 does not. Consolidation
     // then takes the quiet extents left: the six hours of the minute tier that hold a point,
-    // and days 3 and 4 of the hour tier, a chunk each.
+    // and days 3 and 4 of the hour tier and of `closed`, a chunk each.
     let retention = policy(Retention::default(), age(72), age(72));
     let done = finish(&mut tsdb, 6 * DAY_MS, &retention);
     assert_eq!(
@@ -353,15 +353,15 @@ fn age_expires_whole_extents_and_cleanup_deletes_their_chunks() {
             expired: 6,
             cleanups: 2,
             chunks_deleted: 6,
-            consolidations: 8,
+            consolidations: 10,
             merges: 0,
-            chunks_rewritten: 8,
-            chunks_built: 8,
+            chunks_rewritten: 10,
+            chunks_built: 10,
             more: false,
         }
     );
     // A round is a publication.
-    assert_eq!(tsdb.current().publication, before + 16);
+    assert_eq!(tsdb.current().publication, before + 18);
     check_settled(&tsdb);
     check_accounting(&tsdb);
 
@@ -485,8 +485,8 @@ fn each_round_is_bounded_and_a_call_stops_at_its_budget() {
     }
     // Days 0 and 1 of both streams expire, then three rounds take the hour tier's six chunks,
     // and one the two `closed` chunks. Consolidation comes last: twelve rounds take the
-    // minute tier's hours, a chunk each, and one day 2 of the hour tier, three chunks into one.
-    // Day 3 ends at `now`, so it is not quiet yet.
+    // minute tier's hours, a chunk each, one day 2 of the hour tier, three chunks into one, and
+    // one day 2 of `closed`. Day 3 ends at `now`, so it is not quiet yet.
     let expired = Maintained {
         expired: 1,
         more: true,
@@ -508,7 +508,8 @@ fn each_round_is_bounded_and_a_call_stops_at_its_budget() {
     let mut expected = vec![expired; 4];
     expected.extend([cleaned; 4]);
     expected.extend([consolidated(1, true); 12]);
-    expected.push(consolidated(3, false));
+    expected.push(consolidated(3, true));
+    expected.push(consolidated(1, false));
     assert_eq!(calls, expected);
     assert_eq!(leftovers(&tsdb, HOURS, 1), (0, 0));
     assert_eq!(leftovers(&tsdb, EVENTS, 1), (0, 0));

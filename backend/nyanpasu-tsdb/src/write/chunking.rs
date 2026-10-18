@@ -154,7 +154,7 @@ impl Shape {
         self.grids[usize::from(source.tier.0)].extent_of_bucket(source.bucket)
     }
 
-    fn stream_columns(&self, stream: StreamId) -> &[ColumnLayout] {
+    pub(crate) fn stream_columns(&self, stream: StreamId) -> &[ColumnLayout] {
         &self.events[usize::from(stream.0)]
     }
 }

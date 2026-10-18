@@ -6,7 +6,7 @@
 //!   an unknown outcome flags the store for recovery (§7.5). A round rolled back is simply
 //!   planned again by a later call.
 //! - A planner picks the most urgent round from what storage shows. The kinds of rounds, in
-//!   that order, are the variants of [`Round`]; merging event runs and recycling join them.
+//!   that order, are the variants of [`Round`]; recycling is to join them.
 //! - A call stops when its budget of rounds is used up or nothing is left, and says whether
 //!   work remains. The consumer calls again later: the store has no timer.
 //! - A backlog beyond the profile is to make the next commit run the most urgent round first
@@ -57,10 +57,11 @@ pub struct Maintained {
     pub cleanups: u64,
     /// ... and the chunks they deleted.
     pub chunks_deleted: u64,
-    /// Consolidation rounds (§4.3): each took part of an extent's L0 chunks, or moved past an
-    /// extent with none left ...
+    /// Consolidation rounds (§4.3), of a tier's extent or an event stream's window: each took
+    /// part of its L0 chunks, or moved past it with none left ...
     pub consolidations: u64,
-    /// ... and rounds that merged the late chunks of a bucket ...
+    /// ... and rounds that merged the late chunks of a bucket, or the sorted runs of an event
+    /// stream's extent, or found nothing to merge and cleared its mark ...
     pub merges: u64,
     /// ... the chunks both kinds replaced ...
     pub chunks_rewritten: u64,
@@ -92,6 +93,14 @@ impl Maintained {
 ///    largest cut in what a query reads; and finishing an extent is what makes its leftover
 ///    L0 chunks late chunks, whose merges then become due.
 /// 4. Merging a bucket's late chunks cuts a handful of chunks of one bucket.
+/// 5. Consolidation of an event stream's quiet window comes after the tiers': a series query
+///    reads every chunk of its range, so a tier's L0 chunks cost every report (§8.4), where an
+///    event scan reads chunks that do not overlap as one way (§8.3), so a window's L0 chunks,
+///    which overlap only by their late rows, cost a scan little until they are rewritten; and
+///    a tier's rounds are the smaller, so they do not wait behind a day's window. Finishing a
+///    window is what marks it when it keeps more than R runs.
+/// 6. Merging an extent's smallest runs comes last: it rewrites data already compressed, to
+///    keep the ways of a scan within R (§4.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Round {
     /// Expires `extent` of `stream`, the oldest extent it has not expired (§9.1).
@@ -103,6 +112,12 @@ pub(crate) enum Round {
     Consolidate { tier: TierId, extent: i64 },
     /// Merges the late chunks of `bucket` of `tier`, the oldest crowded bucket (§4.3).
     MergeDeltas { tier: TierId, bucket: i64 },
+    /// Consolidates the next part of window `extent` of event stream `stream`, the oldest
+    /// window after its cursor (§4.3).
+    ConsolidateEvents { stream: StreamId, extent: i64 },
+    /// Merges the smallest sorted runs of `extent` of event stream `stream`, the oldest marked
+    /// extent up to its cursor (§4.3).
+    MergeRuns { stream: StreamId, extent: i64 },
 }
 
 /// What planning and staging a round read besides storage.
@@ -212,6 +227,14 @@ pub(crate) fn stage(
         Round::MergeDeltas { tier, bucket } => {
             consolidate::merge(batch, read, context, tier, bucket, state.next_chunk)
                 .context(MergeDeltasSnafu { tier, bucket })?
+        }
+        Round::ConsolidateEvents { stream, extent } => {
+            consolidate::consolidate_events(batch, read, context, stream, extent, state.next_chunk)
+                .context(ConsolidateEventsSnafu { stream, extent })?
+        }
+        Round::MergeRuns { stream, extent } => {
+            consolidate::merge_runs(batch, read, context, stream, extent, state.next_chunk)
+                .context(MergeRunsSnafu { stream, extent })?
         }
     };
     let next = StateRecord {
@@ -324,6 +347,20 @@ pub enum MaintainError {
         source: ConsolidateError,
     },
 
+    #[snafu(display("failed to consolidate window {extent} of {stream:?}"))]
+    ConsolidateEvents {
+        stream: StreamId,
+        extent: i64,
+        source: ConsolidateError,
+    },
+
+    #[snafu(display("failed to merge the sorted runs of extent {extent} of {stream:?}"))]
+    MergeRuns {
+        stream: StreamId,
+        extent: i64,
+        source: ConsolidateError,
+    },
+
     /// A counter of the state record would leave its range, which only damage can cause.
     #[snafu(display("a counter of the state record would leave its range"))]
     CounterOverflow,
@@ -348,7 +385,9 @@ impl MaintainError {
             }
             Self::PlanConsolidation { source }
             | Self::Consolidate { source, .. }
-            | Self::MergeDeltas { source, .. } => source.kind(),
+            | Self::MergeDeltas { source, .. }
+            | Self::ConsolidateEvents { source, .. }
+            | Self::MergeRuns { source, .. } => source.kind(),
             Self::ReadState { source } => source.kind(),
             Self::UnknownPublication { .. } | Self::CounterOverflow => ErrorKind::Corrupted,
             Self::Commit { source } => source.kind(),

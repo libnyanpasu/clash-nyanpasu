@@ -6,8 +6,10 @@
 //! - **Chunks.** The stream's chunks whose extent and key range meet the range. Chunks whose
 //!   key ranges do not overlap are read one after another as one way: they are chained
 //!   greedily by their first key, which takes as many ways as there are chunks overlapping at
-//!   one key, and never more than sorted runs (§1, §4.3). A stream keyed by a monotonic
-//!   sequence, as core logs are, reads all of its L0 chunks as one way.
+//!   one key, and never more than sorted runs (§1, §4.3). The chunks of one sorted run are one
+//!   way even where they share a key: a group of rows with one key may fill more than a
+//!   chunk, and the run's order goes on from each chunk to the next. A stream keyed by a
+//!   monotonic sequence, as core logs are, reads all of its L0 chunks as one way.
 //! - **The head.** The rows of the stream's journal records that are in bounds and match.
 //!   Only the first `limit` of them in scan order can reach the page, so they are selected and
 //!   sorted into one way.
@@ -300,6 +302,9 @@ pub(crate) struct ReadLog {
     /// The chunks opened, in order.
     #[cfg(test)]
     pub(crate) opened: Vec<ChunkId>,
+    /// The ways of chunks each merge admitted.
+    #[cfg(test)]
+    pub(crate) ways: Vec<usize>,
     /// The blocks decoded: chunk, chunk column and block.
     #[cfg(test)]
     pub(crate) decoded: Vec<(ChunkId, u16, u32)>,
@@ -309,6 +314,11 @@ impl ReadLog {
     fn opened(&mut self, _chunk: ChunkId) {
         #[cfg(test)]
         self.opened.push(_chunk);
+    }
+
+    fn admitted(&mut self, _ways: usize) {
+        #[cfg(test)]
+        self.ways.push(_ways);
     }
 
     fn decoded(&mut self, _block: (ChunkId, u16, u32)) {
@@ -596,6 +606,8 @@ struct Link {
     /// Fragment 0's length, as the chunk's manifest entry records it.
     fragment0: u32,
     keys: (i64, i64),
+    /// The sorted run the chunk belongs to, as its manifest entry records it.
+    run: u64,
     chain: usize,
 }
 
@@ -726,6 +738,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             })?;
             lent = lent.max(lent_memory(link.fragment0));
         }
+        self.log.admitted(chains.len());
         let admit = |error| AdmitScanSnafu { ways: chains.len() }.into_error(error);
         self.ledger
             .admit(merge_memory(chains.len(), selected, columns, lent))
@@ -795,6 +808,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                     chunk: listed.chunk,
                     fragment0: listed.entry.fragment0,
                     keys: (first, last),
+                    run: listed.entry.run,
                     chain: 0,
                 };
                 match ledger.push(&mut links, link) {
@@ -1449,27 +1463,45 @@ fn below_64(range: RangeInclusive<i64>) -> u64 {
     (u64::MAX >> (63 - end) as u32) & (u64::MAX << start as u32)
 }
 
-/// Chains the links: in order of their first keys, each joins the first chain whose last
-/// chunk ends before it starts, or a new one. That takes as many chains as links overlap at
-/// one key. Sorts the links by chain and key, and returns each chain's range of them.
+/// Chains the links: in order of their first keys, each joins the chain whose last chunk is
+/// the one before it in its sorted run, or else the first chain whose last chunk ends before
+/// it starts, or a new one. That takes as many chains as links of different runs overlap at
+/// one key. Sorts the links by chain, key and id, which is a run's order, and returns each
+/// chain's range of them.
 fn chain(links: &mut [Link], ledger: &mut Ledger) -> Result<Vec<Range<usize>>, EventScanError> {
     links.sort_unstable_by_key(|link| (link.keys, link.chunk));
-    // There are at most as many chains as links.
-    let mut ends: Vec<i64> = ledger.vec(links.len()).context(ReserveChunkListSnafu)?;
-    for link in links.iter_mut() {
-        match ends.iter().position(|&end| end < link.keys.0) {
+    // Each chain's last link, by index; there are at most as many chains as links.
+    let mut lasts: Vec<usize> = ledger.vec(links.len()).context(ReserveChunkListSnafu)?;
+    for index in 0..links.len() {
+        let link = links[index];
+        // A run's chunks take consecutive ids, and the next starts at or after the key the
+        // last one ends at: they may share it, but never overlap past it.
+        let follows = |last: &Link| {
+            last.run == link.run
+                && last.chunk.0.checked_add(1) == Some(link.chunk.0)
+                && last.keys.1 <= link.keys.0
+        };
+        let chain = lasts
+            .iter()
+            .position(|&last| follows(&links[last]))
+            .or_else(|| {
+                lasts
+                    .iter()
+                    .position(|&last| links[last].keys.1 < link.keys.0)
+            });
+        links[index].chain = match chain {
             Some(chain) => {
-                ends[chain] = link.keys.1;
-                link.chain = chain;
+                lasts[chain] = index;
+                chain
             }
             None => {
-                link.chain = ends.len();
-                ends.push(link.keys.1);
+                lasts.push(index);
+                lasts.len() - 1
             }
-        }
+        };
     }
-    links.sort_unstable_by_key(|link| (link.chain, link.keys));
-    let mut chains = ledger.vec(ends.len()).context(ReserveChunkListSnafu)?;
+    links.sort_unstable_by_key(|link| (link.chain, link.keys, link.chunk));
+    let mut chains = ledger.vec(lasts.len()).context(ReserveChunkListSnafu)?;
     let mut start = 0;
     for index in 1..=links.len() {
         if index == links.len() || links[index].chain != links[start].chain {

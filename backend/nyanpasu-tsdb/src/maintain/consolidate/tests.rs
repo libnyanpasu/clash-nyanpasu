@@ -10,7 +10,7 @@ use proptest::prelude::*;
 use super::*;
 use crate::{
     FieldMask, GroupKey, GroupRequest, KeyPart, LabelId, Maintain, MaintainError, Maintained,
-    OpenError, Retention, RetentionPolicy, SeriesQuery, Tsdb,
+    OpenError, Profile, Retention, RetentionPolicy, SeriesQuery, Tsdb,
     chunk::{
         FragmentSink,
         format::{BLOCK_TARGET_LEN, MIN_FRAGMENT0_LEN},

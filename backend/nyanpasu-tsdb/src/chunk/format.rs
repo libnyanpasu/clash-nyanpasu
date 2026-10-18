@@ -156,6 +156,8 @@ pub(crate) const MIN_HEADER_LEN: usize = 6;
 pub(crate) const MIN_COLUMN_LEN: usize = 6 + 3;
 /// [`BlockRecord`].
 pub(crate) const MIN_BLOCK_ENTRY_LEN: usize = 9 + 3;
+/// [`LargeEntry`].
+pub(crate) const MIN_LARGE_ENTRY_LEN: usize = 3;
 
 /// The shortest fragment 0, trailer included: the prefix, a header, the three lists' one-byte
 /// length prefixes, and the one column and one block every chunk has.
@@ -667,6 +669,31 @@ pub(crate) const fn directory_memory(
         + blocks * size_of::<BlockEntry>()
         + large * size_of::<LargeEntry>()
         + fragments * size_of::<u32>()) as u64
+}
+
+/// The most [`memory`](Directory::memory) the directory of a chunk of `columns` columns and
+/// `fragments` fragments holds, once parsed from a fragment 0 of `len` content bytes: no more
+/// blocks and large values than `len` holds at their shortest encodings, nor than `blocks` and
+/// `large`, the most the caller's chunks have. A caller that sizes a chunk's reading before it
+/// opens it (§7.4) counts on it; a chunk that needs more is not one of its chunks.
+pub(crate) const fn directory_within(
+    columns: usize,
+    len: usize,
+    blocks: usize,
+    large: usize,
+    fragments: usize,
+) -> u64 {
+    let blocks = if blocks < len / MIN_BLOCK_ENTRY_LEN {
+        blocks
+    } else {
+        len / MIN_BLOCK_ENTRY_LEN
+    };
+    let large = if large < len / MIN_LARGE_ENTRY_LEN {
+        large
+    } else {
+        len / MIN_LARGE_ENTRY_LEN
+    };
+    directory_memory(columns, blocks, large, fragments)
 }
 
 /// The bytes `buffer` holds.

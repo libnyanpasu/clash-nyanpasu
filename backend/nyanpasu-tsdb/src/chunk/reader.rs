@@ -22,7 +22,8 @@ use super::{
     error::{
         ChecksumSnafu, ColumnTypeSnafu, ContentLengthSnafu, DecodeBlockSnafu, Fragment0LengthSnafu,
         MissingFragmentSnafu, NoSuchBlockSnafu, NoSuchColumnSnafu, NoSuchLargeValueSnafu,
-        ReadError, ReadFragmentSnafu, RecordedFragment0Snafu, ReserveDirectorySnafu,
+        NoSuchPieceSnafu, ReadError, ReadFragmentSnafu, RecordedFragment0Snafu,
+        ReserveDirectorySnafu,
     },
     format::{
         BlockEntry, ChunkKind, ColumnDesc, Directory, FRAGMENT0_LENS, LargeEntry,
@@ -255,6 +256,32 @@ impl ChunkReader {
             })?;
         }
         Ok(())
+    }
+
+    /// Hands `f` piece `piece` of large value `index`, the content of its fragment, valid
+    /// while the fragment is borrowed: [`DATA_PAYLOAD_LEN`] bytes for every piece but the last,
+    /// the pieces the builder writes ([`LargeValue::put`]). A copy of a large value thus holds
+    /// one fragment of it at a time, the one the backend lends, never all of it (§6.5, §7.4).
+    ///
+    /// [`DATA_PAYLOAD_LEN`]: super::format::DATA_PAYLOAD_LEN
+    /// [`LargeValue::put`]: super::builder::LargeValue::put
+    pub(crate) fn read_large_piece<R>(
+        &self,
+        source: &impl FragmentSource,
+        index: u32,
+        piece: u32,
+        f: impl FnOnce(&[u8]) -> R,
+    ) -> Result<R, ReadError> {
+        let entry = self
+            .directory
+            .large
+            .get(index as usize)
+            .context(NoSuchLargeValueSnafu { index })?;
+        ensure!(piece < entry.fragments, NoSuchPieceSnafu { index, piece });
+        // The opening checked that the value's fragments are its own and of its length.
+        self.with_data(source, entry.first_fragment + piece, |content| {
+            Ok(f(content))
+        })
     }
 
     fn column(&self, column: u16) -> Result<&ColumnDesc, ReadError> {

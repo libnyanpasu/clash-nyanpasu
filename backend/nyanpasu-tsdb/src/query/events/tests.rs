@@ -8,7 +8,7 @@ use proptest::prelude::*;
 
 use super::*;
 use crate::{
-    Profile, Timestamp,
+    Maintain, Profile, Retention, RetentionPolicy, Timestamp,
     chunk::{
         BatchSink,
         builder::{ChunkBuilder, Column as BatchColumn, Values},
@@ -1070,9 +1070,9 @@ fn pushed<T>(len: usize) -> u64 {
 }
 
 /// The bytes a scan's chunk list holds for `count` chunks that all overlap: the links, which
-/// grow as they are listed, and the ends and the ranges of as many chains.
+/// grow as they are listed, and the last links and the ranges of as many chains.
 fn listed(count: usize) -> u64 {
-    pushed::<Link>(count) + (count * (size_of::<i64>() + size_of::<Range<usize>>())) as u64
+    pushed::<Link>(count) + (count * (size_of::<usize>() + size_of::<Range<usize>>())) as u64
 }
 
 // The admission reserves the merge of every way at once (§7.4): one byte short, it fails
@@ -1139,10 +1139,12 @@ fn a_merge_of_more_ways_than_the_budget_holds_fails_at_admission() {
 
 #[test]
 fn chunks_that_do_not_overlap_are_one_way() {
+    // Each a run of its own, as L0 chunks are.
     let link = |chunk, keys| Link {
         chunk: ChunkId(chunk),
         fragment0: 0,
         keys,
+        run: chunk,
         chain: 0,
     };
     let mut ledger = Ledger {
@@ -1169,6 +1171,195 @@ fn chunks_that_do_not_overlap_are_one_way() {
     for range in chains {
         let chain = &overlapping[range];
         assert!(chain.windows(2).all(|pair| pair[0].keys.1 < pair[1].keys.0));
+    }
+}
+
+// The chunks of one sorted run are one way where they share a key, read in the run's order:
+// run 10's chunks share keys 5 and 9, and its two chunks of key 5 alone come out of order. A
+// chunk of another run that starts at 5 is a way of its own. A chunk numbered after run 10's
+// last that overlaps it, or that claims run 10 without the next id, does not join the run's
+// way.
+#[test]
+fn a_runs_chunks_are_one_way_where_they_share_a_key() {
+    let link = |chunk, run, keys| Link {
+        chunk: ChunkId(chunk),
+        fragment0: 0,
+        keys,
+        run,
+        chain: 0,
+    };
+    let mut ledger = Ledger {
+        reservation: MemoryBudget::new(u64::MAX).try_reserve("test", 0).unwrap(),
+        held: 0,
+    };
+    let mut links = [
+        link(15, 10, (11, 15)),
+        link(13, 10, (5, 9)),
+        link(20, 20, (5, 7)),
+        link(12, 10, (5, 5)),
+        link(14, 10, (9, 12)),
+        link(11, 10, (5, 5)),
+        link(10, 10, (0, 5)),
+        link(30, 10, (12, 20)),
+    ];
+    let chains = chain(&mut links, &mut ledger).unwrap();
+    let ids: Vec<Vec<u64>> = chains
+        .into_iter()
+        .map(|range| links[range].iter().map(|link| link.chunk.0).collect())
+        .collect();
+    assert_eq!(ids, [vec![10, 11, 12, 13, 14], vec![20, 15], vec![30]]);
+    // Many chunks of a run of one key keep its order once the chains are grouped, though
+    // another run's chunk moves before them: that sort is not stable.
+    let mut links: Vec<Link> = (100..164).map(|chunk| link(chunk, 100, (5, 5))).collect();
+    links.extend([link(1, 1, (4, 6)), link(2, 2, (7, 9))]);
+    let chains = chain(&mut links, &mut ledger).unwrap();
+    let ids: Vec<Vec<u64>> = chains
+        .into_iter()
+        .map(|range| links[range].iter().map(|link| link.chunk.0).collect())
+        .collect();
+    assert_eq!(ids, [vec![1, 2], (100..164).collect()]);
+}
+
+/// Writes a `closed` row for each of `rows`, its key and a note of that many bytes, one batch
+/// each, and adds them to the model.
+fn write_notes(store: &mut Store, rows: &[(i64, usize)]) {
+    for (index, &(key, len)) in rows.iter().enumerate() {
+        let mut note = format!("note {index} ").into_bytes();
+        note.resize(len, b'.');
+        let values = [
+            Value::I64(key),
+            Value::U64(0),
+            Value::Null,
+            Value::Null,
+            Value::Null,
+            Value::Bytes(IDS[1]),
+            Value::Bytes(&note),
+            Value::Null,
+            Value::Null,
+            Value::Null,
+        ];
+        let seq = store.tsdb.next_event_seq();
+        store.closed.push(Model {
+            order: (key, seq.incarnation, seq.seq),
+            cells: vec![
+                Cell::Int(key.into()),
+                Cell::Int(0),
+                Cell::Null,
+                Cell::Null,
+                Cell::Null,
+                Cell::Bytes(IDS[1].to_vec()),
+                Cell::Bytes(note.clone()),
+                Cell::Null,
+                Cell::Null,
+                Cell::Null,
+            ],
+        });
+        let events = [EventRow {
+            stream: CLOSED,
+            key,
+            seq,
+            values: &values,
+        }];
+        store.batch += 1;
+        let input = Input {
+            batch_id: store.batch,
+            now: Timestamp(store.batch as i64),
+            series: &[],
+            events: &events,
+            aux: &[],
+            pins: &[],
+        };
+        store.tsdb.write(&input, Durability::Durable).unwrap();
+    }
+}
+
+// A group of rows with one key that fills more than a chunk makes a sorted run whose chunks
+// share that key. The scan reads the run as one way, in its order in both directions, and a
+// cursor at the boundary of two of its chunks continues exactly.
+#[test]
+fn a_run_whose_chunks_share_a_key_is_one_way() {
+    let mut store = Store::new(Profile {
+        event_buffer_rows: 1,
+        ..Profile::desktop()
+    });
+    let key = DAY / 2;
+    let mut rows = vec![(key - 1, 10)];
+    rows.extend([(key, 1_900_000); 6]);
+    rows.push((key + 1, 10));
+    write_notes(&mut store, &rows);
+    let retention = RetentionPolicy {
+        tiers: vec![Retention::default(); 2],
+        streams: vec![Retention::default(); 2],
+    };
+    let done = store
+        .tsdb
+        .maintain(&Maintain {
+            now: Timestamp(DAY + 2 * 3_600_000),
+            retention: &retention,
+            rounds: 100,
+        })
+        .unwrap();
+    assert_eq!(done.consolidations, 1, "{done:?}");
+    let run = store.chunks(CLOSED);
+    assert!(run.len() >= 3, "{run:?}");
+    assert!(run.iter().all(|listed| listed.entry.run == run[0].chunk.0));
+    let touching = run
+        .windows(2)
+        .filter(|pair| pair[0].entry.key_range.1 == pair[1].entry.key_range.0)
+        .count();
+    assert!(touching >= 2, "{run:?}");
+
+    let snapshot = store.snapshot();
+    let range = TimeRange::new(Timestamp(0), Timestamp(DAY)).unwrap();
+    for backward in [false, true] {
+        let direction = direction(backward);
+        let mut log = ReadLog::default();
+        let query = EventQuery {
+            stream: CLOSED,
+            range,
+            direction,
+            cursor: None,
+            predicate: &EventPredicate::default(),
+            limit: 1,
+        };
+        let page = scan(
+            snapshot.storage(),
+            snapshot.version(),
+            snapshot.schema(),
+            snapshot.budget(),
+            &query,
+            &mut log,
+        )
+        .unwrap();
+        drop(page);
+        assert_eq!(log.ways, [1]);
+        assert_eq!(
+            scan_pages(&snapshot, Choice::All, range, direction, 1, None),
+            expected(&store.closed, Choice::All, range, direction, None)
+        );
+    }
+    // A cursor at each boundary: a chunk's last event forward, the next one's first backward.
+    let forward = expected(&store.closed, Choice::All, range, Direction::Forward, None);
+    let mut before = 0;
+    for listed in &run[..run.len() - 1] {
+        before += listed.entry.rows as usize;
+        for (direction, at) in [
+            (Direction::Forward, before - 1),
+            (Direction::Backward, before),
+        ] {
+            let (key, incarnation, seq) = forward[at].order;
+            let cursor = Some(EventCursor {
+                epoch: 0,
+                key,
+                incarnation,
+                seq,
+            });
+            assert_eq!(
+                scan_pages(&snapshot, Choice::All, range, direction, 2, cursor),
+                expected(&store.closed, Choice::All, range, direction, cursor),
+                "{direction:?} from the boundary after {before} events"
+            );
+        }
     }
 }
 

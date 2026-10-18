@@ -88,6 +88,21 @@ pub enum BuildError {
 
     #[snafu(display("a chunk needs at least one column"))]
     NoColumns,
+
+    #[snafu(display("the chunk has no column {column}"))]
+    UnknownColumn { column: usize },
+
+    /// A value written a piece at a time is a large value of a text column: longer than an
+    /// inline value, and no longer than a chunk.
+    #[snafu(display("column {column} cannot take a large value of {len} bytes"))]
+    NotLarge { column: usize, len: usize },
+
+    /// A piece of a large value is not the length the builder cuts a value into.
+    #[snafu(display("a piece of a large value has {actual} bytes, not {expected}"))]
+    PieceLength { expected: usize, actual: usize },
+
+    #[snafu(display("a large value of {len} bytes ended after {received}"))]
+    LargeIncomplete { len: usize, received: usize },
 }
 
 impl BuildError {
@@ -111,7 +126,11 @@ impl BuildError {
             | Self::TooManyLargeValues
             | Self::TooManyBlocks
             | Self::ChunkTooLarge { .. }
-            | Self::NoColumns => ErrorKind::Local,
+            | Self::NoColumns
+            | Self::UnknownColumn { .. }
+            | Self::NotLarge { .. }
+            | Self::PieceLength { .. }
+            | Self::LargeIncomplete { .. } => ErrorKind::Local,
         }
     }
 }
@@ -196,6 +215,9 @@ pub enum ReadError {
     #[snafu(display("the chunk has no large value {index}"))]
     NoSuchLargeValue { index: u32 },
 
+    #[snafu(display("large value {index} has no piece {piece}"))]
+    NoSuchPiece { index: u32, piece: u32 },
+
     #[snafu(display("fragment {index} holds {actual} bytes, not the {expected} of its directory"))]
     ContentLength {
         index: u32,
@@ -227,6 +249,7 @@ impl ReadError {
             | Self::NoSuchColumn { .. }
             | Self::NoSuchBlock { .. }
             | Self::NoSuchLargeValue { .. }
+            | Self::NoSuchPiece { .. }
             | Self::ContentLength { .. } => ErrorKind::Corrupted,
         }
     }

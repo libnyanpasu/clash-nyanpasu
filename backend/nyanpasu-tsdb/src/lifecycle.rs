@@ -17,7 +17,7 @@ use std::ops::ControlFlow;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use crate::{
-    ErrorKind, Profile, ProfileError, Schema, SchemaError,
+    ErrorKind, ExtentSpec, Profile, ProfileError, Schema, SchemaError,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::{Catalog, LoadError},
     chunk::format::MAX_CHUNK_LEN,
@@ -67,9 +67,15 @@ pub(crate) fn open<S: Storage>(
             needed
         }
     );
-    // A merge takes two late chunks of a bucket, which a round's F and I have to allow.
+    // A merge takes two late chunks of a bucket, or two runs of a window, and a consolidation
+    // at least one chunk, which a round's F and I have to allow.
+    let consolidates = schema.series.is_some()
+        || schema
+            .events
+            .iter()
+            .any(|stream| matches!(stream.extent, ExtentSpec::Window(_)));
     ensure!(
-        schema.series.is_none()
+        !consolidates
             || (profile.consolidate_chunks >= 2 && profile.consolidate_bytes >= 2 * MAX_CHUNK_LEN),
         ConsolidationBoundsSnafu {
             chunks: profile.consolidate_chunks,
@@ -354,10 +360,13 @@ pub enum OpenError {
     ))]
     StagingTooSmall { staging: u64, needed: u64 },
 
-    /// A maintenance round of the profile's F chunks and I bytes cannot take the two largest
-    /// chunks a merge of a bucket's late chunks may need (§4.3).
+    /// A maintenance round of the profile's F chunks and I bytes cannot take two chunks as
+    /// large as chunks get, as a merge of a bucket's late chunks or of a window's runs may
+    /// need to (§4.3). Checked for a schema with tiers or a stream of time windows: whatever
+    /// consolidates.
     #[snafu(display(
-        "a round of {chunks} chunks and {bytes} bytes cannot merge two chunks of a bucket"
+        "a round of {chunks} chunks and {bytes} bytes cannot take two chunks of a bucket or a \
+         window"
     ))]
     ConsolidationBounds { chunks: usize, bytes: u64 },
 

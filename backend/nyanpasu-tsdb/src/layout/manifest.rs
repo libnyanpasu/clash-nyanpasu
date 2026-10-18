@@ -49,6 +49,18 @@
 //! tier and marks its bucket when it crowds; a [`Replacement`] keeps both as maintenance
 //! replaces chunks; cleanup takes them out with the expired chunks.
 //!
+//! An event stream keeps the same cursor, and in the same namespace:
+//!
+//! - its **L0 index**, every L0 chunk by (extent, first key, chunk), so that a round takes an
+//!   extent's L0 chunks in key order, where they overlap least;
+//! - its **run index**, every sorted run (§1) by (extent, bytes, run), with the run's chunks:
+//!   the extent's smallest runs come first, and a run's chunks are the ids from its number on,
+//!   since a run is an L0 chunk alone, numbered by its id, or the output of one round, whose
+//!   chunks take consecutive ids;
+//! - a **mark** on each extent that may hold more than R runs (§4.3): [`write_chunk`] marks
+//!   the extent of every L0 chunk, since it does not know R, and maintenance sets or clears
+//!   the mark by the extent's runs once it has looked ([`mark_runs`]).
+//!
 //! Values use the record encoding of `layout::record`.
 
 use std::ops::{Bound, ControlFlow, RangeInclusive};
@@ -76,12 +88,34 @@ pub(crate) const BUCKET_L0_CHUNKS: usize = 4;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 enum Family {
-    /// An L0 chunk of a tier: its bucket and its id, with an empty value.
+    /// An L0 chunk of a tier: its bucket, its rows and its id, with an empty value.
     L0 = 0,
-    /// A bucket with more than [`BUCKET_L0_CHUNKS`] L0 chunks, with an empty value.
+    /// A bucket of a tier with more than [`BUCKET_L0_CHUNKS`] L0 chunks, or an extent of an
+    /// event stream that may hold more than R runs, with an empty value.
     Crowded = 1,
-    /// An extent being consolidated: [`Progress`].
+    /// An extent of a tier being consolidated: [`Progress`].
     Progress = 2,
+    /// An L0 chunk of an event stream: its extent, its first key and its id, with an empty
+    /// value.
+    EventL0 = 3,
+    /// A sorted run of an event stream: its extent, its bytes and its number, with a
+    /// [`RunRecord`].
+    Runs = 4,
+}
+
+/// What the run index keeps of a run beside its key: its chunks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct RunRecord {
+    chunks: u32,
+}
+
+/// A sorted run of an extent of an event stream (§1): `chunks` chunks of `bytes` bytes
+/// together, whose ids run from `run` on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Run {
+    pub(crate) run: u64,
+    pub(crate) bytes: u64,
+    pub(crate) chunks: u32,
 }
 
 /// How far the consolidation of an extent got: the last consolidated chunk a round wrote
@@ -155,6 +189,20 @@ fn progress_key(stream: StreamRef, extent: i64) -> KeyBuf {
     family_key(stream, Family::Progress).i64(extent)
 }
 
+fn event_l0_key(stream: StreamRef, extent: i64, first: i64, chunk: ChunkId) -> KeyBuf {
+    family_key(stream, Family::EventL0)
+        .i64(extent)
+        .i64(first)
+        .u64(chunk.0)
+}
+
+fn run_key(stream: StreamRef, extent: i64, bytes: u64, run: u64) -> KeyBuf {
+    family_key(stream, Family::Runs)
+        .i64(extent)
+        .u64(bytes)
+        .u64(run)
+}
+
 /// One chunk of an extent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ChunkEntry {
@@ -214,9 +262,14 @@ impl StreamRecord {
     }
 }
 
-/// Records a chunk the write path built, which is an L0 chunk (§4.2): its entry, and for a
-/// tier its place in the L0 index under its bucket, which it is the only one of. The bucket
-/// gets a crowding mark when the chunk takes it past [`BUCKET_L0_CHUNKS`].
+/// Records a chunk the write path built, which is an L0 chunk (§4.2): its entry, and its
+/// place in consolidation's bookkeeping, of which the write path has no other way in.
+///
+/// - A tier's chunk goes into the L0 index under its bucket, which gets a crowding mark when
+///   the chunk takes it past [`BUCKET_L0_CHUNKS`].
+/// - An event stream's chunk goes into the L0 index under its extent and first key, and into
+///   the run index as a run of its own, numbered by its id (§1). Its extent gets a mark: one
+///   run more may take it past R, which only maintenance knows.
 ///
 /// Maintenance records the chunks it writes through a [`Replacement`] instead.
 pub(crate) fn write_chunk(
@@ -227,10 +280,31 @@ pub(crate) fn write_chunk(
     entry: &ChunkEntry,
 ) -> Result<(), StorageError> {
     put_entry(batch, stream, extent, chunk, entry)?;
-    if let StreamRef::Tier(_) = stream {
-        index_l0(batch, stream, entry, chunk)?;
+    match stream {
+        StreamRef::Tier(_) => index_l0(batch, stream, entry, chunk),
+        StreamRef::Events(_) => {
+            let key = event_l0_key(stream, extent, entry.key_range.0, chunk);
+            batch.put(CONSOLIDATION, key.as_slice(), &[])?;
+            let run = Run {
+                run: chunk.0,
+                bytes: entry.bytes,
+                chunks: 1,
+            };
+            put_run(batch, stream, extent, run)?;
+            batch.put(CONSOLIDATION, crowded_key(stream, extent).as_slice(), &[])
+        }
     }
-    Ok(())
+}
+
+fn put_run(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+    run: Run,
+) -> Result<(), StorageError> {
+    let record = RunRecord { chunks: run.chunks };
+    let key = run_key(stream, extent, run.bytes, run.run);
+    batch.put(CONSOLIDATION, key.as_slice(), &encode(&record))
 }
 
 fn put_entry(
@@ -351,7 +425,277 @@ pub(crate) fn scan_l0<B>(
     broken.transpose()
 }
 
-/// The first bucket of `stream` from `from` on that has a crowding mark.
+/// Calls `f` with the first key and the id of every L0 chunk of `extent` of event stream
+/// `stream`, by first key and then by id, without collecting them. `f` stops the scan by
+/// breaking with a value, which comes back out; a damaged key stops it with an error.
+pub(crate) fn scan_event_l0<B>(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extent: i64,
+    mut f: impl FnMut(i64, ChunkId) -> ControlFlow<B>,
+) -> Result<Option<B>, ManifestError> {
+    let prefix = family_key(stream, Family::EventL0).i64(extent);
+    let broken = read
+        .scan(
+            CONSOLIDATION,
+            KeyRange::Prefix(prefix.as_slice()),
+            Direction::Forward,
+            |key, _| {
+                let parts = || {
+                    let mut reader = KeyReader::new(key);
+                    reader.u8()?;
+                    reader.u8()?;
+                    reader.u8()?;
+                    reader.i64()?;
+                    let first = reader.i64()?;
+                    let chunk = reader.u64()?;
+                    reader.finish()?;
+                    Ok((first, chunk))
+                };
+                match parts().context(IndexKeySnafu { key }) {
+                    Ok((first, chunk)) => f(first, ChunkId(chunk)).map_break(Ok),
+                    Err(error) => ControlFlow::Break(Err(error)),
+                }
+            },
+        )
+        .context(ScanIndexSnafu)?;
+    broken.transpose()
+}
+
+/// Calls `f` with every sorted run of `extent` of event stream `stream`, the fewest bytes
+/// first, without collecting them. `f` stops the scan by breaking with a value, which comes
+/// back out; a damaged key or record stops it with an error.
+pub(crate) fn scan_runs<B>(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extent: i64,
+    mut f: impl FnMut(Run) -> ControlFlow<B>,
+) -> Result<Option<B>, ManifestError> {
+    let prefix = family_key(stream, Family::Runs).i64(extent);
+    let broken = read
+        .scan(
+            CONSOLIDATION,
+            KeyRange::Prefix(prefix.as_slice()),
+            Direction::Forward,
+            |key, value| {
+                let parts = || {
+                    let mut reader = KeyReader::new(key);
+                    reader.u8()?;
+                    reader.u8()?;
+                    reader.u8()?;
+                    reader.i64()?;
+                    let bytes = reader.u64()?;
+                    let run = reader.u64()?;
+                    reader.finish()?;
+                    Ok((bytes, run))
+                };
+                let (bytes, run) = match parts().context(IndexKeySnafu { key }) {
+                    Ok(parts) => parts,
+                    Err(error) => return ControlFlow::Break(Err(error)),
+                };
+                match decode::<RunRecord>(value) {
+                    Ok(RunRecord { chunks }) => f(Run { run, bytes, chunks }).map_break(Ok),
+                    Err(problem) => ControlFlow::Break(
+                        InvalidRunSnafu {
+                            extent,
+                            run,
+                            problem,
+                        }
+                        .fail(),
+                    ),
+                }
+            },
+        )
+        .context(ScanIndexSnafu)?;
+    broken.transpose()
+}
+
+/// Whether `extent` of event stream `stream` has more than `limit` sorted runs: a scan of its
+/// run index that stops at the first one past the limit.
+pub(crate) fn runs_over(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extent: i64,
+    limit: usize,
+) -> Result<bool, ManifestError> {
+    let mut count = 0;
+    let past = scan_runs(read, stream, extent, |_| {
+        count += 1;
+        if count > limit {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
+    })?;
+    Ok(past.is_some())
+}
+
+/// Sets the mark of `extent` of event stream `stream` when it has more than `max_runs`
+/// sorted runs, and clears it otherwise. Returns whether it is set.
+pub(crate) fn mark_runs(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+    max_runs: usize,
+) -> Result<bool, ManifestError> {
+    let over = runs_over(&*batch, stream, extent, max_runs)?;
+    let key = crowded_key(stream, extent);
+    if over {
+        batch.put(CONSOLIDATION, key.as_slice(), &[])
+    } else {
+        batch.delete(CONSOLIDATION, key.as_slice())
+    }
+    .context(WriteIndexSnafu)?;
+    Ok(over)
+}
+
+/// Calls `f` with every chunk of `run`, a run of `extent` of event stream `stream`, by id,
+/// which is its order. The run's ids are those from its number on, so this reads the
+/// manifest entries of its chunks alone, however large the extent.
+pub(crate) fn scan_run<B>(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extent: i64,
+    run: Run,
+    mut f: impl FnMut(Listed) -> ControlFlow<B>,
+) -> Result<Option<B>, ManifestError> {
+    let last = run
+        .chunks
+        .checked_sub(1)
+        .and_then(|more| run.run.checked_add(u64::from(more)))
+        .context(RunIdsSnafu {
+            extent,
+            run: run.run,
+        })?;
+    let first = chunk_key(stream, extent, ChunkId(run.run));
+    let last = chunk_key(stream, extent, ChunkId(last));
+    let range = KeyRange::Between(
+        Bound::Included(first.as_slice()),
+        Bound::Included(last.as_slice()),
+    );
+    let broken = read
+        .scan(
+            MANIFEST,
+            range,
+            Direction::Forward,
+            |key, value| match listed(key, value) {
+                Ok(chunk) => f(chunk).map_break(Ok),
+                Err(error) => ControlFlow::Break(Err(error)),
+            },
+        )
+        .context(ScanChunksSnafu)?;
+    broken.transpose()
+}
+
+/// Takes the chunk `listed` of an expired extent of event stream `stream` out of the indexes:
+/// an `l0` chunk's place in the L0 index and its run, and its extent's mark. Nothing merges
+/// in an expired extent. The runs of its consolidated chunks outlive them, since a run's key
+/// holds the run's bytes, which no chunk's entry does; cleanup takes them once the chunks are
+/// gone ([`forget_expired_runs`]).
+pub(crate) fn forget_event_chunk(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    listed: &Listed,
+    l0: bool,
+) -> Result<(), StorageError> {
+    let extent = listed.extent;
+    if l0 {
+        let first = listed.entry.key_range.0;
+        let key = event_l0_key(stream, extent, first, listed.chunk);
+        batch.delete(CONSOLIDATION, key.as_slice())?;
+        let run = run_key(stream, extent, listed.entry.bytes, listed.chunk.0);
+        batch.delete(CONSOLIDATION, run.as_slice())?;
+    }
+    batch.delete(CONSOLIDATION, crowded_key(stream, extent).as_slice())
+}
+
+/// Calls `f` with the extent, bytes and number of every sorted run of event stream `stream`
+/// in an extent up to `expired`, the oldest extents first. `f` stops the scan by breaking
+/// with a value, which comes back out; a damaged key stops it with an error.
+fn scan_runs_up_to<B>(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    expired: i64,
+    mut f: impl FnMut(i64, u64, u64) -> ControlFlow<B>,
+) -> Result<Option<B>, ManifestError> {
+    let first = family_key(stream, Family::Runs).i64(i64::MIN);
+    let last = run_key(stream, expired, u64::MAX, u64::MAX);
+    let range = KeyRange::Between(
+        Bound::Included(first.as_slice()),
+        Bound::Included(last.as_slice()),
+    );
+    let broken = read
+        .scan(CONSOLIDATION, range, Direction::Forward, |key, _| {
+            let parts = || {
+                let mut reader = KeyReader::new(key);
+                reader.u8()?;
+                reader.u8()?;
+                reader.u8()?;
+                let extent = reader.i64()?;
+                let bytes = reader.u64()?;
+                let run = reader.u64()?;
+                reader.finish()?;
+                Ok((extent, bytes, run))
+            };
+            match parts().context(IndexKeySnafu { key }) {
+                Ok((extent, bytes, run)) => f(extent, bytes, run).map_break(Ok),
+                Err(error) => ControlFlow::Break(Err(error)),
+            }
+        })
+        .context(ScanIndexSnafu)?;
+    broken.transpose()
+}
+
+/// Whether event stream `stream` keeps a sorted run of an extent up to `expired` in the run
+/// index: what cleanup has left once the extents' chunks are gone. It reads one entry.
+pub(crate) fn has_expired_runs(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    expired: i64,
+) -> Result<bool, ManifestError> {
+    let found = scan_runs_up_to(read, stream, expired, |_, _, _| ControlFlow::Break(()))?;
+    Ok(found.is_some())
+}
+
+/// Takes at most `limit` sorted runs of the extents of event stream `stream` up to `expired`
+/// out of the run index, the oldest extents first, a few at a time; returns how many.
+pub(crate) fn forget_expired_runs(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    expired: i64,
+    limit: usize,
+) -> Result<usize, ManifestError> {
+    const WINDOW: usize = 16;
+    let mut forgotten = 0;
+    while forgotten < limit {
+        let wanted = WINDOW.min(limit - forgotten);
+        let mut window = [(0, 0, 0); WINDOW];
+        let mut taken = 0;
+        scan_runs_up_to(&*batch, stream, expired, |extent, bytes, run| {
+            window[taken] = (extent, bytes, run);
+            taken += 1;
+            if taken == wanted {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })?;
+        for &(extent, bytes, run) in &window[..taken] {
+            let key = run_key(stream, extent, bytes, run);
+            batch
+                .delete(CONSOLIDATION, key.as_slice())
+                .context(WriteIndexSnafu)?;
+        }
+        forgotten += taken;
+        if taken < wanted {
+            break;
+        }
+    }
+    Ok(forgotten)
+}
+
+/// The first bucket of a tier, or extent of an event stream, of `stream` from `from` on that
+/// has a crowding mark.
 pub(crate) fn first_crowded(
     read: &impl StorageRead,
     stream: StreamRef,
@@ -473,6 +817,11 @@ pub(crate) fn set_consolidated(
 /// The L0 index follows the chunks: an L0 chunk of a tier enters it when added and leaves it
 /// when removed. Removing does not clear a crowding mark; the round sets each touched
 /// bucket's afresh with [`mark_crowding`] once its chunks are in place.
+///
+/// An event stream's indexes follow its runs: removing an L0 chunk takes it out of the L0
+/// index and the run index, where it is a run of its own; a run of consolidated chunks leaves
+/// with [`remove_run`](Self::remove_run), and the run a round writes enters with
+/// [`add_run`](Self::add_run). The round marks the extent afresh with [`mark_runs`].
 #[derive(Debug)]
 pub(crate) struct Replacement {
     stream: StreamRef,
@@ -512,8 +861,8 @@ impl Replacement {
         Ok(())
     }
 
-    /// Deletes a chunk the round replaced: its fragments, its entry, and its place in the L0
-    /// index when it is an `l0` chunk of a tier.
+    /// Deletes a chunk the round replaced: its fragments, its entry, and when it is an `l0`
+    /// chunk, its place in the L0 index, and an event stream's run of it alone.
     pub(crate) fn remove(
         &mut self,
         batch: &mut impl StorageWrite,
@@ -526,17 +875,49 @@ impl Replacement {
             .context(DeleteChunkSnafu { chunk: chunk.0 })?;
         remove_chunk(batch, stream, listed.extent, chunk)
             .context(DeleteChunkSnafu { chunk: chunk.0 })?;
-        if l0 && let StreamRef::Tier(_) = stream {
-            let key = l0_key(stream, listed.entry.key_range.0, listed.entry.rows, chunk);
-            batch
-                .delete(CONSOLIDATION, key.as_slice())
-                .context(WriteIndexSnafu)?;
+        if l0 {
+            let (first, entry) = (listed.entry.key_range.0, &listed.entry);
+            let keys = match stream {
+                StreamRef::Tier(_) => [Some(l0_key(stream, first, entry.rows, chunk)), None],
+                StreamRef::Events(_) => [
+                    Some(event_l0_key(stream, listed.extent, first, chunk)),
+                    Some(run_key(stream, listed.extent, entry.bytes, chunk.0)),
+                ],
+            };
+            for key in keys.iter().flatten() {
+                batch
+                    .delete(CONSOLIDATION, key.as_slice())
+                    .context(WriteIndexSnafu)?;
+            }
         }
         self.removed = (
             self.removed.0 + 1,
             self.removed.1.saturating_add(listed.entry.bytes),
         );
         Ok(())
+    }
+
+    /// Takes `run`, a run of consolidated chunks of the extent, out of the run index, once the
+    /// round has removed its chunks.
+    pub(crate) fn remove_run(
+        &mut self,
+        batch: &mut impl StorageWrite,
+        run: &Run,
+    ) -> Result<(), ManifestError> {
+        let key = run_key(self.stream, self.extent, run.bytes, run.run);
+        batch
+            .delete(CONSOLIDATION, key.as_slice())
+            .context(WriteIndexSnafu)
+    }
+
+    /// Records `run`, the chunks the round wrote into the extent of an event stream, in the
+    /// run index.
+    pub(crate) fn add_run(
+        &mut self,
+        batch: &mut impl StorageWrite,
+        run: Run,
+    ) -> Result<(), ManifestError> {
+        put_run(batch, self.stream, self.extent, run).context(WriteIndexSnafu)
     }
 
     /// Applies the counts to the record of the extent, which has to count every chunk removed.
@@ -960,6 +1341,17 @@ pub enum ManifestError {
         extent: i64,
         cursor: Option<i64>,
     },
+
+    #[snafu(display("the record of run {run} of extent {extent} is invalid: {problem:?}"))]
+    InvalidRun {
+        extent: i64,
+        run: u64,
+        problem: RecordProblem,
+    },
+
+    /// The run index lists a run of no chunks, or of ids past `u64::MAX`.
+    #[snafu(display("run {run} of extent {extent} has no ids its chunks can have"))]
+    RunIds { extent: i64, run: u64 },
 }
 
 impl ManifestError {
@@ -987,7 +1379,9 @@ impl ManifestError {
             | Self::InvalidProgress { .. }
             | Self::ReplacedCounts { .. }
             | Self::WatermarkAhead { .. }
-            | Self::CursorAhead { .. } => ErrorKind::Corrupted,
+            | Self::CursorAhead { .. }
+            | Self::InvalidRun { .. }
+            | Self::RunIds { .. } => ErrorKind::Corrupted,
         }
     }
 }
@@ -1446,5 +1840,152 @@ mod tests {
             ManifestError::InvalidExtent { extent: 3, .. }
         ));
         assert_eq!(error.kind(), ErrorKind::Corrupted);
+    }
+
+    // The event bookkeeping's keys and records are stored, so their bytes must not change
+    // unnoticed.
+    #[test]
+    fn event_keys_and_records_have_a_fixed_encoding() {
+        let events = StreamRef::Events(StreamId(2));
+        assert_eq!(
+            event_l0_key(events, 0, -1, ChunkId(3)).as_slice(),
+            [
+                1, 2, 3, 0x80, 0, 0, 0, 0, 0, 0, 0, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0, 0, 0, 0, 0, 0, 0, 3
+            ]
+        );
+        assert_eq!(
+            run_key(events, 0, 300, 5).as_slice(),
+            [
+                1, 2, 4, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0x2c, 0, 0, 0, 0, 0, 0, 0,
+                5
+            ]
+        );
+        assert_eq!(
+            crowded_key(events, -1).as_slice(),
+            [1, 2, 1, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+        );
+        assert_eq!(encode(&RunRecord { chunks: 300 }), [1, 0xac, 0x02]);
+    }
+
+    /// An event chunk of `bytes` bytes holding keys `keys`, of `kind`.
+    fn event_entry(kind: ChunkKind, run: u64, keys: (i64, i64), bytes: u64) -> ChunkEntry {
+        ChunkEntry {
+            kind: kind as u8,
+            run,
+            key_range: keys,
+            rows: 1,
+            fragments: 2,
+            fragment0: 100,
+            bytes,
+        }
+    }
+
+    // The write path records an event chunk in the L0 index by first key and as a run of its
+    // own, and marks its extent; a replacement takes an L0 chunk out of both, and a run of
+    // consolidated chunks out of the run index, and writes the run it built.
+    #[test]
+    fn an_event_streams_indexes_follow_its_chunks_and_runs() {
+        let storage = MemoryDisk::new().open().unwrap();
+        let events = StreamRef::Events(StreamId(0));
+        let mut batch = storage.batch().unwrap();
+        for (chunk, keys, bytes) in [(4, (10, 20), 900), (2, (30, 40), 100), (3, (5, 8), 500)] {
+            let entry = event_entry(ChunkKind::L0Base, chunk, keys, bytes);
+            write_chunk(&mut batch, events, 7, ChunkId(chunk), &entry).unwrap();
+        }
+        // Another extent, which no scan of extent 7 sees.
+        let entry = event_entry(ChunkKind::L0Base, 9, (0, 0), 1);
+        write_chunk(&mut batch, events, 8, ChunkId(9), &entry).unwrap();
+        batch.commit(Durability::Durable).unwrap();
+        let view = storage.snapshot().unwrap();
+        let mut l0 = Vec::new();
+        scan_event_l0(&view, events, 7, |first, chunk| {
+            l0.push((first, chunk.0));
+            ControlFlow::<()>::Continue(())
+        })
+        .unwrap();
+        assert_eq!(l0, [(5, 3), (10, 4), (30, 2)]);
+        fn of(read: &impl StorageRead) -> Vec<(u64, u64, u32)> {
+            let mut runs = Vec::new();
+            scan_runs(read, StreamRef::Events(StreamId(0)), 7, |run| {
+                runs.push((run.bytes, run.run, run.chunks));
+                ControlFlow::<()>::Continue(())
+            })
+            .unwrap();
+            runs
+        }
+        assert_eq!(of(&view), [(100, 2, 1), (500, 3, 1), (900, 4, 1)]);
+        assert_eq!(first_crowded(&view, events, i64::MIN).unwrap(), Some(7));
+        assert!(runs_over(&view, events, 7, 2).unwrap());
+        assert!(!runs_over(&view, events, 7, 3).unwrap());
+
+        // A round replaces chunks 2 and 3 with run 10 of two chunks.
+        let mut batch = storage.batch().unwrap();
+        let mut replacement = Replacement::new(events, 7);
+        for chunk in [10, 11] {
+            let entry = event_entry(ChunkKind::Consolidated, 10, (5, 40), 250);
+            replacement
+                .add(&mut batch, ChunkId(chunk), &entry, false)
+                .unwrap();
+        }
+        for (chunk, keys, bytes) in [(2, (30, 40), 100), (3, (5, 8), 500)] {
+            let listed = Listed {
+                extent: 7,
+                chunk: ChunkId(chunk),
+                entry: event_entry(ChunkKind::L0Base, chunk, keys, bytes),
+            };
+            replacement.remove(&mut batch, &listed, true).unwrap();
+        }
+        let run = Run {
+            run: 10,
+            bytes: 500,
+            chunks: 2,
+        };
+        replacement.add_run(&mut batch, run).unwrap();
+        assert!(!mark_runs(&mut batch, events, 7, 2).unwrap());
+        batch.commit(Durability::Durable).unwrap();
+        let view = storage.snapshot().unwrap();
+        assert_eq!(of(&view), [(500, 10, 2), (900, 4, 1)]);
+        assert_eq!(first_crowded(&view, events, i64::MIN).unwrap(), Some(8));
+        let mut l0 = Vec::new();
+        scan_event_l0(&view, events, 7, |first, chunk| {
+            l0.push((first, chunk.0));
+            ControlFlow::<()>::Continue(())
+        })
+        .unwrap();
+        assert_eq!(l0, [(10, 4)]);
+        let mut chunks = Vec::new();
+        scan_run(&view, events, 7, run, |listed| {
+            chunks.push(listed.chunk.0);
+            ControlFlow::<()>::Continue(())
+        })
+        .unwrap();
+        assert_eq!(chunks, [10, 11]);
+        // A run of no chunks has no ids.
+        let empty = Run { chunks: 0, ..run };
+        let error = scan_run(&view, events, 7, empty, |_| ControlFlow::<()>::Continue(()));
+        assert!(matches!(
+            error,
+            Err(ManifestError::RunIds { extent: 7, run: 10 })
+        ));
+
+        // Removing the run takes it out of the run index. Cleanup takes the runs of the
+        // extents up to its watermark, the oldest first, as many as it is allowed.
+        let mut batch = storage.batch().unwrap();
+        let mut replacement = Replacement::new(events, 7);
+        replacement.remove_run(&mut batch, &run).unwrap();
+        assert_eq!(of(&batch), [(900, 4, 1)]);
+        assert!(has_expired_runs(&batch, events, 7).unwrap());
+        assert!(!has_expired_runs(&batch, events, 6).unwrap());
+        assert_eq!(forget_expired_runs(&mut batch, events, 8, 1).unwrap(), 1);
+        assert_eq!(of(&batch), []);
+        assert!(!has_expired_runs(&batch, events, 7).unwrap());
+        assert!(has_expired_runs(&batch, events, 8).unwrap());
+        assert_eq!(forget_expired_runs(&mut batch, events, 8, 16).unwrap(), 1);
+        assert!(!has_expired_runs(&batch, events, i64::MAX).unwrap());
+        assert_eq!(
+            forget_expired_runs(&mut batch, events, i64::MAX, 16).unwrap(),
+            0
+        );
     }
 }

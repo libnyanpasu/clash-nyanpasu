@@ -64,7 +64,7 @@ use zstd::bulk::Compressor;
 
 use super::{Changed, Context, Maintained, Round};
 use crate::{
-    ErrorKind, Profile, TierId, Timestamp,
+    ErrorKind, TierId, Timestamp,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     chunk::{
         BatchSink, FragmentSource, StoredChunk,
@@ -91,6 +91,10 @@ use crate::{
     time::Grid,
     write::chunking::{Shape, series_columns},
 };
+
+mod events;
+
+pub(super) use self::events::{consolidate as consolidate_events, merge as merge_runs};
 
 /// The bytes a [`Compressor`] holds once it has compressed blocks of every size the builder
 /// compresses, from `MIN_COMPRESSED_INPUT` to `BLOCK_TARGET_LEN + MAX_BODY_OVERHEAD`.
@@ -137,7 +141,12 @@ pub(super) fn plan(
             .map(|(tier, grid)| (TierId(u8::try_from(tier).expect("tier ids are u8")), *grid))
     };
     for (tier, grid) in tiers() {
-        if let Some(extent) = next_extent(read, context.profile, tier, grid, now)? {
+        let quiet = match context.profile.series_quiet_time {
+            Some(quiet) => millis(quiet),
+            None => i128::from(grid.bucket().millis()),
+        };
+        let (stream, width) = (StreamRef::Tier(tier), grid.extent().millis());
+        if let Some(extent) = due_extent(read, stream, width, quiet, now)? {
             return Ok(Some(Round::Consolidate { tier, extent }));
         }
     }
@@ -146,20 +155,25 @@ pub(super) fn plan(
             return Ok(Some(Round::MergeDeltas { tier, bucket }));
         }
     }
-    Ok(None)
+    events::plan(read, context, now)
 }
 
-/// The extent of `tier` to consolidate next, if it is due: the first extent with a record
-/// after the cursor and the watermark, once it has ended and stayed quiet, and its journal
-/// records are chunked. A later extent ends later, so none is due before it is.
-fn next_extent(
+/// A duration's milliseconds, in the `i128` that planning dates extents in.
+fn millis(duration: std::time::Duration) -> i128 {
+    i128::try_from(duration.as_millis()).expect("a duration's milliseconds fit an i128")
+}
+
+/// The extent of `stream`, whose extents are `width` milliseconds wide, to consolidate next, if
+/// it is due: the first extent with a record after the cursor and the watermark, once it has
+/// ended, stayed quiet for `quiet` milliseconds, and its journal records are chunked. A later
+/// extent ends later, so none is due before it is.
+fn due_extent(
     read: &impl StorageRead,
-    profile: &Profile,
-    tier: TierId,
-    grid: Grid,
+    stream: StreamRef,
+    width: i64,
+    quiet: i128,
     now: Timestamp,
 ) -> Result<Option<i64>, ConsolidateError> {
-    let stream = StreamRef::Tier(tier);
     let record = manifest::read_stream(read, stream).context(ReadStreamSnafu { stream })?;
     let first = match record.consolidated.max(record.expired) {
         None => i64::MIN,
@@ -175,12 +189,8 @@ fn next_extent(
     let Some((extent, record)) = next else {
         return Ok(None);
     };
-    let quiet = match profile.series_quiet_time {
-        Some(quiet) => i128::try_from(quiet.as_millis()).expect("a duration's milliseconds fit"),
-        None => i128::from(grid.bucket().millis()),
-    };
     // In `i128`, where an extent's end and the quiet time add up exactly.
-    let end = (i128::from(extent) + 1) * i128::from(grid.extent().millis());
+    let end = (i128::from(extent) + 1) * i128::from(width);
     let due = end + quiet <= i128::from(now.0) && record.journal_bytes == 0;
     Ok(due.then_some(extent))
 }
@@ -1273,19 +1283,7 @@ impl Way {
         pool: &MemoryBudget,
     ) -> Result<Self, ConsolidateError> {
         let chunk = listed.chunk;
-        let source = StoredChunk {
-            storage: read,
-            chunk,
-        };
-        let reader =
-            ChunkReader::open(&source, pool, listed.entry.fragment0).map_err(
-                |error| match error {
-                    ReadError::ReserveDirectory { source } => {
-                        InputMemorySnafu { chunk: chunk.0 }.into_error(source)
-                    }
-                    error => OpenInputSnafu { chunk: chunk.0 }.into_error(error),
-                },
-            )?;
+        let reader = open_input(read, listed, pool)?;
         let shaped = reader.rows() == listed.entry.rows
             && reader.columns().len() == layout.len()
             && reader
@@ -1328,6 +1326,26 @@ impl Way {
         }
         Ok(())
     }
+}
+
+/// Opens the chunk of input `listed`, whose directory the reader reserves from `pool`. A
+/// directory the pool has no room for is larger than the input's entry allows.
+fn open_input(
+    read: &impl StorageRead,
+    listed: &Listed,
+    pool: &MemoryBudget,
+) -> Result<ChunkReader, ConsolidateError> {
+    let chunk = listed.chunk;
+    let source = StoredChunk {
+        storage: read,
+        chunk,
+    };
+    ChunkReader::open(&source, pool, listed.entry.fragment0).map_err(|error| match error {
+        ReadError::ReserveDirectory { source } => {
+            InputMemorySnafu { chunk: chunk.0 }.into_error(source)
+        }
+        error => OpenInputSnafu { chunk: chunk.0 }.into_error(error),
+    })
 }
 
 /// A reservation of nothing yet, to grow.
@@ -1451,10 +1469,41 @@ pub enum ConsolidateError {
     #[snafu(display("chunk {chunk} is indexed, but the manifest does not list it"))]
     Unlisted { chunk: u64 },
 
-    /// An input's entry is not that of a chunk the round can read: an L0 chunk of its bucket,
-    /// or the extent's consolidated chunk, within the limits of a series chunk.
-    #[snafu(display("the entry of chunk {chunk} is not that of a series input"))]
+    /// An input's entry is not that of a chunk the round can read where the bookkeeping found
+    /// it: an L0 chunk of its bucket, or the extent's consolidated chunk, of a tier; an L0
+    /// chunk of its extent and first key, or a chunk of its run, of an event stream; and
+    /// within the limits of a chunk.
+    #[snafu(display("the entry of chunk {chunk} is not that of an input of the round"))]
     InvalidInput { chunk: u64 },
+
+    #[snafu(display("failed to scan the runs of the extent"))]
+    ScanRuns { source: ManifestError },
+
+    #[snafu(display("failed to read the chunks of run {run}"))]
+    ReadRun { run: u64, source: ManifestError },
+
+    /// The manifest lists other chunks or bytes for a run than the run index records.
+    #[snafu(display("run {run} does not hold the chunks the run index records"))]
+    InvalidRun { run: u64 },
+
+    /// An input's rows are not in their stream's order (§8.3), or not within the keys its
+    /// entry records, so the round cannot merge it.
+    #[snafu(display("the rows of chunk {chunk} are not in order"))]
+    UnsortedInput { chunk: u64 },
+
+    /// A row of the input holds more than a chunk does, which no chunk could have taken.
+    #[snafu(display("a row of chunk {chunk} fits no chunk"))]
+    RowTooLarge { chunk: u64 },
+
+    #[snafu(display("failed to copy large value {index} of chunk {chunk}"))]
+    CopyLarge {
+        chunk: u64,
+        index: u32,
+        source: ReadError,
+    },
+
+    #[snafu(display("failed to mark extent {extent} by its runs"))]
+    MarkRuns { extent: i64, source: ManifestError },
 
     /// The staging budget has no room for the round's fixed part.
     #[snafu(display("the staging budget has no room for the round"))]
@@ -1477,12 +1526,13 @@ pub enum ConsolidateError {
     OpenInput { chunk: u64, source: ReadError },
 
     /// The chunk's directory says another number of rows than its entry, or other columns
-    /// than a series chunk's.
-    #[snafu(display("chunk {chunk} is not the series chunk its entry says"))]
+    /// than its stream's chunks have; or for an event chunk, another kind or other keys.
+    #[snafu(display("chunk {chunk} is not the chunk its entry says"))]
     InputShape { chunk: u64 },
 
     /// Reading the chunk needs more memory than its entry allows: it has larger blocks, or a
-    /// larger directory, than a series chunk of its rows.
+    /// larger directory, than a chunk of its stream and rows that was planned within the
+    /// limits.
     #[snafu(display("chunk {chunk} needs more memory than its entry allows"))]
     InputMemory { chunk: u64, source: BudgetExceeded },
 
@@ -1529,8 +1579,13 @@ impl ConsolidateError {
             | Self::ReadEntry { source, .. }
             | Self::Replace { source }
             | Self::MarkCrowding { source, .. }
-            | Self::AdvanceCursor { source } => source.kind(),
-            Self::OpenInput { source, .. } | Self::ReadInput { source, .. } => source.kind(),
+            | Self::AdvanceCursor { source }
+            | Self::ScanRuns { source }
+            | Self::ReadRun { source, .. }
+            | Self::MarkRuns { source, .. } => source.kind(),
+            Self::OpenInput { source, .. }
+            | Self::ReadInput { source, .. }
+            | Self::CopyLarge { source, .. } => source.kind(),
             Self::Build { source, .. } => source.kind(),
             Self::WriteProgress { source } => source.kind(),
             Self::Reserve { source } => source.kind(),
@@ -1542,7 +1597,10 @@ impl ConsolidateError {
             | Self::InputShape { .. }
             | Self::InputMemory { .. }
             | Self::NullValues { .. }
-            | Self::CounterOverflow => ErrorKind::Corrupted,
+            | Self::CounterOverflow
+            | Self::InvalidRun { .. }
+            | Self::UnsortedInput { .. }
+            | Self::RowTooLarge { .. } => ErrorKind::Corrupted,
         }
     }
 }

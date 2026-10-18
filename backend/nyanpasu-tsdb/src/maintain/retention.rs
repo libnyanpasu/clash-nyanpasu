@@ -9,9 +9,12 @@
 //!    is their expired mark too (`layout::manifest`), and the byte count leaves them out.
 //! 2. **Clean up**: delete at most `cleanup_chunks` chunks of a stream's expired extents,
 //!    their fragments and manifest entries, and each extent's record once it is empty, with
-//!    what consolidation keeps of them: an L0 chunk's place in the index and its bucket's
-//!    crowding mark, and an emptied extent's progress (`layout::manifest`). A crash between
-//!    rounds leaves the watermark and the remaining chunks to the next call.
+//!    what consolidation keeps of them: an L0 chunk's place in the index, its bucket's crowding
+//!    mark or its extent's mark, and its run; and an emptied extent's progress. The runs of an
+//!    event stream's consolidated chunks outlive them, since a run's key holds its bytes,
+//!    which no chunk's entry does: once no chunk is left up to the watermark, they go within
+//!    what is left of the round's `cleanup_chunks` (`layout::manifest`). A crash between
+//!    rounds leaves the watermark and the remaining chunks and runs to the next call.
 //!
 //! Byte caps come from byte accounting, not file sizes: the stream record counts the bytes of
 //! the extents after the watermark, which every change to an extent record and every expiry
@@ -81,7 +84,7 @@ fn streams<'a>(
 }
 
 /// The most urgent retention round: an extent to expire, the oldest first in each stream, or
-/// else expired chunks to delete.
+/// else expired chunks, or the runs of an event stream's expired extents, to delete.
 pub(super) fn plan(
     read: &impl StorageRead,
     context: &Context<'_>,
@@ -98,8 +101,14 @@ pub(super) fn plan(
             let uncleaned = manifest::scan_extents(read, stream, i64::MIN..=expired, |_, _| {
                 ControlFlow::Break(())
             })
-            .context(ScanExtentsSnafu { stream })?;
-            if uncleaned.is_some() {
+            .context(ScanExtentsSnafu { stream })?
+            .is_some();
+            let runs = || match stream {
+                StreamRef::Tier(_) => Ok(false),
+                StreamRef::Events(_) => manifest::has_expired_runs(read, stream, expired)
+                    .context(ScanRunsSnafu { stream }),
+            };
+            if uncleaned || runs()? {
                 return Ok(Some(Round::Cleanup { stream, expired }));
             }
         }
@@ -220,7 +229,9 @@ pub(super) fn expire(
 
 /// Deletes at most `cleanup_chunks` chunks of the extents of `stream` up to its watermark,
 /// `expired`, oldest first: their fragments, their manifest entries, and their counts in the
-/// extent records, which go once empty.
+/// extent records, which go once empty. With none left, it deletes as many of their sorted
+/// runs as it has room for: a round deletes at most `cleanup_chunks` chunks and runs
+/// together.
 pub(super) fn cleanup(
     batch: &mut impl StorageWrite,
     context: &Context<'_>,
@@ -258,12 +269,13 @@ pub(super) fn cleanup(
                 .context(DeleteFragmentsSnafu { chunk: chunk.0 })?;
             manifest::remove_chunk(batch, stream, listed.extent, chunk)
                 .context(RemoveChunkSnafu { chunk: chunk.0 })?;
-            if let StreamRef::Tier(_) = stream
-                && listed.entry.kind != ChunkKind::Consolidated as u8
-            {
-                manifest::forget_l0(batch, stream, listed)
-                    .context(RemoveChunkSnafu { chunk: chunk.0 })?;
+            let l0 = listed.entry.kind != ChunkKind::Consolidated as u8;
+            match stream {
+                StreamRef::Tier(_) if l0 => manifest::forget_l0(batch, stream, listed),
+                StreamRef::Tier(_) => Ok(()),
+                StreamRef::Events(_) => manifest::forget_event_chunk(batch, stream, listed, l0),
             }
+            .context(RemoveChunkSnafu { chunk: chunk.0 })?;
             match &mut emptying {
                 Some((extent, chunks, bytes)) if *extent == listed.extent => {
                     *chunks += 1;
@@ -285,9 +297,17 @@ pub(super) fn cleanup(
     if let Some(emptied) = emptying {
         settle(batch, stream, emptied)?;
     }
-    // The planner found the record of an extent up to the watermark, and expiring an extent
-    // leaves a record only while it has chunks.
-    ensure!(deleted > 0, NoChunksSnafu { expired });
+    // Room left means no chunk is left up to the watermark.
+    let runs = match stream {
+        StreamRef::Tier(_) => 0,
+        StreamRef::Events(_) => {
+            manifest::forget_expired_runs(batch, stream, expired, limit - deleted)
+                .context(ForgetRunsSnafu)?
+        }
+    };
+    // The planner found the record of an extent up to the watermark, which expiring an extent
+    // leaves only while it has chunks, or a run there.
+    ensure!(deleted + runs > 0, NoChunksSnafu { expired });
     Ok(Changed {
         head: context.current.head.clone(),
         staging: context
@@ -326,8 +346,9 @@ fn settle(
     };
     manifest::replace_extent(batch, stream, extent, &old, &record)
         .context(WriteExtentSnafu { extent })?;
-    // An emptied extent's record goes, and with it what consolidation knew of it.
-    if record == ExtentRecord::default() {
+    // An emptied extent's record goes, and with it a tier's consolidation progress. An event
+    // stream's runs go in their own time (`cleanup`).
+    if record == ExtentRecord::default() && matches!(stream, StreamRef::Tier(_)) {
         manifest::write_progress(batch, stream, extent, None)
             .context(ClearProgressSnafu { extent })?;
     }
@@ -391,11 +412,21 @@ pub enum RetentionError {
     #[snafu(display("failed to clear the consolidation progress of extent {extent}"))]
     ClearProgress { extent: i64, source: StorageError },
 
+    #[snafu(display("failed to scan the run index of {stream:?}"))]
+    ScanRuns {
+        stream: StreamRef,
+        source: ManifestError,
+    },
+
+    #[snafu(display("failed to take the runs of expired extents out of the run index"))]
+    ForgetRuns { source: ManifestError },
+
     /// The record of an extent counts fewer chunks or bytes than the manifest lists.
     #[snafu(display("the record of extent {extent} counts fewer {counter:?} than its chunks"))]
     ExtentCount { extent: i64, counter: ExtentCounter },
 
-    /// An extent up to the watermark has a record, but the manifest lists no chunk there.
+    /// An extent up to the watermark has a record, but the manifest lists no chunk there, and
+    /// the run index no run.
     #[snafu(display(
         "the extents up to watermark {expired} have records, but the manifest lists no chunk"
     ))]
@@ -410,7 +441,9 @@ impl RetentionError {
             | Self::AdvanceWatermark { source }
             | Self::ReadExtent { source, .. }
             | Self::WriteExtent { source, .. }
-            | Self::ListChunks { source } => source.kind(),
+            | Self::ListChunks { source }
+            | Self::ScanRuns { source, .. }
+            | Self::ForgetRuns { source } => source.kind(),
             Self::DeleteFragments { source, .. }
             | Self::RemoveChunk { source, .. }
             | Self::ClearProgress { source, .. } => source.kind(),

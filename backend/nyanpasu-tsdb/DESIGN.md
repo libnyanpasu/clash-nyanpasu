@@ -94,10 +94,15 @@ The design says its code sketches show shape, not the final API. Where the code 
 - Only an extent with data expires. An empty extent before the cutoff gets no watermark of its
   own, so a late write into it is kept until the next maintenance call expires it.
 - Maintenance's rounds run in this order of urgency: expire, clean up, consolidate a series
-  extent, merge a bucket's late chunks. Expiring first keeps an extent the policy expires from
-  being consolidated; cleanup only deletes and returns the disk space retention promised before
-  a consolidation writes beside the old chunks; consolidation cuts the most chunks, and
-  finishing an extent is what makes its leftover L0 chunks late.
+  extent, merge a bucket's late chunks, consolidate an event window, merge an extent's sorted
+  runs. Expiring first keeps an extent the policy expires from being consolidated; cleanup only
+  deletes and returns the disk space retention promised before a consolidation writes beside
+  the old chunks; consolidation cuts the most chunks, and finishing an extent is what makes its
+  leftover L0 chunks late. The tiers go before the event streams: a series query reads every
+  chunk of its range, where an event scan reads chunks whose keys do not overlap as one way, so
+  a window's L0 chunks, which overlap only by their late rows, cost a scan little until they
+  are rewritten; and a tier's rounds are the smaller. Merging runs comes last: it rewrites
+  consolidated data to keep a scan's ways within R.
 - A tier is consolidated an extent at a time, oldest first, behind a cursor in its stream
   record. An extent is due once it has ended, stayed quiet for Q, and a commit has chunked its
   journal records. Once the cursor passes an extent, every L0 chunk written there is a late
@@ -134,8 +139,72 @@ The design says its code sketches show shape, not the final API. Where the code 
   inputs, then collects exactly that many; a merge chooses among a fixed 16 candidates. So no
   round's memory depends on F, and the smallest round that makes progress
   (`maintain::least_round`) depends on the schema alone: `least_staging`, the one staging
-  floor opening checks, includes it. Opening also refuses, for a schema with tiers, F below 2
-  or I below twice B.
+  floor opening checks, includes it. Opening also refuses F below 2 or I below twice B for a
+  schema with tiers or a stream of time windows, whatever consolidates: a merge may take two
+  chunks as large as chunks get, and a consolidation has to take one.
+- An event stream of time windows is consolidated a window at a time, oldest first, behind the
+  same cursor as a tier; a window is due once it has ended, stayed quiet for T
+  (`event_buffer_age`), and a commit has chunked its journal records. Each round writes one
+  sorted run (§1), chunks of consecutive ids numbered by the first, and does not take the last
+  run in again: a later round's rows may come before it, which only a merge of runs puts in
+  order.
+- An event stream keeps its bookkeeping in the same namespace: an L0 index by (extent, first
+  key, chunk), a run index by (extent, bytes, run) that records each run's chunks, and a mark
+  on each extent that may hold more than R runs. The write path does not know R, so
+  `write_chunk` marks the extent of every L0 chunk it writes; a round that finishes a window,
+  or merges runs, sets or clears the mark by the extent's runs, and a merge round that finds R
+  runs or fewer only clears it. So planning reads the stream record, the first extent after the
+  cursor, and the first mark. Cleanup deletes an L0 chunk's index entry and run, and its
+  extent's mark, with the chunk. A run's key holds the run's bytes, which no chunk's entry
+  does, so the runs of an expired extent's consolidated chunks outlive them: once no chunk is
+  left up to the watermark, cleanup deletes them, oldest extent first, within what is left of
+  the round's `cleanup_chunks`, and planning finds them by the first run up to the watermark.
+- A consolidation takes a window's L0 chunks by first key while they fit F, I, its memory and
+  16 ways, and stops before the first that does not. Chunks whose keys do not overlap are read
+  one after another as one way, chained by their first keys as the event scan chains them, so a
+  window of closed connections, late by seconds, takes two ways or so however many chunks. The
+  scan also chains the chunks of one sorted run where they share a key, since a group of rows
+  with one key may fill more than a chunk; L0 chunks are runs of one chunk, so a
+  consolidation's chaining never meets that case. A merge takes the runs of an extent with the
+  fewest bytes, whole, while they fit, each run a way; each merge leaves the extent a run fewer
+  at least. An extent whose two smallest runs do not fit a round keeps them; its mark goes
+  until a later chunk sets it again.
+- An event round's ways hold a stripe of ranks each, as the event scan's do, never a decoded
+  block per column per input. The merge chooses a window of rows; the lengths of their bytes
+  values decide how many the chunk being built takes (§4.3) and how many a column's copy holds
+  at once; then each column is copied, each way's rows in its chunk's order through one set of
+  shared decode buffers, and handed to the builder a column at a time
+  (`ChunkBuilder::append_column`). A large value is copied a fragment at a time
+  (`ChunkBuilder::large_value`, `ChunkReader::read_large_piece`), each input fragment becoming
+  one output fragment, so the format does not change and no round holds a large value whole.
+  A way opens its next chunk only after the shared buffers are let go, so a round's pool holds
+  the larger of the two, not both. Its directory is sized as a planned chunk's
+  (`builder::planned_directory`), since the manifest entry does not record its blocks.
+- Not every profile consolidates every event stream, which §4.3 and §7.4 have every profile
+  do. What a stream's rounds do depends on its spec and the profile's staging alone, so each
+  round works it out per stream from the columns the schema's shape holds, with no
+  allocation (`consolidates`, `compresses`), and it holds while the store is open. For
+  traffic's `closed` stream the smallest round takes 1,563,275 bytes writing raw blocks and
+  1,825,568 compressing:
+  - staging at or above the compressing floor (desktop, x86 devices, low end): the stream's
+    windows consolidate and its runs merge, compressed;
+  - staging between the two floors: they do, with raw blocks, which §6.3 rule 3 allows per
+    block;
+  - staging below the raw floor (mobile, 1,048,576 bytes): no round of the stream is ever
+    planned. The write path still marks the extent of each L0 chunk; the planner reads no
+    mark of a stream it skips, and cleanup deletes a mark with its window's chunks.
+
+  A merge reads with a zstd context whatever the profile, since a consolidated chunk may have
+  been written compressed under another one, so both floors count it. Opening refuses no
+  profile for them; `least_staging` does not include them.
+
+  What mobile gives up: its windows stay L0 chunks, each a run of its own, never merged, so a
+  scan merges as many ways as chunks overlap at one key, and a scan whose ways do not fit the
+  query budget fails with `BudgetExceeded` (§4.3). Closed connections late by up to 30 s
+  overlap only their neighbours: a day of 50,000 written every 10 s scans in 2 ways. A burst
+  of late rows raises the ways; mobile's query budget scans 22 chunks of the test schema's
+  `closed` that overlap at one key. Its L0 chunks also stay larger on disk: 63 bytes a row on
+  redb, against 37 for consolidated compressed chunks.
 
 ## Errors
 
@@ -230,8 +299,11 @@ Crates offering a stable hash trait were considered and rejected:
 - Splitting event extents by size under a byte cap (§9.1, "单个区段不超过字节上限的八分之一").
   A cap expires whole time windows, so a cap below one window's bytes expires the newest
   window too, and its later rows are dropped as late until the next window starts.
-- Consolidating event streams and merging their sorted runs (§4.3), and the backlog rule that
-  makes a commit run the most urgent round first (§4.3, "积压").
+- The backlog rule that makes a commit run the most urgent round first (§4.3, "积压").
+- Consolidating epoch streams, such as core logs. Their one extent, epoch 0, never ends until
+  the lifecycle gives streams epochs, and their keys are monotonic, so their runs never overlap
+  and a scan reads them as one way. The planner skips them; their chunks keep the event
+  bookkeeping all the same.
 - The lossy-operation ring, `status()` and the logs of lossy maintenance rounds (§9.4).
 - Recycling the combinations and label values that only expired extents referred to (§5.3).
 - The incarnation counter kept outside the database for tmpfs hosts (§8.3), which only the

@@ -15,7 +15,8 @@ use super::{
         MAX_BLOCK_ENTRY_LEN, MAX_BLOCKS, MAX_CHUNK_LEN, MAX_COLUMN_LEN, MAX_COLUMNS,
         MAX_DATA_FRAGMENT_LEN, MAX_HEADER_LEN, MAX_LARGE_ENTRY_LEN, MAX_LARGE_VALUE_LEN,
         MAX_LARGE_VALUES, MAX_LIST_PREFIX_LEN, MAX_ROWS, MAX_STATS_LEN, MIN_BLOCK_ENTRY_LEN,
-        MIN_COLUMN_LEN, MIN_FRAGMENT0_LEN, MIN_HEADER_LEN, PhysicalType, max_fragment0_len,
+        MIN_COLUMN_LEN, MIN_FRAGMENT0_LEN, MIN_HEADER_LEN, MIN_LARGE_ENTRY_LEN, PhysicalType,
+        max_fragment0_len,
     },
     plan::{RowCost, bytes_cost, int_cost, plan_chunks},
     reader::ChunkReader,
@@ -1146,6 +1147,12 @@ fn the_shortest_records_take_their_bound() {
         key_max: 0,
     };
     assert_eq!(len(&header), MIN_HEADER_LEN);
+    let large = LargeEntry {
+        first_fragment: 0,
+        fragments: 0,
+        len: 0,
+    };
+    assert_eq!(len(&large), MIN_LARGE_ENTRY_LEN);
     // A chunk has a column of a block at least, so no fragment 0 is shorter than this one.
     let mut shortest = Vec::new();
     DirectoryRecord {
@@ -3909,4 +3916,291 @@ mod read_memory {
     const MAX_BLOCKS_PEAK: u64 = 385_324;
     /// One way of the merge, the shared decoder's scratch, and eight ways with it.
     const MERGE: (u64, u64, u64) = (589_413, 98_214, 4_813_518);
+}
+
+/// Building a chunk a column at a time, as a merge that holds one column of its rows does,
+/// and copying a large value a fragment at a time.
+mod columns {
+    use super::*;
+    use crate::chunk::reader::ChunkReader;
+
+    impl Table {
+        /// Appends the rows a column at a time, each column in batches of the sizes in
+        /// `sizes`, taken in turn; a large text value goes a piece at a time.
+        fn append_columns(&self, builder: &mut ChunkBuilder<'_, Fragments>, sizes: &[usize]) {
+            let labels: Vec<&[u8]> = self.labels.iter().map(Vec::as_slice).collect();
+            let texts: Vec<&[u8]> = self.texts.iter().map(Vec::as_slice).collect();
+            let ids: Vec<&[u8]> = self.ids.iter().map(Vec::as_slice).collect();
+            for column in 0..7 {
+                let (mut start, mut turn) = (0, 0);
+                while start < self.rows() {
+                    let mut end = (start + sizes[turn % sizes.len()]).min(self.rows());
+                    turn += 1;
+                    let rows = start..end;
+                    let batch = match column {
+                        0 => Column {
+                            values: Values::I64(&self.keys[rows]),
+                            validity: None,
+                        },
+                        1 => Column {
+                            values: Values::U64(&self.upload[rows.clone()]),
+                            validity: Some(&self.upload_valid[rows]),
+                        },
+                        2 => Column {
+                            values: Values::U32(&self.levels[rows]),
+                            validity: None,
+                        },
+                        3 => Column {
+                            values: Values::I64(&self.signed[rows.clone()]),
+                            validity: Some(&self.signed_valid[rows]),
+                        },
+                        4 => Column {
+                            values: Values::Bytes(&labels[rows.clone()]),
+                            validity: Some(&self.labels_valid[rows]),
+                        },
+                        5 => {
+                            // Up to the next large value, which goes a piece at a time.
+                            let large = |row: usize| {
+                                self.texts_valid[row] && texts[row].len() > MAX_INLINE_VALUE_LEN
+                            };
+                            if large(start) {
+                                let value = texts[start];
+                                let mut writer = builder.large_value(5, value.len()).unwrap();
+                                for piece in value.chunks(DATA_PAYLOAD_LEN) {
+                                    writer.put(piece).unwrap();
+                                }
+                                writer.finish().unwrap();
+                                start += 1;
+                                continue;
+                            }
+                            end = (start..end).find(|&row| large(row)).unwrap_or(end);
+                            Column {
+                                values: Values::Bytes(&texts[start..end]),
+                                validity: Some(&self.texts_valid[start..end]),
+                            }
+                        }
+                        _ => Column {
+                            values: Values::Bytes(&ids[rows]),
+                            validity: None,
+                        },
+                    };
+                    builder.append_column(column, &batch).unwrap();
+                    start = end;
+                }
+            }
+        }
+    }
+
+    /// The fragments of the large values of a chunk, in order.
+    fn large_fragments(fragments: &Fragments) -> Vec<Vec<u8>> {
+        let reader = open_chunk(fragments).unwrap();
+        reader
+            .large_values()
+            .iter()
+            .flat_map(|entry| entry.first_fragment..entry.first_fragment + entry.fragments)
+            .map(|index| fragments.map[&index].clone())
+            .collect()
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(16))]
+
+        // A chunk built a column at a time, in batches of any sizes, with its large values a
+        // piece at a time, reads back as the same rows appended a batch at a time do: the same
+        // blocks and values, whatever fragments they are placed in.
+        #[test]
+        fn columns_appended_one_at_a_time_read_back_as_rows_do(
+            rows in 1usize..6000,
+            seed in any::<u64>(),
+            large in prop::collection::vec(
+                prop_oneof![
+                    Just(MAX_INLINE_VALUE_LEN + 1),
+                    Just(DATA_PAYLOAD_LEN),
+                    Just(DATA_PAYLOAD_LEN + 1),
+                    (MAX_INLINE_VALUE_LEN + 1)..300_000,
+                ],
+                0..3,
+            ),
+            compressed in any::<bool>(),
+            sizes in prop::collection::vec(1usize..2500, 1..6),
+        ) {
+            let table = Table::generate(rows, seed, &large);
+            let whole = table.build(compressed);
+            let columns = build_chunk(&table_layout(), compressed, |builder| {
+                table.append_columns(builder, &sizes);
+            });
+            check_round_trip(&table, &columns, compressed)?;
+            prop_assert!(content(&whole.0) == content(&columns.0));
+            prop_assert_eq!(large_fragments(&whole.0), large_fragments(&columns.0));
+        }
+    }
+
+    // A large value copied from another chunk a fragment at a time, as the reader hands its
+    // pieces out, takes one fragment for each of the source's, byte for byte.
+    #[test]
+    fn a_large_value_copied_a_fragment_at_a_time_keeps_its_fragments() {
+        let lens = [
+            MAX_INLINE_VALUE_LEN + 1,
+            DATA_PAYLOAD_LEN,
+            3 * DATA_PAYLOAD_LEN + 5,
+        ];
+        let table = Table::generate(50, 9, &lens);
+        let (source, _) = table.build(false);
+        let reader = open_chunk(&source).unwrap();
+        let layout = [bytes(BytesHint::Text, true)];
+        let key = [KEY_COLUMN, layout[0]];
+        let (copied, built) = build_chunk(&key, false, |builder| {
+            for (index, entry) in reader.large_values().iter().enumerate() {
+                let keys = [index as i64];
+                let column = Column {
+                    values: Values::I64(&keys),
+                    validity: None,
+                };
+                builder.append_column(0, &column).unwrap();
+                let mut large = builder.large_value(1, entry.len as usize).unwrap();
+                for piece in 0..entry.fragments {
+                    reader
+                        .read_large_piece(&source, index as u32, piece, |content| {
+                            large.put(content)
+                        })
+                        .unwrap()
+                        .unwrap();
+                }
+                large.finish().unwrap();
+            }
+        });
+        assert_eq!(built.rows, 3);
+        assert_eq!(large_fragments(&copied), large_fragments(&source));
+        let copy = open_chunk(&copied).unwrap();
+        let sizes = |reader: &ChunkReader| -> Vec<(u32, u32)> {
+            reader
+                .large_values()
+                .iter()
+                .map(|entry| (entry.len, entry.fragments))
+                .collect()
+        };
+        assert_eq!(sizes(&copy), sizes(&reader));
+        let mut lens_read: Vec<u32> = sizes(&copy).iter().map(|&(len, _)| len).collect();
+        lens_read.sort_unstable();
+        assert_eq!(lens_read, lens.map(|len| len as u32));
+        // A piece past the value's, and a value the chunk does not have, are damage.
+        let error = reader.read_large_piece(&source, 0, 99, |_| ()).unwrap_err();
+        assert!(matches!(
+            error,
+            ReadError::NoSuchPiece {
+                index: 0,
+                piece: 99
+            }
+        ));
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+        let error = reader.read_large_piece(&source, 99, 0, |_| ()).unwrap_err();
+        assert!(matches!(error, ReadError::NoSuchLargeValue { index: 99 }));
+    }
+
+    // Mistakes of a caller that appends a column at a time are local errors: a column the
+    // chunk lacks, a large value outside a text column or of no large length, a piece of
+    // another length than the builder's, a value ended early, and columns of other rows.
+    #[test]
+    fn column_and_piece_mistakes_are_local_errors() {
+        let layout = [
+            KEY_COLUMN,
+            int(IntType::U64, false),
+            bytes(BytesHint::Text, true),
+        ];
+        let keys = [1i64, 2];
+        let key = Column {
+            values: Values::I64(&keys),
+            validity: None,
+        };
+        let local = |error: BuildError| {
+            assert_eq!(error.kind(), ErrorKind::Local, "{error:?}");
+            error
+        };
+        let mut fragments = Fragments::default();
+        let mut builder = ChunkBuilder::new(
+            &mut fragments,
+            ChunkKind::L0Base,
+            FINGERPRINT,
+            None,
+            &layout,
+        )
+        .unwrap();
+        assert!(matches!(
+            local(builder.append_column(3, &key).unwrap_err()),
+            BuildError::UnknownColumn { column: 3 }
+        ));
+        assert!(matches!(
+            local(builder.append_column(1, &key).unwrap_err()),
+            BuildError::ValuesType { column: 1 }
+        ));
+        for (column, len) in [
+            (1, MAX_INLINE_VALUE_LEN + 1),
+            (2, MAX_INLINE_VALUE_LEN),
+            (2, MAX_LARGE_VALUE_LEN + 1),
+        ] {
+            let error = builder.large_value(column, len).err().unwrap();
+            assert!(
+                matches!(local(error), BuildError::NotLarge { column: found, len: found_len } if found == column && found_len == len)
+            );
+        }
+        assert!(matches!(
+            local(
+                builder
+                    .large_value(4, MAX_INLINE_VALUE_LEN + 1)
+                    .err()
+                    .unwrap()
+            ),
+            BuildError::UnknownColumn { column: 4 }
+        ));
+        builder.append_column(0, &key).unwrap();
+        let len = DATA_PAYLOAD_LEN + 10;
+        let mut large = builder.large_value(2, len).unwrap();
+        let piece = vec![7u8; DATA_PAYLOAD_LEN];
+        assert!(matches!(
+            local(large.put(&piece[..10]).unwrap_err()),
+            BuildError::PieceLength {
+                expected: DATA_PAYLOAD_LEN,
+                actual: 10
+            }
+        ));
+        large.put(&piece).unwrap();
+        assert!(matches!(
+            local(large.put(&piece[..11]).unwrap_err()),
+            BuildError::PieceLength {
+                expected: 10,
+                actual: 11
+            }
+        ));
+        let error = large.finish().unwrap_err();
+        assert!(matches!(
+            local(error),
+            BuildError::LargeIncomplete { len: found, received: DATA_PAYLOAD_LEN } if found == len
+        ));
+        // Columns that end with other rows than the key column.
+        let mut fragments = Fragments::default();
+        let mut builder = ChunkBuilder::new(
+            &mut fragments,
+            ChunkKind::L0Base,
+            FINGERPRINT,
+            None,
+            &layout,
+        )
+        .unwrap();
+        builder.append_column(0, &key).unwrap();
+        let one = [5u64];
+        let column = Column {
+            values: Values::U64(&one),
+            validity: None,
+        };
+        builder.append_column(1, &column).unwrap();
+        let error = builder.finish().unwrap_err();
+        assert!(matches!(
+            local(error),
+            BuildError::ColumnLength {
+                column: 1,
+                expected: 2,
+                actual: 1
+            }
+        ));
+    }
 }

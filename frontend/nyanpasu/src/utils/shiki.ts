@@ -37,6 +37,37 @@ export async function tokenizeYaml(code: string) {
   }).tokens
 }
 
+const shellGrammar = () => import('shiki/langs/shell.mjs')
+const yamlGrammar = () => import('shiki/langs/yaml.mjs')
+
+const MARKDOWN_CODE_GRAMMARS = {
+  bash: shellGrammar,
+  diff: () => import('shiki/langs/diff.mjs'),
+  js: () => import('shiki/langs/javascript.mjs'),
+  json: () => import('shiki/langs/json.mjs'),
+  rust: () => import('shiki/langs/rust.mjs'),
+  sh: shellGrammar,
+  shell: shellGrammar,
+  toml: () => import('shiki/langs/toml.mjs'),
+  ts: () => import('shiki/langs/typescript.mjs'),
+  tsx: () => import('shiki/langs/tsx.mjs'),
+  yaml: yamlGrammar,
+  yml: yamlGrammar,
+} as const
+
+/** Highlights a fenced Markdown code block; `null` for an unsupported language. */
+export async function highlightMarkdownCode(code: string, lang: string) {
+  if (!Object.hasOwn(MARKDOWN_CODE_GRAMMARS, lang)) return null
+  const instance = await getShikiSingleton()
+  await instance.loadLanguage(
+    MARKDOWN_CODE_GRAMMARS[lang as keyof typeof MARKDOWN_CODE_GRAMMARS](),
+  )
+  return instance.codeToHtml(code, {
+    lang,
+    themes: { light: 'min-light', dark: 'nord' },
+  })
+}
+
 export async function highlightJson(code: string) {
   const instance = await getShikiSingleton()
   await instance.loadLanguage(import('shiki/langs/json.mjs'))

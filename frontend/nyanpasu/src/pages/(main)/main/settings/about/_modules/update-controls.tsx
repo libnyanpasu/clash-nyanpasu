@@ -14,7 +14,6 @@ import {
   type Transition,
 } from 'motion/react'
 import type { ComponentProps, ComponentType } from 'react'
-import Markdown from 'react-markdown'
 import { Button, type ButtonProps } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import {
@@ -35,13 +34,13 @@ import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
 import { m } from '@/paraglide/messages'
-import { commands } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isTauri } from '@nyanpasu/platform'
 import type { AppUpdatePhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { AppUpdateChangelog } from '../../_modules/app-update-changelog'
+import { openExternal } from '../../_modules/open-external'
 import {
   SettingsCardContent,
   SettingsCardFooter,
@@ -49,15 +48,6 @@ import {
 
 const GITHUB_RELEASES_URL =
   'https://github.com/libnyanpasu/clash-nyanpasu/releases'
-
-async function openExternal(url: string) {
-  try {
-    if (isTauri()) await commands.openThat(url)
-    else window.open(url, '_blank', 'noopener,noreferrer')
-  } catch (error) {
-    message(formatError(error), { kind: 'error', error })
-  }
-}
 
 function openReleases() {
   return openExternal(GITHUB_RELEASES_URL)
@@ -199,6 +189,7 @@ function UpdateActionButton({
 export default function UpdateControls() {
   const reducedMotion = useReducedMotion()
   const {
+    currentVersion,
     snapshot,
     isDesktop,
     isLoading,
@@ -379,7 +370,7 @@ export default function UpdateControls() {
                       <span className="text-xs opacity-80">{statusDetail}</span>
                     )}
 
-                    {release?.body && (
+                    {release && (
                       <Modal>
                         <ModalTrigger asChild>
                           <Button
@@ -403,31 +394,11 @@ export default function UpdateControls() {
                               className="min-h-0 flex-1 overflow-hidden"
                             >
                               <ScrollArea className="max-h-[65dvh]">
-                                <Markdown
-                                  components={{
-                                    a(props) {
-                                      const { children, node, ...rest } = props
-                                      return (
-                                        <a
-                                          {...rest}
-                                          onClick={(event) => {
-                                            event.preventDefault()
-                                            event.stopPropagation()
-                                            if (
-                                              typeof node?.properties.href ===
-                                              'string'
-                                            )
-                                              openExternal(node.properties.href)
-                                          }}
-                                        >
-                                          {children}
-                                        </a>
-                                      )
-                                    },
-                                  }}
-                                >
-                                  {release.body}
-                                </Markdown>
+                                <AppUpdateChangelog
+                                  from={currentVersion}
+                                  to={release.version}
+                                  fallbackBody={release.body}
+                                />
                               </ScrollArea>
                             </CardContent>
                             <CardFooter className="shrink-0 justify-end">

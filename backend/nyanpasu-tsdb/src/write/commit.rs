@@ -1,7 +1,7 @@
 //! Committing and publishing (§7.1):
 //!
 //! 1. under the registry's write lock, register the staged version as pending P+1;
-//! 2. commit to storage, with no lock held, so an fsync never blocks a query;
+//! 2. commit with only the owner's G-read guard, so no R guard spans an fsync;
 //! 3. under the write lock, publish P+1, or withdraw it.
 //!
 //! Publishing cannot fail: staging allocated and reserved everything the version needs, so

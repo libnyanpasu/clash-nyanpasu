@@ -482,6 +482,12 @@ impl InputError {
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum WriteError {
+    /// The owner retired the instance before this operation could continue.
+    #[snafu(display("the store is closed to this operation"))]
+    CheckOpen {
+        source: crate::storage::StorageError,
+    },
+
     /// An earlier failure left the backend failed or the last batch's outcome unknown. Every
     /// write fails until the owner recovers (§7.5).
     #[snafu(display("the store needs recovery before it can write"))]
@@ -509,6 +515,7 @@ pub enum WriteError {
 impl WriteError {
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::CheckOpen { source } => source.kind(),
             Self::RecoveryNeeded => ErrorKind::BackendFailed,
             Self::InvalidInput { source } => source.kind(),
             Self::Backlog { source } => source.kind(),

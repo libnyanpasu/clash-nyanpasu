@@ -10,8 +10,8 @@
 //! [`catalog`](Snapshot::catalog) token: render its ids, and build filters from them, through
 //! a snapshot whose token equals it.
 //!
-//! Revoking snapshots (§7.4, §7.5) does not exist yet. A scan of a backend that was closed
-//! under it fails at its next read.
+//! Retirement revokes queries at coarse work boundaries (§7.4, §7.5), including scans entirely
+//! in the head. Frozen catalog accessors remain usable; they perform no backend work.
 
 use crate::{LabelId, Snapshot, storage::Storage, write::ComboId};
 

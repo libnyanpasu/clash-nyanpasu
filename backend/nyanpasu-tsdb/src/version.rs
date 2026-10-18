@@ -2,7 +2,7 @@
 //! pending version. Every hold of the lock is short, and none spans an fsync.
 //!
 //! - The writer registers the staged version as pending under the write lock, commits with
-//!   no lock held, then publishes or withdraws it under the write lock (`write::commit`).
+//!   no registry lock held, then publishes or withdraws it under the write lock (`write::commit`).
 //! - A reader captures a snapshot under the read lock: it opens the storage snapshot,
 //!   reads its publication Q, reserves the bytes of the version with Q from the query
 //!   budget, and only then pins that version. While it holds the read lock the writer can
@@ -21,7 +21,10 @@
 use std::sync::Mutex;
 use std::{
     fmt,
-    sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{
+        Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
@@ -44,7 +47,8 @@ pub(crate) struct Version {
 
 impl Version {
     /// The memory a snapshot of this version can keep alive: at most every byte that exists
-    /// when it is captured (§7.4).
+    /// when it is captured (§7.4). Even an empty catalog and head include their fixed graphs,
+    /// so this is nonzero: zero query reservations also establish that retirement has drained.
     fn bytes(&self) -> u64 {
         self.catalog.bytes().saturating_add(self.head.bytes())
     }
@@ -61,24 +65,272 @@ pub(crate) struct StagedVersion {
     pub(crate) staging: Reservation,
 }
 
+/// Admission state, changed under the publication lock so withdrawal and failure are atomic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LifecycleState {
+    /// The owner and readers may start operations.
+    Open,
+    /// An unknown commit or backend failure requires owner-driven recovery.
+    RecoveryNeeded,
+    /// The owner retired the backend; readers retain only their captured state.
+    Closed,
+}
+
 struct Slots {
-    current: Arc<Version>,
+    current: Option<Arc<Version>>,
     pending: Option<Arc<Version>>,
     /// Resident policy credit belongs to the registry, after the version fields in drop order.
-    head: Reservation,
+    head: Option<Reservation>,
     /// Set after a commit whose outcome is unknown, or any error that says the backend
     /// failed, by the owner or by a reader. Every later write and capture fails until the
     /// owner recovers (§7.5). It lives under the lock with the versions, so that withdrawing
     /// a version and flagging the store are one step for a capture.
-    recovery: bool,
+    state: LifecycleState,
+    /// A new open replaces this marker together with its publication.
+    open: Arc<OpenMarker>,
 }
 
+/// The instance shared by its owner and readers, including the only backend owner.
+///
+/// Lock order: G (storage gate) -> R (registry slots) -> backend locks -> budget mutexes.
+/// Backend locks are MemoryDisk's disk and RedbSnapshot's tables (plus redb test hooks).
+/// They release before callbacks; budgets never call back into storage, G or R. Registry
+/// test-hook mutexes follow R; query-hook mutexes are used only at query boundaries in tests.
+/// All hook mutexes release before callbacks. Production query checks use only the atomic.
+/// Captures hold G-read and R-read through reserve-before-pin. Owner operations hold G-read
+/// once and pass the backend down; only short register/publish/withdraw steps take R.
+/// No R guard spans commit, rollback, close or fsync. Retirement takes G-write then R-write,
+/// detaches ownership, and drops the backend and roots after both guards are released.
+pub(crate) struct Shared<S> {
+    /// Capture gate; a reader never retains this guard after capture.
+    storage: RwLock<Option<S>>,
+    /// Publication and admission state.
+    pub(crate) registry: Registry,
+    /// Shared by capture reservations, query workspaces and retained results.
+    pub(crate) query_budget: MemoryBudget,
+    /// Set on retirement; reset only after the old query budget has drained in recovery.
+    revoked: AtomicBool,
+    /// One ordered query boundary hook; never present in production.
+    #[cfg(test)]
+    query_hook: Mutex<Option<QueryHook>>,
+}
+
+impl<S: Storage> Shared<S> {
+    /// Installs the initial backend and registry in one capture gate.
+    pub(crate) fn new(storage: S, registry: Registry, query_budget: MemoryBudget) -> Self {
+        Self {
+            storage: RwLock::new(Some(storage)),
+            registry,
+            query_budget,
+            revoked: AtomicBool::new(false),
+            #[cfg(test)]
+            query_hook: Mutex::new(None),
+        }
+    }
+
+    /// Borrows the backend for one owner operation, without excluding captures.
+    pub(crate) fn storage(&self) -> RwLockReadGuard<'_, Option<S>> {
+        self.storage.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Closes admissions and detaches the backend. The caller drops it outside both locks.
+    pub(crate) fn retire(&self) -> Retired<S> {
+        let mut storage = self.storage.write().unwrap_or_else(PoisonError::into_inner);
+        let mut slots = self.registry.write();
+        slots.state = LifecycleState::Closed;
+        self.revoked.store(true, Ordering::Release);
+        Retired {
+            _storage: storage.take(),
+            _current: slots.current.take(),
+            _pending: slots.pending.take(),
+            _head: slots.head.take(),
+        }
+    }
+
+    /// Captures under G then R; a failure is reported only after R's read guard unwinds.
+    pub(crate) fn capture(self: &Arc<Self>) -> Result<Snapshot<S>, CaptureError> {
+        let storage = self.storage();
+        let captured = self.pin(storage.as_ref());
+        if let Err(error) = &captured {
+            self.report(error.kind());
+        }
+        captured
+    }
+
+    /// Reports a backend failure without changing a state already retired by the owner.
+    pub(crate) fn report(&self, kind: ErrorKind) {
+        if kind == ErrorKind::BackendFailed {
+            self.registry.require_recovery();
+        }
+    }
+
+    /// The coarse query cancellation check; it takes no publication or backend lock.
+    pub(crate) fn check_open(&self) -> Result<(), StorageError> {
+        check_open(&self.revoked)
+    }
+
+    /// The flag borrowed by the query's scan and decode contexts.
+    pub(crate) fn revoked(&self) -> QueryCheck<'_> {
+        QueryCheck {
+            flag: &self.revoked,
+            #[cfg(test)]
+            hook: Some(&self.query_hook),
+        }
+    }
+
+    /// Arms a specific query boundary after `skip` visits, releasing the hook lock first.
+    #[cfg(test)]
+    pub(crate) fn at_query(
+        &self,
+        point: &'static str,
+        skip: usize,
+        run: impl FnOnce() + Send + 'static,
+    ) {
+        *self.query_hook.lock().unwrap() = Some(QueryHook {
+            point,
+            skip,
+            run: Box::new(run),
+        });
+    }
+
+    /// Nonblocking capture-gate probe at a barrier ordered test boundary.
+    #[cfg(test)]
+    pub(crate) fn gate_available(&self) -> bool {
+        self.storage.try_write().is_ok()
+    }
+
+    /// Reserves a nonzero capture claim before pinning the matching publication under R.
+    fn pin(self: &Arc<Self>, storage: Option<&S>) -> Result<Snapshot<S>, CaptureError> {
+        let slots = self.registry.read();
+        ensure!(
+            slots.state != LifecycleState::RecoveryNeeded,
+            RecoveryNeededSnafu
+        );
+        self.check_open().context(CheckOpenSnafu)?;
+        let storage = storage.expect("an open instance owns its backend");
+        let snapshot = storage.snapshot().context(OpenSnapshotSnafu)?;
+        #[cfg(test)]
+        Registry::run(&self.registry.after_snapshot);
+        let publication = read_state(&snapshot)
+            .context(ReadPublicationSnafu)?
+            .publication;
+        let current = slots
+            .current
+            .as_ref()
+            .expect("an open instance has a version");
+        let version = [Some(current), slots.pending.as_ref()]
+            .into_iter()
+            .flatten()
+            .find(|version| version.publication == publication)
+            .context(UnknownPublicationSnafu {
+                found: publication,
+                current: current.publication,
+                pending: slots.pending.as_ref().map(|version| version.publication),
+            })?;
+        let bytes = version.bytes();
+        assert!(
+            bytes > 0,
+            "every version includes its fixed catalog and head graphs"
+        );
+        let reservation = self
+            .query_budget
+            .try_reserve("snapshot", bytes)
+            .context(ReserveQuerySnafu)?;
+        let snapshot = Snapshot {
+            storage: snapshot,
+            version: reservation.hold(|| version.clone()),
+            open: slots.open.clone(),
+            shared: self.clone(),
+        };
+        #[cfg(test)]
+        Registry::run(&self.registry.after_pin);
+        Ok(snapshot)
+    }
+}
+
+/// Detached owners in drop order: backend, graphs, then resident head credit.
+/// Returned only after the capture and publication guards have been released.
+pub(crate) struct Retired<S> {
+    /// Kept separately so test crash paths can take the backend without a clean close.
+    pub(crate) _storage: Option<S>,
+    /// Detached published root, dropped after backend close.
+    _current: Option<Arc<Version>>,
+    /// Detached pending root; absent during ordinary owner retirement.
+    _pending: Option<Arc<Version>>,
+    /// Resident credit returned only after both registry roots.
+    _head: Option<Reservation>,
+}
+
+/// Checks the instance flag at a query block, stripe, piece or row-batch boundary.
+pub(crate) fn check_open(revoked: &AtomicBool) -> Result<(), StorageError> {
+    if revoked.load(Ordering::Acquire) {
+        Err(StorageError::Closed)
+    } else {
+        Ok(())
+    }
+}
+
+/// A borrowed flag, with a per-instance boundary hook only in tests. It owns no epoch or lease.
+#[derive(Clone, Copy)]
+pub(crate) struct QueryCheck<'a> {
+    /// The single flag owned by Shared.
+    flag: &'a AtomicBool,
+    /// Test synchronization only; released before invoking a boundary callback.
+    #[cfg(test)]
+    hook: Option<&'a Mutex<Option<QueryHook>>>,
+}
+
+impl QueryCheck<'_> {
+    /// An unarmed check for tests constructing private decoders directly.
+    #[cfg(test)]
+    pub(crate) fn unarmed(flag: &AtomicBool) -> QueryCheck<'_> {
+        QueryCheck { flag, hook: None }
+    }
+
+    /// Checks after the ordered test boundary, using one Acquire load in production.
+    pub(crate) fn check(self, _point: &'static str) -> Result<(), StorageError> {
+        #[cfg(test)]
+        if let Some(hook) = self.hook {
+            let run = {
+                let mut hook = hook.lock().unwrap();
+                if let Some(armed) = hook
+                    .as_mut()
+                    .filter(|armed| armed.point == _point || armed.point == "*")
+                {
+                    if armed.skip == 0 {
+                        hook.take().map(|armed| armed.run)
+                    } else {
+                        armed.skip -= 1;
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+            if let Some(run) = run {
+                run();
+            }
+        }
+        check_open(self.flag)
+    }
+}
+
+/// One boundary to pause, after an explicit number of visits, without clocks or global state.
+#[cfg(test)]
+struct QueryHook {
+    /// The checkpoint named by its function and work boundary.
+    point: &'static str,
+    /// Visits to pass before running the hook.
+    skip: usize,
+    /// Removed from the mutex before execution.
+    run: Box<dyn FnOnce() + Send>,
+}
+
+/// The short publication gate, nested inside Shared's capture gate when both are needed.
 pub(crate) struct Registry {
     slots: RwLock<Slots>,
     /// The dataset's schema, which every snapshot carries for its queries.
     schema: Arc<Schema>,
-    /// This open's marker, which every snapshot's [`CatalogToken`] carries.
-    open: Arc<OpenMarker>,
     /// Runs once inside the next capture, after it opened the storage snapshot.
     #[cfg(test)]
     after_snapshot: Mutex<Option<Box<dyn FnOnce() + Send>>>,
@@ -96,13 +348,13 @@ impl Registry {
     ) -> Self {
         Self {
             slots: RwLock::new(Slots {
-                current: Arc::new(current),
+                current: Some(Arc::new(current)),
                 pending: None,
-                head,
-                recovery: false,
+                head: Some(head),
+                state: LifecycleState::Open,
+                open,
             }),
             schema,
-            open,
             #[cfg(test)]
             after_snapshot: Mutex::default(),
             #[cfg(test)]
@@ -111,7 +363,11 @@ impl Registry {
     }
 
     pub(crate) fn current(&self) -> Arc<Version> {
-        self.read().current.clone()
+        self.read()
+            .current
+            .as_ref()
+            .expect("the owner checked admission")
+            .clone()
     }
 
     /// Registers `next` as pending with its resident growth and temporary-copy charges.
@@ -140,72 +396,14 @@ impl Registry {
     }
 
     pub(crate) fn needs_recovery(&self) -> bool {
-        self.read().recovery
+        self.read().state == LifecycleState::RecoveryNeeded
     }
 
     pub(crate) fn require_recovery(&self) {
-        self.write().recovery = true;
-    }
-
-    /// Captures a snapshot of `storage`, reserving the bytes of its version from `budget`
-    /// (§7.4). A failure of the backend flags the store for recovery (§7.5).
-    pub(crate) fn capture<S: Storage>(
-        &self,
-        storage: &S,
-        budget: &MemoryBudget,
-    ) -> Result<Snapshot<S>, CaptureError> {
-        let captured = self.pin(storage, budget);
-        if let Err(error) = &captured
-            && error.kind() == ErrorKind::BackendFailed
-        {
-            self.require_recovery();
+        let mut slots = self.write();
+        if slots.state == LifecycleState::Open {
+            slots.state = LifecycleState::RecoveryNeeded;
         }
-        captured
-    }
-
-    /// Opens a storage snapshot, reserves the bytes of the version it shows, and pins that
-    /// version, all under the read lock. The reservation comes before the pin: a reader that
-    /// held a version it had not reserved yet could keep it alive past the next
-    /// publication, uncounted, and one such reader per publication would retain without
-    /// bound.
-    fn pin<S: Storage>(
-        &self,
-        storage: &S,
-        budget: &MemoryBudget,
-    ) -> Result<Snapshot<S>, CaptureError> {
-        let slots = self.read();
-        // While the read lock is held, nothing can withdraw a version or set the flag, so a
-        // store that does not need recovery has the version its storage shows, unless the
-        // stored state is damaged.
-        ensure!(!slots.recovery, RecoveryNeededSnafu);
-        let snapshot = storage.snapshot().context(OpenSnapshotSnafu)?;
-        #[cfg(test)]
-        Self::run(&self.after_snapshot);
-        let publication = read_state(&snapshot)
-            .context(ReadPublicationSnafu)?
-            .publication;
-        let version = [Some(&slots.current), slots.pending.as_ref()]
-            .into_iter()
-            .flatten()
-            .find(|version| version.publication == publication)
-            .context(UnknownPublicationSnafu {
-                found: publication,
-                current: slots.current.publication,
-                pending: slots.pending.as_ref().map(|version| version.publication),
-            })?;
-        let reservation = budget
-            .try_reserve("snapshot", version.bytes())
-            .context(ReserveQuerySnafu)?;
-        let snapshot = Snapshot {
-            storage: snapshot,
-            version: reservation.hold(|| version.clone()),
-            schema: self.schema.clone(),
-            open: self.open.clone(),
-            budget: budget.clone(),
-        };
-        #[cfg(test)]
-        Self::run(&self.after_pin);
-        Ok(snapshot)
     }
 
     /// A poisoned lock still guards consistent slots: every critical section is a few
@@ -221,9 +419,14 @@ impl Registry {
 
 #[cfg(test)]
 impl Registry {
+    /// A nonblocking witness that no publication guard is held at an ordered test boundary.
+    pub(crate) fn publication_available(&self) -> bool {
+        self.slots.try_write().is_ok()
+    }
+
     /// Resident credit stays with the current registry slot, independently of readers' claims.
     pub(crate) fn head_reserved(&self) -> u64 {
-        self.read().head.bytes()
+        self.read().head.as_ref().map_or(0, Reservation::bytes)
     }
 
     /// Makes the next capture run `hook` while it holds the read lock, right after it
@@ -272,10 +475,14 @@ impl Pending<'_> {
         let bytes = version.head.bytes();
         // The old version is dropped here unless a snapshot holds it; a snapshot reserved
         // its bytes from the query budget when it was captured.
-        slots.current = version;
-        slots.head.merge(growth);
-        let retired = slots.head.bytes() - bytes;
-        slots.head.shrink(retired);
+        slots.current = Some(version);
+        let head = slots
+            .head
+            .as_mut()
+            .expect("the owner has not retired the registry");
+        head.merge(growth);
+        let retired = head.bytes() - bytes;
+        head.shrink(retired);
         drop(slots);
         drop(self.staging.take());
     }
@@ -291,7 +498,7 @@ impl Pending<'_> {
         if matches!(failure, CommitFailure::Unknown { .. })
             || failure.kind() == ErrorKind::BackendFailed
         {
-            slots.recovery = true;
+            slots.state = LifecycleState::RecoveryNeeded;
         }
         drop(slots);
         drop(growth);
@@ -309,14 +516,15 @@ impl Drop for Pending<'_> {
 
 /// A consistent view of one publication: the storage snapshot, and the catalog and head of
 /// the version it shows. It holds a reservation of the version's bytes from the query
-/// budget, returned when it is dropped, and the budget itself, from which its queries
-/// reserve their working memory (§7.4, §8.2).
+/// budget, returned when it is dropped; its shared instance supplies query working memory.
+/// Fields drop in order: storage transaction, version payload then capture credit, open marker,
+/// shared instance. A zero query budget therefore cannot precede the last transaction's drop.
 pub struct Snapshot<S: Storage> {
     storage: S::Snapshot,
     version: Reserved<Arc<Version>>,
-    schema: Arc<Schema>,
     open: Arc<OpenMarker>,
-    budget: MemoryBudget,
+    /// Drops after the storage transaction and the charged version, never before them.
+    shared: Arc<Shared<S>>,
 }
 
 /// What the ids of a snapshot's catalog mean (§5.3 rule 5): the label and combination ids it
@@ -371,6 +579,21 @@ impl<S: Storage> Snapshot<S> {
         }
     }
 
+    /// Borrows the instance's single revocation flag for a query's coarse checks.
+    pub(crate) fn revoked(&self) -> QueryCheck<'_> {
+        self.shared.revoked()
+    }
+
+    /// Normalizes a failed query after retirement without entering another scan checkpoint.
+    pub(crate) fn check_open(&self) -> Result<(), StorageError> {
+        self.shared.check_open()
+    }
+
+    /// Propagates a query's backend failure after its storage callbacks have unwound.
+    pub(crate) fn report(&self, kind: ErrorKind) {
+        self.shared.report(kind);
+    }
+
     pub(crate) fn storage(&self) -> &S::Snapshot {
         &self.storage
     }
@@ -380,11 +603,11 @@ impl<S: Storage> Snapshot<S> {
     }
 
     pub(crate) fn schema(&self) -> &Schema {
-        &self.schema
+        &self.shared.registry.schema
     }
 
     pub(crate) fn budget(&self) -> &MemoryBudget {
-        &self.budget
+        &self.shared.query_budget
     }
 }
 
@@ -400,6 +623,10 @@ impl<S: Storage> Snapshot<S> {
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum CaptureError {
+    /// The owner retired this instance before a new snapshot could be admitted.
+    #[snafu(display("the store is closed to captures"))]
+    CheckOpen { source: StorageError },
+
     /// An earlier failure left the backend failed or a batch's outcome unknown. Every
     /// capture fails until the owner recovers (§7.5).
     #[snafu(display("the store needs recovery before it can be read"))]
@@ -433,6 +660,7 @@ impl CaptureError {
     pub fn kind(&self) -> ErrorKind {
         match self {
             Self::RecoveryNeeded => ErrorKind::BackendFailed,
+            Self::CheckOpen { source } => source.kind(),
             Self::OpenSnapshot { source } => source.kind(),
             Self::ReadPublication { source } => source.kind(),
             Self::UnknownPublication { .. } => ErrorKind::Corrupted,
@@ -526,14 +754,16 @@ mod tests {
         let heads = MemoryBudget::new(10);
         let staging = MemoryBudget::new(20);
         let queries = MemoryBudget::new(u64::MAX);
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let registry = &shared.registry;
         let pending = registry.register(StagedVersion {
             version: version(1),
             growth: heads.try_reserve("head", 4).unwrap(),
             staging: staging.try_reserve("staging", 12).unwrap(),
         });
         let withdrawn = Arc::downgrade(&registry.pending().unwrap());
-        show(&storage, 1);
-        let snapshot = registry.capture(&storage, &queries).unwrap();
+        show(shared.storage().as_ref().unwrap(), 1);
+        let snapshot = shared.capture().unwrap();
         let bytes = snapshot.version().bytes();
         pending.fail(&CommitFailure::Unknown { source: failed() });
         assert!(registry.pending().is_none());
@@ -556,6 +786,8 @@ mod tests {
         show(&storage, 0);
         let registry = registry(version(0));
         let queries = MemoryBudget::new(u64::MAX);
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let registry = &shared.registry;
         let heads = MemoryBudget::new(10);
 
         let pending = registry.register(StagedVersion {
@@ -565,16 +797,16 @@ mod tests {
                 .try_reserve("staging", 0)
                 .unwrap(),
         });
-        show(&storage, 1);
+        show(shared.storage().as_ref().unwrap(), 1);
         // Until it is withdrawn, the pending version is the one storage shows.
-        let snapshot = registry.capture(&storage, &queries).unwrap();
+        let snapshot = shared.capture().unwrap();
         assert_eq!(snapshot.version().publication, 1);
 
         pending.fail(&CommitFailure::Unknown { source: failed() });
         assert!(registry.needs_recovery());
         assert!(registry.pending().is_none());
         assert_eq!(heads.reserved(), 0);
-        let error = registry.capture(&storage, &queries).map(drop).unwrap_err();
+        let error = shared.capture().map(drop).unwrap_err();
         assert!(matches!(error, CaptureError::RecoveryNeeded));
         assert_eq!(error.kind(), ErrorKind::BackendFailed);
         // The snapshot captured before stays as it was.
@@ -591,11 +823,13 @@ mod tests {
         let bytes = registry.current().bytes();
         assert_ne!(bytes, 0);
         let queries = MemoryBudget::new(u64::MAX);
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let registry = &shared.registry;
         let (reserved_tx, reserved_rx) = mpsc::channel();
         let budget = queries.clone();
         registry.after_pin(move || reserved_tx.send(budget.reserved()).unwrap());
 
-        let snapshot = registry.capture(&storage, &queries).unwrap();
+        let snapshot = shared.capture().unwrap();
         assert_eq!(reserved_rx.try_recv(), Ok(bytes));
         assert_eq!(snapshot.reserved(), bytes);
         drop(snapshot);
@@ -610,9 +844,11 @@ mod tests {
         show(&storage, 99);
         let registry = registry(version(1));
         let queries = MemoryBudget::new(u64::MAX);
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let registry = &shared.registry;
         let heads = MemoryBudget::new(10);
 
-        let error = registry.capture(&storage, &queries).map(drop).unwrap_err();
+        let error = shared.capture().map(drop).unwrap_err();
         assert!(
             matches!(
                 error,
@@ -633,7 +869,7 @@ mod tests {
                 .try_reserve("staging", 0)
                 .unwrap(),
         });
-        let error = registry.capture(&storage, &queries).map(drop).unwrap_err();
+        let error = shared.capture().map(drop).unwrap_err();
         assert!(
             matches!(
                 error,
@@ -655,6 +891,8 @@ mod tests {
         show(&storage, 0);
         let registry = registry(version(0));
         let queries = MemoryBudget::new(u64::MAX);
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let registry = &shared.registry;
         let heads = MemoryBudget::new(10);
 
         let pending = registry.register(StagedVersion {
@@ -673,7 +911,7 @@ mod tests {
         assert!(!registry.needs_recovery());
         assert!(registry.pending().is_none());
         assert_eq!(heads.reserved(), 0);
-        let snapshot = registry.capture(&storage, &queries).unwrap();
+        let snapshot = shared.capture().unwrap();
         assert_eq!(snapshot.version().publication, 0);
         drop(snapshot);
 
@@ -689,7 +927,7 @@ mod tests {
         pending.fail(&CommitFailure::NotApplied { source: failed() });
         assert!(registry.needs_recovery());
         assert!(matches!(
-            registry.capture(&storage, &queries).map(drop),
+            shared.capture().map(drop),
             Err(CaptureError::RecoveryNeeded)
         ));
     }

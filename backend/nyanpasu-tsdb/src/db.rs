@@ -12,7 +12,7 @@ use crate::{
     lifecycle::{self, OpenError},
     maintain::{self, Maintain, MaintainError, Maintained, Round},
     storage::{Durability, Storage},
-    version::{CaptureError, OpenMarker, Registry, Snapshot, Version},
+    version::{CaptureError, OpenMarker, Registry, Shared, Snapshot, Version},
     write::{
         BacklogSnafu, BeginBatchSnafu, CommitSnafu, EventSeq, Input, InvalidInputSnafu,
         RecoveryNeededSnafu, StageSnafu, WriteError, Written,
@@ -21,14 +21,6 @@ use crate::{
         stage::{self, Context, Counted},
     },
 };
-
-/// What the owner shares with the readers.
-struct Shared<S> {
-    storage: S,
-    registry: Registry,
-    /// All snapshots and queries together reserve from it (§7.4).
-    query_budget: MemoryBudget,
-}
 
 /// The owner's handle on an open dataset. Its calls are synchronous and run on the caller's
 /// thread; the store starts no thread or timer of its own (§3.1).
@@ -60,16 +52,16 @@ impl<S: Storage> Tsdb<S> {
         let opened = lifecycle::open(storage, &schema, &profile)?;
         let schema = Arc::new(schema);
         Ok(Self {
-            shared: Arc::new(Shared {
-                storage: opened.storage,
-                registry: Registry::new(
+            shared: Arc::new(Shared::new(
+                opened.storage,
+                Registry::new(
                     opened.version,
                     schema.clone(),
                     Arc::new(OpenMarker),
                     opened.head,
                 ),
-                query_budget: MemoryBudget::new(profile.query),
-            }),
+                MemoryBudget::new(profile.query),
+            )),
             schema,
             shape: opened.shape,
             head_budget: opened.head_budget,
@@ -102,12 +94,16 @@ impl<S: Storage> Tsdb<S> {
         input: &Input<'_>,
         durability: Durability,
     ) -> Result<Written, WriteError> {
-        ensure!(!self.shared.registry.needs_recovery(), RecoveryNeededSnafu);
+        let shared = self.shared.clone();
+        let storage = shared.storage();
+        ensure!(!shared.registry.needs_recovery(), RecoveryNeededSnafu);
+        shared.check_open().context(crate::write::CheckOpenSnafu)?;
+        let storage = storage.as_ref().expect("an admitted owner has a backend");
         input
             .validate(&self.schema, self.profile.batch_bytes)
             .context(InvalidInputSnafu)?;
-        let written = self.catch_up(input.now).and_then(|maintained| {
-            let written = self.stage_and_commit(input, durability)?;
+        let written = self.catch_up(storage, input.now).and_then(|maintained| {
+            let written = self.stage_and_commit(storage, input, durability)?;
             Ok(Written {
                 maintained,
                 ..written
@@ -126,11 +122,11 @@ impl<S: Storage> Tsdb<S> {
     /// due ends the backlog. So does a round failing with any kind but `BackendFailed`: the
     /// consumer's next `maintain` call meets the failure, so a damaged chunk fails no batch,
     /// and no later commit pays again for a round that keeps failing.
-    fn catch_up(&mut self, now: Timestamp) -> Result<Maintained, WriteError> {
+    fn catch_up(&mut self, storage: &S, now: Timestamp) -> Result<Maintained, WriteError> {
         if !self.behind {
             return Ok(Maintained::default());
         }
-        match self.backlog_round(now) {
+        match self.backlog_round(storage, now) {
             Ok(Some(done)) => Ok(done),
             Err(error) if error.kind() == ErrorKind::BackendFailed => {
                 Err(error).context(BacklogSnafu)
@@ -144,27 +140,30 @@ impl<S: Storage> Tsdb<S> {
 
     /// Plans the most urgent round a commit runs (`maintain::plan_backlog`) and runs it, as
     /// [`rounds`](Self::rounds) does; `None` when none is due.
-    fn backlog_round(&mut self, now: Timestamp) -> Result<Option<Maintained>, MaintainError> {
-        let snapshot = self
-            .shared
-            .storage
-            .snapshot()
-            .context(maintain::OpenSnapshotSnafu)?;
+    fn backlog_round(
+        &mut self,
+        storage: &S,
+        now: Timestamp,
+    ) -> Result<Option<Maintained>, MaintainError> {
+        let snapshot = storage.snapshot().context(maintain::OpenSnapshotSnafu)?;
         let current = self.shared.registry.current();
         let planned = maintain::plan_backlog(&snapshot, &self.round_context(&current), now)?;
         drop(current);
         planned
-            .map(|round| self.round(&snapshot, round, now))
+            .map(|round| self.round(storage, &snapshot, round, now))
             .transpose()
     }
 
     fn stage_and_commit(
         &mut self,
+        storage: &S,
         input: &Input<'_>,
         durability: Durability,
     ) -> Result<Written, WriteError> {
         let shared = &*self.shared;
-        let mut batch = Counted::new(shared.storage.batch().context(BeginBatchSnafu)?);
+        ensure!(!shared.registry.needs_recovery(), RecoveryNeededSnafu);
+        shared.check_open().context(crate::write::CheckOpenSnafu)?;
+        let mut batch = Counted::new(storage.batch().context(BeginBatchSnafu)?);
         let current = shared.registry.current();
         let context = Context {
             schema: &self.schema,
@@ -210,12 +209,16 @@ impl<S: Storage> Tsdb<S> {
     /// After an unknown outcome, or any error of kind [`ErrorKind::BackendFailed`], every
     /// later write, maintenance call and capture fails until the owner recovers (§7.5).
     pub fn maintain(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
+        let shared = self.shared.clone();
+        let storage = shared.storage();
         ensure!(
             !self.shared.registry.needs_recovery(),
             maintain::RecoveryNeededSnafu
         );
+        shared.check_open().context(maintain::CheckOpenSnafu)?;
+        let storage = storage.as_ref().expect("an admitted owner has a backend");
         request.validate(&self.schema)?;
-        let maintained = self.rounds(request);
+        let maintained = self.rounds(storage, request);
         if let Err(error) = &maintained
             && error.kind() == ErrorKind::BackendFailed
         {
@@ -227,17 +230,18 @@ impl<S: Storage> Tsdb<S> {
         maintained
     }
 
-    fn rounds(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
+    fn rounds(&mut self, storage: &S, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
         let mut done = Maintained::default();
         let mut left = request.rounds;
         loop {
             // The owner is the only writer, so a round's transaction starts from what the
             // planner read.
-            let snapshot = self
-                .shared
-                .storage
-                .snapshot()
-                .context(maintain::OpenSnapshotSnafu)?;
+            ensure!(
+                !self.shared.registry.needs_recovery(),
+                maintain::RecoveryNeededSnafu
+            );
+            self.shared.check_open().context(maintain::CheckOpenSnafu)?;
+            let snapshot = storage.snapshot().context(maintain::OpenSnapshotSnafu)?;
             let current = self.shared.registry.current();
             let planned = maintain::plan(&snapshot, &self.round_context(&current), request)?;
             let Some(round) = planned else {
@@ -249,7 +253,7 @@ impl<S: Storage> Tsdb<S> {
             }
             left -= 1;
             drop(current);
-            done.add(self.round(&snapshot, round, request.now)?);
+            done.add(self.round(storage, &snapshot, round, request.now)?);
         }
     }
 
@@ -257,12 +261,18 @@ impl<S: Storage> Tsdb<S> {
     /// the transaction starts from, which the round reads the chunks it rewrites through.
     fn round(
         &mut self,
+        storage: &S,
         snapshot: &S::Snapshot,
         round: Round,
         now: Timestamp,
     ) -> Result<Maintained, MaintainError> {
         let shared = &*self.shared;
-        let batch = shared.storage.batch().context(maintain::BeginRoundSnafu)?;
+        ensure!(
+            !shared.registry.needs_recovery(),
+            maintain::RecoveryNeededSnafu
+        );
+        shared.check_open().context(maintain::CheckOpenSnafu)?;
+        let batch = storage.batch().context(maintain::BeginRoundSnafu)?;
         let mut batch = Counted::new(batch);
         let current = shared.registry.current();
         let staged = maintain::stage(&mut batch, snapshot, &self.round_context(&current), round)?;
@@ -332,10 +342,35 @@ impl<S: Storage> Tsdb<S> {
     }
 }
 
+/// Owner destruction revokes captures and queries, then closes outside every shared lock.
+impl<S: Storage> Drop for Tsdb<S> {
+    fn drop(&mut self) {
+        drop(self.shared.retire());
+    }
+}
+
+/// A test's explicit borrow of the backend; batches cannot outlive its capture-gate guard.
+#[cfg(test)]
+pub(crate) struct StorageGuard<'a, S>(std::sync::RwLockReadGuard<'a, Option<S>>);
+
+#[cfg(test)]
+impl<S> std::ops::Deref for StorageGuard<'_, S> {
+    type Target = S;
+
+    fn deref(&self) -> &S {
+        self.0.as_ref().expect("the test's backend is open")
+    }
+}
+
 #[cfg(test)]
 impl<S: Storage> Tsdb<S> {
-    pub(crate) fn storage(&self) -> &S {
-        &self.shared.storage
+    pub(crate) fn storage(&self) -> StorageGuard<'_, S> {
+        StorageGuard(self.shared.storage())
+    }
+
+    /// The instance used to observe lifecycle boundaries without owning a backend separately.
+    pub(crate) fn shared(&self) -> &Arc<Shared<S>> {
+        &self.shared
     }
 
     pub(crate) fn registry(&self) -> &Registry {
@@ -370,21 +405,17 @@ impl<S: Storage> Tsdb<S> {
         self.behind
     }
 
-    /// Closes the dataset and hands back its storage, for a test that crashes or reopens it.
-    ///
-    /// # Panics
-    ///
-    /// If a reader is still alive.
+    /// Detaches the backend for a test that crashes it instead of closing it cleanly.
     pub(crate) fn into_storage(self) -> S {
-        let Ok(shared) = Arc::try_unwrap(self.shared) else {
-            panic!("a reader is still alive");
-        };
-        shared.storage
+        self.shared
+            .retire()
+            ._storage
+            .expect("the test's backend is open")
     }
 }
 
-/// Captures snapshots for queries, from any thread. Clones share the owner's registry,
-/// storage and query budget.
+/// Captures snapshots for queries, from any thread. Clones share the instance's registry,
+/// backend gate and query budget. They do not keep the backend open after the owner retires.
 pub struct Reader<S: Storage> {
     shared: Arc<Shared<S>>,
 }
@@ -401,9 +432,7 @@ impl<S: Storage> Reader<S> {
     /// A snapshot of the last publication (§7.1), with the bytes of its catalog and head
     /// reserved from the query budget (§7.4) until it is dropped.
     pub fn capture(&self) -> Result<Snapshot<S>, CaptureError> {
-        self.shared
-            .registry
-            .capture(&self.shared.storage, &self.shared.query_budget)
+        self.shared.capture()
     }
 }
 

@@ -329,6 +329,32 @@ disk payload and backend tree/transaction internals are storage and measured `ba
 respectively; the exported conformance suite is test support. These exceptions are not an
 allocator or RSS bound.
 
+## Retirement and revocation
+
+`Shared` owns the backend in `RwLock<Option<S>>` and the registry's admission state:
+`Open`, `RecoveryNeeded`, or `Closed`. Dropping `Tsdb` closes admission, sets its one atomic
+revocation flag, detaches the backend and resident roots, then drops them outside the locks.
+Readers own only `Shared`; snapshots own a storage transaction and a charged version.
+Snapshot fields drop the transaction before the version payload and its capture credit.
+Results retain their allocation charges. Even an empty version includes fixed catalog and head
+allocations, so `query_budget.reserved() == 0` means all snapshots and charged results have gone.
+Idle readers and catalog tokens do not block that condition. Recovery will return to the host
+while claims remain; the budget has no wait API, and retirement never waits for query completion.
+
+The lock order, documented on `Shared`, is G (backend gate), R (registry), backend locks, then
+budget mutexes. Capture holds G-read and R-read through reserve-before-pin. Owner operations hold
+G-read and take R only for brief publication changes; no R guard spans commit, rollback or fsync.
+Retirement takes G-write then R-write only to detach; backend close runs after both are released.
+Queries hold neither G nor R while scanning. They check revocation at entry, successful return,
+manifest entries, decoded blocks, stripe refills, large-value pieces and head/merge/page batches.
+A revoked query returns its module's `CheckOpen { source: StorageError::Closed }`, kind `Local`,
+and releases its workspace and partial result. The caller's snapshot retains its capture claim.
+On a failed query, revocation replaces the inner error with `CheckOpen`, except `BackendFailed`,
+which is still reported and returned unchanged.
+Only query errors of kind `BackendFailed` latch `Open` to `RecoveryNeeded`; the next owner write
+or maintenance refuses admission. Local and corrupted errors leave admission unchanged, and a late
+failure cannot reopen `Closed`. An already admitted commit may finish without clearing a latch.
+
 ## Errors
 
 Errors follow snafu's own guidance (`guide/philosophy.md`).

@@ -1265,12 +1265,14 @@ mod tests {
             .catalog
             .draft(u64::MAX, &crate::budget::test_account())
             .unwrap();
-        let mut batch = tsdb.storage().batch().unwrap();
+        let batch_storage = tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         for (dimension, value) in schema().series.unwrap().dimensions.iter().zip(LABELS) {
             draft.resolve_label(&mut batch, *dimension, value).unwrap();
         }
         let (catalog, copies) = draft.finish();
         batch.commit(Durability::Durable).unwrap();
+        drop(batch_storage);
         drop((catalog, copies, current));
         tsdb = Tsdb::open(tsdb.into_storage(), schema(), Profile::desktop()).unwrap();
         let before = tsdb.current();
@@ -1400,12 +1402,14 @@ mod tests {
             .catalog
             .draft(u64::MAX, &crate::budget::test_account())
             .unwrap();
-        let mut batch = tsdb.storage().batch().unwrap();
+        let batch_storage = tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         for point in &points {
             draft.resolve_combo(&mut batch, point.labels).unwrap();
         }
         let (catalog, copies) = draft.finish();
         batch.commit(Durability::Durable).unwrap();
+        drop(batch_storage);
         drop(catalog);
         drop(copies);
         drop(current);

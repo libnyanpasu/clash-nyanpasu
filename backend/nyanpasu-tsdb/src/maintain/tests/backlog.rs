@@ -352,7 +352,8 @@ fn a_commits_round_takes_the_durability_due_at_its_clock() {
 fn next_round_bytes(tsdb: &Tsdb<MemoryStorage>, now: i64) -> u64 {
     let snapshot = tsdb.storage().snapshot().unwrap();
     let current = tsdb.current();
-    let mut batch = Counted::new(tsdb.storage().batch().unwrap());
+    let batch_storage = tsdb.storage();
+    let mut batch = Counted::new(batch_storage.batch().unwrap());
     let staged = stage(
         &mut batch,
         &snapshot,

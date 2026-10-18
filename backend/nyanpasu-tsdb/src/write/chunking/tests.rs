@@ -1856,7 +1856,8 @@ fn a_damaged_extent_count_is_corrupted() {
         )
         .unwrap();
         let stream = StreamRef::Tier(HOUR);
-        let mut damage = tsdb.storage().batch().unwrap();
+        let damage_storage = tsdb.storage();
+        let mut damage = damage_storage.batch().unwrap();
         let mut record = manifest::read_extent(&damage, stream, 0).unwrap();
         match counter {
             ExtentCounter::Chunks => record.chunks = u64::MAX,
@@ -1865,6 +1866,7 @@ fn a_damaged_extent_count_is_corrupted() {
         }
         manifest::put_extent(&mut damage, stream, 0, &record).unwrap();
         damage.commit(Durability::Durable).unwrap();
+        drop(damage_storage);
         // The quiet bucket's chunk adds to both counts.
         let error = tsdb
             .write(&at(batch(2, &[], &[]), 2 * HOUR_MS), Durability::Durable)

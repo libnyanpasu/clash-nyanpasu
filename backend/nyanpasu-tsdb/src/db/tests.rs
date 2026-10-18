@@ -47,12 +47,6 @@ pub(crate) const HOST: LabelId = LabelId(3);
 pub(crate) const MINUTE_MS: i64 = 60_000;
 pub(crate) const HOUR_MS: i64 = 60 * MINUTE_MS;
 
-/// How long a test waits for something that must happen. It bounds a failure; it is never
-/// what makes a passing test pass.
-const PATIENCE: Duration = Duration::from_secs(30);
-/// How long a test watches for something that must not happen.
-const GRACE: Duration = Duration::from_millis(100);
-
 pub(crate) const UUID: &[u8] = b"67e55044-10b1-426f-9247-bb680e5fe0c8";
 pub(crate) const LABELS: &[&[u8]] = &[b"match", b"curl", b"a.com"];
 
@@ -404,13 +398,15 @@ fn a_state_record_naming_an_unknown_publication_is_corrupted() {
     let disk = MemoryDisk::new();
     let mut tsdb = open(&disk);
     write_simple(&mut tsdb, 1, Durability::Durable);
-    let mut damage = tsdb.storage().batch().unwrap();
+    let damage_storage = tsdb.storage();
+    let mut damage = damage_storage.batch().unwrap();
     let state = StateRecord {
         publication: 99,
         ..read_state(&damage).unwrap()
     };
     write_state(&mut damage, &state).unwrap();
     damage.commit(Durability::Durable).unwrap();
+    drop(damage_storage);
     let storage = dump_storage(&tsdb);
 
     let points = [point(LABELS, &[1, 2])];
@@ -1104,8 +1100,10 @@ fn a_reader_preempted_after_opening_its_snapshot_gets_the_matching_version() {
     });
     let reader = tsdb.reader();
     let capture = thread::spawn(move || reader.capture().map_err(|error| error.to_string()));
-    opened_rx.recv_timeout(PATIENCE).unwrap();
+    opened_rx.recv().unwrap();
 
+    // The capture barrier orders this probe while the reader holds R.
+    assert!(!tsdb.registry().publication_available());
     let (published_tx, published_rx) = mpsc::channel();
     let writer = thread::spawn(move || {
         for batch_id in [2, 3] {
@@ -1114,15 +1112,10 @@ fn a_reader_preempted_after_opening_its_snapshot_gets_the_matching_version() {
         }
         tsdb
     });
-    // The paused reader holds the read lock, so the writer cannot publish yet.
-    assert!(
-        published_rx.recv_timeout(GRACE).is_err(),
-        "published while a capture held the read lock"
-    );
     resume_tx.send(()).unwrap();
     let snapshot = capture.join().unwrap().unwrap();
-    assert_eq!(published_rx.recv_timeout(PATIENCE), Ok(2));
-    assert_eq!(published_rx.recv_timeout(PATIENCE), Ok(3));
+    assert_eq!(published_rx.recv(), Ok(2));
+    assert_eq!(published_rx.recv(), Ok(3));
     let tsdb = writer.join().unwrap();
     assert_eq!(tsdb.current().publication, 3);
 
@@ -1536,9 +1529,9 @@ mod redb {
     }
 }
 
-/// The registry owns resident credit even after the writer goes away; snapshots have theirs.
+/// Retirement releases resident credit; surviving snapshots keep their own capture credit.
 #[test]
-fn a_reader_outliving_the_writer_keeps_the_resident_claim_until_its_registry_drops() {
+fn a_reader_outliving_the_writer_keeps_no_resident_claim_after_retirement() {
     let disk = MemoryDisk::new();
     let mut tsdb = open(&disk);
     write_simple(&mut tsdb, 1, Durability::Durable);
@@ -1550,7 +1543,7 @@ fn a_reader_outliving_the_writer_keeps_the_resident_claim_until_its_registry_dro
     let snapshot = reader.capture().unwrap();
     let version = Arc::downgrade(&tsdb.current());
     drop(tsdb);
-    assert_eq!(heads.reserved(), resident);
+    assert_eq!(heads.reserved(), 0);
     drop(reader);
     assert_eq!(heads.reserved(), 0);
     assert!(version.upgrade().is_some());

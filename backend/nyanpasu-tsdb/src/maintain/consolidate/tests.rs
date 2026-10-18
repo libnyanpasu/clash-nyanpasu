@@ -1696,7 +1696,8 @@ fn rounds_of_full_chunks_make_progress_at_the_least_round() {
         let disk = MemoryDisk::new();
         let tsdb = Tsdb::open(disk.open().unwrap(), spec, profile).unwrap();
         let rows = shape.series_chunk_rows;
-        let mut batch = tsdb.storage().batch().unwrap();
+        let batch_storage = tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         // Full groups retire their directories and decode buffers under one admitted plan.
         for id in 1..=3 {
             let (fragments, entry) = series_chunk_at(rows, fields, false, Some(id as i64));
@@ -1721,12 +1722,14 @@ fn rounds_of_full_chunks_make_progress_at_the_least_round() {
             .unwrap();
         }
         batch.commit(Durability::Durable).unwrap();
+        drop(batch_storage);
         let current = tsdb.current();
         let context = tsdb.round_context(&current);
         let mut next = 100;
         for _ in 0..3 {
             let read = tsdb.storage().snapshot().unwrap();
-            let mut batch = tsdb.storage().batch().unwrap();
+            let batch_storage = tsdb.storage();
+            let mut batch = batch_storage.batch().unwrap();
             let changed = super::consolidate(&mut batch, &read, &context, MINUTE, 0, next).unwrap();
             assert!(changed.done.chunks_rewritten >= 1);
             assert!(changed.done.chunks_built >= 1);
@@ -1735,6 +1738,7 @@ fn rounds_of_full_chunks_make_progress_at_the_least_round() {
             assert_eq!(tsdb.staging_reserved(), 0);
             let complete = manifest::read_stream(&batch, MINUTES).unwrap().consolidated == Some(0);
             batch.commit(Durability::Durable).unwrap();
+            drop(batch_storage);
             if complete {
                 break;
             }
@@ -1745,7 +1749,8 @@ fn rounds_of_full_chunks_make_progress_at_the_least_round() {
             Some(0)
         );
         // Two late chunks fill one output; their duplicate keys must sum, without growing it.
-        let mut batch = tsdb.storage().batch().unwrap();
+        let batch_storage = tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         for id in 4..=5 {
             let (fragments, entry) = series_chunk_at(rows / 2, fields, false, Some(0));
             for (index, bytes) in fragments.0 {
@@ -1769,8 +1774,10 @@ fn rounds_of_full_chunks_make_progress_at_the_least_round() {
             .unwrap();
         }
         batch.commit(Durability::Durable).unwrap();
+        drop(batch_storage);
         let read = tsdb.storage().snapshot().unwrap();
-        let mut batch = tsdb.storage().batch().unwrap();
+        let batch_storage = tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         let changed = super::merge(&mut batch, &read, &context, MINUTE, 0, next).unwrap();
         assert_eq!(
             (changed.done.chunks_rewritten, changed.done.chunks_built),
@@ -1779,6 +1786,7 @@ fn rounds_of_full_chunks_make_progress_at_the_least_round() {
         drop(changed);
         assert_eq!(tsdb.staging_reserved(), 0);
         batch.commit(Durability::Durable).unwrap();
+        drop(batch_storage);
     }
 }
 
@@ -2279,9 +2287,11 @@ fn damaged_bookkeeping_is_corrupted() {
     // An index entry whose chunk is gone.
     let (_, mut tsdb, now) = setup();
     let chunk = chunks_of(&tsdb, MINUTES, 0)[0];
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     manifest::remove_chunk(&mut batch, MINUTES, 0, chunk.chunk).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     let error = consolidate(&mut tsdb, now);
     assert!(
         matches!(error, ConsolidateError::Unlisted { chunk: found } if found == chunk.chunk.0),
@@ -2292,9 +2302,11 @@ fn damaged_bookkeeping_is_corrupted() {
     let (_, mut tsdb, now) = setup();
     let mut listed = chunks_of(&tsdb, MINUTES, 0)[1];
     listed.entry.kind = ChunkKind::Consolidated as u8;
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     manifest::write_chunk(&mut batch, MINUTES, 0, listed.chunk, &listed.entry).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     let error = consolidate(&mut tsdb, now);
     assert!(
         matches!(error, ConsolidateError::InvalidInput { chunk } if chunk == listed.chunk.0),
@@ -2305,9 +2317,11 @@ fn damaged_bookkeeping_is_corrupted() {
     let (_, mut tsdb, now) = setup();
     let mut listed = chunks_of(&tsdb, MINUTES, 0)[2];
     listed.entry.rows += 1;
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     manifest::write_chunk(&mut batch, MINUTES, 0, listed.chunk, &listed.entry).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     let error = consolidate(&mut tsdb, now);
     assert!(
         matches!(error, ConsolidateError::InvalidInput { chunk } if chunk == listed.chunk.0),
@@ -2316,9 +2330,11 @@ fn damaged_bookkeeping_is_corrupted() {
 
     // Progress naming a chunk that is not there.
     let (_, mut tsdb, now) = setup();
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     manifest::write_progress(&mut batch, MINUTES, 0, Some(Progress { last: 999 })).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     let error = consolidate(&mut tsdb, now);
     assert!(
         matches!(error, ConsolidateError::Unlisted { chunk: 999 }),

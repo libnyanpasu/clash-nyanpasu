@@ -50,6 +50,23 @@ pub(crate) fn encode(record: &impl Serialize) -> Vec<u8> {
     postcard::to_extend(record, vec![Format::V1 as u8]).expect("a record serializes into a vector")
 }
 
+/// Measures data-sized output, admits its exact capacity, then serializes into a fixed slice.
+/// Format-bounded metadata continues to use `encode` under its control allowance.
+pub(crate) fn encode_within(
+    account: &MemoryAccount,
+    record: &impl Serialize,
+) -> Result<BudgetVec<u8>, BudgetExceeded> {
+    let len = 1 + serialized_len(record);
+    let mut out = account.buffer(len)?;
+    out.resize(len, 0);
+    out[0] = Format::V1 as u8;
+    let written = postcard::to_slice(record, &mut out[1..])
+        .expect("the measured serialization fits its bounded output")
+        .len();
+    assert_eq!(written, len - 1, "a record of another length");
+    Ok(out)
+}
+
 /// The record a value holds. Every byte of the value belongs to it.
 pub(crate) fn decode<'a, T: Deserialize<'a>>(value: &'a [u8]) -> Result<T, RecordProblem> {
     let (record, rest) = take(body(value)?)?;

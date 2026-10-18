@@ -1,6 +1,9 @@
 //! Capacity-bounded storage that keeps its allocation charge until storage drops or transfers.
 
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::BinaryHeap,
+    ops::{Deref, DerefMut},
+};
 
 use super::{BudgetExceeded, MemoryAccount, MemoryPlan, Retain, Retained, account::Lease};
 
@@ -187,38 +190,105 @@ impl<T> BudgetVec<T> {
 }
 
 impl<T: Ord> BudgetVec<T> {
-    /// Inserts into a max heap within its admitted capacity, without allocating.
-    pub(crate) fn heap_push(&mut self, value: T) {
-        self.push(value);
-        let mut child = self.len() - 1;
-        while child != 0 {
-            let parent = (child - 1) / 2;
-            if self[parent] >= self[child] {
-                break;
-            }
-            self.swap(parent, child);
-            child = parent;
+    /// Transfers admitted storage to std's heap without allocating or changing its capacity.
+    pub(crate) fn into_heap(self) -> BudgetHeap<T> {
+        self.check();
+        let Self { storage, lease } = self;
+        BudgetHeap {
+            storage: BinaryHeap::from(storage),
+            lease,
+        }
+    }
+}
+
+/// A max heap whose backing vector and capacity remain covered by an operation's lease.
+#[derive(Debug)]
+pub(crate) struct BudgetHeap<T> {
+    /// Storage drops before its lease returns credit, just as in `BudgetVec`.
+    storage: BinaryHeap<T>,
+    /// The unchanged charge of the vector transferred into this heap.
+    lease: Option<Lease>,
+}
+
+impl<T: Ord> BudgetHeap<T> {
+    /// Inserts without growing; exceeding the leased capacity is a programming error.
+    pub(crate) fn push(&mut self, value: T) {
+        assert!(
+            self.storage.len() < self.capacity(),
+            "heap capacity exceeded"
+        );
+        self.storage.push(value);
+    }
+
+    /// Removes the maximum while retaining the backing storage and its charge.
+    pub(crate) fn pop(&mut self) -> Option<T> {
+        self.storage.pop()
+    }
+
+    /// Borrows the maximum without changing storage.
+    #[cfg(test)]
+    pub(crate) fn peek(&self) -> Option<&T> {
+        self.storage.peek()
+    }
+
+    /// Returns the initialized entry count without exposing the growable heap.
+    pub(crate) fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    /// Sorts in place and returns the same charged backing vector in ascending order.
+    pub(crate) fn into_sorted_vec(self) -> BudgetVec<T> {
+        BudgetVec {
+            storage: self.storage.into_sorted_vec(),
+            lease: self.lease,
         }
     }
 
-    /// Removes the maximum heap element while retaining storage and its charge.
-    pub(crate) fn heap_pop(&mut self) -> Option<T> {
-        let last = self.len().checked_sub(1)?;
-        self.swap(0, last);
-        let value = self.pop();
-        let mut parent = 0;
-        while parent < self.len() / 2 {
-            let mut child = 2 * parent + 1;
-            if child + 1 < self.len() && self[child + 1] > self[child] {
-                child += 1;
-            }
-            if self[parent] >= self[child] {
-                break;
-            }
-            self.swap(parent, child);
-            parent = child;
+    /// Whether there are no initialized entries.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.storage.is_empty()
+    }
+
+    /// Returns the unchanged leased element capacity.
+    pub(crate) fn capacity(&self) -> usize {
+        self.storage.capacity()
+    }
+
+    /// Drops entries while retaining storage and its charge.
+    pub(crate) fn clear(&mut self) {
+        self.storage.clear();
+    }
+
+    /// Drops obsolete storage before replacement, reusing a matching capacity.
+    pub(crate) fn discard_unless(&mut self, capacity: usize) {
+        if self.capacity() == capacity {
+            self.clear();
+        } else {
+            let empty = self
+                .lease
+                .as_ref()
+                .expect("attached heap")
+                .account
+                .buffer(0)
+                .expect("empty storage is free")
+                .into_heap();
+            *self = empty;
         }
-        value
+    }
+
+    /// Clears obsolete entries and allocates exactly the newly admitted capacity.
+    pub(crate) fn reset_to(&mut self, capacity: usize) -> Result<(), BudgetExceeded> {
+        self.discard_unless(capacity);
+        if self.capacity() < capacity {
+            *self = self
+                .lease
+                .as_ref()
+                .expect("attached heap")
+                .account
+                .buffer(capacity)?
+                .into_heap();
+        }
+        Ok(())
     }
 }
 

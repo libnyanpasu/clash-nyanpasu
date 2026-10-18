@@ -665,6 +665,8 @@ impl Head {
             + list as u64;
         let account = MemoryAccount::new(budget, "head", MemoryPlan::bytes(skeleton))
             .context(ReserveHeadSnafu)?;
+        #[cfg(test)]
+        account.observe_root_retention();
         let mut retained = Retained::new(&account);
         let mut structure = account
             .lease(MemoryPlan::default())
@@ -714,9 +716,16 @@ impl Head {
         let head = Self::new(series, buffers);
         let bytes = head.bytes();
         let head = retained.finish(head).retain_bytes(bytes);
+        #[cfg(test)]
+        let observed_peak = account.peak_bytes();
         drop(account);
         let (head, reservation) = head.into_parts();
-        Ok(Rebuilt { head, reservation })
+        Ok(Rebuilt {
+            head,
+            reservation,
+            #[cfg(test)]
+            observed_peak,
+        })
     }
 
     #[cfg(test)]
@@ -825,6 +834,9 @@ impl<'r, R: StorageRead> JournalSources<'r, R> {
 /// A head rebuilt within a budget.
 pub(crate) struct Rebuilt {
     pub(crate) head: Head,
+    /// Actual simultaneous leases and retained children observed during replay.
+    #[cfg(test)]
+    pub(crate) observed_peak: u64,
     /// The head's bytes, reserved from the budget.
     pub(crate) reservation: Reservation,
 }

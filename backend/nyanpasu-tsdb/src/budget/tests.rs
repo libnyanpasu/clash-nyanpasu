@@ -27,6 +27,93 @@ fn a_reservation_returns_its_bytes_when_dropped() {
     assert_eq!(budget.reserved(), 0);
 }
 
+/// Error construction and reporting remain available with no budget credit.
+#[test]
+fn exhausted_budgets_still_construct_and_report_domain_errors() {
+    use std::error::Error;
+
+    let budget = MemoryBudget::new(17);
+    let held = budget.try_reserve("occupied", 17).unwrap();
+    let source = budget.try_reserve("staging", 1).unwrap_err();
+    assert_eq!(source.available, 0);
+    assert_eq!(source.needed, 1);
+    assert_eq!(source.kind(), ErrorKind::Local);
+    assert!(source.to_string().contains("0 available"));
+    let stage = crate::write::StageError::ReserveStaging { source };
+    let write = crate::write::WriteError::Stage { source: stage };
+    assert_eq!(write.kind(), ErrorKind::Local);
+    assert!(!write.to_string().is_empty());
+    assert!(
+        write
+            .source()
+            .unwrap()
+            .source()
+            .unwrap()
+            .to_string()
+            .contains("0 available")
+    );
+    let source = budget.try_reserve("head", 1).unwrap_err();
+    let rebuild = crate::head::RebuildError::ReserveHead { source };
+    let open = crate::lifecycle::OpenError::RebuildHead { source: rebuild };
+    assert_eq!(open.kind(), ErrorKind::Local);
+    assert!(!open.to_string().is_empty());
+    assert!(
+        open.source()
+            .unwrap()
+            .source()
+            .unwrap()
+            .to_string()
+            .contains("0 available")
+    );
+    // Each domain constructs its ordinary error at zero available bytes. Formatting and
+    // walking sources use the metadata allowance, without another budget admission.
+    macro_rules! check {
+        ($make:expr) => {
+            check!($make, ErrorKind::Local)
+        };
+        ($make:expr, $kind:expr) => {{
+            let error = ($make)(budget.try_reserve("exhausted", 1).unwrap_err());
+            assert_eq!(error.kind(), $kind);
+            assert!(!error.to_string().is_empty());
+            assert!(error.source().unwrap().to_string().contains("0 available"));
+            assert_eq!(budget.reserved(), held.bytes());
+        }};
+    }
+    check!(|source| crate::write::InputError::BatchSize { source });
+    check!(|source| crate::write::StageError::ReserveHead { source });
+    check!(|source| crate::lifecycle::OpenError::ReserveStaging { source });
+    check!(|source| crate::version::CaptureError::ReserveQuery { source });
+    check!(|source| crate::head::RebuildError::ReserveHead { source });
+    check!(|source| crate::chunk::error::ReadError::ReserveDirectory { source });
+    check!(|source| crate::catalog::LoadError::ReserveMemory { source });
+    check!(|source| crate::catalog::ResolveError::StageResolution { source });
+    check!(|source| crate::catalog::ReleaseError::StageRelease { source });
+    check!(|source| crate::catalog::ReleaseError::ReserveRelease { source });
+    check!(|source| crate::maintain::RetentionError::ReserveStaging { source });
+    check!(|source| crate::maintain::RecycleError::ReserveStaging { source });
+    check!(|source| crate::maintain::ConsolidateError::Reserve { source });
+    check!(
+        |source| crate::maintain::ConsolidateError::InputMemory { chunk: 1, source },
+        ErrorKind::Corrupted
+    );
+    check!(|source| crate::SeriesQueryError::ReserveScan { source });
+    check!(|source| crate::SeriesQueryError::ReserveDecoder { source });
+    check!(|source| crate::SeriesQueryError::ReserveFragment { chunk: 1, source });
+    check!(|source| crate::SeriesQueryError::ReserveLists { source });
+    check!(|source| crate::SeriesQueryError::ReserveBlock { chunk: 1, source });
+    check!(|source| crate::SeriesQueryError::ReserveGroups { request: 0, source });
+    check!(|source| crate::EventScanError::ReserveChunkList { source });
+    check!(|source| crate::EventScanError::AdmitScan { ways: 1, source });
+    check!(|source| crate::EventScanError::ReserveRead { chunk: 1, source });
+    check!(|source| crate::EventScanError::ReserveLargeValue {
+        chunk: 1,
+        index: 0,
+        source
+    });
+    check!(|source| crate::EventScanError::ReservePage { source });
+    assert_eq!(budget.reserved(), held.bytes());
+}
+
 #[test]
 fn clones_share_one_counter() {
     let budget = MemoryBudget::new(100);
@@ -340,24 +427,40 @@ mod charged {
     fn charged_heaps_match_the_standard_heap_without_growing() {
         for capacity in 0..64 {
             let account = super::super::test_account();
-            let mut actual = account.buffer(capacity).unwrap();
-            let mut expected = std::collections::BinaryHeap::new();
+            let mut initial = account.buffer(capacity).unwrap();
+            initial.extend((0..capacity).map(|index| (index * 7 % 11) as i64 - 5));
+            let mut expected = std::collections::BinaryHeap::from(initial.to_vec());
+            let mut actual = initial.into_heap();
+            while !expected.is_empty() {
+                assert_eq!(actual.pop(), expected.pop());
+            }
+            assert_eq!(actual.capacity(), capacity);
             for index in 0..capacity {
                 let value = (index * 17 % 13) as i64 - 6;
-                actual.heap_push(value);
+                actual.push(value);
                 expected.push(value);
                 if index % 3 == 0 {
-                    assert_eq!(actual.heap_pop(), expected.pop());
+                    assert_eq!(actual.pop(), expected.pop());
                 }
-                assert_eq!(actual.first(), expected.peek());
+                assert_eq!(actual.peek(), expected.peek());
             }
             while !expected.is_empty() {
-                assert_eq!(actual.heap_pop(), expected.pop());
+                assert_eq!(actual.pop(), expected.pop());
             }
-            assert_eq!(actual.heap_pop(), None);
+            assert_eq!(actual.pop(), None);
             assert_eq!(actual.capacity(), capacity);
             assert_eq!(account.live_bytes(), (capacity * size_of::<i64>()) as u64);
         }
+    }
+
+    /// A full heap cannot ask std to grow beyond its lease.
+    #[test]
+    #[should_panic(expected = "heap capacity exceeded")]
+    fn a_heap_cannot_push_past_its_leased_capacity() {
+        let account = super::super::test_account();
+        let mut heap = account.buffer(1).unwrap().into_heap();
+        heap.push(1);
+        heap.push(2);
     }
 
     #[test]

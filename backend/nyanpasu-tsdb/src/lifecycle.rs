@@ -37,6 +37,9 @@ use crate::{
 /// An opened dataset, before the facade wraps it.
 pub(crate) struct Opened<S> {
     pub(crate) storage: S,
+    /// Admitted limits and observed live peaks for replay, left-out chunking and settlement.
+    #[cfg(test)]
+    pub(crate) allocation_peaks: [(u64, u64); 3],
     pub(crate) version: Version,
     pub(crate) incarnation: u64,
     pub(crate) shape: Shape,
@@ -89,6 +92,8 @@ pub(crate) fn open<S: Storage>(
     let head_budget = MemoryBudget::new(profile.head);
     let rebuilt = Head::rebuild_within(&snapshot, schema, &catalog, &state, &head_budget, &shape)
         .context(RebuildHeadSnafu)?;
+    #[cfg(test)]
+    let replay_peak = rebuilt.observed_peak;
     let staging_budget = MemoryBudget::new(profile.staging);
     let settled = Opening {
         schema,
@@ -101,6 +106,12 @@ pub(crate) fn open<S: Storage>(
     drop(snapshot);
     Ok(Opened {
         storage,
+        #[cfg(test)]
+        allocation_peaks: [
+            (profile.head, replay_peak),
+            settled.allocation_peaks[0],
+            settled.allocation_peaks[1],
+        ],
         version: Version {
             publication: settled.state.publication,
             catalog,
@@ -125,6 +136,9 @@ struct Opening<'a> {
 
 /// The dataset as opening leaves it.
 struct Settled {
+    /// The two staging phases' admitted plans and independently observed peaks.
+    #[cfg(test)]
+    allocation_peaks: [(u64, u64); 2],
     state: StateRecord,
     head: Head,
     /// The head's bytes, reserved from the head budget.
@@ -150,6 +164,8 @@ impl Opening<'_> {
         let mut next_chunk = state.next_chunk;
         let mut next_seq = state.next_journal_seq;
         let mut absorbed = 0;
+        #[cfg(test)]
+        let mut allocation_peaks = [(0, 0); 2];
         if self.leaves_out(snapshot, &head)? {
             let allocation = MemoryAccount::new(
                 self.staging_budget,
@@ -157,6 +173,8 @@ impl Opening<'_> {
                 MemoryPlan::bytes(widest_build(self.schema, self.shape)),
             )
             .context(ReserveStagingSnafu)?;
+            #[cfg(test)]
+            allocation.observe_root_retention();
             let mut execution = Execution {
                 account: &allocation,
                 batch: batch.insert(storage.batch().context(BeginChunkingSnafu)?),
@@ -175,6 +193,13 @@ impl Opening<'_> {
             }
             next_chunk = execution.next_chunk;
             next_seq = execution.next_seq;
+            #[cfg(test)]
+            {
+                allocation_peaks[0] = (
+                    widest_build(self.schema, self.shape),
+                    allocation.peak_bytes(),
+                );
+            }
             drop(allocation);
         }
         // The rebuild checked that the snapshot's records add up to the state's bytes, and
@@ -187,6 +212,8 @@ impl Opening<'_> {
         let update = HeadUpdate::default();
         let allocation = MemoryAccount::new(self.staging_budget, "staging", MemoryPlan::default())
             .context(ReserveStagingSnafu)?;
+        #[cfg(test)]
+        allocation.observe_root_retention();
         let plan = Planning {
             schema: self.schema,
             profile: self.profile,
@@ -201,7 +228,13 @@ impl Opening<'_> {
         .plan_commit(None, &allocation)
         .context(ReserveStagingSnafu)?;
         if batch.is_none() && plan.is_empty() {
+            #[cfg(test)]
+            {
+                allocation_peaks[1] = (plan.allocation_bytes(), allocation.peak_bytes());
+            }
             return Ok(Settled {
+                #[cfg(test)]
+                allocation_peaks,
                 state,
                 head,
                 reservation,
@@ -224,6 +257,10 @@ impl Opening<'_> {
         }
         .run(&plan, &head, update)
         .context(CapJournalSnafu)?;
+        #[cfg(test)]
+        {
+            allocation_peaks[1] = (plan.allocation_bytes(), allocation.peak_bytes());
+        }
         drop(allocation);
         let copies = executed.head_copies;
         // The new graph must drop before its temporary credit on every later failure.
@@ -253,6 +290,8 @@ impl Opening<'_> {
         reservation.shrink(reservation.bytes().saturating_sub(head.bytes()));
         drop(copies);
         Ok(Settled {
+            #[cfg(test)]
+            allocation_peaks,
             state,
             head,
             reservation,
@@ -484,6 +523,127 @@ impl OpenError {
             Self::ReserveStaging { source } => source.kind(),
             Self::FindLeftOut { source } => source.kind(),
             Self::ChunkLeftOut { source } | Self::CapJournal { source } => source.kind(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        db::tests::{self as db, LABELS, LOGS},
+        storage::memory::MemoryDisk,
+        write::{EventRow, Value},
+    };
+
+    /// Replay measures retained children beside live construction leases on both opens.
+    #[test]
+    fn populated_open_and_reopen_stay_within_their_admitted_plans() {
+        let disk = MemoryDisk::new();
+        let mut store = db::open(&disk);
+        let values = [Value::Bytes(b"retained journal row")];
+        for id in 1..=24 {
+            let points = [db::point(LABELS, &[1, 2])];
+            let events = [EventRow {
+                stream: LOGS,
+                key: id as i64,
+                seq: store.next_event_seq(),
+                values: &values,
+            }];
+            store
+                .write(&db::batch(id, &points, &events), Durability::Durable)
+                .unwrap();
+        }
+        let expected = store.current().head.clone();
+        drop(store.into_storage());
+        for _ in 0..2 {
+            let opened = open(disk.open().unwrap(), &db::schema(), &Profile::desktop()).unwrap();
+            assert_eq!(opened.version.head, expected);
+            for (planned, observed) in opened.allocation_peaks {
+                assert!(
+                    observed <= planned,
+                    "observed {observed}, admitted {planned}"
+                );
+            }
+            assert!(opened.allocation_peaks[0].1 >= expected.bytes());
+            assert_eq!(opened.head_budget.reserved(), opened.version.head.bytes());
+            assert_eq!(opened.staging_budget.reserved(), 0);
+            drop(opened);
+        }
+    }
+
+    /// Left-out replay sources build within the opening plan at the unchanged staging floor.
+    #[test]
+    fn opening_left_out_sources_observes_the_build_peak_at_minimum_staging() {
+        let disk = MemoryDisk::new();
+        let mut store = db::open(&disk);
+        for id in 1..=12 {
+            db::write_simple(&mut store, id, Durability::Durable);
+        }
+        drop(store.into_storage());
+        let schema = db::schema();
+        let shape = Shape::new(&schema);
+        let head = Head::empty(schema.events.len()).bytes() + 64;
+        let profile = Profile {
+            head,
+            event_buffer_bytes: 1,
+            staging: least_staging(&schema, &shape, head),
+            ..Profile::desktop()
+        };
+        for first in [true, false] {
+            let opened = open(disk.open().unwrap(), &schema, &profile).unwrap();
+            for (planned, observed) in opened.allocation_peaks {
+                assert!(
+                    observed <= planned,
+                    "observed {observed}, admitted {planned}"
+                );
+            }
+            if first {
+                assert!(
+                    opened.allocation_peaks[1].1 > 0,
+                    "left-out records were built"
+                );
+            }
+            assert!(opened.version.head.bytes() <= profile.head);
+            assert_eq!(opened.staging_budget.reserved(), 0);
+            drop(opened);
+        }
+    }
+
+    /// Settlement measures charged execution beside its planning arrays and retained head.
+    #[test]
+    fn opening_journal_settlement_observes_the_execution_peak() {
+        let disk = MemoryDisk::new();
+        let mut store = db::open(&disk);
+        for id in 1..=100 {
+            let points = [db::point(LABELS, &[1, 2])];
+            let mut input = db::batch(id, &points, &[]);
+            input.now = crate::Timestamp(0);
+            store.write(&input, Durability::Durable).unwrap();
+        }
+        let expected = store.current().head.clone();
+        drop(store.into_storage());
+        let profile = Profile {
+            journal_bytes: 128,
+            ..Profile::desktop()
+        };
+        for first in [true, false] {
+            let opened = open(disk.open().unwrap(), &db::schema(), &profile).unwrap();
+            for (planned, observed) in opened.allocation_peaks {
+                assert!(
+                    observed <= planned,
+                    "observed {observed}, admitted {planned}"
+                );
+            }
+            if first {
+                assert!(opened.allocation_peaks[2].1 > 0, "settlement was built");
+            }
+            assert_eq!(
+                opened.version.head.series().count(),
+                expected.series().count()
+            );
+            assert_eq!(opened.staging_budget.reserved(), 0);
+            drop(opened);
         }
     }
 }

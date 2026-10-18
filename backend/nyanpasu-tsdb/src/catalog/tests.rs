@@ -1977,3 +1977,39 @@ fn a_staging_refusal_of_the_first_release_changes_nothing() {
     drop(charge);
     assert_eq!(budget.reserved(), 0);
 }
+
+/// A label's data-sized wire output is admitted exactly before its storage write.
+#[test]
+fn label_serialization_is_exact_and_refusal_writes_nothing() {
+    use crate::budget::{MemoryAccount, MemoryBudget, MemoryPlan};
+
+    let disk = MemoryDisk::new();
+    let storage = disk.open().unwrap();
+    let value = vec![b'x'; 130_000];
+    let expected = raw::label_record(&value);
+    for limit in [expected.len() - 1, expected.len()] {
+        let budget = MemoryBudget::new(limit as u64);
+        let account = MemoryAccount::new(&budget, "staging", MemoryPlan::default()).unwrap();
+        let mut batch = storage.batch().unwrap();
+        let result = persist::put_label(&mut batch, LabelId(0), 1, &value, &account);
+        if limit < expected.len() {
+            assert!(matches!(result, Err(ResolveError::StageResolution { .. })));
+            assert_eq!(account.peak_bytes(), 0);
+            batch
+                .get(LABELS, label_key(LabelId(0), 1).as_slice(), |stored| {
+                    assert!(stored.is_none());
+                })
+                .unwrap();
+        } else {
+            result.unwrap();
+            assert_eq!(account.peak_bytes(), expected.len() as u64);
+            batch
+                .get(LABELS, label_key(LabelId(0), 1).as_slice(), |stored| {
+                    assert_eq!(stored, Some(expected.as_slice()));
+                })
+                .unwrap();
+        }
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
+    }
+}

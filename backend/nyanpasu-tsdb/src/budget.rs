@@ -29,7 +29,7 @@ mod account;
 mod buffer;
 
 pub(crate) use account::{Lease, MemoryAccount, Reserved, Retain, Retained};
-pub(crate) use buffer::{BudgetVec, FixedVec, FrozenVec};
+pub(crate) use buffer::{BudgetHeap, BudgetVec, FixedVec, FrozenVec};
 
 /// Checked, allocation-free byte arithmetic for allocations that coexist in an envelope.
 #[derive(Clone, Copy, Debug, Default)]

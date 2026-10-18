@@ -44,6 +44,9 @@ struct AccountState {
     /// The remaining successful admissions before injected failure.
     #[cfg(test)]
     fail_after: Cell<Option<usize>>,
+    /// Existing root reservations excluded from an exclusive operation's test peak.
+    #[cfg(test)]
+    retention_base: Cell<Option<u64>>,
     /// Receives allocation, retirement and transfer checkpoints for this account.
     #[cfg(test)]
     observer: RefCell<Option<Observer>>,
@@ -103,6 +106,8 @@ impl MemoryAccount {
                 fail_after: Cell::new(None),
                 #[cfg(test)]
                 observer: RefCell::new(None),
+                #[cfg(test)]
+                retention_base: Cell::new(None),
                 #[cfg(test)]
                 construction: RefCell::new(None),
             }),
@@ -335,10 +340,22 @@ impl MemoryAccount {
         let held = self.state.held.borrow();
         let retained = if held.budget.shared._parent.is_some() {
             held.budget.reserved() - held.bytes()
+        } else if let Some(base) = self.state.retention_base.get() {
+            held.budget.reserved() - held.bytes() - base
         } else {
             0
         };
         self.state.live.get() + retained
+    }
+
+    /// Includes retained children when this operation exclusively uses a root budget.
+    /// Existing reservations are excluded; no other operation may reserve until it finishes.
+    #[cfg(test)]
+    pub(crate) fn observe_root_retention(&self) {
+        let held = self.state.held.borrow();
+        self.state
+            .retention_base
+            .set(Some(held.budget.reserved() - held.bytes()));
     }
 
     /// Samples actual round retention at admission and allocation checkpoints, only in tests.
@@ -405,6 +422,11 @@ pub(super) struct Observation {
 }
 
 impl Lease {
+    /// The envelope that owns this lease, for related transient allocations of the same draft.
+    pub(crate) fn account(&self) -> &MemoryAccount {
+        &self.account
+    }
+
     /// Records actual capacity after allocation, asserting that the lease covers it.
     pub(super) fn allocated(&mut self, bytes: u64) {
         debug_assert!(bytes <= self.bytes);

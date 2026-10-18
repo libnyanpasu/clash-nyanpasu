@@ -67,7 +67,7 @@ use crate::chunk::reader::decode_memory;
 use super::{Changed, Context, Maintained, Round};
 use crate::{
     ErrorKind, TierId, Timestamp,
-    budget::{BudgetExceeded, BudgetVec, MemoryAccount, MemoryPlan},
+    budget::{BudgetExceeded, BudgetHeap, BudgetVec, MemoryAccount, MemoryPlan},
     chunk::{
         BatchSink, FragmentSource, StoredChunk,
         builder::{
@@ -1140,7 +1140,7 @@ struct Rows<'a, R> {
     /// The first input of the next group.
     next: usize,
     ways: BudgetVec<Way>,
-    heap: BudgetVec<Reverse<(i64, u32, usize)>>,
+    heap: BudgetHeap<Reverse<(i64, u32, usize)>>,
     /// The row being summed, handed over once a row with another key comes.
     summing: Option<Row>,
     /// The round account used to open each group after the previous group retires.
@@ -1170,7 +1170,7 @@ impl<'a, R: StorageRead> Rows<'a, R> {
             decoder: Decoder { blocks },
             next: 0,
             ways: account.buffer(0).context(ReserveSnafu)?,
-            heap: account.buffer(0).context(ReserveSnafu)?,
+            heap: account.buffer(0).context(ReserveSnafu)?.into_heap(),
             summing: None,
             account: account.clone(),
         })
@@ -1179,7 +1179,7 @@ impl<'a, R: StorageRead> Rows<'a, R> {
     /// The next summed row, or `None` after the last.
     fn next(&mut self) -> Result<Option<Row>, ConsolidateError> {
         loop {
-            let Some(Reverse((bucket, combo, index))) = self.heap.heap_pop() else {
+            let Some(Reverse((bucket, combo, index))) = self.heap.pop() else {
                 if self.next == self.inputs.len() {
                     return Ok(self.summing.take());
                 }
@@ -1199,8 +1199,7 @@ impl<'a, R: StorageRead> Rows<'a, R> {
             way.row += 1;
             if way.row < way.rows {
                 let (next_bucket, next_combo) = way.key(&mut read)?;
-                self.heap
-                    .heap_push(Reverse((next_bucket, next_combo, index)));
+                self.heap.push(Reverse((next_bucket, next_combo, index)));
             }
             let row = Row {
                 bucket,
@@ -1251,7 +1250,7 @@ impl<'a, R: StorageRead> Rows<'a, R> {
                 decoder: &mut self.decoder,
             };
             let (bucket, combo) = way.key(&mut read)?;
-            self.heap.heap_push(Reverse((bucket, combo, index)));
+            self.heap.push(Reverse((bucket, combo, index)));
         }
         Ok(())
     }

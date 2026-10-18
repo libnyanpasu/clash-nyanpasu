@@ -707,14 +707,14 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         }
         ways.push(Way::Head(self.select_head(buffer, limit, selected)?));
 
-        let mut heap = self.account.buffer(entries).map_err(admit)?;
+        let mut heap = self.account.buffer(entries).map_err(admit)?.into_heap();
         for (index, way) in ways.iter_mut().enumerate() {
             if let Some(rank) = self.peek(&links, way, &mut decode)? {
-                heap.heap_push(Reverse((rank, index)));
+                heap.push(Reverse((rank, index)));
             }
         }
         let mut positions = self.account.buffer(0).context(ReservePageSnafu)?;
-        while let Some(Reverse((rank, index))) = heap.heap_pop() {
+        while let Some(Reverse((rank, index))) = heap.pop() {
             let way = &mut ways[index];
             let position = Position {
                 order: self::rank(rank, self.direction),
@@ -727,7 +727,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 break;
             }
             if let Some(rank) = self.peek(&links, way, &mut decode)? {
-                heap.heap_push(Reverse((rank, index)));
+                heap.push(Reverse((rank, index)));
             }
         }
         Ok((positions, decode))
@@ -777,7 +777,11 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
     ) -> Result<HeadWay<'s>, EventScanError> {
         let extents = self.extents();
         // A max-heap of the best rows so far, which drops the worst of them first.
-        let mut best = self.account.buffer(capacity).context(ReservePageSnafu)?;
+        let mut best = self
+            .account
+            .buffer(capacity)
+            .context(ReservePageSnafu)?
+            .into_heap();
         let segments = buffer
             .segments()
             .iter()
@@ -797,15 +801,14 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 if !self.bounds.admits(rank) || !self.row_matches(&row)? {
                     continue;
                 }
-                best.heap_push(Selected { rank, rows: from });
+                best.push(Selected { rank, rows: from });
                 if best.len() > limit {
-                    best.heap_pop();
+                    best.pop();
                 }
             }
         }
-        best.sort_unstable();
         Ok(HeadWay {
-            rows: best,
+            rows: best.into_sorted_vec(),
             next: 0,
         })
     }

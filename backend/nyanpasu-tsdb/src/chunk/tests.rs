@@ -1720,7 +1720,7 @@ mod planning {
                 int_cost(IntType::I64, false) + bytes_cost(text.len(), BytesHint::Text, false)
             })
             .collect();
-        let ranges = plan_chunks(2, &costs).unwrap();
+        let ranges = plan_chunks(2, &costs).unwrap().collect::<Vec<_>>();
         // The first chunk ends among the 1000-byte rows, one row short of the bound.
         let first = ranges[0].clone();
         assert!(first.end > 250 && first.end < texts.len(), "{ranges:?}");
@@ -1904,7 +1904,9 @@ mod planning {
     /// Plans the generated rows, builds every planned chunk, and measures it.
     fn check_planned(columns: &[GenColumn], seed: u64, max_rows: usize) {
         let generated = generate(columns, seed, max_rows);
-        let ranges = plan_chunks(generated.columns.len(), &generated.costs).unwrap();
+        let ranges = plan_chunks(generated.columns.len(), &generated.costs)
+            .unwrap()
+            .collect::<Vec<_>>();
         for range in ranges {
             let (fragments, built) = generated.build(range.clone());
             assert!(

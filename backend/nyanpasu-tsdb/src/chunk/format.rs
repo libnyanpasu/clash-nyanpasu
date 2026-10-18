@@ -437,7 +437,8 @@ pub(crate) struct LargeEntry {
 
 /// Fragment 0 after its prefix, as stored. The builder fills it in; [`parse_directory`]
 /// validates it. Each list stops decoding at its limit.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct DirectoryRecord {
     pub(crate) header: HeaderRecord,
     #[serde(deserialize_with = "bounded::<_, _, MAX_COLUMNS>")]

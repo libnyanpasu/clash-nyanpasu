@@ -1258,6 +1258,21 @@ mod tests {
 
         let disk = MemoryDisk::new();
         let mut tsdb = Tsdb::open(disk.open().unwrap(), schema(), Profile::desktop()).unwrap();
+        // Label serialization is separately charged now. Preload just the labels so this
+        // refusal still exercises a catalog page copy, rather than the label output buffer.
+        let current = tsdb.current();
+        let mut draft = current
+            .catalog
+            .draft(u64::MAX, &crate::budget::test_account())
+            .unwrap();
+        let mut batch = tsdb.storage().batch().unwrap();
+        for (dimension, value) in schema().series.unwrap().dimensions.iter().zip(LABELS) {
+            draft.resolve_label(&mut batch, *dimension, value).unwrap();
+        }
+        let (catalog, copies) = draft.finish();
+        batch.commit(Durability::Durable).unwrap();
+        drop((catalog, copies, current));
+        tsdb = Tsdb::open(tsdb.into_storage(), schema(), Profile::desktop()).unwrap();
         let before = tsdb.current();
         let stored = dump_storage(&tsdb);
         let budget = tsdb.staging_budget().clone();

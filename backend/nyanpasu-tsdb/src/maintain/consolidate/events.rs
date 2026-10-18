@@ -106,7 +106,7 @@ use super::{
 };
 use crate::{
     EventStreamSpec, ExtentSpec, Profile, StreamId, Timestamp,
-    budget::{BudgetExceeded, BudgetVec, MemoryAccount, MemoryPlan},
+    budget::{BudgetExceeded, BudgetHeap, BudgetVec, MemoryAccount, MemoryPlan},
     chunk::{
         BatchSink, FragmentSink, StoredChunk,
         builder::{
@@ -1270,7 +1270,7 @@ struct Reading<'a, R> {
     events: &'a Events<'a>,
     decode: Decode,
     ways: BudgetVec<Way>,
-    heap: BudgetVec<Reverse<(Rank, usize)>>,
+    heap: BudgetHeap<Reverse<(Rank, usize)>>,
 }
 
 /// One way: a chain of inputs read one after another, or a run.
@@ -1336,7 +1336,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
             events,
             decode: Decode::new(decoder),
             ways: way_list,
-            heap: account.buffer(ways).context(ReserveSnafu)?,
+            heap: account.buffer(ways).context(ReserveSnafu)?.into_heap(),
         })
     }
 
@@ -1415,7 +1415,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
                     chunk: self.chunk_of(index).0
                 }
             );
-            self.heap.heap_push(Reverse((rank, index)));
+            self.heap.push(Reverse((rank, index)));
         }
         Ok(())
     }
@@ -1442,7 +1442,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
     fn fill(&mut self, window: &mut Window) -> Result<(), ConsolidateError> {
         window.positions.clear();
         while window.positions.len() < WINDOW_ROWS {
-            let Some(Reverse((rank, index))) = self.heap.heap_pop() else {
+            let Some(Reverse((rank, index))) = self.heap.pop() else {
                 break;
             };
             let way = &mut self.ways[index];
@@ -1464,7 +1464,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
                         chunk: self.chunk_of(index).0
                     }
                 );
-                self.heap.heap_push(Reverse((next, index)));
+                self.heap.push(Reverse((next, index)));
             } else if !self.ways[index].inputs.is_empty() {
                 break;
             }
@@ -1498,7 +1498,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
                 .is_some_and(|open| open.next < open.rows);
             if gives {
                 let rank = self.rank(way)?;
-                self.heap.heap_push(Reverse((rank, way)));
+                self.heap.push(Reverse((rank, way)));
             }
         }
         Ok(())

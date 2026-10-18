@@ -78,7 +78,7 @@ use self::{
         CountOverflowSnafu, CountUnderflowSnafu, CountUsesSnafu, DeleteComboIndexSnafu,
         DeleteComboSnafu, DeleteLabelSnafu, InvalidComboIndexSnafu, ReadComboIndexSnafu,
         ReserveReleaseSnafu, StageReleaseSnafu, StageResolutionSnafu, StaleComboIndexSnafu,
-        UncountUsesSnafu, WriteComboIndexSnafu, WriteComboSnafu, WriteLabelSnafu,
+        UncountUsesSnafu, WriteComboIndexSnafu, WriteComboSnafu,
     },
     paged::{ARC_HEADER, Ledger, PAGE_ALLOC, Paged, spine_bytes},
 };
@@ -798,12 +798,9 @@ impl CatalogDraft {
         } = &mut self.next;
         let dictionary = &mut dictionaries[usize::from(dimension.0)];
         let id = dictionary.next_id().expect("the cost check found an id");
-        if let Err(source) = persist::put_label(batch, dimension, id, value) {
+        if let Err(error) = persist::put_label(batch, dimension, id, value, self.ledger.account()) {
             self.failed = true;
-            return Err(source).context(WriteLabelSnafu {
-                dimension: dimension.0,
-                id,
-            });
+            return Err(error);
         }
         let inserted = dictionary
             .insert(&shared.hasher, hash, value, &mut self.ledger)

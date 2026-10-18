@@ -70,8 +70,8 @@ use super::Value;
 use crate::{
     ColumnSpec, ColumnType, ErrorKind, EventStreamSpec, Profile, Schema, StreamId, Timestamp,
     budget::{
-        BudgetExceeded, BudgetVec, FixedVec, Lease, MemoryAccount, MemoryPlan, Reservation,
-        Reserved, Retained,
+        BudgetExceeded, BudgetHeap, BudgetVec, FixedVec, Lease, MemoryAccount, MemoryPlan,
+        Reservation, Reserved, Retained,
     },
     catalog::Catalog,
     chunk::{
@@ -530,6 +530,12 @@ impl Plan {
     fn own_bytes(sources: usize, streams: usize) -> u64 {
         let sources = sources.saturating_mul(size_of::<Fate>());
         sources.saturating_add(streams * size_of::<usize>()) as u64
+    }
+
+    /// The admitted execution peak beside the plan's own charged descriptor arrays.
+    #[cfg(test)]
+    pub(crate) fn allocation_bytes(&self) -> u64 {
+        self.staging + Self::own_bytes(self.series.len(), self.streams.len())
     }
 
     /// Whether the plan leaves every source as it is.
@@ -1619,7 +1625,7 @@ pub(crate) struct Merge<'a> {
     readers: BudgetVec<Rows<'a>>,
     /// Each record's next row, while its place waits in the heap.
     next: BudgetVec<Option<StoredRow<'a>>>,
-    heap: BudgetVec<Place>,
+    heap: BudgetHeap<Place>,
     /// The record whose row went out last: its next row is read at the next call.
     refill: Option<usize>,
     /// Admitted before decoding any of the format-bounded row values.
@@ -1648,7 +1654,8 @@ impl<'a> Merge<'a> {
             next,
             heap: account
                 .buffer(k)
-                .expect("the merge plan admits heap entries"),
+                .expect("the merge plan admits heap entries")
+                .into_heap(),
             readers,
             refill: None,
             _rows: rows,
@@ -1669,7 +1676,7 @@ impl<'a> Merge<'a> {
 
     fn read(&mut self, reader: usize) {
         if let Some(row) = self.readers[reader].next() {
-            self.heap.heap_push(Reverse((row.order(), reader)));
+            self.heap.push(Reverse((row.order(), reader)));
             self.next[reader] = Some(row);
         }
     }
@@ -1682,7 +1689,7 @@ impl<'a> Iterator for Merge<'a> {
         if let Some(reader) = self.refill.take() {
             self.read(reader);
         }
-        let Reverse((_, reader)) = self.heap.heap_pop()?;
+        let Reverse((_, reader)) = self.heap.pop()?;
         self.refill = Some(reader);
         self.next[reader].take()
     }

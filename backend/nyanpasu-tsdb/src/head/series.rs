@@ -198,7 +198,8 @@ pub(crate) struct MergeCost {
 
 /// The deltas of one source, in a journal record's layout: ids strictly ascending, and the
 /// fields of `combos[i]` at `fields[i * F..(i + 1) * F]`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct SourceDeltas {
     pub(crate) combos: Vec<u32>,
     pub(crate) fields: Vec<u64>,

@@ -88,6 +88,14 @@ impl Ledger {
         Ok(())
     }
 
+    /// The draft's staging owner, also covering its transient serialized label values.
+    pub(super) fn account(&self) -> &MemoryAccount {
+        self.copies
+            .as_ref()
+            .expect("a draft has a staging owner")
+            .account()
+    }
+
     /// Moves the draft's staging allowance to the publication owner.
     pub(crate) fn finish(self) -> Reservation {
         self.copies

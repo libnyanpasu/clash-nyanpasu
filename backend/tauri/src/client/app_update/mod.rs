@@ -299,6 +299,7 @@ struct Operation {
     child: ActorRef<OperationMessage>,
     monitor: Option<tokio::task::JoinHandle<()>>,
     installing: bool,
+    install_after_download: bool,
     settings_revision: u64,
 }
 
@@ -441,6 +442,7 @@ impl AppUpdateActor {
             child,
             monitor: Some(monitor),
             installing: false,
+            install_after_download: false,
             settings_revision: state.settings_revision,
         });
         Self::set_phase(state, AppUpdatePhase::Checking);
@@ -476,7 +478,10 @@ impl AppUpdateActor {
             }
             return Ok(());
         };
-        if state.package.is_some() {
+        if let Some(package) = state.package.clone() {
+            if !automatic {
+                Self::start_install(myself, state, offer, package).await?;
+            }
             if let Some(reply) = reply {
                 let _ = reply.send(Ok(state.snapshot.clone()));
             }
@@ -510,6 +515,7 @@ impl AppUpdateActor {
             child,
             monitor: Some(monitor),
             installing: false,
+            install_after_download: !automatic,
             settings_revision: state.settings_revision,
         });
         Self::update_snapshot(state, |snapshot| {
@@ -522,6 +528,38 @@ impl AppUpdateActor {
         if let Some(reply) = reply {
             let _ = reply.send(Ok(state.snapshot.clone()));
         }
+        Ok(())
+    }
+
+    async fn start_install(
+        myself: ActorRef<Message>,
+        state: &mut State,
+        offer: PreparedAppUpdate,
+        package: VerifiedAppUpdate,
+    ) -> Result<(), ActorProcessingErr> {
+        let id = state.next_id.saturating_add(1);
+        state.next_id = id;
+        let cancellation = state.args.shutdown.child_token();
+        let (child, child_task) =
+            Self::start_operation(myself.clone(), state, id, cancellation.clone()).await?;
+        let monitor = tokio::spawn(supervise_operation(
+            id,
+            child.clone(),
+            child_task,
+            myself.clone(),
+            move |reply| OperationMessage::Install(offer, package, reply),
+            |error| OperationResult::Installed(Err(error)),
+        ));
+        state.operation = Some(Operation {
+            id,
+            cancellation,
+            child,
+            monitor: Some(monitor),
+            installing: true,
+            install_after_download: false,
+            settings_revision: state.settings_revision,
+        });
+        Self::set_phase(state, AppUpdatePhase::Installing);
         Ok(())
     }
 }
@@ -640,6 +678,7 @@ impl Actor for AppUpdateActor {
                 let stale = operation.settings_revision != state.settings_revision;
                 let cancelled = operation.cancellation.is_cancelled();
                 let installing = operation.installing;
+                let install_after_download = operation.install_after_download;
                 state.operation = None;
                 match result {
                     OperationResult::Checked(result) => {
@@ -755,7 +794,7 @@ impl Actor for AppUpdateActor {
                                 Ok(package) => {
                                     let source = package.source;
                                     let size = package.bytes.len() as u64;
-                                    state.package = Some(package);
+                                    state.package = Some(package.clone());
                                     Self::update_snapshot(state, |snapshot| {
                                         snapshot.phase = AppUpdatePhase::Ready;
                                         snapshot.source = Some(source);
@@ -764,6 +803,14 @@ impl Actor for AppUpdateActor {
                                         snapshot.speed = 0.0;
                                         snapshot.error = None;
                                     });
+                                    if install_after_download && !state.args.shutdown.is_cancelled()
+                                    {
+                                        let offer = state.offer.clone().expect(
+                                            "a verified current download has a prepared update",
+                                        );
+                                        Self::start_install(myself.clone(), state, offer, package)
+                                            .await?;
+                                    }
                                 }
                                 Err(error) => Self::update_snapshot(state, |snapshot| {
                                     snapshot.phase = AppUpdatePhase::Failed;
@@ -894,28 +941,7 @@ impl Actor for AppUpdateActor {
                     )));
                     return Ok(());
                 };
-                let id = state.next_id.saturating_add(1);
-                state.next_id = id;
-                let cancellation = state.args.shutdown.child_token();
-                let (child, child_task) =
-                    Self::start_operation(myself.clone(), state, id, cancellation.clone()).await?;
-                let monitor = tokio::spawn(supervise_operation(
-                    id,
-                    child.clone(),
-                    child_task,
-                    myself.clone(),
-                    move |reply| OperationMessage::Install(offer, package, reply),
-                    |error| OperationResult::Installed(Err(error)),
-                ));
-                state.operation = Some(Operation {
-                    id,
-                    cancellation,
-                    child,
-                    monitor: Some(monitor),
-                    installing: true,
-                    settings_revision: state.settings_revision,
-                });
-                Self::set_phase(state, AppUpdatePhase::Installing);
+                Self::start_install(myself.clone(), state, offer, package).await?;
                 let _ = reply.send(Ok(state.snapshot.clone()));
             }
             Message::Discard(reply) => {

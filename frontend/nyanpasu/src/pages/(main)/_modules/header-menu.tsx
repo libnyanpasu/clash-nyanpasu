@@ -1,7 +1,6 @@
 import { ComponentProps } from 'react'
 import { Button, ButtonProps } from '@nyanpasu/ui/button'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
-import { Action as AboutAction } from '@/pages/(main)/main/settings/about/route'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
@@ -32,12 +31,7 @@ const UpdateButton = () => {
   return (
     <div className="relative">
       <MenuButton className="flex items-center justify-center" asChild>
-        <Link
-          to="/main/settings/about"
-          search={{
-            action: AboutAction.NEED_UPDATE,
-          }}
-        >
+        <Link to="/main/settings/about">
           {isReady
             ? m.settings_about_update_ready_header()
             : m.header_new_version()}

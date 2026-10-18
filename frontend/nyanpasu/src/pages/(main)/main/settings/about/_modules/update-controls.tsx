@@ -2,15 +2,27 @@ import CheckCircleRounded from '~icons/material-symbols/check-circle-rounded'
 import DeployedCodeUpdateOutlineRounded from '~icons/material-symbols/deployed-code-update-outline-rounded'
 import DownloadRounded from '~icons/material-symbols/download-rounded'
 import ErrorRounded from '~icons/material-symbols/error-rounded'
+import MoreHorizRounded from '~icons/material-symbols/more-horiz-rounded'
 import SyncRounded from '~icons/material-symbols/sync-rounded'
 import UpdateRounded from '~icons/material-symbols/update-rounded'
 import { cva } from 'class-variance-authority'
 import { filesize } from 'filesize'
-import { useEffect, useState, type ComponentType } from 'react'
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  type Transition,
+} from 'motion/react'
+import type { ComponentProps, ComponentType } from 'react'
 import Markdown from 'react-markdown'
-import { ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Button, type ButtonProps } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@nyanpasu/ui/dropdown-menu'
 import {
   Modal,
   ModalClose,
@@ -28,6 +40,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { isTauri } from '@nyanpasu/platform'
+import type { AppUpdatePhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
   SettingsCardContent,
@@ -57,8 +70,26 @@ function sourceLabel(source: string | null | undefined) {
   return null
 }
 
+// Springs carry their velocity into the next target, so sections that open and
+// close while the phase keeps changing do not restart from a standstill the way
+// a fixed tween does. Opacity stays a tween so content never overshoots.
+const expandTransition = {
+  default: { type: 'spring', duration: 0.4, bounce: 0 },
+  opacity: { duration: 0.2, ease: [0.2, 0, 0, 1] },
+} satisfies Transition
+
+const iconSwapTransition = {
+  type: 'spring',
+  duration: 0.35,
+  bounce: 0.3,
+} satisfies Transition
+
+const instantTransition = { duration: 0 } satisfies Transition
+
+const labelTransition = { duration: 0.12, ease: 'easeOut' } satisfies Transition
+
 const updateStatusVariants = cva(
-  'flex items-center gap-4 rounded-[28px] p-4 transition-colors',
+  'flex flex-col rounded-3xl p-4 transition-colors duration-300',
   {
     variants: {
       tone: {
@@ -73,7 +104,7 @@ const updateStatusVariants = cva(
 )
 
 const updateStatusIconVariants = cva(
-  'grid size-12 shrink-0 place-content-center rounded-full',
+  'relative grid size-10 shrink-0 place-content-center rounded-full transition-colors duration-300',
   {
     variants: {
       tone: {
@@ -86,11 +117,9 @@ const updateStatusIconVariants = cva(
   },
 )
 
-const updateProgressVariants = cva(
-  'bg-surface-variant/30 dark:bg-surface-variant/10 flex flex-col gap-3 rounded-[20px] p-4',
-)
-
-const STATUS_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+const STATUS_ICONS: Partial<
+  Record<AppUpdatePhase, ComponentType<{ className?: string }>>
+> = {
   up_to_date: CheckCircleRounded,
   available: DownloadRounded,
   downloading: DownloadRounded,
@@ -104,14 +133,35 @@ const STATUS_ICONS: Record<string, ComponentType<{ className?: string }>> = {
 
 const SPINNING_PHASES = ['checking', 'cancelling', 'verifying', 'installing']
 
+function UpdateLabel({
+  value,
+  ...props
+}: Omit<ComponentProps<'div'>, 'children'> & { value: string }) {
+  const reducedMotion = useReducedMotion()
+
+  return (
+    <div {...props} data-slot="about-update-label">
+      <motion.span
+        key={value}
+        className="block"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={reducedMotion ? instantTransition : labelTransition}
+      >
+        {value}
+      </motion.span>
+    </div>
+  )
+}
+
 type UpdateActionButtonProps = Omit<ButtonProps, 'children' | 'loading'> & {
-  status: string
+  label: string
   lastCheckedLabel: string | null
   loading?: boolean
 }
 
 function UpdateActionButton({
-  status,
+  label,
   lastCheckedLabel,
   loading = false,
   disabled,
@@ -120,19 +170,15 @@ function UpdateActionButton({
   const showLastChecked = Boolean(lastCheckedLabel) && !disabled
   const button = (
     <Button {...buttonProps} disabled={disabled}>
-      <div className="flex w-full min-w-0 items-center justify-center gap-1.5 text-center whitespace-nowrap">
-        {loading && (
-          <CircularProgress
-            className="size-4 shrink-0"
-            indeterminate
-            aria-hidden
-          />
-        )}
-        <ActionSwapText
-          className="max-w-full leading-tight font-medium whitespace-nowrap"
+      <div className="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_1rem] items-center gap-1.5 text-center whitespace-nowrap">
+        <span className="size-4" aria-hidden>
+          {loading && <CircularProgress className="size-4" indeterminate />}
+        </span>
+        <UpdateLabel
+          className="min-w-0 leading-tight font-medium whitespace-nowrap"
           aria-live="polite"
           aria-atomic="true"
-          value={status}
+          value={label}
         />
       </div>
     </Button>
@@ -150,11 +196,8 @@ function UpdateActionButton({
   )
 }
 
-export default function UpdateControls({
-  openChangelog = false,
-}: {
-  openChangelog?: boolean
-}) {
+export default function UpdateControls() {
+  const reducedMotion = useReducedMotion()
   const {
     snapshot,
     isDesktop,
@@ -166,7 +209,8 @@ export default function UpdateControls({
     install,
     discardPackage,
   } = useNyanpasuUpdate()
-  const [changelogOpen, setChangelogOpen] = useState(false)
+  const transition = reducedMotion ? instantTransition : expandTransition
+  const iconTransition = reducedMotion ? instantTransition : iconSwapTransition
   const phase = snapshot?.phase ?? 'idle'
   const release = snapshot?.release
   const lastCheckedLabel = snapshot?.last_checked_at
@@ -175,9 +219,6 @@ export default function UpdateControls({
       })
     : null
 
-  useEffect(() => {
-    if (openChangelog && release?.body) setChangelogOpen(true)
-  }, [openChangelog, release?.body])
   const progress =
     snapshot?.total && snapshot.total > 0
       ? Math.min((snapshot.downloaded / snapshot.total) * 100, 100)
@@ -200,7 +241,7 @@ export default function UpdateControls({
   const installUpdate = () => run(install)
   const discardUpdatePackage = () => run(discardPackage)
 
-  const phaseLabel: Record<string, string> = {
+  const phaseLabel: Record<AppUpdatePhase, string> = {
     idle: m.settings_about_update_idle(),
     checking: m.settings_about_update_checking(),
     up_to_date: m.settings_label_about_update_no_update(),
@@ -214,7 +255,7 @@ export default function UpdateControls({
     failed: m.settings_about_update_failed(),
   }
 
-  const statusLabel = phaseLabel[phase] ?? phaseLabel.failed
+  const statusLabel = phaseLabel[phase]
 
   const tone = (() => {
     if (phase === 'failed') return 'error'
@@ -223,137 +264,59 @@ export default function UpdateControls({
   })()
   const StatusIcon = STATUS_ICONS[phase] ?? UpdateRounded
   const showStatus = Boolean(snapshot?.supported) && phase !== 'idle'
-  const statusTitle = release
-    ? m.settings_about_update_version({ version: release.version })
-    : statusLabel
   const statusDetail = release
     ? [
-        statusLabel,
+        m.settings_about_update_version({ version: release.version }),
         release.date ? new Date(release.date).toLocaleDateString() : null,
       ]
         .filter(Boolean)
         .join(' · ')
     : null
 
+  const canUpdate = isDesktop && snapshot?.supported !== false
+  const isTransitioning = SPINNING_PHASES.includes(phase)
+  const showMore =
+    canUpdate &&
+    Boolean(release) &&
+    ['available', 'cancelled', 'failed', 'ready'].includes(phase)
   const action = (() => {
-    if (!isDesktop) {
-      return (
-        <Button className="w-full" variant="flat" onClick={openReleases}>
-          {m.settings_label_about_update_to_github_releases()}
-        </Button>
-      )
+    if (!canUpdate) {
+      return {
+        label: m.settings_label_about_update_to_github_releases(),
+        handleClick: openReleases,
+      }
     }
-    if (!snapshot) {
-      return (
-        <UpdateActionButton
-          variant="flat"
-          className="w-full"
-          disabled={isLoading || isPending}
-          onClick={checkUpdate}
-          status={isLoading ? m.settings_about_update_loading() : statusLabel}
-          lastCheckedLabel={lastCheckedLabel}
-          loading={isLoading || isPending}
-        />
-      )
+    if (!snapshot && isLoading) {
+      return {
+        label: m.settings_about_update_loading(),
+        handleClick: checkUpdate,
+      }
     }
-    if (!snapshot.supported) {
-      return (
-        <Button className="w-full" variant="flat" onClick={openReleases}>
-          {m.settings_label_about_update_to_github_releases()}
-        </Button>
-      )
+    if (phase === 'downloading' || phase === 'cancelling') {
+      return {
+        label: m.settings_about_update_cancel_download(),
+        handleClick: cancelUpdateDownload,
+      }
     }
-    if (phase === 'checking') {
-      return (
-        <UpdateActionButton
-          className="h-auto min-h-10 w-full py-2"
-          variant="flat"
-          disabled
-          onClick={checkUpdate}
-          status={statusLabel}
-          lastCheckedLabel={lastCheckedLabel}
-          loading
-        />
-      )
+    if (phase === 'ready' || phase === 'verifying' || phase === 'installing') {
+      return {
+        label: m.settings_about_update_install(),
+        handleClick: installUpdate,
+      }
     }
     if (
-      phase === 'cancelling' ||
-      phase === 'verifying' ||
-      phase === 'installing'
+      release &&
+      (phase === 'available' || phase === 'cancelled' || phase === 'failed')
     ) {
-      return (
-        <UpdateActionButton
-          className="h-auto min-h-10 w-full py-2"
-          variant="flat"
-          disabled
-          status={statusLabel}
-          lastCheckedLabel={lastCheckedLabel}
-          loading={phase === 'cancelling'}
-        />
-      )
+      return {
+        label:
+          phase === 'failed'
+            ? m.settings_about_update_retry_download()
+            : m.settings_label_about_update_to_update_button(),
+        handleClick: downloadUpdate,
+      }
     }
-    if (phase === 'downloading') {
-      return (
-        <UpdateActionButton
-          variant="flat"
-          className="h-auto min-h-10 w-full py-2"
-          disabled={isPending}
-          onClick={cancelUpdateDownload}
-          status={statusLabel}
-          lastCheckedLabel={lastCheckedLabel}
-          loading={isPending}
-        />
-      )
-    }
-    if (phase === 'ready') {
-      return (
-        <div className="flex w-full flex-col gap-2">
-          <UpdateActionButton
-            className="h-auto min-h-10 w-full py-2"
-            variant="flat"
-            disabled={isPending}
-            onClick={installUpdate}
-            status={statusLabel}
-            lastCheckedLabel={lastCheckedLabel}
-          />
-          <Button
-            variant="stroked"
-            className="w-full"
-            disabled={isPending}
-            onClick={discardUpdatePackage}
-          >
-            {m.settings_about_update_discard()}
-          </Button>
-        </div>
-      )
-    }
-    if (
-      phase === 'available' ||
-      phase === 'cancelled' ||
-      (phase === 'failed' && release)
-    ) {
-      return (
-        <UpdateActionButton
-          className="h-auto min-h-10 w-full py-2"
-          variant="flat"
-          disabled={isPending}
-          onClick={downloadUpdate}
-          status={statusLabel}
-          lastCheckedLabel={lastCheckedLabel}
-        />
-      )
-    }
-    return (
-      <UpdateActionButton
-        variant="flat"
-        className="h-auto min-h-10 w-full py-2"
-        disabled={isPending || isLoading}
-        onClick={checkUpdate}
-        status={statusLabel}
-        lastCheckedLabel={lastCheckedLabel}
-        loading={isPending || isLoading}
-      />
-    )
+    return { label: m.settings_about_update_idle(), handleClick: checkUpdate }
   })()
 
   return (
@@ -363,88 +326,250 @@ export default function UpdateControls({
         data-slot="about-update-controls"
         data-phase={phase}
       >
-        {isDesktop && showStatus && (
-          <div
-            className={updateStatusVariants({ tone })}
-            data-slot="about-update-status"
-          >
-            <div className={updateStatusIconVariants({ tone })}>
-              <StatusIcon
-                className={cn(
-                  'size-6',
-                  SPINNING_PHASES.includes(phase) && 'animate-spin',
-                )}
-              />
-            </div>
+        <AnimatePresence initial={false}>
+          {isDesktop && showStatus && (
+            <motion.div
+              key="status"
+              className="overflow-hidden"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={transition}
+            >
+              <div
+                className={updateStatusVariants({ tone })}
+                data-slot="about-update-status"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={updateStatusIconVariants({ tone })}
+                    data-slot="about-update-status-icon"
+                  >
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      <motion.span
+                        key={isTransitioning ? 'spinning' : phase}
+                        className="grid place-content-center"
+                        initial={{ scale: 0.4, rotate: -90, opacity: 0 }}
+                        animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                        exit={{ scale: 0.4, rotate: 90, opacity: 0 }}
+                        transition={iconTransition}
+                      >
+                        <StatusIcon
+                          className={cn(
+                            'size-6',
+                            isTransitioning && 'animate-spin',
+                          )}
+                        />
+                      </motion.span>
+                    </AnimatePresence>
+                  </div>
 
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-base font-medium">
-                {statusTitle}
-              </span>
+                  <div
+                    className="flex min-w-0 flex-1 flex-col gap-0.5"
+                    data-slot="about-update-status-content"
+                  >
+                    <UpdateLabel
+                      className="text-sm font-medium"
+                      role="status"
+                      aria-atomic="true"
+                      value={statusLabel}
+                    />
 
-              {statusDetail && (
-                <span className="truncate text-sm opacity-80">
-                  {statusDetail}
-                </span>
-              )}
+                    {statusDetail && (
+                      <span className="text-xs opacity-80">{statusDetail}</span>
+                    )}
 
-              {snapshot?.error && (
-                <span className="text-sm" role="alert">
-                  {snapshot.error}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+                    {release?.body && (
+                      <Modal>
+                        <ModalTrigger asChild>
+                          <Button
+                            className="-ml-2 h-auto self-start px-2 py-1 text-xs"
+                            variant="basic"
+                          >
+                            {m.settings_about_update_changelog()}
+                          </Button>
+                        </ModalTrigger>
+                        <ModalContent>
+                          <Card className="flex max-h-[90dvh] max-w-3xl min-w-80 flex-col">
+                            <CardHeader className="shrink-0">
+                              <ModalTitle>
+                                {m.settings_about_update_changelog_title({
+                                  version: release.version,
+                                })}
+                              </ModalTitle>
+                            </CardHeader>
+                            <CardContent
+                              asChild
+                              className="min-h-0 flex-1 overflow-hidden"
+                            >
+                              <ScrollArea className="max-h-[65dvh]">
+                                <Markdown
+                                  components={{
+                                    a(props) {
+                                      const { children, node, ...rest } = props
+                                      return (
+                                        <a
+                                          {...rest}
+                                          onClick={(event) => {
+                                            event.preventDefault()
+                                            event.stopPropagation()
+                                            if (
+                                              typeof node?.properties.href ===
+                                              'string'
+                                            )
+                                              openExternal(node.properties.href)
+                                          }}
+                                        >
+                                          {children}
+                                        </a>
+                                      )
+                                    },
+                                  }}
+                                >
+                                  {release.body}
+                                </Markdown>
+                              </ScrollArea>
+                            </CardContent>
+                            <CardFooter className="shrink-0 justify-end">
+                              <ModalClose>{m.common_close()}</ModalClose>
+                            </CardFooter>
+                          </Card>
+                        </ModalContent>
+                      </Modal>
+                    )}
+                    {snapshot?.error && (
+                      <span className="text-sm break-words" role="alert">
+                        {snapshot.error}
+                      </span>
+                    )}
+                  </div>
+                  {showMore && (
+                    <motion.div
+                      key="more"
+                      className="shrink-0"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={
+                        reducedMotion ? instantTransition : labelTransition
+                      }
+                    >
+                      <DropdownMenu align="end">
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            icon
+                            className="size-10 shrink-0"
+                            disabled={isPending}
+                            aria-label={m.settings_about_update_more_actions()}
+                          >
+                            <MoreHorizRounded className="size-5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            disabled={isPending}
+                            onSelect={checkUpdate}
+                          >
+                            {m.settings_about_update_check_again()}
+                          </DropdownMenuItem>
+                          {phase === 'ready' && (
+                            <DropdownMenuItem
+                              disabled={isPending}
+                              onSelect={discardUpdatePackage}
+                            >
+                              {m.settings_about_update_discard()}
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </motion.div>
+                  )}
+                </div>
+                <AnimatePresence initial={false}>
+                  {(phase === 'downloading' || phase === 'cancelling') && (
+                    <motion.div
+                      key="download"
+                      className="overflow-hidden"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={transition}
+                    >
+                      <div
+                        className="flex flex-col gap-3 pt-3"
+                        data-slot="about-update-progress"
+                        aria-live="polite"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-sm tabular-nums">
+                          <span>
+                            {filesize(snapshot?.downloaded ?? 0, {
+                              standard: 'iec',
+                            })}
+                            {snapshot?.total != null
+                              ? ` / ${filesize(snapshot.total, { standard: 'iec' })}`
+                              : ` · ${m.settings_about_update_total_unknown()}`}
+                          </span>
+                          <span>
+                            {filesize(snapshot?.speed ?? 0, {
+                              standard: 'iec',
+                            })}
+                            /s
+                          </span>
+                        </div>
 
-        {(phase === 'downloading' || phase === 'cancelling') && (
-          <div
-            className={updateProgressVariants()}
-            data-slot="about-update-progress"
-            aria-live="polite"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span>
-                {filesize(snapshot?.downloaded ?? 0, { standard: 'iec' })}
-                {snapshot?.total != null
-                  ? ` / ${filesize(snapshot.total, { standard: 'iec' })}`
-                  : ` · ${m.settings_about_update_total_unknown()}`}
-              </span>
-              <span>
-                {filesize(snapshot?.speed ?? 0, { standard: 'iec' })}/s
-              </span>
-            </div>
+                        <LinearProgress
+                          className="w-full"
+                          value={progress}
+                          indeterminate={progress === undefined}
+                        />
 
-            <LinearProgress
-              className="w-full"
-              value={progress}
-              indeterminate={progress === undefined}
-            />
+                        {sourceLabel(snapshot?.source) && (
+                          <p className="text-on-surface-variant text-xs">
+                            {m.settings_about_update_current_source({
+                              source: sourceLabel(snapshot?.source) ?? '',
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
 
-            {sourceLabel(snapshot?.source) && (
-              <p className="text-on-surface-variant text-xs">
-                {m.settings_about_update_current_source({
-                  source: sourceLabel(snapshot?.source) ?? '',
-                })}
-              </p>
-            )}
-          </div>
-        )}
+                  {phase === 'verifying' && (
+                    <motion.div
+                      key="verifying"
+                      className="overflow-hidden"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={transition}
+                    >
+                      <div className="pt-3">
+                        <LinearProgress className="w-full" indeterminate />
+                      </div>
+                    </motion.div>
+                  )}
 
-        {phase === 'verifying' && (
-          <div className={updateProgressVariants()}>
-            <LinearProgress className="w-full" indeterminate />
-          </div>
-        )}
-
-        {phase === 'installing' && (
-          <p
-            className="text-on-surface-variant px-1 text-sm"
-            aria-live="polite"
-          >
-            {m.settings_about_update_installing_description()}
-          </p>
-        )}
+                  {phase === 'installing' && (
+                    <motion.div
+                      key="installing"
+                      className="overflow-hidden"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={transition}
+                    >
+                      <p
+                        className="text-on-surface-variant px-1 pt-3 text-sm"
+                        aria-live="polite"
+                      >
+                        {m.settings_about_update_installing_description()}
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {!showStatus && snapshot?.error && (
           <p className="text-error px-1 text-sm" role="alert">
@@ -457,74 +582,21 @@ export default function UpdateControls({
             {m.settings_about_update_unsupported()}
           </p>
         )}
-
-        {release?.body && (
-          <Modal open={changelogOpen} onOpenChange={setChangelogOpen}>
-            <ModalTrigger asChild>
-              <Button className="w-full" variant="basic">
-                {m.settings_about_update_changelog()}
-              </Button>
-            </ModalTrigger>
-            <ModalContent>
-              <Card className="flex max-h-[90dvh] max-w-3xl min-w-80 flex-col">
-                <CardHeader className="shrink-0">
-                  <ModalTitle>
-                    {m.settings_about_update_changelog_title({
-                      version: release.version,
-                    })}
-                  </ModalTitle>
-                </CardHeader>
-                <CardContent asChild className="min-h-0 flex-1 overflow-hidden">
-                  <ScrollArea className="max-h-[65dvh]">
-                    <Markdown
-                      components={{
-                        a(props) {
-                          const { children, node, ...rest } = props
-                          return (
-                            <a
-                              {...rest}
-                              onClick={(event) => {
-                                event.preventDefault()
-                                event.stopPropagation()
-                                if (typeof node?.properties.href === 'string')
-                                  openExternal(node.properties.href)
-                              }}
-                            >
-                              {children}
-                            </a>
-                          )
-                        },
-                      }}
-                    >
-                      {release.body}
-                    </Markdown>
-                  </ScrollArea>
-                </CardContent>
-                <CardFooter className="shrink-0 justify-end">
-                  <ModalClose>{m.common_close()}</ModalClose>
-                </CardFooter>
-              </Card>
-            </ModalContent>
-          </Modal>
-        )}
       </SettingsCardContent>
-      {action && (
-        <SettingsCardFooter className="flex-col gap-2 pt-0">
-          <div className="flex w-full flex-col gap-2">
-            {(phase === 'available' || phase === 'ready') && (
-              <Button
-                variant="basic"
-                className="w-full"
-                disabled={isPending}
-                onClick={checkUpdate}
-              >
-                {m.settings_about_update_check_again()}
-              </Button>
-            )}
-            {action}
-          </div>
-        </SettingsCardFooter>
-      )}
+      <SettingsCardFooter
+        className="flex-row gap-0 pt-0"
+        data-slot="about-update-actions"
+      >
+        <UpdateActionButton
+          variant={phase === 'downloading' ? 'stroked' : 'flat'}
+          className="h-auto min-h-10 min-w-0 flex-1 px-4 py-2"
+          disabled={canUpdate && (isPending || isLoading || isTransitioning)}
+          onClick={action.handleClick}
+          label={action.label}
+          lastCheckedLabel={lastCheckedLabel}
+          loading={canUpdate && (isLoading || isPending || isTransitioning)}
+        />
+      </SettingsCardFooter>
     </>
   )
 }

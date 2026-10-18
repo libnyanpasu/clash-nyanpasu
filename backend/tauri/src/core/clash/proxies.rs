@@ -143,6 +143,10 @@ impl ProxyGroup {
     }
 }
 
+// TODO(typed-proxy-nodes): Evaluate distinct typed group/node variants instead
+// of the shared wire `Proxy` with both sets of optional fields. Preserve unknown
+// core kinds and provider-only nodes without serde_json::Value, avoid duplicate
+// group-member storage, and measure layout/heap costs before changing the RPC model.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Proxies {

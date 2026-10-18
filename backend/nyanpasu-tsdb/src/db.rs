@@ -12,7 +12,7 @@ use crate::{
     lifecycle::{self, OpenError},
     maintain::{self, Maintain, MaintainError, Maintained, Round},
     storage::{Durability, Storage},
-    version::{CaptureError, Registry, Snapshot, Version},
+    version::{CaptureError, OpenMarker, Registry, Snapshot, Version},
     write::{
         BacklogSnafu, BeginBatchSnafu, CommitSnafu, EventSeq, Input, InvalidInputSnafu,
         RecoveryNeededSnafu, StageSnafu, WriteError, Written,
@@ -64,7 +64,7 @@ impl<S: Storage> Tsdb<S> {
         Ok(Self {
             shared: Arc::new(Shared {
                 storage: opened.storage,
-                registry: Registry::new(opened.version, schema.clone()),
+                registry: Registry::new(opened.version, schema.clone(), Arc::new(OpenMarker)),
                 query_budget: MemoryBudget::new(profile.query),
             }),
             schema,

@@ -217,6 +217,7 @@ pub(super) fn expire(
         .context(WriteExtentSnafu { extent })?;
     Ok(Changed {
         head: head.without(expiring),
+        catalog: None,
         staging,
         journal_removed: deleted,
         next_chunk: None,
@@ -310,6 +311,7 @@ pub(super) fn cleanup(
     ensure!(deleted + runs > 0, NoChunksSnafu { expired });
     Ok(Changed {
         head: context.current.head.clone(),
+        catalog: None,
         staging: context
             .staging_budget
             .try_reserve("staging", 0)

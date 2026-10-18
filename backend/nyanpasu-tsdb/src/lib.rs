@@ -52,7 +52,7 @@ pub use schema::{
     LabelSpec, NameScope, Schema, SchemaError, SeriesSpec, StreamId, TierId, TierSpec,
 };
 pub use time::{DurationError, ReversedRange, TimeRange, Timestamp};
-pub use version::{CaptureError, Snapshot};
+pub use version::{CaptureError, CatalogToken, Snapshot};
 pub use write::{
     AuxOp, ComboId, EventRow, EventSeq, Input, InputError, MAX_PIN_KEY_LEN, PinOp, SeriesPoint,
     StageError, Value, WriteError, Written,

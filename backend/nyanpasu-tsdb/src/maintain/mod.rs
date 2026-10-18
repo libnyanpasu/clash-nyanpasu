@@ -6,7 +6,7 @@
 //!   an unknown outcome flags the store for recovery (§7.5). A round rolled back is simply
 //!   planned again by a later call.
 //! - A planner picks the most urgent round from what storage shows. The kinds of rounds, in
-//!   that order, are the variants of [`Round`]; recycling is to join them.
+//!   that order, are the variants of [`Round`].
 //! - A call stops when its budget of rounds is used up or nothing is left, and says whether
 //!   work remains. The consumer calls again later: the store has no timer.
 //! - A call that says work remains leaves maintenance behind (§4.3, "积压"). Until a commit
@@ -21,11 +21,12 @@ mod retention;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 pub(crate) use self::consolidate::least_round;
-pub use self::{consolidate::ConsolidateError, retention::RetentionError};
+pub use self::{consolidate::ConsolidateError, recycle::RecycleError, retention::RetentionError};
 use crate::{
     ErrorKind, ExtentSpec, Profile, Retention, RetentionPolicy, Schema, StreamId, TierId,
     Timestamp,
     budget::{MemoryBudget, Reservation},
+    catalog::Catalog,
     head::Head,
     layout::{
         manifest::StreamRef,
@@ -59,6 +60,16 @@ pub struct Maintained {
     pub cleanups: u64,
     /// ... and the chunks they deleted.
     pub chunks_deleted: u64,
+    /// Recycling rounds (§5.3) ...
+    pub recycles: u64,
+    /// ... the references of cleaned extents they deleted ...
+    pub references_forgotten: u64,
+    /// ... the candidates for release they checked, stale ones included: with the references,
+    /// at most `cleanup_chunks` a round ...
+    pub candidates_checked: u64,
+    /// ... and the combinations and label values they released.
+    pub combos_released: u64,
+    pub labels_released: u64,
     /// Consolidation rounds (§4.3), of a tier's extent or an event stream's window: each took
     /// part of its L0 chunks, or moved past it with none left ...
     pub consolidations: u64,
@@ -78,6 +89,11 @@ impl Maintained {
         self.expired += round.expired;
         self.cleanups += round.cleanups;
         self.chunks_deleted += round.chunks_deleted;
+        self.recycles += round.recycles;
+        self.references_forgotten += round.references_forgotten;
+        self.candidates_checked += round.candidates_checked;
+        self.combos_released += round.combos_released;
+        self.labels_released += round.labels_released;
         self.consolidations += round.consolidations;
         self.merges += round.merges;
         self.chunks_rewritten += round.chunks_rewritten;
@@ -91,17 +107,20 @@ impl Maintained {
 /// 1. Expiring first, so that no other round works on an extent the policy expires.
 /// 2. Cleanup next: it only deletes, holds no staging memory, and returns the disk space that
 ///    retention promised, before a consolidation writes its new chunks beside the old ones.
-/// 3. Consolidation of a quiet extent turns tens of L0 chunks into a few compressed ones, the
+/// 3. Recycling the ids that cleanup left unreferenced: a catalog under pressure folds new
+///    combinations (§5.2), which loses data, so it comes before work that only saves space or
+///    reads. It follows cleanup, which is what leaves ids unreferenced.
+/// 4. Consolidation of a quiet extent turns tens of L0 chunks into a few compressed ones, the
 ///    largest cut in what a query reads; and finishing an extent is what makes its leftover
 ///    L0 chunks late chunks, whose merges then become due.
-/// 4. Merging a bucket's late chunks cuts a handful of chunks of one bucket.
-/// 5. Consolidation of an event stream's quiet window comes after the tiers': a series query
+/// 5. Merging a bucket's late chunks cuts a handful of chunks of one bucket.
+/// 6. Consolidation of an event stream's quiet window comes after the tiers': a series query
 ///    reads every chunk of its range, so a tier's L0 chunks cost every report (§8.4), where an
 ///    event scan reads chunks that do not overlap as one way (§8.3), so a window's L0 chunks,
 ///    which overlap only by their late rows, cost a scan little until they are rewritten; and
 ///    a tier's rounds are the smaller, so they do not wait behind a day's window. Finishing a
 ///    window is what marks it when it keeps more than R runs.
-/// 6. Merging an extent's smallest runs comes last: it rewrites data already compressed, to
+/// 7. Merging an extent's smallest runs comes last: it rewrites data already compressed, to
 ///    keep the ways of a scan within R (§4.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Round {
@@ -109,6 +128,9 @@ pub(crate) enum Round {
     Expire { stream: StreamRef, extent: i64 },
     /// Deletes chunks of the extents of `stream` up to its watermark, `expired` (§9.1).
     Cleanup { stream: StreamRef, expired: i64 },
+    /// Deletes the references of the extents cleanup emptied, and releases the combinations
+    /// and label values nothing references any more (§5.3).
+    Recycle,
     /// Consolidates the next part of `extent` of `tier`, the oldest extent after its cursor
     /// (§4.3).
     Consolidate { tier: TierId, extent: i64 },
@@ -143,6 +165,8 @@ pub(crate) struct Staged {
 struct Changed {
     /// The head it publishes.
     head: Head,
+    /// The catalog it publishes, when it released ids; `None` keeps the current one.
+    catalog: Option<Catalog>,
     /// The staging memory still allocated: what the head copies from the current one, until
     /// the version is published or withdrawn (§7.4).
     staging: Reservation,
@@ -191,18 +215,23 @@ pub(crate) fn plan(
     if let Some(round) = retention::plan(read, context, request).context(PlanSnafu)? {
         return Ok(Some(round));
     }
-    consolidate::plan(read, context, request.now).context(PlanConsolidationSnafu)
+    plan_backlog(read, context, request.now)
 }
 
 /// The most urgent round a commit runs before its batch while maintenance is behind (§4.3,
 /// "积压"), at `now`, or `None` when none is due: [`plan`]'s rounds but retention's, which
 /// need the consumer's policy, and a commit has none. So a commit never expires or cleans up,
-/// and its round may consolidate an extent that the consumer's next call expires.
+/// and its round may consolidate an extent that the consumer's next call expires. Recycling
+/// needs no policy, so a commit's round may recycle; it then reads the stream records to
+/// leave out each stream whose cleanup is due.
 pub(crate) fn plan_backlog(
     read: &impl StorageRead,
     context: &Context<'_>,
     now: Timestamp,
 ) -> Result<Option<Round>, MaintainError> {
+    if let Some(round) = recycle::plan(read, context).context(PlanRecyclingSnafu)? {
+        return Ok(Some(round));
+    }
     consolidate::plan(read, context, now).context(PlanConsolidationSnafu)
 }
 
@@ -234,6 +263,7 @@ pub(crate) fn stage(
         Round::Cleanup { stream, expired } => {
             retention::cleanup(batch, context, stream, expired).context(CleanupSnafu { stream })?
         }
+        Round::Recycle => recycle::recycle(batch, context).context(RecycleSnafu)?,
         Round::Consolidate { tier, extent } => {
             consolidate::consolidate(batch, read, context, tier, extent, state.next_chunk)
                 .context(ConsolidateSnafu { tier, extent })?
@@ -274,7 +304,7 @@ pub(crate) fn stage(
         next: Next {
             version: Version {
                 publication: next.publication,
-                catalog: current.catalog.clone(),
+                catalog: changed.catalog.unwrap_or_else(|| current.catalog.clone()),
                 head: changed.head,
             },
             growth,
@@ -323,6 +353,9 @@ pub enum MaintainError {
     #[snafu(display("failed to plan the next consolidation round"))]
     PlanConsolidation { source: ConsolidateError },
 
+    #[snafu(display("failed to plan the next recycling round"))]
+    PlanRecycling { source: RecycleError },
+
     #[snafu(display("failed to begin a round's transaction"))]
     BeginRound { source: StorageError },
 
@@ -346,6 +379,9 @@ pub enum MaintainError {
         stream: StreamRef,
         source: RetentionError,
     },
+
+    #[snafu(display("failed to recycle the ids nothing references"))]
+    Recycle { source: RecycleError },
 
     #[snafu(display("failed to consolidate extent {extent} of {tier:?}"))]
     Consolidate {
@@ -402,6 +438,7 @@ impl MaintainError {
             | Self::MergeDeltas { source, .. }
             | Self::ConsolidateEvents { source, .. }
             | Self::MergeRuns { source, .. } => source.kind(),
+            Self::PlanRecycling { source } | Self::Recycle { source } => source.kind(),
             Self::ReadState { source } => source.kind(),
             Self::UnknownPublication { .. } | Self::CounterOverflow => ErrorKind::Corrupted,
             Self::Commit { source } => source.kind(),

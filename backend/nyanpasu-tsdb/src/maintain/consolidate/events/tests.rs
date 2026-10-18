@@ -1726,7 +1726,8 @@ fn cleanup_deletes_at_most_d_chunks_and_runs_a_round() {
             .unwrap()
     };
     let runs_of = |store: &Store| books(&store.tsdb.storage().snapshot().unwrap()).runs.len();
-    // Each round expires the window, or deletes something; a crash may lose rounds.
+    // Each round expires the window, or deletes something; a crash may lose rounds. Once the
+    // window is gone, recycling rounds release what only it referenced, within D too.
     let bound = 4 * (chunks + runs) + 4;
     let mut crashed = false;
     for _ in 0..bound {
@@ -1735,8 +1736,18 @@ fn cleanup_deletes_at_most_d_chunks_and_runs_a_round() {
         let forgotten = before - runs_of(&store);
         let deleted = done.chunks_deleted as usize + forgotten;
         assert!(deleted <= limit, "{deleted} deletions in {done:?}");
-        assert!(done.expired + done.cleanups == 1, "{done:?}");
-        assert!(done.expired == 1 || deleted > 0, "{done:?}");
+        assert!(
+            done.references_forgotten + done.candidates_checked <= limit as u64,
+            "{done:?}"
+        );
+        assert!(
+            done.expired + done.cleanups + done.recycles == 1,
+            "{done:?}"
+        );
+        assert!(
+            done.expired == 1 || deleted > 0 || done.recycles == 1,
+            "{done:?}"
+        );
         if !crashed && store.chunks().is_empty() && runs_of(&store) > 0 {
             crashed = true;
             store = store.crash();

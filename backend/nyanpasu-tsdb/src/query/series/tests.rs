@@ -28,7 +28,7 @@ use crate::{
         ChunkId, Durability, FragmentId, MAX_FRAGMENT_LEN, StorageWrite,
         memory::{MemoryDisk, MemoryStorage},
     },
-    version::{Registry, Version},
+    version::{OpenMarker, Registry, Version},
     write::{ComboId, Input, PinOp, SeriesPoint},
 };
 
@@ -722,7 +722,7 @@ fn a_head_combination_the_catalog_lacks_is_corrupted() {
         catalog: Catalog::new(&schema),
         head: current.head.clone(),
     };
-    let registry = Registry::new(damaged, Arc::new(schema));
+    let registry = Registry::new(damaged, Arc::new(schema), Arc::new(OpenMarker));
     let snapshot = registry
         .capture(tsdb.storage(), &MemoryBudget::new(u64::MAX))
         .unwrap();

@@ -26,7 +26,11 @@ use crate::{
 
 /// The version of the store's stored layout as a whole: namespaces, keys and record shapes.
 /// A dataset written in another is not opened; the consumer migrates or rebuilds it.
-pub(crate) const STORE_FORMAT: u32 = 1;
+///
+/// Format 2 records what references each id and how many combinations use each label value
+/// (§5.3). A dataset of format 1 has neither, so recycling would release ids its data still
+/// holds; the crate was never released with it, so it is refused rather than migrated.
+pub(crate) const STORE_FORMAT: u32 = 2;
 
 /// The keys of the `META` namespace, one byte each. A number is never reused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

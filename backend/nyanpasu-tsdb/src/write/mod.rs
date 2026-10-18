@@ -15,6 +15,7 @@
 
 pub(crate) mod chunking;
 pub(crate) mod commit;
+mod references;
 pub(crate) mod stage;
 
 use snafu::{ResultExt, Snafu, ensure};

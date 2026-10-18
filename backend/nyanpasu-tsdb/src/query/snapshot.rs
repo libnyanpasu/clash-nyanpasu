@@ -6,7 +6,9 @@
 //! The accessors here read the snapshot's catalog, so that a consumer can build filters from
 //! label values and render the label ids of group keys and combinations. Ids are those of
 //! this snapshot's catalog: after a release, a later one may give an id to another value
-//! (§5.3).
+//! (§5.3). A result outlives its snapshot and keeps the snapshot's
+//! [`catalog`](Snapshot::catalog) token: render its ids, and build filters from them, through
+//! a snapshot whose token equals it.
 //!
 //! Revoking snapshots (§7.4, §7.5) does not exist yet. A scan of a backend that was closed
 //! under it fails at its next read.
@@ -16,14 +18,17 @@ use crate::{LabelId, Snapshot, storage::Storage, write::ComboId};
 impl<S: Storage> Snapshot<S> {
     /// The value of label `id` of `dimension`, as it was written. `None` for the overflow
     /// marker, 0, for an id the catalog does not hold, and for a label the schema does not
-    /// have.
+    /// have. An id of a result means this value only when the result's catalog token equals
+    /// this snapshot's [`catalog`](Self::catalog).
     pub fn label(&self, dimension: LabelId, id: u32) -> Option<&[u8]> {
         self.has_label(dimension)
             .then(|| self.version().catalog.label(dimension, id))
             .flatten()
     }
 
-    /// The id of `value` in `dimension`, if the catalog holds it.
+    /// The id of `value` in `dimension`, if the catalog holds it. The id, and a filter built
+    /// from it, name `value` only in a snapshot whose [`catalog`](Self::catalog) equals this
+    /// one's.
     pub fn find_label(&self, dimension: LabelId, value: &[u8]) -> Option<u32> {
         self.has_label(dimension)
             .then(|| self.version().catalog.find_label(dimension, value))
@@ -33,7 +38,9 @@ impl<S: Storage> Snapshot<S> {
     /// The label ids of combination `combo`, one per series dimension in
     /// [`SeriesSpec::dimensions`](crate::SeriesSpec::dimensions) order. A dimension the fold
     /// ladder replaced holds the overflow marker, 0, and combination 0, the whole overflow,
-    /// holds 0 in every one (§5.2). `None` for an id the catalog does not hold.
+    /// holds 0 in every one (§5.2). `None` for an id the catalog does not hold. A result's
+    /// `combo` means these labels only when the result's catalog token equals this snapshot's
+    /// [`catalog`](Self::catalog); the label ids returned are this snapshot's.
     pub fn combination(&self, combo: ComboId) -> Option<impl ExactSizeIterator<Item = u32> + '_> {
         self.version().catalog.combo(combo.get())
     }
@@ -47,7 +54,7 @@ impl<S: Storage> Snapshot<S> {
 mod tests {
     use crate::{
         LabelId,
-        db::tests::{LABELS, PROCESS, RULE, TARGET, open, point},
+        db::tests::{LABELS, PROCESS, RULE, TARGET, open, point, reopen},
         query::series::tests::{at, write},
         storage::memory::MemoryDisk,
         write::ComboId,
@@ -89,5 +96,42 @@ mod tests {
         let missing = LabelId(99);
         assert_eq!(snapshot.label(missing, 1), None);
         assert_eq!(snapshot.find_label(missing, b"match"), None);
+    }
+
+    // A reopen loads the catalog at generation 0 again, under a new open's marker, so its token
+    // differs although it holds the same ids (§5.3).
+    #[test]
+    fn a_reopen_changes_the_catalog_token() {
+        let disk = MemoryDisk::new();
+        let mut tsdb = open(&disk);
+        write(&mut tsdb, 1, &[at(point(LABELS, &[1, 2]), 0)]);
+        let before = tsdb.reader().capture().unwrap().catalog();
+        assert_eq!(tsdb.reader().capture().unwrap().catalog(), before);
+
+        let tsdb = reopen(tsdb, &disk);
+        let after = tsdb.reader().capture().unwrap();
+        assert_ne!(after.catalog(), before);
+        assert!(after.find_label(RULE, b"match").is_some());
+    }
+
+    // Two stores opened apart both load their catalogs at generation 0 and give their first
+    // values id 1, yet their tokens differ: a result of one does not resolve through the other.
+    #[test]
+    fn independent_stores_have_different_catalog_tokens() {
+        const OTHER: &[&[u8]] = &[b"direct", b"wget", b"b.com"];
+        let mut one = open(&MemoryDisk::new());
+        let mut two = open(&MemoryDisk::new());
+        write(&mut one, 1, &[at(point(LABELS, &[1, 2]), 0)]);
+        write(&mut two, 1, &[at(point(OTHER, &[1, 2]), 0)]);
+        let one = one.reader().capture().unwrap();
+        let two = two.reader().capture().unwrap();
+
+        assert_eq!(one.find_label(RULE, b"match"), Some(1));
+        assert_eq!(two.find_label(RULE, b"direct"), Some(1));
+        assert_eq!(
+            one.version().catalog.generation(),
+            two.version().catalog.generation()
+        );
+        assert_ne!(one.catalog(), two.catalog());
     }
 }

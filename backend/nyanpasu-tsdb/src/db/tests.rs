@@ -300,23 +300,31 @@ fn a_dataset_of_another_schema_or_store_format_is_not_opened() {
     assert_eq!(tsdb.incarnation(), 2);
     assert_eq!(tsdb.current().publication, 1);
 
-    let storage = tsdb.into_storage();
-    let mut batch = storage.batch().unwrap();
-    let future = FormatRecord {
-        store_format: STORE_FORMAT + 1,
-        fingerprint: schema().fingerprint(),
-        schema_version: 1,
-    };
-    write_format(&mut batch, &future).unwrap();
-    batch.commit(Durability::Durable).unwrap();
-    let Err(error) = Tsdb::open(storage, schema(), Profile::desktop()) else {
-        panic!("opened a dataset of another store format");
-    };
-    assert!(matches!(
-        error,
-        OpenError::StoreFormat { found, expected: STORE_FORMAT } if found == STORE_FORMAT + 1
-    ));
-    assert_eq!(error.kind(), ErrorKind::Local);
+    // A later format, and format 1, which has no references of ids (§5.3).
+    let mut storage = tsdb.into_storage();
+    for found in [STORE_FORMAT + 1, 1] {
+        let mut batch = storage.batch().unwrap();
+        let other = FormatRecord {
+            store_format: found,
+            fingerprint: schema().fingerprint(),
+            schema_version: 1,
+        };
+        write_format(&mut batch, &other).unwrap();
+        batch.commit(Durability::Durable).unwrap();
+        let Err(error) = Tsdb::open(storage, schema(), Profile::desktop()) else {
+            panic!("opened a dataset of store format {found}");
+        };
+        assert!(
+            matches!(
+                error,
+                OpenError::StoreFormat { found: stored, expected: STORE_FORMAT } if stored == found
+            ),
+            "{error:?}"
+        );
+        assert_eq!(error.kind(), ErrorKind::Local);
+        storage = disk.open().unwrap();
+    }
+    assert_eq!(STORE_FORMAT, 2);
 }
 
 /// Applies `damage` to the storage of `disk`, then opens it, which has to fail as corrupted

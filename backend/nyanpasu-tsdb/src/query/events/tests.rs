@@ -30,7 +30,7 @@ use crate::{
         Durability, FragmentId, MAX_FRAGMENT_LEN, StorageWrite,
         memory::{MemoryDisk, MemoryStorage},
     },
-    version::{Registry, Version},
+    version::{OpenMarker, Registry, Version},
     write::{EventRow, Input, Value, chunking::event_columns},
 };
 
@@ -767,6 +767,7 @@ fn chunks_outside_the_range_are_never_read() {
         let page = scan(
             snapshot.storage(),
             snapshot.version(),
+            snapshot.catalog(),
             snapshot.schema(),
             snapshot.budget(),
             &query,
@@ -854,6 +855,7 @@ fn blocks_whose_stats_rule_out_the_filter_are_never_decoded() {
         let page = scan(
             snapshot.storage(),
             snapshot.version(),
+            snapshot.catalog(),
             snapshot.schema(),
             snapshot.budget(),
             &query,
@@ -909,6 +911,7 @@ fn a_chunk_opens_within_the_scans_budget() {
         let result = scan(
             snapshot.storage(),
             snapshot.version(),
+            snapshot.catalog(),
             snapshot.schema(),
             &budget,
             &query,
@@ -1021,6 +1024,7 @@ fn a_range_skips_blocks_by_their_keys() {
     let page = scan(
         snapshot.storage(),
         snapshot.version(),
+        snapshot.catalog(),
         snapshot.schema(),
         snapshot.budget(),
         &query,
@@ -1106,6 +1110,7 @@ fn a_merge_of_more_ways_than_the_budget_holds_fails_at_admission() {
         let result = scan(
             snapshot.storage(),
             snapshot.version(),
+            snapshot.catalog(),
             snapshot.schema(),
             &budget,
             &query,
@@ -1325,6 +1330,7 @@ fn a_run_whose_chunks_share_a_key_is_one_way() {
         let page = scan(
             snapshot.storage(),
             snapshot.version(),
+            snapshot.catalog(),
             snapshot.schema(),
             snapshot.budget(),
             &query,
@@ -1412,6 +1418,7 @@ fn a_large_text_value_is_returned_whole_and_reserved_first() {
     let error = scan(
         snapshot.storage(),
         snapshot.version(),
+        snapshot.catalog(),
         snapshot.schema(),
         &budget,
         &query,
@@ -1679,6 +1686,7 @@ fn a_full_page_reads_nothing_past_its_last_row() {
     let page = scan(
         snapshot.storage(),
         snapshot.version(),
+        snapshot.catalog(),
         snapshot.schema(),
         &budget,
         &query,
@@ -1904,7 +1912,7 @@ fn references_the_catalog_lacks_are_corrupted() {
         catalog: Catalog::new(&schema()),
         head: current.head.clone(),
     };
-    let registry = Registry::new(damaged, Arc::new(schema()));
+    let registry = Registry::new(damaged, Arc::new(schema()), Arc::new(OpenMarker));
     let damaged = registry
         .capture(store.tsdb.storage(), &MemoryBudget::new(u64::MAX))
         .unwrap();

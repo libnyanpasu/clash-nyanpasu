@@ -1050,6 +1050,7 @@ fn finish(
 fn changed(context: &Context<'_>, next_chunk: u64, done: Maintained) -> Changed {
     Changed {
         head: context.current.head.clone(),
+        catalog: None,
         staging: context
             .staging_budget
             .try_reserve("staging", 0)

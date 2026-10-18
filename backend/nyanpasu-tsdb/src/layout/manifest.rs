@@ -142,9 +142,14 @@ enum StreamKind {
 
 impl StreamRef {
     fn key(self) -> KeyBuf {
+        self.append_to(KeyBuf::new())
+    }
+
+    /// `key` followed by this stream's two components: its kind and its id.
+    pub(crate) fn append_to(self, key: KeyBuf) -> KeyBuf {
         match self {
-            Self::Tier(tier) => KeyBuf::new().u8(StreamKind::Tier as u8).u8(tier.0),
-            Self::Events(stream) => KeyBuf::new().u8(StreamKind::Events as u8).u8(stream.0),
+            Self::Tier(tier) => key.u8(StreamKind::Tier as u8).u8(tier.0),
+            Self::Events(stream) => key.u8(StreamKind::Events as u8).u8(stream.0),
         }
     }
 }

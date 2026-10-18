@@ -80,7 +80,7 @@ use crate::{
     layout::manifest::{self, ManifestError, StreamRef, event_extent, retained_from},
     storage::{ChunkId, Direction, Storage, StorageRead},
     time::Span,
-    version::{Snapshot, Version},
+    version::{CatalogToken, Snapshot, Version},
     write::{ComboId, EventSeq},
 };
 
@@ -154,6 +154,7 @@ pub enum EventCondition<'a> {
 #[derive(Debug)]
 pub struct EventPage {
     events: Vec<Event>,
+    catalog: CatalogToken,
     cursor: Option<EventCursor>,
     truncated_by_retention: bool,
     retention_watermark: Option<Timestamp>,
@@ -167,6 +168,12 @@ pub struct EventPage {
 impl EventPage {
     pub fn events(&self) -> &[Event] {
         &self.events
+    }
+
+    /// The token of the snapshot the page was read from, which names what the ids of its
+    /// values mean ([`EventValue`]).
+    pub fn catalog(&self) -> CatalogToken {
+        self.catalog.clone()
     }
 
     /// The position of the last event, to continue after, when the page is full. A page with
@@ -207,6 +214,10 @@ pub struct Event {
 /// | `Label`                                | `Label`: its id, 0 when it overflowed   |
 /// | `Dict`, `Fixed`, `Text`, `FoldedLabel` | `Bytes`                                 |
 /// | `Identity`                             | `Bytes`: the text it was written as     |
+///
+/// A `Combo` or `Label` id means what it says only through a snapshot whose
+/// [`Snapshot::catalog`] equals the page's [`EventPage::catalog`]: after a release, a later
+/// write may give the id to another value (§5.3).
 #[derive(Debug, PartialEq, Eq)]
 pub enum EventValue {
     Null,
@@ -288,6 +299,7 @@ impl<S: Storage> Snapshot<S> {
         scan(
             self.storage(),
             self.version(),
+            self.catalog(),
             self.schema(),
             self.budget(),
             query,
@@ -328,10 +340,11 @@ impl ReadLog {
 }
 
 /// The scan behind [`Snapshot::scan_events`], over the parts of a snapshot, which logs what
-/// it reads into `log`.
+/// it reads into `log`. The page keeps `catalog`, the token of the snapshot's catalog.
 pub(crate) fn scan<R: StorageRead>(
     storage: &R,
     version: &Version,
+    catalog: CatalogToken,
     schema: &Schema,
     budget: &MemoryBudget,
     query: &EventQuery<'_>,
@@ -379,6 +392,7 @@ pub(crate) fn scan<R: StorageRead>(
     let Some(bounds) = Bounds::new(query) else {
         return Ok(EventPage {
             events: Vec::new(),
+            catalog,
             cursor: None,
             truncated_by_retention,
             retention_watermark: watermark,
@@ -415,6 +429,7 @@ pub(crate) fn scan<R: StorageRead>(
     let held = scan.ledger.reservation.split(page_bytes(&events));
     Ok(EventPage {
         events,
+        catalog,
         cursor,
         truncated_by_retention,
         retention_watermark: watermark,

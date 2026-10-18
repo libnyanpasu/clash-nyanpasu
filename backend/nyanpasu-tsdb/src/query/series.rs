@@ -79,6 +79,7 @@ use crate::{
     schema::{MAX_DIMENSIONS, MAX_FIELDS},
     storage::{Direction, Storage, StorageRead},
     time::Grid,
+    version::CatalogToken,
     write::chunking::series_columns,
 };
 
@@ -149,6 +150,10 @@ impl FieldMask {
 
 /// One part of a group key: a label id for [`GroupKey::Labels`], and a node, the other
 /// nodes or a skipped level for [`GroupKey::Mapped`].
+///
+/// A label id means what it says only through a snapshot whose [`Snapshot::catalog`] equals
+/// the result's [`SeriesGroups::catalog`]: after a release, a later write may give the id to
+/// another value (§5.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum KeyPart {
     Label(u32),
@@ -161,6 +166,7 @@ pub enum KeyPart {
 #[derive(Debug)]
 pub struct SeriesGroups {
     lists: Vec<GroupList>,
+    catalog: CatalogToken,
     covered: TimeRange,
     truncated_by_retention: bool,
     retention_watermark: Option<Timestamp>,
@@ -177,6 +183,12 @@ impl SeriesGroups {
     /// One list per request, in request order.
     pub fn lists(&self) -> &[GroupList] {
         &self.lists
+    }
+
+    /// The token of the snapshot the result was read from, which names what the label ids of
+    /// its keys mean ([`KeyPart`]).
+    pub fn catalog(&self) -> CatalogToken {
+        self.catalog.clone()
     }
 
     /// The time the query read: its range rounded out to whole buckets, from where the first
@@ -491,6 +503,7 @@ impl<S: Storage> Snapshot<S> {
         }
         Ok(SeriesGroups {
             lists,
+            catalog: self.catalog(),
             covered: buckets.covered,
             truncated_by_retention: watermark
                 .is_some_and(|watermark| query.range.start() < watermark),

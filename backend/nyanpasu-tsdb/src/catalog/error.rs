@@ -115,6 +115,9 @@ pub enum ResolveError {
 
     #[snafu(display("failed to write the reverse lookup of combination {id}"))]
     WriteComboIndex { id: u32, source: StorageError },
+
+    #[snafu(display("failed to count the uses of the labels of combination {id}"))]
+    CountUses { id: u32, source: UsesError },
 }
 
 impl ResolveError {
@@ -125,6 +128,70 @@ impl ResolveError {
             | Self::WriteCombo { source, .. }
             | Self::WriteComboIndex { source, .. } => source.kind(),
             Self::InvalidComboIndex { .. } | Self::StaleComboIndex { .. } => ErrorKind::Corrupted,
+            Self::CountUses { source, .. } => source.kind(),
+        }
+    }
+}
+
+/// Reading or changing how many live combinations use a label value (§5.3).
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub enum UsesError {
+    #[snafu(display("failed to read the uses of label value {id} of dimension {dimension}"))]
+    ReadUses {
+        dimension: u16,
+        id: u32,
+        source: StorageError,
+    },
+
+    #[snafu(display(
+        "the uses record of label value {id} of dimension {dimension} is invalid: {problem:?}"
+    ))]
+    InvalidUses {
+        dimension: u16,
+        id: u32,
+        problem: CatalogProblem,
+    },
+
+    /// The stored count is 0, which only damage can cause: a count of 0 deletes the record.
+    #[snafu(display("the uses record of label value {id} of dimension {dimension} counts 0"))]
+    ZeroUses { dimension: u16, id: u32 },
+
+    /// The stored count is `u64::MAX`, which only damage can cause.
+    #[snafu(display("the uses of label value {id} of dimension {dimension} cannot be counted"))]
+    UsesOverflow { dimension: u16, id: u32 },
+
+    /// A released combination uses the value, but its count is 0, which only damage can cause.
+    #[snafu(display(
+        "a combination uses label value {id} of dimension {dimension}, which has no uses"
+    ))]
+    UsesUnderflow { dimension: u16, id: u32 },
+
+    #[snafu(display("failed to write the uses of label value {id} of dimension {dimension}"))]
+    WriteUses {
+        dimension: u16,
+        id: u32,
+        source: StorageError,
+    },
+
+    #[snafu(display("failed to delete the uses of label value {id} of dimension {dimension}"))]
+    DeleteUses {
+        dimension: u16,
+        id: u32,
+        source: StorageError,
+    },
+}
+
+impl UsesError {
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            Self::ReadUses { source, .. }
+            | Self::WriteUses { source, .. }
+            | Self::DeleteUses { source, .. } => source.kind(),
+            Self::InvalidUses { .. }
+            | Self::ZeroUses { .. }
+            | Self::UsesOverflow { .. }
+            | Self::UsesUnderflow { .. } => ErrorKind::Corrupted,
         }
     }
 }
@@ -163,6 +230,10 @@ pub enum PinError {
     #[snafu(display("the pin record of combination {id} is invalid: {problem:?}"))]
     InvalidRecord { id: u32, problem: CatalogProblem },
 
+    /// The stored count is 0, which only damage can cause: a count of 0 deletes the record.
+    #[snafu(display("the pin record of combination {id} counts 0"))]
+    ZeroPins { id: u32 },
+
     /// The stored count is `u64::MAX`, which only damage can cause.
     #[snafu(display("the pin count of combination {id} cannot be incremented"))]
     CountOverflow { id: u32 },
@@ -189,6 +260,7 @@ impl PinError {
             | Self::DeleteRecord { source, .. } => source.kind(),
             Self::InvalidKey { .. }
             | Self::InvalidRecord { .. }
+            | Self::ZeroPins { .. }
             | Self::CountOverflow { .. }
             | Self::CountUnderflow { .. } => ErrorKind::Corrupted,
         }
@@ -219,6 +291,9 @@ pub enum ReleaseError {
         id: u32,
         source: StorageError,
     },
+
+    #[snafu(display("failed to take the uses of combination {id} off its labels"))]
+    UncountUses { id: u32, source: UsesError },
 }
 
 impl ReleaseError {
@@ -230,6 +305,7 @@ impl ReleaseError {
             Self::DeleteCombo { source, .. }
             | Self::DeleteComboIndex { source, .. }
             | Self::DeleteLabel { source, .. } => source.kind(),
+            Self::UncountUses { source, .. } => source.kind(),
         }
     }
 }

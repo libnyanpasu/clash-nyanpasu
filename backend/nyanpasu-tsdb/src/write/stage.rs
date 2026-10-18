@@ -10,6 +10,8 @@
 //! - resolves combinations and labels in a catalog draft, down the fold ladder (§5.2);
 //! - writes one journal record per (tier, bucket) and per (stream, extent), and counts each
 //!   in its extent's record;
+//! - records the combinations and label values those records hold, by stream and extent
+//!   (§5.3, `references`);
 //! - writes the pins and the auxiliary state;
 //! - plans the chunking and folding the triggers, the head budget, the journal cap and the
 //!   staging budget call for, from the sizes of the head the batch would publish, then
@@ -20,11 +22,11 @@
 //!
 //! Every allocation that grows with the batch or the stored data is reserved in the staging
 //! budget before it is made, and returned once it is freed: the batch's sorted points and
-//! rows, their catalog ids, its deltas and records, the plan, and what executing the plan
-//! allocates. A record is encoded straight from the batch into a buffer of its exact length;
-//! no row is held decoded beyond the one being written. What stays allocated twice until the
-//! version is published or withdrawn stays reserved: the pages and buffers the next head
-//! copies, the batch's records it keeps, and the catalog draft's copies.
+//! rows, their catalog ids and references, its deltas and records, the plan, and what
+//! executing the plan allocates. A record is encoded straight from the batch into a buffer of
+//! its exact length; no row is held decoded beyond the one being written. What stays allocated
+//! twice until the version is published or withdrawn stays reserved: the pages and buffers the
+//! next head copies, the batch's records it keeps, and the catalog draft's copies.
 
 use std::ops::ControlFlow;
 
@@ -46,6 +48,7 @@ use crate::{
         AUX, JOURNAL,
         manifest::{ManifestError, StreamRef, event_extent, read_watermark},
         meta::{MetaError, StateRecord, read_state, write_state},
+        references::{self, Entity, ReferenceError},
     },
     maintain::Maintained,
     storage::{
@@ -55,7 +58,10 @@ use crate::{
     version::Version,
 };
 
-use super::chunking::{ChunkingError, Execution, ExtentChange, Planning, Shape, change_extent};
+use super::{
+    chunking::{ChunkingError, Execution, ExtentChange, Planning, Shape, change_extent},
+    references::References,
+};
 
 /// What staging reads besides the batch.
 pub(crate) struct Context<'a> {
@@ -119,20 +125,40 @@ pub(crate) fn stage(
         .try_reserve("staging", 0)
         .context(ReserveStagingSnafu)?;
     let mut draft = context.current.catalog.draft(context.profile.catalog);
-    let mut journal = Journal {
-        next_seq: state.next_journal_seq,
-        bytes: 0,
-        watermarks: Watermarks::read(&*batch, context.schema, input, &mut staging)?,
-    };
+    let watermarks = Watermarks::read(&*batch, context.schema, input, &mut staging)?;
     let series = stage_series(
         batch,
         &mut draft,
         context,
         input,
-        &journal.watermarks,
+        &watermarks,
         &mut written,
         &mut staging,
     )?;
+    // A tier's references are its sources' combinations; a row's, its catalog values.
+    let accepted = series
+        .iter()
+        .map(|added| added.deltas.combos.len())
+        .sum::<usize>()
+        + watermarks.row_references(context.schema, input);
+    staging
+        .try_grow(References::bytes(accepted))
+        .context(ReserveStagingSnafu)?;
+    let mut journal = Journal {
+        next_seq: state.next_journal_seq,
+        bytes: 0,
+        watermarks,
+        references: References::with_capacity(accepted),
+    };
+    for added in &series {
+        let source = added.source;
+        journal.references.push_tier(
+            StreamRef::Tier(source.tier),
+            context.shape.extent_of(source),
+            &added.deltas.combos,
+            context.current.head.accumulator(source),
+        );
+    }
     let series = journal.series(batch, context.shape, input.now, series, &mut staging)?;
     let events = journal.events(
         batch,
@@ -142,16 +168,20 @@ pub(crate) fn stage(
         &mut written,
         &mut staging,
     )?;
-    stage_pins(batch, &mut draft, input)?;
-    stage_aux(batch, input)?;
     let Journal {
         next_seq,
         bytes: batch_bytes,
         watermarks,
+        references,
     } = journal;
     let read = watermarks.bytes();
     drop(watermarks);
     staging.shrink(read);
+    // Before the pins, so that an unpin sees the references of the batch's own data.
+    references.record(batch).context(RecordReferencesSnafu)?;
+    staging.shrink(References::bytes(accepted));
+    stage_pins(batch, &mut draft, input)?;
+    stage_aux(batch, input)?;
     let update = HeadUpdate { series, events };
     let journal_bytes = state
         .journal_bytes
@@ -475,7 +505,8 @@ fn folded_value<'a>(
 
 /// Pins the combination of each `Pin` op under its key, resolved as a series point with the
 /// same labels would be, and takes the pin under the key of each `Unpin` op off the
-/// combination it pins (see [`PinOp`]).
+/// combination it pins (see [`PinOp`]). A combination whose last pin goes while no stream
+/// references it may have become free: it becomes a candidate for release (§5.3).
 fn stage_pins(
     batch: &mut impl StorageWrite,
     draft: &mut CatalogDraft,
@@ -495,7 +526,11 @@ fn stage_pins(
             }
             PinOp::Unpin { key } => {
                 let unpinned = draft.unpin(batch, key).context(UnpinSnafu { pin: index })?;
-                ensure!(unpinned, NotPinnedSnafu { pin: index });
+                let unpinned = unpinned.context(NotPinnedSnafu { pin: index })?;
+                if unpinned.combo != 0 && unpinned.left == 0 {
+                    references::queue_unreferenced(batch, Entity::Combo(unpinned.combo))
+                        .context(QueueUnpinnedSnafu { pin: index })?;
+                }
             }
         }
     }
@@ -523,6 +558,8 @@ struct Journal {
     bytes: u64,
     /// At or below them, a point or row is late, and has no record.
     watermarks: Watermarks,
+    /// The combinations and label values the records hold, by stream and extent (§5.3).
+    references: References,
 }
 
 impl Journal {
@@ -629,8 +666,20 @@ impl Journal {
         };
         for &index in &order {
             let index = index as usize;
-            let spec = &schema.events[usize::from(input.events[index].stream.0)];
+            let row = &input.events[index];
+            let spec = &schema.events[usize::from(row.stream.0)];
+            let (combos, labels) = (resolved.combos.len(), resolved.labels.len());
             resolve_row(batch, draft, spec, input, index, written, &mut resolved)?;
+            let (stream, extent) = (StreamRef::Events(row.stream), event_extent(spec, row.key));
+            for combo in &resolved.combos[combos..] {
+                self.references
+                    .push(stream, Entity::Combo(combo.id), extent);
+            }
+            let ids = &resolved.labels[labels..];
+            for ((_, dimension, _), &id) in label_values(spec, row).zip(ids) {
+                self.references
+                    .push(stream, Entity::Label(dimension, id), extent);
+            }
         }
 
         let same_stream = |a: &u32, b: &u32| place(*a).0 == place(*b).0;
@@ -791,6 +840,20 @@ impl Watermarks {
         let extent = event_extent(&schema.events[stream], row.key);
         self.streams[stream].is_some_and(|expired| extent <= expired)
     }
+
+    /// The most references the rows of `input` hold beside the late ones (§5.3): per row kept,
+    /// its series value and each of its label values.
+    fn row_references(&self, schema: &Schema, input: &Input<'_>) -> usize {
+        input
+            .events
+            .iter()
+            .filter(|row| !self.late_row(schema, row))
+            .map(|row| {
+                let spec = &schema.events[usize::from(row.stream.0)];
+                usize::from(series_labels(spec, row).is_some()) + label_values(spec, row).count()
+            })
+            .sum()
+    }
 }
 
 /// A write batch that counts the bytes written into it: keys, values and fragments. The
@@ -922,6 +985,12 @@ pub enum StageError {
     #[snafu(display("failed to unpin the combination of pin {pin}"))]
     Unpin { pin: usize, source: PinError },
 
+    #[snafu(display("failed to queue the combination pin {pin} left without pins"))]
+    QueueUnpinned { pin: usize, source: ReferenceError },
+
+    #[snafu(display("failed to record the references of the batch"))]
+    RecordReferences { source: ReferenceError },
+
     #[snafu(display("failed to write auxiliary entry {entry}"))]
     PutAux { entry: usize, source: StorageError },
 
@@ -971,6 +1040,7 @@ impl StageError {
             | Self::ResolveLabel { source, .. }
             | Self::ResolvePin { source, .. } => source.kind(),
             Self::Pin { source, .. } | Self::Unpin { source, .. } => source.kind(),
+            Self::QueueUnpinned { source, .. } | Self::RecordReferences { source } => source.kind(),
             Self::PutAux { source, .. }
             | Self::DeleteAux { source, .. }
             | Self::WriteJournal { source, .. }
@@ -1101,10 +1171,12 @@ mod tests {
         assert_eq!(staging.bytes(), (deltas + entries) as u64);
         assert_eq!(deltas, (1 + 2 + 1) * (4 + 2 * 8));
 
+        let accepted = watermarks.row_references(&schema, &input);
         let mut journal = Journal {
             next_seq: 0,
             bytes: 0,
             watermarks,
+            references: References::with_capacity(accepted),
         };
         let held = staging.bytes();
         journal

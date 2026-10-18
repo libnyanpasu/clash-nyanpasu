@@ -14,7 +14,7 @@ use super::{
 };
 use crate::{
     Aggregate, ErrorKind, FieldSpec, LabelSpec, Profile, TierSpec,
-    layout::{COMBO_INDEX, COMBOS, LABELS, PIN_KEYS, PINS, record::RecordProblem},
+    layout::{COMBO_INDEX, COMBOS, LABEL_USES, LABELS, PIN_KEYS, PINS, record::RecordProblem},
     schema::MAX_DIMENSIONS,
     storage::{
         self, ChunkId, CommitFailure, Direction, Durability, FragmentId, KeyRange, Ns, Storage,
@@ -280,7 +280,7 @@ fn a_loaded_catalog_matches_the_one_written_with_ids_gaps_and_pins() {
         }
     });
     let v2 = apply(&storage, &v1, u64::MAX, |draft, batch| {
-        assert!(draft.unpin(batch, b"c").unwrap());
+        assert!(draft.unpin(batch, b"c").unwrap().is_some());
         for id in [2, 4] {
             draft.release_combo(batch, id).unwrap();
         }
@@ -930,13 +930,125 @@ fn a_pinned_combination_can_be_released_once_unpinned() {
     let mut draft = new_catalog(&schema()).draft(u64::MAX);
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     assert!(draft.pin(&mut batch, b"conn", id).unwrap());
-    assert!(draft.unpin(&mut batch, b"conn").unwrap());
+    assert!(draft.unpin(&mut batch, b"conn").unwrap().is_some());
     assert_eq!(pin_count(&batch, id).unwrap(), 0);
     // The last unpin deletes the count, and every unpin its key.
     assert_eq!(keys(&batch, PINS), Vec::<Vec<u8>>::new());
     assert_eq!(keys(&batch, PIN_KEYS), Vec::<Vec<u8>>::new());
     draft.release_combo(&mut batch, id).unwrap();
     assert_eq!(labels(draft.combo(id)), None);
+}
+
+/// The uses `read` counts of the value `value` of `dimension` in `draft`.
+fn uses(draft: &CatalogDraft, read: &impl StorageRead, dimension: LabelId, value: &str) -> u64 {
+    let id = draft.find_label(dimension, value.as_bytes()).unwrap();
+    label_uses(read, dimension, id).unwrap()
+}
+
+// Each label value counts the live combinations that use it, in storage: a new combination
+// adds a use to each of its values but the overflow marker, and a released one takes them off
+// and returns the values it left without uses (§5.3).
+#[test]
+fn a_label_value_counts_the_live_combinations_that_use_it() {
+    let storage = open();
+    let mut ids = [0; 2];
+    let catalog = apply(
+        &storage,
+        &new_catalog(&schema()),
+        u64::MAX,
+        |draft, batch| {
+            ids[0] = resolve(draft, batch, ["match", "curl", "a.com"]);
+            ids[1] = resolve(draft, batch, ["match", "wget", "a.com"]);
+            // An existing combination adds nothing.
+            assert_eq!(resolve(draft, batch, ["match", "curl", "a.com"]), ids[0]);
+        },
+    );
+    let [a, b] = ids;
+    let mut batch = storage.batch().unwrap();
+    let mut draft = catalog.draft(u64::MAX);
+    // A folded one counts the values it keeps: room for the combination, but not for the
+    // page its new target would copy.
+    draft.set_room(draft.combo_cost());
+    let folded = draft
+        .resolve_combo(&mut batch, &[b"match", b"curl", b"z.com"])
+        .unwrap();
+    assert_eq!(folded.fold, Some(Fold::Step(0)));
+    let counts = |draft: &CatalogDraft, batch: &MemoryBatch<'_>| {
+        [
+            (RULE, "match"),
+            (PROCESS, "curl"),
+            (PROCESS, "wget"),
+            (TARGET, "a.com"),
+        ]
+        .map(|(dimension, value)| uses(draft, batch, dimension, value))
+    };
+    assert_eq!(counts(&draft, &batch), [3, 2, 1, 2]);
+    assert_eq!(
+        values(&batch, LABEL_USES),
+        [
+            raw::uses_record(3),
+            raw::uses_record(2),
+            raw::uses_record(1),
+            raw::uses_record(2)
+        ]
+    );
+
+    let wget = draft.find_label(PROCESS, b"wget").unwrap();
+    assert_eq!(
+        draft.release_combo(&mut batch, b).unwrap(),
+        [(PROCESS, wget)]
+    );
+    assert_eq!(counts(&draft, &batch), [2, 2, 0, 1]);
+    let target = draft.find_label(TARGET, b"a.com").unwrap();
+    assert_eq!(
+        draft.release_combo(&mut batch, a).unwrap(),
+        [(TARGET, target)]
+    );
+    let (rule, process) = (
+        draft.find_label(RULE, b"match").unwrap(),
+        draft.find_label(PROCESS, b"curl").unwrap(),
+    );
+    assert_eq!(
+        draft.release_combo(&mut batch, folded.id).unwrap(),
+        [(RULE, rule), (PROCESS, process)]
+    );
+    // A count of 0 has no record.
+    assert_eq!(keys(&batch, LABEL_USES), Vec::<Vec<u8>>::new());
+    draft.finish();
+}
+
+// A combination whose label has no uses left is damage: releasing it fails as corrupted.
+#[test]
+fn releasing_a_combination_whose_label_has_no_uses_is_corrupted() {
+    let storage = open();
+    let mut batch = storage.batch().unwrap();
+    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
+    let curl = draft.find_label(PROCESS, b"curl").unwrap();
+    batch
+        .delete(LABEL_USES, label_key(PROCESS, curl).as_slice())
+        .unwrap();
+    let error = draft.release_combo(&mut batch, id).unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            ReleaseError::UncountUses {
+                id: 1,
+                source: UsesError::UsesUnderflow {
+                    dimension: 1,
+                    id: 1
+                }
+            }
+        ),
+        "{error:?}"
+    );
+    assert_eq!(error.kind(), ErrorKind::Corrupted);
+    batch
+        .put(LABEL_USES, label_key(RULE, 1).as_slice(), &[1])
+        .unwrap();
+    let error = label_uses(&batch, RULE, 1).unwrap_err();
+    assert!(matches!(error, UsesError::InvalidUses { .. }), "{error:?}");
+    assert_eq!(error.kind(), ErrorKind::Corrupted);
 }
 
 #[test]
@@ -1010,16 +1122,16 @@ fn a_key_pins_one_combination_and_a_combination_counts_its_keys() {
     assert_eq!(pins(&batch), before);
 
     // An unpin takes off the pin of its own key.
-    assert!(draft.unpin(&mut batch, b"c").unwrap());
+    assert!(draft.unpin(&mut batch, b"c").unwrap().is_some());
     assert_eq!(pin_count(&batch, second).unwrap(), 0);
     assert_eq!(pin_count(&batch, first).unwrap(), 3);
     for key in [&b"a"[..], b"b", b""] {
-        assert!(draft.unpin(&mut batch, key).unwrap());
+        assert!(draft.unpin(&mut batch, key).unwrap().is_some());
     }
     assert_eq!(pins(&batch), (Vec::new(), Vec::new()));
     // A key that pins nothing, now or ever, has nothing to unpin.
-    assert!(!draft.unpin(&mut batch, b"a").unwrap());
-    assert!(!draft.unpin(&mut batch, b"never").unwrap());
+    assert!(draft.unpin(&mut batch, b"a").unwrap().is_none());
+    assert!(draft.unpin(&mut batch, b"never").unwrap().is_none());
     assert_eq!(pins(&batch), (Vec::new(), Vec::new()));
     draft.release_combo(&mut batch, first).unwrap();
 }
@@ -1033,7 +1145,7 @@ fn a_key_of_the_whole_overflow_has_no_count() {
     assert!(draft.pin(&mut batch, b"conn", 0).unwrap());
     assert_eq!(pins(&batch), (Vec::new(), vec![b"conn".to_vec()]));
     assert!(!draft.pin(&mut batch, b"conn", 0).unwrap());
-    assert!(draft.unpin(&mut batch, b"conn").unwrap());
+    assert!(draft.unpin(&mut batch, b"conn").unwrap().is_some());
     assert_eq!(pins(&batch), (Vec::new(), Vec::new()));
 }
 
@@ -1651,7 +1763,7 @@ proptest! {
                 Op::Unpin(n) => {
                     let used: Vec<&Vec<u8>> = pin_keys.keys().collect();
                     if let Some(key) = pick(&used, n).cloned() {
-                        prop_assert!(draft.unpin(&mut batch, &key).unwrap());
+                        prop_assert!(draft.unpin(&mut batch, &key).unwrap().is_some());
                         let id = pin_keys.remove(&key).unwrap();
                         if id != 0 {
                             let count = pins.get_mut(&id).unwrap();
@@ -1671,7 +1783,7 @@ proptest! {
                         .collect();
                     if let Some(id) = pick(&free, n) {
                         match draft.release_combo(&mut batch, id) {
-                            Ok(()) => prop_assert!(draft.combo(id).is_none()),
+                            Ok(_) => prop_assert!(draft.combo(id).is_none()),
                             Err(ReleaseError::ReserveRelease { .. }) => {
                                 prop_assert!(draft.combo(id).is_some());
                             }
@@ -1730,6 +1842,18 @@ proptest! {
             prop_assert_eq!(pinned_combo(&snapshot, key).unwrap(), Some(id));
         }
         prop_assert_eq!(keys(&snapshot, PIN_KEYS).len(), pin_keys.len());
+        // Each value counts the live combinations that use it, and only a used one has a
+        // record.
+        let live = catalog.live_combos();
+        let mut used = 0;
+        for (position, &dimension) in series.dimensions.iter().enumerate() {
+            for (id, _) in catalog.live_labels(dimension) {
+                let users = live.iter().filter(|(_, labels)| labels[position] == id).count();
+                prop_assert_eq!(label_uses(&snapshot, dimension, id).unwrap(), users as u64);
+                used += usize::from(users > 0);
+            }
+        }
+        prop_assert_eq!(keys(&snapshot, LABEL_USES).len(), used);
 
         // Under a smaller limit, the catalog loads whole or not at all, and loading never
         // holds more than that limit.

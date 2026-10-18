@@ -18,7 +18,9 @@ use crate::{
     layout::{
         JOURNAL,
         manifest::{self, ExtentRecord, StreamRef, retained_from},
+        references,
     },
+    schema::MAX_DIMENSIONS,
     storage::{
         Direction, Durability, FragmentId, KeyRange, Ns, Storage, StorageRead,
         conformance::{CommitOutcome, OpClass},
@@ -70,13 +72,13 @@ pub(super) fn run<S: Storage>(
     })
 }
 
-/// The most rounds retention can take on what `tsdb` stores: an expiring round passes at least
-/// one extent record, since it expires the first extent with a record after the watermark, and
-/// a cleanup round deletes at least one chunk or fails. So a round that makes no progress
-/// fails a test with this budget instead of making it spin.
+/// The most rounds retention and recycling can take on what `tsdb` stores: an expiring round
+/// passes at least one extent record, since it expires the first extent with a record after
+/// the watermark, and a cleanup round deletes at least one chunk or fails. So a round that
+/// makes no progress fails a test with this budget instead of making it spin.
 pub(super) fn work<S: Storage>(tsdb: &Tsdb<S>) -> usize {
     let snapshot = tsdb.storage().snapshot().unwrap();
-    ALL_STREAMS
+    let retention: usize = ALL_STREAMS
         .iter()
         .map(|&stream| {
             let mut records = 0;
@@ -87,7 +89,18 @@ pub(super) fn work<S: Storage>(tsdb: &Tsdb<S>) -> usize {
             .unwrap();
             records + manifest::stream_chunks(&snapshot, stream).unwrap().len()
         })
-        .sum()
+        .sum();
+    retention + recycling(&snapshot)
+}
+
+/// The most recycling rounds what `read` holds can take: each deletes an index entry or takes
+/// a candidate off, but for the one the catalog refuses, which ends a round that released
+/// something. An index entry makes at most one candidate, and a released combination one per
+/// label value of a dimension.
+pub(super) fn recycling(read: &impl StorageRead) -> usize {
+    let entries = references::tests::all(read).1.len();
+    let candidates = references::tests::candidates(read).len();
+    2 * entries + candidates + MAX_DIMENSIONS * (entries + candidates)
 }
 
 /// Maintains until nothing is left, in one call with a budget of all the [`work`] there is.
@@ -358,6 +371,7 @@ fn age_expires_whole_extents_and_cleanup_deletes_their_chunks() {
             chunks_rewritten: 10,
             chunks_built: 10,
             more: false,
+            ..Maintained::default()
         }
     );
     // A round is a publication.

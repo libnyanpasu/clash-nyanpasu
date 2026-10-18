@@ -34,8 +34,13 @@
 //! A release copies pages too, so a catalog filled to its limit could never shrink again.
 //! Growth therefore stops short of the limit by a reserve: the most a single release
 //! allocates in a fresh draft. A release may use the reserve, so every draft can release at
-//! least one id even when growth cannot proceed, and maintenance always makes progress. Released values leave holes in their dictionary's
-//! heap until the catalog is loaded again; compacting a heap in place is not implemented.
+//! least one id even when growth cannot proceed, and maintenance always makes progress.
+//! Released values leave holes in their dictionary's heap until the catalog is loaded again;
+//! compacting a heap in place is not implemented.
+//!
+//! Deciding that nothing references an id belongs to maintenance (§5.3). The catalog keeps
+//! what only it knows: how many live combinations use each label value, in storage
+//! (`persist`).
 
 #![allow(
     dead_code,
@@ -57,18 +62,21 @@ use snafu::{OptionExt, ResultExt, ensure};
 
 #[cfg(debug_assertions)]
 use self::error::CheckPinSnafu;
+#[cfg(test)]
+pub(crate) use self::persist::raw;
 pub(crate) use self::{
     combos::ComboLabels,
-    error::{LoadError, PinError, ReleaseError, ResolveError},
-    persist::{is_pinned, pin_count, pinned_combo},
+    error::{LoadError, PinError, ReleaseError, ResolveError, UsesError},
+    persist::{is_pinned, label_uses, pin_count, pinned_combo},
 };
 use self::{
     combos::Combos,
     dictionary::{Dictionary, ValueHasher},
     error::{
-        CountOverflowSnafu, CountUnderflowSnafu, DeleteComboIndexSnafu, DeleteComboSnafu,
-        DeleteLabelSnafu, InvalidComboIndexSnafu, ReadComboIndexSnafu, ReserveReleaseSnafu,
-        StaleComboIndexSnafu, WriteComboIndexSnafu, WriteComboSnafu, WriteLabelSnafu,
+        CountOverflowSnafu, CountUnderflowSnafu, CountUsesSnafu, DeleteComboIndexSnafu,
+        DeleteComboSnafu, DeleteLabelSnafu, InvalidComboIndexSnafu, ReadComboIndexSnafu,
+        ReserveReleaseSnafu, StaleComboIndexSnafu, UncountUsesSnafu, WriteComboIndexSnafu,
+        WriteComboSnafu, WriteLabelSnafu,
     },
     paged::{ARC_HEADER, Ledger, PAGE_ALLOC, Paged, spine_bytes},
 };
@@ -164,11 +172,15 @@ impl Inner {
     }
 }
 
-/// An immutable version of the catalog. Cloning it clones two words.
+/// An immutable version of the catalog. Cloning it clones three words.
 #[derive(Clone)]
 pub(crate) struct Catalog {
     inner: Arc<Inner>,
     bytes: u64,
+    /// The versions since the catalog was loaded whose draft released an id: two versions of
+    /// one generation give every id they both hold the same value. Growth keeps it, since a
+    /// new id never changes what an old one means (§5.3 rule 5).
+    generation: u64,
 }
 
 impl Catalog {
@@ -223,6 +235,7 @@ impl Catalog {
         Self {
             inner: Arc::new(inner),
             bytes,
+            generation: 0,
         }
     }
 
@@ -246,6 +259,12 @@ impl Catalog {
         self.bytes
     }
 
+    /// The generation of this version. It is kept in memory only: a loaded catalog has
+    /// generation 0, and only the marker each open makes (`OpenMarker`) tells two opens apart.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
     /// Starts deriving the next version, under a catalog budget of `limit` bytes.
     pub(crate) fn draft(&self, limit: u64) -> CatalogDraft {
         let next = Inner::clone(&self.inner);
@@ -259,6 +278,7 @@ impl Catalog {
             ledger,
             limit,
             changed: false,
+            released: false,
             failed: false,
         }
     }
@@ -303,12 +323,22 @@ impl Fold {
     }
 }
 
+/// A pin [`CatalogDraft::unpin`] took off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Unpinned {
+    /// The combination the key pinned.
+    pub(crate) combo: u32,
+    /// The pins it has left. Combination 0 counts none.
+    pub(crate) left: u64,
+}
+
 /// The next version of the catalog, under construction. It writes the records of its
 /// changes into the write transaction it is given, and nothing else: no commit, no
 /// metadata. [`finish`](Self::finish) makes it a [`Catalog`]; dropping it discards it.
 ///
-/// After a write to the batch fails, the batch holds some of the draft's records and not
-/// others: drop the draft together with the batch. Every other error changes neither.
+/// After a write to the batch fails, or counting a label value's uses does, the batch holds
+/// some of the draft's records and not others: drop the draft together with the batch. Every
+/// other error changes neither.
 pub(crate) struct CatalogDraft {
     base: Catalog,
     next: Inner,
@@ -317,6 +347,8 @@ pub(crate) struct CatalogDraft {
     /// Kept free by growth, for releases (see the module docs).
     reserve: u64,
     changed: bool,
+    /// Whether the draft released an id, which gives the next version the next generation.
+    released: bool,
     failed: bool,
 }
 
@@ -493,31 +525,33 @@ impl CatalogDraft {
     /// Takes the pin under `key` off the combination it pins, and deletes the key. It never
     /// resolves labels, which can name another combination by now (§5.3).
     ///
-    /// Returns false, writing nothing, when `key` pins nothing. A key whose combination has
+    /// Returns `None`, writing nothing, when `key` pins nothing. A key whose combination has
     /// no count left is damage: it fails with [`PinError::CountUnderflow`] and writes
     /// nothing.
     pub(crate) fn unpin(
         &mut self,
         batch: &mut impl StorageWrite,
         key: &[u8],
-    ) -> Result<bool, PinError> {
+    ) -> Result<Option<Unpinned>, PinError> {
         let Some(id) = pinned_combo(batch, key)? else {
-            return Ok(false);
+            return Ok(None);
         };
+        let mut left = 0;
         if id != 0 {
-            let count = pin_count(batch, id)?
+            left = pin_count(batch, id)?
                 .checked_sub(1)
                 .context(CountUnderflowSnafu { id })?;
-            let written = persist::put_pin_count(batch, id, count);
+            let written = persist::put_pin_count(batch, id, left);
             self.written(written)?;
         }
         let written = persist::delete_pin_key(batch, key);
         self.written(written)?;
-        Ok(true)
+        Ok(Some(Unpinned { combo: id, left }))
     }
 
-    /// Releases combination `id`: deletes its record and its reverse-lookup entry, and frees
-    /// the id for reuse, smallest first (§5.3).
+    /// Releases combination `id`: deletes its record and its reverse-lookup entry, takes its
+    /// use off each of its label values, and frees the id for reuse, smallest first (§5.3).
+    /// Returns the values no live combination uses any more, which may have become free.
     ///
     /// The caller guarantees that nothing references the combination in the state the batch
     /// commits: no chunk, journal record or pin. Deciding that belongs to maintenance. Debug
@@ -533,7 +567,7 @@ impl CatalogDraft {
         &mut self,
         batch: &mut impl StorageWrite,
         id: u32,
-    ) -> Result<(), ReleaseError> {
+    ) -> Result<Vec<(LabelId, u32)>, ReleaseError> {
         assert!(id != 0, "combination 0 is implicit and never released");
         let labels: Box<[u32]> = self
             .next
@@ -554,21 +588,34 @@ impl CatalogDraft {
         let written =
             persist::delete_index(batch, key.as_slice()).context(DeleteComboIndexSnafu { id });
         self.written(written)?;
+        let shared = Arc::clone(&self.next.shared);
+        let mut unused = Vec::with_capacity(labels.len());
+        for (&dimension, &label) in shared.dimensions.iter().zip(&labels) {
+            if label == 0 {
+                continue;
+            }
+            let left =
+                persist::remove_use(batch, dimension, label).context(UncountUsesSnafu { id });
+            if self.written(left)? == 0 {
+                unused.push((dimension, label));
+            }
+        }
         let before = self.ledger.allocated();
         self.next.combos.release(id, &mut self.ledger);
         debug_assert_eq!(self.ledger.allocated() - before, cost, "predicted cost");
         self.changed = true;
-        Ok(())
+        self.released = true;
+        Ok(unused)
     }
 
     /// Releases value `id` of `dimension`: deletes its record and frees the id for reuse,
     /// smallest first (§5.3).
     ///
     /// The caller guarantees that nothing references the value in the state the batch
-    /// commits: no combination, and no `Label` column of a chunk or journal record. Debug
-    /// builds check the combinations by scanning them. Counting each value's uses instead
-    /// would cost every new combination a page copy per dimension, and still not cover the
-    /// `Label` columns, which maintenance has to check in the chunks anyway.
+    /// commits: no combination, and no `Label` column of a chunk or journal record.
+    /// Maintenance knows the first from the value's count of uses ([`label_uses`]), and the
+    /// second from the references the write path records (`layout::references`). Debug builds
+    /// check the combinations by scanning them.
     ///
     /// Fails with [`ReleaseError::ReserveRelease`], changing nothing, when the budget has no
     /// room for the pages the release copies.
@@ -618,10 +665,12 @@ impl CatalogDraft {
         dictionaries[usize::from(dimension.0)].release(&shared.hasher, id, &mut self.ledger);
         debug_assert_eq!(self.ledger.allocated() - before, cost, "predicted cost");
         self.changed = true;
+        self.released = true;
         Ok(())
     }
 
-    /// The version this draft built.
+    /// The version this draft built: of the base's generation, or of the next one when the
+    /// draft released an id.
     ///
     /// # Panics
     ///
@@ -634,7 +683,10 @@ impl CatalogDraft {
         if !self.changed {
             return self.base;
         }
-        Catalog::from_inner(self.next)
+        Catalog {
+            generation: self.base.generation + u64::from(self.released),
+            ..Catalog::from_inner(self.next)
+        }
     }
 
     /// The bytes inserting the new values at positions `new`, then a combination, allocate;
@@ -746,6 +798,14 @@ impl CatalogDraft {
         let written =
             persist::put_index(batch, key.as_slice(), id).context(WriteComboIndexSnafu { id });
         self.written(written)?;
+        let shared = Arc::clone(&self.next.shared);
+        for (&dimension, &label) in shared.dimensions.iter().zip(labels) {
+            if label != 0 {
+                let counted =
+                    persist::add_use(batch, dimension, label).context(CountUsesSnafu { id });
+                self.written(counted)?;
+            }
+        }
         let inserted = self.next.combos.insert(labels, &mut self.ledger);
         debug_assert_eq!(inserted, id, "the combinations took the id they named");
         self.changed = true;
@@ -817,6 +877,21 @@ impl Inner {
 impl Catalog {
     fn contents(&self) -> Contents {
         self.inner.contents()
+    }
+
+    /// The live combinations with their label ids, ascending. Combination 0 is not among
+    /// them.
+    pub(crate) fn live_combos(&self) -> Vec<(u32, Vec<u32>)> {
+        self.contents().combos.live
+    }
+
+    /// The live values of `dimension` with their bytes, ascending.
+    pub(crate) fn live_labels(&self, dimension: LabelId) -> Vec<(u32, Vec<u8>)> {
+        self.inner
+            .dictionary(dimension)
+            .live_ids()
+            .map(|id| (id, self.label(dimension, id).unwrap().to_vec()))
+            .collect()
     }
 }
 

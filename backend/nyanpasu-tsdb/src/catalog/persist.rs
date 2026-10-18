@@ -8,10 +8,11 @@
 //! | `COMBO_INDEX` | one `u32` per series dimension  | [`IndexRecord`]  |
 //! | `PINS`        | combination id `u32`            | [`PinRecord`]    |
 //! | `PIN_KEYS`    | the consumer's pin key          | [`PinKeyRecord`] |
+//! | `LABEL_USES`  | dimension `u16`, value id `u32` | [`UsesRecord`]   |
 //!
-//! Numeric keys are big-endian, so they sort by their numbers. A value is its [`Format`] byte, then
-//! the record in postcard, a specified and stable wire format (§0.3 rule 6). The overflow
-//! marker and combination 0 are implicit and never stored.
+//! Numeric keys are big-endian, so they sort by their numbers. A value is its [`Format`]
+//! byte, then the record in postcard, a specified and stable wire format (§0.3 rule 6). The
+//! overflow marker and combination 0 are implicit and never stored.
 //!
 //! - The reverse lookup (label ids → combination id) lives in storage, not in memory
 //!   (§5.1); the write path reads it through its write transaction.
@@ -20,6 +21,10 @@
 //!   transaction; the key maps to the combination, and the combination counts its keys.
 //!   Pins live in storage only, so they cost the catalog budget nothing; maintenance reads
 //!   the counts in its transaction.
+//! - Each label value counts the live combinations that use it (§5.3): a new combination adds
+//!   one use to each of its values, and a released one takes it off. The counts live in
+//!   storage only, so a new combination copies no page for them; maintenance reads them before
+//!   it releases a value.
 //! - Loading reads every label value and combination record; it reads neither the reverse
 //!   lookup nor the pins. It sizes the version from a first pass over the label values and
 //!   admits all of it against the catalog budget before it allocates any, then copies each
@@ -32,17 +37,19 @@
 use std::{borrow::Cow, ops::ControlFlow};
 
 use serde::{Deserialize, Deserializer, Serialize};
-use snafu::{ResultExt, ensure};
+use snafu::{OptionExt, ResultExt, ensure};
 
 use super::{
     Inner,
     combos::Combos,
     dictionary::{Dictionary, LoadPlan, ValueHasher},
     error::{
-        CatalogProblem, ComboKeySnafu, DeleteKeySnafu, DeleteRecordSnafu, InvalidComboSnafu,
-        InvalidKeySnafu, InvalidLabelSnafu, InvalidRecordSnafu, LabelKeySnafu, LoadError, PinError,
-        ReadCountSnafu, ReadKeySnafu, ReserveMemorySnafu, ScanCombosSnafu, ScanLabelsSnafu,
-        WriteCountSnafu, WriteKeySnafu,
+        CatalogProblem, ComboKeySnafu, DeleteKeySnafu, DeleteRecordSnafu, DeleteUsesSnafu,
+        InvalidComboSnafu, InvalidKeySnafu, InvalidLabelSnafu, InvalidRecordSnafu,
+        InvalidUsesSnafu, LabelKeySnafu, LoadError, PinError, ReadCountSnafu, ReadKeySnafu,
+        ReadUsesSnafu, ReserveMemorySnafu, ScanCombosSnafu, ScanLabelsSnafu, UsesError,
+        UsesOverflowSnafu, UsesUnderflowSnafu, WriteCountSnafu, WriteKeySnafu, WriteUsesSnafu,
+        ZeroPinsSnafu, ZeroUsesSnafu,
     },
     ids::MAX_ID,
     paged::Ledger,
@@ -51,7 +58,7 @@ use crate::{
     LabelId, Schema,
     budget::BudgetExceeded,
     layout::{
-        COMBO_INDEX, COMBOS, LABELS, PIN_KEYS, PINS,
+        COMBO_INDEX, COMBOS, LABEL_USES, LABELS, PIN_KEYS, PINS,
         keys::{KeyBuf, KeyError, KeyReader},
         record::{self, bounded, encode},
     },
@@ -98,6 +105,12 @@ struct PinRecord {
 #[derive(Serialize, Deserialize)]
 struct PinKeyRecord {
     combo: u32,
+}
+
+/// How many live combinations use a label value; never 0, which deletes the record.
+#[derive(Serialize, Deserialize)]
+struct UsesRecord {
+    count: u64,
 }
 
 /// The record a value holds, its encoding's problems as the catalog's.
@@ -195,7 +208,9 @@ pub(super) fn get_index(
     })
 }
 
-/// How many times combination `id` is pinned.
+/// How many times combination `id` is pinned. A stored count of 0 is damage
+/// ([`PinError::ZeroPins`]): read as 0, it would let maintenance release a combination the
+/// consumer's auxiliary state still references.
 pub(crate) fn pin_count(read: &impl StorageRead, id: u32) -> Result<u64, PinError> {
     let count = read
         .get(PINS, pin_key(id).as_slice(), |value| {
@@ -204,6 +219,7 @@ pub(crate) fn pin_count(read: &impl StorageRead, id: u32) -> Result<u64, PinErro
         .context(ReadCountSnafu { id })?;
     match count {
         None => Ok(0),
+        Some(Ok(0)) => ZeroPinsSnafu { id }.fail(),
         Some(Ok(count)) => Ok(count),
         Some(Err(problem)) => InvalidRecordSnafu { id, problem }.fail(),
     }
@@ -261,6 +277,91 @@ pub(super) fn put_pin_count(
     batch
         .put(PINS, key.as_slice(), &encode(&PinRecord { count }))
         .context(WriteCountSnafu { id })
+}
+
+/// How many live combinations use value `id` of `dimension`, in the state `read` sees. A
+/// stored count of 0 is damage ([`UsesError::ZeroUses`]): read as 0, it would let maintenance
+/// release a value a live combination uses.
+pub(crate) fn label_uses(
+    read: &impl StorageRead,
+    dimension: LabelId,
+    id: u32,
+) -> Result<u64, UsesError> {
+    let dimension_id = dimension.0;
+    let count = read
+        .get(LABEL_USES, label_key(dimension, id).as_slice(), |value| {
+            value.map(|value| decode(value).map(|UsesRecord { count }| count))
+        })
+        .context(ReadUsesSnafu {
+            dimension: dimension_id,
+            id,
+        })?;
+    match count {
+        None => Ok(0),
+        Some(Ok(0)) => ZeroUsesSnafu {
+            dimension: dimension_id,
+            id,
+        }
+        .fail(),
+        Some(Ok(count)) => Ok(count),
+        Some(Err(problem)) => InvalidUsesSnafu {
+            dimension: dimension_id,
+            id,
+            problem,
+        }
+        .fail(),
+    }
+}
+
+/// Adds the use of a new combination to value `id` of `dimension`.
+pub(super) fn add_use(
+    batch: &mut impl StorageWrite,
+    dimension: LabelId,
+    id: u32,
+) -> Result<(), UsesError> {
+    let count = label_uses(&*batch, dimension, id)?
+        .checked_add(1)
+        .context(UsesOverflowSnafu {
+            dimension: dimension.0,
+            id,
+        })?;
+    put_uses(batch, dimension, id, count)
+}
+
+/// Takes the use of a released combination off value `id` of `dimension`, and returns the
+/// uses left.
+pub(super) fn remove_use(
+    batch: &mut impl StorageWrite,
+    dimension: LabelId,
+    id: u32,
+) -> Result<u64, UsesError> {
+    let count = label_uses(&*batch, dimension, id)?
+        .checked_sub(1)
+        .context(UsesUnderflowSnafu {
+            dimension: dimension.0,
+            id,
+        })?;
+    put_uses(batch, dimension, id, count)?;
+    Ok(count)
+}
+
+/// Stores the uses of value `id` of `dimension`; a count of 0 deletes the record.
+fn put_uses(
+    batch: &mut impl StorageWrite,
+    dimension: LabelId,
+    id: u32,
+    count: u64,
+) -> Result<(), UsesError> {
+    let key = label_key(dimension, id);
+    let dimension = dimension.0;
+    if count == 0 {
+        return batch
+            .delete(LABEL_USES, key.as_slice())
+            .context(DeleteUsesSnafu { dimension, id });
+    }
+    batch
+        .put(LABEL_USES, key.as_slice(), &encode(&UsesRecord { count }))
+        .context(WriteUsesSnafu { dimension, id })
 }
 
 /// A version holding every label value and combination `read` holds, its values hashed by
@@ -520,7 +621,7 @@ fn combo_key_id(key: &[u8]) -> Result<u32, KeyError> {
 }
 
 #[cfg(test)]
-pub(super) mod raw {
+pub(crate) mod raw {
     //! Record encodings for tests that write or inspect records directly.
 
     use super::*;
@@ -546,6 +647,32 @@ pub(super) mod raw {
     pub(crate) fn pin_key_record(id: u32) -> Vec<u8> {
         encode(&PinKeyRecord { combo: id })
     }
+
+    pub(crate) fn uses_record(count: u64) -> Vec<u8> {
+        encode(&UsesRecord { count })
+    }
+
+    /// Stores `count` as the pins of combination `id`, as damage would: a count of 0 too, which
+    /// `put_pin_count` deletes instead.
+    pub(crate) fn put_pin_record(
+        batch: &mut impl StorageWrite,
+        id: u32,
+        count: u64,
+    ) -> Result<(), StorageError> {
+        batch.put(PINS, pin_key(id).as_slice(), &pin_record(count))
+    }
+
+    /// Stores `count` as the uses of value `id` of `dimension`, as damage would: a count of 0
+    /// too, which `put_uses` deletes instead.
+    pub(crate) fn put_uses_record(
+        batch: &mut impl StorageWrite,
+        dimension: LabelId,
+        id: u32,
+        count: u64,
+    ) -> Result<(), StorageError> {
+        let key = label_key(dimension, id);
+        batch.put(LABEL_USES, key.as_slice(), &uses_record(count))
+    }
 }
 
 #[cfg(test)]
@@ -566,6 +693,7 @@ mod tests {
         assert_eq!(encode(&IndexRecord { combo: 128 }), [1, 0x80, 0x01]);
         assert_eq!(encode(&PinRecord { count: 2 }), [1, 2]);
         assert_eq!(encode(&PinKeyRecord { combo: 300 }), [1, 0xac, 0x02]);
+        assert_eq!(encode(&UsesRecord { count: 300 }), [1, 0xac, 0x02]);
     }
 
     #[test]

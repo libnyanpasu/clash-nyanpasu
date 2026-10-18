@@ -104,7 +104,8 @@ The design says its code sketches show shape, not the final API. Where the code 
   durable. And the bytes since the last durable commit can pass `durable_after_bytes` by one
   round's output on top of one batch, whose durability the consumer chose before the round ran.
   Without a policy, a commit's round may also consolidate an extent that the consumer's next
-  call expires; that round's work is lost, and nothing else.
+  call expires; that round's work is lost, and nothing else. Recycling needs no policy, so a
+  commit's round may recycle, leaving out each stream whose cleanup is due.
 
   The rule covers a maintenance budget too small for the load. It does not cover a consumer
   that never calls `maintain`, since only a call puts maintenance behind, and §9.2 makes
@@ -121,16 +122,81 @@ The design says its code sketches show shape, not the final API. Where the code 
   clock, so an extent that straddles the cutoff stays wholly visible until it expires whole.
 - Only an extent with data expires. An empty extent before the cutoff gets no watermark of its
   own, so a late write into it is kept until the next maintenance call expires it.
-- Maintenance's rounds run in this order of urgency: expire, clean up, consolidate a series
-  extent, merge a bucket's late chunks, consolidate an event window, merge an extent's sorted
-  runs. Expiring first keeps an extent the policy expires from being consolidated; cleanup only
-  deletes and returns the disk space retention promised before a consolidation writes beside
-  the old chunks; consolidation cuts the most chunks, and finishing an extent is what makes its
-  leftover L0 chunks late. The tiers go before the event streams: a series query reads every
-  chunk of its range, where an event scan reads chunks whose keys do not overlap as one way, so
-  a window's L0 chunks, which overlap only by their late rows, cost a scan little until they
-  are rewritten; and a tier's rounds are the smaller. Merging runs comes last: it rewrites
-  consolidated data to keep a scan's ways within R.
+- Maintenance's rounds run in this order of urgency: expire, clean up, recycle ids, consolidate
+  a series extent, merge a bucket's late chunks, consolidate an event window, merge an extent's
+  sorted runs. Expiring first keeps an extent the policy expires from being consolidated;
+  cleanup only deletes and returns the disk space retention promised before a consolidation
+  writes beside the old chunks; recycling follows the cleanup that frees ids, and comes before
+  the work that only saves space or reads, since a catalog under pressure folds new
+  combinations, which loses data (§5.2); consolidation cuts the most chunks, and finishing an
+  extent is what makes its leftover L0 chunks late. The tiers go before the event streams: a
+  series query reads every chunk of its range, where an event scan reads chunks whose keys do
+  not overlap as one way, so a window's L0 chunks, which overlap only by their late rows, cost a
+  scan little until they are rewritten; and a tier's rounds are the smaller. Merging runs comes
+  last: it rewrites consolidated data to keep a scan's ways within R.
+- Ids are recycled (§5.3) by references kept per stream and entity, not per chunk. For each
+  combination and label value, a record of namespace 12 (`layout::REFERENCES`) keeps the newest
+  extent of each stream whose data holds it, and namespace 13 lists the same records by stream
+  and extent, oldest first. Retention deletes a stream's extents oldest first, so once cleanup
+  has emptied the extents up to the watermark, a record at or below it names data that is gone.
+  A stream counts as cleaned up to its watermark only while no chunk lies at or below it, so an
+  expired extent keeps its ids until cleanup deletes its chunks. A stream without a watermark
+  has no cleaned extent; an epoch stream's records stay, since its one extent never expires.
+- The write path records the references of the points and rows a batch keeps, a late one
+  dropped referencing nothing. It reduces them to the newest extent of each (stream, entity),
+  reads one record each, and writes the record and moves its index entry only for a new pair or
+  a newer extent, so an accepted write into an older extent records a pair the stream had none
+  of. A tier's combination that the head holds in the point's bucket needs no read: its journal
+  record was recorded when it was written, and a record goes only once its extent is expired,
+  which takes the extent out of the head. Event buffers are not searched. Consolidation and
+  merges keep the entities of an extent, so they record nothing. The list is reserved from
+  staging.
+- Measured on traffic's schema (`the_references_of_traffic_cost_a_read_per_new_pair`), at the
+  rate of 50,000 closed connections a day written every 10 s, 5.8 rows and points a batch: with
+  the event tests' 2,000 targets, nearly every connection is a new combination (10,478 in six
+  hours), and the references read 11.2 records and write 19.4 entries a batch, of 47.0 reads
+  and 55.1 writes in all; with 10 targets (2,508 combinations) they read 8.4 and write 4.7, of
+  34.0 and 21.0. A row's combination costs a read in every batch, since event buffers are not
+  searched; a point's, only when it is new to the hour.
+- The live combinations that use a label value count it in namespace 11 (`LABEL_USES`): a new
+  combination adds a use to each of its values but the overflow marker, and a released one takes
+  it off. The counts live in storage only, so a new combination copies no catalog page for
+  them; a label value's own references, in `Label` columns, are records like a combination's.
+- Candidates for release are kept in namespace 14: an entity whose last record recycling
+  deleted, a label value whose count a released combination took to 0, and a combination whose
+  last unpin finds no record, queued in the batch that unpins. A recycling round, planned after
+  cleanup and before consolidation, first deletes the records of the cleaned extents, then
+  checks each candidate again (a combination live, without records and without pins; a value
+  live, without uses and without records) and releases it through the round's catalog draft,
+  which the round publishes. It examines at most `cleanup_chunks` index entries and candidates
+  in all, stale ones included. Planning reads a candidate, then per stream its record, its first
+  chunk up to the watermark and its first index entry there, however many records wait.
+- §5.3 rule 4 releases a combination and the label values it leaves unused in one transaction.
+  Here those values become candidates, released in a step of their own, possibly in a later
+  round: nothing references them by then, and each release stays within the catalog's reserve,
+  which fits one release in a fresh draft, not a combination with all its values. A round
+  releases one id at a time and ends at the first its draft refuses, which waits for the next
+  round; the first always fits, so every round forgets a record, drops a stale candidate or
+  releases an id.
+- Recycling converges once the workload stops: with finitely many writes and maintenance calls
+  that succeed, the records of cleaned extents and the candidates run out. Cleanup goes first,
+  so a cleanup backlog that never ends would starve it.
+- A query result owns its data and outlives its snapshot, but its ids are bare numbers
+  (`KeyPart::Label`, `EventValue::{Combo, Label}`) that a snapshot's catalog resolves, so after
+  a release and a reuse a later snapshot names another value. §5.3 rule 5 binds the ids to the
+  catalog's publication; here a `CatalogToken` binds them: a marker each open makes, an `Arc`
+  compared by address that every token keeps alive, so that no two opens, of one store or two,
+  share one, and a generation the catalog keeps in memory, 0 when loaded and one more for each
+  version whose draft released an id. Growth keeps it, since a new id never changes what an
+  old one means, so a consumer keeps rendering across batches that only add ids, where a
+  publication number would change with every batch. `Snapshot::catalog`,
+  `SeriesGroups::catalog` and `EventPage::catalog` return it, and a result's ids, and filters
+  built from them, mean what they say through a snapshot with an equal token. Ids are not
+  typed by their catalog and results do not keep it alive: the first would change every
+  query's signature, the second need a second reservation for the catalog a result retains.
+- The store format is 2. A dataset of format 1 has neither references nor counts of uses, so
+  recycling would release ids its data still holds; the crate was never released, so opening
+  refuses it (`OpenError::StoreFormat`) rather than migrating it.
 - A tier is consolidated an extent at a time, oldest first, behind a cursor in its stream
   record. An extent is due once it has ended, stayed quiet for Q, and a commit has chunked its
   journal records. Once the cursor passes an extent, every L0 chunk written there is a late
@@ -332,7 +398,6 @@ Crates offering a stable hash trait were considered and rejected:
   and a scan reads them as one way. The planner skips them; their chunks keep the event
   bookkeeping all the same.
 - The lossy-operation ring, `status()` and the logs of lossy maintenance rounds (§9.4).
-- Recycling the combinations and label values that only expired extents referred to (§5.3).
 - The incarnation counter kept outside the database for tmpfs hosts (§8.3), which only the
   untested tier-2 profile needs.
 - Consumers: traffic, core logs and job logs, and migration of the traffic database.

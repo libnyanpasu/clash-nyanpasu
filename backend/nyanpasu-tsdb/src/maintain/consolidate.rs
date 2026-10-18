@@ -334,6 +334,7 @@ pub(super) fn consolidate(
     }
     Ok(Changed {
         head: context.current.head.clone(),
+        catalog: None,
         staging: context
             .staging_budget
             .try_reserve("staging", 0)
@@ -404,6 +405,7 @@ pub(super) fn merge(
     }
     Ok(Changed {
         head: context.current.head.clone(),
+        catalog: None,
         staging: context
             .staging_budget
             .try_reserve("staging", 0)

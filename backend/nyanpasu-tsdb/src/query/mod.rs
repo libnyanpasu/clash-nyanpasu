@@ -34,6 +34,9 @@ pub use self::{
 /// ([`Snapshot::find_label`]); 0 is the overflow marker, which a folded combination holds
 /// (§5.2). The list is scanned for each row, so it is meant to be short: the values a user
 /// picked, or the one value a topology skips (§8.1).
+///
+/// A filter built from ids admits the values they named only in a query of a snapshot whose
+/// [`Snapshot::catalog`] equals that of the snapshot or result the ids came from (§5.3).
 #[derive(Clone, Copy, Debug)]
 pub struct LabelFilter<'a> {
     pub dimension: LabelId,

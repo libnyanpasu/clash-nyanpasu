@@ -19,7 +19,10 @@
 
 #[cfg(test)]
 use std::sync::Mutex;
-use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::{
+    fmt,
+    sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
@@ -61,6 +64,8 @@ pub(crate) struct Registry {
     slots: RwLock<Slots>,
     /// The dataset's schema, which every snapshot carries for its queries.
     schema: Arc<Schema>,
+    /// This open's marker, which every snapshot's [`CatalogToken`] carries.
+    open: Arc<OpenMarker>,
     /// Runs once inside the next capture, after it opened the storage snapshot.
     #[cfg(test)]
     after_snapshot: Mutex<Option<Box<dyn FnOnce() + Send>>>,
@@ -70,7 +75,7 @@ pub(crate) struct Registry {
 }
 
 impl Registry {
-    pub(crate) fn new(current: Version, schema: Arc<Schema>) -> Self {
+    pub(crate) fn new(current: Version, schema: Arc<Schema>, open: Arc<OpenMarker>) -> Self {
         Self {
             slots: RwLock::new(Slots {
                 current: Arc::new(current),
@@ -78,6 +83,7 @@ impl Registry {
                 recovery: false,
             }),
             schema,
+            open,
             #[cfg(test)]
             after_snapshot: Mutex::default(),
             #[cfg(test)]
@@ -169,6 +175,7 @@ impl Registry {
             storage: snapshot,
             version: version.clone(),
             schema: self.schema.clone(),
+            open: self.open.clone(),
             budget: budget.clone(),
             reservation,
         };
@@ -275,6 +282,7 @@ pub struct Snapshot<S: Storage> {
     storage: S::Snapshot,
     version: Arc<Version>,
     schema: Arc<Schema>,
+    open: Arc<OpenMarker>,
     budget: MemoryBudget,
     #[allow(
         dead_code,
@@ -283,7 +291,58 @@ pub struct Snapshot<S: Storage> {
     reservation: Reservation,
 }
 
+/// What the ids of a snapshot's catalog mean (§5.3 rule 5): the label and combination ids it
+/// resolves, those of the results read from it, and the filters built from them. Equal tokens
+/// mean the same open store and the same generation of its catalog: two snapshots with equal
+/// tokens give every id they both hold the same value, and the later one may hold ids the
+/// earlier did not. A release changes the generation, since a later write may give the id to
+/// another value. Every open starts at generation 0, but its tokens equal no other open's, of
+/// the same store or another.
+///
+/// A query result keeps the token of the snapshot it was read from
+/// ([`SeriesGroups::catalog`](crate::SeriesGroups::catalog),
+/// [`EventPage::catalog`](crate::EventPage::catalog)). Its ids mean what they say only through
+/// a snapshot whose [`catalog`](Snapshot::catalog) equals it.
+#[derive(Clone)]
+pub struct CatalogToken {
+    /// The marker of the open the snapshot was captured in, compared by address. The token
+    /// keeps it alive, so no other open's marker can take its address while the token exists.
+    open: Arc<OpenMarker>,
+    /// The catalog's generation within the open (`Catalog::generation`).
+    generation: u64,
+}
+
+impl PartialEq for CatalogToken {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.open, &other.open) && self.generation == other.generation
+    }
+}
+
+impl Eq for CatalogToken {}
+
+impl fmt::Debug for CatalogToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CatalogToken")
+            .field("open", &Arc::as_ptr(&self.open))
+            .field("generation", &self.generation)
+            .finish()
+    }
+}
+
+/// What tells one open apart from every other, of the same store or another: each open makes
+/// one, and a [`CatalogToken`] compares it by address. An `Arc` allocates its counts even for
+/// a unit type, so every live marker has an address of its own.
+pub(crate) struct OpenMarker;
+
 impl<S: Storage> Snapshot<S> {
+    /// The token of this snapshot's catalog, which the results read from it keep.
+    pub fn catalog(&self) -> CatalogToken {
+        CatalogToken {
+            open: self.open.clone(),
+            generation: self.version.catalog.generation(),
+        }
+    }
+
     pub(crate) fn storage(&self) -> &S::Snapshot {
         &self.storage
     }
@@ -402,7 +461,7 @@ mod tests {
     fn a_version_withdrawn_after_an_unknown_outcome_fails_captures_instead_of_panicking() {
         let storage = MemoryDisk::new().open().unwrap();
         show(&storage, 0);
-        let registry = Registry::new(version(0), Arc::new(schema()));
+        let registry = Registry::new(version(0), Arc::new(schema()), Arc::new(OpenMarker));
         let queries = MemoryBudget::new(u64::MAX);
         let heads = MemoryBudget::new(10);
 
@@ -429,7 +488,7 @@ mod tests {
     fn a_reader_holding_its_version_has_reserved_its_bytes() {
         let storage = MemoryDisk::new().open().unwrap();
         show(&storage, 0);
-        let registry = Registry::new(version(0), Arc::new(schema()));
+        let registry = Registry::new(version(0), Arc::new(schema()), Arc::new(OpenMarker));
         let bytes = registry.current().bytes();
         assert_ne!(bytes, 0);
         let queries = MemoryBudget::new(u64::MAX);
@@ -450,7 +509,7 @@ mod tests {
     fn a_publication_the_registry_does_not_hold_is_corrupted() {
         let storage = MemoryDisk::new().open().unwrap();
         show(&storage, 99);
-        let registry = Registry::new(version(1), Arc::new(schema()));
+        let registry = Registry::new(version(1), Arc::new(schema()), Arc::new(OpenMarker));
         let queries = MemoryBudget::new(u64::MAX);
         let heads = MemoryBudget::new(10);
 
@@ -489,7 +548,7 @@ mod tests {
     fn a_version_withdrawn_after_a_rollback_leaves_captures_working() {
         let storage = MemoryDisk::new().open().unwrap();
         show(&storage, 0);
-        let registry = Registry::new(version(0), Arc::new(schema()));
+        let registry = Registry::new(version(0), Arc::new(schema()), Arc::new(OpenMarker));
         let queries = MemoryBudget::new(u64::MAX);
         let heads = MemoryBudget::new(10);
 

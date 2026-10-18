@@ -55,13 +55,17 @@
 //!
 //! The caller keeps a chunk within the limits by planning it (see [`plan`](super::plan)).
 //! If it does not, the builder fails with a `Local` error before it writes anything past a
-//! limit; it never writes an oversized fragment. The fragments written by then belong to
+//! limit. An unplanned directory may need a larger fragment-zero buffer, admitted before
+//! serialization. The fragments written by then belong to
 //! the batch the caller abandons.
 
 use std::ops::Range;
 
+use crate::{
+    budget::{BudgetVec, MemoryAccount},
+    codec::compress::Compressor,
+};
 use snafu::{ResultExt, ensure};
-use zstd::bulk::Compressor;
 
 use super::{
     FragmentSink,
@@ -73,8 +77,8 @@ use super::{
         ValueTooLongSnafu, ValuesTypeSnafu, WriteFragmentSnafu,
     },
     format::{
-        BLOCK_TARGET_LEN, BlockRecord, ChunkKind, ColumnRecord, DATA_PAYLOAD_LEN, DirectoryRecord,
-        HeaderRecord, IntRange, IntStats, LargeEntry, MAX_BLOCKS, MAX_CHUNK_LEN, MAX_COLUMNS,
+        BLOCK_TARGET_LEN, BlockRecord, ChunkKind, ColumnRecord, DATA_PAYLOAD_LEN, HeaderRecord,
+        IntRange, IntStats, LargeEntry, MAX_BLOCKS, MAX_CHUNK_LEN, MAX_COLUMNS,
         MAX_DATA_FRAGMENT_LEN, MAX_LARGE_VALUE_LEN, MAX_LARGE_VALUES, MAX_ROWS, MIN_BLOCK_FILL,
         PhysicalType, large_stored_len, max_fragment0_len,
     },
@@ -89,7 +93,6 @@ use crate::codec::{
     checksum::{self, TRAILER_LEN},
     compress,
     int::{IntType, IntValue},
-    reserve_cap,
 };
 
 /// A column of a chunk, as the write path declares it.
@@ -121,9 +124,9 @@ pub(crate) const KEY_COLUMN: ColumnLayout = ColumnLayout {
 pub(crate) fn working_memory(columns: &[ColumnLayout], compressed: bool) -> u64 {
     let open: usize = columns
         .iter()
-        .map(|&layout| caps(&OpenColumn::new(0, layout).buffers()))
+        .map(|&layout| caps(&OpenColumn::limits(layout)))
         .sum();
-    let scratch = caps(&EncodeScratch::new(scratch_caps(columns, compressed)).buffers());
+    let scratch = caps(&scratch_caps(columns, compressed).buffers());
     let directory = caps(&DirectoryCaps::of(columns).buffers());
     let table = columns.len() * size_of::<OpenColumn>();
     (open + MAX_DATA_FRAGMENT_LEN + scratch + directory + table) as u64
@@ -300,7 +303,9 @@ pub(crate) struct ChunkBuilder<'a, S: FragmentSink> {
     rows: usize,
     /// The smallest and the largest key so far.
     key_range: Option<(i64, i64)>,
-    columns: Vec<OpenColumn>,
+    columns: BudgetVec<OpenColumn>,
+    /// The caller's allocation envelope shared by all data buffers.
+    account: MemoryAccount,
     encoder: BlockEncoder<'a>,
     out: FragmentWriter<'a, S>,
 }
@@ -315,8 +320,9 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
         sink: &'a mut S,
         kind: ChunkKind,
         fingerprint: u64,
-        compressor: Option<&'a mut Compressor<'static>>,
+        compressor: Option<&'a mut Compressor>,
         columns: &[ColumnLayout],
+        account: &MemoryAccount,
     ) -> Result<Self, BuildError> {
         assert!(
             compressor.is_none() || kind == ChunkKind::Consolidated,
@@ -334,28 +340,31 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
                 }
             );
         }
+        let mut opened = account
+            .buffer(columns.len())
+            .expect("the builder table was admitted");
+        for (index, &layout) in columns.iter().enumerate() {
+            opened.push(OpenColumn::new(account, index as u16, layout));
+        }
         Ok(Self {
             kind,
             fingerprint,
             rows: 0,
             key_range: None,
-            columns: columns
-                .iter()
-                .enumerate()
-                .map(|(index, &layout)| OpenColumn::new(index as u16, layout))
-                .collect(),
+            columns: opened,
+            account: account.clone(),
             encoder: BlockEncoder {
-                scratch: EncodeScratch::new(scratch_caps(columns, compressor.is_some())),
+                scratch: EncodeScratch::new(account, scratch_caps(columns, compressor.is_some())),
                 compressor,
             },
             out: FragmentWriter {
                 sink,
-                fragment: Vec::new(),
+                fragment: account.buffer(0).expect("empty storage is free"),
                 open_from: 0,
                 next_index: 1,
                 written: 0,
-                blocks: Vec::new(),
-                large: Vec::new(),
+                blocks: account.buffer(0).expect("empty storage is free"),
+                large: account.buffer(0).expect("empty storage is free"),
                 caps: DirectoryCaps::of(columns),
             },
         })
@@ -437,10 +446,10 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
         if !bytes.ends.is_empty() && state.raw + cost > BLOCK_TARGET_LEN {
             state.close_bytes(bytes, encoder, out)?;
         }
-        reserve_cap(&mut bytes.ends, 1, state.max_rows);
+        bytes.ends.reserve(1, state.max_rows);
         let flag = usize::from(state.layout.nullable);
-        reserve_cap(&mut state.validity, flag, state.max_rows);
-        reserve_cap(&mut bytes.large, 1, MAX_LARGE_VALUES);
+        state.validity.reserve(flag, state.max_rows);
+        bytes.large.reserve(1, MAX_LARGE_VALUES);
         let first_fragment = out.begin_large(len)?;
         Ok(LargeValue {
             builder: self,
@@ -474,7 +483,7 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
     /// The tests check the memory bound there.
     pub(super) fn finish_observed(
         mut self,
-        observe: impl FnOnce(&Self, &DirectoryRecord),
+        observe: impl FnOnce(&Self, &DirectoryBuffers),
     ) -> Result<BuiltChunk, BuildError> {
         let Some(key_range) = self.key_range else {
             return RowCountSnafu { rows: 0usize }.fail();
@@ -491,7 +500,7 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
                 }
             );
         }
-        for open in &mut self.columns {
+        for open in self.columns.iter_mut() {
             open.close_block(&mut self.encoder, &mut self.out)?;
         }
         self.out.flush()?;
@@ -507,31 +516,37 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
         // gives that order in place: no two blocks share a column and a first row.
         let mut blocks = std::mem::take(&mut self.out.blocks);
         blocks.sort_unstable_by_key(|block| (block.column, block.first_row));
-        let directory = DirectoryRecord {
+        let mut columns = self
+            .account
+            .buffer(self.columns.len())
+            .expect("the directory list was admitted");
+        for open in self.columns.iter() {
+            let ColumnState {
+                layout,
+                blocks,
+                stats,
+                ..
+            } = open.state;
+            columns.push(ColumnRecord::new(layout.ty, layout.nullable, blocks, stats));
+        }
+        let directory = DirectoryBuffers {
             header,
-            columns: self
-                .columns
-                .iter()
-                .map(|open| {
-                    let ColumnState {
-                        layout,
-                        blocks,
-                        stats,
-                        ..
-                    } = open.state;
-                    ColumnRecord::new(layout.ty, layout.nullable, blocks, stats)
-                })
-                .collect(),
+            columns,
             blocks,
             large: std::mem::take(&mut self.out.large),
         };
-        // MAX_COLUMNS, MAX_BLOCKS and MAX_LARGE_VALUES keep it within a fragment; format.rs
-        // asserts that at compile time. The buffer has had all of a data fragment since the
-        // chunk's first block, which every chunk has, and fragment 0 of a planned chunk fits
-        // that (asserted above), so writing it never grows the buffer. A chunk that is not
-        // planned may have grown its directory past its caps, and its fragment 0 the buffer.
+        // Planned directories fit the existing fragment buffer. An unplanned chunk can have
+        // more entries, so admit its format-bounded fragment-zero capacity before writing it.
         let fragment = &mut self.out.fragment;
-        directory.write(fragment);
+        let directory_cap = max_fragment0_len(
+            directory.columns.len(),
+            directory.blocks.len(),
+            directory.large.len(),
+        );
+        fragment
+            .try_grow_to(directory_cap)
+            .expect("the admitted chunk covers its fragment-zero directory");
+        super::format::write_directory(&directory, fragment);
         checksum::seal(fragment);
         let fragment0 = fragment.len() as u32;
         observe(&self, &directory);
@@ -762,9 +777,22 @@ impl<S: FragmentSink> LargeValue<'_, '_, S> {
     }
 }
 
+/// Charged directory lists serialized directly in the existing postcard field order.
+#[derive(serde::Serialize)]
+pub(super) struct DirectoryBuffers {
+    /// The bounded header, serialized before the data-sized lists.
+    header: HeaderRecord,
+    /// One record per column, charged through fragment-zero serialization.
+    pub(super) columns: BudgetVec<ColumnRecord>,
+    /// Block records moved from the fragment writer without reallocating.
+    pub(super) blocks: BudgetVec<BlockRecord>,
+    /// Large-value records retaining their original allocation charges.
+    pub(super) large: BudgetVec<LargeEntry>,
+}
+
 /// The compressor and the buffers that encode one block at a time.
 struct BlockEncoder<'a> {
-    compressor: Option<&'a mut Compressor<'static>>,
+    compressor: Option<&'a mut Compressor>,
     scratch: EncodeScratch,
 }
 
@@ -776,9 +804,9 @@ struct OpenColumn {
 
 /// The rows of a column's open block.
 enum OpenValues {
-    I64(Vec<i64>),
-    U64(Vec<u64>),
-    U32(Vec<u32>),
+    I64(BudgetVec<i64>),
+    U64(BudgetVec<u64>),
+    U32(BudgetVec<u32>),
     Bytes(OpenBytes),
 }
 
@@ -787,7 +815,7 @@ struct ColumnState {
     index: u16,
     layout: ColumnLayout,
     /// One flag per row of the open block, for a nullable column.
-    validity: Vec<bool>,
+    validity: BudgetVec<bool>,
     /// The most rows a block of the column holds, which caps its row buffers: a fixed number
     /// for an integer column, and what its cheapest row allows for a bytes column.
     max_rows: usize,
@@ -802,12 +830,11 @@ struct ColumnState {
 
 /// The open block of a bytes column: the inline values back to back, where each row ends,
 /// and the rows whose value is a large value. A null or large row holds no bytes.
-#[derive(Default)]
 struct OpenBytes {
-    heap: Vec<u8>,
-    ends: Vec<u32>,
+    heap: BudgetVec<u8>,
+    ends: BudgetVec<u32>,
     /// (row in the block, large-value index), in row order.
-    large: Vec<(u32, u32)>,
+    large: BudgetVec<(u32, u32)>,
 }
 
 impl ByteValues for OpenBytes {
@@ -822,25 +849,36 @@ impl ByteValues for OpenBytes {
 }
 
 impl OpenColumn {
-    fn new(index: u16, layout: ColumnLayout) -> Self {
+    fn new(account: &MemoryAccount, index: u16, layout: ColumnLayout) -> Self {
         let (values, stats) = match layout.ty {
             PhysicalType::Int { ty, summed } => {
                 let values = match ty {
-                    IntType::I64 => OpenValues::I64(Vec::new()),
-                    IntType::U64 => OpenValues::U64(Vec::new()),
-                    IntType::U32 => OpenValues::U32(Vec::new()),
+                    IntType::I64 => {
+                        OpenValues::I64(account.buffer(0).expect("empty storage is free"))
+                    }
+                    IntType::U64 => {
+                        OpenValues::U64(account.buffer(0).expect("empty storage is free"))
+                    }
+                    IntType::U32 => {
+                        OpenValues::U32(account.buffer(0).expect("empty storage is free"))
+                    }
                 };
                 (values, IntStats::empty(summed))
             }
-            PhysicalType::Bytes(_) => {
-                (OpenValues::Bytes(OpenBytes::default()), IntStats::default())
-            }
+            PhysicalType::Bytes(_) => (
+                OpenValues::Bytes(OpenBytes {
+                    heap: account.buffer(0).expect("empty storage is free"),
+                    ends: account.buffer(0).expect("empty storage is free"),
+                    large: account.buffer(0).expect("empty storage is free"),
+                }),
+                IntStats::default(),
+            ),
         };
         Self {
             state: ColumnState {
                 index,
                 layout,
-                validity: Vec::new(),
+                validity: account.buffer(0).expect("empty storage is free"),
                 max_rows: max_rows(layout),
                 first_row: 0,
                 raw: 0,
@@ -848,6 +886,34 @@ impl OpenColumn {
                 blocks: 0,
             },
             values,
+        }
+    }
+
+    /// Planned capacities for one column, without constructing an allocation owner.
+    fn limits(layout: ColumnLayout) -> [(&'static str, usize, usize); 4] {
+        let rows = max_rows(layout);
+        let validity = ("validity", 0, if layout.nullable { rows } else { 0 });
+        match layout.ty {
+            PhysicalType::Int { ty, .. } => [
+                validity,
+                ("values", 0, rows * ty.width()),
+                ("ends", 0, 0),
+                ("large", 0, 0),
+            ],
+            PhysicalType::Bytes(hint) => [
+                validity,
+                ("heap", 0, heap_cap(hint, rows)),
+                ("ends", 0, rows * size_of::<u32>()),
+                (
+                    "large",
+                    0,
+                    if hint == BytesHint::Text {
+                        MAX_LARGE_VALUES * size_of::<(u32, u32)>()
+                    } else {
+                        0
+                    },
+                ),
+            ],
         }
     }
 
@@ -952,7 +1018,7 @@ impl ColumnState {
     /// Every integer value costs the same, so a block is a fixed number of rows.
     fn append_ints<T: IntValue, S: FragmentSink>(
         &mut self,
-        open: &mut Vec<T>,
+        open: &mut BudgetVec<T>,
         values: &[T],
         validity: Option<&[bool]>,
         encoder: &mut BlockEncoder<'_>,
@@ -963,8 +1029,8 @@ impl ColumnState {
         let mut start = 0;
         while start < values.len() {
             let rows = start..values.len().min(start + rows_per_block - open.len());
-            reserve_cap(open, rows.len(), rows_per_block);
-            reserve_cap(&mut self.validity, flags * rows.len(), rows_per_block);
+            open.reserve(rows.len(), rows_per_block);
+            self.validity.reserve(flags * rows.len(), rows_per_block);
             open.extend_from_slice(&values[rows.clone()]);
             self.take_validity(validity, rows.clone());
             start = rows.end;
@@ -997,13 +1063,13 @@ impl ColumnState {
             // The row is within the block now: its inline bytes within the heap's cap, and its
             // end and flag within the rows a block holds.
             let inline = if large || !valid { 0 } else { len };
-            reserve_cap(&mut open.heap, inline, heap_cap(hint, self.max_rows));
-            reserve_cap(&mut open.ends, 1, self.max_rows);
+            open.heap.reserve(inline, heap_cap(hint, self.max_rows));
+            open.ends.reserve(1, self.max_rows);
             let flag = usize::from(self.layout.nullable);
-            reserve_cap(&mut self.validity, flag, self.max_rows);
+            self.validity.reserve(flag, self.max_rows);
             if large {
                 // A chunk has at most MAX_LARGE_VALUES, which `write_large` enforces.
-                reserve_cap(&mut open.large, 1, MAX_LARGE_VALUES);
+                open.large.reserve(1, MAX_LARGE_VALUES);
                 let index = out.write_large(value)?;
                 open.large.push((open.ends.len() as u32, index));
             } else if valid {
@@ -1029,7 +1095,7 @@ impl ColumnState {
 
     fn close_ints<T: IntValue, S: FragmentSink>(
         &mut self,
-        open: &mut Vec<T>,
+        open: &mut BudgetVec<T>,
         encoder: &mut BlockEncoder<'_>,
         out: &mut FragmentWriter<'_, S>,
     ) -> Result<(), BuildError> {
@@ -1141,15 +1207,15 @@ fn int_stats<T: IntValue>(values: &[T], validity: Option<&[bool]>, summed: bool)
 struct FragmentWriter<'a, S> {
     sink: &'a mut S,
     /// The open data fragment, without its trailer.
-    fragment: Vec<u8>,
+    fragment: BudgetVec<u8>,
     /// The first directory entry in the open fragment. The fragment gets its index when it
     /// is written, so that a large value met meanwhile can take the indices before it.
     open_from: usize,
     next_index: u32,
     written: u64,
     /// The directory entries in the order the blocks were placed.
-    blocks: Vec<BlockRecord>,
-    large: Vec<LargeEntry>,
+    blocks: BudgetVec<BlockRecord>,
+    large: BudgetVec<LargeEntry>,
     caps: DirectoryCaps,
 }
 
@@ -1174,7 +1240,7 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
         debug_assert!(len <= DATA_PAYLOAD_LEN);
         // With the trailer that `flush` seals the fragment with, so that sealing never grows it.
         let additional = offset + len + TRAILER_LEN - self.fragment.len();
-        reserve_cap(&mut self.fragment, additional, MAX_DATA_FRAGMENT_LEN);
+        self.fragment.reserve(additional, MAX_DATA_FRAGMENT_LEN);
         self.fragment.resize(offset, 0);
         encoded.write(&mut self.fragment);
         // A chunk planned within the limits has at most the planned blocks; one that is not
@@ -1184,7 +1250,11 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
         } else {
             MAX_BLOCKS
         };
-        reserve_cap(&mut self.blocks, 1, max);
+        if self.blocks.len() == self.blocks.capacity() {
+            self.blocks
+                .try_grow_to(max)
+                .expect("the admitted chunk covers its block directory");
+        }
         self.blocks.push(BlockRecord {
             column,
             codec: encoded.codec as u8,
@@ -1245,11 +1315,8 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
     /// Writes the next piece of the large value being written, as a fragment of its own.
     fn put_piece(&mut self, piece: &[u8]) -> Result<(), BuildError> {
         self.fragment.clear();
-        reserve_cap(
-            &mut self.fragment,
-            piece.len() + TRAILER_LEN,
-            MAX_DATA_FRAGMENT_LEN,
-        );
+        self.fragment
+            .reserve(piece.len() + TRAILER_LEN, MAX_DATA_FRAGMENT_LEN);
         self.fragment.extend_from_slice(piece);
         checksum::seal(&mut self.fragment);
         self.put(self.next_index)?;
@@ -1267,7 +1334,11 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
         } else {
             MAX_LARGE_VALUES
         };
-        reserve_cap(&mut self.large, 1, max);
+        if self.large.len() == self.large.capacity() {
+            self.large
+                .try_grow_to(max)
+                .expect("the admitted chunk covers its large-value directory");
+        }
         self.large.push(LargeEntry {
             first_fragment,
             fragments: self.next_index - first_fragment,

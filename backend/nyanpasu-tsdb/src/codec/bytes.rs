@@ -14,8 +14,8 @@ use snafu::{OptionExt, ensure};
 use strum::{EnumDiscriminants, FromRepr, VariantArray};
 
 use super::{
-    DecodeError, FixedWidthSnafu, MAX_BLOCK_ROWS, MAX_INLINE_VALUE_LEN, NestedEncodingSnafu,
-    OffsetsSnafu, TruncatedHeapSnafu,
+    DecodeError, FixedWidthSnafu, MAX_INLINE_VALUE_LEN, NestedEncodingSnafu, OffsetsSnafu,
+    TruncatedHeapSnafu,
     cursor::Cursor,
     dict,
     int::{self, IntEncoding, IntSizes, IntType},
@@ -90,15 +90,16 @@ pub(crate) enum BytesEncoding {
 pub(crate) struct BytesScratch {
     /// The present values' positions in `present`, sorted by value (see
     /// [`dict`](super::dict)).
-    pub(super) order: Vec<u32>,
+    pub(super) order: crate::budget::BudgetVec<u32>,
     /// The most values a dictionary orders: the cap of `order`.
     pub(super) max_order: usize,
 }
 
 impl BytesScratch {
-    pub(crate) fn new(max_order: usize) -> Self {
+    /// Attaches the dictionary workspace to the chunk's caller-owned envelope.
+    pub(crate) fn new(account: &crate::budget::MemoryAccount, max_order: usize) -> Self {
         Self {
-            order: Vec::new(),
+            order: account.buffer(0).expect("empty storage is free"),
             max_order,
         }
     }
@@ -107,13 +108,6 @@ impl BytesScratch {
     pub(crate) fn capacity(&self) -> (usize, usize) {
         let size = size_of::<u32>();
         (self.order.capacity() * size, self.max_order * size)
-    }
-}
-
-/// Room for the largest dictionary a block can have.
-impl Default for BytesScratch {
-    fn default() -> Self {
-        Self::new(MAX_BLOCK_ROWS)
     }
 }
 
@@ -206,7 +200,7 @@ pub(crate) fn encode(
     values: &(impl ByteValues + ?Sized),
     present: &mut [u32],
     scratch: &BytesScratch,
-    out: &mut Vec<u8>,
+    out: &mut crate::budget::BudgetVec<u8>,
 ) {
     match encoding {
         BytesEncoding::Plain => {
@@ -235,9 +229,9 @@ pub(crate) fn decode(
     encoding: BytesEncoding,
     input: &mut Cursor<'_>,
     count: usize,
-    heap: &mut Vec<u8>,
-    ends: &mut Vec<u32>,
-    dict_ends: &mut Vec<u32>,
+    heap: &mut crate::budget::BudgetVec<u8>,
+    ends: &mut crate::budget::BudgetVec<u32>,
+    dict_ends: &mut crate::budget::BudgetVec<u32>,
 ) -> Result<(), DecodeError> {
     match encoding {
         BytesEncoding::Plain => {
@@ -268,7 +262,7 @@ pub(crate) fn decode(
 pub(super) fn decode_offsets(
     input: &mut Cursor<'_>,
     count: usize,
-    ends: &mut Vec<u32>,
+    ends: &mut crate::budget::BudgetVec<u32>,
 ) -> Result<(), DecodeError> {
     let tag = input.u8().context(TruncatedHeapSnafu)?;
     let encoding = IntEncoding::from_repr(tag).context(NestedEncodingSnafu { tag })?;
@@ -317,10 +311,22 @@ mod tests {
         present: &[u32],
         scratch: &BytesScratch,
     ) -> (usize, Vec<Vec<u8>>) {
-        let mut out = Vec::new();
+        let mut out = crate::budget::test_account()
+            .buffer(crate::codec::MAX_BLOCK_LEN + 1024)
+            .unwrap();
         encode(encoding, values, &mut present.to_vec(), scratch, &mut out);
         let mut input = Cursor::new(&out);
-        let (mut heap, mut ends, mut dict_ends) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut heap, mut ends, mut dict_ends) = (
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_LEN)
+                .unwrap(),
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_ROWS)
+                .unwrap(),
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_ROWS)
+                .unwrap(),
+        );
         decode(
             encoding,
             &mut input,
@@ -345,7 +351,8 @@ mod tests {
 
     fn check_every_encoding(values: &[Vec<u8>]) -> Result<(), TestCaseError> {
         let (slices, present) = all_present(values);
-        let mut scratch = BytesScratch::default();
+        let mut scratch =
+            BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
         let sizes = BytesSizes::measure(
             &slices[..],
             &present,
@@ -372,7 +379,7 @@ mod tests {
         #[test]
         fn equal_length_values_round_trip_in_every_encoding(values in equal_lengths()) {
             let (slices, present) = all_present(&values);
-            let mut scratch = BytesScratch::default();
+            let mut scratch = BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
             let sizes =
                 BytesSizes::measure(&slices[..], &present, BytesHint::LowCardinality, &mut scratch);
             prop_assert!(sizes.get(BytesEncoding::Fixed).is_some());
@@ -385,12 +392,12 @@ mod tests {
             hint in prop_oneof![Just(BytesHint::LowCardinality), Just(BytesHint::Text)],
         ) {
             let (slices, present) = all_present(&values);
-            let mut scratch = BytesScratch::default();
+            let mut scratch = BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
             let (chosen, size) =
                 BytesSizes::measure(&slices[..], &present, hint, &mut scratch).smallest();
             prop_assert!(hint.allows(chosen));
             // Exhaustive: encode with every allowed encoding that applies, measure each.
-            let mut full = BytesScratch::default();
+            let mut full = BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
             let all =
                 BytesSizes::measure(&slices[..], &present, BytesHint::LowCardinality, &mut full);
             let exhaustive = BytesEncoding::VARIANTS
@@ -408,7 +415,7 @@ mod tests {
             bytes in prop::collection::vec(any::<u8>(), 0..64),
             count in 0usize..64,
         ) {
-            let (mut heap, mut ends, mut dict_ends) = (Vec::new(), Vec::new(), Vec::new());
+            let (mut heap, mut ends, mut dict_ends) = (crate::budget::test_account().buffer(crate::codec::MAX_BLOCK_LEN).unwrap(), crate::budget::test_account().buffer(crate::codec::MAX_BLOCK_ROWS).unwrap(), crate::budget::test_account().buffer(crate::codec::MAX_BLOCK_ROWS).unwrap());
             let _ = decode(encoding, &mut Cursor::new(&bytes), count, &mut heap, &mut ends, &mut dict_ends);
         }
     }
@@ -417,7 +424,8 @@ mod tests {
     fn only_present_rows_are_encoded() {
         let values: [&[u8]; 4] = [b"a", b"ignored", b"bc", b""];
         let present = [0, 2, 3];
-        let mut scratch = BytesScratch::default();
+        let mut scratch =
+            BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
         let sizes = BytesSizes::measure(&values[..], &present, BytesHint::Text, &mut scratch);
         let (encoding, _) = sizes.smallest();
         assert_eq!(encoding, BytesEncoding::Plain);
@@ -471,7 +479,8 @@ mod tests {
             (&[], BytesHint::Fixed(17)),
         ];
         for (present, hint) in cases {
-            let mut scratch = BytesScratch::default();
+            let mut scratch =
+                BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
             let sizes = BytesSizes::measure(&empty[..], present, hint, &mut scratch);
             assert_eq!(sizes.smallest(), (BytesEncoding::Fixed, 4), "{hint:?}");
             let (len, decoded) = round_trip(BytesEncoding::Fixed, &empty, present, &scratch);
@@ -483,7 +492,8 @@ mod tests {
     #[test]
     fn a_fixed_hint_with_unequal_values_falls_back_to_plain() {
         let values: [&[u8]; 2] = [b"ab", b"c"];
-        let mut scratch = BytesScratch::default();
+        let mut scratch =
+            BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
         let sizes = BytesSizes::measure(&values[..], &[0, 1], BytesHint::Fixed(2), &mut scratch);
         assert_eq!(sizes.smallest().0, BytesEncoding::Plain);
     }

@@ -70,7 +70,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use super::Value;
 use crate::{
     ColumnSpec, ColumnType, ErrorKind, EventStreamSpec, Profile, Schema, StreamId, Timestamp,
-    budget::{BudgetExceeded, Reservation},
+    budget::{BudgetExceeded, MemoryAccount, Reservation},
     catalog::Catalog,
     chunk::{
         BatchSink, FragmentSink,
@@ -1052,6 +1052,8 @@ pub(crate) struct Executed {
 
 /// Writes a [`Plan`] into a batch.
 pub(crate) struct Execution<'a, W> {
+    /// The staging credit already admitted for this execution's chunk buffers.
+    pub(crate) account: &'a MemoryAccount,
     pub(crate) batch: &'a mut W,
     pub(crate) schema: &'a Schema,
     pub(crate) shape: &'a Shape,
@@ -1266,6 +1268,7 @@ impl<W: StorageWrite> Execution<'_, W> {
                 self.shape.fingerprint,
                 None,
                 &self.shape.series,
+                self.account,
             )
             .and_then(|mut builder| {
                 let mut taken = 0;
@@ -1355,7 +1358,14 @@ impl<W: StorageWrite> Execution<'_, W> {
                 chunk,
             };
             let kind = ChunkKind::L0Base;
-            let builder = ChunkBuilder::new(&mut sink, kind, self.shape.fingerprint, None, columns);
+            let builder = ChunkBuilder::new(
+                &mut sink,
+                kind,
+                self.shape.fingerprint,
+                None,
+                columns,
+                self.account,
+            );
             let built = builder
                 .and_then(|builder| build_events(builder, columns, &mut rows, batch))
                 .context(BuildSnafu { chunk: chunk.0 })?;

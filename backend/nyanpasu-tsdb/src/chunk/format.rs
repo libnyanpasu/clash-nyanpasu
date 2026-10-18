@@ -20,7 +20,7 @@
 //! The blocks of a column are consecutive in the directory and cover its rows `[0, rows)`
 //! in order; column 0 is the key whose range the header records.
 //!
-//! [`Directory::parse`] checks every count, length, offset and index against the limits
+//! [`parse_directory`] checks every count, length, offset and index against the limits
 //! below, and the decoder of fragment 0 stops a list at its limit, before anything sized by
 //! them is allocated (§6.5). It also gives every fragment one owner and bounds the whole
 //! chunk by [`MAX_CHUNK_LEN`], so a chunk that opens cannot make its reads exceed the limits.
@@ -435,7 +435,7 @@ pub(crate) struct LargeEntry {
     pub(crate) len: u32,
 }
 
-/// Fragment 0 after its prefix, as stored. The builder fills it in; [`Directory::parse`]
+/// Fragment 0 after its prefix, as stored. The builder fills it in; [`parse_directory`]
 /// validates it. Each list stops decoding at its limit.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct DirectoryRecord {
@@ -518,14 +518,23 @@ pub(crate) struct BlockRecord {
 
 impl DirectoryRecord {
     /// Appends the content of fragment 0, without its trailer.
-    pub(crate) fn write(&self, out: &mut Vec<u8>) {
-        out.extend_from_slice(&MAGIC);
-        out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
-        // Serializing fails only for a sequence of unknown length, and the records have
-        // none.
-        postcard::to_io(self, out).expect("a directory record always serializes");
+    pub(crate) fn write(&self, out: &mut impl std::io::Write) {
+        write_directory(self, out);
     }
+}
 
+/// Serializes a directory's existing field order directly into an admitted output buffer.
+pub(super) fn write_directory(record: &impl serde::Serialize, out: &mut impl std::io::Write) {
+    out.write_all(&MAGIC)
+        .expect("directory prefix fits its admitted buffer");
+    out.write_all(&FORMAT_VERSION.to_le_bytes())
+        .expect("directory version fits its admitted buffer");
+    // Serializing fails only for a sequence of unknown length, and the records have
+    // none.
+    postcard::to_io(record, out).expect("a directory record always serializes");
+}
+
+impl DirectoryRecord {
     /// Decodes fragment 0's content, its length and checksum already verified, without
     /// validating it. The content is at most one fragment.
     pub(crate) fn read(content: &[u8]) -> Result<Self, ReadError> {
@@ -552,6 +561,13 @@ impl DirectoryRecord {
 /// Fragment 0, decoded and validated.
 #[derive(Debug)]
 pub(crate) struct Directory {
+    /// Directory storage drops before its aggregate dependency reservation.
+    payload: crate::budget::Reserved<DirectoryData>,
+}
+
+/// Immutable directory storage retained under one aggregate allocation claim.
+#[derive(Debug)]
+pub(crate) struct DirectoryData {
     pub(crate) header: Header,
     pub(crate) columns: Vec<ColumnDesc>,
     pub(crate) blocks: Vec<BlockEntry>,
@@ -560,93 +576,122 @@ pub(crate) struct Directory {
     pub(crate) fragment_lens: Vec<u32>,
 }
 
-impl Directory {
-    /// Decodes fragment 0's content, its checksum already verified, and validates it whole.
-    pub(crate) fn parse(content: &[u8]) -> Result<Self, ReadError> {
-        Self::parse_observed(content, |_| {})
+impl DirectoryData {
+    /// Retained directory capacities after parsing workspace has dropped.
+    fn memory(&self) -> u64 {
+        (held(&self.columns) + held(&self.blocks) + held(&self.large) + held(&self.fragment_lens))
+            as u64
     }
+}
 
-    /// [`parse`](Self::parse), which shows `observe` each buffer it holds at its peak, by
-    /// name and in bytes: everything is allocated, and the decoded records are not yet let go.
-    pub(super) fn parse_observed(
-        content: &[u8],
-        observe: impl FnOnce(&[(&'static str, usize)]),
-    ) -> Result<Self, ReadError> {
-        let record = DirectoryRecord::read(content)?;
-        let header = parse_header(&record)?;
+/// Parses and validates bounded directory lists under the caller's admitted allowance.
+pub(super) fn parse_directory(
+    content: &[u8],
+    observe: impl FnOnce(&[(&'static str, usize)]),
+) -> Result<DirectoryData, ReadError> {
+    let record = DirectoryRecord::read(content)?;
+    let header = parse_header(&record)?;
 
-        let mut columns = Vec::with_capacity(record.columns.len());
-        let mut first_block = 0u32;
-        for (column, column_record) in record.columns.iter().enumerate() {
-            let desc = parse_column(column_record, column as u16, first_block, &record)?;
-            first_block += desc.blocks;
-            columns.push(desc);
+    let mut columns = Vec::with_capacity(record.columns.len());
+    let mut first_block = 0u32;
+    for (column, column_record) in record.columns.iter().enumerate() {
+        let desc = parse_column(column_record, column as u16, first_block, &record)?;
+        first_block += desc.blocks;
+        columns.push(desc);
+    }
+    let blocks_len = record.blocks.len() as u32;
+    ensure!(
+        first_block == blocks_len,
+        InvalidHeaderSnafu {
+            problem: HeaderProblem::Blocks(blocks_len)
         }
-        let blocks_len = record.blocks.len() as u32;
+    );
+
+    let mut blocks = Vec::with_capacity(record.blocks.len());
+    for (column, desc) in columns.iter().enumerate() {
+        let mut next_row = 0u32;
+        let first = desc.first_block as usize;
+        for (entry, block_record) in record
+            .blocks
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take(desc.blocks as usize)
+        {
+            let block = parse_block(
+                block_record,
+                entry as u32,
+                column as u16,
+                desc,
+                next_row,
+                &header,
+            )?;
+            next_row += block.rows;
+            blocks.push(block);
+        }
         ensure!(
-            first_block == blocks_len,
-            InvalidHeaderSnafu {
-                problem: HeaderProblem::Blocks(blocks_len)
+            next_row == header.rows,
+            InvalidColumnSnafu {
+                column: column as u16,
+                problem: ColumnProblem::Rows {
+                    expected: header.rows,
+                    actual: next_row
+                }
             }
         );
+    }
 
-        let mut blocks = Vec::with_capacity(record.blocks.len());
-        for (column, desc) in columns.iter().enumerate() {
-            let mut next_row = 0u32;
-            let first = desc.first_block as usize;
-            for (entry, block_record) in record
-                .blocks
-                .iter()
-                .enumerate()
-                .skip(first)
-                .take(desc.blocks as usize)
-            {
-                let block = parse_block(
-                    block_record,
-                    entry as u32,
-                    column as u16,
-                    desc,
-                    next_row,
-                    &header,
-                )?;
-                next_row += block.rows;
-                blocks.push(block);
-            }
-            ensure!(
-                next_row == header.rows,
-                InvalidColumnSnafu {
-                    column: column as u16,
-                    problem: ColumnProblem::Rows {
-                        expected: header.rows,
-                        actual: next_row
-                    }
-                }
-            );
+    for (entry, large) in record.large.iter().enumerate() {
+        check_large(large, entry as u32, &header)?;
+    }
+    // Bounded by MAX_FRAGMENTS, which the header check enforced.
+    let mut owners = vec![Owner::None; header.fragments as usize];
+    let fragment_lens = fragment_lens(content.len(), &mut owners, &blocks, &record.large)?;
+    observe(&[
+        ("decoded columns", held(&record.columns)),
+        ("decoded blocks", held(&record.blocks)),
+        ("decoded large values", held(&record.large)),
+        ("columns", held(&columns)),
+        ("blocks", held(&blocks)),
+        ("fragment owners", held(&owners)),
+        ("fragment lengths", held(&fragment_lens)),
+    ]);
+
+    Ok(DirectoryData {
+        header,
+        columns,
+        blocks,
+        large: record.large,
+        fragment_lens,
+    })
+}
+
+impl Directory {
+    /// Retains only validated directory capacities after temporary parsing storage drops.
+    pub(super) fn from_payload(payload: crate::budget::Reserved<DirectoryData>) -> Self {
+        let bytes = payload.get().memory();
+        Self {
+            payload: payload.retain_bytes(bytes),
         }
+    }
 
-        for (entry, large) in record.large.iter().enumerate() {
-            check_large(large, entry as u32, &header)?;
-        }
-        // Bounded by MAX_FRAGMENTS, which the header check enforced.
-        let mut owners = vec![Owner::None; header.fragments as usize];
-        let fragment_lens = fragment_lens(content.len(), &mut owners, &blocks, &record.large)?;
-        observe(&[
-            ("decoded columns", held(&record.columns)),
-            ("decoded blocks", held(&record.blocks)),
-            ("decoded large values", held(&record.large)),
-            ("columns", held(&columns)),
-            ("blocks", held(&blocks)),
-            ("fragment owners", held(&owners)),
-            ("fragment lengths", held(&fragment_lens)),
-        ]);
-
-        Ok(Self {
-            header,
-            columns,
-            blocks,
-            large: record.large,
-            fragment_lens,
-        })
+    /// Parses a charged directory and shows `observe` its peak buffer capacities, by
+    /// name and in bytes: everything is allocated, and the decoded records are not yet let go.
+    #[cfg(test)]
+    pub(super) fn parse_observed(
+        content: &[u8],
+        account: &crate::budget::MemoryAccount,
+        observe: impl FnOnce(&[(&'static str, usize)]),
+    ) -> Result<Self, ReadError> {
+        let payload = account
+            .value(
+                "chunk directory",
+                crate::budget::MemoryPlan::bytes(open_memory(content.len())),
+                || parse_directory(content, observe),
+            )
+            .context(super::error::ReserveDirectorySnafu)?
+            .transpose()?;
+        Ok(Self::from_payload(payload))
     }
 
     /// The heap the directory holds: what an open chunk keeps for as long as it is open.
@@ -701,7 +746,7 @@ fn held<T>(buffer: &Vec<T>) -> usize {
     buffer.capacity() * size_of::<T>()
 }
 
-/// An upper bound on the heap [`Directory::parse`] holds at once for a fragment 0 of `len`
+/// An upper bound on the heap [`parse_directory`] holds at once for a fragment 0 of `len`
 /// content bytes, which a reader knows before it decodes a byte of it (§6.5, §7.4). At its
 /// peak, parsing holds:
 ///
@@ -1019,6 +1064,14 @@ fn fragment_lens(
         }
     );
     Ok(lens)
+}
+
+impl std::ops::Deref for Directory {
+    type Target = DirectoryData;
+    /// Borrows the immutable directory while its aggregate charge remains owned.
+    fn deref(&self) -> &DirectoryData {
+        self.payload.get()
+    }
 }
 
 #[cfg(test)]

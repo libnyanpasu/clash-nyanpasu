@@ -350,7 +350,7 @@ mod charged {
             (&*buffer, buffer.as_ptr(), buffer.capacity()),
             (&[11, 22][..], pointer, capacity)
         );
-        assert_eq!(account.live.get(), 16);
+        assert_eq!(account.live_bytes(), 16);
         drop(buffer);
         drop(account);
         assert_eq!(budget.reserved(), 0);
@@ -362,7 +362,7 @@ mod charged {
         let account = MemoryAccount::new(&budget, "test", MemoryPlan::default()).unwrap();
         let observations = Rc::new(RefCell::new(Vec::new()));
         let observed = observations.clone();
-        *account.observer.borrow_mut() = Some(Box::new(move |event| {
+        account.set_observer(Box::new(move |event| {
             observed.borrow_mut().push(event);
         }));
         let mut buffer = account.buffer::<u64>(2).unwrap();
@@ -387,9 +387,9 @@ mod charged {
         assert_eq!(actual_peak, old + new);
         assert_eq!(actual_live, new);
         drop(events);
-        assert_eq!(account.allocated.get(), old + new);
+        assert_eq!(account.allocated_bytes(), old + new);
         buffer.clear();
-        assert_eq!(account.live.get(), new);
+        assert_eq!(account.live_bytes(), new);
         assert_eq!(buffer.capacity() as u64 * size_of::<u64>() as u64, new);
     }
 
@@ -413,7 +413,7 @@ mod charged {
             let dropped = Rc::new(Cell::new(0));
             let account = MemoryAccount::new(&budget, "test", MemoryPlan::default()).unwrap();
             let retired = dropped.clone();
-            *account.observer.borrow_mut() = Some(Box::new(move |event| {
+            account.set_observer(Box::new(move |event| {
                 if event.kind == Change::Retire && event.bytes != 0 {
                     assert_eq!(retired.get(), 1);
                 }
@@ -458,7 +458,7 @@ mod charged {
         buffer.push(());
         buffer.try_grow_to(usize::MAX).unwrap();
         assert_eq!(budget.reserved(), 0);
-        assert_eq!(account.live.get(), 0);
+        assert_eq!(account.live_bytes(), 0);
         assert!(account.buffer::<u64>(usize::MAX).is_err());
         assert!(MemoryPlan::array::<u8>(usize::MAX).is_err());
         assert!(MemoryPlan(u64::MAX).and(MemoryPlan(1)).is_err());
@@ -494,7 +494,7 @@ mod charged {
             }
             assert_eq!(&*buffer, &[7]);
             drop(buffer);
-            assert_eq!(account.live.get(), 0);
+            assert_eq!(account.live_bytes(), 0);
             drop(account);
             assert_eq!(budget.reserved(), 0);
         }
@@ -517,9 +517,9 @@ mod charged {
         assert_eq!(budget.reserved(), 0);
     }
 
-    struct FailingBuffer<'a>(BudgetVec<'a, DropProbe>);
+    struct FailingBuffer(BudgetVec<DropProbe>);
 
-    impl Retain<DropProbe> for FailingBuffer<'_> {
+    impl Retain<DropProbe> for FailingBuffer {
         fn retain(
             self,
             retained: &mut Retained<'_>,
@@ -546,7 +546,169 @@ mod charged {
         });
         assert!(account.finish(FailingBuffer(buffer)).is_err());
         assert_eq!(dropped.get(), 1);
-        assert_eq!(account.live.get(), 0);
+        assert_eq!(account.live_bytes(), 0);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
+    }
+}
+
+mod codec_accounts {
+    use std::{cell::Cell, rc::Rc};
+
+    use super::*;
+
+    #[test]
+    fn owned_storage_keeps_the_envelope_alive_and_boxes_transfer_without_copying() {
+        let budget = MemoryBudget::new(8);
+        let mut value = {
+            let account = MemoryAccount::new(&budget, "owned", MemoryPlan::default()).unwrap();
+            account.buffer::<u8>(8).unwrap()
+        };
+        value.extend_from_slice(b"12345678");
+        let pointer = value.as_ptr();
+        let boxed = value.freeze_box();
+        assert_eq!(boxed.get().as_ptr(), pointer);
+        assert_eq!(&**boxed.get(), b"12345678");
+        assert_eq!(budget.reserved(), 8);
+        fn send_sync<T: Send + Sync>(_: &T) {}
+        send_sync(&boxed);
+        drop(boxed);
+        assert_eq!(budget.reserved(), 0);
+    }
+
+    #[test]
+    fn discarding_storage_reuses_credit_without_a_replacement_peak() {
+        let budget = MemoryBudget::new(32);
+        let account = MemoryAccount::new(&budget, "discard", MemoryPlan::default()).unwrap();
+        let mut value = account.buffer::<u64>(4).unwrap();
+        value.extend_from_slice(&[1, 2, 3, 4]);
+        value.reset_to(2).unwrap();
+        assert!(value.is_empty());
+        assert_eq!((value.capacity(), account.live_bytes()), (2, 16));
+        assert_eq!(budget.reserved(), 32);
+        let pointer = value.as_ptr();
+        value.reset_to(2).unwrap();
+        assert_eq!(value.as_ptr(), pointer);
+        value.reset_to(4).unwrap();
+        assert_eq!((value.capacity(), account.live_bytes()), (4, 32));
+        drop(value);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
+    }
+
+    #[test]
+    fn dependency_admission_precedes_construction_and_payload_precedes_charge_drop() {
+        struct Foreign {
+            budget: MemoryBudget,
+            dropped: Rc<Cell<bool>>,
+        }
+        impl Drop for Foreign {
+            fn drop(&mut self) {
+                assert_eq!(self.budget.reserved(), 32);
+                self.dropped.set(true);
+            }
+        }
+        let budget = MemoryBudget::new(32);
+        let account = MemoryAccount::new(&budget, "dependency", MemoryPlan::default()).unwrap();
+        let called = Cell::new(false);
+        assert!(
+            account
+                .value("dependency", MemoryPlan::bytes(33), || called.set(true))
+                .is_err()
+        );
+        assert!(!called.get());
+        assert_eq!(budget.reserved(), 0);
+        let dropped = Rc::new(Cell::new(false));
+        let value = account
+            .value("dependency", MemoryPlan::bytes(32), || Foreign {
+                budget: budget.clone(),
+                dropped: dropped.clone(),
+            })
+            .unwrap();
+        drop(account);
+        assert!(!dropped.get());
+        drop(value);
+        assert!(dropped.get());
+        assert_eq!(budget.reserved(), 0);
+    }
+
+    #[test]
+    fn a_fragment_uses_standing_credit_beside_storage_and_fails_before_its_callback() {
+        let budget = MemoryBudget::new(48);
+        let account = MemoryAccount::new(&budget, "loan", MemoryPlan::default()).unwrap();
+        let actual = Rc::new(Cell::new(0u64));
+        let observed = actual.clone();
+        account.observe_allocations(move |allocate, bytes, charge| {
+            let next = if allocate {
+                observed.get() + bytes
+            } else {
+                observed.get() - bytes
+            };
+            assert!(next <= charge);
+            observed.set(next);
+        });
+        account.reserve_lent(32).unwrap();
+        let value = account.buffer::<u64>(2).unwrap();
+        account
+            .lend(32, || {
+                assert_eq!(account.live_bytes(), 48);
+                assert_eq!(actual.get(), 48);
+                assert_eq!(budget.reserved(), 48);
+            })
+            .unwrap();
+        let called = Cell::new(false);
+        assert!(account.lend(33, || called.set(true)).is_err());
+        assert!(!called.get());
+        account.lend(32, || ()).unwrap();
+        assert_eq!(account.live_bytes(), 48);
+        assert_eq!(actual.get(), 16);
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            account.lend(32, || panic!("loan unwind")).unwrap();
+        }));
+        assert!(unwound.is_err());
+        assert_eq!(actual.get(), 16);
+        account.lend(32, || ()).unwrap();
+        drop(value);
+        assert_eq!(actual.get(), 0);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
+    }
+
+    #[test]
+    fn dependency_allocations_respect_pledged_credit_and_reuse_idle_credit() {
+        let budget = MemoryBudget::new(64);
+        let account = MemoryAccount::new(&budget, "round", MemoryPlan::bytes(64)).unwrap();
+        let pledged = account.hold_idle();
+        assert!(
+            account
+                .value("directory", MemoryPlan::bytes(1), || ())
+                .is_err()
+        );
+        assert_eq!(budget.reserved(), 64);
+        drop(pledged);
+        let buffer = account.buffer::<u8>(64).unwrap();
+        drop(buffer);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
+        let account = MemoryAccount::new(&budget, "round", MemoryPlan::bytes(32)).unwrap();
+        let hog = budget.try_reserve("other", 32).unwrap();
+        assert!(
+            account
+                .value("directory", MemoryPlan::bytes(33), || ())
+                .is_err()
+        );
+        let buffer = account.buffer::<u8>(32).unwrap();
+        assert_eq!(budget.reserved(), 64);
+        drop(hog);
+        drop(buffer);
+        let value = account
+            .value("directory", MemoryPlan::bytes(64), || vec![0u8; 64])
+            .unwrap();
+        assert_eq!(budget.reserved(), 64);
+        assert!(account.buffer::<u8>(1).is_err());
+        drop(value);
+        let buffer = account.buffer::<u8>(1).unwrap();
+        drop(buffer);
         drop(account);
         assert_eq!(budget.reserved(), 0);
     }

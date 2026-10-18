@@ -5,8 +5,8 @@
 pub(crate) const TRAILER_LEN: usize = 4;
 
 /// Appends the checksum of everything in `fragment` so far.
-pub(crate) fn seal(fragment: &mut Vec<u8>) {
-    let checksum = crc32fast::hash(fragment);
+pub(crate) fn seal(fragment: &mut crate::budget::BudgetVec<u8>) {
+    let checksum = crc32fast::hash(fragment.as_ref());
     fragment.extend_from_slice(&checksum.to_le_bytes());
 }
 
@@ -22,7 +22,10 @@ mod tests {
 
     #[test]
     fn detects_a_changed_byte_and_a_short_fragment() {
-        let mut fragment = b"column block".to_vec();
+        let mut fragment = crate::budget::test_account()
+            .buffer(12 + TRAILER_LEN)
+            .unwrap();
+        fragment.extend_from_slice(b"column block");
         seal(&mut fragment);
         assert_eq!(verify(&fragment), Some(&b"column block"[..]));
         fragment[3] ^= 1;

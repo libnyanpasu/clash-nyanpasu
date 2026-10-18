@@ -31,7 +31,7 @@
 //!
 //! - before the scan: buffers sized by the query itself;
 //! - before the first chunk is read: the block decoder's zstd context
-//!   ([`DECOMPRESSION_CONTEXT`]). A query that reads only the head does not reserve it;
+//!   ([`SERIES_DECOMPRESSION_CONTEXT`]). A query that reads only the head does not reserve it;
 //! - for each chunk, before it is opened: the fragment the backend lends while the reader
 //!   decodes from it, as large as the chunk's manifest entry says ([`lent_memory`]); and its
 //!   directory, which the reader reserves before it fetches fragment 0 and holds while the
@@ -54,6 +54,9 @@ use std::{
 use rustc_hash::FxBuildHasher;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
+#[cfg(test)]
+use crate::chunk::reader::decode_memory;
+
 use super::{
     LabelFilter,
     plan::{self, Buckets},
@@ -62,7 +65,7 @@ use super::{
 use crate::{
     ErrorKind, LabelId, Snapshot, TierId, TimeRange, Timestamp,
     budget::{
-        BudgetExceeded, BudgetVec, FrozenVec, MemoryAccount, MemoryBudget, MemoryPlan, Reservation,
+        BudgetExceeded, BudgetVec, FrozenVec, Lease, MemoryAccount, MemoryBudget, MemoryPlan,
         Reserved, Retain, Retained,
     },
     catalog::Catalog,
@@ -71,10 +74,11 @@ use crate::{
         builder::{ColumnLayout, KEY_COLUMN},
         error::ReadError,
         format::{IntRange, PhysicalType},
-        reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
+        reader::{ChunkReader, check_recorded, lent_memory},
     },
     codec::{
         block::{BlockDecoder, IntBlock},
+        compress::{DECOMPRESSION_CONTEXT, SERIES_DECOMPRESSION_CONTEXT},
         int::{IntType, IntValue},
     },
     head::{Head, SeriesSource},
@@ -270,23 +274,19 @@ impl GroupList {
 }
 
 /// One request's mutable groups and scan index, charged to the query's envelope.
-struct GroupBuffer<'a> {
+struct GroupBuffer {
     width: usize,
     fields: usize,
     len: usize,
     capacity: usize,
-    keys: BudgetVec<'a, KeyPart>,
-    sums: BudgetVec<'a, u64>,
-    slots: BudgetVec<'a, u32>,
+    keys: BudgetVec<KeyPart>,
+    sums: BudgetVec<u64>,
+    slots: BudgetVec<u32>,
 }
 
-impl<'a> GroupBuffer<'a> {
+impl GroupBuffer {
     /// Starts empty charged buffers for this request's key width and selected fields.
-    fn new(
-        account: &'a MemoryAccount,
-        width: usize,
-        fields: usize,
-    ) -> Result<Self, BudgetExceeded> {
+    fn new(account: &MemoryAccount, width: usize, fields: usize) -> Result<Self, BudgetExceeded> {
         Ok(Self {
             width,
             fields,
@@ -303,7 +303,7 @@ impl<'a> GroupBuffer<'a> {
         &mut self,
         key: &[KeyPart],
         values: &[u64],
-        account: &'a MemoryAccount,
+        account: &MemoryAccount,
     ) -> Result<(), BudgetExceeded> {
         if self.slots.is_empty() {
             self.index(MIN_SLOTS, account)?;
@@ -366,7 +366,7 @@ impl<'a> GroupBuffer<'a> {
     }
 
     /// Rebuilds the index with `slots` slots, the new one reserved while the old is alive.
-    fn index(&mut self, slots: usize, account: &'a MemoryAccount) -> Result<(), BudgetExceeded> {
+    fn index(&mut self, slots: usize, account: &MemoryAccount) -> Result<(), BudgetExceeded> {
         let mut index = account.buffer(slots)?;
         for _ in 0..slots {
             index.push(0);
@@ -387,7 +387,7 @@ impl<'a> GroupBuffer<'a> {
 /// The consuming builder that transfers every request's groups into one retained result.
 struct GroupsBuffer<'a> {
     account: &'a MemoryAccount,
-    lists: BudgetVec<'a, GroupBuffer<'a>>,
+    lists: BudgetVec<GroupBuffer>,
 }
 
 impl Retain<GroupList> for GroupsBuffer<'_> {
@@ -428,13 +428,6 @@ const MIN_GROUPS: usize = 8;
 fn number(group: usize) -> u32 {
     u32::try_from(group + 1).expect("fewer than 2^32 groups fit any budget")
 }
-
-/// The zstd decompression context a [`BlockDecoder`] owns, which [`decode_memory`] leaves
-/// to its owner: zstd 1.5's `ZSTD_DCtx`, whose size `ZSTD_sizeof_DCtx` reports. Bulk
-/// decompression writes into the caller's buffer, so the context allocates no window
-/// besides. A test measures it. It is reserved before the first chunk is opened and held
-/// until the query ends (§7.4).
-const DECOMPRESSION_CONTEXT: u64 = 128 * 1024;
 
 /// What a scan holds whatever it reads, reserved before it starts: the layout of a series
 /// chunk of `fields` fields, and the key of one row.
@@ -555,9 +548,9 @@ impl<S: Storage> Snapshot<S> {
             lists,
             account: &groups,
             folded: false,
-            combo: Column::new(COMBO, budget),
-            values: std::array::from_fn(|_| Column::new(0, budget)),
-            bucket: Column::new(BUCKET, budget),
+            combo: Column::new(COMBO),
+            values: std::array::from_fn(|_| Column::new(0)),
+            bucket: Column::new(BUCKET),
         };
         for (column, field) in scan.values.iter_mut().zip(query.fields.indices()) {
             column.index = FIRST_FIELD + field as u16;
@@ -645,10 +638,10 @@ struct Scan<'a, 'm> {
     fields: FieldMask,
     buckets: Range<i64>,
     /// The columns of a series chunk of the schema.
-    layout: BudgetVec<'m, ColumnLayout>,
+    layout: BudgetVec<ColumnLayout>,
     /// The key of the row being added, reused.
-    key: BudgetVec<'m, KeyPart>,
-    lists: BudgetVec<'m, GroupBuffer<'m>>,
+    key: BudgetVec<KeyPart>,
+    lists: BudgetVec<GroupBuffer>,
     account: &'m MemoryAccount,
     /// Whether a row in the range had a folded combination, admitted or not.
     folded: bool,
@@ -697,13 +690,18 @@ impl Scan<'_, '_> {
         if decoder.is_none() {
             let context = self
                 .budget
-                .try_reserve("series decoder", DECOMPRESSION_CONTEXT)
+                .try_reserve("series decoder", SERIES_DECOMPRESSION_CONTEXT)
                 .context(ReserveDecoderSnafu)?;
+            let account = MemoryAccount::from_reservation(context);
+            let padding = account
+                .lease(MemoryPlan::bytes(
+                    SERIES_DECOMPRESSION_CONTEXT - DECOMPRESSION_CONTEXT,
+                ))
+                .expect("the series context envelope includes its existing allowance");
             *decoder = Some(Decoder {
-                blocks: BlockDecoder::new().context(CreateDecoderSnafu)?,
-                scratch: empty(self.budget),
-                lent: empty(self.budget),
-                context,
+                blocks: BlockDecoder::new(&account).context(CreateDecoderSnafu)?,
+                account,
+                _padding: padding,
             });
         }
         let decoder = decoder.as_mut().expect("created above");
@@ -711,8 +709,10 @@ impl Scan<'_, '_> {
         let chunk = listed.chunk.0;
         check_recorded(listed.entry.fragment0).context(OpenChunkSnafu { chunk })?;
         let lent = lent_memory(listed.entry.fragment0);
-        reserve_up_to(&mut decoder.lent, lent).context(ReserveFragmentSnafu { chunk })?;
-        settle(&mut decoder.lent, lent);
+        decoder
+            .account
+            .reserve_lent(lent)
+            .context(ReserveFragmentSnafu { chunk })?;
         let source = StoredChunk {
             storage: read,
             chunk: listed.chunk,
@@ -727,8 +727,8 @@ impl Scan<'_, '_> {
         decoder: &mut Decoder,
         fragment0: u32,
     ) -> Result<(), SeriesQueryError> {
-        let reader =
-            ChunkReader::open(source, self.budget, fragment0).context(OpenChunkSnafu { chunk })?;
+        let reader = ChunkReader::open(source, &decoder.account, fragment0)
+            .context(OpenChunkSnafu { chunk })?;
         let columns = reader.columns();
         let shaped = columns.len() == self.layout.len()
             && columns
@@ -903,34 +903,8 @@ struct Decode<'c, F> {
 /// The block decoder a query shares across its chunks, with what it holds reserved.
 struct Decoder {
     blocks: BlockDecoder,
-    /// What the decoder's scratch holds: the scratch of the last block it decoded.
-    scratch: Reservation,
-    /// The fragment the backend lends while the reader of the open chunk decodes from it.
-    lent: Reservation,
-    /// The [zstd context](DECOMPRESSION_CONTEXT).
-    #[allow(
-        dead_code,
-        reason = "held for its Drop, which returns the context's bytes"
-    )]
-    context: Reservation,
-}
-
-/// A reservation of nothing yet, to grow.
-fn empty(budget: &MemoryBudget) -> Reservation {
-    budget
-        .try_reserve("series block", 0)
-        .expect("nothing fits any budget")
-}
-
-/// Grows `held` to `part` when it holds less: before a read, it covers both what the buffers
-/// hold and what the block declares (`decode_memory`).
-fn reserve_up_to(held: &mut Reservation, part: u64) -> Result<(), BudgetExceeded> {
-    held.try_grow(part.saturating_sub(held.bytes()))
-}
-
-/// Shrinks `held` to `part`: after a read, the buffers hold exactly the block's.
-fn settle(held: &mut Reservation, part: u64) {
-    held.shrink(held.bytes() - part);
+    account: MemoryAccount,
+    _padding: Lease,
 }
 
 /// One column of the open chunk, with its decoded block.
@@ -939,17 +913,14 @@ struct Column<T> {
     /// The rows of the decoded block; empty before the first of each chunk.
     rows: Range<u32>,
     block: IntBlock<T>,
-    /// What the column's buffer holds: the output of the last block decoded into it.
-    output: Reservation,
 }
 
 impl<T: IntValue> Column<T> {
-    fn new(index: u16, budget: &MemoryBudget) -> Self {
+    fn new(index: u16) -> Self {
         Self {
             index,
             rows: 0..0,
             block: IntBlock::default(),
-            output: empty(budget),
         }
     }
 
@@ -973,30 +944,21 @@ impl<T: IntValue> Column<T> {
                 .expect("the chunk has the column");
             let block = blocks.partition_point(|entry| entry.first_row + entry.rows <= row);
             let entry = blocks[block];
-            let ty = decode.reader.columns()[usize::from(column)].ty;
-            let memory = decode_memory(entry.shape(), ty);
-            let scratch = &mut decode.decoder.scratch;
-            reserve_up_to(&mut self.output, memory.output)
-                .and_then(|()| reserve_up_to(scratch, memory.scratch))
+            let prepared = decode
+                .decoder
+                .blocks
+                .prepare_ints(entry.shape(), &mut self.block)
                 .context(ReserveBlockSnafu { chunk })?;
             self.rows = 0..0;
             let block = block as u32;
             decode
                 .reader
-                .read_ints(
-                    decode.source,
-                    column,
-                    block,
-                    &mut decode.decoder.blocks,
-                    &mut self.block,
-                )
+                .read_prepared_ints(decode.source, column, block, prepared)
                 .context(ReadBlockSnafu {
                     chunk,
                     column,
                     block,
                 })?;
-            settle(&mut self.output, memory.output);
-            settle(&mut decode.decoder.scratch, memory.scratch);
             ensure!(
                 !self.block.validity().has_nulls(),
                 NullValuesSnafu { chunk, column }

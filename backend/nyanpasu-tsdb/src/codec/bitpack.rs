@@ -12,7 +12,11 @@ pub(crate) fn packed_len(count: usize, width: u8) -> usize {
 }
 
 /// Appends `values`, each of which must fit in `width` bits.
-pub(crate) fn pack(values: impl Iterator<Item = u64>, width: u8, out: &mut Vec<u8>) {
+pub(crate) fn pack(
+    values: impl Iterator<Item = u64>,
+    width: u8,
+    out: &mut crate::budget::BudgetVec<u8>,
+) {
     // At most 7 bits are pending before a value of at most 64 bits joins them.
     let mut pending = 0u128;
     let mut bits = 0u32;
@@ -86,7 +90,7 @@ mod tests {
         fn round_trips(width in 0u8..=64, raw in prop::collection::vec(any::<u64>(), 0..100)) {
             let mask = if width == 64 { u64::MAX } else { (1u64 << width) - 1 };
             let values: Vec<u64> = raw.iter().map(|value| value & mask).collect();
-            let mut out = Vec::new();
+            let mut out = crate::budget::test_account().buffer(values.len() * 8).unwrap();
             pack(values.iter().copied(), width, &mut out);
             prop_assert_eq!(out.len(), packed_len(values.len(), width));
             let back: Vec<u64> = unpack(&out, width, values.len()).collect();

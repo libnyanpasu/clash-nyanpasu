@@ -278,8 +278,8 @@ The design says its code sketches show shape, not the final API. Where the code 
   do. What a stream's rounds do depends on its spec and the profile's staging alone, so each
   round works it out per stream from the columns the schema's shape holds, with no
   allocation (`consolidates`, `compresses`), and it holds while the store is open. For
-  traffic's `closed` stream the smallest round takes 1,563,275 bytes writing raw blocks and
-  1,825,568 compressing:
+  traffic's `closed` stream the smallest round takes 1,564,251 bytes writing raw blocks and
+  1,826,544 compressing:
   - staging at or above the compressing floor (desktop, x86 devices, low end): the stream's
     windows consolidate and its runs merge, compressed;
   - staging between the two floors: they do, with raw blocks, which §6.3 rule 3 allows per
@@ -299,6 +299,21 @@ The design says its code sketches show shape, not the final API. Where the code 
   of late rows raises the ways; mobile's query budget scans 22 chunks of the test schema's
   `closed` that overlap at one key. Its L0 chunks also stay larger on disk: 63 bytes a row on
   redb, against 37 for consolidated compressed chunks.
+
+## Allocation ownership
+
+Data-sized chunk buffers, decoder outputs and scratch use `BudgetVec` under one query's or
+round's `MemoryAccount`. The account admits capacity before allocation, retains both capacities
+while preserving growth, and reuses retired local credit. A reader's standing fragment allowance
+stays beside its directory and decoded blocks; its backend loan checks that allowance before
+fetching. Bounded directory parsing and zstd contexts retain an admitted dependency allowance.
+
+Fixed metadata remains under the existing schema and format control allowance: schema validation
+maps, error strings and boxed errors, key prefixes, Shape vectors, storage wrapper names, control
+Arcs, and one local account control allocation per envelope. Their limits follow the schema and
+format rather than the number of stored rows. They do not draw per-element data-buffer credit.
+MemoryDisk's simulated durable payload is storage; backend internals remain under the profile's
+measured backend overhead. These boundaries do not constitute an allocator or RSS bound.
 
 ## Errors
 

@@ -56,17 +56,20 @@ use std::{
 
 use snafu::{IntoError, OptionExt, ResultExt, Snafu, ensure};
 
+#[cfg(test)]
+use crate::chunk::reader::decode_memory;
+
 use super::{LabelFilter, rows_of};
 use crate::{
     ColumnType, ErrorKind, EventStreamSpec, ExtentSpec, LabelId, Schema, StreamId, TimeRange,
     Timestamp,
-    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    budget::{BudgetExceeded, Lease, MemoryAccount, MemoryBudget, MemoryPlan, Reservation},
     catalog::Catalog,
     chunk::{
         StoredChunk,
         error::ReadError,
         format::{BLOCK_TARGET_LEN, BlockEntry, IntRange, IntStats},
-        reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
+        reader::{ChunkReader, check_recorded, lent_memory},
     },
     codec::{
         block::{BlockDecoder, BytesBlock, BytesValue, IntBlock},
@@ -254,7 +257,7 @@ fn rank(order: Rank, direction: Direction) -> Rank {
 
 /// The bytes of the zstd context of a scan's decoder: `ZSTD_sizeof_DCtx` of zstd 1.5.7,
 /// rounded up. A test measures it.
-pub(crate) const DECOMPRESSION_CONTEXT: u64 = 100 * 1024;
+pub(crate) use crate::codec::compress::DECOMPRESSION_CONTEXT;
 
 /// The rows of a stripe when the builder fills the blocks: those of a block of the key
 /// column, a non-null `i64` of 8 raw bytes a row.
@@ -401,17 +404,13 @@ pub(crate) fn scan<R: StorageRead>(
     };
     let mut scan = Scan {
         storage,
-        budget,
         catalog: &version.catalog,
         spec,
         dimensions,
         filters: query.predicate.filters,
         direction: query.direction,
         bounds,
-        ledger: Ledger {
-            reservation,
-            held: 0,
-        },
+        ledger: Ledger::new(reservation),
         log,
     };
     let (positions, mut decode) = scan.merge(stream, &version.head, query.limit)?;
@@ -426,7 +425,7 @@ pub(crate) fn scan<R: StorageRead>(
             seq: last.order.2,
         });
     // The page keeps what its events hold; the rest returns as the scan ends.
-    let held = scan.ledger.reservation.split(page_bytes(&events));
+    let held = scan.ledger.claim.take_owned(page_bytes(&events));
     Ok(EventPage {
         events,
         catalog,
@@ -559,29 +558,32 @@ impl Bounds {
 /// before it is made; bytes freed stay reserved until the scan returns, for the next
 /// allocations.
 struct Ledger {
-    reservation: Reservation,
-    held: u64,
+    claim: Lease,
+    account: MemoryAccount,
 }
 
 impl Ledger {
+    /// Attaches unmigrated scan workspace to the same envelope as its charged codec buffers.
+    fn new(reservation: Reservation) -> Self {
+        let account = MemoryAccount::from_reservation(reservation);
+        let claim = account
+            .lease(MemoryPlan::default())
+            .expect("an empty ledger is free");
+        Self { claim, account }
+    }
+
     /// Makes sure `bytes` more can be held.
     fn admit(&mut self, bytes: u64) -> Result<(), BudgetExceeded> {
-        let needed = self.held + bytes;
-        if needed > self.reservation.bytes() {
-            self.reservation
-                .try_grow(needed - self.reservation.bytes())?;
-        }
-        Ok(())
+        self.account.admit(bytes)
     }
 
     fn alloc(&mut self, bytes: u64) -> Result<(), BudgetExceeded> {
-        self.admit(bytes)?;
-        self.held += bytes;
+        self.claim.grow(bytes)?;
         Ok(())
     }
 
     fn free(&mut self, bytes: u64) {
-        self.held -= bytes;
+        self.claim.shrink(bytes);
     }
 
     /// An empty vector with room for `capacity` items, reserved first.
@@ -710,8 +712,6 @@ enum Source<'s> {
 
 struct Scan<'s, 'q, R> {
     storage: &'s R,
-    /// Where open chunks reserve their directories; the ledger reserves the rest from it.
-    budget: &'s MemoryBudget,
     catalog: &'s Catalog,
     spec: &'s EventStreamSpec,
     dimensions: &'s [LabelId],
@@ -760,11 +760,16 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             .map_err(admit)?;
         // Within what the admission reserved.
         let entries = chains.len() + 1;
-        let held = standing_memory(columns, lent)
+        let held = standing_memory(columns, lent) - DECOMPRESSION_CONTEXT - lent
             + (entries * (size_of::<Way<'_>>() + size_of::<Reverse<(Rank, usize)>>())) as u64
             + (selected * size_of::<Selected<'_>>()) as u64;
         self.ledger.alloc(held).map_err(admit)?;
-        let mut decode = Decode::new()?;
+        self.ledger
+            .account
+            .admit(DECOMPRESSION_CONTEXT + lent)
+            .map_err(admit)?;
+        self.ledger.account.reserve_lent(lent).map_err(admit)?;
+        let mut decode = Decode::new(&self.ledger.account)?;
         let mut ways = Vec::with_capacity(entries);
         ways.extend(chains.into_iter().map(|links| {
             Way::Chunks(ChunkWay {
@@ -993,8 +998,10 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             storage: self.storage,
             chunk,
         };
-        let reader = ChunkReader::open(&source, self.budget, fragment0)
+        let pledged = self.ledger.account.hold_idle();
+        let reader = ChunkReader::open(&source, &self.ledger.account, fragment0)
             .context(OpenChunkSnafu { chunk: chunk.0 })?;
+        drop(pledged);
         Ok(OpenChunk {
             chunk,
             fragment0,
@@ -1049,18 +1056,18 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             chunk,
             reader: &open.reader,
         };
-        let (ledger, log) = (&mut self.ledger, &mut *self.log);
-        let (key_block, first) = decode.ints::<i64>(&at, KEY, row, ledger, log)?;
+        let log = &mut *self.log;
+        let (key_block, first) = decode.ints::<i64>(&at, KEY, row, log)?;
         ranks.extend(
             stripe
                 .clone()
                 .map(|row| (key_block.values()[(row - first) as usize], 0, 0)),
         );
-        let (incarnations, first) = decode.ints::<u64>(&at, INCARNATION, row, ledger, log)?;
+        let (incarnations, first) = decode.ints::<u64>(&at, INCARNATION, row, log)?;
         for (rank, row) in ranks.iter_mut().zip(stripe.clone()) {
             rank.1 = incarnations.values()[(row - first) as usize];
         }
-        let (seqs, first) = decode.ints::<u64>(&at, SEQUENCE, row, ledger, log)?;
+        let (seqs, first) = decode.ints::<u64>(&at, SEQUENCE, row, log)?;
         for (rank, row) in ranks.iter_mut().zip(stripe.clone()) {
             rank.2 = seqs.values()[(row - first) as usize];
             *rank = self::rank(*rank, self.direction);
@@ -1094,7 +1101,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 let ColumnType::Label(dimension) = ty else {
                     unreachable!("the filter was checked against its column's type")
                 };
-                let (block, first) = decode.ints::<u32>(at, column, row, ledger, log)?;
+                let (block, first) = decode.ints::<u32>(at, column, row, log)?;
                 for (row, matched) in rows {
                     *matched = match block.get((row - first) as usize) {
                         None => false,
@@ -1105,7 +1112,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 }
             }
             EventCondition::Combination(listed) => {
-                let (block, first) = decode.ints::<u32>(at, column, row, ledger, log)?;
+                let (block, first) = decode.ints::<u32>(at, column, row, log)?;
                 for (row, matched) in rows {
                     *matched = match block.get((row - first) as usize) {
                         None => false,
@@ -1120,7 +1127,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 }
             }
             EventCondition::I64In(range) => {
-                let (block, first) = decode.ints::<i64>(at, column, row, ledger, log)?;
+                let (block, first) = decode.ints::<i64>(at, column, row, log)?;
                 for (row, matched) in rows {
                     *matched = block
                         .get((row - first) as usize)
@@ -1128,7 +1135,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 }
             }
             EventCondition::U64In(range) => {
-                let (block, first) = decode.ints::<u64>(at, column, row, ledger, log)?;
+                let (block, first) = decode.ints::<u64>(at, column, row, log)?;
                 for (row, matched) in rows {
                     *matched = block
                         .get((row - first) as usize)
@@ -1136,7 +1143,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 }
             }
             EventCondition::BytesIn(values) => {
-                let (block, first) = decode.bytes(at, column, row, ledger, log)?;
+                let (block, first) = decode.bytes(at, column, row, log)?;
                 for (row, matched) in rows {
                     *matched = match block.get((row - first) as usize) {
                         BytesValue::Inline(bytes) if ty == ColumnType::Identity => {
@@ -1153,7 +1160,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 }
             }
             EventCondition::Contains(needle) => {
-                let (block, first) = decode.bytes(at, column, row, ledger, log)?;
+                let (block, first) = decode.bytes(at, column, row, log)?;
                 for (row, matched) in rows {
                     *matched = match block.get((row - first) as usize) {
                         BytesValue::Null => false,
@@ -1247,19 +1254,19 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         let (ledger, log) = (&mut self.ledger, &mut *self.log);
         Ok(match ty {
             ColumnType::Timestamp | ColumnType::I64 => {
-                let (block, first) = decode.ints::<i64>(at, column, row, ledger, log)?;
+                let (block, first) = decode.ints::<i64>(at, column, row, log)?;
                 block
                     .get((row - first) as usize)
                     .map_or(EventValue::Null, EventValue::I64)
             }
             ColumnType::U64 => {
-                let (block, first) = decode.ints::<u64>(at, column, row, ledger, log)?;
+                let (block, first) = decode.ints::<u64>(at, column, row, log)?;
                 block
                     .get((row - first) as usize)
                     .map_or(EventValue::Null, EventValue::U64)
             }
             ColumnType::Series => {
-                let (block, first) = decode.ints::<u32>(at, column, row, ledger, log)?;
+                let (block, first) = decode.ints::<u32>(at, column, row, log)?;
                 match block.get((row - first) as usize) {
                     None => EventValue::Null,
                     Some(combo) => {
@@ -1275,7 +1282,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 }
             }
             ColumnType::Label(dimension) => {
-                let (block, first) = decode.ints::<u32>(at, column, row, ledger, log)?;
+                let (block, first) = decode.ints::<u32>(at, column, row, log)?;
                 match block.get((row - first) as usize) {
                     None => EventValue::Null,
                     Some(label) => {
@@ -1288,7 +1295,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             | ColumnType::Text
             | ColumnType::FoldedLabel(_)
             | ColumnType::Identity => {
-                let (block, first) = decode.bytes(at, column, row, ledger, log)?;
+                let (block, first) = decode.bytes(at, column, row, log)?;
                 let bytes = match block.get((row - first) as usize) {
                     BytesValue::Null => return Ok(EventValue::Null),
                     BytesValue::Inline(bytes) => bytes,
@@ -1567,12 +1574,22 @@ impl<R: StorageRead> At<'_, R> {
         ledger
             .alloc(u64::from(len))
             .context(ReserveLargeValueSnafu { chunk, index })?;
-        // An empty vector is given exactly the value's length.
-        let mut value = Vec::new();
+        let account = self.reader.account();
+        let mut value = account.buffer(0).expect("empty storage is free");
+        // The existing page ledger transfers the large value's charge with its public box.
+        ledger.claim.shrink(u64::from(len));
         self.reader
             .read_large(&self.source(), index, &mut value)
             .context(ReadLargeValueSnafu { chunk, index })?;
-        Ok(value.into_boxed_slice())
+        let value = value.freeze_box();
+        let mut held = ledger.claim.take_owned(0);
+        let bytes = value.transfer_bytes(&mut held);
+        ledger.account.take_credit(&mut held, u64::from(len));
+        ledger
+            .claim
+            .grow(u64::from(len))
+            .expect("transferred page credit was already admitted");
+        Ok(bytes)
     }
 }
 
@@ -1580,8 +1597,6 @@ impl<R: StorageRead> At<'_, R> {
 /// and the decoder whose scratch they share.
 struct Decode {
     decoder: BlockDecoder,
-    /// The decoder's scratch, held in the ledger.
-    scratch: u64,
     buffers: Buffers,
 }
 
@@ -1597,8 +1612,6 @@ struct Buffer<B> {
     block: B,
     /// The chunk, column and block it holds.
     holds: Option<(ChunkId, u16, u32)>,
-    /// What it holds, in the ledger.
-    held: u64,
 }
 
 impl<B: Default> Default for Buffer<B> {
@@ -1606,39 +1619,20 @@ impl<B: Default> Default for Buffer<B> {
         Self {
             block: B::default(),
             holds: None,
-            held: 0,
         }
     }
 }
 
-/// Makes `held` at least `bytes`.
-fn reserve_up_to(held: &mut u64, bytes: u64, ledger: &mut Ledger) -> Result<(), BudgetExceeded> {
-    if bytes > *held {
-        ledger.alloc(bytes - *held)?;
-        *held = bytes;
-    }
-    Ok(())
-}
-
-/// Makes `held` exactly `bytes`, which is at most what it holds.
-fn release_down_to(held: &mut u64, bytes: u64, ledger: &mut Ledger) {
-    ledger.free(*held - bytes);
-    *held = bytes;
-}
-
 impl<B> Buffer<B> {
     /// Makes the buffer hold the block of `column` of the chunk `at` that holds `row`, with
-    /// `read` unless it holds it already, and returns the block's first row. A read follows
-    /// the protocol of [`decode_memory`]: the buffer's and the decoder's reservations grow to
-    /// the larger of what they hold and what the block takes, then shrink to what it takes.
+    /// `read` unless it holds it already, and returns the block's first row. The read admits
+    /// charged output and scratch after obsolete capacities drop, before borrowing its fragment.
     fn read<R>(
         &mut self,
-        scratch: &mut u64,
         at: &At<'_, R>,
         (column, row): (u16, u32),
-        ledger: &mut Ledger,
         log: &mut ReadLog,
-        read: impl FnOnce(u32, &mut B) -> Result<(), ReadError>,
+        read: impl FnOnce(u32, &mut B) -> Result<(), EventScanError>,
     ) -> Result<u32, EventScanError> {
         let chunk = at.chunk.0;
         let (index, entry, _) =
@@ -1647,16 +1641,10 @@ impl<B> Buffer<B> {
         if self.holds == Some(held) {
             return Ok(entry.first_row);
         }
-        let memory = decode_memory(entry.shape(), at.reader.columns()[usize::from(column)].ty);
-        reserve_up_to(&mut self.held, memory.output, ledger)
-            .and_then(|()| reserve_up_to(scratch, memory.scratch, ledger))
-            .context(ReserveReadSnafu { chunk })?;
         // Until the read succeeds, the buffer holds no block.
         self.holds = None;
+        read(index, &mut self.block)?;
         log.decoded(held);
-        read(index, &mut self.block).context(ReadBlockSnafu { chunk })?;
-        release_down_to(&mut self.held, memory.output, ledger);
-        release_down_to(scratch, memory.scratch, ledger);
         self.holds = Some(held);
         Ok(entry.first_row)
     }
@@ -1687,10 +1675,9 @@ impl Ints for u32 {
 
 impl Decode {
     /// A decoder and empty buffers. The zstd context is part of the scan's standing memory.
-    fn new() -> Result<Self, EventScanError> {
+    fn new(account: &MemoryAccount) -> Result<Self, EventScanError> {
         Ok(Self {
-            decoder: BlockDecoder::new().context(CreateDecoderSnafu)?,
-            scratch: 0,
+            decoder: BlockDecoder::new(account).context(CreateDecoderSnafu)?,
             buffers: Buffers::default(),
         })
     }
@@ -1701,18 +1688,18 @@ impl Decode {
         at: &At<'_, impl StorageRead>,
         column: u16,
         row: u32,
-        ledger: &mut Ledger,
         log: &mut ReadLog,
     ) -> Result<(&IntBlock<T>, u32), EventScanError> {
-        let Self {
-            decoder,
-            scratch,
-            buffers,
-        } = self;
+        let Self { decoder, buffers } = self;
         let buffer = T::buffer(buffers);
-        let first = buffer.read(scratch, at, (column, row), ledger, log, |index, block| {
+        let first = buffer.read(at, (column, row), log, |index, block| {
+            let shape = at.reader.blocks(column).expect("checked above")[index as usize].shape();
+            let prepared = decoder
+                .prepare_ints(shape, block)
+                .context(ReserveReadSnafu { chunk: at.chunk.0 })?;
             at.reader
-                .read_ints(&at.source(), column, index, decoder, block)
+                .read_prepared_ints(&at.source(), column, index, prepared)
+                .context(ReadBlockSnafu { chunk: at.chunk.0 })
         })?;
         Ok((&buffer.block, first))
     }
@@ -1723,18 +1710,22 @@ impl Decode {
         at: &At<'_, impl StorageRead>,
         column: u16,
         row: u32,
-        ledger: &mut Ledger,
         log: &mut ReadLog,
     ) -> Result<(&BytesBlock, u32), EventScanError> {
-        let Self {
-            decoder,
-            scratch,
-            buffers,
-        } = self;
+        let Self { decoder, buffers } = self;
         let buffer = &mut buffers.bytes;
-        let first = buffer.read(scratch, at, (column, row), ledger, log, |index, block| {
+        let first = buffer.read(at, (column, row), log, |index, block| {
+            let shape = at.reader.blocks(column).expect("checked above")[index as usize].shape();
+            let hint = match at.reader.columns()[usize::from(column)].ty {
+                crate::chunk::format::PhysicalType::Bytes(hint) => hint,
+                _ => unreachable!("bytes column checked"),
+            };
+            let prepared = decoder
+                .prepare_bytes(shape, at.reader.large_values().len() as u32, hint, block)
+                .context(ReserveReadSnafu { chunk: at.chunk.0 })?;
             at.reader
-                .read_bytes(&at.source(), column, index, decoder, block)
+                .read_prepared_bytes(&at.source(), column, index, prepared)
+                .context(ReadBlockSnafu { chunk: at.chunk.0 })
         })?;
         Ok((&buffer.block, first))
     }

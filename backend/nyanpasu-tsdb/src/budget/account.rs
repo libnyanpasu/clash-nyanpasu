@@ -1,6 +1,10 @@
 //! An operation envelope, its scoped leases, and ownership transfer to retained results.
 
-use std::cell::{Cell, RefCell};
+use std::{
+    cell::{Cell, RefCell},
+    ops::Deref,
+    rc::Rc,
+};
 
 use super::{BudgetExceeded, BudgetVec, MemoryBudget, MemoryPlan, Reservation};
 
@@ -10,59 +14,109 @@ pub(super) type Observer = Box<dyn Fn(Observation)>;
 
 /// One query's or one round's allocation envelope, backed by one root reservation.
 ///
-/// Leases borrow this account, so it cannot drop while their storage remains owned. Retired
+/// Leases keep a local handle, so the envelope lives until its storage drops. Retired
 /// leases return local credit; reusing it avoids the root budget's lock until more is needed.
 /// Live charges never exceed the reservation, and replacement peaks include both allocations.
+#[derive(Clone)]
 pub(crate) struct MemoryAccount {
+    /// Fixed local control metadata shared without atomic operations.
+    state: Rc<AccountState>,
+}
+
+/// Shared local bookkeeping for one envelope; buffer handles keep it alive without atomics.
+struct AccountState {
     /// The envelope, including reusable credit from retired buffers.
     held: RefCell<Reservation>,
     /// Bytes charged to live leases, excluding credit transferred to retained results.
-    pub(super) live: Cell<u64>,
+    live: Cell<u64>,
+    /// Standing credit dedicated to one fragment lent at a time.
+    lent: Cell<u64>,
+    /// Whether a fragment callback currently uses the standing allowance.
+    lending: Cell<bool>,
     /// The greatest simultaneous live charge, recorded before any retirement.
     peak: Cell<u64>,
     /// Cumulative observed allocation capacity, saturating if the counter fills.
-    pub(super) allocated: Cell<u64>,
+    allocated: Cell<u64>,
     /// The remaining successful admissions before injected failure.
     #[cfg(test)]
     fail_after: Cell<Option<usize>>,
     /// Receives allocation, retirement and transfer checkpoints for this account.
     #[cfg(test)]
-    pub(super) observer: RefCell<Option<Observer>>,
+    observer: RefCell<Option<Observer>>,
 }
 
 impl std::fmt::Debug for MemoryAccount {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MemoryAccount")
-            .field("held", &self.held)
-            .field("live", &self.live)
-            .field("peak", &self.peak)
-            .field("allocated", &self.allocated)
+            .field("held", &self.state.held)
+            .field("live", &self.state.live)
+            .field("peak", &self.state.peak)
+            .field("allocated", &self.state.allocated)
             .finish()
     }
 }
 
 impl MemoryAccount {
+    /// Whether two local handles share the same operation envelope.
+    pub(super) fn same_envelope(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.state, &other.state)
+    }
+
     /// Reserves the initial plan before constructing the operation envelope.
     pub(crate) fn new(
         budget: &MemoryBudget,
         what: &'static str,
         plan: MemoryPlan,
     ) -> Result<Self, BudgetExceeded> {
-        Ok(Self {
-            held: RefCell::new(budget.try_reserve(what, plan.0)?),
-            live: Cell::new(0),
-            peak: Cell::new(0),
-            allocated: Cell::new(0),
-            #[cfg(test)]
-            fail_after: Cell::new(None),
-            #[cfg(test)]
-            observer: RefCell::new(None),
-        })
+        Ok(Self::from_reservation(budget.try_reserve(what, plan.0)?))
     }
 
-    /// Admits and allocates a buffer whose lease borrows this envelope.
-    pub(crate) fn buffer<T>(&self, capacity: usize) -> Result<BudgetVec<'_, T>, BudgetExceeded> {
-        BudgetVec::new(self, capacity)
+    /// Takes ownership of credit already admitted by an operation, without debiting it again.
+    pub(crate) fn from_reservation(held: Reservation) -> Self {
+        Self {
+            state: Rc::new(AccountState {
+                held: RefCell::new(held),
+                live: Cell::new(0),
+                lent: Cell::new(0),
+                lending: Cell::new(false),
+                peak: Cell::new(0),
+                allocated: Cell::new(0),
+                #[cfg(test)]
+                fail_after: Cell::new(None),
+                #[cfg(test)]
+                observer: RefCell::new(None),
+            }),
+        }
+    }
+
+    /// Admits capacity before allocating storage; a zero-capacity buffer allocates nothing.
+    pub(crate) fn buffer<T>(&self, capacity: usize) -> Result<BudgetVec<T>, BudgetExceeded> {
+        BudgetVec::allocate(self, capacity)
+    }
+
+    /// Admits an opaque allocation before calling its constructor and transfers its claim.
+    /// Use for dependency-owned contexts and bounded dependency parsing, not growable buffers.
+    pub(crate) fn value<T>(
+        &self,
+        what: &'static str,
+        plan: MemoryPlan,
+        create: impl FnOnce() -> T,
+    ) -> Result<Reserved<T>, BudgetExceeded> {
+        let mut lease = self.lease(plan).map_err(|mut error| {
+            error.what = what;
+            error
+        })?;
+        let payload = create();
+        lease.allocated(plan.0);
+        let mut retained = Retained {
+            account: self,
+            held: self.state.held.borrow_mut().split(0),
+        };
+        lease.retain(&mut retained);
+        Ok(Reserved {
+            payload,
+            held: retained.held,
+        })
     }
 
     /// Consumes charged buffers into one immutable result and moves their reservation credit.
@@ -73,7 +127,7 @@ impl MemoryAccount {
     ) -> Result<Reserved<super::FrozenVec<T>>, BudgetExceeded> {
         let mut retained = Retained {
             account: self,
-            held: self.held.borrow_mut().split(0),
+            held: self.state.held.borrow_mut().split(0),
         };
         let payload = builder.retain(&mut retained)?;
         Ok(Reserved {
@@ -84,10 +138,10 @@ impl MemoryAccount {
 
     /// Charges a scoped allocation before storage is created, reusing available local credit.
     /// Only a request beyond the envelope's credit grows the root reservation under its lock.
-    pub(super) fn lease(&self, plan: MemoryPlan) -> Result<Lease<'_>, BudgetExceeded> {
-        let mut held = self.held.borrow_mut();
+    pub(crate) fn lease(&self, plan: MemoryPlan) -> Result<Lease, BudgetExceeded> {
+        let mut held = self.state.held.borrow_mut();
         #[cfg(test)]
-        if let Some(remaining) = self.fail_after.get() {
+        if let Some(remaining) = self.state.fail_after.get().filter(|_| plan.0 != 0) {
             if remaining == 0 {
                 return Err(BudgetExceeded {
                     what: held.what,
@@ -95,43 +149,167 @@ impl MemoryAccount {
                     available: 0,
                 });
             }
-            self.fail_after.set(Some(remaining - 1));
+            self.state.fail_after.set(Some(remaining - 1));
         }
-        let live = self.live.get().checked_add(plan.0).ok_or(BudgetExceeded {
-            what: held.what,
-            needed: plan.0,
-            available: held.bytes() - self.live.get(),
-        })?;
+        let live = self
+            .state
+            .live
+            .get()
+            .checked_add(plan.0)
+            .ok_or(BudgetExceeded {
+                what: held.what,
+                needed: plan.0,
+                available: held.bytes() - self.state.live.get(),
+            })?;
         let extra = live.saturating_sub(held.bytes());
         if extra != 0 {
             held.try_grow(extra)?;
         }
-        self.live.set(live);
-        self.peak.set(self.peak.get().max(live));
-        debug_assert!(self.live.get() <= held.bytes());
+        self.state.live.set(live);
+        self.state.peak.set(self.state.peak.get().max(live));
+        debug_assert!(self.state.live.get() <= held.bytes());
         drop(held);
         Ok(Lease {
-            account: self,
+            account: self.clone(),
             bytes: plan.0,
             actual: 0,
         })
     }
 
+    /// Makes reusable credit available before a foreign allocation or lent fragment is accessed.
+    pub(crate) fn admit(&self, bytes: u64) -> Result<(), BudgetExceeded> {
+        let mut held = self.state.held.borrow_mut();
+        let needed = self
+            .state
+            .live
+            .get()
+            .checked_add(bytes)
+            .ok_or(BudgetExceeded {
+                what: held.what,
+                needed: u64::MAX,
+                available: 0,
+            })?;
+        let extra = needed.saturating_sub(held.bytes());
+        if extra != 0 {
+            held.try_grow(extra)?;
+        }
+        Ok(())
+    }
+
+    /// Keeps legacy caller workspace credit unavailable to an independent directory admission.
+    /// This guard preserves the event ledger's existing admission policy until its migration.
+    /// Transitional: removed with the event scan's Ledger (commit 3).
+    pub(crate) fn hold_idle(&self) -> Lease {
+        let idle = self.state.held.borrow().bytes() - self.state.live.get();
+        self.lease(MemoryPlan::bytes(idle))
+            .expect("idle credit was already admitted")
+    }
+
+    /// Keeps the round's existing fragment allowance beside all outputs and directory storage.
+    /// Loan callbacks reuse this credit instead of charging the same allowance twice.
+    pub(crate) fn reserve_lent(&self, bytes: u64) -> Result<(), BudgetExceeded> {
+        let extra = bytes.saturating_sub(self.state.lent.get());
+        self.admit(extra)?;
+        self.state.live.set(self.state.live.get() + extra);
+        self.state.lent.set(self.state.lent.get().max(bytes));
+        self.state
+            .peak
+            .set(self.state.peak.get().max(self.state.live.get()));
+        Ok(())
+    }
+
+    /// Covers a fragment before invoking its source; only excess over standing credit is leased.
+    pub(crate) fn lend<T>(
+        &self,
+        bytes: u64,
+        read: impl FnOnce() -> T,
+    ) -> Result<T, BudgetExceeded> {
+        let extra = self.lease(MemoryPlan::bytes(
+            bytes.saturating_sub(self.state.lent.get()),
+        ))?;
+        assert!(
+            !self.state.lending.replace(true),
+            "fragment loans cannot nest"
+        );
+        debug_assert!(bytes <= self.state.lent.get() + extra.bytes);
+        let guard = Lending {
+            account: self,
+            extra,
+            bytes,
+        };
+        self.state
+            .allocated
+            .set(self.state.allocated.get().saturating_add(bytes));
+        self.observe(Change::Allocate, bytes);
+        let result = read();
+        drop(guard);
+        Ok(result)
+    }
+
+    /// Transfers an existing owner's admitted credit into this envelope without double charging.
+    /// Transitional: removed with the event scan's Ledger (commit 3).
+    pub(crate) fn take_credit(&self, source: &mut Reservation, bytes: u64) {
+        self.state.held.borrow_mut().merge(source.split(bytes));
+    }
+
+    /// Lends an existing operation reservation to a scoped allocation context.
+    /// The unused credit returns to that same reservation when the scope ends.
+    pub(crate) fn borrow_reservation(source: &mut Reservation) -> AccountScope<'_> {
+        let bytes = source.bytes();
+        AccountScope {
+            account: Self::from_reservation(source.split(bytes)),
+            source,
+        }
+    }
+
+    /// The independently observed sum of live lease charges, excluding retained dependency owners.
+    #[cfg(test)]
+    pub(crate) fn live_bytes(&self) -> u64 {
+        self.state.live.get()
+    }
+
+    /// Standing fragment allowance, for capacity-versus-charge fixture checks.
+    #[cfg(test)]
+    pub(crate) fn lent_bytes(&self) -> u64 {
+        self.state.lent.get()
+    }
+
+    /// Installs a detailed lifetime probe used by the budget invariants.
+    #[cfg(test)]
+    pub(super) fn set_observer(&self, observer: Observer) {
+        *self.state.observer.borrow_mut() = Some(observer);
+    }
+
+    /// Total capacity observed across allocations, for independent replacement checks.
+    #[cfg(test)]
+    pub(super) fn allocated_bytes(&self) -> u64 {
+        self.state.allocated.get()
+    }
+
+    /// Registers an account-local allocation-lifetime probe without global allocator hooks.
+    #[cfg(test)]
+    pub(crate) fn observe_allocations(&self, observe: impl Fn(bool, u64, u64) + 'static) {
+        *self.state.observer.borrow_mut() = Some(Box::new(move |event| match event.kind {
+            Change::Allocate => observe(true, event.bytes, event.live),
+            Change::Retire | Change::Transfer => observe(false, event.bytes, event.live),
+        }));
+    }
+
     /// Injects admission failure after the given number of successful lease requests.
     #[cfg(test)]
     pub(crate) fn fail_after(&self, allocations: usize) {
-        self.fail_after.set(Some(allocations));
+        self.state.fail_after.set(Some(allocations));
     }
 
     /// Reports a storage-lifetime checkpoint to the account-local test observer.
     fn observe(&self, kind: Change, bytes: u64) {
         #[cfg(test)]
-        if let Some(observer) = &*self.observer.borrow() {
+        if let Some(observer) = &*self.state.observer.borrow() {
             observer(Observation {
                 kind,
                 bytes,
-                live: self.live.get(),
-                peak: self.peak.get(),
+                live: self.state.live.get(),
+                peak: self.state.peak.get(),
             });
         }
         #[cfg(not(test))]
@@ -139,12 +317,12 @@ impl MemoryAccount {
     }
 }
 
-/// A scoped charge that borrows its envelope and returns local credit when dropped.
+/// A scoped charge that keeps its envelope alive and returns local credit when dropped.
 /// Its storage owner must drop storage before dropping this lease.
 #[derive(Debug)]
-pub(super) struct Lease<'a> {
-    /// The envelope kept alive by the storage owner's borrow.
-    pub(super) account: &'a MemoryAccount,
+pub(crate) struct Lease {
+    /// The envelope kept alive by the storage owner's local handle.
+    pub(super) account: MemoryAccount,
     /// Reserved bytes covering the allocation capacity.
     pub(super) bytes: u64,
     /// Observed allocation capacity for retirement and transfer checkpoints.
@@ -176,35 +354,48 @@ pub(super) struct Observation {
     pub(super) peak: u64,
 }
 
-impl Lease<'_> {
+impl Lease {
+    /// Live aggregate credit, independently checked against event fixture capacities.
+    #[cfg(test)]
+    pub(crate) fn bytes_for_test(&self) -> u64 {
+        self.bytes
+    }
+
     /// Records actual capacity after allocation, asserting that the lease covers it.
     pub(super) fn allocated(&mut self, bytes: u64) {
         debug_assert!(bytes <= self.bytes);
         self.actual = bytes;
         self.account
+            .state
             .allocated
-            .set(self.account.allocated.get().saturating_add(bytes));
+            .set(self.account.state.allocated.get().saturating_add(bytes));
         self.account.observe(Change::Allocate, bytes);
     }
 
     /// Moves this lease's credit into the same account's retained claim without releasing it.
     /// Storage remains live under that claim instead of returning reusable local credit.
     pub(super) fn retain(mut self, retained: &mut Retained<'_>) {
-        assert!(std::ptr::eq(self.account, retained.account));
+        assert!(Rc::ptr_eq(&self.account.state, &retained.account.state));
         retained
             .held
-            .merge(self.account.held.borrow_mut().split(self.bytes));
-        self.account.live.set(self.account.live.get() - self.bytes);
+            .merge(self.account.state.held.borrow_mut().split(self.bytes));
+        self.account
+            .state
+            .live
+            .set(self.account.state.live.get() - self.bytes);
         self.account.observe(Change::Transfer, self.actual);
         self.bytes = 0;
         self.actual = 0;
     }
 }
 
-impl Drop for Lease<'_> {
+impl Drop for Lease {
     fn drop(&mut self) {
-        self.account.live.set(self.account.live.get() - self.bytes);
-        debug_assert!(self.account.live.get() <= self.account.held.borrow().bytes());
+        self.account
+            .state
+            .live
+            .set(self.account.state.live.get() - self.bytes);
+        debug_assert!(self.account.state.live.get() <= self.account.state.held.borrow().bytes());
         self.account.observe(Change::Retire, self.actual);
     }
 }
@@ -228,15 +419,155 @@ pub(crate) struct Retained<'a> {
 pub(crate) struct Reserved<T> {
     /// Must stay before `held`: fields drop in declaration order, so storage drops before its
     /// reservation is returned. Do not reorder these fields.
-    payload: T,
+    pub(super) payload: T,
     /// The payload's charge, returned only after its storage drops.
     held: Reservation,
 }
 
 impl<T> Reserved<T> {
+    /// Returns obsolete dependency workspace after its concrete owner measures retained storage.
+    pub(crate) fn retain_bytes(mut self, bytes: u64) -> Self {
+        assert!(
+            bytes <= self.held.bytes(),
+            "retained capacity exceeds its allowance"
+        );
+        self.held.shrink(self.held.bytes() - bytes);
+        self
+    }
+
     /// Borrows the payload without exposing mutation or separating it from its charge.
     pub(crate) fn get(&self) -> &T {
         debug_assert!(self.held.bytes() <= self.held.budget.reserved());
         &self.payload
+    }
+}
+
+impl<T, E> Reserved<Result<T, E>> {
+    /// Moves a successful dependency with its charge; failed construction returns unused credit.
+    pub(crate) fn transpose(self) -> Result<Reserved<T>, E> {
+        let Self { payload, held } = self;
+        payload.map(|payload| Reserved { payload, held })
+    }
+}
+
+impl Reserved<zstd::bulk::Compressor<'static>> {
+    /// Measures the dependency's current workspace without exposing its mutable context.
+    #[cfg(test)]
+    pub(crate) fn workspace_size(&mut self) -> usize {
+        self.payload.context_mut().sizeof()
+    }
+}
+
+/// A scope that returns an operation's allocation envelope without releasing its root credit.
+pub(crate) struct AccountScope<'a> {
+    /// The temporary envelope used by charged leaf allocations.
+    account: MemoryAccount,
+    /// The original round owner that receives reusable credit when this scope ends.
+    source: &'a mut Reservation,
+}
+
+impl Deref for AccountScope<'_> {
+    type Target = MemoryAccount;
+    /// Borrows the operation's temporary allocation envelope.
+    fn deref(&self) -> &MemoryAccount {
+        &self.account
+    }
+}
+
+impl Drop for AccountScope<'_> {
+    fn drop(&mut self) {
+        assert_eq!(
+            self.account.state.live.get(),
+            self.account.state.lent.get(),
+            "scoped buffers must drop before their envelope"
+        );
+        let bytes = self.account.state.held.borrow().bytes();
+        self.source
+            .merge(self.account.state.held.borrow_mut().split(bytes));
+    }
+}
+
+impl Reserved<Box<[u8]>> {
+    /// Transfers a boxed value and its charge into the existing aggregate page owner.
+    /// Transitional: removed with the event scan's Ledger (commit 3).
+    pub(crate) fn transfer_bytes(self, owner: &mut Reservation) -> Box<[u8]> {
+        let Self { payload, held } = self;
+        owner.merge(held);
+        payload
+    }
+}
+
+impl<'a> Retained<'a> {
+    /// Starts a transfer claim without releasing any envelope credit.
+    pub(super) fn new(account: &'a MemoryAccount) -> Self {
+        Self {
+            account,
+            held: account.state.held.borrow_mut().split(0),
+        }
+    }
+}
+
+impl<T> Reserved<T> {
+    /// Seals already-charged storage with the transfer claim assembled by its budget factory.
+    pub(super) fn from_retained(payload: T, retained: Retained<'_>) -> Self {
+        Self {
+            payload,
+            held: retained.held,
+        }
+    }
+}
+
+impl Lease {
+    /// Admits additional opaque workspace while keeping one aggregate operation lease.
+    /// Transitional: removed with the event scan's Ledger (commit 3).
+    pub(crate) fn grow(&mut self, bytes: u64) -> Result<(), BudgetExceeded> {
+        let mut extra = self.account.lease(MemoryPlan::bytes(bytes))?;
+        self.bytes += bytes;
+        self.actual += bytes;
+        extra.bytes = 0;
+        Ok(())
+    }
+
+    /// Returns opaque workspace credit only after its owner has dropped the storage.
+    /// Transitional: removed with the event scan's Ledger (commit 3).
+    pub(crate) fn shrink(&mut self, bytes: u64) {
+        assert!(bytes <= self.bytes);
+        self.bytes -= bytes;
+        self.actual = self.actual.saturating_sub(bytes);
+        self.account
+            .state
+            .live
+            .set(self.account.state.live.get() - bytes);
+    }
+
+    /// Moves an aggregate payload's credit into its existing retained owner without releasing it.
+    /// Transitional: removed with the event scan's Ledger (commit 3).
+    pub(crate) fn take_owned(&mut self, bytes: u64) -> Reservation {
+        assert!(bytes <= self.bytes);
+        self.bytes -= bytes;
+        self.actual = self.actual.saturating_sub(bytes);
+        self.account
+            .state
+            .live
+            .set(self.account.state.live.get() - bytes);
+        self.account.state.held.borrow_mut().split(bytes)
+    }
+}
+
+/// Retires the opaque loan allowance after the backend callback and borrowed guard have ended.
+struct Lending<'a> {
+    /// The standing fragment allowance remains live until this scope retires its loan.
+    account: &'a MemoryAccount,
+    /// Extra credit beyond standing room, held through the retirement checkpoint.
+    extra: Lease,
+    /// The opaque loan allowance, bounded before its source can lend storage.
+    bytes: u64,
+}
+
+impl Drop for Lending<'_> {
+    fn drop(&mut self) {
+        debug_assert!(self.bytes <= self.account.state.lent.get() + self.extra.bytes);
+        self.account.observe(Change::Retire, self.bytes);
+        self.account.state.lending.set(false);
     }
 }

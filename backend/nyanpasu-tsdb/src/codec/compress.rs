@@ -13,12 +13,27 @@
 
 use std::io;
 
+use crate::budget::{BudgetVec, MemoryAccount, MemoryPlan, Reserved};
 use snafu::{ResultExt, ensure};
-use zstd::bulk::{Compressor, Decompressor};
+
+/// A compressor whose lazy dependency workspace stays charged until destruction.
+pub(crate) type Compressor = Reserved<zstd::bulk::Compressor<'static>>;
+/// A decompressor retaining its dependency workspace charge across blocks.
+pub(crate) type Decompressor = Reserved<zstd::bulk::Decompressor<'static>>;
+
+/// The lazy level-one compression workspace for supported block sizes. zstd 1.5.7's
+/// `ZSTD_sizeof_CCtx` peaks at 218,110 bytes over supported blocks, near 16 KiB; round up.
+/// A reused context retains the largest workspace, and a test measures both fresh and reused.
+pub(crate) const COMPRESSION_CONTEXT: u64 = 224 * 1024;
+/// The decompression context shared by event scans and maintenance: zstd 1.5.7 reports
+/// 95,984 bytes, rounded up. Bulk decoding uses caller storage and allocates no window.
+pub(crate) const DECOMPRESSION_CONTEXT: u64 = 100 * 1024;
+/// The existing series-query context envelope, retained for admission compatibility.
+pub(crate) const SERIES_DECOMPRESSION_CONTEXT: u64 = 128 * 1024;
 
 use super::{
     Codec, DeclaredLengthSnafu, DecodeError, DecompressSnafu, DecompressedLengthSnafu,
-    MAX_BLOCK_LEN, reserve_cap,
+    MAX_BLOCK_LEN,
 };
 
 /// ClickHouse, Parquet and InfluxDB 3 default to level 1 too; level 19 would need about
@@ -29,12 +44,26 @@ pub(crate) const ZSTD_LEVEL: i32 = 1;
 /// §6.3 rule 3).
 pub(crate) const MIN_COMPRESSED_INPUT: usize = 128;
 
-pub(crate) fn new_compressor() -> io::Result<Compressor<'static>> {
-    Compressor::new(ZSTD_LEVEL)
+/// Creates a compressor only after its account covers construction and lazy first use.
+pub(crate) fn new_compressor(account: &MemoryAccount) -> io::Result<Compressor> {
+    account
+        .value("dependency", MemoryPlan::bytes(COMPRESSION_CONTEXT), || {
+            zstd::bulk::Compressor::new(ZSTD_LEVEL)
+        })
+        .expect("the caller admitted the compressor allowance")
+        .transpose()
 }
 
-pub(crate) fn new_decompressor() -> io::Result<Decompressor<'static>> {
-    Decompressor::new()
+/// Creates a decompressor only after its account covers the dependency context.
+pub(crate) fn new_decompressor(account: &MemoryAccount) -> io::Result<Decompressor> {
+    account
+        .value(
+            "dependency",
+            MemoryPlan::bytes(DECOMPRESSION_CONTEXT),
+            zstd::bulk::Decompressor::new,
+        )
+        .expect("the caller admitted the decompressor allowance")
+        .transpose()
 }
 
 /// Whether a compressed form of `frame_len` bytes saves enough over `encoded_len`: at least
@@ -48,9 +77,9 @@ pub(crate) fn keeps_compressed(encoded_len: usize, frame_len: usize) -> bool {
 /// `max_frame` when first used, which has to hold [`frame_len`] of the longest block compressed
 /// into it.
 pub(crate) fn compress(
-    compressor: &mut Compressor<'static>,
+    compressor: &mut Compressor,
     encoded: &[u8],
-    frame: &mut Vec<u8>,
+    frame: &mut BudgetVec<u8>,
     max_frame: usize,
 ) -> io::Result<Codec> {
     if encoded.len() < MIN_COMPRESSED_INPUT {
@@ -58,8 +87,9 @@ pub(crate) fn compress(
     }
     frame.clear();
     // zstd writes into the spare capacity, never past it.
-    reserve_cap(frame, frame_len(encoded.len()), max_frame);
-    let len = compressor.compress_to_buffer(encoded, frame)?;
+    frame.reserve(frame_len(encoded.len()), max_frame);
+    let len = frame.compress_into(compressor, encoded)?;
+    frame.truncate(len);
     Ok(if keeps_compressed(encoded.len(), len) {
         Codec::Zstd
     } else {
@@ -74,10 +104,10 @@ pub(crate) fn frame_len(len: usize) -> usize {
 
 /// Decompresses `frame` into `out`, which ends up exactly `len` bytes long.
 pub(crate) fn decompress(
-    decompressor: &mut Decompressor<'static>,
+    decompressor: &mut Decompressor,
     frame: &[u8],
     len: usize,
-    out: &mut Vec<u8>,
+    out: &mut BudgetVec<u8>,
 ) -> Result<(), DecodeError> {
     ensure!(
         len <= MAX_BLOCK_LEN,
@@ -87,9 +117,13 @@ pub(crate) fn decompress(
         }
     );
     out.clear();
-    out.resize(len, 0);
-    let written = decompressor
-        .decompress_to_buffer(frame, out.as_mut_slice())
+    assert_eq!(
+        out.capacity(),
+        len,
+        "decompression uses its admitted exact capacity"
+    );
+    let written = out
+        .decompress_into(decompressor, frame)
         .context(DecompressSnafu)?;
     ensure!(
         written == len,
@@ -128,8 +162,10 @@ mod tests {
 
     #[test]
     fn small_blocks_stay_uncompressed() {
-        let mut compressor = new_compressor().unwrap();
-        let mut frame = Vec::new();
+        let mut compressor = new_compressor(&crate::budget::test_account()).unwrap();
+        let mut frame = crate::budget::test_account()
+            .buffer(0)
+            .expect("empty storage is free");
         let zeros = [0u8; MIN_COMPRESSED_INPUT];
         assert_eq!(
             compress(
@@ -157,8 +193,10 @@ mod tests {
 
     #[test]
     fn random_bytes_stay_raw_and_redundant_bytes_compress() {
-        let mut compressor = new_compressor().unwrap();
-        let mut frame = Vec::new();
+        let mut compressor = new_compressor(&crate::budget::test_account()).unwrap();
+        let mut frame = crate::budget::test_account()
+            .buffer(0)
+            .expect("empty storage is free");
         assert_eq!(
             compress(
                 &mut compressor,
@@ -185,9 +223,16 @@ mod tests {
 
     #[test]
     fn one_context_pair_serves_many_blocks() {
-        let mut compressor = new_compressor().unwrap();
-        let mut decompressor = new_decompressor().unwrap();
-        let (mut frame, mut out) = (Vec::new(), Vec::new());
+        let mut compressor = new_compressor(&crate::budget::test_account()).unwrap();
+        let mut decompressor = new_decompressor(&crate::budget::test_account()).unwrap();
+        let (mut frame, mut out) = (
+            crate::budget::test_account()
+                .buffer(0)
+                .expect("empty storage is free"),
+            crate::budget::test_account()
+                .buffer(0)
+                .expect("empty storage is free"),
+        );
         for round in 0..64usize {
             // Sizes and contents vary, so leftover state from the previous block would show.
             let block: Vec<u8> = format!("block {round} ")
@@ -206,17 +251,20 @@ mod tests {
                 .unwrap(),
                 Codec::Zstd
             );
+            out.reset_to(block.len()).unwrap();
             decompress(&mut decompressor, &frame, block.len(), &mut out).unwrap();
-            assert_eq!(out, block);
+            assert_eq!(&*out, block);
         }
     }
 
     #[test]
     fn a_declared_length_past_the_limit_is_rejected_before_decompressing() {
-        let mut compressor = new_compressor().unwrap();
-        let mut decompressor = new_decompressor().unwrap();
+        let mut compressor = new_compressor(&crate::budget::test_account()).unwrap();
+        let mut decompressor = new_decompressor(&crate::budget::test_account()).unwrap();
         let bomb = vec![0u8; MAX_BLOCK_LEN + 1];
-        let mut frame = Vec::new();
+        let mut frame = crate::budget::test_account()
+            .buffer(0)
+            .expect("empty storage is free");
         compress(
             &mut compressor,
             &bomb,
@@ -224,7 +272,9 @@ mod tests {
             frame_len(MAX_BLOCK_LEN + 1),
         )
         .unwrap();
-        let mut out = Vec::new();
+        let mut out = crate::budget::test_account()
+            .buffer(0)
+            .expect("empty storage is free");
         let result = decompress(&mut decompressor, &frame, bomb.len(), &mut out);
         assert!(matches!(result, Err(DecodeError::DeclaredLength { .. })));
         // Nothing was decompressed or allocated for it.
@@ -233,10 +283,12 @@ mod tests {
 
     #[test]
     fn a_block_of_another_length_is_rejected() {
-        let mut compressor = new_compressor().unwrap();
-        let mut decompressor = new_decompressor().unwrap();
+        let mut compressor = new_compressor(&crate::budget::test_account()).unwrap();
+        let mut decompressor = new_decompressor(&crate::budget::test_account()).unwrap();
         let block = vec![7u8; 1000];
-        let mut frame = Vec::new();
+        let mut frame = crate::budget::test_account()
+            .buffer(0)
+            .expect("empty storage is free");
         compress(
             &mut compressor,
             &block,
@@ -244,12 +296,16 @@ mod tests {
             frame_len(MAX_BLOCK_LEN + 1),
         )
         .unwrap();
-        let mut out = Vec::new();
+        let mut out = crate::budget::test_account()
+            .buffer(0)
+            .expect("empty storage is free");
+        out.reset_to(999).unwrap();
         // Longer than declared: zstd refuses to write past the buffer.
         assert!(matches!(
             decompress(&mut decompressor, &frame, 999, &mut out),
             Err(DecodeError::Decompress { .. })
         ));
+        out.reset_to(1001).unwrap();
         // Shorter than declared: zstd succeeds, and the length check rejects it.
         assert!(matches!(
             decompress(&mut decompressor, &frame, 1001, &mut out),

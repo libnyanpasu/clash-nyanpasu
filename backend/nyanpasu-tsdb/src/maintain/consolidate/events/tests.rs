@@ -1027,7 +1027,17 @@ fn large_values_survive_consolidation_byte_for_byte_and_are_never_held_whole() {
             chunk: listed.chunk,
         };
         let budget = MemoryBudget::new(u64::MAX);
-        let reader = ChunkReader::open(&source, &budget, listed.entry.fragment0).unwrap();
+        let reader = ChunkReader::open(
+            &source,
+            &crate::budget::MemoryAccount::new(
+                &budget,
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            listed.entry.fragment0,
+        )
+        .unwrap();
         large.extend(
             reader
                 .large_values()
@@ -1980,11 +1990,7 @@ fn held<R: StorageRead>(reading: &Reading<'_, R>) -> (u64, u64, u64) {
         + bytes(&ints.u64s.block.buffers())
         + bytes(&ints.u32s.block.buffers())
         + bytes(&decode.bytes.block.buffers());
-    let mut reserved = decode.scratch.bytes()
-        + ints.i64s.held.bytes()
-        + ints.u64s.held.bytes()
-        + ints.u32s.held.bytes()
-        + decode.bytes.held.bytes();
+    let mut reserved = reading.standing.live_bytes() - reading.standing.lent_bytes();
     for way in &reading.ways {
         capacities += (way.ranks.capacity() * size_of::<Rank>()) as u64;
         reserved += way.held.bytes();
@@ -2077,8 +2083,15 @@ fn reading_a_rounds_inputs_holds_no_more_than_planned() {
         batch: &mut output,
         chunk: ChunkId(u64::MAX),
     };
-    let mut builder =
-        ChunkBuilder::new(&mut sink, ChunkKind::Consolidated, 0, None, events.layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut sink,
+        ChunkKind::Consolidated,
+        0,
+        None,
+        events.layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     let mut window = Window::new(events.bytes().count());
     let (mut rows, mut cost) = (0, RowCost::default());
     let mut last = None;
@@ -2119,8 +2132,18 @@ fn reading_a_rounds_inputs_holds_no_more_than_planned() {
         chunk: ChunkId(u64::MAX),
     };
     let budget = MemoryBudget::new(u64::MAX);
-    let reader = ChunkReader::open(&source, &budget, built.fragment0).unwrap();
-    let mut decoder = crate::codec::block::BlockDecoder::raw();
+    let reader = ChunkReader::open(
+        &source,
+        &crate::budget::MemoryAccount::new(
+            &budget,
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
+        built.fragment0,
+    )
+    .unwrap();
+    let mut decoder = crate::codec::block::BlockDecoder::raw(&crate::budget::test_account());
     let mut ranks = vec![(0, 0, 0); built.rows as usize];
     for column in [KEY, INCARNATION, SEQUENCE] {
         for block in 0..reader.blocks(column).unwrap().len() as u32 {
@@ -2384,7 +2407,17 @@ fn blocks_by_codec<S: Storage>(tsdb: &Tsdb<S>, chunks: &[Listed]) -> (usize, usi
             storage: &snapshot,
             chunk: listed.chunk,
         };
-        let reader = ChunkReader::open(&source, &budget, listed.entry.fragment0).unwrap();
+        let reader = ChunkReader::open(
+            &source,
+            &crate::budget::MemoryAccount::new(
+                &budget,
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            listed.entry.fragment0,
+        )
+        .unwrap();
         for column in 0..reader.columns().len() as u16 {
             for block in reader.blocks(column).unwrap() {
                 match block.codec {
@@ -2485,8 +2518,15 @@ fn foreign_chunk(store: &Store, chunk: u64, keys: &[i64], recorded: Option<(i64,
         chunk: ChunkId(chunk),
     };
     let fingerprint = store.tsdb.shape().fingerprint;
-    let mut builder =
-        ChunkBuilder::new(&mut sink, ChunkKind::L0Base, fingerprint, None, &layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut sink,
+        ChunkKind::L0Base,
+        fingerprint,
+        None,
+        &layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     let rows = keys.len();
     let seqs: Vec<u64> = (0..rows as u64).collect();
     let zeros = vec![0u64; rows];
@@ -2959,8 +2999,15 @@ fn the_cost_of_an_input_covers_what_reading_it_holds() {
             batch: &mut output,
             chunk: ChunkId(u64::MAX),
         };
-        let mut builder =
-            ChunkBuilder::new(&mut sink, ChunkKind::Consolidated, 0, None, events.layout).unwrap();
+        let mut builder = ChunkBuilder::new(
+            &mut sink,
+            ChunkKind::Consolidated,
+            0,
+            None,
+            events.layout,
+            &crate::budget::test_account(),
+        )
+        .unwrap();
         loop {
             reading.switch().unwrap();
             if reading.heap.is_empty() {
@@ -3058,5 +3105,36 @@ fn the_least_round_covers_the_rounds_of_the_heaviest_chunks() {
         assert_eq!(merge.memory, room);
         assert_eq!(runs(room - 1).ways, 1);
         assert!(l0(room).memory <= room);
+    }
+}
+
+#[test]
+fn traffic_allocation_floors() {
+    let schema = crate::write::chunking::tests::traffic_schema();
+    let shape = crate::write::chunking::Shape::new(&schema);
+    let layout = crate::write::chunking::event_columns(&schema.events[0]);
+    let raw = super::least_round(&layout, false);
+    let compressed = super::least_round(&layout, true);
+    let series = super::super::least_round(&shape);
+    for (name, profile, expected) in [
+        ("desktop", Profile::desktop(), 2_798_929),
+        ("x86_device", Profile::x86_device(), 1_714_177),
+        ("low_end", Profile::low_end(), 901_523),
+        ("mobile", Profile::mobile(), 901_523),
+    ] {
+        let staging = crate::write::chunking::least_staging(&schema, &shape, profile.head);
+        assert_eq!(
+            (staging, series, raw, compressed),
+            (expected, 901_523, 1_564_251, 1_826_544)
+        );
+        println!(
+            "TRAFFIC_FLOORS {name} least_staging={staging} series={series} raw={raw} compressing={compressed}"
+        );
+        if name == "mobile" {
+            assert!(staging < profile.staging);
+            let disk = MemoryDisk::new();
+            let storage = disk.open().unwrap();
+            assert!(crate::Tsdb::open(storage, schema.clone(), profile).is_ok());
+        }
     }
 }

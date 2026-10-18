@@ -59,13 +59,16 @@ use std::{
     ops::{ControlFlow, Range, RangeInclusive},
 };
 
+use crate::codec::compress::{COMPRESSION_CONTEXT, Compressor, DECOMPRESSION_CONTEXT};
 use snafu::{IntoError, OptionExt, ResultExt, Snafu, ensure};
-use zstd::bulk::Compressor;
+
+#[cfg(test)]
+use crate::chunk::reader::decode_memory;
 
 use super::{Changed, Context, Maintained, Round};
 use crate::{
     ErrorKind, TierId, Timestamp,
-    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    budget::{BudgetExceeded, MemoryAccount, MemoryBudget, Reservation},
     chunk::{
         BatchSink, FragmentSource, StoredChunk,
         builder::{
@@ -76,7 +79,7 @@ use crate::{
             ChunkKind, MAX_CHUNK_LEN, PhysicalType, directory_memory, max_fragment0_len,
             open_memory,
         },
-        reader::{ChunkReader, decode_memory, lent_memory, metadata_within_limits},
+        reader::{ChunkReader, lent_memory, metadata_within_limits},
     },
     codec::{
         Codec, Encoding,
@@ -95,19 +98,6 @@ use crate::{
 mod events;
 
 pub(super) use self::events::{consolidate as consolidate_events, merge as merge_runs};
-
-/// The bytes a [`Compressor`] holds once it has compressed blocks of every size the builder
-/// compresses, from `MIN_COMPRESSED_INPUT` to `BLOCK_TARGET_LEN + MAX_BODY_OVERHEAD`.
-/// `compress2` pledges each block's size, so the window follows the block (§6.3 rule 5), and
-/// a reused context keeps the largest workspace any of them needed. zstd 1.5.7's
-/// `ZSTD_sizeof_CCtx` peaks at 218,110 bytes over that range, at blocks of about 16 KiB, whose
-/// parameter table has the larger hash table; rounded up. A test measures it.
-const COMPRESSION_CONTEXT: u64 = 224 * 1024;
-
-/// The bytes of the zstd context of a [`BlockDecoder`]: zstd 1.5.7's `ZSTD_sizeof_DCtx`,
-/// 95,984 bytes, rounded up. Bulk decompression writes into the caller's buffer, so the
-/// context allocates no window. A test measures it.
-const DECOMPRESSION_CONTEXT: u64 = 100 * 1024;
 
 /// The most rows handed to the builder per call; it bounds one append's buffers.
 const APPEND_ROWS: usize = 256;
@@ -300,8 +290,10 @@ pub(super) fn consolidate(
     if chosen.pending > 0 {
         reservation.try_grow(chosen.memory).context(ReserveSnafu)?;
         let inputs = collect(read, stream, extent, pending, retake, &chosen, shape)?;
+        let allocation = MemoryAccount::borrow_reservation(&mut reservation);
         let pool = MemoryBudget::new(chosen.peak.pool());
-        let mut compressor = compress::new_compressor().context(CreateCompressorSnafu)?;
+        let mut compressor =
+            compress::new_compressor(&allocation).context(CreateCompressorSnafu)?;
         let mut rows = Rows::new(read, &inputs, &layout, &pool, &chosen.peak)?;
         let output = Output {
             kind: ChunkKind::Consolidated,
@@ -317,6 +309,7 @@ pub(super) fn consolidate(
             Some(&mut compressor),
             &mut next_chunk,
             &mut replacement,
+            &allocation,
         )?;
         drop(rows);
         replace(batch, stream, &inputs, replacement)?;
@@ -387,6 +380,7 @@ pub(super) fn merge(
     } else {
         let pool_bytes = peak.pool();
         reservation.try_grow(pool_bytes).context(ReserveSnafu)?;
+        let allocation = MemoryAccount::borrow_reservation(&mut reservation);
         let pool = MemoryBudget::new(pool_bytes);
         let mut rows = Rows::new(read, &inputs, &layout, &pool, &peak)?;
         let output = Output {
@@ -397,7 +391,14 @@ pub(super) fn merge(
             layout: &layout,
         };
         let mut replacement = Replacement::new(stream, extent);
-        let written = output.write(batch, &mut rows, None, &mut next_chunk, &mut replacement)?;
+        let written = output.write(
+            batch,
+            &mut rows,
+            None,
+            &mut next_chunk,
+            &mut replacement,
+            &allocation,
+        )?;
         drop(rows);
         replace(batch, stream, &inputs, replacement)?;
         done.chunks_rewritten = inputs.len() as u64;
@@ -1023,9 +1024,10 @@ impl Output<'_> {
         &self,
         batch: &mut impl StorageWrite,
         rows: &mut Rows<'_, impl StorageRead>,
-        mut compressor: Option<&mut Compressor<'static>>,
+        mut compressor: Option<&mut Compressor>,
         next_chunk: &mut u64,
         replacement: &mut Replacement,
+        account: &MemoryAccount,
     ) -> Result<Written, ConsolidateError> {
         let mut append = AppendRows::new(self.fields);
         let mut written = Written::default();
@@ -1048,6 +1050,7 @@ impl Output<'_> {
                 self.fingerprint,
                 compressor.as_deref_mut(),
                 self.layout,
+                account,
             )
             .context(BuildSnafu { chunk: chunk.0 })?;
             let mut taken = 0;
@@ -1100,7 +1103,6 @@ struct Rows<'a, R> {
     inputs: &'a [Listed],
     layout: &'a [ColumnLayout],
     fields: usize,
-    pool: &'a MemoryBudget,
     decoder: Decoder,
     /// The first input of the next group.
     next: usize,
@@ -1110,8 +1112,7 @@ struct Rows<'a, R> {
     summing: Option<Row>,
     /// The fragment the backend lends while a block decodes, and the decoder's zstd context,
     /// reserved for the whole round.
-    #[allow(dead_code, reason = "held for its Drop, which returns their bytes")]
-    standing: Reservation,
+    standing: MemoryAccount,
 }
 
 impl<'a, R: StorageRead> Rows<'a, R> {
@@ -1119,28 +1120,28 @@ impl<'a, R: StorageRead> Rows<'a, R> {
         read: &'a R,
         inputs: &'a [Listed],
         layout: &'a [ColumnLayout],
-        pool: &'a MemoryBudget,
+        pool: &MemoryBudget,
         peak: &Peak,
     ) -> Result<Self, ConsolidateError> {
         let standing = pool
             .try_reserve("lent fragment", peak.lent + peak.decompression())
             .expect("the pool holds the lent fragment and the zstd context");
+        let standing = MemoryAccount::from_reservation(standing);
+        standing
+            .reserve_lent(peak.lent)
+            .expect("the standing reservation includes its lent fragment");
         // L0 chunks are never compressed, so reading only them needs no zstd context.
         let blocks = if peak.compressed {
-            BlockDecoder::new().context(CreateDecoderSnafu)?
+            BlockDecoder::new(&standing).context(CreateDecoderSnafu)?
         } else {
-            BlockDecoder::raw()
+            BlockDecoder::raw(&standing)
         };
         Ok(Self {
             read,
             inputs,
             layout,
             fields: layout.len() - usize::from(FIRST_FIELD),
-            pool,
-            decoder: Decoder {
-                blocks,
-                scratch: empty(pool),
-            },
+            decoder: Decoder { blocks },
             next: 0,
             ways: Vec::new(),
             heap: BinaryHeap::new(),
@@ -1211,7 +1212,7 @@ impl<'a, R: StorageRead> Rows<'a, R> {
         self.heap.reserve(len);
         for listed in group {
             self.ways
-                .push(Way::open(self.read, listed, self.layout, self.pool)?);
+                .push(Way::open(self.read, listed, self.layout, &self.standing)?);
         }
         for (index, way) in self.ways.iter_mut().enumerate() {
             let mut read = Read {
@@ -1230,9 +1231,12 @@ impl<'a, R: StorageRead> Rows<'a, R> {
 
 #[cfg(test)]
 impl<R> Rows<'_, R> {
-    /// What the open ways hold now, by their buffers' capacities: their directories, decoded
-    /// blocks and the decoder's scratch, which the pool reserves as they grow; and the ways
-    /// and the heap themselves, which the pool's size counts.
+    /// Actual immutable directory capacity retained separately from live buffer leases.
+    fn directory_bytes(&self) -> u64 {
+        self.ways.iter().map(|way| way.reader.memory()).sum()
+    }
+
+    /// What the open ways hold by actual capacities, plus their ways and heap storage.
     fn held(&self) -> (u64, u64) {
         let bytes = |buffers: &[(&'static str, usize)]| -> u64 {
             buffers.iter().map(|&(_, bytes)| bytes as u64).sum()
@@ -1257,7 +1261,6 @@ impl<R> Rows<'_, R> {
 /// The block decoder a round shares across its inputs, with its scratch reserved.
 struct Decoder {
     blocks: BlockDecoder,
-    scratch: Reservation,
 }
 
 /// What reading a block of a way needs besides the way.
@@ -1284,10 +1287,10 @@ impl Way {
         read: &impl StorageRead,
         listed: &Listed,
         layout: &[ColumnLayout],
-        pool: &MemoryBudget,
+        account: &MemoryAccount,
     ) -> Result<Self, ConsolidateError> {
         let chunk = listed.chunk;
-        let reader = open_input(read, listed, pool)?;
+        let reader = open_input(read, listed, account)?;
         let shaped = reader.rows() == listed.entry.rows
             && reader.columns().len() == layout.len()
             && reader
@@ -1301,9 +1304,9 @@ impl Way {
             rows: reader.rows(),
             reader,
             row: 0,
-            bucket: Cursor::new(BUCKET, pool),
-            combo: Cursor::new(COMBO, pool),
-            fields: std::array::from_fn(|field| Cursor::new(FIRST_FIELD + field as u16, pool)),
+            bucket: Cursor::new(BUCKET),
+            combo: Cursor::new(COMBO),
+            fields: std::array::from_fn(|field| Cursor::new(FIRST_FIELD + field as u16)),
         })
     }
 
@@ -1337,14 +1340,14 @@ impl Way {
 fn open_input(
     read: &impl StorageRead,
     listed: &Listed,
-    pool: &MemoryBudget,
+    account: &MemoryAccount,
 ) -> Result<ChunkReader, ConsolidateError> {
     let chunk = listed.chunk;
     let source = StoredChunk {
         storage: read,
         chunk,
     };
-    ChunkReader::open(&source, pool, listed.entry.fragment0).map_err(|error| match error {
+    ChunkReader::open(&source, account, listed.entry.fragment0).map_err(|error| match error {
         ReadError::ReserveDirectory { source } => {
             InputMemorySnafu { chunk: chunk.0 }.into_error(source)
         }
@@ -1364,17 +1367,14 @@ struct Cursor<T> {
     /// The rows of the decoded block; empty before the first.
     rows: Range<u32>,
     block: IntBlock<T>,
-    /// What the block's buffers hold: the output of the last block decoded into them.
-    output: Reservation,
 }
 
 impl<T: IntValue> Cursor<T> {
-    fn new(column: u16, pool: &MemoryBudget) -> Self {
+    fn new(column: u16) -> Self {
         Self {
             column,
             rows: 0..0,
             block: IntBlock::default(),
-            output: empty(pool),
         }
     }
 
@@ -1394,28 +1394,20 @@ impl<T: IntValue> Cursor<T> {
             let blocks = reader.blocks(column).expect("the chunk has the column");
             let block = blocks.partition_point(|entry| entry.first_row + entry.rows <= row);
             let entry = blocks[block];
-            let memory = decode_memory(entry.shape(), reader.columns()[usize::from(column)].ty);
-            let scratch = &mut read.decoder.scratch;
-            grow_to(&mut self.output, memory.output)
-                .and_then(|()| grow_to(scratch, memory.scratch))
+            let prepared = read
+                .decoder
+                .blocks
+                .prepare_ints(entry.shape(), &mut self.block)
                 .context(InputMemorySnafu { chunk: chunk.0 })?;
             self.rows = 0..0;
             let block = block as u32;
             reader
-                .read_ints(
-                    &read.source,
-                    column,
-                    block,
-                    &mut read.decoder.blocks,
-                    &mut self.block,
-                )
+                .read_prepared_ints(&read.source, column, block, prepared)
                 .context(ReadInputSnafu {
                     chunk: chunk.0,
                     column,
                     block,
                 })?;
-            shrink_to(&mut self.output, memory.output);
-            shrink_to(&mut read.decoder.scratch, memory.scratch);
             ensure!(
                 !self.block.validity().has_nulls(),
                 NullValuesSnafu {

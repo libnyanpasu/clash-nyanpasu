@@ -384,7 +384,12 @@ fn a_quiet_extent_becomes_one_compressed_chunk_with_the_same_sums() {
             storage: &snapshot,
             chunk: chunk.chunk,
         },
-        &MemoryBudget::new(u64::MAX),
+        &crate::budget::MemoryAccount::new(
+            &MemoryBudget::new(u64::MAX),
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
         chunk.entry.fragment0,
     )
     .unwrap();
@@ -856,7 +861,7 @@ impl FragmentSource for Fragments {
 fn series_chunk(rows: usize, fields: usize, compressed: bool) -> (Fragments, ChunkEntry) {
     let layout = series_columns(fields);
     let mut fragments = Fragments::default();
-    let mut compressor = compress::new_compressor().unwrap();
+    let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
     let kind = if compressed {
         ChunkKind::Consolidated
     } else {
@@ -868,6 +873,7 @@ fn series_chunk(rows: usize, fields: usize, compressed: bool) -> (Fragments, Chu
         1,
         compressed.then_some(&mut compressor),
         &layout,
+        &crate::budget::test_account(),
     )
     .unwrap();
     let mut append = AppendRows::new(fields);
@@ -915,8 +921,17 @@ fn the_cost_of_a_way_is_what_reading_its_chunk_holds() {
         let layout = series_columns(fields);
         let (fragments, entry) = series_chunk(rows, fields, compressed);
         let cost = WayCost::of(&layout, &entry);
-        let reader =
-            ChunkReader::open(&fragments, &MemoryBudget::new(u64::MAX), entry.fragment0).unwrap();
+        let reader = ChunkReader::open(
+            &fragments,
+            &crate::budget::MemoryAccount::new(
+                &MemoryBudget::new(u64::MAX),
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            entry.fragment0,
+        )
+        .unwrap();
         let structure = (size_of::<Way>() + size_of::<Reverse<(i64, u32, usize)>>()) as u64;
         assert_eq!(cost.held - structure, reader.memory(), "{case}");
         let (mut decode, mut scratch) = (0, 0);
@@ -1020,12 +1035,15 @@ fn reading_a_rounds_inputs_holds_no_more_than_planned() {
     let pool = MemoryBudget::new(planned);
     let layout = series_columns(shape.fields);
     let mut rows = Rows::new(&snapshot, &inputs, &layout, &pool, &chosen.peak).unwrap();
-    let standing = chosen.peak.lent + chosen.peak.decompression();
     let mut previous = None;
     let mut count = 0;
     while let Some(row) = rows.next().unwrap() {
         let (reserved, structure) = rows.held();
-        assert!(reserved <= pool.reserved() - standing);
+        assert_eq!(
+            reserved,
+            rows.standing.live_bytes() - chosen.peak.lent + rows.directory_bytes()
+        );
+        assert!(reserved + chosen.peak.lent + chosen.peak.decompression() <= pool.reserved());
         assert!(pool.reserved() + structure <= planned);
         let key = (row.bucket, row.combo);
         assert!(previous < Some(key), "{previous:?} then {key:?}");
@@ -1437,7 +1455,7 @@ fn the_zstd_contexts_fit_their_allowances() {
             })
             .collect()
     };
-    let mut reused = compress::new_compressor().unwrap();
+    let mut reused = compress::new_compressor(&crate::budget::test_account()).unwrap();
     let mut most = 0;
     let lens = (MIN_COMPRESSED_INPUT..=largest)
         .step_by(97)
@@ -1448,14 +1466,15 @@ fn the_zstd_contexts_fit_their_allowances() {
         } else {
             noise(len, round as u64)
         };
-        let mut frame = Vec::with_capacity(compress::frame_len(len));
-        let mut fresh = compress::new_compressor().unwrap();
-        fresh.compress_to_buffer(&data, &mut frame).unwrap();
-        frame.clear();
-        reused.compress_to_buffer(&data, &mut frame).unwrap();
+        let mut frame = crate::budget::test_account()
+            .buffer(compress::frame_len(len))
+            .unwrap();
+        let mut fresh = compress::new_compressor(&crate::budget::test_account()).unwrap();
+        frame.compress_into(&mut fresh, &data).unwrap();
+        frame.compress_into(&mut reused, &data).unwrap();
         most = most
-            .max(fresh.context_mut().sizeof())
-            .max(reused.context_mut().sizeof());
+            .max(fresh.workspace_size())
+            .max(reused.workspace_size());
     }
     assert!(most as u64 <= COMPRESSION_CONTEXT, "{most} bytes");
     // The allowance is the measure rounded up, not a guess far above it.

@@ -823,7 +823,12 @@ fn blocks_whose_stats_rule_out_the_filter_are_never_decoded() {
             storage: snapshot.storage(),
             chunk,
         },
-        &MemoryBudget::new(u64::MAX),
+        &crate::budget::MemoryAccount::new(
+            &MemoryBudget::new(u64::MAX),
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
         store.chunks(CLOSED)[0].entry.fragment0,
     )
     .unwrap();
@@ -953,7 +958,12 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
             storage: snapshot.storage(),
             chunk,
         },
-        &MemoryBudget::new(u64::MAX),
+        &crate::budget::MemoryAccount::new(
+            &MemoryBudget::new(u64::MAX),
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
         store.chunks(CLOSED)[0].entry.fragment0,
     )
     .unwrap();
@@ -973,16 +983,17 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
     assert!(last < first, "{last} < {first}");
     let start = |limit: u64| {
         let budget = MemoryBudget::new(limit);
-        let ledger = Ledger {
-            reservation: budget.try_reserve("test", 0).unwrap(),
-            held: 0,
+        let ledger = Ledger::new(budget.try_reserve("test", 0).unwrap());
+        let decode = Decode {
+            decoder: BlockDecoder::for_buffers(&ledger.account),
+            buffers: Buffers::default(),
         };
-        (budget, ledger, Decode::new().unwrap(), ReadLog::default())
+        (budget, ledger, decode, ReadLog::default())
     };
 
-    let (budget, mut ledger, mut decode, mut log) = start(first - 1);
+    let (budget, ledger, mut decode, mut log) = start(first - 1);
     let error = decode
-        .ints::<i64>(&at, KEY, 0, &mut ledger, &mut log)
+        .ints::<i64>(&at, KEY, 0, &mut log)
         .map(drop)
         .unwrap_err();
     assert!(
@@ -991,15 +1002,18 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
     );
     assert_eq!(log.decoded, []);
     drop(ledger);
+    drop(decode);
     assert_eq!(budget.reserved(), 0);
 
-    let (budget, mut ledger, mut decode, mut log) = start(first);
+    let (budget, ledger, mut decode, mut log) = start(first);
     let block = BLOCK_ROWS as u32;
     for (row, held) in [(0, first), (2 * block, last), (block, first)] {
-        decode
-            .ints::<i64>(&at, KEY, row, &mut ledger, &mut log)
-            .unwrap();
-        assert_eq!(ledger.held, held, "after the block of row {row}");
+        decode.ints::<i64>(&at, KEY, row, &mut log).unwrap();
+        assert_eq!(
+            ledger.account.live_bytes(),
+            held,
+            "after the block of row {row}"
+        );
         assert_eq!(budget.reserved(), first);
     }
     assert_eq!(
@@ -1152,10 +1166,7 @@ fn chunks_that_do_not_overlap_are_one_way() {
         run: chunk,
         chain: 0,
     };
-    let mut ledger = Ledger {
-        reservation: MemoryBudget::new(u64::MAX).try_reserve("test", 0).unwrap(),
-        held: 0,
-    };
+    let mut ledger = Ledger::new(MemoryBudget::new(u64::MAX).try_reserve("test", 0).unwrap());
     // A sequence-keyed stream's chunks follow each other.
     let mut disjoint = [link(3, (21, 30)), link(1, (0, 10)), link(2, (11, 20))];
     let chains = chain(&mut disjoint, &mut ledger).unwrap();
@@ -1193,10 +1204,7 @@ fn a_runs_chunks_are_one_way_where_they_share_a_key() {
         run,
         chain: 0,
     };
-    let mut ledger = Ledger {
-        reservation: MemoryBudget::new(u64::MAX).try_reserve("test", 0).unwrap(),
-        held: 0,
-    };
+    let mut ledger = Ledger::new(MemoryBudget::new(u64::MAX).try_reserve("test", 0).unwrap());
     let mut links = [
         link(15, 10, (11, 15)),
         link(13, 10, (5, 9)),
@@ -1716,7 +1724,15 @@ fn foreign_chunk(store: &Store, chunk: ChunkId, key: i64, combo: u32, host: u32)
     let layout = event_columns(spec);
     let kind = ChunkKind::L0Base;
     let fingerprint = store.tsdb.shape().fingerprint;
-    let mut builder = ChunkBuilder::new(&mut sink, kind, fingerprint, None, &layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut sink,
+        kind,
+        fingerprint,
+        None,
+        &layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     let mut id = Vec::new();
     Identity::new(IDS[1]).write_column(&mut id);
     let nothing: [&[u8]; 1] = [b""];
@@ -1932,10 +1948,7 @@ fn references_the_catalog_lacks_are_corrupted() {
 // eight; a stripe that grows moves its ranks and its matches.
 #[test]
 fn a_growing_buffer_is_reserved_with_the_one_it_replaces() {
-    let ledger = |limit| Ledger {
-        reservation: MemoryBudget::new(limit).try_reserve("test", 0).unwrap(),
-        held: 0,
-    };
+    let ledger = |limit| Ledger::new(MemoryBudget::new(limit).try_reserve("test", 0).unwrap());
     let (four, eight) = (4 * 8, 8 * 8);
     for (limit, grows) in [(four + eight - 1, false), (four + eight, true)] {
         let mut ledger = ledger(limit);
@@ -1945,7 +1958,7 @@ fn a_growing_buffer_is_reserved_with_the_one_it_replaces() {
         }
         assert_eq!(ledger.push(&mut vec, 4).is_ok(), grows, "{limit}");
         let expected = if grows { (5, eight) } else { (4, four) };
-        assert_eq!((vec.len(), ledger.held), expected);
+        assert_eq!((vec.len(), ledger.claim.bytes_for_test()), expected);
     }
 
     let (small, large) = (100, BUILDER_STRIPE_ROWS);
@@ -1957,7 +1970,7 @@ fn a_growing_buffer_is_reserved_with_the_one_it_replaces() {
         let grown = reset_stripe(&mut ranks, &mut matches, large, &mut ledger);
         assert_eq!(grown.is_ok(), grows, "{limit}");
         if grows {
-            assert_eq!(ledger.held, stripe_bytes(large));
+            assert_eq!(ledger.claim.bytes_for_test(), stripe_bytes(large));
             assert_eq!((ranks.capacity(), matches.capacity()), (large, large));
         }
     }

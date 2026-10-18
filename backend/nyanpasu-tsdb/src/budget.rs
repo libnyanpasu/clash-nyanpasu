@@ -28,7 +28,7 @@ use crate::ErrorKind;
 mod account;
 mod buffer;
 
-pub(crate) use account::{MemoryAccount, Reserved, Retain, Retained};
+pub(crate) use account::{Lease, MemoryAccount, Reserved, Retain, Retained};
 pub(crate) use buffer::{BudgetVec, FrozenVec};
 
 /// Checked, allocation-free byte arithmetic for allocations that coexist in an envelope.
@@ -36,6 +36,11 @@ pub(crate) use buffer::{BudgetVec, FrozenVec};
 pub(crate) struct MemoryPlan(u64);
 
 impl MemoryPlan {
+    /// Plans a dependency allowance whose maximum size is established by its owner.
+    pub(crate) fn bytes(bytes: u64) -> Self {
+        Self(bytes)
+    }
+
     /// Plans an array capacity, rejecting multiplication or layout overflow before allocation.
     pub(crate) fn array<T>(capacity: usize) -> Result<Self, BudgetExceeded> {
         let layout = std::alloc::Layout::array::<T>(capacity).map_err(|_| BudgetExceeded {
@@ -263,3 +268,14 @@ impl BudgetExceeded {
 
 #[cfg(test)]
 mod tests;
+
+/// An isolated, unlimited operation envelope for codec and format unit fixtures.
+#[cfg(test)]
+pub(crate) fn test_account() -> MemoryAccount {
+    MemoryAccount::new(
+        &MemoryBudget::new(u64::MAX),
+        "test allocation",
+        MemoryPlan::default(),
+    )
+    .unwrap()
+}

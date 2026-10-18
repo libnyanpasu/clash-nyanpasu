@@ -107,7 +107,7 @@ use super::{
 };
 use crate::{
     EventStreamSpec, ExtentSpec, Profile, StreamId, Timestamp,
-    budget::{MemoryBudget, Reservation},
+    budget::{MemoryAccount, MemoryBudget, Reservation},
     chunk::{
         BatchSink, FragmentSink, StoredChunk,
         builder::{
@@ -936,6 +936,7 @@ pub(in crate::maintain) fn consolidate(
         reservation.try_grow(chosen.memory).context(ReserveSnafu)?;
         let inputs = collect_l0(read, &events, extent, &chosen)?;
         let mut replacement = Replacement::new(events.stream, extent);
+        let allocation = MemoryAccount::borrow_reservation(&mut reservation);
         let written = write_run(
             batch,
             read,
@@ -946,6 +947,7 @@ pub(in crate::maintain) fn consolidate(
             compressed,
             &mut next_chunk,
             &mut replacement,
+            &allocation,
         )?;
         for input in &inputs {
             replacement
@@ -997,6 +999,7 @@ pub(in crate::maintain) fn merge(
     let taken = &runs[..chosen.ways];
     let inputs = collect_runs(read, &events, extent, taken, chosen.inputs)?;
     let mut replacement = Replacement::new(events.stream, extent);
+    let allocation = MemoryAccount::borrow_reservation(&mut reservation);
     let written = write_run(
         batch,
         read,
@@ -1007,6 +1010,7 @@ pub(in crate::maintain) fn merge(
         compressed,
         &mut next_chunk,
         &mut replacement,
+        &allocation,
     )?;
     for input in &inputs {
         replacement
@@ -1077,10 +1081,11 @@ fn write_run<R: StorageRead>(
     compressed: bool,
     next_chunk: &mut u64,
     replacement: &mut Replacement,
+    account: &MemoryAccount,
 ) -> Result<Written, ConsolidateError> {
     let pool = MemoryBudget::new(chosen.pool.bytes(decode));
     let mut compressor = if compressed {
-        Some(compress::new_compressor().context(CreateCompressorSnafu)?)
+        Some(compress::new_compressor(account).context(CreateCompressorSnafu)?)
     } else {
         None
     };
@@ -1105,6 +1110,7 @@ fn write_run<R: StorageRead>(
             events.fingerprint,
             compressor.as_mut(),
             events.layout,
+            account,
         )
         .context(BuildSnafu { chunk: chunk.0 })?;
         let (mut rows, mut cost) = (0, RowCost::default());
@@ -1253,14 +1259,12 @@ struct Reading<'a, R> {
     read: &'a R,
     inputs: &'a [Input],
     events: &'a Events<'a>,
-    pool: &'a MemoryBudget,
     decode: Decode,
     ways: Vec<Way>,
     heap: BinaryHeap<Reverse<(Rank, usize)>>,
     /// The fragment the backend lends while a chunk opens or a block decodes, and the
     /// decoder's zstd context, reserved for the whole round.
-    #[allow(dead_code, reason = "held for its Drop, which returns their bytes")]
-    standing: Reservation,
+    standing: MemoryAccount,
 }
 
 /// One way: a chain of inputs read one after another, or a run.
@@ -1292,7 +1296,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
         inputs: &'a [Input],
         ways: usize,
         events: &'a Events<'a>,
-        pool: &'a MemoryBudget,
+        pool: &MemoryBudget,
         planned: &Pool,
     ) -> Result<Self, ConsolidateError> {
         let context = if planned.compressed {
@@ -1303,11 +1307,15 @@ impl<'a, R: StorageRead> Reading<'a, R> {
         let standing = pool
             .try_reserve("lent fragment", planned.lent + context)
             .expect("the pool holds the lent fragment and the zstd context");
+        let standing = MemoryAccount::from_reservation(standing);
+        standing
+            .reserve_lent(planned.lent)
+            .expect("the standing reservation includes its lent fragment");
         // L0 chunks are never compressed, so reading only them needs no zstd context.
         let decoder = if planned.compressed {
-            crate::codec::block::BlockDecoder::new().context(CreateDecoderSnafu)?
+            crate::codec::block::BlockDecoder::new(&standing).context(CreateDecoderSnafu)?
         } else {
-            crate::codec::block::BlockDecoder::raw()
+            crate::codec::block::BlockDecoder::raw(&standing)
         };
         let mut way_list = Vec::with_capacity(ways);
         let mut start = 0;
@@ -1331,8 +1339,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
             read,
             inputs,
             events,
-            pool,
-            decode: Decode::new(decoder, pool),
+            decode: Decode::new(decoder),
             ways: way_list,
             heap: BinaryHeap::with_capacity(ways),
             standing,
@@ -1373,7 +1380,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
             way.inputs.start += 1;
             let listed = &self.inputs[input].listed;
             debug_assert_eq!(self.decode.held(), 0, "a chunk opens with no block decoded");
-            let reader = open_input(self.read, listed, self.pool)?;
+            let reader = open_input(self.read, listed, &self.standing)?;
             let layout = self.events.layout;
             let shaped =
                 reader.rows() == listed.entry.rows
@@ -1888,7 +1895,6 @@ impl<R: StorageRead> At<'_, R> {
 /// the decoder whose scratch they share; each holds a reservation of what it holds.
 struct Decode {
     decoder: crate::codec::block::BlockDecoder,
-    scratch: Reservation,
     ints: IntBuffers,
     bytes: Buffer<BytesBlock>,
 }
@@ -1903,15 +1909,13 @@ struct IntBuffers {
 struct Buffer<B> {
     block: B,
     holds: Option<(ChunkId, u16, u32)>,
-    held: Reservation,
 }
 
 impl<B: Default> Buffer<B> {
-    fn new(pool: &MemoryBudget) -> Self {
+    fn new() -> Self {
         Self {
             block: B::default(),
             holds: None,
-            held: empty(pool),
         }
     }
 
@@ -1919,7 +1923,6 @@ impl<B: Default> Buffer<B> {
     fn release(&mut self) {
         self.block = B::default();
         self.holds = None;
-        shrink_to(&mut self.held, 0);
     }
 
     /// Makes the buffer hold the block of `column` of `at` that holds `row`, with `read` unless
@@ -1928,11 +1931,10 @@ impl<B: Default> Buffer<B> {
     /// (`chunk::reader::decode_memory`); past the pool, the chunk is damaged.
     fn read<R: StorageRead>(
         &mut self,
-        scratch: &mut Reservation,
         at: &At<'_, R>,
         column: u16,
         row: u32,
-        read: impl FnOnce(u32, &mut B) -> Result<(), ReadError>,
+        read: impl FnOnce(u32, &mut B) -> Result<(), ConsolidateError>,
     ) -> Result<u32, ConsolidateError> {
         let chunk = at.chunk.0;
         let blocks = at.reader.blocks(column).context(ReadInputSnafu {
@@ -1946,18 +1948,8 @@ impl<B: Default> Buffer<B> {
         if self.holds == Some((at.chunk, column, block)) {
             return Ok(entry.first_row);
         }
-        let memory = decode_memory(entry.shape(), at.reader.columns()[usize::from(column)].ty);
-        grow_to(&mut self.held, memory.output)
-            .and_then(|()| grow_to(scratch, memory.scratch))
-            .context(InputMemorySnafu { chunk })?;
         self.holds = None;
-        read(block, &mut self.block).context(ReadInputSnafu {
-            chunk,
-            column,
-            block,
-        })?;
-        shrink_to(&mut self.held, memory.output);
-        shrink_to(scratch, memory.scratch);
+        read(block, &mut self.block)?;
         self.holds = Some((at.chunk, column, block));
         Ok(entry.first_row)
     }
@@ -1987,26 +1979,25 @@ impl Ints for u32 {
 }
 
 impl Decode {
-    fn new(decoder: crate::codec::block::BlockDecoder, pool: &MemoryBudget) -> Self {
+    fn new(decoder: crate::codec::block::BlockDecoder) -> Self {
         Self {
             decoder,
-            scratch: empty(pool),
             ints: IntBuffers {
-                i64s: Buffer::new(pool),
-                u64s: Buffer::new(pool),
-                u32s: Buffer::new(pool),
+                i64s: Buffer::new(),
+                u64s: Buffer::new(),
+                u32s: Buffer::new(),
             },
-            bytes: Buffer::new(pool),
+            bytes: Buffer::new(),
         }
     }
 
     /// What the decoded blocks hold.
     fn held(&self) -> u64 {
         let ints = &self.ints;
-        ints.i64s.held.bytes()
-            + ints.u64s.held.bytes()
-            + ints.u32s.held.bytes()
-            + self.bytes.held.bytes()
+        ints.i64s.block.memory()
+            + ints.u64s.block.memory()
+            + ints.u32s.block.memory()
+            + self.bytes.block.memory()
     }
 
     /// Lets go of every decoded block, before a chunk opens. The decoder keeps the scratch of
@@ -2025,16 +2016,20 @@ impl Decode {
         column: u16,
         row: u32,
     ) -> Result<(&IntBlock<T>, u32), ConsolidateError> {
-        let Self {
-            decoder,
-            scratch,
-            ints,
-            ..
-        } = self;
+        let Self { decoder, ints, .. } = self;
         let buffer = T::buffer(ints);
-        let first = buffer.read(scratch, at, column, row, |index, block| {
+        let first = buffer.read(at, column, row, |index, block| {
+            let shape = at.reader.blocks(column).expect("checked above")[index as usize].shape();
+            let prepared = decoder
+                .prepare_ints(shape, block)
+                .context(InputMemorySnafu { chunk: at.chunk.0 })?;
             at.reader
-                .read_ints(&at.source(), column, index, decoder, block)
+                .read_prepared_ints(&at.source(), column, index, prepared)
+                .context(ReadInputSnafu {
+                    chunk: at.chunk.0,
+                    column,
+                    block: index,
+                })
         })?;
         Ok((&buffer.block, first))
     }
@@ -2057,15 +2052,23 @@ impl Decode {
         column: u16,
         row: u32,
     ) -> Result<BytesValue<'_>, ConsolidateError> {
-        let Self {
-            decoder,
-            scratch,
-            bytes,
-            ..
-        } = self;
-        let first = bytes.read(scratch, at, column, row, |index, block| {
+        let Self { decoder, bytes, .. } = self;
+        let first = bytes.read(at, column, row, |index, block| {
+            let shape = at.reader.blocks(column).expect("checked above")[index as usize].shape();
+            let hint = match at.reader.columns()[usize::from(column)].ty {
+                PhysicalType::Bytes(hint) => hint,
+                _ => unreachable!("bytes column checked"),
+            };
+            let prepared = decoder
+                .prepare_bytes(shape, at.reader.large_values().len() as u32, hint, block)
+                .context(InputMemorySnafu { chunk: at.chunk.0 })?;
             at.reader
-                .read_bytes(&at.source(), column, index, decoder, block)
+                .read_prepared_bytes(&at.source(), column, index, prepared)
+                .context(ReadInputSnafu {
+                    chunk: at.chunk.0,
+                    column,
+                    block: index,
+                })
         })?;
         Ok(bytes.block.get((row - first) as usize))
     }

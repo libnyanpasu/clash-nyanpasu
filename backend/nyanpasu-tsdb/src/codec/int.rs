@@ -228,7 +228,7 @@ pub(crate) fn encode(
     ty: IntType,
     encoding: IntEncoding,
     values: impl IntoIterator<Item = u64, IntoIter: Clone>,
-    out: &mut Vec<u8>,
+    out: &mut crate::budget::BudgetVec<u8>,
 ) {
     let mut values = values.into_iter();
     match encoding {
@@ -409,9 +409,11 @@ mod tests {
     }
 
     fn encoded(ty: IntType, encoding: IntEncoding, values: &[u64]) -> Vec<u8> {
-        let mut out = Vec::new();
+        let mut out = crate::budget::test_account()
+            .buffer(values.len() * 10 + 32)
+            .unwrap();
         encode(ty, encoding, values.iter().copied(), &mut out);
-        out
+        out.to_vec()
     }
 
     fn decoded(ty: IntType, encoding: IntEncoding, bytes: &[u8], count: usize) -> Vec<u64> {

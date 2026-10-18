@@ -60,9 +60,19 @@ fn read_chunk(read: &impl StorageRead, listed: &Listed) -> ReadChunk {
         chunk: listed.chunk,
     };
     let budget = crate::MemoryBudget::new(u64::MAX);
-    let reader = ChunkReader::open(&source, &budget, listed.entry.fragment0).unwrap();
+    let reader = ChunkReader::open(
+        &source,
+        &crate::budget::MemoryAccount::new(
+            &budget,
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
+        listed.entry.fragment0,
+    )
+    .unwrap();
     let mut rows = vec![Vec::new(); reader.rows() as usize];
-    let mut decoder = BlockDecoder::new().unwrap();
+    let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
     for (column, desc) in reader.columns().iter().enumerate() {
         let column = column as u16;
         let mut row = 0;
@@ -111,9 +121,10 @@ fn read_chunk(read: &impl StorageRead, listed: &Listed) -> ReadChunk {
                             BytesValue::Null => Cell::Null,
                             BytesValue::Inline(bytes) => Cell::Bytes(bytes.to_vec()),
                             BytesValue::Large(index) => {
-                                let mut large = Vec::new();
+                                let mut large =
+                                    reader.account().buffer(0).expect("empty storage is free");
                                 reader.read_large(&source, index, &mut large).unwrap();
-                                Cell::Bytes(large)
+                                Cell::Bytes(large.to_vec())
                             }
                         })
                         .collect()
@@ -1168,7 +1179,7 @@ fn chunking_on_open_holds_one_records_chunk_build() {
 // uncompressed chunk: for 3 fields, the figure the chunk format pins.
 #[test]
 fn the_builder_reserves_the_bound_of_an_uncompressed_chunk() {
-    assert_eq!(builder_memory(&series_columns(3)), 286_186);
+    assert_eq!(builder_memory(&series_columns(3)), 286_666);
 }
 
 /// Chunking a stream reserves its builder, one row of each record it merges and one
@@ -1418,7 +1429,7 @@ fn mobile_chunks_closed_connections_at_the_trigger_under_a_full_batch() {
     let spec = &schema.events[0];
     // The builder of the ten chunk columns, the append buffers, and per record merged a row
     // of seven values with its reader, its waiting slot and its heap entry.
-    assert_eq!(stream_memory(spec, 1), 627_905);
+    assert_eq!(stream_memory(spec, 1), 628_865);
     assert_eq!(stream_memory(spec, 2) - stream_memory(spec, 1), 272);
 
     let profile = Profile::mobile();
@@ -2091,6 +2102,7 @@ fn a_change_to_an_extent_is_in_the_batch_once_its_step_returns() {
     let catalog = Catalog::load(&snapshot, &schema, u64::MAX).unwrap();
     let mut batch = storage.batch().unwrap();
     let removed = Execution {
+        account: &crate::budget::test_account(),
         batch: &mut batch,
         schema: &schema,
         shape: &shape,

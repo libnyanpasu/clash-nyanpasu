@@ -152,11 +152,13 @@ impl Opening<'_> {
         let mut next_seq = state.next_journal_seq;
         let mut absorbed = 0;
         if self.leaves_out(snapshot, &head)? {
-            let staging = self
+            let mut staging = self
                 .staging_budget
                 .try_reserve("staging", widest_build(self.schema, self.shape))
                 .context(ReserveStagingSnafu)?;
+            let allocation = crate::budget::MemoryAccount::borrow_reservation(&mut staging);
             let mut execution = Execution {
+                account: &allocation,
                 batch: batch.insert(storage.batch().context(BeginChunkingSnafu)?),
                 schema: self.schema,
                 shape: self.shape,
@@ -173,6 +175,7 @@ impl Opening<'_> {
             }
             next_chunk = execution.next_chunk;
             next_seq = execution.next_seq;
+            drop(allocation);
             drop(staging);
         }
         // The rebuild checked that the snapshot's records add up to the state's bytes, and
@@ -217,7 +220,9 @@ impl Opening<'_> {
             Some(batch) => batch,
             None => storage.batch().context(BeginChunkingSnafu)?,
         };
+        let allocation = crate::budget::MemoryAccount::borrow_reservation(&mut staging);
         let executed = Execution {
+            account: &allocation,
             batch: &mut batch,
             schema: self.schema,
             shape: self.shape,
@@ -226,6 +231,7 @@ impl Opening<'_> {
         }
         .run(&plan, &head, update)
         .context(CapJournalSnafu)?;
+        drop(allocation);
         drop(plan);
         let state = StateRecord {
             next_chunk: executed.next_chunk,

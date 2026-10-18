@@ -61,7 +61,12 @@ impl Fragments {
         let fragment = self.map.get_mut(&index).unwrap();
         fragment.truncate(fragment.len() - TRAILER_LEN);
         edit(fragment);
-        checksum::seal(fragment);
+        let mut charged = crate::budget::test_account()
+            .buffer(fragment.len() + TRAILER_LEN)
+            .unwrap();
+        charged.extend_from_slice(fragment);
+        checksum::seal(&mut charged);
+        *fragment = charged.to_vec();
     }
 
     fn directory(&self) -> DirectoryRecord {
@@ -170,14 +175,21 @@ fn build_chunk(
     feed: impl FnOnce(&mut ChunkBuilder<'_, Fragments>),
 ) -> (Fragments, BuiltChunk) {
     let mut fragments = Fragments::default();
-    let mut compressor = compress::new_compressor().unwrap();
+    let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
     let (kind, compressor) = if compressed {
         (ChunkKind::Consolidated, Some(&mut compressor))
     } else {
         (ChunkKind::L0Base, None)
     };
-    let mut builder =
-        ChunkBuilder::new(&mut fragments, kind, FINGERPRINT, compressor, layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut fragments,
+        kind,
+        FINGERPRINT,
+        compressor,
+        layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     feed(&mut builder);
     let built = builder.finish().unwrap();
     (fragments, built)
@@ -387,21 +399,38 @@ fn recorded(fragments: &Fragments) -> u32 {
 /// open, and nothing when opening fails.
 fn open_chunk(fragments: &Fragments) -> Result<ChunkReader, ReadError> {
     let budget = MemoryBudget::new(u64::MAX);
-    let opened = ChunkReader::open(fragments, &budget, recorded(fragments));
+    let account = crate::budget::MemoryAccount::new(
+        &budget,
+        "test reader",
+        crate::budget::MemoryPlan::default(),
+    )
+    .unwrap();
+    account
+        .reserve_lent(crate::chunk::reader::lent_memory(recorded(fragments)))
+        .unwrap();
+    let opened = ChunkReader::open(fragments, &account, recorded(fragments));
+    drop(account);
     let held = opened.as_ref().map_or(0, ChunkReader::memory);
-    assert_eq!(budget.reserved(), held);
+    assert_eq!(
+        budget.reserved(),
+        held + opened
+            .as_ref()
+            .map_or(0, |_| crate::chunk::reader::lent_memory(recorded(
+                fragments
+            )))
+    );
     opened
 }
 
 /// Reads every block, view and large value of a chunk, as a query could.
 fn read_everything(fragments: &Fragments) -> Result<(), ReadError> {
     let reader = open_chunk(fragments)?;
-    let mut decoder = BlockDecoder::new().unwrap();
+    let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
     let mut signed = IntBlock::<i64>::default();
     let mut unsigned = IntBlock::<u64>::default();
     let mut narrow = IntBlock::<u32>::default();
     let mut bytes = BytesBlock::default();
-    let mut large = Vec::new();
+    let mut large = reader.account().buffer(0).expect("empty storage is free");
     for (column, desc) in reader.columns().iter().enumerate() {
         let column = column as u16;
         for block in 0..desc.blocks {
@@ -455,7 +484,7 @@ struct Content {
 
 fn content(fragments: &Fragments) -> Content {
     let reader = open_chunk(fragments).unwrap();
-    let mut decoder = BlockDecoder::new().unwrap();
+    let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
     let mut signed = IntBlock::<i64>::default();
     let mut unsigned = IntBlock::<u64>::default();
     let mut narrow = IntBlock::<u32>::default();
@@ -511,9 +540,10 @@ fn content(fragments: &Fragments) -> Content {
                             BytesValue::Null => ReadBack::Null,
                             BytesValue::Inline(value) => ReadBack::Bytes(value.to_vec()),
                             BytesValue::Large(index) => {
-                                let mut large = Vec::new();
+                                let mut large =
+                                    reader.account().buffer(0).expect("empty storage is free");
                                 reader.read_large(fragments, index, &mut large).unwrap();
-                                ReadBack::Bytes(large)
+                                ReadBack::Bytes(large.to_vec())
                             }
                         });
                     }
@@ -642,7 +672,7 @@ fn check_round_trip(
     prop_assert!(read.cells == expected, "the values read back differ");
 
     // Raw integer blocks read in place give the decoded values.
-    let mut decoder = BlockDecoder::new().unwrap();
+    let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
     let mut signed = IntBlock::<i64>::default();
     for column in [0u16, 3] {
         for block in 0..reader.columns()[usize::from(column)].blocks {
@@ -806,7 +836,15 @@ fn fragments_are_written_while_rows_arrive() {
     let written = Cell::new(0);
     let mut sink = Counting(&written);
     let layout = [KEY_COLUMN, bytes(BytesHint::Text, false)];
-    let mut builder = ChunkBuilder::new(&mut sink, ChunkKind::L0Base, 0, None, &layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut sink,
+        ChunkKind::L0Base,
+        0,
+        None,
+        &layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     let mut appended = 0;
     for (batch_index, batch) in texts.chunks(10).enumerate() {
         let first = batch_index as i64 * 10;
@@ -855,8 +893,15 @@ fn an_open_block_takes_its_caps_at_once_and_keeps_them() {
     let byte_rows = BLOCK_TARGET_LEN / bytes_raw_len(1, BytesHint::LowCardinality, false);
     assert_eq!((i64_rows, byte_rows), (3637, 6547));
     let mut fragments = Fragments::default();
-    let mut builder =
-        ChunkBuilder::new(&mut fragments, ChunkKind::L0Base, 0, None, &layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut fragments,
+        ChunkKind::L0Base,
+        0,
+        None,
+        &layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     let mut rng = Rng(29);
     // How often each buffer's capacity changed, over two blocks of the bytes column.
     let mut changes = BTreeMap::<(usize, &str), usize>::new();
@@ -1011,8 +1056,15 @@ fn tiny_fragment0() -> Vec<u8> {
 fn tiny_chunk() -> Fragments {
     let layout = [KEY_COLUMN, SUMMED, bytes(BytesHint::Fixed(2), false)];
     let mut fragments = Fragments::default();
-    let mut builder =
-        ChunkBuilder::new(&mut fragments, ChunkKind::L0Base, 1 << 63, None, &layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut fragments,
+        ChunkKind::L0Base,
+        1 << 63,
+        None,
+        &layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     builder
         .append(&[
             Column {
@@ -1154,7 +1206,9 @@ fn the_shortest_records_take_their_bound() {
     };
     assert_eq!(len(&large), MIN_LARGE_ENTRY_LEN);
     // A chunk has a column of a block at least, so no fragment 0 is shorter than this one.
-    let mut shortest = Vec::new();
+    let mut shortest = crate::budget::test_account()
+        .buffer(MIN_FRAGMENT0_LEN)
+        .unwrap();
     DirectoryRecord {
         header,
         columns: vec![column],
@@ -1164,6 +1218,42 @@ fn the_shortest_records_take_their_bound() {
     .write(&mut shortest);
     checksum::seal(&mut shortest);
     assert_eq!(shortest.len(), MIN_FRAGMENT0_LEN);
+}
+
+/// A format-valid chunk may exceed the planner's directory cap when its blocks encode small.
+#[test]
+fn an_unplanned_chunk_grows_fragment_zero_before_serializing_its_directory() {
+    let mut layout = vec![KEY_COLUMN];
+    layout.extend([SUMMED; MAX_COLUMNS - 2]);
+    layout.push(bytes(BytesHint::Fixed(384), false));
+    let keys: Vec<i64> = (0..MAX_ROWS as i64).collect();
+    let values = vec![u64::MAX; MAX_ROWS];
+    let flags = vec![true; MAX_ROWS];
+    let fixed = [0u8; 384];
+    let byte_values = vec![&fixed[..]; MAX_ROWS];
+    let (fragments, built) = build_chunk(&layout, true, |builder| {
+        let mut columns = vec![Column {
+            values: Values::I64(&keys),
+            validity: None,
+        }];
+        columns.extend((1..MAX_COLUMNS - 1).map(|_| Column {
+            values: Values::U64(&values),
+            validity: Some(&flags),
+        }));
+        columns.push(Column {
+            values: Values::Bytes(&byte_values),
+            validity: None,
+        });
+        builder.append(&columns).unwrap();
+    });
+    assert!(fragments.directory().blocks.len() > 730);
+    assert!(
+        built.fragment0 as usize > MAX_DATA_FRAGMENT_LEN,
+        "fragment zero: {} bytes",
+        built.fragment0
+    );
+    assert!(built.fragment0 as usize <= MAX_FRAGMENT_LEN);
+    assert_eq!(open_chunk(&fragments).unwrap().rows() as usize, MAX_ROWS);
 }
 
 mod limits {
@@ -1184,8 +1274,15 @@ mod limits {
     fn rows_past_m_are_rejected_before_anything_is_written() {
         let keys = keys(MAX_ROWS + 1);
         let mut fragments = Fragments::default();
-        let mut builder =
-            ChunkBuilder::new(&mut fragments, ChunkKind::L0Base, 0, None, &[KEY_COLUMN]).unwrap();
+        let mut builder = ChunkBuilder::new(
+            &mut fragments,
+            ChunkKind::L0Base,
+            0,
+            None,
+            &[KEY_COLUMN],
+            &crate::budget::test_account(),
+        )
+        .unwrap();
         let error = builder.append(&key_batch(&keys)).unwrap_err();
         assert!(matches!(error, BuildError::RowCount { rows } if rows == MAX_ROWS + 1));
         assert_eq!(error.kind(), ErrorKind::Local);
@@ -1202,9 +1299,16 @@ mod limits {
         let mut layout = vec![KEY_COLUMN];
         layout.resize(MAX_COLUMNS + 1, int(IntType::U32, false));
         let mut fragments = Fragments::default();
-        let error = ChunkBuilder::new(&mut fragments, ChunkKind::L0Base, 0, None, &layout)
-            .err()
-            .unwrap();
+        let error = ChunkBuilder::new(
+            &mut fragments,
+            ChunkKind::L0Base,
+            0,
+            None,
+            &layout,
+            &crate::budget::test_account(),
+        )
+        .err()
+        .unwrap();
         assert!(matches!(error, BuildError::TooManyColumns));
 
         let keys = keys(1);
@@ -1236,13 +1340,14 @@ mod limits {
         let slices: Vec<&[u8]> = texts.iter().map(Vec::as_slice).collect();
         let keys = keys(texts.len());
         let mut fragments = Fragments::default();
-        let mut compressor = compress::new_compressor().unwrap();
+        let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
         let mut builder = ChunkBuilder::new(
             &mut fragments,
             ChunkKind::Consolidated,
             0,
             Some(&mut compressor),
             &[KEY_COLUMN, bytes(BytesHint::Text, false)],
+            &crate::budget::test_account(),
         )
         .unwrap();
         let error = builder
@@ -1277,6 +1382,7 @@ mod limits {
             0,
             None,
             &[KEY_COLUMN, bytes(BytesHint::Text, false)],
+            &crate::budget::test_account(),
         )
         .unwrap();
         let error = builder
@@ -1316,6 +1422,7 @@ mod limits {
                 0,
                 None,
                 &[KEY_COLUMN, bytes(hint, false)],
+                &crate::budget::test_account(),
             )
             .unwrap();
             let error = builder
@@ -1345,9 +1452,16 @@ mod limits {
     fn layout_mistakes_are_local_errors() {
         let mut fragments = Fragments::default();
         let mut layout_error = |layout: &[ColumnLayout]| {
-            ChunkBuilder::new(&mut fragments, ChunkKind::L0Base, 0, None, layout)
-                .err()
-                .unwrap()
+            ChunkBuilder::new(
+                &mut fragments,
+                ChunkKind::L0Base,
+                0,
+                None,
+                layout,
+                &crate::budget::test_account(),
+            )
+            .err()
+            .unwrap()
         };
         let errors = [
             layout_error(&[]),
@@ -1398,8 +1512,15 @@ mod limits {
         let right_width: [&[u8]; 2] = [b"abc", b"abd"];
         let layout = [KEY_COLUMN, SUMMED, bytes(BytesHint::Fixed(3), false)];
         let mut fragments = Fragments::default();
-        let mut builder =
-            ChunkBuilder::new(&mut fragments, ChunkKind::L0Base, 0, None, &layout).unwrap();
+        let mut builder = ChunkBuilder::new(
+            &mut fragments,
+            ChunkKind::L0Base,
+            0,
+            None,
+            &layout,
+            &crate::budget::test_account(),
+        )
+        .unwrap();
         let key = Column {
             values: Values::I64(&keys),
             validity: None,
@@ -1498,8 +1619,15 @@ mod limits {
     #[test]
     fn a_chunk_without_rows_is_an_error() {
         let mut fragments = Fragments::default();
-        let mut builder =
-            ChunkBuilder::new(&mut fragments, ChunkKind::L0Base, 0, None, &[KEY_COLUMN]).unwrap();
+        let mut builder = ChunkBuilder::new(
+            &mut fragments,
+            ChunkKind::L0Base,
+            0,
+            None,
+            &[KEY_COLUMN],
+            &crate::budget::test_account(),
+        )
+        .unwrap();
         builder.append(&key_batch(&[])).unwrap();
         let error = builder.finish().unwrap_err();
         assert!(matches!(error, BuildError::RowCount { rows: 0 }));
@@ -1518,8 +1646,15 @@ mod limits {
         }
         let keys = keys(3);
         let mut sink = Failing;
-        let mut builder =
-            ChunkBuilder::new(&mut sink, ChunkKind::L0Base, 0, None, &[KEY_COLUMN]).unwrap();
+        let mut builder = ChunkBuilder::new(
+            &mut sink,
+            ChunkKind::L0Base,
+            0,
+            None,
+            &[KEY_COLUMN],
+            &crate::budget::test_account(),
+        )
+        .unwrap();
         builder.append(&key_batch(&keys)).unwrap();
         let error = builder.finish().unwrap_err();
         assert!(matches!(error, BuildError::WriteFragment { index: 1, .. }));
@@ -1530,13 +1665,14 @@ mod limits {
     #[should_panic(expected = "only consolidated chunks are compressed")]
     fn compressing_an_l0_chunk_is_a_programming_error() {
         let mut fragments = Fragments::default();
-        let mut compressor = compress::new_compressor().unwrap();
+        let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
         let _ = ChunkBuilder::new(
             &mut fragments,
             ChunkKind::L0Delta,
             0,
             Some(&mut compressor),
             &[KEY_COLUMN],
+            &crate::budget::test_account(),
         );
     }
 }
@@ -2290,7 +2426,7 @@ mod hostile {
 
     /// Places `encoded` in the data fragment `data` and returns its directory entry.
     fn place(
-        data: &mut Vec<u8>,
+        data: &mut crate::budget::BudgetVec<u8>,
         column: u16,
         rows: u32,
         encoded: &Encoded<'_>,
@@ -2320,8 +2456,13 @@ mod hostile {
     fn hand_built_chunk(rows: u32) -> Fragments {
         const LEN: usize = 40_000;
         let mut fragments = Fragments::default();
-        let mut scratch = EncodeScratch::default();
-        let mut data = Vec::new();
+        let mut scratch = EncodeScratch::new(
+            &crate::budget::test_account(),
+            crate::codec::block::ScratchCaps::default(),
+        );
+        let mut data = crate::budget::test_account()
+            .buffer(MAX_DATA_FRAGMENT_LEN)
+            .unwrap();
 
         let keys: Vec<i64> = (0..i64::from(rows)).collect();
         let key_stats = IntStats {
@@ -2350,7 +2491,10 @@ mod hostile {
         checksum::seal(&mut data);
         fragments.put(1, &data).unwrap();
 
-        let mut value = vec![b'x'; LEN];
+        let mut value = crate::budget::test_account()
+            .buffer(LEN + TRAILER_LEN)
+            .unwrap();
+        value.resize(LEN, b'x');
         checksum::seal(&mut value);
         for row in 0..rows {
             fragments.put(2 + row, &value).unwrap();
@@ -2383,7 +2527,9 @@ mod hostile {
                 })
                 .collect(),
         };
-        let mut fragment0 = Vec::new();
+        let mut fragment0 = crate::budget::test_account()
+            .buffer(crate::storage::MAX_FRAGMENT_LEN)
+            .unwrap();
         directory.write(&mut fragment0);
         checksum::seal(&mut fragment0);
         fragments.put(0, &fragment0).unwrap();
@@ -2479,7 +2625,9 @@ mod hostile {
         entry: usize,
         encoded: &Encoded<'_>,
     ) {
-        let mut stored = Vec::new();
+        let mut stored = crate::budget::test_account()
+            .buffer(encoded.stored_len())
+            .unwrap();
         encoded.write(&mut stored);
         replace_last_stored(fragments, entry, &stored, encoded.uncompressed_len);
     }
@@ -2552,7 +2700,10 @@ mod hostile {
             assert_eq!(fragments.directory().large.len(), 1);
 
             // The column's one row, as a reference to the text column's large value.
-            let mut scratch = EncodeScratch::default();
+            let mut scratch = EncodeScratch::new(
+                &crate::budget::test_account(),
+                crate::codec::block::ScratchCaps::default(),
+            );
             let encoded =
                 encode_bytes(&[&b""[..]][..], None, &[(0, 0)], hint, None, &mut scratch).unwrap();
             replace_last_block(&mut fragments, 2, &encoded);
@@ -2598,7 +2749,10 @@ mod hostile {
 
         // The same values, one byte shorter, as a valid fixed block in the column's place.
         let short: Vec<&[u8]> = values.iter().map(|value| &value[..15]).collect();
-        let mut scratch = EncodeScratch::default();
+        let mut scratch = EncodeScratch::new(
+            &crate::budget::test_account(),
+            crate::codec::block::ScratchCaps::default(),
+        );
         let encoded = encode_bytes(
             &short[..],
             None,
@@ -2878,15 +3032,43 @@ mod memory {
         sizes: &[usize],
     ) -> Fragments {
         let bound = working_memory(layout, compressed);
+        let budget = MemoryBudget::new(bound);
+        let account = crate::budget::MemoryAccount::new(
+            &budget,
+            "builder",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap();
+        let live = std::rc::Rc::new(std::cell::Cell::new(0u64));
+        let observed = live.clone();
+        account.observe_allocations(move |allocate, bytes, charged| {
+            let next = if allocate {
+                observed.get() + bytes
+            } else {
+                observed.get() - bytes
+            };
+            assert!(
+                next <= charged && next <= bound,
+                "actual {next}, charged {charged}, bound {bound}"
+            );
+            observed.set(next);
+        });
         let mut fragments = Fragments::default();
-        let mut compressor = compress::new_compressor().unwrap();
+        let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
         let (kind, compressor) = if compressed {
             (ChunkKind::Consolidated, Some(&mut compressor))
         } else {
             (ChunkKind::L0Base, None)
         };
-        let mut builder =
-            ChunkBuilder::new(&mut fragments, kind, FINGERPRINT, compressor, layout).unwrap();
+        let mut builder = ChunkBuilder::new(
+            &mut fragments,
+            kind,
+            FINGERPRINT,
+            compressor,
+            layout,
+            &account,
+        )
+        .unwrap();
         check(&builder, bound, "empty");
         let mut start = 0;
         for (turn, size) in sizes.iter().cycle().enumerate() {
@@ -2896,11 +3078,31 @@ mod memory {
             let end = (start + size).min(rows.len());
             append(&mut builder, layout, &rows[start..end]);
             check(&builder, bound, &format!("after batch {turn}"));
+            assert_eq!(
+                live.get(),
+                builder
+                    .memory()
+                    .iter()
+                    .map(|(_, capacity, _)| *capacity as u64)
+                    .sum::<u64>()
+            );
             start = end;
         }
         builder
             .finish_observed(|builder, directory| {
                 check(builder, bound, "at fragment 0");
+                let directory_bytes = directory.blocks.capacity() * size_of::<BlockRecord>()
+                    + directory.large.capacity() * size_of::<LargeEntry>()
+                    + directory.columns.capacity() * size_of::<ColumnRecord>();
+                assert_eq!(
+                    live.get(),
+                    directory_bytes as u64
+                        + builder
+                            .memory()
+                            .iter()
+                            .map(|(_, capacity, _)| *capacity as u64)
+                            .sum::<u64>()
+                );
                 let shares: BTreeMap<String, usize> = builder
                     .memory()
                     .into_iter()
@@ -2928,6 +3130,10 @@ mod memory {
                 }
             })
             .unwrap();
+        assert_eq!(live.get(), 0);
+        assert_eq!(account.live_bytes(), 0);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
         read_everything(&fragments).unwrap();
         fragments
     }
@@ -3208,9 +3414,9 @@ mod memory {
         assert_eq!(working_memory(&event, false), EVENT);
     }
 
-    const SERIES: u64 = 286_186;
-    const SERIES_COMPRESSED: u64 = 319_103;
-    const EVENT: u64 = 501_816;
+    const SERIES: u64 = 286_666;
+    const SERIES_COMPRESSED: u64 = 319_583;
+    const EVENT: u64 = 502_584;
 }
 
 /// The reader's memory (§7.4, §8.2): what opening a chunk and decoding its blocks hold,
@@ -3255,7 +3461,7 @@ mod read_memory {
     impl Reading {
         fn new() -> Self {
             Self {
-                decoder: BlockDecoder::new().unwrap(),
+                decoder: BlockDecoder::new(&crate::budget::test_account()).unwrap(),
                 signed: IntBlock::default(),
                 unsigned: IntBlock::default(),
                 narrow: IntBlock::default(),
@@ -3380,7 +3586,9 @@ mod read_memory {
             .into();
         chunks.push(rarer_encodings());
         let mut seen = BTreeSet::new();
-        let mut large = Vec::new();
+        let mut large = crate::budget::test_account()
+            .buffer(0)
+            .expect("empty storage is free");
         let mut grown = 0;
         for fragments in &chunks {
             let reader = open_chunk(fragments).unwrap();
@@ -3536,7 +3744,10 @@ mod read_memory {
         let long = vec![b'x'; MAX_INLINE_VALUE_LEN + 1];
         let mut fragments = two_columns(bytes(BytesHint::Text, false), &[&long, b"a", b"b"]);
         assert_eq!(fragments.directory().large.len(), 1);
-        let mut scratch = EncodeScratch::default();
+        let mut scratch = EncodeScratch::new(
+            &crate::budget::test_account(),
+            crate::codec::block::ScratchCaps::default(),
+        );
         let encoded = encode_bytes(
             &[&b""[..]; 3][..],
             None,
@@ -3561,7 +3772,10 @@ mod read_memory {
         let short: Vec<&[u8]> = vec![b"a"; 9];
         let mut fragments = two_columns(bytes(BytesHint::LowCardinality, false), &short);
         let value = vec![b'x'; MAX_INLINE_VALUE_LEN];
-        let mut scratch = EncodeScratch::default();
+        let mut scratch = EncodeScratch::new(
+            &crate::budget::test_account(),
+            crate::codec::block::ScratchCaps::default(),
+        );
         let encoded = encode_bytes(
             &vec![&value[..]; 9][..],
             None,
@@ -3659,7 +3873,10 @@ mod read_memory {
     fn parse_peak(content: &[u8]) -> (u64, u64) {
         let mut peak = 0;
         let directory =
-            Directory::parse_observed(content, |buffers| peak = total(buffers)).unwrap();
+            Directory::parse_observed(content, &crate::budget::test_account(), |buffers| {
+                peak = total(buffers)
+            })
+            .unwrap();
         (peak, directory.memory())
     }
 
@@ -3705,22 +3922,52 @@ mod read_memory {
         let length = recorded(&fragments);
         let bound = open_memory(length as usize - TRAILER_LEN);
         let source = lending(&fragments);
-        let budget = MemoryBudget::new(bound - 1);
-        let error = ChunkReader::open(&source, &budget, length).unwrap_err();
+        let budget = MemoryBudget::new(bound + u64::from(length) - 1);
+        let error = ChunkReader::open(
+            &source,
+            &crate::budget::MemoryAccount::new(
+                &budget,
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            length,
+        )
+        .unwrap_err();
         assert!(
             matches!(error, ReadError::ReserveDirectory { .. }),
             "{error}"
         );
         assert_eq!(source.fetched.get(), 0);
-        let budget = MemoryBudget::new(bound);
-        let reader = ChunkReader::open(&source, &budget, length).unwrap();
-        assert_eq!(budget.reserved(), reader.memory());
+        let budget = MemoryBudget::new(bound + u64::from(length));
+        let reader = ChunkReader::open(
+            &source,
+            &crate::budget::MemoryAccount::new(
+                &budget,
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            length,
+        )
+        .unwrap();
+        assert_eq!(budget.reserved(), reader.memory() + u64::from(length));
         drop(reader);
 
         // Fragment 0 longer than its entry records: never lent.
         let source = lending(&fragments);
         let budget = MemoryBudget::new(u64::MAX);
-        let error = ChunkReader::open(&source, &budget, length - 1).unwrap_err();
+        let error = ChunkReader::open(
+            &source,
+            &crate::budget::MemoryAccount::new(
+                &budget,
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            length - 1,
+        )
+        .unwrap_err();
         assert!(
             matches!(
                 error,
@@ -3740,7 +3987,17 @@ mod read_memory {
         for (fragments, recorded) in [(&fragments, length + 1), (&garbled, length)] {
             let source = lending(fragments);
             let budget = MemoryBudget::new(u64::MAX);
-            let error = ChunkReader::open(&source, &budget, recorded).unwrap_err();
+            let error = ChunkReader::open(
+                &source,
+                &crate::budget::MemoryAccount::new(
+                    &budget,
+                    "test reader",
+                    crate::budget::MemoryPlan::default(),
+                )
+                .unwrap(),
+                recorded,
+            )
+            .unwrap_err();
             let actual = fragments.map[&0].len();
             assert!(
                 matches!(
@@ -3757,7 +4014,17 @@ mod read_memory {
         // A recorded length no fragment 0 has is refused before anything is reserved.
         for recorded in [MIN_FRAGMENT0_LEN as u32 - 1, MAX_FRAGMENT_LEN as u32 + 1] {
             let source = lending(&fragments);
-            let error = ChunkReader::open(&source, &MemoryBudget::new(0), recorded).unwrap_err();
+            let error = ChunkReader::open(
+                &source,
+                &crate::budget::MemoryAccount::new(
+                    &MemoryBudget::new(0),
+                    "test reader",
+                    crate::budget::MemoryPlan::default(),
+                )
+                .unwrap(),
+                recorded,
+            )
+            .unwrap_err();
             assert!(
                 matches!(error, ReadError::RecordedFragment0 { recorded: found } if found == recorded),
                 "{error}"
@@ -3773,9 +4040,19 @@ mod read_memory {
         grown.reseal(block.fragment, |content| content.extend_from_slice(&[0; 8]));
         let source = lending(&grown);
         let budget = MemoryBudget::new(u64::MAX);
-        let reader = ChunkReader::open(&source, &budget, recorded(&grown)).unwrap();
+        let account = crate::budget::MemoryAccount::new(
+            &budget,
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap();
+        account
+            .reserve_lent(crate::chunk::reader::lent_memory(recorded(&grown)))
+            .unwrap();
+        let reader = ChunkReader::open(&source, &account, recorded(&grown)).unwrap();
+        drop(account);
         let held = budget.reserved();
-        let mut decoder = BlockDecoder::new().unwrap();
+        let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
         let mut out = IntBlock::<i64>::default();
         let error = reader
             .read_ints(&source, 0, 0, &mut decoder, &mut out)
@@ -4123,6 +4400,7 @@ mod columns {
             FINGERPRINT,
             None,
             &layout,
+            &crate::budget::test_account(),
         )
         .unwrap();
         assert!(matches!(
@@ -4184,6 +4462,7 @@ mod columns {
             FINGERPRINT,
             None,
             &layout,
+            &crate::budget::test_account(),
         )
         .unwrap();
         builder.append_column(0, &key).unwrap();

@@ -215,7 +215,9 @@ pub(crate) fn stage(
     staging
         .try_grow(plan.staging)
         .context(ReserveStagingSnafu)?;
+    let allocation = crate::budget::MemoryAccount::borrow_reservation(&mut staging);
     let executed = Execution {
+        account: &allocation,
         batch: &mut *batch,
         schema: context.schema,
         shape: context.shape,
@@ -224,6 +226,7 @@ pub(crate) fn stage(
     }
     .run(&plan, current_head, update)
     .context(ChunkingSnafu)?;
+    drop(allocation);
     drop(plan);
     let head = executed.head;
     // Everything else staging allocated is gone with the batch's deltas and the records the

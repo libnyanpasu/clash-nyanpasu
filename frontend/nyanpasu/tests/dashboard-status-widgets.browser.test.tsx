@@ -64,7 +64,7 @@ function createRpcHarness() {
             vehicleType: 'HTTP',
             updatedAt: null,
             subscriptionInfo: null,
-            proxies: [],
+            proxyCount: 0,
           },
         } as T
       case 'clash_api_get_providers_rules':

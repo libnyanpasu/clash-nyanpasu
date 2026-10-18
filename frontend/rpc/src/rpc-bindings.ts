@@ -120,9 +120,10 @@ export function createRpcClient(
         __RPC_INVOKE('clash_api_get_group_delay', { group, url, expected }),
       ),
     clashApiGetProvidersProxies: () =>
-      typedError<{ [key in ProviderName]: ProxyProvider_Serialize }, IpcError>(
-        __RPC_INVOKE('clash_api_get_providers_proxies'),
-      ),
+      typedError<
+        { [key in ProviderName]: ProxyProviderSummary_Serialize },
+        IpcError
+      >(__RPC_INVOKE('clash_api_get_providers_proxies')),
     fetchLatestCoreVersions: () =>
       typedError<ManifestVersionLatest, IpcError>(
         __RPC_INVOKE('fetch_latest_core_versions'),
@@ -3761,28 +3762,28 @@ export type ProxyGroupKind =
 
 export type ProxyName = string
 
-export type ProxyProvider = ProxyProvider_Serialize | ProxyProvider_Deserialize
+/**  Provider metadata the application keeps after assembling its node view. */
+export type ProxyProviderSummary =
+  ProxyProviderSummary_Serialize | ProxyProviderSummary_Deserialize
 
-export type ProxyProvider_Deserialize = {
+/**  Provider metadata the application keeps after assembling its node view. */
+export type ProxyProviderSummary_Deserialize = {
   name: ProviderName
   type: ProviderType
   vehicleType: VehicleType
-  proxies: Proxy_Deserialize[]
-  testUrl: string | null
-  expectedStatus: string | null
-  updatedAt?: string | null
-  subscriptionInfo?: SubscriptionInfo_Deserialize | null
+  updatedAt: string | null
+  subscriptionInfo: SubscriptionInfo_Deserialize | null
+  proxyCount: number
 }
 
-export type ProxyProvider_Serialize = {
+/**  Provider metadata the application keeps after assembling its node view. */
+export type ProxyProviderSummary_Serialize = {
   name: ProviderName
   type: ProviderType
   vehicleType: VehicleType
-  proxies: Proxy_Serialize[]
-  testUrl: string | null
-  expectedStatus: string | null
   updatedAt: string | null
   subscriptionInfo: SubscriptionInfo_Serialize | null
+  proxyCount: number
 }
 
 /**  Common proxy fields with optional core-specific and group metadata. */

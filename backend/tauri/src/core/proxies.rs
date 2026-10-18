@@ -5,7 +5,7 @@ use crate::client::runtime::{
     Degradation, DegradationPhase, DegradationReason, InterruptFailure, MutationOutcome,
 };
 use anyhow::{Context, Result};
-use clash_api::{IndexMap, ProviderName, ProxyName, ProxyProvider};
+use clash_api::{IndexMap, ProviderName, ProxyName};
 use nyanpasu_config::clash::config::clash_strategy::ProxyChangeBreakMode;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use seahash::SeaHasher;
@@ -14,13 +14,13 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     actor_v2::{CoreClient, api::ApiClient},
-    clash::proxies::Proxies,
+    clash::proxies::{Proxies, ProxyProviderSummary},
 };
 
 struct Snapshot {
     api: ApiClient,
     proxies: Proxies,
-    providers: IndexMap<ProviderName, ProxyProvider>,
+    providers: IndexMap<ProviderName, ProxyProviderSummary>,
     fetched: Instant,
     fingerprint: u64,
 }
@@ -139,8 +139,13 @@ impl State {
             let response = api.proxy_snapshot().await?;
             let proxies =
                 Proxies::from_responses(response.proxies, &response.providers, response.groups)?;
-            let providers = response.providers;
-            // Hash the same JSON representation without retaining its serialized bytes.
+            // Provider nodes are needed above, but only their metadata stays in the cache.
+            let providers = response
+                .providers
+                .into_iter()
+                .map(|(name, provider)| (name, ProxyProviderSummary::from(provider)))
+                .collect();
+            // Hash the application view without retaining its serialized bytes.
             let mut fingerprint = SeaHasher::new();
             serde_json::to_writer(&mut fingerprint, &(&proxies, &providers))?;
             anyhow::ensure!(
@@ -480,7 +485,7 @@ impl ProxiesClient {
         );
         Ok(snapshot.proxies.clone())
     }
-    pub async fn providers(&self) -> Result<IndexMap<ProviderName, ProxyProvider>> {
+    pub async fn providers(&self) -> Result<IndexMap<ProviderName, ProxyProviderSummary>> {
         let snapshot = self
             .call(|reply| Message::Read {
                 force: false,
@@ -589,6 +594,7 @@ mod tests {
         calls: Mutex<Vec<&'static str>>,
         selected: Mutex<String>,
         subscription_expire: AtomicUsize,
+        provider_nodes: Mutex<Option<Vec<serde_json::Value>>>,
         fixed: Mutex<String>,
         group_list: Mutex<Option<serde_json::Value>>,
     }
@@ -624,8 +630,11 @@ mod tests {
         }
     }
     async fn providers(HttpState(f): HttpState<Arc<Fixture>>) -> Json<serde_json::Value> {
+        let nodes = f.provider_nodes.lock().unwrap().clone().unwrap_or_else(|| {
+            vec![serde_json::json!({"name":NODE,"type":"Vless","udp":true,"history":[]})]
+        });
         Json(
-            serde_json::json!({"providers":{PROVIDER:{"name":PROVIDER,"type":"Proxy","vehicleType":"HTTP", "proxies":[{"name":NODE,"type":"Vless","udp":true,"history":[]}], "subscriptionInfo":{"Expire":f.subscription_expire.load(Ordering::SeqCst),"Upload":-1}}}}),
+            serde_json::json!({"providers":{PROVIDER:{"name":PROVIDER,"type":"Proxy","vehicleType":"HTTP", "proxies":nodes, "subscriptionInfo":{"Expire":f.subscription_expire.load(Ordering::SeqCst),"Upload":-1}}}}),
         )
     }
     async fn select(
@@ -841,6 +850,7 @@ mod tests {
             Some(PROVIDER)
         );
         let providers = client.providers().await.unwrap();
+        assert_eq!(providers[&ProviderName::from(PROVIDER)].proxy_count, 1);
         let info = providers[&clash_api::ProviderName::from(PROVIDER)]
             .subscription_info
             .as_ref()
@@ -861,6 +871,53 @@ mod tests {
         );
         server.abort();
     }
+    #[tokio::test]
+    async fn provider_summaries_keep_node_counts_and_notify_only_for_application_changes() {
+        let (client, core, _, fixture, server) = setup().await;
+        let node = |name, delay| {
+            serde_json::json!({
+                "name": name, "type": "Vless", "udp": true,
+                "history": [{"time": "2026-10-18T00:00:00Z", "delay": delay}],
+            })
+        };
+        *fixture.provider_nodes.lock().unwrap() = Some(vec![node(NODE, 10), node("unused", 20)]);
+        let mut changes = client.subscribe();
+
+        let proxies = client.get(true).await.unwrap();
+        assert_eq!(proxies.nodes[&ProxyName::from(NODE)].history[0].delay, 10);
+        assert!(!proxies.nodes.contains_key(&ProxyName::from("unused")));
+        let providers = client.providers().await.unwrap();
+        assert_eq!(providers[&ProviderName::from(PROVIDER)].proxy_count, 2);
+        changes.borrow_and_update();
+
+        // An unused node's history belongs only to the transient core response.
+        *fixture.provider_nodes.lock().unwrap() = Some(vec![node(NODE, 10), node("unused", 21)]);
+        client.get(true).await.unwrap();
+        assert!(!changes.has_changed().unwrap());
+
+        *fixture.provider_nodes.lock().unwrap() = Some(vec![node(NODE, 11), node("unused", 21)]);
+        let proxies = client.get(true).await.unwrap();
+        assert_eq!(proxies.nodes[&ProxyName::from(NODE)].history[0].delay, 11);
+        assert!(changes.has_changed().unwrap());
+        changes.borrow_and_update();
+
+        fixture
+            .provider_nodes
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .push(node("another unused", 30));
+        client.get(true).await.unwrap();
+        let providers = client.providers().await.unwrap();
+        assert_eq!(providers[&ProviderName::from(PROVIDER)].proxy_count, 3);
+        assert!(changes.has_changed().unwrap());
+
+        client.stop_for_test().await.unwrap();
+        core.shutdown().await.unwrap();
+        server.abort();
+    }
+
     #[tokio::test]
     async fn refresh_notifies_only_when_proxies_or_providers_change() {
         let (client, core, _, fixture, server) = setup().await;

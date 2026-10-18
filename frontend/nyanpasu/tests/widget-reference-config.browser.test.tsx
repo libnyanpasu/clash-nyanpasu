@@ -75,7 +75,9 @@ function createRpc() {
             SharedName: {
               name: 'SharedName',
               type: 'Proxy',
-              proxies: [],
+              proxyCount: 0,
+              updatedAt: null,
+              subscriptionInfo: null,
               vehicleType: 'HTTP',
             },
           } as T

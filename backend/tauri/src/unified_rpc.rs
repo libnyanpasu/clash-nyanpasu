@@ -863,6 +863,86 @@ mod tests {
     }
 
     #[test]
+    fn provider_query_returns_summaries_over_http() {
+        use crate::core::actor_v2::api::tests::{endpoint, server};
+        use serde_json::json;
+
+        let (url, core_server) = tauri::async_runtime::block_on(server(
+            Router::new()
+                .route(
+                    "/proxies",
+                    get(|| async {
+                        Json(json!({"proxies": {
+                            "DIRECT": {"name":"DIRECT","type":"Direct","udp":false,"history":[]},
+                            "REJECT": {"name":"REJECT","type":"Reject","udp":false,"history":[]},
+                            "group": {"name":"group","type":"Selector","udp":false,"history":[],"all":["used"]},
+                        }}))
+                    }),
+                )
+                .route(
+                    "/providers/proxies",
+                    get(|| async {
+                        let node = |name| json!({"name":name,"type":"Vless","udp":true,"history":[]});
+                        Json(json!({"providers": {
+                            "subscription": {
+                                "name":"subscription","type":"Proxy","vehicleType":"HTTP",
+                                "proxies":[node("used"),node("unused")],
+                                "subscriptionInfo":{"Upload":-1,"Expire":42},
+                            },
+                            "built-in": {
+                                "name":"built-in","type":"Proxy","vehicleType":"Compatible",
+                                "proxies":[node("used")],
+                            },
+                        }}))
+                    }),
+                ),
+        ));
+        let directory = tempfile::tempdir().unwrap();
+        let args = crate::client::tests::test_client_args_with_endpoint(&directory, endpoint(url));
+        let paths = args.paths.clone();
+        let client = NyanpasuClient::try_new_with_args(args).unwrap();
+        let rpc = UnifiedRpc::new(RpcDependencies {
+            client: client.clone(),
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        })
+        .unwrap();
+        let app = rpc.router();
+
+        tauri::async_runtime::block_on(async {
+            let expected = json!({
+                "subscription": {
+                    "name":"subscription","type":"Proxy","vehicleType":"HTTP",
+                    "updatedAt":null,"proxyCount":2,
+                    "subscriptionInfo":{"Upload":-1,"Download":0,"Total":0,"Expire":42},
+                },
+                "built-in": {
+                    "name":"built-in","type":"Proxy","vehicleType":"Compatible",
+                    "updatedAt":null,"subscriptionInfo":null,"proxyCount":1,
+                },
+            });
+            assert_eq!(
+                serde_json::to_value(client.proxy_providers().await.unwrap()).unwrap(),
+                expected
+            );
+            let (status, result) =
+                rpc_for_test_call(&app, "clash_api_get_providers_proxies", json!({}), None).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(result, expected);
+            assert!(
+                client
+                    .get_proxies()
+                    .await
+                    .unwrap()
+                    .nodes
+                    .contains_key(&clash_api::ProxyName::from("used"))
+            );
+        });
+        core_server.abort();
+    }
+
+    #[test]
     fn errors_preserve_domain_codes_and_operation_identity() {
         use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
         let id = OperationId::generate();

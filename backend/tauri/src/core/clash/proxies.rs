@@ -3,9 +3,38 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use clash_api::{IndexMap, ProviderName, Proxy, ProxyName, ProxyProvider, VehicleType};
+use clash_api::{
+    IndexMap, ProviderName, ProviderType, Proxy, ProxyName, ProxyProvider, SubscriptionInfo,
+    VehicleType,
+};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+
+/// Provider metadata the application keeps after assembling its node view.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyProviderSummary {
+    pub name: ProviderName,
+    #[serde(rename = "type")]
+    pub provider_type: ProviderType,
+    pub vehicle_type: VehicleType,
+    pub updated_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub subscription_info: Option<SubscriptionInfo>,
+    pub proxy_count: usize,
+}
+
+impl From<ProxyProvider> for ProxyProviderSummary {
+    fn from(provider: ProxyProvider) -> Self {
+        Self {
+            name: provider.name,
+            provider_type: provider.provider_type,
+            vehicle_type: provider.vehicle_type,
+            updated_at: provider.updated_at,
+            subscription_info: provider.subscription_info,
+            proxy_count: provider.proxies.len(),
+        }
+    }
+}
 
 /// A group's `type`, as the core reports it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
@@ -114,6 +143,10 @@ impl ProxyGroup {
     }
 }
 
+// TODO(typed-proxy-nodes): Evaluate distinct typed group/node variants instead
+// of the shared wire `Proxy` with both sets of optional fields. Preserve unknown
+// core kinds and provider-only nodes without serde_json::Value, avoid duplicate
+// group-member storage, and measure layout/heap costs before changing the RPC model.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Proxies {
@@ -357,6 +390,38 @@ mod tests {
         }))
         .unwrap();
         (ProviderName::from(key), provider)
+    }
+
+    #[test]
+    fn provider_summary_preserves_metadata_and_counts_all_nodes() {
+        for vehicle in ["HTTP", "File", "Inline", "Compatible", "FutureVehicle"] {
+            let provider: ProxyProvider = serde_json::from_value(json!({
+                "name": "subscription/日本",
+                "type": "FutureProvider",
+                "vehicleType": vehicle,
+                "updatedAt": "2026-10-18T12:00:00+08:00",
+                "subscriptionInfo": {"Upload": -1, "Download": 2, "Total": 3, "Expire": 4},
+                "testUrl": "https://example.com/test",
+                "expectedStatus": "204",
+                "proxies": [
+                    item("used", "Vless", None, None),
+                    item("unused", "Vless", None, None),
+                ],
+            }))
+            .unwrap();
+
+            assert_eq!(
+                serde_json::to_value(ProxyProviderSummary::from(provider)).unwrap(),
+                json!({
+                    "name": "subscription/日本",
+                    "type": "FutureProvider",
+                    "vehicleType": vehicle,
+                    "updatedAt": "2026-10-18T12:00:00+08:00",
+                    "subscriptionInfo": {"Upload": -1, "Download": 2, "Total": 3, "Expire": 4},
+                    "proxyCount": 2,
+                })
+            );
+        }
     }
 
     fn records(groups: &[Proxy]) -> IndexMap<ProxyName, Proxy> {

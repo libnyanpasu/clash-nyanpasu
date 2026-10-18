@@ -470,6 +470,7 @@ fn snapshots_and_results_hold_credit_until_their_last_drop() {
     assert_eq!(shared.query_budget.reserved(), 0);
 }
 
+mod recovery;
 mod support;
 
 /// A valid no-expiry maintenance call used to distinguish lifecycle refusal from validation.

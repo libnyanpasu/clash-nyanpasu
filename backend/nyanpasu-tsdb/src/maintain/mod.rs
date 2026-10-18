@@ -321,14 +321,8 @@ pub(crate) fn stage(
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum MaintainError {
-    /// The owner retired the instance before this operation could continue.
-    #[snafu(display("the store is closed to this operation"))]
-    CheckOpen {
-        source: crate::storage::StorageError,
-    },
-
-    /// An earlier failure left the backend failed or a commit's outcome unknown. Every
-    /// maintenance call fails until the owner recovers (§7.5).
+    /// The store needs recovery, is recovering, is waiting for old readers, or is unavailable.
+    /// Every maintenance call fails until the owner successfully recovers (§7.5).
     #[snafu(display("the store needs recovery before it can be maintained"))]
     RecoveryNeeded,
 
@@ -431,7 +425,6 @@ pub enum MaintainError {
 impl MaintainError {
     pub fn kind(&self) -> ErrorKind {
         match self {
-            Self::CheckOpen { source } => source.kind(),
             Self::RecoveryNeeded => ErrorKind::BackendFailed,
             Self::PolicyShape { .. } | Self::EpochRetention { .. } => ErrorKind::Local,
             Self::OpenSnapshot { source }

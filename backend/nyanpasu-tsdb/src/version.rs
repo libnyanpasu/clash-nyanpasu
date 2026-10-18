@@ -72,8 +72,21 @@ pub(crate) enum LifecycleState {
     Open,
     /// An unknown commit or backend failure requires owner-driven recovery.
     RecoveryNeeded,
+    /// The owner detached the old instance and is reopening or restoring it.
+    Recovering,
+    /// Old snapshots or charged results must drop before the owner may reopen.
+    WaitingForReaders,
+    /// The last recovery attempt failed; the host owns its error and decides when to retry.
+    Unavailable,
     /// The owner retired the backend; readers retain only their captured state.
     Closed,
+}
+
+impl LifecycleState {
+    /// Every nonterminal admission refusal asks the host to recover first.
+    fn needs_recovery(self) -> bool {
+        !matches!(self, Self::Open | Self::Closed)
+    }
 }
 
 struct Slots {
@@ -101,6 +114,8 @@ struct Slots {
 /// once and pass the backend down; only short register/publish/withdraw steps take R.
 /// No R guard spans commit, rollback, close or fsync. Retirement takes G-write then R-write,
 /// detaches ownership, and drops the backend and roots after both guards are released.
+/// Recovery reopens and restores without G or R, with admission closed. Installation takes
+/// G-write then R-write only after query credit drained and all fallible work completed.
 pub(crate) struct Shared<S> {
     /// Capture gate; a reader never retains this guard after capture.
     storage: RwLock<Option<S>>,
@@ -134,10 +149,10 @@ impl<S: Storage> Shared<S> {
     }
 
     /// Closes admissions and detaches the backend. The caller drops it outside both locks.
-    pub(crate) fn retire(&self) -> Retired<S> {
+    pub(crate) fn retire(&self, state: LifecycleState) -> Retired<S> {
         let mut storage = self.storage.write().unwrap_or_else(PoisonError::into_inner);
         let mut slots = self.registry.write();
-        slots.state = LifecycleState::Closed;
+        slots.state = state;
         self.revoked.store(true, Ordering::Release);
         Retired {
             _storage: storage.take(),
@@ -145,6 +160,23 @@ impl<S: Storage> Shared<S> {
             _pending: slots.pending.take(),
             _head: slots.head.take(),
         }
+    }
+
+    /// Installs a fully restored candidate after retirement drained all old query credit.
+    /// The owner has already reset its private bookkeeping; captures see this entire swap.
+    pub(crate) fn install(&self, backend: S, version: Version, head: Reservation) {
+        let version = Arc::new(version);
+        let open = Arc::new(OpenMarker);
+        let mut storage = self.storage.write().unwrap_or_else(PoisonError::into_inner);
+        let mut slots = self.registry.write();
+        debug_assert!(storage.is_none() && slots.current.is_none() && slots.pending.is_none());
+        debug_assert!(slots.head.is_none());
+        *storage = Some(backend);
+        slots.current = Some(version);
+        slots.head = Some(head);
+        slots.open = open;
+        self.revoked.store(false, Ordering::Release);
+        slots.state = LifecycleState::Open;
     }
 
     /// Captures under G then R; a failure is reported only after R's read guard unwinds.
@@ -202,10 +234,7 @@ impl<S: Storage> Shared<S> {
     /// Reserves a nonzero capture claim before pinning the matching publication under R.
     fn pin(self: &Arc<Self>, storage: Option<&S>) -> Result<Snapshot<S>, CaptureError> {
         let slots = self.registry.read();
-        ensure!(
-            slots.state != LifecycleState::RecoveryNeeded,
-            RecoveryNeededSnafu
-        );
+        ensure!(!slots.state.needs_recovery(), RecoveryNeededSnafu);
         self.check_open().context(CheckOpenSnafu)?;
         let storage = storage.expect("an open instance owns its backend");
         let snapshot = storage.snapshot().context(OpenSnapshotSnafu)?;
@@ -396,7 +425,12 @@ impl Registry {
     }
 
     pub(crate) fn needs_recovery(&self) -> bool {
-        self.read().state == LifecycleState::RecoveryNeeded
+        self.read().state.needs_recovery()
+    }
+
+    /// Records a recovery call that returned without installing a candidate.
+    pub(crate) fn recovery_stopped(&self, state: LifecycleState) {
+        self.write().state = state;
     }
 
     pub(crate) fn require_recovery(&self) {
@@ -419,6 +453,17 @@ impl Registry {
 
 #[cfg(test)]
 impl Registry {
+    /// The admission state at an explicitly ordered test boundary.
+    pub(crate) fn state(&self) -> LifecycleState {
+        self.read().state
+    }
+
+    /// Whether retirement detached every registry owner, including resident head credit.
+    pub(crate) fn is_empty(&self) -> bool {
+        let slots = self.read();
+        slots.current.is_none() && slots.pending.is_none() && slots.head.is_none()
+    }
+
     /// A nonblocking witness that no publication guard is held at an ordered test boundary.
     pub(crate) fn publication_available(&self) -> bool {
         self.slots.try_write().is_ok()
@@ -627,8 +672,8 @@ pub enum CaptureError {
     #[snafu(display("the store is closed to captures"))]
     CheckOpen { source: StorageError },
 
-    /// An earlier failure left the backend failed or a batch's outcome unknown. Every
-    /// capture fails until the owner recovers (§7.5).
+    /// The store needs recovery, is recovering, is waiting for old readers, or is unavailable.
+    /// Every capture fails until the owner successfully recovers (§7.5).
     #[snafu(display("the store needs recovery before it can be read"))]
     RecoveryNeeded,
 

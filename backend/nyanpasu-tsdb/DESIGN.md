@@ -332,13 +332,14 @@ allocator or RSS bound.
 ## Retirement and revocation
 
 `Shared` owns the backend in `RwLock<Option<S>>` and the registry's admission state:
-`Open`, `RecoveryNeeded`, or `Closed`. Dropping `Tsdb` closes admission, sets its one atomic
-revocation flag, detaches the backend and resident roots, then drops them outside the locks.
+`Open`, `RecoveryNeeded`, `Recovering`, `WaitingForReaders`, `Unavailable`, or `Closed`.
+Dropping `Tsdb` closes admission, sets its one atomic revocation flag, detaches the backend and
+resident roots, then drops them outside the locks.
 Readers own only `Shared`; snapshots own a storage transaction and a charged version.
 Snapshot fields drop the transaction before the version payload and its capture credit.
 Results retain their allocation charges. Even an empty version includes fixed catalog and head
 allocations, so `query_budget.reserved() == 0` means all snapshots and charged results have gone.
-Idle readers and catalog tokens do not block that condition. Recovery will return to the host
+Idle readers and catalog tokens do not block that condition. Recovery returns to the host
 while claims remain; the budget has no wait API, and retirement never waits for query completion.
 
 The lock order, documented on `Shared`, is G (backend gate), R (registry), backend locks, then
@@ -354,6 +355,34 @@ which is still reported and returned unchanged.
 Only query errors of kind `BackendFailed` latch `Open` to `RecoveryNeeded`; the next owner write
 or maintenance refuses admission. Local and corrupted errors leave admission unchanged, and a late
 failure cannot reopen `Closed`. An already admitted commit may finish without clearing a latch.
+
+## Recovery
+
+`recover_with(reopen, restore)` retires the instance into `Recovering`, using the same unlocked
+backend/root destruction as Drop. If query credit remains, it returns `WaitingForReaders` and
+calls neither closure. The host releases snapshots/results and retries on its own schedule.
+After drain, reopening, ordinary open validation/rebuild/settlement, and synchronous host
+restoration run without either shared lock. `RecoveryView` lends auxiliary bytes and metadata
+from one post-settlement snapshot; its borrowed state cannot escape. The host builds an owned
+replacement and propagates read failures. It discards pending inputs computed from the old
+state, never replays them. The callback's external effects cannot be rolled back.
+
+Only success installs the backend, version and a fresh catalog marker under G then R, clears
+revocation and enters `Open`. It returns `Recovered` with the restored host value, incarnation,
+publication and last surviving batch. At installation, event sequence, durability bookkeeping and
+`behind` reset together with the new incarnation, shape and head/staging budgets. Until then
+`next_event_seq` continues in the old incarnation; the other owner bookkeeping remains unchanged.
+`Shared`, the query budget and existing Reader clones survive. Old graphs drain before new ones
+are built; old query failures cannot reach the new instance.
+
+Any recovery error drops the candidate outside the locks and leaves `Unavailable`, with no backend
+or published version. The host receives the typed cause and may retry explicitly; durable opening
+changes may already have happened. All nonterminal states except `Open` return `RecoveryNeeded`
+from write, maintain and capture. Only owner Drop enters terminal `Closed`, whose captures return
+`CheckOpen { Closed }`; revoked running queries retain their own Local `CheckOpen` errors.
+Every nonterminal state can start another recovery attempt. There is no automatic retry or wait.
+Reopening must target the same dataset; recovery from an old backup needs the deferred external
+incarnation counter.
 
 ## Errors
 
@@ -386,6 +415,7 @@ Each public operation returns the error type of its module:
 | -------------------- | --------------------------------------------------------------------------------------------------- |
 | validating a schema  | `schema::SchemaError`                                                                               |
 | opening              | `lifecycle::OpenError`                                                                              |
+| recovering           | `lifecycle::RecoveryError`                                                                          |
 | writing a batch      | `write::WriteError`, with `InputError`, `StageError` and, from the backlog's round, `MaintainError` |
 | capturing a snapshot | `version::CaptureError`                                                                             |
 | summing series       | `query::SeriesQueryError`                                                                           |

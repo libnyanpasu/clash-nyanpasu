@@ -10,6 +10,8 @@ use std::{
 
 use proptest::prelude::*;
 
+mod recovery;
+
 use super::*;
 use crate::{
     Aggregate, ColumnSpec, ColumnType, EventKey, EventStreamSpec, ExtentSpec, FieldSpec, LabelId,

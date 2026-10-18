@@ -39,6 +39,10 @@ pub(super) struct Probes {
     pub(super) snapshot_dropped: Hook,
     /// Before any batch is opened, to detect an admission that should have been refused.
     pub(super) batch: Hook,
+    /// Before opening a storage snapshot, used to select the private restoration snapshot.
+    pub(super) snapshot: Hook,
+    /// Next snapshot opening fails before creating a read transaction.
+    pub(super) snapshot_fault: Mutex<Option<StorageError>>,
     /// After choosing a read's result, before returning it to the facade.
     pub(super) read: Hook,
     /// Next snapshot read returns this error without poisoning the real engine.
@@ -78,6 +82,10 @@ impl<S: Storage> Storage for Observed<S> {
         Self: 'a;
 
     fn snapshot(&self) -> Result<Self::Snapshot> {
+        self.probes.snapshot.run();
+        if let Some(error) = self.probes.snapshot_fault.lock().unwrap().take() {
+            return Err(error);
+        }
         Ok(Read {
             inner: Some(self.storage.as_ref().unwrap().snapshot()?),
             probes: self.probes.clone(),
@@ -196,11 +204,12 @@ impl<B: StorageWrite> StorageWrite for Batch<'_, B> {
     }
 }
 
-/// redb's real sync path with an observation before the underlying disk's sync.
+/// redb's real sync path; clones share its disk so recovery can open a fresh database.
 #[cfg(feature = "redb")]
+#[derive(Clone)]
 pub(super) struct SyncDisk {
     /// The ordinary redb memory backend, with redb still driving every sync call.
-    inner: redb::backends::InMemoryBackend,
+    inner: Arc<redb::backends::InMemoryBackend>,
     /// One explicitly armed sync observation.
     hook: Arc<Hook>,
 }
@@ -210,7 +219,7 @@ impl SyncDisk {
     /// Starts an empty disk whose sync boundary is externally observable.
     pub(super) fn new(hook: Arc<Hook>) -> Self {
         Self {
-            inner: redb::backends::InMemoryBackend::new(),
+            inner: Arc::new(redb::backends::InMemoryBackend::new()),
             hook,
         }
     }

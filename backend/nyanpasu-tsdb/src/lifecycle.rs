@@ -6,11 +6,10 @@
 //!   durable commit (§4.2);
 //! - recovery after an unknown commit or a failed backend: revoke snapshots, close by
 //!   dropping the backend, return while reservations remain, then reopen and rebuild;
-//! - the unavailable state, retried at the owner's next scheduled commit;
-//! - suspend and resume;
-//! - physical compaction, only once no snapshot is alive.
+//! - recovery restores host auxiliary state before installing the new instance; failed
+//!   attempts leave an unavailable facade, retried only when the host calls again.
 //!
-//! Opening and instance retirement are implemented; recovery and suspension follow separately.
+//! Suspend/resume and physical compaction follow separately.
 
 use std::ops::ControlFlow;
 
@@ -33,6 +32,10 @@ use crate::{
     version::Version,
     write::chunking::{ChunkingError, Execution, Planning, Shape, least_staging, widest_build},
 };
+
+mod recovery;
+pub(crate) use recovery::prepare as prepare_recovery;
+pub use recovery::{RecoveryError, RecoveryProgress, RecoveryView};
 
 /// An opened dataset, before the facade wraps it.
 pub(crate) struct Opened<S> {

@@ -3,6 +3,7 @@
 
 mod app;
 mod format;
+mod logo;
 mod platform;
 #[cfg(test)]
 mod render_tests;
@@ -16,6 +17,7 @@ use nyanpasu_widget_protocol::{
     StatisticWidgetVariant,
     ipc::{self, WidgetIpcError},
 };
+use slint::ComponentHandle as _;
 use snafu::{ResultExt as _, Snafu};
 
 /// Why the widget could not start or stopped abnormally.
@@ -41,10 +43,14 @@ pub fn start_statistic_widget(variant: StatisticWidgetVariant) -> Result<(), Wid
     platform::select_backend().context(SelectBackendSnafu)?;
     match variant {
         StatisticWidgetVariant::Large => {
-            app::run(ui::LargeWidget::new().context(CreateWindowSnafu)?, rx)
+            let window = ui::LargeWidget::new().context(CreateWindowSnafu)?;
+            let logo_size = window.global::<ui::Theme>().get_large_logo_size();
+            app::run(window, rx, logo_size)
         }
         StatisticWidgetVariant::Small => {
-            app::run(ui::SmallWidget::new().context(CreateWindowSnafu)?, rx)
+            let window = ui::SmallWidget::new().context(CreateWindowSnafu)?;
+            let logo_size = window.global::<ui::Theme>().get_small_logo_size();
+            app::run(window, rx, logo_size)
         }
     }
 }

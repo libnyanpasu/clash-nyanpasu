@@ -24,6 +24,10 @@ i-slint-backend-winit = { version = '=1.18.1', default-features = false, feature
   'renderer-software',
 ] }
 humansize = '2'
+# Image logos: decoded once, then minified with Lanczos3 to the badge's
+# physical size, so Slint never scales them.
+png = '0.18'
+fast_image_resize = '6'
 clap = { version = '4', features = ['derive'] }
 snafu = { workspace = true }
 

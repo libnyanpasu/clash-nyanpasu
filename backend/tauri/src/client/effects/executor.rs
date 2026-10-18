@@ -14,7 +14,7 @@ use std::sync::{
 use super::{
     plan::{
         ApplicationEffect, ApplicationEffectPlan, EffectKind, LoggerDesired, ProxyGuardDesired,
-        SystemProxyDesired, TrayRefresh, TrayView,
+        SystemProxyDesired, TrayRefresh, TrayView, WidgetLogoDesired,
     },
     ports::ApplicationEffectsPort,
     status::{EffectFailureCode, EffectHealth, EffectRevision, EffectStatus, failure_text},
@@ -144,6 +144,25 @@ impl ApplicationEffectExecutor {
         }
     }
 
+    async fn apply_widget_logo(
+        &self,
+        revision: EffectRevision,
+        logo: WidgetLogoDesired,
+    ) -> EffectStatus {
+        match self.widget.show_logo(logo.source, logo.state).await {
+            Ok(()) => healthy(EffectKind::WidgetLogo, revision),
+            // Only a widget runtime that is not installed yet fails; the logo
+            // is remembered once it is.
+            Err(error) => degraded(
+                EffectKind::WidgetLogo,
+                revision,
+                error.code(),
+                failure_text(&error),
+                true,
+            ),
+        }
+    }
+
     async fn apply_tray(
         &self,
         revision: EffectRevision,
@@ -231,6 +250,9 @@ impl ApplicationEffectsPort for ApplicationEffectExecutor {
                 }
                 ApplicationEffect::Hotkeys(desired) => self.apply_hotkeys(revision, desired).await,
                 ApplicationEffect::Widget(config) => self.apply_widget(revision, *config).await,
+                ApplicationEffect::WidgetLogo(logo) => {
+                    self.apply_widget_logo(revision, *logo).await
+                }
                 ApplicationEffect::Tray(refresh, view) => {
                     self.apply_tray(revision, *refresh, *view).await
                 }

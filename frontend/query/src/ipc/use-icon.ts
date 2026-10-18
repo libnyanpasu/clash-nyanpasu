@@ -22,3 +22,14 @@ export const useTrayIcon = (mode: TrayIcon, version?: number) => {
     queryKey: [...options.queryKey, version],
   })
 }
+
+/** The statistic widget's own icon for a proxy state. */
+export const useWidgetIcon = (mode: TrayIcon, version?: number) => {
+  const api = useQueryApi()
+  const options = api.queries.getWidgetIcon(mode)
+
+  return useQuery({
+    ...unwrapQueryOptions(options, options.queryFn!),
+    queryKey: [...options.queryKey, version],
+  })
+}

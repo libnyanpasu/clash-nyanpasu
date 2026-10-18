@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { StatisticData, LogoPreset } from "state.slint";
 
 // A frameless, transparent, topmost window. The variant sets its fixed size.
 export component WidgetWindow inherits Window {
@@ -17,9 +18,11 @@ export component WidgetSurface inherits Rectangle {
     }
 }
 
-// The application logo on a translucent disc. The logo is the vector source
-// of the tray icon, so it is rasterized at the physical size like the icons
-// instead of being minified from 128 px.
+// The application logo. The bundled cat sits on a translucent disc; it is
+// the vector source of the tray icon, in the tray's colour for each state, so
+// it is rasterized at the physical size like the icons instead of being
+// minified from 192 px. An image logo fills the badge instead of the disc;
+// Rust rasterizes it at the badge's physical size, so it is drawn unscaled.
 export component LogoBadge inherits Rectangle {
     // A multiple of 14px. The logo is 6:7, so its box is then a whole number
     // of pixels wide and high at scale 1, 1.5 and 2; otherwise the rasterizer
@@ -27,10 +30,17 @@ export component LogoBadge inherits Rectangle {
     in property <length> logo-height;
     height: self.width;
     border-radius: self.width / 2;
-    background: Theme.logo-badge;
+    background: StatisticData.logo-image-shown ? transparent : Theme.logo-badge;
 
-    Image {
-        source: @image-url("../assets/logo.svg");
+    if StatisticData.logo-image-shown: Image {
+        source: StatisticData.logo-image;
+        width: root.width;
+        height: root.height;
+    }
+    if !StatisticData.logo-image-shown: Image {
+        source: StatisticData.logo == LogoPreset.tun ? @image-url("../assets/logo-tun.svg")
+            : StatisticData.logo == LogoPreset.system ? @image-url("../assets/logo-system-proxy.svg")
+            : @image-url("../assets/logo.svg");
         width: root.logo-height * 6 / 7;
         height: root.logo-height;
     }

@@ -20,7 +20,8 @@ premultiplied again.
 ## Layout
 
 - `nyanpasu-widget-protocol` (separate crate): the render-free contract,
-  `Message`, `StatisticMessage`, `LogoPreset` and `StatisticWidgetVariant`,
+  `Message`, `StatisticMessage`, `Logo`, `LogoPreset` and
+  `StatisticWidgetVariant`,
   and the channel over `nyanpasu-local-channel`: behind the `ipc` feature
   the widget's blocking client and receiver loop, behind `ipc-host` the
   application's Tokio server and sender. `nyanpasu-config` uses the types
@@ -42,8 +43,34 @@ premultiplied again.
   within 5 s.
 - `src/platform.rs`: backend and renderer selection, the Windows IME switch
   and window attributes.
+- `src/logo.rs`: image logos, decoded from PNG and rasterized at the badge's
+  physical size.
 - `src/format.rs`: byte and speed formatting.
 - `src/render_tests.rs`: the headless rendering test.
+
+## Logos
+
+The application sends `Message::UpdateLogo` with either the bundled cat in
+one of its three states (`Logo::Builtin`) or a PNG (`Logo::Image`), and sends
+it again after every start; the widget itself knows nothing of the settings
+behind it.
+
+- The bundled cat is drawn from `logo.svg`, `logo-tun.svg` and
+  `logo-system-proxy.svg`, the tray icon's artwork in the tray's colour for
+  each state, on the translucent disc. Being vectors, they are rasterized at
+  the physical size like the other icons.
+- An image fills the badge instead of the disc. Slint 1.18's software
+  renderer scales an image by taking the nearest source pixel
+  (`draw_texture_line`), which drops most of a 192 px artwork shrunk to 24
+  to 88 px and leaves it jagged. So the IPC thread decodes the PNG into
+  premultiplied RGBA once, and the event loop fits it into the badge's
+  physical square with Lanczos3 (`fast_image_resize`, on premultiplied
+  pixels so transparent pixels add no dark fringe), sharpens a minified
+  result with a 3 × 3 unsharp mask (amount 0.35, colour clamped to alpha)
+  and hands it to Slint at exactly that size,
+  so it is drawn unscaled. The decoded source stays in `StatisticData` and is
+  rasterized again on `ScaleFactorChanged`.
+- An image that does not decode shows the bundled cat.
 
 ## Rendering and platform choices
 

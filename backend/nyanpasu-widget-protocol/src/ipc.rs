@@ -121,7 +121,7 @@ mod host {
 #[cfg(all(test, feature = "ipc-host"))]
 mod tests {
     use super::*;
-    use crate::LogoPreset;
+    use crate::{Logo, LogoPreset};
 
     /// Runs the application's end in process and the widget's end on a
     /// thread, as the widget does, and returns what reached the widget. The
@@ -144,7 +144,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn the_widget_receives_messages_until_stop() {
         let handled = widget_side(async |tx| {
-            send_message(&tx, Message::UpdateLogo(LogoPreset::Tun))
+            send_message(&tx, Message::UpdateLogo(Logo::Builtin(LogoPreset::Tun)))
                 .await
                 .unwrap();
             send_message(&tx, Message::Stop).await.unwrap();
@@ -154,7 +154,7 @@ mod tests {
 
         assert!(matches!(
             handled.recv().unwrap(),
-            Message::UpdateLogo(LogoPreset::Tun)
+            Message::UpdateLogo(Logo::Builtin(LogoPreset::Tun))
         ));
         assert!(matches!(handled.recv().unwrap(), Message::Stop));
         assert!(matches!(handled.recv().unwrap(), Message::Stop));
@@ -165,7 +165,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn receiver_hands_over_stop_once_the_application_disconnects() {
         let handled = widget_side(async |tx| {
-            send_message(&tx, Message::UpdateLogo(LogoPreset::System))
+            send_message(&tx, Message::UpdateLogo(Logo::Builtin(LogoPreset::System)))
                 .await
                 .unwrap();
             drop(tx);
@@ -174,7 +174,7 @@ mod tests {
 
         assert!(matches!(
             handled.recv().unwrap(),
-            Message::UpdateLogo(LogoPreset::System)
+            Message::UpdateLogo(Logo::Builtin(LogoPreset::System))
         ));
         assert!(matches!(handled.recv().unwrap(), Message::Stop));
         assert!(handled.recv().is_err());

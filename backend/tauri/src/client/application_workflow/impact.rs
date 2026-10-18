@@ -751,6 +751,15 @@ mod tests {
                 owners: &[EffectKind::Widget],
             },
             AppCase {
+                field: "network_statistic_widget_logo",
+                mutate: |app| {
+                    app.network_statistic_widget_logo.source =
+                        nyanpasu_config::application::NetworkStatisticWidgetLogoSource::Widget
+                },
+                impact: RuntimeImpact::None,
+                owners: &[EffectKind::WidgetLogo],
+            },
+            AppCase {
                 field: "tray_selector_mode",
                 mutate: |app| app.tray_selector_mode = ProxiesSelectorMode::Hidden,
                 impact: RuntimeImpact::None,

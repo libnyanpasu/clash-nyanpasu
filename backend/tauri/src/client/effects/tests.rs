@@ -356,7 +356,7 @@ async fn independent_graphs_and_shutdown_admission() {
     assert!(a.calls.lock().unwrap().is_empty());
     right.publish_full(None);
     wait(&right, |s| {
-        s.effects.len() == 10
+        s.effects.len() == 11
             && s.effects
                 .iter()
                 .map(|e| &e.status)

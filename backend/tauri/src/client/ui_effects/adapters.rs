@@ -3,8 +3,11 @@
 
 use std::sync::Arc;
 
-use nyanpasu_config::application::{I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig};
-use nyanpasu_widget_protocol::StatisticWidgetVariant;
+use nyanpasu_config::application::{
+    I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig, NetworkStatisticWidgetLogoSource,
+};
+use nyanpasu_paths::PathResolver;
+use nyanpasu_widget_protocol::{Logo, StatisticWidgetVariant};
 use snafu::{OptionExt as _, ResultExt as _};
 
 use super::ports::{
@@ -13,8 +16,8 @@ use super::ports::{
     WidgetError, WidgetRuntime,
 };
 use crate::{
-    client::effects::plan::TrayView,
-    core::tray::{Tray, TrayWork},
+    client::effects::plan::{TrayView, WidgetLogoState},
+    core::tray::{Tray, TrayWork, icon::TrayIcon},
     utils::init::logging::ReloadSignal,
 };
 
@@ -103,8 +106,9 @@ impl LoggerRefresher for TracingLoggerRefresher {
 /// composition root therefore builds this empty, hands it to the executor, and
 /// fills it in once the widget is up. It is a one-shot cell owned by the
 /// composition root, not a global: nothing can look it up.
-#[derive(Default)]
 pub struct TauriWidgetController {
+    /// Where the icons the logo shows are stored.
+    paths: PathResolver,
     runtime: tokio::sync::OnceCell<Arc<dyn WidgetRuntime>>,
     /// The variant this controller last started. Narrow implementation detail,
     /// not shared state: only `apply` touches it, and it exists so a repeated
@@ -113,6 +117,14 @@ pub struct TauriWidgetController {
 }
 
 impl TauriWidgetController {
+    pub fn new(paths: PathResolver) -> Self {
+        Self {
+            paths,
+            runtime: tokio::sync::OnceCell::new(),
+            started: tokio::sync::Mutex::new(None),
+        }
+    }
+
     /// Called once by the composition root, after the widget is running.
     pub fn install(&self, runtime: Arc<dyn WidgetRuntime>) -> anyhow::Result<()> {
         self.runtime
@@ -154,6 +166,22 @@ impl WidgetController for TauriWidgetController {
         }
         Ok(())
     }
+
+    async fn show_logo(
+        &self,
+        source: NetworkStatisticWidgetLogoSource,
+        state: WidgetLogoState,
+    ) -> Result<(), WidgetError> {
+        let runtime = self.runtime()?;
+        let state = match state {
+            WidgetLogoState::Normal => TrayIcon::Normal,
+            WidgetLogoState::Tun => TrayIcon::Tun,
+            WidgetLogoState::SystemProxy => TrayIcon::SystemProxy,
+        };
+        let logo = crate::core::widget_logo::resolve(&self.paths, source, state);
+        runtime.set_logo(logo).await;
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -168,5 +196,9 @@ impl WidgetRuntime for crate::widget::WidgetManager {
 
     async fn is_running(&self) -> bool {
         crate::widget::WidgetManager::is_running(self).await
+    }
+
+    async fn set_logo(&self, logo: Logo) {
+        crate::widget::WidgetManager::set_logo(self, logo).await
     }
 }

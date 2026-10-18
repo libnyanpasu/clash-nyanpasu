@@ -422,6 +422,7 @@ export type EffectKind =
   | 'proxy_guard'
   | 'hotkeys'
   | 'widget'
+  | 'widget_logo'
   | 'tray'
 
 export type EndpointConnectivity =

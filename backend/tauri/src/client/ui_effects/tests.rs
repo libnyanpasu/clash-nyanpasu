@@ -218,8 +218,17 @@ async fn executor_with_owners(
     )
 }
 
+/// A controller whose icon paths lead nowhere: the widget logo is the bundled
+/// cat.
+fn widget_controller() -> TauriWidgetController {
+    TauriWidgetController::new(crate::client::tests::test_paths(
+        "/nonexistent/config",
+        "/nonexistent/data",
+    ))
+}
+
 fn controller_with(runtime: MockWidgetRuntime) -> TauriWidgetController {
-    let controller = TauriWidgetController::default();
+    let controller = widget_controller();
     controller
         .install(Arc::new(runtime))
         .expect("the runtime installs once");
@@ -409,6 +418,47 @@ fn logger_effect_forwards_level_and_rotation() {
 }
 
 #[tokio::test]
+async fn widget_logo_hands_the_resolved_icon_to_the_runtime() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = crate::client::tests::test_paths(dir.path(), dir.path().join("data"));
+    let mascot = include_bytes!("../../../icons/tray/mascot/tun.png").to_vec();
+    std::fs::write(
+        crate::core::widget_logo::widget_icon_path(&paths, crate::core::tray::icon::TrayIcon::Tun),
+        &mascot,
+    )
+    .unwrap();
+    let controller = TauriWidgetController::new(paths);
+    let mut runtime = MockWidgetRuntime::new();
+    let expected = nyanpasu_widget_protocol::Logo::Image(mascot);
+    runtime
+        .expect_set_logo()
+        .withf(move |logo| *logo == expected)
+        .times(1)
+        .returning(|_| Box::pin(async {}));
+    controller.install(Arc::new(runtime)).unwrap();
+
+    controller
+        .show_logo(
+            nyanpasu_config::application::NetworkStatisticWidgetLogoSource::Widget,
+            crate::client::effects::plan::WidgetLogoState::Tun,
+        )
+        .await
+        .expect("an installed runtime takes the logo");
+}
+
+#[tokio::test]
+async fn widget_logo_before_the_runtime_is_installed_is_unavailable() {
+    let error = widget_controller()
+        .show_logo(
+            nyanpasu_config::application::NetworkStatisticWidgetLogoSource::Tray,
+            crate::client::effects::plan::WidgetLogoState::Normal,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, WidgetError::Unavailable));
+}
+
+#[tokio::test]
 async fn widget_same_variant_is_a_noop() {
     let mut runtime = MockWidgetRuntime::new();
     runtime
@@ -492,7 +542,7 @@ async fn disabled_config_stops_without_asking_whether_the_widget_runs() {
 
 #[tokio::test]
 async fn widget_before_install_degrades() {
-    let controller = TauriWidgetController::default();
+    let controller = widget_controller();
 
     let error = controller
         .apply(NetworkStatisticWidgetConfig::Enabled(
@@ -555,7 +605,7 @@ async fn a_widget_that_never_started_leaves_nothing_for_the_disable() {
         CancellationToken::new(),
         &TaskTracker::new(),
     );
-    let controller = Arc::new(TauriWidgetController::default());
+    let controller = Arc::new(widget_controller());
     controller
         .install(Arc::new(manager.clone()))
         .expect("the runtime installs once");
@@ -1238,7 +1288,7 @@ async fn effects_with_a_widget_starting(
         shutdown.token.child_token(),
         &shutdown.tasks,
     );
-    let controller = Arc::new(TauriWidgetController::default());
+    let controller = Arc::new(widget_controller());
     controller
         .install(Arc::new(manager.clone()))
         .expect("the runtime installs once");

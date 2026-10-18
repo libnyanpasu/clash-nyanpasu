@@ -200,6 +200,10 @@ pub struct NyanpasuAppConfig {
     /// 是否启用网络统计信息浮窗
     pub network_statistic_widget: NetworkStatisticWidgetConfig,
 
+    /// Which logo the network statistic widget shows
+    #[serde(default)]
+    pub network_statistic_widget_logo: NetworkStatisticWidgetLogo,
+
     /// How long recorded traffic is kept
     #[serde(default)]
     pub traffic_retention: TrafficRetention,
@@ -296,6 +300,7 @@ impl Default for NyanpasuAppConfig {
             tray_menu_mode: TrayMenuMode::default(),
             window_close: WindowCloseSettings::default(),
             network_statistic_widget: NetworkStatisticWidgetConfig::default(),
+            network_statistic_widget_logo: NetworkStatisticWidgetLogo::default(),
             traffic_retention: TrafficRetention::default(),
             enable_local_ip_probe: false,
             pac_url: None,
@@ -380,6 +385,20 @@ mod patch_tests {
         let patch: NyanpasuAppConfigPatch =
             serde_json::from_str(r#"{"release_channel":"beta"}"#).unwrap();
         assert_eq!(patch.release_channel, Some(Some(ReleaseChannel::Beta)));
+    }
+
+    #[test]
+    fn widget_logo_defaults_for_existing_configurations() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("network_statistic_widget_logo");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            config.network_statistic_widget_logo,
+            NetworkStatisticWidgetLogo::default()
+        );
     }
 
     #[test]

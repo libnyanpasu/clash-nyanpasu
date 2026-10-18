@@ -42,8 +42,10 @@ Linux where no GL driver is usable.
 
 `cargo test -p nyanpasu-widget` covers the value formatting and renders both
 windows headless at scale 1, 1.5 and 2. The render test checks the transparent
-corners and the translucent card, compares the logo pixel by pixel with
-`logo.svg` rasterized by resvg, and checks that the widest values
+corners and the translucent card, compares the bundled logo in all three
+states pixel by pixel with its SVG rasterized by resvg, checks that an image
+logo is drawn exactly as `logo::rasterize` produced it, and checks that the
+widest values
 ("888.88 MB", "888.88 MB/s") fit their cells while one more character does
 not.
 

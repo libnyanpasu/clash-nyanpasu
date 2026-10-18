@@ -1,5 +1,5 @@
 import { LazyImage, type LazyImageProps } from '@nyanpasu/ui/lazy-image'
-import { useCachedIcon, useTrayIcon } from '@nyanpasu/query'
+import { useCachedIcon, useTrayIcon, useWidgetIcon } from '@nyanpasu/query'
 
 type SharedImageProps = Omit<LazyImageProps, 'src'>
 
@@ -31,6 +31,19 @@ export function TrayImage({
   version?: number
 }) {
   const query = useTrayIcon(mode, version)
+
+  return <LazyImage src={query.data?.data_url} {...props} />
+}
+
+export function WidgetImage({
+  mode,
+  version,
+  ...props
+}: SharedImageProps & {
+  mode: 'system_proxy' | 'tun' | 'normal'
+  version?: number
+}) {
+  const query = useWidgetIcon(mode, version)
 
   return <LazyImage src={query.data?.data_url} {...props} />
 }

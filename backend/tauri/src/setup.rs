@@ -379,7 +379,7 @@ fn build_application_effects(
     ))
     .context("Failed to spawn the hotkey actor")?;
 
-    let widget = Arc::new(TauriWidgetController::default());
+    let widget = Arc::new(TauriWidgetController::new(paths.clone()));
     let executor = Arc::new(ApplicationEffectExecutor::new(
         system_proxy,
         hotkeys,

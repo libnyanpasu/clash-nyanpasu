@@ -1,13 +1,12 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use clash_api::{
-    Delay, DelayQuery, ExpectedStatus, IndexMap, ProviderName, ProxyName, ProxyProvider,
-};
+use clash_api::{Delay, DelayQuery, ExpectedStatus, IndexMap, ProviderName, ProxyName};
 use nyanpasu_config::application::NyanpasuAppConfig;
 
-use crate::core::clash::api::{
-    ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes, RuleProviderItem, RulesRes,
+use crate::core::clash::{
+    api::{ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes, RuleProviderItem, RulesRes},
+    proxies::ProxyProviderSummary,
 };
 
 use super::NyanpasuClient;
@@ -54,7 +53,7 @@ impl NyanpasuClient {
             url
         })
     }
-    pub async fn proxy_providers(&self) -> Result<IndexMap<ProviderName, ProxyProvider>> {
+    pub async fn proxy_providers(&self) -> Result<IndexMap<ProviderName, ProxyProviderSummary>> {
         self.inner.proxies.providers().await
     }
     pub async fn select_proxy(

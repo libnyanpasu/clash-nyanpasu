@@ -40,7 +40,7 @@ export {
   unwrapQueryOptions,
 } from './query-options'
 export type { ClashDelayOptions } from './use-clash-proxies'
-export type { ProxyProvider_Serialize as ClashProviderProxies } from '@nyanpasu/rpc/types'
+export type { ProxyProviderSummary_Serialize as ClashProviderProxies } from '@nyanpasu/rpc/types'
 export type { RuleProviderItem as ClashProviderRule } from '@nyanpasu/rpc/types'
 export {
   acceptConfigurationStatus,

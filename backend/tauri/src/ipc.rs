@@ -1118,7 +1118,7 @@ pub async fn clash_api_get_group_delay(
 #[specta::specta]
 pub async fn clash_api_get_providers_proxies(
     client: State<'_, NyanpasuClient>,
-) -> Result<IndexMap<clash_api::ProviderName, clash_api::ProxyProvider>> {
+) -> Result<IndexMap<clash_api::ProviderName, crate::core::clash::proxies::ProxyProviderSummary>> {
     Ok(client.proxy_providers().await?)
 }
 

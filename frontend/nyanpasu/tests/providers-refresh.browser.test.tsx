@@ -30,7 +30,7 @@ function ProvidersProbe() {
   )
 }
 
-test('a proxies event refreshes only mounted provider views, without re-rendering unchanged ones', async ({
+test('a proxies event refreshes only mounted provider summaries, without re-rendering unchanged ones', async ({
   onTestFinished,
 }) => {
   let providerFetches = 0
@@ -46,16 +46,32 @@ test('a proxies event refreshes only mounted provider views, without re-renderin
           type: 'Proxy',
           vehicleType: 'HTTP',
           updatedAt: '2026-09-30T00:00:00Z',
-          // Only the delay history changes between fetches.
-          proxies: [
-            {
-              name: 'a',
-              type: 'Shadowsocks',
-              history: [
-                { time: '2026-09-30T00:00:00Z', delay: providerFetches },
-              ],
-            },
-          ],
+          subscriptionInfo: null,
+          proxyCount: 1,
+        },
+        file: {
+          name: 'file',
+          type: 'Proxy',
+          vehicleType: 'File',
+          updatedAt: null,
+          subscriptionInfo: null,
+          proxyCount: 0,
+        },
+        builtIn: {
+          name: 'builtIn',
+          type: 'Proxy',
+          vehicleType: 'Compatible',
+          updatedAt: null,
+          subscriptionInfo: null,
+          proxyCount: 1000,
+        },
+        inline: {
+          name: 'inline',
+          type: 'Proxy',
+          vehicleType: 'Inline',
+          updatedAt: null,
+          subscriptionInfo: null,
+          proxyCount: 10,
         },
       }
     },
@@ -88,7 +104,7 @@ test('a proxies event refreshes only mounted provider views, without re-renderin
     )
 
   render(true)
-  await expect.poll(() => container.textContent).toBe('sub 1')
+  await expect.poll(() => container.textContent).toBe('sub 1file 0')
   await settle()
 
   commits = 0

@@ -43,6 +43,16 @@ impl<T> BudgetVec<T> {
         if capacity <= self.storage.capacity() {
             return Ok(());
         }
+        let lease = self.lease.as_mut().expect("attached buffer");
+        if self.storage.capacity() == 0 && lease.bytes != 0 {
+            let planned = (lease.bytes / size_of::<T>() as u64) as usize;
+            if capacity <= planned {
+                self.storage = Vec::with_capacity(planned);
+                lease.allocated((self.storage.capacity() * size_of::<T>()) as u64);
+                self.check();
+                return Ok(());
+            }
+        }
         let mut next = Self::allocate(
             &self.lease.as_ref().expect("attached buffer").account,
             capacity,
@@ -51,6 +61,27 @@ impl<T> BudgetVec<T> {
         std::mem::swap(self, &mut next);
         drop(next);
         self.check();
+        Ok(())
+    }
+
+    /// Charges an empty buffer's planned capacity now, allocating only on its first growth.
+    /// This keeps future stripe storage beside directory admission without eager allocation.
+    /// Calling it on allocated or already planned storage is a programming error.
+    pub(crate) fn plan_capacity(&mut self, capacity: usize) -> Result<(), BudgetExceeded> {
+        let lease = self.lease.as_ref().expect("attached buffer");
+        assert!(self.storage.is_empty() && lease.bytes == 0);
+        assert!(size_of::<T>() == 0 || self.storage.capacity() == 0);
+        self.lease = Some(lease.account.lease(MemoryPlan::array::<T>(capacity)?)?);
+        Ok(())
+    }
+
+    /// Appends an item, admitting a whole doubled replacement beside the old buffer if full.
+    /// Failure preserves the original storage and contents.
+    pub(crate) fn try_push(&mut self, value: T) -> Result<(), BudgetExceeded> {
+        if self.len() == self.capacity() {
+            self.try_grow_to(self.capacity().saturating_mul(2).max(4))?;
+        }
+        self.push(value);
         Ok(())
     }
 
@@ -152,6 +183,58 @@ impl<T> BudgetVec<T> {
                 || self.capacity() as u64 * size_of::<T>() as u64
                     <= self.lease.as_ref().map_or(0, |lease| lease.bytes)
         );
+    }
+}
+
+impl<T: Ord> BudgetVec<T> {
+    /// Inserts into a max heap within its admitted capacity, without allocating.
+    pub(crate) fn heap_push(&mut self, value: T) {
+        self.push(value);
+        let mut child = self.len() - 1;
+        while child != 0 {
+            let parent = (child - 1) / 2;
+            if self[parent] >= self[child] {
+                break;
+            }
+            self.swap(parent, child);
+            child = parent;
+        }
+    }
+
+    /// Removes the maximum heap element while retaining storage and its charge.
+    pub(crate) fn heap_pop(&mut self) -> Option<T> {
+        let last = self.len().checked_sub(1)?;
+        self.swap(0, last);
+        let value = self.pop();
+        let mut parent = 0;
+        while parent < self.len() / 2 {
+            let mut child = 2 * parent + 1;
+            if child + 1 < self.len() && self[child + 1] > self[child] {
+                child += 1;
+            }
+            if self[parent] >= self[child] {
+                break;
+            }
+            self.swap(parent, child);
+            parent = child;
+        }
+        value
+    }
+}
+
+impl Retained<'_> {
+    /// Moves a charged vector into a public graph's fixed vector field during sealing.
+    /// The consuming finalizer must not grow it or let it escape the retained graph.
+    pub(crate) fn vector<T>(&mut self, buffer: BudgetVec<T>) -> Vec<T> {
+        buffer.check();
+        if let Some(lease) = &buffer.lease {
+            assert!(lease.account.same_envelope(self.account));
+        }
+        let BudgetVec { storage, lease } = buffer;
+        if let Some(lease) = lease {
+            lease.retain(self);
+        }
+        storage
     }
 }
 

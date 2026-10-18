@@ -121,10 +121,11 @@ impl MemoryAccount {
 
     /// Consumes charged buffers into one immutable result and moves their reservation credit.
     /// The result owns no account borrow, and no transferred bytes are released or re-reserved.
-    pub(crate) fn finish<T, B: Retain<T>>(
+    /// Finalizers preserve their domain errors while partial payloads drop under their charge.
+    pub(crate) fn finish<T, E, B: Retain<T, E>>(
         &self,
         builder: B,
-    ) -> Result<Reserved<super::FrozenVec<T>>, BudgetExceeded> {
+    ) -> Result<Reserved<super::FrozenVec<T>>, E> {
         let mut retained = Retained {
             account: self,
             held: self.state.held.borrow_mut().split(0),
@@ -196,15 +197,6 @@ impl MemoryAccount {
         Ok(())
     }
 
-    /// Keeps legacy caller workspace credit unavailable to an independent directory admission.
-    /// This guard preserves the event ledger's existing admission policy until its migration.
-    /// Transitional: removed with the event scan's Ledger (commit 3).
-    pub(crate) fn hold_idle(&self) -> Lease {
-        let idle = self.state.held.borrow().bytes() - self.state.live.get();
-        self.lease(MemoryPlan::bytes(idle))
-            .expect("idle credit was already admitted")
-    }
-
     /// Keeps the round's existing fragment allowance beside all outputs and directory storage.
     /// Loan callbacks reuse this credit instead of charging the same allowance twice.
     pub(crate) fn reserve_lent(&self, bytes: u64) -> Result<(), BudgetExceeded> {
@@ -244,12 +236,6 @@ impl MemoryAccount {
         let result = read();
         drop(guard);
         Ok(result)
-    }
-
-    /// Transfers an existing owner's admitted credit into this envelope without double charging.
-    /// Transitional: removed with the event scan's Ledger (commit 3).
-    pub(crate) fn take_credit(&self, source: &mut Reservation, bytes: u64) {
-        self.state.held.borrow_mut().merge(source.split(bytes));
     }
 
     /// Lends an existing operation reservation to a scoped allocation context.
@@ -355,12 +341,6 @@ pub(super) struct Observation {
 }
 
 impl Lease {
-    /// Live aggregate credit, independently checked against event fixture capacities.
-    #[cfg(test)]
-    pub(crate) fn bytes_for_test(&self) -> u64 {
-        self.bytes
-    }
-
     /// Records actual capacity after allocation, asserting that the lease covers it.
     pub(super) fn allocated(&mut self, bytes: u64) {
         debug_assert!(bytes <= self.bytes);
@@ -401,15 +381,16 @@ impl Drop for Lease {
 }
 
 /// A consuming builder that returns only frozen storage constructed under allocation charges.
-pub(crate) trait Retain<T> {
+/// Its error type lets graph construction retain the caller's existing read and budget errors.
+pub(crate) trait Retain<T, E = BudgetExceeded> {
     /// Moves storage and its credit into `retained`, keeping partial payloads covered on failure.
-    fn retain(self, retained: &mut Retained<'_>) -> Result<super::FrozenVec<T>, BudgetExceeded>;
+    fn retain(self, retained: &mut Retained<'_>) -> Result<super::FrozenVec<T>, E>;
 }
 
 /// The aggregate claim assembled while a builder freezes its buffers.
 pub(crate) struct Retained<'a> {
     /// The account whose leases may transfer credit into this claim.
-    account: &'a MemoryAccount,
+    pub(super) account: &'a MemoryAccount,
     /// Transferred credit, held throughout construction of the frozen payload.
     held: Reservation,
 }
@@ -487,16 +468,6 @@ impl Drop for AccountScope<'_> {
     }
 }
 
-impl Reserved<Box<[u8]>> {
-    /// Transfers a boxed value and its charge into the existing aggregate page owner.
-    /// Transitional: removed with the event scan's Ledger (commit 3).
-    pub(crate) fn transfer_bytes(self, owner: &mut Reservation) -> Box<[u8]> {
-        let Self { payload, held } = self;
-        owner.merge(held);
-        payload
-    }
-}
-
 impl<'a> Retained<'a> {
     /// Starts a transfer claim without releasing any envelope credit.
     pub(super) fn new(account: &'a MemoryAccount) -> Self {
@@ -504,6 +475,18 @@ impl<'a> Retained<'a> {
             account,
             held: account.state.held.borrow_mut().split(0),
         }
+    }
+
+    /// Consumes an already charged child into the graph being sealed, without a byte count.
+    /// The finalizer must keep the child inside its payload, which drops before this claim.
+    pub(crate) fn absorb<T>(&mut self, child: Reserved<T>) -> T {
+        assert!(std::sync::Arc::ptr_eq(
+            &self.held.budget.shared,
+            &child.held.budget.shared,
+        ));
+        let Reserved { payload, held } = child;
+        self.held.merge(held);
+        payload
     }
 }
 
@@ -514,43 +497,6 @@ impl<T> Reserved<T> {
             payload,
             held: retained.held,
         }
-    }
-}
-
-impl Lease {
-    /// Admits additional opaque workspace while keeping one aggregate operation lease.
-    /// Transitional: removed with the event scan's Ledger (commit 3).
-    pub(crate) fn grow(&mut self, bytes: u64) -> Result<(), BudgetExceeded> {
-        let mut extra = self.account.lease(MemoryPlan::bytes(bytes))?;
-        self.bytes += bytes;
-        self.actual += bytes;
-        extra.bytes = 0;
-        Ok(())
-    }
-
-    /// Returns opaque workspace credit only after its owner has dropped the storage.
-    /// Transitional: removed with the event scan's Ledger (commit 3).
-    pub(crate) fn shrink(&mut self, bytes: u64) {
-        assert!(bytes <= self.bytes);
-        self.bytes -= bytes;
-        self.actual = self.actual.saturating_sub(bytes);
-        self.account
-            .state
-            .live
-            .set(self.account.state.live.get() - bytes);
-    }
-
-    /// Moves an aggregate payload's credit into its existing retained owner without releasing it.
-    /// Transitional: removed with the event scan's Ledger (commit 3).
-    pub(crate) fn take_owned(&mut self, bytes: u64) -> Reservation {
-        assert!(bytes <= self.bytes);
-        self.bytes -= bytes;
-        self.actual = self.actual.saturating_sub(bytes);
-        self.account
-            .state
-            .live
-            .set(self.account.state.live.get() - bytes);
-        self.account.state.held.borrow_mut().split(bytes)
     }
 }
 

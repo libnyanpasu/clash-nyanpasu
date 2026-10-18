@@ -42,7 +42,7 @@
 //! decode buffers by the protocol of [`decode_memory`], the page, and each large value before
 //! it is read, so a 1 MiB core-log line counts against the budget. A buffer that grows is
 //! reserved at its new size while the old one is alive, because a moving reallocation holds
-//! both ([`Ledger::grow`]). An open chunk reserves its own directory from the same budget
+//! both ([`BudgetVec::try_grow_to`]). An open chunk reserves its own directory from the same budget
 //! ([`ChunkReader::open`]).
 //!
 //! The page keeps the reservation of its events until it is dropped; the rest returns when the
@@ -50,7 +50,6 @@
 
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
     ops::{ControlFlow, Range, RangeInclusive},
 };
 
@@ -63,7 +62,10 @@ use super::{LabelFilter, rows_of};
 use crate::{
     ColumnType, ErrorKind, EventStreamSpec, ExtentSpec, LabelId, Schema, StreamId, TimeRange,
     Timestamp,
-    budget::{BudgetExceeded, Lease, MemoryAccount, MemoryBudget, MemoryPlan, Reservation},
+    budget::{
+        BudgetExceeded, BudgetVec, FrozenVec, MemoryAccount, MemoryBudget, MemoryPlan, Reserved,
+        Retain, Retained,
+    },
     catalog::Catalog,
     chunk::{
         StoredChunk,
@@ -156,21 +158,16 @@ pub enum EventCondition<'a> {
 /// its events and their values.
 #[derive(Debug)]
 pub struct EventPage {
-    events: Vec<Event>,
+    events: Reserved<FrozenVec<Event>>,
     catalog: CatalogToken,
     cursor: Option<EventCursor>,
     truncated_by_retention: bool,
     retention_watermark: Option<Timestamp>,
-    #[allow(
-        dead_code,
-        reason = "held for its Drop, which returns the events' bytes"
-    )]
-    held: Reservation,
 }
 
 impl EventPage {
     pub fn events(&self) -> &[Event] {
-        &self.events
+        self.events.get()
     }
 
     /// The token of the snapshot the page was read from, which names what the ids of its
@@ -389,17 +386,17 @@ pub(crate) fn scan<R: StorageRead>(
         range: retained(query.range, watermark),
         ..*query
     };
-    let reservation = budget
-        .try_reserve("event scan", 0)
+    let account = MemoryAccount::new(budget, "event scan", MemoryPlan::default())
         .context(ReservePageSnafu)?;
     let Some(bounds) = Bounds::new(query) else {
         return Ok(EventPage {
-            events: Vec::new(),
+            events: account
+                .finish(account.buffer(0).context(ReservePageSnafu)?)
+                .context(ReservePageSnafu)?,
             catalog,
             cursor: None,
             truncated_by_retention,
             retention_watermark: watermark,
-            held: reservation,
         });
     };
     let mut scan = Scan {
@@ -410,12 +407,17 @@ pub(crate) fn scan<R: StorageRead>(
         filters: query.predicate.filters,
         direction: query.direction,
         bounds,
-        ledger: Ledger::new(reservation),
+        account,
         log,
     };
     let (positions, mut decode) = scan.merge(stream, &version.head, query.limit)?;
-    let events = scan.materialize(&positions, &mut decode)?;
-    let cursor = (events.len() == query.limit)
+    let account = scan.account.clone();
+    let events = account.finish(PageBuilder {
+        scan: &mut scan,
+        positions: &positions,
+        decode: &mut decode,
+    })?;
+    let cursor = (events.get().len() == query.limit)
         .then(|| positions.last())
         .flatten()
         .map(|last| EventCursor {
@@ -424,15 +426,12 @@ pub(crate) fn scan<R: StorageRead>(
             incarnation: last.order.1,
             seq: last.order.2,
         });
-    // The page keeps what its events hold; the rest returns as the scan ends.
-    let held = scan.ledger.claim.take_owned(page_bytes(&events));
     Ok(EventPage {
         events,
         catalog,
         cursor,
         truncated_by_retention,
         retention_watermark: watermark,
-        held,
     })
 }
 
@@ -443,19 +442,6 @@ fn retained(range: TimeRange, watermark: Option<Timestamp>) -> TimeRange {
     };
     let start = range.start().max(watermark).min(range.end());
     TimeRange::new(start, range.end()).expect("the start is clamped to the end")
-}
-
-/// The bytes a page's events hold, which [`Scan::materialize`] reserved before it allocated
-/// them: the events, their values, and the values' bytes.
-fn page_bytes(events: &Vec<Event>) -> u64 {
-    let values = events.iter().map(|event| {
-        let bytes = event.values.iter().map(|value| match value {
-            EventValue::Bytes(bytes) => bytes.len(),
-            _ => 0,
-        });
-        event.values.capacity() * size_of::<EventValue>() + bytes.sum::<usize>()
-    });
-    (events.capacity() * size_of::<Event>() + values.sum::<usize>()) as u64
 }
 
 /// Checks every filter against the column it names.
@@ -554,68 +540,6 @@ impl Bounds {
     }
 }
 
-/// The scan's reservation, and what its buffers hold of it. Every allocation is reserved
-/// before it is made; bytes freed stay reserved until the scan returns, for the next
-/// allocations.
-struct Ledger {
-    claim: Lease,
-    account: MemoryAccount,
-}
-
-impl Ledger {
-    /// Attaches unmigrated scan workspace to the same envelope as its charged codec buffers.
-    fn new(reservation: Reservation) -> Self {
-        let account = MemoryAccount::from_reservation(reservation);
-        let claim = account
-            .lease(MemoryPlan::default())
-            .expect("an empty ledger is free");
-        Self { claim, account }
-    }
-
-    /// Makes sure `bytes` more can be held.
-    fn admit(&mut self, bytes: u64) -> Result<(), BudgetExceeded> {
-        self.account.admit(bytes)
-    }
-
-    fn alloc(&mut self, bytes: u64) -> Result<(), BudgetExceeded> {
-        self.claim.grow(bytes)?;
-        Ok(())
-    }
-
-    fn free(&mut self, bytes: u64) {
-        self.claim.shrink(bytes);
-    }
-
-    /// An empty vector with room for `capacity` items, reserved first.
-    fn vec<T>(&mut self, capacity: usize) -> Result<Vec<T>, BudgetExceeded> {
-        self.alloc((capacity * size_of::<T>()) as u64)?;
-        Ok(Vec::with_capacity(capacity))
-    }
-
-    /// Gives `vec` room for `capacity` items. A moving reallocation holds the old buffer and the
-    /// new one at once, so the new one is reserved while the old one is alive, and the old
-    /// one's bytes are freed after.
-    fn grow<T>(&mut self, vec: &mut Vec<T>, capacity: usize) -> Result<(), BudgetExceeded> {
-        let old = vec.capacity();
-        if capacity <= old {
-            return Ok(());
-        }
-        self.alloc((capacity * size_of::<T>()) as u64)?;
-        vec.reserve_exact(capacity - vec.len());
-        self.free((old * size_of::<T>()) as u64);
-        Ok(())
-    }
-
-    /// Pushes `item`, doubling `vec` within the reservation when it is full.
-    fn push<T>(&mut self, vec: &mut Vec<T>, item: T) -> Result<(), BudgetExceeded> {
-        if vec.len() == vec.capacity() {
-            self.grow(vec, (2 * vec.capacity()).max(4))?;
-        }
-        vec.push(item);
-        Ok(())
-    }
-}
-
 /// A chunk of the scan, and the chain it is read in.
 #[derive(Clone, Copy, Debug)]
 struct Link {
@@ -645,8 +569,8 @@ struct ChunkWay {
     links: Range<usize>,
     open: Option<OpenChunk>,
     /// The stripe's ranks and matches, by row; every chunk of the chain reuses them.
-    ranks: Vec<Rank>,
-    matches: Vec<bool>,
+    ranks: BudgetVec<Rank>,
+    matches: BudgetVec<bool>,
 }
 
 struct OpenChunk {
@@ -663,7 +587,7 @@ struct OpenChunk {
 
 /// The head's rows that may reach the page, in scan order.
 struct HeadWay<'s> {
-    rows: Vec<Selected<'s>>,
+    rows: BudgetVec<Selected<'s>>,
     next: usize,
 }
 
@@ -718,7 +642,7 @@ struct Scan<'s, 'q, R> {
     filters: &'q [EventFilter<'q>],
     direction: Direction,
     bounds: Bounds,
-    ledger: Ledger,
+    account: MemoryAccount,
     log: &'q mut ReadLog,
 }
 
@@ -737,9 +661,9 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         stream: StreamId,
         head: &'s Head,
         limit: usize,
-    ) -> Result<(Vec<Position<'s>>, Decode), EventScanError> {
+    ) -> Result<(BudgetVec<Position<'s>>, Decode), EventScanError> {
         let mut links = self.list_chunks(stream)?;
-        let chains = chain(&mut links, &mut self.ledger)?;
+        let chains = chain(&mut links, &self.account)?;
         let buffer = head.events(stream);
         let head_rows = usize::try_from(buffer.rows()).unwrap_or(usize::MAX);
         // The selection holds one row past the limit before it drops the worst.
@@ -747,7 +671,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         let columns = self.spec.columns.len();
         // The largest fragment one of the chunks lends, once each entry is checked.
         let mut lent = 0;
-        for link in &links {
+        for link in links.iter() {
             check_recorded(link.fragment0).context(OpenChunkSnafu {
                 chunk: link.chunk.0,
             })?;
@@ -755,65 +679,64 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         }
         self.log.admitted(chains.len());
         let admit = |error| AdmitScanSnafu { ways: chains.len() }.into_error(error);
-        self.ledger
+        self.account
             .admit(merge_memory(chains.len(), selected, columns, lent))
             .map_err(admit)?;
-        // Within what the admission reserved.
+        // Keep the row allowance and each admitted workspace buffer beside open directories.
         let entries = chains.len() + 1;
-        let held = standing_memory(columns, lent) - DECOMPRESSION_CONTEXT - lent
-            + (entries * (size_of::<Way<'_>>() + size_of::<Reverse<(Rank, usize)>>())) as u64
-            + (selected * size_of::<Selected<'_>>()) as u64;
-        self.ledger.alloc(held).map_err(admit)?;
-        self.ledger
+        let _row = self
             .account
-            .admit(DECOMPRESSION_CONTEXT + lent)
+            .lease(MemoryPlan::bytes(
+                standing_memory(columns, lent) - DECOMPRESSION_CONTEXT - lent,
+            ))
             .map_err(admit)?;
-        self.ledger.account.reserve_lent(lent).map_err(admit)?;
-        let mut decode = Decode::new(&self.ledger.account)?;
-        let mut ways = Vec::with_capacity(entries);
-        ways.extend(chains.into_iter().map(|links| {
-            Way::Chunks(ChunkWay {
+        self.account.reserve_lent(lent).map_err(admit)?;
+        let mut decode = Decode::new(&self.account)?;
+        let mut ways = self.account.buffer(entries).map_err(admit)?;
+        for links in chains.iter().cloned() {
+            let mut ranks = self.account.buffer(0).map_err(admit)?;
+            let mut matches = self.account.buffer(0).map_err(admit)?;
+            ranks.plan_capacity(BUILDER_STRIPE_ROWS).map_err(admit)?;
+            matches.plan_capacity(BUILDER_STRIPE_ROWS).map_err(admit)?;
+            ways.push(Way::Chunks(ChunkWay {
                 links,
                 open: None,
-                ranks: Vec::new(),
-                matches: Vec::new(),
-            })
-        }));
+                ranks,
+                matches,
+            }));
+        }
         ways.push(Way::Head(self.select_head(buffer, limit, selected)?));
 
-        let mut heap = BinaryHeap::with_capacity(entries);
+        let mut heap = self.account.buffer(entries).map_err(admit)?;
         for (index, way) in ways.iter_mut().enumerate() {
             if let Some(rank) = self.peek(&links, way, &mut decode)? {
-                heap.push(Reverse((rank, index)));
+                heap.heap_push(Reverse((rank, index)));
             }
         }
-        let mut positions = Vec::new();
-        while let Some(Reverse((rank, index))) = heap.pop() {
+        let mut positions = self.account.buffer(0).context(ReservePageSnafu)?;
+        while let Some(Reverse((rank, index))) = heap.heap_pop() {
             let way = &mut ways[index];
             let position = Position {
                 order: self::rank(rank, self.direction),
                 source: self.take(way),
             };
-            self.ledger
-                .push(&mut positions, position)
-                .context(ReservePageSnafu)?;
+            positions.try_push(position).context(ReservePageSnafu)?;
             // A full page looks no further: the next row could cost reads, a large value's say,
             // that the page does not need. Its cursor is its last row's.
             if positions.len() == limit {
                 break;
             }
             if let Some(rank) = self.peek(&links, way, &mut decode)? {
-                heap.push(Reverse((rank, index)));
+                heap.heap_push(Reverse((rank, index)));
             }
         }
         Ok((positions, decode))
     }
 
     /// The chunks of the stream whose extent and key range meet the range after the cursor.
-    fn list_chunks(&mut self, stream: StreamId) -> Result<Vec<Link>, EventScanError> {
+    fn list_chunks(&mut self, stream: StreamId) -> Result<BudgetVec<Link>, EventScanError> {
         let (keys, extents) = (self.bounds.keys(self.direction), self.extents());
-        let mut links = Vec::new();
-        let ledger = &mut self.ledger;
+        let mut links = self.account.buffer(0).context(ReserveChunkListSnafu)?;
         let full = manifest::scan_chunks(
             self.storage,
             StreamRef::Events(stream),
@@ -831,7 +754,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                     run: listed.entry.run,
                     chain: 0,
                 };
-                match ledger.push(&mut links, link) {
+                match links.try_push(link) {
                     Ok(()) => ControlFlow::Continue(()),
                     Err(exceeded) => ControlFlow::Break(exceeded),
                 }
@@ -854,7 +777,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
     ) -> Result<HeadWay<'s>, EventScanError> {
         let extents = self.extents();
         // A max-heap of the best rows so far, which drops the worst of them first.
-        let mut best = BinaryHeap::with_capacity(capacity);
+        let mut best = self.account.buffer(capacity).context(ReservePageSnafu)?;
         let segments = buffer
             .segments()
             .iter()
@@ -874,14 +797,15 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 if !self.bounds.admits(rank) || !self.row_matches(&row)? {
                     continue;
                 }
-                best.push(Selected { rank, rows: from });
+                best.heap_push(Selected { rank, rows: from });
                 if best.len() > limit {
-                    best.pop();
+                    best.heap_pop();
                 }
             }
         }
+        best.sort_unstable();
         Ok(HeadWay {
-            rows: best.into_sorted_vec(),
+            rows: best,
             next: 0,
         })
     }
@@ -998,10 +922,8 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             storage: self.storage,
             chunk,
         };
-        let pledged = self.ledger.account.hold_idle();
-        let reader = ChunkReader::open(&source, &self.ledger.account, fragment0)
+        let reader = ChunkReader::open(&source, &self.account, fragment0)
             .context(OpenChunkSnafu { chunk: chunk.0 })?;
-        drop(pledged);
         Ok(OpenChunk {
             chunk,
             fragment0,
@@ -1016,8 +938,8 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
     fn load_stripe(
         &mut self,
         open: &mut OpenChunk,
-        ranks: &mut Vec<Rank>,
-        matches: &mut Vec<bool>,
+        ranks: &mut BudgetVec<Rank>,
+        matches: &mut BudgetVec<bool>,
         row: u32,
         decode: &mut Decode,
     ) -> Result<(), EventScanError> {
@@ -1049,8 +971,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         }
 
         let len = stripe.len();
-        reset_stripe(ranks, matches, len, &mut self.ledger)
-            .context(ReserveReadSnafu { chunk: chunk.0 })?;
+        reset_stripe(ranks, matches, len).context(ReserveReadSnafu { chunk: chunk.0 })?;
         let at = At {
             storage: self.storage,
             chunk,
@@ -1091,7 +1012,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
     ) -> Result<(), EventScanError> {
         let column = FIRST_COLUMN + filter.column as u16;
         let row = stripe.start;
-        let (ledger, log) = (&mut self.ledger, &mut *self.log);
+        let log = &mut *self.log;
         let rows = stripe
             .zip(matches.iter_mut())
             .filter(|(_, matched)| **matched);
@@ -1166,10 +1087,8 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                         BytesValue::Null => false,
                         BytesValue::Inline(text) => contains(text, needle),
                         BytesValue::Large(index) => {
-                            let text = at.read_large(index, ledger)?;
-                            let found = contains(&text, needle);
-                            ledger.free(text.len() as u64);
-                            found
+                            let text = at.read_large(index)?;
+                            contains(&text, needle)
                         }
                     };
                 }
@@ -1183,24 +1102,34 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         &mut self,
         positions: &[Position<'s>],
         decode: &mut Decode,
-    ) -> Result<Vec<Event>, EventScanError> {
+        retained: &mut Retained<'_>,
+    ) -> Result<BudgetVec<Event>, EventScanError> {
         let columns = self.spec.columns.len();
-        let mut events = self.ledger.vec(positions.len()).context(ReservePageSnafu)?;
+        let _row = self
+            .account
+            .lease(MemoryPlan::bytes(
+                standing_memory(columns, 0) - DECOMPRESSION_CONTEXT,
+            ))
+            .context(ReservePageSnafu)?;
+        let mut events = self
+            .account
+            .buffer(positions.len())
+            .context(ReservePageSnafu)?;
         let from_chunks = positions
             .iter()
             .filter(|position| matches!(position.source, Source::Chunk { .. }))
             .count();
-        let mut chunked: Vec<usize> = self.ledger.vec(from_chunks).context(ReservePageSnafu)?;
+        let mut chunked: BudgetVec<usize> =
+            self.account.buffer(from_chunks).context(ReservePageSnafu)?;
         for (index, position) in positions.iter().enumerate() {
-            self.ledger
-                .alloc((columns * size_of::<EventValue>()) as u64)
-                .context(ReservePageSnafu)?;
-            let mut values: Vec<EventValue> = (0..columns).map(|_| EventValue::Null).collect();
+            let mut values = self.account.buffer(columns).context(ReservePageSnafu)?;
+            values.extend((0..columns).map(|_| EventValue::Null));
             match &position.source {
                 Source::Head(rows) => {
                     let row = rows.clone().next().expect("a selected row decodes again");
                     for (value, &stored) in values.iter_mut().zip(&row.values) {
-                        *value = owned(&mut self.ledger, stored).context(ReservePageSnafu)?;
+                        *value =
+                            owned(&self.account, retained, stored).context(ReservePageSnafu)?;
                     }
                 }
                 Source::Chunk { .. } => chunked.push(index),
@@ -1209,7 +1138,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             events.push(Event {
                 key,
                 seq: EventSeq { incarnation, seq },
-                values,
+                values: retained.vector(values),
             });
         }
         let place = |index: usize| match positions[index].source {
@@ -1233,7 +1162,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             for (column, spec) in spec.columns.iter().enumerate() {
                 for &index in group {
                     let row = place(index).2;
-                    let value = self.read_value(&at, spec.ty, column, row, decode)?;
+                    let value = self.read_value(&at, spec.ty, column, row, decode, retained)?;
                     events[index].values[column] = value;
                 }
             }
@@ -1249,9 +1178,10 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         column: usize,
         row: u32,
         decode: &mut Decode,
+        retained: &mut Retained<'_>,
     ) -> Result<EventValue, EventScanError> {
         let column = FIRST_COLUMN + column as u16;
-        let (ledger, log) = (&mut self.ledger, &mut *self.log);
+        let log = &mut *self.log;
         Ok(match ty {
             ColumnType::Timestamp | ColumnType::I64 => {
                 let (block, first) = decode.ints::<i64>(at, column, row, log)?;
@@ -1300,7 +1230,9 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                     BytesValue::Null => return Ok(EventValue::Null),
                     BytesValue::Inline(bytes) => bytes,
                     BytesValue::Large(index) => {
-                        return Ok(EventValue::Bytes(at.read_large(index, ledger)?));
+                        return Ok(EventValue::Bytes(
+                            retained.absorb(at.read_large(index)?.freeze_box()),
+                        ));
                     }
                 };
                 if ty == ColumnType::Identity {
@@ -1308,43 +1240,79 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                         chunk: at.chunk.0,
                         row,
                     })?;
-                    identity_value(ledger, identity).context(ReservePageSnafu)?
+                    identity_value(&self.account, retained, identity).context(ReservePageSnafu)?
                 } else {
-                    ledger.alloc(bytes.len() as u64).context(ReservePageSnafu)?;
-                    EventValue::Bytes(bytes.into())
+                    byte_value(&self.account, retained, bytes).context(ReservePageSnafu)?
                 }
             }
         })
     }
 }
 
-/// A head value as an owned one, its bytes reserved.
-fn owned(ledger: &mut Ledger, value: StoredValue<'_>) -> Result<EventValue, BudgetExceeded> {
+/// The consuming page finalizer; partial events drop before the aggregate retained claim.
+struct PageBuilder<'a, 's, 'q, R> {
+    /// The scan whose envelope covers all construction storage.
+    scan: &'a mut Scan<'s, 'q, R>,
+    /// The rows selected by the merge.
+    positions: &'a [Position<'s>],
+    /// Shared charged decode buffers.
+    decode: &'a mut Decode,
+}
+
+impl<R: StorageRead> Retain<Event, EventScanError> for PageBuilder<'_, '_, '_, R> {
+    /// Moves the public vectors and byte boxes into one frozen page without copying storage.
+    fn retain(self, retained: &mut Retained<'_>) -> Result<FrozenVec<Event>, EventScanError> {
+        self.scan
+            .materialize(self.positions, self.decode, retained)?
+            .retain(retained)
+            .context(ReservePageSnafu)
+    }
+}
+
+/// Copies bytes under their exact capacity charge, then seals them into the page graph.
+fn byte_value(
+    account: &MemoryAccount,
+    retained: &mut Retained<'_>,
+    bytes: &[u8],
+) -> Result<EventValue, BudgetExceeded> {
+    let mut value = account.buffer(bytes.len())?;
+    value.extend_from_slice(bytes);
+    Ok(EventValue::Bytes(retained.absorb(value.freeze_box())))
+}
+
+/// A head value as an owned one, its bytes reserved before copying.
+fn owned(
+    account: &MemoryAccount,
+    retained: &mut Retained<'_>,
+    value: StoredValue<'_>,
+) -> Result<EventValue, BudgetExceeded> {
     Ok(match value {
         StoredValue::Null => EventValue::Null,
         StoredValue::I64(value) => EventValue::I64(value),
         StoredValue::U64(value) => EventValue::U64(value),
         StoredValue::Combo(id) => EventValue::Combo(ComboId::new(id)),
         StoredValue::Label(id) => EventValue::Label(id),
-        StoredValue::Bytes(bytes) => {
-            ledger.alloc(bytes.len() as u64)?;
-            EventValue::Bytes(bytes.into())
-        }
-        StoredValue::Identity(identity) => identity_value(ledger, identity)?,
+        StoredValue::Bytes(bytes) => byte_value(account, retained, bytes)?,
+        StoredValue::Identity(identity) => identity_value(account, retained, identity)?,
     })
 }
 
-/// An identity as the text it was written as, its bytes reserved first.
+/// An identity as the text it was written as, its bytes reserved before copying.
 fn identity_value(
-    ledger: &mut Ledger,
+    account: &MemoryAccount,
+    retained: &mut Retained<'_>,
     identity: Identity<'_>,
 ) -> Result<EventValue, BudgetExceeded> {
-    let len = match identity {
-        Identity::Uuid(_) => uuid::fmt::Hyphenated::LENGTH,
-        Identity::Text(text) => text.len(),
-    };
-    ledger.alloc(len as u64)?;
-    Ok(EventValue::Bytes(identity.text().into()))
+    match identity {
+        Identity::Text(text) => byte_value(account, retained, text),
+        Identity::Uuid(bytes) => {
+            let mut text = uuid::Uuid::encode_buffer();
+            let text = uuid::Uuid::from_bytes(bytes)
+                .hyphenated()
+                .encode_lower(&mut text);
+            byte_value(account, retained, text.as_bytes())
+        }
+    }
 }
 
 /// Whether every filter admits combination `id`; `None` when the catalog does not hold it. A
@@ -1490,10 +1458,13 @@ fn below_64(range: RangeInclusive<i64>) -> u64 {
 /// it starts, or a new one. That takes as many chains as links of different runs overlap at
 /// one key. Sorts the links by chain, key and id, which is a run's order, and returns each
 /// chain's range of them.
-fn chain(links: &mut [Link], ledger: &mut Ledger) -> Result<Vec<Range<usize>>, EventScanError> {
+fn chain(
+    links: &mut [Link],
+    account: &MemoryAccount,
+) -> Result<BudgetVec<Range<usize>>, EventScanError> {
     links.sort_unstable_by_key(|link| (link.keys, link.chunk));
     // Each chain's last link, by index; there are at most as many chains as links.
-    let mut lasts: Vec<usize> = ledger.vec(links.len()).context(ReserveChunkListSnafu)?;
+    let mut lasts: BudgetVec<usize> = account.buffer(links.len()).context(ReserveChunkListSnafu)?;
     for index in 0..links.len() {
         let link = links[index];
         // A run's chunks take consecutive ids, and the next starts at or after the key the
@@ -1523,7 +1494,7 @@ fn chain(links: &mut [Link], ledger: &mut Ledger) -> Result<Vec<Range<usize>>, E
         };
     }
     links.sort_unstable_by_key(|link| (link.chain, link.keys, link.chunk));
-    let mut chains = ledger.vec(lasts.len()).context(ReserveChunkListSnafu)?;
+    let mut chains = account.buffer(lasts.len()).context(ReserveChunkListSnafu)?;
     let mut start = 0;
     for index in 1..=links.len() {
         if index == links.len() || links[index].chain != links[start].chain {
@@ -1535,17 +1506,16 @@ fn chain(links: &mut [Link], ledger: &mut Ledger) -> Result<Vec<Range<usize>>, E
 }
 
 /// Empties a way's stripe, with room for `len` rows. A stripe past the buffers' capacity grows
-/// them ([`Ledger::grow`]).
+/// them while retaining their old storage until its replacement is admitted.
 fn reset_stripe(
-    ranks: &mut Vec<Rank>,
-    matches: &mut Vec<bool>,
+    ranks: &mut BudgetVec<Rank>,
+    matches: &mut BudgetVec<bool>,
     len: usize,
-    ledger: &mut Ledger,
 ) -> Result<(), BudgetExceeded> {
     ranks.clear();
     matches.clear();
-    ledger.grow(ranks, len)?;
-    ledger.grow(matches, len)
+    ranks.try_grow_to(len)?;
+    matches.try_grow_to(len)
 }
 
 /// An open chunk, where its blocks are read from.
@@ -1564,32 +1534,22 @@ impl<R: StorageRead> At<'_, R> {
     }
 
     /// Reads large value `index` whole, the length its entry states reserved first.
-    fn read_large(&self, index: u32, ledger: &mut Ledger) -> Result<Box<[u8]>, EventScanError> {
+    fn read_large(&self, index: u32) -> Result<BudgetVec<u8>, EventScanError> {
         let chunk = self.chunk.0;
         let len = self
             .reader
             .large_values()
             .get(index as usize)
             .map_or(0, |entry| entry.len);
-        ledger
-            .alloc(u64::from(len))
+        let mut value = self
+            .reader
+            .account()
+            .buffer(len as usize)
             .context(ReserveLargeValueSnafu { chunk, index })?;
-        let account = self.reader.account();
-        let mut value = account.buffer(0).expect("empty storage is free");
-        // The existing page ledger transfers the large value's charge with its public box.
-        ledger.claim.shrink(u64::from(len));
         self.reader
             .read_large(&self.source(), index, &mut value)
             .context(ReadLargeValueSnafu { chunk, index })?;
-        let value = value.freeze_box();
-        let mut held = ledger.claim.take_owned(0);
-        let bytes = value.transfer_bytes(&mut held);
-        ledger.account.take_credit(&mut held, u64::from(len));
-        ledger
-            .claim
-            .grow(u64::from(len))
-            .expect("transferred page credit was already admitted");
-        Ok(bytes)
+        Ok(value)
     }
 }
 

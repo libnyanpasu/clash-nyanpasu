@@ -337,6 +337,30 @@ mod charged {
     use super::{super::account::Change, *};
 
     #[test]
+    fn charged_heaps_match_the_standard_heap_without_growing() {
+        for capacity in 0..64 {
+            let account = super::super::test_account();
+            let mut actual = account.buffer(capacity).unwrap();
+            let mut expected = std::collections::BinaryHeap::new();
+            for index in 0..capacity {
+                let value = (index * 17 % 13) as i64 - 6;
+                actual.heap_push(value);
+                expected.push(value);
+                if index % 3 == 0 {
+                    assert_eq!(actual.heap_pop(), expected.pop());
+                }
+                assert_eq!(actual.first(), expected.peek());
+            }
+            while !expected.is_empty() {
+                assert_eq!(actual.heap_pop(), expected.pop());
+            }
+            assert_eq!(actual.heap_pop(), None);
+            assert_eq!(actual.capacity(), capacity);
+            assert_eq!(account.live_bytes(), (capacity * size_of::<i64>()) as u64);
+        }
+    }
+
+    #[test]
     fn failed_growth_preserves_the_buffer_and_its_contents() {
         let budget = MemoryBudget::new(24);
         let account = MemoryAccount::new(&budget, "test", MemoryPlan::default()).unwrap();
@@ -352,6 +376,45 @@ mod charged {
         );
         assert_eq!(account.live_bytes(), 16);
         drop(buffer);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
+    }
+
+    #[test]
+    fn planned_capacity_stays_lazy_and_covers_the_first_allocation() {
+        let budget = MemoryBudget::new(32);
+        let account = MemoryAccount::new(&budget, "lazy stripe", MemoryPlan::default()).unwrap();
+        let mut buffer = account.buffer::<u64>(0).unwrap();
+        assert!(buffer.plan_capacity(5).is_err());
+        assert_eq!(
+            (buffer.capacity(), account.live_bytes(), budget.reserved()),
+            (0, 0, 0)
+        );
+        buffer.plan_capacity(4).unwrap();
+        assert_eq!(
+            (
+                buffer.capacity(),
+                account.live_bytes(),
+                account.allocated_bytes()
+            ),
+            (0, 32, 0)
+        );
+        assert!(
+            account
+                .value("directory", MemoryPlan::bytes(1), || ())
+                .is_err()
+        );
+        account.fail_after(0);
+        buffer.try_grow_to(2).unwrap();
+        assert_eq!(buffer.capacity(), 4);
+        assert_eq!(account.allocated_bytes(), 32);
+        buffer.extend_from_slice(&[1, 2]);
+        let pointer = buffer.as_ptr();
+        assert!(buffer.try_grow_to(8).is_err());
+        assert_eq!(buffer.as_ptr(), pointer);
+        assert_eq!(&*buffer, &[1, 2]);
+        drop(buffer);
+        assert_eq!(account.live_bytes(), 0);
         drop(account);
         assert_eq!(budget.reserved(), 0);
     }
@@ -550,6 +613,85 @@ mod charged {
         drop(account);
         assert_eq!(budget.reserved(), 0);
     }
+
+    struct Graph {
+        values: Vec<DropProbe>,
+        bytes: Box<[u8]>,
+    }
+
+    struct GraphBuilder {
+        outer: BudgetVec<Graph>,
+        values: BudgetVec<DropProbe>,
+        bytes: Reserved<Box<[u8]>>,
+        mode: usize,
+    }
+
+    impl Retain<Graph> for GraphBuilder {
+        fn retain(self, retained: &mut Retained<'_>) -> Result<FrozenVec<Graph>, BudgetExceeded> {
+            let mut outer = self.outer;
+            outer.push(Graph {
+                values: retained.vector(self.values),
+                bytes: retained.absorb(self.bytes),
+            });
+            match self.mode {
+                1 => Err(BudgetExceeded {
+                    what: "graph finish",
+                    needed: 1,
+                    available: 0,
+                }),
+                2 => panic!("graph finish unwind"),
+                _ => outer.retain(retained),
+            }
+        }
+    }
+
+    #[test]
+    fn graph_sealing_moves_children_and_covers_partial_error_and_unwind() {
+        let total = (size_of::<Graph>() + size_of::<DropProbe>() + 4) as u64;
+        for mode in 0..3 {
+            let budget = MemoryBudget::new(total);
+            let account = MemoryAccount::new(&budget, "graph", MemoryPlan::default()).unwrap();
+            let dropped = Rc::new(Cell::new(0));
+            let outer = account.buffer(1).unwrap();
+            let mut values = account.buffer(1).unwrap();
+            values.push(DropProbe {
+                budget: budget.clone(),
+                needed: total,
+                dropped: dropped.clone(),
+            });
+            let values_pointer = values.as_ptr();
+            let mut bytes = account.buffer(4).unwrap();
+            bytes.extend_from_slice(b"text");
+            let bytes_pointer = bytes.as_ptr();
+            let builder = GraphBuilder {
+                outer,
+                values,
+                bytes: bytes.freeze_box(),
+                mode,
+            };
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| account.finish(builder)));
+            if mode == 0 {
+                let page = result.ok().unwrap().ok().unwrap();
+                drop(account);
+                assert_eq!(budget.reserved(), total);
+                assert_eq!(page.get()[0].values.as_ptr(), values_pointer);
+                assert_eq!(page.get()[0].bytes.as_ptr(), bytes_pointer);
+                assert_eq!(&*page.get()[0].bytes, b"text");
+                assert_eq!(dropped.get(), 0);
+                drop(page);
+            } else {
+                match mode {
+                    1 => assert!(result.unwrap().is_err()),
+                    _ => assert!(result.is_err()),
+                }
+                assert_eq!(account.live_bytes(), 0);
+                drop(account);
+            }
+            assert_eq!(dropped.get(), 1);
+            assert_eq!(budget.reserved(), 0);
+        }
+    }
 }
 
 mod codec_accounts {
@@ -678,7 +820,7 @@ mod codec_accounts {
     fn dependency_allocations_respect_pledged_credit_and_reuse_idle_credit() {
         let budget = MemoryBudget::new(64);
         let account = MemoryAccount::new(&budget, "round", MemoryPlan::bytes(64)).unwrap();
-        let pledged = account.hold_idle();
+        let pledged = account.buffer::<u8>(64).unwrap();
         assert!(
             account
                 .value("directory", MemoryPlan::bytes(1), || ())

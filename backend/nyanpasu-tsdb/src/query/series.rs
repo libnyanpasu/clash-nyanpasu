@@ -61,18 +61,21 @@ use super::{
 };
 use crate::{
     ErrorKind, LabelId, Snapshot, TierId, TimeRange, Timestamp,
-    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    budget::{
+        BudgetExceeded, BudgetVec, FrozenVec, MemoryAccount, MemoryBudget, MemoryPlan, Reservation,
+        Reserved, Retain, Retained,
+    },
     catalog::Catalog,
     chunk::{
         FragmentSource, StoredChunk,
-        builder::ColumnLayout,
+        builder::{ColumnLayout, KEY_COLUMN},
         error::ReadError,
-        format::IntRange,
+        format::{IntRange, PhysicalType},
         reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
     },
     codec::{
         block::{BlockDecoder, IntBlock},
-        int::IntValue,
+        int::{IntType, IntValue},
     },
     head::{Head, SeriesSource},
     layout::manifest::{self, Listed, ManifestError, StreamRef, retained_from},
@@ -80,7 +83,6 @@ use crate::{
     storage::{Direction, Storage, StorageRead},
     time::Grid,
     version::CatalogToken,
-    write::chunking::series_columns,
 };
 
 /// A grouped-sum query over one tier (§8.1 `SeriesGroup`).
@@ -165,24 +167,18 @@ pub enum KeyPart {
 /// A query's result: one [`GroupList`] per request, in request order.
 #[derive(Debug)]
 pub struct SeriesGroups {
-    lists: Vec<GroupList>,
+    lists: Reserved<FrozenVec<GroupList>>,
     catalog: CatalogToken,
     covered: TimeRange,
     truncated_by_retention: bool,
     retention_watermark: Option<Timestamp>,
     folded: bool,
-    /// The lists' bytes, returned to the query budget when the result is dropped.
-    #[allow(
-        dead_code,
-        reason = "held for its Drop, which returns the groups' bytes"
-    )]
-    held: Reservation,
 }
 
 impl SeriesGroups {
     /// One list per request, in request order.
     pub fn lists(&self) -> &[GroupList] {
-        &self.lists
+        self.lists.get()
     }
 
     /// The token of the snapshot the result was read from, which names what the label ids of
@@ -231,15 +227,10 @@ pub struct GroupList {
     width: usize,
     /// Sums per group: the selected fields.
     fields: usize,
-    /// The groups, and the groups the buffers have room for.
+    /// The number of groups.
     len: usize,
-    capacity: usize,
-    keys: Vec<KeyPart>,
-    sums: Vec<u64>,
-    /// The index while the scan runs: a group's number plus one in each used slot, 0 in a
-    /// free one. Its length is a power of two, and at most half the slots are used. It is
-    /// emptied when the scan ends.
-    slots: Vec<u32>,
+    keys: FrozenVec<KeyPart>,
+    sums: FrozenVec<u64>,
 }
 
 /// One group of a [`GroupList`].
@@ -266,28 +257,56 @@ impl GroupList {
         })
     }
 
-    fn new(width: usize, fields: usize) -> Self {
-        Self {
+    fn key(&self, group: usize) -> &[KeyPart] {
+        &self.keys[group * self.width..(group + 1) * self.width]
+    }
+
+    /// The retained keys and sums, measured by their actual buffer capacities.
+    #[cfg(test)]
+    pub(crate) fn bytes(&self) -> u64 {
+        (self.keys.capacity() * size_of::<KeyPart>() + self.sums.capacity() * size_of::<u64>())
+            as u64
+    }
+}
+
+/// One request's mutable groups and scan index, charged to the query's envelope.
+struct GroupBuffer<'a> {
+    width: usize,
+    fields: usize,
+    len: usize,
+    capacity: usize,
+    keys: BudgetVec<'a, KeyPart>,
+    sums: BudgetVec<'a, u64>,
+    slots: BudgetVec<'a, u32>,
+}
+
+impl<'a> GroupBuffer<'a> {
+    /// Starts empty charged buffers for this request's key width and selected fields.
+    fn new(
+        account: &'a MemoryAccount,
+        width: usize,
+        fields: usize,
+    ) -> Result<Self, BudgetExceeded> {
+        Ok(Self {
             width,
             fields,
             len: 0,
             capacity: 0,
-            keys: Vec::new(),
-            sums: Vec::new(),
-            slots: Vec::new(),
-        }
+            keys: account.buffer(0)?,
+            sums: account.buffer(0)?,
+            slots: account.buffer(0)?,
+        })
     }
 
-    /// Adds a row's values to the group of `key`, creating the group when it is new. Each
-    /// buffer that has to grow is reserved in `held` first.
+    /// Adds a row's values to the group of `key`, creating the group when it is new.
     fn add(
         &mut self,
         key: &[KeyPart],
         values: &[u64],
-        held: &mut Reservation,
+        account: &'a MemoryAccount,
     ) -> Result<(), BudgetExceeded> {
         if self.slots.is_empty() {
-            self.index(MIN_SLOTS, held)?;
+            self.index(MIN_SLOTS, account)?;
         }
         let mask = self.slots.len() - 1;
         let mut slot = FxBuildHasher.hash_one(key) as usize & mask;
@@ -305,16 +324,37 @@ impl GroupList {
 
         let group = self.len;
         if group == self.capacity {
-            let groups = (2 * group).max(MIN_GROUPS);
-            grow(&mut self.keys, groups * self.width, held)?;
-            grow(&mut self.sums, groups * self.fields, held)?;
+            let groups = group
+                .checked_mul(2)
+                .context(crate::budget::BudgetExceededSnafu {
+                    what: "series groups",
+                    needed: u64::MAX,
+                    available: 0u64,
+                })?
+                .max(MIN_GROUPS);
+            self.keys
+                .try_grow_to(groups.checked_mul(self.width).context(
+                    crate::budget::BudgetExceededSnafu {
+                        what: "series keys",
+                        needed: u64::MAX,
+                        available: 0u64,
+                    },
+                )?)?;
+            self.sums
+                .try_grow_to(groups.checked_mul(self.fields).context(
+                    crate::budget::BudgetExceededSnafu {
+                        what: "series sums",
+                        needed: u64::MAX,
+                        available: 0u64,
+                    },
+                )?)?;
             self.capacity = groups;
         }
         self.keys.extend_from_slice(key);
         self.sums.extend_from_slice(values);
         self.len += 1;
         if 2 * self.len > self.slots.len() {
-            self.index(2 * self.slots.len(), held)
+            self.index(2 * self.slots.len(), account)
         } else {
             self.slots[slot] = number(group);
             Ok(())
@@ -326,9 +366,11 @@ impl GroupList {
     }
 
     /// Rebuilds the index with `slots` slots, the new one reserved while the old is alive.
-    fn index(&mut self, slots: usize, held: &mut Reservation) -> Result<(), BudgetExceeded> {
-        held.try_grow(slot_bytes(slots))?;
-        let mut index = vec![0; slots];
+    fn index(&mut self, slots: usize, account: &'a MemoryAccount) -> Result<(), BudgetExceeded> {
+        let mut index = account.buffer(slots)?;
+        for _ in 0..slots {
+            index.push(0);
+        }
         let mask = slots - 1;
         for group in 0..self.len {
             let mut slot = FxBuildHasher.hash_one(self.key(group)) as usize & mask;
@@ -337,24 +379,45 @@ impl GroupList {
             }
             index[slot] = number(group);
         }
-        // The old index is dropped before its bytes are returned.
-        let old = std::mem::replace(&mut self.slots, index).capacity();
-        held.shrink(slot_bytes(old));
+        self.slots = index;
         Ok(())
     }
+}
 
-    /// Drops the index, which only the scan needs.
-    fn finish(&mut self, held: &mut Reservation) {
-        let slots = std::mem::take(&mut self.slots).capacity();
-        held.shrink(slot_bytes(slots));
-    }
+/// The consuming builder that transfers every request's groups into one retained result.
+struct GroupsBuffer<'a> {
+    account: &'a MemoryAccount,
+    lists: BudgetVec<'a, GroupBuffer<'a>>,
+}
 
-    /// The bytes the list's buffers hold, by their capacities.
-    #[cfg(test)]
-    pub(crate) fn bytes(&self) -> u64 {
-        (self.keys.capacity() * size_of::<KeyPart>() + self.sums.capacity() * size_of::<u64>())
-            as u64
-            + slot_bytes(self.slots.capacity())
+impl Retain<GroupList> for GroupsBuffer<'_> {
+    /// Admits the output list, drops scan indexes, and moves keys, sums and their credit.
+    fn retain(
+        mut self,
+        retained: &mut Retained<'_>,
+    ) -> Result<FrozenVec<GroupList>, BudgetExceeded> {
+        let mut lists = self.account.buffer(self.lists.len())?;
+        while let Some(list) = self.lists.pop() {
+            let GroupBuffer {
+                width,
+                fields,
+                len,
+                keys,
+                sums,
+                slots,
+                ..
+            } = list;
+            drop(slots);
+            lists.push(GroupList {
+                width,
+                fields,
+                len,
+                keys: keys.retain(retained)?,
+                sums: sums.retain(retained)?,
+            });
+        }
+        lists.reverse();
+        lists.retain(retained)
     }
 }
 
@@ -366,25 +429,6 @@ fn number(group: usize) -> u32 {
     u32::try_from(group + 1).expect("fewer than 2^32 groups fit any budget")
 }
 
-fn slot_bytes(slots: usize) -> u64 {
-    (slots * size_of::<u32>()) as u64
-}
-
-/// Grows `buffer` to hold `capacity` elements, reserving the new allocation in `held` while
-/// the old one is alive, and returning the old one's bytes after.
-fn grow<T>(
-    buffer: &mut Vec<T>,
-    capacity: usize,
-    held: &mut Reservation,
-) -> Result<(), BudgetExceeded> {
-    let size = size_of::<T>();
-    held.try_grow((capacity * size) as u64)?;
-    let old = buffer.capacity() * size;
-    buffer.reserve_exact(capacity - buffer.len());
-    held.shrink(old as u64);
-    Ok(())
-}
-
 /// The zstd decompression context a [`BlockDecoder`] owns, which [`decode_memory`] leaves
 /// to its owner: zstd 1.5's `ZSTD_DCtx`, whose size `ZSTD_sizeof_DCtx` reports. Bulk
 /// decompression writes into the caller's buffer, so the context allocates no window
@@ -394,6 +438,11 @@ const DECOMPRESSION_CONTEXT: u64 = 128 * 1024;
 
 /// What a scan holds whatever it reads, reserved before it starts: the layout of a series
 /// chunk of `fields` fields, and the key of one row.
+fn scan_plan(fields: usize, key_width: usize) -> Result<MemoryPlan, BudgetExceeded> {
+    MemoryPlan::array::<ColumnLayout>(2 + fields)?.and(MemoryPlan::array::<KeyPart>(key_width)?)
+}
+
+#[cfg(test)]
 fn scan_memory(fields: usize, key_width: usize) -> u64 {
     ((2 + fields) * size_of::<ColumnLayout>() + key_width * size_of::<KeyPart>()) as u64
 }
@@ -457,14 +506,43 @@ impl<S: Storage> Snapshot<S> {
         let budget = self.budget();
         let key_width = query.requests.iter().map(GroupRequest::width).max();
         let masked = query.fields.indices().count();
-        // Held until the query ends.
-        let _buffers = budget
-            .try_reserve("series scan", scan_memory(fields, key_width.unwrap_or(0)))
-            .context(ReserveScanSnafu)?;
-        let lists = (query.requests.len() * size_of::<GroupList>()) as u64;
-        let held = budget
-            .try_reserve("series groups", lists)
+        let workspace = MemoryAccount::new(
+            budget,
+            "series scan",
+            scan_plan(fields, key_width.unwrap_or(0)).context(ReserveScanSnafu)?,
+        )
+        .context(ReserveScanSnafu)?;
+        let groups = MemoryAccount::new(budget, "series groups", MemoryPlan::default())
             .context(ReserveListsSnafu)?;
+        let mut lists = groups
+            .buffer(query.requests.len())
+            .context(ReserveListsSnafu)?;
+        for request in query.requests {
+            lists.push(
+                GroupBuffer::new(&groups, request.width(), masked).context(ReserveListsSnafu)?,
+            );
+        }
+        let mut layout = workspace.buffer(2 + fields).context(ReserveScanSnafu)?;
+        layout.push(KEY_COLUMN);
+        layout.push(ColumnLayout {
+            ty: PhysicalType::Int {
+                ty: IntType::U32,
+                summed: false,
+            },
+            nullable: false,
+        });
+        for _ in 0..fields {
+            layout.push(ColumnLayout {
+                ty: PhysicalType::Int {
+                    ty: IntType::U64,
+                    summed: true,
+                },
+                nullable: false,
+            });
+        }
+        let key = workspace
+            .buffer(key_width.unwrap_or(0))
+            .context(ReserveScanSnafu)?;
         let mut scan = Scan {
             budget,
             catalog: &self.version().catalog,
@@ -472,14 +550,10 @@ impl<S: Storage> Snapshot<S> {
             requests: query.requests,
             fields: query.fields,
             buckets: read.numbers.clone(),
-            layout: series_columns(fields),
-            key: Vec::with_capacity(key_width.unwrap_or(0)),
-            lists: query
-                .requests
-                .iter()
-                .map(|request| GroupList::new(request.width(), masked))
-                .collect(),
-            held,
+            layout,
+            key,
+            lists,
+            account: &groups,
             folded: false,
             combo: Column::new(COMBO, budget),
             values: std::array::from_fn(|_| Column::new(0, budget)),
@@ -492,15 +566,13 @@ impl<S: Storage> Snapshot<S> {
             scan.chunks(self.storage(), StreamRef::Tier(tier_id), grid, &read)?;
             scan.head(&self.version().head, tier_id)?;
         }
-        let Scan {
-            mut lists,
-            mut held,
-            folded,
-            ..
-        } = scan;
-        for list in &mut lists {
-            list.finish(&mut held);
-        }
+        let Scan { lists, folded, .. } = scan;
+        let lists = groups
+            .finish(GroupsBuffer {
+                account: &groups,
+                lists,
+            })
+            .context(ReserveListsSnafu)?;
         Ok(SeriesGroups {
             lists,
             catalog: self.catalog(),
@@ -509,7 +581,6 @@ impl<S: Storage> Snapshot<S> {
                 .is_some_and(|watermark| query.range.start() < watermark),
             retention_watermark: watermark,
             folded,
-            held,
         })
     }
 }
@@ -564,7 +635,7 @@ impl LabelMap<'_> {
 }
 
 /// One query's scan: where rows come from, and the groups they go to.
-struct Scan<'a> {
+struct Scan<'a, 'm> {
     /// The snapshot's budget, which the decoder, the chunks and the blocks reserve from.
     budget: &'a MemoryBudget,
     catalog: &'a Catalog,
@@ -574,12 +645,11 @@ struct Scan<'a> {
     fields: FieldMask,
     buckets: Range<i64>,
     /// The columns of a series chunk of the schema.
-    layout: Vec<ColumnLayout>,
+    layout: BudgetVec<'m, ColumnLayout>,
     /// The key of the row being added, reused.
-    key: Vec<KeyPart>,
-    lists: Vec<GroupList>,
-    /// The lists' bytes.
-    held: Reservation,
+    key: BudgetVec<'m, KeyPart>,
+    lists: BudgetVec<'m, GroupBuffer<'m>>,
+    account: &'m MemoryAccount,
     /// Whether a row in the range had a folded combination, admitted or not.
     folded: bool,
     combo: Column<u32>,
@@ -588,7 +658,7 @@ struct Scan<'a> {
     bucket: Column<i64>,
 }
 
-impl Scan<'_> {
+impl Scan<'_, '_> {
     /// Reads the chunks of the tier that meet the buckets.
     fn chunks(
         &mut self,
@@ -663,7 +733,7 @@ impl Scan<'_> {
         let shaped = columns.len() == self.layout.len()
             && columns
                 .iter()
-                .zip(&self.layout)
+                .zip(self.layout.iter())
                 .all(|(desc, layout)| desc.ty == layout.ty && desc.nullable == layout.nullable);
         ensure!(shaped, ChunkColumnsSnafu { chunk });
         let mut decode = Decode {
@@ -777,7 +847,8 @@ impl Scan<'_> {
                 .expect("the query checked its dimensions");
             labels[position]
         };
-        for (index, (request, list)) in self.requests.iter().zip(&mut self.lists).enumerate() {
+        for (index, (request, list)) in self.requests.iter().zip(self.lists.iter_mut()).enumerate()
+        {
             let admitted = request
                 .filters
                 .iter()
@@ -788,16 +859,18 @@ impl Scan<'_> {
             self.key.clear();
             match request.key {
                 GroupKey::Total => {}
-                GroupKey::Labels(dimensions) => self.key.extend(
-                    dimensions
-                        .iter()
-                        .map(|&dimension| KeyPart::Label(label(dimension))),
-                ),
-                GroupKey::Mapped(maps) => self
-                    .key
-                    .extend(maps.iter().map(|map| map.part(label(map.dimension)))),
+                GroupKey::Labels(dimensions) => {
+                    for &dimension in dimensions {
+                        self.key.push(KeyPart::Label(label(dimension)));
+                    }
+                }
+                GroupKey::Mapped(maps) => {
+                    for map in maps {
+                        self.key.push(map.part(label(map.dimension)));
+                    }
+                }
             }
-            list.add(&self.key, values, &mut self.held)
+            list.add(&self.key, values, self.account)
                 .context(ReserveGroupsSnafu { request: index })?;
         }
         Ok(())

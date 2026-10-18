@@ -29,7 +29,7 @@ use crate::{
         memory::{MemoryDisk, MemoryStorage},
     },
     version::{OpenMarker, Registry, Version},
-    write::{ComboId, Input, PinOp, SeriesPoint},
+    write::{ComboId, Input, PinOp, SeriesPoint, chunking::series_columns},
 };
 
 pub(crate) fn at(point: SeriesPoint<'static>, at: i64) -> SeriesPoint<'static> {
@@ -107,7 +107,7 @@ fn lists(groups: &SeriesGroups) -> Lists {
 
 /// What a result's reservation must equal: its lists, and each list's buffers.
 fn held_by(groups: &SeriesGroups) -> u64 {
-    let lists = (groups.lists.capacity() * size_of::<GroupList>()) as u64;
+    let lists = (groups.lists.get().capacity() * size_of::<GroupList>()) as u64;
     lists + groups.lists().iter().map(GroupList::bytes).sum::<u64>()
 }
 
@@ -1424,4 +1424,68 @@ fn the_first_retained_bucket_is_exact_at_the_ends_of_the_timeline() {
     let pairs = grid(1, 2);
     assert_eq!(first_retained_bucket(pairs, i64::MAX / 2), None);
     assert_eq!(first_retained_bucket(pairs, i64::MIN), Some(i64::MIN));
+}
+
+#[test]
+fn groups_outlive_the_scan_snapshot_and_store() {
+    fn send_sync<T: Send + Sync>() {}
+    send_sync::<SeriesGroups>();
+    let (_disk, tsdb) = many_targets(30);
+    let snapshot = tsdb.reader().capture().unwrap();
+    let budget = snapshot.budget().clone();
+    let requests = [GroupRequest {
+        filters: &[],
+        key: GroupKey::Labels(&[TARGET]),
+    }];
+    let groups = snapshot
+        .series(&query(hour(0..1), &requests, 0b11))
+        .unwrap();
+    let expected = lists(&groups);
+    let held = held_by(&groups);
+    drop(snapshot);
+    drop(tsdb);
+    assert_eq!(budget.reserved(), held);
+    assert_eq!(lists(&groups), expected);
+    assert_eq!(groups.lists()[0].len(), 30);
+    drop(groups);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
+fn finishing_groups_moves_buffers_and_admits_the_list_before_transfer() {
+    for fail in [false, true] {
+        let budget = MemoryBudget::new(4096);
+        let account = MemoryAccount::new(&budget, "test groups", MemoryPlan::default()).unwrap();
+        let mut list = GroupBuffer::new(&account, 1, 1).unwrap();
+        list.add(&[KeyPart::Label(7)], &[11], &account).unwrap();
+        let keys = list.keys.as_ptr();
+        let sums = list.sums.as_ptr();
+        let mut lists = account.buffer(1).unwrap();
+        lists.push(list);
+        if fail {
+            account.fail_after(0);
+        }
+        let result = account.finish(GroupsBuffer {
+            account: &account,
+            lists,
+        });
+        if fail {
+            assert!(result.is_err());
+            drop(account);
+            assert_eq!(budget.reserved(), 0);
+        } else {
+            let result = result.unwrap();
+            assert_eq!(result.get()[0].keys.as_ptr(), keys);
+            assert_eq!(result.get()[0].sums.as_ptr(), sums);
+            drop(account);
+            let list = &result.get()[0];
+            assert_eq!(
+                budget.reserved(),
+                size_of::<GroupList>() as u64 + list.bytes()
+            );
+            assert_eq!(list.iter().next().unwrap().sums, &[11]);
+            drop(result);
+            assert_eq!(budget.reserved(), 0);
+        }
+    }
 }

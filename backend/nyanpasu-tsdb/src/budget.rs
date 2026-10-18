@@ -7,12 +7,54 @@
 //! [`MemoryBudget`]. Queries share one through the client, which is the admission control
 //! of §7.4: a query that does not fit is refused at the door, and no scheduler sits
 //! behind it.
+//!
+//! # Charged buffers
+//!
+//! Use [`MemoryAccount`] for one query's or one maintenance round's allocation envelope.
+//! [`MemoryPlan`] checks its layout arithmetic before admission. [`BudgetVec`] borrows
+//! credit from the account before allocating; dropped buffers return local credit, which
+//! leases reuse without taking the root budget's lock until more bytes are needed.
+//! Preserving growth covers the old and new allocations together. Bounded writes never
+//! grow a buffer. A consuming [`Retain`] builder moves frozen storage and its credit into
+//! one [`Reserved`] result, so the result may outlive the account without releasing and
+//! reserving its bytes again.
 
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use snafu::{Snafu, ensure};
 
 use crate::ErrorKind;
+
+mod account;
+mod buffer;
+
+pub(crate) use account::{MemoryAccount, Reserved, Retain, Retained};
+pub(crate) use buffer::{BudgetVec, FrozenVec};
+
+/// Checked, allocation-free byte arithmetic for allocations that coexist in an envelope.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct MemoryPlan(u64);
+
+impl MemoryPlan {
+    /// Plans an array capacity, rejecting multiplication or layout overflow before allocation.
+    pub(crate) fn array<T>(capacity: usize) -> Result<Self, BudgetExceeded> {
+        let layout = std::alloc::Layout::array::<T>(capacity).map_err(|_| BudgetExceeded {
+            what: "buffer layout",
+            needed: u64::MAX,
+            available: 0,
+        })?;
+        Ok(Self(layout.size() as u64))
+    }
+
+    /// Adds a simultaneously live layout, rejecting byte-count overflow.
+    pub(crate) fn and(self, other: Self) -> Result<Self, BudgetExceeded> {
+        self.0.checked_add(other.0).map(Self).ok_or(BudgetExceeded {
+            what: "memory plan",
+            needed: u64::MAX,
+            available: 0,
+        })
+    }
+}
 
 /// A byte budget, cloneable and shared: every clone reserves from the same counter.
 #[derive(Clone, Debug)]
@@ -220,334 +262,4 @@ impl BudgetExceeded {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::{
-        sync::{
-            Barrier,
-            atomic::{AtomicU64, Ordering},
-            mpsc,
-        },
-        thread,
-        time::Duration,
-    };
-
-    use super::*;
-
-    /// How long a test waits for something that must happen. It bounds a failure; it is
-    /// never what makes a passing test pass.
-    const PATIENCE: Duration = Duration::from_secs(30);
-
-    /// How long a test watches for something that must not happen.
-    const GRACE: Duration = Duration::from_millis(100);
-
-    #[test]
-    fn a_reservation_returns_its_bytes_when_dropped() {
-        let budget = MemoryBudget::new(100);
-        let reservation = budget.try_reserve("head", 60).unwrap();
-        assert_eq!(reservation.bytes(), 60);
-        assert_eq!(budget.reserved(), 60);
-        drop(reservation);
-        assert_eq!(budget.reserved(), 0);
-    }
-
-    #[test]
-    fn clones_share_one_counter() {
-        let budget = MemoryBudget::new(100);
-        let other = budget.clone();
-        let _held = budget.try_reserve("a", 70).unwrap();
-        assert_eq!(other.reserved(), 70);
-        let error = other.try_reserve("b", 31).unwrap_err();
-        assert_eq!(error.available, 30);
-    }
-
-    #[test]
-    fn a_failed_reserve_changes_nothing_and_says_what_was_missing() {
-        let budget = MemoryBudget::new(100);
-        let held = budget.try_reserve("catalog", 60).unwrap();
-
-        let error = budget.try_reserve("query", 41).unwrap_err();
-        assert_eq!(
-            error,
-            BudgetExceeded {
-                what: "query",
-                needed: 41,
-                available: 40
-            }
-        );
-        assert_eq!(error.kind(), ErrorKind::Local);
-        assert_eq!(
-            error.to_string(),
-            "memory budget exceeded for query: 41 bytes needed, 40 available"
-        );
-        assert_eq!(budget.reserved(), 60);
-
-        // The refused bytes were not partly granted: exactly what is left still fits.
-        let rest = budget.try_reserve("query", 40).unwrap();
-        assert_eq!(budget.reserved(), 100);
-        drop((held, rest));
-        assert_eq!(budget.reserved(), 0);
-    }
-
-    #[test]
-    fn nothing_beyond_the_limit_and_zero_always_fits() {
-        let budget = MemoryBudget::new(10);
-        assert!(budget.try_reserve("a", 11).is_err());
-        assert!(budget.try_reserve("a", u64::MAX).is_err());
-        let all = budget.try_reserve("a", 10).unwrap();
-        let none = budget.try_reserve("b", 0).unwrap();
-        assert_eq!(none.bytes(), 0);
-        drop(none);
-        assert_eq!(budget.reserved(), 10);
-        drop(all);
-        assert_eq!(MemoryBudget::new(0).try_reserve("a", 0).unwrap().bytes(), 0);
-    }
-
-    #[test]
-    fn growing_past_the_limit_fails_and_keeps_the_reservation() {
-        let budget = MemoryBudget::new(100);
-        let mut reservation = budget.try_reserve("staging", 30).unwrap();
-        reservation.try_grow(50).unwrap();
-        assert_eq!((reservation.bytes(), budget.reserved()), (80, 80));
-
-        let error = reservation.try_grow(21).unwrap_err();
-        assert_eq!(
-            error,
-            BudgetExceeded {
-                what: "staging",
-                needed: 21,
-                available: 20
-            }
-        );
-        assert_eq!((reservation.bytes(), budget.reserved()), (80, 80));
-
-        reservation.try_grow(20).unwrap();
-        assert_eq!((reservation.bytes(), budget.reserved()), (100, 100));
-    }
-
-    #[test]
-    fn shrinking_returns_part_of_a_reservation() {
-        let budget = MemoryBudget::new(100);
-        let mut reservation = budget.try_reserve("head", 80).unwrap();
-        reservation.shrink(30);
-        assert_eq!((reservation.bytes(), budget.reserved()), (50, 50));
-        // The freed bytes can be reserved again.
-        let other = budget.try_reserve("query", 50).unwrap();
-        drop(other);
-        reservation.shrink(50);
-        assert_eq!((reservation.bytes(), budget.reserved()), (0, 0));
-    }
-
-    #[test]
-    #[should_panic(expected = "more than it holds")]
-    fn shrinking_by_more_than_held_is_an_accounting_error() {
-        let budget = MemoryBudget::new(100);
-        let mut reservation = budget.try_reserve("head", 10).unwrap();
-        reservation.shrink(11);
-    }
-
-    #[test]
-    fn merging_and_splitting_move_bytes_without_changing_the_count() {
-        let budget = MemoryBudget::new(100);
-        let mut first = budget.try_reserve("stage", 30).unwrap();
-        let second = budget.try_reserve("stage", 20).unwrap();
-
-        first.merge(second);
-        assert_eq!((first.bytes(), budget.reserved()), (50, 50));
-
-        let part = first.split(15);
-        assert_eq!(
-            (first.bytes(), part.bytes(), budget.reserved()),
-            (35, 15, 50)
-        );
-
-        // The pieces are independent owners: dropping one returns only its bytes.
-        drop(part);
-        assert_eq!((first.bytes(), budget.reserved()), (35, 35));
-        drop(first);
-        assert_eq!(budget.reserved(), 0);
-    }
-
-    #[test]
-    fn a_handover_never_passes_through_zero() {
-        let budget = MemoryBudget::new(100);
-        let owner = budget.try_reserve("head", 40).unwrap();
-
-        let (started_tx, started_rx) = mpsc::channel();
-        let (done_tx, done_rx) = mpsc::channel();
-        let waiter = thread::spawn({
-            let budget = budget.clone();
-            move || {
-                started_tx.send(()).unwrap();
-                budget.wait_until_released();
-                done_tx.send(()).unwrap();
-            }
-        });
-        started_rx.recv_timeout(PATIENCE).unwrap();
-
-        // The only reservation changes hands twice. Releasing and re-reserving would pass
-        // through zero and could wake the waiter.
-        let mut new_owner = budget.try_reserve("head", 0).unwrap();
-        new_owner.merge(owner);
-        let part = new_owner.split(40);
-        assert_eq!(
-            (new_owner.bytes(), part.bytes(), budget.reserved()),
-            (0, 40, 40)
-        );
-        drop(new_owner);
-        assert!(
-            done_rx.recv_timeout(GRACE).is_err(),
-            "woke during a handover"
-        );
-
-        drop(part);
-        done_rx.recv_timeout(PATIENCE).unwrap();
-        waiter.join().unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "different budgets")]
-    fn merging_reservations_of_different_budgets_is_a_programming_error() {
-        let mut a = MemoryBudget::new(10).try_reserve("a", 1).unwrap();
-        let b = MemoryBudget::new(10).try_reserve("b", 1).unwrap();
-        a.merge(b);
-    }
-
-    #[test]
-    #[should_panic(expected = "holds only")]
-    fn splitting_off_more_than_held_is_an_accounting_error() {
-        let budget = MemoryBudget::new(100);
-        let mut reservation = budget.try_reserve("head", 10).unwrap();
-        let _ = reservation.split(11);
-    }
-
-    #[test]
-    fn concurrent_reservations_never_exceed_the_limit_and_end_at_zero() {
-        const LIMIT: u64 = 300;
-        const CHUNK: u64 = 100;
-        const THREADS: usize = 8;
-        const ROUNDS: usize = 2_000;
-
-        let budget = MemoryBudget::new(LIMIT);
-        // What the threads believe they hold: the budget must never have admitted more.
-        let held = AtomicU64::new(0);
-        let admitted = AtomicU64::new(0);
-        let start = Barrier::new(THREADS);
-
-        thread::scope(|scope| {
-            for _ in 0..THREADS {
-                scope.spawn(|| {
-                    start.wait();
-                    for _ in 0..ROUNDS {
-                        let Ok(reservation) = budget.try_reserve("test", CHUNK) else {
-                            continue;
-                        };
-                        let now = held.fetch_add(CHUNK, Ordering::SeqCst) + CHUNK;
-                        assert!(now <= LIMIT, "{now} bytes held under a limit of {LIMIT}");
-                        admitted.fetch_add(1, Ordering::SeqCst);
-                        held.fetch_sub(CHUNK, Ordering::SeqCst);
-                        drop(reservation);
-                    }
-                });
-            }
-        });
-
-        assert!(admitted.load(Ordering::SeqCst) > 0);
-        assert_eq!(budget.reserved(), 0);
-        assert_eq!(held.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
-    fn concurrent_grow_and_shrink_end_at_zero() {
-        const THREADS: usize = 4;
-        const ROUNDS: usize = 2_000;
-
-        const LIMIT: u64 = 100;
-
-        let budget = MemoryBudget::new(LIMIT);
-        let start = Barrier::new(THREADS);
-
-        thread::scope(|scope| {
-            for _ in 0..THREADS {
-                scope.spawn(|| {
-                    start.wait();
-                    let mut reservation = budget.try_reserve("test", 0).unwrap();
-                    for round in 0..ROUNDS {
-                        // The threads settle near 40 bytes each, so some grows are refused.
-                        let _ = reservation.try_grow(10 + (round % 7) as u64);
-                        if round % 3 == 0 {
-                            reservation.shrink(reservation.bytes() / 2);
-                        }
-                        assert!(budget.reserved() <= LIMIT);
-                    }
-                });
-            }
-        });
-
-        assert_eq!(budget.reserved(), 0);
-    }
-
-    #[test]
-    fn waiting_returns_at_once_when_nothing_is_reserved() {
-        MemoryBudget::new(10).wait_until_released();
-    }
-
-    #[test]
-    fn waiting_returns_when_another_thread_drops_the_last_reservation() {
-        let budget = MemoryBudget::new(100);
-        let first = budget.try_reserve("a", 10).unwrap();
-        let second = budget.try_reserve("b", 20).unwrap();
-
-        let (started_tx, started_rx) = mpsc::channel();
-        let (done_tx, done_rx) = mpsc::channel();
-        let waiter = thread::spawn({
-            let budget = budget.clone();
-            move || {
-                started_tx.send(()).unwrap();
-                budget.wait_until_released();
-                // Nothing may be held when the wait returns.
-                done_tx.send(budget.reserved()).unwrap();
-            }
-        });
-        started_rx.recv_timeout(PATIENCE).unwrap();
-
-        // One reservation is still held, so the waiter keeps waiting.
-        drop(first);
-        assert!(
-            done_rx.recv_timeout(GRACE).is_err(),
-            "woke with bytes reserved"
-        );
-
-        drop(second);
-        assert_eq!(done_rx.recv_timeout(PATIENCE), Ok(0));
-        waiter.join().unwrap();
-    }
-
-    // A wakeup lost between the waiter's check and its sleep would leave it blocked for
-    // good, so the last drop is raced against the start of the wait many times over. A
-    // lost wakeup shows as a waiter that never reports. The waiter is not scoped: a scope
-    // would wait for it to finish, and a test that failed would hang instead.
-    #[test]
-    fn a_wait_racing_the_last_drop_is_never_left_asleep() {
-        for round in 0..500 {
-            let budget = MemoryBudget::new(10);
-            let reservation = budget.try_reserve("test", 10).unwrap();
-            let race = Arc::new(Barrier::new(2));
-            let (done_tx, done_rx) = mpsc::channel();
-
-            let waiter = thread::spawn({
-                let (budget, race) = (budget.clone(), race.clone());
-                move || {
-                    race.wait();
-                    budget.wait_until_released();
-                    done_tx.send(()).unwrap();
-                }
-            });
-            race.wait();
-            drop(reservation);
-            done_rx
-                .recv_timeout(PATIENCE)
-                .unwrap_or_else(|_| panic!("round {round}: the waiter missed the wakeup"));
-            waiter.join().unwrap();
-        }
-    }
-}
+mod tests;

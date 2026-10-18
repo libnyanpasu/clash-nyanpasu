@@ -457,11 +457,15 @@ pub(crate) fn widest_build(schema: &Schema, shape: &Shape) -> u64 {
     series.into_iter().chain(streams).max().unwrap_or(0)
 }
 
-/// The least staging budget a profile whose head budget is `head` bytes needs: what a commit
-/// without a batch holds to chunk any one source, the [`widest_build`] beside the plan of
-/// every source such a head can hold and the catalog draft's own structure, which every
-/// commit copies. With less, a trigger would wait for a commit with room for its build, and
-/// no commit would ever leave it (§7.4).
+/// The least staging budget a profile whose head budget is `head` bytes needs, the one floor
+/// of every trigger that holds staging (§7.4):
+///
+/// - what a commit without a batch holds to chunk any one source: the [`widest_build`] beside
+///   the plan of every source such a head can hold and the catalog draft's own structure,
+///   which every commit copies. With less, a trigger would wait for a commit with room for
+///   its build, and no commit would ever leave it;
+/// - the smallest consolidation or merge round that makes progress
+///   ([`least_round`](crate::maintain::least_round)). With less, maintenance would stall.
 pub(crate) fn least_staging(schema: &Schema, shape: &Shape, head: u64) -> u64 {
     let catalog = Catalog::new(schema);
     let draft = catalog.draft(u64::MAX).peak() - catalog.bytes();
@@ -473,7 +477,9 @@ pub(crate) fn least_staging(schema: &Schema, shape: &Shape, head: u64) -> u64 {
         None => 0,
     };
     let sources = usize::try_from(sources).unwrap_or(usize::MAX);
-    widest_build(schema, shape) + Plan::own_bytes(sources, schema.events.len()) + draft
+    let chunking =
+        widest_build(schema, shape) + Plan::own_bytes(sources, schema.events.len()) + draft;
+    chunking.max(crate::maintain::least_round(shape))
 }
 
 /// A source the planner can chunk.
@@ -2027,4 +2033,4 @@ impl ChunkingError {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

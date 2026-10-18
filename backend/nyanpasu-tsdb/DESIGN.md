@@ -93,6 +93,49 @@ The design says its code sketches show shape, not the final API. Where the code 
   clock, so an extent that straddles the cutoff stays wholly visible until it expires whole.
 - Only an extent with data expires. An empty extent before the cutoff gets no watermark of its
   own, so a late write into it is kept until the next maintenance call expires it.
+- Maintenance's rounds run in this order of urgency: expire, clean up, consolidate a series
+  extent, merge a bucket's late chunks. Expiring first keeps an extent the policy expires from
+  being consolidated; cleanup only deletes and returns the disk space retention promised before
+  a consolidation writes beside the old chunks; consolidation cuts the most chunks, and
+  finishing an extent is what makes its leftover L0 chunks late.
+- A tier is consolidated an extent at a time, oldest first, behind a cursor in its stream
+  record. An extent is due once it has ended, stayed quiet for Q, and a commit has chunked its
+  journal records. Once the cursor passes an extent, every L0 chunk written there is a late
+  chunk, a base chunk of a bucket that no chunk covered included, and merges only with the late
+  chunks of its bucket: §4.3 makes late writes delta chunks, and a base chunk there is the same
+  late data.
+- Consolidation keeps its bookkeeping in namespace 10 (`layout::CONSOLIDATION`): an
+  index of every L0 chunk of a tier by (bucket, rows, chunk), a mark on each bucket with more than
+  four L0 chunks, and the last consolidated chunk of an extent being consolidated. So planning
+  reads a few records per tier, and a round takes an extent's L0 chunks in key order without
+  listing the extent. `write_chunk`, the write path's way to record a chunk, keeps the index and
+  the marks; maintenance's replacements and cleanup keep them too.
+- A consolidation round takes whole buckets in key order while they fit F, I and its memory,
+  and of a first bucket that does not fit whole as much as fits, its chunks with the fewest rows
+  first, which a bucket's merge takes in any order; the rest of that bucket becomes late
+  chunks. The extent's last consolidated chunk takes part again while it is not full and
+  fits beside an L0 chunk, so every consolidated chunk of an extent but its last is full.
+- A merge chooses among the 16 late chunks of a bucket with the fewest rows, which the L0 index
+  lists first, so a round reads as much whatever the bucket's backlog. It takes as many of them
+  as fit F, I and its memory and one chunk together, and writes one delta (§4.3), so it never
+  rewrites a full chunk. Any two chunks of the bucket hold at least the rows of its two
+  smallest, so when those do not fit one chunk, no two do. Each merge leaves the bucket a chunk
+  fewer at least, so its merges end. A bucket whose two smallest late chunks hold more than a
+  chunk's rows keeps them; its mark goes until a later late chunk sets it again. Late chunks
+  that would fit fewer chunks without fitting one, such as three of 0.6 M rows each into two,
+  stay as they are.
+- A round reserves its peak from staging before it allocates, sized from its inputs' manifest
+  entries: the output builder and the zstd compression context, the list of its inputs, each
+  input's directory and one decoded block per column while its bucket is read, and once, the
+  fragment the backend lends and what opening a chunk holds while it parses fragment 0, from
+  the length of fragment 0 the entry records. Blocks decode one at a time, so the lent fragment
+  counts once rather than per input (§7.4 counts it per way), as the event scan does. A round
+  that reads only L0 chunks uses a decoder without a zstd context. A consolidation counts its
+  inputs, then collects exactly that many; a merge chooses among a fixed 16 candidates. So no
+  round's memory depends on F, and the smallest round that makes progress
+  (`maintain::least_round`) depends on the schema alone: `least_staging`, the one staging
+  floor opening checks, includes it. Opening also refuses, for a schema with tiers, F below 2
+  or I below twice B.
 
 ## Errors
 
@@ -187,6 +230,8 @@ Crates offering a stable hash trait were considered and rejected:
 - Splitting event extents by size under a byte cap (§9.1, "单个区段不超过字节上限的八分之一").
   A cap expires whole time windows, so a cap below one window's bytes expires the newest
   window too, and its later rows are dropped as late until the next window starts.
+- Consolidating event streams and merging their sorted runs (§4.3), and the backlog rule that
+  makes a commit run the most urgent round first (§4.3, "积压").
 - The lossy-operation ring, `status()` and the logs of lossy maintenance rounds (§9.4).
 - Recycling the combinations and label values that only expired extents referred to (§5.3).
 - The incarnation counter kept outside the database for tmpfs hosts (§8.3), which only the

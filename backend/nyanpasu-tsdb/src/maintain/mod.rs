@@ -6,12 +6,11 @@
 //!   an unknown outcome flags the store for recovery (§7.5). A round rolled back is simply
 //!   planned again by a later call.
 //! - A planner picks the most urgent round from what storage shows. The kinds of rounds, in
-//!   that order, are the variants of [`Round`]; consolidation, merging runs and delta chunks,
-//!   and recycling join them.
+//!   that order, are the variants of [`Round`]; merging event runs and recycling join them.
 //! - A call stops when its budget of rounds is used up or nothing is left, and says whether
 //!   work remains. The consumer calls again later: the store has no timer.
-//! - With consolidation, a backlog beyond the profile will make the next commit run the most
-//!   urgent round first (§4.3).
+//! - A backlog beyond the profile is to make the next commit run the most urgent round first
+//!   (§4.3, "积压"); that is not built yet.
 
 mod consolidate;
 mod recycle;
@@ -19,9 +18,11 @@ mod retention;
 
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
-pub use self::retention::RetentionError;
+pub(crate) use self::consolidate::least_round;
+pub use self::{consolidate::ConsolidateError, retention::RetentionError};
 use crate::{
-    ErrorKind, ExtentSpec, Profile, Retention, RetentionPolicy, Schema, StreamId, Timestamp,
+    ErrorKind, ExtentSpec, Profile, Retention, RetentionPolicy, Schema, StreamId, TierId,
+    Timestamp,
     budget::{MemoryBudget, Reservation},
     head::Head,
     layout::{
@@ -56,6 +57,15 @@ pub struct Maintained {
     pub cleanups: u64,
     /// ... and the chunks they deleted.
     pub chunks_deleted: u64,
+    /// Consolidation rounds (§4.3): each took part of an extent's L0 chunks, or moved past an
+    /// extent with none left ...
+    pub consolidations: u64,
+    /// ... and rounds that merged the late chunks of a bucket ...
+    pub merges: u64,
+    /// ... the chunks both kinds replaced ...
+    pub chunks_rewritten: u64,
+    /// ... and the chunks they wrote in their place.
+    pub chunks_built: u64,
     /// Whether work remains: the budget ran out before the work did. Call again later.
     pub more: bool,
 }
@@ -65,17 +75,34 @@ impl Maintained {
         self.expired += round.expired;
         self.cleanups += round.cleanups;
         self.chunks_deleted += round.chunks_deleted;
+        self.consolidations += round.consolidations;
+        self.merges += round.merges;
+        self.chunks_rewritten += round.chunks_rewritten;
+        self.chunks_built += round.chunks_built;
     }
 }
 
 /// A round, as the planner picks it. Declared in the order of urgency, which is the order the
-/// planner looks for them in.
+/// planner looks for them in:
+///
+/// 1. Expiring first, so that no other round works on an extent the policy expires.
+/// 2. Cleanup next: it only deletes, holds no staging memory, and returns the disk space that
+///    retention promised, before a consolidation writes its new chunks beside the old ones.
+/// 3. Consolidation of a quiet extent turns tens of L0 chunks into a few compressed ones, the
+///    largest cut in what a query reads; and finishing an extent is what makes its leftover
+///    L0 chunks late chunks, whose merges then become due.
+/// 4. Merging a bucket's late chunks cuts a handful of chunks of one bucket.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Round {
     /// Expires `extent` of `stream`, the oldest extent it has not expired (§9.1).
     Expire { stream: StreamRef, extent: i64 },
     /// Deletes chunks of the extents of `stream` up to its watermark, `expired` (§9.1).
     Cleanup { stream: StreamRef, expired: i64 },
+    /// Consolidates the next part of `extent` of `tier`, the oldest extent after its cursor
+    /// (§4.3).
+    Consolidate { tier: TierId, extent: i64 },
+    /// Merges the late chunks of `bucket` of `tier`, the oldest crowded bucket (§4.3).
+    MergeDeltas { tier: TierId, bucket: i64 },
 }
 
 /// What planning and staging a round read besides storage.
@@ -104,6 +131,8 @@ struct Changed {
     staging: Reservation,
     /// The journal bytes it deleted, keys included.
     journal_removed: u64,
+    /// The id the next chunk gets, when the round took ids.
+    next_chunk: Option<u64>,
     done: Maintained,
 }
 
@@ -142,14 +171,20 @@ pub(crate) fn plan(
     context: &Context<'_>,
     request: &Maintain<'_>,
 ) -> Result<Option<Round>, MaintainError> {
-    retention::plan(read, context, request).context(PlanSnafu)
+    if let Some(round) = retention::plan(read, context, request).context(PlanSnafu)? {
+        return Ok(Some(round));
+    }
+    consolidate::plan(read, context, request.now).context(PlanConsolidationSnafu)
 }
 
 /// Stages `round` into `batch`, with the next state record, and derives the version it
-/// publishes. Like a batch's staging, it changes no shared state: on an error the caller
-/// drops the transaction, and nothing happened.
+/// publishes. `read` is a snapshot of the state the batch starts from, through which a round
+/// reads the chunks it rewrites while it writes the new ones into the batch. Like a batch's
+/// staging, it changes no shared state: on an error the caller drops the transaction, and
+/// nothing happened.
 pub(crate) fn stage(
     batch: &mut impl StorageWrite,
+    read: &impl StorageRead,
     context: &Context<'_>,
     round: Round,
 ) -> Result<Staged, MaintainError> {
@@ -170,6 +205,14 @@ pub(crate) fn stage(
         Round::Cleanup { stream, expired } => {
             retention::cleanup(batch, context, stream, expired).context(CleanupSnafu { stream })?
         }
+        Round::Consolidate { tier, extent } => {
+            consolidate::consolidate(batch, read, context, tier, extent, state.next_chunk)
+                .context(ConsolidateSnafu { tier, extent })?
+        }
+        Round::MergeDeltas { tier, bucket } => {
+            consolidate::merge(batch, read, context, tier, bucket, state.next_chunk)
+                .context(MergeDeltasSnafu { tier, bucket })?
+        }
     };
     let next = StateRecord {
         publication: state
@@ -180,6 +223,7 @@ pub(crate) fn stage(
             .journal_bytes
             .checked_sub(changed.journal_removed)
             .context(CounterOverflowSnafu)?,
+        next_chunk: changed.next_chunk.unwrap_or(state.next_chunk),
         ..state
     };
     write_state(batch, &next).context(WriteStateSnafu)?;
@@ -239,6 +283,9 @@ pub enum MaintainError {
     #[snafu(display("failed to plan the next round"))]
     Plan { source: RetentionError },
 
+    #[snafu(display("failed to plan the next consolidation round"))]
+    PlanConsolidation { source: ConsolidateError },
+
     #[snafu(display("failed to begin a round's transaction"))]
     BeginRound { source: StorageError },
 
@@ -263,6 +310,20 @@ pub enum MaintainError {
         source: RetentionError,
     },
 
+    #[snafu(display("failed to consolidate extent {extent} of {tier:?}"))]
+    Consolidate {
+        tier: TierId,
+        extent: i64,
+        source: ConsolidateError,
+    },
+
+    #[snafu(display("failed to merge the late chunks of bucket {bucket} of {tier:?}"))]
+    MergeDeltas {
+        tier: TierId,
+        bucket: i64,
+        source: ConsolidateError,
+    },
+
     /// A counter of the state record would leave its range, which only damage can cause.
     #[snafu(display("a counter of the state record would leave its range"))]
     CounterOverflow,
@@ -285,6 +346,9 @@ impl MaintainError {
             Self::Plan { source } | Self::Expire { source, .. } | Self::Cleanup { source, .. } => {
                 source.kind()
             }
+            Self::PlanConsolidation { source }
+            | Self::Consolidate { source, .. }
+            | Self::MergeDeltas { source, .. } => source.kind(),
             Self::ReadState { source } => source.kind(),
             Self::UnknownPublication { .. } | Self::CounterOverflow => ErrorKind::Corrupted,
             Self::Commit { source } => source.kind(),

@@ -29,6 +29,26 @@
 //!   extents it passes. An expired extent is no longer counted, although cleanup may not have
 //!   deleted its chunks yet. A stream without a record holds nothing and has expired nothing.
 //!
+//! # Consolidation's bookkeeping (§4.3)
+//!
+//! Maintenance finds its work for a tier in a few reads, whatever the tier holds:
+//!
+//! - The stream record's **consolidation cursor**, [`StreamRecord::consolidated`]: every
+//!   extent up to it is consolidated, and every L0 chunk written there since is a late chunk,
+//!   which only merges with the late chunks of its bucket. Extents are consolidated oldest
+//!   first, so the next one is the first extent after the cursor and the watermark.
+//! - The **L0 index** of [`CONSOLIDATION`]: every L0 chunk of a tier by (bucket, rows, chunk),
+//!   so a round takes an extent's L0 chunks in key order without listing the extent, and a
+//!   bucket's chunks with the fewest rows come first.
+//! - The **crowding marks**: a bucket whose L0 chunks outnumber [`BUCKET_L0_CHUNKS`] has one,
+//!   so the oldest bucket whose late chunks need merging is the first mark.
+//! - The **progress** of an extent being consolidated: the last consolidated chunk a round
+//!   wrote there, whose last bucket is how far it got.
+//!
+//! [`write_chunk`], the write path's only way to record a chunk, indexes each L0 chunk of a
+//! tier and marks its bucket when it crowds; a [`Replacement`] keeps both as maintenance
+//! replaces chunks; cleanup takes them out with the expired chunks.
+//!
 //! Values use the record encoding of `layout::record`.
 
 use std::ops::{Bound, ControlFlow, RangeInclusive};
@@ -38,7 +58,7 @@ use snafu::{OptionExt, ResultExt, Snafu, ensure};
 use strum::FromRepr;
 
 use super::{
-    EXTENTS, MANIFEST, STREAMS,
+    CONSOLIDATION, EXTENTS, MANIFEST, STREAMS,
     keys::{KeyBuf, KeyError, KeyReader},
     record::{RecordProblem, decode, encode},
 };
@@ -47,6 +67,29 @@ use crate::{
     storage::{ChunkId, Direction, KeyRange, StorageError, StorageRead, StorageWrite},
     time::Span,
 };
+
+/// The most L0 chunks a bucket keeps without a crowding mark: beyond it, its late chunks merge
+/// into one (§4.3, "合并").
+pub(crate) const BUCKET_L0_CHUNKS: usize = 4;
+
+/// The kinds of keys in [`CONSOLIDATION`], after the stream's key. A number is never reused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+enum Family {
+    /// An L0 chunk of a tier: its bucket and its id, with an empty value.
+    L0 = 0,
+    /// A bucket with more than [`BUCKET_L0_CHUNKS`] L0 chunks, with an empty value.
+    Crowded = 1,
+    /// An extent being consolidated: [`Progress`].
+    Progress = 2,
+}
+
+/// How far the consolidation of an extent got: the last consolidated chunk a round wrote
+/// there, whose last bucket is where the next round goes on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Progress {
+    pub(crate) last: u64,
+}
 
 /// A stream: a series tier or an event stream. Each has its own extents (§1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -93,6 +136,25 @@ fn chunk_key(stream: StreamRef, extent: i64, chunk: ChunkId) -> KeyBuf {
     extent_key(stream, extent).u64(chunk.0)
 }
 
+fn family_key(stream: StreamRef, family: Family) -> KeyBuf {
+    stream.key().u8(family as u8)
+}
+
+fn l0_key(stream: StreamRef, bucket: i64, rows: u32, chunk: ChunkId) -> KeyBuf {
+    family_key(stream, Family::L0)
+        .i64(bucket)
+        .u32(rows)
+        .u64(chunk.0)
+}
+
+fn crowded_key(stream: StreamRef, bucket: i64) -> KeyBuf {
+    family_key(stream, Family::Crowded).i64(bucket)
+}
+
+fn progress_key(stream: StreamRef, extent: i64) -> KeyBuf {
+    family_key(stream, Family::Progress).i64(extent)
+}
+
 /// One chunk of an extent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ChunkEntry {
@@ -133,13 +195,16 @@ impl ExtentRecord {
     }
 }
 
-/// What retention did to a stream, and what the stream holds (§9.1).
+/// What retention and consolidation did to a stream, and what the stream holds (§4.3, §9.1).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct StreamRecord {
     /// The deletion watermark: the last extent that expired, `None` while none has.
     pub(crate) expired: Option<i64>,
     /// The [bytes](ExtentRecord::bytes) of the extents after the watermark, together.
     pub(crate) bytes: u64,
+    /// The consolidation cursor of a tier: the last extent consolidated, `None` while none
+    /// is. Every extent up to it is consolidated or expired; it only moves forward.
+    pub(crate) consolidated: Option<i64>,
 }
 
 impl StreamRecord {
@@ -149,7 +214,26 @@ impl StreamRecord {
     }
 }
 
+/// Records a chunk the write path built, which is an L0 chunk (§4.2): its entry, and for a
+/// tier its place in the L0 index under its bucket, which it is the only one of. The bucket
+/// gets a crowding mark when the chunk takes it past [`BUCKET_L0_CHUNKS`].
+///
+/// Maintenance records the chunks it writes through a [`Replacement`] instead.
 pub(crate) fn write_chunk(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+    chunk: ChunkId,
+    entry: &ChunkEntry,
+) -> Result<(), StorageError> {
+    put_entry(batch, stream, extent, chunk, entry)?;
+    if let StreamRef::Tier(_) = stream {
+        index_l0(batch, stream, entry, chunk)?;
+    }
+    Ok(())
+}
+
+fn put_entry(
     batch: &mut impl StorageWrite,
     stream: StreamRef,
     extent: i64,
@@ -161,6 +245,321 @@ pub(crate) fn write_chunk(
         chunk_key(stream, extent, chunk).as_slice(),
         &encode(entry),
     )
+}
+
+/// Adds an L0 chunk of `entry` to the index under its bucket and rows, and marks the bucket
+/// crowded once it has more than [`BUCKET_L0_CHUNKS`]. Adding never takes a bucket below the
+/// mark, so a bucket that stays within it is left as it is.
+fn index_l0(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    entry: &ChunkEntry,
+    chunk: ChunkId,
+) -> Result<(), StorageError> {
+    let bucket = entry.key_range.0;
+    let key = l0_key(stream, bucket, entry.rows, chunk);
+    batch.put(CONSOLIDATION, key.as_slice(), &[])?;
+    if crowded(&*batch, stream, bucket)? {
+        batch.put(CONSOLIDATION, crowded_key(stream, bucket).as_slice(), &[])?;
+    }
+    Ok(())
+}
+
+/// Whether `bucket` has more than [`BUCKET_L0_CHUNKS`] L0 chunks: a scan of its index that
+/// stops at the first one past the limit.
+fn crowded(read: &impl StorageRead, stream: StreamRef, bucket: i64) -> Result<bool, StorageError> {
+    let prefix = family_key(stream, Family::L0).i64(bucket);
+    let mut count = 0;
+    let past = read.scan(
+        CONSOLIDATION,
+        KeyRange::Prefix(prefix.as_slice()),
+        Direction::Forward,
+        |_, _| {
+            count += 1;
+            if count > BUCKET_L0_CHUNKS {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        },
+    )?;
+    Ok(past.is_some())
+}
+
+/// Sets or clears the crowding mark of `bucket` by the L0 chunks its index holds now, after a
+/// change that may have taken some away.
+pub(crate) fn mark_crowding(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    bucket: i64,
+) -> Result<(), ManifestError> {
+    let key = crowded_key(stream, bucket);
+    if crowded(&*batch, stream, bucket).context(ScanIndexSnafu)? {
+        batch.put(CONSOLIDATION, key.as_slice(), &[])
+    } else {
+        batch.delete(CONSOLIDATION, key.as_slice())
+    }
+    .context(WriteIndexSnafu)
+}
+
+/// Clears the crowding mark of `bucket`, whose L0 chunks cannot merge into fewer: a later
+/// L0 chunk sets it again.
+pub(crate) fn clear_crowding(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    bucket: i64,
+) -> Result<(), ManifestError> {
+    batch
+        .delete(CONSOLIDATION, crowded_key(stream, bucket).as_slice())
+        .context(WriteIndexSnafu)
+}
+
+/// Calls `f` with the bucket, the rows and the id of every L0 chunk of `stream` whose bucket
+/// is in `buckets`, by bucket, then by rows and id, without collecting them. `f` stops the scan
+/// by breaking with a value, which comes back out; a damaged key stops it with an error.
+pub(crate) fn scan_l0<B>(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    buckets: RangeInclusive<i64>,
+    mut f: impl FnMut(i64, u32, ChunkId) -> ControlFlow<B>,
+) -> Result<Option<B>, ManifestError> {
+    let first = l0_key(stream, *buckets.start(), 0, ChunkId(0));
+    let last = l0_key(stream, *buckets.end(), u32::MAX, ChunkId(u64::MAX));
+    let range = KeyRange::Between(
+        Bound::Included(first.as_slice()),
+        Bound::Included(last.as_slice()),
+    );
+    let broken = read
+        .scan(CONSOLIDATION, range, Direction::Forward, |key, _| {
+            let parts = || {
+                let mut reader = KeyReader::new(key);
+                reader.u8()?;
+                reader.u8()?;
+                reader.u8()?;
+                let bucket = reader.i64()?;
+                let rows = reader.u32()?;
+                let chunk = reader.u64()?;
+                reader.finish()?;
+                Ok((bucket, rows, chunk))
+            };
+            match parts().context(IndexKeySnafu { key }) {
+                Ok((bucket, rows, chunk)) => f(bucket, rows, ChunkId(chunk)).map_break(Ok),
+                Err(error) => ControlFlow::Break(Err(error)),
+            }
+        })
+        .context(ScanIndexSnafu)?;
+    broken.transpose()
+}
+
+/// The first bucket of `stream` from `from` on that has a crowding mark.
+pub(crate) fn first_crowded(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    from: i64,
+) -> Result<Option<i64>, ManifestError> {
+    let first = crowded_key(stream, from);
+    let last = crowded_key(stream, i64::MAX);
+    let range = KeyRange::Between(
+        Bound::Included(first.as_slice()),
+        Bound::Included(last.as_slice()),
+    );
+    let found = read
+        .scan(CONSOLIDATION, range, Direction::Forward, |key, _| {
+            let bucket = || {
+                let mut reader = KeyReader::new(key);
+                reader.u8()?;
+                reader.u8()?;
+                reader.u8()?;
+                let bucket = reader.i64()?;
+                reader.finish()?;
+                Ok(bucket)
+            };
+            ControlFlow::Break(bucket().context(IndexKeySnafu { key }))
+        })
+        .context(ScanIndexSnafu)?;
+    found.transpose()
+}
+
+/// Takes the L0 chunk `listed` of an expired extent out of the index, with its bucket's
+/// crowding mark: nothing merges in an expired extent, so cleanup needs neither.
+pub(crate) fn forget_l0(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    listed: &Listed,
+) -> Result<(), StorageError> {
+    let bucket = listed.entry.key_range.0;
+    let key = l0_key(stream, bucket, listed.entry.rows, listed.chunk);
+    batch.delete(CONSOLIDATION, key.as_slice())?;
+    batch.delete(CONSOLIDATION, crowded_key(stream, bucket).as_slice())
+}
+
+/// The entry of one chunk, or `None` when the manifest does not list it.
+pub(crate) fn read_entry(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extent: i64,
+    chunk: ChunkId,
+) -> Result<Option<ChunkEntry>, ManifestError> {
+    let key = chunk_key(stream, extent, chunk);
+    let entry = read
+        .get(MANIFEST, key.as_slice(), |value| value.map(decode))
+        .context(ReadEntrySnafu)?;
+    entry.transpose().map_err(|problem| {
+        InvalidChunkSnafu {
+            chunk: chunk.0,
+            problem,
+        }
+        .build()
+    })
+}
+
+/// The progress of the consolidation of `extent`, or `None` before its first round.
+pub(crate) fn read_progress(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extent: i64,
+) -> Result<Option<Progress>, ManifestError> {
+    let key = progress_key(stream, extent);
+    let progress = read
+        .get(CONSOLIDATION, key.as_slice(), |value| value.map(decode))
+        .context(ReadProgressSnafu)?;
+    progress
+        .transpose()
+        .map_err(|problem| InvalidProgressSnafu { extent, problem }.build())
+}
+
+/// Records the progress of the consolidation of `extent`, or clears it with `None`.
+pub(crate) fn write_progress(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+    progress: Option<Progress>,
+) -> Result<(), StorageError> {
+    let key = progress_key(stream, extent);
+    match progress {
+        Some(progress) => batch.put(CONSOLIDATION, key.as_slice(), &encode(&progress)),
+        None => batch.delete(CONSOLIDATION, key.as_slice()),
+    }
+}
+
+/// Moves the consolidation cursor of `stream` to `extent`. The cursor never moves back, and
+/// the planner only consolidates an extent after the cursor it read, so a cursor already at or
+/// past `extent` here is a damaged record.
+pub(crate) fn set_consolidated(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+) -> Result<(), ManifestError> {
+    let mut record = read_stream(&*batch, stream)?;
+    ensure!(
+        record.consolidated.is_none_or(|cursor| extent > cursor),
+        CursorAheadSnafu {
+            stream,
+            extent,
+            cursor: record.consolidated
+        }
+    );
+    record.consolidated = Some(extent);
+    write_stream(batch, stream, &record)
+}
+
+/// A replacement of chunks of one extent by others, staged in one transaction: the
+/// replacement rule of §4.3 makes the round that deletes a chunk write every valid row of it
+/// into the new chunks in that same transaction. It writes the new chunks' entries and
+/// deletes the old chunks as the round goes, counting them, and [`finish`](Self::finish)
+/// applies the counts to the extent's record once, and through it to the stream's count of
+/// bytes ([`replace_extent`]).
+///
+/// The L0 index follows the chunks: an L0 chunk of a tier enters it when added and leaves it
+/// when removed. Removing does not clear a crowding mark; the round sets each touched
+/// bucket's afresh with [`mark_crowding`] once its chunks are in place.
+#[derive(Debug)]
+pub(crate) struct Replacement {
+    stream: StreamRef,
+    extent: i64,
+    /// The chunks removed and added, and their bytes. The sums saturate: a saturated sum
+    /// cannot be taken off or added to a record's count, so `finish` reports it as damage.
+    removed: (u64, u64),
+    added: (u64, u64),
+}
+
+impl Replacement {
+    pub(crate) fn new(stream: StreamRef, extent: i64) -> Self {
+        Self {
+            stream,
+            extent,
+            removed: (0, 0),
+            added: (0, 0),
+        }
+    }
+
+    /// Records a chunk the round wrote: its entry, and its place in the L0 index when it is an
+    /// `l0` chunk of a tier.
+    pub(crate) fn add(
+        &mut self,
+        batch: &mut impl StorageWrite,
+        chunk: ChunkId,
+        entry: &ChunkEntry,
+        l0: bool,
+    ) -> Result<(), ManifestError> {
+        let stream = self.stream;
+        put_entry(batch, stream, self.extent, chunk, entry)
+            .context(WriteChunkEntrySnafu { chunk: chunk.0 })?;
+        if l0 && let StreamRef::Tier(_) = stream {
+            index_l0(batch, stream, entry, chunk).context(WriteIndexSnafu)?;
+        }
+        self.added = (self.added.0 + 1, self.added.1.saturating_add(entry.bytes));
+        Ok(())
+    }
+
+    /// Deletes a chunk the round replaced: its fragments, its entry, and its place in the L0
+    /// index when it is an `l0` chunk of a tier.
+    pub(crate) fn remove(
+        &mut self,
+        batch: &mut impl StorageWrite,
+        listed: &Listed,
+        l0: bool,
+    ) -> Result<(), ManifestError> {
+        let (stream, chunk) = (self.stream, listed.chunk);
+        batch
+            .delete_chunk(chunk)
+            .context(DeleteChunkSnafu { chunk: chunk.0 })?;
+        remove_chunk(batch, stream, listed.extent, chunk)
+            .context(DeleteChunkSnafu { chunk: chunk.0 })?;
+        if l0 && let StreamRef::Tier(_) = stream {
+            let key = l0_key(stream, listed.entry.key_range.0, listed.entry.rows, chunk);
+            batch
+                .delete(CONSOLIDATION, key.as_slice())
+                .context(WriteIndexSnafu)?;
+        }
+        self.removed = (
+            self.removed.0 + 1,
+            self.removed.1.saturating_add(listed.entry.bytes),
+        );
+        Ok(())
+    }
+
+    /// Applies the counts to the record of the extent, which has to count every chunk removed.
+    pub(crate) fn finish(self, batch: &mut impl StorageWrite) -> Result<(), ManifestError> {
+        let Self {
+            stream,
+            extent,
+            removed,
+            added,
+        } = self;
+        let old = read_extent(&*batch, stream, extent)?;
+        let replaced =
+            |count: u64, (minus, plus): (u64, u64)| count.checked_sub(minus)?.checked_add(plus);
+        let record = (|| {
+            Some(ExtentRecord {
+                chunks: replaced(old.chunks, (removed.0, added.0))?,
+                chunk_bytes: replaced(old.chunk_bytes, (removed.1, added.1))?,
+                ..old
+            })
+        })()
+        .context(ReplacedCountsSnafu { stream, extent })?;
+        replace_extent(batch, stream, extent, &old, &record)
+    }
 }
 
 /// Removes a chunk's entry. Its fragments go with
@@ -515,6 +914,35 @@ pub enum ManifestError {
     #[snafu(display("the byte count of {stream:?} disagrees with its extents"))]
     StreamBytes { stream: StreamRef },
 
+    #[snafu(display("failed to read the entry of a chunk"))]
+    ReadEntry { source: StorageError },
+
+    #[snafu(display("failed to write the entry of chunk {chunk}"))]
+    WriteChunkEntry { chunk: u64, source: StorageError },
+
+    #[snafu(display("failed to delete chunk {chunk}"))]
+    DeleteChunk { chunk: u64, source: StorageError },
+
+    #[snafu(display("failed to scan consolidation's index"))]
+    ScanIndex { source: StorageError },
+
+    #[snafu(display("failed to write consolidation's index"))]
+    WriteIndex { source: StorageError },
+
+    #[snafu(display("key {key:02x?} of consolidation's index is malformed"))]
+    IndexKey { key: Box<[u8]>, source: KeyError },
+
+    #[snafu(display("failed to read the consolidation progress of an extent"))]
+    ReadProgress { source: StorageError },
+
+    #[snafu(display("the consolidation progress of extent {extent} is invalid: {problem:?}"))]
+    InvalidProgress { extent: i64, problem: RecordProblem },
+
+    /// The record of an extent counts fewer chunks or bytes than a replacement removed
+    /// there, or the counts would pass `u64::MAX`: the record or an entry is damaged.
+    #[snafu(display("the record of extent {extent} of {stream:?} cannot count a replacement"))]
+    ReplacedCounts { stream: StreamRef, extent: i64 },
+
     /// Expiring `extent` would move the stream's watermark back: the stream's record is
     /// damaged.
     #[snafu(display("{stream:?} expired up to {watermark:?}, not before extent {extent}"))]
@@ -522,6 +950,15 @@ pub enum ManifestError {
         stream: StreamRef,
         extent: i64,
         watermark: Option<i64>,
+    },
+
+    /// Consolidating `extent` would move the stream's consolidation cursor back: the stream's
+    /// record is damaged.
+    #[snafu(display("{stream:?} is consolidated up to {cursor:?}, not before extent {extent}"))]
+    CursorAhead {
+        stream: StreamRef,
+        extent: i64,
+        cursor: Option<i64>,
     },
 }
 
@@ -533,13 +970,24 @@ impl ManifestError {
             | Self::ScanExtents { source }
             | Self::WriteExtent { source }
             | Self::ReadStream { source }
-            | Self::WriteStream { source } => source.kind(),
-            Self::ChunkKey { source, .. } | Self::ExtentKey { source, .. } => source.kind(),
+            | Self::WriteStream { source }
+            | Self::ReadEntry { source }
+            | Self::WriteChunkEntry { source, .. }
+            | Self::DeleteChunk { source, .. }
+            | Self::ScanIndex { source }
+            | Self::WriteIndex { source }
+            | Self::ReadProgress { source } => source.kind(),
+            Self::ChunkKey { source, .. }
+            | Self::ExtentKey { source, .. }
+            | Self::IndexKey { source, .. } => source.kind(),
             Self::InvalidChunk { .. }
             | Self::InvalidExtent { .. }
             | Self::InvalidStream { .. }
             | Self::StreamBytes { .. }
-            | Self::WatermarkAhead { .. } => ErrorKind::Corrupted,
+            | Self::InvalidProgress { .. }
+            | Self::ReplacedCounts { .. }
+            | Self::WatermarkAhead { .. }
+            | Self::CursorAhead { .. } => ErrorKind::Corrupted,
         }
     }
 }
@@ -591,9 +1039,26 @@ mod tests {
         let stream = StreamRecord {
             expired: Some(-2),
             bytes: 300,
+            consolidated: Some(5),
         };
-        assert_eq!(encode(&stream), [1, 1, 3, 0xac, 0x02]);
-        assert_eq!(encode(&StreamRecord::default()), [1, 0, 0]);
+        assert_eq!(encode(&stream), [1, 1, 3, 0xac, 0x02, 1, 10]);
+        assert_eq!(encode(&StreamRecord::default()), [1, 0, 0, 0]);
+        assert_eq!(encode(&Progress { last: 300 }), [1, 0xac, 0x02]);
+        assert_eq!(
+            l0_key(tier, -1, 2, ChunkId(3)).as_slice(),
+            [
+                0, 1, 0, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 2, 0, 0, 0, 0, 0,
+                0, 0, 3
+            ]
+        );
+        assert_eq!(
+            crowded_key(tier, 0).as_slice(),
+            [0, 1, 1, 0x80, 0, 0, 0, 0, 0, 0, 0]
+        );
+        assert_eq!(
+            progress_key(tier, 0).as_slice(),
+            [0, 1, 2, 0x80, 0, 0, 0, 0, 0, 0, 0]
+        );
         assert_eq!(tier.key().as_slice(), [0, 1]);
         assert_eq!(events.key().as_slice(), [1, 2]);
     }
@@ -678,7 +1143,11 @@ mod tests {
         replace_extent(&mut batch, tier, 2, &empty, &record(30, 7)).unwrap();
         replace_extent(&mut batch, tier, 4, &empty, &record(0, 9)).unwrap();
         replace_extent(&mut batch, other, 1, &empty, &record(1_000, 0)).unwrap();
-        let counted = |expired, bytes| StreamRecord { expired, bytes };
+        let counted = |expired, bytes| StreamRecord {
+            expired,
+            bytes,
+            consolidated: None,
+        };
         assert_eq!(stream(&batch), counted(None, 146));
         assert_eq!(read_extent(&batch, tier, 1).unwrap(), record(100, 0));
 
@@ -716,34 +1185,6 @@ mod tests {
             }
         ));
         assert_eq!(error.kind(), ErrorKind::Corrupted);
-    }
-
-    /// A watermark at or past the extent retention expires is a damaged record, since the
-    /// planner read the same one: the call fails `Corrupted`, without a panic, and leaves the
-    /// record as it was.
-    #[test]
-    fn expiring_at_or_below_the_watermark_is_corrupted() {
-        let storage = MemoryDisk::new().open().unwrap();
-        let tier = StreamRef::Tier(TierId(0));
-        let mut batch = storage.batch().unwrap();
-        expire(&mut batch, tier, 5).unwrap();
-        let record = read_stream(&batch, tier).unwrap();
-        for extent in [4, 5] {
-            let error = expire(&mut batch, tier, extent).unwrap_err();
-            assert!(
-                matches!(
-                    error,
-                    ManifestError::WatermarkAhead {
-                        extent: found,
-                        watermark: Some(5),
-                        ..
-                    } if found == extent
-                ),
-                "{error:?}"
-            );
-            assert_eq!(error.kind(), ErrorKind::Corrupted);
-        }
-        assert_eq!(read_stream(&batch, tier).unwrap(), record);
     }
 
     // The retained keys start where the extent after the watermark does, clamped at the ends
@@ -904,6 +1345,63 @@ mod tests {
             })
             .unwrap();
         assert!(!stored);
+    }
+
+    /// A watermark at or past the extent retention expires is a damaged record, since the
+    /// planner read the same one: the call fails `Corrupted`, without a panic, and leaves the
+    /// record as it was.
+    #[test]
+    fn expiring_at_or_below_the_watermark_is_corrupted() {
+        let storage = MemoryDisk::new().open().unwrap();
+        let tier = StreamRef::Tier(TierId(0));
+        let mut batch = storage.batch().unwrap();
+        expire(&mut batch, tier, 5).unwrap();
+        let record = read_stream(&batch, tier).unwrap();
+        for extent in [4, 5] {
+            let error = expire(&mut batch, tier, extent).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    ManifestError::WatermarkAhead {
+                        extent: found,
+                        watermark: Some(5),
+                        ..
+                    } if found == extent
+                ),
+                "{error:?}"
+            );
+            assert_eq!(error.kind(), ErrorKind::Corrupted);
+        }
+        assert_eq!(read_stream(&batch, tier).unwrap(), record);
+    }
+
+    /// A consolidation cursor at or past the extent a round consolidated is a damaged record,
+    /// like a watermark that would move back.
+    #[test]
+    fn moving_the_cursor_back_is_corrupted() {
+        let storage = MemoryDisk::new().open().unwrap();
+        let tier = StreamRef::Tier(TierId(0));
+        let mut batch = storage.batch().unwrap();
+        set_consolidated(&mut batch, tier, 7).unwrap();
+        let record = read_stream(&batch, tier).unwrap();
+        for extent in [6, 7] {
+            let error = set_consolidated(&mut batch, tier, extent).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    ManifestError::CursorAhead {
+                        extent: found,
+                        cursor: Some(7),
+                        ..
+                    } if found == extent
+                ),
+                "{error:?}"
+            );
+            assert_eq!(error.kind(), ErrorKind::Corrupted);
+        }
+        assert_eq!(read_stream(&batch, tier).unwrap(), record);
+        set_consolidated(&mut batch, tier, 8).unwrap();
+        assert_eq!(read_stream(&batch, tier).unwrap().consolidated, Some(8));
     }
 
     #[test]

@@ -1363,7 +1363,7 @@ fn an_append_batch_holds_what_its_memory_counts_and_never_grows() {
 /// A traffic-like schema whose `closed` stream has the columns of §11.1: the close time as
 /// the key, the start and first-seen times, upload and download, the combination, the
 /// connection id, and the target a fold left out.
-fn traffic_schema() -> Schema {
+pub(crate) fn traffic_schema() -> Schema {
     let column = |name, ty, nullable| ColumnSpec { name, ty, nullable };
     let schema = Schema {
         version: 1,

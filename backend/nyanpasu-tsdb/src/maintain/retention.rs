@@ -8,8 +8,10 @@
 //!    unexpired extent, so the expired extents are exactly those up to the watermark, which
 //!    is their expired mark too (`layout::manifest`), and the byte count leaves them out.
 //! 2. **Clean up**: delete at most `cleanup_chunks` chunks of a stream's expired extents,
-//!    their fragments and manifest entries, and each extent's record once it is empty. A crash
-//!    between rounds leaves the watermark and the remaining chunks to the next call.
+//!    their fragments and manifest entries, and each extent's record once it is empty, with
+//!    what consolidation keeps of them: an L0 chunk's place in the index and its bucket's
+//!    crowding mark, and an emptied extent's progress (`layout::manifest`). A crash between
+//!    rounds leaves the watermark and the remaining chunks to the next call.
 //!
 //! Byte caps come from byte accounting, not file sizes: the stream record counts the bytes of
 //! the extents after the watermark, which every change to an extent record and every expiry
@@ -28,6 +30,7 @@ use super::{Changed, Context, Maintain, Maintained, Round};
 use crate::{
     ErrorKind, ExtentSpec, Retention, StreamId, TierId, Timestamp,
     budget::BudgetExceeded,
+    chunk::format::ChunkKind,
     head::{
         Expiring,
         journal::{DeletePrefixError, JournalKey, delete_prefix},
@@ -207,6 +210,7 @@ pub(super) fn expire(
         head: head.without(expiring),
         staging,
         journal_removed: deleted,
+        next_chunk: None,
         done: Maintained {
             expired: 1,
             ..Maintained::default()
@@ -254,6 +258,12 @@ pub(super) fn cleanup(
                 .context(DeleteFragmentsSnafu { chunk: chunk.0 })?;
             manifest::remove_chunk(batch, stream, listed.extent, chunk)
                 .context(RemoveChunkSnafu { chunk: chunk.0 })?;
+            if let StreamRef::Tier(_) = stream
+                && listed.entry.kind != ChunkKind::Consolidated as u8
+            {
+                manifest::forget_l0(batch, stream, listed)
+                    .context(RemoveChunkSnafu { chunk: chunk.0 })?;
+            }
             match &mut emptying {
                 Some((extent, chunks, bytes)) if *extent == listed.extent => {
                     *chunks += 1;
@@ -285,6 +295,7 @@ pub(super) fn cleanup(
             .try_reserve("staging", 0)
             .expect("nothing fits any budget"),
         journal_removed: 0,
+        next_chunk: None,
         done: Maintained {
             cleanups: 1,
             chunks_deleted: deleted as u64,
@@ -314,7 +325,13 @@ fn settle(
         ..old
     };
     manifest::replace_extent(batch, stream, extent, &old, &record)
-        .context(WriteExtentSnafu { extent })
+        .context(WriteExtentSnafu { extent })?;
+    // An emptied extent's record goes, and with it what consolidation knew of it.
+    if record == ExtentRecord::default() {
+        manifest::write_progress(batch, stream, extent, None)
+            .context(ClearProgressSnafu { extent })?;
+    }
+    Ok(())
 }
 
 /// A retention round, or planning one, failed.
@@ -371,6 +388,9 @@ pub enum RetentionError {
     #[snafu(display("failed to remove chunk {chunk} from the manifest"))]
     RemoveChunk { chunk: u64, source: StorageError },
 
+    #[snafu(display("failed to clear the consolidation progress of extent {extent}"))]
+    ClearProgress { extent: i64, source: StorageError },
+
     /// The record of an extent counts fewer chunks or bytes than the manifest lists.
     #[snafu(display("the record of extent {extent} counts fewer {counter:?} than its chunks"))]
     ExtentCount { extent: i64, counter: ExtentCounter },
@@ -391,9 +411,9 @@ impl RetentionError {
             | Self::ReadExtent { source, .. }
             | Self::WriteExtent { source, .. }
             | Self::ListChunks { source } => source.kind(),
-            Self::DeleteFragments { source, .. } | Self::RemoveChunk { source, .. } => {
-                source.kind()
-            }
+            Self::DeleteFragments { source, .. }
+            | Self::RemoveChunk { source, .. }
+            | Self::ClearProgress { source, .. } => source.kind(),
             Self::DeleteRecords { source } => source.kind(),
             Self::ReserveStaging { source } => source.kind(),
             Self::JournalMismatch { .. } | Self::ExtentCount { .. } | Self::NoChunks { .. } => {

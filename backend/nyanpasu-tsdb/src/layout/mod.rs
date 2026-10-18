@@ -30,6 +30,9 @@ pub(crate) const PIN_KEYS: Ns = Ns(8);
 /// What retention did to each tier and stream: stream → its deletion watermark (see
 /// `manifest`).
 pub(crate) const STREAMS: Ns = Ns(9);
-// 10 to 15 are free for the store's later namespaces.
+/// Consolidation's bookkeeping of the tiers: (stream, kind, key) → the L0 index, the
+/// crowding marks and the progress of an extent (see `manifest`).
+pub(crate) const CONSOLIDATION: Ns = Ns(10);
+// 11 to 15 are free for the store's later namespaces.
 /// The consumer's auxiliary state, written in the same transaction as its batch (§4.1).
 pub(crate) const AUX: Ns = Ns(16);

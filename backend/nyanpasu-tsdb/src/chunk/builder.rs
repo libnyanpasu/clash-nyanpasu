@@ -143,8 +143,9 @@ fn caps(buffers: &[(&'static str, usize, usize)]) -> usize {
 
 /// The most rows a block of a column of `layout` holds, which caps its row buffers: a fixed
 /// number for an integer column, and for a bytes column what its cheapest row allows, an
-/// empty or null value, or a value of a non-null fixed column's width.
-fn max_rows(layout: ColumnLayout) -> usize {
+/// empty or null value, or a value of a non-null fixed column's width. Consolidation sizes
+/// what reading a chunk's blocks holds by it (§7.4).
+pub(crate) fn max_rows(layout: ColumnLayout) -> usize {
     let row = match layout.ty {
         PhysicalType::Int { ty, .. } => int_raw_len(ty, layout.nullable),
         PhysicalType::Bytes(hint) => {

@@ -50,14 +50,14 @@ fn cap(bytes: u64) -> Retention {
 
 /// A policy for the test schema: its minute and hour tiers, then `closed`. `logs` is an epoch
 /// stream, kept whole.
-fn policy(minutes: Retention, hours: Retention, closed: Retention) -> RetentionPolicy {
+pub(super) fn policy(minutes: Retention, hours: Retention, closed: Retention) -> RetentionPolicy {
     RetentionPolicy {
         tiers: vec![minutes, hours],
         streams: vec![closed, Retention::default()],
     }
 }
 
-fn run<S: Storage>(
+pub(super) fn run<S: Storage>(
     tsdb: &mut Tsdb<S>,
     now: i64,
     retention: &RetentionPolicy,
@@ -74,7 +74,7 @@ fn run<S: Storage>(
 /// one extent record, since it expires the first extent with a record after the watermark, and
 /// a cleanup round deletes at least one chunk or fails. So a round that makes no progress
 /// fails a test with this budget instead of making it spin.
-fn work<S: Storage>(tsdb: &Tsdb<S>) -> usize {
+pub(super) fn work<S: Storage>(tsdb: &Tsdb<S>) -> usize {
     let snapshot = tsdb.storage().snapshot().unwrap();
     ALL_STREAMS
         .iter()
@@ -91,7 +91,11 @@ fn work<S: Storage>(tsdb: &Tsdb<S>) -> usize {
 }
 
 /// Maintains until nothing is left, in one call with a budget of all the [`work`] there is.
-fn finish<S: Storage>(tsdb: &mut Tsdb<S>, now: i64, retention: &RetentionPolicy) -> Maintained {
+pub(super) fn finish<S: Storage>(
+    tsdb: &mut Tsdb<S>,
+    now: i64,
+    retention: &RetentionPolicy,
+) -> Maintained {
     let rounds = work(tsdb);
     let done = run(tsdb, now, retention, rounds).unwrap();
     assert!(!done.more, "maintenance did not finish in {rounds} rounds");
@@ -105,7 +109,7 @@ fn watermark<S: Storage>(tsdb: &Tsdb<S>, stream: StreamRef) -> Option<i64> {
 /// Writes, as batch `batch_id` at `now`, a point of both tiers at each of `points` and a
 /// `closed` row at each of `rows`, all of `LABELS`, with `value` as the first field and as the
 /// upload.
-fn write<S: Storage>(
+pub(super) fn write<S: Storage>(
     tsdb: &mut Tsdb<S>,
     batch_id: u64,
     now: i64,
@@ -148,7 +152,7 @@ fn write<S: Storage>(
 }
 
 /// Writes nothing as batch `batch_id` at `now`: the commit only chunks what is due.
-fn flush<S: Storage>(tsdb: &mut Tsdb<S>, batch_id: u64, now: i64) {
+pub(super) fn flush<S: Storage>(tsdb: &mut Tsdb<S>, batch_id: u64, now: i64) {
     write(tsdb, batch_id, now, &[], &[], 0);
 }
 
@@ -172,11 +176,11 @@ fn write_day<S: Storage>(tsdb: &mut Tsdb<S>, day: i64) {
     assert_eq!(written.late, 0);
 }
 
-fn range(start: i64, end: i64) -> TimeRange {
+pub(super) fn range(start: i64, end: i64) -> TimeRange {
     TimeRange::new(Timestamp(start), Timestamp(end)).unwrap()
 }
 
-fn all() -> TimeRange {
+pub(super) fn all() -> TimeRange {
     range(i64::MIN, i64::MAX)
 }
 
@@ -262,14 +266,14 @@ fn leftovers<S: Storage>(tsdb: &Tsdb<S>, stream: StreamRef, expired: i64) -> (us
 }
 
 /// The chunks the manifest lists for `stream`.
-fn chunk_count<S: Storage>(tsdb: &Tsdb<S>, stream: StreamRef) -> usize {
+pub(super) fn chunk_count<S: Storage>(tsdb: &Tsdb<S>, stream: StreamRef) -> usize {
     let snapshot = tsdb.storage().snapshot().unwrap();
     manifest::stream_chunks(&snapshot, stream).unwrap().len()
 }
 
 /// Checks that every extent record counts exactly the chunks the manifest lists in its extent
 /// and the journal records of its extent, and that no extent without a record holds any.
-fn check_accounting<S: Storage>(tsdb: &Tsdb<S>) {
+pub(super) fn check_accounting<S: Storage>(tsdb: &Tsdb<S>) {
     let snapshot = tsdb.storage().snapshot().unwrap();
     let grids = &tsdb.shape().grids;
     let mut counted: BTreeMap<(StreamRef, i64), ExtentRecord> = BTreeMap::new();
@@ -317,7 +321,7 @@ fn check_accounting<S: Storage>(tsdb: &Tsdb<S>) {
 }
 
 /// Checks that the owner holds nothing a round reserved, and no pending version.
-fn check_settled<S: Storage>(tsdb: &Tsdb<S>) {
+pub(super) fn check_settled<S: Storage>(tsdb: &Tsdb<S>) {
     assert_eq!(tsdb.staging_reserved(), 0);
     assert_eq!(tsdb.head_reserved(), tsdb.current().head.bytes());
     assert!(tsdb.registry().pending().is_none());
@@ -338,7 +342,9 @@ fn age_expires_whole_extents_and_cleanup_deletes_their_chunks() {
     assert_eq!(chunk_count(&tsdb, EVENTS), 5);
     let before = tsdb.current().publication;
 
-    // Three days back from day 6: days 0 to 2 end by then, day 3 does not.
+    // Three days back from day 6: days 0 to 2 end by then, day 3 does not. Consolidation
+    // then takes the quiet extents left: the six hours of the minute tier that hold a point,
+    // and days 3 and 4 of the hour tier, a chunk each.
     let retention = policy(Retention::default(), age(72), age(72));
     let done = finish(&mut tsdb, 6 * DAY_MS, &retention);
     assert_eq!(
@@ -347,11 +353,15 @@ fn age_expires_whole_extents_and_cleanup_deletes_their_chunks() {
             expired: 6,
             cleanups: 2,
             chunks_deleted: 6,
-            more: false
+            consolidations: 8,
+            merges: 0,
+            chunks_rewritten: 8,
+            chunks_built: 8,
+            more: false,
         }
     );
     // A round is a publication.
-    assert_eq!(tsdb.current().publication, before + 8);
+    assert_eq!(tsdb.current().publication, before + 16);
     check_settled(&tsdb);
     check_accounting(&tsdb);
 
@@ -474,7 +484,9 @@ fn each_round_is_bounded_and_a_call_stops_at_its_budget() {
         }
     }
     // Days 0 and 1 of both streams expire, then three rounds take the hour tier's six chunks,
-    // and one the two `closed` chunks.
+    // and one the two `closed` chunks. Consolidation comes last: twelve rounds take the
+    // minute tier's hours, a chunk each, and one day 2 of the hour tier, three chunks into one.
+    // Day 3 ends at `now`, so it is not quiet yet.
     let expired = Maintained {
         expired: 1,
         more: true,
@@ -486,16 +498,18 @@ fn each_round_is_bounded_and_a_call_stops_at_its_budget() {
         more: true,
         ..Maintained::default()
     };
-    let last = Maintained {
-        more: false,
-        ..cleaned
+    let consolidated = |rewritten, more| Maintained {
+        consolidations: 1,
+        chunks_rewritten: rewritten,
+        chunks_built: 1,
+        more,
+        ..Maintained::default()
     };
-    assert_eq!(
-        calls,
-        [
-            expired, expired, expired, expired, cleaned, cleaned, cleaned, last
-        ]
-    );
+    let mut expected = vec![expired; 4];
+    expected.extend([cleaned; 4]);
+    expected.extend([consolidated(1, true); 12]);
+    expected.push(consolidated(3, false));
+    assert_eq!(calls, expected);
     assert_eq!(leftovers(&tsdb, HOURS, 1), (0, 0));
     assert_eq!(leftovers(&tsdb, EVENTS, 1), (0, 0));
     check_accounting(&tsdb);
@@ -1135,9 +1149,9 @@ fn a_round_failing_after_staged_changes_changes_nothing() {
 
 /// A read view that counts what it reads: each value it gets, each entry a scan visits, and
 /// each fragment.
-struct Tally<'r, R> {
-    read: &'r R,
-    reads: Cell<usize>,
+pub(super) struct Tally<'r, R> {
+    pub(super) read: &'r R,
+    pub(super) reads: Cell<usize>,
 }
 
 impl<R: StorageRead> StorageRead for Tally<'_, R> {
@@ -1201,11 +1215,16 @@ fn planning_reads(days: i64, retention: &RetentionPolicy) -> (usize, Option<Roun
 // extents the stream has (§9.1): a backlog of N extents takes N rounds, not N² reads.
 #[test]
 fn planning_reads_do_not_grow_with_the_extents() {
-    // A cap that everything fits: nothing to do, which planning says without counting.
+    // A cap that everything fits: nothing to expire, which planning says without counting,
+    // and the oldest quiet extent to consolidate (§4.3).
     let roomy = policy(cap(u64::MAX), cap(u64::MAX), cap(u64::MAX));
     let (few, round) = planning_reads(4, &roomy);
-    assert_eq!(round, None);
-    assert_eq!(planning_reads(32, &roomy), (few, None));
+    let consolidate = Some(Round::Consolidate {
+        tier: MINUTE,
+        extent: 1,
+    });
+    assert_eq!(round, consolidate);
+    assert_eq!(planning_reads(32, &roomy), (few, consolidate));
     // A cap that nothing fits: the first round of the backlog expires the oldest extent.
     let tight = policy(Retention::default(), Retention::default(), cap(0));
     let (few, round) = planning_reads(4, &tight);

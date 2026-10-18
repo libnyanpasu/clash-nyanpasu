@@ -654,6 +654,21 @@ impl Directory {
     }
 }
 
+/// The [`memory`](Directory::memory) of the directory of a chunk with these counts: parsing
+/// gives each list exactly its length, so a caller that knows the counts, as consolidation
+/// does from the manifest (§7.4), knows it before it opens the chunk.
+pub(crate) const fn directory_memory(
+    columns: usize,
+    blocks: usize,
+    large: usize,
+    fragments: usize,
+) -> u64 {
+    (columns * size_of::<ColumnDesc>()
+        + blocks * size_of::<BlockEntry>()
+        + large * size_of::<LargeEntry>()
+        + fragments * size_of::<u32>()) as u64
+}
+
 /// The bytes `buffer` holds.
 fn held<T>(buffer: &Vec<T>) -> usize {
     buffer.capacity() * size_of::<T>()

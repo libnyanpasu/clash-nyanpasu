@@ -172,7 +172,6 @@ impl<S: Storage> Tsdb<S> {
                 .context(maintain::OpenSnapshotSnafu)?;
             let current = self.shared.registry.current();
             let planned = maintain::plan(&snapshot, &self.round_context(&current), request)?;
-            drop(snapshot);
             let Some(round) = planned else {
                 return Ok(done);
             };
@@ -181,17 +180,23 @@ impl<S: Storage> Tsdb<S> {
                 return Ok(done);
             }
             left -= 1;
-            done.add(self.round(round, request.now)?);
+            done.add(self.round(&snapshot, round, request.now)?);
         }
     }
 
-    /// Stages `round` in a transaction of its own and publishes it.
-    fn round(&mut self, round: Round, now: Timestamp) -> Result<Maintained, MaintainError> {
+    /// Stages `round` in a transaction of its own and publishes it. `snapshot` holds the state
+    /// the transaction starts from, which the round reads the chunks it rewrites through.
+    fn round(
+        &mut self,
+        snapshot: &S::Snapshot,
+        round: Round,
+        now: Timestamp,
+    ) -> Result<Maintained, MaintainError> {
         let shared = &*self.shared;
         let batch = shared.storage.batch().context(maintain::BeginRoundSnafu)?;
         let mut batch = Counted::new(batch);
         let current = shared.registry.current();
-        let staged = maintain::stage(&mut batch, &self.round_context(&current), round)?;
+        let staged = maintain::stage(&mut batch, snapshot, &self.round_context(&current), round)?;
         let bytes = batch.written();
         let durability = self.durability_due(now);
         commit::publish(

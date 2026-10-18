@@ -68,6 +68,20 @@ The design says its code sketches show shape, not the final API. Where the code 
   has left beside the batch waits for a later commit; head pressure and the journal cap still
   chunk. Opening refuses a staging budget below the widest chunk build plus the plan of a
   full head, so every trigger can fire.
+- The owner maintains with `Tsdb::maintain(&Maintain { now, retention, rounds })`, which runs
+  at most `rounds` rounds, the most urgent first, and returns `Maintained`, with `more` when
+  work remains. Each round is one transaction published like a batch.
+- A stream's deletion watermark is the last extent retention expired, kept in a record of the
+  `STREAMS` namespace and read through the storage of the transaction or snapshot at hand,
+  not held in the version. Both of retention's limits expire the oldest extent first, so the
+  watermark is also the extents' expired mark: no extent carries a mark of its own. The same
+  record counts the bytes of the stream's unexpired extents (§9.1); `manifest::replace_extent`
+  and `manifest::expire` keep it exact, so a byte cap costs one read per stream.
+- Reads filter by the watermark alone, at the granularity of extents. §9.1 filters by the
+  later of the watermark and the current cutoff, but a query knows neither the policy nor the
+  clock, so an extent that straddles the cutoff stays wholly visible until it expires whole.
+- Only an extent with data expires. An empty extent before the cutoff gets no watermark of its
+  own, so a late write into it is kept until the next maintenance call expires it.
 
 ## Errors
 
@@ -156,6 +170,14 @@ Crates offering a stable hash trait were considered and rejected:
   long-running gateway with heavy label churn grows its heap until it restarts.
 - Stream epochs (§1, §8.3). Until the lifecycle defines them, every extent of an
   `ExtentSpec::Epoch` stream is epoch 0.
+- Retention of epoch streams. Expiring an epoch stream's one extent would drop every later
+  row of it too, and `max_age` cannot date sequence keys, so `maintain` refuses a policy that
+  limits one (`MaintainError::EpochRetention`).
+- Splitting event extents by size under a byte cap (§9.1, "单个区段不超过字节上限的八分之一").
+  A cap expires whole time windows, so a cap below one window's bytes expires the newest
+  window too, and its later rows are dropped as late until the next window starts.
+- The lossy-operation ring, `status()` and the logs of lossy maintenance rounds (§9.4).
+- Recycling the combinations and label values that only expired extents referred to (§5.3).
 - The incarnation counter kept outside the database for tmpfs hosts (§8.3), which only the
   untested tier-2 profile needs.
 - Consumers: traffic, core logs and job logs, and migration of the traffic database.

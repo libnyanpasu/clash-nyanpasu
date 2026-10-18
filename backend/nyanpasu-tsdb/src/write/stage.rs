@@ -6,6 +6,7 @@
 //! Staging:
 //!
 //! - checks the batch id against the one in the transaction's state record;
+//! - drops the points and rows that fall in an extent retention expired (§9.1);
 //! - resolves combinations and labels in a catalog draft, down the fold ladder (§5.2);
 //! - writes one journal record per (tier, bucket) and per (stream, extent), and counts each
 //!   in its extent's record;
@@ -29,9 +30,9 @@ use std::ops::ControlFlow;
 
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
-use super::{AuxOp, EventRow, Input, PinOp, Value, Written};
+use super::{AuxOp, EventRow, Input, PinOp, SeriesPoint, Value, Written};
 use crate::{
-    ColumnType, ErrorKind, EventStreamSpec, LabelId, Profile, Schema, SeriesSpec, StreamId,
+    ColumnType, ErrorKind, EventStreamSpec, LabelId, Profile, Schema, SeriesSpec, StreamId, TierId,
     Timestamp,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::{CatalogDraft, PinError, ResolveError, ResolvedCombo},
@@ -43,7 +44,7 @@ use crate::{
     },
     layout::{
         AUX, JOURNAL,
-        manifest::{StreamRef, event_extent},
+        manifest::{ManifestError, StreamRef, event_extent, read_watermark},
         meta::{MetaError, StateRecord, read_state, write_state},
     },
     storage::{
@@ -109,6 +110,7 @@ pub(crate) fn stage(
         publication: 0,
         folded: 0,
         label_overflows: 0,
+        late: 0,
     };
     let mut staging = context
         .staging_budget
@@ -118,12 +120,14 @@ pub(crate) fn stage(
     let mut journal = Journal {
         next_seq: state.next_journal_seq,
         bytes: 0,
+        watermarks: Watermarks::read(&*batch, context.schema, input, &mut staging)?,
     };
     let series = stage_series(
         batch,
         &mut draft,
         context,
         input,
+        &journal.watermarks,
         &mut written,
         &mut staging,
     )?;
@@ -141,7 +145,11 @@ pub(crate) fn stage(
     let Journal {
         next_seq,
         bytes: batch_bytes,
+        watermarks,
     } = journal;
+    let read = watermarks.bytes();
+    drop(watermarks);
+    staging.shrink(read);
     let update = HeadUpdate { series, events };
     let journal_bytes = state
         .journal_bytes
@@ -228,15 +236,17 @@ pub(crate) fn stage(
     })
 }
 
-/// Resolves every series point's combination and sums the points per (tier, bucket), with
-/// what merging each source's deltas into the current head costs. The points are put in
-/// (source, combination) order by their indices, and each source's deltas are allocated at
-/// exactly their combinations: every allocation is reserved in `staging` first.
+/// Resolves the combination of every series point that is not late, and sums those points
+/// per (tier, bucket), with what merging each source's deltas into the current head costs.
+/// The points are put in (source, combination) order by their indices, and each source's
+/// deltas are allocated at exactly their combinations: every allocation is reserved in
+/// `staging` first.
 fn stage_series(
     batch: &mut impl StorageWrite,
     draft: &mut CatalogDraft,
     context: &Context<'_>,
     input: &Input<'_>,
+    watermarks: &Watermarks,
     written: &mut Written,
     staging: &mut Reservation,
 ) -> Result<Vec<SeriesAdded>, StageError> {
@@ -245,16 +255,24 @@ fn stage_series(
         return Ok(Vec::new());
     }
     let fields = context.shape.fields;
-    // Each point's combination, and the points' order.
+    // Each point's combination, and the order of the points kept.
     let scratch = (2 * points * size_of::<u32>()) as u64;
     staging.try_grow(scratch).context(ReserveStagingSnafu)?;
     let mut combos = Vec::with_capacity(points);
+    let mut order = Vec::with_capacity(points);
     for (index, point) in input.series.iter().enumerate() {
+        if watermarks.late_point(context.shape, point) {
+            written.late += 1;
+            // Never read: the point is left out of the order.
+            combos.push(0);
+            continue;
+        }
         let resolved = draft
             .resolve_combo(batch, point.labels)
             .context(ResolveSeriesSnafu { point: index })?;
         written.folded += u64::from(resolved.fold.is_some());
         combos.push(resolved.id);
+        order.push(u32::try_from(index).expect("a batch holds fewer than 2^32 points"));
     }
     let source_of = |index: u32| {
         let point = &input.series[index as usize];
@@ -266,8 +284,6 @@ fn stage_series(
         }
     };
     let combo_of = |index: u32| combos[index as usize];
-    let points = u32::try_from(points).expect("a batch holds fewer than 2^32 points");
-    let mut order: Vec<u32> = (0..points).collect();
     order.sort_unstable_by_key(|&index| (source_of(index), combo_of(index)));
     let same_source = |a: &u32, b: &u32| source_of(*a) == source_of(*b);
     let sources = order.chunk_by(same_source).count();
@@ -503,6 +519,8 @@ struct Journal {
     next_seq: u64,
     /// The bytes of the records, keys included.
     bytes: u64,
+    /// At or below them, a point or row is late, and has no record.
+    watermarks: Watermarks,
 }
 
 impl Journal {
@@ -538,10 +556,11 @@ impl Journal {
     }
 
     /// One record per (stream, extent), its rows sorted as chunks keep them (§8.3), so that
-    /// chunking merges records without decoding them whole. The rows are put in order by
-    /// their indices, then resolved in that order, and each record is encoded straight from
-    /// the batch, measured first, into a buffer of its exact length: no row is held decoded
-    /// beyond the one being written. Every allocation is reserved in `staging` first.
+    /// chunking merges records without decoding them whole. The rows that are not late are
+    /// put in order by their indices, then resolved in that order, and each record is encoded
+    /// straight from the batch, measured first, into a buffer of its exact length: no row is
+    /// held decoded beyond the one being written. Every allocation is reserved in `staging`
+    /// first.
     ///
     /// Returns each stream's new segments, which keep the records.
     fn events(
@@ -568,16 +587,18 @@ impl Journal {
                 row.seq,
             )
         };
-        // The order, each row's ids and one row's values.
-        let combos = (0..rows)
-            .filter(|&index| {
-                let row = &input.events[index];
-                series_labels(&schema.events[usize::from(row.stream.0)], row).is_some()
-            })
+        let late = |row: &EventRow<'_>| self.watermarks.late_row(schema, row);
+        // The order, each kept row's ids and one row's values.
+        let combos = input
+            .events
+            .iter()
+            .filter(|row| !late(row))
+            .filter(|row| series_labels(&schema.events[usize::from(row.stream.0)], row).is_some())
             .count();
         let labels: usize = input
             .events
             .iter()
+            .filter(|row| !late(row))
             .map(|row| label_values(&schema.events[usize::from(row.stream.0)], row).count())
             .sum();
         let widest = input
@@ -591,8 +612,14 @@ impl Journal {
             + labels * size_of::<u32>()
             + widest * size_of::<StoredValue<'_>>()) as u64;
         staging.try_grow(scratch).context(ReserveStagingSnafu)?;
-        let rows = u32::try_from(rows).expect("a batch holds fewer than 2^32 rows");
-        let mut order: Vec<u32> = (0..rows).collect();
+        let mut order = Vec::with_capacity(rows);
+        for (index, row) in input.events.iter().enumerate() {
+            if late(row) {
+                written.late += 1;
+            } else {
+                order.push(u32::try_from(index).expect("a batch holds fewer than 2^32 rows"));
+            }
+        }
         order.sort_unstable_by_key(|&index| place(index));
         let mut resolved = Resolved {
             combos: Vec::with_capacity(combos),
@@ -693,6 +720,77 @@ impl Journal {
     }
 }
 
+/// The deletion watermarks of the tiers and streams a batch writes to (§9.1). A point or row
+/// whose extent is at or below its stream's arrives after retention expired the extent: it
+/// is dropped and counted, so that no expired extent is rebuilt, and it resolves nothing in
+/// the catalog.
+struct Watermarks {
+    /// By tier id; empty when the batch has no series points.
+    tiers: Vec<Option<i64>>,
+    /// By stream id; empty when the batch has no event rows.
+    streams: Vec<Option<i64>>,
+}
+
+impl Watermarks {
+    /// Reads the watermarks of every tier when the batch has series points, and of every
+    /// stream when it has event rows, into lists reserved in `staging` first.
+    fn read(
+        batch: &impl StorageRead,
+        schema: &Schema,
+        input: &Input<'_>,
+        staging: &mut Reservation,
+    ) -> Result<Self, StageError> {
+        let tiers = match &schema.series {
+            Some(series) if !input.series.is_empty() => series.tiers.len(),
+            _ => 0,
+        };
+        let streams = if input.events.is_empty() {
+            0
+        } else {
+            schema.events.len()
+        };
+        staging
+            .try_grow(Self::bytes_for(tiers, streams))
+            .context(ReserveStagingSnafu)?;
+        let read = |stream| read_watermark(batch, stream).context(ReadWatermarkSnafu { stream });
+        let mut watermarks = Self {
+            tiers: Vec::with_capacity(tiers),
+            streams: Vec::with_capacity(streams),
+        };
+        for tier in 0..tiers {
+            let tier = TierId(u8::try_from(tier).expect("tier ids are u8"));
+            watermarks.tiers.push(read(StreamRef::Tier(tier))?);
+        }
+        for stream in 0..streams {
+            let stream = StreamId(u8::try_from(stream).expect("stream ids are u8"));
+            watermarks.streams.push(read(StreamRef::Events(stream))?);
+        }
+        Ok(watermarks)
+    }
+
+    /// The bytes [`read`](Self::read) reserved.
+    fn bytes(&self) -> u64 {
+        Self::bytes_for(self.tiers.capacity(), self.streams.capacity())
+    }
+
+    fn bytes_for(tiers: usize, streams: usize) -> u64 {
+        ((tiers + streams) * size_of::<Option<i64>>()) as u64
+    }
+
+    fn late_point(&self, shape: &Shape, point: &SeriesPoint<'_>) -> bool {
+        let tier = usize::from(point.tier.0);
+        let grid = shape.grids[tier];
+        let extent = grid.extent_of_bucket(grid.bucket().index_of(point.at));
+        self.tiers[tier].is_some_and(|expired| extent <= expired)
+    }
+
+    fn late_row(&self, schema: &Schema, row: &EventRow<'_>) -> bool {
+        let stream = usize::from(row.stream.0);
+        let extent = event_extent(&schema.events[stream], row.key);
+        self.streams[stream].is_some_and(|expired| extent <= expired)
+    }
+}
+
 /// A write batch that counts the bytes written into it: keys, values and fragments. The
 /// owner makes a commit durable early once enough bytes have accumulated (§7.4).
 pub(crate) struct Counted<W> {
@@ -785,6 +883,12 @@ pub enum StageError {
     #[snafu(display("batch {batch_id} is not after the last committed batch, {last}"))]
     StaleBatch { batch_id: u64, last: u64 },
 
+    #[snafu(display("failed to read the deletion watermark of {stream:?}"))]
+    ReadWatermark {
+        stream: StreamRef,
+        source: ManifestError,
+    },
+
     #[snafu(display("failed to resolve the combination of series point {point}"))]
     ResolveSeries { point: usize, source: ResolveError },
 
@@ -858,6 +962,7 @@ impl StageError {
             Self::StaleBatch { .. } | Self::AlreadyPinned { .. } | Self::NotPinned { .. } => {
                 ErrorKind::Local
             }
+            Self::ReadWatermark { source, .. } => source.kind(),
             Self::ResolveSeries { source, .. }
             | Self::ResolveEventSeries { source, .. }
             | Self::ResolveLabel { source, .. }
@@ -960,14 +1065,21 @@ mod tests {
             publication: 0,
             folded: 0,
             label_overflows: 0,
+            late: 0,
         };
         let mut staging = budget.try_reserve("staging", 0).unwrap();
+        // Nothing has expired.
+        let watermarks = Watermarks {
+            tiers: vec![None; 2],
+            streams: vec![None; 2],
+        };
 
         let added = stage_series(
             &mut batch,
             &mut draft,
             &context,
             &input,
+            &watermarks,
             &mut written,
             &mut staging,
         )
@@ -988,6 +1100,7 @@ mod tests {
         let mut journal = Journal {
             next_seq: 0,
             bytes: 0,
+            watermarks,
         };
         let held = staging.bytes();
         journal

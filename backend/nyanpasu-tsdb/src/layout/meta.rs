@@ -8,8 +8,9 @@
 //! Records use the encoding of `layout::record`; a value that does not decode is an error of
 //! kind `Corrupted`.
 //!
-//! Stream epochs, deletion watermarks, byte counters and the ring of lossy operations join
-//! the state as the modules that keep them arrive.
+//! Stream epochs, byte counters and the ring of lossy operations join the state as the
+//! modules that keep them arrive. Deletion watermarks are per stream, beside the extents
+//! (`manifest`).
 
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};

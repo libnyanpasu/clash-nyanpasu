@@ -158,6 +158,10 @@ pub struct Written {
     /// Event `Label` values stored as the overflow marker, because the catalog had no room
     /// for them.
     pub label_overflows: u64,
+    /// Series points and event rows dropped because retention had expired their extent: they
+    /// fall at or below their stream's deletion watermark (§9.1). An expired extent is never
+    /// rebuilt.
+    pub late: u64,
 }
 
 impl Input<'_> {

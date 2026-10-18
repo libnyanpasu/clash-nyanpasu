@@ -11,6 +11,10 @@
 //! - the head's accumulators of those buckets. The head is exactly the journal records that
 //!   no chunk holds (§4.2), so every delta counts once (§7.2).
 //!
+//! Buckets in an extent at or below the tier's deletion watermark are left out: retention
+//! expired them (§9.1), and cleanup may not have deleted their chunks yet. A range that
+//! starts before the watermark reports it was truncated (§9.4).
+//!
 //! # Skipping
 //!
 //! - A chunk is opened only when the manifest says its extent and buckets meet the range.
@@ -55,7 +59,7 @@ use super::{
     rows_of,
 };
 use crate::{
-    ErrorKind, LabelId, Snapshot, TierId, TimeRange,
+    ErrorKind, LabelId, Snapshot, TierId, TimeRange, Timestamp,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::Catalog,
     chunk::{
@@ -70,7 +74,7 @@ use crate::{
         int::IntValue,
     },
     head::{Head, SeriesSource},
-    layout::manifest::{self, Listed, ManifestError, StreamRef},
+    layout::manifest::{self, Listed, ManifestError, StreamRef, retained_from},
     schema::{MAX_DIMENSIONS, MAX_FIELDS},
     storage::{Direction, MAX_FRAGMENT_LEN, Storage, StorageRead},
     time::Grid,
@@ -157,8 +161,8 @@ pub enum KeyPart {
 pub struct SeriesGroups {
     lists: Vec<GroupList>,
     covered: TimeRange,
-    /// Retention watermarks do not exist yet, so this is always `false` (§9.4).
     truncated_by_retention: bool,
+    retention_watermark: Option<Timestamp>,
     folded: bool,
     /// The lists' bytes, returned to the query budget when the result is dropped.
     #[allow(
@@ -180,10 +184,16 @@ impl SeriesGroups {
         self.covered
     }
 
-    /// Whether retention deleted part of the range (§9.4). Retention watermarks do not exist
-    /// yet, so it is always `false`.
+    /// Whether the range starts before the tier's [retention
+    /// watermark](Self::retention_watermark), so that retention deleted part of it (§9.4).
     pub fn truncated_by_retention(&self) -> bool {
         self.truncated_by_retention
+    }
+
+    /// Where the tier's retained data starts: retention deleted every bucket before it, and
+    /// the groups leave them out (§9.1, §9.4). `None` while retention has deleted none.
+    pub fn retention_watermark(&self) -> Option<Timestamp> {
+        self.retention_watermark
     }
 
     /// Whether the scan met a folded combination in the range: one with the overflow marker,
@@ -419,6 +429,23 @@ impl<S: Storage> Snapshot<S> {
         }
         let grid = plan::tier_grid(tier);
         let buckets = plan::round(grid, query.range);
+        let expired = manifest::read_watermark(self.storage(), StreamRef::Tier(tier_id))
+            .context(ReadWatermarkSnafu)?;
+        // Only for the result: it saturates at the ends of the timeline.
+        let watermark = expired.map(|expired| retained_from(grid.extent(), expired));
+        // The buckets the scan reads: those of the range not in an expired extent, bounded in
+        // bucket numbers, which are exact where the watermark's timestamp saturates.
+        let mut live = buckets.numbers.clone();
+        if let Some(expired) = expired {
+            live.start = match first_retained_bucket(grid, expired) {
+                Some(first) => live.start.max(first).min(live.end),
+                None => live.end,
+            };
+        }
+        let read = Buckets {
+            numbers: live,
+            covered: buckets.covered,
+        };
 
         let budget = self.budget();
         let key_width = query.requests.iter().map(GroupRequest::width).max();
@@ -437,7 +464,7 @@ impl<S: Storage> Snapshot<S> {
             dimensions: &series.dimensions,
             requests: query.requests,
             fields: query.fields,
-            buckets: buckets.numbers.clone(),
+            buckets: read.numbers.clone(),
             layout: series_columns(fields),
             key: Vec::with_capacity(key_width.unwrap_or(0)),
             lists: query
@@ -455,7 +482,7 @@ impl<S: Storage> Snapshot<S> {
             column.index = FIRST_FIELD + field as u16;
         }
         if !query.requests.is_empty() {
-            scan.chunks(self.storage(), StreamRef::Tier(tier_id), grid, &buckets)?;
+            scan.chunks(self.storage(), StreamRef::Tier(tier_id), grid, &read)?;
             scan.head(&self.version().head, tier_id)?;
         }
         let Scan {
@@ -470,10 +497,25 @@ impl<S: Storage> Snapshot<S> {
         Ok(SeriesGroups {
             lists,
             covered: buckets.covered,
-            truncated_by_retention: false,
+            truncated_by_retention: watermark
+                .is_some_and(|watermark| query.range.start() < watermark),
+            retention_watermark: watermark,
             folded,
             held,
         })
+    }
+}
+
+/// The first bucket of `grid` after the extents up to `expired`, or `None` when no bucket
+/// number follows them. Computed in `i128`, where it is exact: a first bucket below
+/// `i64::MIN` means that every bucket number is retained.
+fn first_retained_bucket(grid: Grid, expired: i64) -> Option<i64> {
+    let per_extent = i128::from(grid.extent().millis() / grid.bucket().millis());
+    let first = (i128::from(expired) + 1) * per_extent;
+    match i64::try_from(first) {
+        Ok(first) => Some(first),
+        Err(_) if first < 0 => Some(i64::MIN),
+        Err(_) => None,
     }
 }
 
@@ -887,6 +929,9 @@ pub enum SeriesQueryError {
     #[snafu(display("request {request} reads {dimension:?}, which is not a series dimension"))]
     NotADimension { request: usize, dimension: LabelId },
 
+    #[snafu(display("failed to read the deletion watermark of the tier"))]
+    ReadWatermark { source: ManifestError },
+
     #[snafu(display("no room in the query budget to start the scan"))]
     ReserveScan { source: BudgetExceeded },
 
@@ -960,7 +1005,7 @@ impl SeriesQueryError {
             | Self::ReserveLists { source }
             | Self::ReserveBlock { source, .. }
             | Self::ReserveGroups { source, .. } => source.kind(),
-            Self::ListChunks { source } => source.kind(),
+            Self::ListChunks { source } | Self::ReadWatermark { source } => source.kind(),
             Self::OpenChunk { source, .. } | Self::ReadBlock { source, .. } => source.kind(),
             Self::ChunkColumns { .. }
             | Self::NullValues { .. }

@@ -27,6 +27,9 @@ pub(crate) const MANIFEST: Ns = Ns(6);
 pub(crate) const EXTENTS: Ns = Ns(7);
 /// The consumer's pin keys: pin key → the combination pinned under it (§5.3).
 pub(crate) const PIN_KEYS: Ns = Ns(8);
-// 9 to 15 are free for the store's later namespaces.
+/// What retention did to each tier and stream: stream → its deletion watermark (see
+/// `manifest`).
+pub(crate) const STREAMS: Ns = Ns(9);
+// 10 to 15 are free for the store's later namespaces.
 /// The consumer's auxiliary state, written in the same transaction as its batch (§4.1).
 pub(crate) const AUX: Ns = Ns(16);

@@ -4,6 +4,7 @@
 //! | ---------- | ----------------------------------------------------- | ---------------- |
 //! | `MANIFEST` | stream kind `u8`, stream `u8`, extent `i64`, chunk `u64` | [`ChunkEntry`]   |
 //! | `EXTENTS`  | stream kind `u8`, stream `u8`, extent `i64`            | [`ExtentRecord`] |
+//! | `STREAMS`  | stream kind `u8`, stream `u8`                          | [`StreamRecord`] |
 //!
 //! - The chunks of one extent are one key prefix, so consolidation and retention find and
 //!   delete them by extent; the extents of one stream sort by number, so a query of a key
@@ -16,17 +17,28 @@
 //!   its journal records, keys included. Every write and delete of a chunk or a journal
 //!   record updates it in the same transaction: retention accounts, it never measures files
 //!   (§9.1). An extent with neither chunks nor journal records has no record.
+//! - A stream record holds the stream's deletion watermark (§9.1): the last extent retention
+//!   expired. Both of retention's limits expire a stream's oldest extents first, so the
+//!   expired extents are exactly those up to the watermark, and the watermark is their
+//!   expired mark too. It is written in the transaction that expires an extent, and only
+//!   moves forward (§5.3 rule 3).
+//! - The stream record also counts the bytes of the extents after the watermark, so that a
+//!   byte cap is checked with one read (§9.1). Two functions keep it exact, in the
+//!   transaction of the change: [`replace_extent`], through which every change to an extent's
+//!   record goes, and [`expire`], which advances the watermark and takes out the bytes of the
+//!   extents it passes. An expired extent is no longer counted, although cleanup may not have
+//!   deleted its chunks yet. A stream without a record holds nothing and has expired nothing.
 //!
 //! Values use the record encoding of `layout::record`.
 
 use std::ops::{Bound, ControlFlow, RangeInclusive};
 
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu, ensure};
 use strum::FromRepr;
 
 use super::{
-    EXTENTS, MANIFEST,
+    EXTENTS, MANIFEST, STREAMS,
     keys::{KeyBuf, KeyError, KeyReader},
     record::{RecordProblem, decode, encode},
 };
@@ -110,6 +122,28 @@ impl ExtentRecord {
     fn is_empty(&self) -> bool {
         *self == Self::default()
     }
+
+    /// The bytes retention counts for the extent (§9.1): its chunks' and its journal
+    /// records'. `None` past `u64::MAX`, which only damage can cause.
+    pub(crate) fn bytes(&self) -> Option<u64> {
+        self.chunk_bytes.checked_add(self.journal_bytes)
+    }
+}
+
+/// What retention did to a stream, and what the stream holds (§9.1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct StreamRecord {
+    /// The deletion watermark: the last extent that expired, `None` while none has.
+    pub(crate) expired: Option<i64>,
+    /// The [bytes](ExtentRecord::bytes) of the extents after the watermark, together.
+    pub(crate) bytes: u64,
+}
+
+impl StreamRecord {
+    /// Whether `extent` lies after the watermark, so that its bytes are counted.
+    fn counts(&self, extent: i64) -> bool {
+        self.expired.is_none_or(|expired| extent > expired)
+    }
 }
 
 pub(crate) fn write_chunk(
@@ -124,6 +158,18 @@ pub(crate) fn write_chunk(
         chunk_key(stream, extent, chunk).as_slice(),
         &encode(entry),
     )
+}
+
+/// Removes a chunk's entry. Its fragments go with
+/// [`StorageWrite::delete_chunk`](crate::storage::StorageWrite::delete_chunk), in the same
+/// transaction.
+pub(crate) fn remove_chunk(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+    chunk: ChunkId,
+) -> Result<(), StorageError> {
+    batch.delete(MANIFEST, chunk_key(stream, extent, chunk).as_slice())
 }
 
 /// A chunk of the manifest, with its extent.
@@ -244,8 +290,33 @@ pub(crate) fn read_extent(
     }
 }
 
-/// Stores the record of an extent, or deletes it once the extent holds nothing.
-pub(crate) fn write_extent(
+/// Replaces `old`, the record of `extent` as this transaction read it, with `new`, or
+/// deletes it once the extent holds nothing. While the extent lies after the watermark, the
+/// difference of their bytes goes into the stream's count: every change to an extent's
+/// record goes through here, so the count stays exact.
+pub(crate) fn replace_extent(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+    old: &ExtentRecord,
+    new: &ExtentRecord,
+) -> Result<(), ManifestError> {
+    let mut record = read_stream(&*batch, stream)?;
+    if record.counts(extent) && old.bytes() != new.bytes() {
+        let counted = || {
+            record
+                .bytes
+                .checked_sub(old.bytes()?)?
+                .checked_add(new.bytes()?)
+        };
+        record.bytes = counted().context(StreamBytesSnafu { stream })?;
+        write_stream(batch, stream, &record)?;
+    }
+    write_extent(batch, stream, extent, new).context(WriteExtentSnafu)
+}
+
+/// Stores the record of an extent as it is, or deletes it once the extent holds nothing.
+fn write_extent(
     batch: &mut impl StorageWrite,
     stream: StreamRef,
     extent: i64,
@@ -256,6 +327,142 @@ pub(crate) fn write_extent(
         batch.delete(EXTENTS, key.as_slice())
     } else {
         batch.put(EXTENTS, key.as_slice(), &encode(record))
+    }
+}
+
+/// Stores the record of an extent as it is, leaving its stream's count alone: for a test
+/// that damages one.
+#[cfg(test)]
+pub(crate) fn put_extent(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+    record: &ExtentRecord,
+) -> Result<(), StorageError> {
+    write_extent(batch, stream, extent, record)
+}
+
+/// Calls `f` with every extent of `stream` in `extents` that has a record, and the record,
+/// in ascending order, without collecting them. `f` stops the scan by breaking with a value,
+/// which comes back out; a damaged key or record stops it with an error.
+pub(crate) fn scan_extents<B>(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extents: RangeInclusive<i64>,
+    mut f: impl FnMut(i64, ExtentRecord) -> ControlFlow<B>,
+) -> Result<Option<B>, ManifestError> {
+    let first = extent_key(stream, *extents.start());
+    let last = extent_key(stream, *extents.end());
+    let range = KeyRange::Between(
+        Bound::Included(first.as_slice()),
+        Bound::Included(last.as_slice()),
+    );
+    let broken = read
+        .scan(EXTENTS, range, Direction::Forward, |key, value| {
+            let extent = match extent_key_parts(key).context(ExtentKeySnafu { key }) {
+                Ok(extent) => extent,
+                Err(error) => return ControlFlow::Break(Err(error)),
+            };
+            match decode(value) {
+                Ok(record) => f(extent, record).map_break(Ok),
+                Err(problem) => ControlFlow::Break(InvalidExtentSnafu { extent, problem }.fail()),
+            }
+        })
+        .context(ScanExtentsSnafu)?;
+    broken.transpose()
+}
+
+/// The extent of an extent key.
+fn extent_key_parts(key: &[u8]) -> Result<i64, KeyError> {
+    let mut reader = KeyReader::new(key);
+    reader.u8()?;
+    reader.u8()?;
+    let extent = reader.i64()?;
+    reader.finish()?;
+    Ok(extent)
+}
+
+/// The record of `stream`; a stream without one holds nothing and has expired nothing.
+pub(crate) fn read_stream(
+    read: &impl StorageRead,
+    stream: StreamRef,
+) -> Result<StreamRecord, ManifestError> {
+    let record = read
+        .get(STREAMS, stream.key().as_slice(), |value| {
+            value.map(decode::<StreamRecord>)
+        })
+        .context(ReadStreamSnafu)?;
+    match record {
+        None => Ok(StreamRecord::default()),
+        Some(Ok(record)) => Ok(record),
+        Some(Err(problem)) => InvalidStreamSnafu { stream, problem }.fail(),
+    }
+}
+
+/// The deletion watermark of `stream`: the last extent retention expired, or `None` when it
+/// expired none.
+pub(crate) fn read_watermark(
+    read: &impl StorageRead,
+    stream: StreamRef,
+) -> Result<Option<i64>, ManifestError> {
+    Ok(read_stream(read, stream)?.expired)
+}
+
+fn write_stream(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    record: &StreamRecord,
+) -> Result<(), ManifestError> {
+    batch
+        .put(STREAMS, stream.key().as_slice(), &encode(record))
+        .context(WriteStreamSnafu)
+}
+
+/// Expires the extents of `stream` up to `extent`: advances the watermark to it, and takes
+/// the bytes of the extents it passes out of the stream's count (§9.1). A watermark never
+/// moves back (§5.3 rule 3), and the planner only expires an extent after the watermark it
+/// read, so a watermark already at or past `extent` here is a damaged record.
+pub(crate) fn expire(
+    batch: &mut impl StorageWrite,
+    stream: StreamRef,
+    extent: i64,
+) -> Result<(), ManifestError> {
+    let mut record = read_stream(&*batch, stream)?;
+    ensure!(
+        record.counts(extent),
+        WatermarkAheadSnafu {
+            stream,
+            extent,
+            watermark: record.expired
+        }
+    );
+    let first = record
+        .expired
+        .map_or(i64::MIN, |expired| expired.saturating_add(1));
+    let mut passed = Some(0u64);
+    scan_extents(&*batch, stream, first..=extent, |_, expiring| {
+        passed = passed
+            .zip(expiring.bytes())
+            .and_then(|(sum, bytes)| sum.checked_add(bytes));
+        ControlFlow::<()>::Continue(())
+    })?;
+    let left = passed.and_then(|passed| record.bytes.checked_sub(passed));
+    record.bytes = left.context(StreamBytesSnafu { stream })?;
+    record.expired = Some(extent);
+    write_stream(batch, stream, &record)
+}
+
+/// Where the extents of `width` after watermark `expired` begin: every key before it lies in
+/// an expired extent. Clamped to the timestamps an `i64` holds.
+pub(crate) fn retained_from(width: Span, expired: i64) -> Timestamp {
+    match expired
+        .checked_add(1)
+        .and_then(|first| width.start_of(first))
+    {
+        Some(start) => start,
+        // The first retained extent starts beyond an `i64`, on the side of its sign.
+        None if expired < 0 => Timestamp(i64::MIN),
+        None => Timestamp(i64::MAX),
     }
 }
 
@@ -278,14 +485,58 @@ pub enum ManifestError {
 
     #[snafu(display("the record of extent {extent} is invalid: {problem:?}"))]
     InvalidExtent { extent: i64, problem: RecordProblem },
+
+    #[snafu(display("failed to scan the extents of a stream"))]
+    ScanExtents { source: StorageError },
+
+    #[snafu(display("extent key {key:02x?} is malformed"))]
+    ExtentKey { key: Box<[u8]>, source: KeyError },
+
+    #[snafu(display("failed to write the record of an extent"))]
+    WriteExtent { source: StorageError },
+
+    #[snafu(display("failed to read the record of a stream"))]
+    ReadStream { source: StorageError },
+
+    #[snafu(display("the record of {stream:?} is invalid: {problem:?}"))]
+    InvalidStream {
+        stream: StreamRef,
+        problem: RecordProblem,
+    },
+
+    #[snafu(display("failed to write the record of a stream"))]
+    WriteStream { source: StorageError },
+
+    /// The count of a stream's bytes would leave its range, so it does not count what its
+    /// extents hold: the stream's record or an extent's is damaged.
+    #[snafu(display("the byte count of {stream:?} disagrees with its extents"))]
+    StreamBytes { stream: StreamRef },
+
+    /// Expiring `extent` would move the stream's watermark back: the stream's record is
+    /// damaged.
+    #[snafu(display("{stream:?} expired up to {watermark:?}, not before extent {extent}"))]
+    WatermarkAhead {
+        stream: StreamRef,
+        extent: i64,
+        watermark: Option<i64>,
+    },
 }
 
 impl ManifestError {
     pub fn kind(&self) -> ErrorKind {
         match self {
-            Self::ScanChunks { source } | Self::ReadExtent { source } => source.kind(),
-            Self::ChunkKey { source, .. } => source.kind(),
-            Self::InvalidChunk { .. } | Self::InvalidExtent { .. } => ErrorKind::Corrupted,
+            Self::ScanChunks { source }
+            | Self::ReadExtent { source }
+            | Self::ScanExtents { source }
+            | Self::WriteExtent { source }
+            | Self::ReadStream { source }
+            | Self::WriteStream { source } => source.kind(),
+            Self::ChunkKey { source, .. } | Self::ExtentKey { source, .. } => source.kind(),
+            Self::InvalidChunk { .. }
+            | Self::InvalidExtent { .. }
+            | Self::InvalidStream { .. }
+            | Self::StreamBytes { .. }
+            | Self::WatermarkAhead { .. } => ErrorKind::Corrupted,
         }
     }
 }
@@ -295,7 +546,10 @@ mod tests {
     use super::*;
     use crate::{
         chunk::format::ChunkKind,
-        storage::{Durability, Storage, memory::MemoryDisk},
+        storage::{
+            Durability, Storage,
+            memory::{MemoryBatch, MemoryDisk},
+        },
     };
 
     // Keys and records are stored, so their bytes must not change unnoticed.
@@ -327,6 +581,177 @@ mod tests {
             bytes: 900,
         };
         assert_eq!(encode(&entry), [1, 2, 0xac, 0x02, 3, 10, 7, 2, 0x84, 0x07]);
+        let stream = StreamRecord {
+            expired: Some(-2),
+            bytes: 300,
+        };
+        assert_eq!(encode(&stream), [1, 1, 3, 0xac, 0x02]);
+        assert_eq!(encode(&StreamRecord::default()), [1, 0, 0]);
+        assert_eq!(tier.key().as_slice(), [0, 1]);
+        assert_eq!(events.key().as_slice(), [1, 2]);
+    }
+
+    // A scan visits the records of its extents only, in order, and stops where `f` breaks.
+    #[test]
+    fn a_scan_of_extents_visits_their_records_in_order() {
+        let storage = MemoryDisk::new().open().unwrap();
+        let tier = StreamRef::Tier(TierId(0));
+        let other = StreamRef::Events(StreamId(0));
+        let record = |chunks| ExtentRecord {
+            chunks,
+            chunk_bytes: 10,
+            journal_bytes: 1,
+        };
+        let mut batch = storage.batch().unwrap();
+        for (stream, extent) in [(tier, -1), (tier, 3), (tier, 4), (other, 0)] {
+            put_extent(&mut batch, stream, extent, &record(extent as u64)).unwrap();
+        }
+        let visit = |extents: RangeInclusive<i64>| {
+            let mut seen = Vec::new();
+            let broken: Option<()> = scan_extents(&batch, tier, extents, |extent, record| {
+                seen.push((extent, record.chunks));
+                ControlFlow::Continue(())
+            })
+            .unwrap();
+            assert_eq!(broken, None);
+            seen
+        };
+        assert_eq!(visit(i64::MIN..=i64::MAX), [(-1, u64::MAX), (3, 3), (4, 4)]);
+        assert_eq!(visit(0..=3), [(3, 3)]);
+        assert_eq!(visit(5..=9), []);
+        let first = scan_extents(&batch, tier, 0..=i64::MAX, |extent, _| {
+            ControlFlow::Break(extent)
+        });
+        assert_eq!(first.unwrap(), Some(3));
+        assert_eq!(record(1).bytes(), Some(11));
+        let full = ExtentRecord {
+            chunk_bytes: u64::MAX,
+            ..record(1)
+        };
+        assert_eq!(full.bytes(), None);
+
+        batch
+            .put(EXTENTS, extent_key(tier, 5).as_slice(), &[1, 0x80])
+            .unwrap();
+        let error =
+            scan_extents(&batch, tier, 5..=5, |_, _| ControlFlow::<()>::Continue(())).unwrap_err();
+        assert!(matches!(
+            error,
+            ManifestError::InvalidExtent { extent: 5, .. }
+        ));
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+        let mut long = extent_key(tier, 6).as_slice().to_vec();
+        long.push(0);
+        batch.put(EXTENTS, &long, &encode(&record(1))).unwrap();
+        let error =
+            scan_extents(&batch, tier, 6..=7, |_, _| ControlFlow::<()>::Continue(())).unwrap_err();
+        assert!(matches!(error, ManifestError::ExtentKey { .. }));
+    }
+
+    // The stream's count follows every change to the record of an extent after the watermark,
+    // and expiring takes out the extents it passes; nothing at or below the watermark counts.
+    #[test]
+    fn the_stream_counts_the_bytes_of_its_unexpired_extents() {
+        let storage = MemoryDisk::new().open().unwrap();
+        let tier = StreamRef::Tier(TierId(0));
+        let other = StreamRef::Events(StreamId(0));
+        let record = |chunk_bytes, journal_bytes| ExtentRecord {
+            chunks: u64::from(chunk_bytes > 0),
+            chunk_bytes,
+            journal_bytes,
+        };
+        let empty = ExtentRecord::default();
+        let mut batch = storage.batch().unwrap();
+        let stream = |batch: &MemoryBatch<'_>| read_stream(batch, tier).unwrap();
+        assert_eq!(stream(&batch), StreamRecord::default());
+        assert_eq!(read_watermark(&batch, tier).unwrap(), None);
+
+        replace_extent(&mut batch, tier, 1, &empty, &record(0, 5)).unwrap();
+        replace_extent(&mut batch, tier, 1, &record(0, 5), &record(100, 0)).unwrap();
+        replace_extent(&mut batch, tier, 2, &empty, &record(30, 7)).unwrap();
+        replace_extent(&mut batch, tier, 4, &empty, &record(0, 9)).unwrap();
+        replace_extent(&mut batch, other, 1, &empty, &record(1_000, 0)).unwrap();
+        let counted = |expired, bytes| StreamRecord { expired, bytes };
+        assert_eq!(stream(&batch), counted(None, 146));
+        assert_eq!(read_extent(&batch, tier, 1).unwrap(), record(100, 0));
+
+        // Extents 1 and 2 expire: the count keeps extent 4 alone, and an extent without a
+        // record in between counts nothing.
+        expire(&mut batch, tier, 1).unwrap();
+        assert_eq!(stream(&batch), counted(Some(1), 46));
+        expire(&mut batch, tier, 3).unwrap();
+        assert_eq!(stream(&batch), counted(Some(3), 9));
+        assert_eq!(read_watermark(&batch, tier).unwrap(), Some(3));
+        // An expired extent's record changes without the count: cleanup emptying it.
+        replace_extent(&mut batch, tier, 2, &record(30, 7), &empty).unwrap();
+        assert_eq!(stream(&batch), counted(Some(3), 9));
+        assert_eq!(read_extent(&batch, tier, 2).unwrap(), empty);
+        replace_extent(&mut batch, tier, 4, &record(0, 9), &record(0, 2)).unwrap();
+        assert_eq!(stream(&batch), counted(Some(3), 2));
+        assert_eq!(read_stream(&batch, other).unwrap(), counted(None, 1_000));
+
+        // A count that disagrees with the extents is damage, not an underflow.
+        let error = replace_extent(&mut batch, tier, 5, &record(0, 3), &empty).unwrap_err();
+        assert!(matches!(error, ManifestError::StreamBytes { stream } if stream == tier));
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+        put_extent(&mut batch, tier, 6, &record(0, 3)).unwrap();
+        let error = expire(&mut batch, tier, 6).unwrap_err();
+        assert!(matches!(error, ManifestError::StreamBytes { .. }));
+        assert_eq!(stream(&batch), counted(Some(3), 2));
+
+        batch.put(STREAMS, tier.key().as_slice(), &[1]).unwrap();
+        let error = read_watermark(&batch, tier).unwrap_err();
+        assert!(matches!(
+            error,
+            ManifestError::InvalidStream {
+                stream: StreamRef::Tier(TierId(0)),
+                ..
+            }
+        ));
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+    }
+
+    /// A watermark at or past the extent retention expires is a damaged record, since the
+    /// planner read the same one: the call fails `Corrupted`, without a panic, and leaves the
+    /// record as it was.
+    #[test]
+    fn expiring_at_or_below_the_watermark_is_corrupted() {
+        let storage = MemoryDisk::new().open().unwrap();
+        let tier = StreamRef::Tier(TierId(0));
+        let mut batch = storage.batch().unwrap();
+        expire(&mut batch, tier, 5).unwrap();
+        let record = read_stream(&batch, tier).unwrap();
+        for extent in [4, 5] {
+            let error = expire(&mut batch, tier, extent).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    ManifestError::WatermarkAhead {
+                        extent: found,
+                        watermark: Some(5),
+                        ..
+                    } if found == extent
+                ),
+                "{error:?}"
+            );
+            assert_eq!(error.kind(), ErrorKind::Corrupted);
+        }
+        assert_eq!(read_stream(&batch, tier).unwrap(), record);
+    }
+
+    // The retained keys start where the extent after the watermark does, clamped at the ends
+    // of an `i64` on the side the overflow went.
+    #[test]
+    fn retained_keys_start_after_the_expired_extents() {
+        let day = Span::new(86_400_000).unwrap();
+        assert_eq!(retained_from(day, 0), Timestamp(86_400_000));
+        assert_eq!(retained_from(day, -1), Timestamp(0));
+        assert_eq!(retained_from(day, -2), Timestamp(-86_400_000));
+        assert_eq!(retained_from(day, i64::MAX), Timestamp(i64::MAX));
+        assert_eq!(retained_from(day, i64::MAX / 2), Timestamp(i64::MAX));
+        assert_eq!(retained_from(day, i64::MIN), Timestamp(i64::MIN));
+        let one = Span::new(1).unwrap();
+        assert_eq!(retained_from(one, i64::MAX - 1), Timestamp(i64::MAX));
     }
 
     // A scan visits exactly the chunks of its stream and extents, in either direction, and

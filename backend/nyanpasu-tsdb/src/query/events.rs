@@ -12,6 +12,11 @@
 //!   Only the first `limit` of them in scan order can reach the page, so they are selected and
 //!   sorted into one way.
 //!
+//! Keys in an extent at or below the stream's deletion watermark are left out: the range
+//! starts at the watermark at the earliest, since retention expired them (§9.1) and cleanup
+//! may not have deleted their chunks yet. A range that starts before it reports it was
+//! truncated (§9.4).
+//!
 //! The ways merge on their rows' rank: the order forward, and its bitwise complement backward,
 //! so one min-heap serves both directions, and the range, the cursor and the stats compare the
 //! same way.
@@ -51,7 +56,8 @@ use snafu::{IntoError, OptionExt, ResultExt, Snafu, ensure};
 
 use super::{LabelFilter, rows_of};
 use crate::{
-    ColumnType, ErrorKind, EventStreamSpec, LabelId, Schema, StreamId, TimeRange,
+    ColumnType, ErrorKind, EventStreamSpec, ExtentSpec, LabelId, Schema, StreamId, TimeRange,
+    Timestamp,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::Catalog,
     chunk::{
@@ -69,8 +75,9 @@ use crate::{
         events::EventBuffer,
         journal::{Identity, Rows, StoredRow, StoredValue},
     },
-    layout::manifest::{self, ManifestError, StreamRef, event_extent},
+    layout::manifest::{self, ManifestError, StreamRef, event_extent, retained_from},
     storage::{ChunkId, Direction, MAX_FRAGMENT_LEN, Storage, StorageRead},
+    time::Span,
     version::{Snapshot, Version},
     write::{ComboId, EventSeq},
 };
@@ -146,6 +153,8 @@ pub enum EventCondition<'a> {
 pub struct EventPage {
     events: Vec<Event>,
     cursor: Option<EventCursor>,
+    truncated_by_retention: bool,
+    retention_watermark: Option<Timestamp>,
     #[allow(
         dead_code,
         reason = "held for its Drop, which returns the events' bytes"
@@ -162,6 +171,19 @@ impl EventPage {
     /// fewer events than its limit reached the end of the range.
     pub fn cursor(&self) -> Option<EventCursor> {
         self.cursor
+    }
+
+    /// Whether the range starts before the stream's [retention
+    /// watermark](Self::retention_watermark), so that retention deleted part of it (§9.4).
+    pub fn truncated_by_retention(&self) -> bool {
+        self.truncated_by_retention
+    }
+
+    /// The first key the stream retains: retention deleted the events of every key before it,
+    /// and the scan leaves them out (§9.1, §9.4). `None` while retention has deleted none,
+    /// which is always the case for an epoch stream.
+    pub fn retention_watermark(&self) -> Option<Timestamp> {
+        self.retention_watermark
     }
 }
 
@@ -321,6 +343,22 @@ pub(crate) fn scan<R: StorageRead>(
             }
         );
     }
+    let watermark = match spec.extent {
+        ExtentSpec::Window(width) => {
+            let width = Span::from_duration(width)
+                .expect("a valid schema's windows are positive whole milliseconds");
+            manifest::read_watermark(storage, StreamRef::Events(stream))
+                .context(ReadWatermarkSnafu)?
+                .map(|expired| retained_from(width, expired))
+        }
+        // Retention does not expire an epoch stream's extents yet (`maintain`).
+        ExtentSpec::Epoch => None,
+    };
+    let truncated_by_retention = watermark.is_some_and(|watermark| query.range.start() < watermark);
+    let query = &EventQuery {
+        range: retained(query.range, watermark),
+        ..*query
+    };
     let reservation = budget
         .try_reserve("event scan", 0)
         .context(ReservePageSnafu)?;
@@ -328,6 +366,8 @@ pub(crate) fn scan<R: StorageRead>(
         return Ok(EventPage {
             events: Vec::new(),
             cursor: None,
+            truncated_by_retention,
+            retention_watermark: watermark,
             held: reservation,
         });
     };
@@ -362,8 +402,19 @@ pub(crate) fn scan<R: StorageRead>(
     Ok(EventPage {
         events,
         cursor,
+        truncated_by_retention,
+        retention_watermark: watermark,
         held,
     })
+}
+
+/// The part of `range` from `watermark` on, empty when it all lies before.
+fn retained(range: TimeRange, watermark: Option<Timestamp>) -> TimeRange {
+    let Some(watermark) = watermark else {
+        return range;
+    };
+    let start = range.start().max(watermark).min(range.end());
+    TimeRange::new(start, range.end()).expect("the start is clamped to the end")
 }
 
 /// The bytes a page's events hold, which [`Scan::materialize`] reserved before it allocated
@@ -1645,6 +1696,9 @@ pub enum EventScanError {
     #[snafu(display("the cursor is of epoch {cursor}, but the stream is at epoch {current}"))]
     CursorExpired { cursor: u64, current: u64 },
 
+    #[snafu(display("failed to read the deletion watermark of the stream"))]
+    ReadWatermark { source: ManifestError },
+
     #[snafu(display("failed to list the stream's chunks"))]
     ListChunks { source: ManifestError },
 
@@ -1723,7 +1777,7 @@ impl EventScanError {
             | Self::CursorExpired { .. }
             // zstd fails only when it cannot allocate its context.
             | Self::CreateDecoder { .. } => ErrorKind::Local,
-            Self::ListChunks { source } => source.kind(),
+            Self::ListChunks { source } | Self::ReadWatermark { source } => source.kind(),
             Self::ReserveChunkList { source }
             | Self::AdmitScan { source, .. }
             | Self::ReserveRead { source, .. }

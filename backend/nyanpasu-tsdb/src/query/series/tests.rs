@@ -1343,3 +1343,28 @@ mod redb {
         assert_eq!(found, expected);
     }
 }
+
+// The first retained bucket is exact where the watermark's timestamp saturates: past the last
+// bucket number there is none, and below the first every bucket is retained.
+#[test]
+fn the_first_retained_bucket_is_exact_at_the_ends_of_the_timeline() {
+    let grid = |bucket, extent| {
+        crate::time::Grid::new(
+            crate::time::Span::new(bucket).unwrap(),
+            crate::time::Span::new(extent).unwrap(),
+        )
+        .unwrap()
+    };
+    let hours = grid(HOUR_MS, 24 * HOUR_MS);
+    assert_eq!(first_retained_bucket(hours, 0), Some(24));
+    assert_eq!(first_retained_bucket(hours, -2), Some(-24));
+    // The last extent: its saturated end would name its own last bucket.
+    let last = hours.extent_of_bucket(hours.bucket().index_of(Timestamp(i64::MAX)));
+    assert_eq!(first_retained_bucket(hours, last), Some((last + 1) * 24));
+    let millis = grid(1, 1);
+    assert_eq!(first_retained_bucket(millis, i64::MAX - 1), Some(i64::MAX));
+    assert_eq!(first_retained_bucket(millis, i64::MAX), None);
+    let pairs = grid(1, 2);
+    assert_eq!(first_retained_bucket(pairs, i64::MAX / 2), None);
+    assert_eq!(first_retained_bucket(pairs, i64::MIN), Some(i64::MIN));
+}

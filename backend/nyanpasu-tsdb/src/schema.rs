@@ -133,8 +133,9 @@ pub enum ColumnType {
     FoldedLabel(LabelId),
 }
 
-/// How an event stream divides into extents. A stream with a byte cap in its retention
-/// further splits each extent by size, at most an eighth of the cap each (§9.1).
+/// How an event stream divides into extents, the unit retention deletes. A byte cap in its
+/// retention expires whole windows: §9.1 splits each extent by size, at most an eighth of the
+/// cap, but that splitting is not in this implementation (DESIGN.md).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum ExtentSpec {
     /// Fixed time windows; for [`EventKey::Timestamp`] streams.

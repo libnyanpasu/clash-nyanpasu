@@ -10,8 +10,9 @@ use crate::{
     ErrorKind, Profile, Schema, Timestamp,
     budget::{MemoryBudget, Reservation},
     lifecycle::{self, OpenError},
+    maintain::{self, Maintain, MaintainError, Maintained, Round},
     storage::{Durability, Storage},
-    version::{CaptureError, Registry, Snapshot},
+    version::{CaptureError, Registry, Snapshot, Version},
     write::{
         BeginBatchSnafu, CommitSnafu, EventSeq, Input, InvalidInputSnafu, RecoveryNeededSnafu,
         StageSnafu, WriteError, Written,
@@ -118,16 +119,103 @@ impl<S: Storage> Tsdb<S> {
         let bytes = batch.written();
         let written = commit::commit(batch, staged, &shared.registry, &mut self.head, durability)
             .context(CommitSnafu)?;
+        self.committed(durability, input.now, bytes);
+        Ok(written)
+    }
+
+    /// Tracks a commit made at `now` that wrote `bytes`, for
+    /// [`durability_due`](Self::durability_due).
+    fn committed(&mut self, durability: Durability, now: Timestamp, bytes: u64) {
         match durability {
             Durability::Durable => {
-                self.last_durable = Some(input.now);
+                self.last_durable = Some(now);
                 self.since_durable = 0;
             }
             Durability::Consistent => {
                 self.since_durable = self.since_durable.saturating_add(bytes);
             }
         }
-        Ok(written)
+    }
+
+    /// Runs at most `request.rounds` maintenance rounds, the most urgent first, and stops
+    /// early when nothing is left (§9.2). Each round is one transaction, committed with
+    /// [`durability_due`](Self::durability_due) at `request.now` and published like a batch.
+    /// The rounds made before a failing one stay made.
+    ///
+    /// After an unknown outcome, or any error of kind [`ErrorKind::BackendFailed`], every
+    /// later write, maintenance call and capture fails until the owner recovers (§7.5).
+    pub fn maintain(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
+        ensure!(
+            !self.shared.registry.needs_recovery(),
+            maintain::RecoveryNeededSnafu
+        );
+        request.validate(&self.schema)?;
+        let maintained = self.rounds(request);
+        if let Err(error) = &maintained
+            && error.kind() == ErrorKind::BackendFailed
+        {
+            self.shared.registry.require_recovery();
+        }
+        maintained
+    }
+
+    fn rounds(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
+        let mut done = Maintained::default();
+        let mut left = request.rounds;
+        loop {
+            // The owner is the only writer, so a round's transaction starts from what the
+            // planner read.
+            let snapshot = self
+                .shared
+                .storage
+                .snapshot()
+                .context(maintain::OpenSnapshotSnafu)?;
+            let current = self.shared.registry.current();
+            let planned = maintain::plan(&snapshot, &self.round_context(&current), request)?;
+            drop(snapshot);
+            let Some(round) = planned else {
+                return Ok(done);
+            };
+            if left == 0 {
+                done.more = true;
+                return Ok(done);
+            }
+            left -= 1;
+            done.add(self.round(round, request.now)?);
+        }
+    }
+
+    /// Stages `round` in a transaction of its own and publishes it.
+    fn round(&mut self, round: Round, now: Timestamp) -> Result<Maintained, MaintainError> {
+        let shared = &*self.shared;
+        let batch = shared.storage.batch().context(maintain::BeginRoundSnafu)?;
+        let mut batch = Counted::new(batch);
+        let current = shared.registry.current();
+        let staged = maintain::stage(&mut batch, &self.round_context(&current), round)?;
+        let bytes = batch.written();
+        let durability = self.durability_due(now);
+        commit::publish(
+            batch,
+            staged.next,
+            &shared.registry,
+            &mut self.head,
+            durability,
+        )
+        .context(maintain::CommitSnafu)?;
+        self.committed(durability, now, bytes);
+        Ok(staged.done)
+    }
+
+    /// What planning and staging a round on `current` read besides storage.
+    pub(crate) fn round_context<'a>(&'a self, current: &'a Version) -> maintain::Context<'a> {
+        maintain::Context {
+            schema: &self.schema,
+            profile: &self.profile,
+            shape: &self.shape,
+            current,
+            head_budget: &self.head_budget,
+            staging_budget: &self.staging_budget,
+        }
     }
 
     /// The durability the next commit, made at `now`, needs to keep the profile's bounds
@@ -195,6 +283,10 @@ impl<S: Storage> Tsdb<S> {
 
     pub(crate) fn staging_reserved(&self) -> u64 {
         self.staging_budget.reserved()
+    }
+
+    pub(crate) fn staging_budget(&self) -> &MemoryBudget {
+        &self.staging_budget
     }
 
     pub(crate) fn shape(&self) -> &Shape {

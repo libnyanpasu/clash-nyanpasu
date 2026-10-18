@@ -1848,7 +1848,7 @@ fn a_damaged_extent_count_is_corrupted() {
             ExtentCounter::ChunkBytes => record.chunk_bytes = u64::MAX,
             ExtentCounter::JournalBytes => unreachable!(),
         }
-        manifest::write_extent(&mut damage, stream, 0, &record).unwrap();
+        manifest::put_extent(&mut damage, stream, 0, &record).unwrap();
         damage.commit(Durability::Durable).unwrap();
         // The quiet bucket's chunk adds to both counts.
         let error = tsdb

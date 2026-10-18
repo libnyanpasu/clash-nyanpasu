@@ -24,7 +24,7 @@ pub(crate) mod series;
 
 use std::{
     iter::Peekable,
-    ops::{Bound, ControlFlow},
+    ops::{Bound, ControlFlow, Range},
     sync::Arc,
 };
 
@@ -45,6 +45,7 @@ use crate::{
         meta::StateRecord,
     },
     storage::{Direction, KeyRange, StorageError, StorageRead},
+    time::Grid,
 };
 
 /// The size of an `Arc`'s header: its strong and weak counts, which precede the data.
@@ -58,6 +59,19 @@ type SeriesSlot = (SeriesSource, Arc<Accumulator>);
 pub(crate) struct SeriesSource {
     pub(crate) tier: TierId,
     pub(crate) bucket: i64,
+}
+
+/// An extent that retention expires (§9.1), whose journal records leave the head.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Expiring {
+    /// The sources of `tier` whose buckets lie in `extent` of `grid`.
+    Series {
+        tier: TierId,
+        extent: i64,
+        grid: Grid,
+    },
+    /// The records of `stream` in `extent`.
+    Events { stream: StreamId, extent: i64 },
 }
 
 /// What a commit adds to a head.
@@ -374,6 +388,105 @@ impl Head {
         self.series
             .iter()
             .map(|(source, accumulator)| (*source, &**accumulator))
+    }
+
+    /// The open sources of an expiring tier extent, with their accumulators.
+    pub(crate) fn series_in(
+        &self,
+        tier: TierId,
+        extent: i64,
+        grid: Grid,
+    ) -> impl Iterator<Item = (SeriesSource, &Accumulator)> {
+        self.series[self.series_run(tier, extent, grid)]
+            .iter()
+            .map(|(source, accumulator)| (*source, &**accumulator))
+    }
+
+    /// Where the sources of `extent` of `tier` lie in the spine: one run, since the sources
+    /// sort by tier and then bucket, and a bucket's extent grows with the bucket.
+    fn series_run(&self, tier: TierId, extent: i64, grid: Grid) -> Range<usize> {
+        let place = |(source, _): &SeriesSlot| (source.tier, grid.extent_of_bucket(source.bucket));
+        let start = self
+            .series
+            .partition_point(|slot| place(slot) < (tier, extent));
+        let end = self
+            .series
+            .partition_point(|slot| place(slot) <= (tier, extent));
+        start..end
+    }
+
+    /// The bytes of the journal records of `expiring` that the head holds, keys included.
+    pub(crate) fn expiring_journal_bytes(&self, expiring: Expiring) -> u64 {
+        match expiring {
+            Expiring::Series { tier, extent, grid } => self
+                .series_in(tier, extent, grid)
+                .map(|(_, accumulator)| accumulator.journal_bytes())
+                .sum(),
+            Expiring::Events { stream, extent } => self
+                .events(stream)
+                .of_extent(extent)
+                .map(Segment::journal_bytes)
+                .sum(),
+        }
+    }
+
+    /// The head without the journal records of `expiring`, sharing every source, buffer and
+    /// segment it keeps. Each spine it changes is allocated once, at its length:
+    /// [`without_bytes`](Self::without_bytes) is what it allocates.
+    pub(crate) fn without(&self, expiring: Expiring) -> Self {
+        match expiring {
+            Expiring::Series { tier, extent, grid } => {
+                let run = self.series_run(tier, extent, grid);
+                if run.is_empty() {
+                    return self.clone();
+                }
+                // Both halves are slices, so the chain has a known length, and the spine is
+                // allocated once (`Arc::from_iter` for a `TrustedLen` iterator).
+                let series = self.series[..run.start]
+                    .iter()
+                    .chain(&self.series[run.end..])
+                    .cloned()
+                    .collect();
+                Self::new(series, self.events.clone())
+            }
+            Expiring::Events { stream, extent } => {
+                if self.events(stream).of_extent(extent).next().is_none() {
+                    return self.clone();
+                }
+                let events = (0..self.events.len())
+                    .map(|index| {
+                        let buffer = &self.events[index];
+                        if index == usize::from(stream.0) {
+                            Arc::new(buffer.without(extent))
+                        } else {
+                            buffer.clone()
+                        }
+                    })
+                    .collect();
+                Self::new(self.series.clone(), events)
+            }
+        }
+    }
+
+    pub(crate) fn without_bytes(&self, expiring: Expiring) -> u64 {
+        match expiring {
+            Expiring::Series { tier, extent, grid } => {
+                let run = self.series_run(tier, extent, grid);
+                if run.is_empty() {
+                    0
+                } else {
+                    series_spine_bytes(self.series.len() - run.len())
+                }
+            }
+            Expiring::Events { stream, extent } => {
+                let buffer = self.events(stream);
+                if buffer.of_extent(extent).next().is_none() {
+                    0
+                } else {
+                    events_spine_bytes(self.events.len()) + buffer.without_bytes(extent)
+                }
+            }
+        }
     }
 
     /// The accumulator of `source`, if it is open.

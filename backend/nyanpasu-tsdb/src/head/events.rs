@@ -125,6 +125,34 @@ impl EventBuffer {
             + segments.len() as u64 * Segment::bytes_for(0)
     }
 
+    /// The buffer without the records of `extent`, which retention expired (§9.1), sharing
+    /// every other segment. Its list is allocated once, at its length:
+    /// [`without_bytes`](Self::without_bytes) is what it allocates.
+    pub(crate) fn without(&self, extent: i64) -> Self {
+        let kept = self.kept(extent).count();
+        let mut segments = Vec::with_capacity(kept);
+        segments.extend(self.kept(extent).cloned());
+        Self::from_segments(segments.into_boxed_slice())
+    }
+
+    pub(crate) fn without_bytes(&self, extent: i64) -> u64 {
+        Self::own_bytes(self.kept(extent).count())
+    }
+
+    fn kept(&self, extent: i64) -> impl Iterator<Item = &Arc<Segment>> {
+        self.segments
+            .iter()
+            .filter(move |segment| segment.extent != extent)
+    }
+
+    /// The segments of `extent`, in journal sequence order.
+    pub(crate) fn of_extent(&self, extent: i64) -> impl Iterator<Item = &Segment> {
+        self.segments
+            .iter()
+            .filter(move |segment| segment.extent == extent)
+            .map(|segment| &**segment)
+    }
+
     /// A buffer of `segments`, which are in journal sequence order.
     pub(crate) fn from_arcs(segments: Vec<Arc<Segment>>) -> Self {
         debug_assert!(segments.is_sorted_by_key(|segment| segment.seq));

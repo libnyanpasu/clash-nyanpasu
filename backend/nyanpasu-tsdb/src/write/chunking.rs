@@ -988,17 +988,19 @@ pub enum ExtentCounter {
     ChunkBytes,
 }
 
-/// Applies `change` to the record of `extent` in `batch`, which reads its own writes. Each
-/// change is written as it is made, so a commit holds nothing per extent it touches, however
-/// many, and the batch still publishes all of them at once. A stored count that the change
-/// would take below zero or past `u64::MAX` is damage.
+/// Applies `change` to the record of `extent` in `batch`, which reads its own writes, and
+/// through it to its stream's count of bytes ([`manifest::replace_extent`]). Each change is
+/// written as it is made, so a commit holds nothing per extent it touches, however many, and
+/// the batch still publishes all of them at once. A stored count that the change would take
+/// below zero or past `u64::MAX` is damage.
 pub(crate) fn change_extent(
     batch: &mut impl StorageWrite,
     stream: StreamRef,
     extent: i64,
     change: ExtentChange,
 ) -> Result<(), ChunkingError> {
-    let mut record = manifest::read_extent(&*batch, stream, extent).context(ReadExtentSnafu)?;
+    let old = manifest::read_extent(&*batch, stream, extent).context(ReadExtentSnafu)?;
+    let mut record = old;
     let counter = |counter| ExtentCountSnafu {
         stream,
         extent,
@@ -1028,7 +1030,7 @@ pub(crate) fn change_extent(
                 .context(counter(ExtentCounter::ChunkBytes))?;
         }
     }
-    manifest::write_extent(batch, stream, extent, &record).context(WriteExtentSnafu)
+    manifest::replace_extent(batch, stream, extent, &old, &record).context(WriteExtentSnafu)
 }
 
 /// What executing a plan leaves.
@@ -1994,7 +1996,7 @@ pub enum ChunkingError {
     },
 
     #[snafu(display("failed to write the record of an extent"))]
-    WriteExtent { source: StorageError },
+    WriteExtent { source: ManifestError },
 
     /// A chunk id or journal sequence would pass `u64::MAX`, which only damage can cause.
     #[snafu(display("a counter of the state record would overflow"))]
@@ -2004,7 +2006,9 @@ pub enum ChunkingError {
 impl ChunkingError {
     pub fn kind(&self) -> ErrorKind {
         match self {
-            Self::ReadManifest { source } | Self::ReadExtent { source } => source.kind(),
+            Self::ReadManifest { source }
+            | Self::ReadExtent { source }
+            | Self::WriteExtent { source } => source.kind(),
             Self::Plan { source } => source.kind(),
             Self::Build { source, .. } => source.kind(),
             Self::ParseJournalKey { source } => source.kind(),
@@ -2012,8 +2016,7 @@ impl ChunkingError {
             Self::WriteChunk { source, .. }
             | Self::ReadJournal { source }
             | Self::DeleteJournal { source }
-            | Self::WriteSummary { source, .. }
-            | Self::WriteExtent { source } => source.kind(),
+            | Self::WriteSummary { source, .. } => source.kind(),
             Self::JournalMismatch { .. }
             | Self::ExtentCount { .. }
             | Self::CounterOverflow

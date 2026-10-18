@@ -39,6 +39,7 @@ pub use budget::{BudgetExceeded, MemoryBudget, Reservation};
 pub use db::{Reader, Tsdb};
 pub use error::ErrorKind;
 pub use lifecycle::OpenError;
+pub use maintain::{Maintain, MaintainError, Maintained};
 pub use profile::{Profile, ProfileError};
 pub use query::{
     Event, EventCondition, EventCursor, EventFilter, EventPage, EventPredicate, EventQuery,

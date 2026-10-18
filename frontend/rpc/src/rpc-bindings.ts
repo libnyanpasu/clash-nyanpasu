@@ -280,6 +280,10 @@ export function createRpcClient(
       typedError<AppUpdateSnapshot, IpcError>(
         __RPC_INVOKE('get_app_update_state'),
       ),
+    getAppUpdateChangelog: (from: string, to: string) =>
+      typedError<AppUpdateChangelog, IpcError>(
+        __RPC_INVOKE('get_app_update_changelog', { from, to }),
+      ),
     getReleaseChannel: () =>
       typedError<ReleaseChannelInfo, IpcError>(
         __RPC_INVOKE('get_release_channel'),
@@ -685,6 +689,22 @@ export function createRpcClient(
 export type RpcClient = ReturnType<typeof createRpcClient>
 
 /* Types */
+export type AppUpdateChangelog = {
+  /**  Newest first. */
+  entries: AppUpdateChangelogEntry[]
+  /**  `None` when either version is a nightly build, which has no tag. */
+  compare_url: string | null
+}
+
+export type AppUpdateChangelogEntry = {
+  version: string
+  date: string | null
+  body: string
+  source: AppUpdateChangelogSource
+}
+
+export type AppUpdateChangelogSource = 'changelog' | 'release'
+
 export type AppUpdatePhase =
   | 'idle'
   | 'checking'

@@ -593,10 +593,12 @@ pub(crate) fn scan_run<B>(
 }
 
 /// Takes the chunk `listed` of an expired extent of event stream `stream` out of the indexes:
-/// an `l0` chunk's place in the L0 index and its run, and its extent's mark. Nothing merges
-/// in an expired extent. The runs of its consolidated chunks outlive them, since a run's key
-/// holds the run's bytes, which no chunk's entry does; cleanup takes them once the chunks are
-/// gone ([`forget_expired_runs`]).
+/// its place in the L0 index, which names nothing for a consolidated chunk and so goes
+/// whatever kind the entry records; an `l0` chunk's run; and its extent's mark. Nothing merges
+/// in an expired extent. The runs of consolidated chunks outlive them, since a run's key holds
+/// the run's bytes, which no chunk's entry does, and so does the run of an L0 chunk whose entry
+/// records another kind; cleanup takes them once the chunks are gone
+/// ([`forget_expired_runs`]).
 pub(crate) fn forget_event_chunk(
     batch: &mut impl StorageWrite,
     stream: StreamRef,
@@ -604,10 +606,10 @@ pub(crate) fn forget_event_chunk(
     l0: bool,
 ) -> Result<(), StorageError> {
     let extent = listed.extent;
+    let first = listed.entry.key_range.0;
+    let key = event_l0_key(stream, extent, first, listed.chunk);
+    batch.delete(CONSOLIDATION, key.as_slice())?;
     if l0 {
-        let first = listed.entry.key_range.0;
-        let key = event_l0_key(stream, extent, first, listed.chunk);
-        batch.delete(CONSOLIDATION, key.as_slice())?;
         let run = run_key(stream, extent, listed.entry.bytes, listed.chunk.0);
         batch.delete(CONSOLIDATION, run.as_slice())?;
     }
@@ -729,8 +731,10 @@ pub(crate) fn first_crowded(
     found.transpose()
 }
 
-/// Takes the L0 chunk `listed` of an expired extent out of the index, with its bucket's
-/// crowding mark: nothing merges in an expired extent, so cleanup needs neither.
+/// Takes the chunk `listed` of an expired extent out of the L0 index, with its first bucket's
+/// crowding mark: nothing merges in an expired extent, so cleanup needs neither. For a
+/// consolidated chunk the index key names nothing; the keys go whatever kind the entry
+/// records.
 pub(crate) fn forget_l0(
     batch: &mut impl StorageWrite,
     stream: StreamRef,
@@ -1073,9 +1077,15 @@ pub(crate) fn read_extent(
         .context(ReadExtentSnafu)?;
     match record {
         None => Ok(ExtentRecord::default()),
-        Some(Ok(record)) => Ok(record),
+        Some(Ok(record)) => nonempty_extent(extent, record),
         Some(Err(problem)) => InvalidExtentSnafu { extent, problem }.fail(),
     }
+}
+
+/// A stored extent record must hold something; an empty extent has no record.
+fn nonempty_extent(extent: i64, record: ExtentRecord) -> Result<ExtentRecord, ManifestError> {
+    ensure!(!record.is_empty(), EmptyExtentSnafu { extent });
+    Ok(record)
 }
 
 /// Replaces `old`, the record of `extent` as this transaction read it, with `new`, or
@@ -1151,9 +1161,12 @@ pub(crate) fn scan_extents<B>(
                 Ok(extent) => extent,
                 Err(error) => return ControlFlow::Break(Err(error)),
             };
-            match decode(value) {
+            match decode(value)
+                .map_err(|problem| InvalidExtentSnafu { extent, problem }.build())
+                .and_then(|record| nonempty_extent(extent, record))
+            {
                 Ok(record) => f(extent, record).map_break(Ok),
-                Err(problem) => ControlFlow::Break(InvalidExtentSnafu { extent, problem }.fail()),
+                Err(error) => ControlFlow::Break(Err(error)),
             }
         })
         .context(ScanExtentsSnafu)?;
@@ -1274,6 +1287,10 @@ pub enum ManifestError {
     #[snafu(display("the record of extent {extent} is invalid: {problem:?}"))]
     InvalidExtent { extent: i64, problem: RecordProblem },
 
+    /// An empty extent's record should have been deleted.
+    #[snafu(display("extent {extent} has a stored empty record"))]
+    EmptyExtent { extent: i64 },
+
     #[snafu(display("failed to scan the extents of a stream"))]
     ScanExtents { source: StorageError },
 
@@ -1379,6 +1396,7 @@ impl ManifestError {
             | Self::IndexKey { source, .. } => source.kind(),
             Self::InvalidChunk { .. }
             | Self::InvalidExtent { .. }
+            | Self::EmptyExtent { .. }
             | Self::InvalidStream { .. }
             | Self::StreamBytes { .. }
             | Self::InvalidProgress { .. }
@@ -1517,6 +1535,31 @@ mod tests {
         let error =
             scan_extents(&batch, tier, 6..=7, |_, _| ControlFlow::<()>::Continue(())).unwrap_err();
         assert!(matches!(error, ManifestError::ExtentKey { .. }));
+    }
+
+    /// Missing extent records mean empty, but a stored empty record is corruption in both
+    /// point reads and scans, before a scan hands it to its caller.
+    #[test]
+    fn a_stored_empty_extent_is_corrupted_where_read() {
+        let storage = MemoryDisk::new().open().unwrap();
+        let mut batch = storage.batch().unwrap();
+        let stream = StreamRef::Tier(TierId(0));
+        let empty = ExtentRecord::default();
+        assert_eq!(read_extent(&batch, stream, 3).unwrap(), empty);
+        batch
+            .put(EXTENTS, extent_key(stream, 3).as_slice(), &encode(&empty))
+            .unwrap();
+        let error = read_extent(&batch, stream, 3).unwrap_err();
+        assert!(matches!(error, ManifestError::EmptyExtent { extent: 3 }));
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+        let error = scan_extents(&batch, stream, 3..=3, |_, _| -> ControlFlow<()> {
+            panic!("a stored empty extent must not reach the callback");
+        })
+        .unwrap_err();
+        assert!(matches!(error, ManifestError::EmptyExtent { extent: 3 }));
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+        write_extent(&mut batch, stream, 3, &empty).unwrap();
+        assert_eq!(read_extent(&batch, stream, 3).unwrap(), empty);
     }
 
     // The stream's count follows every change to the record of an extent after the watermark,

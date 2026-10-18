@@ -33,7 +33,7 @@ use super::{Changed, Context, Maintain, Maintained, Round};
 use crate::{
     ErrorKind, ExtentSpec, Retention, StreamId, TierId, Timestamp,
     budget::BudgetExceeded,
-    chunk::format::ChunkKind,
+    chunk::{format::ChunkKind, reader::metadata_within_limits},
     head::{
         Expiring,
         journal::{DeletePrefixError, JournalKey, delete_prefix},
@@ -264,16 +264,21 @@ pub(super) fn cleanup(
         )
         .context(ListChunksSnafu)?;
         for listed in window[..taken].iter().flatten() {
+            // A chunk whose metadata is invalid fails the round, and the round's transaction
+            // with it, so what was deleted before it is not committed.
+            check_cleanup(context, stream, listed)?;
             let chunk = listed.chunk;
             batch
                 .delete_chunk(chunk)
                 .context(DeleteFragmentsSnafu { chunk: chunk.0 })?;
             manifest::remove_chunk(batch, stream, listed.extent, chunk)
                 .context(RemoveChunkSnafu { chunk: chunk.0 })?;
+            // An L0 chunk's index key and mark go with any chunk, whatever kind its entry
+            // records: for another chunk they name nothing, so a damaged kind leaves none of
+            // them behind. A run key it leaves goes with the expired runs below.
             let l0 = listed.entry.kind != ChunkKind::Consolidated as u8;
             match stream {
-                StreamRef::Tier(_) if l0 => manifest::forget_l0(batch, stream, listed),
-                StreamRef::Tier(_) => Ok(()),
+                StreamRef::Tier(_) => manifest::forget_l0(batch, stream, listed),
                 StreamRef::Events(_) => manifest::forget_event_chunk(batch, stream, listed, l0),
             }
             .context(RemoveChunkSnafu { chunk: chunk.0 })?;
@@ -324,6 +329,46 @@ pub(super) fn cleanup(
             ..Maintained::default()
         },
     })
+}
+
+/// Checks a cleanup input's format bounds and placement without reading its fragments. A
+/// series chunk uses bucket numbers; an event chunk uses keys in its stream's extent.
+fn check_cleanup(
+    context: &Context<'_>,
+    stream: StreamRef,
+    listed: &Listed,
+) -> Result<(), RetentionError> {
+    let entry = &listed.entry;
+    let (first, last) = entry.key_range;
+    let placed = match stream {
+        StreamRef::Tier(tier) => {
+            let grid = context.shape.grids[usize::from(tier.0)];
+            entry.rows as usize <= context.shape.series_chunk_rows
+                && grid.extent_of_bucket(first) == listed.extent
+                && grid.extent_of_bucket(last) == listed.extent
+                && (entry.kind == ChunkKind::Consolidated as u8 || first == last)
+        }
+        StreamRef::Events(stream) => {
+            let spec = &context.schema.events[usize::from(stream.0)];
+            manifest::event_extent(spec, first) == listed.extent
+                && manifest::event_extent(spec, last) == listed.extent
+        }
+    };
+    ensure!(
+        placed
+            && metadata_within_limits(
+                entry.kind,
+                entry.rows,
+                entry.key_range,
+                entry.bytes,
+                entry.fragment0,
+                entry.fragments,
+            ),
+        InvalidChunkSnafu {
+            chunk: listed.chunk.0
+        }
+    );
+    Ok(())
 }
 
 /// Takes `chunks` chunks of `bytes` bytes off the record of `extent`, which goes once the
@@ -405,6 +450,10 @@ pub enum RetentionError {
     #[snafu(display("failed to list the chunks of the expired extents"))]
     ListChunks { source: ManifestError },
 
+    /// A cleanup input's metadata is outside the chunk format or its stream's extent.
+    #[snafu(display("the metadata of cleanup chunk {chunk} is invalid"))]
+    InvalidChunk { chunk: u64 },
+
     #[snafu(display("failed to delete the fragments of chunk {chunk}"))]
     DeleteFragments { chunk: u64, source: StorageError },
 
@@ -451,9 +500,10 @@ impl RetentionError {
             | Self::ClearProgress { source, .. } => source.kind(),
             Self::DeleteRecords { source } => source.kind(),
             Self::ReserveStaging { source } => source.kind(),
-            Self::JournalMismatch { .. } | Self::ExtentCount { .. } | Self::NoChunks { .. } => {
-                ErrorKind::Corrupted
-            }
+            Self::JournalMismatch { .. }
+            | Self::InvalidChunk { .. }
+            | Self::ExtentCount { .. }
+            | Self::NoChunks { .. } => ErrorKind::Corrupted,
         }
     }
 }

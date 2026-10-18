@@ -13,7 +13,7 @@ use crate::{
     OpenError, Profile, Retention, RetentionPolicy, SeriesQuery, Tsdb,
     chunk::{
         FragmentSink,
-        format::{BLOCK_TARGET_LEN, MIN_FRAGMENT0_LEN},
+        format::{BLOCK_TARGET_LEN, MAX_FRAGMENTS, MIN_FRAGMENT0_LEN},
     },
     codec::compress::MIN_COMPRESSED_INPUT,
     db::tests::{HOUR, HOUR_MS, MINUTE, MINUTE_MS, dump_storage, open, open_with, schema},

@@ -73,10 +73,10 @@ use crate::{
         },
         error::{BuildError, ReadError},
         format::{
-            ChunkKind, MAX_CHUNK_LEN, MAX_FRAGMENTS, PhysicalType, directory_memory,
-            max_fragment0_len, open_memory,
+            ChunkKind, MAX_CHUNK_LEN, PhysicalType, directory_memory, max_fragment0_len,
+            open_memory,
         },
-        reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
+        reader::{ChunkReader, decode_memory, lent_memory, metadata_within_limits},
     },
     codec::{
         Codec, Encoding,
@@ -688,13 +688,15 @@ fn input(
             !is_l0(&entry) && buckets.contains(&first) && buckets.contains(&last)
         }
     };
-    // Everything a round sizes by the entry is within what a chunk can have (§6.5): a chunk
-    // has fragment 0 and a data fragment at least, and fragment 0 is part of its bytes.
     let sized = (1..=shape.series_chunk_rows).contains(&(entry.rows as usize))
-        && entry.bytes <= MAX_CHUNK_LEN
-        && (2..=MAX_FRAGMENTS).contains(&(entry.fragments as usize))
-        && check_recorded(entry.fragment0).is_ok()
-        && u64::from(entry.fragment0) < entry.bytes;
+        && metadata_within_limits(
+            entry.kind,
+            entry.rows,
+            entry.key_range,
+            entry.bytes,
+            entry.fragment0,
+            entry.fragments,
+        );
     ensure!(placed && sized, InvalidInputSnafu { chunk: chunk.0 });
     Ok(Listed {
         extent,

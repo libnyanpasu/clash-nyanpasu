@@ -119,7 +119,7 @@ use crate::{
             PhysicalType, directory_within, max_fragment0_len, open_memory,
         },
         plan::{RowCost, bytes_cost, fits, int_cost},
-        reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
+        reader::{ChunkReader, decode_memory, lent_memory, metadata_within_limits},
     },
     codec::{
         Codec, Encoding, MAX_INLINE_VALUE_LEN,
@@ -628,16 +628,15 @@ fn check_input(
                 && (!is_l0(entry) || (run.chunks == 1 && listed.chunk.0 == run.run))
         }
     };
-    // Everything a round sizes by the entry is within what a chunk can have (§6.5): a chunk
-    // has fragment 0 and a data fragment at least, and fragment 0 is part of its bytes.
     let extent = |key| events.width.index_of(Timestamp(key));
-    let sized = (1..=MAX_ROWS).contains(&(entry.rows as usize))
-        && entry.bytes <= MAX_CHUNK_LEN
-        && (2..=MAX_FRAGMENTS).contains(&(entry.fragments as usize))
-        && check_recorded(entry.fragment0).is_ok()
-        && u64::from(entry.fragment0) < entry.bytes
-        && first <= last
-        && extent(first) == listed.extent
+    let sized = metadata_within_limits(
+        entry.kind,
+        entry.rows,
+        entry.key_range,
+        entry.bytes,
+        entry.fragment0,
+        entry.fragments,
+    ) && extent(first) == listed.extent
         && extent(last) == listed.extent;
     ensure!(
         placed && sized,

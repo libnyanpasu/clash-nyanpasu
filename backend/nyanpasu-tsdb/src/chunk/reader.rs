@@ -26,8 +26,9 @@ use super::{
         ReserveDirectorySnafu,
     },
     format::{
-        BlockEntry, ChunkKind, ColumnDesc, Directory, FRAGMENT0_LENS, LargeEntry,
-        MAX_DATA_FRAGMENT_LEN, MAX_LARGE_VALUES, PhysicalType, open_memory,
+        BlockEntry, ChunkKind, ColumnDesc, Directory, FRAGMENT0_LENS, LargeEntry, MAX_CHUNK_LEN,
+        MAX_DATA_FRAGMENT_LEN, MAX_FRAGMENTS, MAX_LARGE_VALUES, MAX_ROWS, PhysicalType,
+        open_memory,
     },
 };
 use crate::{
@@ -60,6 +61,26 @@ pub(crate) fn check_recorded(fragment0: u32) -> Result<(), ReadError> {
         }
     );
     Ok(())
+}
+
+/// Whether recorded chunk metadata is within the format limits, without reading payloads or
+/// allocating. Callers check schema-specific row limits and placement separately, before
+/// sizing a read or deleting a chunk. This does not prove the fragments match the metadata.
+pub(crate) fn metadata_within_limits(
+    kind: u8,
+    rows: u32,
+    key_range: (i64, i64),
+    bytes: u64,
+    fragment0: u32,
+    fragments: u32,
+) -> bool {
+    ChunkKind::from_repr(kind).is_some()
+        && (1..=MAX_ROWS).contains(&(rows as usize))
+        && key_range.0 <= key_range.1
+        && bytes <= MAX_CHUNK_LEN
+        && (2..=MAX_FRAGMENTS).contains(&(fragments as usize))
+        && check_recorded(fragment0).is_ok()
+        && u64::from(fragment0) < bytes
 }
 
 /// What reading a block of `shape` of a column of `column` leaves the decoded block and the

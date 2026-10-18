@@ -920,3 +920,120 @@ fn fixed_children_are_admitted_before_construction_and_share_their_graphs_charge
     drop(graph);
     assert_eq!(budget.reserved(), 0);
 }
+
+/// Fixed rounds reuse retired immutable workspace without another root admission.
+#[test]
+fn a_round_reuses_retained_credit_and_refuses_allocations_past_its_plan() {
+    let budget = MemoryBudget::new(1024);
+    let account = MemoryAccount::planned(&budget, "round", MemoryPlan::bytes(64)).unwrap();
+    assert_eq!(account.round_live_bytes(), 0);
+    assert_eq!(account.peak_bytes(), 0);
+    // Immutable owners must preserve the existing directory and way descriptor layouts.
+    assert_eq!(size_of::<Reserved<()>>(), size_of::<Reservation>());
+    let child = account
+        .value("parse", MemoryPlan::bytes(64), || vec![0u8; 32])
+        .unwrap()
+        .retain_bytes(32);
+    assert_eq!(account.live_bytes(), 0);
+    assert_eq!(account.round_live_bytes(), 32);
+    assert_eq!(account.peak_bytes(), 64);
+    assert_eq!(budget.reserved(), 64);
+    let buffer = account.buffer::<u8>(32).unwrap();
+    assert_eq!(account.round_live_bytes(), 64);
+    assert!(account.buffer::<u8>(1).is_err());
+    let called = std::cell::Cell::new(false);
+    assert!(
+        account
+            .value("refused", MemoryPlan::bytes(1), || called.set(true))
+            .is_err()
+    );
+    assert!(!called.get());
+
+    assert_eq!(budget.reserved(), 64);
+    drop(child);
+    assert_eq!(account.round_live_bytes(), 32);
+    let replacement = account
+        .value("directory", MemoryPlan::bytes(32), || vec![0u8; 32])
+        .unwrap();
+    assert_eq!(account.round_live_bytes(), 64);
+    drop((buffer, replacement));
+    let all = account.buffer::<u8>(64).unwrap();
+    assert_eq!(budget.reserved(), 64);
+    drop(all);
+    drop(account);
+    assert_eq!(budget.reserved(), 0);
+}
+
+/// Publication owns root staging credit; round children keep their whole parent admission.
+#[test]
+fn retained_children_keep_their_round_and_publication_keeps_its_staging_budget() {
+    /// Checks that immutable retention does not capture the account's local Rc state.
+    fn sendable<T: Send + Sync>() {}
+    sendable::<Reserved<Vec<u8>>>();
+    let budget = MemoryBudget::new(64);
+    let account = MemoryAccount::new(&budget, "staging", MemoryPlan::bytes(64)).unwrap();
+    let child = account
+        .value("parse", MemoryPlan::bytes(64), || vec![0u8; 32])
+        .unwrap()
+        .retain_bytes(32);
+    let (payload, publication) = child.into_parts();
+    drop(account);
+    assert_eq!(publication.bytes(), 32);
+    assert_eq!(budget.reserved(), 32);
+    let mut staging = budget.try_reserve("staging", 0).unwrap();
+    staging.merge(publication);
+    assert_eq!(budget.reserved(), 32);
+    drop(payload);
+    drop(staging);
+    assert_eq!(budget.reserved(), 0);
+    let account = MemoryAccount::planned(&budget, "round", MemoryPlan::bytes(64)).unwrap();
+    let child = account
+        .value("parse", MemoryPlan::bytes(64), || vec![0u8; 32])
+        .unwrap()
+        .retain_bytes(32);
+    drop(account);
+    assert_eq!(child.charge_bytes(), 32);
+    assert_eq!(budget.reserved(), 64);
+    drop(child);
+    assert_eq!(budget.reserved(), 0);
+    let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let account = MemoryAccount::planned(&budget, "round", MemoryPlan::bytes(64)).unwrap();
+        let child = account
+            .value("child", MemoryPlan::bytes(32), || vec![0u8; 32])
+            .unwrap();
+        drop(account);
+        assert_eq!(budget.reserved(), 64);
+        let _child = child;
+        panic!("withdraw round");
+    }));
+    assert!(unwound.is_err());
+    assert_eq!(budget.reserved(), 0);
+}
+
+/// A fixed sub-budget shares one parent admission across splits, reuse and surviving children.
+#[test]
+fn a_sub_budget_holds_its_parent_until_its_last_owner_drops() {
+    let budget = MemoryBudget::new(128);
+    let parent = budget.try_reserve("round", 64).unwrap();
+    let round = MemoryBudget::within(parent);
+    assert_eq!((budget.reserved(), round.reserved()), (64, 0));
+    let mut first = round.try_reserve("first", 32).unwrap();
+    let second = round.try_reserve("second", 32).unwrap();
+    assert!(round.try_reserve("excess", 1).is_err());
+    let part = first.split(16);
+    first.merge(second);
+    assert_eq!((budget.reserved(), round.reserved()), (64, 64));
+    drop(part);
+    assert_eq!((budget.reserved(), round.reserved()), (64, 48));
+    let reused = round.try_reserve("reuse", 16).unwrap();
+    assert_eq!(budget.reserved(), 64);
+    drop((first, reused));
+    assert_eq!((budget.reserved(), round.reserved()), (64, 0));
+    let survivor = round.try_reserve("survivor", 64).unwrap();
+    let clone = round.clone();
+    drop(round);
+    drop(clone);
+    assert_eq!(budget.reserved(), 64);
+    drop(survivor);
+    assert_eq!(budget.reserved(), 0);
+}

@@ -49,13 +49,12 @@
 //!   once, however many inputs there are, as in the event scan.
 //!
 //! The inputs of one bucket are read together, a k-way merge; the buckets follow one another,
-//! so a round holds the inputs of one bucket at a time. Their reservations come out of a pool
-//! that is exactly the round's reservation: a chunk whose blocks need more than its entry
-//! allows is damaged.
+//! so a round holds the inputs of one bucket at a time. Chosen inputs become one account's
+//! allocation plan before any data-sized buffer is allocated. Dropped buffers and directories
+//! return credit to that same account; execution cannot exceed the admitted plan.
 
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
     ops::{ControlFlow, Range, RangeInclusive},
 };
 
@@ -68,7 +67,7 @@ use crate::chunk::reader::decode_memory;
 use super::{Changed, Context, Maintained, Round};
 use crate::{
     ErrorKind, TierId, Timestamp,
-    budget::{BudgetExceeded, MemoryAccount, MemoryBudget, Reservation},
+    budget::{BudgetExceeded, BudgetVec, MemoryAccount, MemoryPlan},
     chunk::{
         BatchSink, FragmentSource, StoredChunk,
         builder::{
@@ -237,11 +236,6 @@ pub(super) fn consolidate(
     let profile = context.profile;
     let layout = series_columns(shape.fields);
     let fixed = fixed_memory(&layout, true);
-    // Held until every buffer of the round is gone: locals drop in reverse order.
-    let mut reservation = context
-        .staging_budget
-        .try_reserve("consolidation", fixed)
-        .context(ReserveSnafu)?;
     let buckets = buckets_of(shape.grids[usize::from(tier.0)], extent)
         .expect("the planner consolidates an extent that holds buckets");
     let last = match manifest::read_progress(read, stream, extent).context(ReadProgressSnafu)? {
@@ -273,7 +267,8 @@ pub(super) fn consolidate(
         bytes: profile.consolidate_bytes,
         room: profile
             .staging
-            .saturating_sub(context.staging_budget.reserved()),
+            .saturating_sub(context.staging_budget.reserved())
+            .saturating_sub(fixed),
     };
     let retake = last.filter(|last| (last.entry.rows as usize) < shape.series_chunk_rows);
     let chosen = choose_retaking(read, stream, extent, pending.clone(), retake, shape, limits)?;
@@ -282,19 +277,31 @@ pub(super) fn consolidate(
         NoRoomSnafu { room: limits.room }
     );
 
+    let allocation = MemoryAccount::planned(
+        context.staging_budget,
+        "consolidation",
+        MemoryPlan::bytes(fixed + chosen.memory),
+    )
+    .context(ReserveSnafu)?;
     let mut done = Maintained {
         consolidations: 1,
         ..Maintained::default()
     };
     let mut written = Written::default();
     if chosen.pending > 0 {
-        reservation.try_grow(chosen.memory).context(ReserveSnafu)?;
-        let inputs = collect(read, stream, extent, pending, retake, &chosen, shape)?;
-        let allocation = MemoryAccount::borrow_reservation(&mut reservation);
-        let pool = MemoryBudget::new(chosen.peak.pool());
+        let inputs = collect(
+            read,
+            stream,
+            extent,
+            pending,
+            retake,
+            &chosen,
+            shape,
+            &allocation,
+        )?;
         let mut compressor =
             compress::new_compressor(&allocation).context(CreateCompressorSnafu)?;
-        let mut rows = Rows::new(read, &inputs, &layout, &pool, &chosen.peak)?;
+        let mut rows = Rows::new(read, &inputs, &layout, &allocation, &chosen.peak)?;
         let output = Output {
             kind: ChunkKind::Consolidated,
             fingerprint: shape.fingerprint,
@@ -355,19 +362,25 @@ pub(super) fn merge(
     let extent = shape.grids[usize::from(tier.0)].extent_of_bucket(bucket);
     let layout = series_columns(shape.fields);
     let fixed = fixed_memory(&layout, false) + MERGE_LIST;
-    let mut reservation = context
-        .staging_budget
-        .try_reserve("delta merge", fixed)
-        .context(ReserveSnafu)?;
+
     let limits = Limits {
         chunks: profile.consolidate_chunks,
         bytes: profile.consolidate_bytes,
         room: profile
             .staging
-            .saturating_sub(context.staging_budget.reserved()),
+            .saturating_sub(context.staging_budget.reserved())
+            .saturating_sub(fixed),
     };
-    let mut inputs = Vec::with_capacity(MERGE_CANDIDATES);
-    let peak = choose_late(read, stream, extent, bucket, shape, limits, &mut inputs)?;
+    let mut candidates = [NO_INPUT; MERGE_CANDIDATES];
+    let (count, peak) = choose_late(read, stream, extent, bucket, shape, limits, &mut candidates)?;
+    let allocation = MemoryAccount::planned(
+        context.staging_budget,
+        "delta merge",
+        MemoryPlan::bytes(fixed + peak.pool()),
+    )
+    .context(ReserveSnafu)?;
+    let mut inputs = allocation.buffer(MERGE_CANDIDATES).context(ReserveSnafu)?;
+    inputs.extend_from_slice(&candidates[..count]);
 
     let mut done = Maintained {
         merges: 1,
@@ -378,11 +391,7 @@ pub(super) fn merge(
         // them. A later late chunk sets the mark again.
         manifest::clear_crowding(batch, stream, bucket).context(MarkCrowdingSnafu { bucket })?;
     } else {
-        let pool_bytes = peak.pool();
-        reservation.try_grow(pool_bytes).context(ReserveSnafu)?;
-        let allocation = MemoryAccount::borrow_reservation(&mut reservation);
-        let pool = MemoryBudget::new(pool_bytes);
-        let mut rows = Rows::new(read, &inputs, &layout, &pool, &peak)?;
+        let mut rows = Rows::new(read, &inputs, &layout, &allocation, &peak)?;
         let output = Output {
             kind: ChunkKind::L0Delta,
             fingerprint: shape.fingerprint,
@@ -566,6 +575,10 @@ fn choose(
 /// Collects the inputs `chosen` counted into a list of exactly their number: `retake` when it
 /// was retaken, then the first L0 chunks of `buckets` by (bucket, id). It reads the snapshot
 /// [`choose`] read, so it finds the same chunks in the same order.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the chosen snapshot inputs and their round account"
+)]
 fn collect(
     read: &impl StorageRead,
     stream: StreamRef,
@@ -574,8 +587,9 @@ fn collect(
     retake: Option<Listed>,
     chosen: &Chosen,
     shape: &Shape,
-) -> Result<Vec<Listed>, ConsolidateError> {
-    let mut inputs = Vec::with_capacity(chosen.inputs);
+    account: &MemoryAccount,
+) -> Result<BudgetVec<Listed>, ConsolidateError> {
+    let mut inputs = account.buffer(chosen.inputs).context(ReserveSnafu)?;
     if chosen.retaken {
         inputs.push(retake.expect("a chunk was retaken"));
     }
@@ -619,15 +633,18 @@ fn choose_late(
     bucket: i64,
     shape: &Shape,
     limits: Limits,
-    inputs: &mut Vec<Listed>,
-) -> Result<Peak, ConsolidateError> {
-    inputs.clear();
+    inputs: &mut [Listed; MERGE_CANDIDATES],
+) -> Result<(usize, Peak), ConsolidateError> {
+    let mut count = 0;
     let stopped = manifest::scan_l0(read, stream, bucket..=bucket, |bucket, rows, chunk| {
         match input(read, stream, extent, chunk, shape, Placed::L0(bucket, rows)) {
-            Ok(listed) => inputs.push(listed),
+            Ok(listed) => {
+                inputs[count] = listed;
+                count += 1;
+            }
             Err(error) => return ControlFlow::Break(Err(error)),
         }
-        if inputs.len() < MERGE_CANDIDATES {
+        if count < MERGE_CANDIDATES {
             ControlFlow::Continue(())
         } else {
             ControlFlow::Break(Ok(()))
@@ -642,7 +659,7 @@ fn choose_late(
     let mut taking = Taking::new(limits, 0);
     // `one` is the longest prefix of two chunks or more whose rows fit one chunk.
     let (mut taken, mut one, mut rows) = (0, None, 0u64);
-    for listed in inputs.iter() {
+    for listed in &inputs[..count] {
         rows += u64::from(listed.entry.rows);
         if rows > shape.series_chunk_rows as u64 || !taking.take(&layout, &listed.entry) {
             break;
@@ -653,9 +670,8 @@ fn choose_late(
         }
     }
     let (count, mut taking) = one.unwrap_or((0, Taking::new(limits, 0)));
-    inputs.truncate(count);
     taking.close_group();
-    Ok(taking.peak)
+    Ok((count, taking.peak))
 }
 
 /// Where a round found an input: in the L0 index, under a bucket and with rows; or as the
@@ -719,6 +735,21 @@ const MERGE_LIST: u64 = (MERGE_CANDIDATES * size_of::<Listed>()) as u64;
 
 /// The bytes each input adds to a consolidation's list of inputs.
 const LISTED: u64 = size_of::<Listed>() as u64;
+
+/// An unused stack slot while the bounded merge candidates are selected.
+const NO_INPUT: Listed = Listed {
+    extent: 0,
+    chunk: ChunkId(0),
+    entry: ChunkEntry {
+        kind: 0,
+        run: 0,
+        key_range: (0, 0),
+        rows: 0,
+        fragments: 0,
+        fragment0: 0,
+        bytes: 0,
+    },
+};
 
 /// What reading one input holds, from its manifest entry (§7.4).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -929,10 +960,10 @@ pub(crate) fn least_round(shape: &Shape) -> u64 {
 /// The rows a round writes, as the builder takes them: column by column, at most
 /// [`APPEND_ROWS`] at a time.
 struct AppendRows {
-    buckets: Vec<i64>,
-    combos: Vec<u32>,
+    buckets: BudgetVec<i64>,
+    combos: BudgetVec<u32>,
     /// Field after field, [`APPEND_ROWS`] each.
-    fields: Vec<u64>,
+    fields: BudgetVec<u64>,
     width: usize,
 }
 
@@ -941,13 +972,15 @@ impl AppendRows {
         (APPEND_ROWS * (size_of::<i64>() + size_of::<u32>() + fields * size_of::<u64>())) as u64
     }
 
-    fn new(fields: usize) -> Self {
-        Self {
-            buckets: Vec::with_capacity(APPEND_ROWS),
-            combos: Vec::with_capacity(APPEND_ROWS),
-            fields: vec![0; fields * APPEND_ROWS],
+    fn new(fields: usize, account: &MemoryAccount) -> Result<Self, BudgetExceeded> {
+        let mut values = account.buffer(fields * APPEND_ROWS)?;
+        values.resize(fields * APPEND_ROWS, 0);
+        Ok(Self {
+            buckets: account.buffer(APPEND_ROWS)?,
+            combos: account.buffer(APPEND_ROWS)?,
+            fields: values,
             width: fields,
-        }
+        })
     }
 
     fn is_full(&self) -> bool {
@@ -1029,7 +1062,7 @@ impl Output<'_> {
         replacement: &mut Replacement,
         account: &MemoryAccount,
     ) -> Result<Written, ConsolidateError> {
-        let mut append = AppendRows::new(self.fields);
+        let mut append = AppendRows::new(self.fields, account).context(ReserveSnafu)?;
         let mut written = Written::default();
         let mut run = None;
         let mut pending = rows.next()?;
@@ -1106,13 +1139,12 @@ struct Rows<'a, R> {
     decoder: Decoder,
     /// The first input of the next group.
     next: usize,
-    ways: Vec<Way>,
-    heap: BinaryHeap<Reverse<(i64, u32, usize)>>,
+    ways: BudgetVec<Way>,
+    heap: BudgetVec<Reverse<(i64, u32, usize)>>,
     /// The row being summed, handed over once a row with another key comes.
     summing: Option<Row>,
-    /// The fragment the backend lends while a block decodes, and the decoder's zstd context,
-    /// reserved for the whole round.
-    standing: MemoryAccount,
+    /// The round account used to open each group after the previous group retires.
+    account: MemoryAccount,
 }
 
 impl<'a, R: StorageRead> Rows<'a, R> {
@@ -1120,21 +1152,15 @@ impl<'a, R: StorageRead> Rows<'a, R> {
         read: &'a R,
         inputs: &'a [Listed],
         layout: &'a [ColumnLayout],
-        pool: &MemoryBudget,
+        account: &MemoryAccount,
         peak: &Peak,
     ) -> Result<Self, ConsolidateError> {
-        let standing = pool
-            .try_reserve("lent fragment", peak.lent + peak.decompression())
-            .expect("the pool holds the lent fragment and the zstd context");
-        let standing = MemoryAccount::from_reservation(standing);
-        standing
-            .reserve_lent(peak.lent)
-            .expect("the standing reservation includes its lent fragment");
+        account.reserve_lent(peak.lent).context(ReserveSnafu)?;
         // L0 chunks are never compressed, so reading only them needs no zstd context.
         let blocks = if peak.compressed {
-            BlockDecoder::new(&standing).context(CreateDecoderSnafu)?
+            BlockDecoder::new(account).context(CreateDecoderSnafu)?
         } else {
-            BlockDecoder::raw(&standing)
+            BlockDecoder::raw(account)
         };
         Ok(Self {
             read,
@@ -1143,17 +1169,17 @@ impl<'a, R: StorageRead> Rows<'a, R> {
             fields: layout.len() - usize::from(FIRST_FIELD),
             decoder: Decoder { blocks },
             next: 0,
-            ways: Vec::new(),
-            heap: BinaryHeap::new(),
+            ways: account.buffer(0).context(ReserveSnafu)?,
+            heap: account.buffer(0).context(ReserveSnafu)?,
             summing: None,
-            standing,
+            account: account.clone(),
         })
     }
 
     /// The next summed row, or `None` after the last.
     fn next(&mut self) -> Result<Option<Row>, ConsolidateError> {
         loop {
-            let Some(Reverse((bucket, combo, index))) = self.heap.pop() else {
+            let Some(Reverse((bucket, combo, index))) = self.heap.heap_pop() else {
                 if self.next == self.inputs.len() {
                     return Ok(self.summing.take());
                 }
@@ -1173,7 +1199,8 @@ impl<'a, R: StorageRead> Rows<'a, R> {
             way.row += 1;
             if way.row < way.rows {
                 let (next_bucket, next_combo) = way.key(&mut read)?;
-                self.heap.push(Reverse((next_bucket, next_combo, index)));
+                self.heap
+                    .heap_push(Reverse((next_bucket, next_combo, index)));
             }
             let row = Row {
                 bucket,
@@ -1206,13 +1233,14 @@ impl<'a, R: StorageRead> Rows<'a, R> {
             .count();
         let group = &inputs[start..start + len];
         self.next = start + len;
-        self.ways = Vec::new();
-        self.heap = BinaryHeap::new();
-        self.ways.reserve_exact(len);
-        self.heap.reserve(len);
+        // Both old structures retire before either replacement is admitted.
+        self.ways.discard_unless(len);
+        self.heap.discard_unless(len);
+        self.ways.reset_to(len).context(ReserveSnafu)?;
+        self.heap.reset_to(len).context(ReserveSnafu)?;
         for listed in group {
             self.ways
-                .push(Way::open(self.read, listed, self.layout, &self.standing)?);
+                .push(Way::open(self.read, listed, self.layout, &self.account)?);
         }
         for (index, way) in self.ways.iter_mut().enumerate() {
             let mut read = Read {
@@ -1223,7 +1251,7 @@ impl<'a, R: StorageRead> Rows<'a, R> {
                 decoder: &mut self.decoder,
             };
             let (bucket, combo) = way.key(&mut read)?;
-            self.heap.push(Reverse((bucket, combo, index)));
+            self.heap.heap_push(Reverse((bucket, combo, index)));
         }
         Ok(())
     }
@@ -1231,11 +1259,6 @@ impl<'a, R: StorageRead> Rows<'a, R> {
 
 #[cfg(test)]
 impl<R> Rows<'_, R> {
-    /// Actual immutable directory capacity retained separately from live buffer leases.
-    fn directory_bytes(&self) -> u64 {
-        self.ways.iter().map(|way| way.reader.memory()).sum()
-    }
-
     /// What the open ways hold by actual capacities, plus their ways and heap storage.
     fn held(&self) -> (u64, u64) {
         let bytes = |buffers: &[(&'static str, usize)]| -> u64 {
@@ -1281,7 +1304,7 @@ struct Way {
 }
 
 impl Way {
-    /// Opens `listed`, whose directory the reader reserves from `pool`, and checks it is the
+    /// Opens `listed`, whose directory the reader charges to the round, and checks it is the
     /// series chunk its entry says.
     fn open(
         read: &impl StorageRead,
@@ -1335,8 +1358,8 @@ impl Way {
     }
 }
 
-/// Opens the chunk of input `listed`, whose directory the reader reserves from `pool`. A
-/// directory the pool has no room for is larger than the input's entry allows.
+/// Opens the chunk of input `listed`, charging its directory to the round account before
+/// parsing. A directory exceeding the admitted plan is larger than its entry allows.
 fn open_input(
     read: &impl StorageRead,
     listed: &Listed,
@@ -1353,12 +1376,6 @@ fn open_input(
         }
         error => OpenInputSnafu { chunk: chunk.0 }.into_error(error),
     })
-}
-
-/// A reservation of nothing yet, to grow.
-fn empty(pool: &MemoryBudget) -> Reservation {
-    pool.try_reserve("consolidation block", 0)
-        .expect("nothing fits any budget")
 }
 
 /// One column of a way, with its decoded block.
@@ -1380,8 +1397,8 @@ impl<T: IntValue> Cursor<T> {
 
     /// The column's value in `row`, decoding the block that holds it when it is not the one
     /// decoded. A row only moves forward, so each block decodes once. Before a read the
-    /// buffers are reserved up to what the block declares, and after it they shrink to it, as a
-    /// query does (`chunk::reader::decode_memory`).
+    /// charged buffers are sized to the block before its bytes are read, retiring obsolete
+    /// storage before allocating replacements (`chunk::reader::decode_memory`).
     fn value(
         &mut self,
         reader: &ChunkReader,
@@ -1419,17 +1436,6 @@ impl<T: IntValue> Cursor<T> {
         }
         Ok(self.block.values()[(row - self.rows.start) as usize])
     }
-}
-
-/// Grows `held` to `part` when it holds less: before a read, it covers both what the buffers
-/// hold and what the block declares.
-fn grow_to(held: &mut Reservation, part: u64) -> Result<(), BudgetExceeded> {
-    held.try_grow(part.saturating_sub(held.bytes()))
-}
-
-/// Shrinks `held` to `part`: after a read, the buffers hold exactly the block's.
-fn shrink_to(held: &mut Reservation, part: u64) {
-    held.shrink(held.bytes() - part);
 }
 
 /// A consolidation or merge round, or planning one, failed. Nothing it staged is visible.

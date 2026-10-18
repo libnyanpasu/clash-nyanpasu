@@ -78,6 +78,17 @@ impl MemoryAccount {
         Ok(Self::from_reservation(budget.try_reserve(what, plan.0)?))
     }
 
+    /// Reserves a complete round once; execution cannot grow beyond its admitted credit.
+    /// Retired buffers return local credit for later phases of the same round.
+    pub(crate) fn planned(
+        budget: &MemoryBudget,
+        what: &'static str,
+        plan: MemoryPlan,
+    ) -> Result<Self, BudgetExceeded> {
+        let round = MemoryBudget::within(budget.try_reserve(what, plan.0)?);
+        Self::new(&round, what, plan)
+    }
+
     /// Takes ownership of credit already admitted by an operation, without debiting it again.
     pub(crate) fn from_reservation(held: Reservation) -> Self {
         Self {
@@ -179,6 +190,8 @@ impl MemoryAccount {
         self.state.peak.set(self.state.peak.get().max(live));
         debug_assert!(self.state.live.get() <= held.bytes());
         drop(held);
+        #[cfg(test)]
+        self.sample_round_peak();
         Ok(Lease {
             account: self.clone(),
             bytes: plan.0,
@@ -222,6 +235,8 @@ impl MemoryAccount {
         self.state
             .peak
             .set(self.state.peak.get().max(self.state.live.get()));
+        #[cfg(test)]
+        self.sample_round_peak();
         Ok(())
     }
 
@@ -253,14 +268,11 @@ impl MemoryAccount {
         Ok(result)
     }
 
-    /// Lends an existing operation reservation to a scoped allocation context.
-    /// The unused credit returns to that same reservation when the scope ends.
-    pub(crate) fn borrow_reservation(source: &mut Reservation) -> AccountScope<'_> {
-        let bytes = source.bytes();
-        AccountScope {
-            account: Self::from_reservation(source.split(bytes)),
-            source,
-        }
+    /// The greatest live charge observed during this account's actual execution.
+    #[cfg(test)]
+    pub(crate) fn peak_bytes(&self) -> u64 {
+        self.sample_round_peak();
+        self.state.peak.get()
     }
 
     /// The independently observed sum of live lease charges, excluding retained dependency owners.
@@ -316,8 +328,31 @@ impl MemoryAccount {
         }
     }
 
+    /// Live round leases plus reservations retained outside the account's reusable credit.
+    /// Cached idle credit is excluded, so reserving a plan does not itself count as a peak.
+    #[cfg(test)]
+    pub(crate) fn round_live_bytes(&self) -> u64 {
+        let held = self.state.held.borrow();
+        let retained = if held.budget.shared._parent.is_some() {
+            held.budget.reserved() - held.bytes()
+        } else {
+            0
+        };
+        self.state.live.get() + retained
+    }
+
+    /// Samples actual round retention at admission and allocation checkpoints, only in tests.
+    #[cfg(test)]
+    fn sample_round_peak(&self) {
+        self.state
+            .peak
+            .set(self.state.peak.get().max(self.round_live_bytes()));
+    }
+
     /// Reports a storage-lifetime checkpoint to the account-local test observer.
     fn observe(&self, kind: Change, bytes: u64) {
+        #[cfg(test)]
+        self.sample_round_peak();
         #[cfg(test)]
         if let Some(observer) = &*self.state.observer.borrow() {
             observer(Observation {
@@ -522,35 +557,6 @@ impl Reserved<zstd::bulk::Compressor<'static>> {
     #[cfg(test)]
     pub(crate) fn workspace_size(&mut self) -> usize {
         self.payload.context_mut().sizeof()
-    }
-}
-
-/// A scope that returns an operation's allocation envelope without releasing its root credit.
-pub(crate) struct AccountScope<'a> {
-    /// The temporary envelope used by charged leaf allocations.
-    account: MemoryAccount,
-    /// The original round owner that receives reusable credit when this scope ends.
-    source: &'a mut Reservation,
-}
-
-impl Deref for AccountScope<'_> {
-    type Target = MemoryAccount;
-    /// Borrows the operation's temporary allocation envelope.
-    fn deref(&self) -> &MemoryAccount {
-        &self.account
-    }
-}
-
-impl Drop for AccountScope<'_> {
-    fn drop(&mut self) {
-        assert_eq!(
-            self.account.state.live.get(),
-            self.account.state.lent.get(),
-            "scoped buffers must drop before their envelope"
-        );
-        let bytes = self.account.state.held.borrow().bytes();
-        self.source
-            .merge(self.account.state.held.borrow_mut().split(bytes));
     }
 }
 

@@ -521,19 +521,13 @@ impl Head {
     pub(crate) fn without(
         &self,
         expiring: Expiring,
-        staging: &mut Reservation,
-    ) -> Result<Self, BudgetExceeded> {
-        let account = MemoryAccount::borrow_reservation(staging);
-        let (head, copies) = account
-            .value(
-                "staging",
-                MemoryPlan::bytes(self.without_bytes(expiring)),
-                || self.build_without(expiring),
-            )?
-            .into_parts();
-        drop(account);
-        staging.merge(copies);
-        Ok(head)
+        account: &MemoryAccount,
+    ) -> Result<Reserved<Self>, BudgetExceeded> {
+        account.value(
+            "staging",
+            MemoryPlan::bytes(self.without_bytes(expiring)),
+            || self.build_without(expiring),
+        )
     }
 
     /// Builds the filtered graph under the caller's already admitted staging charge.

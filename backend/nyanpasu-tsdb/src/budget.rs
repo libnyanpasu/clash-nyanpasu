@@ -76,6 +76,8 @@ struct Shared {
     reserved: Mutex<u64>,
     /// Signalled when `reserved` becomes zero.
     released: Condvar,
+    /// Keeps a fixed sub-budget's parent admission until its last reservation has dropped.
+    _parent: Option<Reservation>,
 }
 
 impl MemoryBudget {
@@ -85,6 +87,20 @@ impl MemoryBudget {
                 limit,
                 reserved: Mutex::new(0),
                 released: Condvar::new(),
+                _parent: None,
+            }),
+        }
+    }
+
+    /// Creates a fixed sub-budget backed by an already admitted parent reservation.
+    /// Its own reservations share that admission; the last owner returns it to the parent.
+    pub(crate) fn within(parent: Reservation) -> Self {
+        Self {
+            shared: Arc::new(Shared {
+                limit: parent.bytes(),
+                reserved: Mutex::new(0),
+                released: Condvar::new(),
+                _parent: Some(parent),
             }),
         }
     }

@@ -85,7 +85,6 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          # Prereleases feed the beta updater channel and stay out of CHANGELOG.md.
           if [[ "$VERSION" == *-* ]]; then
             echo "prerelease=true" >> $GITHUB_OUTPUT
           else
@@ -97,20 +96,22 @@ jobs:
         shell: bash
         id: build-changelog
         run: |
-          touch /tmp/changelog.md
-          # A stable release lists every change since the previous stable one,
-          # folding in the commits of the prereleases leading up to it.
-          CLIFF_ARGS=(--unreleased)
+          set -eo pipefail
+          # CHANGELOG.md keeps one section per tag, prereleases included: the
+          # in-app updater joins the sections between the installed and the
+          # offered version, so a section must not repeat an earlier one.
+          git-cliff --config cliff.toml --verbose --strip header --unreleased --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog-section.md
+          cat /tmp/changelog-section.md ./CHANGELOG.md > temp && mv temp ./CHANGELOG.md
+          pnpm exec prettier --write ./CHANGELOG.md
+          cp /tmp/changelog-section.md /tmp/changelog.md
+          # A stable release body lists every change since the previous stable
+          # one, folding in the commits of the prereleases leading up to it.
           if [ '${{ steps.update-version.outputs.prerelease }}' = 'false' ]; then
             LAST_STABLE=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)
-            CLIFF_ARGS=(--ignore-tags 'v.*-.*' "$LAST_STABLE..HEAD")
+            git-cliff --config cliff.toml --verbose --strip header --ignore-tags 'v.*-.*' --tag v${{ steps.update-version.outputs.version }} "$LAST_STABLE..HEAD" > /tmp/changelog.md
           fi
-          git-cliff --config  cliff.toml --verbose --strip header "${CLIFF_ARGS[@]}" --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog.md
-          if [ $? -eq 0 ]; then
+          if [ -s /tmp/changelog.md ]; then
             CONTENT=$(cat /tmp/changelog.md)
-            if [ '${{ steps.update-version.outputs.prerelease }}' = 'false' ]; then
-              cat /tmp/changelog.md | cat - ./CHANGELOG.md > temp && mv temp ./CHANGELOG.md
-            fi
             {
               echo 'content<<EOF'
               echo "$CONTENT"

@@ -1,3 +1,2137 @@
+## [2.0.0-rc.2] - 2026-10-14
+
+### 💥 Breaking Changes
+
+- **runtime:** Let the guard own port and socks-port like mixed-port (#5720) by @greenhat616 in [#5720](https://github.com/libnyanpasu/clash-nyanpasu/pull/5720)
+
+### ✨ Features
+
+- **frontend:** Unify data pages with Material You navigation (#5738) by @keiko233 in [#5738](https://github.com/libnyanpasu/clash-nyanpasu/pull/5738)
+
+- **i18n:** Add Japanese UI language (#5768) by @keiko233 in [#5768](https://github.com/libnyanpasu/clash-nyanpasu/pull/5768)
+
+- **profile:** Improve profile transform chain editing (#5765) by @keiko233 in [#5765](https://github.com/libnyanpasu/clash-nyanpasu/pull/5765)
+
+- **profiles:** Refresh profile cards and quick import flow (#5732) by @keiko233 in [#5732](https://github.com/libnyanpasu/clash-nyanpasu/pull/5732)
+
+- **settings:** Refine clash and nyanpasu settings controls (#5774) by @keiko233 in [#5774](https://github.com/libnyanpasu/clash-nyanpasu/pull/5774)
+
+- **traffic:** Organize traffic analysis with sidebar routes (#5763) by @keiko233 in [#5763](https://github.com/libnyanpasu/clash-nyanpasu/pull/5763)
+
+- **tray:** Add tray icon presets and custom icon editor (#5711) by @keiko233 in [#5711](https://github.com/libnyanpasu/clash-nyanpasu/pull/5711)
+
+- Redesign context menu and widget configuration (#5705) by @keiko233 in [#5705](https://github.com/libnyanpasu/clash-nyanpasu/pull/5705)
+
+### 🐛 Bug Fixes
+
+- **dashboard:** Preserve layouts across resize (#5698) by @keiko233 in [#5698](https://github.com/libnyanpasu/clash-nyanpasu/pull/5698)
+
+- **group-summary:** Improve delay display logic and formatting by @keiko233
+
+- **i18n:** Resolve hardcoded 'en' lang attribute on document root (#5753) by @3gf8jv4dv in [#5753](https://github.com/libnyanpasu/clash-nyanpasu/pull/5753)
+
+- **l10n:** Refine english and chinese translations (#5757) by @3gf8jv4dv in [#5757](https://github.com/libnyanpasu/clash-nyanpasu/pull/5757)
+
+- **l10n:** Refine english and chinese translations (#5734) by @3gf8jv4dv in [#5734](https://github.com/libnyanpasu/clash-nyanpasu/pull/5734)
+
+- **scripts:** Refresh alpha sidecars when manifest lags by @keiko233
+
+- **service:** Fit the service detail dialog to the window (#5721) by @greenhat616 in [#5721](https://github.com/libnyanpasu/clash-nyanpasu/pull/5721)
+
+- **tray:** Allow same-origin and data: fetches in the CSP (#5750) by @greenhat616 in [#5750](https://github.com/libnyanpasu/clash-nyanpasu/pull/5750)
+
+- **tray-menu:** Round the webview tray menu corners on macOS (#5770) by @keiko233 in [#5770](https://github.com/libnyanpasu/clash-nyanpasu/pull/5770)
+
+- **ui:** Give virtual lists the scroll viewport once it is attached (#5752) by @greenhat616 in [#5752](https://github.com/libnyanpasu/clash-nyanpasu/pull/5752)
+
+### 📚 Documentation
+
+- Define native CoW target reuse for worktrees by @keiko233
+
+- Improve README formatting for clarityore [skip ci] by @keiko233
+
+### 🔨 Refactor
+
+- **profiles:** Type the sync interval and collapse it when auto update is off (#5767) by @greenhat616 in [#5767](https://github.com/libnyanpasu/clash-nyanpasu/pull/5767)
+
+---
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0-rc.1...v2.0.0-rc.2
+
+## [2.0.0-rc.1] - 2026-10-09
+
+### 🐛 Bug Fixes
+
+- **ci:** Restore Telegram release notifications (#5692) by @greenhat616 in [#5692](https://github.com/libnyanpasu/clash-nyanpasu/pull/5692)
+
+- **deps:** Restore Windows lockfile resolution after tauri update (#5696) by @greenhat616 in [#5696](https://github.com/libnyanpasu/clash-nyanpasu/pull/5696)
+
+- **window:** Keep the tray menu from taking focus while it is built (#5685) by @greenhat616 in [#5685](https://github.com/libnyanpasu/clash-nyanpasu/pull/5685)
+
+### 📚 Documentation
+
+- Defer OpenWrt MVP until core and shell extraction settles by @keiko233
+
+### 🔨 Refactor
+
+- Consolidate shared runtime into nyanpasu-core by @keiko233
+
+---
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0-beta.3...v2.0.0-rc.1
+
+## [2.0.0-beta.3] - 2026-10-07
+
+### ⚡ Performance Improvements
+
+- **logging:** Limit the appender buffer to 4096 lines (#5636) by @greenhat616 in [#5636](https://github.com/libnyanpasu/clash-nyanpasu/pull/5636)
+
+- **proxies:** Send only the delay records the frontend reads (#5643) by @greenhat616 in [#5643](https://github.com/libnyanpasu/clash-nyanpasu/pull/5643)
+
+- **proxies:** Hash cache fingerprints without retaining JSON (#5640) by @greenhat616 in [#5640](https://github.com/libnyanpasu/clash-nyanpasu/pull/5640)
+
+- **runtime:** Serialize the runtime document once and share it (#5663) by @greenhat616 in [#5663](https://github.com/libnyanpasu/clash-nyanpasu/pull/5663)
+
+- **runtime:** Keep runtime builds as stored snapshot graphs (#5662) by @greenhat616 in [#5662](https://github.com/libnyanpasu/clash-nyanpasu/pull/5662)
+
+- **runtime:** Share nyanpasu-utils runtime with Tauri (#5638) by @greenhat616 in [#5638](https://github.com/libnyanpasu/clash-nyanpasu/pull/5638)
+
+- **storage:** Increase SourceForge and Telegram upload concurrency by @keiko233
+
+### ✨ Features
+
+- **config:** Record changed fields and restore single snapshot nodes (#5661) by @greenhat616 in [#5661](https://github.com/libnyanpasu/clash-nyanpasu/pull/5661)
+
+- **core:** Add Meow Alpha and fix core version detection (#5612) by @keiko233 in [#5612](https://github.com/libnyanpasu/clash-nyanpasu/pull/5612)
+
+- **migration:** Stamp the app config with the schema revision it holds (#5646) by @greenhat616 in [#5646](https://github.com/libnyanpasu/clash-nyanpasu/pull/5646)
+
+- **profiling:** Add trace-chrome and dhat-heap profiling features (#5628) by @greenhat616 in [#5628](https://github.com/libnyanpasu/clash-nyanpasu/pull/5628)
+
+- **proxies:** Show group availability and chains, add P2 settings and provider health check (#5644) by @greenhat616 in [#5644](https://github.com/libnyanpasu/clash-nyanpasu/pull/5644)
+
+- **proxies:** Search, sort and filter a group's nodes (#5642) by @greenhat616 in [#5642](https://github.com/libnyanpasu/clash-nyanpasu/pull/5642)
+
+- **proxies:** Test latency against each group's URL and a configurable timeout (#5641) by @greenhat616 in [#5641](https://github.com/libnyanpasu/clash-nyanpasu/pull/5641)
+
+- **proxies:** Gate selection on capabilities and manage pinned groups (#5631) by @greenhat616 in [#5631](https://github.com/libnyanpasu/clash-nyanpasu/pull/5631)
+
+- **storage:** Publish Telegram archives independently of updater by @keiko233
+
+- **window:** Let each window close by destroying or hiding (#5649) by @greenhat616 in [#5649](https://github.com/libnyanpasu/clash-nyanpasu/pull/5649)
+
+- Update theme color presets and set default color to #3e64a7 by @keiko233
+
+### 🐛 Bug Fixes
+
+- **ci:** Repair the unit tests failing on main (#5626) by @greenhat616 in [#5626](https://github.com/libnyanpasu/clash-nyanpasu/pull/5626)
+
+- **ci:** Keep updater tests independent of pnpm install by @keiko233
+
+- **proxies:** Keep a group card's chips whole beside a long leaf (#5670) by @greenhat616 in [#5670](https://github.com/libnyanpasu/clash-nyanpasu/pull/5670)
+
+- **proxies:** Close proxies API unification follow-ups (#5627) by @greenhat616 in [#5627](https://github.com/libnyanpasu/clash-nyanpasu/pull/5627)
+
+- **proxies:** Keep the proxy snapshot while a selection runs (#5624) by @greenhat616 in [#5624](https://github.com/libnyanpasu/clash-nyanpasu/pull/5624)
+
+- **runtime:** Let profiles own unified-delay and tcp-concurrent on request (#5669) by @greenhat616 in [#5669](https://github.com/libnyanpasu/clash-nyanpasu/pull/5669)
+
+- **storage:** Use valid SourceForge reservation directories by @keiko233
+
+- **updater:** Sample app update speed over a fixed window (#5667) by @greenhat616 in [#5667](https://github.com/libnyanpasu/clash-nyanpasu/pull/5667)
+
+- **updater:** Match SourceForge asset name variants by @keiko233
+
+### 📚 Documentation
+
+- Specify updater speed and download fallback [skip ci] (#5637) by @greenhat616 in [#5637](https://github.com/libnyanpasu/clash-nyanpasu/pull/5637)
+
+- Record the runtime snapshot memory spec and its dhat comparison (#5664) by @greenhat616 in [#5664](https://github.com/libnyanpasu/clash-nyanpasu/pull/5664)
+
+- Specify a window manager that owns window lifecycle [skip ci] (#5634) by @greenhat616 in [#5634](https://github.com/libnyanpasu/clash-nyanpasu/pull/5634)
+
+- Fix a mistake in new issue template [skip ci] (#5635) by @3gf8jv4dv in [#5635](https://github.com/libnyanpasu/clash-nyanpasu/pull/5635)
+
+- Report the Windows memory profile [skip ci] (#5633) by @greenhat616 in [#5633](https://github.com/libnyanpasu/clash-nyanpasu/pull/5633)
+
+- Specify memory and startup profiling infrastructure [skip ci] (#5620) by @greenhat616 in [#5620](https://github.com/libnyanpasu/clash-nyanpasu/pull/5620)
+
+- Point references at the flattened docs directories [skip ci] by @greenhat616
+
+- Flatten design records into per-kind directories [skip ci] by @greenhat616
+
+- Route agent rules to guides and set the core/GUI split goal (#5618) by @greenhat616 in [#5618](https://github.com/libnyanpasu/clash-nyanpasu/pull/5618)
+
+- Update toolchain requirements in contributing guide by @greenhat616
+
+- Revise contributions in README to clarify requirements [skip ci] (#5615) by @3gf8jv4dv in [#5615](https://github.com/libnyanpasu/clash-nyanpasu/pull/5615)
+
+- Refactor issue template to improve writing experience [skip ci] (#5614) by @3gf8jv4dv in [#5614](https://github.com/libnyanpasu/clash-nyanpasu/pull/5614)
+
+### 🔨 Refactor
+
+- **paths:** Extract frontend-independent path resolution (#5645) by @4o3F in [#5645](https://github.com/libnyanpasu/clash-nyanpasu/pull/5645)
+
+- **settings:** Stop waiting for the core after patching the controller (#5648) by @greenhat616 in [#5648](https://github.com/libnyanpasu/clash-nyanpasu/pull/5648)
+
+- **tray:** Identify proxy menu items by group and node (#5623) by @greenhat616 in [#5623](https://github.com/libnyanpasu/clash-nyanpasu/pull/5623)
+
+- **window:** Position the macOS traffic lights through Tauri (#5651) by @greenhat616 in [#5651](https://github.com/libnyanpasu/clash-nyanpasu/pull/5651)
+
+- **window:** Let a window manager own the window lifecycle (#5647) by @greenhat616 in [#5647](https://github.com/libnyanpasu/clash-nyanpasu/pull/5647)
+
+- Extract neutral runtime application and platform crates (#5652) by @keiko233 in [#5652](https://github.com/libnyanpasu/clash-nyanpasu/pull/5652)
+
+---
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0-beta.2...v2.0.0-beta.3
+
+## [2.0.0-beta.2] - 2026-10-05
+
+### ⚡ Performance Improvements
+
+- **ci:** Publish storage backends and artifacts concurrently by @keiko233
+
+- **logs:** Drive the viewer from status events (#5588) by @greenhat616 in [#5588](https://github.com/libnyanpasu/clash-nyanpasu/pull/5588)
+
+### ✅ Testing
+
+- **dashboard:** Wait for measured connection rows by @greenhat616
+
+- **http:** Preserve acknowledged server status during polling by @greenhat616
+
+- **ui:** Budget the repeated drawer reopen scenario by @greenhat616
+
+- **ui:** Observe drawer dismissal without timing races by @greenhat616
+
+- **widgets:** Observe real control animations across renders by @greenhat616
+
+### ✨ Features
+
+- **ci:** Publish build archives to Internet Archive and add SourceForge mirrors (#5595) by @keiko233 in [#5595](https://github.com/libnyanpasu/clash-nyanpasu/pull/5595)
+
+- **logs:** Configure Core log rotation and compression live (#5599) by @greenhat616 in [#5599](https://github.com/libnyanpasu/clash-nyanpasu/pull/5599)
+
+- **logs:** Compress records with preset and trained dictionaries (#5587) by @greenhat616 in [#5587](https://github.com/libnyanpasu/clash-nyanpasu/pull/5587)
+
+- **logs:** Rotate session storage within a disk budget (#5586) by @greenhat616 in [#5586](https://github.com/libnyanpasu/clash-nyanpasu/pull/5586)
+
+- Route frontend platform capabilities through RPC (#5608) by @keiko233 in [#5608](https://github.com/libnyanpasu/clash-nyanpasu/pull/5608)
+
+- Report frontend warnings and errors to the application log (#5604) by @greenhat616 in [#5604](https://github.com/libnyanpasu/clash-nyanpasu/pull/5604)
+
+### 🐛 Bug Fixes
+
+- **ci:** Bound and report Internet Archive upload retries by @keiko233
+
+- **ci:** Preserve content length for Internet Archive uploads by @keiko233
+
+- **ci:** Publish updater feeds after successful mirror verification by @keiko233
+
+- **ci:** Diagnose and recover storage uploads without rebuilding by @keiko233
+
+- **ci:** Accept NSIS setup installers in central publication by @keiko233
+
+- **ci:** Resolve the installed Tauri signing CLI by @greenhat616
+
+- **ci:** Validate pull requests targeting stacked branches by @greenhat616
+
+- **ci:** Stop retrying archive quota failures by @greenhat616
+
+- **ci:** Separate archive uploads from release notifications by @keiko233
+
+- **fake-core:** Clear inherited nonblocking mode on HTTP sockets by @greenhat616
+
+- **fake-core:** Consume request bodies before closing HTTP sockets by @greenhat616
+
+- **logs:** Follow the committed core log level (#5585) by @greenhat616 in [#5585](https://github.com/libnyanpasu/clash-nyanpasu/pull/5585)
+
+- **proxy:** Prefer group lists and infer all groups as fallback (#5596) by @greenhat616 in [#5596](https://github.com/libnyanpasu/clash-nyanpasu/pull/5596)
+
+- **proxy:** Preserve inline provider node metadata (#5592) by @4o3F in [#5592](https://github.com/libnyanpasu/clash-nyanpasu/pull/5592)
+
+- **tests:** Observe modal layout animation before it settles by @greenhat616
+
+- **traffic:** Center the merged node's text like the other nodes (#5597) by @greenhat616 in [#5597](https://github.com/libnyanpasu/clash-nyanpasu/pull/5597)
+
+- Preserve selected text in context menus by @keiko233
+
+### 🔨 Refactor
+
+- **proxies:** Serve clash-api records and derive group capabilities (#5605) by @greenhat616 in [#5605](https://github.com/libnyanpasu/clash-nyanpasu/pull/5605)
+
+---
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0-beta.1...v2.0.0-beta.2
+
+## [2.0.0-beta.1] - 2026-10-03
+
+### 💥 Breaking Changes
+
+- **core:** Move the core lifecycle onto CoreControl (PR-5 C/D-switch) (#5182) by @greenhat616 in [#5182](https://github.com/libnyanpasu/clash-nyanpasu/pull/5182)
+
+- **portable:** Correct app placeholder to clash nyanpasu by @greenhat616
+
+- **profile:** Align specta bindings with serde wire format and PR3 regressions (#4915, #4916, #4917) (#4920) by @greenhat616 in [#4920](https://github.com/libnyanpasu/clash-nyanpasu/pull/4920)
+
+- **profile:** Use serde internal newtype to avoid int type mismatch (#3364) by @greenhat616 in [#3364](https://github.com/libnyanpasu/clash-nyanpasu/pull/3364)
+
+- **tauri:** Runtime derivation cleanup — checked promote pipeline and RebuildOutcome (PR-4) (#4932) by @greenhat616 in [#4932](https://github.com/libnyanpasu/clash-nyanpasu/pull/4932)
+
+- **tauri:** Remove legacy profiles config module and enhance pipeline (#4890) by @greenhat616 in [#4890](https://github.com/libnyanpasu/clash-nyanpasu/pull/4890)
+
+- **tauri:** Switch profiles to domain pipeline (composition root, IPC surface, frontend) (#4889) by @greenhat616 in [#4889](https://github.com/libnyanpasu/clash-nyanpasu/pull/4889)
+
+- Hardware-AES baseline on all distributed targets (introduce gxhash) (#4903) by @greenhat616 in [#4903](https://github.com/libnyanpasu/clash-nyanpasu/pull/4903)
+
+- Replace all domain by @keiko233
+
+- Use reqwest instead of isahc to make sure fully remove openssl by @greenhat616
+
+- Use xcode 16 toolchain because xcode 15 was removed by @greenhat616
+
+- Use generic transaction container impl and use builder based profile item instead (#1663) by @greenhat616 in [#1663](https://github.com/libnyanpasu/clash-nyanpasu/pull/1663)
+
+- Migrate to tauri v2 and do a lot of tweaks (#1510) by @greenhat616 in [#1510](https://github.com/libnyanpasu/clash-nyanpasu/pull/1510)
+
+### ⚡ Performance Improvements
+
+- **connections:** Cut the render cost of connection samples (#5496) by @greenhat616 in [#5496](https://github.com/libnyanpasu/clash-nyanpasu/pull/5496)
+
+- **dashboard:** Render the widgets once the grid is measured (#5507) by @greenhat616 in [#5507](https://github.com/libnyanpasu/clash-nyanpasu/pull/5507)
+
+- **dashboard:** Stop samples and KV reads re-rendering whole widgets (#5499) by @greenhat616 in [#5499](https://github.com/libnyanpasu/clash-nyanpasu/pull/5499)
+
+- **hooks:** Stop setting, system and ws hooks re-rendering needlessly (#5495) by @greenhat616 in [#5495](https://github.com/libnyanpasu/clash-nyanpasu/pull/5495)
+
+- **inspect:** Show a large step diff a thousand lines at a time (#5505) by @greenhat616 in [#5505](https://github.com/libnyanpasu/clash-nyanpasu/pull/5505)
+
+- **inspect:** Cache the highlighted step YAML and skip huge documents (#5511) by @greenhat616 in [#5511](https://github.com/libnyanpasu/clash-nyanpasu/pull/5511)
+
+- **interface:** Split clash ws context per history kind (#5413) by @greenhat616 in [#5413](https://github.com/libnyanpasu/clash-nyanpasu/pull/5413)
+
+- **logging:** Benchmark owned and interned index storage (#5253) by @greenhat616 in [#5253](https://github.com/libnyanpasu/clash-nyanpasu/pull/5253)
+
+- **logs:** Make log rows cheap to mount and skip unchanged rows (#5513) by @greenhat616 in [#5513](https://github.com/libnyanpasu/clash-nyanpasu/pull/5513)
+
+- **logs:** Cut the render cost of the logs pages (#5510) by @greenhat616 in [#5510](https://github.com/libnyanpasu/clash-nyanpasu/pull/5510)
+
+- **profiles:** Animate the active card's gradient only on hover (#5512) by @greenhat616 in [#5512](https://github.com/libnyanpasu/clash-nyanpasu/pull/5512)
+
+- **profiles:** Keep profile and provider data stable on refetch (#5494) by @greenhat616 in [#5494](https://github.com/libnyanpasu/clash-nyanpasu/pull/5494)
+
+- **proxies:** Stop dropping frames when switching proxy groups (#5445) by @greenhat616 in [#5445](https://github.com/libnyanpasu/clash-nyanpasu/pull/5445)
+
+- **proxies:** Send each proxy node once and reference it by name (#5430) by @greenhat616 in [#5430](https://github.com/libnyanpasu/clash-nyanpasu/pull/5430)
+
+- **rules:** Cut the render cost of the rules page (#5497) by @greenhat616 in [#5497](https://github.com/libnyanpasu/clash-nyanpasu/pull/5497)
+
+- **settings:** Mount the lower settings sections in a deferred render (#5508) by @greenhat616 in [#5508](https://github.com/libnyanpasu/clash-nyanpasu/pull/5508)
+
+- **settings:** Load shiki lazily and read core versions once (#5498) by @greenhat616 in [#5498](https://github.com/libnyanpasu/clash-nyanpasu/pull/5498)
+
+- **streams:** Send connection details only to pages that subscribe (#5429) by @greenhat616 in [#5429](https://github.com/libnyanpasu/clash-nyanpasu/pull/5429)
+
+- **styles:** Keep Tailwind's space and divide selectors off WebKit's slow path (#5448) by @greenhat616 in [#5448](https://github.com/libnyanpasu/clash-nyanpasu/pull/5448)
+
+- **theme:** Derive the theme from the color instead of on every render (#5506) by @greenhat616 in [#5506](https://github.com/libnyanpasu/clash-nyanpasu/pull/5506)
+
+- **ui:** Measure modal layout only when it opens or closes (#5502) by @greenhat616 in [#5502](https://github.com/libnyanpasu/clash-nyanpasu/pull/5502)
+
+- **ui:** Scroll the sparkline on the compositor (#5504) by @greenhat616 in [#5504](https://github.com/libnyanpasu/clash-nyanpasu/pull/5504)
+
+- **ui:** Measure the tab indicator only when it moves (#5503) by @greenhat616 in [#5503](https://github.com/libnyanpasu/clash-nyanpasu/pull/5503)
+
+- **ui:** Run the logo's idle sway on the compositor (#5501) by @greenhat616 in [#5501](https://github.com/libnyanpasu/clash-nyanpasu/pull/5501)
+
+- **ui:** Run the text marquee on the compositor (#5500) by @greenhat616 in [#5500](https://github.com/libnyanpasu/clash-nyanpasu/pull/5500)
+
+- **ui:** Cut shell re-renders on scroll, resize and proxies updates (#5492) by @greenhat616 in [#5492](https://github.com/libnyanpasu/clash-nyanpasu/pull/5492)
+
+- **ui:** Reduce jank on route transitions, proxies and connections (#5423) by @greenhat616 in [#5423](https://github.com/libnyanpasu/clash-nyanpasu/pull/5423)
+
+### ✅ Testing
+
+- **boa:** Add js engine text module test by @keiko233
+
+- **effects:** Inject a nightly build for rejected channel changes by @keiko233
+
+- **enhance:** Add mapping reorder sample by @greenhat616
+
+- **frontend:** Make two render-count browser tests wait for real events by @greenhat616
+
+- **frontend:** Migrate regression suites to Vitest (#5311) by @greenhat616 in [#5311](https://github.com/libnyanpasu/clash-nyanpasu/pull/5311)
+
+- **logging:** Record viewer performance against the released runtime (#5256) by @greenhat616 in [#5256](https://github.com/libnyanpasu/clash-nyanpasu/pull/5256)
+
+- **perf:** Add on-demand page benchmarks (#5491) by @greenhat616 in [#5491](https://github.com/libnyanpasu/clash-nyanpasu/pull/5491)
+
+- **ui:** Wait for the marquee's first resize before counting reads (#5575) by @greenhat616 in [#5575](https://github.com/libnyanpasu/clash-nyanpasu/pull/5575)
+
+- **ui:** Wait for the marquee's mount measurements before spying (#5535) by @greenhat616 in [#5535](https://github.com/libnyanpasu/clash-nyanpasu/pull/5535)
+
+- **ui:** Control time in scroll and tab animation assertions by @keiko233
+
+- Add enhance order test by @greenhat616
+
+- Disable lib doctest by @greenhat616
+
+- Ignore dir placeholder test by @greenhat616
+
+### ✨ Features
+
+- **action-card:** Improve layout and conditional rendering for action buttons by @keiko233
+
+- **animated-item:** Add AnimatedItem component and integrate into SettingsCard by @keiko233
+
+- **animated-outlet:** Add AnimatedOutlet and AnimatedOutletPreset components by @keiko233
+
+- **block-task:** Implement BlockTaskProvider and related hooks for managing asynchronous tasks by @keiko233
+
+- **breakpoint:** Add container breakpoint hooks for responsive design by @keiko233
+
+- **build-cache:** Add Deno build cache management for workflows by @keiko233
+
+- **button:** Enhance button variants with new styles and disabled states by @keiko233
+
+- **cache-client:** Download progress logging by @keiko233
+
+- **cache-client:** Include chunkMultiplier in cache upload session initialization by @keiko233
+
+- **card:** Implement Card component with variants for header, footer, and content by @keiko233
+
+- **chain-editor:** Draft impl proxy profile chain manager by @keiko233
+
+- **ci:** Publish beta prereleases and fix the beta update path (#5532) by @greenhat616 in [#5532](https://github.com/libnyanpasu/clash-nyanpasu/pull/5532)
+
+- **clash-api:** Migrate WebSocket callers to owned stream actors (#5220) by @greenhat616 in [#5220](https://github.com/libnyanpasu/clash-nyanpasu/pull/5220)
+
+- **clash-settings:** Add UI components for Clash settings by @keiko233
+
+- **color:** Draft impl get system accent color for theme (#4632) by @keiko233 in [#4632](https://github.com/libnyanpasu/clash-nyanpasu/pull/4632)
+
+- **config:** Converge source mutations through selective TCC (#5367) by @greenhat616 in [#5367](https://github.com/libnyanpasu/clash-nyanpasu/pull/5367)
+
+- **connections:** Filter connections by traffic dimensions and range (#5564) by @greenhat616 in [#5564](https://github.com/libnyanpasu/clash-nyanpasu/pull/5564)
+
+- **connections:** Add closed connections tab and column settings (#5486) by @greenhat616 in [#5486](https://github.com/libnyanpasu/clash-nyanpasu/pull/5486)
+
+- **connections:** Draft impl connection page by @keiko233
+
+- **connections:** Implement deleteConnections mutation and update usage in components by @keiko233
+
+- **connections:** Add conection detail dialog by @greenhat616
+
+- **connections:** Add conection total info by @greenhat616
+
+- **connections:** Add a column filter dialog by @greenhat616
+
+- **consts:** Add OS detection constants for Windows, macOS, and Linux by @keiko233
+
+- **context-menu:** Update MotionContent animetion by @keiko233
+
+- **context-menu:** Implement context menu registration and trigger components by @keiko233
+
+- **context-menu:** Implement context menu by @keiko233
+
+- **core:** Enforce profile and proxy interruption policies (#5250) by @greenhat616 in [#5250](https://github.com/libnyanpasu/clash-nyanpasu/pull/5250)
+
+- **core:** Configure channels and recover applied snapshot inspection (#5227) by @greenhat616 in [#5227](https://github.com/libnyanpasu/clash-nyanpasu/pull/5227)
+
+- **core:** Introduce revocable instance-bound Clash API access (#5203) by @greenhat616 in [#5203](https://github.com/libnyanpasu/clash-nyanpasu/pull/5203)
+
+- **core:** Add CoreActor v2, the ServiceActor, and the DNS wiring (PR-C/D-new, unwired) (#5116) by @greenhat616 in [#5116](https://github.com/libnyanpasu/clash-nyanpasu/pull/5116)
+
+- **css:** Add CSS worker support and improve CSS completion logic by @keiko233
+
+- **custom-css:** Draft impl custom spec (#4574) by @keiko233 in [#4574](https://github.com/libnyanpasu/clash-nyanpasu/pull/4574)
+
+- **dashboard:** Add daily widgets and improve widget library (#5566) by @keiko233 in [#5566](https://github.com/libnyanpasu/clash-nyanpasu/pull/5566)
+
+- **dashboard:** Add per-widget configuration by @keiko233
+
+- **dashboard:** Draft impl dashboard page widgets (#4353) by @keiko233 in [#4353](https://github.com/libnyanpasu/clash-nyanpasu/pull/4353)
+
+- **debug:** Add Block Task Viewer component to settings debug page by @keiko233
+
+- **dropdown-menu:** Add width prop to DropdownMenu and MotionContent for better layout control by @keiko233
+
+- **dropdown-menu:** Implement DropdownMenu component with context and animations by @keiko233
+
+- **effects:** Reconcile application effects after typed config commits (#5267) by @greenhat616 in [#5267](https://github.com/libnyanpasu/clash-nyanpasu/pull/5267)
+
+- **effects:** Add pure application effect plan and status protocol (#5266) by @greenhat616 in [#5266](https://github.com/libnyanpasu/clash-nyanpasu/pull/5266)
+
+- **enhance:** Add include-all field support for proxy groups (#3665) by @Slinetrac in [#3665](https://github.com/libnyanpasu/clash-nyanpasu/pull/3665)
+
+- **error-page:** Add reload & close button by @keiko233
+
+- **event:** Add React app mounted event and integrate into IPC by @keiko233
+
+- **frontend:** Open filter chips that do not fit in a dialog (#5573) by @greenhat616 in [#5573](https://github.com/libnyanpasu/clash-nyanpasu/pull/5573)
+
+- **frontend:** Jump between rules, connections and traffic (#5565) by @greenhat616 in [#5565](https://github.com/libnyanpasu/clash-nyanpasu/pull/5565)
+
+- **frontend:** Offer a way back after jumping between pages (#5563) by @greenhat616 in [#5563](https://github.com/libnyanpasu/clash-nyanpasu/pull/5563)
+
+- **geodata:** Add lookups over the core's geo databases (#5537) by @greenhat616 in [#5537](https://github.com/libnyanpasu/clash-nyanpasu/pull/5537)
+
+- **header:** Implement platform-specific headers with new DefaultHeader and MacOSHeader components by @keiko233
+
+- **header:** Draft impl header actions (#4076) by @keiko233 in [#4076](https://github.com/libnyanpasu/clash-nyanpasu/pull/4076)
+
+- **hooks:** Add useIsMobile hook to determine mobile view based on breakpoint by @keiko233
+
+- **hooks:** Add useLockFn hook to prevent concurrent execution of async functions by @keiko233
+
+- **hotkey:** Own shortcut registration in a typed actor (#5269) by @greenhat616 in [#5269](https://github.com/libnyanpasu/clash-nyanpasu/pull/5269)
+
+- **hotlkey:** Add hotkey management functionality and localization support by @keiko233
+
+- **i18n:** Select UI language from the system locale (#5228) by @greenhat616 in [#5228](https://github.com/libnyanpasu/clash-nyanpasu/pull/5228)
+
+- **i18n:** Add Korean (ko) translation (#4923) by @moduvoice in [#4923](https://github.com/libnyanpasu/clash-nyanpasu/pull/4923)
+
+- **i18n:** Integrate @inlang/paraglide-js for internationalization support by @keiko233
+
+- **i18n:** Translate time units and dialog buttons (#2530) by @3gf8jv4dv in [#2530](https://github.com/libnyanpasu/clash-nyanpasu/pull/2530)
+
+- **i18n:** Impl zh-tw language (#2431) by @3gf8jv4dv in [#2431](https://github.com/libnyanpasu/clash-nyanpasu/pull/2431)
+
+- **image:** Add Image component for optimized icon rendering in ProxiesNavigate by @keiko233
+
+- **input:** Implement Input component with NumericInput support by @keiko233
+
+- **ipc:** Send command errors as a structured payload with copyable details (#5431) by @greenhat616 in [#5431](https://github.com/libnyanpasu/clash-nyanpasu/pull/5431)
+
+- **ipc:** Migrate hooks to tauri-specta-query by @keiko233
+
+- **ipc:** Refactor clash ws hooks by @keiko233
+
+- **ipc:** Add useClashCores hook for managing Clash core details and versions by @keiko233
+
+- **ipc:** Add useProxyMode hook for managing proxy modes in Clash configuration by @keiko233
+
+- **ipc:** Add useSystemService hook with upsert mutation for service management by @keiko233
+
+- **ipc:** Add useClashInfo hook for retrieving clash information by @keiko233
+
+- **ipc:** Add useClashConfig hook for managing Clash configuration by @keiko233
+
+- **ipc:** Update profile types and refactor hook useage by @keiko233
+
+- **ipc:** Enhance useProfile hook optional helper functions by @keiko233
+
+- **ipc:** Export new hooks by @keiko233
+
+- **ipc:** Add settings hook by @keiko233
+
+- **ipc:** Add useRuntimeProfile hook by @keiko233
+
+- **ipc:** Enhance useProfile hook to include helper functions by @keiko233
+
+- **ipc:** Add profile hooks via tanstack query by @keiko233
+
+- **jobs:** Add task events rotate job by @greenhat616
+
+- **js-runner:** Support json, raw text module import by @greenhat616
+
+- **l10n:** Translate connection table columns and detail fields by @greenhat616
+
+- **language-provider:** Sync dayjs locale with selected language by @keiko233
+
+- **language-provider:** Add LanguageProvider component for managing application language context by @keiko233
+
+- **layout:** Fixed navigation bar style by @keiko233
+
+- **lifecycle:** Reconcile at startup and shut down in one ordered run (#5387) by @greenhat616 in [#5387](https://github.com/libnyanpasu/clash-nyanpasu/pull/5387)
+
+- **log-file-config:** Add log file configuration component by @keiko233
+
+- **logging:** Rotate app logs by size and local day (#5409) by @greenhat616 in [#5409](https://github.com/libnyanpasu/clash-nyanpasu/pull/5409)
+
+- **logging:** Expose app and service logs through the client facade (#5254) by @greenhat616 in [#5254](https://github.com/libnyanpasu/clash-nyanpasu/pull/5254)
+
+- **logging:** Draft a logging indexer for nyanpasu logs by @greenhat616
+
+- **logo:** Tweaks AnimatedLogo animations with indeterminate state by @keiko233
+
+- **logo:** Add animated logo component with shake effect and update header to use it by @keiko233
+
+- **logs:** Style date filters with Material You controls (#5261) by @greenhat616 in [#5261](https://github.com/libnyanpasu/clash-nyanpasu/pull/5261)
+
+- **logs:** Highlight JSON and clarify live following (#5260) by @greenhat616 in [#5260](https://github.com/libnyanpasu/clash-nyanpasu/pull/5260)
+
+- **logs:** Compact controls and load history on scroll (#5259) by @greenhat616 in [#5259](https://github.com/libnyanpasu/clash-nyanpasu/pull/5259)
+
+- **logs:** Unify viewer presentation with Material You components (#5258) by @greenhat616 in [#5258](https://github.com/libnyanpasu/clash-nyanpasu/pull/5258)
+
+- **logs:** Show application and service files in the viewer (#5255) by @greenhat616 in [#5255](https://github.com/libnyanpasu/clash-nyanpasu/pull/5255)
+
+- **logs:** Add clear logs action by @keiko233
+
+- **logs:** Draft impl new logs viewer by @keiko233
+
+- **logs:** Implement search functionality with highlighted text in logs by @keiko233
+
+- **logs:** Implement virtualized log display by @keiko233
+
+- **migration:** Stamp profiles.yaml with the schema revision it holds (#5364) by @greenhat616 in [#5364](https://github.com/libnyanpasu/clash-nyanpasu/pull/5364)
+
+- **migration:** Add profiles revision 3 clean-schema migration (#4899) by @greenhat616 in [#4899](https://github.com/libnyanpasu/clash-nyanpasu/pull/4899)
+
+- **migration:** Split legacy config into typed state files by @4o3F
+
+- **migration:** Open migration log file while migrate failed by @greenhat616
+
+- **modal:** Implement modal component using @radix-ui/react-dialog by @keiko233
+
+- **navbar:** Add "More" label and enhance mobile navbar with dropdown menu by @keiko233
+
+- **navbar:** Refactor navbar component to use dynamic button rendering by @keiko233
+
+- **navbar:** Integrate Tooltip component into Navbar by @keiko233
+
+- **network-statistic-widget:** Add configuration ui by @keiko233
+
+- **nsis:** Add zh-tw language for installer (#2517) by @3gf8jv4dv in [#2517](https://github.com/libnyanpasu/clash-nyanpasu/pull/2517)
+
+- **pac:** Add PAC proxy support with download, validation, and fallback (#3724) by @Slinetrac in [#3724](https://github.com/libnyanpasu/clash-nyanpasu/pull/3724)
+
+- **profile:** Draft impl edtior window (#4036) by @keiko233 in [#4036](https://github.com/libnyanpasu/clash-nyanpasu/pull/4036)
+
+- **profiles:** Show sync status and persisted run history (#5459) by @greenhat616 in [#5459](https://github.com/libnyanpasu/clash-nyanpasu/pull/5459)
+
+- **profiles:** Display runtime snapshots in Profile Inspect (#5222) by @greenhat616 in [#5222](https://github.com/libnyanpasu/clash-nyanpasu/pull/5222)
+
+- **profiles:** Implement drag-and-drop functionality for profile sorting by @keiko233
+
+- **profiles:** Integrate @paper-design/shaders-react for visual effect by @keiko233
+
+- **profiles:** Implement profiles context menu by @keiko233
+
+- **profiles:** Draft implement experimental profiles page (#3987) by @keiko233 in [#3987](https://github.com/libnyanpasu/clash-nyanpasu/pull/3987)
+
+- **profiles:** Global update button by @greenhat616
+
+- **progress:** Add linear progress component with indeterminate animation by @keiko233
+
+- **providers:** New providers page (#4329) by @keiko233 in [#4329](https://github.com/libnyanpasu/clash-nyanpasu/pull/4329)
+
+- **proxies:** Show group type and selected node latency (#5302) by @greenhat616 in [#5302](https://github.com/libnyanpasu/clash-nyanpasu/pull/5302)
+
+- **proxies:** Show recent latency history in node cards (#5247) by @greenhat616 in [#5247](https://github.com/libnyanpasu/clash-nyanpasu/pull/5247)
+
+- **proxies:** Add no proxies found message by @keiko233
+
+- **proxies:** Add connection speeds for group header component by @keiko233
+
+- **proxies:** Add proxies group delay test button by @keiko233
+
+- **proxies:** Draft implement proxies routes and components for proxy management by @keiko233
+
+- **proxies:** Add useClashProxiesProvider hook and related query key for managing proxies by @keiko233
+
+- **proxies:** Add useClashProxies hook and related query keys by @keiko233
+
+- **proxy:** Reset system proxy bypass to default when empty (#2858) (#3597) by @Slinetrac in [#3597](https://github.com/libnyanpasu/clash-nyanpasu/pull/3597)
+
+- **proxy:** Enhance useSystemProxy hook with auto-refetching based on settings by @keiko233
+
+- **proxy:** Add useSystemProxy hook for managing system proxy settings by @keiko233
+
+- **proxy-mode:** Draft impl proxy mode management by @keiko233
+
+- **route:** Enhance RouteComponent styling with background color support for light and dark modes by @keiko233
+
+- **router:** Integrate AnimatedOutlet directional slide animations based on navigation history by @keiko233
+
+- **router:** Draft implement experimental routing structure by @keiko233
+
+- **rules:** Show live connections and traffic per rule (#5487) by @greenhat616 in [#5487](https://github.com/libnyanpasu/clash-nyanpasu/pull/5487)
+
+- **rules:** Draft impl new rules page with proxy filtering by @keiko233
+
+- **rules:** Rules page use virtualized table (#4044) by @keiko233 in [#4044](https://github.com/libnyanpasu/clash-nyanpasu/pull/4044)
+
+- **rules:** Draft implement virtualized display for rules by @keiko233
+
+- **rules:** Add useClashRulesProvider hook and related query key for managing clash rules by @keiko233
+
+- **rules:** Add useClashRules hook and related query key for fetching clash rules by @keiko233
+
+- **runtime:** Expand include-all groups as a mihomo-compatible step (#5406) by @greenhat616 in [#5406](https://github.com/libnyanpasu/clash-nyanpasu/pull/5406)
+
+- **runtime:** Bind apply evidence to fixed runtime preconditions (#5324) by @greenhat616 in [#5324](https://github.com/libnyanpasu/clash-nyanpasu/pull/5324)
+
+- **script:** Give Lua scripts a console that matches the JS one (#5455) by @greenhat616 in [#5455](https://github.com/libnyanpasu/clash-nyanpasu/pull/5455)
+
+- **script:** Use Deno version manifest generation scripts by @keiko233
+
+- **scripts:** Better check script by @keiko233
+
+- **scripts:** Embeded js modules and helper tools (#3639) by @greenhat616 in [#3639](https://github.com/libnyanpasu/clash-nyanpasu/pull/3639)
+
+- **scroll-area:** Impl scroll tracking with offset calculations by @keiko233
+
+- **scroll-area:** Add both scrollbar orientation by @keiko233
+
+- **scroll-area:** Add scrolling state tracking to scroll area component by @keiko233
+
+- **scroll-area:** Implement scroll tracking context and enhance ScrollArea component by @keiko233
+
+- **scroll-area:** Enhance ScrollArea component with scroll direction detection & top state by @keiko233
+
+- **scroll-area:** Add AppContentScrollArea component and refactor usage in dashboard route by @keiko233
+
+- **select:** Add Select component with styling and context management by @keiko233
+
+- **separator:** Add Separator component using @radix-ui/react-separator by @keiko233
+
+- **server-port:** Add custom hook for fetching server port and update IPC exports by @keiko233
+
+- **service-prompt:** Add a copy button, and make text selectable by @greenhat616
+
+- **setting:** Refactor ClashFieldSwitch to use useSetting hook for state management by @keiko233
+
+- **setting:** Refactor SettingClashExternal component and improve external controller handling by @keiko233
+
+- **setting:** Refactor clash base card by @keiko233
+
+- **setting:** Update network statistic widget to use variant selection (#2575) by @keiko233 in [#2575](https://github.com/libnyanpasu/clash-nyanpasu/pull/2575)
+
+- **setting:** Refactor theme and language settings using new hooks by @keiko233
+
+- **setting:** Refactor system proxy settings with new hooks by @keiko233
+
+- **settings:** Configure mixed, SOCKS5 and HTTP port strategies (#5400) by @greenhat616 in [#5400](https://github.com/libnyanpasu/clash-nyanpasu/pull/5400)
+
+- **settings:** Add DNS cache management functionality by @keiko233
+
+- **settings:** Add enhancement options for proxy, profile, and mode changes by @keiko233
+
+- **settings:** Add log level selector by @keiko233
+
+- **settings:** Path config debug settings (#4153) by @keiko233 in [#4153](https://github.com/libnyanpasu/clash-nyanpasu/pull/4153)
+
+- **settings:** Clash field filter settings (#4152) by @keiko233 in [#4152](https://github.com/libnyanpasu/clash-nyanpasu/pull/4152)
+
+- **settings:** Add UWP Loopback Tools button by @keiko233
+
+- **settings:** Draft impl external controll page (#4147) by @keiko233 in [#4147](https://github.com/libnyanpasu/clash-nyanpasu/pull/4147)
+
+- **settings:** New core manager (#4140) by @keiko233 in [#4140](https://github.com/libnyanpasu/clash-nyanpasu/pull/4140)
+
+- **settings:** Add auto launch and silent start options in system settings by @keiko233
+
+- **settings:** Impl system proxy settings input by @keiko233
+
+- **settings:** Add mixed port configuration and random port toggle in clash settings by @keiko233
+
+- **settings:** Draft implement ui settings by @keiko233
+
+- **settings:** Add ExperimentalSwitch component to navigate to the experimental UI by @keiko233
+
+- **settings:** Draft implement settings page by @keiko233
+
+- **sidebar:** Impl sidebar mobile variants by @keiko233
+
+- **sidebar:** Implement Sidebar and SidebarContent components for responsive layout by @keiko233
+
+- **slider:** Impl slider component by @keiko233
+
+- **state:** Settle resources before publishing source decisions (#5322) by @greenhat616 in [#5322](https://github.com/libnyanpasu/clash-nyanpasu/pull/5322)
+
+- **state:** Serve committed config reads from snapshots and relocate workflow writes (#5321) by @greenhat616 in [#5321](https://github.com/libnyanpasu/clash-nyanpasu/pull/5321)
+
+- **state:** Migrate typed config state actors (#4869) by @greenhat616 in [#4869](https://github.com/libnyanpasu/clash-nyanpasu/pull/4869)
+
+- **state:** Route legacy writes through typed actors by @4o3F
+
+- **state:** Read legacy config from typed actors by @4o3F
+
+- **state:** Wire typed config actors into setup by @4o3F
+
+- **state:** Add typed config actor infrastructure by @4o3F
+
+- **storage:** Implement StorageValueChangedEvent by @keiko233
+
+- **styles:** Replace backdrop-blur with bg-mixed-background in multiple components by @keiko233
+
+- **styles:** Add custom mixed background color by @keiko233
+
+- **switch:** Add switch component with loading state support by @keiko233
+
+- **system-proxy:** Own proxy, PAC and auto-launch in a typed actor (#5268) by @greenhat616 in [#5268](https://github.com/libnyanpasu/clash-nyanpasu/pull/5268)
+
+- **tailwind:** Add font settings for code elements in utilities by @keiko233
+
+- **tauri:** Add RuntimeBuilder with golden snapshot baseline (#4888) by @greenhat616 in [#4888](https://github.com/libnyanpasu/clash-nyanpasu/pull/4888)
+
+- **tauri:** Add profiles domain layer (ports, file service, actor, refresh scheduler) (#4910) by @greenhat616 in [#4910](https://github.com/libnyanpasu/clash-nyanpasu/pull/4910)
+
+- **telegram-notify:** Refactor upload logic and switch to grammy for Telegram bot integration by @keiko233
+
+- **theme:** Pick the theme color in an HCT panel with live preview (#5561) by @greenhat616 in [#5561](https://github.com/libnyanpasu/clash-nyanpasu/pull/5561)
+
+- **theme:** Add currentThemeMode to ExperimentalThemeProvider by @keiko233
+
+- **theme:** Update custom mixed colors for light and dark themes by @keiko233
+
+- **theme:** Draft implement experimental theme provider & add Material Design color variables by @keiko233
+
+- **theme:** Rename theme_setting to theme_color and implement migration by @keiko233
+
+- **tooltip:** Add Tooltip component by @keiko233
+
+- **topology:** Add animated connection and geographic views (#5308) by @greenhat616 in [#5308](https://github.com/libnyanpasu/clash-nyanpasu/pull/5308)
+
+- **tracing:** Span transform application and script execution by @greenhat616
+
+- **traffic:** Locate local sources through opt-in public IP probes (#5580) by @greenhat616 in [#5580](https://github.com/libnyanpasu/clash-nyanpasu/pull/5580)
+
+- **traffic:** List closed connections and live ids by usage filters (#5562) by @greenhat616 in [#5562](https://github.com/libnyanpasu/clash-nyanpasu/pull/5562)
+
+- **traffic:** Weigh the whole traffic page by traffic or connections (#5557) by @greenhat616 in [#5557](https://github.com/libnyanpasu/clash-nyanpasu/pull/5557)
+
+- **traffic:** Animate the ranking lists as their order changes (#5555) by @greenhat616 in [#5555](https://github.com/libnyanpasu/clash-nyanpasu/pull/5555)
+
+- **traffic:** Preview the traffic page with generated usage in dev builds (#5553) by @greenhat616 in [#5553](https://github.com/libnyanpasu/clash-nyanpasu/pull/5553)
+
+- **traffic:** Shade the map by traffic share and how regions were located (#5552) by @greenhat616 in [#5552](https://github.com/libnyanpasu/clash-nyanpasu/pull/5552)
+
+- **traffic:** Locate DIRECT destinations by their peer and record how (#5551) by @greenhat616 in [#5551](https://github.com/libnyanpasu/clash-nyanpasu/pull/5551)
+
+- **traffic:** Locate regions with the app's own country index (#5550) by @greenhat616 in [#5550](https://github.com/libnyanpasu/clash-nyanpasu/pull/5550)
+
+- **traffic:** Probe the public address DIRECT traffic leaves from (#5547) by @greenhat616 in [#5547](https://github.com/libnyanpasu/clash-nyanpasu/pull/5547)
+
+- **traffic:** Rebuild the topology page as traffic analytics (#5519) by @greenhat616 in [#5519](https://github.com/libnyanpasu/clash-nyanpasu/pull/5519)
+
+- **traffic:** Record usage per time bucket with retention (#5518) by @greenhat616 in [#5518](https://github.com/libnyanpasu/clash-nyanpasu/pull/5518)
+
+- **traffic:** Expose session traffic through the client facade (#5479) by @greenhat616 in [#5479](https://github.com/libnyanpasu/clash-nyanpasu/pull/5479)
+
+- **traffic:** Record session traffic in an application actor (#5478) by @greenhat616 in [#5478](https://github.com/libnyanpasu/clash-nyanpasu/pull/5478)
+
+- **traffic:** Add profile-scoped traffic accounting with a redb store (#5477) by @greenhat616 in [#5477](https://github.com/libnyanpasu/clash-nyanpasu/pull/5477)
+
+- **tray:** Add tray menu close behavior options and UI integration by @keiko233
+
+- **tray:** Implement default behavior for TrayMenuMode based on OS by @keiko233
+
+- **tray:** Draft impl web ui base tray menu (#4527) by @keiko233 in [#4527](https://github.com/libnyanpasu/clash-nyanpasu/pull/4527)
+
+- **tray:** Add traffic display and macOS colored icons (#3653) by @Slinetrac in [#3653](https://github.com/libnyanpasu/clash-nyanpasu/pull/3653)
+
+- **tray-settings:** Add tray icon configuration by @keiko233
+
+- **ui:** Fit profile inspection to the viewport, tab step logs, highlight diff YAML (#5422) by @greenhat616 in [#5422](https://github.com/libnyanpasu/clash-nyanpasu/pull/5422)
+
+- **ui:** Add a process chain view and profile names to profile inspection (#5421) by @greenhat616 in [#5421](https://github.com/libnyanpasu/clash-nyanpasu/pull/5421)
+
+- **ui:** Refresh profile inspection automatically and render step logs (#5417) by @greenhat616 in [#5417](https://github.com/libnyanpasu/clash-nyanpasu/pull/5417)
+
+- **ui:** Align release channel selector with settings rows by @greenhat616
+
+- **ui:** Add a clash setting for include-all expansion (#5407) by @greenhat616 in [#5407](https://github.com/libnyanpasu/clash-nyanpasu/pull/5407)
+
+- **ui:** Show configuration convergence and unconfirmed operations (#5368) by @greenhat616 in [#5368](https://github.com/libnyanpasu/clash-nyanpasu/pull/5368)
+
+- **ui:** Surface the daemon compat gate in system settings (#5181) by @greenhat616 in [#5181](https://github.com/libnyanpasu/clash-nyanpasu/pull/5181)
+
+- **ui:** Add segmented button component by @keiko233
+
+- **ui:** Add proxy settings to header and implement proxy management hooks by @keiko233
+
+- **ui:** Update external controller and core secret configurations by @keiko233
+
+- **ui:** Add mixed port configuration with modal for editing by @keiko233
+
+- **ui:** Replace Select components with DropdownMenu by @keiko233
+
+- **ui:** Replace Select component with DropdownMenu by @keiko233
+
+- **ui:** Replace Select component with DropdownMenu in LanguageSelector by @keiko233
+
+- **ui:** Replace Select component with DropdownMenu for log level selection by @keiko233
+
+- **ui:** Dropdown menu with checkbox items and alignment options by @keiko233
+
+- **ui:** Add ScrollArea component with customizable viewport and scrollbar by @keiko233
+
+- **ui:** Draft impl new button, progress, and ripple components by @keiko233
+
+- **ui-effects:** Move locale, tray, logger and widget behind narrow adapters (#5270) by @greenhat616 in [#5270](https://github.com/libnyanpasu/clash-nyanpasu/pull/5270)
+
+- **updater:** Add ghfast download source by @keiko233
+
+- **updater:** Allow ordered package download sources by @keiko233
+
+- **updater:** Add persistent release channels and UI switching (#5332) by @greenhat616 in [#5332](https://github.com/libnyanpasu/clash-nyanpasu/pull/5332)
+
+- **updater:** Own core updates in an injected actor (#5249) by @greenhat616 in [#5249](https://github.com/libnyanpasu/clash-nyanpasu/pull/5249)
+
+- **updater:** New updater UI (#4091) by @keiko233 in [#4091](https://github.com/libnyanpasu/clash-nyanpasu/pull/4091)
+
+- **updater:** Add nightly release link handling in updater dialog by @keiko233
+
+- **updater:** Upload updater to surge by @keiko233
+
+- **updater:** Support windows nightly updater by @greenhat616
+
+- **updater:** Support more targets by @greenhat616
+
+- **utils:** Add PathResolver for centralized path resolution (#4828) by @greenhat616 in [#4828](https://github.com/libnyanpasu/clash-nyanpasu/pull/4828)
+
+- **version:** Update clash-rs alpha binary names and download URL structure by @keiko233
+
+- **widget:** Add network statistic widget with enable/variant settings by @keiko233
+
+- **widget:** Draft a small network widget by @greenhat616
+
+- **widget:** Draft a network widget based on egui by @greenhat616
+
+- **window:** Add support for window decorations configuration by @keiko233
+
+- **workflow:** Settle TCC mutations from authoritative evidence (#5320) by @greenhat616 in [#5320](https://github.com/libnyanpasu/clash-nyanpasu/pull/5320)
+
+- **workflow:** Identify complete runtime targets and apply policy (#5323) by @greenhat616 in [#5323](https://github.com/libnyanpasu/clash-nyanpasu/pull/5323)
+
+- **ws:** Draft impl ractor ClashConnectionsActor for websocket management by @keiko233
+
+- Add app update functionality with hooks and tests (#5579) by @keiko233 in [#5579](https://github.com/libnyanpasu/clash-nyanpasu/pull/5579)
+
+- Back up the config before migrations and from settings (#5529) by @greenhat616 in [#5529](https://github.com/libnyanpasu/clash-nyanpasu/pull/5529)
+
+- Reflect the config/transform hierarchy on the profiles page (#5416) by @greenhat616 in [#5416](https://github.com/libnyanpasu/clash-nyanpasu/pull/5416)
+
+- Bundle Inter Variable and set html lang from the app language (#5286) by @greenhat616 in [#5286](https://github.com/libnyanpasu/clash-nyanpasu/pull/5286)
+
+- Enable Windows service named-pipe control (#5282) by @greenhat616 in [#5282](https://github.com/libnyanpasu/clash-nyanpasu/pull/5282)
+
+- Add meow-rs core support (v0.18.0) (#4987) by @xmh0511 in [#4987](https://github.com/libnyanpasu/clash-nyanpasu/pull/4987)
+
+- Add Tooltip component and integrate with existing UI structure by @keiko233
+
+- Add LESS support to the CSS editor and compiler by @keiko233
+
+- Replace SegmentedButton with AnimatedTabs in ProxyModeSelector by @keiko233
+
+- Implement WindowReadyEvent for improved window management by @keiko233
+
+- Add update notification button and localization for new version by @keiko233
+
+- Refactor UI configuration to use window_type enum for window management by @keiko233
+
+- Add HWID integration for Remnawave subscriptions (#4361) by @kolya13245 in [#4361](https://github.com/libnyanpasu/clash-nyanpasu/pull/4361)
+
+- Settings design tweaks (#4072) by @keiko233 in [#4072](https://github.com/libnyanpasu/clash-nyanpasu/pull/4072)
+
+- Local profile update (#3674) by @Slinetrac in [#3674](https://github.com/libnyanpasu/clash-nyanpasu/pull/3674)
+
+- Draft new state manager (#3656) by @greenhat616 in [#3656](https://github.com/libnyanpasu/clash-nyanpasu/pull/3656)
+
+- Add enable_tray_text option and make lint happy (#3650) by @Slinetrac in [#3650](https://github.com/libnyanpasu/clash-nyanpasu/pull/3650)
+
+- Add enable_tray_text option (#3648) by @Slinetrac in [#3648](https://github.com/libnyanpasu/clash-nyanpasu/pull/3648)
+
+- Support SAFE_PATHS by @greenhat616
+
+- Add cache icon ttl by @greenhat616
+
+- Mutation provider use refetchQueries fn by @keiko233
+
+- Add mutation provider and enhance IPC event handling by @keiko233
+
+- Optimize data handling in DataPanel by removing state management by @keiko233
+
+- Add maximum history constants for connections, memory, traffic, and logs by @keiko233
+
+- Add dayjs dependency and enhance ClashWSProvider for logging and state management by @keiko233
+
+- Add clash version query and related hooks by @keiko233
+
+- Try to add a windows shutdown hook to gracefully shutdown by @greenhat616
+
+- Add QueryLoaderProvider to manage loading state in App component by @keiko233
+
+- Add useSystemService hook and integrate it into ServiceShortcuts component by @keiko233
+
+- Try to add deno deploy manifest mirror by @greenhat616
+
+- Add deno deploy updater server file by @greenhat616
+
+- Widget support (#1771) by @greenhat616 in [#1771](https://github.com/libnyanpasu/clash-nyanpasu/pull/1771)
+
+- Add react-scan for performance analysis by @greenhat616
+
+- Add element based breakpoint hook by @greenhat616
+
+- Support `hidden` display of node attributes ✅ (#1819) by @MNDIA in [#1819](https://github.com/libnyanpasu/clash-nyanpasu/pull/1819)
+
+- Add tun premission warning dialog and auto-granted premission in unix os by @greenhat616
+
+- Draft a reorder for chains by @greenhat616
+
+- Support fixed webview variants by @greenhat616
+
+- Ui support clash rs alpha by @greenhat616
+
+- Support clash rs alpha and windows arm64 by @greenhat616
+
+- Enable clash internal selector cache by @greenhat616
+
+- Impl nyanpasu storage bridge for jotai by @greenhat616
+
+- Experimental memorized route path by @greenhat616
+
+### 🐛 Bug Fixes
+
+- **NavbarButton:** Update class names and add data-slot attribute by @keiko233
+
+- **WindowReveal:** Prevent default action for Ctrl+F keydown event by @keiko233
+
+- **animated-outlet:** Handling to prevent potential errors when nextMatch is undefined by @keiko233
+
+- **animation:** Adjust spring animation duration for improved transition timing by @keiko233
+
+- **bridge:** Map empty system proxy bypass to none by @4o3F
+
+- **build:** Reuse Windows binaries with shared updater feeds (#5313) by @4o3F in [#5313](https://github.com/libnyanpasu/clash-nyanpasu/pull/5313)
+
+- **build:** Embed app manifest into test binaries on Windows (#4830) by @greenhat616 in [#4830](https://github.com/libnyanpasu/clash-nyanpasu/pull/4830)
+
+- **bundler:** Linux aarch64 build by @greenhat616
+
+- **button:** Update dark mode background variant for button styles by @keiko233
+
+- **button:** Button component with Slottable for improved child rendering by @keiko233
+
+- **ci:** Increase archive upload chunks to 50 MiB by @keiko233
+
+- **ci:** Prevent updater executables from replacing NSIS installers (#5420) by @4o3F in [#5420](https://github.com/libnyanpasu/clash-nyanpasu/pull/5420)
+
+- **ci:** Unblock the lint gate and the aarch64 Linux build (#5273) by @greenhat616 in [#5273](https://github.com/libnyanpasu/clash-nyanpasu/pull/5273)
+
+- **ci:** Check out the runtime submodule with LF on Windows (#5193) by @greenhat616 in [#5193](https://github.com/libnyanpasu/clash-nyanpasu/pull/5193)
+
+- **ci:** Restore Windows sidecar bundling on nightly by @4o3F
+
+- **ci:** Serialize legacy config bridge tests by @4o3F
+
+- **ci:** Use tilde-separated version for Linux nightly RPM/DEB packages (#4723) by @latin-1 in [#4723](https://github.com/libnyanpasu/clash-nyanpasu/pull/4723)
+
+- **ci:** Try to add linker debug info by @greenhat616
+
+- **ci:** Bump xcode version to solve link failed by @greenhat616
+
+- **ci:** Reject download non 200 file by @greenhat616
+
+- **ci:** Use macos-latest to build app by @greenhat616
+
+- **ci:** Add SURGE_TOKEN secret and inherit secrets in workflows (#2602) by @keiko233 in [#2602](https://github.com/libnyanpasu/clash-nyanpasu/pull/2602)
+
+- **ci:** Updater manifest missing files by @greenhat616
+
+- **ci:** Linux cross build by @greenhat616
+
+- **ci:** Macos overflow heap by @greenhat616
+
+- **ci:** Enable armel target build due to upstream fixes by @greenhat616
+
+- **circle, progress:** Adjust positioning and layout styles for CircleSVG and CircularProgress by @keiko233
+
+- **clash-ws-provider:** Persist log panel pause state across sessions (#3631) by @Slinetrac in [#3631](https://github.com/libnyanpasu/clash-nyanpasu/pull/3631)
+
+- **config:** Default max_log_file_size in existing application configs (#5410) by @greenhat616 in [#5410](https://github.com/libnyanpasu/clash-nyanpasu/pull/5410)
+
+- **config:** Start fresh installs from the typed config defaults (#5399) by @greenhat616 in [#5399](https://github.com/libnyanpasu/clash-nyanpasu/pull/5399)
+
+- **config:** Verify service-host receipts through the confirmed submission (#5396) by @greenhat616 in [#5396](https://github.com/libnyanpasu/clash-nyanpasu/pull/5396)
+
+- **config:** Address convergence review findings and trim the TCC stack (#5374) by @greenhat616 in [#5374](https://github.com/libnyanpasu/clash-nyanpasu/pull/5374)
+
+- **config:** Persist allow-lan runtime patch (#4718) by @yokinanya in [#4718](https://github.com/libnyanpasu/clash-nyanpasu/pull/4718)
+
+- **config:** Persist LAN connection setting with smart recovery (#3633) by @Slinetrac in [#3633](https://github.com/libnyanpasu/clash-nyanpasu/pull/3633)
+
+- **connections:** Start the table scrollbar below the sticky header (#5509) by @greenhat616 in [#5509](https://github.com/libnyanpasu/clash-nyanpasu/pull/5509)
+
+- **connections:** Close button trigger, and close #1770 by @greenhat616
+
+- **connections:** Table i18n by @greenhat616
+
+- **connections:** Table sort order by @greenhat616
+
+- **connections:** Table header rendering, and close #1744 by @greenhat616
+
+- **connections:** Number sorting, and close #1637 by @greenhat616
+
+- **context-menu:** Custom items missing on first right-click by @keiko233
+
+- **core:** Run the core locally when service mode cannot use the service (#5528) by @greenhat616 in [#5528](https://github.com/libnyanpasu/clash-nyanpasu/pull/5528)
+
+- **core:** Preserve native state across desktop and service modes (#5425) by @4o3F in [#5425](https://github.com/libnyanpasu/clash-nyanpasu/pull/5425)
+
+- **core:** Keep the source mapping order in the core's runtime config (#5404) by @greenhat616 in [#5404](https://github.com/libnyanpasu/clash-nyanpasu/pull/5404)
+
+- **core:** Leave another instance's service core alone by @greenhat616
+
+- **core:** Recover disconnected service endpoints (#5248) by @greenhat616 in [#5248](https://github.com/libnyanpasu/clash-nyanpasu/pull/5248)
+
+- **core:** Find core binaries in the externalBin dir during dev (#5200) by @greenhat616 in [#5200](https://github.com/libnyanpasu/clash-nyanpasu/pull/5200)
+
+- **core:** Prevent race conditions in core execution with run_lock by @keiko233
+
+- **core:** Check config with window by @greenhat616
+
+- **core:** Use nyanpasu utils' internal check config by @greenhat616
+
+- **dashboard:** Prevent freeze when page is hidden (#3654) by @Slinetrac in [#3654](https://github.com/libnyanpasu/clash-nyanpasu/pull/3654)
+
+- **dashboard:** Adjust grid sizes when clash core not support memory api by @keiko233
+
+- **dashboard:** Update data handling to use new ClashMemory and ClashTraffic hooks by @keiko233
+
+- **dashboard:** Ipsb missing country code issue, and close #1742 by @greenhat616
+
+- **deep-link:** Import profiles from install-config deep links & sync profile name from subscription (#4913) by @kolya13245 in [#4913](https://github.com/libnyanpasu/clash-nyanpasu/pull/4913)
+
+- **deps:** Align windows-core and webview2-com with wry by @greenhat616
+
+- **deps:** Clean up deps by @keiko233
+
+- **deps:** Replace bincode with postcard for cache file serialization (#4198) by @keiko233 in [#4198](https://github.com/libnyanpasu/clash-nyanpasu/pull/4198)
+
+- **deps:** Bump framer-motion by @greenhat616
+
+- **deps:** Update pnpm version by @keiko233
+
+- **download:** Repair broken/flaky tests in core::download (#4740) by @latin-1 in [#4740](https://github.com/libnyanpasu/clash-nyanpasu/pull/4740)
+
+- **editor:** Keep model path stable and Monaco out of main bundle (#5493) by @greenhat616 in [#5493](https://github.com/libnyanpasu/clash-nyanpasu/pull/5493)
+
+- **enhance:** Js wrap failed after upgraded oxc by @greenhat616
+
+- **enhance:** A panic while apply changes to a remote profile by @greenhat616
+
+- **enhance:** Try to correct the original mapping order for lua runner by @greenhat616
+
+- **eslint:** Clean up eslint config by removing unnecessary comments and projectService option by @keiko233
+
+- **experimental-switch:** Update navigation path to dashboard and set memorized route by @keiko233
+
+- **extensions:** Remove 'bungcip.better-toml' and add 'tamasfe.even-better-toml' to recommendations by @keiko233
+
+- **fake-core:** Prevent macOS ConnectionReset in HTTP protocol tests (#5022) by @xmh0511 in [#5022](https://github.com/libnyanpasu/clash-nyanpasu/pull/5022)
+
+- **fmt:** Format code by @keiko233
+
+- **frontend:** Never print traffic amounts in exponent notation (#5554) by @greenhat616 in [#5554](https://github.com/libnyanpasu/clash-nyanpasu/pull/5554)
+
+- **group-header:** Adjust BackButton visibility based on sidebar state by @keiko233
+
+- **i18n:** Update locale mapping for zh-TW and zh-CN by @keiko233
+
+- **i18n:** Copy feat i18n for service manual prompt (#2532) by @3gf8jv4dv in [#2532](https://github.com/libnyanpasu/clash-nyanpasu/pull/2532)
+
+- **i18n:** Apply button for theme colors not translated (#2531) by @3gf8jv4dv in [#2531](https://github.com/libnyanpasu/clash-nyanpasu/pull/2531)
+
+- **i18n:** Fix missing tray menu locale & wrong i18n key (#2514) by @3gf8jv4dv in [#2514](https://github.com/libnyanpasu/clash-nyanpasu/pull/2514)
+
+- **i18n:** Rename locale file to fix broken tray menu text (#2489) by @3gf8jv4dv in [#2489](https://github.com/libnyanpasu/clash-nyanpasu/pull/2489)
+
+- **i18n:** Refine zh-tw i18n code logic (#2485) by @3gf8jv4dv in [#2485](https://github.com/libnyanpasu/clash-nyanpasu/pull/2485)
+
+- **i18n:** Connections table i18n for zh-tw (#2471) by @3gf8jv4dv in [#2471](https://github.com/libnyanpasu/clash-nyanpasu/pull/2471)
+
+- **i18n:** System service setting prompt button i18n (#2432) by @3gf8jv4dv in [#2432](https://github.com/libnyanpasu/clash-nyanpasu/pull/2432)
+
+- **input, select:** Styling for filled variants by @keiko233
+
+- **ipc:** Update bindings generate by @keiko233
+
+- **ipc:** Add default queryFn to clash ws hooks by @keiko233
+
+- **ipc:** Update query key format for profile content by @keiko233
+
+- **ipc:** Update useSetting upsert function to support async operations by @keiko233
+
+- **ipc:** Update mutation function to accept partial profiles builder by @keiko233
+
+- **ipc:** Disable useProfileContent auto fetch by @keiko233
+
+- **jobs:** Keep maintenance timers with their actor owners (#5465) by @greenhat616 in [#5465](https://github.com/libnyanpasu/clash-nyanpasu/pull/5465)
+
+- **jobs:** Events rotate cron by @greenhat616
+
+- **js-runner:** Logger thread safe by @greenhat616
+
+- **js-runner:** Make http module fetcher works by @greenhat616
+
+- **js-runner:** Use CombineLoader to make it works, however, im a joker by @greenhat616
+
+- **l10n:** Overhaul english and chinese translations (#5583) by @3gf8jv4dv in [#5583](https://github.com/libnyanpasu/clash-nyanpasu/pull/5583)
+
+- **l10n:** Refine en and zh-cn translations (#5531) by @3gf8jv4dv in [#5531](https://github.com/libnyanpasu/clash-nyanpasu/pull/5531)
+
+- **l10n:** Refine zh-tw translations (#5530) by @3gf8jv4dv in [#5530](https://github.com/libnyanpasu/clash-nyanpasu/pull/5530)
+
+- **l10n:** Refine zh-tw translations (#5485) by @3gf8jv4dv in [#5485](https://github.com/libnyanpasu/clash-nyanpasu/pull/5485)
+
+- **l10n:** Refine tray menu text 2 (#5460) by @3gf8jv4dv in [#5460](https://github.com/libnyanpasu/clash-nyanpasu/pull/5460)
+
+- **l10n:** Unify word in tradchinese (#5461) by @3gf8jv4dv in [#5461](https://github.com/libnyanpasu/clash-nyanpasu/pull/5461)
+
+- **l10n:** Add missing quote in update channel button (#5343) by @3gf8jv4dv in [#5343](https://github.com/libnyanpasu/clash-nyanpasu/pull/5343)
+
+- **l10n:** Refine tray menu text (#5333) by @3gf8jv4dv in [#5333](https://github.com/libnyanpasu/clash-nyanpasu/pull/5333)
+
+- **l10n:** Refine search placeholder text on various pages (#5316) by @3gf8jv4dv in [#5316](https://github.com/libnyanpasu/clash-nyanpasu/pull/5316)
+
+- **l10n:** Refine profile inspect page text (#5317) by @3gf8jv4dv in [#5317](https://github.com/libnyanpasu/clash-nyanpasu/pull/5317)
+
+- **l10n:** Update remote profile time description text (#4810) by @3gf8jv4dv in [#4810](https://github.com/libnyanpasu/clash-nyanpasu/pull/4810)
+
+- **l10n:** Add missing english text (#4591) by @3gf8jv4dv in [#4591](https://github.com/libnyanpasu/clash-nyanpasu/pull/4591)
+
+- **language:** Ensure locale is set in lowercase for consistency by @keiko233
+
+- **language:** Improve cached language retrieval logic by @keiko233
+
+- **language:** Use custom strategy for paraglide & streamline language context management by @keiko233
+
+- **language:** Manually import language utils & inject paraglide custom strategy by @keiko233
+
+- **language:** Add caching for selected language by @keiko233
+
+- **lifecycle:** Stop the core even when the workflow died (#5540) by @greenhat616 in [#5540](https://github.com/libnyanpasu/clash-nyanpasu/pull/5540)
+
+- **lint:** Lint-staged configuration by using direct eslint command to fix windows issues by @keiko233
+
+- **lint:** Crlf by @keiko233
+
+- **lint:** Missing eslint deps by @keiko233
+
+- **lint-staged:** Add changed files while format backend codes by @greenhat616
+
+- **linting:** Configuration and scripts for better file handling by @keiko233
+
+- **lintstaged:** Prevent submission of untracked files by @keiko233
+
+- **linux:** Rename GTK icons to avoid cache update failure (#3610) by @Slinetrac in [#3610](https://github.com/libnyanpasu/clash-nyanpasu/pull/3610)
+
+- **linux:** Vendored openssl for compatiable with customized os, uos etc by @greenhat616
+
+- **logging:** Stop the silent app log level from crashing the app (#5533) by @greenhat616 in [#5533](https://github.com/libnyanpasu/clash-nyanpasu/pull/5533)
+
+- **logging:** Warn on service IPC and API monitor failures by @greenhat616
+
+- **logging:** Replace hyphens with double underscores in index creation by @keiko233
+
+- **logs:** Load core history on scroll and align footer selects (#5559) by @greenhat616 in [#5559](https://github.com/libnyanpasu/clash-nyanpasu/pull/5559)
+
+- **logs:** Capture Debug logs and persist the current session (#5490) by @4o3F in [#5490](https://github.com/libnyanpasu/clash-nyanpasu/pull/5490)
+
+- **logs:** Bottom toolbar layout and copy button reset (#5523) by @greenhat616 in [#5523](https://github.com/libnyanpasu/clash-nyanpasu/pull/5523)
+
+- **macos:** Reopen window while dock icon is buggy show on the panel by @greenhat616
+
+- **macos:** Set/reset dns while toggle tun mode by @greenhat616
+
+- **macos:** Traffic lights flicking while resize window by @greenhat616
+
+- **macos:** Service install issue by @greenhat616
+
+- **macos:** Cleanup codes and remove round area while window is maximized by @greenhat616
+
+- **macos:** Resize panic by @greenhat616
+
+- **macos:** Try to use do shell start service by @greenhat616
+
+- **macos:** Require minimumSystemVersion to 12.6 by @greenhat616
+
+- **migration:** Refuse to start when migration state and files disagree (#5359) by @greenhat616 in [#5359](https://github.com/libnyanpasu/clash-nyanpasu/pull/5359)
+
+- **migration:** Reconcile dangling profile transforms by @4o3F
+
+- **migration:** Repair typed clash config path by @keiko233
+
+- **migration:** Merge legacy clash guard overrides by @4o3F
+
+- **migration:** Preserve typed clash config during migration (#4880) by @4o3F in [#4880](https://github.com/libnyanpasu/clash-nyanpasu/pull/4880)
+
+- **migration:** Detect fresh install and do not commit lockfile for read op by @greenhat616
+
+- **migration:** Enable v2.0.0 migrations by @greenhat616
+
+- **migration:** Add a migration for chain by @greenhat616
+
+- **modal:** Update modal trigger styles for improved responsiveness by @keiko233
+
+- **navbar:** Error occurs when the name cannot be retrieved by @keiko233
+
+- **nsis:** Default cross-version upgrade to in-place update instead of uninstall-first (#4807) by @greenhat616 in [#4807](https://github.com/libnyanpasu/clash-nyanpasu/pull/4807)
+
+- **nyanpasu-config:** Fill NyanpasuAppConfig default with real values (#4762) by @greenhat616 in [#4762](https://github.com/libnyanpasu/clash-nyanpasu/pull/4762)
+
+- **page-transition:** Replace local AnimatedOutlet with shared implementation by @keiko233
+
+- **panic:** Shut the app down when the main thread panics (#5542) by @greenhat616 in [#5542](https://github.com/libnyanpasu/clash-nyanpasu/pull/5542)
+
+- **panic:** Let panic force capture backtrace by @greenhat616
+
+- **postcss:** Twcss intellisense build err by @keiko233
+
+- **profile:** Local profile button import by @keiko233
+
+- **profile:** Remote profile update helper fn by @keiko233
+
+- **profile:** Use a workaround to parse taggedvalue type by @greenhat616
+
+- **profiles:** Accept IP hosts in subscription URLs by @keiko233
+
+- **profiles:** Stop opening a profile file from crashing the app (#5524) by @greenhat616 in [#5524](https://github.com/libnyanpasu/clash-nyanpasu/pull/5524)
+
+- **profiles:** Show transform diagnostics and profile names (#5466) by @greenhat616 in [#5466](https://github.com/libnyanpasu/clash-nyanpasu/pull/5466)
+
+- **profiles:** Keep a failed connection drop from failing activation by @greenhat616
+
+- **profiles:** Keep chain editor columns in sync with drag state (#5277) by @greenhat616 in [#5277](https://github.com/libnyanpasu/clash-nyanpasu/pull/5277)
+
+- **profiles:** Improve item reordering to preserve unmatched items by @keiko233
+
+- **profiles:** Hidden proxy groups and add profile-name from remote profile headers (#3434) by @kolya13245 in [#3434](https://github.com/libnyanpasu/clash-nyanpasu/pull/3434)
+
+- **profiles:** Abstract profile builder, and fixes #2495 by @greenhat616
+
+- **profiles:** Update all subscriptions button in dark mode, and close #1767 by @greenhat616
+
+- **profiles:** Touch new profile and process scoped chain by @greenhat616
+
+- **profiles:** Add a migration for v1.6.0 to migrate script profile type by @greenhat616
+
+- **profiles-header:** Increase z-index for sticky header by @keiko233
+
+- **proxies:** Re-render useClashProxies when the query updates (#5427) by @greenhat616 in [#5427](https://github.com/libnyanpasu/clash-nyanpasu/pull/5427)
+
+- **proxy:** Resolve provider-owned proxies (#4954) by @Jimie165 in [#4954](https://github.com/libnyanpasu/clash-nyanpasu/pull/4954)
+
+- **root:** Adjust background opacity for improved visual consistency by @keiko233
+
+- **route-memory:** Fix Index Page redirect by ensuring storage init (#3687) by @Slinetrac in [#3687](https://github.com/libnyanpasu/clash-nyanpasu/pull/3687)
+
+- **router:** Patch frozen router with current tanstack store names by @keiko233
+
+- **router:** Fix animated outlet showing stale route on navigation by @keiko233
+
+- **script:** Keep mapping key order through Lua scripts (#5454) by @greenhat616 in [#5454](https://github.com/libnyanpasu/clash-nyanpasu/pull/5454)
+
+- **script:** Name Lua chunks after the script instead of Rust source (#5453) by @greenhat616 in [#5453](https://github.com/libnyanpasu/clash-nyanpasu/pull/5453)
+
+- **script:** Export the right main function when wrapping JS scripts (#5452) by @greenhat616 in [#5452](https://github.com/libnyanpasu/clash-nyanpasu/pull/5452)
+
+- **script-ui:** Enable draggable window and proper URL opening in Monaco (#3612) by @Slinetrac in [#3612](https://github.com/libnyanpasu/clash-nyanpasu/pull/3612)
+
+- **scripts:** Recognize the app package on Windows in boundary checks by @greenhat616
+
+- **scripts:** Stop counting other crates' Config types as legacy calls by @greenhat616
+
+- **scripts:** Make `generate-git-info.ts` retrieve commit authors (#4835) by @3gf8jv4dv in [#4835](https://github.com/libnyanpasu/clash-nyanpasu/pull/4835)
+
+- **select:** Adjust shadow styles and transform origin for animations by @keiko233
+
+- **sepcta:** Prettier formatting command by @keiko233
+
+- **server:** Stop the internal HTTP server on shutdown (#5541) by @greenhat616 in [#5541](https://github.com/libnyanpasu/clash-nyanpasu/pull/5541)
+
+- **service:** Uninstall a stopped service without stopping it first (#5526) by @greenhat616 in [#5526](https://github.com/libnyanpasu/clash-nyanpasu/pull/5526)
+
+- **service:** Dark theme and install failed dir prompt by @greenhat616
+
+- **service:** Restart core while service ipc state changed by @greenhat616
+
+- **setting:** Update Auto Check Updates switch to use nullish coalescing for default value by @keiko233
+
+- **setting:** Update service mode switch to use checked prop by @keiko233
+
+- **setting:** Ensure default color is considered in theme expansion logic by @keiko233
+
+- **settings:** Nest port dialog trigger inside the card content slot by @greenhat616
+
+- **settings:** Layout structure for better responsiveness by @keiko233
+
+- **settings:** Mobile page text marquee by @keiko233
+
+- **settings:** Mui masonry style by @keiko233
+
+- **settings:** Expand element display err by @keiko233
+
+- **settings-title:** Adjust padding and gap for settings title layout by @keiko233
+
+- **settings-title:** Adjust threshold for showing top title from 60 to 40 by @keiko233
+
+- **settings-title:** Update padding classes for responsive design adjustments by @keiko233
+
+- **setup:** Comment out logging setup to prevent IPC state issues by @keiko233
+
+- **shiki:** Update getShikiSingleton to use getWasm for loading engine by @keiko233
+
+- **shutdown:** Windows panic (#2629) by @keiko233
+
+- **singleton:** Isolate Windows singleton per user/config and unify cross-platform behavior (#3622) by @Slinetrac in [#3622](https://github.com/libnyanpasu/clash-nyanpasu/pull/3622)
+
+- **startup:** Remove fixed delays before CLI exit (#5570) by @4o3F in [#5570](https://github.com/libnyanpasu/clash-nyanpasu/pull/5570)
+
+- **state:** Sync loaded typed config into legacy mirrors by @4o3F
+
+- **state:** Prevent panic when unwrapping None values in ManagedState (#3706) by @Sn0wo2 in [#3706](https://github.com/libnyanpasu/clash-nyanpasu/pull/3706)
+
+- **styles:** Correct background color fallback for .bg-inherit-allow-fallback class by @keiko233
+
+- **styles:** Update body background color for light and dark themes by @keiko233
+
+- **styles:** Connection chip by @greenhat616
+
+- **tasks:** Hold the state for event dispatcher as a workaround towards redb internal bug by @greenhat616
+
+- **tauri:** Try to force use tray-icon 0.21.0 by @greenhat616
+
+- **tests:** Prepare dirs while first touch dir path by @greenhat616
+
+- **tests:** Do not use nyanpasu proxy while testing by @greenhat616
+
+- **tests:** Create a axum server for local testing by @greenhat616
+
+- **theme:** System theme detection by @keiko233
+
+- **theme:** Proxy toggle button group styles by @greenhat616
+
+- **title-bar:** Implement custom hook for window maximize state management by @keiko233
+
+- **traffic:** Keep the stat cards one height (#5556) by @greenhat616 in [#5556](https://github.com/libnyanpasu/clash-nyanpasu/pull/5556)
+
+- **traffic:** Read the one country among a GeoIP record's tags (#5549) by @greenhat616 in [#5549](https://github.com/libnyanpasu/clash-nyanpasu/pull/5549)
+
+- **translations:** Update consistency and clarity by @keiko233
+
+- **tray:** Prevent multiple checked proxies in tray menu (#3624) by @Slinetrac in [#3624](https://github.com/libnyanpasu/clash-nyanpasu/pull/3624)
+
+- **tray:** Wrong iter in select proxy by @greenhat616
+
+- **tun:** Show failed message by @greenhat616
+
+- **typo:** Fix the typo (#3893) by @lmmqxyx404 in [#3893](https://github.com/libnyanpasu/clash-nyanpasu/pull/3893)
+
+- **ui:** Keep navbar button highlighted across its section's subpages (#5441) by @greenhat616 in [#5441](https://github.com/libnyanpasu/clash-nyanpasu/pull/5441)
+
+- **ui:** Stop proxy node hover from dimming its chips and delay button by @greenhat616
+
+- **ui:** Keep chain step headers in place under WebKit by @greenhat616
+
+- **ui:** Keep sidebar widths stable across routes (#5419) by @greenhat616 in [#5419](https://github.com/libnyanpasu/clash-nyanpasu/pull/5419)
+
+- **ui:** Outlined input placeholder overlap and idle border color (#5418) by @greenhat616 in [#5418](https://github.com/libnyanpasu/clash-nyanpasu/pull/5418)
+
+- **ui:** Stop dashboard sparkline jitter (#5412) by @greenhat616 in [#5412](https://github.com/libnyanpasu/clash-nyanpasu/pull/5412)
+
+- **ui:** Drop the border notch of outlined select without placeholder by @greenhat616
+
+- **ui:** Memory usage display and subscription usage display bugs (#4436) by @Bihrys in [#4436](https://github.com/libnyanpasu/clash-nyanpasu/pull/4436)
+
+- **ui:** Show correctly message while switching profiles by @greenhat616
+
+- **ui:** Deadlock navigate call by @greenhat616
+
+- **ui:** Mui v7 bc (#3006) by @keiko233 in [#3006](https://github.com/libnyanpasu/clash-nyanpasu/pull/3006)
+
+- **updater:** Shut the app down before the update installer runs (#5543) by @greenhat616 in [#5543](https://github.com/libnyanpasu/clash-nyanpasu/pull/5543)
+
+- **updater:** Use a fixed-length hash for nightly versions by @greenhat616
+
+- **updater:** Sign nightly updates with the release version (#5464) by @greenhat616 in [#5464](https://github.com/libnyanpasu/clash-nyanpasu/pull/5464)
+
+- **updater:** Update proxy URLs to use nyanpasu-script by @keiko233
+
+- **updater:** Correct pre-release URL in updater dialog by @keiko233
+
+- **updater:** Nightly channel build info prepare issue by @greenhat616
+
+- **updater:** Version compare issue by @greenhat616
+
+- **updater:** Use internal improved cmd to check updates by @greenhat616
+
+- **updater:** Replace current core by @greenhat616
+
+- **upload:** Add diagnostics upload and verification for nightly builds by @keiko233
+
+- **v6:** Update sendMessage type definition in WebSocketHookResult by @keiko233
+
+- **validation:** Improve input validation and config repair (#3657) by @Slinetrac in [#3657](https://github.com/libnyanpasu/clash-nyanpasu/pull/3657)
+
+- **vite:** Bump safari>=13 to safari>=15 in the legacy plugin targets by @keiko233
+
+- **whitelist:** Just detect valid fields and protected fields by @greenhat616
+
+- **widget:** Use dup pipe to make piped correctly by @greenhat616
+
+- **widget:** Hidden dock icon on macOs by @greenhat616
+
+- **widget:** Theme and cleanup processes by @greenhat616
+
+- **widget:** Deadlock on widget exit by @greenhat616
+
+- **widget:** Instant repaint after status updated by @greenhat616
+
+- **widget:** Start blocking and failture by @greenhat616
+
+- **window:** Preserve state when exiting minimized (#4943) by @Jimie165 in [#4943](https://github.com/libnyanpasu/clash-nyanpasu/pull/4943)
+
+- **window:** Update singleton window handling to focus instead of show by @keiko233
+
+- **window:** Skip window state save when size is 0x0 during shutdown by @keiko233
+
+- **window:** Clamp restored window size to minimum dimensions to prevent 0x0 windows by @keiko233
+
+- **window:** Adjust traffic lights position for macOS window by @keiko233
+
+- **window:** Adjust minimum inner size for window creation by @keiko233
+
+- **window:** Handle window movement across monitors with different scaling (#3675) by @Slinetrac in [#3675](https://github.com/libnyanpasu/clash-nyanpasu/pull/3675)
+
+- **window-control:** Correct icon rendering order in maximize button by @keiko233
+
+- **windows:** Fix windows service mode issue by @4o3F
+
+- **windows:** Auto launch issue by @greenhat616
+
+- **workflow:** Update file patterns for artifact uploads in Windows NSIS build by @keiko233
+
+- **workflow:** Improve file handling in release asset upload step by @keiko233
+
+- Specify architecture for Windows and Linux builds by @keiko233
+
+- Reorder restart options on system menu (#5581) by @3gf8jv4dv in [#5581](https://github.com/libnyanpasu/clash-nyanpasu/pull/5581)
+
+- Avoid startup panic before tray is ready by @keiko233
+
+- Tcc review loop (#5366) by @greenhat616 in [#5366](https://github.com/libnyanpasu/clash-nyanpasu/pull/5366)
+
+- Update styling for GroupSummary and ProxyNodeButton components by @keiko233
+
+- Update clash-rs upstream references (#5357) by @greenhat616 in [#5357](https://github.com/libnyanpasu/clash-nyanpasu/pull/5357)
+
+- Adopt named-pipe IPC connection retries (#5281) by @greenhat616 in [#5281](https://github.com/libnyanpasu/clash-nyanpasu/pull/5281)
+
+- Adapt to oxc_parser 0.148 ParserReturn field rename by @greenhat616
+
+- Upgrade Boa to 0.22 and preserve YAML template nesting (#5202) by @greenhat616 in [#5202](https://github.com/libnyanpasu/clash-nyanpasu/pull/5202)
+
+- Resolve all clippy warnings across the workspace (#5021) by @xmh0511 in [#5021](https://github.com/libnyanpasu/clash-nyanpasu/pull/5021)
+
+- Remove tauri-icon patch by @greenhat616 in [#4955](https://github.com/libnyanpasu/clash-nyanpasu/pull/4955)
+
+- Renormalize serena config by @greenhat616
+
+- Fmt by @greenhat616
+
+- Use valid monospace font stack in Monaco by @keiko233
+
+- Handle errors for service installation, uninstallation, and control operations by @keiko233
+
+- Remove support for windows-i686 platform in updater scripts by @keiko233
+
+- Unify all units of information to ice (#4823) by @3gf8jv4dv in [#4823](https://github.com/libnyanpasu/clash-nyanpasu/pull/4823)
+
+- Remote profile traffic and local file size display (#4809) by @3gf8jv4dv in [#4809](https://github.com/libnyanpasu/clash-nyanpasu/pull/4809)
+
+- Color of more button on mobile navbar (#4811) by @3gf8jv4dv in [#4811](https://github.com/libnyanpasu/clash-nyanpasu/pull/4811)
+
+- Button width on desktop navbar (#4812) by @3gf8jv4dv in [#4812](https://github.com/libnyanpasu/clash-nyanpasu/pull/4812)
+
+- Fmt by @greenhat616
+
+- Replace relaunch with commands.restartApplication in RestartButton by @keiko233
+
+- Update version string format for Linux to comply with semver by @keiko233
+
+- Unify PatchRuntimeConfig field naming to kebab-case (#4715) by @C4a15Wh in [#4715](https://github.com/libnyanpasu/clash-nyanpasu/pull/4715)
+
+- Regenerate lockfile with cross-platform rolldown native bindings by @keiko233
+
+- Deno fmt by @keiko233
+
+- Remove unnecessary logging in copy_clash_env and show_dock_icon functions by @keiko233
+
+- Resolve macOS clippy lifetime errors in DNS client and type inference by @keiko233
+
+- Specta-typescript serde serialize err by @keiko233
+
+- Specta bc & lint by @keiko233
+
+- Update mihomo_alpha version handling and add asset extraction logic by @keiko233
+
+- Import monaco service in editor route by @keiko233
+
+- Vite 8 build by @keiko233
+
+- Update URLs to use the new domain for resources and documentation by @keiko233
+
+- Ci build by @keiko233
+
+- Clean up by @keiko233
+
+- Lint by @keiko233
+
+- Lint by @keiko233
+
+- Update artifact upload path to include only NSIS executables by @keiko233
+
+- Light theme color err by @keiko233
+
+- Update component styles to use SxProps for better type safety by @keiko233
+
+- Reload clash config from file on core restart to persist user mode preference (#3919) by @temp-maker-temp in [#3919](https://github.com/libnyanpasu/clash-nyanpasu/pull/3919)
+
+- Fix the errored codes (#3864) by @lmmqxyx404 in [#3864](https://github.com/libnyanpasu/clash-nyanpasu/pull/3864)
+
+- Clash-rs core version format mismatch (#3826) by @ArakawaHenri in [#3826](https://github.com/libnyanpasu/clash-nyanpasu/pull/3826)
+
+- Connections ui (#3688) by @Slinetrac in [#3688](https://github.com/libnyanpasu/clash-nyanpasu/pull/3688)
+
+- Hide powershell window (#3686) by @Slinetrac in [#3686](https://github.com/libnyanpasu/clash-nyanpasu/pull/3686)
+
+- Window manager on linux (#3676) by @Slinetrac in [#3676](https://github.com/libnyanpasu/clash-nyanpasu/pull/3676)
+
+- Proxy chain ui (#3663) by @Slinetrac in [#3663](https://github.com/libnyanpasu/clash-nyanpasu/pull/3663)
+
+- Proxy ui memory (#3668) by @Slinetrac in [#3668](https://github.com/libnyanpasu/clash-nyanpasu/pull/3668)
+
+- Core name display (#3666) by @Slinetrac in [#3666](https://github.com/libnyanpasu/clash-nyanpasu/pull/3666)
+
+- Menu description (#3662) by @Slinetrac in [#3662](https://github.com/libnyanpasu/clash-nyanpasu/pull/3662)
+
+- Kernel download write display (#3661) by @Slinetrac in [#3661](https://github.com/libnyanpasu/clash-nyanpasu/pull/3661)
+
+- Prevent NaN% in progress display (#3651) by @Slinetrac in [#3651](https://github.com/libnyanpasu/clash-nyanpasu/pull/3651)
+
+- Tooltips display (#3644) by @Slinetrac in [#3644](https://github.com/libnyanpasu/clash-nyanpasu/pull/3644)
+
+- Rm openssl deps by @greenhat616
+
+- Unit tests by @greenhat616
+
+- Enhance Linux auto-launch with improved logging and KDE compatibility #3466 (#3609) by @Slinetrac in [#3609](https://github.com/libnyanpasu/clash-nyanpasu/pull/3609)
+
+- Lint by @greenhat616
+
+- Delay chip color error (#3192) by @SherkeyXD in [#3192](https://github.com/libnyanpasu/clash-nyanpasu/pull/3192)
+
+- Show TUN permission warning only when TUN is enabled (#3160) by @Rbqwow in [#3160](https://github.com/libnyanpasu/clash-nyanpasu/pull/3160)
+
+- Build by @greenhat616
+
+- Mui v7 tansatck table and themes by @greenhat616
+
+- Mui v7 theme palette issue, migrating to color-mix and css vars by @greenhat616
+
+- Cache icon panic from upgrading to bincode v2 by @greenhat616
+
+- Mui and framer-motion runtime panic by @greenhat616
+
+- Build issue by @greenhat616
+
+- Bump mui to v7 by @greenhat616
+
+- Bump objc2 to 0.6.1 (#2984) by @greenhat616 in [#2984](https://github.com/libnyanpasu/clash-nyanpasu/pull/2984)
+
+- Bump bincode to v2, and avoid failure while cache corrupt by @greenhat616
+
+- Solve the navigating to the definition in vscode (#2860) by @lmmqxyx404 in [#2860](https://github.com/libnyanpasu/clash-nyanpasu/pull/2860)
+
+- Update script-dialog to handle query results correctly in Monaco viewer by @keiko233
+
+- Avoid crash while using app (#2795) by @lmmqxyx404 in [#2795](https://github.com/libnyanpasu/clash-nyanpasu/pull/2795)
+
+- Avoid crash while using clash-rs (#2793) by @lmmqxyx404
+
+- Workspace location by @greenhat616
+
+- Macos bundle uploader by @greenhat616
+
+- Macos linker issue by pinned rustc version by @greenhat616
+
+- Try to use old linker by @greenhat616
+
+- Macos utils issue by @greenhat616
+
+- Handle undefined connections in DataPanel by @keiko233
+
+- Remove empty query functions from Clash hooks by @keiko233
+
+- Potential shutdown race condition by @greenhat616
+
+- Include default font family in theme creation by @keiko233
+
+- Theme var context undefined by @keiko233
+
+- Add block shutdown reason to blocking shutdown by @greenhat616
+
+- Format win32 error by @greenhat616
+
+- Shutdown hook setup panic by @greenhat616
+
+- Mui styled engine theme load by @keiko233
+
+- Clash core update by @keiko233
+
+- Lint by @keiko233
+
+- Updater check and styles by @greenhat616
+
+- Lint and logs page emoji flags by @greenhat616
+
+- Update surge command to use env variable for token by @keiko233
+
+- Lint by @greenhat616
+
+- Tailwind v4 styles by @greenhat616
+
+- Ci by @greenhat616
+
+- Nightly updater channel by @greenhat616
+
+- Updater by @keiko233
+
+- Remove mirror.ghproy.com by @greenhat616
+
+- Try to fix events panic by @greenhat616
+
+- Fmt by @greenhat616
+
+- Migrate to shiki v2 by @greenhat616
+
+- Migrate to tailwindcss v4 by @greenhat616
+
+- Stylelint by @greenhat616
+
+- Try to fix state corrupt again by @greenhat616
+
+- Lint by @greenhat616
+
+- Clippy by @greenhat616
+
+- Downgrade objc2 until tauri got updated by @greenhat616
+
+- Bump dirs to v6 by @greenhat616
+
+- Bump framer-motion to 12 stable by @greenhat616
+
+- Lint by @greenhat616
+
+- Should remove \\? prefix for core dir path by @greenhat616
+
+- Try to use accquire/release to solve state manager panic by @greenhat616
+
+- Comp with deps by @greenhat616
+
+- Lint by @greenhat616
+
+- Linux build by @greenhat616
+
+- Tun toggle logic by @greenhat616
+
+- Revert bump window-core by @greenhat616
+
+- Bump crates by @greenhat616
+
+- Panic dialog styles by @greenhat616
+
+- Lua decreption by @greenhat616
+
+- Bump virtua to 0.39.1 by @greenhat616
+
+- Bump react to v19 stable by @greenhat616
+
+- Bump sysinfo to 0.33 by @greenhat616
+
+- Bump crates by @greenhat616
+
+- Lint by @greenhat616
+
+- I18n (#1964) by @3gf8jv4dv in [#1964](https://github.com/libnyanpasu/clash-nyanpasu/pull/1964)
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Add polyfill for safari by @greenhat616
+
+- Service install failure on windows, and lua runner misorder due to mihomo limitation (#1866) by @MNDIA in [#1866](https://github.com/libnyanpasu/clash-nyanpasu/pull/1866)
+
+- Port mismatch (#1782) by @trhao99 in [#1782](https://github.com/libnyanpasu/clash-nyanpasu/pull/1782)
+
+- Auto activate first profile, and close #1752 by @greenhat616
+
+- Build non blocking to fix start a runtime in async runtime issue by @greenhat616
+
+- Comp with profile chain by @greenhat616
+
+- Comp with remote profile chain by @greenhat616
+
+- Merge by @greenhat616
+
+- Compatible with missing remote option by @greenhat616
+
+- Bump delay-timer deps to fix linux i686 build issue by @greenhat616
+
+- Clippy warning, and maybe address clash rs alpha updater issue by @greenhat616
+
+- Change hide dock icon event to requestCloseWindow by @greenhat616
+
+- Lint by @greenhat616
+
+- Status dispatch issue by @greenhat616
+
+- Fmt by @greenhat616
+
+- Try to avoid the sendMessage panic and just log it by @greenhat616
+
+- Styles by @greenhat616
+
+- Protable and tg uploader issue by @greenhat616
+
+- Clash-rs-alpha pack issue by @greenhat616
+
+- Prfole file open in windows by @greenhat616
+
+- Nightly notify telegram ci channel only by @greenhat616
+
+- Build by @greenhat616
+
+- Build by @greenhat616
+
+- Clippy by @greenhat616
+
+- Mark tray menu on left click false by @greenhat616
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Bump tauri version by @greenhat616
+
+- Use product name for bundler main binary name by @greenhat616
+
+- Mui color scheme by @greenhat616
+
+- Dialog by @greenhat616
+
+- Patch clash config issue by @greenhat616
+
+- Mode switch issue, and close #1525 by @greenhat616
+
+- Service tips by @greenhat616
+
+- Acl by @greenhat616
+
+- Speedtest delayed update by @greenhat616
+
+- Shell no window by @greenhat616
+
+- Bump boa to fix nightly build issue by @greenhat616
+
+- Linux cross build by @greenhat616
+
+- Try to fix windows resolver by @greenhat616
+
+- Validate hex color value while theme color input on blur by @greenhat616
+
+- Premission issue by @greenhat616
+
+- Use latest auto-launch to allow running as admin by @greenhat616
+
+### 💅 Styling
+
+- **button:** Update button shadow styles for raised and fab variants by @keiko233
+
+- **tooltip:** Update tooltip styles to use variant classes by @keiko233
+
+- Update UI components for improved aesthetics and consistency by @keiko233
+
+- Update background styles for app content & settings sidebar by @keiko233
+
+### 📚 Documentation
+
+- **actor-migration:** Add v2 roadmap and PR-2b/PR-3 design notes (#4872) by @greenhat616 in [#4872](https://github.com/libnyanpasu/clash-nyanpasu/pull/4872)
+
+- **architecture:** Define PR-4S stabilization gate by @4o3F
+
+- **jobs:** Define P0 contracts and add executable probes (#5221) by @greenhat616 in [#5221](https://github.com/libnyanpasu/clash-nyanpasu/pull/5221)
+
+- **reviews:** Record WebKit style invalidation from positional selectors (#5447) by @greenhat616 in [#5447](https://github.com/libnyanpasu/clash-nyanpasu/pull/5447)
+
+- **state:** Add IVerge migration mapping baseline by @4o3F
+
+- **streams:** Design on-demand connection details and normalized proxies (#5424) by @greenhat616 in [#5424](https://github.com/libnyanpasu/clash-nyanpasu/pull/5424)
+
+- **traffic:** Design locating connections with the app's geo index (#5548) by @greenhat616 in [#5548](https://github.com/libnyanpasu/clash-nyanpasu/pull/5548)
+
+- **worktree:** Document setup and resource-reuse policy (#4875) by @greenhat616 in [#4875](https://github.com/libnyanpasu/clash-nyanpasu/pull/4875)
+
+- Publish shared development and language standards by @keiko233
+
+- Require unified RPC and clarify worktree selection by @keiko233
+
+- Record the T0 integration baseline for the selective TCC plan (#5294) by @greenhat616 in [#5294](https://github.com/libnyanpasu/clash-nyanpasu/pull/5294)
+
+- Record service pipe contention and probe race analysis by @greenhat616
+
+- Update Code of Conduct document [skip ci] (#5176) by @3gf8jv4dv in [#5176](https://github.com/libnyanpasu/clash-nyanpasu/pull/5176)
+
+- Make CLAUDE.md import AGENTS.md instead of duplicating it by @greenhat616
+
+- Add git commit rules section to AGENTS.md and CLAUDE.md by @greenhat616
+
+- Sync AGENTS.md and CLAUDE.md with actor/DI migration guidelines (#4833) by @greenhat616 in [#4833](https://github.com/libnyanpasu/clash-nyanpasu/pull/4833)
+
+- Add agent guidelines and ignore AI tooling state (#4829) by @greenhat616 in [#4829](https://github.com/libnyanpasu/clash-nyanpasu/pull/4829)
+
+- Lint fmt (#3693) by @Slinetrac in [#3693](https://github.com/libnyanpasu/clash-nyanpasu/pull/3693)
+
+- Create CODE_OF_CONDUCT.md by @Slinetrac
+
+- Add CONTRIBUTING.md (#3628) by @Slinetrac in [#3628](https://github.com/libnyanpasu/clash-nyanpasu/pull/3628)
+
+- Revise readme [skip ci] (#1791) by @3gf8jv4dv in [#1791](https://github.com/libnyanpasu/clash-nyanpasu/pull/1791)
+
+- Revise issue template [skip ci] (#1785) by @3gf8jv4dv in [#1785](https://github.com/libnyanpasu/clash-nyanpasu/pull/1785)
+
+### 🔨 Refactor
+
+- **app:** Inject windows, tray, logging and infrastructure (#5388) by @greenhat616 in [#5388](https://github.com/libnyanpasu/clash-nyanpasu/pull/5388)
+
+- **backend:** Route verge config through ractor StateActor (#4778) by @greenhat616 in [#4778](https://github.com/libnyanpasu/clash-nyanpasu/pull/4778)
+
+- **bundle:** Resolve metadata and configure startup directly (#5327) by @greenhat616 in [#5327](https://github.com/libnyanpasu/clash-nyanpasu/pull/5327)
+
+- **chain:** Simplify chains function by removing useCallback by @keiko233
+
+- **clash:** Remove useClashCore hook and related exports; update imports to use useClashProxies by @keiko233
+
+- **clash-api:** Draft migrate to backend by @keiko233
+
+- **clash-api:** Logging error message while request failed by @greenhat616
+
+- **client:** Remove dead lifecycle routes and record the delivery (#5389) by @greenhat616 in [#5389](https://github.com/libnyanpasu/clash-nyanpasu/pull/5389)
+
+- **config:** Return typed configuration and storage errors (#5435) by @greenhat616 in [#5435](https://github.com/libnyanpasu/clash-nyanpasu/pull/5435)
+
+- **config:** Remove the legacy Config global and its mirrors (#5386) by @greenhat616 in [#5386](https://github.com/libnyanpasu/clash-nyanpasu/pull/5386)
+
+- **core:** Group core lifecycle tests under a tests directory by @greenhat616
+
+- **core:** Bind mode interruption to the lifecycle workflow (#5219) by @greenhat616 in [#5219](https://github.com/libnyanpasu/clash-nyanpasu/pull/5219)
+
+- **core:** Serialize configuration writes through the facade (#5217) by @greenhat616 in [#5217](https://github.com/libnyanpasu/clash-nyanpasu/pull/5217)
+
+- **core:** Move proxy callers into an injected actor (#5215) by @greenhat616 in [#5215](https://github.com/libnyanpasu/clash-nyanpasu/pull/5215)
+
+- **core:** Read configs through the bound Clash API (#5208) by @greenhat616 in [#5208](https://github.com/libnyanpasu/clash-nyanpasu/pull/5208)
+
+- **core:** Read rule providers through the bound Clash API (#5206) by @greenhat616 in [#5206](https://github.com/libnyanpasu/clash-nyanpasu/pull/5206)
+
+- **core:** Route rule operations through the bound Clash API (#5204) by @greenhat616 in [#5204](https://github.com/libnyanpasu/clash-nyanpasu/pull/5204)
+
+- **core:** Serialize lifecycle operations in an actor (#5201) by @greenhat616 in [#5201](https://github.com/libnyanpasu/clash-nyanpasu/pull/5201)
+
+- **core:** Standardize boxed futures and async trait ports (#5199) by @greenhat616 in [#5199](https://github.com/libnyanpasu/clash-nyanpasu/pull/5199)
+
+- **delay-history:** Update tooltip implementation and remove unused DelayHistoryBar by @keiko233
+
+- **effects:** Type system proxy, DNS, hotkey and widget failures (#5436) by @greenhat616 in [#5436](https://github.com/libnyanpasu/clash-nyanpasu/pull/5436)
+
+- **frontend:** Split workspace packages and unify entrypoints by @keiko233
+
+- **frontend:** Replace Sass with Tailwind and plain CSS by @keiko233
+
+- **frontend:** Replace Day.js with date-fns by @keiko233
+
+- **frontend:** Replace lodash-es with es-toolkit (#5426) by @greenhat616 in [#5426](https://github.com/libnyanpasu/clash-nyanpasu/pull/5426)
+
+- **hook:** Update useClashProxies to return structured proxies data by @keiko233
+
+- **hooks:** Replace useNyanpasu with useSetting for core type management in useCoreType hook by @keiko233
+
+- **hotkeys:** Use event based save logic by @greenhat616
+
+- **input:** Remove asChild prop and set default input element by @keiko233
+
+- **ipc:** Move configuration IPC onto typed app and clash config (#5385) by @greenhat616 in [#5385](https://github.com/libnyanpasu/clash-nyanpasu/pull/5385)
+
+- **ipc:** Drop useNyanpasu hook and clean up imports by @keiko233
+
+- **ipc:** Replace useNyanpasu with useProxyMode for proxy mode management in ProxyPage by @keiko233
+
+- **ipc:** Clash configuration management with useClashAPI by @keiko233
+
+- **ipc:** Generate command bindings use tauri sepcta (#2486) by @keiko233 in [#2486](https://github.com/libnyanpasu/clash-nyanpasu/pull/2486)
+
+- **jobs:** Move business timers into the shared job owner (#5458) by @greenhat616 in [#5458](https://github.com/libnyanpasu/clash-nyanpasu/pull/5458)
+
+- **jobs:** Use builder inject to avoid global singleton by @greenhat616
+
+- **lifecycle:** Let owners shut themselves down and narrow the workflow (#5394) by @greenhat616 in [#5394](https://github.com/libnyanpasu/clash-nyanpasu/pull/5394)
+
+- **logging:** Use hand-write indexer instead by @greenhat616
+
+- **macos:** Use objc2 instead of objc and cocoa by @greenhat616
+
+- **migration:** Let steps declare whether they are needed (#5360) by @greenhat616 in [#5360](https://github.com/libnyanpasu/clash-nyanpasu/pull/5360)
+
+- **migration:** Rewrite migration subsystem to V2 on a new PathResolver (#4824) by @greenhat616 in [#4824](https://github.com/libnyanpasu/clash-nyanpasu/pull/4824)
+
+- **modal:** Modal trigger layout and styling for better responsiveness by @keiko233
+
+- **navbar:** Improve layout and styling of navbar components by @keiko233
+
+- **nyanpasu-config:** Pure runtime pipeline executor (PR-3-pre②) (#4877) by @greenhat616 in [#4877](https://github.com/libnyanpasu/clash-nyanpasu/pull/4877)
+
+- **nyanpasu-config:** Redesign runtime snapshot store around the new profile domain model (#4868) by @greenhat616 in [#4868](https://github.com/libnyanpasu/clash-nyanpasu/pull/4868)
+
+- **nyanpasu-config:** Migrate profiles to clean composition type model + migration docs (#4840) by @greenhat616 in [#4840](https://github.com/libnyanpasu/clash-nyanpasu/pull/4840)
+
+- **oxlint:** Draft migrate eslint to oxlint (#4075) by @keiko233 in [#4075](https://github.com/libnyanpasu/clash-nyanpasu/pull/4075)
+
+- **profile:** Remove unused profile-normalize module and clean up use-profile by @keiko233
+
+- **profiles:** Return typed profile errors with context (#5432) by @greenhat616 in [#5432](https://github.com/libnyanpasu/clash-nyanpasu/pull/5432)
+
+- **profiles:** Replace parseTraffic with filesize for better file size formatting by @keiko233
+
+- **router:** Migrate old routes to legacy group by @keiko233
+
+- **rpc:** Unify connection detail subscription commands by @keiko233
+
+- **runtime:** Return typed runtime and core errors (#5433) by @greenhat616 in [#5433](https://github.com/libnyanpasu/clash-nyanpasu/pull/5433)
+
+- **runtime:** Stop reordering top-level keys when finalizing (#5405) by @greenhat616 in [#5405](https://github.com/libnyanpasu/clash-nyanpasu/pull/5405)
+
+- **runtime:** Stabilize actor migration lifecycle (#4956) by @4o3F in [#4956](https://github.com/libnyanpasu/clash-nyanpasu/pull/4956)
+
+- **script:** Run JS transforms from memory and keep the JS stack in errors (#5450) by @greenhat616 in [#5450](https://github.com/libnyanpasu/clash-nyanpasu/pull/5450)
+
+- **script:** Use boa's console and pass the log sink into script runners (#5449) by @greenhat616 in [#5449](https://github.com/libnyanpasu/clash-nyanpasu/pull/5449)
+
+- **script:** Migrate notification script to Deno and remove old by @keiko233
+
+- **scripts:** Organize tooling behind Deno tasks by @keiko233
+
+- **scripts:** Migrate to deno impl (#4538) by @keiko233 in [#4538](https://github.com/libnyanpasu/clash-nyanpasu/pull/4538)
+
+- **setting:** Use useSetting for app log level and tray proxies selector management by @keiko233
+
+- **settings:** Move configuration status into the debug page (#5401) by @greenhat616 in [#5401](https://github.com/libnyanpasu/clash-nyanpasu/pull/5401)
+
+- **settings:** Move network statistic widget variant to nyanpasu misc by @keiko233
+
+- **slider:** Simplify value handling in Slider component by @keiko233
+
+- **state:** Type subscriber acks and degradation reasons (#5434) by @greenhat616 in [#5434](https://github.com/libnyanpasu/clash-nyanpasu/pull/5434)
+
+- **state:** Move legacy verge facade into bridge by @4o3F
+
+- **state:** Make verge reads use typed config clients by @4o3F
+
+- **state:** Migrate state manager to nyanpasu-core with ACK pattern (#4594) by @greenhat616 in [#4594](https://github.com/libnyanpasu/clash-nyanpasu/pull/4594)
+
+- **tauri:** Export profile domain types via specta with CI freshness gate (#4885) by @greenhat616 in [#4885](https://github.com/libnyanpasu/clash-nyanpasu/pull/4885)
+
+- **tauri:** Introduce NyanpasuClient facade (ACL) [PR-1] (#4764) by @greenhat616 in [#4764](https://github.com/libnyanpasu/clash-nyanpasu/pull/4764)
+
+- **theme:** Remove theme_blur option from IVerge struct by @keiko233
+
+- **tooltip:** Enhance tooltip component with context and animation support by @keiko233
+
+- **ui:** Update layout and styling for scroll areas and components by @keiko233
+
+- **updater:** Simplify fetch_latest method and remove unused version fetching functions by @keiko233
+
+- **window:** Multi window support (#4030) by @keiko233 in [#4030](https://github.com/libnyanpasu/clash-nyanpasu/pull/4030)
+
+- **workflow:** Remove the residue of the old scheduler (#5395) by @greenhat616 in [#5395](https://github.com/libnyanpasu/clash-nyanpasu/pull/5395)
+
+- Impl cross transport rpc (#5484) by @keiko233 in [#5484](https://github.com/libnyanpasu/clash-nyanpasu/pull/5484)
+
+- Remove in-process deadlines and panic catching below the workflow (#5393) by @greenhat616 in [#5393](https://github.com/libnyanpasu/clash-nyanpasu/pull/5393)
+
+- Draft nyanpasu config metadata (#4739) by @greenhat616 in [#4739](https://github.com/libnyanpasu/clash-nyanpasu/pull/4739)
+
+- Implement bolt-load download engine by @keiko233
+
+- Simplify useIsAppImage and remove unused updater support logic by @keiko233
+
+- Remove GitHub token handling from portable script and workflow by @keiko233
+
+- Draft drop legacy ui (#4508) by @keiko233 in [#4508](https://github.com/libnyanpasu/clash-nyanpasu/pull/4508)
+
+- Draft impl material you expressive ui (#4229) by @keiko233 in [#4229](https://github.com/libnyanpasu/clash-nyanpasu/pull/4229)
+
+- Draft implement main window structure (#3982) by @keiko233 in [#3982](https://github.com/libnyanpasu/clash-nyanpasu/pull/3982)
+
+- Simplify error boundary component in __root.tsx by @keiko233
+
+- Layout and index page components by @keiko233
+
+- Remove unused useClash imports and update profile handling in components by @keiko233
+
+- Drop old hooks & refactor logs with provider by @keiko233
+
+- Remove websocket handling from individual hooks and centralize in ClashWSProvider by @keiko233
+
+- Drop create-props & refactor SettingNyanpasuMisc components by @keiko233
+
+- Replace useNyanpasu with useSetting for configuration management by @keiko233
+
+- Remove simd-json, and use serde-json instead for indexmap support by @greenhat616
+
+- Show panic dialog via a new process, and exit immediately by @greenhat616
+
+- Use tauri internal cleanup process by @greenhat616
+
+- Try to make table use deferred data and do unmount before page transition by @greenhat616
+
+- Migrate react-dom-router to @tanstack/router by @greenhat616
+
+---
+
+## New Contributors
+
+- @3gf8jv4dv made their first contribution in [#5581](https://github.com/libnyanpasu/clash-nyanpasu/pull/5581)
+- @xmh0511 made their first contribution in [#5022](https://github.com/libnyanpasu/clash-nyanpasu/pull/5022)
+- @kolya13245 made their first contribution in [#4913](https://github.com/libnyanpasu/clash-nyanpasu/pull/4913)
+- @Jimie165 made their first contribution in [#4954](https://github.com/libnyanpasu/clash-nyanpasu/pull/4954)
+- @moduvoice made their first contribution in [#4923](https://github.com/libnyanpasu/clash-nyanpasu/pull/4923)
+- @latin-1 made their first contribution in [#4740](https://github.com/libnyanpasu/clash-nyanpasu/pull/4740)
+- @yokinanya made their first contribution in [#4718](https://github.com/libnyanpasu/clash-nyanpasu/pull/4718)
+- @C4a15Wh made their first contribution in [#4715](https://github.com/libnyanpasu/clash-nyanpasu/pull/4715)
+- @Bihrys made their first contribution in [#4436](https://github.com/libnyanpasu/clash-nyanpasu/pull/4436)
+- @temp-maker-temp made their first contribution in [#3919](https://github.com/libnyanpasu/clash-nyanpasu/pull/3919)
+- @lmmqxyx404 made their first contribution in [#3893](https://github.com/libnyanpasu/clash-nyanpasu/pull/3893)
+- @ArakawaHenri made their first contribution in [#3826](https://github.com/libnyanpasu/clash-nyanpasu/pull/3826)
+- @Slinetrac made their first contribution
+- @Sn0wo2 made their first contribution in [#3706](https://github.com/libnyanpasu/clash-nyanpasu/pull/3706)
+- @SherkeyXD made their first contribution in [#3192](https://github.com/libnyanpasu/clash-nyanpasu/pull/3192)
+- @Rbqwow made their first contribution in [#3160](https://github.com/libnyanpasu/clash-nyanpasu/pull/3160)
+- @legiz-ru made their first contribution in [#2170](https://github.com/libnyanpasu/clash-nyanpasu/pull/2170)
+- @MNDIA made their first contribution in [#1866](https://github.com/libnyanpasu/clash-nyanpasu/pull/1866)
+- @trhao99 made their first contribution in [#1782](https://github.com/libnyanpasu/clash-nyanpasu/pull/1782)
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.6.1...v2.0.0-beta.1
+
 ## [1.6.1] - 2024-09-07
 
 ### ✨ Features

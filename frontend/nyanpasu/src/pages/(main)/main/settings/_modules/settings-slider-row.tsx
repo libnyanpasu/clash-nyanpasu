@@ -37,6 +37,7 @@ export function SettingsSliderRow({
       </div>
 
       <Slider
+        aria-label={label}
         value={cachedValue}
         min={min}
         max={max}

@@ -33,6 +33,7 @@ struct FakeBackend {
     cancellation_seen: Notify,
     allow_cleanup: Notify,
     fail_next_check: AtomicBool,
+    fail_next_download: AtomicBool,
     /// Chunks of `BURST_CHUNK` bytes reported before a held download waits.
     burst_chunks: AtomicU64,
 }
@@ -99,6 +100,9 @@ impl AppUpdateBackend for FakeBackend {
             });
         }
         progress(AppUpdateDownloadProgress::Verifying);
+        if self.fail_next_download.swap(false, Ordering::SeqCst) {
+            anyhow::bail!("signature verification failed")
+        }
         Ok(VerifiedAppUpdate {
             bytes: Arc::new(vec![1, 2, 3]),
             source: UpdateSource::Github,
@@ -185,6 +189,7 @@ async fn test_client(
         cancellation_seen: Notify::new(),
         allow_cleanup: Notify::new(),
         fail_next_check: AtomicBool::new(false),
+        fail_next_download: AtomicBool::new(false),
         burst_chunks: AtomicU64::new(0),
     });
     let shutdown = CancellationToken::new();
@@ -242,6 +247,82 @@ async fn cancellation_ack_is_separate_from_download_cleanup_completion() {
     backend.allow_cleanup.notify_one();
     let cancelled = wait_for_phase(&client, &mut events, AppUpdatePhase::Cancelled).await;
     assert_eq!(cancelled.release.unwrap().version, "2.1.0");
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn manual_download_installs_after_verification_without_another_request() {
+    let (client, mut events, backend, _, _) = test_client(false, true, true).await;
+    client.check().await.unwrap();
+    wait_for_phase(&client, &mut events, AppUpdatePhase::Available).await;
+    client.download().await.unwrap();
+
+    backend.fallback_source.notified().await;
+    wait_for_source(&client, &mut events, UpdateSource::Nyanpasu).await;
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 0);
+    backend.continue_fallback.notify_one();
+    backend.install_started.notified().await;
+    assert_eq!(
+        client.state().await.unwrap().phase,
+        AppUpdatePhase::Installing
+    );
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 1);
+
+    backend.continue_install.notify_one();
+    let ready = wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
+    assert_eq!(ready.error.as_deref(), Some("not used by this test"));
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn silent_download_waits_for_an_explicit_install_request() {
+    let (client, mut events, backend, _, _) = test_client(false, false, false).await;
+    client.configure(AppUpdateSettings {
+        channel: ReleaseChannel::Stable,
+        sources: vec![UpdateSource::Github],
+        auto_check: true,
+        auto_download: true,
+    });
+    let ready = wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
+    assert_eq!(ready.downloaded, 3);
+    assert_eq!(backend.download_count.load(Ordering::SeqCst), 1);
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 0);
+
+    client.install().await.unwrap();
+    wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 1);
+
+    // A manual download request racing a completed silent download reuses the package.
+    client.download().await.unwrap();
+    wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
+    assert_eq!(backend.download_count.load(Ordering::SeqCst), 1);
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn failed_verification_does_not_install_but_manual_retry_does() {
+    let (client, mut events, backend, _, _) = test_client(false, false, true).await;
+    client.check().await.unwrap();
+    wait_for_phase(&client, &mut events, AppUpdatePhase::Available).await;
+    backend.fail_next_download.store(true, Ordering::SeqCst);
+    client.download().await.unwrap();
+    let failed = wait_for_phase(&client, &mut events, AppUpdatePhase::Failed).await;
+    assert_eq!(
+        failed.error.as_deref(),
+        Some("signature verification failed")
+    );
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 0);
+
+    client.download().await.unwrap();
+    backend.install_started.notified().await;
+    assert_eq!(
+        client.state().await.unwrap().phase,
+        AppUpdatePhase::Installing
+    );
+    assert_eq!(backend.download_count.load(Ordering::SeqCst), 2);
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 1);
+    backend.continue_install.notify_one();
+    wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
 }
 
 #[tokio::test]
@@ -285,6 +366,7 @@ async fn changing_channel_during_download_cancels_stale_result_then_checks_new_s
     let checked = wait_for_phase(&client, &mut events, AppUpdatePhase::Available).await;
     assert_eq!(checked.phase, AppUpdatePhase::Available);
     assert_eq!(backend.download_count.load(Ordering::SeqCst), 1);
+    assert_eq!(backend.install_count.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -346,9 +428,6 @@ async fn failed_install_keeps_the_verified_package_ready_for_retry() {
     client.check().await.unwrap();
     wait_for_phase(&client, &mut events, AppUpdatePhase::Available).await;
     client.download().await.unwrap();
-    wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
-
-    client.install().await.unwrap();
     let ready = wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
     assert_eq!(ready.error.as_deref(), Some("not used by this test"));
     client.install().await.unwrap();
@@ -375,9 +454,12 @@ async fn shutdown_waits_for_download_cleanup_before_draining_the_actor() {
 #[tokio::test]
 async fn shutdown_hands_off_started_install_without_waiting_on_its_child() {
     let (client, mut events, backend, shutdown, tasks) = test_client(false, false, true).await;
-    client.check().await.unwrap();
-    wait_for_phase(&client, &mut events, AppUpdatePhase::Available).await;
-    client.download().await.unwrap();
+    client.configure(AppUpdateSettings {
+        channel: ReleaseChannel::Stable,
+        sources: vec![UpdateSource::Github],
+        auto_check: true,
+        auto_download: true,
+    });
     wait_for_phase(&client, &mut events, AppUpdatePhase::Ready).await;
     client.install().await.unwrap();
     backend.install_started.notified().await;

@@ -1,4 +1,4 @@
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { Card } from '@nyanpasu/ui/card'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
@@ -36,12 +36,22 @@ const state = vi.hoisted(() => ({
   install: vi.fn(),
   discardPackage: vi.fn(),
   pending: false,
+  isDesktop: true,
 }))
+
+const initialSnapshot = state.snapshot
+
+beforeEach(() => {
+  state.snapshot = { ...initialSnapshot }
+  state.pending = false
+  state.isDesktop = true
+  vi.clearAllMocks()
+})
 
 vi.mock('@/components/providers/nyanpasu-update-provider', () => ({
   useNyanpasuUpdate: () => ({
     snapshot: state.snapshot,
-    isDesktop: true,
+    isDesktop: state.isDesktop,
     isLoading: false,
     isPending: state.pending,
     check: state.check,
@@ -76,7 +86,7 @@ test('check button stays visible with loading while backend checks for updates',
   await view.rerender(<UpdateCard />)
 
   const checkingButton = view.getByRole('button', {
-    name: m.settings_about_update_checking(),
+    name: m.settings_about_update_idle(),
   })
   await expect.element(checkingButton).toBeVisible()
   await expect.element(checkingButton).toBeDisabled()
@@ -87,29 +97,26 @@ test('check button stays visible with loading while backend checks for updates',
     view.container.querySelector('[data-slot="circular-progress"]'),
   ).not.toBeNull()
   const status = view.container.querySelector<HTMLElement>(
-    '[data-slot="action-swap-text"]',
+    '[data-slot="about-update-actions"] [data-slot="about-update-label"]',
   )
   const statusButton = status?.closest('button')
-  expect(status?.parentElement?.classList.contains('flex')).toBe(true)
   expect(status?.classList.contains('whitespace-nowrap')).toBe(true)
   expect(
     statusButton?.querySelector('[data-slot="update-button-action"]'),
   ).toBeNull()
-  expect(statusButton?.textContent).toContain(
-    m.settings_about_update_checking(),
-  )
   await expect
-    .element(checkingButton)
+    .element(view.getByRole('status'))
     .toHaveTextContent(m.settings_about_update_checking())
 })
 
-test('up-to-date transition keeps the action swap mounted', async ({
+test('checking completion keeps the action label mounted', async ({
   onTestFinished,
 }) => {
   const previous = state.snapshot
   state.snapshot = {
     ...state.snapshot,
     phase: 'checking',
+    release: null,
     last_checked_at: '2026-10-03T12:00:00Z',
   }
   const view = await render(<UpdateCard />)
@@ -118,15 +125,71 @@ test('up-to-date transition keeps the action swap mounted', async ({
     state.snapshot = previous
   })
 
-  const status = view.container.querySelector('[data-slot="action-swap-text"]')
+  const status = view.container.querySelector(
+    '[data-slot="about-update-actions"] [data-slot="about-update-label"]',
+  )
   expect(status).not.toBeNull()
 
   state.snapshot = { ...state.snapshot, phase: 'up_to_date' }
   await view.rerender(<UpdateCard />)
 
-  expect(view.container.querySelector('[data-slot="action-swap-text"]')).toBe(
-    status,
-  )
+  expect(
+    view.container.querySelector(
+      '[data-slot="about-update-actions"] [data-slot="about-update-label"]',
+    ),
+  ).toBe(status)
+  await expect
+    .element(view.getByRole('status'))
+    .toHaveTextContent(m.settings_label_about_update_no_update())
+  const check = view.getByRole('button', {
+    name: m.settings_about_update_idle(),
+  })
+  await expect.element(check).toBeEnabled()
+  await check.click()
+  expect(state.check).toHaveBeenCalledOnce()
+})
+
+test('rapid phase changes show only the current status and action text', async ({
+  onTestFinished,
+}) => {
+  const view = await render(<UpdateCard />)
+  onTestFinished(async () => view.unmount())
+  const action = view.container.querySelector(
+    '[data-slot="about-update-actions"] button',
+  )!
+
+  for (const [phase, status, label] of [
+    [
+      'downloading',
+      m.settings_about_update_downloading(),
+      m.settings_about_update_cancel_download(),
+    ],
+    [
+      'verifying',
+      m.settings_about_update_verifying(),
+      m.settings_about_update_install(),
+    ],
+    [
+      'installing',
+      m.settings_label_about_update_installing(),
+      m.settings_about_update_install(),
+    ],
+    [
+      'ready',
+      m.settings_about_update_ready(),
+      m.settings_about_update_install(),
+    ],
+  ] as const) {
+    state.snapshot = { ...state.snapshot, phase }
+    await view.rerender(<UpdateCard />)
+    expect(
+      view.container.querySelector('[data-slot="about-update-actions"] button'),
+    ).toBe(action)
+    expect(action.textContent).toBe(label)
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe(
+      status,
+    )
+  }
 })
 
 test('verifying never offers installation before signature verification finishes', async ({
@@ -147,7 +210,7 @@ test('verifying never offers installation before signature verification finishes
   await expect
     .element(
       view.getByRole('button', {
-        name: m.settings_about_update_verifying(),
+        name: m.settings_about_update_install(),
       }),
     )
     .toBeDisabled()
@@ -169,7 +232,7 @@ test('unknown download size uses indeterminate progress and keeps cancellation a
   const progress = view.getByRole('progressbar')
   await expect.element(progress).not.toHaveAttribute('aria-valuenow')
   const cancel = view.getByRole('button', {
-    name: m.settings_about_update_downloading(),
+    name: m.settings_about_update_cancel_download(),
   })
   await expect.element(cancel).toBeEnabled()
   await cancel.click()
@@ -191,13 +254,179 @@ test('ready package offers installation only after an explicit click', async ({
   onTestFinished(async () => view.unmount())
 
   const install = view.getByRole('button', {
-    name: m.settings_about_update_ready(),
+    name: m.settings_about_update_install(),
   })
   await expect.element(install).toBeEnabled()
   expect(state.install).not.toHaveBeenCalled()
   await install.click()
   expect(state.install).toHaveBeenCalledOnce()
 })
+
+test('available updates have one primary action and keep rechecking in the menu', async ({
+  onTestFinished,
+}) => {
+  const view = await render(<UpdateCard />)
+  onTestFinished(async () => view.unmount())
+
+  await expect.element(view.getByRole('dialog')).not.toBeInTheDocument()
+  const actions = view.container.querySelector(
+    '[data-slot="about-update-actions"]',
+  )!
+  expect(actions.querySelectorAll('button')).toHaveLength(1)
+  await expect
+    .element(
+      view.getByRole('button', { name: m.settings_about_update_check_again() }),
+    )
+    .not.toBeInTheDocument()
+  await view
+    .getByRole('button', {
+      name: m.settings_label_about_update_to_update_button(),
+    })
+    .click()
+  expect(state.download).toHaveBeenCalledOnce()
+  expect(state.install).not.toHaveBeenCalled()
+
+  await view
+    .getByRole('button', { name: m.settings_about_update_more_actions() })
+    .click()
+  await view
+    .getByRole('menuitem', { name: m.settings_about_update_check_again() })
+    .click()
+  expect(state.check).toHaveBeenCalledOnce()
+})
+
+test('ready packages can be discarded from the secondary menu', async ({
+  onTestFinished,
+}) => {
+  state.snapshot = { ...state.snapshot, phase: 'ready' }
+  const view = await render(<UpdateCard />)
+  onTestFinished(async () => view.unmount())
+
+  await expect
+    .element(
+      view.getByRole('button', { name: m.settings_about_update_discard() }),
+    )
+    .not.toBeInTheDocument()
+  await view
+    .getByRole('button', { name: m.settings_about_update_more_actions() })
+    .click()
+  await view
+    .getByRole('menuitem', { name: m.settings_about_update_discard() })
+    .click()
+  expect(state.discardPackage).toHaveBeenCalledOnce()
+  expect(state.install).not.toHaveBeenCalled()
+})
+
+test('pending operations disable both the primary action and the secondary menu', async ({
+  onTestFinished,
+}) => {
+  state.pending = true
+  const view = await render(<UpdateCard />)
+  onTestFinished(async () => view.unmount())
+
+  await expect
+    .element(
+      view.getByRole('button', {
+        name: m.settings_label_about_update_to_update_button(),
+      }),
+    )
+    .toBeDisabled()
+  await expect
+    .element(
+      view.getByRole('button', {
+        name: m.settings_about_update_more_actions(),
+      }),
+    )
+    .toBeDisabled()
+  expect(state.download).not.toHaveBeenCalled()
+})
+
+test.each([
+  { environment: 'browser', desktop: false, supported: true },
+  { environment: 'unsupported installation', desktop: true, supported: false },
+])(
+  '$environment offers GitHub releases without native update actions',
+  async ({ desktop, supported }) => {
+    state.isDesktop = desktop
+    state.snapshot = { ...state.snapshot, supported }
+    const view = await render(<UpdateCard />)
+    onTestFinished(async () => view.unmount())
+
+    await expect
+      .element(
+        view.getByRole('button', {
+          name: m.settings_label_about_update_to_github_releases(),
+        }),
+      )
+      .toBeEnabled()
+    expect(view.container.querySelectorAll('button')).toHaveLength(1)
+    expect(state.check).not.toHaveBeenCalled()
+    expect(state.download).not.toHaveBeenCalled()
+  },
+)
+
+test.each(['cancelled', 'failed'] as const)(
+  '%s downloads offer an explicit download action',
+  async (phase) => {
+    state.snapshot = { ...state.snapshot, phase }
+    const view = await render(<UpdateCard />)
+    onTestFinished(async () => view.unmount())
+
+    const label =
+      phase === 'failed'
+        ? m.settings_about_update_retry_download()
+        : m.settings_label_about_update_to_update_button()
+    await view.getByRole('button', { name: label }).click()
+    expect(state.download).toHaveBeenCalledOnce()
+    expect(state.check).not.toHaveBeenCalled()
+  },
+)
+
+test('failed checks without a release retry checking rather than downloading', async ({
+  onTestFinished,
+}) => {
+  state.snapshot = {
+    ...state.snapshot,
+    phase: 'failed',
+    release: null,
+    error: 'Network unavailable',
+  }
+  const view = await render(<UpdateCard />)
+  onTestFinished(async () => view.unmount())
+
+  await expect
+    .element(view.getByRole('alert'))
+    .toHaveTextContent('Network unavailable')
+  await view
+    .getByRole('button', { name: m.settings_about_update_idle() })
+    .click()
+  expect(state.check).toHaveBeenCalledOnce()
+  expect(state.download).not.toHaveBeenCalled()
+})
+
+test.each(['cancelling', 'installing'] as const)(
+  '%s cannot start another operation',
+  async (phase) => {
+    state.snapshot = { ...state.snapshot, phase }
+    const view = await render(<UpdateCard />)
+    onTestFinished(async () => view.unmount())
+
+    const label =
+      phase === 'cancelling'
+        ? m.settings_about_update_cancel_download()
+        : m.settings_about_update_install()
+    await expect
+      .element(view.getByRole('button', { name: label }))
+      .toBeDisabled()
+    await expect
+      .element(
+        view.getByRole('button', {
+          name: m.settings_about_update_more_actions(),
+        }),
+      )
+      .not.toBeInTheDocument()
+  },
+)
 
 test('the changelog dialog can close while a background download continues', async ({
   onTestFinished,
@@ -220,7 +449,7 @@ test('the changelog dialog can close while a background download continues', asy
   await expect
     .element(
       view.getByRole('button', {
-        name: m.settings_about_update_downloading(),
+        name: m.settings_about_update_cancel_download(),
       }),
     )
     .toBeEnabled()

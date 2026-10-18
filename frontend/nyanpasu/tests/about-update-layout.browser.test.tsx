@@ -5,6 +5,9 @@ import { render } from 'vitest-browser-react'
 import { page } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import { m } from '@/paraglide/messages'
+import { getLocale, locales, overwriteGetLocale } from '@/paraglide/runtime'
+import type { AppUpdateSnapshot } from '@nyanpasu/rpc/types'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -13,6 +16,8 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router'
+import HeaderMenu from '../src/pages/(main)/_modules/header-menu'
+import NyanpasuVersion from '../src/pages/(main)/main/settings/about/_modules/nyanpasu-version'
 import { Route } from '../src/pages/(main)/main/settings/about/route'
 
 const backend = vi.hoisted(() => ({
@@ -29,7 +34,7 @@ const backend = vi.hoisted(() => ({
     last_checked_at: '2026-10-03T12:00:00Z',
     supported: true,
     endpoints: ['https://updates.example.test/stable'],
-  },
+  } as AppUpdateSnapshot,
   check: vi.fn(),
   download: vi.fn(),
   cancelDownload: vi.fn(),
@@ -42,6 +47,8 @@ vi.mock('@/components/providers/nyanpasu-update-provider', () => ({
   useNyanpasuUpdate: () => ({
     snapshot: { ...backend.snapshot, phase: backend.phase },
     currentVersion: '2.0.0',
+    hasNewVersion: Boolean(backend.snapshot.release),
+    isReady: backend.phase === 'ready',
     isDesktop: true,
     isBusy: [
       'checking',
@@ -63,6 +70,15 @@ vi.mock('@/components/logo/animated-logo', () => ({
   default: ({ className }: { className?: string }) => (
     <div className={className} data-slot="animated-logo" />
   ),
+}))
+vi.mock('../src/pages/(main)/_modules/header-file-action', () => ({
+  default: () => null,
+}))
+vi.mock('../src/pages/(main)/_modules/header-settings-action', () => ({
+  default: () => null,
+}))
+vi.mock('../src/pages/(main)/_modules/header-help-action', () => ({
+  default: () => null,
 }))
 vi.mock('@nyanpasu/query', () => ({
   useSetting: (key: string) => ({
@@ -88,15 +104,30 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
 }))
 
 const AboutPage = Route.options.component ?? (() => null)
-const rootRoute = createRootRoute({ component: () => <Outlet /> })
+const rootRoute = createRootRoute({
+  component: () => (
+    <>
+      <HeaderMenu />
+      <Outlet />
+    </>
+  ),
+})
+
 const aboutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/',
+  path: '/main/settings/about',
   component: AboutPage,
 })
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/main/settings',
+  component: () => null,
+})
 const router = createRouter({
-  routeTree: rootRoute.addChildren([aboutRoute]),
-  history: createMemoryHistory({ initialEntries: ['/'] }),
+  routeTree: rootRoute.addChildren([aboutRoute, settingsRoute]),
+  history: createMemoryHistory({
+    initialEntries: ['/main/settings/about?action=need-update'],
+  }),
 })
 
 test('About update cards remain legible at desktop and mobile widths', async ({
@@ -113,6 +144,8 @@ test('About update cards remain legible at desktop and mobile widths', async ({
     await view.unmount()
     await page.viewport(414, 896)
   })
+
+  await expect.element(view.getByRole('dialog')).not.toBeInTheDocument()
 
   const cards = view.container.querySelectorAll(
     '[data-slot^="about-"][data-slot$="-card"]',
@@ -195,4 +228,113 @@ test('About update cards remain legible at desktop and mobile widths', async ({
   grid = view.container.querySelector<HTMLElement>('.grid.grid-cols-1')
   expect(grid).not.toBeNull()
   expect(getComputedStyle(grid!).gridTemplateColumns.split(' ')).toHaveLength(1)
+
+  await router.navigate({ to: '/main/settings' })
+  await view
+    .getByRole('link', { name: m.settings_about_update_ready_header() })
+    .click()
+  expect(router.state.location.pathname).toBe('/main/settings/about')
+  expect(router.state.location.search).toEqual({})
+  await expect.element(view.getByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('update actions fit every locale at mobile widths in light and dark themes', async ({
+  onTestFinished,
+}) => {
+  const previousGetLocale = getLocale
+  const previousSnapshot = backend.snapshot
+  const previousPhase = backend.phase
+  const wasDark = document.documentElement.classList.contains('dark')
+  await page.viewport(390, 844)
+  const view = await render(
+    <TooltipProvider>
+      <NyanpasuVersion />
+    </TooltipProvider>,
+  )
+  onTestFinished(async () => {
+    await view.unmount()
+    overwriteGetLocale(previousGetLocale)
+    backend.snapshot = previousSnapshot
+    backend.phase = previousPhase
+    document.documentElement.classList.toggle('dark', wasDark)
+    await page.viewport(414, 896)
+  })
+
+  for (const locale of locales) {
+    overwriteGetLocale(() => locale)
+    let actionWidth: number | undefined
+    for (const phase of [
+      'up_to_date',
+      'available',
+      'downloading',
+      'verifying',
+      'installing',
+      'ready',
+      'failed',
+    ] as const) {
+      backend.phase = phase
+      backend.snapshot = {
+        ...previousSnapshot,
+        phase,
+        release: phase === 'up_to_date' ? null : previousSnapshot.release,
+      }
+      for (const dark of [false, true]) {
+        document.documentElement.classList.toggle('dark', dark)
+        await view.rerender(
+          <TooltipProvider>
+            <NyanpasuVersion />
+          </TooltipProvider>,
+        )
+        const card = view.container.querySelector<HTMLElement>(
+          '[data-slot="about-version-card"]',
+        )!
+        const icon = card
+          .querySelector<HTMLElement>('[data-slot="about-update-status-icon"]')!
+          .getBoundingClientRect()
+        const statusContent = card
+          .querySelector<HTMLElement>(
+            '[data-slot="about-update-status-content"]',
+          )!
+          .getBoundingClientRect()
+        expect(
+          Math.abs(
+            icon.top +
+              icon.height / 2 -
+              statusContent.top -
+              statusContent.height / 2,
+          ),
+          `${locale} ${phase}: status content must be centered beside the icon`,
+        ).toBeLessThan(1)
+        const actions = card.querySelector<HTMLElement>(
+          '[data-slot="about-update-actions"]',
+        )!
+        expect(card.scrollWidth, `${locale} ${phase}`).toBeLessThanOrEqual(
+          card.clientWidth,
+        )
+        expect(actions.scrollWidth, `${locale} ${phase}`).toBeLessThanOrEqual(
+          actions.clientWidth,
+        )
+        const actionText = actions.querySelector<HTMLElement>(
+          '[data-slot="about-update-label"]',
+        )!
+        const button = actions.querySelector('button')!.getBoundingClientRect()
+        const label = actionText.getBoundingClientRect()
+        actionWidth ??= button.width
+        expect(
+          Math.abs(button.width - actionWidth),
+          `${locale} ${phase}: the primary action must keep its width`,
+        ).toBeLessThan(1)
+        expect(
+          Math.abs(
+            button.left + button.width / 2 - label.left - label.width / 2,
+          ),
+          `${locale} ${phase}: loading must not move the label off center`,
+        ).toBeLessThan(1)
+        expect(
+          actionText.scrollWidth,
+          `${locale} ${phase}`,
+        ).toBeLessThanOrEqual(actionText.clientWidth)
+      }
+    }
+  }
 })

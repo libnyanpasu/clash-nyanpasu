@@ -13,9 +13,7 @@ body {
 }
 
 :root {
-  --primary-main: #5b5c9d;
   --text-primary: #637381;
-  --selection-color: #f5f5f5;
   --scroller-color: #90939980;
   --background-color: #fff;
   --background-color-alpha: rgb(24 103 192 / 10%);
@@ -23,8 +21,8 @@ body {
 }
 
 ::selection {
-  color: var(--selection-color);
-  background-color: var(--primary-main);
+  color: var(--color-md-on-primary);
+  background-color: var(--color-md-primary);
 }
 
 *::-webkit-scrollbar {

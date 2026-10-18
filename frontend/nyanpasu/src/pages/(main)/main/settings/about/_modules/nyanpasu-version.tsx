@@ -4,11 +4,7 @@ import { m } from '@/paraglide/messages'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 import UpdateControls from './update-controls'
 
-export default function NyanpasuVersion({
-  openChangelog = false,
-}: {
-  openChangelog?: boolean
-}) {
+export default function NyanpasuVersion() {
   const { currentVersion } = useNyanpasuUpdate()
 
   return (
@@ -33,7 +29,7 @@ export default function NyanpasuVersion({
         </div>
       </SettingsCardContent>
 
-      <UpdateControls openChangelog={openChangelog} />
+      <UpdateControls />
     </SettingsCard>
   )
 }

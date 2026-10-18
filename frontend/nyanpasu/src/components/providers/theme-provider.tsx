@@ -83,14 +83,9 @@ const applyRootStyleVar = (mode: ResolvedThemeMode, themePalette: Theme) => {
     isDarkMode ? darken(secondaryColor, 0.95) : lighten(secondaryColor, 0.95),
   )
   root.style.setProperty(
-    '--selection-color',
-    isDarkMode ? '#d5d5d5' : '#f5f5f5',
-  )
-  root.style.setProperty(
     '--scroller-color',
     isDarkMode ? '#54545480' : '#90939980',
   )
-  root.style.setProperty('--primary-main', primaryColor)
   root.style.setProperty('--background-color-alpha', alpha(primaryColor, 0.1))
 
   if (reactRootDom) {

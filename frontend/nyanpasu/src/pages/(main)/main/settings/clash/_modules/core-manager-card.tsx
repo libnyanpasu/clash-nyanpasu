@@ -19,6 +19,7 @@ import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import {
   canUpdateCoreVersion,
+  ClashCores,
   ClashCoresDetail,
   hasNewerCoreVersion,
   useClashCores,
@@ -178,7 +179,7 @@ const SkeletonLine = ({
   <span
     data-slot="core-manager-skeleton"
     className={cn(
-      'bg-surface-variant inline-block animate-pulse rounded-full',
+      'bg-on-surface/10 inline-block animate-pulse rounded-full',
       className,
     )}
   >
@@ -190,11 +191,13 @@ const CoreItem = ({
   core,
   item,
   locked,
+  isLoading,
   onClick,
 }: {
   core: ClashCore
   item: ClashCoresDetail
   locked: boolean
+  isLoading: boolean
   onClick: (core: ClashCore) => void
 }) => {
   const { value: currentCore } = useSetting('core')
@@ -251,6 +254,12 @@ const CoreItem = ({
         <TextMarquee className="text-sm">
           {updateCoreTask.isPending && updaterStateLabel ? (
             <span className="text-emerald-700">{updaterStateLabel}</span>
+          ) : isLoading ? (
+            <SkeletonLine className="h-4 w-24">
+              <span className="sr-only">
+                {m.settings_clash_core_manager_card_loading()}
+              </span>
+            </SkeletonLine>
           ) : item.versionReadError ? (
             <span className="text-error">
               {m.settings_clash_core_manager_card_version_read_error()}
@@ -385,7 +394,11 @@ export default function CoreManagerCard() {
       task.status === 'pending' && task.id.startsWith(CORE_MANAGER_TASK_PREFIX),
   )
 
-  const isLoading = clashCores.isPending || switchCoreTask.isPending
+  const isLoading =
+    clashCores.isPending ||
+    clashCores.isFetching ||
+    switchCoreTask.isPending ||
+    fetchRemote.isPending
 
   const isLocked = isOperating || clashCores.isPending || fetchRemote.isPending
 
@@ -423,32 +436,28 @@ export default function CoreManagerCard() {
           <div className="relative size-12">
             <img
               src={currentCoreIcon}
-              alt={currentCore?.name}
+              alt={currentCoreKey ? ClashCores[currentCoreKey] : undefined}
               className="size-full"
             />
           </div>
 
           <div className="relative flex-1">
             <p className="font-medium">
-              {isLoading ? (
-                <SkeletonLine className="h-5 w-24" />
-              ) : (
-                currentCore?.name
-              )}
+              {currentCoreKey && ClashCores[currentCoreKey]}
             </p>
 
             <p className="flex items-center gap-1 text-sm">
-              {isLoading ? (
+              {currentCoreUpdate.task.isPending &&
+              currentCoreUpdate.stateLabel ? (
+                <span className="text-emerald-700">
+                  {currentCoreUpdate.stateLabel}
+                </span>
+              ) : isLoading ? (
                 <SkeletonLine className="h-4 w-16">
                   <span className="sr-only">
                     {m.settings_clash_core_manager_card_loading()}
                   </span>
                 </SkeletonLine>
-              ) : currentCoreUpdate.task.isPending &&
-                currentCoreUpdate.stateLabel ? (
-                <span className="text-emerald-700">
-                  {currentCoreUpdate.stateLabel}
-                </span>
               ) : currentCore?.versionReadError ? (
                 <span className="text-error">
                   {m.settings_clash_core_manager_card_version_read_error()}
@@ -507,17 +516,23 @@ export default function CoreManagerCard() {
         </div>
 
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          {Object.entries(clashCores.data ?? {}).map(([core, item]) => {
+          {Object.entries(ClashCores).map(([core, name]) => {
             if (core === currentCoreKey) {
               return null
             }
 
             return (
               <CoreItem
-                key={item.name}
+                key={core}
                 core={core as ClashCore}
-                item={item}
+                item={
+                  clashCores.data?.[core as keyof typeof ClashCores] ?? {
+                    name,
+                    currentVersion: '',
+                  }
+                }
                 locked={isLocked}
+                isLoading={isLoading}
                 onClick={() => switchCoreTask.execute(core as ClashCore)}
               />
             )

@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
@@ -19,23 +20,24 @@ function RouteComponent() {
   return (
     <section
       data-slot="profile-global-transforms"
-      className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0"
+      className="flex min-w-0 flex-1 flex-col"
     >
-      <header className="bg-mixed-background sticky top-0 z-50 py-4">
-        <h1 className="text-2xl font-medium">
-          {m.profile_global_transform_title()}
-        </h1>
-        <p className="text-on-surface-variant mt-1 text-sm">
+      <PageTitle backTo="/main/profiles">
+        {m.profile_global_transform_title()}
+      </PageTitle>
+
+      <div className="flex flex-col gap-4 px-4 pb-4">
+        <p className="text-on-surface-variant text-sm">
           {m.profile_global_transform_hint()}
         </p>
-      </header>
 
-      <TransformChainEditor
-        layout="grouped"
-        taskKey="update-global-transforms"
-        transforms={transforms}
-        onApply={(next) => setGlobalTransforms.mutateAsync(next)}
-      />
+        <TransformChainEditor
+          layout="grouped"
+          taskKey="update-global-transforms"
+          transforms={transforms}
+          onApply={(next) => setGlobalTransforms.mutateAsync(next)}
+        />
+      </div>
     </section>
   )
 }

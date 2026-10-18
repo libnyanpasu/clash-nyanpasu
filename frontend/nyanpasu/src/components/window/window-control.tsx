@@ -6,6 +6,7 @@ import PushPin from '~icons/material-symbols/push-pin'
 import PushPinOutline from '~icons/material-symbols/push-pin-outline'
 import { AnimatePresence, motion } from 'motion/react'
 import { ComponentProps, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Button, ButtonProps } from '@nyanpasu/ui/button'
 import useWindowMaximized from '@/hooks/use-window-maximized'
 import { isTauri } from '@nyanpasu/platform'
@@ -127,19 +128,42 @@ export default function WindowControl({
   beforeClose?: ComponentProps<typeof CloseButton>['beforeClose']
 }) {
   if (!appWindow) return null
+
   return (
-    <div
-      className={cn('z-top flex gap-1', className)}
-      data-slot="window-control"
-      data-tauri-drag-region
-    >
-      {!hiddenAlwaysOnTop && <AlwaysOnTopButton />}
+    <>
+      <div
+        className={
+          hiddenAlwaysOnTop ? 'h-8 w-26 shrink-0' : 'h-8 w-35 shrink-0'
+        }
+        aria-hidden
+      />
 
-      <MinimizeButton />
+      {createPortal(
+        <div
+          className={cn(
+            'z-top pointer-events-auto fixed top-1 right-3 flex gap-1',
+            className,
+          )}
+          data-slot="window-control"
+          data-tauri-drag-region
+          // Window chrome remains usable without dismissing a modal or moving
+          // focus away from its editor. Escape ancestor stacking contexts too.
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            event.preventDefault()
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {!hiddenAlwaysOnTop && <AlwaysOnTopButton />}
 
-      <MaximizeButton />
+          <MinimizeButton />
 
-      <CloseButton beforeClose={beforeClose} />
-    </div>
+          <MaximizeButton />
+
+          <CloseButton beforeClose={beforeClose} />
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }

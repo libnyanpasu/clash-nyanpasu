@@ -232,6 +232,7 @@ pub(crate) fn stage(
     .context(ChunkingSnafu)?;
     drop(allocation);
     drop(plan);
+    staging.merge(executed.head_copies);
     let head = executed.head;
     // Everything else staging allocated is gone with the batch's deltas and the records the
     // head does not keep.

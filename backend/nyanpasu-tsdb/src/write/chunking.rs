@@ -1043,6 +1043,8 @@ pub(crate) fn change_extent(
 pub(crate) struct Executed {
     /// The next head: without the chunked sources, and with the folded ones' statistics.
     pub(crate) head: Head,
+    /// New head allocations, kept beside the old head until publication or withdrawal.
+    pub(crate) head_copies: Reservation,
     pub(crate) next_chunk: u64,
     pub(crate) next_seq: u64,
     /// The journal bytes deleted, and the bytes of the summary records written.
@@ -1102,9 +1104,13 @@ impl<W: StorageWrite> Execution<'_, W> {
             }
         }
         let chunked = |stream: StreamId| plan.streams[usize::from(stream.0)] > 0;
-        let head = current.next(update, &plan.series, chunked, fields);
+        let (head, head_copies) = current
+            .next(update, &plan.series, chunked, fields, self.account)
+            .expect("the execution plan admits the next head's exact copies")
+            .into_parts();
         Ok(Executed {
             head,
+            head_copies,
             next_chunk: self.next_chunk,
             next_seq: self.next_seq,
             journal_removed: removed,

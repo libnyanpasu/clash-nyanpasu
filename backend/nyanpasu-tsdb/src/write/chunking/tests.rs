@@ -2240,7 +2240,17 @@ fn the_planned_next_head_is_what_building_it_allocates() {
             .collect(),
         events: vec![(LOGS, vec![segment(0, 1, logs(&[(1, b"one")]))])],
     };
-    let current = empty.next(setup, &[Fate::Keep; 4], |_| false, 2);
+    let current = empty
+        .next(
+            setup,
+            &[Fate::Keep; 4],
+            |_| false,
+            2,
+            &crate::budget::test_account(),
+        )
+        .unwrap()
+        .into_parts()
+        .0;
     let update = || HeadUpdate {
         series: vec![
             added(&current, 1, &[2, 700]),
@@ -2289,7 +2299,11 @@ fn the_planned_next_head_is_what_building_it_allocates() {
         let planned = planning.next_bytes(&plan);
         let head_bytes = planning.head_bytes(&plan);
         let chunked = |stream: StreamId| streams[usize::from(stream.0)] > 0;
-        let next = current.next(update, &fates, chunked, 2);
+        let next = current
+            .next(update, &fates, chunked, 2, &crate::budget::test_account())
+            .unwrap()
+            .into_parts()
+            .0;
         let kept = if chunked(LOGS) { 0 } else { added_records };
         assert_eq!(
             planned + kept,
@@ -2353,7 +2367,11 @@ fn a_streams_fan_in_is_the_most_records_of_one_extent() {
         series: Vec::new(),
         events: vec![(CLOSED, segments)],
     };
-    let current = Head::empty(2).next(setup, &[], |_| false, 2);
+    let current = Head::empty(2)
+        .next(setup, &[], |_| false, 2, &crate::budget::test_account())
+        .unwrap()
+        .into_parts()
+        .0;
     let update = HeadUpdate::default();
     let budget = MemoryBudget::new(u64::MAX);
     let mut staging = budget.try_reserve("staging", 0).unwrap();

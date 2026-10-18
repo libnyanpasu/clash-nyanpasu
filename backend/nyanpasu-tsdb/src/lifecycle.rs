@@ -143,10 +143,9 @@ impl Opening<'_> {
         state: StateRecord,
         rebuilt: Rebuilt,
     ) -> Result<Settled, OpenError> {
-        let Rebuilt {
-            head,
-            mut reservation,
-        } = rebuilt;
+        // Declare credit first so the rebuilt graph drops before it on every error path.
+        let mut reservation = rebuilt.reservation;
+        let head = rebuilt.head;
         let mut batch = None;
         let mut next_chunk = state.next_chunk;
         let mut next_seq = state.next_journal_seq;
@@ -232,6 +231,7 @@ impl Opening<'_> {
         .run(&plan, &head, update)
         .context(CapJournalSnafu)?;
         drop(allocation);
+        staging.merge(executed.head_copies);
         drop(plan);
         let state = StateRecord {
             next_chunk: executed.next_chunk,
@@ -246,15 +246,17 @@ impl Opening<'_> {
         batch
             .commit(Durability::Durable)
             .context(CommitChunksSnafu)?;
-        drop(staging);
         // Chunking drops sources and folding keeps a source's bytes, so the head shrinks
         // into its reservation.
-        let head = executed.head;
+        let next_head = executed.head;
+        drop(head);
+        let head = next_head;
         debug_assert!(
             head.bytes() <= reservation.bytes(),
             "the opening grew the head"
         );
         reservation.shrink(reservation.bytes().saturating_sub(head.bytes()));
+        drop(staging);
         Ok(Settled {
             state,
             head,

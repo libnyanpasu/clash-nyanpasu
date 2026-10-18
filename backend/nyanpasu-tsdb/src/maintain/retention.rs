@@ -178,7 +178,7 @@ pub(super) fn expire(
         },
         StreamRef::Events(stream) => Expiring::Events { stream, extent },
     };
-    let staging = context
+    let mut staging = context
         .staging_budget
         .try_reserve("staging", head.without_bytes(expiring))
         .context(ReserveStagingSnafu)?;
@@ -216,7 +216,9 @@ pub(super) fn expire(
     manifest::replace_extent(batch, stream, extent, &old, &record)
         .context(WriteExtentSnafu { extent })?;
     Ok(Changed {
-        head: head.without(expiring),
+        head: head
+            .without(expiring, &mut staging)
+            .context(ReserveStagingSnafu)?,
         catalog: None,
         staging,
         journal_removed: deleted,

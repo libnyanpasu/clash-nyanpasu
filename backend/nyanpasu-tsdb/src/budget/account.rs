@@ -95,7 +95,7 @@ impl MemoryAccount {
     }
 
     /// Admits an opaque allocation before calling its constructor and transfers its claim.
-    /// Use for dependency-owned contexts and bounded dependency parsing, not growable buffers.
+    /// Use for exact immutable graphs and dependency contexts; growable buffers use `BudgetVec`.
     pub(crate) fn value<T>(
         &self,
         what: &'static str,
@@ -368,6 +368,15 @@ impl Lease {
         Ok(())
     }
 
+    /// Seals a replay source under its construction allowance, before obsolete workspace retires.
+    /// The source finalizer measures its retained graph once, after all record merges finish.
+    pub(crate) fn seal<T>(self, payload: T) -> Reserved<T> {
+        let account = self.account.clone();
+        let mut retained = Retained::new(&account);
+        self.retain(&mut retained);
+        retained.finish(payload)
+    }
+
     /// Hands a completed draft's high-water charge to its caller until publication or withdrawal.
     /// This transfers credit without returning it to the root budget between the two owners.
     pub(crate) fn into_reservation(self) -> Reservation {
@@ -379,7 +388,7 @@ impl Lease {
 
     /// Moves this lease's credit into the same account's retained claim without releasing it.
     /// Storage remains live under that claim instead of returning reusable local credit.
-    pub(super) fn retain(mut self, retained: &mut Retained<'_>) {
+    pub(crate) fn retain(mut self, retained: &mut Retained<'_>) {
         assert!(Rc::ptr_eq(&self.account.state, &retained.account.state));
         retained
             .held
@@ -430,7 +439,30 @@ pub(crate) struct Reserved<T> {
     held: Reservation,
 }
 
+impl Reservation {
+    /// Pins a retained view only after its capture reservation has been admitted.
+    pub(crate) fn hold<T>(self, create: impl FnOnce() -> T) -> Reserved<T> {
+        Reserved {
+            payload: create(),
+            held: self,
+        }
+    }
+}
+
 impl<T> Reserved<T> {
+    /// The concrete retained charge, for capture and handover assertions in tests.
+    #[cfg(test)]
+    pub(crate) fn charge_bytes(&self) -> u64 {
+        self.held.bytes()
+    }
+
+    /// Hands a transient graph and its complete charge to the publication or resident owner.
+    /// The receiving owner must drop its graph before returning this credit; published shared
+    /// graphs themselves carry no claim, since their registry and snapshots own retention.
+    pub(crate) fn into_parts(self) -> (T, Reservation) {
+        (self.payload, self.held)
+    }
+
     /// Returns obsolete dependency workspace after its concrete owner measures retained storage.
     pub(crate) fn retain_bytes(mut self, bytes: u64) -> Self {
         assert!(
@@ -495,11 +527,17 @@ impl Drop for AccountScope<'_> {
 
 impl<'a> Retained<'a> {
     /// Starts a transfer claim without releasing any envelope credit.
-    pub(super) fn new(account: &'a MemoryAccount) -> Self {
+    pub(crate) fn new(account: &'a MemoryAccount) -> Self {
         Self {
             account,
             held: account.state.held.borrow_mut().split(0),
         }
+    }
+
+    /// Seals the graph assembled from charged children and construction allowances.
+    /// The finalizer keeps those children inside the payload until its aggregate charge drops.
+    pub(crate) fn finish<T>(self, payload: T) -> Reserved<T> {
+        Reserved::from_retained(payload, self)
     }
 
     /// Consumes an already charged child into the graph being sealed, without a byte count.

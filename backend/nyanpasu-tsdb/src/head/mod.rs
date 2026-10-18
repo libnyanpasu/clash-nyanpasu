@@ -37,7 +37,9 @@ use self::{
 };
 use crate::{
     ErrorKind, Schema, StreamId, TierId, Timestamp,
-    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    budget::{
+        BudgetExceeded, MemoryAccount, MemoryBudget, MemoryPlan, Reservation, Reserved, Retained,
+    },
     catalog::Catalog,
     layout::{
         JOURNAL,
@@ -301,6 +303,46 @@ impl Head {
         fates: &[Fate],
         chunked: impl Fn(StreamId) -> bool,
         fields: usize,
+        account: &MemoryAccount,
+    ) -> Result<Reserved<Self>, BudgetExceeded> {
+        let series_changed =
+            !update.series.is_empty() || fates.iter().any(|&fate| fate != Fate::Keep);
+        let series = if series_changed {
+            series_spine_bytes(fates.iter().filter(|&&fate| fate != Fate::Chunk).count())
+                + self
+                    .next_series(&update)
+                    .zip(fates)
+                    .map(|(source, &fate)| source.built_bytes(fate))
+                    .sum::<u64>()
+        } else {
+            0
+        };
+        let streams = self.events.len();
+        let events_changed =
+            !update.events.is_empty() || (0..streams).any(|stream| chunked(stream_id(stream)));
+        let events = if events_changed {
+            events_spine_bytes(streams)
+                + (0..streams)
+                    .map(|stream| {
+                        let id = stream_id(stream);
+                        self.stream_built_bytes(id, update.segments(id), chunked(id))
+                    })
+                    .sum::<u64>()
+        } else {
+            0
+        };
+        account.value("staging", MemoryPlan::bytes(series + events), || {
+            self.build_next(update, fates, chunked, fields)
+        })
+    }
+
+    /// Builds only after `next` has admitted every new allocation's final layout.
+    fn build_next(
+        &self,
+        update: HeadUpdate,
+        fates: &[Fate],
+        chunked: impl Fn(StreamId) -> bool,
+        fields: usize,
     ) -> Self {
         let unchanged = fates.iter().all(|&fate| fate == Fate::Keep) && update.series.is_empty();
         let series = if unchanged {
@@ -326,7 +368,7 @@ impl Head {
         let events = if unchanged {
             self.events.clone()
         } else {
-            let empty = Arc::new(EventBuffer::empty());
+            let mut empty = None;
             let mut added = update.events.into_iter().peekable();
             (0..streams)
                 .map(|stream| {
@@ -334,7 +376,9 @@ impl Head {
                     let segments = added.next_if(|(other, _)| *other == id);
                     let buffer = &self.events[stream];
                     match segments {
-                        _ if chunked(id) => empty.clone(),
+                        _ if chunked(id) => empty
+                            .get_or_insert_with(|| Arc::new(EventBuffer::empty()))
+                            .clone(),
                         Some((_, segments)) => Arc::new(buffer.appended(segments)),
                         None => buffer.clone(),
                     }
@@ -433,7 +477,26 @@ impl Head {
     /// The head without the journal records of `expiring`, sharing every source, buffer and
     /// segment it keeps. Each spine it changes is allocated once, at its length:
     /// [`without_bytes`](Self::without_bytes) is what it allocates.
-    pub(crate) fn without(&self, expiring: Expiring) -> Self {
+    pub(crate) fn without(
+        &self,
+        expiring: Expiring,
+        staging: &mut Reservation,
+    ) -> Result<Self, BudgetExceeded> {
+        let account = MemoryAccount::borrow_reservation(staging);
+        let (head, copies) = account
+            .value(
+                "staging",
+                MemoryPlan::bytes(self.without_bytes(expiring)),
+                || self.build_without(expiring),
+            )?
+            .into_parts();
+        drop(account);
+        staging.merge(copies);
+        Ok(head)
+    }
+
+    /// Builds the filtered graph under the caller's already admitted staging charge.
+    fn build_without(&self, expiring: Expiring) -> Self {
         match expiring {
             Expiring::Series { tier, extent, grid } => {
                 let run = self.series_run(tier, extent, grid);
@@ -565,48 +628,59 @@ impl Head {
             + events_spine_bytes(streams)
             + streams as u64 * EventBuffer::own_bytes(0)
             + list as u64;
-        let mut reservation = budget
-            .try_reserve("head", skeleton)
+        let account = MemoryAccount::new(budget, "head", MemoryPlan::bytes(skeleton))
             .context(ReserveHeadSnafu)?;
+        let mut retained = Retained::new(&account);
+        let mut structure = account
+            .lease(MemoryPlan::default())
+            .context(ReserveHeadSnafu)?;
+        structure
+            .try_cover(MemoryPlan::bytes(skeleton - list as u64))
+            .context(ReserveHeadSnafu)?;
+        structure.retain(&mut retained);
         let rebuild = Rebuild {
             read,
             schema,
             catalog,
-            budget,
+            account: &account,
             fit,
         };
-        let empty = Arc::new(EventBuffer::empty());
-        let mut series: Vec<SeriesSlot> = Vec::new();
-        let mut buffers: Vec<Arc<EventBuffer>> = vec![empty; streams];
+        let mut series = account.buffer::<SeriesSlot>(0).context(ReserveHeadSnafu)?;
+        let mut buffers = account.buffer(streams).context(ReserveHeadSnafu)?;
+        buffers.extend((0..streams).map(|_| None));
         let mut sources = JournalSources::new(read);
         while let Some(source) = sources.next_source()? {
             match source {
                 JournalSource::Series(source) => {
-                    if !admit_slot(&mut series, &mut reservation) {
+                    if series.len() == series.capacity()
+                        && series.try_grow_to((2 * series.capacity()).max(4)).is_err()
+                    {
                         continue;
                     }
-                    if let Some((accumulator, held)) = rebuild.series(source)? {
-                        series.push((source, Arc::new(accumulator)));
-                        reservation.merge(held);
+                    if let Some(accumulator) = rebuild.series(source)? {
+                        series.push((source, Arc::new(retained.absorb(accumulator))));
                     }
                 }
                 JournalSource::Stream(stream) => {
-                    if let Some((buffer, held)) = rebuild.stream(stream)? {
-                        buffers[usize::from(stream.0)] = Arc::new(buffer);
-                        reservation.merge(held);
+                    if let Some(buffer) = rebuild.stream(stream)? {
+                        buffers[usize::from(stream.0)] = Some(Arc::new(retained.absorb(buffer)));
                     }
                 }
             }
         }
-        // Each kept source reserved its slot of the spine made here, besides the vector's.
-        let collected = series.capacity() * size_of::<SeriesSlot>();
-        let head = Self::new(Arc::from(series), Arc::from(buffers));
-        reservation.shrink((collected + list) as u64);
-        debug_assert_eq!(
-            reservation.bytes(),
-            head.bytes(),
-            "the rebuild's reservation"
-        );
+        // Source claims cover the final spine slots beside the charged collection buffers.
+        // Conversion drops those buffers before the finalizer returns their obsolete credit.
+        let series = Arc::from(retained.vector(series));
+        let buffers = retained
+            .vector(buffers)
+            .into_iter()
+            .map(|buffer| buffer.unwrap_or_else(|| Arc::new(EventBuffer::empty())))
+            .collect();
+        let head = Self::new(series, buffers);
+        let bytes = head.bytes();
+        let head = retained.finish(head).retain_bytes(bytes);
+        drop(account);
+        let (head, reservation) = head.into_parts();
         Ok(Rebuilt { head, reservation })
     }
 
@@ -618,24 +692,6 @@ impl Head {
 
 fn stream_id(index: usize) -> StreamId {
     StreamId(u8::try_from(index).expect("stream ids are u8"))
-}
-
-/// Makes room in `series` for one more source, admitting its growth first: a vector that
-/// grows holds its old buffer and its new one at once. Returns `false`, changing nothing,
-/// when that does not fit. The capacity doubles, as `Vec` would grow it, but by
-/// `reserve_exact`, so that it is exactly what was reserved.
-fn admit_slot(series: &mut Vec<SeriesSlot>, reservation: &mut Reservation) -> bool {
-    if series.len() < series.capacity() {
-        return true;
-    }
-    let (old, new) = (series.capacity(), (2 * series.capacity()).max(4));
-    let slot = size_of::<SeriesSlot>() as u64;
-    if reservation.try_grow(new as u64 * slot).is_err() {
-        return false;
-    }
-    series.reserve_exact(new - old);
-    reservation.shrink(old as u64 * slot);
-    true
 }
 
 /// The allocations of a series spine of `sources` sources.
@@ -811,21 +867,21 @@ struct Rebuild<'a, R, F> {
     read: &'a R,
     schema: &'a Schema,
     catalog: &'a Catalog,
-    budget: &'a MemoryBudget,
+    account: &'a MemoryAccount,
     fit: &'a F,
 }
 
 impl<R: StorageRead, F: ChunkFit> Rebuild<'_, R, F> {
     /// The accumulator of `source`, with its bytes and its slot in the spine reserved, or
     /// `None` when it does not fit.
-    fn series(
-        &self,
-        source: SeriesSource,
-    ) -> Result<Option<(Accumulator, Reservation)>, RebuildError> {
+    fn series(&self, source: SeriesSource) -> Result<Option<Reserved<Accumulator>>, RebuildError> {
         let fields = field_count(self.schema);
         let slot = size_of::<SeriesSlot>() as u64;
-        let mut held = self.empty_reservation();
-        if held.try_grow(slot).is_err() {
+        let mut held = self
+            .account
+            .lease(MemoryPlan::default())
+            .context(ReserveHeadSnafu)?;
+        if held.try_cover(MemoryPlan::bytes(slot)).is_err() {
             return Ok(None);
         }
         let mut built: Option<Accumulator> = None;
@@ -851,23 +907,30 @@ impl<R: StorageRead, F: ChunkFit> Rebuild<'_, R, F> {
                     };
                     // The deltas, at the count the record was checked to hold, then what the
                     // merge allocates while the old accumulator is alive; it leaves `bytes`.
-                    if held.try_grow(record.deltas_bytes(fields)).is_err() {
+                    let resident = built.as_ref().map_or(0, Accumulator::bytes);
+                    let decoding = slot + resident + record.deltas_bytes(fields);
+                    if held.try_cover(MemoryPlan::bytes(decoding)).is_err() {
                         return ControlFlow::Break(Stop::Full);
                     }
                     let deltas = record.deltas(fields);
                     let cost = Accumulator::merge_cost(built.as_ref(), &deltas, fields);
-                    if held.try_grow(cost.copied).is_err() {
+                    if held
+                        .try_cover(MemoryPlan::bytes(decoding + cost.copied))
+                        .is_err()
+                    {
                         return ControlFlow::Break(Stop::Full);
                     }
                     built = Some(Accumulator::merged(built.as_ref(), &deltas, update, fields));
                     drop(deltas);
-                    held.shrink(held.bytes() - slot - cost.bytes);
                     ControlFlow::Continue(())
                 },
             )
             .context(ScanJournalSnafu)?;
         match stopped {
-            None => Ok(built.map(|accumulator| (accumulator, held))),
+            None => Ok(built.map(|accumulator| {
+                let bytes = slot + accumulator.bytes();
+                held.seal(accumulator).retain_bytes(bytes)
+            })),
             Some(Stop::Full) => Ok(None),
             Some(Stop::Failed(error)) => Err(error),
         }
@@ -875,7 +938,7 @@ impl<R: StorageRead, F: ChunkFit> Rebuild<'_, R, F> {
 
     /// The buffer of `stream`, with its bytes reserved beyond the empty buffer's, or `None`
     /// when it does not fit.
-    fn stream(&self, stream: StreamId) -> Result<Option<(EventBuffer, Reservation)>, RebuildError> {
+    fn stream(&self, stream: StreamId) -> Result<Option<Reserved<EventBuffer>>, RebuildError> {
         let spec = &self.schema.events[usize::from(stream.0)];
         let prefix = JournalKey::events_prefix(stream);
         let mut records = 0;
@@ -890,11 +953,15 @@ impl<R: StorageRead, F: ChunkFit> Rebuild<'_, R, F> {
                 },
             )
             .context(ScanJournalSnafu)?;
-        let mut held = self.empty_reservation();
+        let mut held = self
+            .account
+            .lease(MemoryPlan::default())
+            .context(ReserveHeadSnafu)?;
         let slots = (records * size_of::<Arc<Segment>>()) as u64;
-        if held.try_grow(slots).is_err() {
+        if held.try_cover(MemoryPlan::bytes(slots)).is_err() {
             return Ok(None);
         }
+        let mut bytes = slots;
         let mut segments = Vec::with_capacity(records);
         let stopped = self
             .read
@@ -918,9 +985,11 @@ impl<R: StorageRead, F: ChunkFit> Rebuild<'_, R, F> {
                             return ControlFlow::Break(Stop::Failed(invalid(parsed, problem)));
                         }
                     };
-                    if held.try_grow(Segment::bytes_for(value.len())).is_err() {
+                    let next = bytes + Segment::bytes_for(value.len());
+                    if held.try_cover(MemoryPlan::bytes(next)).is_err() {
                         return ControlFlow::Break(Stop::Full);
                     }
+                    bytes = next;
                     segments.push(Arc::new(Segment::new(
                         seq,
                         value.into(),
@@ -938,17 +1007,11 @@ impl<R: StorageRead, F: ChunkFit> Rebuild<'_, R, F> {
             // the order the batches wrote them.
             None => {
                 segments.sort_unstable_by_key(|segment| segment.seq());
-                Ok(Some((EventBuffer::from_arcs(segments), held)))
+                Ok(Some(held.seal(EventBuffer::from_arcs(segments))))
             }
             Some(Stop::Full) => Ok(None),
             Some(Stop::Failed(error)) => Err(error),
         }
-    }
-
-    fn empty_reservation(&self) -> Reservation {
-        self.budget
-            .try_reserve("head", 0)
-            .expect("nothing fits any budget")
     }
 }
 

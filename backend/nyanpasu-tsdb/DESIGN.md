@@ -308,6 +308,14 @@ while preserving growth, and reuses retired local credit. A reader's standing fr
 stays beside its directory and decoded blocks; its backend loan checks that allowance before
 fetching. Bounded directory parsing and zstd contexts retain an admitted dependency allowance.
 
+Published catalog and head versions share their pages without carrying individual claims. The
+catalog's resident policy and the registry's head reservation cover the current version; a snapshot
+reserves its captured graph before pinning it. Draft copies and new head allocations draw staging
+credit before construction and keep that credit until publication or withdrawal. Pending guards own
+both resident growth and staging credit and remove the pending graph before returning either on
+failure or unwind. Replay uses a source-scoped peak allowance, then hands the finished resident head
+and its charge to the registry; it does not settle a reservation after each record.
+
 Fixed metadata remains under the existing schema and format control allowance: schema validation
 maps, error strings and boxed errors, key prefixes, Shape vectors, storage wrapper names, control
 Arcs, and one local account control allocation per envelope. Their limits follow the schema and

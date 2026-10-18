@@ -8,7 +8,7 @@ use snafu::{ResultExt, ensure};
 
 use crate::{
     ErrorKind, Profile, Schema, Timestamp,
-    budget::{MemoryBudget, Reservation},
+    budget::MemoryBudget,
     lifecycle::{self, OpenError},
     maintain::{self, Maintain, MaintainError, Maintained, Round},
     storage::{Durability, Storage},
@@ -38,8 +38,6 @@ pub struct Tsdb<S: Storage> {
     profile: Profile,
     shape: Shape,
     head_budget: MemoryBudget,
-    /// The current head's bytes, reserved from `head_budget`.
-    head: Reservation,
     /// Staging, encode buffers and the copies a new version makes (§7.4).
     staging_budget: MemoryBudget,
     incarnation: u64,
@@ -64,13 +62,17 @@ impl<S: Storage> Tsdb<S> {
         Ok(Self {
             shared: Arc::new(Shared {
                 storage: opened.storage,
-                registry: Registry::new(opened.version, schema.clone(), Arc::new(OpenMarker)),
+                registry: Registry::new(
+                    opened.version,
+                    schema.clone(),
+                    Arc::new(OpenMarker),
+                    opened.head,
+                ),
                 query_budget: MemoryBudget::new(profile.query),
             }),
             schema,
             shape: opened.shape,
             head_budget: opened.head_budget,
-            head: opened.head,
             staging_budget: opened.staging_budget,
             incarnation: opened.incarnation,
             next_event_seq: 0,
@@ -150,6 +152,7 @@ impl<S: Storage> Tsdb<S> {
             .context(maintain::OpenSnapshotSnafu)?;
         let current = self.shared.registry.current();
         let planned = maintain::plan_backlog(&snapshot, &self.round_context(&current), now)?;
+        drop(current);
         planned
             .map(|round| self.round(&snapshot, round, now))
             .transpose()
@@ -173,8 +176,9 @@ impl<S: Storage> Tsdb<S> {
         };
         let staged = stage::stage(&mut batch, &context, input).context(StageSnafu)?;
         let bytes = batch.written();
-        let written = commit::commit(batch, staged, &shared.registry, &mut self.head, durability)
-            .context(CommitSnafu)?;
+        drop(current);
+        let written =
+            commit::commit(batch, staged, &shared.registry, durability).context(CommitSnafu)?;
         self.committed(durability, input.now, bytes);
         Ok(written)
     }
@@ -244,6 +248,7 @@ impl<S: Storage> Tsdb<S> {
                 return Ok(done);
             }
             left -= 1;
+            drop(current);
             done.add(self.round(&snapshot, round, request.now)?);
         }
     }
@@ -263,14 +268,9 @@ impl<S: Storage> Tsdb<S> {
         let staged = maintain::stage(&mut batch, snapshot, &self.round_context(&current), round)?;
         let bytes = batch.written();
         let durability = self.durability_due(now);
-        commit::publish(
-            batch,
-            staged.next,
-            &shared.registry,
-            &mut self.head,
-            durability,
-        )
-        .context(maintain::CommitSnafu)?;
+        drop(current);
+        commit::publish(batch, staged.next, &shared.registry, durability)
+            .context(maintain::CommitSnafu)?;
         self.committed(durability, now, bytes);
         Ok(staged.done)
     }
@@ -347,7 +347,7 @@ impl<S: Storage> Tsdb<S> {
     }
 
     pub(crate) fn head_reserved(&self) -> u64 {
-        self.head.bytes()
+        self.shared.registry.head_reserved()
     }
 
     pub(crate) fn staging_reserved(&self) -> u64 {

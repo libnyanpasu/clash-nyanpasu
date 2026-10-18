@@ -647,12 +647,32 @@ fn the_next_head_shares_what_the_update_does_not_touch() {
         series: vec![added(&empty, minute, 0)],
         events: Vec::new(),
     };
-    let first = empty.next(update, &[Fate::Keep], |_| false, 2);
+    let first = empty
+        .next(
+            update,
+            &[Fate::Keep],
+            |_| false,
+            2,
+            &crate::budget::test_account(),
+        )
+        .unwrap()
+        .into_parts()
+        .0;
     let update = HeadUpdate {
         series: vec![added(&first, hour, 0)],
         events: Vec::new(),
     };
-    let second = first.next(update, &[Fate::Keep, Fate::Keep], |_| false, 2);
+    let second = first
+        .next(
+            update,
+            &[Fate::Keep, Fate::Keep],
+            |_| false,
+            2,
+            &crate::budget::test_account(),
+        )
+        .unwrap()
+        .into_parts()
+        .0;
     assert_eq!(second.sources(), [minute, hour]);
     assert!(std::ptr::eq(
         first.accumulator(minute).unwrap(),
@@ -665,4 +685,47 @@ fn the_next_head_shares_what_the_update_does_not_touch() {
             + second.accumulator(hour).unwrap().bytes()
             + size_of::<(SeriesSource, Arc<Accumulator>)>() as u64
     );
+}
+
+/// Admission refuses the entire copy graph before construction; its final charge moves intact.
+#[test]
+fn a_next_head_admits_exact_copies_and_transfers_them_without_charging_shared_pages() {
+    let empty = Head::empty(2);
+    let source = SeriesSource {
+        tier: HOUR,
+        bucket: 0,
+    };
+    let update = || HeadUpdate {
+        series: vec![added(&empty, source, 0)],
+        events: Vec::new(),
+    };
+    let copies = series_spine_bytes(1) + update().series[0].cost.copied;
+    for limit in [copies - 1, copies] {
+        let budget = MemoryBudget::new(limit);
+        let account = MemoryAccount::new(&budget, "staging", MemoryPlan::default()).unwrap();
+        let observed = std::rc::Rc::new(std::cell::Cell::new(0));
+        let probe = observed.clone();
+        account.observe_allocations(move |allocated, bytes, live| {
+            if allocated {
+                assert!(bytes <= live);
+                probe.set(probe.get() + bytes);
+            }
+        });
+        let next = empty.next(update(), &[Fate::Keep], |_| false, 2, &account);
+        if limit < copies {
+            assert!(next.is_err());
+            assert_eq!(observed.get(), 0);
+            assert_eq!(budget.reserved(), 0);
+        } else {
+            let next = next.unwrap();
+            assert_eq!(observed.get(), copies);
+            assert_eq!(next.charge_bytes(), copies);
+            assert_eq!(next.get().copied_from(&empty), copies);
+            assert!(Arc::ptr_eq(&next.get().events, &empty.events));
+            drop(account);
+            assert_eq!(budget.reserved(), copies);
+            drop(next);
+            assert_eq!(budget.reserved(), 0);
+        }
+    }
 }

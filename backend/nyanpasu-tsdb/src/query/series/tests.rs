@@ -722,7 +722,10 @@ fn a_head_combination_the_catalog_lacks_is_corrupted() {
         catalog: Catalog::new(&schema),
         head: current.head.clone(),
     };
-    let registry = Registry::new(damaged, Arc::new(schema), Arc::new(OpenMarker));
+    let head = crate::budget::MemoryBudget::new(u64::MAX)
+        .try_reserve("head", damaged.head.bytes())
+        .unwrap();
+    let registry = Registry::new(damaged, Arc::new(schema), Arc::new(OpenMarker), head);
     let snapshot = registry
         .capture(tsdb.storage(), &MemoryBudget::new(u64::MAX))
         .unwrap();

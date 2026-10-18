@@ -645,9 +645,10 @@ impl<W: StorageRead> StorageRead for FailingWrites<'_, W> {
     fn fragment<T>(
         &self,
         id: FragmentId,
+        limit: usize,
         f: impl FnOnce(Option<&[u8]>) -> T,
     ) -> storage::Result<T> {
-        self.0.fragment(id, f)
+        self.0.fragment(id, limit, f)
     }
 }
 

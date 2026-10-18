@@ -30,11 +30,12 @@
 //! [`BudgetExceeded`] instead of growing past it:
 //!
 //! - before the scan: buffers sized by the query itself;
-//! - before the first chunk is read: the block decoder's zstd context, and the fragment the
-//!   backend lends while the reader decodes from it ([`READING`]). A query that reads only the
-//!   head reserves neither;
-//! - for each chunk: its directory, which the reader reserves before decoding fragment 0 and
-//!   holds while the chunk is open ([`ChunkReader::open`]);
+//! - before the first chunk is read: the block decoder's zstd context
+//!   ([`DECOMPRESSION_CONTEXT`]). A query that reads only the head does not reserve it;
+//! - for each chunk, before it is opened: the fragment the backend lends while the reader
+//!   decodes from it, as large as the chunk's manifest entry says ([`lent_memory`]); and its
+//!   directory, which the reader reserves before it fetches fragment 0 and holds while the
+//!   chunk is open ([`ChunkReader::open`]);
 //! - for each block: what decoding it leaves in the column's buffer and in the decoder's
 //!   scratch ([`decode_memory`]), reserved before the read as the larger of what they hold and
 //!   what the block declares, and shrunk to the block's after it. The query keeps one decoder
@@ -67,7 +68,7 @@ use crate::{
         builder::ColumnLayout,
         error::ReadError,
         format::IntRange,
-        reader::{ChunkReader, decode_memory},
+        reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
     },
     codec::{
         block::{BlockDecoder, IntBlock},
@@ -76,7 +77,7 @@ use crate::{
     head::{Head, SeriesSource},
     layout::manifest::{self, Listed, ManifestError, StreamRef, retained_from},
     schema::{MAX_DIMENSIONS, MAX_FIELDS},
-    storage::{Direction, MAX_FRAGMENT_LEN, Storage, StorageRead},
+    storage::{Direction, Storage, StorageRead},
     time::Grid,
     write::chunking::series_columns,
 };
@@ -375,15 +376,9 @@ fn grow<T>(
 /// The zstd decompression context a [`BlockDecoder`] owns, which [`decode_memory`] leaves
 /// to its owner: zstd 1.5's `ZSTD_DCtx`, whose size `ZSTD_sizeof_DCtx` reports. Bulk
 /// decompression writes into the caller's buffer, so the context allocates no window
-/// besides. A test measures it.
+/// besides. A test measures it. It is reserved before the first chunk is opened and held
+/// until the query ends (§7.4).
 const DECOMPRESSION_CONTEXT: u64 = 128 * 1024;
-
-/// What reading chunks holds whatever it reads, reserved before the first chunk is opened and
-/// held until the query ends (§7.4): the [decompression context](DECOMPRESSION_CONTEXT), and
-/// the fragment the backend lends while the reader decodes from it, which a redb access guard
-/// holds outside the backend's cache. The reader decodes fragment 0 and then one block at a
-/// time, so one fragment is lent at once, and an event scan counts it the same way.
-const READING: u64 = DECOMPRESSION_CONTEXT + MAX_FRAGMENT_LEN as u64;
 
 /// What a scan holds whatever it reads, reserved before it starts: the layout of a series
 /// chunk of `fields` fields, and the key of one row.
@@ -617,22 +612,29 @@ impl Scan<'_> {
         decoder: &mut Option<Decoder>,
     ) -> Result<(), SeriesQueryError> {
         if decoder.is_none() {
-            let reading = self
+            let context = self
                 .budget
-                .try_reserve("series decoder", READING)
+                .try_reserve("series decoder", DECOMPRESSION_CONTEXT)
                 .context(ReserveDecoderSnafu)?;
             *decoder = Some(Decoder {
                 blocks: BlockDecoder::new().context(CreateDecoderSnafu)?,
                 scratch: empty(self.budget),
-                reading,
+                lent: empty(self.budget),
+                context,
             });
         }
         let decoder = decoder.as_mut().expect("created above");
+        // One chunk is read at a time, and its reader fetches one fragment at a time.
+        let chunk = listed.chunk.0;
+        check_recorded(listed.entry.fragment0).context(OpenChunkSnafu { chunk })?;
+        let lent = lent_memory(listed.entry.fragment0);
+        reserve_up_to(&mut decoder.lent, lent).context(ReserveFragmentSnafu { chunk })?;
+        settle(&mut decoder.lent, lent);
         let source = StoredChunk {
             storage: read,
             chunk: listed.chunk,
         };
-        self.chunk(listed.chunk.0, &source, decoder)
+        self.chunk(chunk, &source, decoder, listed.entry.fragment0)
     }
 
     fn chunk(
@@ -640,8 +642,10 @@ impl Scan<'_> {
         chunk: u64,
         source: &impl FragmentSource,
         decoder: &mut Decoder,
+        fragment0: u32,
     ) -> Result<(), SeriesQueryError> {
-        let reader = ChunkReader::open(source, self.budget).context(OpenChunkSnafu { chunk })?;
+        let reader =
+            ChunkReader::open(source, self.budget, fragment0).context(OpenChunkSnafu { chunk })?;
         let columns = reader.columns();
         let shaped = columns.len() == self.layout.len()
             && columns
@@ -815,12 +819,14 @@ struct Decoder {
     blocks: BlockDecoder,
     /// What the decoder's scratch holds: the scratch of the last block it decoded.
     scratch: Reservation,
-    /// [`READING`]: the zstd context, and the fragment lent while the reader decodes.
+    /// The fragment the backend lends while the reader of the open chunk decodes from it.
+    lent: Reservation,
+    /// The [zstd context](DECOMPRESSION_CONTEXT).
     #[allow(
         dead_code,
-        reason = "held for its Drop, which returns the context's and the fragment's bytes"
+        reason = "held for its Drop, which returns the context's bytes"
     )]
-    reading: Reservation,
+    context: Reservation,
 }
 
 /// A reservation of nothing yet, to grow.
@@ -935,10 +941,14 @@ pub enum SeriesQueryError {
     #[snafu(display("no room in the query budget to start the scan"))]
     ReserveScan { source: BudgetExceeded },
 
-    /// The query budget has no room for what reading chunks holds: the block decoder's zstd
-    /// context, and the fragment the backend lends while the reader decodes from it.
-    #[snafu(display("no room in the query budget for the block decoder and its fragment"))]
+    /// The query budget has no room for the block decoder's zstd context.
+    #[snafu(display("no room in the query budget for the block decoder"))]
     ReserveDecoder { source: BudgetExceeded },
+
+    /// The query budget has no room for the fragment the backend lends while the chunk's
+    /// reader decodes from it.
+    #[snafu(display("no room in the query budget for a fragment of chunk {chunk}"))]
+    ReserveFragment { chunk: u64, source: BudgetExceeded },
 
     #[snafu(display("no room in the query budget for the list of each request's groups"))]
     ReserveLists { source: BudgetExceeded },
@@ -1002,6 +1012,7 @@ impl SeriesQueryError {
             | Self::CreateDecoder { .. } => ErrorKind::Local,
             Self::ReserveScan { source }
             | Self::ReserveDecoder { source }
+            | Self::ReserveFragment { source, .. }
             | Self::ReserveLists { source }
             | Self::ReserveBlock { source, .. }
             | Self::ReserveGroups { source, .. } => source.kind(),

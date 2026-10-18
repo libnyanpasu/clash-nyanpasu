@@ -95,7 +95,7 @@ fn get(read: &impl StorageRead, ns: Ns, key: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn fragment(read: &impl StorageRead, id: FragmentId) -> Option<Vec<u8>> {
-    read.fragment(id, |bytes| bytes.map(<[u8]>::to_vec))
+    read.fragment(id, MAX_FRAGMENT_LEN, |bytes| bytes.map(<[u8]>::to_vec))
         .expect("read a fragment")
 }
 
@@ -242,7 +242,7 @@ fn a_failure_ends_reads_redb_serves_from_memory() {
 
     let errors = [
         failure(view.get(A, b"k", |_| ())),
-        failure(view.fragment(frag(1, 0), |_| ())),
+        failure(view.fragment(frag(1, 0), MAX_FRAGMENT_LEN, |_| ())),
     ];
     for error in errors {
         assert_eq!(error.kind(), ErrorKind::BackendFailed, "{error:?}");
@@ -258,7 +258,7 @@ fn a_close_ends_reads_redb_serves_from_memory() {
 
     let errors = [
         failure(view.get(A, b"k", |_| ())),
-        failure(view.fragment(frag(1, 0), |_| ())),
+        failure(view.fragment(frag(1, 0), MAX_FRAGMENT_LEN, |_| ())),
     ];
     for error in errors {
         assert!(matches!(error, StorageError::Closed), "{error:?}");
@@ -287,7 +287,7 @@ fn a_failed_rollback_of_an_abandoned_batch_latches_the_instance() {
 
     let errors = [
         failure(view.get(A, b"k", |_| ())),
-        failure(view.fragment(frag(1, 0), |_| ())),
+        failure(view.fragment(frag(1, 0), MAX_FRAGMENT_LEN, |_| ())),
         failure(storage.snapshot()),
         failure(storage.batch()),
     ];

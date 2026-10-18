@@ -54,12 +54,13 @@ struct ReadChunk {
     rows: Vec<Vec<Cell>>,
 }
 
-fn read_chunk(read: &impl StorageRead, chunk: ChunkId) -> ReadChunk {
+fn read_chunk(read: &impl StorageRead, listed: &Listed) -> ReadChunk {
     let source = StoredChunk {
         storage: read,
-        chunk,
+        chunk: listed.chunk,
     };
-    let reader = ChunkReader::open(&source, &crate::MemoryBudget::new(u64::MAX)).unwrap();
+    let budget = crate::MemoryBudget::new(u64::MAX);
+    let reader = ChunkReader::open(&source, &budget, listed.entry.fragment0).unwrap();
     let mut rows = vec![Vec::new(); reader.rows() as usize];
     let mut decoder = BlockDecoder::new().unwrap();
     for (column, desc) in reader.columns().iter().enumerate() {
@@ -160,7 +161,7 @@ fn chunks_of(tsdb: &Tsdb<MemoryStorage>, stream: StreamRef) -> Vec<(Listed, Read
         .unwrap()
         .into_iter()
         .map(|listed| {
-            let chunk = read_chunk(&snapshot, listed.chunk);
+            let chunk = read_chunk(&snapshot, &listed);
             (listed, chunk)
         })
         .collect()
@@ -1167,7 +1168,7 @@ fn chunking_on_open_holds_one_records_chunk_build() {
 // uncompressed chunk: for 3 fields, the figure the chunk format pins.
 #[test]
 fn the_builder_reserves_the_bound_of_an_uncompressed_chunk() {
-    assert_eq!(builder_memory(&series_columns(3)), 483_006);
+    assert_eq!(builder_memory(&series_columns(3)), 286_186);
 }
 
 /// Chunking a stream reserves its builder, one row of each record it merges and one
@@ -1417,7 +1418,7 @@ fn mobile_chunks_closed_connections_at_the_trigger_under_a_full_batch() {
     let spec = &schema.events[0];
     // The builder of the ten chunk columns, the append buffers, and per record merged a row
     // of seven values with its reader, its waiting slot and its heap entry.
-    assert_eq!(stream_memory(spec, 1), 825_011);
+    assert_eq!(stream_memory(spec, 1), 627_905);
     assert_eq!(stream_memory(spec, 2) - stream_memory(spec, 1), 272);
 
     let profile = Profile::mobile();
@@ -2427,12 +2428,12 @@ mod redb {
         let hour = manifest::stream_chunks(storage, StreamRef::Tier(HOUR)).unwrap();
         assert_eq!(hour.len(), 1);
         assert_eq!(
-            read_chunk(storage, hour[0].chunk).rows,
+            read_chunk(storage, &hour[0]).rows,
             [vec![Cell::Int(0), Cell::Int(1), Cell::Int(1), Cell::Int(2)]]
         );
         let logs = manifest::stream_chunks(storage, StreamRef::Events(LOGS)).unwrap();
         assert_eq!(logs.len(), 1);
-        let messages: Vec<Cell> = read_chunk(storage, logs[0].chunk)
+        let messages: Vec<Cell> = read_chunk(storage, &logs[0])
             .rows
             .into_iter()
             .map(|row| row[3].clone())

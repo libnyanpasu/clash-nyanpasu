@@ -12,7 +12,10 @@ use crate::{
     chunk::{
         BatchSink,
         builder::{ChunkBuilder, Column as BatchColumn, Values},
-        format::{ChunkKind, open_memory},
+        format::{
+            BLOCK_TARGET_LEN, ChunkKind, MAX_DATA_FRAGMENT_LEN, MIN_FRAGMENT0_LEN, open_memory,
+        },
+        reader::lent_memory,
     },
     codec::checksum::TRAILER_LEN,
     db::{
@@ -24,7 +27,7 @@ use crate::{
         manifest::{ChunkEntry, extent_key},
     },
     storage::{
-        Durability, FragmentId, StorageWrite,
+        Durability, FragmentId, MAX_FRAGMENT_LEN, StorageWrite,
         memory::{MemoryDisk, MemoryStorage},
     },
     version::{Registry, Version},
@@ -778,17 +781,20 @@ fn chunks_outside_the_range_are_never_read() {
     }
 }
 
+/// The rows of a block of a non-null 8-byte column.
+const BLOCK_ROWS: i64 = (BLOCK_TARGET_LEN / 8) as i64;
+
 /// One chunk of 9,000 rows keyed by row, whose `upload` blocks hold 0 and 63, then 15, then
-/// 40: 4,096 rows to a block of a non-null 8-byte column.
+/// 40: [`BLOCK_ROWS`] (4,092) rows to a block.
 fn three_blocks() -> (Store, ChunkId) {
     let mut store = Store::new(Profile::desktop());
     let rows: Vec<_> = (0..9_000)
         .map(|key| Closed {
             key,
             start: 0,
-            upload: match key {
-                0..4_096 => [0, 63][key as usize % 2],
-                4_096..8_192 => 15,
+            upload: match key / BLOCK_ROWS {
+                0 => [0, 63][key as usize % 2],
+                1 => 15,
                 _ => 40,
             },
             combo: None,
@@ -817,6 +823,7 @@ fn blocks_whose_stats_rule_out_the_filter_are_never_decoded() {
             chunk,
         },
         &MemoryBudget::new(u64::MAX),
+        store.chunks(CLOSED)[0].entry.fragment0,
     )
     .unwrap();
     let blocks = reader.blocks(upload).unwrap();
@@ -853,7 +860,7 @@ fn blocks_whose_stats_rule_out_the_filter_are_never_decoded() {
             &mut log,
         )
         .unwrap();
-        assert_eq!(page.events().len(), 4_096);
+        assert_eq!(page.events().len(), BLOCK_ROWS as usize);
         assert!(
             page.events()
                 .iter()
@@ -881,11 +888,13 @@ fn a_chunk_opens_within_the_scans_budget() {
     let fragment = FragmentId { chunk, index: 0 };
     let content = snapshot
         .storage()
-        .fragment(fragment, |bytes| bytes.unwrap().len())
+        .fragment(fragment, MAX_FRAGMENT_LEN, |bytes| bytes.unwrap().len())
         .unwrap()
         - TRAILER_LEN;
     let columns = snapshot.schema().events[0].columns.len();
-    let opening = listed(1) + merge_memory(1, 1, columns) + open_memory(content);
+    let lent = lent_memory((content + TRAILER_LEN) as u32);
+    assert_eq!(lent, MAX_DATA_FRAGMENT_LEN as u64);
+    let opening = listed(1) + merge_memory(1, 1, columns, lent) + open_memory(content);
     let query = EventQuery {
         stream: CLOSED,
         range: TimeRange::new(Timestamp(0), Timestamp(DAY)).unwrap(),
@@ -942,6 +951,7 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
             chunk,
         },
         &MemoryBudget::new(u64::MAX),
+        store.chunks(CLOSED)[0].entry.fragment0,
     )
     .unwrap();
     let at = At {
@@ -981,7 +991,8 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
     assert_eq!(budget.reserved(), 0);
 
     let (budget, mut ledger, mut decode, mut log) = start(first);
-    for (row, held) in [(0, first), (8_192, last), (4_096, first)] {
+    let block = BLOCK_ROWS as u32;
+    for (row, held) in [(0, first), (2 * block, last), (block, first)] {
         decode
             .ints::<i64>(&at, KEY, row, &mut ledger, &mut log)
             .unwrap();
@@ -1082,7 +1093,14 @@ fn a_merge_of_more_ways_than_the_budget_holds_fails_at_admission() {
         limit: 3,
     };
     let columns = schema.events[0].columns.len();
-    let admission = listed(ways) + merge_memory(ways, 1, columns);
+    // The largest fragment one of the chunks lends.
+    let lent = store
+        .chunks(CLOSED)
+        .iter()
+        .map(|listed| lent_memory(listed.entry.fragment0))
+        .max()
+        .unwrap();
+    let admission = listed(ways) + merge_memory(ways, 1, columns, lent);
     let run = |limit: u64| {
         let budget = MemoryBudget::new(limit);
         let result = scan(
@@ -1123,6 +1141,7 @@ fn a_merge_of_more_ways_than_the_budget_holds_fails_at_admission() {
 fn chunks_that_do_not_overlap_are_one_way() {
     let link = |chunk, keys| Link {
         chunk: ChunkId(chunk),
+        fragment0: 0,
         keys,
         chain: 0,
     };
@@ -1197,7 +1216,8 @@ fn a_large_text_value_is_returned_whole_and_reserved_first() {
     );
 
     // Enough for the merge and the chunk, but not for the line.
-    let budget = MemoryBudget::new(merge_memory(1, 1, 1) + 512 * 1024);
+    let budget =
+        MemoryBudget::new(merge_memory(1, 1, 1, MAX_DATA_FRAGMENT_LEN as u64) + 512 * 1024);
     let error = scan(
         snapshot.storage(),
         snapshot.version(),
@@ -1462,7 +1482,8 @@ fn a_full_page_reads_nothing_past_its_last_row() {
         predicate: &EventPredicate { filters: &filters },
         limit: 1,
     };
-    let budget = MemoryBudget::new(merge_memory(1, 1, 1) + 512 * 1024);
+    let budget =
+        MemoryBudget::new(merge_memory(1, 1, 1, MAX_DATA_FRAGMENT_LEN as u64) + 512 * 1024);
     let mut log = ReadLog::default();
     let page = scan(
         snapshot.storage(),
@@ -1532,11 +1553,64 @@ fn foreign_chunk(store: &Store, chunk: ChunkId, key: i64, combo: u32, host: u32)
         key_range: built.key_range,
         rows: built.rows,
         fragments: built.fragments,
+        fragment0: built.fragment0,
         bytes: built.bytes,
     };
     let extent = event_extent(spec, key);
     manifest::write_chunk(&mut batch, StreamRef::Events(CLOSED), extent, chunk, &entry).unwrap();
     batch.commit(Durability::Durable).unwrap();
+}
+
+// An entry that records a length no fragment 0 has is damage: the scan fails `Corrupted` before
+// its admission is sized by it, where it would have failed for room.
+#[test]
+fn an_entry_recording_no_fragment_0_a_chunk_has_is_corrupted() {
+    let store = Store::new(Profile::desktop());
+    let schema = schema();
+    let spec = &schema.events[usize::from(CLOSED.0)];
+    let recorded = [
+        0,
+        MIN_FRAGMENT0_LEN as u32 - 1,
+        MAX_FRAGMENT_LEN as u32 + 1,
+        u32::MAX,
+    ];
+    for fragment0 in recorded {
+        let entry = ChunkEntry {
+            kind: ChunkKind::L0Base as u8,
+            run: 1,
+            key_range: (10, 10),
+            rows: 1,
+            fragments: 2,
+            fragment0,
+            bytes: 1_000,
+        };
+        let mut batch = store.tsdb.storage().batch().unwrap();
+        let (stream, extent) = (StreamRef::Events(CLOSED), event_extent(spec, 10));
+        manifest::write_chunk(&mut batch, stream, extent, ChunkId(1), &entry).unwrap();
+        batch.commit(Durability::Durable).unwrap();
+        let error = store
+            .snapshot()
+            .scan_events(&EventQuery {
+                stream: CLOSED,
+                range: TimeRange::new(Timestamp(0), Timestamp(DAY)).unwrap(),
+                direction: Direction::Forward,
+                cursor: None,
+                predicate: &EventPredicate::default(),
+                limit: 1,
+            })
+            .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                EventScanError::OpenChunk {
+                    chunk: 1,
+                    source: ReadError::RecordedFragment0 { recorded }
+                } if recorded == fragment0
+            ),
+            "{error:?}"
+        );
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+    }
 }
 
 // A chunk whose checksums hold but whose catalog references do not is damage (§6.5): an

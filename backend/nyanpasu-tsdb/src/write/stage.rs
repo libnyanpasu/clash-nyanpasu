@@ -831,9 +831,10 @@ impl<W: StorageRead> StorageRead for Counted<W> {
     fn fragment<T>(
         &self,
         id: FragmentId,
+        limit: usize,
         f: impl FnOnce(Option<&[u8]>) -> T,
     ) -> Result<T, StorageError> {
-        self.batch.fragment(id, f)
+        self.batch.fragment(id, limit, f)
     }
 }
 
@@ -1140,11 +1141,12 @@ mod tests {
         }
     }
 
-    /// Codex's case: sixteen dimensions of two one-byte values each, and 30,000 distinct
+    /// Codex's case: sixteen dimensions of two one-byte values each, and many distinct
     /// combinations in one batch, under a small head and the least staging an open accepts.
     /// Resolving them allocates nothing but the catalog's growth, which its own budget
     /// admits, and the scratch reserved first, so the batch fails on its deltas' reservation,
-    /// within the budget, and changes nothing.
+    /// within the budget, and changes nothing. The combinations are as many as that staging
+    /// holds the scratch of (8 bytes each) but not their deltas besides (12 bytes each).
     #[test]
     fn a_batch_of_many_combinations_fails_within_the_staging_budget() {
         use crate::{
@@ -1185,11 +1187,13 @@ mod tests {
             event_buffer_bytes: 1,
             ..Profile::desktop()
         };
+        let combinations = u32::try_from(profile.staging / 20).unwrap();
+        assert!(combinations < 1 << MAX_DIMENSIONS);
         let disk = MemoryDisk::new();
         let mut tsdb = Tsdb::open(disk.open().unwrap(), schema, profile).unwrap();
         // Combination n takes the value of bit i of n in dimension i.
         let values: [&[u8]; 2] = [b"a", b"b"];
-        let points: Vec<SeriesPoint<'static>> = (0..30_000u32)
+        let points: Vec<SeriesPoint<'static>> = (0..combinations)
             .map(|n| SeriesPoint {
                 tier: TierId(0),
                 at: Timestamp(1_000 * 3_600_000),
@@ -1211,7 +1215,7 @@ mod tests {
         };
         let before = dump_storage(&tsdb);
         let error = tsdb.write(&input, Durability::Durable).unwrap_err();
-        let deltas = SourceDeltas::bytes(30_000, 1);
+        let deltas = SourceDeltas::bytes(u64::from(combinations), 1);
         assert!(
             matches!(
                 &error,

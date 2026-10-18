@@ -64,7 +64,7 @@ use crate::{
         StoredChunk,
         error::ReadError,
         format::{BLOCK_TARGET_LEN, BlockEntry, IntRange, IntStats},
-        reader::{ChunkReader, decode_memory},
+        reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
     },
     codec::{
         block::{BlockDecoder, BytesBlock, BytesValue, IntBlock},
@@ -76,7 +76,7 @@ use crate::{
         journal::{Identity, Rows, StoredRow, StoredValue},
     },
     layout::manifest::{self, ManifestError, StreamRef, event_extent, retained_from},
-    storage::{ChunkId, Direction, MAX_FRAGMENT_LEN, Storage, StorageRead},
+    storage::{ChunkId, Direction, Storage, StorageRead},
     time::Span,
     version::{Snapshot, Version},
     write::{ComboId, EventSeq},
@@ -253,12 +253,13 @@ const fn stripe_bytes(rows: usize) -> u64 {
 }
 
 /// The bytes a scan holds for as long as it runs, for what it allocates while reading: the
-/// decompression context, a fragment lent by the backend, and one decoded journal row of
-/// `columns` columns. Blocks are read one at a time, so the fragment is counted once, whatever
-/// the number of ways.
-fn standing_memory(columns: usize) -> u64 {
+/// decompression context, the `lent` bytes of a fragment lent by the backend, and one decoded
+/// journal row of `columns` columns. Chunks are opened and blocks read one at a time, so one
+/// fragment is lent at once, whatever the number of ways: the largest of the chunks' (see
+/// [`lent_memory`]).
+fn standing_memory(columns: usize, lent: u64) -> u64 {
     let row = size_of::<StoredRow<'static>>() + columns * size_of::<StoredValue<'static>>();
-    DECOMPRESSION_CONTEXT + MAX_FRAGMENT_LEN as u64 + row as u64
+    DECOMPRESSION_CONTEXT + lent + row as u64
 }
 
 /// What a merge of `ways` chunk ways and a head selection of `selected` rows reserves before
@@ -266,14 +267,17 @@ fn standing_memory(columns: usize) -> u64 {
 ///
 /// - each way: its state, its heap entry, and its stripe at [`BUILDER_STRIPE_ROWS`];
 /// - the head's way, its heap entry, and its selection;
-/// - the [standing memory](standing_memory) of the scan.
+/// - the [standing memory](standing_memory) of the scan, with a lent fragment of `lent`
+///   bytes.
 ///
 /// The shared decode buffers and the page are reserved as they grow, and each open chunk
 /// reserves its directory.
-pub(crate) fn merge_memory(ways: usize, selected: usize, columns: usize) -> u64 {
+pub(crate) fn merge_memory(ways: usize, selected: usize, columns: usize, lent: u64) -> u64 {
     let entry = (size_of::<Way<'static>>() + size_of::<Reverse<(Rank, usize)>>()) as u64;
     let head = entry + (selected * size_of::<Selected<'static>>()) as u64;
-    ways as u64 * (entry + stripe_bytes(BUILDER_STRIPE_ROWS)) + head + standing_memory(columns)
+    ways as u64 * (entry + stripe_bytes(BUILDER_STRIPE_ROWS))
+        + head
+        + standing_memory(columns, lent)
 }
 
 impl<S: Storage> Snapshot<S> {
@@ -589,6 +593,8 @@ impl Ledger {
 #[derive(Clone, Copy, Debug)]
 struct Link {
     chunk: ChunkId,
+    /// Fragment 0's length, as the chunk's manifest entry records it.
+    fragment0: u32,
     keys: (i64, i64),
     chain: usize,
 }
@@ -616,6 +622,8 @@ struct ChunkWay {
 
 struct OpenChunk {
     chunk: ChunkId,
+    /// Fragment 0's length, as the chunk's manifest entry records it.
+    fragment0: u32,
     /// It holds a reservation of its directory's bytes.
     reader: ChunkReader,
     /// The rows the scan has not passed yet.
@@ -664,7 +672,12 @@ struct Position<'s> {
 }
 
 enum Source<'s> {
-    Chunk { chunk: ChunkId, row: u32 },
+    Chunk {
+        chunk: ChunkId,
+        /// Fragment 0's length, to open the chunk again by.
+        fragment0: u32,
+        row: u32,
+    },
     Head(Rows<'s>),
 }
 
@@ -705,13 +718,21 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         // The selection holds one row past the limit before it drops the worst.
         let selected = head_rows.min(limit) + 1;
         let columns = self.spec.columns.len();
+        // The largest fragment one of the chunks lends, once each entry is checked.
+        let mut lent = 0;
+        for link in &links {
+            check_recorded(link.fragment0).context(OpenChunkSnafu {
+                chunk: link.chunk.0,
+            })?;
+            lent = lent.max(lent_memory(link.fragment0));
+        }
         let admit = |error| AdmitScanSnafu { ways: chains.len() }.into_error(error);
         self.ledger
-            .admit(merge_memory(chains.len(), selected, columns))
+            .admit(merge_memory(chains.len(), selected, columns, lent))
             .map_err(admit)?;
         // Within what the admission reserved.
         let entries = chains.len() + 1;
-        let held = standing_memory(columns)
+        let held = standing_memory(columns, lent)
             + (entries * (size_of::<Way<'_>>() + size_of::<Reverse<(Rank, usize)>>())) as u64
             + (selected * size_of::<Selected<'_>>()) as u64;
         self.ledger.alloc(held).map_err(admit)?;
@@ -772,6 +793,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 }
                 let link = Link {
                     chunk: listed.chunk,
+                    fragment0: listed.entry.fragment0,
                     keys: (first, last),
                     chain: 0,
                 };
@@ -887,6 +909,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 pass(&mut open.rows, row, self.direction);
                 Source::Chunk {
                     chunk: open.chunk,
+                    fragment0: open.fragment0,
                     row,
                 }
             }
@@ -908,7 +931,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 let Some(link) = next else {
                     return Ok(None);
                 };
-                way.open = Some(self.open(links[link].chunk)?);
+                way.open = Some(self.open(links[link].chunk, links[link].fragment0)?);
                 continue;
             };
             let Some(row) = next_row(&open.rows, self.direction) else {
@@ -933,17 +956,19 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         }
     }
 
-    /// Opens a chunk, which reserves its directory from the scan's budget.
-    fn open(&mut self, chunk: ChunkId) -> Result<OpenChunk, EventScanError> {
+    /// Opens a chunk whose fragment 0 is `fragment0` bytes long, which reserves its directory
+    /// from the scan's budget.
+    fn open(&mut self, chunk: ChunkId, fragment0: u32) -> Result<OpenChunk, EventScanError> {
         self.log.opened(chunk);
         let source = StoredChunk {
             storage: self.storage,
             chunk,
         };
-        let reader =
-            ChunkReader::open(&source, self.budget).context(OpenChunkSnafu { chunk: chunk.0 })?;
+        let reader = ChunkReader::open(&source, self.budget, fragment0)
+            .context(OpenChunkSnafu { chunk: chunk.0 })?;
         Ok(OpenChunk {
             chunk,
+            fragment0,
             rows: 0..reader.rows(),
             stripe: 0..0,
             reader,
@@ -1152,13 +1177,17 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             });
         }
         let place = |index: usize| match positions[index].source {
-            Source::Chunk { chunk, row } => (chunk, row),
+            Source::Chunk {
+                chunk,
+                fragment0,
+                row,
+            } => (chunk, fragment0, row),
             Source::Head(_) => unreachable!("only chunk positions are listed"),
         };
         chunked.sort_unstable_by_key(|&index| place(index));
         for group in chunked.chunk_by(|&a, &b| place(a).0 == place(b).0) {
-            let chunk = place(group[0]).0;
-            let open = self.open(chunk)?;
+            let (chunk, fragment0, _) = place(group[0]);
+            let open = self.open(chunk, fragment0)?;
             let at = At {
                 storage: self.storage,
                 chunk,
@@ -1167,7 +1196,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             let spec = self.spec;
             for (column, spec) in spec.columns.iter().enumerate() {
                 for &index in group {
-                    let row = place(index).1;
+                    let row = place(index).2;
                     let value = self.read_value(&at, spec.ty, column, row, decode)?;
                     events[index].values[column] = value;
                 }

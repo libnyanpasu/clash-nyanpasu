@@ -91,6 +91,7 @@ mod tests {
                 key_range,
                 rows: 1,
                 fragments: 1,
+                fragment0: 1,
                 bytes: 1,
             },
         }

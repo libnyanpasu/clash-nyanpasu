@@ -25,17 +25,18 @@
 //! - **Each column's open block.**
 //!   - An integer column caps its values, and its validity flags when it is nullable, at the
 //!     rows of a block, `BLOCK_TARGET_LEN / int_raw_len`: at most [`BLOCK_TARGET_LEN`]
-//!     (32 KiB) together, exactly what a full block holds.
+//!     (32 KiB − 32) together, exactly what a full block holds.
 //!   - A bytes column caps its ends (4 bytes each) and validity flags (1 byte each) at the
 //!     most rows a block holds, `BLOCK_TARGET_LEN` over [`bytes_raw_len`] of its cheapest
 //!     row: an empty or null value, or a full value of a non-null fixed column. It caps its
 //!     heap at `BLOCK_TARGET_LEN`, or at those rows' values for a fixed column. A text
 //!     column's large-value references add at most [`MAX_LARGE_VALUES`] of 8 bytes (2 KiB).
-//!     That is 58.7 KiB for nullable text (6 bytes a row, 5,461 rows), and 64 KiB at most,
-//!     for a non-null low-cardinality column (4 bytes a row, 8,192 rows).
-//! - **The fragment buffer**, at most [`MAX_FRAGMENT_LEN`] (256 KiB). It holds one data
-//!   fragment, one piece of a large value, or fragment 0 at a time, each written as soon as
-//!   it is complete.
+//!     That is 58.6 KiB for nullable text (6 bytes a row, 5,456 rows), and 63.9 KiB at most,
+//!     for a non-null low-cardinality column (4 bytes a row, 8,184 rows).
+//! - **The fragment buffer**, at most [`MAX_DATA_FRAGMENT_LEN`] (64 KiB − 20). It holds one
+//!   data fragment, one piece of a large value, or fragment 0 at a time, each written as soon
+//!   as it is complete. Fragment 0 of a planned chunk fits it, which is checked at compile
+//!   time below.
 //! - **The encoding scratch** of one block (see [`EncodeScratch`]), sized by the columns: the
 //!   longest body, `BLOCK_TARGET_LEN` plus 6 bytes; with a compressor, zstd's bound for that
 //!   body; with bytes columns, a `u32` per row of their largest block; and with a
@@ -68,26 +69,23 @@ use super::{
         ValidityLengthSnafu, ValueTooLongSnafu, ValuesTypeSnafu, WriteFragmentSnafu,
     },
     format::{
-        BLOCK_TARGET_LEN, BlockRecord, ChunkKind, ColumnRecord, DirectoryRecord,
-        FRAGMENT_PAYLOAD_LEN, HeaderRecord, IntRange, IntStats, LargeEntry, MAX_BLOCKS,
-        MAX_CHUNK_LEN, MAX_COLUMNS, MAX_LARGE_VALUE_LEN, MAX_LARGE_VALUES, MAX_ROWS,
-        MIN_BLOCK_FILL, PhysicalType, large_stored_len,
+        BLOCK_TARGET_LEN, BlockRecord, ChunkKind, ColumnRecord, DATA_PAYLOAD_LEN, DirectoryRecord,
+        HeaderRecord, IntRange, IntStats, LargeEntry, MAX_BLOCKS, MAX_CHUNK_LEN, MAX_COLUMNS,
+        MAX_DATA_FRAGMENT_LEN, MAX_LARGE_VALUE_LEN, MAX_LARGE_VALUES, MAX_ROWS, MIN_BLOCK_FILL,
+        PhysicalType, large_stored_len, max_fragment0_len,
     },
 };
-use crate::{
-    codec::{
-        MAX_INLINE_VALUE_LEN,
-        block::{
-            EncodeScratch, Encoded, MAX_BODY_OVERHEAD, ScratchCaps, bytes_raw_len, encode_bytes,
-            encode_ints, int_raw_len,
-        },
-        bytes::{ByteValues, BytesEncoding, BytesHint},
-        checksum::{self, TRAILER_LEN},
-        compress,
-        int::{IntType, IntValue},
-        reserve_cap,
+use crate::codec::{
+    MAX_INLINE_VALUE_LEN,
+    block::{
+        EncodeScratch, Encoded, MAX_BODY_OVERHEAD, ScratchCaps, bytes_raw_len, encode_bytes,
+        encode_ints, int_raw_len,
     },
-    storage::MAX_FRAGMENT_LEN,
+    bytes::{ByteValues, BytesEncoding, BytesHint},
+    checksum::{self, TRAILER_LEN},
+    compress,
+    int::{IntType, IntValue},
+    reserve_cap,
 };
 
 /// A column of a chunk, as the write path declares it.
@@ -124,8 +122,19 @@ pub(crate) fn working_memory(columns: &[ColumnLayout], compressed: bool) -> u64 
     let scratch = caps(&EncodeScratch::new(scratch_caps(columns, compressed)).buffers());
     let directory = caps(&DirectoryCaps::of(columns).buffers());
     let table = columns.len() * size_of::<OpenColumn>();
-    (open + MAX_FRAGMENT_LEN + scratch + directory + table) as u64
+    (open + MAX_DATA_FRAGMENT_LEN + scratch + directory + table) as u64
 }
+
+// The fragment buffer holds a data fragment at most, which fits fragment 0 of a chunk planned
+// within the limits, whose directory has at most the entries of `DirectoryCaps`. A block the
+// builder closes fits an empty data fragment twice, which format.rs asserts.
+const _: () = assert!(
+    max_fragment0_len(
+        MAX_COLUMNS,
+        MAX_COLUMNS + MAX_CHUNK_LEN as usize / MIN_BLOCK_FILL,
+        MAX_LARGE_VALUES
+    ) <= MAX_DATA_FRAGMENT_LEN
+);
 
 /// The sum of the caps of `buffers`, each a name, a capacity and a cap.
 fn caps(buffers: &[(&'static str, usize, usize)]) -> usize {
@@ -264,6 +273,9 @@ pub(crate) struct Column<'a> {
 pub(crate) struct BuiltChunk {
     pub(crate) rows: u32,
     pub(crate) fragments: u32,
+    /// Fragment 0's length, its trailer included. The manifest records it, so that a reader
+    /// knows what fetching the directory holds before it fetches it (§7.4).
+    pub(crate) fragment0: u32,
     /// All fragments together, which retention accounts by (§9.1).
     pub(crate) bytes: u64,
     pub(crate) key_range: (i64, i64),
@@ -409,16 +421,20 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
             large: std::mem::take(&mut self.out.large),
         };
         // MAX_COLUMNS, MAX_BLOCKS and MAX_LARGE_VALUES keep it within a fragment; format.rs
-        // asserts that at compile time. The buffer has had all of a fragment since the
-        // chunk's first block, which every chunk has, so writing fragment 0 never grows it.
+        // asserts that at compile time. The buffer has had all of a data fragment since the
+        // chunk's first block, which every chunk has, and fragment 0 of a planned chunk fits
+        // that (asserted above), so writing it never grows the buffer. A chunk that is not
+        // planned may have grown its directory past its caps, and its fragment 0 the buffer.
         let fragment = &mut self.out.fragment;
         directory.write(fragment);
         checksum::seal(fragment);
+        let fragment0 = fragment.len() as u32;
         observe(&self, &directory);
         self.out.put(0)?;
         Ok(BuiltChunk {
             rows: header.rows,
             fragments: header.fragments,
+            fragment0,
             bytes: self.out.written,
             key_range,
         })
@@ -534,7 +550,7 @@ impl<S: FragmentSink> ChunkBuilder<'_, S> {
             (
                 "fragment".to_owned(),
                 self.out.fragment.capacity(),
-                MAX_FRAGMENT_LEN,
+                MAX_DATA_FRAGMENT_LEN,
             ),
             (
                 caps[0].0.to_owned(),
@@ -968,15 +984,16 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
         ensure!(self.blocks.len() < MAX_BLOCKS, TooManyBlocksSnafu);
         let len = encoded.stored_len();
         let mut offset = self.fragment.len().next_multiple_of(8);
-        if offset + len > FRAGMENT_PAYLOAD_LEN {
+        if offset + len > DATA_PAYLOAD_LEN {
             self.flush()?;
             offset = 0;
         }
-        // A block of at most BLOCK_TARGET_LEN raw bytes fits an empty fragment many times.
-        debug_assert!(len <= FRAGMENT_PAYLOAD_LEN);
+        // A block of at most BLOCK_TARGET_LEN raw bytes fits an empty data fragment (format.rs
+        // asserts it).
+        debug_assert!(len <= DATA_PAYLOAD_LEN);
         // With the trailer that `flush` seals the fragment with, so that sealing never grows it.
         let additional = offset + len + TRAILER_LEN - self.fragment.len();
-        reserve_cap(&mut self.fragment, additional, MAX_FRAGMENT_LEN);
+        reserve_cap(&mut self.fragment, additional, MAX_DATA_FRAGMENT_LEN);
         self.fragment.resize(offset, 0);
         encoded.write(&mut self.fragment);
         // A chunk planned within the limits has at most the planned blocks; one that is not
@@ -1033,12 +1050,12 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
             }
         );
         let first_fragment = self.next_index;
-        for piece in value.chunks(FRAGMENT_PAYLOAD_LEN) {
+        for piece in value.chunks(DATA_PAYLOAD_LEN) {
             self.fragment.clear();
             reserve_cap(
                 &mut self.fragment,
                 piece.len() + TRAILER_LEN,
-                MAX_FRAGMENT_LEN,
+                MAX_DATA_FRAGMENT_LEN,
             );
             self.fragment.extend_from_slice(piece);
             checksum::seal(&mut self.fragment);

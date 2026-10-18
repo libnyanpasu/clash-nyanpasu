@@ -32,6 +32,11 @@ The design says its code sketches show shape, not the final API. Where the code 
   (see [Errors](#errors)). `ErrorKind` remains, as the `kind()` of every error type.
 - `StorageRead::scan` returns the value its callback broke with, so a decoding error can
   stop a scan and come back out.
+- `StorageRead::fragment` takes the most bytes its caller reserved for the fragment. A longer
+  stored fragment fails `Corrupted` before it is lent, so a reader never holds more than it
+  reserved, however the fragment or its directory was damaged (§7.4). redb reads the leaf into
+  its page cache, where its cache budget counts it, before the length is known; the check
+  drops the guard before anything borrows the value.
 - `StorageWrite::commit` returns `Result<(), CommitFailure>`; there is nothing a receipt
   would carry.
 - `ColumnType` splits `Int` into `I64` and `U64`, and adds `FoldedLabel`: the column of
@@ -59,6 +64,12 @@ The design says its code sketches show shape, not the final API. Where the code 
   identity is a one-byte tag followed by its 16 bytes or its text.
 - An event stream has at most 61 columns, because its chunks add the key, the incarnation and
   the sequence.
+- Data fragments, blocks and large-value pieces, are at most 64 KiB − 20 bytes, well within
+  §3.3's 256 KB, and the builder fills a block to 32 KiB − 32. A full fragment then fills a
+  power-of-two run of redb pages, and two full blocks share one (`chunk::format`). Fragment 0
+  keeps the 256 KB, which a directory of 2,048 blocks needs. Its length is recorded in the
+  chunk's manifest entry, so a reader reserves what fetching it lends before it fetches it
+  (§7.4).
 - A commit plans from sizes before it builds anything: it reserves the plan's peak from
   staging, builds only the sources the head keeps, and writes a chunked source straight from
   the current pages and the batch's deltas. Staging resolves a batch's event rows in the

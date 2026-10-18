@@ -6,8 +6,11 @@
 //! Queries account for their memory (§7.4, §8.2), so the reader allocates nothing they have
 //! not reserved:
 //!
+//! - the fragment the backend lends while the reader parses fragment 0 or decodes a block,
+//!   which the caller reserves before it opens the chunk ([`lent_memory`]), from fragment 0's
+//!   length as the chunk's manifest entry records it;
 //! - an open reader holds a reservation of its directory's bytes, taken before fragment 0 is
-//!   decoded and returned when the reader is dropped;
+//!   fetched and returned when the reader is dropped;
 //! - a block's [`decode_memory`] is what reading it leaves the decoder and the decoded block
 //!   holding, which the caller reserves as it says;
 //! - a large value takes its length, [`LargeEntry::len`], in the caller's `Vec`.
@@ -17,13 +20,13 @@ use snafu::{OptionExt, ResultExt, ensure};
 use super::{
     FragmentSource,
     error::{
-        ChecksumSnafu, ColumnTypeSnafu, ContentLengthSnafu, DecodeBlockSnafu, FragmentLengthSnafu,
+        ChecksumSnafu, ColumnTypeSnafu, ContentLengthSnafu, DecodeBlockSnafu, Fragment0LengthSnafu,
         MissingFragmentSnafu, NoSuchBlockSnafu, NoSuchColumnSnafu, NoSuchLargeValueSnafu,
-        ReadError, ReadFragmentSnafu, ReserveDirectorySnafu,
+        ReadError, ReadFragmentSnafu, RecordedFragment0Snafu, ReserveDirectorySnafu,
     },
     format::{
-        BlockEntry, ChunkKind, ColumnDesc, Directory, LargeEntry, MAX_LARGE_VALUES, PhysicalType,
-        open_memory,
+        BlockEntry, ChunkKind, ColumnDesc, Directory, FRAGMENT0_LENS, LargeEntry,
+        MAX_DATA_FRAGMENT_LEN, MAX_LARGE_VALUES, PhysicalType, open_memory,
     },
 };
 use crate::{
@@ -31,11 +34,32 @@ use crate::{
     codec::{
         block::{self, BlockDecoder, BlockShape, BytesBlock, DecodeMemory, IntBlock, IntView},
         bytes::BytesHint,
-        checksum,
+        checksum::{self, TRAILER_LEN},
         int::IntValue,
     },
-    storage::MAX_FRAGMENT_LEN,
 };
+
+/// The most bytes the backend lends a reader of a chunk at once (§7.4), from fragment 0's
+/// length as the chunk's manifest entry records it, `fragment0`: fragment 0 while the reader
+/// parses it, and then one data fragment at a time, at most [`MAX_DATA_FRAGMENT_LEN`], while a
+/// block decodes or a large value is copied. The caller reserves it before it opens the chunk,
+/// once [`check_recorded`] accepted `fragment0`.
+pub(crate) fn lent_memory(fragment0: u32) -> u64 {
+    u64::from(fragment0).max(MAX_DATA_FRAGMENT_LEN as u64)
+}
+
+/// Checks that `fragment0`, as a manifest entry records it, is a length fragment 0 can have. A
+/// reader checks it before it sizes anything by it, so that a damaged entry is reported as
+/// damage, not as an exhausted budget.
+pub(crate) fn check_recorded(fragment0: u32) -> Result<(), ReadError> {
+    ensure!(
+        FRAGMENT0_LENS.contains(&(fragment0 as usize)),
+        RecordedFragment0Snafu {
+            recorded: fragment0
+        }
+    );
+    Ok(())
+}
 
 /// What reading a block of `shape` of a column of `column` leaves the decoded block and the
 /// decoder's scratch holding (see [`DecodeMemory`]); a text block is taken to refer to as many
@@ -69,18 +93,31 @@ pub(crate) struct ChunkReader {
 }
 
 impl ChunkReader {
-    /// Opens the chunk whose fragments `source` reads. Before decoding fragment 0, it reserves
-    /// from `budget` what parsing a fragment 0 of that length can hold ([`open_memory`]); once
-    /// parsed, it keeps only the directory's [`memory`](Self::memory), until it is dropped.
+    /// Opens the chunk whose fragments `source` reads, whose fragment 0 is `fragment0` bytes
+    /// long, trailer included, as its manifest entry records. Before fetching fragment 0, it
+    /// reserves from `budget` what parsing a fragment 0 of that length can hold
+    /// ([`open_memory`]), and the fetch lends no more than that length. A fragment 0 of another
+    /// length is damage, found before it is parsed. Once parsed, the reader keeps only the
+    /// directory's [`memory`](Self::memory), until it is dropped.
     pub(crate) fn open(
         source: &impl FragmentSource,
         budget: &MemoryBudget,
+        fragment0: u32,
     ) -> Result<Self, ReadError> {
-        with_fragment(source, 0, |content| {
-            let bound = open_memory(content.len());
-            let mut reservation = budget
-                .try_reserve("chunk directory", bound)
-                .context(ReserveDirectorySnafu)?;
+        check_recorded(fragment0)?;
+        let bound = open_memory(fragment0 as usize - TRAILER_LEN);
+        let mut reservation = budget
+            .try_reserve("chunk directory", bound)
+            .context(ReserveDirectorySnafu)?;
+        with_fragment(source, 0, fragment0 as usize, |content| {
+            let actual = content.len() + TRAILER_LEN;
+            ensure!(
+                actual == fragment0 as usize,
+                Fragment0LengthSnafu {
+                    recorded: fragment0,
+                    actual
+                }
+            );
             let directory = Directory::parse(content)?;
             // open_memory bounds what parsing holds, and so what the directory keeps.
             reservation.shrink(bound - directory.memory());
@@ -271,8 +308,8 @@ impl ChunkReader {
         })
     }
 
-    /// Fetches data fragment `index` and checks it like [`with_fragment`], and its length
-    /// against the directory.
+    /// Fetches data fragment `index`, no longer than the directory gives it, and checks it
+    /// like [`with_fragment`], and its length against the directory.
     fn with_data<R>(
         &self,
         source: &impl FragmentSource,
@@ -280,7 +317,7 @@ impl ChunkReader {
         f: impl FnOnce(&[u8]) -> Result<R, ReadError>,
     ) -> Result<R, ReadError> {
         let expected = self.directory.fragment_lens[index as usize] as usize;
-        with_fragment(source, index, |content| {
+        with_fragment(source, index, expected + TRAILER_LEN, |content| {
             ensure!(
                 content.len() == expected,
                 ContentLengthSnafu {
@@ -294,22 +331,17 @@ impl ChunkReader {
     }
 }
 
-/// Fetches fragment `index`, checks its length and checksum, and hands `f` its content.
+/// Fetches fragment `index`, which the source lends only when it is at most `limit` bytes
+/// long, checks its checksum, and hands `f` its content.
 fn with_fragment<R>(
     source: &impl FragmentSource,
     index: u32,
+    limit: usize,
     f: impl FnOnce(&[u8]) -> Result<R, ReadError>,
 ) -> Result<R, ReadError> {
     source
-        .get(index, |bytes| {
+        .get(index, limit, |bytes| {
             let bytes = bytes.context(MissingFragmentSnafu { index })?;
-            ensure!(
-                bytes.len() <= MAX_FRAGMENT_LEN,
-                FragmentLengthSnafu {
-                    index,
-                    len: bytes.len()
-                }
-            );
             let content = checksum::verify(bytes).context(ChecksumSnafu { index })?;
             f(content)
         })

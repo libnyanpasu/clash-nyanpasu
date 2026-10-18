@@ -1167,10 +1167,11 @@ impl<R: StorageRead> StorageRead for Tally<'_, R> {
     fn fragment<T>(
         &self,
         id: FragmentId,
+        limit: usize,
         f: impl FnOnce(Option<&[u8]>) -> T,
     ) -> crate::storage::Result<T> {
         self.reads.set(self.reads.get() + 1);
-        self.read.fragment(id, f)
+        self.read.fragment(id, limit, f)
     }
 }
 

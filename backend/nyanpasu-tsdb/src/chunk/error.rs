@@ -144,11 +144,20 @@ pub enum ReadError {
     #[snafu(display("fragment {index} is missing"))]
     MissingFragment { index: u32 },
 
-    #[snafu(display("fragment {index} has {len} bytes, past the fragment limit"))]
-    FragmentLength { index: u32, len: usize },
-
     #[snafu(display("checksum mismatch in fragment {index}"))]
     Checksum { index: u32 },
+
+    /// The chunk's manifest entry records a length no fragment 0 has
+    /// ([`FRAGMENT0_LENS`](super::format::FRAGMENT0_LENS)).
+    #[snafu(display("the manifest entry records a fragment 0 of {recorded} bytes"))]
+    RecordedFragment0 { recorded: u32 },
+
+    /// Fragment 0 does not have the length the chunk's manifest entry records, by which the
+    /// reader reserved what parsing it holds.
+    #[snafu(display(
+        "fragment 0 has {actual} bytes, not the {recorded} its manifest entry records"
+    ))]
+    Fragment0Length { recorded: u32, actual: usize },
 
     #[snafu(display("fragment 0 does not decode as a directory"))]
     DecodeDirectory { source: postcard::Error },
@@ -206,8 +215,9 @@ impl ReadError {
             Self::ReserveDirectory { source } => source.kind(),
             Self::DecodeBlock { source, .. } => source.kind(),
             Self::MissingFragment { .. }
-            | Self::FragmentLength { .. }
             | Self::Checksum { .. }
+            | Self::RecordedFragment0 { .. }
+            | Self::Fragment0Length { .. }
             | Self::DecodeDirectory { .. }
             | Self::InvalidHeader { .. }
             | Self::InvalidColumn { .. }

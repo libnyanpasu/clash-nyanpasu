@@ -106,6 +106,9 @@ pub(crate) struct ChunkEntry {
     pub(crate) key_range: (i64, i64),
     pub(crate) rows: u32,
     pub(crate) fragments: u32,
+    /// Fragment 0's length, its trailer included: what a reader holds while it parses the
+    /// directory, which it reserves before it fetches it (§7.4).
+    pub(crate) fragment0: u32,
     /// Its fragments' bytes together, which retention accounts by (§9.1).
     pub(crate) bytes: u64,
 }
@@ -578,9 +581,13 @@ mod tests {
             key_range: (-2, 5),
             rows: 7,
             fragments: 2,
+            fragment0: 300,
             bytes: 900,
         };
-        assert_eq!(encode(&entry), [1, 2, 0xac, 0x02, 3, 10, 7, 2, 0x84, 0x07]);
+        assert_eq!(
+            encode(&entry),
+            [1, 2, 0xac, 0x02, 3, 10, 7, 2, 0xac, 0x02, 0x84, 0x07]
+        );
         let stream = StreamRecord {
             expired: Some(-2),
             bytes: 300,
@@ -767,6 +774,7 @@ mod tests {
             key_range: (0, 0),
             rows: 1,
             fragments: 1,
+            fragment0: 1,
             bytes: 1,
         };
         let mut batch = storage.batch().unwrap();
@@ -820,6 +828,7 @@ mod tests {
             key_range: (-2, 5),
             rows: 7,
             fragments: 2,
+            fragment0: 300,
             bytes: 900,
         };
         let mut batch = storage.batch().unwrap();
@@ -908,6 +917,7 @@ mod tests {
             key_range: (0, 0),
             rows: 1,
             fragments: 1,
+            fragment0: 1,
             bytes: 1,
         };
         let key = chunk_key(tier, 0, ChunkId(1));

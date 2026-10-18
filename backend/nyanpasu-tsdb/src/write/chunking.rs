@@ -1178,6 +1178,7 @@ impl<W: StorageWrite> Execution<'_, W> {
             key_range: built.key_range,
             rows: built.rows,
             fragments: built.fragments,
+            fragment0: built.fragment0,
             bytes: built.bytes,
         };
         manifest::write_chunk(self.batch, stream, extent, chunk, &entry)

@@ -8,6 +8,8 @@
 
 当前样本 Rust 存活堆为 **8.20 MiB**，全局峰值 **11.61 MiB**。三份 Mapping 仍常驻，合计 **1.34 MiB**；provider 分配栈还保留 **1.47 MiB**，本样本的 provider 全是页面不展示的 Compatible 类型。优先处理 provider 缓存裁剪与 effective 共享，再减少 diff 的临时复制；source/effective 结构共享属于后续较大的改造。
 
+后续实施分别记录在 [provider 缓存摘要化](../plan/2026-10-18-provider-cache-summary.md) 和 [借用式 diff、effective 共享](../plan/2026-10-18-runtime-config-heap.md)；下文保留优化前的调查基线。
+
 ## 测量条件
 
 - 复用 `memory-profiling` worktree，在保留原窗口分支的前提下切出 `scratch/heap-allocation-2026-10-18`，执行 `git fetch origin main` 和 `git rebase origin/main`，再同步锁定的子模块。

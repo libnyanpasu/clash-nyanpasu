@@ -7,8 +7,11 @@ use super::*;
 use crate::{
     db::tests::MINUTE_MS,
     layout::{CONSOLIDATION, MANIFEST, META},
-    storage::ChunkId,
-    write::WriteError,
+    storage::{
+        ChunkId, StorageError,
+        memory::{MemoryBatch, MemorySnapshot},
+    },
+    write::{AuxOp, PinOp, StageError, WriteError, stage::Counted},
 };
 
 /// Keeps everything: rounds of consolidation alone.
@@ -343,6 +346,266 @@ fn a_commits_round_takes_the_durability_due_at_its_clock() {
     let tsdb = open_with(&disk, profile);
     // Opening commits a new incarnation: compare everything but the metadata.
     assert_eq!(without_meta(dump_storage(&tsdb)), without_meta(storage));
+}
+
+/// Counts the next round's writes without committing or publishing its draft.
+fn next_round_bytes(tsdb: &Tsdb<MemoryStorage>, now: i64) -> u64 {
+    let snapshot = tsdb.storage().snapshot().unwrap();
+    let current = tsdb.current();
+    let mut batch = Counted::new(tsdb.storage().batch().unwrap());
+    let staged = stage(
+        &mut batch,
+        &snapshot,
+        &tsdb.round_context(&current),
+        due(tsdb, now).unwrap(),
+    )
+    .unwrap();
+    let bytes = batch.written();
+    drop(staged);
+    bytes
+}
+
+/// The round uses the decision made before its bytes cross the limit. The caller's earlier
+/// Consistent choice still applies to the batch; only the next decision must be Durable.
+#[test]
+fn a_backlog_round_crosses_the_durable_byte_threshold() {
+    let calibration = MemoryDisk::new();
+    let mut measured = open(&calibration);
+    let (_, now) = backlog(&mut measured);
+    let bytes = next_round_bytes(&measured, now);
+    assert!(bytes > 0);
+
+    for threshold in [bytes, bytes + 1] {
+        for checkpoint in [false, true] {
+            let profile = Profile {
+                durable_interval: Some(Duration::from_secs(3600)),
+                durable_after_bytes: threshold,
+                ..Profile::desktop()
+            };
+            let (disk, twin_disk) = (MemoryDisk::new(), MemoryDisk::new());
+            let mut tsdb = open_with(&disk, profile.clone());
+            let mut twin = open_with(&twin_disk, profile.clone());
+            let (batch, now) = backlog(&mut tsdb);
+            backlog(&mut twin);
+            let before = dump_storage(&tsdb);
+            let before_visible = visible(&tsdb);
+            let publication = tsdb.current().publication;
+            let durability = tsdb.durability_due(Timestamp(now));
+            assert_eq!(durability, Durability::Consistent);
+            assert!(run(&mut tsdb, now, &keep(), 0).unwrap().more);
+
+            // Isolate the round's contribution on either side of the exact byte limit.
+            let done = run(&mut twin, now, &keep(), 1).unwrap();
+            assert_eq!(
+                done,
+                Maintained {
+                    more: true,
+                    ..consolidated(1, 1)
+                }
+            );
+            assert_eq!(
+                twin.durability_due(Timestamp(now)),
+                if threshold == bytes {
+                    Durability::Durable
+                } else {
+                    Durability::Consistent
+                }
+            );
+            let points = [point_at(now)];
+            let input = Input {
+                series: &points,
+                ..empty(batch, now)
+            };
+            let written = tsdb.write(&input, durability).unwrap();
+            assert_eq!(written.maintained, consolidated(1, 1));
+            assert_eq!(written.publication, publication + 2);
+            assert_eq!(last_batch(&tsdb), Some(batch));
+            assert_eq!(
+                chunks_and_books(dump_storage(&tsdb)),
+                chunks_and_books(dump_storage(&twin))
+            );
+            let after_visible = visible(&tsdb);
+            assert_eq!(
+                after_visible,
+                (
+                    before_visible.0 + points[0].fields[0],
+                    before_visible.1,
+                    before_visible.2.clone()
+                )
+            );
+            assert_eq!(tsdb.durability_due(Timestamp(now)), Durability::Durable);
+            check_accounting(&tsdb);
+            check_settled(&tsdb);
+
+            if checkpoint {
+                let due = tsdb.durability_due(Timestamp(now));
+                tsdb.write(&empty(batch + 1, now), due).unwrap();
+                assert_eq!(tsdb.durability_due(Timestamp(now)), Durability::Consistent);
+            }
+            let expected = if checkpoint {
+                dump_storage(&tsdb)
+            } else {
+                before
+            };
+            let expected_publication = if checkpoint {
+                tsdb.current().publication
+            } else {
+                publication
+            };
+            tsdb.into_storage().crash();
+            let reopened = open_with(&disk, profile);
+            assert_eq!(reopened.current().publication, expected_publication);
+            assert_eq!(
+                last_batch(&reopened),
+                Some(if checkpoint { batch + 1 } else { batch - 1 })
+            );
+            assert_eq!(
+                without_meta(dump_storage(&reopened)),
+                without_meta(expected)
+            );
+            assert_eq!(
+                visible(&reopened),
+                if checkpoint {
+                    after_visible
+                } else {
+                    before_visible
+                }
+            );
+        }
+    }
+}
+
+/// Arms a rollback when the batch after one successful round begins. The underlying memory
+/// backend implements the rollback, so the round itself uses the normal commit path.
+struct RejectBatch {
+    /// The backend whose second transaction can be rolled back.
+    storage: MemoryStorage,
+    /// Successful batch starts to allow before arming NotApplied; None leaves it unarmed.
+    batches_left: std::sync::Mutex<Option<usize>>,
+}
+
+impl Storage for RejectBatch {
+    type Snapshot = MemorySnapshot;
+    type Batch<'s> = MemoryBatch<'s>;
+
+    fn snapshot(&self) -> Result<Self::Snapshot, StorageError> {
+        self.storage.snapshot()
+    }
+
+    fn batch(&self) -> Result<Self::Batch<'_>, StorageError> {
+        let mut left = self.batches_left.lock().unwrap();
+        if let Some(count) = *left {
+            if count == 0 {
+                self.storage.inject_commit(CommitOutcome::NotApplied);
+                *left = None;
+            } else {
+                *left = Some(count - 1);
+            }
+        }
+        self.storage.batch()
+    }
+}
+
+/// A local staging rejection and a NotApplied batch leave the preceding round published,
+/// including its bookkeeping and durability bytes, with no batch, auxiliary or pin changes.
+#[test]
+fn a_successful_backlog_round_survives_a_rejected_batch() {
+    for not_applied in [false, true] {
+        let (disk, twin_disk) = (MemoryDisk::new(), MemoryDisk::new());
+        let profile = Profile {
+            durable_interval: Some(Duration::from_secs(3600)),
+            durable_after_bytes: 1,
+            ..Profile::desktop()
+        };
+        let storage = RejectBatch {
+            storage: disk.open().unwrap(),
+            batches_left: std::sync::Mutex::new(None),
+        };
+        let mut tsdb = Tsdb::open(storage, crate::db::tests::schema(), profile.clone()).unwrap();
+        let mut twin = open_with(&twin_disk, profile);
+        let (batch, now) = backlog(&mut tsdb);
+        backlog(&mut twin);
+        assert!(run(&mut tsdb, now, &keep(), 0).unwrap().more);
+        let before = dump_storage(&tsdb);
+        let expected_visible = visible(&tsdb);
+        let publication = tsdb.current().publication;
+        assert_eq!(tsdb.durability_due(Timestamp(now)), Durability::Consistent);
+        let points = [point_at(now)];
+        let aux = [AuxOp::Put {
+            key: b"active",
+            value: b"conn",
+        }];
+        let pins = [
+            PinOp::Pin {
+                key: b"conn",
+                labels: LABELS,
+            },
+            PinOp::Unpin { key: b"missing" },
+        ];
+        let input = Input {
+            series: &points,
+            aux: &aux,
+            pins: if not_applied { &pins[..1] } else { &pins },
+            ..empty(batch, now)
+        };
+        if not_applied {
+            *tsdb.storage().batches_left.lock().unwrap() = Some(1);
+        }
+        let error = tsdb.write(&input, Durability::Consistent).unwrap_err();
+        if not_applied {
+            assert!(
+                matches!(
+                    error,
+                    WriteError::Commit {
+                        source: crate::storage::CommitFailure::NotApplied { .. }
+                    }
+                ),
+                "{error:?}"
+            );
+            assert_eq!(*tsdb.storage().batches_left.lock().unwrap(), None);
+        } else {
+            assert!(
+                matches!(
+                    error,
+                    WriteError::Stage {
+                        source: StageError::NotPinned { pin: 1 }
+                    }
+                ),
+                "{error:?}"
+            );
+        }
+        assert_eq!(error.kind(), ErrorKind::Local);
+        assert!(error.not_applied());
+        let done = run(&mut twin, now, &keep(), 1).unwrap();
+        assert_eq!(
+            done,
+            Maintained {
+                more: true,
+                ..consolidated(1, 1)
+            }
+        );
+        assert_ne!(
+            chunks_and_books(dump_storage(&tsdb)),
+            chunks_and_books(before)
+        );
+        assert_eq!(dump_storage(&tsdb), dump_storage(&twin));
+        assert_eq!(tsdb.current().publication, publication + 1);
+        assert_eq!(last_batch(&tsdb), Some(batch - 1));
+        assert_eq!(visible(&tsdb), expected_visible);
+        assert_eq!(tsdb.durability_due(Timestamp(now)), Durability::Durable);
+        assert!(!tsdb.registry().needs_recovery());
+        assert!(tsdb.behind());
+        check_accounting(&tsdb);
+        check_settled(&tsdb);
+        // The rejected id remains usable without recovery; the next round and batch commit.
+        let written = tsdb.write(&empty(batch, now), Durability::Durable).unwrap();
+        assert_eq!(written.publication, publication + 3);
+        assert_eq!(written.maintained, consolidated(1, 1));
+        assert_eq!(last_batch(&tsdb), Some(batch));
+        assert_eq!(visible(&tsdb), expected_visible);
+        check_accounting(&tsdb);
+        check_settled(&tsdb);
+    }
 }
 
 /// A store left behind with [`backlog`]'s first round done, its next batch id and the time.

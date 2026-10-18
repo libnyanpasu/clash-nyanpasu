@@ -352,6 +352,31 @@ impl Lease {
         self.account.observe(Change::Allocate, bytes);
     }
 
+    /// Extends a transient graph's high-water allowance before its next allocation.
+    /// The graph's policy counts replacements and retirement; this lease keeps the greatest
+    /// simultaneous footprint until publication, without installing claims on shared pages.
+    pub(crate) fn try_cover(&mut self, plan: MemoryPlan) -> Result<(), BudgetExceeded> {
+        let extra = plan.0.saturating_sub(self.bytes);
+        if extra != 0 {
+            let mut added = self.account.lease(MemoryPlan::bytes(extra))?;
+            added.allocated(extra);
+            self.bytes += added.bytes;
+            self.actual += added.actual;
+            added.bytes = 0;
+            added.actual = 0;
+        }
+        Ok(())
+    }
+
+    /// Hands a completed draft's high-water charge to its caller until publication or withdrawal.
+    /// This transfers credit without returning it to the root budget between the two owners.
+    pub(crate) fn into_reservation(self) -> Reservation {
+        let account = self.account.clone();
+        let mut retained = Retained::new(&account);
+        self.retain(&mut retained);
+        retained.held
+    }
+
     /// Moves this lease's credit into the same account's retained claim without releasing it.
     /// Storage remains live under that claim instead of returning reusable local credit.
     pub(super) fn retain(mut self, retained: &mut Retained<'_>) {

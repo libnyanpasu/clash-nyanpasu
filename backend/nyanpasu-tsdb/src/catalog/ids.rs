@@ -6,6 +6,7 @@
 use std::iter;
 
 use super::paged::{Ledger, Paged};
+use crate::budget::BudgetExceeded;
 
 /// The largest id: `u32::MAX` marks a deleted slot in a dictionary's hash table.
 pub(crate) const MAX_ID: u32 = u32::MAX - 1;
@@ -35,7 +36,8 @@ impl Ids {
     /// stored ids live. It allocates exactly [`slots_cost`](Self::slots_cost).
     pub(crate) fn free(slots: u32, ledger: &mut Ledger) -> Self {
         Self {
-            bits: Paged::filled(slots.div_ceil(64) as usize, 0, ledger),
+            bits: Paged::filled(slots.div_ceil(64) as usize, 0, ledger)
+                .expect("the loader admitted its live bits"),
             slots,
             free: slots,
             hint: 0,
@@ -87,7 +89,7 @@ impl Ids {
     ///
     /// `slot` has to be [`next_slot`](Self::next_slot): ids are reused smallest first, and
     /// the search for the smallest relies on it. Debug builds check it.
-    pub(crate) fn take(&mut self, slot: u32, ledger: &mut Ledger) {
+    pub(crate) fn take(&mut self, slot: u32, ledger: &mut Ledger) -> Result<(), BudgetExceeded> {
         debug_assert_eq!(
             Some(slot),
             self.next_slot(),
@@ -98,9 +100,10 @@ impl Ids {
             // `slot` was the smallest free slot, so every slot up to it is live now.
             self.hint = slot + 1;
         } else {
-            self.extend(ledger);
+            self.extend(ledger)?;
         }
-        self.set_bit(slot, true, ledger);
+        self.set_bit(slot, true, ledger)?;
+        Ok(())
     }
 
     /// The bytes [`release`](Self::release) allocates for `slot`.
@@ -111,14 +114,15 @@ impl Ids {
     /// # Panics
     ///
     /// If `slot` is not live.
-    pub(crate) fn release(&mut self, slot: u32, ledger: &mut Ledger) {
+    pub(crate) fn release(&mut self, slot: u32, ledger: &mut Ledger) -> Result<(), BudgetExceeded> {
         assert!(
             self.is_live(slot),
             "releasing slot {slot}, which is not live"
         );
-        self.set_bit(slot, false, ledger);
+        self.set_bit(slot, false, ledger)?;
         self.free += 1;
         self.hint = self.hint.min(slot);
+        Ok(())
     }
 
     /// Makes free `slot` live while loading. Only the loader holds the bits, so it allocates
@@ -133,7 +137,8 @@ impl Ids {
             "loading slot {slot}, which is not a free one of {} slots",
             self.slots
         );
-        self.set_bit(slot, true, ledger);
+        self.set_bit(slot, true, ledger)
+            .expect("loading owns its live bits");
         self.free -= 1;
     }
 
@@ -154,14 +159,20 @@ impl Ids {
     }
 
     /// Adds a free slot at the end. The bits past `slots` are all clear.
-    fn extend(&mut self, ledger: &mut Ledger) {
+    fn extend(&mut self, ledger: &mut Ledger) -> Result<(), BudgetExceeded> {
         if self.slots.is_multiple_of(64) {
-            self.bits.push(0, ledger);
+            self.bits.push(0, ledger)?;
         }
         self.slots += 1;
+        Ok(())
     }
 
-    fn set_bit(&mut self, slot: u32, live: bool, ledger: &mut Ledger) {
+    fn set_bit(
+        &mut self,
+        slot: u32,
+        live: bool,
+        ledger: &mut Ledger,
+    ) -> Result<(), BudgetExceeded> {
         let index = word(slot);
         let word = self.bits.get(index);
         let word = if live {
@@ -169,7 +180,8 @@ impl Ids {
         } else {
             word & !bit(slot)
         };
-        self.bits.set(index, word, ledger);
+        self.bits.set(index, word, ledger)?;
+        Ok(())
     }
 }
 
@@ -214,7 +226,7 @@ mod tests {
         let slot = ids.next_slot().unwrap();
         let cost = ids.take_cost(slot);
         let before = ledger.allocated();
-        ids.take(slot, ledger);
+        ids.take(slot, ledger).unwrap();
         assert_eq!(ledger.allocated() - before, cost);
         slot
     }
@@ -227,15 +239,15 @@ mod tests {
             assert_eq!(take(&mut ids, &mut ledger), expected);
         }
         for slot in [150, 3, 64, 70, 199] {
-            ids.release(slot, &mut ledger);
+            ids.release(slot, &mut ledger).unwrap();
         }
         assert_eq!(ids.live(), 195);
         let reused: Vec<u32> = (0..6).map(|_| take(&mut ids, &mut ledger)).collect();
         assert_eq!(reused, [3, 64, 70, 150, 199, 200]);
 
         // A release below the last reuse moves the search back.
-        ids.release(10, &mut ledger);
-        ids.release(5, &mut ledger);
+        ids.release(10, &mut ledger).unwrap();
+        ids.release(5, &mut ledger).unwrap();
         assert_eq!(take(&mut ids, &mut ledger), 5);
         assert_eq!(take(&mut ids, &mut ledger), 10);
         assert_eq!(take(&mut ids, &mut ledger), 201);
@@ -249,7 +261,7 @@ mod tests {
             take(&mut ids, &mut ledger);
         }
         for slot in [0, 63, 64, 129] {
-            ids.release(slot, &mut ledger);
+            ids.release(slot, &mut ledger).unwrap();
         }
         let live: Vec<u32> = ids.live_slots().collect();
         let expected: Vec<u32> = (0..130)
@@ -293,7 +305,7 @@ mod tests {
         let mut ids = Ids::new();
         take(&mut ids, &mut ledger);
         take(&mut ids, &mut ledger);
-        ids.release(0, &mut ledger);
-        ids.take(2, &mut ledger);
+        ids.release(0, &mut ledger).unwrap();
+        ids.take(2, &mut ledger).unwrap();
     }
 }

@@ -468,7 +468,7 @@ pub(crate) fn widest_build(schema: &Schema, shape: &Shape) -> u64 {
 ///   ([`least_round`](crate::maintain::least_round)). With less, maintenance would stall.
 pub(crate) fn least_staging(schema: &Schema, shape: &Shape, head: u64) -> u64 {
     let catalog = Catalog::new(schema);
-    let draft = catalog.draft(u64::MAX).peak() - catalog.bytes();
+    let draft = catalog.draft_bytes();
     let sources = match schema.series {
         Some(_) => {
             let slot = series_spine_bytes(1) - series_spine_bytes(0);

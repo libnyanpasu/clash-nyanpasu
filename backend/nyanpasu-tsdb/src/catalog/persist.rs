@@ -389,7 +389,9 @@ pub(super) fn load(
     let plans = plan_labels(read, schema.labels.len())?;
     let combos = highest_combo(read, schema)?;
     let mut inner = Inner::empty(schema, hasher);
-    ledger.alloc(inner.fixed_bytes());
+    ledger
+        .alloc(inner.fixed_bytes())
+        .context(ReserveMemorySnafu)?;
     let dimensions = inner.combos.dimensions();
     let needed = plans
         .iter()

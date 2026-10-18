@@ -36,7 +36,7 @@ use super::{AuxOp, EventRow, Input, PinOp, SeriesPoint, Value, Written};
 use crate::{
     ColumnType, ErrorKind, EventStreamSpec, LabelId, Profile, Schema, SeriesSpec, StreamId, TierId,
     Timestamp,
-    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    budget::{BudgetExceeded, MemoryAccount, MemoryBudget, MemoryPlan, Reservation},
     catalog::{CatalogDraft, PinError, ResolveError, ResolvedCombo},
     head::{
         HeadUpdate, SeriesAdded, SeriesSource,
@@ -124,7 +124,13 @@ pub(crate) fn stage(
         .staging_budget
         .try_reserve("staging", 0)
         .context(ReserveStagingSnafu)?;
-    let mut draft = context.current.catalog.draft(context.profile.catalog);
+    let copies = MemoryAccount::new(context.staging_budget, "staging", MemoryPlan::default())
+        .context(ReserveStagingSnafu)?;
+    let mut draft = context
+        .current
+        .catalog
+        .draft(context.profile.catalog, &copies)
+        .context(ReserveStagingSnafu)?;
     let watermarks = Watermarks::read(&*batch, context.schema, input, &mut staging)?;
     let series = stage_series(
         batch,
@@ -187,12 +193,10 @@ pub(crate) fn stage(
         .journal_bytes
         .checked_add(batch_bytes)
         .context(CounterOverflowSnafu)?;
-    // The catalog's ledger admitted the draft's growth against the catalog budget as it
-    // happened; its copies stay allocated beside the base until publication.
-    let catalog_copies = draft.peak().saturating_sub(context.current.catalog.bytes());
-    staging
-        .try_grow(catalog_copies)
-        .context(ReserveStagingSnafu)?;
+    // Copy allocations already hold staging credit; keep it through publication or withdrawal.
+    let (catalog, copies) = draft.finish();
+    let catalog_copies = copies.bytes();
+    staging.merge(copies);
 
     let profile = context.profile;
     let current_head = &context.current.head;
@@ -262,7 +266,7 @@ pub(crate) fn stage(
     Ok(Staged {
         version: Version {
             publication: next.publication,
-            catalog: draft.finish(),
+            catalog,
             head,
         },
         growth,
@@ -304,7 +308,8 @@ fn stage_series(
         }
         let resolved = draft
             .resolve_combo(batch, point.labels)
-            .context(ResolveSeriesSnafu { point: index })?;
+            .context(ResolveSeriesSnafu { point: index })
+            .map_err(StageError::resolution)?;
         written.folded += u64::from(resolved.fold.is_some());
         combos.push(resolved.id);
         order.push(u32::try_from(index).expect("a batch holds fewer than 2^32 points"));
@@ -430,7 +435,8 @@ fn resolve_row(
     if let Some(labels) = series_labels(spec, row) {
         let combo = draft
             .resolve_combo(batch, labels)
-            .context(ResolveEventSeriesSnafu { row: index })?;
+            .context(ResolveEventSeriesSnafu { row: index })
+            .map_err(StageError::resolution)?;
         written.folded += u64::from(combo.fold.is_some());
         resolved.combos.push(combo);
     }
@@ -440,7 +446,8 @@ fn resolve_row(
             .context(ResolveLabelSnafu {
                 row: index,
                 column: column.name,
-            })?;
+            })
+            .map_err(StageError::resolution)?;
         written.label_overflows += u64::from(id == 0);
         resolved.labels.push(id);
     }
@@ -520,7 +527,8 @@ fn stage_pins(
             PinOp::Pin { key, labels } => {
                 let combo = draft
                     .resolve_combo(batch, labels)
-                    .context(ResolvePinSnafu { pin: index })?
+                    .context(ResolvePinSnafu { pin: index })
+                    .map_err(StageError::resolution)?
                     .id;
                 let pinned = draft
                     .pin(batch, key, combo)
@@ -1030,6 +1038,29 @@ pub enum StageError {
 }
 
 impl StageError {
+    /// Keeps staging exhaustion in the same category when catalog copies fail during resolution.
+    fn resolution(self) -> Self {
+        match self {
+            Self::ResolveSeries {
+                source: ResolveError::StageResolution { source },
+                ..
+            }
+            | Self::ResolveEventSeries {
+                source: ResolveError::StageResolution { source },
+                ..
+            }
+            | Self::ResolveLabel {
+                source: ResolveError::StageResolution { source },
+                ..
+            }
+            | Self::ResolvePin {
+                source: ResolveError::StageResolution { source },
+                ..
+            } => Self::ReserveStaging { source },
+            error => error,
+        }
+    }
+
     pub fn kind(&self) -> ErrorKind {
         match self {
             Self::ReadState { source } => source.kind(),
@@ -1136,7 +1167,10 @@ mod tests {
         };
         let storage = MemoryDisk::new().open().unwrap();
         let mut batch = storage.batch().unwrap();
-        let mut draft = version.catalog.draft(profile.catalog);
+        let mut draft = version
+            .catalog
+            .draft(profile.catalog, &crate::budget::test_account())
+            .unwrap();
         let mut written = Written {
             publication: 0,
             folded: 0,
@@ -1219,10 +1253,66 @@ mod tests {
         }
     }
 
+    /// A pin needs no data buffers, so its first catalog page exhausts the remaining staging.
+    #[test]
+    fn draft_copies_that_exceed_staging_fail_the_write_without_publication() {
+        use crate::{Tsdb, db::tests::dump_storage, write::WriteError};
+
+        let disk = MemoryDisk::new();
+        let mut tsdb = Tsdb::open(disk.open().unwrap(), schema(), Profile::desktop()).unwrap();
+        let before = tsdb.current();
+        let stored = dump_storage(&tsdb);
+        let budget = tsdb.staging_budget().clone();
+        let occupied = budget
+            .try_reserve(
+                "other staging work",
+                Profile::desktop().staging - before.catalog.draft_bytes(),
+            )
+            .unwrap();
+        let pins = [PinOp::Pin {
+            key: b"new",
+            labels: LABELS,
+        }];
+        let input = Input {
+            batch_id: 1,
+            now: Timestamp(0),
+            series: &[],
+            events: &[],
+            aux: &[],
+            pins: &pins,
+        };
+        let error = tsdb.write(&input, Durability::Durable).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                WriteError::Stage {
+                    source: StageError::ReserveStaging {
+                        source: BudgetExceeded {
+                            what: "staging",
+                            needed: 64,
+                            available: 0,
+                        }
+                    }
+                }
+            ),
+            "{error:?}"
+        );
+        assert_eq!(error.kind(), ErrorKind::Local);
+        assert!(std::sync::Arc::ptr_eq(&before, &tsdb.current()));
+        assert!(tsdb.registry().pending().is_none());
+        assert_eq!(tsdb.current().catalog.live_combos(), []);
+        assert_eq!(dump_storage(&tsdb), stored);
+        assert_eq!(budget.reserved(), occupied.bytes());
+        drop(occupied);
+        tsdb.write(&input, Durability::Durable).unwrap();
+        assert_eq!(tsdb.current().catalog.live_combos().len(), 1);
+        assert_eq!(budget.reserved(), 0);
+    }
+
     /// Codex's case: sixteen dimensions of two one-byte values each, and many distinct
     /// combinations in one batch, under a small head and the least staging an open accepts.
-    /// Resolving them allocates nothing but the catalog's growth, which its own budget
-    /// admits, and the scratch reserved first, so the batch fails on its deltas' reservation,
+    /// Their combinations already exist, so resolution copies only the draft's fixed structure.
+    /// With the scratch reserved first, the batch fails on its deltas' reservation,
     /// within the budget, and changes nothing. The combinations are as many as that staging
     /// holds the scratch of (8 bytes each) but not their deltas besides (12 bytes each).
     #[test]
@@ -1268,7 +1358,7 @@ mod tests {
         let combinations = u32::try_from(profile.staging / 20).unwrap();
         assert!(combinations < 1 << MAX_DIMENSIONS);
         let disk = MemoryDisk::new();
-        let mut tsdb = Tsdb::open(disk.open().unwrap(), schema, profile).unwrap();
+        let tsdb = Tsdb::open(disk.open().unwrap(), schema.clone(), profile.clone()).unwrap();
         // Combination n takes the value of bit i of n in dimension i.
         let values: [&[u8]; 2] = [b"a", b"b"];
         let points: Vec<SeriesPoint<'static>> = (0..combinations)
@@ -1291,6 +1381,22 @@ mod tests {
             aux: &[],
             pins: &[],
         };
+        // Preload the catalog so this test still isolates admission of the batch's deltas.
+        let current = tsdb.current();
+        let mut draft = current
+            .catalog
+            .draft(u64::MAX, &crate::budget::test_account())
+            .unwrap();
+        let mut batch = tsdb.storage().batch().unwrap();
+        for point in &points {
+            draft.resolve_combo(&mut batch, point.labels).unwrap();
+        }
+        let (catalog, copies) = draft.finish();
+        batch.commit(Durability::Durable).unwrap();
+        drop(catalog);
+        drop(copies);
+        drop(current);
+        let mut tsdb = Tsdb::open(tsdb.into_storage(), schema, profile).unwrap();
         let before = dump_storage(&tsdb);
         let error = tsdb.write(&input, Durability::Durable).unwrap_err();
         let deltas = SourceDeltas::bytes(u64::from(combinations), 1);

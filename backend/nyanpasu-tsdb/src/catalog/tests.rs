@@ -98,9 +98,11 @@ fn apply(
     edit: impl FnOnce(&mut CatalogDraft, &mut MemoryBatch<'_>),
 ) -> Catalog {
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(limit);
+    let mut draft = catalog
+        .draft(limit, &crate::budget::test_account())
+        .unwrap();
     edit(&mut draft, &mut batch);
-    let next = draft.finish();
+    let next = draft.finish().0;
     commit(batch);
     next
 }
@@ -142,7 +144,9 @@ fn values(read: &impl StorageRead, ns: Ns) -> Vec<Vec<u8>> {
 fn combinations_and_values_round_trip() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
 
     let first = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     let second = resolve(&mut draft, &mut batch, ["match", "curl", "b.com"]);
@@ -175,7 +179,7 @@ fn combinations_and_values_round_trip() {
     assert_eq!(draft.resolve_label(&mut batch, HOST, b"a.com").unwrap(), 1);
     assert_eq!(draft.label(HOST, 1), Some(&b"a.com"[..]));
 
-    let catalog = draft.finish();
+    let catalog = draft.finish().0;
     commit(batch);
     assert_eq!(labels(catalog.combo(2)), Some(vec![match_id, curl, b_com]));
     assert_eq!(catalog.find_label(HOST, b"a.com"), Some(1));
@@ -208,14 +212,14 @@ fn a_draft_is_invisible_in_its_base_and_old_versions_stay_unchanged() {
     let v1_contents = v1.contents();
 
     let mut batch = storage.batch().unwrap();
-    let mut draft = v1.draft(u64::MAX);
+    let mut draft = v1.draft(u64::MAX, &crate::budget::test_account()).unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "new.example"]);
     assert_eq!(v1.find_label(TARGET, b"new.example"), None);
     assert_eq!(labels(v1.combo(id)), None);
     // What the draft holds is exactly what it does not share with its base.
     assert_eq!(draft.owned(), draft.unshared());
     let owned = draft.owned();
-    let v2 = draft.finish();
+    let v2 = draft.finish().0;
     commit(batch);
 
     // The new target copied a page and the spine of each array it wrote, not the arrays.
@@ -282,7 +286,7 @@ fn a_loaded_catalog_matches_the_one_written_with_ids_gaps_and_pins() {
     let v2 = apply(&storage, &v1, u64::MAX, |draft, batch| {
         assert!(draft.unpin(batch, b"c").unwrap().is_some());
         for id in [2, 4] {
-            draft.release_combo(batch, id).unwrap();
+            let _ = draft.release_combo(batch, id).unwrap();
         }
         // The values only those combinations used.
         for (dimension, value) in [(PROCESS, "p1"), (TARGET, "t3")] {
@@ -318,7 +322,9 @@ fn a_loaded_catalog_matches_the_one_written_with_ids_gaps_and_pins() {
     // Both reuse the same ids next.
     let next_ids = |catalog: &Catalog| {
         let mut batch = storage.batch().unwrap();
-        let mut draft = catalog.draft(u64::MAX);
+        let mut draft = catalog
+            .draft(u64::MAX, &crate::budget::test_account())
+            .unwrap();
         let combo = resolve(&mut draft, &mut batch, ["direct", "p0", "t0"]);
         let process = draft.resolve_label(&mut batch, PROCESS, b"p9").unwrap();
         let host = draft.resolve_label(&mut batch, HOST, b"h9").unwrap();
@@ -333,7 +339,9 @@ fn load_with(schema: &Schema, ns: Ns, key: &[u8], value: &[u8]) -> LoadError {
     let storage = open();
     let mut batch = storage.batch().unwrap();
     if schema.series.is_some() {
-        let mut draft = new_catalog(schema).draft(u64::MAX);
+        let mut draft = new_catalog(schema)
+            .draft(u64::MAX, &crate::budget::test_account())
+            .unwrap();
         resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     }
     batch.put(ns, key, value).unwrap();
@@ -516,7 +524,9 @@ fn a_record_the_backend_reports_damaged_fails_to_load_with_its_kind() {
 fn a_bad_pin_record_is_corrupted() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     batch.put(PINS, pin_key(id).as_slice(), &[7]).unwrap();
     for error in [
@@ -592,7 +602,9 @@ fn a_bad_reverse_lookup_record_is_corrupted() {
             &raw::index_record(1),
         )
         .unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let error = draft
         .resolve_combo(&mut batch, &[b"match", b"curl", b"a.com"])
         .unwrap_err();
@@ -686,7 +698,9 @@ fn a_failed_write_reports_the_backend_failure_and_changes_nothing_in_memory() {
         },
     );
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let mut failing = FailingWrites(&mut batch);
     let error = draft
         .resolve_combo(&mut failing, &[b"match", b"curl", b"b.com"])
@@ -725,7 +739,9 @@ fn a_failed_write_reports_the_backend_failure_and_changes_nothing_in_memory() {
 fn finishing_a_draft_after_a_failed_write_panics() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let _ = draft.resolve_label(&mut FailingWrites(&mut batch), HOST, b"x");
     draft.finish();
 }
@@ -745,7 +761,9 @@ fn the_fold_ladder_takes_the_first_step_that_fits() {
 
     // Room for every new value and the combination: no fold.
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let full = draft.value_cost(PROCESS, b"wget")
         + draft.value_cost(TARGET, b"b.com")
         + draft.combo_cost();
@@ -757,7 +775,9 @@ fn the_fold_ladder_takes_the_first_step_that_fits() {
 
     // One byte short of that: the target folds, and the new process is still inserted.
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     draft.set_room(full - 1);
     let resolved = draft.resolve_combo(&mut batch, &values).unwrap();
     assert_eq!(
@@ -790,12 +810,14 @@ fn the_fold_ladder_takes_the_first_step_that_fits() {
     let owned = draft.owned();
     assert_eq!(draft.resolve_combo(&mut batch, &values).unwrap(), resolved);
     assert_eq!(draft.owned(), owned);
-    let folded = draft.finish();
+    let folded = draft.finish().0;
     commit(batch);
 
     // An existing folded combination is found even with no room at all.
     let mut batch = storage.batch().unwrap();
-    let mut draft = folded.draft(u64::MAX);
+    let mut draft = folded
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     draft.set_room(0);
     let resolved = draft
         .resolve_combo(&mut batch, &[b"match", b"wget", b"c.com"])
@@ -823,7 +845,9 @@ fn the_whole_combination_overflows_last() {
         },
     );
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     // One byte short of the folded step, which needs the new process.
     let folded = draft.value_cost(PROCESS, b"wget") + draft.combo_cost();
     draft.set_room(folded - 1);
@@ -845,12 +869,14 @@ fn the_whole_combination_overflows_last() {
     assert!(!values_contain(&batch, LABELS, b"wget"));
     assert_eq!(keys(&batch, COMBOS), [combo_key(1).as_slice()]);
     assert_eq!(keys(&batch, COMBO_INDEX).len(), 1);
-    assert!(Arc::ptr_eq(&draft.finish().inner, &catalog.inner));
+    assert!(Arc::ptr_eq(&draft.finish().0.inner, &catalog.inner));
     drop(batch);
 
     // An event label that does not fit is the overflow marker.
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let cost = draft.value_cost(HOST, b"h");
     draft.set_room(cost - 1);
     assert_eq!(draft.resolve_label(&mut batch, HOST, b"h").unwrap(), 0);
@@ -877,7 +903,7 @@ fn released_ids_are_reused_smallest_first() {
     );
     let catalog = apply(&storage, &catalog, u64::MAX, |draft, batch| {
         for id in [5, 2, 4] {
-            draft.release_combo(batch, id).unwrap();
+            let _ = draft.release_combo(batch, id).unwrap();
         }
         for target in ["t5", "t2"] {
             let id = draft.find_label(TARGET, target.as_bytes()).unwrap();
@@ -905,7 +931,9 @@ fn released_ids_are_reused_smallest_first() {
 fn releasing_a_pinned_combination_trips_a_debug_assertion() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     assert!(draft.pin(&mut batch, b"conn", id).unwrap());
     let _ = draft.release_combo(&mut batch, id);
@@ -917,7 +945,9 @@ fn releasing_a_pinned_combination_trips_a_debug_assertion() {
 fn releasing_a_label_a_combination_uses_trips_a_debug_assertion() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     let curl = draft.find_label(PROCESS, b"curl").unwrap();
     let _ = draft.release_label(&mut batch, PROCESS, curl);
@@ -927,7 +957,9 @@ fn releasing_a_label_a_combination_uses_trips_a_debug_assertion() {
 fn a_pinned_combination_can_be_released_once_unpinned() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     assert!(draft.pin(&mut batch, b"conn", id).unwrap());
     assert!(draft.unpin(&mut batch, b"conn").unwrap().is_some());
@@ -935,7 +967,7 @@ fn a_pinned_combination_can_be_released_once_unpinned() {
     // The last unpin deletes the count, and every unpin its key.
     assert_eq!(keys(&batch, PINS), Vec::<Vec<u8>>::new());
     assert_eq!(keys(&batch, PIN_KEYS), Vec::<Vec<u8>>::new());
-    draft.release_combo(&mut batch, id).unwrap();
+    let _ = draft.release_combo(&mut batch, id).unwrap();
     assert_eq!(labels(draft.combo(id)), None);
 }
 
@@ -965,7 +997,9 @@ fn a_label_value_counts_the_live_combinations_that_use_it() {
     );
     let [a, b] = ids;
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     // A folded one counts the values it keeps: room for the combination, but not for the
     // page its new target would copy.
     draft.set_room(draft.combo_cost());
@@ -995,13 +1029,19 @@ fn a_label_value_counts_the_live_combinations_that_use_it() {
 
     let wget = draft.find_label(PROCESS, b"wget").unwrap();
     assert_eq!(
-        draft.release_combo(&mut batch, b).unwrap(),
+        draft
+            .release_combo(&mut batch, b)
+            .unwrap()
+            .collect::<Vec<_>>(),
         [(PROCESS, wget)]
     );
     assert_eq!(counts(&draft, &batch), [2, 2, 0, 1]);
     let target = draft.find_label(TARGET, b"a.com").unwrap();
     assert_eq!(
-        draft.release_combo(&mut batch, a).unwrap(),
+        draft
+            .release_combo(&mut batch, a)
+            .unwrap()
+            .collect::<Vec<_>>(),
         [(TARGET, target)]
     );
     let (rule, process) = (
@@ -1009,7 +1049,10 @@ fn a_label_value_counts_the_live_combinations_that_use_it() {
         draft.find_label(PROCESS, b"curl").unwrap(),
     );
     assert_eq!(
-        draft.release_combo(&mut batch, folded.id).unwrap(),
+        draft
+            .release_combo(&mut batch, folded.id)
+            .unwrap()
+            .collect::<Vec<_>>(),
         [(RULE, rule), (PROCESS, process)]
     );
     // A count of 0 has no record.
@@ -1022,7 +1065,9 @@ fn a_label_value_counts_the_live_combinations_that_use_it() {
 fn releasing_a_combination_whose_label_has_no_uses_is_corrupted() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     let curl = draft.find_label(PROCESS, b"curl").unwrap();
     batch
@@ -1055,10 +1100,12 @@ fn releasing_a_combination_whose_label_has_no_uses_is_corrupted() {
 fn a_combination_released_in_a_draft_resolves_anew_in_it() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     resolve(&mut draft, &mut batch, ["match", "curl", "b.com"]);
-    draft.release_combo(&mut batch, id).unwrap();
+    let _ = draft.release_combo(&mut batch, id).unwrap();
     // The release deleted the combination's reverse lookup, so the same values make a new
     // one, which reuses the freed id.
     let again = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
@@ -1077,7 +1124,9 @@ fn a_combination_released_in_a_draft_resolves_anew_in_it() {
 fn a_draft_finds_every_combination_through_the_reverse_lookup() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     assert_eq!(
         resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]),
@@ -1102,7 +1151,9 @@ fn pins(read: &impl StorageRead) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
 fn a_key_pins_one_combination_and_a_combination_counts_its_keys() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let first = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     let second = resolve(&mut draft, &mut batch, ["match", "curl", "b.com"]);
     for (key, id) in [
@@ -1133,7 +1184,7 @@ fn a_key_pins_one_combination_and_a_combination_counts_its_keys() {
     assert!(draft.unpin(&mut batch, b"a").unwrap().is_none());
     assert!(draft.unpin(&mut batch, b"never").unwrap().is_none());
     assert_eq!(pins(&batch), (Vec::new(), Vec::new()));
-    draft.release_combo(&mut batch, first).unwrap();
+    let _ = draft.release_combo(&mut batch, first).unwrap();
 }
 
 // Combination 0 is never released, so it has no count, but its keys are kept for the unpin.
@@ -1141,7 +1192,9 @@ fn a_key_pins_one_combination_and_a_combination_counts_its_keys() {
 fn a_key_of_the_whole_overflow_has_no_count() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     assert!(draft.pin(&mut batch, b"conn", 0).unwrap());
     assert_eq!(pins(&batch), (Vec::new(), vec![b"conn".to_vec()]));
     assert!(!draft.pin(&mut batch, b"conn", 0).unwrap());
@@ -1153,7 +1206,9 @@ fn a_key_of_the_whole_overflow_has_no_count() {
 fn a_key_whose_combination_has_no_count_fails_to_unpin_and_writes_nothing() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     batch
         .put(PIN_KEYS, b"conn", &raw::pin_key_record(id))
@@ -1173,7 +1228,9 @@ fn a_key_whose_combination_has_no_count_fails_to_unpin_and_writes_nothing() {
 fn a_damaged_pin_count_fails_to_pin_and_writes_nothing() {
     let storage = open();
     let mut batch = storage.batch().unwrap();
-    let mut draft = new_catalog(&schema()).draft(u64::MAX);
+    let mut draft = new_catalog(&schema())
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let id = resolve(&mut draft, &mut batch, ["match", "curl", "a.com"]);
     // A record that decodes, with a count no consumer reaches.
     batch
@@ -1519,7 +1576,9 @@ fn sixteen_dimensions_fill_the_reverse_lookup_key() {
     let loaded = load_catalog(&snapshot, &schema, u64::MAX).unwrap();
     assert_eq!(loaded.contents(), catalog.contents());
     let mut batch = storage.batch().unwrap();
-    let mut draft = loaded.draft(u64::MAX);
+    let mut draft = loaded
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     let resolved = draft.resolve_combo(&mut batch, &values).unwrap();
     assert_eq!(resolved, ResolvedCombo { id: 1, fold: None });
     assert_eq!(keys(&batch, COMBOS).len(), 1);
@@ -1577,7 +1636,7 @@ fn a_full_catalog_can_still_release() {
         .unwrap();
     let mut peaks = Vec::new();
     let released = apply(&storage, &full, limit, |draft, batch| {
-        draft.release_combo(batch, id).unwrap();
+        let _ = draft.release_combo(batch, id).unwrap();
         peaks.push(draft.peak());
     });
     let released = apply(&storage, &released, limit, |draft, batch| {
@@ -1610,7 +1669,7 @@ fn a_release_without_room_changes_nothing() {
     );
     let mut batch = storage.batch().unwrap();
     // A limit below the base, as after a lower profile: releases may still use the reserve.
-    let mut draft = catalog.draft(0);
+    let mut draft = catalog.draft(0, &crate::budget::test_account()).unwrap();
     let ceiling = catalog.bytes() + draft.reserve();
     let mut refused = None;
     for id in 1..=1200 {
@@ -1636,7 +1695,7 @@ fn a_release_without_room_changes_nothing() {
         format!("h{}", id - 1).as_bytes()
     ));
     // The draft stays usable.
-    let released = draft.finish();
+    let released = draft.finish().0;
     commit(batch);
     assert_eq!(released.label(HOST, 1), None);
     assert_eq!(released.label(HOST, id), catalog.label(HOST, id));
@@ -1699,7 +1758,7 @@ proptest! {
         let storage = open();
         let mut catalog = new_catalog(&schema);
         let mut batch = storage.batch().unwrap();
-        let mut draft = catalog.draft(limit);
+        let mut draft = catalog.draft(limit, &crate::budget::test_account()).unwrap();
         // Pin key → its combination, and combination → its keys.
         let mut pin_keys = BTreeMap::<Vec<u8>, u32>::new();
         let mut pins = BTreeMap::<u32, u64>::new();
@@ -1815,19 +1874,19 @@ proptest! {
                 }
                 Op::Finish => {
                     let peak = draft.peak();
-                    catalog = draft.finish();
+                    catalog = draft.finish().0;
                     // The new version is part of what the peak counted.
                     prop_assert!(catalog.bytes() <= peak);
                     commit(batch);
                     batch = storage.batch().unwrap();
-                    draft = catalog.draft(limit);
+                    draft = catalog.draft(limit, &crate::budget::test_account()).unwrap();
                 }
             }
             prop_assert!(draft.peak() <= limit, "peak {} past {limit}", draft.peak());
             prop_assert_eq!(draft.owned(), draft.unshared());
         }
 
-        catalog = draft.finish();
+        catalog = draft.finish().0;
         commit(batch);
         let snapshot = storage.snapshot().unwrap();
         let mut ledger = Ledger::default();
@@ -1865,4 +1924,56 @@ proptest! {
         }
         prop_assert!(ledger.peak() <= small, "loading held {} past {small}", ledger.peak());
     }
+}
+
+/// The first release may fail on staging, but neither storage nor the draft changes.
+#[test]
+fn a_staging_refusal_of_the_first_release_changes_nothing() {
+    let storage = open();
+    let catalog = apply(
+        &storage,
+        &new_catalog(&schema()),
+        u64::MAX,
+        |draft, batch| {
+            assert_eq!(resolve(draft, batch, ["match", "curl", "target"]), 1);
+        },
+    );
+    let cost = {
+        let draft = catalog
+            .draft(u64::MAX, &crate::budget::test_account())
+            .unwrap();
+        draft.next.combos.release_cost(1)
+    };
+    assert!(cost > 0);
+    let budget = crate::budget::MemoryBudget::new(catalog.draft_bytes() + cost - 1);
+    let account =
+        MemoryAccount::new(&budget, "staging", crate::budget::MemoryPlan::default()).unwrap();
+    let mut draft = catalog.draft(u64::MAX, &account).unwrap();
+    let mut batch = storage.batch().unwrap();
+    let error = draft.release_combo(&mut batch, 1).unwrap_err();
+    assert!(
+        matches!(error, ReleaseError::StageRelease { .. }),
+        "{error:?}"
+    );
+    assert_eq!(error.kind(), ErrorKind::Local);
+    assert_eq!(draft.next.contents(), catalog.contents());
+    assert_eq!(draft.ledger.allocated(), catalog.draft_bytes());
+    assert_eq!(budget.reserved(), catalog.draft_bytes());
+    assert_eq!(
+        load_catalog(&batch, &schema(), u64::MAX)
+            .unwrap()
+            .contents(),
+        catalog.contents()
+    );
+    for (dimension, id) in [RULE, PROCESS, TARGET]
+        .into_iter()
+        .zip(catalog.combo(1).unwrap())
+    {
+        assert_eq!(label_uses(&batch, dimension, id).unwrap(), 1);
+    }
+    let (unchanged, charge) = draft.finish();
+    assert!(Arc::ptr_eq(&unchanged.inner, &catalog.inner));
+    assert_eq!(unchanged.generation(), catalog.generation());
+    drop(charge);
+    assert_eq!(budget.reserved(), 0);
 }

@@ -1102,7 +1102,7 @@ fn a_staging_budget_below_one_chunk_build_is_refused_at_open() {
     let slot = series_spine_bytes(1) - series_spine_bytes(0);
     let sources = head / (slot + Accumulator::smallest_bytes(2));
     let catalog = Catalog::new(&schema);
-    let draft = catalog.draft(u64::MAX).peak() - catalog.bytes();
+    let draft = catalog.draft_bytes();
     assert_eq!(
         needed - stream_memory(closed, 1),
         sources * size_of::<Fate>() as u64 + 2 * size_of::<usize>() as u64 + draft

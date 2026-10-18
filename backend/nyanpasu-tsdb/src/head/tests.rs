@@ -540,13 +540,15 @@ fn a_rebuild_reserves_a_records_deltas_before_it_decodes_them() {
     let mut catalog = Catalog::new(&schema);
     let storage = MemoryDisk::new().open().unwrap();
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     for combo in 1..COMBOS {
         let target = format!("t{combo}");
         let labels: [&[u8]; 3] = [b"match", b"curl", target.as_bytes()];
         assert_eq!(draft.resolve_combo(&mut batch, &labels).unwrap().id, combo);
     }
-    catalog = draft.finish();
+    catalog = draft.finish().0;
     let value = series_value(0, &combos, &fields);
     let key = series_key(0);
     let journal_bytes = (key.len() + value.len()) as u64;

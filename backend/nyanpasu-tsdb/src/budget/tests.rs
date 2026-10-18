@@ -855,3 +855,26 @@ mod codec_accounts {
         assert_eq!(budget.reserved(), 0);
     }
 }
+
+/// A transient graph keeps its high water and hands it over without a root-credit gap.
+#[test]
+fn a_drafts_high_water_moves_to_its_publication_owner() {
+    let budget = MemoryBudget::new(100);
+    let account = MemoryAccount::new(&budget, "staging", MemoryPlan::default()).unwrap();
+    let mut copies = account.lease(MemoryPlan::default()).unwrap();
+    copies.try_cover(MemoryPlan::bytes(60)).unwrap();
+    copies.try_cover(MemoryPlan::bytes(40)).unwrap();
+    assert_eq!(account.live_bytes(), 60);
+    assert_eq!(budget.reserved(), 60);
+    let error = copies.try_cover(MemoryPlan::bytes(101)).unwrap_err();
+    assert_eq!((error.needed, error.available), (41, 40));
+    assert_eq!(account.live_bytes(), 60);
+    assert_eq!(budget.reserved(), 60);
+    let publication = copies.into_reservation();
+    assert_eq!(publication.bytes(), 60);
+    assert_eq!(account.live_bytes(), 0);
+    drop(account);
+    assert_eq!(budget.reserved(), 60);
+    drop(publication);
+    assert_eq!(budget.reserved(), 0);
+}

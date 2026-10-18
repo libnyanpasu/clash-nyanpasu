@@ -94,6 +94,7 @@ vi.mock('@nyanpasu/query', () => ({
     query: { data: { current: 'stable', installed: 'stable' } },
     mutation: { mutateAsync: vi.fn(), isPending: false },
   }),
+  useAppUpdateChangelog: () => ({ isPending: true }),
 }))
 vi.mock('@/utils', () => ({ formatError: String }))
 vi.mock('@/utils/notification', () => ({ message: vi.fn() }))

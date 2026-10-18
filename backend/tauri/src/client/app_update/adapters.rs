@@ -1,4 +1,5 @@
-//! Tauri updater, proxy, event, and installer boundaries for application updates.
+//! Tauri updater, proxy, event, installer, and release-notes HTTP boundaries for
+//! application updates.
 
 use std::{future::Future, sync::Arc, time::Duration};
 
@@ -213,6 +214,42 @@ where
         "All update package sources failed:\n{}",
         errors.join("\n")
     ))
+}
+
+pub(crate) struct ReqwestChangelogHttp {
+    proxy_port: Arc<dyn SelfProxyPortSource>,
+}
+
+impl ReqwestChangelogHttp {
+    pub fn new(proxy_port: Arc<dyn SelfProxyPortSource>) -> Self {
+        Self { proxy_port }
+    }
+}
+
+#[async_trait]
+impl super::changelog::ChangelogHttp for ReqwestChangelogHttp {
+    async fn get_text(&self, url: &url::Url) -> Result<String> {
+        let mut builder = reqwest::Client::builder()
+            .user_agent(concat!("clash-nyanpasu/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(30));
+        if let Some(port) = self.proxy_port.mixed_port() {
+            builder = builder.proxy(reqwest::Proxy::all(crate::utils::config::get_self_proxy(
+                port,
+            ))?);
+        }
+        if let Ok(Some(proxy)) = crate::utils::config::get_system_proxy() {
+            builder = builder.proxy(reqwest::Proxy::all(proxy).context("invalid system proxy")?);
+        }
+        Ok(builder
+            .build()?
+            .get(url.clone())
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?)
+    }
 }
 
 pub(crate) struct TauriAppUpdateEventSink(tauri::AppHandle);

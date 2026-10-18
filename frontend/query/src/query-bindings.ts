@@ -358,6 +358,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getAppUpdateState', ...args],
         queryFn: () => commands.getAppUpdateState(...args),
       }),
+    getAppUpdateChangelog: (
+      ...args: Parameters<typeof commands.getAppUpdateChangelog>
+    ) =>
+      queryOptions({
+        queryKey: ['getAppUpdateChangelog', ...args],
+        queryFn: () => commands.getAppUpdateChangelog(...args),
+      }),
     getReleaseChannel: (
       ...args: Parameters<typeof commands.getReleaseChannel>
     ) =>

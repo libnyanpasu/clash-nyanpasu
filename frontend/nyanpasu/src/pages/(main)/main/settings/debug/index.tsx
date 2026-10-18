@@ -10,6 +10,7 @@ import {
 } from '../_modules/settings-card'
 import AdvanceToolsSwitch from './_modules/advance-tools-switch'
 import BlockTaskViewer from './_modules/block-task-viewer'
+import ChangelogPreview from './_modules/changelog-preview'
 import ConfigurationStatus from './_modules/configuration-status'
 import { useDebugContext } from './_modules/debug-provider'
 import ErrorReportingDebug from './_modules/error-reporting-debug'
@@ -58,6 +59,8 @@ const AdvanceToolsSettings = () => {
               <BlockTaskViewer />
 
               <KVStorage />
+
+              <ChangelogPreview />
 
               <HttpServer />
               {import.meta.env.DEV && <MockConnectionsSwitch />}

@@ -229,6 +229,7 @@ struct NyanpasuClientInner {
     updater: crate::core::updater::UpdaterClient,
     core_versions: Arc<dyn core_version::CoreVersionReader>,
     app_updater: app_update::AppUpdateClient,
+    changelog_http: Arc<dyn app_update::changelog::ChangelogHttp>,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
     local_source: Arc<traffic::LocalSourceCache>,
@@ -548,6 +549,9 @@ impl NyanpasuClient {
             &tasks,
         )
         .await?;
+        let changelog_http = Arc::new(app_update::adapters::ReqwestChangelogHttp::new(
+            ports.clone() as Arc<dyn SelfProxyPortSource>,
+        ));
         let mut application_settings = application.subscribe_settings_changes();
         let settings_updater = app_updater.clone();
         let settings_shutdown = shutdown.child_token();
@@ -647,6 +651,7 @@ impl NyanpasuClient {
                 updater,
                 core_versions,
                 app_updater,
+                changelog_http,
                 system_dns,
                 direct_egress,
                 local_source,
@@ -711,6 +716,28 @@ impl NyanpasuClient {
 
     pub async fn discard_app_update_package(&self) -> Result<app_update::AppUpdateSnapshot> {
         Ok(self.inner.app_updater.discard().await?)
+    }
+
+    /// Release notes of the versions in `(from, to]`, newest first.
+    pub async fn get_app_update_changelog(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<app_update::changelog::AppUpdateChangelog> {
+        let sources = self
+            .inner
+            .application
+            .snapshot()
+            .state
+            .update_sources
+            .clone();
+        Ok(app_update::changelog::resolve_changelog(
+            self.inner.changelog_http.as_ref(),
+            &sources,
+            from,
+            to,
+        )
+        .await?)
     }
 
     pub async fn set_release_channel(

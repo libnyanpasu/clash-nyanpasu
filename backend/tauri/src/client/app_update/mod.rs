@@ -117,6 +117,7 @@ pub trait AppUpdateEventSink: Send + Sync + 'static {
 }
 
 pub(crate) mod adapters;
+pub mod changelog;
 mod progress;
 
 use progress::{ProgressSample, ProgressSampler, SAMPLE_INTERVAL};

@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-react'
 import { Card } from '@nyanpasu/ui/card'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import type { AppUpdateSnapshot } from '@nyanpasu/rpc/types'
+import type { AppUpdateChangelog, AppUpdateSnapshot } from '@nyanpasu/rpc/types'
 import UpdateControls from '../src/pages/(main)/main/settings/about/_modules/update-controls'
 
 function UpdateCard() {
@@ -37,6 +37,9 @@ const state = vi.hoisted(() => ({
   discardPackage: vi.fn(),
   pending: false,
   isDesktop: true,
+  changelog: undefined as AppUpdateChangelog | undefined,
+  changelogRange: vi.fn(),
+  openThat: vi.fn(),
 }))
 
 const initialSnapshot = state.snapshot
@@ -45,11 +48,13 @@ beforeEach(() => {
   state.snapshot = { ...initialSnapshot }
   state.pending = false
   state.isDesktop = true
+  state.changelog = undefined
   vi.clearAllMocks()
 })
 
 vi.mock('@/components/providers/nyanpasu-update-provider', () => ({
   useNyanpasuUpdate: () => ({
+    currentVersion: '2.0.0',
     snapshot: state.snapshot,
     isDesktop: state.isDesktop,
     isLoading: false,
@@ -61,7 +66,13 @@ vi.mock('@/components/providers/nyanpasu-update-provider', () => ({
     discardPackage: state.discardPackage,
   }),
 }))
-vi.mock('@/services/rpc', () => ({ commands: { openThat: vi.fn() } }))
+vi.mock('@nyanpasu/query', () => ({
+  useAppUpdateChangelog: (from: string, to: string) => {
+    state.changelogRange(from, to)
+    return { data: state.changelog, error: null, isPending: false }
+  },
+}))
+vi.mock('@/services/rpc', () => ({ commands: { openThat: state.openThat } }))
 vi.mock('@/utils', () => ({ formatError: String }))
 vi.mock('@/utils/notification', () => ({ message: vi.fn() }))
 
@@ -453,6 +464,74 @@ test('the changelog dialog can close while a background download continues', asy
       }),
     )
     .toBeEnabled()
+})
+
+test('the changelog lists every version since the installed one', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('isTauri', true)
+  onTestFinished(() => {
+    vi.unstubAllGlobals()
+  })
+  state.changelog = {
+    entries: [
+      {
+        version: '2.1.0',
+        date: '2026-11-02',
+        body: '- Stable change by @keiko233',
+        source: 'changelog',
+      },
+      {
+        version: '2.1.0-rc.1',
+        date: '2026-11-01',
+        body: '- Prerelease change',
+        source: 'release',
+      },
+    ],
+    compare_url:
+      'https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0...v2.1.0',
+  }
+  const view = await render(<UpdateCard />)
+  onTestFinished(async () => view.unmount())
+
+  await view
+    .getByRole('button', { name: m.settings_about_update_changelog() })
+    .click()
+  expect(state.changelogRange).toHaveBeenLastCalledWith('2.0.0', '2.1.0')
+  const dialog = view.getByRole('dialog')
+  await expect
+    .element(dialog.getByRole('heading', { name: 'v2.1.0', exact: true }))
+    .toBeVisible()
+  await expect
+    .element(dialog.getByRole('heading', { name: 'v2.1.0-rc.1' }))
+    .toBeVisible()
+  await expect
+    .element(dialog.getByText('Release notes'))
+    .not.toBeInTheDocument()
+
+  await dialog.getByRole('link', { name: '@keiko233' }).click()
+  expect(state.openThat).toHaveBeenLastCalledWith('https://github.com/keiko233')
+  await dialog
+    .getByRole('button', { name: m.settings_about_update_changelog_compare() })
+    .click()
+  expect(state.openThat).toHaveBeenLastCalledWith(
+    'https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0...v2.1.0',
+  )
+})
+
+test('the release body stands in when no version notes resolve', async ({
+  onTestFinished,
+}) => {
+  state.changelog = { entries: [], compare_url: null }
+  const view = await render(<UpdateCard />)
+  onTestFinished(async () => view.unmount())
+
+  await view
+    .getByRole('button', { name: m.settings_about_update_changelog() })
+    .click()
+  await expect
+    .element(view.getByRole('dialog').getByText('Release notes'))
+    .toBeVisible()
 })
 
 test('last checked timestamp is shown in a tooltip', async ({

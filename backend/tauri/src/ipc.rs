@@ -1945,6 +1945,17 @@ pub async fn get_app_update_state(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
+pub async fn get_app_update_changelog(
+    client: State<'_, NyanpasuClient>,
+    from: String,
+    to: String,
+) -> Result<crate::client::app_update::changelog::AppUpdateChangelog> {
+    Ok(client.get_app_update_changelog(&from, &to).await?)
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
 pub async fn check_app_update(
     client: State<'_, NyanpasuClient>,
 ) -> Result<crate::client::app_update::AppUpdateSnapshot> {

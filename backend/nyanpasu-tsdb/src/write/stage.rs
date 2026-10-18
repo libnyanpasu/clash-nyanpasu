@@ -47,6 +47,7 @@ use crate::{
         manifest::{ManifestError, StreamRef, event_extent, read_watermark},
         meta::{MetaError, StateRecord, read_state, write_state},
     },
+    maintain::Maintained,
     storage::{
         ChunkId, CommitFailure, Direction, Durability, FragmentId, KeyRange, Ns, StorageError,
         StorageRead, StorageWrite,
@@ -111,6 +112,7 @@ pub(crate) fn stage(
         folded: 0,
         label_overflows: 0,
         late: 0,
+        maintained: Maintained::default(),
     };
     let mut staging = context
         .staging_budget
@@ -1067,6 +1069,7 @@ mod tests {
             folded: 0,
             label_overflows: 0,
             late: 0,
+            maintained: Maintained::default(),
         };
         let mut staging = budget.try_reserve("staging", 0).unwrap();
         // Nothing has expired.

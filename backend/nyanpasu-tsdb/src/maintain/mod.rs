@@ -9,8 +9,10 @@
 //!   that order, are the variants of [`Round`]; recycling is to join them.
 //! - A call stops when its budget of rounds is used up or nothing is left, and says whether
 //!   work remains. The consumer calls again later: the store has no timer.
-//! - A backlog beyond the profile is to make the next commit run the most urgent round first
-//!   (§4.3, "积压"); that is not built yet.
+//! - A call that says work remains leaves maintenance behind (§4.3, "积压"). Until a commit
+//!   finds nothing due, each commit first runs the most urgent round that needs no retention
+//!   policy ([`plan_backlog`]), in a transaction of its own before its batch's
+//!   ([`Tsdb::write`](crate::Tsdb::write)).
 
 mod consolidate;
 mod recycle;
@@ -190,6 +192,18 @@ pub(crate) fn plan(
         return Ok(Some(round));
     }
     consolidate::plan(read, context, request.now).context(PlanConsolidationSnafu)
+}
+
+/// The most urgent round a commit runs before its batch while maintenance is behind (§4.3,
+/// "积压"), at `now`, or `None` when none is due: [`plan`]'s rounds but retention's, which
+/// need the consumer's policy, and a commit has none. So a commit never expires or cleans up,
+/// and its round may consolidate an extent that the consumer's next call expires.
+pub(crate) fn plan_backlog(
+    read: &impl StorageRead,
+    context: &Context<'_>,
+    now: Timestamp,
+) -> Result<Option<Round>, MaintainError> {
+    consolidate::plan(read, context, now).context(PlanConsolidationSnafu)
 }
 
 /// Stages `round` into `batch`, with the next state record, and derives the version it

@@ -24,6 +24,7 @@ pub use self::stage::StageError;
 use crate::{
     ColumnType, ErrorKind, Schema, StreamId, TierId, Timestamp,
     budget::BudgetExceeded,
+    maintain::{MaintainError, Maintained},
     storage::{CommitFailure, StorageError},
 };
 
@@ -162,6 +163,10 @@ pub struct Written {
     /// fall at or below their stream's deletion watermark (§9.1). An expired extent is never
     /// rebuilt.
     pub late: u64,
+    /// The round of maintenance the commit ran before the batch, because maintenance was
+    /// behind (§4.3, "积压"; [`Tsdb::write`](crate::Tsdb::write)): all zero when it ran none.
+    /// Its `more` is always false.
+    pub maintained: Maintained,
 }
 
 impl Input<'_> {
@@ -484,6 +489,12 @@ pub enum WriteError {
     #[snafu(display("invalid batch"))]
     InvalidInput { source: InputError },
 
+    /// Maintenance was behind, and the round the commit ran before the batch failed with kind
+    /// [`ErrorKind::BackendFailed`] (§4.3, "积压"). The batch was not applied; the round's own
+    /// commit may have been, when its outcome is unknown (§7.5).
+    #[snafu(display("failed to run the round of maintenance due before the batch"))]
+    Backlog { source: MaintainError },
+
     #[snafu(display("failed to begin the batch's transaction"))]
     BeginBatch { source: StorageError },
 
@@ -499,6 +510,7 @@ impl WriteError {
         match self {
             Self::RecoveryNeeded => ErrorKind::BackendFailed,
             Self::InvalidInput { source } => source.kind(),
+            Self::Backlog { source } => source.kind(),
             Self::BeginBatch { source } => source.kind(),
             Self::Stage { source } => source.kind(),
             Self::Commit { source } => source.kind(),
@@ -920,5 +932,13 @@ mod tests {
         };
         assert!(stage.not_applied());
         assert_eq!(stage.kind(), ErrorKind::Local);
+        // A round run before the batch may have applied; the batch was never staged.
+        let backlog = WriteError::Backlog {
+            source: MaintainError::Commit {
+                source: CommitFailure::Unknown { source: failed() },
+            },
+        };
+        assert!(backlog.not_applied());
+        assert_eq!(backlog.kind(), ErrorKind::BackendFailed);
     }
 }

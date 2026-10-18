@@ -82,6 +82,34 @@ The design says its code sketches show shape, not the final API. Where the code 
 - The owner maintains with `Tsdb::maintain(&Maintain { now, retention, rounds })`, which runs
   at most `rounds` rounds, the most urgent first, and returns `Maintained`, with `more` when
   work remains. Each round is one transaction published like a batch.
+- A call that returns `more` leaves maintenance behind (§4.3, "积压"): its budget did not cover
+  the work due. Until a commit finds no round due, each commit first plans one round as
+  `maintain` would, less retention's rounds, which need the consumer's policy, and runs it as
+  `maintain` runs a round; then it stages its batch, and `Written::maintained` reports the
+  round. A round that fails with kind `BackendFailed` fails the write with
+  `WriteError::Backlog`, the batch not applied, and the store needs recovery. A round that fails
+  otherwise ends the backlog, and the batch commits: the consumer's next `maintain` call meets
+  the failure, so a damaged chunk fails no write, and no later commit pays again for a round
+  that keeps failing. The flag is held in memory, so an open starts with it clear; a call that
+  finishes clears it, and a failing call leaves it as it was.
+
+  §4.3 runs the round in the batch's transaction. Here it has a transaction of its own, before
+  the batch's:
+  - a failing round cannot fail the batch or roll it back;
+  - the round reads the chunks it rewrites through its snapshot, and the batch stages on the
+    version the round published, with no second publication number inside one transaction;
+  - it reuses `maintain`'s round (`Tsdb::round`) as it is.
+
+  It costs one more commit while behind: one more sync on a profile whose every commit is
+  durable. And the bytes since the last durable commit can pass `durable_after_bytes` by one
+  round's output on top of one batch, whose durability the consumer chose before the round ran.
+  Without a policy, a commit's round may also consolidate an extent that the consumer's next
+  call expires; that round's work is lost, and nothing else.
+
+  The rule covers a maintenance budget too small for the load. It does not cover a consumer
+  that never calls `maintain`, since only a call puts maintenance behind, and §9.2 makes
+  calling it the consumer's duty.
+
 - A stream's deletion watermark is the last extent retention expired, kept in a record of the
   `STREAMS` namespace and read through the storage of the transaction or snapshot at hand,
   not held in the version. Both of retention's limits expire the oldest extent first, so the
@@ -233,15 +261,15 @@ Errors follow snafu's own guidance (`guide/philosophy.md`).
 
 Each public operation returns the error type of its module:
 
-| Operation            | Error type                                              |
-| -------------------- | ------------------------------------------------------- |
-| validating a schema  | `schema::SchemaError`                                   |
-| opening              | `lifecycle::OpenError`                                  |
-| writing a batch      | `write::WriteError`, with `InputError` and `StageError` |
-| capturing a snapshot | `version::CaptureError`                                 |
-| summing series       | `query::SeriesQueryError`                               |
-| scanning events      | `query::EventScanError`                                 |
-| maintaining          | `maintain::MaintainError`                               |
+| Operation            | Error type                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------- |
+| validating a schema  | `schema::SchemaError`                                                                               |
+| opening              | `lifecycle::OpenError`                                                                              |
+| writing a batch      | `write::WriteError`, with `InputError`, `StageError` and, from the backlog's round, `MaintainError` |
+| capturing a snapshot | `version::CaptureError`                                                                             |
+| summing series       | `query::SeriesQueryError`                                                                           |
+| scanning events      | `query::EventScanError`                                                                             |
+| maintaining          | `maintain::MaintainError`                                                                           |
 
 ## Data mapping and variants
 
@@ -299,7 +327,6 @@ Crates offering a stable hash trait were considered and rejected:
 - Splitting event extents by size under a byte cap (§9.1, "单个区段不超过字节上限的八分之一").
   A cap expires whole time windows, so a cap below one window's bytes expires the newest
   window too, and its later rows are dropped as late until the next window starts.
-- The backlog rule that makes a commit run the most urgent round first (§4.3, "积压").
 - Consolidating epoch streams, such as core logs. Their one extent, epoch 0, never ends until
   the lifecycle gives streams epochs, and their keys are monotonic, so their runs never overlap
   and a scan reads them as one way. The planner skips them; their chunks keep the event

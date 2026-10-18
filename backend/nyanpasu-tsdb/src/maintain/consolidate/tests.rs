@@ -705,12 +705,16 @@ fn an_expiring_extent_is_not_consolidated_and_cleanup_clears_its_bookkeeping() {
         consolidate_chunks: 3,
         ..Profile::desktop()
     };
-    let mut tsdb = open_with(&disk, profile);
+    let mut tsdb = open_with(&disk, profile.clone());
     // Extent 0 of the minute tier: consolidated in part, with five late chunks in bucket 1,
     // which the consolidated chunk covers.
     let (mut batch, now) = minute_buckets(&mut tsdb, 10, 10);
     let now = now.max(HOUR_MS + MINUTE_MS);
     run(&mut tsdb, now, &keep(), 1).unwrap();
+    // A reopen clears the backlog (§4.3, "积压"), so the writes below run no round and leave
+    // extent 0 consolidated in part.
+    drop(tsdb.into_storage());
+    let mut tsdb = open_with(&disk, profile);
     for _ in 0..5 {
         points(&mut tsdb, batch, now, &[MINUTE], &[(MINUTE_MS, 7)], traffic);
         batch += 1;

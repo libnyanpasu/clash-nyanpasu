@@ -878,3 +878,45 @@ fn a_drafts_high_water_moves_to_its_publication_owner() {
     drop(publication);
     assert_eq!(budget.reserved(), 0);
 }
+
+/// A consuming iterator owns its backing allocation even after yielding its last element.
+#[test]
+fn consuming_an_array_keeps_its_charge_until_the_iterator_drops() {
+    let budget = MemoryBudget::new(16);
+    let account = MemoryAccount::new(&budget, "array", MemoryPlan::default()).unwrap();
+    let mut buffer = account.buffer::<u64>(2).unwrap();
+    buffer.extend([3, 7]);
+    let mut items = buffer.into_iter();
+    drop(account);
+    assert_eq!(items.next(), Some(3));
+    assert_eq!(budget.reserved(), 16);
+    assert_eq!(items.next(), Some(7));
+    assert_eq!(items.next(), None);
+    assert_eq!(budget.reserved(), 16);
+    drop(items);
+    assert_eq!(budget.reserved(), 0);
+}
+
+/// Nested fixed children retain their original descriptors and share one enclosing claim.
+#[test]
+fn fixed_children_are_admitted_before_construction_and_share_their_graphs_charge() {
+    let budget = MemoryBudget::new(64);
+    let account = MemoryAccount::new(&budget, "graph", MemoryPlan::default()).unwrap();
+    assert_eq!(size_of::<FixedVec<u64>>(), size_of::<Vec<u64>>());
+    let mut retained = Retained::new(&account);
+    let mut children = retained.buffer::<FixedVec<u64>>(1).unwrap();
+    let mut values = retained.buffer::<u64>(2).unwrap();
+    values.extend([3, 7]);
+    children.push(values);
+    assert!(retained.buffer::<u64>(4).is_err());
+    assert_eq!(&*children[0], [3, 7]);
+    let graph = retained.finish(children);
+    let charged = size_of::<FixedVec<u64>>() as u64 + 16;
+    assert_eq!(graph.charge_bytes(), charged);
+    assert_eq!(account.live_bytes(), 0);
+    assert_eq!(account.available(), 64 - charged);
+    drop(account);
+    assert_eq!(budget.reserved(), charged);
+    drop(graph);
+    assert_eq!(budget.reserved(), 0);
+}

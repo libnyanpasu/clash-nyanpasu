@@ -29,7 +29,7 @@ mod account;
 mod buffer;
 
 pub(crate) use account::{Lease, MemoryAccount, Reserved, Retain, Retained};
-pub(crate) use buffer::{BudgetVec, FrozenVec};
+pub(crate) use buffer::{BudgetVec, FixedVec, FrozenVec};
 
 /// Checked, allocation-free byte arithmetic for allocations that coexist in an envelope.
 #[derive(Clone, Copy, Debug, Default)]
@@ -278,4 +278,25 @@ pub(crate) fn test_account() -> MemoryAccount {
         MemoryPlan::default(),
     )
     .unwrap()
+}
+
+/// Builds a charged fixture array, preserving the production capacity boundary.
+#[cfg(test)]
+pub(crate) fn test_buffer<T, I: IntoIterator<Item = T>>(items: I) -> BudgetVec<T>
+where
+    I::IntoIter: ExactSizeIterator,
+{
+    let items = items.into_iter();
+    let mut buffer = test_account().buffer(items.len()).unwrap();
+    buffer.extend(items);
+    buffer
+}
+
+/// Treats fixture-owned payload as caller input rather than an allocation of the operation.
+#[cfg(test)]
+pub(crate) fn test_value<T>(value: T) -> Reserved<T> {
+    MemoryBudget::new(u64::MAX)
+        .try_reserve("fixture", 0)
+        .unwrap()
+        .hold(|| value)
 }

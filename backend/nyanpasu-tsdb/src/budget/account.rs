@@ -12,6 +12,10 @@ use super::{BudgetExceeded, BudgetVec, MemoryBudget, MemoryPlan, Reservation};
 #[cfg(test)]
 pub(super) type Observer = Box<dyn Fn(Observation)>;
 
+/// A concrete child-layout observer used only during graph construction in tests.
+#[cfg(test)]
+type ConstructionObserver = Box<dyn Fn(u64)>;
+
 /// One query's or one round's allocation envelope, backed by one root reservation.
 ///
 /// Leases keep a local handle, so the envelope lives until its storage drops. Retired
@@ -43,6 +47,9 @@ struct AccountState {
     /// Receives allocation, retirement and transfer checkpoints for this account.
     #[cfg(test)]
     observer: RefCell<Option<Observer>>,
+    /// Independent concrete-layout checkpoints inside an opaque graph constructor.
+    #[cfg(test)]
+    construction: RefCell<Option<ConstructionObserver>>,
 }
 
 impl std::fmt::Debug for MemoryAccount {
@@ -85,6 +92,8 @@ impl MemoryAccount {
                 fail_after: Cell::new(None),
                 #[cfg(test)]
                 observer: RefCell::new(None),
+                #[cfg(test)]
+                construction: RefCell::new(None),
             }),
         }
     }
@@ -197,6 +206,12 @@ impl MemoryAccount {
         Ok(())
     }
 
+    /// Room for a new plan beside live storage, including this envelope's reusable credit.
+    pub(crate) fn available(&self) -> u64 {
+        let held = self.state.held.borrow();
+        held.budget.shared.limit - held.budget.reserved() + held.bytes() - self.state.live.get()
+    }
+
     /// Keeps the round's existing fragment allowance beside all outputs and directory storage.
     /// Loan callbacks reuse this credit instead of charging the same allowance twice.
     pub(crate) fn reserve_lent(&self, bytes: u64) -> Result<(), BudgetExceeded> {
@@ -285,6 +300,20 @@ impl MemoryAccount {
     #[cfg(test)]
     pub(crate) fn fail_after(&self, allocations: usize) {
         self.state.fail_after.set(Some(allocations));
+    }
+
+    /// Installs a concrete-layout probe independent of opaque graph allowance estimates.
+    #[cfg(test)]
+    pub(crate) fn observe_construction(&self, observe: impl Fn(u64) + 'static) {
+        *self.state.construction.borrow_mut() = Some(Box::new(observe));
+    }
+
+    /// Reports an actual child layout while its enclosing graph is still being constructed.
+    #[cfg(test)]
+    pub(crate) fn constructed(&self, bytes: u64) {
+        if let Some(observe) = &*self.state.construction.borrow() {
+            observe(bytes);
+        }
     }
 
     /// Reports a storage-lifetime checkpoint to the account-local test observer.
@@ -540,15 +569,20 @@ impl<'a> Retained<'a> {
         Reserved::from_retained(payload, self)
     }
 
+    /// The account whose construction probe observes this graph.
+    #[cfg(test)]
+    pub(crate) fn account(&self) -> &'a MemoryAccount {
+        self.account
+    }
+
     /// Consumes an already charged child into the graph being sealed, without a byte count.
     /// The finalizer must keep the child inside its payload, which drops before this claim.
+    /// A zero-byte child carries no credit to transfer between budget roots.
     pub(crate) fn absorb<T>(&mut self, child: Reserved<T>) -> T {
-        assert!(std::sync::Arc::ptr_eq(
-            &self.held.budget.shared,
-            &child.held.budget.shared,
-        ));
         let Reserved { payload, held } = child;
-        self.held.merge(held);
+        if held.bytes() != 0 {
+            self.held.merge(held);
+        }
         payload
     }
 }
@@ -578,5 +612,13 @@ impl Drop for Lending<'_> {
         debug_assert!(self.bytes <= self.account.state.lent.get() + self.extra.bytes);
         self.account.observe(Change::Retire, self.bytes);
         self.account.state.lending.set(false);
+    }
+}
+
+impl<T> Deref for Reserved<T> {
+    type Target = T;
+    /// Borrows retained data without separating it from the charge or exposing mutation.
+    fn deref(&self) -> &T {
+        self.get()
     }
 }

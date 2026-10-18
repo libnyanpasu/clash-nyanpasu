@@ -38,7 +38,8 @@ use self::{
 use crate::{
     ErrorKind, Schema, StreamId, TierId, Timestamp,
     budget::{
-        BudgetExceeded, MemoryAccount, MemoryBudget, MemoryPlan, Reservation, Reserved, Retained,
+        BudgetExceeded, BudgetVec, MemoryAccount, MemoryBudget, MemoryPlan, Reservation, Reserved,
+        Retained,
     },
     catalog::Catalog,
     layout::{
@@ -76,18 +77,21 @@ pub(crate) enum Expiring {
     Events { stream: StreamId, extent: i64 },
 }
 
+/// Charged pending records, grouped by stream, consumed into the next head or dropped.
+pub(crate) type EventUpdates = BudgetVec<(StreamId, BudgetVec<Reserved<Segment>>)>;
+
 /// What a commit adds to a head.
 #[derive(Debug, Default)]
 pub(crate) struct HeadUpdate {
     /// Ascending by source.
-    pub(crate) series: Vec<SeriesAdded>,
+    pub(crate) series: BudgetVec<SeriesAdded>,
     /// Ascending by stream; each stream's records in journal sequence order.
-    pub(crate) events: Vec<(StreamId, Vec<Segment>)>,
+    pub(crate) events: EventUpdates,
 }
 
 impl HeadUpdate {
     /// The records the update adds to `stream`.
-    pub(crate) fn segments(&self, stream: StreamId) -> &[Segment] {
+    pub(crate) fn segments(&self, stream: StreamId) -> &[Reserved<Segment>] {
         self.events
             .binary_search_by_key(&stream, |(other, _)| *other)
             .map_or(&[], |index| &self.events[index].1)
@@ -99,7 +103,7 @@ impl HeadUpdate {
 #[derive(Debug)]
 pub(crate) struct SeriesAdded {
     pub(crate) source: SeriesSource,
-    pub(crate) deltas: SourceDeltas,
+    pub(crate) deltas: Reserved<SourceDeltas>,
     pub(crate) update: SourceUpdate,
     pub(crate) cost: MergeCost,
 }
@@ -174,7 +178,7 @@ impl<'a> NextSource<'a> {
     pub(crate) fn sums(&self, fields: usize) -> Sums<'a> {
         Sums::new(
             self.current(),
-            self.added.map(|added| &added.deltas),
+            self.added.map(|added| added.deltas.get()),
             fields,
         )
     }
@@ -331,9 +335,12 @@ impl Head {
         } else {
             0
         };
-        account.value("staging", MemoryPlan::bytes(series + events), || {
-            self.build_next(update, fates, chunked, fields)
-        })
+        let mut retained = Retained::new(account);
+        let head = account.value("staging", MemoryPlan::bytes(series + events), || {
+            self.build_next(update, fates, chunked, fields, &mut retained)
+        })?;
+        let head = retained.absorb(head);
+        Ok(retained.finish(head))
     }
 
     /// Builds only after `next` has admitted every new allocation's final layout.
@@ -343,7 +350,10 @@ impl Head {
         fates: &[Fate],
         chunked: impl Fn(StreamId) -> bool,
         fields: usize,
+        retained: &mut Retained<'_>,
     ) -> Self {
+        #[cfg(test)]
+        let account = retained.account();
         let unchanged = fates.iter().all(|&fate| fate == Fate::Keep) && update.series.is_empty();
         let series = if unchanged {
             self.series.clone()
@@ -358,7 +368,15 @@ impl Head {
             (0..kept)
                 .map(|_| {
                     let (next, &fate) = sources.next().expect("a fate for every source");
-                    (next.source, next.build(fate, fields))
+                    let accumulator = next.build(fate, fields);
+                    #[cfg(test)]
+                    if next
+                        .current
+                        .is_none_or(|base| !Arc::ptr_eq(base, &accumulator))
+                    {
+                        accumulator.observe_copies(next.current(), account);
+                    }
+                    (next.source, accumulator)
                 })
                 .collect()
         };
@@ -368,23 +386,45 @@ impl Head {
         let events = if unchanged {
             self.events.clone()
         } else {
-            let mut empty = None;
             let mut added = update.events.into_iter().peekable();
             (0..streams)
                 .map(|stream| {
                     let id = stream_id(stream);
                     let segments = added.next_if(|(other, _)| *other == id);
                     let buffer = &self.events[stream];
-                    match segments {
-                        _ if chunked(id) => empty
-                            .get_or_insert_with(|| Arc::new(EventBuffer::empty()))
-                            .clone(),
-                        Some((_, segments)) => Arc::new(buffer.appended(segments)),
+                    #[cfg(test)]
+                    let added = segments.as_ref().map_or(0, |(_, segments)| segments.len());
+                    let next = match segments {
+                        _ if chunked(id) => Arc::new(EventBuffer::empty()),
+                        Some((_, segments)) => Arc::new(buffer.appended(segments, retained)),
                         None => buffer.clone(),
+                    };
+                    #[cfg(test)]
+                    if !Arc::ptr_eq(&next, buffer) {
+                        account.constructed(
+                            (ARC_HEADER
+                                + size_of::<EventBuffer>()
+                                + std::mem::size_of_val(next.segments()))
+                                as u64,
+                        );
+                        if !chunked(id) {
+                            account
+                                .constructed((added * (ARC_HEADER + size_of::<Segment>())) as u64);
+                        }
                     }
+                    next
                 })
                 .collect()
         };
+        #[cfg(test)]
+        {
+            if !Arc::ptr_eq(&series, &self.series) {
+                account.constructed((ARC_HEADER + std::mem::size_of_val(&*series)) as u64);
+            }
+            if !Arc::ptr_eq(&events, &self.events) {
+                account.constructed((ARC_HEADER + std::mem::size_of_val(&*events)) as u64);
+            }
+        }
         Self::new(series, events)
     }
 
@@ -394,18 +434,19 @@ impl Head {
     pub(crate) fn stream_built_bytes(
         &self,
         stream: StreamId,
-        added: &[Segment],
+        added: &[Reserved<Segment>],
         chunked: bool,
     ) -> u64 {
         match (chunked, added.is_empty()) {
             (true, _) => EventBuffer::own_bytes(0),
-            (false, false) => self.events(stream).appended_bytes(added),
+            (false, false) => self.events(stream).appended_bytes(added.len()),
             (false, true) => 0,
         }
     }
 
     /// The bytes of this head that `base` does not share: what deriving this version from
     /// `base` copied, and what stays allocated twice while both are alive (§7.1).
+    #[cfg(test)]
     pub(crate) fn copied_from(&self, base: &Head) -> u64 {
         let mut copied = 0;
         if !Arc::ptr_eq(&self.series, &base.series) {

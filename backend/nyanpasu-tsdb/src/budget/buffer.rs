@@ -398,3 +398,149 @@ impl BudgetVec<u8> {
         result
     }
 }
+
+/// Fixed-capacity child storage whose aggregate owner holds its charge.
+/// Only a consuming finalizer may detach it from a charged buffer.
+#[derive(Debug)]
+pub(crate) struct FixedVec<T> {
+    /// Storage must remain inside the graph sealed by its transfer claim.
+    storage: Vec<T>,
+}
+
+impl Retained<'_> {
+    /// Admits a fixed child and transfers its charge to this graph before returning storage.
+    pub(crate) fn buffer<T>(&mut self, capacity: usize) -> Result<FixedVec<T>, BudgetExceeded> {
+        let buffer = self.account.buffer(capacity)?;
+        Ok(FixedVec {
+            storage: self.vector(buffer),
+        })
+    }
+}
+
+impl<T> FixedVec<T> {
+    /// Appends within the immutable allocation capacity.
+    pub(crate) fn push(&mut self, value: T) {
+        assert!(self.len() < self.capacity());
+        self.storage.push(value);
+    }
+
+    /// Appends only within the immutable allocation capacity.
+    pub(crate) fn extend(&mut self, values: impl IntoIterator<Item = T>) {
+        for value in values {
+            self.push(value);
+        }
+    }
+
+    /// Copies a batch after one capacity check, without per-byte append overhead.
+    pub(crate) fn extend_from_slice(&mut self, values: &[T])
+    where
+        T: Copy,
+    {
+        assert!(values.len() <= self.capacity() - self.len());
+        self.storage.extend_from_slice(values);
+    }
+
+    /// Clears elements while the aggregate owner retains this allocation's charge.
+    pub(crate) fn clear(&mut self) {
+        self.storage.clear();
+    }
+
+    /// Fills within the immutable allocation capacity.
+    pub(crate) fn resize(&mut self, len: usize, value: T)
+    where
+        T: Copy,
+    {
+        assert!(len <= self.capacity());
+        self.storage.resize(len, value);
+    }
+
+    /// Returns allocated element capacity, without exposing a growable handle.
+    pub(crate) fn capacity(&self) -> usize {
+        self.storage.capacity()
+    }
+}
+
+impl<T> Deref for FixedVec<T> {
+    type Target = [T];
+    /// Borrows initialized children while their enclosing owner holds the charge.
+    fn deref(&self) -> &[T] {
+        &self.storage
+    }
+}
+
+impl<T> DerefMut for FixedVec<T> {
+    /// Mutates initialized children without changing allocation capacity.
+    fn deref_mut(&mut self) -> &mut [T] {
+        &mut self.storage
+    }
+}
+
+/// A consuming iterator that keeps the array's charge until its remaining storage drops.
+pub(crate) struct BudgetIntoIter<T> {
+    /// The allocation and any unconsumed elements drop before their lease.
+    storage: std::vec::IntoIter<T>,
+    /// The original array's charge, retained even after its final element is yielded.
+    _lease: Option<Lease>,
+}
+
+impl<T> IntoIterator for BudgetVec<T> {
+    type Item = T;
+    type IntoIter = BudgetIntoIter<T>;
+    /// Moves elements while keeping the array allocation charged until the iterator drops.
+    fn into_iter(self) -> Self::IntoIter {
+        BudgetIntoIter {
+            storage: self.storage.into_iter(),
+            _lease: self.lease,
+        }
+    }
+}
+
+impl<T> Iterator for BudgetIntoIter<T> {
+    type Item = T;
+    /// Yields the next element without retiring the backing array early.
+    fn next(&mut self) -> Option<T> {
+        self.storage.next()
+    }
+    /// Preserves the exact remaining length for bounded consumers.
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.storage.size_hint()
+    }
+}
+
+impl<T> ExactSizeIterator for BudgetIntoIter<T> {}
+
+impl<'a, T> IntoIterator for &'a BudgetVec<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+    /// Borrows the initialized prefix without changing its allocation or charge.
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut BudgetVec<T> {
+    type Item = &'a mut T;
+    type IntoIter = std::slice::IterMut<'a, T>;
+    /// Mutably borrows the initialized prefix while preserving its admitted capacity.
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a FixedVec<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+    /// Borrows children while their aggregate owner retains the charge.
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut FixedVec<T> {
+    type Item = &'a mut T;
+    type IntoIter = std::slice::IterMut<'a, T>;
+    /// Mutably borrows children without exposing their allocation handles.
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}

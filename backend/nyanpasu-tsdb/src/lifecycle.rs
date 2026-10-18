@@ -18,7 +18,7 @@ use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use crate::{
     ErrorKind, ExtentSpec, Profile, ProfileError, Schema, SchemaError,
-    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    budget::{BudgetExceeded, MemoryAccount, MemoryBudget, MemoryPlan, Reservation},
     catalog::{Catalog, LoadError},
     chunk::format::MAX_CHUNK_LEN,
     head::{Head, HeadUpdate, JournalSources, RebuildError, Rebuilt},
@@ -151,11 +151,12 @@ impl Opening<'_> {
         let mut next_seq = state.next_journal_seq;
         let mut absorbed = 0;
         if self.leaves_out(snapshot, &head)? {
-            let mut staging = self
-                .staging_budget
-                .try_reserve("staging", widest_build(self.schema, self.shape))
-                .context(ReserveStagingSnafu)?;
-            let allocation = crate::budget::MemoryAccount::borrow_reservation(&mut staging);
+            let allocation = MemoryAccount::new(
+                self.staging_budget,
+                "staging",
+                MemoryPlan::bytes(widest_build(self.schema, self.shape)),
+            )
+            .context(ReserveStagingSnafu)?;
             let mut execution = Execution {
                 account: &allocation,
                 batch: batch.insert(storage.batch().context(BeginChunkingSnafu)?),
@@ -175,7 +176,6 @@ impl Opening<'_> {
             next_chunk = execution.next_chunk;
             next_seq = execution.next_seq;
             drop(allocation);
-            drop(staging);
         }
         // The rebuild checked that the snapshot's records add up to the state's bytes, and
         // these are some of them.
@@ -185,9 +185,7 @@ impl Opening<'_> {
             .context(CountJournalSnafu)?;
 
         let update = HeadUpdate::default();
-        let mut staging = self
-            .staging_budget
-            .try_reserve("staging", 0)
+        let allocation = MemoryAccount::new(self.staging_budget, "staging", MemoryPlan::default())
             .context(ReserveStagingSnafu)?;
         let plan = Planning {
             schema: self.schema,
@@ -198,12 +196,9 @@ impl Opening<'_> {
             journal_bytes,
             // The rebuild kept the head within its budget.
             head_limit: self.profile.head,
-            staging_available: self
-                .profile
-                .staging
-                .saturating_sub(self.staging_budget.reserved()),
+            staging_available: allocation.available(),
         }
-        .plan_commit(None, &mut staging)
+        .plan_commit(None, &allocation)
         .context(ReserveStagingSnafu)?;
         if batch.is_none() && plan.is_empty() {
             return Ok(Settled {
@@ -212,14 +207,13 @@ impl Opening<'_> {
                 reservation,
             });
         }
-        staging
-            .try_grow(plan.staging)
+        allocation
+            .admit(plan.staging)
             .context(ReserveStagingSnafu)?;
         let mut batch = match batch {
             Some(batch) => batch,
             None => storage.batch().context(BeginChunkingSnafu)?,
         };
-        let allocation = crate::budget::MemoryAccount::borrow_reservation(&mut staging);
         let executed = Execution {
             account: &allocation,
             batch: &mut batch,
@@ -231,7 +225,9 @@ impl Opening<'_> {
         .run(&plan, &head, update)
         .context(CapJournalSnafu)?;
         drop(allocation);
-        staging.merge(executed.head_copies);
+        let copies = executed.head_copies;
+        // The new graph must drop before its temporary credit on every later failure.
+        let next_head = executed.head;
         drop(plan);
         let state = StateRecord {
             next_chunk: executed.next_chunk,
@@ -248,7 +244,6 @@ impl Opening<'_> {
             .context(CommitChunksSnafu)?;
         // Chunking drops sources and folding keeps a source's bytes, so the head shrinks
         // into its reservation.
-        let next_head = executed.head;
         drop(head);
         let head = next_head;
         debug_assert!(
@@ -256,7 +251,7 @@ impl Opening<'_> {
             "the opening grew the head"
         );
         reservation.shrink(reservation.bytes().saturating_sub(head.bytes()));
-        drop(staging);
+        drop(copies);
         Ok(Settled {
             state,
             head,

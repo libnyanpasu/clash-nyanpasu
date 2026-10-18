@@ -23,6 +23,8 @@ use serde::{
 };
 use strum::FromRepr;
 
+use crate::budget::{BudgetExceeded, BudgetVec, MemoryAccount};
+
 /// The first byte of a record: how the rest is encoded. Changing a record's layout adds a
 /// variant, which that record's decoder then accepts too; a number is never reused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromRepr)]
@@ -111,39 +113,39 @@ fn serialized_len(value: &impl Serialize) -> usize {
 /// A framed record written into a buffer of its exact length, which [`framed_len`] and
 /// [`item_len`] computed: the buffer is allocated once and never grows.
 pub(crate) struct Framed {
-    out: Vec<u8>,
+    /// Exact charged output, initialized once so postcard sees only a bounded slice.
+    out: BudgetVec<u8>,
+    /// The prefix already written into the initialized output.
+    written: usize,
 }
 
 impl Framed {
-    /// Starts a record of `len` bytes in all whose header is `header` and which has `items`
-    /// items.
-    pub(crate) fn new<H: Serialize>(len: usize, header: &H, items: u64) -> Self {
-        let out = postcard::to_extend(&Frame { header, items }, {
-            let mut out = Vec::with_capacity(len);
-            out.push(Format::V1 as u8);
-            out
-        })
-        .expect("a frame serializes into a vector");
-        Self { out }
+    /// Admits the measured length before allocation and writes the bounded frame header.
+    pub(crate) fn new<H: Serialize>(
+        account: &MemoryAccount,
+        len: usize,
+        header: &H,
+        items: u64,
+    ) -> Result<Self, BudgetExceeded> {
+        let mut out = account.buffer(len)?;
+        out.resize(len, 0);
+        out[0] = Format::V1 as u8;
+        let mut framed = Self { out, written: 1 };
+        framed.push(&Frame { header, items });
+        Ok(framed)
     }
 
+    /// Serializes one item into the remaining admitted slice, which cannot grow.
     pub(crate) fn push(&mut self, item: &impl Serialize) {
-        let out = std::mem::take(&mut self.out);
-        self.out = postcard::to_extend(item, out).expect("an item serializes into a vector");
+        let written = postcard::to_slice(item, &mut self.out[self.written..])
+            .expect("the measured serialization fits its bounded output")
+            .len();
+        self.written += written;
     }
 
-    /// The record.
-    ///
-    /// # Panics
-    ///
-    /// In debug builds, if the record is not the length it was started with: its buffer grew
-    /// past the memory reserved for it, or holds spare capacity.
-    pub(crate) fn finish(self) -> Vec<u8> {
-        debug_assert_eq!(
-            self.out.len(),
-            self.out.capacity(),
-            "a record of another length"
-        );
+    /// Seals exactly the measured bytes; mismatched measurement is a programming error.
+    pub(crate) fn finish(self) -> BudgetVec<u8> {
+        assert_eq!(self.written, self.out.len(), "a record of another length");
         self.out
     }
 }
@@ -343,5 +345,47 @@ mod tests {
             decode_framed::<Count, u64>(&[2, 5, 0]).unwrap_err(),
             RecordProblem::Version { found: 2 }
         );
+    }
+
+    /// Framing admits exact output before allocation and matches the established wire bytes.
+    #[test]
+    fn framed_output_is_admitted_before_allocation_and_postcard_cannot_grow_it() {
+        use crate::budget::{MemoryBudget, MemoryPlan};
+        let header = Count { count: 300 };
+        let len = framed_len(&header, 2) + item_len(&1u64) + item_len(&200u64);
+        for limit in [len - 1, len] {
+            let budget = MemoryBudget::new(limit as u64);
+            let account = MemoryAccount::new(&budget, "journal", MemoryPlan::default()).unwrap();
+            let record = Framed::new(&account, len, &header, 2);
+            if limit < len {
+                assert!(record.is_err());
+                assert_eq!(account.live_bytes(), 0);
+                assert_eq!(budget.reserved(), 0);
+            } else {
+                let mut record = record.unwrap();
+                record.push(&1u64);
+                record.push(&200u64);
+                let record = record.finish();
+                assert_eq!(&*record, encode_framed(&header, [1u64, 200].into_iter()));
+                assert_eq!(record.capacity(), len);
+                assert_eq!(account.live_bytes(), len as u64);
+                drop(record);
+                assert_eq!(account.live_bytes(), 0);
+            }
+            drop(account);
+            assert_eq!(budget.reserved(), 0);
+        }
+        let budget = MemoryBudget::new(len as u64);
+        let account = MemoryAccount::new(&budget, "journal", MemoryPlan::default()).unwrap();
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut record = Framed::new(&account, len - 1, &header, 2).unwrap();
+            record.push(&1u64);
+            record.push(&200u64);
+        }));
+        assert!(panic.is_err());
+        assert_eq!(account.live_bytes(), 0);
+        assert_eq!(budget.reserved(), (len - 1) as u64);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
     }
 }

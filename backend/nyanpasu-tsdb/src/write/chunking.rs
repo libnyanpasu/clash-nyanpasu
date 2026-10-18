@@ -60,7 +60,6 @@
 
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
     iter::{self, Peekable},
     ops::ControlFlow,
 };
@@ -70,7 +69,10 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use super::Value;
 use crate::{
     ColumnSpec, ColumnType, ErrorKind, EventStreamSpec, Profile, Schema, StreamId, Timestamp,
-    budget::{BudgetExceeded, MemoryAccount, Reservation},
+    budget::{
+        BudgetExceeded, BudgetVec, FixedVec, Lease, MemoryAccount, MemoryPlan, Reservation,
+        Reserved, Retained,
+    },
     catalog::Catalog,
     chunk::{
         BatchSink, FragmentSink,
@@ -383,24 +385,29 @@ pub(crate) fn check_row(
             .position(|&dimension| dimension == label)?;
         Some(series_labels?[position].len())
     };
-    let mut lengths = Vec::with_capacity(EVENT_KEY_COLUMNS + values.len());
-    lengths.extend(iter::repeat_n(0, EVENT_KEY_COLUMNS));
+    let len_of = |spec: &ColumnSpec, value: &Value<'_>| match (spec.ty, value) {
+        (ColumnType::FoldedLabel(label), _) => folded_len(label).unwrap_or(0),
+        // An identity takes its tag and at most its text.
+        (ColumnType::Identity, Value::Bytes(text)) => 1 + text.len(),
+        (_, Value::Bytes(bytes)) => bytes.len(),
+        _ => 0,
+    };
     for (column, (spec, value)) in stream.columns.iter().zip(values).enumerate() {
-        let len = match (spec.ty, value) {
-            (ColumnType::FoldedLabel(label), _) => folded_len(label).unwrap_or(0),
-            // An identity takes its tag and at most its text.
-            (ColumnType::Identity, Value::Bytes(text)) => 1 + text.len(),
-            (_, Value::Bytes(bytes)) => bytes.len(),
-            _ => 0,
-        };
+        let len = len_of(spec, value);
         let limit = value_limit(column_layout(spec));
         if len > limit {
             return Err(RowProblem::ValueTooLong { column, len, limit });
         }
-        lengths.push(len);
     }
     let columns = event_columns(stream);
-    if fits(columns.len(), 1, row_cost_of(&columns, lengths.into_iter())) {
+    let lengths = iter::repeat_n(0, EVENT_KEY_COLUMNS).chain(
+        stream
+            .columns
+            .iter()
+            .zip(values)
+            .map(|(spec, value)| len_of(spec, value)),
+    );
+    if fits(columns.len(), 1, row_cost_of(&columns, lengths)) {
         Ok(())
     } else {
         Err(RowProblem::TooLarge)
@@ -510,10 +517,10 @@ impl Candidate<'_> {
 #[derive(Debug)]
 pub(crate) struct Plan {
     /// One per source of [`Head::next_series`], in its order.
-    pub(crate) series: Vec<Fate>,
+    pub(crate) series: BudgetVec<Fate>,
     /// One per stream: 0 keeps its buffer, and any other count chunks it, merging that many
     /// of an extent's records at once.
-    pub(crate) streams: Vec<usize>,
+    pub(crate) streams: BudgetVec<usize>,
     /// What executing the plan allocates at its peak ([`Planning::peak`]).
     pub(crate) staging: u64,
 }
@@ -585,17 +592,18 @@ impl Planning<'_> {
     pub(crate) fn plan_commit(
         &self,
         now: Option<Timestamp>,
-        staging: &mut Reservation,
+        staging: &MemoryAccount,
     ) -> Result<Plan, BudgetExceeded> {
         let sources = self.current.next_series(self.update).count();
         let streams = self.schema.events.len();
         let own = Plan::own_bytes(sources, streams);
-        staging.try_grow(own)?;
         let mut plan = Plan {
-            series: vec![Fate::Keep; sources],
-            streams: vec![0; streams],
+            series: staging.buffer(sources)?,
+            streams: staging.buffer(streams)?,
             staging: 0,
         };
+        plan.series.resize(sources, Fate::Keep);
+        plan.streams.resize(streams, 0);
         let room = self.staging_available.saturating_sub(own);
         if let Some(now) = now {
             self.trigger(&mut plan, now, room);
@@ -916,14 +924,14 @@ impl Planning<'_> {
 pub(crate) struct NextStream<'a> {
     stream: StreamId,
     current: &'a EventBuffer,
-    added: &'a [Segment],
+    added: &'a [Reserved<Segment>],
 }
 
 impl<'a> NextStream<'a> {
     /// The stream's records, in journal sequence order.
     fn segments(&self) -> impl Iterator<Item = &'a Segment> + Clone + use<'a> {
         let current = self.current.segments().iter().map(|segment| &**segment);
-        current.chain(self.added)
+        current.chain(self.added.iter().map(Reserved::get))
     }
 
     fn is_empty(&self) -> bool {
@@ -931,17 +939,22 @@ impl<'a> NextStream<'a> {
     }
 
     fn rows(&self) -> u64 {
-        self.current.rows() + self.added.iter().map(Segment::rows).sum::<u64>()
+        self.current.rows() + self.added.iter().map(|segment| segment.rows()).sum::<u64>()
     }
 
     fn journal_bytes(&self) -> u64 {
-        self.current.journal_bytes() + self.added.iter().map(Segment::journal_bytes).sum::<u64>()
+        self.current.journal_bytes()
+            + self
+                .added
+                .iter()
+                .map(|segment| segment.journal_bytes())
+                .sum::<u64>()
     }
 
     fn oldest(&self) -> Option<Timestamp> {
         self.current
             .oldest()
-            .or_else(|| self.added.first().map(Segment::written))
+            .or_else(|| self.added.first().map(|segment| segment.written()))
     }
 
     /// The bytes of its buffer in the next head, if kept: the current buffer's, with its own
@@ -957,7 +970,7 @@ impl<'a> NextStream<'a> {
             .map(|segment| segment.record_len() as u64)
             .sum();
         self.current.bytes() - EventBuffer::own_bytes(self.current.segments().len())
-            + self.current.appended_bytes(self.added)
+            + self.current.appended_bytes(self.added.len())
             + records
     }
 
@@ -1130,12 +1143,14 @@ impl<W: StorageWrite> Execution<'_, W> {
         let fields = self.shape.fields;
         let len = (journal_bytes - series_key_len()) as usize;
         let summary = SeriesRecord::write(
+            self.account,
             next.updated().0,
             next.sums(fields),
             fields,
             len,
             next.len() as u64,
-        );
+        )
+        .expect("the execution plan admits the measured summary");
         let key = JournalKey::Series {
             tier: source.tier,
             bucket: source.bucket,
@@ -1259,7 +1274,7 @@ impl<W: StorageWrite> Execution<'_, W> {
         let stream = StreamRef::Tier(source.tier);
         let extent = self.shape.extent_of(source);
         let (fields, limit) = (self.shape.fields, self.shape.series_chunk_rows);
-        let mut batch = SeriesBatch::new(fields);
+        let mut batch = SeriesBatch::new(self.account, fields);
         let mut values = [0; MAX_FIELDS];
         let mut pending = rows.next_into(&mut values[..fields]);
         while pending.is_some() {
@@ -1303,7 +1318,7 @@ impl<W: StorageWrite> Execution<'_, W> {
     /// sorted run of its own. Returns the journal bytes deleted.
     fn chunk_stream(&mut self, next: &NextStream<'_>, fan_in: usize) -> Result<u64, ChunkingError> {
         let stream = next.stream;
-        let mut batch = AppendBatch::new(&self.schema.events[usize::from(stream.0)]);
+        let mut batch = AppendBatch::new(self.account, &self.schema.events[usize::from(stream.0)]);
         let extents = || next.segments().map(Segment::extent);
         let mut extent = extents().min();
         while let Some(current) = extent {
@@ -1311,7 +1326,10 @@ impl<W: StorageWrite> Execution<'_, W> {
                 .segments()
                 .filter(move |segment| segment.extent() == current);
             loop {
-                let mut readers = Vec::with_capacity(fan_in);
+                let mut readers = self
+                    .account
+                    .buffer(fan_in)
+                    .expect("the execution plan admits its merge readers");
                 readers.extend(
                     of_extent
                         .by_ref()
@@ -1321,7 +1339,16 @@ impl<W: StorageWrite> Execution<'_, W> {
                 if readers.is_empty() {
                     break;
                 }
-                self.write_event_chunks(stream, current, Merge::new(readers), &mut batch)?;
+                self.write_event_chunks(
+                    stream,
+                    current,
+                    Merge::new(
+                        self.account,
+                        readers,
+                        self.schema.events[usize::from(stream.0)].columns.len(),
+                    ),
+                    &mut batch,
+                )?;
             }
             extent = extents().filter(|&other| other > current).min();
         }
@@ -1443,8 +1470,13 @@ impl<W: StorageWrite> Execution<'_, W> {
                 let spec = &self.schema.events[usize::from(stream.0)];
                 let record = EventRecord::read(value, stream, spec, catalog, extent, self.shape)
                     .map_err(invalid)?;
-                let mut batch = AppendBatch::new(spec);
-                let rows = Merge::new(vec![record.rows()]);
+                let mut batch = AppendBatch::new(self.account, spec);
+                let mut readers = self
+                    .account
+                    .buffer(1)
+                    .expect("the open plan admits one record reader");
+                readers.push(record.rows());
+                let rows = Merge::new(self.account, readers, spec.columns.len());
                 self.write_event_chunks(stream, extent, rows, &mut batch)?;
                 (StreamRef::Events(stream), extent)
             }
@@ -1467,19 +1499,48 @@ impl<W: StorageWrite> Execution<'_, W> {
 
 /// One append's series rows, column by column, as the builder takes them: the buffers hold
 /// [`APPEND_ROWS`] rows, are allocated once per chunked source, and never grow.
-struct SeriesBatch {
-    keys: Vec<i64>,
-    combos: Vec<u32>,
+struct SeriesBuffers {
+    /// The bucket key repeated for every row of the append.
+    keys: FixedVec<i64>,
+    /// Ascending combination ids of the append.
+    combos: FixedVec<u32>,
     /// One per field.
-    fields: Vec<Vec<u64>>,
+    fields: FixedVec<FixedVec<u64>>,
+}
+
+/// A series append's fixed buffers and their aggregate construction charge.
+struct SeriesBatch {
+    /// Buffer storage drops before its charge.
+    buffers: SeriesBuffers,
+    /// Local envelope used by temporary column views.
+    account: MemoryAccount,
+    /// Covers every fixed child until the entire append workspace drops.
+    _held: Reservation,
 }
 
 impl SeriesBatch {
-    fn new(fields: usize) -> Self {
+    /// Allocates the exact append buffers under the execution's admitted plan.
+    fn new(account: &MemoryAccount, fields: usize) -> Self {
+        let mut retained = Retained::new(account);
+        let buffers = (|| -> Result<_, BudgetExceeded> {
+            let keys = retained.buffer(APPEND_ROWS)?;
+            let combos = retained.buffer(APPEND_ROWS)?;
+            let mut columns = retained.buffer(fields)?;
+            for _ in 0..fields {
+                columns.push(retained.buffer(APPEND_ROWS)?);
+            }
+            Ok(SeriesBuffers {
+                keys,
+                combos,
+                fields: columns,
+            })
+        })()
+        .expect("the execution plan admits its series append buffers");
+        let (buffers, held) = retained.finish(buffers).into_parts();
         Self {
-            keys: append_buffer(),
-            combos: append_buffer(),
-            fields: iter::repeat_with(append_buffer).take(fields).collect(),
+            buffers,
+            account: account.clone(),
+            _held: held,
         }
     }
 
@@ -1487,37 +1548,40 @@ impl SeriesBatch {
     /// append shows the builder.
     fn memory(fields: usize) -> u64 {
         let buffers = APPEND_ROWS * (size_of::<i64>() + size_of::<u32>())
-            + fields * (size_of::<Vec<u64>>() + APPEND_ROWS * size_of::<u64>());
+            + fields * (size_of::<FixedVec<u64>>() + APPEND_ROWS * size_of::<u64>());
         let view = (2 + fields) * size_of::<Column<'_>>();
         (buffers + view) as u64
     }
 
     fn is_full(&self) -> bool {
-        self.combos.len() == APPEND_ROWS
+        self.buffers.combos.len() == APPEND_ROWS
     }
 
     /// Adds a row, which [`is_full`](Self::is_full) admits.
     fn push(&mut self, combo: u32, values: &[u64]) {
-        self.combos.push(combo);
-        for (column, &value) in self.fields.iter_mut().zip(values) {
+        self.buffers.combos.push(combo);
+        for (column, &value) in self.buffers.fields.iter_mut().zip(values) {
             column.push(value);
         }
     }
 
     /// The columns of an append of the rows, all in `bucket`.
-    fn columns(&self) -> Vec<Column<'_>> {
-        let mut columns = Vec::with_capacity(2 + self.fields.len());
+    fn columns(&self) -> BudgetVec<Column<'_>> {
+        let mut columns = self
+            .account
+            .buffer(2 + self.buffers.fields.len())
+            .expect("the series append plan admits its column views");
         columns.extend([
             Column {
-                values: Values::I64(&self.keys),
+                values: Values::I64(&self.buffers.keys),
                 validity: None,
             },
             Column {
-                values: Values::U32(&self.combos),
+                values: Values::U32(&self.buffers.combos),
                 validity: None,
             },
         ]);
-        columns.extend(self.fields.iter().map(|values| Column {
+        columns.extend(self.buffers.fields.iter().map(|values| Column {
             values: Values::U64(values),
             validity: None,
         }));
@@ -1530,14 +1594,14 @@ impl SeriesBatch {
         builder: &mut ChunkBuilder<'_, S>,
         bucket: i64,
     ) -> Result<(), BuildError> {
-        if self.combos.is_empty() {
+        if self.buffers.combos.is_empty() {
             return Ok(());
         }
-        self.keys.resize(self.combos.len(), bucket);
+        self.buffers.keys.resize(self.buffers.combos.len(), bucket);
         builder.append(&self.columns())?;
-        self.keys.clear();
-        self.combos.clear();
-        for column in &mut self.fields {
+        self.buffers.keys.clear();
+        self.buffers.combos.clear();
+        for column in &mut self.buffers.fields {
             column.clear();
         }
         Ok(())
@@ -1552,22 +1616,42 @@ type Place = Reverse<((i64, u64, u64), usize)>;
 /// decoded only once the caller has let go of the record's last one, so the merge and its
 /// caller hold at most one decoded row of each record.
 pub(crate) struct Merge<'a> {
-    readers: Vec<Rows<'a>>,
+    readers: BudgetVec<Rows<'a>>,
     /// Each record's next row, while its place waits in the heap.
-    next: Vec<Option<StoredRow<'a>>>,
-    heap: BinaryHeap<Place>,
+    next: BudgetVec<Option<StoredRow<'a>>>,
+    heap: BudgetVec<Place>,
     /// The record whose row went out last: its next row is read at the next call.
     refill: Option<usize>,
+    /// Admitted before decoding any of the format-bounded row values.
+    _rows: Lease,
 }
 
 impl<'a> Merge<'a> {
-    pub(crate) fn new(readers: Vec<Rows<'a>>) -> Self {
+    /// Admits descriptors and all waiting rows before opening the first row.
+    pub(crate) fn new(
+        account: &MemoryAccount,
+        readers: BudgetVec<Rows<'a>>,
+        columns: usize,
+    ) -> Self {
         let k = readers.len();
+        let rows = account
+            .lease(
+                MemoryPlan::array::<StoredValue<'a>>(k * columns)
+                    .expect("validated record and schema widths"),
+            )
+            .expect("the merge plan admits all waiting row values");
+        let mut next = account
+            .buffer(k)
+            .expect("the merge plan admits waiting row descriptors");
+        next.extend(iter::repeat_with(|| None).take(k));
         let mut merge = Self {
-            next: (0..k).map(|_| None).collect(),
-            heap: BinaryHeap::with_capacity(k),
+            next,
+            heap: account
+                .buffer(k)
+                .expect("the merge plan admits heap entries"),
             readers,
             refill: None,
+            _rows: rows,
         };
         for reader in 0..k {
             merge.read(reader);
@@ -1585,7 +1669,7 @@ impl<'a> Merge<'a> {
 
     fn read(&mut self, reader: usize) {
         if let Some(row) = self.readers[reader].next() {
-            self.heap.push(Reverse((row.order(), reader)));
+            self.heap.heap_push(Reverse((row.order(), reader)));
             self.next[reader] = Some(row);
         }
     }
@@ -1598,88 +1682,112 @@ impl<'a> Iterator for Merge<'a> {
         if let Some(reader) = self.refill.take() {
             self.read(reader);
         }
-        let Reverse((_, reader)) = self.heap.pop()?;
+        let Reverse((_, reader)) = self.heap.heap_pop()?;
         self.refill = Some(reader);
         self.next[reader].take()
     }
 }
 
-/// The capacity of a buffer of one append.
-fn append_buffer<T>() -> Vec<T> {
-    Vec::with_capacity(APPEND_ROWS)
-}
-
 /// One append's rows, column by column, as the builder takes them. The buffers hold
 /// [`APPEND_ROWS`] rows; they are allocated once per chunked stream (per record on open) and
 /// reused by every append, and never grow.
-pub(crate) struct AppendBatch<'a> {
-    keys: Vec<i64>,
-    incarnations: Vec<u64>,
-    seqs: Vec<u64>,
+struct AppendBuffers<'a> {
+    /// Event keys in stream order.
+    keys: FixedVec<i64>,
+    /// The open that assigned each event sequence.
+    incarnations: FixedVec<u64>,
+    /// Sequence numbers within each open.
+    seqs: FixedVec<u64>,
     /// One per schema column.
-    columns: Vec<CellBuffer<'a>>,
+    columns: FixedVec<CellBuffer<'a>>,
     /// The identity columns' values, as the chunk stores them: their tag, then their bytes,
     /// every column's interleaved row by row. A row whose identities do not fit waits for the
     /// next append, so this never grows; it holds a row's largest identities, each one inline
     /// value (§6.5).
-    forms: Vec<u8>,
+    forms: FixedVec<u8>,
 }
 
 /// One schema column's cells in an append, and, when the column is nullable, their
 /// validity.
 struct CellBuffer<'a> {
     cells: Cells<'a>,
-    validity: Option<Vec<bool>>,
+    validity: Option<FixedVec<bool>>,
 }
 
 enum Cells<'a> {
-    I64(Vec<i64>),
-    U64(Vec<u64>),
-    U32(Vec<u32>),
+    I64(FixedVec<i64>),
+    U64(FixedVec<u64>),
+    U32(FixedVec<u32>),
     /// Borrowed from the rows' records.
-    Bytes(Vec<&'a [u8]>),
-    /// Where each row's form starts and ends in [`AppendBatch::forms`], which several
+    Bytes(FixedVec<&'a [u8]>),
+    /// Where each row's form starts and ends in [`AppendBuffers::forms`], which several
     /// identity columns share.
-    Identities(Vec<(usize, usize)>),
+    Identities(FixedVec<(usize, usize)>),
+}
+
+/// One stream's fixed append buffers, with a single charge covering their complete lifetime.
+pub(crate) struct AppendBatch<'a> {
+    /// The data graph drops before the aggregate charge.
+    buffers: AppendBuffers<'a>,
+    /// Shared execution envelope for ephemeral identity and column views.
+    account: MemoryAccount,
+    /// Covers every nested fixed-capacity child without enlarging child descriptors.
+    _held: Reservation,
 }
 
 impl<'a> AppendBatch<'a> {
-    pub(crate) fn new(spec: &EventStreamSpec) -> Self {
-        let columns = spec
-            .columns
-            .iter()
-            .map(|column| CellBuffer {
-                cells: match (column.ty, column_layout(column).ty) {
-                    (ColumnType::Identity, _) => Cells::Identities(append_buffer()),
-                    (
-                        _,
-                        PhysicalType::Int {
-                            ty: IntType::I64, ..
-                        },
-                    ) => Cells::I64(append_buffer()),
-                    (
-                        _,
-                        PhysicalType::Int {
-                            ty: IntType::U64, ..
-                        },
-                    ) => Cells::U64(append_buffer()),
-                    (
-                        _,
-                        PhysicalType::Int {
-                            ty: IntType::U32, ..
-                        },
-                    ) => Cells::U32(append_buffer()),
-                    (_, PhysicalType::Bytes(_)) => Cells::Bytes(append_buffer()),
-                },
-                validity: column.nullable.then(append_buffer),
+    /// Admits each fixed child before construction and seals their one aggregate charge.
+    pub(crate) fn new(account: &MemoryAccount, spec: &EventStreamSpec) -> Self {
+        let mut retained = Retained::new(account);
+        let buffers = (|| -> Result<_, BudgetExceeded> {
+            let mut columns = retained.buffer(spec.columns.len())?;
+            for column in &spec.columns {
+                columns.push(CellBuffer {
+                    cells: match (column.ty, column_layout(column).ty) {
+                        (ColumnType::Identity, _) => {
+                            Cells::Identities(retained.buffer(APPEND_ROWS)?)
+                        }
+                        (
+                            _,
+                            PhysicalType::Int {
+                                ty: IntType::I64, ..
+                            },
+                        ) => Cells::I64(retained.buffer(APPEND_ROWS)?),
+                        (
+                            _,
+                            PhysicalType::Int {
+                                ty: IntType::U64, ..
+                            },
+                        ) => Cells::U64(retained.buffer(APPEND_ROWS)?),
+                        (
+                            _,
+                            PhysicalType::Int {
+                                ty: IntType::U32, ..
+                            },
+                        ) => Cells::U32(retained.buffer(APPEND_ROWS)?),
+                        (_, PhysicalType::Bytes(_)) => Cells::Bytes(retained.buffer(APPEND_ROWS)?),
+                    },
+                    validity: if column.nullable {
+                        Some(retained.buffer(APPEND_ROWS)?)
+                    } else {
+                        None
+                    },
+                });
+            }
+            Ok(AppendBuffers {
+                keys: retained.buffer(APPEND_ROWS)?,
+                incarnations: retained.buffer(APPEND_ROWS)?,
+                seqs: retained.buffer(APPEND_ROWS)?,
+                columns,
+                forms: retained.buffer(identity_columns(spec) * MAX_INLINE_VALUE_LEN)?,
             })
-            .collect();
+        })()
+        .expect("the execution plan admits its event append buffers");
+        let (buffers, held) = retained.finish(buffers).into_parts();
         Self {
-            keys: append_buffer(),
-            incarnations: append_buffer(),
-            seqs: append_buffer(),
-            columns,
-            forms: Vec::with_capacity(identity_columns(spec) * MAX_INLINE_VALUE_LEN),
+            buffers,
+            account: account.clone(),
+            _held: held,
         }
     }
 
@@ -1690,7 +1798,7 @@ impl<'a> AppendBatch<'a> {
     pub(crate) fn memory(spec: &EventStreamSpec) -> u64 {
         let identities = identity_columns(spec);
         let view = (EVENT_KEY_COLUMNS + spec.columns.len()) * size_of::<Column<'_>>()
-            + identities * (size_of::<Vec<&[u8]>>() + APPEND_ROWS * size_of::<&[u8]>());
+            + identities * (size_of::<FixedVec<&[u8]>>() + APPEND_ROWS * size_of::<&[u8]>());
         Self::buffers(spec) + view as u64
     }
 
@@ -1731,18 +1839,19 @@ impl<'a> AppendBatch<'a> {
                 _ => 0,
             })
             .sum();
-        self.keys.len() < APPEND_ROWS && self.forms.len() + forms <= self.forms.capacity()
+        self.buffers.keys.len() < APPEND_ROWS
+            && self.buffers.forms.len() + forms <= self.buffers.forms.capacity()
     }
 
     /// Adds `row`, which [`has_room`](Self::has_room) admits.
     fn push(&mut self, row: &StoredRow<'a>) {
-        let Self {
+        let AppendBuffers {
             keys,
             incarnations,
             seqs,
             columns,
             forms,
-        } = self;
+        } = &mut self.buffers;
         keys.push(row.key);
         incarnations.push(row.incarnation);
         seqs.push(row.seq);
@@ -1778,46 +1887,56 @@ impl<'a> AppendBatch<'a> {
         );
     }
 
-    /// Each identity column's forms, in column order, as slices of [`forms`](Self::forms).
-    fn slices(&self) -> Vec<Vec<&[u8]>> {
-        let mut slices = Vec::with_capacity(
-            self.columns
-                .iter()
-                .filter(|buffer| matches!(buffer.cells, Cells::Identities(_)))
-                .count(),
-        );
-        for buffer in &self.columns {
+    /// Each identity column's forms, in column order, as slices of [`forms`](AppendBuffers::forms).
+    fn slices(&self) -> Reserved<FixedVec<FixedVec<&[u8]>>> {
+        let mut retained = Retained::new(&self.account);
+        let identities = self
+            .buffers
+            .columns
+            .iter()
+            .filter(|buffer| matches!(buffer.cells, Cells::Identities(_)))
+            .count();
+        let mut slices = retained
+            .buffer(identities)
+            .expect("the append plan admits identity column descriptors");
+        for buffer in &self.buffers.columns {
             if let Cells::Identities(spans) = &buffer.cells {
-                slices.push(
+                let mut column = retained
+                    .buffer(spans.len())
+                    .expect("the append plan admits identity views");
+                column.extend(
                     spans
                         .iter()
-                        .map(|&(start, end)| &self.forms[start..end])
-                        .collect(),
+                        .map(|&(start, end)| &self.buffers.forms[start..end]),
                 );
+                slices.push(column);
             }
         }
-        slices
+        retained.finish(slices)
     }
 
     /// The columns of an append of the rows, the identity columns' from `slices`.
-    fn columns<'s>(&'s self, slices: &'s [Vec<&'s [u8]>]) -> Vec<Column<'s>> {
+    fn columns<'s>(&'s self, slices: &'s [FixedVec<&'s [u8]>]) -> BudgetVec<Column<'s>> {
         let mut slices = slices.iter();
-        let mut columns = Vec::with_capacity(EVENT_KEY_COLUMNS + self.columns.len());
+        let mut columns = self
+            .account
+            .buffer(EVENT_KEY_COLUMNS + self.buffers.columns.len())
+            .expect("the append plan admits its column views");
         columns.extend([
             Column {
-                values: Values::I64(&self.keys),
+                values: Values::I64(&self.buffers.keys),
                 validity: None,
             },
             Column {
-                values: Values::U64(&self.incarnations),
+                values: Values::U64(&self.buffers.incarnations),
                 validity: None,
             },
             Column {
-                values: Values::U64(&self.seqs),
+                values: Values::U64(&self.buffers.seqs),
                 validity: None,
             },
         ]);
-        for buffer in &self.columns {
+        for buffer in &self.buffers.columns {
             let values = match &buffer.cells {
                 Cells::I64(cells) => Values::I64(cells),
                 Cells::U64(cells) => Values::U64(cells),
@@ -1840,7 +1959,7 @@ impl<'a> AppendBatch<'a> {
         &mut self,
         builder: &mut ChunkBuilder<'_, S>,
     ) -> Result<(), BuildError> {
-        if self.keys.is_empty() {
+        if self.buffers.keys.is_empty() {
             return Ok(());
         }
         let slices = self.slices();
@@ -1851,11 +1970,11 @@ impl<'a> AppendBatch<'a> {
     }
 
     fn clear(&mut self) {
-        self.keys.clear();
-        self.incarnations.clear();
-        self.seqs.clear();
-        self.forms.clear();
-        for buffer in &mut self.columns {
+        self.buffers.keys.clear();
+        self.buffers.incarnations.clear();
+        self.buffers.seqs.clear();
+        self.buffers.forms.clear();
+        for buffer in &mut self.buffers.columns {
             if let Some(validity) = &mut buffer.validity {
                 validity.clear();
             }
@@ -1875,10 +1994,11 @@ impl AppendBatch<'_> {
     /// The bytes the batch's buffers hold, by their capacities: [`memory`](Self::memory)
     /// without what an append allocates.
     fn held(&self) -> u64 {
-        fn bytes<T>(buffer: &Vec<T>) -> usize {
+        fn bytes<T>(buffer: &FixedVec<T>) -> usize {
             buffer.capacity() * size_of::<T>()
         }
         let cells: usize = self
+            .buffers
             .columns
             .iter()
             .map(|buffer| {
@@ -1892,11 +2012,11 @@ impl AppendBatch<'_> {
                 cells + buffer.validity.as_ref().map_or(0, bytes)
             })
             .sum();
-        (bytes(&self.keys)
-            + bytes(&self.incarnations)
-            + bytes(&self.seqs)
-            + bytes(&self.columns)
-            + bytes(&self.forms)
+        (bytes(&self.buffers.keys)
+            + bytes(&self.buffers.incarnations)
+            + bytes(&self.buffers.seqs)
+            + bytes(&self.buffers.columns)
+            + bytes(&self.buffers.forms)
             + cells) as u64
     }
 
@@ -1909,7 +2029,7 @@ impl AppendBatch<'_> {
             .iter()
             .map(|list| list.capacity() * size_of::<&[u8]>())
             .sum();
-        (slices.capacity() * size_of::<Vec<&[u8]>>()
+        (slices.capacity() * size_of::<FixedVec<&[u8]>>()
             + lists
             + columns.capacity() * size_of::<Column<'_>>()) as u64
     }

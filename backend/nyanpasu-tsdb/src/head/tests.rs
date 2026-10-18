@@ -1,6 +1,8 @@
 //! Rebuilding the head from journal records written by hand: how records add up, and how
 //! damage is refused.
 
+use crate::budget::{test_buffer, test_value};
+
 use std::collections::BTreeSet;
 
 use super::{
@@ -623,7 +625,7 @@ fn added(head: &Head, source: SeriesSource, combo: u32) -> SeriesAdded {
     SeriesAdded {
         source,
         cost: Accumulator::merge_cost(head.accumulator(source), &deltas, 2),
-        deltas,
+        deltas: test_value(deltas),
         update: SourceUpdate {
             written: Timestamp(0),
             records: 1,
@@ -644,8 +646,8 @@ fn the_next_head_shares_what_the_update_does_not_touch() {
     };
     let empty = Head::empty(2);
     let update = HeadUpdate {
-        series: vec![added(&empty, minute, 0)],
-        events: Vec::new(),
+        series: test_buffer(vec![added(&empty, minute, 0)]),
+        events: BudgetVec::default(),
     };
     let first = empty
         .next(
@@ -659,8 +661,8 @@ fn the_next_head_shares_what_the_update_does_not_touch() {
         .into_parts()
         .0;
     let update = HeadUpdate {
-        series: vec![added(&first, hour, 0)],
-        events: Vec::new(),
+        series: test_buffer(vec![added(&first, hour, 0)]),
+        events: BudgetVec::default(),
     };
     let second = first
         .next(
@@ -696,8 +698,8 @@ fn a_next_head_admits_exact_copies_and_transfers_them_without_charging_shared_pa
         bucket: 0,
     };
     let update = || HeadUpdate {
-        series: vec![added(&empty, source, 0)],
-        events: Vec::new(),
+        series: test_buffer(vec![added(&empty, source, 0)]),
+        events: BudgetVec::default(),
     };
     let copies = series_spine_bytes(1) + update().series[0].cost.copied;
     for limit in [copies - 1, copies] {

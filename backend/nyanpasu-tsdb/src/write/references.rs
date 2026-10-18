@@ -18,6 +18,7 @@
 use std::cmp::Reverse;
 
 use crate::{
+    budget::{BudgetExceeded, BudgetVec, MemoryAccount},
     head::series::Accumulator,
     layout::{
         manifest::StreamRef,
@@ -36,21 +37,18 @@ struct Accepted {
 
 /// The references of one batch, in a list allocated once at the capacity staging reserved.
 pub(crate) struct References {
-    accepted: Vec<Accepted>,
+    accepted: BudgetVec<Accepted>,
 }
 
 impl References {
-    /// The bytes a list of `capacity` references takes.
-    pub(crate) fn bytes(capacity: usize) -> u64 {
-        (capacity * size_of::<Accepted>()) as u64
-    }
-
-    /// An empty list with room for `capacity` references, which [`bytes`](Self::bytes)
-    /// reserved.
-    pub(crate) fn with_capacity(capacity: usize) -> Self {
-        Self {
-            accepted: Vec::with_capacity(capacity),
-        }
+    /// Admits and allocates the batch's complete reference list before accepting entries.
+    pub(crate) fn with_capacity(
+        account: &MemoryAccount,
+        capacity: usize,
+    ) -> Result<Self, BudgetExceeded> {
+        Ok(Self {
+            accepted: account.buffer(capacity)?,
+        })
     }
 
     /// Notes that data of `extent` of `stream` holds `entity`. Combination 0 and the overflow
@@ -58,7 +56,7 @@ impl References {
     ///
     /// # Panics
     ///
-    /// In debug builds, past the capacity: the list would reallocate past what was reserved.
+    /// Past the planned capacity: charged storage never reallocates implicitly.
     pub(crate) fn push(&mut self, stream: StreamRef, entity: Entity, extent: i64) {
         let (Entity::Combo(id) | Entity::Label(_, id)) = entity;
         if id == 0 {
@@ -118,9 +116,13 @@ impl References {
         self.accepted.sort_unstable_by_key(|accepted| {
             (accepted.stream, accepted.entity, Reverse(accepted.extent))
         });
-        self.accepted
-            .dedup_by_key(|accepted| (accepted.stream, accepted.entity));
-        for accepted in &self.accepted {
+        let mut previous = None;
+        for accepted in self.accepted.iter() {
+            let pair = (accepted.stream, accepted.entity);
+            if previous == Some(pair) {
+                continue;
+            }
+            previous = Some(pair);
             references::refer(batch, accepted.entity, accepted.stream, accepted.extent)?;
         }
         Ok(())

@@ -30,6 +30,7 @@ use super::{
 };
 use crate::{
     ColumnType, ErrorKind, EventStreamSpec, StreamId, TierId,
+    budget::{BudgetExceeded, BudgetVec, FixedVec, MemoryAccount},
     catalog::Catalog,
     layout::{
         JOURNAL,
@@ -240,7 +241,16 @@ impl<'a> SeriesRecord<'a> {
     pub(crate) fn encode(written: i64, deltas: &SourceDeltas, fields: usize) -> Vec<u8> {
         let rows = super::series::Sums::new(None, Some(deltas), fields);
         let (len, count) = Self::measure(written, rows.clone(), fields);
-        Self::write(written, rows, fields, len, count)
+        Self::write(
+            &crate::budget::test_account(),
+            written,
+            rows,
+            fields,
+            len,
+            count,
+        )
+        .unwrap()
+        .to_vec()
     }
 
     /// The length of the record of `rows`, dated `written`, and the number of its items: a
@@ -262,13 +272,14 @@ impl<'a> SeriesRecord<'a> {
     /// The record of `rows`, of the length and item count [`measure`](Self::measure) gave, in
     /// a buffer of exactly that length.
     pub(crate) fn write(
+        account: &MemoryAccount,
         written: i64,
         mut rows: impl SourceRows,
         fields: usize,
         len: usize,
         count: u64,
-    ) -> Vec<u8> {
-        let mut record = Framed::new(len, &SeriesHeader { written }, count);
+    ) -> Result<BudgetVec<u8>, BudgetExceeded> {
+        let mut record = Framed::new(account, len, &SeriesHeader { written }, count)?;
         let mut values = [0; MAX_FIELDS];
         while let Some(combo) = rows.next_into(&mut values[..fields]) {
             record.push(&SeriesItem {
@@ -276,7 +287,7 @@ impl<'a> SeriesRecord<'a> {
                 fields: Cow::Borrowed(&values[..fields]),
             });
         }
-        record.finish()
+        Ok(record.finish())
     }
 
     /// Opens a stored record and checks every item (§6.5), one at a time: no more than one
@@ -414,8 +425,13 @@ impl<'a> EventRecord<'a> {
 
     /// Starts a record of `len` bytes in all, dated `written`, which holds `rows` rows in
     /// [`StoredRow::order`]: its buffer is allocated once, at that length.
-    pub(crate) fn start(len: usize, written: i64, rows: u64) -> Framed {
-        Framed::new(len, &EventHeader { written }, rows)
+    pub(crate) fn start(
+        account: &MemoryAccount,
+        len: usize,
+        written: i64,
+        rows: u64,
+    ) -> Result<Framed, BudgetExceeded> {
+        Framed::new(account, len, &EventHeader { written }, rows)
     }
 
     /// Opens a stored record without checking its rows.
@@ -540,11 +556,6 @@ impl StoredRow<'_> {
     pub(crate) fn order(&self) -> (i64, u64, u64) {
         (self.key, self.incarnation, self.seq)
     }
-
-    /// The bytes the row takes in an [`EventRecord`].
-    pub(crate) fn encoded_len(&self) -> usize {
-        item_len(self)
-    }
 }
 
 /// A column value as stored: catalog references resolved to ids. The declaration order is
@@ -593,13 +604,15 @@ impl<'a> Identity<'a> {
     #[cfg(test)]
     pub(crate) fn write_column(self, out: &mut Vec<u8>) {
         out.clear();
-        self.append_column(out);
+        let (tag, bytes) = self.column_parts();
+        out.push(tag as u8);
+        out.extend_from_slice(bytes);
     }
 
     /// Appends the identity as a chunk column stores it: its tag, then the 16 bytes of a UUID
     /// or the text. A block of UUIDs alone is one width, which the bytes encoder stores as
     /// fixed.
-    pub(crate) fn append_column(self, out: &mut Vec<u8>) {
+    pub(crate) fn append_column(self, out: &mut FixedVec<u8>) {
         let (tag, bytes) = self.column_parts();
         out.push(tag as u8);
         out.extend_from_slice(bytes);
@@ -943,7 +956,8 @@ mod tests {
         let rows = super::super::series::Sums::new(None, Some(&deltas), 2);
         let (len, count) = SeriesRecord::measure(-3, rows.clone(), 2);
         assert_eq!(count, 3);
-        let record = SeriesRecord::write(-3, rows, 2, len, count);
+        let record =
+            SeriesRecord::write(&crate::budget::test_account(), -3, rows, 2, len, count).unwrap();
         assert_eq!((record.len(), record.capacity()), (len, len));
         let items = deltas
             .combos
@@ -954,7 +968,7 @@ mod tests {
                 fields: Cow::Borrowed(fields),
             });
         assert_eq!(
-            record,
+            &*record,
             crate::layout::record::encode_framed(&SeriesHeader { written: -3 }, items)
         );
     }

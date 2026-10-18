@@ -9,7 +9,10 @@
 use std::sync::Arc;
 
 use super::{ARC_HEADER, journal::EventRecord};
-use crate::Timestamp;
+use crate::{
+    Timestamp,
+    budget::{BudgetVec, Reserved, Retained},
+};
 
 /// One journal record of a stream: the rows one batch wrote to one extent.
 #[derive(Debug, PartialEq, Eq)]
@@ -108,21 +111,28 @@ impl EventBuffer {
 
     /// The buffer with `segments` appended, sharing every segment it had. Its list is
     /// allocated once, at its length.
-    pub(crate) fn appended(&self, segments: Vec<Segment>) -> Self {
+    pub(crate) fn appended(
+        &self,
+        segments: BudgetVec<Reserved<Segment>>,
+        retained: &mut Retained<'_>,
+    ) -> Self {
         let all = self
             .segments
             .iter()
             .cloned()
-            .chain(segments.into_iter().map(Arc::new))
+            .chain(
+                segments
+                    .into_iter()
+                    .map(|segment| Arc::new(retained.absorb(segment))),
+            )
             .collect();
         Self::from_segments(all)
     }
 
     /// What [`appended`](Self::appended) allocates: the new buffer's own allocations and each
     /// new segment's `Arc`, not their records, which move into it.
-    pub(crate) fn appended_bytes(&self, segments: &[Segment]) -> u64 {
-        Self::own_bytes(self.segments.len() + segments.len())
-            + segments.len() as u64 * Segment::bytes_for(0)
+    pub(crate) fn appended_bytes(&self, segments: usize) -> u64 {
+        Self::own_bytes(self.segments.len() + segments) + segments as u64 * Segment::bytes_for(0)
     }
 
     /// The buffer without the records of `extent`, which retention expired (§9.1), sharing
@@ -181,6 +191,7 @@ impl EventBuffer {
 
     /// The bytes of this buffer that `base` does not share: its own allocations unless it is
     /// `base` itself, and the segments appended to `base`'s.
+    #[cfg(test)]
     pub(crate) fn copied_from(&self, base: &EventBuffer) -> u64 {
         if std::ptr::eq(self, base) {
             return 0;
@@ -243,8 +254,16 @@ mod tests {
             (empty.rows(), empty.journal_bytes(), empty.oldest()),
             (0, 0, None)
         );
-        let one = empty.appended(vec![segment(100)]);
-        let two = one.appended(vec![segment(50)]);
+        let account = crate::budget::test_account();
+        let mut retained = Retained::new(&account);
+        let one = empty.appended(
+            crate::budget::test_buffer([crate::budget::test_value(segment(100))]),
+            &mut retained,
+        );
+        let two = one.appended(
+            crate::budget::test_buffer([crate::budget::test_value(segment(50))]),
+            &mut retained,
+        );
         assert_eq!(
             (two.rows(), two.journal_bytes(), two.oldest()),
             (6, 40, Some(Timestamp(100)))

@@ -205,15 +205,7 @@ pub(crate) struct SourceDeltas {
 }
 
 impl SourceDeltas {
-    /// The deltas of `combos` combinations of `fields` fields, with room for exactly them.
-    pub(crate) fn with_capacity(combos: usize, fields: usize) -> Self {
-        Self {
-            combos: Vec::with_capacity(combos),
-            fields: Vec::with_capacity(combos * fields),
-        }
-    }
-
-    /// What [`with_capacity`](Self::with_capacity) allocates.
+    /// The storage for `combos` ids and their `fields` values.
     pub(crate) fn bytes(combos: u64, fields: usize) -> u64 {
         combos.saturating_mul((size_of::<u32>() + fields * size_of::<u64>()) as u64)
     }
@@ -444,6 +436,40 @@ impl Accumulator {
         (ARC_HEADER + size_of::<Accumulator>() + pages * size_of::<(u32, Arc<Page>)>()) as u64
     }
 
+    /// Reports concrete copied layouts to a construction probe, excluding shared pages.
+    #[cfg(test)]
+    pub(crate) fn observe_copies(
+        &self,
+        base: Option<&Accumulator>,
+        account: &crate::budget::MemoryAccount,
+    ) {
+        account.constructed(
+            (ARC_HEADER + size_of::<Self>() + self.pages.len() * size_of::<(u32, Arc<Page>)>())
+                as u64,
+        );
+        for (range, page) in &self.pages {
+            let shared = base.is_some_and(|base| {
+                base.pages
+                    .binary_search_by_key(range, |(range, _)| *range)
+                    .is_ok_and(|index| Arc::ptr_eq(page, &base.pages[index].1))
+            });
+            if !shared {
+                let columns: usize = page
+                    .fields
+                    .iter()
+                    .map(|column| std::mem::size_of_val(&**column))
+                    .sum();
+                account.constructed(
+                    (ARC_HEADER
+                        + size_of::<Page>()
+                        + std::mem::size_of_val(&*page.combos)
+                        + std::mem::size_of_val(&*page.fields)
+                        + columns) as u64,
+                );
+            }
+        }
+    }
+
     /// The same sums after folding replaced the source's records with one record of
     /// `journal_bytes` bytes (§4.2). Every page is shared.
     pub(crate) fn folded(&self, journal_bytes: u64) -> Self {
@@ -476,6 +502,7 @@ impl Accumulator {
     /// The bytes of this accumulator that `base`, the same source's accumulator in another
     /// version, does not share: its own allocations unless it is `base` itself, and each page
     /// `base` does not hold for the same range.
+    #[cfg(test)]
     pub(crate) fn copied_from(&self, base: Option<&Accumulator>) -> u64 {
         if base.is_some_and(|base| std::ptr::eq(self, base)) {
             return 0;

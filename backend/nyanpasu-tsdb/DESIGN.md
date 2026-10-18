@@ -316,6 +316,13 @@ both resident growth and staging credit and remove the pending graph before retu
 failure or unwind. Replay uses a source-scoped peak allowance, then hands the finished resident head
 and its charge to the registry; it does not settle a reservation after each record.
 
+Write and open execution consume admitted staging plans. Workspace arrays use charged buffers;
+fixed append children keep the original vector layouts under one aggregate charge and permit only
+bounded writes. Journal framing measures output before allocation and gives postcard an initialized
+slice, so serialization cannot grow its output. Pending event records transfer their charges into
+the finished head's temporary staging owner. Chunked records and obsolete workspace retire with
+their owners. Published heads and catalogs still carry no claims.
+
 Fixed metadata remains under the existing schema and format control allowance: schema validation
 maps, error strings and boxed errors, key prefixes, Shape vectors, storage wrapper names, control
 Arcs, and one local account control allocation per envelope. Their limits follow the schema and

@@ -18,10 +18,17 @@ The crate is a neutral library:
   with a work budget.
 - Queries run outside that actor, on snapshots.
 
-Memory is bounded by an injected resource profile, sized for an iOS network extension's
-50 MiB at the low end.
+Charged store allocations are bounded by an injected resource profile. Presets remain
+provisional; the mobile design targets an extension sharing 50 MiB with its host, not a measured
+process-RSS guarantee. Measurements and the platform verification matrix are in
+[BENCHMARKS.md](BENCHMARKS.md#e13-profile-evidence-and-verification-matrix).
 
 The design is [`docs/design/nyanpasu-tsdb.md`](../../docs/design/nyanpasu-tsdb.md). How the
-crate maps onto it is in [DESIGN.md](DESIGN.md).
+crate maps onto it is in [DESIGN.md](DESIGN.md), including the canonical contracts for
+[retirement](DESIGN.md#retirement-and-revocation),
+[recovery and resume](DESIGN.md#recovery-and-resume),
+[suspend and close](DESIGN.md#suspend-and-explicit-close),
+[compaction](DESIGN.md#explicit-physical-compaction), and
+[diagnostics/status](DESIGN.md#coherent-status-and-event-degradation).
 
 Only 64-bit little-endian targets build; others fail with `compile_error!`.

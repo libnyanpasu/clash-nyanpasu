@@ -20,7 +20,10 @@ suspend checkpoints, final close and compaction, plus verification reads. They e
 disposable warmup and copying an explicitly supplied source. These are total I/O per simulated input
 day, not the sum of the displayed API timings. Counter values repeat on that day's operation rows:
 do not sum them again. Maintenance normally gets one round per
-16 batches, then converges after input; the stalled shape deliberately omits interim calls.
+16 batches, then drains eligible rounds after input; the stalled shape deliberately omits interim
+calls.
+A partial head can keep its window ineligible until another write fires the quiet trigger; E13
+measures an explicit empty flush separately.
 A retained snapshot spans subsequent writes and maintenance, then is dropped before replay open. A
 write may run the facade's mandatory catch-up round while behind; that is part of its timing.
 
@@ -192,11 +195,12 @@ opt-level=s, LTO, one codegen unit, panic=unwind. Features: redb (all features).
 Target rustflags: +aes,+sse2 from the repository configuration. The G: device is a ZHITAI TiPro7000
 1TB NVMe. OS caches were not flushed; results are warm/uncontrolled cache observations, not
 cold-start or power-loss measurements. Raw CSVs are not committed: they are machine-specific. Final
-smoke completed all validations in 1.196s. Exact charged-root S measurements passed on both engines
-(4.52s excluding compilation): head maximum 169,704 bytes; staging 739,626 bytes memory / 753,978
+smoke completed all validations in 1.196s. The corrected hourly root sweep passed on both engines
+(6.33s excluding compilation): head maximum 169,704 bytes; staging 732,170 bytes memory / 747,306
 bytes redb; query maximum 6,716,776 bytes on either. All roots reached zero after close. These
-measurements include every verification page, a retained query result and a nonempty-head recovery.
-The release test build took 3m48s; the ignored tests add no execution time to the normal gates.
+measurements include all verification pages, a retained query result and nonempty-head recovery,
+using the extended E13 workflow below. The release test build
+took 3m48s; the ignored tests add no execution time to the normal gates.
 
 Final S completed in 173.003s excluding compilation: 836 summary rows and 25,026 raw API samples, on
 both engines and requested write modes. Each row retains its own raw durations; no operation group
@@ -240,17 +244,20 @@ query test scope.
 An external Windows observation during S's late-30s phase reported PeakWorkingSet64 =
 149,749,760 bytes. This is an OS high-water observation through that phase, a lower bound on
 lifetime process memory, and includes generated inputs and engine/harness allocations. It is not the
-exact root-charge measurement or a completed-process RSS claim. M and L were not run: the complete S
-matrix already takes minutes; larger sweeps remain explicit opt-ins. Per-shape charged-memory sweeps
-beyond hourly also remain unrecorded. No profile value or memory floor is changed by these results.
+exact root-charge measurement or a completed-process RSS claim. E11 left M/L and per-shape root
+sweeps pending. E13 below records the completed S sweeps and
+hourly M run; L and the other M shapes remain pending. No preset or floor has changed.
 
 ## Limits
 
-M/L and any missing profile/platform combinations remain hardware/time pending; nothing here
-justifies new preset values. Backend cache/overhead are not measured by the facade roots. Allocator
+L, M shapes other than hourly, and missing platform/profile combinations remain pending; nothing
+here justifies new preset values. Backend cache/overhead are not measured by the facade roots.
+Allocator
 overhead and actual page-cache residency require external process tools. File length is not
-filesystem allocated blocks; no platform FFI or unsafe code was added. Process-run variance/paired
-repeats and separate cache/overhead attribution remain pending. No cold-cache eviction, real data,
+filesystem allocated blocks; no platform FFI or unsafe code was added. Timing process-run
+variance/paired repeats
+and separate cache/overhead attribution remain pending; E12 has repeated space/I/O observations.
+No cold-cache eviction, real data,
 real power loss, consumer overlay/session rebuild, mobile termination, repeated-backup incarnation,
 wear amplification on a physical device, or steady-state multi-day confidence interval was measured.
 A per-day complete I/O total includes lifecycle exercises; it must not be extrapolated to normal
@@ -438,3 +445,193 @@ rounding or fixed tables. Full-chunk performance, selective reads, memory floors
 an alternative format remain unmeasured; no lack of regression is claimed. Keep the current
 format and defer the tail until an approved prototype can show actual savings and those checks.
 No new production API or observer was needed, and no production line changes.
+
+## E13: profile evidence and verification matrix
+
+No profile value, total or accepted floor changes. All presets remain provisional. This section
+owns the calibration evidence and platform matrix; DESIGN owns lifecycle/format/verification
+contracts and README routes to both. Recommendations are to retain current values pending
+representative threshold and device evidence, not to treat these measurements as worst-case bounds.
+No alternative value is justified yet, so no nearby-value recommendation or value sweep is made.
+
+### Sweeps and interpretation
+
+Native measurements use E11's generator, exact root observers and public APIs, with its original
+Desktop experiment profile (one-day durable interval; 64KiB full-catalog override). Peak writes
+alternate Consistent/Durable, as E11 did. Every S shape
+ran on memory and redb, serially; hourly M also ran on both after S fit comfortably. Seed, native
+compiler, filesystem and cache conditions are the E11/E12 environment above. S root tests take
+61.16s in total excluding compilation; M takes 36.33s in the corrected sweep. Raw logs/CSVs stay
+outside the repository.
+These are single workload trials per shape/engine, not repeated-process confidence intervals.
+
+The ignored peak harness now retains the first snapshot across subsequent writes for the
+retained-reader shape, samples resident catalog bytes after writes/open/rounds, and dates work
+after each shape's arrival delay. Public phase totals distinguish written head/L0, flushed L0
+and converged consolidated data. An empty Durable write at the later clock fires quiet triggers;
+without it, partial event journals block window consolidation even when `more` is false.
+Queries are measured before and after consolidation, with sums/pages verified at both stages.
+Before every peak reset, the observer records all intervening charges; verification scans every
+page in both directions, not just the first timed page.
+The churn case also measures expiration, cleanup/recycling while pinned, unpin and final release;
+replacement-label timing remains in E11's day workload. All held results and roots drain at close.
+
+The main timing binary is unchanged. Its S baseline is the preserved E11 CSV; its partial head
+can remain in the journal, so its day totals must not be divided by the new fully consolidated
+byte totals to claim write amplification. Maintenance-only `more=false` means no eligible round,
+not proof that quiet head data was flushed. Instrumented ignored-test ns values are not timing
+results. New metadata lines are `stage=...` (catalog/journal/stream totals and event gate),
+`catalog_resident_max_bytes`, `round_work` (expire/cleanup/recycle/consolidate/merge/rewritten/
+deleted) and `release_work` (expire/cleanup/recycle/deleted/released combinations).
+Catalog residency is a maximum of published graphs sampled after operations; staging covers
+transient draft/COW charges; transient catalog-load internals are not measured separately.
+Do not sum independent maxima or add old and new recovery roots:
+recovery drains old versions before constructing the new graph. Query peaks include retained
+captures/results and a facade status capture. Redb cache/internals, caller vectors and RSS are
+outside these roots. Narrow one-label, one-field schemas cannot calibrate arbitrary schema floors.
+
+Exact charged peaks below are bytes, maxima across both engines; catalog is resident bytes.
+The full-catalog fixture's catalog limit is deliberately 64KiB, not Desktop's 32MB.
+
+| S shape             |    head |   catalog |   staging |      query |
+| ------------------- | ------: | --------: | --------: | ---------: |
+| hourly              | 169,704 | 3,193,352 |   747,306 |  6,716,776 |
+| sparse-desktop      |   2,816 |    54,328 |   605,967 |    301,450 |
+| minute              |   4,644 | 3,193,352 |   838,740 |  6,393,952 |
+| closed-20k          |  54,027 |    54,328 | 1,214,857 |    458,901 |
+| closed-50k          |  65,502 |    54,328 | 1,222,521 |    564,590 |
+| gateway-200k        |  65,350 |    54,328 | 1,224,433 |    667,385 |
+| text-nullable       |  15,076 |    54,328 | 1,194,137 |    663,395 |
+| large-value         |     120 |     3,848 | 2,589,146 | 14,856,788 |
+| late-30s            | 163,852 | 3,193,352 |   745,786 |  6,552,256 |
+| late-7d             |     120 | 3,193,352 |   906,098 |  6,387,760 |
+| churn-pinned        |  54,027 |    54,328 | 1,214,857 |    458,901 |
+| full-catalog        |  53,894 |    50,216 | 1,214,857 |    452,144 |
+| stalled-maintenance | 169,704 | 3,193,352 |   745,018 |  6,716,776 |
+| retained-reader     | 169,704 | 3,193,352 |   738,058 |  6,731,600 |
+| M hourly            | 609,732 | 9,207,192 | 2,399,498 | 19,626,848 |
+
+M's resident head reaches 605,816 B after recovery (590,620 B after writes); S hourly reaches
+164,620 B. Reconstruction peaks are 609,732 and 169,704 B respectively. New recovery staging roots
+peak at 40 B in those narrow-schema cases; those figures exclude catalog residency, which is shown
+separately, and backend/open internals. The corrected large-value query peak is 14,856,788 B versus
+the previously reported 13,808,132 B; the extra 1,048,656 B includes a fourteenth non-null MiB text
+in later verification pages. Gateway/text-nullable peaks are now 667,385/663,395 B (previously
+565,997/563,797 B). S's largest query charge is the large-value page, while M's includes a held
+capture plus status.
+
+### Paired stored stages
+
+These are public stream bytes, not file bytes or uncompressed input sizes. The same sums/events
+survive every stage; zero journal bytes are asserted after the explicit flush. Old/new here means
+actual flushed L0 versus converged compressed output, not alternative implementations or profiles.
+
+| Shape           | Written head/L0 B | Flushed L0 B | Consolidated B |
+| --------------- | ----------------: | -----------: | -------------: |
+| S hourly        |           415,668 |      366,596 |        205,600 |
+| S minute        |           617,493 |      616,994 |        213,953 |
+| S closed-20k    |           519,154 |      497,230 |          2,853 |
+| S gateway-200k  |         5,001,862 |    4,971,890 |         28,137 |
+| S text-nullable |         8,894,381 |    8,893,755 |         19,777 |
+| S large-value   |        56,638,229 |   56,638,229 |     56,634,017 |
+| M hourly        |         1,528,015 |    1,346,753 |        756,558 |
+
+The repeated synthetic text makes compression optimistic; large values remain fragment pieces,
+so their payload barely shrinks. There is no rebuilt normalized-row engine or raw-consolidation
+alternative. The historical traffic-store baseline/sanitized comparison was not supplied and
+remains pending; current public stages and E12's per-table redb accounting are the available pair.
+Fragment/block/leaf limits stay format limits, never profile tuning controls. Inline tails remain
+deferred for the reasons and measured ceilings in E12.
+
+### Timing evidence and current-value decisions
+
+The new hourly M timing CSV has 76 summary rows and 21,918 API samples, completing in 159.595s
+excluding compilation. Each write mode has 2,305 growing-workload batches; read cells have 1,000
+warm repetitions. Hourly has no events, so its empty-page timings do not calibrate event scans.
+The nonempty event-page evidence remains E11's closed-20k read sweep. Lifecycle n=1 values have
+no p99 interpretation. MemoryStorage timings include its simulated durable disk; do not use its
+long tails as a physical redb latency bound or infer a mode ordering from one process.
+
+| M engine/mode     | Write p50 ms (n=2,305) | Write p99 ms (n=2,305) | Series p99 ms (n=1,000) |
+| ----------------- | ---------------------: | ---------------------: | ----------------------: |
+| memory/Consistent |                 0.2712 |               125.6782 |                 27.7327 |
+| memory/Durable    |                 0.2209 |                73.3511 |                 24.0963 |
+| redb/Consistent   |                 0.9534 |                 6.3090 |                 21.0116 |
+| redb/Durable      |                 3.0819 |                 8.8192 |                 10.9076 |
+
+M replay has 293,520 journal bytes. Redb open is 92.480/94.141ms and recovery 94.888/96.577ms
+(Consistent/Durable, n=1 each); catalog loading also costs work, so these are not journal-only
+costs. Redb's complete day writes 31,647,296/194,008,960 B with 84/2,390 syncs; both final files
+are 30,908,416 B with 1,528,015 visible stream bytes. The 6.13x physical-write difference is not
+an isolated `durable_after_bytes` sweep: writes request explicit durability, maintenance and
+lifecycle work are included, and the experiment interval differs from the Desktop preset.
+
+Current values below are Desktop, except the explicitly noted mobile interval. MB is decimal;
+MiB/KiB are binary. All decisions retain the current value provisionally, not a sizing guarantee.
+
+| Field                 | Current | Evidence                                              | Decision    |
+| --------------------- | ------- | ----------------------------------------------------- | ----------- |
+| `head`                | 32MB    | S 169,704; M 609,732 B peak                           | provisional |
+| `catalog`             | 32MB    | S 3,193,352; M 9,207,192 B resident                   | provisional |
+| `query`               | 56MB    | S 14,856,788; M 19,626,848 B peak                     | provisional |
+| `staging`             | 8MB     | S 2,589,146; M 2,399,498 B peak                       | provisional |
+| `backend_cache`       | 56MB    | Outside charged roots; no cache-miss sweep            | provisional |
+| `backend_overhead`    | 8MB     | Opaque tree/allocator memory not attributed           | provisional |
+| `batch_bytes`         | 4MiB    | M p99 6.309/8.819ms; batches below cap                | provisional |
+| `journal_bytes`       | 64MB    | Replay tested through 293,520 B, not 64MB             | provisional |
+| `durable_after_bytes` | 64MiB   | 6.13x mode I/O difference; cutoff not isolated        | provisional |
+| `durable_interval`    | None    | Mobile remains 300s; no device energy/loss study      | unchanged   |
+| `event_buffer_rows`   | 4,096   | Byte/age triggers confound the row threshold          | provisional |
+| `event_buffer_bytes`  | 64KiB   | Flush enables consolidation; no nearby-byte sweep     | provisional |
+| `event_buffer_age`    | 1h      | Needs a later write; age threshold not isolated       | provisional |
+| `series_quiet_time`   | None    | Per-tier bucket width; S hour/minute both covered     | provisional |
+| `consolidate_chunks`  | 64      | 64 inputs/round; S max 34.98ms, not paired            | provisional |
+| `consolidate_bytes`   | 16MiB   | Large-value rounds covered; input bytes not traced    | provisional |
+| `max_sorted_runs`     | 8       | No merge pressure here; E11 ways 6 to 2 at R=2        | provisional |
+| `cleanup_chunks`      | 64      | Pin/expiry/release covered; no cap-sized delete trial | provisional |
+
+Batch observations cover 256-point M batches and up to roughly 2MiB text batches, not worst-case
+4MiB writes on every schema. Fewer observed bytes do not justify lowering memory floors: schema
+width, burst overlap, host concurrency, longer pin/churn histories and retained versions remain
+unbounded by these samples. Long-lived dictionary holes are still a documented limitation.
+E1's deterministic overshoot tests remain part of the gates: a backlog round plus a caller batch
+can exceed the durability byte threshold. Root peaks/file sizes do not measure redb's opaque
+allocator or cache growth during that overshoot. No total is raised to hide missing admission.
+Mobile's five-minute interval and disabled heavy event consolidation remain intact.
+
+### Verification matrix
+
+Tests are executed tests, not inferred from a compiler target list. Benchmark smoke validates
+answers/CSV on both engines; it is not full platform calibration. WSL has its own ext4
+`~/tsdb-target`, never the worktree's Windows target. Sources are on the mounted G: filesystem.
+Bench files now use `CARGO_TARGET_TMPDIR` on each target's filesystem; ordinary test temporary
+files are on the OS temporary filesystem. The recorded WSL run predates that relocation.
+
+| Target/runtime               | Result in E13                                          |
+| ---------------------------- | ------------------------------------------------------ |
+| Windows x86_64 MSVC          | All six native gates passed; S/M calibration above     |
+| Linux x86_64 GNU, WSL Ubuntu | 732/682 unit + 2 doc each; all-feature smoke passed    |
+| Windows aarch64 MSVC         | Pending hardware/native validation                     |
+| Linux aarch64 GNU            | Pending hardware/native validation                     |
+| macOS x86_64                 | Pending hardware/native validation                     |
+| macOS aarch64                | Pending hardware/native validation                     |
+| Linux x86_64 musl            | Pending toolchain/runtime validation                   |
+| Linux aarch64 musl (tier 2)  | Untested; no target validation claimed                 |
+| Android aarch64              | Pending device validation                              |
+| iOS aarch64                  | Pending device validation                              |
+| 32-bit targets               | Compile-rejected by the crate guard; no new target run |
+
+WSL is Ubuntu 26.04 LTS, kernel 6.18.54.1-microsoft-standard-WSL2, glibc 2.43; rustc
+1.100.0-nightly (34baba539, 2026-08-16), LLVM 23.1.0. Native Windows uses the newer compiler
+recorded above; the two smoke timings are not a cross-OS performance comparison. Linux's smoke
+validated in 2.173s (space part 0.244s); native smoke took 1.267s (space 0.106s).
+Native fmt and both Clippy configurations passed. Native tests passed 732/682 unit and two doc
+tests each, all/default features, in 96.58/90.55s excluding compilation (three/two ignored).
+Final WSL tests passed the same counts in 123.69/114.90s (three/two ignored). The 30 final
+shape/engine root observations comprise 14 S shapes on both engines plus hourly M on both.
+
+L and M shapes beyond hourly, other presets/devices, timing process repeats, real sanitized
+traffic, RSS/cache attribution, and direct raw-consolidation stage comparisons remain pending.
+iOS private-container locking, OS expiration, close p99 on devices and killed-open repair remain
+deferred to actual iOS integration. Simulated durable-image crashes are not real power loss or
+process-kill tests. No root workflow, app or repository script is changed.

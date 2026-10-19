@@ -1,3 +1,4 @@
+mod model;
 mod schedules;
 
 use std::{fs, ops::ControlFlow, panic::Location};

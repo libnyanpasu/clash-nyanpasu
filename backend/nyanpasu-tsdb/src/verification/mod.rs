@@ -1,6 +1,7 @@
 //! Exhaustive, instance-local operation and disk schedules over the real test backends.
 
 pub(crate) mod faults;
+pub(crate) mod model;
 
 use std::{
     collections::BTreeMap,
@@ -390,7 +391,7 @@ struct Fixture {
 }
 
 /// Retains counters, not captures or version graphs, through teardown and recovery.
-fn budgets(db: &Tsdb<Observed<MemoryStorage>>) -> Vec<crate::MemoryBudget> {
+fn budgets<S: Storage>(db: &Tsdb<Observed<S>>) -> Vec<crate::MemoryBudget> {
     let mut budgets = vec![
         db.staging_budget().clone(),
         db.shared().query_budget.clone(),

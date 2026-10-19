@@ -26,6 +26,8 @@ struct Args {
     output: Option<PathBuf>,
     /// Explicit sanitized compatible redb source, copied before opening.
     copy: Option<PathBuf>,
+    /// Physical redb space experiment, with its own CSV schema.
+    space: bool,
 }
 impl Args {
     /// Cargo also supplies --bench; every other unknown option is an error.
@@ -37,11 +39,13 @@ impl Args {
             samples: None,
             output: None,
             copy: None,
+            space: false,
         };
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--bench" => (),
+                "--space" => result.space = true,
                 "--smoke" => result.scale = Scale::Smoke,
                 "--scale" => {
                     result.scale = match args.next().as_deref() {
@@ -89,9 +93,30 @@ fn main() {
     }
     output::self_check();
     output::self_check_write_new();
+    if args.space {
+        assert!(args.copy.is_none() && args.shape.is_none() && args.samples.is_none());
+        assert!(
+            matches!(args.scale, Scale::S | Scale::Smoke),
+            "--space has a fixed matrix"
+        );
+        #[cfg(not(feature = "redb"))]
+        panic!("--space requires --features redb");
+        #[cfg(feature = "redb")]
+        {
+            let csv = support::space::run(args.seed, matches!(args.scale, Scale::Smoke));
+            if let Some(path) = args.output {
+                output::write_new(&path, &csv).unwrap();
+            } else {
+                print!("{csv}");
+            }
+            return;
+        }
+    }
     #[cfg(feature = "redb")]
     if matches!(args.scale, Scale::Smoke) {
         run::check_copy(args.seed);
+        // A small real-file experiment validates the separate space CSV without mixing headers.
+        std::hint::black_box(support::space::run(args.seed, true));
     }
     if let Some(name) = &args.shape {
         assert!(

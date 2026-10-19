@@ -7,6 +7,9 @@ pub mod fixture;
 pub mod output;
 pub mod run;
 
+#[cfg(feature = "redb")]
+pub mod space;
+
 /// Private stores stay on Cargo's target filesystem, including after an aborted run.
 #[cfg(feature = "redb")]
 pub fn tempdir() -> tempfile::TempDir {

@@ -239,8 +239,8 @@ importers:
         specifier: 0.8.1
         version: 0.8.1(@ianvs/prettier-plugin-sort-imports@4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)
       prettier-plugin-toml:
-        specifier: 4.0.0
-        version: 4.0.0(prettier@3.9.10)
+        specifier: 4.1.0
+        version: 4.1.0(prettier@3.9.10)
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -3433,61 +3433,154 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tombi-toml/lib-darwin-arm64@1.8.5':
-    resolution: {integrity: sha512-a/5tSNdssQRBcUC6ivybDEXInL2oltX0DbAJstB1TLj4qdOeXRKGSrJfitCACjUTOzis3Igd6nkBtYHfoRorwQ==}
+  '@tombit/binding-android-arm-eabi@0.1.3':
+    resolution: {integrity: sha512-mP+IPJumHaDVm4qzx46py5eN+70zgoKCYtoLELMTXTR0yZ40q2M0vWnXkNNDeT2pq8HPY2K9Hc35siFZJjikVA==}
+    engines: {node: '>=20.0.0'}
+    cpu: [arm]
+    os: [android]
+
+  '@tombit/binding-android-arm64@0.1.3':
+    resolution: {integrity: sha512-EMdoHK4PftqBEak8uxX86VSOmPStboTG1Zbrs7DabpV+njPg7qX9cpkbL/my6YGFTiLFl7IfTAOUN7X3YetSfg==}
+    engines: {node: '>=20.0.0'}
+    cpu: [arm64]
+    os: [android]
+
+  '@tombit/binding-darwin-arm64@0.1.3':
+    resolution: {integrity: sha512-ISSpG1AQKlyOv59z7AWfbZZMeeHOvbcOOryxuWVlVkh9PTjI6KH1bYY8cRBdDJTVlgtU6SfWuxZ6SZRDQF1Z/w==}
     engines: {node: '>=20.0.0'}
     cpu: [arm64]
     os: [darwin]
 
-  '@tombi-toml/lib-darwin-x64@1.8.5':
-    resolution: {integrity: sha512-IRLjvbJyDmLz6Brbp2pTFnPeJCKd9dHzJB7UGvquIQLdOzCgdxOsHV3fHBldeQIIsl8791RCU6BHeVNWB0oKXw==}
+  '@tombit/binding-darwin-x64@0.1.3':
+    resolution: {integrity: sha512-IT/ev9oBPz0Oi5sqAlB40XdjLD+j8TI0iDFN6GmV7VnPjH9R55aTM6Bu3MMYWaDuXXHUp/+YiZiGtR21MdL4sA==}
     engines: {node: '>=20.0.0'}
     cpu: [x64]
     os: [darwin]
 
-  '@tombi-toml/lib-linux-arm64-musl@1.8.5':
-    resolution: {integrity: sha512-TEbPFe+aLl7HN5nj1PH4k+d99eligGql7OOzWWR5JfFfCHNX8aEIerUUXwg5VNj1wyHSUc/VcNvwJrFlMr5agQ==}
+  '@tombit/binding-freebsd-x64@0.1.3':
+    resolution: {integrity: sha512-dX6bmEyTn/f2qmpGN4Yd9oPyQLaGXj88oS3WEIHNCcBrjT1qQH8fDCtjLbJFa5xabh8EKvdRbHydFZyZl9oGiQ==}
     engines: {node: '>=20.0.0'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
+    cpu: [x64]
+    os: [freebsd]
 
-  '@tombi-toml/lib-linux-arm64@1.8.5':
-    resolution: {integrity: sha512-yq2zMrnqRRKBJYSS8XR9MxG+roe4APDR+FSGXL4LJ6xfStpfMEpl09pVGCiv1qa4avvvQLa1tXTG0VykYx099g==}
+  '@tombit/binding-linux-arm-gnueabihf@0.1.3':
+    resolution: {integrity: sha512-9eKlK0UHdGxcQYUdNsDkqEOIfIM/JYGfIBcRTy3efSgVVrgUJqoHNzv11VCpkn4cGurtU+VT/HZcJhOmrWS3Xg==}
+    engines: {node: '>=20.0.0'}
+    cpu: [arm]
+    os: [linux]
+
+  '@tombit/binding-linux-arm-musleabihf@0.1.3':
+    resolution: {integrity: sha512-MxTCXBvT1ep65fZyCyTy0lJy6TfDHCixU3heLzxisQi/2+3F2WxCtiBQi7SHhPR0YVcpsCV/aWodvs4C/aCobQ==}
+    engines: {node: '>=20.0.0'}
+    cpu: [arm]
+    os: [linux]
+
+  '@tombit/binding-linux-arm64-gnu@0.1.3':
+    resolution: {integrity: sha512-dS05N30Wv8TN81c1uRih2i6D1PGgiXWHGaLcaZ3KuMTZWjT8Xf7tQPaztRp1HyhfajtvO6LkjRQDdZ8vKUIMSw==}
     engines: {node: '>=20.0.0'}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@tombi-toml/lib-linux-x64-musl@1.8.5':
-    resolution: {integrity: sha512-LKU+QcXvmRiuqdNbUKlNYFHqK6aJCpTzNI7N5mz8Ntdz+gMQVZkAMictxNQwrOS2d1asJn8raVlBEMiUqbrlFw==}
+  '@tombit/binding-linux-arm64-musl@0.1.3':
+    resolution: {integrity: sha512-xW5+xTWiZa8O44h1H/S6z5buat6gq+9iKsW4GVQnSD6Vn+IsaJchN/6SDYdRmY00n3b+QGNDXrxVyPNEPjZxnw==}
     engines: {node: '>=20.0.0'}
-    cpu: [x64]
+    cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@tombi-toml/lib-linux-x64@1.8.5':
-    resolution: {integrity: sha512-dcRXqN93uidJOnL6KhXcSaSq/9BE6GFSjre+Rzq6q+5uLdROoIncYtj2oeeVZJPrq7Vp2oJmOQBl9sZ1RceZCw==}
+  '@tombit/binding-linux-loong64-gnu@0.1.3':
+    resolution: {integrity: sha512-wAR/Pw4cDBg5Nvs08seT6aZA/BKp+YZhnDJw/TuwfxOsmybRCWbXgtLfKCzz039eVI8tAVI5KUQWtJKLPSERmA==}
+    engines: {node: '>=20.0.0'}
+    cpu: [loong64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tombit/binding-linux-loong64-musl@0.1.3':
+    resolution: {integrity: sha512-OaovFTuWRYMJf/2JIioXgI4x8WCV1B07yhk1bV0RVZaUl4VyJaWcUTiSjTXylQhM05e8lwazAeq/kXNhckgACg==}
+    engines: {node: '>=20.0.0'}
+    cpu: [loong64]
+    os: [linux]
+    libc: [musl]
+
+  '@tombit/binding-linux-ppc64-gnu@0.1.3':
+    resolution: {integrity: sha512-NvPbQv+mreSWJp4qjCL0LLc5es9WW/YijGTkIT0V1HQ1B984nOVh8tiIpBMAG40bSRQMQ2OUCp5rl8OSDeRR3A==}
+    engines: {node: '>=20.0.0'}
+    cpu: [ppc64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tombit/binding-linux-ppc64-musl@0.1.3':
+    resolution: {integrity: sha512-8mISorA/NEB66XX2DLeUwwWfM+gLJVxCtRIMMYFXr6g/C5emjk+MagDF2UCWZ+0nc+RS0oeOundT5NEGPZLpmw==}
+    engines: {node: '>=20.0.0'}
+    cpu: [ppc64]
+    os: [linux]
+    libc: [musl]
+
+  '@tombit/binding-linux-riscv64-gnu@0.1.3':
+    resolution: {integrity: sha512-bhDaANZzp5AHfLl+j9hqSA8VST+Tbs0Dk2psDj4ntNyLM2PSyFGdmb3UpOihZkLS8up6YXlj0GOyZOSTcIbBVA==}
+    engines: {node: '>=20.0.0'}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tombit/binding-linux-riscv64-musl@0.1.3':
+    resolution: {integrity: sha512-HirMFmGohIZZ22P5ql3Abr70qy4yuxNe/ePxTSvoIVs38rZlI1y8chNcZ+DhvI/CCwrIIcuE9g3I+hWScdQp5g==}
+    engines: {node: '>=20.0.0'}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [musl]
+
+  '@tombit/binding-linux-s390x-gnu@0.1.3':
+    resolution: {integrity: sha512-EjjthuKm5zWwFqzPNarCuiwL1Q7uSEuqfr1guIkbgWzrJJ++R18Hv+420X48QUu8aetDIlVRzs3zFUGM6xyN2A==}
+    engines: {node: '>=20.0.0'}
+    cpu: [s390x]
+    os: [linux]
+    libc: [glibc]
+
+  '@tombit/binding-linux-x64-gnu@0.1.3':
+    resolution: {integrity: sha512-YoptNAK8Hcw2lAdzOyCT2rVf6Lr7JeXdPsa3mXCiZj0sxJbq27wkrUONlKU8I5Gj+hol4A3zcppTjILyDA8r+A==}
     engines: {node: '>=20.0.0'}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@tombi-toml/lib-win32-arm64@1.8.5':
-    resolution: {integrity: sha512-1ACHRNCaAGVoI71LXBj2R4VWZkjOOQAI5aPR+7WcU2zwkMnN55i5mgycPV45zKFfnAIkjvlDpT5olpZ4KXyAqg==}
+  '@tombit/binding-linux-x64-musl@0.1.3':
+    resolution: {integrity: sha512-36q7vrzoH0pSVoo3TU1LctbWr7AKXUwtddvz2tMgeuHUG54rmpqH8kgzTtzPy2/KuAqRGDGAtq9MhKiS+cwpQg==}
+    engines: {node: '>=20.0.0'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@tombit/binding-openharmony-arm64@0.1.3':
+    resolution: {integrity: sha512-W/8ryDXLRBFqTyvOHl22m1lcK8PgovyrWuf1ZfntdwVca4gyFs3xRUa4DHdvGiJYGeSzRB1+a9RqiqofXfJYSw==}
+    engines: {node: '>=20.0.0'}
+    cpu: [arm64]
+    os: [openharmony]
+
+  '@tombit/binding-openharmony-x64@0.1.3':
+    resolution: {integrity: sha512-pQZvs93VD1PTzgcoTd8Z6TebHnEXqEHR1HWJnBdtk8qmq6c9qYjZHc3b8k7iNdihj7vQvw+s+CaTv5puLJwWeQ==}
+    engines: {node: '>=20.0.0'}
+    cpu: [x64]
+    os: [openharmony]
+
+  '@tombit/binding-win32-arm64-msvc@0.1.3':
+    resolution: {integrity: sha512-2QUpg+q8EfZp9hN2Chy5FFPcWdJ+MxtzIeEVRLMPfyeTHti05wlqY+hi5vLDOezLz6g4mwiRnsZpLR+aOIcNXA==}
     engines: {node: '>=20.0.0'}
     cpu: [arm64]
     os: [win32]
 
-  '@tombi-toml/lib-win32-x64@1.8.5':
-    resolution: {integrity: sha512-CfDHGdgdA4r+J0iCBnwQCEN4YFZRcbzc8eaJ75mQ9p0VVDq5MZ5s1wczX4uWpzQ/O8LGGo/nljX7zJjPQ2YNAA==}
+  '@tombit/binding-win32-ia32-msvc@0.1.3':
+    resolution: {integrity: sha512-D6DX3LpLQ2p87z71HuEYWTb9ba3aqnUx3g2N+r7CPwMLxc3cv6JtUZ2hiyHFeyJnV1t2PVOJFqNdsrd3muICPQ==}
+    engines: {node: '>=20.0.0'}
+    cpu: [ia32]
+    os: [win32]
+
+  '@tombit/binding-win32-x64-msvc@0.1.3':
+    resolution: {integrity: sha512-kfWO3/yoREKE541iI6jqjhCHMkTAfUjvRQDs6fu9zXRztUQNmol+pga4Bm7rKNjuVfuWtOg91WolglQtchvQGg==}
     engines: {node: '>=20.0.0'}
     cpu: [x64]
     os: [win32]
-
-  '@tombi-toml/lib@1.8.5':
-    resolution: {integrity: sha512-p2iL3Wr8ry+0+hEt6oigKBqEV+EDL7oCzZiiYR29dDcBrPN4OOqxz+UBvS3DapKsRbmf/z7DKMsMzlhcs0ypmg==}
-    engines: {node: '>=20.0.0'}
 
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
@@ -5682,8 +5775,8 @@ packages:
       prettier-plugin-svelte:
         optional: true
 
-  prettier-plugin-toml@4.0.0:
-    resolution: {integrity: sha512-kx4a0gdNKH40/NOj/gSkiRKqXmOq8hXb6fNWW6Txd3T0fyq+Wq8ly0qtjNoGGiLUPhvS/3PIRVyVJpzHw6RNwA==}
+  prettier-plugin-toml@4.1.0:
+    resolution: {integrity: sha512-6+qgmRqD79kSsincO3odPzMpteTCpeP+WxxYmI7vDrhfpiQMFeciozuqUcnWc4XfJ97OZiuWeUfVcDktvACIDg==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       prettier: ^3.0.3
@@ -6228,6 +6321,10 @@ packages:
 
   toggle-selection@1.0.6:
     resolution: {integrity: sha512-BiZS+C1OS8g/q2RRbJmy59xpyghNBqrr6k5L/uKBGRsTfxmu3ffiRnd8mlGPUVayg8pvfi5urfnu8TU7DVOkLQ==}
+
+  tombit@0.1.3:
+    resolution: {integrity: sha512-BfjlkbiUlUkWvxa/FKziIudXLAKq41kjiJQOFSDXHKp+b7yqk3NmrcoiGCTj0J0r3fTX/Fy3tNGf+BwiYuj14A==}
+    engines: {node: '>=20.0.0'}
 
   totalist@3.0.1:
     resolution: {integrity: sha512-sf4i37nQ2LBx4m3wB74y+ubopq6W/dIzXg0FDGjsYnZHVa1Da8FH853wlL2gtUhg+xJXjfk3kUZS3BRoQeoQBQ==}
@@ -9356,40 +9453,74 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.12.3
       '@tauri-apps/cli-win32-x64-msvc': 2.12.3
 
-  '@tombi-toml/lib-darwin-arm64@1.8.5':
+  '@tombit/binding-android-arm-eabi@0.1.3':
     optional: true
 
-  '@tombi-toml/lib-darwin-x64@1.8.5':
+  '@tombit/binding-android-arm64@0.1.3':
     optional: true
 
-  '@tombi-toml/lib-linux-arm64-musl@1.8.5':
+  '@tombit/binding-darwin-arm64@0.1.3':
     optional: true
 
-  '@tombi-toml/lib-linux-arm64@1.8.5':
+  '@tombit/binding-darwin-x64@0.1.3':
     optional: true
 
-  '@tombi-toml/lib-linux-x64-musl@1.8.5':
+  '@tombit/binding-freebsd-x64@0.1.3':
     optional: true
 
-  '@tombi-toml/lib-linux-x64@1.8.5':
+  '@tombit/binding-linux-arm-gnueabihf@0.1.3':
     optional: true
 
-  '@tombi-toml/lib-win32-arm64@1.8.5':
+  '@tombit/binding-linux-arm-musleabihf@0.1.3':
     optional: true
 
-  '@tombi-toml/lib-win32-x64@1.8.5':
+  '@tombit/binding-linux-arm64-gnu@0.1.3':
     optional: true
 
-  '@tombi-toml/lib@1.8.5':
-    optionalDependencies:
-      '@tombi-toml/lib-darwin-arm64': 1.8.5
-      '@tombi-toml/lib-darwin-x64': 1.8.5
-      '@tombi-toml/lib-linux-arm64': 1.8.5
-      '@tombi-toml/lib-linux-arm64-musl': 1.8.5
-      '@tombi-toml/lib-linux-x64': 1.8.5
-      '@tombi-toml/lib-linux-x64-musl': 1.8.5
-      '@tombi-toml/lib-win32-arm64': 1.8.5
-      '@tombi-toml/lib-win32-x64': 1.8.5
+  '@tombit/binding-linux-arm64-musl@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-loong64-gnu@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-loong64-musl@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-ppc64-gnu@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-ppc64-musl@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-riscv64-gnu@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-riscv64-musl@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-s390x-gnu@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-x64-gnu@0.1.3':
+    optional: true
+
+  '@tombit/binding-linux-x64-musl@0.1.3':
+    optional: true
+
+  '@tombit/binding-openharmony-arm64@0.1.3':
+    optional: true
+
+  '@tombit/binding-openharmony-x64@0.1.3':
+    optional: true
+
+  '@tombit/binding-win32-arm64-msvc@0.1.3':
+    optional: true
+
+  '@tombit/binding-win32-ia32-msvc@0.1.3':
+    optional: true
+
+  '@tombit/binding-win32-x64-msvc@0.1.3':
+    optional: true
 
   '@tybys/wasm-util@0.10.3':
     dependencies:
@@ -11752,11 +11883,10 @@ snapshots:
     optionalDependencies:
       '@ianvs/prettier-plugin-sort-imports': 4.7.1(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.9.10)(supports-color@10.2.2))(prettier@3.9.10)(supports-color@10.2.2)
 
-  prettier-plugin-toml@4.0.0(prettier@3.9.10):
+  prettier-plugin-toml@4.1.0(prettier@3.9.10):
     dependencies:
-      '@tombi-toml/lib': 1.8.5
       prettier: 3.9.10
-      smol-toml: 1.9.1
+      tombit: 0.1.3
 
   prettier@3.8.5: {}
 
@@ -12413,6 +12543,32 @@ snapshots:
       vfile: 6.0.1
 
   toggle-selection@1.0.6: {}
+
+  tombit@0.1.3:
+    optionalDependencies:
+      '@tombit/binding-android-arm-eabi': 0.1.3
+      '@tombit/binding-android-arm64': 0.1.3
+      '@tombit/binding-darwin-arm64': 0.1.3
+      '@tombit/binding-darwin-x64': 0.1.3
+      '@tombit/binding-freebsd-x64': 0.1.3
+      '@tombit/binding-linux-arm-gnueabihf': 0.1.3
+      '@tombit/binding-linux-arm-musleabihf': 0.1.3
+      '@tombit/binding-linux-arm64-gnu': 0.1.3
+      '@tombit/binding-linux-arm64-musl': 0.1.3
+      '@tombit/binding-linux-loong64-gnu': 0.1.3
+      '@tombit/binding-linux-loong64-musl': 0.1.3
+      '@tombit/binding-linux-ppc64-gnu': 0.1.3
+      '@tombit/binding-linux-ppc64-musl': 0.1.3
+      '@tombit/binding-linux-riscv64-gnu': 0.1.3
+      '@tombit/binding-linux-riscv64-musl': 0.1.3
+      '@tombit/binding-linux-s390x-gnu': 0.1.3
+      '@tombit/binding-linux-x64-gnu': 0.1.3
+      '@tombit/binding-linux-x64-musl': 0.1.3
+      '@tombit/binding-openharmony-arm64': 0.1.3
+      '@tombit/binding-openharmony-x64': 0.1.3
+      '@tombit/binding-win32-arm64-msvc': 0.1.3
+      '@tombit/binding-win32-ia32-msvc': 0.1.3
+      '@tombit/binding-win32-x64-msvc': 0.1.3
 
   totalist@3.0.1: {}
 

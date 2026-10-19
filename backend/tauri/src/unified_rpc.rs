@@ -333,10 +333,18 @@ fn http_rpc_error(error: RpcError) -> (StatusCode, Json<RpcError>) {
 
 // Subscribe only while a page consumes full connection details. Dropping the
 // SSE body releases the watch receiver, just like a native channel teardown.
-async fn http_connection_details(State(rpc): State<UnifiedRpc>) -> impl IntoResponse {
-    let receiver = rpc.dependencies.client.subscribe_clash_connection_details();
-    Sse::new(connection_detail_events(receiver))
-        .keep_alive(axum::response::sse::KeepAlive::default())
+async fn http_connection_details(
+    State(rpc): State<UnifiedRpc>,
+) -> Result<impl IntoResponse, (StatusCode, Json<RpcError>)> {
+    let receiver = rpc
+        .dependencies
+        .client
+        .subscribe_clash_connection_details()
+        .await
+        .map_err(RpcError::application)
+        .map_err(http_rpc_error)?;
+    Ok(Sse::new(connection_detail_events(receiver))
+        .keep_alive(axum::response::sse::KeepAlive::default()))
 }
 
 fn connection_detail_events(
@@ -974,7 +982,15 @@ mod tests {
         let frame = |sequence| {
             Some(Arc::new(ClashConnectionDetails {
                 sequence,
-                connections: Vec::new(),
+                connections: crate::core::clash::connection_rates::ConnectionDetails::new(
+                    Arc::new(clash_api::ConnectionsSnapshot {
+                        download_total: 0,
+                        upload_total: 0,
+                        connections: None,
+                        memory: None,
+                    }),
+                    Vec::new(),
+                ),
             }))
         };
         let (sender, receiver) = tokio::sync::watch::channel(frame(1));

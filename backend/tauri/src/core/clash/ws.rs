@@ -19,7 +19,8 @@ use crate::core::{
         api::{ApiClient, ApiError},
     },
     clash::connection_rates::{
-        ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionRates,
+        ClashConnection, ClashConnectionsSummary, ConnectionCounters, ConnectionDetails,
+        ConnectionRateScratch, ConnectionRates,
     },
 };
 
@@ -40,13 +41,14 @@ pub struct ClashConnectionsInfo {
 /// Latest per-connection detail frame, pushed only while at least one
 /// subscriber exists (see `StreamsClient::subscribe_connection_details`);
 /// only the newest frame is kept, never a history.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ClashConnectionDetails {
     /// Equal to the sequence of the `ConnectionsUpdated` event emitted for
     /// the same sample, so a subscriber can align the two.
     pub sequence: u64,
-    pub connections: Vec<ClashConnection>,
+    #[specta(type = Vec<ClashConnection<'static>>)]
+    pub connections: ConnectionDetails,
 }
 
 /// Raw `/connections` snapshot of every accepted sample, tagged with the
@@ -55,7 +57,7 @@ pub struct ClashConnectionDetails {
 #[derive(Debug, Clone)]
 pub struct ClashConnectionsFrame {
     pub instance_id: String,
-    pub snapshot: clash_api::ConnectionsSnapshot,
+    pub snapshot: Arc<clash_api::ConnectionsSnapshot>,
 }
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize)]
@@ -248,6 +250,8 @@ enum Delivery {
 enum Message {
     Start(RpcReplyPort<()>),
     LifecycleChanged,
+    SubscribeDetails(RpcReplyPort<watch::Receiver<Option<Arc<ClashConnectionDetails>>>>),
+    DetailsClosed,
     Snapshot(RpcReplyPort<ClashWsSnapshot>),
     Recording(ClashWsKind, bool, RpcReplyPort<ClashWsRecording>),
     Clear(ClashWsKind, RpcReplyPort<Result<()>>),
@@ -279,10 +283,15 @@ struct State {
     history: ClashWsHistory,
     recording: ClashWsRecording,
     previous: Option<ConnectionCounters>,
+    rate_scratch: ConnectionRateScratch,
+    details_closed: Option<JoinHandle<()>>,
     capture_prefix: String,
 }
 impl Drop for State {
     fn drop(&mut self) {
+        if let Some(task) = self.details_closed.take() {
+            task.abort();
+        }
         if let Some(task) = self.task.take() {
             task.abort();
         }
@@ -324,6 +333,7 @@ impl State {
         self.api = None;
         self.history = ClashWsHistory::default();
         self.previous = None;
+        self.rate_scratch = ConnectionRateScratch::default();
         let _ = self.args.details.send_replace(None);
         let _ = self.args.frames.send_replace(None);
         self.status(ClashConnectionsConnectorState::Disconnected);
@@ -337,7 +347,7 @@ impl State {
             update: ClashWsUpdate::Reset(Box::new(self.snapshot())),
         });
     }
-    fn publish_frame(&self, snapshot: clash_api::ConnectionsSnapshot) {
+    fn publish_frame(&self, snapshot: Arc<clash_api::ConnectionsSnapshot>) {
         if let Some(api) = &self.api {
             let _ = self
                 .args
@@ -381,16 +391,23 @@ impl State {
     async fn update(&mut self, sample: Sample) {
         match sample {
             Sample::Connections(sample) => {
+                let sample = Arc::new(sample);
                 let now = tokio::time::Instant::now();
                 let with_details = self.args.details.receiver_count() > 0;
-                let Some(derived) =
-                    ConnectionRates::derive(self.previous.as_ref(), &sample, now, with_details)
-                else {
+                let Some(derived) = ConnectionRates::derive(
+                    &mut self.rate_scratch,
+                    self.previous.as_ref(),
+                    &sample,
+                    now,
+                    with_details,
+                ) else {
                     self.publish_frame(sample);
                     return;
                 };
                 let summary = derived.summary;
-                self.previous = Some(derived.counters);
+                if let Some(previous) = self.previous.replace(derived.counters) {
+                    self.rate_scratch.recycle(previous);
+                }
                 let info = ClashConnectionsInfo {
                     download_total: summary.download_total,
                     upload_total: summary.upload_total,
@@ -415,7 +432,10 @@ impl State {
                             .details
                             .send_replace(Some(Arc::new(ClashConnectionDetails {
                                 sequence: self.sequence,
-                                connections,
+                                connections: ConnectionDetails::new(
+                                    Arc::clone(&sample),
+                                    connections,
+                                ),
                             })));
                 }
                 self.publish_frame(sample);
@@ -662,6 +682,8 @@ impl Actor for StreamsActor {
             history: Default::default(),
             recording: Default::default(),
             previous: None,
+            rate_scratch: ConnectionRateScratch::default(),
+            details_closed: None,
             capture_prefix: uuid::Uuid::new_v4().to_string(),
         })
     }
@@ -719,6 +741,27 @@ impl Actor for StreamsActor {
                         state.log_session_active = false;
                         let _ = state.args.logs.set_instance(None).await;
                     }
+                }
+            }
+            Message::SubscribeDetails(reply) => {
+                if state.args.details.receiver_count() == 0 {
+                    let _ = state.args.details.send_replace(None);
+                }
+                let receiver = state.args.details.subscribe();
+                if let Some(task) = state.details_closed.take() {
+                    task.abort();
+                }
+                let details = state.args.details.clone();
+                let owner = actor.clone();
+                state.details_closed = Some(tokio::spawn(async move {
+                    details.closed().await;
+                    let _ = owner.cast(Message::DetailsClosed);
+                }));
+                let _ = reply.send(receiver);
+            }
+            Message::DetailsClosed => {
+                if state.args.details.receiver_count() == 0 {
+                    let _ = state.args.details.send_replace(None);
                 }
             }
             Message::Snapshot(reply) => {
@@ -819,7 +862,6 @@ struct Inner {
     logs: crate::core::logs::CoreLogsClient,
     connections: broadcast::Sender<ClashConnectionsConnectorEvent>,
     events: broadcast::Sender<ClashWsEvent>,
-    details: watch::Sender<Option<Arc<ClashConnectionDetails>>>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
 }
 impl Drop for Inner {
@@ -849,7 +891,7 @@ impl StreamsClient {
                 shutdown: shutdown.clone(),
                 connections: connections.clone(),
                 events: events.clone(),
-                details: details.clone(),
+                details,
                 frames: frames.clone(),
             },
         )
@@ -861,7 +903,6 @@ impl StreamsClient {
             logs,
             connections,
             events,
-            details,
             frames,
         })))
     }
@@ -909,11 +950,12 @@ impl StreamsClient {
     }
     /// The latest connection-detail frame, kept only while at least one
     /// receiver exists (`receiver_count()` gates the actor's per-sample
-    /// work); `None` until the first sample after subscribing.
-    pub fn subscribe_connection_details(
+    /// work). The first subscriber starts with `None`; additional subscribers
+    /// receive the current frame. The owner clears it after the last drop.
+    pub async fn subscribe_connection_details(
         &self,
-    ) -> watch::Receiver<Option<Arc<ClashConnectionDetails>>> {
-        self.0.details.subscribe()
+    ) -> Result<watch::Receiver<Option<Arc<ClashConnectionDetails>>>> {
+        self.call(Message::SubscribeDetails).await
     }
     /// The latest raw connections snapshot of every accepted sample,
     /// independent of recording flags and detail subscribers; `None` until
@@ -1260,7 +1302,7 @@ mod tests {
 
         // Subscribing only now must still observe the untouched initial
         // value: nothing was ever published while no receiver existed (G2).
-        let details = client.subscribe_connection_details();
+        let details = client.subscribe_connection_details().await.unwrap();
         assert!(details.borrow().is_none());
         server.abort();
     }
@@ -1279,7 +1321,7 @@ mod tests {
         .await
         .unwrap();
         let mut events = client.subscribe_ws();
-        let mut details = client.subscribe_connection_details();
+        let mut details = client.subscribe_connection_details().await.unwrap();
         client.start().await.unwrap();
         connected(&mut events).await;
         let api = core.api_client().await.unwrap();
@@ -1305,6 +1347,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn slow_details_consumers_keep_immutable_frames_and_last_drop_releases_them() {
+        let (url, server) = server(Router::new().route("/connections", get(idle))).await;
+        let core = CoreClient::spawn(endpoint(url)).await.unwrap();
+        let client = StreamsClient::spawn(
+            core.clone(),
+            crate::core::logs::CoreLogsClient::test_client().await,
+            LogLevel::Debug,
+            CancellationToken::new(),
+            &TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+        let mut events = client.subscribe_ws();
+        let details = client.subscribe_connection_details().await.unwrap();
+        let raw = client.subscribe_connection_frames();
+        client.start().await.unwrap();
+        connected(&mut events).await;
+        let api = core.api_client().await.unwrap();
+        assert!(deliver(&client.0.actor, Delivery::Sample(api.clone(), sample(100))).await);
+        let first = details.borrow().clone().unwrap();
+        let first_json = serde_json::to_value(&first).unwrap();
+        let first_snapshot = Arc::downgrade(&raw.borrow().as_ref().unwrap().snapshot);
+        assert!(deliver(&client.0.actor, Delivery::Sample(api, sample(200))).await);
+        assert_eq!(serde_json::to_value(&first).unwrap(), first_json);
+        assert!(first_snapshot.upgrade().is_some());
+        drop(first);
+        assert!(first_snapshot.upgrade().is_none());
+
+        let second = client.subscribe_connection_details().await.unwrap();
+        drop(details);
+        assert!(second.borrow().is_some());
+        let retained = Arc::downgrade(second.borrow().as_ref().unwrap());
+        drop(second);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while retained.upgrade().is_some() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let subscribed = client.subscribe_connection_details().await.unwrap();
+        assert!(subscribed.borrow().is_none());
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn reset_clears_the_details_watch() {
         let (url, server) = server(Router::new().route("/connections", get(idle))).await;
         let core = CoreClient::spawn(endpoint(url)).await.unwrap();
@@ -1318,7 +1406,7 @@ mod tests {
         .await
         .unwrap();
         let mut events = client.subscribe_ws();
-        let mut details = client.subscribe_connection_details();
+        let mut details = client.subscribe_connection_details().await.unwrap();
         client.start().await.unwrap();
         connected(&mut events).await;
         let api = core.api_client().await.unwrap();
@@ -1442,12 +1530,24 @@ mod tests {
         // A first-ever sample (no `previous`) keeps every rate at zero
         // regardless of N, and same-digit-width counts (100 / 999) keep
         // `connectionCount` itself from perturbing the byte count (G1).
-        let small = ConnectionRates::derive(None, &connections_sample(100, "Proxy"), now, false)
-            .unwrap()
-            .summary;
-        let large = ConnectionRates::derive(None, &connections_sample(999, "Proxy"), now, false)
-            .unwrap()
-            .summary;
+        let small = ConnectionRates::derive(
+            &mut ConnectionRateScratch::default(),
+            None,
+            &connections_sample(100, "Proxy"),
+            now,
+            false,
+        )
+        .unwrap()
+        .summary;
+        let large = ConnectionRates::derive(
+            &mut ConnectionRateScratch::default(),
+            None,
+            &connections_sample(999, "Proxy"),
+            now,
+            false,
+        )
+        .unwrap()
+        .summary;
         let small_len = serde_json::to_vec(&ClashWsUpdate::ConnectionsUpdated(small))
             .unwrap()
             .len();
@@ -1460,12 +1560,24 @@ mod tests {
     #[test]
     fn snapshot_size_is_independent_of_connection_count() {
         let now = tokio::time::Instant::now();
-        let small = ConnectionRates::derive(None, &connections_sample(100, "Proxy"), now, false)
-            .unwrap()
-            .summary;
-        let large = ConnectionRates::derive(None, &connections_sample(999, "Proxy"), now, false)
-            .unwrap()
-            .summary;
+        let small = ConnectionRates::derive(
+            &mut ConnectionRateScratch::default(),
+            None,
+            &connections_sample(100, "Proxy"),
+            now,
+            false,
+        )
+        .unwrap()
+        .summary;
+        let large = ConnectionRates::derive(
+            &mut ConnectionRateScratch::default(),
+            None,
+            &connections_sample(999, "Proxy"),
+            now,
+            false,
+        )
+        .unwrap()
+        .summary;
 
         let mut small_history = ClashWsHistory::default();
         small_history.connections.push_back(small);

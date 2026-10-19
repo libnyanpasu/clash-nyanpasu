@@ -108,12 +108,12 @@ pub fn cancel_for_webview<R: tauri::Runtime>(manager: &impl Manager<R>, webview:
 /// a real webview.
 pub trait DetailsSink: Send + Sync + 'static {
     /// Returns `false` to end the forwarding loop (e.g. the channel closed).
-    fn send(&self, frame: &ClashConnectionDetails) -> bool;
+    fn send(&self, frame: &Arc<ClashConnectionDetails>) -> bool;
 }
 
-impl DetailsSink for tauri::ipc::Channel<ClashConnectionDetails> {
-    fn send(&self, frame: &ClashConnectionDetails) -> bool {
-        tauri::ipc::Channel::send(self, frame.clone()).is_ok()
+impl DetailsSink for tauri::ipc::Channel<Arc<ClashConnectionDetails>> {
+    fn send(&self, frame: &Arc<ClashConnectionDetails>) -> bool {
+        tauri::ipc::Channel::send(self, Arc::clone(frame)).is_ok()
     }
 }
 
@@ -148,7 +148,7 @@ mod tests {
     #[derive(Clone)]
     struct RecordingSink(mpsc::UnboundedSender<u64>);
     impl DetailsSink for RecordingSink {
-        fn send(&self, frame: &ClashConnectionDetails) -> bool {
+        fn send(&self, frame: &Arc<ClashConnectionDetails>) -> bool {
             self.0.send(frame.sequence).is_ok()
         }
     }
@@ -156,7 +156,15 @@ mod tests {
     fn details(sequence: u64) -> Arc<ClashConnectionDetails> {
         Arc::new(ClashConnectionDetails {
             sequence,
-            connections: Vec::new(),
+            connections: super::super::connection_rates::ConnectionDetails::new(
+                Arc::new(clash_api::ConnectionsSnapshot {
+                    download_total: 0,
+                    upload_total: 0,
+                    connections: None,
+                    memory: None,
+                }),
+                Vec::new(),
+            ),
         })
     }
 

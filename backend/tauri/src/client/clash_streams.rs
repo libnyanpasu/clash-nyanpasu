@@ -58,9 +58,9 @@ impl NyanpasuClient {
     pub fn subscribe_clash_ws(&self) -> broadcast::Receiver<ClashWsEvent> {
         self.inner.streams.subscribe_ws()
     }
-    pub fn subscribe_clash_connection_details(
+    pub async fn subscribe_clash_connection_details(
         &self,
-    ) -> watch::Receiver<Option<Arc<ClashConnectionDetails>>> {
-        self.inner.streams.subscribe_connection_details()
+    ) -> Result<watch::Receiver<Option<Arc<ClashConnectionDetails>>>> {
+        Ok(self.inner.streams.subscribe_connection_details().await?)
     }
 }

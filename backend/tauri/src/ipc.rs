@@ -1820,9 +1820,9 @@ pub async fn subscribe_clash_connection_details(
         '_,
         crate::core::clash::connection_details::ConnectionDetailSubscriptions,
     >,
-    on_frame: tauri::ipc::Channel<crate::core::clash::ws::ClashConnectionDetails>,
+    on_frame: tauri::ipc::Channel<std::sync::Arc<crate::core::clash::ws::ClashConnectionDetails>>,
 ) -> Result<crate::core::clash::connection_details::SubscriptionId> {
-    let receiver = client.subscribe_clash_connection_details();
+    let receiver = client.subscribe_clash_connection_details().await?;
     let parent = client.shutdown_child_token();
     let (id, cancel) = subscriptions.register(&parent, window.label().to_string());
     client.spawn_tracked(

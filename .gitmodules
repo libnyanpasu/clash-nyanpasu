@@ -1,3 +1,6 @@
 [submodule "backend/nyanpasu-runtime"]
 	path = backend/nyanpasu-runtime
 	url = https://github.com/libnyanpasu/nyanpasu-runtime.git
+[submodule "backend/enable-loopback"]
+	path = backend/enable-loopback
+	url = https://github.com/libnyanpasu/enable-loopback.git

@@ -38,7 +38,10 @@ mod write;
 pub use budget::{BudgetExceeded, MemoryBudget, Reservation};
 pub use db::{Reader, Tsdb};
 pub use error::ErrorKind;
-pub use lifecycle::{CheckpointError, OpenError, RecoveryError, RecoveryProgress, RecoveryView};
+pub use lifecycle::{
+    CheckpointError, CompactError, CompactStorage, Compaction, OpenError, RecoveryError,
+    RecoveryProgress, RecoveryView,
+};
 pub use maintain::{Maintain, MaintainError, Maintained};
 pub use profile::{Profile, ProfileError};
 pub use query::{

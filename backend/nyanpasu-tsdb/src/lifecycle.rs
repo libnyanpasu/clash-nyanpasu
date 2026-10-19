@@ -9,9 +9,9 @@
 //! - recovery restores host auxiliary state before installing the new instance; failed
 //!   attempts leave an unavailable facade, retried only when the host calls again;
 //! - suspend and explicit close revoke, checkpoint durably without maintenance, and always
-//!   retire the backend. Recovery also resumes a suspended store; explicit close is terminal.
-//!
-//! Physical compaction follows separately.
+//!   retire the backend. Recovery also resumes a suspended store; explicit close is terminal;
+//! - explicit physical compaction excludes captures, defers to backend snapshot ownership,
+//!   and never revokes healthy queries or runs as part of another owner operation.
 
 use std::ops::ControlFlow;
 
@@ -38,6 +38,8 @@ use crate::{
 mod checkpoint;
 pub use checkpoint::CheckpointError;
 pub(crate) use checkpoint::checkpoint;
+mod compaction;
+pub use compaction::{CompactError, CompactStorage, Compaction};
 mod recovery;
 pub(crate) use recovery::prepare as prepare_recovery;
 pub use recovery::{RecoveryError, RecoveryProgress, RecoveryView};

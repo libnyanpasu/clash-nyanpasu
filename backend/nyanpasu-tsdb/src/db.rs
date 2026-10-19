@@ -9,7 +9,10 @@ use snafu::{ResultExt, ensure};
 use crate::{
     ErrorKind, Profile, Schema, Timestamp,
     budget::MemoryBudget,
-    lifecycle::{self, CheckpointError, OpenError, RecoveryError, RecoveryProgress, RecoveryView},
+    lifecycle::{
+        self, CheckpointError, CompactError, CompactStorage, Compaction, OpenError, RecoveryError,
+        RecoveryProgress, RecoveryView,
+    },
     maintain::{self, Maintain, MaintainError, Maintained, Round},
     storage::{Durability, Storage, StorageError},
     version::{CaptureError, LifecycleState, OpenMarker, Registry, Shared, Snapshot, Version},
@@ -455,6 +458,32 @@ impl<S: Storage> Tsdb<S> {
         Reader {
             shared: self.shared.clone(),
         }
+    }
+}
+
+impl<S: CompactStorage> Tsdb<S> {
+    /// Attempts physical compaction exclusively (§9.3). Captures wait on the capture gate;
+    /// live backend snapshots may cause Deferred. Idle Readers and detached results do not.
+    /// No query is revoked, and no registry lock spans the backend call or its durable I/O.
+    /// Only Open admits compaction; other states return the same admission kind as write.
+    /// BackendFailed latches recovery. Other failures leave admission unchanged.
+    /// This synchronous operation has no duration bound and is never called implicitly.
+    pub fn compact(&mut self) -> Result<Compaction, CompactError> {
+        let mut storage = self.shared.exclusive_storage();
+        match self.shared.registry.state() {
+            LifecycleState::Open => (),
+            LifecycleState::Suspended | LifecycleState::Closed => return Err(CompactError::Closed),
+            _ => return Err(CompactError::RecoveryNeeded),
+        }
+        let result = storage
+            .as_mut()
+            .expect("an admitted owner has a backend")
+            .compact()
+            .map_err(|source| CompactError::Compact { source });
+        if let Err(error) = &result {
+            self.shared.report(error.kind());
+        }
+        result
     }
 }
 

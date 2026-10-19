@@ -344,8 +344,8 @@ Idle readers and catalog tokens do not block that condition. Recovery returns to
 while claims remain; the budget has no wait API, and retirement never waits for query completion.
 
 The lock order, documented on `Shared`, is G (backend gate), R (registry), backend locks, then
-budget mutexes. Capture holds G-read and R-read through reserve-before-pin. Owner operations hold
-G-read and take R only for brief publication changes; no R guard spans commit, rollback or fsync.
+budget mutexes. Capture holds G-read and R-read through reserve-before-pin. Writes and maintenance
+hold G-read, taking R briefly; no R guard spans commit, rollback or fsync.
 Retirement takes G-write then R-write only to detach; backend close runs after both are released.
 Queries hold neither G nor R while scanning. They check revocation at entry, successful return,
 manifest entries, decoded blocks, stripe refills, large-value pieces and head/merge/page batches.
@@ -406,6 +406,23 @@ attempt. There is no automatic retry or wait.
 Reopening must target the same dataset; recovery from an old backup needs the deferred external
 incarnation counter.
 
+## Explicit physical compaction
+
+`CompactStorage` is an optional lifecycle capability, separate from transactional `Storage`.
+`Tsdb::compact()` exists only for backends implementing it. MemoryStorage returns `Unsupported`;
+RedbStorage maps its existing Compacted/Unchanged outcomes to `Executed { changed }`, and a live
+read transaction to `Deferred`. Other backends must likewise defer if shared backend ownership
+prevents exclusivity. There is no facade snapshot counter or query-budget drain check: idle
+Readers and results own no storage snapshot, and do not defer compaction.
+
+The owner takes G-write, checks admission briefly under R, then releases R before calling the
+backend. Captures wait on G and proceed afterwards. Compaction changes neither publication nor
+revocation. Existing healthy queries keep working after a Deferred attempt. Only Open admits it;
+recovery states return `CompactError::RecoveryNeeded`, and Suspended/Closed return Local Closed.
+BackendFailed flags recovery; Local and Corrupted errors leave the state unchanged. No registry
+lock spans compaction's durable work. The caller decides when to retry Deferred; there is no
+polling or duration bound. Suspend, close and maintenance never invoke compaction.
+
 ## Errors
 
 Errors follow snafu's own guidance (`guide/philosophy.md`).
@@ -439,6 +456,7 @@ Each public operation returns the error type of its module:
 | opening               | `lifecycle::OpenError`                                                                              |
 | recovering            | `lifecycle::RecoveryError`                                                                          |
 | suspending or closing | `lifecycle::CheckpointError`                                                                        |
+| compacting            | `lifecycle::CompactError`                                                                           |
 | writing a batch       | `write::WriteError`, with `InputError`, `StageError` and, from the backlog's round, `MaintainError` |
 | capturing a snapshot  | `version::CaptureError`                                                                             |
 | summing series        | `query::SeriesQueryError`                                                                           |

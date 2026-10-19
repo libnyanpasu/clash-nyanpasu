@@ -112,14 +112,16 @@ struct Slots {
 /// They release before callbacks; budgets never call back into storage, G or R. Registry
 /// test-hook mutexes follow R; query-hook mutexes are used only at query boundaries in tests.
 /// All hook mutexes release before callbacks. Production query checks use only the atomic.
-/// Captures hold G-read and R-read through reserve-before-pin. Owner operations hold G-read
-/// once and pass the backend down; only short register/publish/withdraw steps take R.
+/// Captures hold G-read and R-read through reserve-before-pin. Writes and maintenance hold
+/// G-read once and pass the backend down; only short register/publish/withdraw steps take R.
 /// No R guard spans commit, rollback, close or fsync. Retirement takes G-write then R-write,
 /// detaches ownership, and drops the backend and roots after both guards are released.
 /// Recovery reopens and restores without G or R, with admission closed. Installation takes
 /// G-write then R-write only after query credit drained and all fallible work completed.
 /// Suspend/close first close admission under G-write then R-write, checkpoint under G-read
 /// without R, then retire. Neither the checkpoint commit nor backend Drop holds R.
+/// Compaction holds G-write, checks admission briefly under R, then invokes the backend
+/// without R. It leaves the revocation flag and publication unchanged; captures wait on G.
 pub(crate) struct Shared<S> {
     /// Capture gate; a reader never retains this guard after capture.
     storage: RwLock<Option<S>>,
@@ -150,6 +152,11 @@ impl<S: Storage> Shared<S> {
     /// Borrows the backend for one owner operation, without excluding captures.
     pub(crate) fn storage(&self) -> RwLockReadGuard<'_, Option<S>> {
         self.storage.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Borrows the backend exclusively for physical compaction, excluding new captures.
+    pub(crate) fn exclusive_storage(&self) -> RwLockWriteGuard<'_, Option<S>> {
+        self.storage.write().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Closes admissions and detaches the backend. The caller drops it outside both locks.
@@ -246,6 +253,12 @@ impl<S: Storage> Shared<S> {
     #[cfg(test)]
     pub(crate) fn gate_available(&self) -> bool {
         self.storage.try_write().is_ok()
+    }
+
+    /// Whether a capture could enter G-read at an explicitly ordered test boundary.
+    #[cfg(test)]
+    pub(crate) fn capture_gate_available(&self) -> bool {
+        self.storage.try_read().is_ok()
     }
 
     /// Reserves a nonzero capture claim before pinning the matching publication under R.

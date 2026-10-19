@@ -28,9 +28,13 @@ impl Hook {
     }
 }
 
-/// Independent hooks and one read fault; neither survives beyond this fixture.
+/// Per-instance boundary hooks and injected faults, all local to one fixture.
 #[derive(Default)]
 pub(super) struct Probes {
+    /// Before explicitly requested compaction, with the facade's capture gate held.
+    pub(super) compact: Hook,
+    /// Next compaction returns this error without poisoning the underlying test engine.
+    pub(super) compact_fault: Mutex<Option<StorageError>>,
     /// Durability requested at each commit, including attempts that fail.
     pub(super) durabilities: Mutex<Vec<Durability>>,
     /// Before the port commit, including its durable work.
@@ -100,6 +104,16 @@ impl<S: Storage> Storage for Observed<S> {
             inner: self.storage.as_ref().unwrap().batch()?,
             probes: &self.probes,
         })
+    }
+}
+
+impl<S: crate::CompactStorage> crate::CompactStorage for Observed<S> {
+    fn compact(&mut self) -> Result<crate::Compaction> {
+        self.probes.compact.run();
+        if let Some(error) = self.probes.compact_fault.lock().unwrap().take() {
+            return Err(error);
+        }
+        self.storage.as_mut().unwrap().compact()
     }
 }
 

@@ -32,6 +32,8 @@ mod schema;
 mod status;
 pub mod storage;
 mod time;
+#[cfg(test)]
+mod verification;
 mod version;
 mod write;
 

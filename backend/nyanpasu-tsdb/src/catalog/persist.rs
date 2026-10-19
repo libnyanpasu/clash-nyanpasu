@@ -453,6 +453,17 @@ pub(super) fn load(
         .map(Dictionary::sized_cost)
         .fold(Combos::slots_cost(dimensions, combos), u64::saturating_add);
     if needed > 0 {
+        #[cfg(test)]
+        if let Some(faults) = read.fault_schedule()
+            && !faults.admission("open.catalog.admit")
+        {
+            return Err(BudgetExceeded {
+                what: "catalog load",
+                needed,
+                available: 0,
+            })
+            .context(ReserveMemorySnafu);
+        }
         admit(ledger, needed, limit).context(ReserveMemorySnafu)?;
     }
     let before = ledger.allocated();

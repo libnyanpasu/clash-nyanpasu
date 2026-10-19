@@ -30,7 +30,9 @@ impl Hook {
 
 /// Per-instance boundary hooks and injected faults, all local to one fixture.
 #[derive(Default)]
-pub(super) struct Probes {
+pub(crate) struct Probes {
+    /// Exhaustive recorder, inactive unless a verification fixture explicitly starts it.
+    pub(crate) schedule: crate::verification::faults::FaultSchedule,
     /// Before explicitly requested compaction, with the facade's capture gate held.
     pub(super) compact: Hook,
     /// Next compaction returns this error without poisoning the underlying test engine.
@@ -56,7 +58,7 @@ pub(super) struct Probes {
 }
 
 /// A backend owned only by the facade; probes do not own it.
-pub(super) struct Observed<S> {
+pub(crate) struct Observed<S> {
     /// Taken by Drop so the close hook precisely precedes backend destruction.
     storage: Option<S>,
     /// Explicitly injected test observations.
@@ -64,8 +66,13 @@ pub(super) struct Observed<S> {
 }
 
 impl<S> Observed<S> {
+    /// Arms the existing backend conformance failures without cloning backend ownership.
+    pub(crate) fn backend(&self) -> &S {
+        self.storage.as_ref().unwrap()
+    }
+
     /// Wraps an existing engine without changing its transaction semantics.
-    pub(super) fn new(storage: S, probes: Arc<Probes>) -> Self {
+    pub(crate) fn new(storage: S, probes: Arc<Probes>) -> Self {
         Self {
             storage: Some(storage),
             probes,
@@ -87,7 +94,12 @@ impl<S: Storage> Storage for Observed<S> {
     where
         Self: 'a;
 
+    fn fault_schedule(&self) -> Option<crate::verification::faults::FaultSchedule> {
+        Some(self.probes.schedule.clone())
+    }
+
     fn snapshot(&self) -> Result<Self::Snapshot> {
+        self.probes.schedule.step("port.snapshot")?;
         self.probes.snapshot.run();
         if let Some(error) = self.probes.snapshot_fault.lock().unwrap().take() {
             return Err(error);
@@ -99,6 +111,7 @@ impl<S: Storage> Storage for Observed<S> {
     }
 
     fn batch(&self) -> Result<Self::Batch<'_>> {
+        self.probes.schedule.step("port.batch")?;
         self.probes.batch.run();
         Ok(Batch {
             inner: self.storage.as_ref().unwrap().batch()?,
@@ -109,6 +122,7 @@ impl<S: Storage> Storage for Observed<S> {
 
 impl<S: crate::CompactStorage> crate::CompactStorage for Observed<S> {
     fn compact(&mut self) -> Result<crate::Compaction> {
+        self.probes.schedule.step("port.compact")?;
         self.probes.compact.run();
         if let Some(error) = self.probes.compact_fault.lock().unwrap().take() {
             return Err(error);
@@ -118,7 +132,7 @@ impl<S: crate::CompactStorage> crate::CompactStorage for Observed<S> {
 }
 
 /// A snapshot that can report a fault independently of the engine's own failed state.
-pub(super) struct Read<R> {
+pub(crate) struct Read<R> {
     /// Dropped before the transaction-drop observation runs.
     inner: Option<R>,
     /// Shared test hooks, independent of the facade's query budget.
@@ -145,9 +159,13 @@ impl<R> Drop for Read<R> {
 }
 
 impl<R: StorageRead> StorageRead for Read<R> {
+    fn fault_schedule(&self) -> Option<crate::verification::faults::FaultSchedule> {
+        Some(self.probes.schedule.clone())
+    }
+
     fn get<T>(&self, ns: Ns, key: &[u8], f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T> {
         self.admit()?;
-        self.inner.as_ref().unwrap().get(ns, key, f)
+        observed_get(self.inner.as_ref().unwrap(), &self.probes, ns, key, f)
     }
     fn scan<B>(
         &self,
@@ -157,7 +175,14 @@ impl<R: StorageRead> StorageRead for Read<R> {
         f: impl FnMut(&[u8], &[u8]) -> ControlFlow<B>,
     ) -> Result<Option<B>> {
         self.admit()?;
-        self.inner.as_ref().unwrap().scan(ns, range, direction, f)
+        observed_scan(
+            self.inner.as_ref().unwrap(),
+            &self.probes,
+            ns,
+            range,
+            direction,
+            f,
+        )
     }
     fn fragment<T>(
         &self,
@@ -166,12 +191,12 @@ impl<R: StorageRead> StorageRead for Read<R> {
         f: impl FnOnce(Option<&[u8]>) -> T,
     ) -> Result<T> {
         self.admit()?;
-        self.inner.as_ref().unwrap().fragment(id, limit, f)
+        observed_fragment(self.inner.as_ref().unwrap(), &self.probes, id, limit, f)
     }
 }
 
 /// A write transaction whose commit boundary can be ordered against a reader's report.
-pub(super) struct Batch<'a, B> {
+pub(crate) struct Batch<'a, B> {
     /// The actual transaction, with the engine's ordinary rollback-on-drop behavior.
     inner: B,
     /// The owner's observations; no callback holds their mutex.
@@ -180,7 +205,7 @@ pub(super) struct Batch<'a, B> {
 
 impl<B: StorageRead> StorageRead for Batch<'_, B> {
     fn get<T>(&self, ns: Ns, key: &[u8], f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T> {
-        self.inner.get(ns, key, f)
+        observed_get(&self.inner, self.probes, ns, key, f)
     }
     fn scan<T>(
         &self,
@@ -189,7 +214,7 @@ impl<B: StorageRead> StorageRead for Batch<'_, B> {
         direction: Direction,
         f: impl FnMut(&[u8], &[u8]) -> ControlFlow<T>,
     ) -> Result<Option<T>> {
-        self.inner.scan(ns, range, direction, f)
+        observed_scan(&self.inner, self.probes, ns, range, direction, f)
     }
     fn fragment<T>(
         &self,
@@ -197,28 +222,103 @@ impl<B: StorageRead> StorageRead for Batch<'_, B> {
         limit: usize,
         f: impl FnOnce(Option<&[u8]>) -> T,
     ) -> Result<T> {
-        self.inner.fragment(id, limit, f)
+        observed_fragment(&self.inner, self.probes, id, limit, f)
     }
 }
 
 impl<B: StorageWrite> StorageWrite for Batch<'_, B> {
     fn put(&mut self, ns: Ns, key: &[u8], value: &[u8]) -> Result<()> {
+        self.probes
+            .schedule
+            .step(if ns == crate::layout::DIAGNOSTICS {
+                "port.put.diagnostics"
+            } else {
+                "port.put"
+            })?;
         self.inner.put(ns, key, value)
     }
     fn delete(&mut self, ns: Ns, key: &[u8]) -> Result<()> {
+        self.probes.schedule.step("port.delete")?;
         self.inner.delete(ns, key)
     }
     fn put_fragment(&mut self, id: FragmentId, bytes: &[u8]) -> Result<()> {
+        self.probes.schedule.step("port.put_fragment")?;
         self.inner.put_fragment(id, bytes)
     }
     fn delete_chunk(&mut self, chunk: ChunkId) -> Result<()> {
+        self.probes.schedule.step("port.delete_chunk")?;
         self.inner.delete_chunk(chunk)
     }
     fn commit(self, durability: Durability) -> Result<(), CommitFailure> {
         self.probes.durabilities.lock().unwrap().push(durability);
         self.probes.commit.run();
-        self.inner.commit(durability)
+        self.probes
+            .schedule
+            .step("port.commit.before")
+            .map_err(|source| CommitFailure::NotApplied { source })?;
+        self.inner.commit(durability)?;
+        self.probes
+            .schedule
+            .step("port.commit.after")
+            .map_err(|source| CommitFailure::Unknown { source })
     }
+}
+
+/// Reads and the callback's completion are separately injectable boundaries.
+fn observed_get<R: StorageRead, T>(
+    read: &R,
+    probes: &Probes,
+    ns: Ns,
+    key: &[u8],
+    f: impl FnOnce(Option<&[u8]>) -> T,
+) -> Result<T> {
+    probes.schedule.step("port.get")?;
+    read.get(ns, key, |value| {
+        probes.schedule.step("port.get.callback")?;
+        let result = f(value);
+        probes.schedule.step("port.get.return")?;
+        Ok(result)
+    })?
+}
+
+/// Stops the scan on an injected callback failure, preserving ordinary early termination.
+fn observed_scan<R: StorageRead, T>(
+    read: &R,
+    probes: &Probes,
+    ns: Ns,
+    range: KeyRange<'_>,
+    direction: Direction,
+    mut f: impl FnMut(&[u8], &[u8]) -> ControlFlow<T>,
+) -> Result<Option<T>> {
+    probes.schedule.step("port.scan")?;
+    read.scan(ns, range, direction, |key, value| {
+        if let Err(error) = probes.schedule.step("port.scan.callback") {
+            return ControlFlow::Break(Err(error));
+        }
+        let result = f(key, value);
+        if let Err(error) = probes.schedule.step("port.scan.return") {
+            return ControlFlow::Break(Err(error));
+        }
+        result.map_break(Ok)
+    })?
+    .transpose()
+}
+
+/// Fragments are lent by the actual engine, with failures on both sides of the callback.
+fn observed_fragment<R: StorageRead, T>(
+    read: &R,
+    probes: &Probes,
+    id: FragmentId,
+    limit: usize,
+    f: impl FnOnce(Option<&[u8]>) -> T,
+) -> Result<T> {
+    probes.schedule.step("port.fragment")?;
+    read.fragment(id, limit, |value| {
+        probes.schedule.step("port.fragment.callback")?;
+        let result = f(value);
+        probes.schedule.step("port.fragment.return")?;
+        Ok(result)
+    })?
 }
 
 /// redb's real sync path; clones share its disk so recovery can open a fresh database.

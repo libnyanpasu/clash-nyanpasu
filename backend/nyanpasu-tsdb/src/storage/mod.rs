@@ -70,6 +70,12 @@ pub trait Storage: Send + Sync + 'static {
     where
         Self: 's;
 
+    /// Explicit schedule propagation for boundaries outside the byte-storage port.
+    #[cfg(test)]
+    fn fault_schedule(&self) -> Option<crate::verification::faults::FaultSchedule> {
+        None
+    }
+
     /// A read view of all namespaces and fragments as of the last commit, stable while
     /// later batches commit.
     fn snapshot(&self) -> Result<Self::Snapshot>;
@@ -81,6 +87,12 @@ pub trait Storage: Send + Sync + 'static {
 }
 
 pub trait StorageRead {
+    /// Passes a fixture's recorder to catalog admission between its two read passes.
+    #[cfg(test)]
+    fn fault_schedule(&self) -> Option<crate::verification::faults::FaultSchedule> {
+        None
+    }
+
     /// Lends the value stored under `key` to `f`, or `None` when there is none.
     fn get<T>(&self, ns: Ns, key: &[u8], f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T>;
 

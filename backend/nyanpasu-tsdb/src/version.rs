@@ -150,6 +150,8 @@ impl<S: Storage> Shared<S> {
         query_budget: MemoryBudget,
         event_consolidation_gated_off: bool,
     ) -> Self {
+        #[cfg(test)]
+        query_budget.schedule(storage.fault_schedule());
         Self {
             storage: RwLock::new(Some(storage)),
             registry,
@@ -401,6 +403,9 @@ struct QueryHook {
 
 /// The short publication gate, nested inside Shared's capture gate when both are needed.
 pub(crate) struct Registry {
+    /// Internal transition boundaries that make no storage calls.
+    #[cfg(test)]
+    faults: crate::verification::faults::FaultSchedule,
     slots: RwLock<Slots>,
     /// The dataset's schema, which every snapshot carries for its queries.
     schema: Arc<Schema>,
@@ -420,6 +425,8 @@ impl Registry {
         head: Reservation,
     ) -> Self {
         Self {
+            #[cfg(test)]
+            faults: head.fault_schedule(),
             slots: RwLock::new(Slots {
                 current: Some(Arc::new(current)),
                 pending: None,
@@ -451,6 +458,8 @@ impl Registry {
     ///
     /// If a version is pending already: the owner commits one batch at a time.
     pub(crate) fn register(&self, next: StagedVersion) -> Pending<'_> {
+        #[cfg(test)]
+        self.faults.boundary("pending.register");
         let mut slots = self.write();
         assert!(
             slots.pending.is_none(),
@@ -566,6 +575,8 @@ pub(crate) struct Pending<'r> {
 impl Pending<'_> {
     /// Makes the pending version current and settles resident credit inside the same owner.
     pub(crate) fn publish(mut self) {
+        #[cfg(test)]
+        self.registry.faults.boundary("pending.publish");
         let growth = self.growth.take().expect("a version is published once");
         let mut slots = self.registry.write();
         let version = slots
@@ -585,6 +596,8 @@ impl Pending<'_> {
         head.shrink(retired);
         drop(slots);
         drop(self.staging.take());
+        #[cfg(test)]
+        self.registry.faults.boundary("pending.published");
     }
 
     /// Withdraws the version after its commit failed with `failure`, and returns its

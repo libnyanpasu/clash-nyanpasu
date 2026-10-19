@@ -75,6 +75,9 @@ struct Shared {
     reserved: Mutex<u64>,
     /// Keeps a fixed sub-budget's parent admission until its last reservation has dropped.
     _parent: Option<Reservation>,
+    /// Instance-local admission faults; absent outside verification fixtures.
+    #[cfg(test)]
+    faults: Mutex<Option<crate::verification::faults::FaultSchedule>>,
 }
 
 impl MemoryBudget {
@@ -84,6 +87,8 @@ impl MemoryBudget {
                 limit,
                 reserved: Mutex::new(0),
                 _parent: None,
+                #[cfg(test)]
+                faults: Mutex::new(None),
             }),
         }
     }
@@ -95,6 +100,9 @@ impl MemoryBudget {
             shared: Arc::new(Shared {
                 limit: parent.bytes(),
                 reserved: Mutex::new(0),
+                // This transfers prepaid credit; it is not another fallible root admission.
+                #[cfg(test)]
+                faults: Mutex::new(None),
                 _parent: Some(parent),
             }),
         }
@@ -121,6 +129,17 @@ impl MemoryBudget {
     }
 
     fn take(&self, what: &'static str, bytes: u64) -> Result<(), BudgetExceeded> {
+        #[cfg(test)]
+        if bytes != 0
+            && let Some(faults) = self.fault_schedule()
+            && !faults.admission("budget.admit")
+        {
+            return Err(BudgetExceeded {
+                what,
+                needed: bytes,
+                available: 0,
+            });
+        }
         let mut reserved = self.lock();
         let available = self.shared.limit - *reserved;
         ensure!(
@@ -133,6 +152,29 @@ impl MemoryBudget {
         );
         *reserved += bytes;
         Ok(())
+    }
+
+    /// Attaches an explicitly supplied recorder and a weak drain observation.
+    #[cfg(test)]
+    pub(crate) fn schedule(&self, faults: Option<crate::verification::faults::FaultSchedule>) {
+        if let Some(faults) = &faults {
+            let weak = Arc::downgrade(&self.shared);
+            faults.budget(move || {
+                weak.upgrade().map_or(0, |shared| {
+                    *shared
+                        .reserved
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                })
+            });
+        }
+        *self.shared.faults.lock().unwrap() = faults;
+    }
+
+    /// Copies the recorder without holding a budget mutex across an injection callback.
+    #[cfg(test)]
+    fn fault_schedule(&self) -> Option<crate::verification::faults::FaultSchedule> {
+        self.shared.faults.lock().unwrap().clone()
     }
 
     fn give_back(&self, bytes: u64) {
@@ -166,6 +208,12 @@ pub struct Reservation {
 }
 
 impl Reservation {
+    /// Carries the originating admission schedule into the publication registry.
+    #[cfg(test)]
+    pub(crate) fn fault_schedule(&self) -> crate::verification::faults::FaultSchedule {
+        self.budget.fault_schedule().unwrap_or_default()
+    }
+
     pub fn bytes(&self) -> u64 {
         self.bytes
     }

@@ -564,6 +564,34 @@ Crates offering a stable hash trait were considered and rejected:
 
 `serde::Serialize` is the derived trait instead, and postcard pins its encoding.
 
+## Verification notes
+
+`verification::faults::FaultSchedule` records instance-local ordinals, then replays each
+operation from a fresh durable fixture with a fault and, separately, a crash at every ordinal.
+Port probes reuse the lifecycle harness; disk schedules reuse the conformance generation and
+redb's FaultDisk. The oracle compares exact bytes across all namespaces and all physical
+fragments, including orphan fragments. One-round operations admit only the before or committed
+image; the two-round schedule also admits the first committed prefix. NotApplied cannot advance
+it. Reopen changes only the incarnation; recovery restores auxiliary state without replaying
+input. Weak budget probes and held root-budget handles check that teardown and the last old
+result return their charges.
+
+Hooks outside the port cover root memory admission, catalog-load admission, catalog/head
+rebuild, and pending registration/publication. Zero-byte claims and transfers of prepaid
+sub-budget credit cannot fail admission. Injected admission pressure lasts through the attempt's
+fallback allocations; recycling fixtures bound a transaction to one candidate. Storage failures
+latch the actual memory backend. Infallible in-memory boundaries stop through a private unwind
+payload; ordinary panics are never swallowed. Every armed ordinal must fire and the reached
+trace must match its recorded prefix.
+
+A crash freezes the durable image by invalidating the backend generation before unwinding or
+Drop. redb schedules fail read, write, set_len, sync (before and after applying it) and close,
+including I/O from rollback and compaction. Real-file barriers park each allocator/header close
+sync, check that G and R are free while the file remains locked, then release and join before
+asserting. These are in-process durable-image and lock tests, not subprocess kills or proof of
+hardware power-loss behavior. Those tests remain out of scope. Fixtures are synthetic and
+exhaustive, never sampled.
+
 ## Not in this implementation
 
 - The query result cache (§7.3), until benchmarks show the need.

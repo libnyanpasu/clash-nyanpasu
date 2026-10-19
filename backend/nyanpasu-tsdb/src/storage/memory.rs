@@ -382,6 +382,65 @@ impl Storage for MemoryStorage {
     }
 }
 
+/// Durable-image controls for exhaustive schedules; none owns a running backend.
+#[cfg(test)]
+impl MemoryDisk {
+    /// Forks only committed durable state into an independent, unopened fixture.
+    pub(crate) fn fork(&self) -> Self {
+        let durable = lock(&self.disk).durable.clone();
+        Self {
+            disk: Arc::new(Mutex::new(Disk {
+                durable: durable.clone(),
+                visible: durable,
+                ..Disk::default()
+            })),
+        }
+    }
+
+    /// Invalidates handles without promoting visible commits; Drop cannot undo this crash.
+    pub(crate) fn crash_now(&self) {
+        lock(&self.disk).open = None;
+    }
+
+    /// Models a latched port failure in the existing engine, including its close behavior.
+    pub(crate) fn fail_now(&self) {
+        if let Some(instance) = &mut lock(&self.disk).open {
+            instance.latched = true;
+        }
+    }
+
+    /// Includes every fragment, even an orphan that no manifest entry names.
+    pub(crate) fn durable_dump(&self) -> crate::verification::Dataset {
+        let image = lock(&self.disk).durable.clone();
+        crate::verification::Dataset {
+            entries: image
+                .namespaces
+                .iter()
+                .flat_map(|(ns, entries)| {
+                    entries
+                        .iter()
+                        .map(move |(key, value)| (ns.0, key.to_vec(), value.to_vec()))
+                })
+                .collect(),
+            fragments: image
+                .chunks
+                .iter()
+                .flat_map(|(chunk, fragments)| {
+                    fragments.iter().map(move |(index, value)| {
+                        (
+                            FragmentId {
+                                chunk: *chunk,
+                                index: *index,
+                            },
+                            value.to_vec(),
+                        )
+                    })
+                })
+                .collect(),
+        }
+    }
+}
+
 #[cfg(test)]
 impl MemoryStorage {
     /// Closes the disk the way a crash would: nothing is promoted, and the next open

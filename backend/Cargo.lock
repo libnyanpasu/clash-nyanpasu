@@ -1775,6 +1775,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
+ "tungstenite 0.28.0",
  "url",
  "uuid",
 ]
@@ -9284,8 +9285,6 @@ dependencies = [
 [[package]]
 name = "reqwest-websocket"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7705b649c3b66b85c4e9c304a6898b1ae3eecb880c474720ebf925e4a932ae02"
 dependencies = [
  "async-tungstenite",
  "bytes",

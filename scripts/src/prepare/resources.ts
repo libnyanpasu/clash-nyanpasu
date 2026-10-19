@@ -16,6 +16,10 @@ import {
 } from "./download.ts";
 import type { DebugLog } from "./download.ts";
 import { normalizeArch, normalizePlatform } from "./platform.ts";
+import {
+  type EnableLoopbackInfo,
+  verifyEnableLoopbackChecksum,
+} from "./enable-loopback.ts";
 
 export interface ResourceResolverOptions {
   resourcesDir: string;
@@ -61,6 +65,63 @@ async function readVersionStamp(stampPath: string): Promise<string | null> {
     return (await Deno.readTextFile(stampPath)).trim();
   } catch {
     return null;
+  }
+}
+
+export async function resolveEnableLoopback(
+  context: ResourceResolverOptions,
+  info: Promise<EnableLoopbackInfo> | EnableLoopbackInfo,
+  options?: ResolveOptions,
+  download = downloadFile,
+): Promise<ResolveInfo> {
+  const { version, assetName, downloadURL, checksumURL } = await info;
+  const file = "enableLoopback.exe";
+  const targetPath = path.join(context.resourcesDir, file);
+  const stampPath = `${targetPath}.version`;
+  const stamp = `${version}/${assetName}`;
+  await ensureDir(context.tempRoot);
+  const tempDir = await Deno.makeTempDir({
+    dir: context.tempRoot,
+    prefix: "enable-loopback-",
+  });
+  try {
+    const checksumPath = path.join(tempDir, `${assetName}.sha256`);
+    await download(checksumURL, checksumPath, undefined, context.debugLog);
+    const checksum = await Deno.readTextFile(checksumPath);
+    if (
+      !options?.force && await readVersionStamp(stampPath) === stamp &&
+      await exists(targetPath)
+    ) {
+      await verifyEnableLoopbackChecksum(
+        await Deno.readFile(targetPath),
+        checksum,
+        assetName,
+      );
+      return {
+        file,
+        version,
+        size: (await Deno.stat(targetPath)).size,
+        cached: true,
+      };
+    }
+    const tempFile = path.join(tempDir, assetName);
+    const { size, speed } = await download(
+      downloadURL,
+      tempFile,
+      (progress) => options?.onProgress?.({ ...progress, version }),
+      context.debugLog,
+    );
+    await verifyEnableLoopbackChecksum(
+      await Deno.readFile(tempFile),
+      checksum,
+      assetName,
+    );
+    await ensureDir(context.resourcesDir);
+    await Deno.copyFile(tempFile, targetPath);
+    await Deno.writeTextFile(stampPath, stamp);
+    return { file, version, size, speed, cached: false };
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
   }
 }
 

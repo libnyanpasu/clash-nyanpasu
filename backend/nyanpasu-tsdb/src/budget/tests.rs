@@ -1029,3 +1029,27 @@ fn a_sub_budget_holds_its_parent_until_its_last_owner_drops() {
     drop(survivor);
     assert_eq!(budget.reserved(), 0);
 }
+
+/// A whole transient reservation is visible without sampling at an operation boundary.
+#[test]
+fn peak_keeps_a_reservation_returned_inside_one_call() {
+    /// Returns its entire charge before the caller can inspect reserved().
+    fn transient(budget: &MemoryBudget) {
+        let _reservation = budget.try_reserve("transient", 73).unwrap();
+    }
+    let budget = MemoryBudget::new(100);
+    budget.reset_peak();
+    transient(&budget);
+    assert_eq!(budget.reserved(), 0);
+    assert_eq!(budget.peak(), 73);
+    let parent = budget.try_reserve("child", 40).unwrap();
+    let child = MemoryBudget::within(parent);
+    child.reset_peak();
+    drop(child.try_reserve("child transient", 17).unwrap());
+    assert_eq!(child.peak(), 17);
+    assert_eq!(budget.peak(), 73);
+    budget.reset_peak();
+    assert_eq!(budget.peak(), 40);
+    drop(child);
+    assert_eq!(budget.reserved(), 0);
+}

@@ -287,3 +287,6 @@ pub struct LossRecord {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) mod bench_tests;

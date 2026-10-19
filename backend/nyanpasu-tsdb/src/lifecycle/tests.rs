@@ -472,6 +472,7 @@ fn snapshots_and_results_hold_credit_until_their_last_drop() {
 
 mod recovery;
 mod support;
+mod suspend;
 
 /// A valid no-expiry maintenance call used to distinguish lifecycle refusal from validation.
 fn maintenance() -> crate::RetentionPolicy {

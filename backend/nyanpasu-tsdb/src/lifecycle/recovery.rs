@@ -117,11 +117,15 @@ pub(crate) fn prepare<S: Storage, T>(
     Ok((opened, restored, state))
 }
 
-/// One recovery attempt failed and left the facade unavailable, without an installed candidate.
+/// One recovery attempt failed. A closed store stays closed; other failures leave it unavailable.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum RecoveryError {
+    /// Explicit close is terminal; neither reopening nor restoration was attempted.
+    #[snafu(display("the store is closed"))]
+    Closed,
+
     /// The host could not reopen the backend.
     #[snafu(display("failed to reopen the backend"))]
     Reopen { source: StorageError },
@@ -157,9 +161,10 @@ pub enum RecoveryError {
 }
 
 impl RecoveryError {
-    /// Classifies the original failure; every kind still leaves the facade unavailable.
+    /// Classifies the failure; Closed is Local and leaves the terminal state unchanged.
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::Closed => ErrorKind::Local,
             Self::Reopen { source }
             | Self::OpenSnapshot { source }
             | Self::ReadAux { source }

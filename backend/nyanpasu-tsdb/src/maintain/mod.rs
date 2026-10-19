@@ -321,6 +321,10 @@ pub(crate) fn stage(
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum MaintainError {
+    /// Admissions remain closed until a suspended store is successfully recovered.
+    #[snafu(display("the store is suspended or closed"))]
+    Closed,
+
     /// The store needs recovery, is recovering, is waiting for old readers, or is unavailable.
     /// Every maintenance call fails until the owner successfully recovers (§7.5).
     #[snafu(display("the store needs recovery before it can be maintained"))]
@@ -426,6 +430,7 @@ impl MaintainError {
     pub fn kind(&self) -> ErrorKind {
         match self {
             Self::RecoveryNeeded => ErrorKind::BackendFailed,
+            Self::Closed => ErrorKind::Local,
             Self::PolicyShape { .. } | Self::EpochRetention { .. } => ErrorKind::Local,
             Self::OpenSnapshot { source }
             | Self::BeginRound { source }

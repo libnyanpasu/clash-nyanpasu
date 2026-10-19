@@ -9,7 +9,7 @@ use snafu::{ResultExt, ensure};
 use crate::{
     ErrorKind, Profile, Schema, Timestamp,
     budget::MemoryBudget,
-    lifecycle::{self, OpenError, RecoveryError, RecoveryProgress, RecoveryView},
+    lifecycle::{self, CheckpointError, OpenError, RecoveryError, RecoveryProgress, RecoveryView},
     maintain::{self, Maintain, MaintainError, Maintained, Round},
     storage::{Durability, Storage, StorageError},
     version::{CaptureError, LifecycleState, OpenMarker, Registry, Shared, Snapshot, Version},
@@ -89,6 +89,7 @@ impl<S: Storage> Tsdb<S> {
     /// After an unknown outcome, or any error of kind [`ErrorKind::BackendFailed`], every
     /// later write and capture fails with a `RecoveryNeeded` error until the owner recovers
     /// (§7.5).
+    /// Suspended or explicitly closed stores instead return [`WriteError::Closed`], kind Local.
     pub fn write(
         &mut self,
         input: &Input<'_>,
@@ -96,6 +97,13 @@ impl<S: Storage> Tsdb<S> {
     ) -> Result<Written, WriteError> {
         let shared = self.shared.clone();
         let storage = shared.storage();
+        ensure!(
+            !matches!(
+                shared.registry.state(),
+                LifecycleState::Suspended | LifecycleState::Closed
+            ),
+            crate::write::ClosedSnafu
+        );
         ensure!(!shared.registry.needs_recovery(), RecoveryNeededSnafu);
         let storage = storage.as_ref().expect("an admitted owner has a backend");
         input
@@ -206,9 +214,18 @@ impl<S: Storage> Tsdb<S> {
     ///
     /// After an unknown outcome, or any error of kind [`ErrorKind::BackendFailed`], every
     /// later write, maintenance call and capture fails until the owner recovers (§7.5).
+    /// Suspended or explicitly closed stores return [`MaintainError::Closed`], kind Local,
+    /// without planning or running any round.
     pub fn maintain(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
         let shared = self.shared.clone();
         let storage = shared.storage();
+        ensure!(
+            !matches!(
+                shared.registry.state(),
+                LifecycleState::Suspended | LifecycleState::Closed
+            ),
+            maintain::ClosedSnafu
+        );
         ensure!(
             !self.shared.registry.needs_recovery(),
             maintain::RecoveryNeededSnafu
@@ -320,6 +337,7 @@ impl<S: Storage> Tsdb<S> {
 
     /// Allocates the sequence of a new event, before the event becomes visible to anyone
     /// (§8.3). Sequences restart at 0 with every incarnation, which every open increments.
+    /// Outside Open the counter continues in the old incarnation until recovery installs a new one.
     pub fn next_event_seq(&mut self) -> EventSeq {
         let seq = EventSeq {
             incarnation: self.incarnation,
@@ -329,7 +347,9 @@ impl<S: Storage> Tsdb<S> {
         seq
     }
 
-    /// Recovers this facade from the same dataset, with one host-supplied reopen attempt (§7.5).
+    /// Recovers or resumes this facade from the same dataset, with one host-supplied reopen
+    /// attempt (§7.5, §10.2). This is also the resume path after [`suspend`](Self::suspend).
+    /// Explicitly closed stores return [`RecoveryError::Closed`] without calling either closure.
     ///
     /// Retires the backend and revokes old queries first. If any snapshot or charged result
     /// remains, returns [WaitingForReaders](RecoveryProgress::WaitingForReaders) without invoking
@@ -340,11 +360,11 @@ impl<S: Storage> Tsdb<S> {
     /// build an owned replacement for the host's state; its external effects cannot be rolled
     /// back. Discard pending input computed from the old state instead of replaying it.
     ///
-    /// Only successful restoration installs the new instance and opens admission. Every error
-    /// leaves the store unavailable, with no backend or published version; the host owns that
-    /// error and may explicitly retry. Opening may already have committed a new incarnation or
-    /// settled the journal, even when restoration fails. Reopen must target the same dataset;
-    /// restoring old backups requires an external incarnation counter, outside this API.
+    /// Only successful restoration installs the new instance and opens admission. Except Closed,
+    /// every error leaves the store unavailable, with no backend or published version. The host
+    /// owns that error and may explicitly retry. Opening may already have committed a new
+    /// incarnation or settled the journal, even when restoration fails. Reopen must target the
+    /// same dataset; restoring old backups requires an incarnation counter outside this API.
     ///
     /// The existing readers and query budget survive. Event sequence, durability and backlog
     /// bookkeeping reset only at installation; until then sequences use the old incarnation.
@@ -353,6 +373,9 @@ impl<S: Storage> Tsdb<S> {
         reopen: impl FnOnce() -> Result<S, StorageError>,
         restore: impl for<'a> FnOnce(RecoveryView<'a, S>) -> Result<T, RecoveryError>,
     ) -> Result<RecoveryProgress<T>, RecoveryError> {
+        if self.shared.registry.state() == LifecycleState::Closed {
+            return Err(RecoveryError::Closed);
+        }
         drop(self.shared.retire(LifecycleState::Recovering));
         if self.shared.query_budget.reserved() != 0 {
             self.shared
@@ -388,6 +411,45 @@ impl<S: Storage> Tsdb<S> {
         })
     }
 
+    /// Closes admissions and revokes queries, checkpoints the existing metadata Durable, then
+    /// always detaches and drops the backend, even on checkpoint failure (§10.2).
+    /// No maintenance or compaction runs. Durable bookkeeping resets only on confirmed commit.
+    /// Resume with [`recover_with`](Self::recover_with), after old query charges have drained.
+    /// Repeated calls do nothing; an explicitly closed store stays closed.
+    pub fn suspend(&mut self, now: Timestamp) -> Result<(), CheckpointError> {
+        self.checkpoint_and_retire(now, LifecycleState::Suspended)
+    }
+
+    /// Like [`suspend`](Self::suspend), but terminal: recovery cannot reopen this facade.
+    /// Repeated calls do nothing. Call this to observe the checkpoint's outcome; ordinary
+    /// Drop retires without a checkpoint and cannot report backend close I/O failures.
+    /// Started synchronous commit and backend Drop I/O finish on the caller's thread.
+    pub fn close(&mut self, now: Timestamp) -> Result<(), CheckpointError> {
+        self.checkpoint_and_retire(now, LifecycleState::Closed)
+    }
+
+    /// Refuses admissions before checkpointing; retirement is unconditional on every result.
+    /// Already detached recovery states have no backend to checkpoint and keep their counters.
+    fn checkpoint_and_retire(
+        &mut self,
+        now: Timestamp,
+        state: LifecycleState,
+    ) -> Result<(), CheckpointError> {
+        let shared = self.shared.clone();
+        if !shared.stop(state) {
+            return Ok(());
+        }
+        let checkpoint = {
+            let storage = shared.storage();
+            storage.as_ref().map(lifecycle::checkpoint)
+        };
+        if matches!(checkpoint, Some(Ok(()))) {
+            self.committed(Durability::Durable, now, 0);
+        }
+        drop(shared.retire(state));
+        checkpoint.unwrap_or(Ok(()))
+    }
+
     /// A handle that captures snapshots from any thread.
     pub fn reader(&self) -> Reader<S> {
         Reader {
@@ -396,7 +458,7 @@ impl<S: Storage> Tsdb<S> {
     }
 }
 
-/// Owner destruction revokes captures and queries, then closes outside every shared lock.
+/// Owner destruction retires without checkpointing; use explicit close to observe its outcome.
 impl<S: Storage> Drop for Tsdb<S> {
     fn drop(&mut self) {
         drop(self.shared.retire(LifecycleState::Closed));
@@ -485,6 +547,7 @@ impl<S: Storage> Clone for Reader<S> {
 impl<S: Storage> Reader<S> {
     /// A snapshot of the last publication (§7.1), with the bytes of its catalog and head
     /// reserved from the query budget (§7.4) until it is dropped.
+    /// Suspended and closed stores return [`CaptureError::CheckOpen`] wrapping Closed, kind Local.
     pub fn capture(&self) -> Result<Snapshot<S>, CaptureError> {
         self.shared.capture()
     }

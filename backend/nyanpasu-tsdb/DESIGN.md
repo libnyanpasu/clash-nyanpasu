@@ -332,7 +332,8 @@ allocator or RSS bound.
 ## Retirement and revocation
 
 `Shared` owns the backend in `RwLock<Option<S>>` and the registry's admission state:
-`Open`, `RecoveryNeeded`, `Recovering`, `WaitingForReaders`, `Unavailable`, or `Closed`.
+`Open`, `RecoveryNeeded`, `Recovering`, `WaitingForReaders`, `Unavailable`, `Suspended`, or
+`Closed`.
 Dropping `Tsdb` closes admission, sets its one atomic revocation flag, detaches the backend and
 resident roots, then drops them outside the locks.
 Readers own only `Shared`; snapshots own a storage transaction and a charged version.
@@ -356,9 +357,30 @@ Only query errors of kind `BackendFailed` latch `Open` to `RecoveryNeeded`; the 
 or maintenance refuses admission. Local and corrupted errors leave admission unchanged, and a late
 failure cannot reopen `Closed`. An already admitted commit may finish without clearing a latch.
 
-## Recovery
+## Suspend and explicit close
 
-`recover_with(reopen, restore)` retires the instance into `Recovering`, using the same unlocked
+`suspend(now)` closes admission and revokes under G-write then R-write. It releases both,
+then holds G-read while rewriting the stored state record unchanged and committing Durable.
+There is no new publication: `last_batch`, journal pointers and publication/head correspondence
+stay intact. No maintenance or compaction runs. Finally, success or error, retirement detaches
+under G-write then R-write and drops the backend and roots outside both locks. Started synchronous
+commit and backend Drop I/O complete on the caller's thread; neither has a timeout.
+Only a confirmed Durable commit resets durable counters and dates the last durable commit.
+
+Suspend ends `Suspended`, including checkpoint failure. Resume uses `recover_with`, below.
+`close(now)` uses the same protocol but ends terminal `Closed`. Repeated suspend/close calls do
+no checkpoint and return success; close after suspend makes it terminal, and suspend after close
+leaves it closed. Detached recovery states have no backend to checkpoint; stopping them succeeds
+without changing durable bookkeeping. Drop still retires without a checkpoint. A host that needs
+the checkpoint's outcome calls close explicitly; backend Drop itself cannot report I/O failures.
+In `Suspended` and `Closed`, write and maintain return their Local `Closed` variants and capture
+returns `CheckOpen { Closed }`. Sequences remain infallible and continue in the old incarnation.
+
+## Recovery and resume
+
+`recover_with(reopen, restore)` also resumes a suspended store. Closed returns Local
+`RecoveryError::Closed` without changing state or invoking either closure. Otherwise it retires
+the instance into `Recovering`, using the same unlocked
 backend/root destruction as Drop. If query credit remains, it returns `WaitingForReaders` and
 calls neither closure. The host releases snapshots/results and retries on its own schedule.
 After drain, reopening, ordinary open validation/rebuild/settlement, and synchronous host
@@ -377,10 +399,10 @@ are built; old query failures cannot reach the new instance.
 
 Any recovery error drops the candidate outside the locks and leaves `Unavailable`, with no backend
 or published version. The host receives the typed cause and may retry explicitly; durable opening
-changes may already have happened. All nonterminal states except `Open` return `RecoveryNeeded`
-from write, maintain and capture. Only owner Drop enters terminal `Closed`, whose captures return
-`CheckOpen { Closed }`; revoked running queries retain their own Local `CheckOpen` errors.
-Every nonterminal state can start another recovery attempt. There is no automatic retry or wait.
+changes may already have happened. `RecoveryNeeded`, `Recovering`, `WaitingForReaders` and
+`Unavailable` return `RecoveryNeeded` from write, maintain and capture. Revoked running queries
+retain their own Local `CheckOpen` errors. Every state except `Closed` can start another recovery
+attempt. There is no automatic retry or wait.
 Reopening must target the same dataset; recovery from an old backup needs the deferred external
 incarnation counter.
 
@@ -411,16 +433,17 @@ Errors follow snafu's own guidance (`guide/philosophy.md`).
 
 Each public operation returns the error type of its module:
 
-| Operation            | Error type                                                                                          |
-| -------------------- | --------------------------------------------------------------------------------------------------- |
-| validating a schema  | `schema::SchemaError`                                                                               |
-| opening              | `lifecycle::OpenError`                                                                              |
-| recovering           | `lifecycle::RecoveryError`                                                                          |
-| writing a batch      | `write::WriteError`, with `InputError`, `StageError` and, from the backlog's round, `MaintainError` |
-| capturing a snapshot | `version::CaptureError`                                                                             |
-| summing series       | `query::SeriesQueryError`                                                                           |
-| scanning events      | `query::EventScanError`                                                                             |
-| maintaining          | `maintain::MaintainError`                                                                           |
+| Operation             | Error type                                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| validating a schema   | `schema::SchemaError`                                                                               |
+| opening               | `lifecycle::OpenError`                                                                              |
+| recovering            | `lifecycle::RecoveryError`                                                                          |
+| suspending or closing | `lifecycle::CheckpointError`                                                                        |
+| writing a batch       | `write::WriteError`, with `InputError`, `StageError` and, from the backlog's round, `MaintainError` |
+| capturing a snapshot  | `version::CaptureError`                                                                             |
+| summing series        | `query::SeriesQueryError`                                                                           |
+| scanning events       | `query::EventScanError`                                                                             |
+| maintaining           | `maintain::MaintainError`                                                                           |
 
 ## Data mapping and variants
 

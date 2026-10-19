@@ -482,6 +482,10 @@ impl InputError {
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum WriteError {
+    /// Admissions remain closed until a suspended store is successfully recovered.
+    #[snafu(display("the store is suspended or closed"))]
+    Closed,
+
     /// The store needs recovery, is recovering, is waiting for old readers, or is unavailable.
     /// Every write fails until the owner successfully recovers (§7.5).
     #[snafu(display("the store needs recovery before it can write"))]
@@ -510,6 +514,7 @@ impl WriteError {
     pub fn kind(&self) -> ErrorKind {
         match self {
             Self::RecoveryNeeded => ErrorKind::BackendFailed,
+            Self::Closed => ErrorKind::Local,
             Self::InvalidInput { source } => source.kind(),
             Self::Backlog { source } => source.kind(),
             Self::BeginBatch { source } => source.kind(),

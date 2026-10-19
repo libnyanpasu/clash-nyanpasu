@@ -7,9 +7,11 @@
 //! - recovery after an unknown commit or a failed backend: revoke snapshots, close by
 //!   dropping the backend, return while reservations remain, then reopen and rebuild;
 //! - recovery restores host auxiliary state before installing the new instance; failed
-//!   attempts leave an unavailable facade, retried only when the host calls again.
+//!   attempts leave an unavailable facade, retried only when the host calls again;
+//! - suspend and explicit close revoke, checkpoint durably without maintenance, and always
+//!   retire the backend. Recovery also resumes a suspended store; explicit close is terminal.
 //!
-//! Suspend/resume and physical compaction follow separately.
+//! Physical compaction follows separately.
 
 use std::ops::ControlFlow;
 
@@ -33,6 +35,9 @@ use crate::{
     write::chunking::{ChunkingError, Execution, Planning, Shape, least_staging, widest_build},
 };
 
+mod checkpoint;
+pub use checkpoint::CheckpointError;
+pub(crate) use checkpoint::checkpoint;
 mod recovery;
 pub(crate) use recovery::prepare as prepare_recovery;
 pub use recovery::{RecoveryError, RecoveryProgress, RecoveryView};

@@ -31,6 +31,8 @@ impl Hook {
 /// Independent hooks and one read fault; neither survives beyond this fixture.
 #[derive(Default)]
 pub(super) struct Probes {
+    /// Durability requested at each commit, including attempts that fail.
+    pub(super) durabilities: Mutex<Vec<Durability>>,
     /// Before the port commit, including its durable work.
     pub(super) commit: Hook,
     /// Before backend Drop, after the facade has detached it.
@@ -199,6 +201,7 @@ impl<B: StorageWrite> StorageWrite for Batch<'_, B> {
         self.inner.delete_chunk(chunk)
     }
     fn commit(self, durability: Durability) -> Result<(), CommitFailure> {
+        self.probes.durabilities.lock().unwrap().push(durability);
         self.probes.commit.run();
         self.inner.commit(durability)
     }

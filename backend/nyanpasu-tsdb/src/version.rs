@@ -78,14 +78,16 @@ pub(crate) enum LifecycleState {
     WaitingForReaders,
     /// The last recovery attempt failed; the host owns its error and decides when to retry.
     Unavailable,
+    /// The owner attempted a checkpoint and retired the backend; recovery may reopen it.
+    Suspended,
     /// The owner retired the backend; readers retain only their captured state.
     Closed,
 }
 
 impl LifecycleState {
-    /// Every nonterminal admission refusal asks the host to recover first.
+    /// Recovery states ask the host to recover; Suspended and Closed use the Local refusal.
     fn needs_recovery(self) -> bool {
-        !matches!(self, Self::Open | Self::Closed)
+        !matches!(self, Self::Open | Self::Suspended | Self::Closed)
     }
 }
 
@@ -116,6 +118,8 @@ struct Slots {
 /// detaches ownership, and drops the backend and roots after both guards are released.
 /// Recovery reopens and restores without G or R, with admission closed. Installation takes
 /// G-write then R-write only after query credit drained and all fallible work completed.
+/// Suspend/close first close admission under G-write then R-write, checkpoint under G-read
+/// without R, then retire. Neither the checkpoint commit nor backend Drop holds R.
 pub(crate) struct Shared<S> {
     /// Capture gate; a reader never retains this guard after capture.
     storage: RwLock<Option<S>>,
@@ -160,6 +164,19 @@ impl<S: Storage> Shared<S> {
             _pending: slots.pending.take(),
             _head: slots.head.take(),
         }
+    }
+
+    /// Closes admission and revokes before a lifecycle checkpoint. Returns false when already
+    /// suspended or closed; close may make Suspended terminal, but Closed never changes.
+    pub(crate) fn stop(&self, state: LifecycleState) -> bool {
+        let _storage = self.storage.write().unwrap_or_else(PoisonError::into_inner);
+        let mut slots = self.registry.write();
+        let previous = slots.state;
+        if previous != LifecycleState::Closed {
+            slots.state = state;
+        }
+        self.revoked.store(true, Ordering::Release);
+        !matches!(previous, LifecycleState::Suspended | LifecycleState::Closed)
     }
 
     /// Installs a fully restored candidate after retirement drained all old query credit.
@@ -428,6 +445,11 @@ impl Registry {
         self.read().state.needs_recovery()
     }
 
+    /// Admission state for owner calls, which are serialized by the facade's mutable borrow.
+    pub(crate) fn state(&self) -> LifecycleState {
+        self.read().state
+    }
+
     /// Records a recovery call that returned without installing a candidate.
     pub(crate) fn recovery_stopped(&self, state: LifecycleState) {
         self.write().state = state;
@@ -453,11 +475,6 @@ impl Registry {
 
 #[cfg(test)]
 impl Registry {
-    /// The admission state at an explicitly ordered test boundary.
-    pub(crate) fn state(&self) -> LifecycleState {
-        self.read().state
-    }
-
     /// Whether retirement detached every registry owner, including resident head credit.
     pub(crate) fn is_empty(&self) -> bool {
         let slots = self.read();

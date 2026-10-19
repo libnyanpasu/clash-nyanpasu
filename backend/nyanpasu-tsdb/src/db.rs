@@ -290,7 +290,13 @@ impl<S: Storage> Tsdb<S> {
         let batch = storage.batch().context(maintain::BeginRoundSnafu)?;
         let mut batch = Counted::new(batch);
         let current = shared.registry.current();
-        let staged = maintain::stage(&mut batch, snapshot, &self.round_context(&current), round)?;
+        let staged = maintain::stage(
+            &mut batch,
+            snapshot,
+            &self.round_context(&current),
+            round,
+            now,
+        )?;
         let bytes = batch.written();
         let durability = self.durability_due(now);
         drop(current);

@@ -300,6 +300,37 @@ The design says its code sketches show shape, not the final API. Where the code 
   `closed` that overlap at one key. Its L0 chunks also stay larger on disk: 63 bytes a row on
   redb, against 37 for consolidated compressed chunks.
 
+## Transactional diagnostics
+
+Store format 3 requires diagnostics in namespace 15: global sequence and recycling totals at
+`[0]`, cumulative counters for every tier and event stream at `[1,kind,id]`, and loss records
+at `[2,seq % 64]`. Records use the ordinary format-byte and postcard framing. Only a new
+dataset's durable open initializes them; reopen refuses older store formats, missing records,
+invalid schema fields and inconsistent ring history. There is no migration or missing-as-zero
+fallback.
+
+Late and folded counts use input points or events, as `Written` does, even when points share
+one stored aggregate. Folded field sums add accepted folded series points' field values;
+mirrored events add no sums. Label overflows count accepted input event cells. Retention counts
+extents and the chunk plus journal bytes their extent record already holds. Age wins a tie with
+the byte cap. Only expiration counts deletions; cleanup never counts them again. Recycling
+counts actual successful combination and label-value releases globally, once per lifetime.
+Counters saturate; u64 input counts and field sums do not overflow in practice.
+
+Each operation stages its diagnostics in its own data transaction. Chunking, consolidation,
+opening and checkpoints never recount losses. A write appends one summary per affected stream
+and kind, ordered by tier id, event stream id, then `Late`, `Fold`, `LabelOverflow`. Expiration
+appends its one reason's summary; recycling is lossless and appends none. Transactions follow
+execution order, including backlog rounds before a batch. Entries carry sequence, incarnation,
+publication, caller time, stream, typed bounding range and deltas. The newest 64 survive;
+readers visit expected sequences, not slot-key order. Rollback can reuse a sequence in a new
+incarnation, so `(incarnation,seq)` identifies an entry. Exhausted sequencing is corruption.
+There are no strings, catalog references, unbounded history or tracing dependency. E8's status
+will expose the counters and surviving history for host logging.
+
+Fixed records use the metadata allowance below. Write summaries have staging credit until
+they are staged and dropped, before chunk planning; no head storage or profile floors change.
+
 ## Allocation ownership
 
 Data-sized execution storage is admitted before allocation from its operation's `MemoryAccount`:

@@ -296,9 +296,9 @@ fn a_dataset_of_another_schema_or_store_format_is_not_opened() {
     assert_eq!(tsdb.incarnation(), 2);
     assert_eq!(tsdb.current().publication, 1);
 
-    // A later format, and format 1, which has no references of ids (§5.3).
+    // A later format, format 1 without id references, and format 2 without diagnostics.
     let mut storage = tsdb.into_storage();
-    for found in [STORE_FORMAT + 1, 1] {
+    for found in [STORE_FORMAT + 1, 1, 2] {
         let mut batch = storage.batch().unwrap();
         let other = FormatRecord {
             store_format: found,
@@ -320,7 +320,7 @@ fn a_dataset_of_another_schema_or_store_format_is_not_opened() {
         assert_eq!(error.kind(), ErrorKind::Local);
         storage = disk.open().unwrap();
     }
-    assert_eq!(STORE_FORMAT, 2);
+    assert_eq!(STORE_FORMAT, 3);
 }
 
 /// Applies `damage` to the storage of `disk`, then opens it, which has to fail as corrupted

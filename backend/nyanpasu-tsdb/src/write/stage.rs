@@ -37,8 +37,8 @@ use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use super::{AuxOp, EventRow, Input, PinOp, SeriesPoint, Value, Written};
 use crate::{
-    ColumnType, ErrorKind, EventStreamSpec, LabelId, Profile, Schema, SeriesSpec, StreamId, TierId,
-    Timestamp,
+    ColumnType, ErrorKind, EventStreamSpec, LabelId, LossKind, Profile, Schema, SeriesSpec,
+    StreamId, TierId, Timestamp,
     budget::{
         BudgetExceeded, BudgetVec, MemoryAccount, MemoryBudget, MemoryPlan, Reservation, Retained,
     },
@@ -51,6 +51,7 @@ use crate::{
     },
     layout::{
         AUX, JOURNAL,
+        diagnostics::{self, DiagnosticsError, Pending},
         manifest::{ManifestError, StreamRef, event_extent, read_watermark},
         meta::{MetaError, StateRecord, read_state, write_state},
         references::{self, Entity, ReferenceError},
@@ -133,13 +134,20 @@ pub(crate) fn stage(
         .draft(context.profile.catalog, &staging)
         .context(ReserveStagingSnafu)?;
     let watermarks = Watermarks::read(&*batch, context.schema, input, &staging)?;
+    let stream_count = if input.series.is_empty() && input.events.is_empty() {
+        0
+    } else {
+        diagnostics::streams(context.schema).count()
+    };
+    let mut losses = staging.buffer(stream_count).context(ReserveStagingSnafu)?;
+    losses.resize(stream_count, Pending::default());
     let series = stage_series(
         batch,
         &mut draft,
         context,
         input,
         &watermarks,
-        &mut written,
+        (&mut written, &mut losses),
         &staging,
     )?;
     // A tier's references are its sources' combinations; a row's, its catalog values.
@@ -164,14 +172,31 @@ pub(crate) fn stage(
         );
     }
     let series = journal.series(batch, context.shape, input.now, series, &staging)?;
+    let first_event = if stream_count == 0 {
+        0
+    } else {
+        context.shape.grids.len()
+    };
     let events = journal.events(
         batch,
         &mut draft,
         context.schema,
         input,
-        &mut written,
+        (&mut written, &mut losses[first_event..]),
         &staging,
     )?;
+    let diagnostic_state = StateRecord {
+        publication: state
+            .publication
+            .checked_add(1)
+            .context(CounterOverflowSnafu)?,
+        ..state
+    };
+    for (stream, loss) in diagnostics::streams(context.schema).zip(losses.iter()) {
+        loss.stage(batch, stream, &diagnostic_state, input.now)
+            .context(DiagnosticsSnafu)?;
+    }
+    drop(losses);
     let Journal {
         next_seq,
         bytes: batch_bytes,
@@ -264,15 +289,17 @@ pub(crate) fn stage(
 /// The points are put in (source, combination) order by their indices, and each source's
 /// deltas are allocated at exactly their combinations: every allocation is reserved in
 /// `staging` first.
+/// `recording` counts input losses; `stage` flushes their summaries in stream/kind order.
 fn stage_series(
     batch: &mut impl StorageWrite,
     draft: &mut CatalogDraft,
     context: &Context<'_>,
     input: &Input<'_>,
     watermarks: &Watermarks,
-    written: &mut Written,
+    recording: (&mut Written, &mut [Pending]),
     staging: &MemoryAccount,
 ) -> Result<BudgetVec<SeriesAdded>, StageError> {
+    let (written, losses) = recording;
     let points = input.series.len();
     if points == 0 {
         return Ok(BudgetVec::default());
@@ -282,8 +309,13 @@ fn stage_series(
     let mut combos = staging.buffer(points).context(ReserveStagingSnafu)?;
     let mut order = staging.buffer(points).context(ReserveStagingSnafu)?;
     for (index, point) in input.series.iter().enumerate() {
+        let bucket = context.shape.grids[usize::from(point.tier.0)]
+            .bucket()
+            .index_of(point.at);
+        let loss = &mut losses[usize::from(point.tier.0)];
         if watermarks.late_point(context.shape, point) {
             written.late += 1;
+            loss.add(LossKind::Late, bucket, &[], 0);
             // Never read: the point is left out of the order.
             combos.push(0);
             continue;
@@ -293,6 +325,9 @@ fn stage_series(
             .context(ResolveSeriesSnafu { point: index })
             .map_err(StageError::resolution)?;
         written.folded += u64::from(resolved.fold.is_some());
+        if resolved.fold.is_some() {
+            loss.add(LossKind::Fold, bucket, point.fields, 0);
+        }
         combos.push(resolved.id);
         order.push(u32::try_from(index).expect("a batch holds fewer than 2^32 points"));
     }
@@ -621,9 +656,10 @@ impl Journal {
         draft: &mut CatalogDraft,
         schema: &Schema,
         input: &Input<'_>,
-        written: &mut Written,
+        recording: (&mut Written, &mut [Pending]),
         staging: &MemoryAccount,
     ) -> Result<EventUpdates, StageError> {
+        let (written, losses) = recording;
         let rows = input.events.len();
         if rows == 0 {
             return Ok(BudgetVec::default());
@@ -663,6 +699,7 @@ impl Journal {
         for (index, row) in input.events.iter().enumerate() {
             if late(row) {
                 written.late += 1;
+                losses[usize::from(row.stream.0)].add(LossKind::Late, row.key, &[], 0);
             } else {
                 order.push(u32::try_from(index).expect("a batch holds fewer than 2^32 rows"));
             }
@@ -678,6 +715,20 @@ impl Journal {
             let spec = &schema.events[usize::from(row.stream.0)];
             let (combos, labels) = (resolved.combos.len(), resolved.labels.len());
             resolve_row(batch, draft, spec, input, index, written, &mut resolved)?;
+            let loss = &mut losses[usize::from(row.stream.0)];
+            if resolved.combos[combos..]
+                .iter()
+                .any(|combo| combo.fold.is_some())
+            {
+                loss.add(LossKind::Fold, row.key, &[], 0);
+            }
+            let cells = resolved.labels[labels..]
+                .iter()
+                .filter(|&&id| id == 0)
+                .count() as u64;
+            if cells > 0 {
+                loss.add(LossKind::LabelOverflow, row.key, &[], cells);
+            }
             let (stream, extent) = (StreamRef::Events(row.stream), event_extent(spec, row.key));
             for combo in &resolved.combos[combos..] {
                 self.references
@@ -930,6 +981,10 @@ impl<W: StorageWrite> StorageWrite for Counted<W> {
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum StageError {
+    /// Diagnostic updates failed in the same transaction as the input data.
+    #[snafu(display("failed to stage write diagnostics"))]
+    Diagnostics { source: DiagnosticsError },
+
     #[snafu(display("failed to read the state record"))]
     ReadState { source: MetaError },
 
@@ -1046,6 +1101,7 @@ impl StageError {
 
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::Diagnostics { source } => source.kind(),
             Self::ReadState { source } => source.kind(),
             Self::UnknownPublication { .. } => ErrorKind::Corrupted,
             Self::StaleBatch { .. } | Self::AlreadyPinned { .. } | Self::NotPinned { .. } => {
@@ -1168,13 +1224,14 @@ mod tests {
             streams: crate::budget::test_buffer([None; 2]),
         };
 
+        let mut losses = [Pending::default(); 4];
         let added = stage_series(
             &mut batch,
             &mut draft,
             &context,
             &input,
             &watermarks,
-            &mut written,
+            (&mut written, &mut losses),
             &staging,
         )
         .unwrap();
@@ -1217,7 +1274,7 @@ mod tests {
                 &mut draft,
                 &schema,
                 &input,
-                &mut written,
+                (&mut written, &mut losses[2..]),
                 &staging,
             )
             .unwrap();

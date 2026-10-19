@@ -2,6 +2,7 @@
 //! encoding, metadata records and the chunk manifest. Every stored record carries a format
 //! version (§0.3 rule 6).
 
+pub(crate) mod diagnostics;
 pub(crate) mod keys;
 pub(crate) mod manifest;
 pub(crate) mod meta;
@@ -43,6 +44,7 @@ pub(crate) const REFERENCES: Ns = Ns(12);
 pub(crate) const REFERENCE_INDEX: Ns = Ns(13);
 /// The combinations and label values that may have become free: entity, with an empty value.
 pub(crate) const RECYCLE_CANDIDATES: Ns = Ns(14);
-// 15 is free for the store's later namespaces.
+/// Transactional cumulative counters and the 64-slot loss ring (see `diagnostics`).
+pub(crate) const DIAGNOSTICS: Ns = Ns(15);
 /// The consumer's auxiliary state, written in the same transaction as its batch (§4.1).
 pub(crate) const AUX: Ns = Ns(16);

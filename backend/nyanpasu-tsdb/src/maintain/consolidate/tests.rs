@@ -798,7 +798,8 @@ fn an_expiring_extent_is_not_consolidated_and_cleanup_clears_its_bookkeeping() {
         first,
         Some(Round::Expire {
             stream: MINUTES,
-            extent: 0
+            extent: 0,
+            reason: crate::LossKind::DeleteAge,
         })
     );
     let done = crate::maintain::tests::finish(&mut tsdb, later, &retention);

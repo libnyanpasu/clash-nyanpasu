@@ -359,6 +359,7 @@ fn next_round_bytes(tsdb: &Tsdb<MemoryStorage>, now: i64) -> u64 {
         &snapshot,
         &tsdb.round_context(&current),
         due(tsdb, now).unwrap(),
+        Timestamp(now),
     )
     .unwrap();
     let bytes = batch.written();

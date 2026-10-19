@@ -38,6 +38,7 @@ mod write;
 pub use budget::{BudgetExceeded, MemoryBudget, Reservation};
 pub use db::{Reader, Tsdb};
 pub use error::ErrorKind;
+pub use layout::manifest::StreamRef;
 pub use lifecycle::{
     CheckpointError, CompactError, CompactStorage, Compaction, OpenError, RecoveryError,
     RecoveryProgress, RecoveryView,
@@ -54,6 +55,7 @@ pub use schema::{
     Aggregate, ColumnSpec, ColumnType, EventKey, EventStreamSpec, ExtentSpec, FieldSpec, LabelId,
     LabelSpec, NameScope, Schema, SchemaError, SeriesSpec, StreamId, TierId, TierSpec,
 };
+pub use status::{LossDelta, LossKind, LossRange, LossRecord};
 pub use time::{DurationError, ReversedRange, TimeRange, Timestamp};
 pub use version::{CaptureError, CatalogToken, Snapshot};
 pub use write::{

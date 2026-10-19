@@ -126,7 +126,7 @@ pub(crate) struct Progress {
 }
 
 /// A stream: a series tier or an event stream. Each has its own extents (§1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum StreamRef {
     Tier(TierId),
     Events(StreamId),

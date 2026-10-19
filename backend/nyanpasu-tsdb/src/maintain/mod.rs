@@ -20,7 +20,7 @@ mod retention;
 
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
-pub(crate) use self::consolidate::least_round;
+pub(crate) use self::consolidate::{event_consolidation_gated, least_round};
 pub use self::{consolidate::ConsolidateError, recycle::RecycleError, retention::RetentionError};
 use crate::{
     ErrorKind, ExtentSpec, LossDelta, LossKind, LossRange, LossRecord, Profile, Retention,

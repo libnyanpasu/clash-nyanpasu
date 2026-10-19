@@ -34,6 +34,8 @@ use crate::{
     write::{EventRow, Input, Value, chunking::event_columns},
 };
 
+mod degradation;
+
 const DAY: i64 = 86_400_000;
 
 const HOSTS: [&[u8]; 3] = [b"h0", b"h1", b"h2"];
@@ -1772,6 +1774,7 @@ fn every_page_allocation_can_fail_without_releasing_an_existing_page() {
                 MemoryAccount::new(&budget, "page failure", MemoryPlan::default()).unwrap();
             let mut log = ReadLog::default();
             let mut scan = Scan {
+                folded: EventDegradation::default(),
                 revoked: snapshot.revoked(),
                 storage: snapshot.storage(),
                 catalog: &snapshot.version().catalog,
@@ -2119,6 +2122,7 @@ fn references_the_catalog_lacks_are_corrupted() {
         store.tsdb.into_storage(),
         registry,
         MemoryBudget::new(u64::MAX),
+        false,
     ));
     let damaged = shared.capture().unwrap();
     let error = scan_at(&damaged, 40, &by_combination).unwrap_err();

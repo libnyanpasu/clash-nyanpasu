@@ -205,6 +205,14 @@ impl UsesError {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum PinError {
+    /// A diagnostic scan could not read the pin namespaces.
+    #[snafu(display("failed to scan pins"))]
+    ScanPins { source: StorageError },
+
+    /// Pin keys, nonzero counts and the captured catalog disagree.
+    #[snafu(display("pin records disagree with the captured catalog or their counts"))]
+    InvalidPins,
+
     #[snafu(display("failed to read pin key {key:02x?}"))]
     ReadKey {
         key: Box<[u8]>,
@@ -257,6 +265,8 @@ pub enum PinError {
 impl PinError {
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::ScanPins { source } => source.kind(),
+            Self::InvalidPins => ErrorKind::Corrupted,
             Self::ReadKey { source, .. }
             | Self::WriteKey { source, .. }
             | Self::DeleteKey { source, .. }

@@ -730,6 +730,7 @@ fn a_head_combination_the_catalog_lacks_is_corrupted() {
         tsdb.into_storage(),
         registry,
         MemoryBudget::new(u64::MAX),
+        false,
     ));
     let snapshot = shared.capture().unwrap();
     let total = [GroupRequest {

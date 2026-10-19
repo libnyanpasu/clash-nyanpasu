@@ -55,6 +55,7 @@ mod error;
 mod ids;
 mod paged;
 mod persist;
+pub(crate) use persist::pin_totals;
 #[cfg(test)]
 mod tests;
 
@@ -260,6 +261,28 @@ impl Catalog {
     /// versions or not, and its own structure. See the module docs.
     pub(crate) fn bytes(&self) -> u64 {
         self.bytes
+    }
+
+    /// Resident nonzero combinations, label values and folded nonzero combinations.
+    /// This streams live ids and allocates nothing; implicit overflow markers are excluded.
+    pub(crate) fn status_counts(&self) -> (u64, u64, u64) {
+        let mut combos = 0;
+        let mut folded = 0;
+        for id in self.inner.combos.live_ids() {
+            combos += 1;
+            folded += u64::from(
+                self.combo(id)
+                    .expect("a live combination exists")
+                    .any(|id| id == 0),
+            );
+        }
+        let values = self
+            .inner
+            .dictionaries
+            .iter()
+            .map(|d| d.live_ids().count() as u64)
+            .sum();
+        (combos, values, folded)
     }
 
     /// The generation of this version. It is kept in memory only: a loaded catalog has

@@ -731,6 +731,91 @@ pub(crate) fn first_crowded(
     found.transpose()
 }
 
+/// Counts persistent crowding marks, without deciding whether a policy or clock makes work due.
+pub(crate) fn crowding_count(
+    read: &impl StorageRead,
+    stream: StreamRef,
+) -> Result<u64, ManifestError> {
+    let prefix = family_key(stream, Family::Crowded);
+    let mut count = 0;
+    let bad = read
+        .scan(
+            CONSOLIDATION,
+            KeyRange::Prefix(prefix.as_slice()),
+            Direction::Forward,
+            |key, _| {
+                let valid = || {
+                    let mut reader = KeyReader::new(key);
+                    reader.u8()?;
+                    reader.u8()?;
+                    reader.u8()?;
+                    reader.i64()?;
+                    reader.finish()
+                };
+                match valid().context(IndexKeySnafu { key }) {
+                    Ok(()) => {
+                        count += 1;
+                        ControlFlow::Continue(())
+                    }
+                    Err(error) => ControlFlow::Break(error),
+                }
+            },
+        )
+        .context(ScanIndexSnafu)?;
+    match bad {
+        Some(error) => Err(error),
+        None => Ok(count),
+    }
+}
+
+/// Counts all persistent run records, including orphaned runs awaiting expired-run cleanup.
+pub(crate) fn run_count(read: &impl StorageRead, stream: StreamRef) -> Result<u64, ManifestError> {
+    let prefix = family_key(stream, Family::Runs);
+    let mut count = 0;
+    let bad = read
+        .scan(
+            CONSOLIDATION,
+            KeyRange::Prefix(prefix.as_slice()),
+            Direction::Forward,
+            |key, value| {
+                let parts = || {
+                    let mut reader = KeyReader::new(key);
+                    reader.u8()?;
+                    reader.u8()?;
+                    reader.u8()?;
+                    let extent = reader.i64()?;
+                    reader.u64()?;
+                    let run = reader.u64()?;
+                    reader.finish()?;
+                    Ok((extent, run))
+                };
+                let (extent, run) = match parts().context(IndexKeySnafu { key }) {
+                    Ok(parts) => parts,
+                    Err(error) => return ControlFlow::Break(error),
+                };
+                match decode::<RunRecord>(value) {
+                    Ok(_) => {
+                        count += 1;
+                        ControlFlow::Continue(())
+                    }
+                    Err(problem) => ControlFlow::Break(
+                        InvalidRunSnafu {
+                            extent,
+                            run,
+                            problem,
+                        }
+                        .build(),
+                    ),
+                }
+            },
+        )
+        .context(ScanIndexSnafu)?;
+    match bad {
+        Some(error) => Err(error),
+        None => Ok(count),
+    }
+}
+
 /// Takes the chunk `listed` of an expired extent out of the L0 index, with its first bucket's
 /// crowding mark: nothing merges in an expired extent, so cleanup needs neither. For a
 /// consolidated chunk the index key names nothing; the keys go whatever kind the entry

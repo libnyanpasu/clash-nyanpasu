@@ -37,28 +37,28 @@ pub(crate) struct Global {
 
 /// Expired stored data; counted when the watermark advances, never again at cleanup.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Deletions {
+pub struct Deletions {
     /// Number of expired extents.
-    pub(crate) extents: u64,
+    pub extents: u64,
     /// Stored chunk and journal bytes, keys included, before expiration.
-    pub(crate) bytes: u64,
+    pub bytes: u64,
 }
 
 /// Cumulative input losses of one tier or event stream, not stored aggregate row counts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct StreamCounters {
+pub struct StreamCounters {
     /// Input series points or event rows rejected as late.
-    pub(crate) late_rows: u64,
+    pub late_rows: u64,
     /// Accepted input series points or event rows with a folded series combination.
-    pub(crate) folded_rows: u64,
+    pub folded_rows: u64,
     /// Accepted input event cells resolved to the overflow label value.
-    pub(crate) label_overflows: u64,
+    pub label_overflows: u64,
     /// Field values of accepted folded input series points; event streams and tail are zero.
-    pub(crate) folded_sums: [u64; MAX_FIELDS],
+    pub folded_sums: [u64; MAX_FIELDS],
     /// Expiration by age, including ties with the byte cap.
-    pub(crate) age: Deletions,
+    pub age: Deletions,
     /// Expiration by byte cap alone.
-    pub(crate) bytes: Deletions,
+    pub bytes: Deletions,
 }
 
 /// All schema streams, in the same canonical tier-then-event order as diagnostic writes.

@@ -38,7 +38,10 @@ mod write;
 pub use budget::{BudgetExceeded, MemoryBudget, Reservation};
 pub use db::{Reader, Tsdb};
 pub use error::ErrorKind;
-pub use layout::manifest::StreamRef;
+pub use layout::{
+    diagnostics::{Deletions, StreamCounters},
+    manifest::StreamRef,
+};
 pub use lifecycle::{
     CheckpointError, CompactError, CompactStorage, Compaction, OpenError, RecoveryError,
     RecoveryProgress, RecoveryView,
@@ -46,18 +49,21 @@ pub use lifecycle::{
 pub use maintain::{Maintain, MaintainError, Maintained};
 pub use profile::{Profile, ProfileError};
 pub use query::{
-    Event, EventCondition, EventCursor, EventFilter, EventPage, EventPredicate, EventQuery,
-    EventScanError, EventValue, FieldMask, Group, GroupKey, GroupList, GroupRequest, KeyPart,
-    LabelFilter, LabelMap, SeriesGroups, SeriesQuery, SeriesQueryError,
+    Event, EventCondition, EventCursor, EventDegradation, EventFilter, EventPage, EventPredicate,
+    EventQuery, EventScanError, EventValue, FieldMask, Group, GroupKey, GroupList, GroupRequest,
+    KeyPart, LabelFilter, LabelMap, SeriesGroups, SeriesQuery, SeriesQueryError,
 };
 pub use retention::{Retention, RetentionPolicy};
 pub use schema::{
     Aggregate, ColumnSpec, ColumnType, EventKey, EventStreamSpec, ExtentSpec, FieldSpec, LabelId,
     LabelSpec, NameScope, Schema, SchemaError, SeriesSpec, StreamId, TierId, TierSpec,
 };
-pub use status::{LossDelta, LossKind, LossRange, LossRecord};
+pub use status::{
+    CatalogStatus, LossDelta, LossKind, LossRange, LossRecord, MaintenanceStatus, Status,
+    StatusData, StatusError, StreamStatus, StreamWork,
+};
 pub use time::{DurationError, ReversedRange, TimeRange, Timestamp};
-pub use version::{CaptureError, CatalogToken, Snapshot};
+pub use version::{CaptureError, CatalogToken, LifecycleState, Snapshot};
 pub use write::{
     AuxOp, ComboId, EventRow, EventSeq, Input, InputError, MAX_PIN_KEY_LEN, PinOp, SeriesPoint,
     StageError, Value, WriteError, Written,

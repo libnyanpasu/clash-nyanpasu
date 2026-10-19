@@ -67,7 +67,7 @@ pub(crate) struct StagedVersion {
 
 /// Admission state, changed under the publication lock so withdrawal and failure are atomic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LifecycleState {
+pub enum LifecycleState {
     /// The owner and readers may start operations.
     Open,
     /// An unknown commit or backend failure requires owner-driven recovery.
@@ -101,6 +101,8 @@ struct Slots {
     /// owner recovers (§7.5). It lives under the lock with the versions, so that withdrawing
     /// a version and flagging the store are one step for a capture.
     state: LifecycleState,
+    /// Ephemeral owner backlog, observed under R alongside capture.
+    behind: bool,
     /// A new open replaces this marker together with its publication.
     open: Arc<OpenMarker>,
 }
@@ -120,6 +122,8 @@ struct Slots {
 /// G-write then R-write only after query credit drained and all fallible work completed.
 /// Suspend/close first close admission under G-write then R-write, checkpoint under G-read
 /// without R, then retire. Neither the checkpoint commit nor backend Drop holds R.
+/// Status captures the ephemeral backlog under R with its publication, then reads metadata
+/// without G or R. Its retained result holds no capture or version.
 /// Compaction holds G-write, checks admission briefly under R, then invokes the backend
 /// without R. It leaves the revocation flag and publication unchanged; captures wait on G.
 pub(crate) struct Shared<S> {
@@ -131,6 +135,8 @@ pub(crate) struct Shared<S> {
     pub(crate) query_budget: MemoryBudget,
     /// Set on retirement; reset only after the old query budget has drained in recovery.
     revoked: AtomicBool,
+    /// True when staging gates off at least one windowed event stream.
+    pub(crate) event_consolidation_gated_off: bool,
     /// One ordered query boundary hook; never present in production.
     #[cfg(test)]
     query_hook: Mutex<Option<QueryHook>>,
@@ -138,11 +144,17 @@ pub(crate) struct Shared<S> {
 
 impl<S: Storage> Shared<S> {
     /// Installs the initial backend and registry in one capture gate.
-    pub(crate) fn new(storage: S, registry: Registry, query_budget: MemoryBudget) -> Self {
+    pub(crate) fn new(
+        storage: S,
+        registry: Registry,
+        query_budget: MemoryBudget,
+        event_consolidation_gated_off: bool,
+    ) -> Self {
         Self {
             storage: RwLock::new(Some(storage)),
             registry,
             query_budget,
+            event_consolidation_gated_off,
             revoked: AtomicBool::new(false),
             #[cfg(test)]
             query_hook: Mutex::new(None),
@@ -201,6 +213,7 @@ impl<S: Storage> Shared<S> {
         slots.open = open;
         self.revoked.store(false, Ordering::Release);
         slots.state = LifecycleState::Open;
+        slots.behind = false;
     }
 
     /// Captures under G then R; a failure is reported only after R's read guard unwinds.
@@ -300,6 +313,7 @@ impl<S: Storage> Shared<S> {
             version: reservation.hold(|| version.clone()),
             open: slots.open.clone(),
             shared: self.clone(),
+            status_behind: slots.behind,
         };
         #[cfg(test)]
         Registry::run(&self.registry.after_pin);
@@ -411,6 +425,7 @@ impl Registry {
                 pending: None,
                 head: Some(head),
                 state: LifecycleState::Open,
+                behind: false,
                 open,
             }),
             schema,
@@ -461,6 +476,16 @@ impl Registry {
     /// Admission state for owner calls, which are serialized by the facade's mutable borrow.
     pub(crate) fn state(&self) -> LifecycleState {
         self.read().state
+    }
+
+    /// The owner's single ephemeral backlog flag, read under R.
+    pub(crate) fn behind(&self) -> bool {
+        self.read().behind
+    }
+
+    /// Updates the owner backlog after a completed operation, under R.
+    pub(crate) fn set_behind(&self, behind: bool) {
+        self.write().behind = behind;
     }
 
     /// Records a recovery call that returned without installing a candidate.
@@ -600,6 +625,8 @@ pub struct Snapshot<S: Storage> {
     open: Arc<OpenMarker>,
     /// Drops after the storage transaction and the charged version, never before them.
     shared: Arc<Shared<S>>,
+    /// Backlog observed together with this capture, rather than a later publication.
+    pub(crate) status_behind: bool,
 }
 
 /// What the ids of a snapshot's catalog mean (§5.3 rule 5): the label and combination ids it
@@ -679,6 +706,16 @@ impl<S: Storage> Snapshot<S> {
 
     pub(crate) fn schema(&self) -> &Schema {
         &self.shared.registry.schema
+    }
+
+    /// Current lifecycle admission; status returns no data outside Open.
+    pub(crate) fn lifecycle(&self) -> LifecycleState {
+        self.shared.registry.state()
+    }
+
+    /// Immutable profile gate shared across this facade's recoveries.
+    pub(crate) fn event_consolidation_gated_off(&self) -> bool {
+        self.shared.event_consolidation_gated_off
     }
 
     pub(crate) fn budget(&self) -> &MemoryBudget {
@@ -829,7 +866,7 @@ mod tests {
         let heads = MemoryBudget::new(10);
         let staging = MemoryBudget::new(20);
         let queries = MemoryBudget::new(u64::MAX);
-        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone(), false));
         let registry = &shared.registry;
         let pending = registry.register(StagedVersion {
             version: version(1),
@@ -861,7 +898,7 @@ mod tests {
         show(&storage, 0);
         let registry = registry(version(0));
         let queries = MemoryBudget::new(u64::MAX);
-        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone(), false));
         let registry = &shared.registry;
         let heads = MemoryBudget::new(10);
 
@@ -898,7 +935,7 @@ mod tests {
         let bytes = registry.current().bytes();
         assert_ne!(bytes, 0);
         let queries = MemoryBudget::new(u64::MAX);
-        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone(), false));
         let registry = &shared.registry;
         let (reserved_tx, reserved_rx) = mpsc::channel();
         let budget = queries.clone();
@@ -919,7 +956,7 @@ mod tests {
         show(&storage, 99);
         let registry = registry(version(1));
         let queries = MemoryBudget::new(u64::MAX);
-        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone(), false));
         let registry = &shared.registry;
         let heads = MemoryBudget::new(10);
 
@@ -966,7 +1003,7 @@ mod tests {
         show(&storage, 0);
         let registry = registry(version(0));
         let queries = MemoryBudget::new(u64::MAX);
-        let shared = Arc::new(Shared::new(storage, registry, queries.clone()));
+        let shared = Arc::new(Shared::new(storage, registry, queries.clone(), false));
         let registry = &shared.registry;
         let heads = MemoryBudget::new(10);
 

@@ -1,5 +1,7 @@
 //! Transactional diagnostics through the facade.
 
+mod observations;
+
 use std::{collections::BTreeMap, ops::ControlFlow, time::Duration};
 
 use super::*;

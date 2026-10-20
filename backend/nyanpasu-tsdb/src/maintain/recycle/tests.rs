@@ -2042,3 +2042,75 @@ fn a_candidate_of_an_id_not_live_is_dropped() {
     assert_eq!(candidates(&tsdb), []);
     assert_eq!(tsdb.current().catalog.live_combos(), catalog.live_combos());
 }
+
+/// Staging fits any single release but not all table copies, so refusals split the work
+/// into rounds.
+#[test]
+fn recycling_makes_progress_when_staging_fits_one_release_but_not_the_round() {
+    /// Enough values for the loaded hash table to span several pages.
+    const VALUES: u32 = 800;
+    let disk = MemoryDisk::new();
+    let storage = open(&disk).into_storage();
+    let catalog = crate::catalog::Catalog::new(&schema());
+    let account = crate::budget::test_account();
+    let mut draft = catalog.draft(u64::MAX, &account).unwrap();
+    let mut batch = storage.batch().unwrap();
+    for n in 1..=VALUES {
+        let id = draft
+            .resolve_label(&mut batch, HOST, &n.to_be_bytes())
+            .unwrap();
+        assert_eq!(id, n);
+        references::queue(&mut batch, Entity::Label(HOST, id)).unwrap();
+    }
+    let (_, copies) = draft.finish();
+    batch.commit(Durability::Durable).unwrap();
+    drop(copies);
+    drop(storage);
+    let profile = Profile {
+        cleanup_chunks: VALUES as usize,
+        ..Profile::desktop()
+    };
+    let mut tsdb = open_with(&disk, profile.clone());
+    let current = tsdb.current();
+    // Measure every fresh release, since the hash table's last page can be shorter.
+    let mut single = 0;
+    for id in 1..=VALUES {
+        let mut draft = current.catalog.draft(profile.catalog, &account).unwrap();
+        let mut batch = tsdb.storage().batch().unwrap();
+        draft.release_label(&mut batch, HOST, id).unwrap();
+        single = single.max(draft.peak() - current.catalog.bytes());
+    }
+    let mut draft = current.catalog.draft(profile.catalog, &account).unwrap();
+    let mut batch = tsdb.storage().batch().unwrap();
+    for id in 1..=VALUES {
+        draft.release_label(&mut batch, HOST, id).unwrap();
+    }
+    assert!(draft.peak() - current.catalog.bytes() > single);
+    drop(draft);
+    drop(batch);
+    drop(current);
+    let budget = tsdb.staging_budget().clone();
+    let occupied = budget
+        .try_reserve("other staging work", profile.staging - single)
+        .unwrap();
+    let retention = policy(keep(), keep(), keep());
+    let (mut released, mut rounds) = (0, 0);
+    for _ in 0..VALUES {
+        let done = run(&mut tsdb, 0, &retention, 1).unwrap();
+        assert_eq!(done.recycles, 1);
+        assert!(done.labels_released > 0, "{done:?}");
+        assert_eq!(done.combos_released, 0);
+        released += done.labels_released;
+        rounds += 1;
+        assert_eq!(budget.reserved(), occupied.bytes());
+        assert_eq!(candidates(&tsdb).len() as u64, u64::from(VALUES) - released);
+        if !done.more {
+            break;
+        }
+    }
+    assert_eq!(released, u64::from(VALUES));
+    assert!(rounds > 1);
+    assert!(tsdb.current().catalog.live_labels(HOST).is_empty());
+    drop(occupied);
+    check_settled(&tsdb);
+}

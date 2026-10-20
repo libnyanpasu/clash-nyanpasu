@@ -2,6 +2,8 @@
 //! memory pressure, late writes, the journal cap, the staging budget and failures. Chunks
 //! are read back with the chunk reader.
 
+use crate::budget::{test_buffer, test_value};
+
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use proptest::prelude::*;
@@ -60,9 +62,19 @@ fn read_chunk(read: &impl StorageRead, listed: &Listed) -> ReadChunk {
         chunk: listed.chunk,
     };
     let budget = crate::MemoryBudget::new(u64::MAX);
-    let reader = ChunkReader::open(&source, &budget, listed.entry.fragment0).unwrap();
+    let reader = ChunkReader::open(
+        &source,
+        &crate::budget::MemoryAccount::new(
+            &budget,
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
+        listed.entry.fragment0,
+    )
+    .unwrap();
     let mut rows = vec![Vec::new(); reader.rows() as usize];
-    let mut decoder = BlockDecoder::new().unwrap();
+    let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
     for (column, desc) in reader.columns().iter().enumerate() {
         let column = column as u16;
         let mut row = 0;
@@ -111,9 +123,10 @@ fn read_chunk(read: &impl StorageRead, listed: &Listed) -> ReadChunk {
                             BytesValue::Null => Cell::Null,
                             BytesValue::Inline(bytes) => Cell::Bytes(bytes.to_vec()),
                             BytesValue::Large(index) => {
-                                let mut large = Vec::new();
+                                let mut large =
+                                    reader.account().buffer(0).expect("empty storage is free");
                                 reader.read_large(&source, index, &mut large).unwrap();
-                                Cell::Bytes(large)
+                                Cell::Bytes(large.to_vec())
                             }
                         })
                         .collect()
@@ -566,20 +579,20 @@ fn a_bucket_is_chunked_when_it_fills_a_chunk() {
         }
         let deltas = sums.into_deltas();
         let update = HeadUpdate {
-            series: vec![SeriesAdded {
+            series: test_buffer(vec![SeriesAdded {
                 source,
                 cost: Accumulator::merge_cost(None, &deltas, 2),
-                deltas,
+                deltas: test_value(deltas),
                 update: SourceUpdate {
                     written: Timestamp(0),
                     records: 1,
                     journal_bytes: 10,
                 },
-            }],
-            events: Vec::new(),
+            }]),
+            events: BudgetVec::default(),
         };
         let budget = MemoryBudget::new(u64::MAX);
-        let mut staging = budget.try_reserve("staging", 0).unwrap();
+        let staging = MemoryAccount::new(&budget, "staging", MemoryPlan::default()).unwrap();
         Planning {
             schema: &schema,
             profile: &profile,
@@ -590,12 +603,12 @@ fn a_bucket_is_chunked_when_it_fills_a_chunk() {
             head_limit: u64::MAX,
             staging_available: u64::MAX,
         }
-        .plan_commit(Some(Timestamp(0)), &mut staging)
+        .plan_commit(Some(Timestamp(0)), &staging)
         .unwrap()
         .series
     };
-    assert_eq!(plan(&[1, 2]), [Fate::Keep]);
-    assert_eq!(plan(&[1, 2, 3]), [Fate::Chunk]);
+    assert_eq!(&*plan(&[1, 2]), [Fate::Keep]);
+    assert_eq!(&*plan(&[1, 2, 3]), [Fate::Chunk]);
 }
 
 #[test]
@@ -1091,7 +1104,7 @@ fn a_staging_budget_below_one_chunk_build_is_refused_at_open() {
     let slot = series_spine_bytes(1) - series_spine_bytes(0);
     let sources = head / (slot + Accumulator::smallest_bytes(2));
     let catalog = Catalog::new(&schema);
-    let draft = catalog.draft(u64::MAX).peak() - catalog.bytes();
+    let draft = catalog.draft_bytes();
     assert_eq!(
         needed - stream_memory(closed, 1),
         sources * size_of::<Fate>() as u64 + 2 * size_of::<usize>() as u64 + draft
@@ -1168,7 +1181,7 @@ fn chunking_on_open_holds_one_records_chunk_build() {
 // uncompressed chunk: for 3 fields, the figure the chunk format pins.
 #[test]
 fn the_builder_reserves_the_bound_of_an_uncompressed_chunk() {
-    assert_eq!(builder_memory(&series_columns(3)), 286_186);
+    assert_eq!(builder_memory(&series_columns(3)), 286_666);
 }
 
 /// Chunking a stream reserves its builder, one row of each record it merges and one
@@ -1288,11 +1301,12 @@ fn a_merge_yields_rows_in_order_holding_one_row_of_each_record() {
         .iter()
         .map(|rows| EventRecord::encode(0, rows))
         .collect();
-    let readers = encoded
-        .iter()
-        .map(|value| EventRecord::open(value).unwrap().rows())
-        .collect();
-    let mut merge = Merge::new(readers);
+    let readers = test_buffer(
+        encoded
+            .iter()
+            .map(|value| EventRecord::open(value).unwrap().rows()),
+    );
+    let mut merge = Merge::new(&crate::budget::test_account(), readers, 1);
     let mut merged = Vec::new();
     while let Some(row) = merge.next() {
         let waiting = merge.next.iter().filter(|next| next.is_some()).count();
@@ -1340,7 +1354,7 @@ fn an_append_batch_holds_what_its_memory_counts_and_never_grows() {
         ],
     };
     let uuid = row(Identity::Uuid([7; 16]));
-    let mut batch = AppendBatch::new(spec);
+    let mut batch = AppendBatch::new(&crate::budget::test_account(), spec);
     let buffers = AppendBatch::buffers(spec);
     assert_eq!(batch.held(), buffers);
     for _ in 0..APPEND_ROWS {
@@ -1353,7 +1367,7 @@ fn an_append_batch_holds_what_its_memory_counts_and_never_grows() {
     // Two identities of 9,000 bytes do not fit one batch's forms; a UUID beside one does.
     let text = vec![b't'; 9_000];
     let long = row(Identity::Text(&text));
-    let mut batch = AppendBatch::new(spec);
+    let mut batch = AppendBatch::new(&crate::budget::test_account(), spec);
     batch.push(&long);
     assert!(!batch.has_room(&long));
     assert!(batch.has_room(&uuid));
@@ -1418,7 +1432,7 @@ fn mobile_chunks_closed_connections_at_the_trigger_under_a_full_batch() {
     let spec = &schema.events[0];
     // The builder of the ten chunk columns, the append buffers, and per record merged a row
     // of seven values with its reader, its waiting slot and its heap entry.
-    assert_eq!(stream_memory(spec, 1), 627_905);
+    assert_eq!(stream_memory(spec, 1), 628_865);
     assert_eq!(stream_memory(spec, 2) - stream_memory(spec, 1), 272);
 
     let profile = Profile::mobile();
@@ -2091,6 +2105,7 @@ fn a_change_to_an_extent_is_in_the_batch_once_its_step_returns() {
     let catalog = Catalog::load(&snapshot, &schema, u64::MAX).unwrap();
     let mut batch = storage.batch().unwrap();
     let removed = Execution {
+        account: &crate::budget::test_account(),
         batch: &mut batch,
         schema: &schema,
         shape: &shape,
@@ -2212,7 +2227,7 @@ fn the_planned_next_head_is_what_building_it_allocates() {
         SeriesAdded {
             source,
             cost: Accumulator::merge_cost(head.accumulator(source), &deltas, 2),
-            deltas,
+            deltas: test_value(deltas),
             update: SourceUpdate {
                 written: Timestamp(bucket),
                 records: 1,
@@ -2223,22 +2238,43 @@ fn the_planned_next_head_is_what_building_it_allocates() {
     // A current head of four buckets and a log buffer.
     let empty = Head::empty(2);
     let setup = HeadUpdate {
-        series: (0..4)
-            .map(|bucket| added(&empty, bucket, &[1, 2, 300, 600 + bucket as u32]))
-            .collect(),
-        events: vec![(LOGS, vec![segment(0, 1, logs(&[(1, b"one")]))])],
+        series: test_buffer(
+            (0..4i32)
+                .map(|bucket| added(&empty, i64::from(bucket), &[1, 2, 300, 600 + bucket as u32])),
+        ),
+        events: test_buffer(
+            vec![(LOGS, vec![segment(0, 1, logs(&[(1, b"one")]))])]
+                .into_iter()
+                .map(|(stream, segments)| {
+                    (stream, test_buffer(segments.into_iter().map(test_value)))
+                }),
+        ),
     };
-    let current = empty.next(setup, &[Fate::Keep; 4], |_| false, 2);
+    let current = empty
+        .next(
+            setup,
+            &[Fate::Keep; 4],
+            |_| false,
+            2,
+            &crate::budget::test_account(),
+        )
+        .unwrap()
+        .into_parts()
+        .0;
     let update = || HeadUpdate {
-        series: vec![
+        series: test_buffer(vec![
             added(&current, 1, &[2, 700]),
             added(&current, 3, &[5]),
             added(&current, 9, &[1, 260]),
-        ],
-        events: vec![(
-            LOGS,
-            vec![segment(1, 2, logs(&[(2, b"two"), (3, b"three")]))],
-        )],
+        ]),
+        events: test_buffer(
+            vec![(
+                LOGS,
+                vec![segment(1, 2, logs(&[(2, b"two"), (3, b"three")]))],
+            )]
+            .into_iter()
+            .map(|(stream, segments)| (stream, test_buffer(segments.into_iter().map(test_value)))),
+        ),
     };
     let fold = Fate::Fold { journal_bytes: 99 };
     let cases = [
@@ -2260,8 +2296,8 @@ fn the_planned_next_head_is_what_building_it_allocates() {
             .map(|segment| segment.record_len() as u64)
             .sum();
         let plan = Plan {
-            series: fates.to_vec(),
-            streams: streams.to_vec(),
+            series: test_buffer(fates),
+            streams: test_buffer(streams),
             staging: 0,
         };
         let planning = Planning {
@@ -2277,7 +2313,23 @@ fn the_planned_next_head_is_what_building_it_allocates() {
         let planned = planning.next_bytes(&plan);
         let head_bytes = planning.head_bytes(&plan);
         let chunked = |stream: StreamId| streams[usize::from(stream.0)] > 0;
-        let next = current.next(update, &fates, chunked, 2);
+        let budget = MemoryBudget::new(planned);
+        let account = MemoryAccount::new(&budget, "staging", MemoryPlan::default()).unwrap();
+        let observed = std::rc::Rc::new(std::cell::Cell::new(0));
+        let construction = observed.clone();
+        let admission = budget.clone();
+        account.observe_construction(move |bytes| {
+            let live = construction.get() + bytes;
+            assert!(
+                live <= admission.reserved(),
+                "{live} constructed before admission"
+            );
+            construction.set(live);
+        });
+        let next = current.next(update, &fates, chunked, 2, &account).unwrap();
+        assert_eq!(observed.get(), planned, "{fates:?} {streams:?}");
+        assert_eq!(next.charge_bytes(), planned);
+        let next = next.into_parts().0;
         let kept = if chunked(LOGS) { 0 } else { added_records };
         assert_eq!(
             planned + kept,
@@ -2320,7 +2372,7 @@ fn a_streams_fan_in_is_the_most_records_of_one_extent() {
         EventRecord::encode(0, &[row])
     };
     // Three records of extent 0 and two of extent 1, interleaved in journal order.
-    let segments = [0, DAY_MS, 1, DAY_MS + 1, 2]
+    let segments: Vec<Segment> = [0, DAY_MS, 1, DAY_MS + 1, 2]
         .into_iter()
         .enumerate()
         .map(|(seq, key)| {
@@ -2338,13 +2390,23 @@ fn a_streams_fan_in_is_the_most_records_of_one_extent() {
         })
         .collect();
     let setup = HeadUpdate {
-        series: Vec::new(),
-        events: vec![(CLOSED, segments)],
+        series: BudgetVec::default(),
+        events: test_buffer(
+            vec![(CLOSED, segments)]
+                .into_iter()
+                .map(|(stream, segments)| {
+                    (stream, test_buffer(segments.into_iter().map(test_value)))
+                }),
+        ),
     };
-    let current = Head::empty(2).next(setup, &[], |_| false, 2);
+    let current = Head::empty(2)
+        .next(setup, &[], |_| false, 2, &crate::budget::test_account())
+        .unwrap()
+        .into_parts()
+        .0;
     let update = HeadUpdate::default();
     let budget = MemoryBudget::new(u64::MAX);
-    let mut staging = budget.try_reserve("staging", 0).unwrap();
+    let staging = MemoryAccount::new(&budget, "staging", MemoryPlan::default()).unwrap();
     let plan = Planning {
         schema: &schema,
         profile: &profile,
@@ -2355,9 +2417,9 @@ fn a_streams_fan_in_is_the_most_records_of_one_extent() {
         head_limit: u64::MAX,
         staging_available: u64::MAX,
     }
-    .plan_commit(Some(Timestamp(0)), &mut staging)
+    .plan_commit(Some(Timestamp(0)), &staging)
     .unwrap();
-    assert_eq!(plan.streams, [3, 0]);
+    assert_eq!(&*plan.streams, [3, 0]);
     let closed = &schema.events[usize::from(CLOSED.0)];
     assert_eq!(plan.staging, stream_memory(closed, 3));
 }
@@ -2385,11 +2447,29 @@ fn an_append_batch_counts_exactly_what_a_full_append_allocates() {
             StoredValue::Null,
         ],
     };
-    let mut batch = AppendBatch::new(spec);
+    let memory = AppendBatch::memory(spec);
+    let budget = MemoryBudget::new(memory);
+    let account = MemoryAccount::new(&budget, "append", MemoryPlan::bytes(memory)).unwrap();
+    let allocated = std::rc::Rc::new(std::cell::Cell::new(0));
+    let observed = allocated.clone();
+    let admission = budget.clone();
+    account.observe_allocations(move |allocate, bytes, _| {
+        if allocate {
+            let total = observed.get() + bytes;
+            assert!(total <= admission.reserved());
+            observed.set(total);
+        }
+    });
+    let mut batch = AppendBatch::new(&account, spec);
     for _ in 0..APPEND_ROWS {
         batch.push(&row);
     }
     assert_eq!(batch.held() + batch.viewed(), AppendBatch::memory(spec));
+    assert_eq!(allocated.get(), memory);
+    drop(batch);
+    assert_eq!(account.live_bytes(), 0);
+    drop(account);
+    assert_eq!(budget.reserved(), 0);
 }
 
 #[cfg(feature = "redb")]

@@ -32,7 +32,7 @@ use snafu::{OptionExt, ResultExt, Snafu, ensure};
 use super::{Changed, Context, Maintain, Maintained, Round};
 use crate::{
     ErrorKind, ExtentSpec, Retention, StreamId, TierId, Timestamp,
-    budget::BudgetExceeded,
+    budget::{BudgetExceeded, MemoryAccount, MemoryPlan},
     chunk::{format::ChunkKind, reader::metadata_within_limits},
     head::{
         Expiring,
@@ -178,10 +178,12 @@ pub(super) fn expire(
         },
         StreamRef::Events(stream) => Expiring::Events { stream, extent },
     };
-    let staging = context
-        .staging_budget
-        .try_reserve("staging", head.without_bytes(expiring))
-        .context(ReserveStagingSnafu)?;
+    let account = MemoryAccount::new(
+        context.staging_budget,
+        "staging",
+        MemoryPlan::bytes(head.without_bytes(expiring)),
+    )
+    .context(ReserveStagingSnafu)?;
     manifest::expire(batch, stream, extent).context(AdvanceWatermarkSnafu)?;
     let deleted = match expiring {
         Expiring::Series { tier, extent, grid } => {
@@ -215,8 +217,12 @@ pub(super) fn expire(
     };
     manifest::replace_extent(batch, stream, extent, &old, &record)
         .context(WriteExtentSnafu { extent })?;
+    let (head, staging) = head
+        .without(expiring, &account)
+        .context(ReserveStagingSnafu)?
+        .into_parts();
     Ok(Changed {
-        head: head.without(expiring),
+        head,
         catalog: None,
         staging,
         journal_removed: deleted,

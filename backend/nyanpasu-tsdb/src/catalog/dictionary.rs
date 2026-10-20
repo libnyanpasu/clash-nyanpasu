@@ -17,6 +17,7 @@ use super::{
     ids::Ids,
     paged::{FIRST_PAGE_PAYLOAD, Ledger, PAGE_PAYLOAD, Paged, Pages, page_bytes},
 };
+use crate::budget::BudgetExceeded;
 
 /// Hashes label values. Outsiders control them (connection targets, for example), so the
 /// hash is SipHash under random keys (§0.3 rule 3). The keys are made once per loaded
@@ -136,37 +137,37 @@ impl Heap {
     /// # Panics
     ///
     /// If `value` is longer than `u32::MAX` bytes; the dictionary refuses those first.
-    fn append(&mut self, value: &[u8], ledger: &mut Ledger) -> Span {
+    fn append(&mut self, value: &[u8], ledger: &mut Ledger) -> Result<Span, BudgetExceeded> {
         let len = u32::try_from(value.len()).expect("the dictionary refuses longer values");
         match self.plan(value.len()) {
-            Append::Nothing => return Span::default(),
+            Append::Nothing => return Ok(Span::default()),
             Append::InPlace => {}
             Append::Grow(page_len) => {
-                ledger.alloc(page_bytes::<u8>(page_len));
+                ledger.alloc(page_bytes::<u8>(page_len))?;
                 let old = self.pages.page(0);
                 let page = old
                     .iter()
                     .copied()
                     .chain(iter::repeat_n(0, page_len - old.len()))
                     .collect();
-                self.pages.replace(0, page, ledger);
+                self.pages.replace(0, page, ledger)?;
             }
             Append::NewPage(page_len) => {
-                ledger.alloc(page_bytes::<u8>(page_len));
+                ledger.alloc(page_bytes::<u8>(page_len))?;
                 self.pages
-                    .push(iter::repeat_n(0, page_len).collect::<Arc<[u8]>>(), ledger);
+                    .push(iter::repeat_n(0, page_len).collect::<Arc<[u8]>>(), ledger)?;
                 self.used = 0;
             }
         }
         let page = self.pages.count() - 1;
         let start = self.used;
-        self.pages.page_mut(page, ledger)[start..start + value.len()].copy_from_slice(value);
+        self.pages.page_mut(page, ledger)?[start..start + value.len()].copy_from_slice(value);
         self.used += value.len();
-        Span {
+        Ok(Span {
             page: u32::try_from(page).expect("a heap has fewer than 2^32 pages"),
             start: u32::try_from(start).expect("a page holds fewer than 2^32 bytes"),
             len,
-        }
+        })
     }
 
     /// One zeroed page of `bytes` bytes, or none for none, for loading values that total
@@ -175,7 +176,7 @@ impl Heap {
     fn sized(bytes: usize, ledger: &mut Ledger) -> Self {
         let pages = match bytes {
             0 => Pages::new(),
-            _ => Pages::filled(&[bytes], 0, ledger),
+            _ => Pages::filled(&[bytes], 0, ledger).expect("the loader admitted its heap"),
         };
         Self { pages, used: 0 }
     }
@@ -198,7 +199,10 @@ impl Heap {
             return Span::default();
         }
         let start = self.used;
-        self.pages.page_mut(0, ledger)[start..start + value.len()].copy_from_slice(value);
+        self.pages
+            .page_mut(0, ledger)
+            .expect("loading owns its heap")[start..start + value.len()]
+            .copy_from_slice(value);
         self.used += value.len();
         // The page holds at most `MAX_VALUE_BYTES`, so both fit.
         Span {
@@ -376,7 +380,7 @@ impl Dictionary {
         hash: u64,
         value: &[u8],
         ledger: &mut Ledger,
-    ) -> u32 {
+    ) -> Result<u32, BudgetExceeded> {
         debug_assert_eq!(
             self.find(hash, value),
             None,
@@ -384,16 +388,16 @@ impl Dictionary {
         );
         let slot = self.ids.next_slot().expect("the ids ran out");
         let place = self.place(hash, 1);
-        let span = self.heap.append(value, ledger);
+        let span = self.heap.append(value, ledger)?;
         if slot < self.ids.slots() {
-            self.spans.set(slot as usize, span, ledger);
+            self.spans.set(slot as usize, span, ledger)?;
         } else {
-            self.spans.push(span, ledger);
+            self.spans.push(span, ledger)?;
         }
-        self.ids.take(slot, ledger);
-        self.fill(place, hasher, slot + 1, ledger);
+        self.ids.take(slot, ledger)?;
+        self.fill(place, hasher, slot + 1, ledger)?;
         self.value_bytes += value.len() as u64;
-        slot + 1
+        Ok(slot + 1)
     }
 
     /// An empty dictionary with room for the values `plan` saw, every id slot free, for
@@ -402,9 +406,11 @@ impl Dictionary {
     pub(crate) fn sized(plan: &LoadPlan, ledger: &mut Ledger) -> Self {
         Self {
             heap: Heap::sized(plan.bytes as usize, ledger),
-            spans: Paged::filled(plan.slots as usize, Span::default(), ledger),
+            spans: Paged::filled(plan.slots as usize, Span::default(), ledger)
+                .expect("the loader admitted its arrays"),
             ids: Ids::free(plan.slots, ledger),
-            table: Paged::filled(table_slots(plan.values), EMPTY, ledger),
+            table: Paged::filled(table_slots(plan.values), EMPTY, ledger)
+                .expect("the loader admitted its arrays"),
             occupied: 0,
             value_bytes: 0,
         }
@@ -443,9 +449,12 @@ impl Dictionary {
         );
         let slot = id - 1;
         let span = self.heap.load(value, ledger);
-        self.spans.set(slot as usize, span, ledger);
+        self.spans
+            .set(slot as usize, span, ledger)
+            .expect("loading owns its arrays");
         self.ids.load(slot, ledger);
-        self.fill(place, hasher, id, ledger);
+        self.fill(place, hasher, id, ledger)
+            .expect("loading owns its arrays");
         self.value_bytes += value.len() as u64;
         Ok(())
     }
@@ -461,12 +470,18 @@ impl Dictionary {
     /// # Panics
     ///
     /// If `id` is not live.
-    pub(crate) fn release(&mut self, hasher: &ValueHasher, id: u32, ledger: &mut Ledger) {
+    pub(crate) fn release(
+        &mut self,
+        hasher: &ValueHasher,
+        id: u32,
+        ledger: &mut Ledger,
+    ) -> Result<(), BudgetExceeded> {
         assert!(self.is_live(id), "releasing value {id}, which is not live");
         let index = self.position(hasher, id);
         self.value_bytes -= self.value(id - 1).len() as u64;
-        self.ids.release(id - 1, ledger);
-        self.table.set(index, TOMBSTONE, ledger);
+        self.ids.release(id - 1, ledger)?;
+        self.table.set(index, TOMBSTONE, ledger)?;
+        Ok(())
     }
 
     pub(crate) fn bytes(&self) -> u64 {
@@ -501,21 +516,33 @@ impl Dictionary {
     }
 
     /// Puts `id`, which is live, in the table where `place` says.
-    fn fill(&mut self, place: Place, hasher: &ValueHasher, id: u32, ledger: &mut Ledger) {
+    fn fill(
+        &mut self,
+        place: Place,
+        hasher: &ValueHasher,
+        id: u32,
+        ledger: &mut Ledger,
+    ) -> Result<(), BudgetExceeded> {
         match place {
-            Place::Rebuild(slots) => self.rebuild(slots, hasher, ledger),
+            Place::Rebuild(slots) => self.rebuild(slots, hasher, ledger)?,
             Place::Slot(index) => {
                 if self.table.get(index) == EMPTY {
                     self.occupied += 1;
                 }
-                self.table.set(index, id, ledger);
+                self.table.set(index, id, ledger)?;
             }
         }
+        Ok(())
     }
 
     /// Rebuilds the table with `slots` slots, from every live id, including one just taken.
-    fn rebuild(&mut self, slots: usize, hasher: &ValueHasher, ledger: &mut Ledger) {
-        let mut table = Paged::filled(slots, EMPTY, ledger);
+    fn rebuild(
+        &mut self,
+        slots: usize,
+        hasher: &ValueHasher,
+        ledger: &mut Ledger,
+    ) -> Result<(), BudgetExceeded> {
+        let mut table = Paged::filled(slots, EMPTY, ledger)?;
         let mask = slots - 1;
         for slot in self.ids.live_slots() {
             let mut index = hasher.hash(self.value(slot)) as usize & mask;
@@ -523,10 +550,11 @@ impl Dictionary {
                 index = (index + 1) & mask;
             }
             // The new table is the writer's own, so this allocates nothing.
-            table.set(index, slot + 1, ledger);
+            table.set(index, slot + 1, ledger)?;
         }
         std::mem::replace(&mut self.table, table).discard(ledger);
         self.occupied = self.ids.live() as usize;
+        Ok(())
     }
 
     /// The table slot holding `id`, which is live.
@@ -576,12 +604,60 @@ impl Dictionary {
 mod tests {
     use super::*;
 
+    /// A replacement table is admitted beside the old one before any allocation or retirement.
+    #[test]
+    fn staging_covers_the_old_and_replacement_tables_together() {
+        let budget = crate::budget::MemoryBudget::new(64 * 1024);
+        let account = crate::budget::MemoryAccount::new(
+            &budget,
+            "staging",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap();
+        let mut ledger = Ledger::staging(&account).unwrap();
+        let hasher = ValueHasher::fixed_keys();
+        let mut dictionary = Dictionary::new();
+        for n in 0..6u8 {
+            let value = [n];
+            dictionary
+                .insert(&hasher, hasher.hash(&value), &value, &mut ledger)
+                .unwrap();
+        }
+        assert_eq!(dictionary.table.len(), 8);
+        let old = dictionary.table.clone();
+        let allocated = ledger.allocated();
+        let overlap = ledger.owned() + Paged::<u32>::filled_cost(16);
+        assert!(overlap > budget.reserved());
+        let occupied = budget
+            .try_reserve("other staging work", 64 * 1024 - (overlap - 1))
+            .unwrap();
+        dictionary.rebuild(16, &hasher, &mut ledger).unwrap_err();
+        assert!(dictionary.table.same(&old));
+        assert_eq!(ledger.allocated(), allocated);
+        for n in 0..6u8 {
+            assert_eq!(
+                dictionary.find(hasher.hash(&[n]), &[n]),
+                Some(u32::from(n) + 1)
+            );
+        }
+        drop(occupied);
+        dictionary.rebuild(16, &hasher, &mut ledger).unwrap();
+        assert_eq!(ledger.peak(), overlap);
+        assert_eq!(budget.reserved(), overlap);
+        assert_eq!(dictionary.table.len(), 16);
+        drop(old);
+        drop(dictionary);
+        drop(ledger);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
+    }
+
     fn insert(dictionary: &mut Dictionary, hasher: &ValueHasher, value: &[u8]) -> u32 {
         let mut ledger = Ledger::default();
         let hash = hasher.hash(value);
         let cost = dictionary.insert_cost(hash, value).unwrap();
         let expected = dictionary.next_id().unwrap();
-        let id = dictionary.insert(hasher, hash, value, &mut ledger);
+        let id = dictionary.insert(hasher, hash, value, &mut ledger).unwrap();
         assert_eq!(ledger.allocated(), cost, "cost of inserting {value:?}");
         assert_eq!(id, expected);
         id
@@ -643,7 +719,7 @@ mod tests {
         }
         // Releasing one in the middle leaves a tombstone the others are still found past.
         let mut ledger = Ledger::default();
-        dictionary.release(&hasher, 50, &mut ledger);
+        dictionary.release(&hasher, 50, &mut ledger).unwrap();
         assert_eq!(find(&dictionary, &hasher, &49u32.to_le_bytes()), None);
         for n in (0..200u32).filter(|&n| n != 49) {
             assert_eq!(find(&dictionary, &hasher, &n.to_le_bytes()), Some(n + 1));
@@ -661,7 +737,7 @@ mod tests {
         for id in [7, 3] {
             let cost = dictionary.release_cost(&hasher, id);
             let before = ledger.allocated();
-            dictionary.release(&hasher, id, &mut ledger);
+            dictionary.release(&hasher, id, &mut ledger).unwrap();
             assert_eq!(ledger.allocated() - before, cost);
         }
         assert_eq!(dictionary.get(3), None);
@@ -686,7 +762,7 @@ mod tests {
         }
         assert_eq!(dictionary.table_slots(), 8);
         for id in 1..=5 {
-            dictionary.release(&hasher, id, &mut ledger);
+            dictionary.release(&hasher, id, &mut ledger).unwrap();
         }
         assert_eq!(dictionary.occupied, 6);
         // The next insert would pass 3/4 counting tombstones, so the table is rebuilt for
@@ -799,13 +875,17 @@ mod tests {
             insert(&mut dictionary, &hasher, value);
         }
         assert_eq!(dictionary.value_bytes, 5);
-        dictionary.release(&hasher, 2, &mut Ledger::default());
+        dictionary
+            .release(&hasher, 2, &mut Ledger::default())
+            .unwrap();
         assert_eq!(dictionary.value_bytes, 2);
         // As if the other values took all but a byte.
         dictionary.value_bytes = MAX_VALUE_BYTES - 1;
         assert_eq!(dictionary.insert_cost(hasher.hash(b"fg"), b"fg"), None);
         assert!(dictionary.insert_cost(hasher.hash(b"f"), b"f").is_some());
-        dictionary.release(&hasher, 1, &mut Ledger::default());
+        dictionary
+            .release(&hasher, 1, &mut Ledger::default())
+            .unwrap();
         assert!(dictionary.insert_cost(hasher.hash(b"fg"), b"fg").is_some());
     }
 

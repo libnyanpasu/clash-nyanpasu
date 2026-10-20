@@ -983,10 +983,7 @@ pub(crate) fn chunks(
 }
 
 /// The chunks of a stream, by extent and then by id.
-#[allow(
-    dead_code,
-    reason = "queries list a stream's chunks; until then only tests do"
-)]
+#[cfg(test)]
 pub(crate) fn stream_chunks(
     read: &impl StorageRead,
     stream: StreamRef,
@@ -1022,6 +1019,7 @@ pub(crate) fn scan_chunks<B>(
     broken.transpose()
 }
 
+#[cfg(test)]
 fn list(read: &impl StorageRead, prefix: KeyBuf) -> Result<Vec<Listed>, ManifestError> {
     let mut chunks = Vec::new();
     let broken = read

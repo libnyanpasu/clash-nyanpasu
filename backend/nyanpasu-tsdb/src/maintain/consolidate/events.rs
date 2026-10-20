@@ -62,15 +62,15 @@
 //! - fixed: the output builder ([`working_memory`]) and, when it compresses, the zstd
 //!   compression context; the window's buffers;
 //! - per input: its place in the list of inputs;
-//! - the pool its reading holds, from the inputs' manifest entries ([`Pool`]): the fragment the
+//! - the input plan, from the inputs' manifest entries ([`InputPlan`]): the fragment the
 //!   backend lends and the decoder's zstd context and scratch, once; each way's stripe and the
 //!   directory of a chunk planned within the limits; and the larger of what opening a chunk
 //!   holds while it parses fragment 0 and the shared decode buffers. A way opens its next chunk
 //!   only after the decode buffers are let go, so the two are never held together.
 //!
 //! No part depends on F, so the smallest round that makes progress ([`least_round`]) depends on
-//! the schema alone. Every reservation inside the round comes out of a pool of exactly its
-//! planned bytes: a chunk that needs more than its entry allows is damaged.
+//! the schema alone. Every buffer, directory and dependency draws from one account admitted
+//! for the complete plan; retirement returns reusable credit to that account.
 //!
 //! # Under what staging
 //!
@@ -90,7 +90,6 @@
 
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
     ops::{ControlFlow, Range},
 };
 
@@ -103,11 +102,11 @@ use super::{
     InvalidRunSnafu, Limits, Maintained, MarkRunsSnafu, NoRoomSnafu, NullValuesSnafu,
     ReadEntrySnafu, ReadInputSnafu, ReadRunSnafu, ReadStreamSnafu, ReplaceSnafu, ReserveSnafu,
     Round, RowTooLargeSnafu, ScanIndexSnafu, ScanRunsSnafu, UnlistedSnafu, UnsortedInputSnafu,
-    due_extent, empty, grow_to, is_l0, millis, open_input, shrink_to,
+    due_extent, is_l0, millis, open_input,
 };
 use crate::{
     EventStreamSpec, ExtentSpec, Profile, StreamId, Timestamp,
-    budget::{MemoryBudget, Reservation},
+    budget::{BudgetExceeded, BudgetHeap, BudgetVec, MemoryAccount, MemoryPlan},
     chunk::{
         BatchSink, FragmentSink, StoredChunk,
         builder::{
@@ -225,14 +224,15 @@ impl<'c> Events<'c> {
             })
     }
 
-    fn limits(&self, context: &Context<'_>) -> Limits {
+    fn limits(&self, context: &Context<'_>, fixed: u64) -> Limits {
         Limits {
             chunks: self.profile.consolidate_chunks,
             bytes: self.profile.consolidate_bytes,
             room: self
                 .profile
                 .staging
-                .saturating_sub(context.staging_budget.reserved()),
+                .saturating_sub(context.staging_budget.reserved())
+                .saturating_sub(fixed),
         }
     }
 }
@@ -348,13 +348,13 @@ fn least_round(layout: &[ColumnLayout], compressed: bool) -> u64 {
         bytes: MAX_CHUNK_LEN,
     };
     let round = |entries: &[ChunkEntry]| {
-        let mut pool = Pool::default();
+        let mut reading = InputPlan::new(&decode);
         for entry in entries {
             let cost = InputCost::of(layout, entry);
-            pool.add(cost);
-            pool.ways += WAY + cost.held;
+            reading.add(cost, &decode);
+            reading.ways += WAY + cost.held;
         }
-        fixed_memory(layout, compressed) + entries.len() as u64 * INPUT + pool.bytes(&decode)
+        fixed_memory(layout, compressed) + entries.len() as u64 * INPUT + reading.bytes()
     };
     let consolidated = full(ChunkKind::Consolidated);
     round(&[full(ChunkKind::L0Base)]).max(round(&[consolidated, consolidated]))
@@ -473,35 +473,48 @@ impl InputCost {
 
 /// What reading a round's inputs holds at its peak (see [the module](self#memory-74)).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct Pool {
+struct InputPlan {
     lent: u64,
     compressed: bool,
     open: u64,
     /// Every way: itself, and what its largest input holds while open.
     ways: u64,
+    /// Shared decoded outputs, sized by the same layouts as their charged constructors.
+    decoded: u64,
+    /// Decoder scratch kept beside the opening/decoded-output overlap.
+    scratch: u64,
 }
 
-impl Pool {
-    /// Takes an input's lent fragment, zstd and opening into account; its way's part is the
-    /// caller's.
-    fn add(&mut self, cost: InputCost) {
+impl InputPlan {
+    /// Starts with the common raw decode layouts; compressed inputs select their layouts.
+    fn new(decode: &DecodeCost) -> Self {
+        Self {
+            decoded: decode.raw.0,
+            scratch: decode.raw.1,
+            ..Self::default()
+        }
+    }
+
+    /// Includes the input's opening and shared decoder layouts; its way is counted separately.
+    fn add(&mut self, cost: InputCost, decode: &DecodeCost) {
         self.lent = self.lent.max(cost.lent);
         self.compressed |= cost.compressed;
         self.open = self.open.max(cost.open);
-    }
-
-    fn bytes(&self, decode: &DecodeCost) -> u64 {
-        let (buffers, scratch) = if self.compressed {
+        (self.decoded, self.scratch) = if self.compressed {
             decode.zstd
         } else {
             decode.raw
         };
+    }
+
+    /// The shared workspace and live ways admitted beside the fixed buffers and input list.
+    fn bytes(&self) -> u64 {
         let context = if self.compressed {
             DECOMPRESSION_CONTEXT
         } else {
             0
         };
-        self.lent + context + scratch + self.ways + self.open.max(buffers)
+        self.lent + context + self.scratch + self.ways + self.open.max(self.decoded)
     }
 }
 
@@ -515,7 +528,7 @@ struct Taking<'d> {
     /// Each way's last key, and what its largest input holds.
     ways: [(i64, u64); MAX_WAYS],
     count: usize,
-    pool: Pool,
+    reading: InputPlan,
 }
 
 impl<'d> Taking<'d> {
@@ -527,13 +540,13 @@ impl<'d> Taking<'d> {
             bytes: 0,
             ways: [(0, 0); MAX_WAYS],
             count: 0,
-            pool: Pool::default(),
+            reading: InputPlan::new(decode),
         }
     }
 
     /// What the round reserves beside its fixed part: the list of its inputs and its pool.
     fn memory(&self) -> u64 {
-        self.chunks as u64 * INPUT + self.pool.bytes(self.decode)
+        self.chunks as u64 * INPUT + self.reading.bytes()
     }
 
     fn fits(&self) -> bool {
@@ -545,8 +558,8 @@ impl<'d> Taking<'d> {
     fn add(&mut self, cost: InputCost, entry: &ChunkEntry) {
         self.chunks += 1;
         self.bytes = self.bytes.saturating_add(entry.bytes);
-        self.pool.add(cost);
-        self.pool.ways = self.ways[..self.count]
+        self.reading.add(cost, self.decode);
+        self.reading.ways = self.ways[..self.count]
             .iter()
             .map(|&(_, held)| WAY + held)
             .sum();
@@ -674,7 +687,7 @@ struct Chosen {
     inputs: usize,
     ways: usize,
     complete: bool,
-    pool: Pool,
+    reading: InputPlan,
     /// What the round reserves beside its fixed part: its list of inputs and its pool.
     memory: u64,
 }
@@ -713,7 +726,7 @@ fn choose_l0(
         inputs: taking.chunks,
         ways: taking.count,
         complete,
-        pool: taking.pool,
+        reading: taking.reading,
         memory: taking.memory(),
     })
 }
@@ -726,8 +739,9 @@ fn collect_l0(
     events: &Events<'_>,
     extent: i64,
     chosen: &Chosen,
-) -> Result<Vec<Input>, ConsolidateError> {
-    let mut inputs = Vec::with_capacity(chosen.inputs);
+    account: &MemoryAccount,
+) -> Result<BudgetVec<Input>, ConsolidateError> {
+    let mut inputs = account.buffer(chosen.inputs).context(ReserveSnafu)?;
     let mut ends = [i64::MIN; MAX_WAYS];
     let mut ways = 0;
     let stopped = manifest::scan_event_l0(read, events.stream, extent, |first, chunk| {
@@ -831,7 +845,7 @@ fn choose_runs(
             inputs: taking.chunks,
             ways: taking.count,
             complete: false,
-            pool: taking.pool,
+            reading: taking.reading,
             memory: taking.memory(),
         },
     })
@@ -872,8 +886,9 @@ fn collect_runs(
     extent: i64,
     runs: &[Run],
     count: usize,
-) -> Result<Vec<Input>, ConsolidateError> {
-    let mut inputs = Vec::with_capacity(count);
+    account: &MemoryAccount,
+) -> Result<BudgetVec<Input>, ConsolidateError> {
+    let mut inputs = account.buffer(count).context(ReserveSnafu)?;
     for (way, run) in runs.iter().enumerate() {
         for_run(read, events, extent, run, |listed| {
             if inputs.len() < count {
@@ -913,28 +928,26 @@ pub(in crate::maintain) fn consolidate(
 ) -> Result<Changed, ConsolidateError> {
     let events = Events::new(context, stream);
     let compressed = compresses(events.layout, context.profile);
-    // Held until every buffer of the round is gone: locals drop in reverse order.
-    let mut reservation = context
-        .staging_budget
-        .try_reserve(
-            "event consolidation",
-            fixed_memory(events.layout, compressed),
-        )
-        .context(ReserveSnafu)?;
-    let limits = events.limits(context);
+    let fixed = fixed_memory(events.layout, compressed);
+    let limits = events.limits(context, fixed);
     let decode = DecodeCost::of(events.layout);
     let chosen = choose_l0(read, &events, extent, limits, &decode)?;
     ensure!(
         chosen.inputs > 0 || chosen.complete,
         NoRoomSnafu { room: limits.room }
     );
+    let allocation = MemoryAccount::planned(
+        context.staging_budget,
+        "event consolidation",
+        MemoryPlan::bytes(fixed + chosen.memory),
+    )
+    .context(ReserveSnafu)?;
     let mut done = Maintained {
         consolidations: 1,
         ..Maintained::default()
     };
     if chosen.inputs > 0 {
-        reservation.try_grow(chosen.memory).context(ReserveSnafu)?;
-        let inputs = collect_l0(read, &events, extent, &chosen)?;
+        let inputs = collect_l0(read, &events, extent, &chosen, &allocation)?;
         let mut replacement = Replacement::new(events.stream, extent);
         let written = write_run(
             batch,
@@ -942,10 +955,10 @@ pub(in crate::maintain) fn consolidate(
             &events,
             &inputs,
             &chosen,
-            &decode,
             compressed,
             &mut next_chunk,
             &mut replacement,
+            &allocation,
         )?;
         for input in &inputs {
             replacement
@@ -978,13 +991,16 @@ pub(in crate::maintain) fn merge(
 ) -> Result<Changed, ConsolidateError> {
     let events = Events::new(context, stream);
     let compressed = compresses(events.layout, context.profile);
-    let mut reservation = context
-        .staging_budget
-        .try_reserve("run merge", fixed_memory(events.layout, compressed))
-        .context(ReserveSnafu)?;
-    let limits = events.limits(context);
+    let fixed = fixed_memory(events.layout, compressed);
+    let limits = events.limits(context, fixed);
     let decode = DecodeCost::of(events.layout);
     let ChosenRuns { runs, chosen } = choose_runs(read, &events, extent, limits, &decode)?;
+    let allocation = MemoryAccount::planned(
+        context.staging_budget,
+        "run merge",
+        MemoryPlan::bytes(fixed + chosen.memory),
+    )
+    .context(ReserveSnafu)?;
     let mut done = Maintained {
         merges: 1,
         ..Maintained::default()
@@ -993,9 +1009,8 @@ pub(in crate::maintain) fn merge(
         manifest::clear_crowding(batch, events.stream, extent).context(MarkRunsSnafu { extent })?;
         return Ok(changed(context, next_chunk, done));
     }
-    reservation.try_grow(chosen.memory).context(ReserveSnafu)?;
     let taken = &runs[..chosen.ways];
-    let inputs = collect_runs(read, &events, extent, taken, chosen.inputs)?;
+    let inputs = collect_runs(read, &events, extent, taken, chosen.inputs, &allocation)?;
     let mut replacement = Replacement::new(events.stream, extent);
     let written = write_run(
         batch,
@@ -1003,10 +1018,10 @@ pub(in crate::maintain) fn merge(
         &events,
         &inputs,
         &chosen,
-        &decode,
         compressed,
         &mut next_chunk,
         &mut replacement,
+        &allocation,
     )?;
     for input in &inputs {
         replacement
@@ -1073,19 +1088,18 @@ fn write_run<R: StorageRead>(
     events: &Events<'_>,
     inputs: &[Input],
     chosen: &Chosen,
-    decode: &DecodeCost,
     compressed: bool,
     next_chunk: &mut u64,
     replacement: &mut Replacement,
+    account: &MemoryAccount,
 ) -> Result<Written, ConsolidateError> {
-    let pool = MemoryBudget::new(chosen.pool.bytes(decode));
     let mut compressor = if compressed {
-        Some(compress::new_compressor().context(CreateCompressorSnafu)?)
+        Some(compress::new_compressor(account).context(CreateCompressorSnafu)?)
     } else {
         None
     };
-    let mut window = Window::new(events.bytes().count());
-    let mut reading = Reading::new(read, inputs, chosen.ways, events, &pool, &chosen.pool)?;
+    let mut window = Window::new(events.bytes().count(), account).context(ReserveSnafu)?;
+    let mut reading = Reading::new(read, inputs, chosen.ways, events, account, &chosen.reading)?;
     let mut written = Written::default();
     loop {
         reading.switch()?;
@@ -1105,6 +1119,7 @@ fn write_run<R: StorageRead>(
             events.fingerprint,
             compressor.as_mut(),
             events.layout,
+            account,
         )
         .context(BuildSnafu { chunk: chunk.0 })?;
         let (mut rows, mut cost) = (0, RowCost::default());
@@ -1162,17 +1177,17 @@ struct Position {
 /// The rows the merge chose, and the buffers their values are copied through, which every
 /// window reuses: allocated once, never grown.
 struct Window {
-    positions: Vec<Position>,
+    positions: BudgetVec<Position>,
     /// The positions' indices by way, then by index: each way's rows in its chunk's order.
-    order: Vec<u32>,
+    order: BudgetVec<u32>,
     /// Each position's length of each bytes column's value, column after column, 0 for a null.
-    lengths: Vec<u32>,
+    lengths: BudgetVec<u32>,
     /// An integer column's values, as bits.
-    ints: Vec<u64>,
-    validity: Vec<bool>,
+    ints: BudgetVec<u64>,
+    validity: BudgetVec<bool>,
     /// A bytes column's values: their place in `arena`, or [`LARGE`] and a large value's index.
-    spans: Vec<(u32, u32)>,
-    arena: Vec<u8>,
+    spans: BudgetVec<(u32, u32)>,
+    arena: BudgetVec<u8>,
 }
 
 /// How many of a window's rows the chunk being built takes, and their cost with its own.
@@ -1185,16 +1200,16 @@ struct Cut {
 }
 
 impl Window {
-    fn new(bytes_columns: usize) -> Self {
-        Self {
-            positions: Vec::with_capacity(WINDOW_ROWS),
-            order: Vec::with_capacity(WINDOW_ROWS),
-            lengths: Vec::with_capacity(WINDOW_ROWS * bytes_columns),
-            ints: Vec::with_capacity(WINDOW_ROWS),
-            validity: Vec::with_capacity(WINDOW_ROWS),
-            spans: Vec::with_capacity(WINDOW_ROWS),
-            arena: Vec::with_capacity(ARENA_BYTES),
-        }
+    fn new(bytes_columns: usize, account: &MemoryAccount) -> Result<Self, BudgetExceeded> {
+        Ok(Self {
+            positions: account.buffer(WINDOW_ROWS)?,
+            order: account.buffer(WINDOW_ROWS)?,
+            lengths: account.buffer(WINDOW_ROWS * bytes_columns)?,
+            ints: account.buffer(WINDOW_ROWS)?,
+            validity: account.buffer(WINDOW_ROWS)?,
+            spans: account.buffer(WINDOW_ROWS)?,
+            arena: account.buffer(ARENA_BYTES)?,
+        })
     }
 
     /// What [`new`](Self::new) allocates for a stream of `bytes_columns` bytes columns.
@@ -1253,14 +1268,9 @@ struct Reading<'a, R> {
     read: &'a R,
     inputs: &'a [Input],
     events: &'a Events<'a>,
-    pool: &'a MemoryBudget,
     decode: Decode,
-    ways: Vec<Way>,
-    heap: BinaryHeap<Reverse<(Rank, usize)>>,
-    /// The fragment the backend lends while a chunk opens or a block decodes, and the
-    /// decoder's zstd context, reserved for the whole round.
-    #[allow(dead_code, reason = "held for its Drop, which returns their bytes")]
-    standing: Reservation,
+    ways: BudgetVec<Way>,
+    heap: BudgetHeap<Reverse<(Rank, usize)>>,
 }
 
 /// One way: a chain of inputs read one after another, or a run.
@@ -1269,10 +1279,10 @@ struct Way {
     inputs: Range<usize>,
     open: Option<Open>,
     /// The ranks of the rows of `stripe` of the open chunk.
-    ranks: Vec<Rank>,
+    ranks: BudgetVec<Rank>,
     stripe: Range<u32>,
-    /// What `ranks` holds, in the pool.
-    held: Reservation,
+    /// The round account used when this way opens its next directory.
+    account: MemoryAccount,
     /// The rank of the last row the way gave: its next one ranks no lower.
     last: Option<Rank>,
 }
@@ -1292,24 +1302,17 @@ impl<'a, R: StorageRead> Reading<'a, R> {
         inputs: &'a [Input],
         ways: usize,
         events: &'a Events<'a>,
-        pool: &'a MemoryBudget,
-        planned: &Pool,
+        account: &MemoryAccount,
+        planned: &InputPlan,
     ) -> Result<Self, ConsolidateError> {
-        let context = if planned.compressed {
-            DECOMPRESSION_CONTEXT
-        } else {
-            0
-        };
-        let standing = pool
-            .try_reserve("lent fragment", planned.lent + context)
-            .expect("the pool holds the lent fragment and the zstd context");
+        account.reserve_lent(planned.lent).context(ReserveSnafu)?;
         // L0 chunks are never compressed, so reading only them needs no zstd context.
         let decoder = if planned.compressed {
-            crate::codec::block::BlockDecoder::new().context(CreateDecoderSnafu)?
+            crate::codec::block::BlockDecoder::new(account).context(CreateDecoderSnafu)?
         } else {
-            crate::codec::block::BlockDecoder::raw()
+            crate::codec::block::BlockDecoder::raw(account)
         };
-        let mut way_list = Vec::with_capacity(ways);
+        let mut way_list = account.buffer(ways).context(ReserveSnafu)?;
         let mut start = 0;
         for way in 0..ways {
             let len = inputs[start..]
@@ -1319,9 +1322,9 @@ impl<'a, R: StorageRead> Reading<'a, R> {
             way_list.push(Way {
                 inputs: start..start + len,
                 open: None,
-                ranks: Vec::new(),
+                ranks: account.buffer(0).context(ReserveSnafu)?,
                 stripe: 0..0,
-                held: empty(pool),
+                account: account.clone(),
                 last: None,
             });
             start += len;
@@ -1331,11 +1334,9 @@ impl<'a, R: StorageRead> Reading<'a, R> {
             read,
             inputs,
             events,
-            pool,
-            decode: Decode::new(decoder, pool),
+            decode: Decode::new(decoder),
             ways: way_list,
-            heap: BinaryHeap::with_capacity(ways),
-            standing,
+            heap: account.buffer(ways).context(ReserveSnafu)?.into_heap(),
         })
     }
 
@@ -1362,6 +1363,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
             }
             // Its directory goes before the next one is reserved.
             way.open = None;
+            way.ranks.reset_to(0).context(ReserveSnafu)?;
             if way.inputs.is_empty() {
                 continue;
             }
@@ -1373,7 +1375,7 @@ impl<'a, R: StorageRead> Reading<'a, R> {
             way.inputs.start += 1;
             let listed = &self.inputs[input].listed;
             debug_assert_eq!(self.decode.held(), 0, "a chunk opens with no block decoded");
-            let reader = open_input(self.read, listed, self.pool)?;
+            let reader = open_input(self.read, listed, &way.account)?;
             let layout = self.events.layout;
             let shaped =
                 reader.rows() == listed.entry.rows
@@ -1790,7 +1792,7 @@ fn copy_large<S: FragmentSink>(
 
 /// Loads the stripe of `way`'s open chunk that holds `row`: the rows the blocks of the key, the
 /// incarnation and the sequence that hold it share, their ranks copied out of the shared
-/// buffers into the way's own, which the pool holds.
+/// buffers into the way's charged stripe storage.
 fn load_stripe(
     read: &impl StorageRead,
     decode: &mut Decode,
@@ -1817,15 +1819,13 @@ fn load_stripe(
         stripe = stripe.start.max(span.start)..stripe.end.min(span.end);
     }
     let len = stripe.len();
-    // The old buffer goes before a larger one is reserved and allocated.
+    // Retire the old stripe before admitting a larger replacement.
     if way.ranks.capacity() < len {
-        way.ranks = Vec::new();
-        shrink_to(&mut way.held, 0);
+        way.ranks
+            .reset_to(len)
+            .context(InputMemorySnafu { chunk: chunk.0 })?;
     }
-    grow_to(&mut way.held, (len * size_of::<Rank>()) as u64)
-        .context(InputMemorySnafu { chunk: chunk.0 })?;
     way.ranks.clear();
-    way.ranks.reserve_exact(len);
     way.stripe = 0..0;
     let (keys, first) = decode.int_block::<i64>(&at, KEY, stripe.start)?;
     ensure!(
@@ -1885,10 +1885,9 @@ impl<R: StorageRead> At<'_, R> {
 }
 
 /// The decode buffers a round shares, one of each type, which every way reads through, and
-/// the decoder whose scratch they share; each holds a reservation of what it holds.
+/// the decoder whose scratch they share; each buffer charges the round before allocation.
 struct Decode {
     decoder: crate::codec::block::BlockDecoder,
-    scratch: Reservation,
     ints: IntBuffers,
     bytes: Buffer<BytesBlock>,
 }
@@ -1899,19 +1898,17 @@ struct IntBuffers {
     u32s: Buffer<IntBlock<u32>>,
 }
 
-/// A decoded block, the block it holds, and what it holds in the pool.
+/// A charged decoded block and its place in an input.
 struct Buffer<B> {
     block: B,
     holds: Option<(ChunkId, u16, u32)>,
-    held: Reservation,
 }
 
 impl<B: Default> Buffer<B> {
-    fn new(pool: &MemoryBudget) -> Self {
+    fn new() -> Self {
         Self {
             block: B::default(),
             holds: None,
-            held: empty(pool),
         }
     }
 
@@ -1919,20 +1916,18 @@ impl<B: Default> Buffer<B> {
     fn release(&mut self) {
         self.block = B::default();
         self.holds = None;
-        shrink_to(&mut self.held, 0);
     }
 
     /// Makes the buffer hold the block of `column` of `at` that holds `row`, with `read` unless
     /// it holds it already, and returns the block's first row. The buffer's and the decoder's
-    /// reservations grow to what the block declares before it is read, and shrink to it after
-    /// (`chunk::reader::decode_memory`); past the pool, the chunk is damaged.
+    /// charged storage is sized to the block before its bytes are read, retiring obsolete
+    /// buffers before replacements (`chunk::reader::decode_memory`).
     fn read<R: StorageRead>(
         &mut self,
-        scratch: &mut Reservation,
         at: &At<'_, R>,
         column: u16,
         row: u32,
-        read: impl FnOnce(u32, &mut B) -> Result<(), ReadError>,
+        read: impl FnOnce(u32, &mut B) -> Result<(), ConsolidateError>,
     ) -> Result<u32, ConsolidateError> {
         let chunk = at.chunk.0;
         let blocks = at.reader.blocks(column).context(ReadInputSnafu {
@@ -1946,18 +1941,8 @@ impl<B: Default> Buffer<B> {
         if self.holds == Some((at.chunk, column, block)) {
             return Ok(entry.first_row);
         }
-        let memory = decode_memory(entry.shape(), at.reader.columns()[usize::from(column)].ty);
-        grow_to(&mut self.held, memory.output)
-            .and_then(|()| grow_to(scratch, memory.scratch))
-            .context(InputMemorySnafu { chunk })?;
         self.holds = None;
-        read(block, &mut self.block).context(ReadInputSnafu {
-            chunk,
-            column,
-            block,
-        })?;
-        shrink_to(&mut self.held, memory.output);
-        shrink_to(scratch, memory.scratch);
+        read(block, &mut self.block)?;
         self.holds = Some((at.chunk, column, block));
         Ok(entry.first_row)
     }
@@ -1987,30 +1972,29 @@ impl Ints for u32 {
 }
 
 impl Decode {
-    fn new(decoder: crate::codec::block::BlockDecoder, pool: &MemoryBudget) -> Self {
+    fn new(decoder: crate::codec::block::BlockDecoder) -> Self {
         Self {
             decoder,
-            scratch: empty(pool),
             ints: IntBuffers {
-                i64s: Buffer::new(pool),
-                u64s: Buffer::new(pool),
-                u32s: Buffer::new(pool),
+                i64s: Buffer::new(),
+                u64s: Buffer::new(),
+                u32s: Buffer::new(),
             },
-            bytes: Buffer::new(pool),
+            bytes: Buffer::new(),
         }
     }
 
     /// What the decoded blocks hold.
     fn held(&self) -> u64 {
         let ints = &self.ints;
-        ints.i64s.held.bytes()
-            + ints.u64s.held.bytes()
-            + ints.u32s.held.bytes()
-            + self.bytes.held.bytes()
+        ints.i64s.block.memory()
+            + ints.u64s.block.memory()
+            + ints.u32s.block.memory()
+            + self.bytes.block.memory()
     }
 
     /// Lets go of every decoded block, before a chunk opens. The decoder keeps the scratch of
-    /// its last block, which the pool counts apart.
+    /// its last block, which the input plan counts separately.
     fn release(&mut self) {
         self.ints.i64s.release();
         self.ints.u64s.release();
@@ -2025,16 +2009,20 @@ impl Decode {
         column: u16,
         row: u32,
     ) -> Result<(&IntBlock<T>, u32), ConsolidateError> {
-        let Self {
-            decoder,
-            scratch,
-            ints,
-            ..
-        } = self;
+        let Self { decoder, ints, .. } = self;
         let buffer = T::buffer(ints);
-        let first = buffer.read(scratch, at, column, row, |index, block| {
+        let first = buffer.read(at, column, row, |index, block| {
+            let shape = at.reader.blocks(column).expect("checked above")[index as usize].shape();
+            let prepared = decoder
+                .prepare_ints(shape, block)
+                .context(InputMemorySnafu { chunk: at.chunk.0 })?;
             at.reader
-                .read_ints(&at.source(), column, index, decoder, block)
+                .read_prepared_ints(&at.source(), column, index, prepared)
+                .context(ReadInputSnafu {
+                    chunk: at.chunk.0,
+                    column,
+                    block: index,
+                })
         })?;
         Ok((&buffer.block, first))
     }
@@ -2057,15 +2045,23 @@ impl Decode {
         column: u16,
         row: u32,
     ) -> Result<BytesValue<'_>, ConsolidateError> {
-        let Self {
-            decoder,
-            scratch,
-            bytes,
-            ..
-        } = self;
-        let first = bytes.read(scratch, at, column, row, |index, block| {
+        let Self { decoder, bytes, .. } = self;
+        let first = bytes.read(at, column, row, |index, block| {
+            let shape = at.reader.blocks(column).expect("checked above")[index as usize].shape();
+            let hint = match at.reader.columns()[usize::from(column)].ty {
+                PhysicalType::Bytes(hint) => hint,
+                _ => unreachable!("bytes column checked"),
+            };
+            let prepared = decoder
+                .prepare_bytes(shape, at.reader.large_values().len() as u32, hint, block)
+                .context(InputMemorySnafu { chunk: at.chunk.0 })?;
             at.reader
-                .read_bytes(&at.source(), column, index, decoder, block)
+                .read_prepared_bytes(&at.source(), column, index, prepared)
+                .context(ReadInputSnafu {
+                    chunk: at.chunk.0,
+                    column,
+                    block: index,
+                })
         })?;
         Ok(bytes.block.get((row - first) as usize))
     }

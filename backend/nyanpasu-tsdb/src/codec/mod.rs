@@ -51,19 +51,6 @@ pub(crate) const MAX_BLOCK_ROWS: usize = MAX_BLOCK_LEN / 4;
 /// of the chunk; other bytes columns cannot hold one.
 pub(crate) const MAX_INLINE_VALUE_LEN: usize = 16 * 1024;
 
-/// Makes room for `additional` more elements in a buffer that never needs more than `cap`: the
-/// first time it needs room, it gets all of `cap` at once. It never grows after that, so it
-/// never reallocates, which would hold its old and its new allocation together for a moment,
-/// past what a bound on capacities counts. Capacity is never given back, so a buffer reused
-/// from block to block allocates once.
-pub(crate) fn reserve_cap<T>(buffer: &mut Vec<T>, additional: usize, cap: usize) {
-    let need = buffer.len() + additional;
-    debug_assert!(need <= cap, "{need} elements past a cap of {cap}");
-    if need > buffer.capacity() {
-        buffer.reserve_exact(cap - buffer.len());
-    }
-}
-
 /// How a block's payload is stored. The discriminant is the tag stored in the block, outside
 /// any compression: a new codec gets a new tag, a variant is never renumbered, and blocks
 /// with old tags stay readable.

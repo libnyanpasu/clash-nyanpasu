@@ -28,7 +28,7 @@ use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use crate::{
     ErrorKind, Schema,
-    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    budget::{BudgetExceeded, MemoryBudget, Reservation, Reserved},
     catalog::Catalog,
     head::Head,
     layout::meta::{MetaError, read_state},
@@ -50,9 +50,22 @@ impl Version {
     }
 }
 
+/// A constructed publication and the resident growth and temporary copies that cover it.
+/// Its payload drops before either charge if registration fails or its caller unwinds.
+pub(crate) struct StagedVersion {
+    /// The completed shared graph, dropped before either construction charge.
+    pub(crate) version: Version,
+    /// Resident head growth beyond the current head, consumed only on publication.
+    pub(crate) growth: Reservation,
+    /// Temporary head and catalog copies, kept until publication or withdrawal.
+    pub(crate) staging: Reservation,
+}
+
 struct Slots {
     current: Arc<Version>,
     pending: Option<Arc<Version>>,
+    /// Resident policy credit belongs to the registry, after the version fields in drop order.
+    head: Reservation,
     /// Set after a commit whose outcome is unknown, or any error that says the backend
     /// failed, by the owner or by a reader. Every later write and capture fails until the
     /// owner recovers (§7.5). It lives under the lock with the versions, so that withdrawing
@@ -75,11 +88,17 @@ pub(crate) struct Registry {
 }
 
 impl Registry {
-    pub(crate) fn new(current: Version, schema: Arc<Schema>, open: Arc<OpenMarker>) -> Self {
+    pub(crate) fn new(
+        current: Version,
+        schema: Arc<Schema>,
+        open: Arc<OpenMarker>,
+        head: Reservation,
+    ) -> Self {
         Self {
             slots: RwLock::new(Slots {
                 current: Arc::new(current),
                 pending: None,
+                head,
                 recovery: false,
             }),
             schema,
@@ -95,22 +114,28 @@ impl Registry {
         self.read().current.clone()
     }
 
-    /// Registers `version` as pending. `growth` is the head bytes it reserved beyond the
-    /// current version.
+    /// Registers `next` as pending with its resident growth and temporary-copy charges.
+    /// The guard keeps both until publication or withdrawal removes the overlap.
     ///
     /// # Panics
     ///
     /// If a version is pending already: the owner commits one batch at a time.
-    pub(crate) fn register(&self, version: Version, growth: Reservation) -> Pending<'_> {
+    pub(crate) fn register(&self, next: StagedVersion) -> Pending<'_> {
         let mut slots = self.write();
         assert!(
             slots.pending.is_none(),
             "a version registered while another is pending: the owner commits one batch at a time"
         );
+        let StagedVersion {
+            version,
+            growth,
+            staging,
+        } = next;
         slots.pending = Some(Arc::new(version));
         Pending {
             registry: self,
             growth: Some(growth),
+            staging: Some(staging),
         }
     }
 
@@ -173,11 +198,10 @@ impl Registry {
             .context(ReserveQuerySnafu)?;
         let snapshot = Snapshot {
             storage: snapshot,
-            version: version.clone(),
+            version: reservation.hold(|| version.clone()),
             schema: self.schema.clone(),
             open: self.open.clone(),
             budget: budget.clone(),
-            reservation,
         };
         #[cfg(test)]
         Self::run(&self.after_pin);
@@ -197,6 +221,11 @@ impl Registry {
 
 #[cfg(test)]
 impl Registry {
+    /// Resident credit stays with the current registry slot, independently of readers' claims.
+    pub(crate) fn head_reserved(&self) -> u64 {
+        self.read().head.bytes()
+    }
+
     /// Makes the next capture run `hook` while it holds the read lock, right after it
     /// opened the storage snapshot.
     pub(crate) fn after_snapshot(&self, hook: impl FnOnce() + Send + 'static) {
@@ -227,12 +256,13 @@ pub(crate) struct Pending<'r> {
     registry: &'r Registry,
     /// `None` once published or failed.
     growth: Option<Reservation>,
+    /// Returned only after the pending version is published or removed from the registry.
+    staging: Option<Reservation>,
 }
 
 impl Pending<'_> {
-    /// Makes the pending version current. `head` is the owner's reservation of the current
-    /// head's bytes; afterwards it holds exactly the new head's.
-    pub(crate) fn publish(mut self, head: &mut Reservation) {
+    /// Makes the pending version current and settles resident credit inside the same owner.
+    pub(crate) fn publish(mut self) {
         let growth = self.growth.take().expect("a version is published once");
         let mut slots = self.registry.write();
         let version = slots
@@ -243,9 +273,11 @@ impl Pending<'_> {
         // The old version is dropped here unless a snapshot holds it; a snapshot reserved
         // its bytes from the query budget when it was captured.
         slots.current = version;
+        slots.head.merge(growth);
+        let retired = slots.head.bytes() - bytes;
+        slots.head.shrink(retired);
         drop(slots);
-        head.merge(growth);
-        head.shrink(head.bytes() - bytes);
+        drop(self.staging.take());
     }
 
     /// Withdraws the version after its commit failed with `failure`, and returns its
@@ -263,6 +295,7 @@ impl Pending<'_> {
         }
         drop(slots);
         drop(growth);
+        drop(self.staging.take());
     }
 }
 
@@ -280,15 +313,10 @@ impl Drop for Pending<'_> {
 /// reserve their working memory (§7.4, §8.2).
 pub struct Snapshot<S: Storage> {
     storage: S::Snapshot,
-    version: Arc<Version>,
+    version: Reserved<Arc<Version>>,
     schema: Arc<Schema>,
     open: Arc<OpenMarker>,
     budget: MemoryBudget,
-    #[allow(
-        dead_code,
-        reason = "held for its Drop, which returns the snapshot's bytes"
-    )]
-    reservation: Reservation,
 }
 
 /// What the ids of a snapshot's catalog mean (§5.3 rule 5): the label and combination ids it
@@ -339,7 +367,7 @@ impl<S: Storage> Snapshot<S> {
     pub fn catalog(&self) -> CatalogToken {
         CatalogToken {
             open: self.open.clone(),
-            generation: self.version.catalog.generation(),
+            generation: self.version.get().catalog.generation(),
         }
     }
 
@@ -348,7 +376,7 @@ impl<S: Storage> Snapshot<S> {
     }
 
     pub(crate) fn version(&self) -> &Version {
-        &self.version
+        self.version.get()
     }
 
     pub(crate) fn schema(&self) -> &Schema {
@@ -363,7 +391,7 @@ impl<S: Storage> Snapshot<S> {
 #[cfg(test)]
 impl<S: Storage> Snapshot<S> {
     pub(crate) fn reserved(&self) -> u64 {
-        self.reservation.bytes()
+        self.version.charge_bytes()
     }
 }
 
@@ -436,6 +464,14 @@ mod tests {
         }
     }
 
+    /// A registry's resident claim is independent of each test's pending-growth budget.
+    fn registry(current: Version) -> Registry {
+        let head = MemoryBudget::new(u64::MAX)
+            .try_reserve("head", current.head.bytes())
+            .unwrap();
+        Registry::new(current, Arc::new(schema()), Arc::new(OpenMarker), head)
+    }
+
     /// Commits a state record that shows `publication`, as the owner's commit of that
     /// version does.
     fn show(storage: &MemoryStorage, publication: u64) {
@@ -454,6 +490,63 @@ mod tests {
         }
     }
 
+    /// Pending payloads and both charges unwind together, without changing the current slot.
+    #[test]
+    fn unwinding_with_a_pending_version_withdraws_it_and_returns_both_charges() {
+        let registry = registry(version(0));
+        let heads = MemoryBudget::new(10);
+        let staging = MemoryBudget::new(20);
+        let mut withdrawn = None;
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _pending = registry.register(StagedVersion {
+                version: version(1),
+                growth: heads.try_reserve("head", 4).unwrap(),
+                staging: staging.try_reserve("staging", 12).unwrap(),
+            });
+            withdrawn = Some(Arc::downgrade(&registry.pending().unwrap()));
+            assert_eq!(heads.reserved(), 4);
+            assert_eq!(staging.reserved(), 12);
+            panic!("the owner unwound before storage committed");
+        }));
+        assert!(panic.is_err());
+        assert!(registry.pending().is_none());
+        assert!(withdrawn.unwrap().upgrade().is_none());
+        assert_eq!(registry.current().publication, 0);
+        assert!(!registry.needs_recovery());
+        assert_eq!(heads.reserved(), 0);
+        assert_eq!(staging.reserved(), 0);
+    }
+
+    /// A captured pending graph keeps its query charge after a failed publication withdraws it.
+    #[test]
+    fn withdrawing_a_captured_pending_version_leaves_its_snapshot_as_the_owner() {
+        let storage = MemoryDisk::new().open().unwrap();
+        show(&storage, 0);
+        let registry = registry(version(0));
+        let heads = MemoryBudget::new(10);
+        let staging = MemoryBudget::new(20);
+        let queries = MemoryBudget::new(u64::MAX);
+        let pending = registry.register(StagedVersion {
+            version: version(1),
+            growth: heads.try_reserve("head", 4).unwrap(),
+            staging: staging.try_reserve("staging", 12).unwrap(),
+        });
+        let withdrawn = Arc::downgrade(&registry.pending().unwrap());
+        show(&storage, 1);
+        let snapshot = registry.capture(&storage, &queries).unwrap();
+        let bytes = snapshot.version().bytes();
+        pending.fail(&CommitFailure::Unknown { source: failed() });
+        assert!(registry.pending().is_none());
+        assert_eq!(heads.reserved(), 0);
+        assert_eq!(staging.reserved(), 0);
+        assert!(withdrawn.upgrade().is_some());
+        assert_eq!(queries.reserved(), bytes);
+        assert_eq!(snapshot.version().publication, 1);
+        drop(snapshot);
+        assert!(withdrawn.upgrade().is_none());
+        assert_eq!(queries.reserved(), 0);
+    }
+
     // A commit whose outcome is unknown may have applied, so storage shows P+1 while the
     // writer withdraws P+1. A capture after that reports the recovery instead of looking
     // for a version that is gone.
@@ -461,11 +554,17 @@ mod tests {
     fn a_version_withdrawn_after_an_unknown_outcome_fails_captures_instead_of_panicking() {
         let storage = MemoryDisk::new().open().unwrap();
         show(&storage, 0);
-        let registry = Registry::new(version(0), Arc::new(schema()), Arc::new(OpenMarker));
+        let registry = registry(version(0));
         let queries = MemoryBudget::new(u64::MAX);
         let heads = MemoryBudget::new(10);
 
-        let pending = registry.register(version(1), heads.try_reserve("head", 4).unwrap());
+        let pending = registry.register(StagedVersion {
+            version: version(1),
+            growth: heads.try_reserve("head", 4).unwrap(),
+            staging: MemoryBudget::new(u64::MAX)
+                .try_reserve("staging", 0)
+                .unwrap(),
+        });
         show(&storage, 1);
         // Until it is withdrawn, the pending version is the one storage shows.
         let snapshot = registry.capture(&storage, &queries).unwrap();
@@ -488,7 +587,7 @@ mod tests {
     fn a_reader_holding_its_version_has_reserved_its_bytes() {
         let storage = MemoryDisk::new().open().unwrap();
         show(&storage, 0);
-        let registry = Registry::new(version(0), Arc::new(schema()), Arc::new(OpenMarker));
+        let registry = registry(version(0));
         let bytes = registry.current().bytes();
         assert_ne!(bytes, 0);
         let queries = MemoryBudget::new(u64::MAX);
@@ -509,7 +608,7 @@ mod tests {
     fn a_publication_the_registry_does_not_hold_is_corrupted() {
         let storage = MemoryDisk::new().open().unwrap();
         show(&storage, 99);
-        let registry = Registry::new(version(1), Arc::new(schema()), Arc::new(OpenMarker));
+        let registry = registry(version(1));
         let queries = MemoryBudget::new(u64::MAX);
         let heads = MemoryBudget::new(10);
 
@@ -527,7 +626,13 @@ mod tests {
         );
         assert_eq!(error.kind(), ErrorKind::Corrupted);
 
-        let _pending = registry.register(version(2), heads.try_reserve("head", 4).unwrap());
+        let _pending = registry.register(StagedVersion {
+            version: version(2),
+            growth: heads.try_reserve("head", 4).unwrap(),
+            staging: MemoryBudget::new(u64::MAX)
+                .try_reserve("staging", 0)
+                .unwrap(),
+        });
         let error = registry.capture(&storage, &queries).map(drop).unwrap_err();
         assert!(
             matches!(
@@ -548,11 +653,17 @@ mod tests {
     fn a_version_withdrawn_after_a_rollback_leaves_captures_working() {
         let storage = MemoryDisk::new().open().unwrap();
         show(&storage, 0);
-        let registry = Registry::new(version(0), Arc::new(schema()), Arc::new(OpenMarker));
+        let registry = registry(version(0));
         let queries = MemoryBudget::new(u64::MAX);
         let heads = MemoryBudget::new(10);
 
-        let pending = registry.register(version(1), heads.try_reserve("head", 4).unwrap());
+        let pending = registry.register(StagedVersion {
+            version: version(1),
+            growth: heads.try_reserve("head", 4).unwrap(),
+            staging: MemoryBudget::new(u64::MAX)
+                .try_reserve("staging", 0)
+                .unwrap(),
+        });
         let rolled_back = StorageError::RolledBack {
             source: "poisoned".into(),
         };
@@ -568,7 +679,13 @@ mod tests {
 
         // A commit refused because the backend had already failed applied nothing, but the
         // backend has to be reopened all the same.
-        let pending = registry.register(version(1), heads.try_reserve("head", 4).unwrap());
+        let pending = registry.register(StagedVersion {
+            version: version(1),
+            growth: heads.try_reserve("head", 4).unwrap(),
+            staging: MemoryBudget::new(u64::MAX)
+                .try_reserve("staging", 0)
+                .unwrap(),
+        });
         pending.fail(&CommitFailure::NotApplied { source: failed() });
         assert!(registry.needs_recovery());
         assert!(matches!(

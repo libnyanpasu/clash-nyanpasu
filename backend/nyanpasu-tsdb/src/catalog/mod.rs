@@ -20,11 +20,13 @@
 //!
 //! Not counted: the constant parts shared by every version of a store (the hasher, the
 //! schema's dimensions and ladder, a few hundred bytes); a resolution's own workspace, a few
-//! words per series dimension, freed when it returns; allocator rounding past the 8-byte
+//! stack words per series dimension; allocator rounding past the 8-byte
 //! alignment. A draft keeps nothing per resolution: it finds a combination through the
 //! reverse lookup in the write transaction, which reads its own writes (§5.1).
 //! The query budget counts the versions that snapshots keep alive (§7.4); the write path
-//! reserves them there.
+//! reserves them there. Published catalogs carry no reservation. A draft's high-water staging
+//! lease covers its own structure and copied or new pages until publication or withdrawal;
+//! the policy ledger admits resident growth independently before those copies are allocated.
 //!
 //! Each write is checked before it is made: its cost is computed exactly, and a candidate
 //! that would push the peak past the limit is not written (§5.2).
@@ -75,14 +77,15 @@ use self::{
     error::{
         CountOverflowSnafu, CountUnderflowSnafu, CountUsesSnafu, DeleteComboIndexSnafu,
         DeleteComboSnafu, DeleteLabelSnafu, InvalidComboIndexSnafu, ReadComboIndexSnafu,
-        ReserveReleaseSnafu, StaleComboIndexSnafu, UncountUsesSnafu, WriteComboIndexSnafu,
-        WriteComboSnafu, WriteLabelSnafu,
+        ReserveReleaseSnafu, StageReleaseSnafu, StageResolutionSnafu, StaleComboIndexSnafu,
+        UncountUsesSnafu, WriteComboIndexSnafu, WriteComboSnafu,
     },
     paged::{ARC_HEADER, Ledger, PAGE_ALLOC, Paged, spine_bytes},
 };
 use crate::{
     LabelId, Schema, SeriesSpec,
-    budget::BudgetExceeded,
+    budget::{BudgetExceeded, MemoryAccount, Reservation},
+    schema::MAX_DIMENSIONS,
     storage::{StorageRead, StorageWrite},
 };
 
@@ -265,13 +268,22 @@ impl Catalog {
         self.generation
     }
 
-    /// Starts deriving the next version, under a catalog budget of `limit` bytes.
-    pub(crate) fn draft(&self, limit: u64) -> CatalogDraft {
+    /// The fixed structure a fresh draft copies, also used by the staging floor.
+    pub(crate) fn draft_bytes(&self) -> u64 {
+        self.inner.fixed_bytes()
+    }
+
+    /// Starts deriving the next version under `limit`, charging copies to `staging`.
+    pub(crate) fn draft(
+        &self,
+        limit: u64,
+        staging: &MemoryAccount,
+    ) -> Result<CatalogDraft, BudgetExceeded> {
+        let fixed = self.draft_bytes();
+        let mut ledger = Ledger::staging(staging)?;
+        ledger.alloc(fixed)?;
         let next = Inner::clone(&self.inner);
-        let fixed = next.fixed_bytes();
-        let mut ledger = Ledger::default();
-        ledger.alloc(fixed);
-        CatalogDraft {
+        Ok(CatalogDraft {
             reserve: release_reserve(fixed, limit.max(self.bytes)),
             base: self.clone(),
             next,
@@ -280,7 +292,7 @@ impl Catalog {
             changed: false,
             released: false,
             failed: false,
-        }
+        })
     }
 }
 
@@ -336,9 +348,9 @@ pub(crate) struct Unpinned {
 /// changes into the write transaction it is given, and nothing else: no commit, no
 /// metadata. [`finish`](Self::finish) makes it a [`Catalog`]; dropping it discards it.
 ///
-/// After a write to the batch fails, or counting a label value's uses does, the batch holds
-/// some of the draft's records and not others: drop the draft together with the batch. Every
-/// other error changes neither.
+/// After a write to the batch, counting a label value's uses, or a resolution's allocation
+/// fails, the draft and batch may hold only part of a change: drop them together. A release
+/// refuses staging before changing either, so the round can publish its earlier releases.
 pub(crate) struct CatalogDraft {
     base: Catalog,
     next: Inner,
@@ -400,48 +412,48 @@ impl CatalogDraft {
             shared.dimensions.len(),
             "a combination has one value per series dimension"
         );
-        let hashes: Vec<u64> = values
-            .iter()
-            .map(|value| shared.hasher.hash(value))
-            .collect();
-        let found: Vec<Option<u32>> = (0..values.len())
-            .map(|position| {
-                self.next
-                    .dictionary(shared.dimensions[position])
-                    .find(hashes[position], values[position])
-            })
-            .collect();
-
-        let mut labels = vec![0; values.len()];
-        let mut new = Vec::new();
+        let mut hashes = [0; MAX_DIMENSIONS];
+        let mut found = [None; MAX_DIMENSIONS];
+        for position in 0..values.len() {
+            hashes[position] = shared.hasher.hash(values[position]);
+            found[position] = self
+                .next
+                .dictionary(shared.dimensions[position])
+                .find(hashes[position], values[position]);
+        }
+        let mut labels = [0; MAX_DIMENSIONS];
+        let labels = &mut labels[..values.len()];
+        let mut new = [0; MAX_DIMENSIONS];
         for step in iter::once(None).chain((0..shared.fold.len()).map(Some)) {
-            new.clear();
+            let mut new_len = 0;
             for (position, label) in labels.iter_mut().enumerate() {
                 let folded = step.is_some_and(|step| shared.fold[step][position]);
                 *label = match found[position] {
                     _ if folded => 0,
                     Some(id) => id,
                     None => {
-                        new.push(position);
+                        new[new_len] = position;
+                        new_len += 1;
                         0
                     }
                 };
             }
+            let new = &new[..new_len];
             let fold = step.map(Fold::Step);
             // A combination with a new value is new too.
             if new.is_empty()
-                && let Some(id) = self.lookup(batch, &labels)?
+                && let Some(id) = self.lookup(batch, labels)?
             {
                 return Ok(ResolvedCombo { id, fold });
             }
-            let Some(cost) = self.growth_cost(&shared, &new, values, &hashes) else {
+            let Some(cost) = self.growth_cost(&shared, new, values, &hashes) else {
                 continue;
             };
             if !self.fits_growth(cost) {
                 continue;
             }
             let before = self.ledger.allocated();
-            for &position in &new {
+            for &position in new {
                 labels[position] = self.insert_value(
                     batch,
                     shared.dimensions[position],
@@ -449,7 +461,7 @@ impl CatalogDraft {
                     hashes[position],
                 )?;
             }
-            let id = self.insert_combo(batch, &labels)?;
+            let id = self.insert_combo(batch, labels)?;
             debug_assert_eq!(self.ledger.allocated() - before, cost, "predicted cost");
             return Ok(ResolvedCombo { id, fold });
         }
@@ -567,14 +579,20 @@ impl CatalogDraft {
         &mut self,
         batch: &mut impl StorageWrite,
         id: u32,
-    ) -> Result<Vec<(LabelId, u32)>, ReleaseError> {
+    ) -> Result<std::iter::Take<std::array::IntoIter<(LabelId, u32), MAX_DIMENSIONS>>, ReleaseError>
+    {
         assert!(id != 0, "combination 0 is implicit and never released");
-        let labels: Box<[u32]> = self
+        let mut labels = [0; MAX_DIMENSIONS];
+        let stored = self
             .next
             .combos
             .get(id)
-            .unwrap_or_else(|| panic!("releasing combination {id}, which is not live"))
-            .collect();
+            .unwrap_or_else(|| panic!("releasing combination {id}, which is not live"));
+        let len = stored.len();
+        for (target, value) in labels.iter_mut().zip(stored) {
+            *target = value;
+        }
+        let labels = &labels[..len];
         #[cfg(debug_assertions)]
         {
             let pinned = is_pinned(batch, id).context(CheckPinSnafu { id })?;
@@ -584,28 +602,33 @@ impl CatalogDraft {
         self.reserve_release(cost)?;
         let written = persist::delete_combo(batch, id).context(DeleteComboSnafu { id });
         self.written(written)?;
-        let key = persist::index_key(&labels);
+        let key = persist::index_key(labels);
         let written =
             persist::delete_index(batch, key.as_slice()).context(DeleteComboIndexSnafu { id });
         self.written(written)?;
         let shared = Arc::clone(&self.next.shared);
-        let mut unused = Vec::with_capacity(labels.len());
-        for (&dimension, &label) in shared.dimensions.iter().zip(&labels) {
+        let mut unused = [(LabelId(0), 0); MAX_DIMENSIONS];
+        let mut unused_len = 0;
+        for (&dimension, &label) in shared.dimensions.iter().zip(labels) {
             if label == 0 {
                 continue;
             }
             let left =
                 persist::remove_use(batch, dimension, label).context(UncountUsesSnafu { id });
             if self.written(left)? == 0 {
-                unused.push((dimension, label));
+                unused[unused_len] = (dimension, label);
+                unused_len += 1;
             }
         }
         let before = self.ledger.allocated();
-        self.next.combos.release(id, &mut self.ledger);
+        self.next
+            .combos
+            .release(id, &mut self.ledger)
+            .expect("the release admitted all its copies");
         debug_assert_eq!(self.ledger.allocated() - before, cost, "predicted cost");
         self.changed = true;
         self.released = true;
-        Ok(unused)
+        Ok(unused.into_iter().take(unused_len))
     }
 
     /// Releases value `id` of `dimension`: deletes its record and frees the id for reuse,
@@ -662,7 +685,9 @@ impl CatalogDraft {
             dictionaries,
             ..
         } = &mut self.next;
-        dictionaries[usize::from(dimension.0)].release(&shared.hasher, id, &mut self.ledger);
+        dictionaries[usize::from(dimension.0)]
+            .release(&shared.hasher, id, &mut self.ledger)
+            .expect("the release admitted all its copies");
         debug_assert_eq!(self.ledger.allocated() - before, cost, "predicted cost");
         self.changed = true;
         self.released = true;
@@ -672,21 +697,25 @@ impl CatalogDraft {
     /// The version this draft built: of the base's generation, or of the next one when the
     /// draft released an id.
     ///
+    /// Returns the catalog and its transient staging charge, kept until publication or withdrawal.
+    ///
     /// # Panics
     ///
-    /// If a write to the batch failed: the draft has to be dropped with its batch.
-    pub(crate) fn finish(self) -> Catalog {
+    /// If a write or allocation failed: the draft has to be dropped with its batch.
+    pub(crate) fn finish(self) -> (Catalog, Reservation) {
         assert!(
             !self.failed,
             "finishing a catalog draft after a write to its batch failed"
         );
         if !self.changed {
-            return self.base;
+            drop(self.next);
+            return (self.base, self.ledger.finish());
         }
-        Catalog {
+        let catalog = Catalog {
             generation: self.base.generation + u64::from(self.released),
             ..Catalog::from_inner(self.next)
-        }
+        };
+        (catalog, self.ledger.finish())
     }
 
     /// The bytes inserting the new values at positions `new`, then a combination, allocate;
@@ -719,7 +748,7 @@ impl CatalogDraft {
     /// Checks that a release allocating `cost` bytes fits. Releases may use the reserve.
     /// When a base loaded past a lowered limit leaves no room at all, they may still use the
     /// reserve above the base, so that the catalog can shrink.
-    fn reserve_release(&self, cost: u64) -> Result<(), ReleaseError> {
+    fn reserve_release(&mut self, cost: u64) -> Result<(), ReleaseError> {
         let ceiling = self.limit.max(self.base.bytes.saturating_add(self.reserve));
         let held = self.held();
         if held.saturating_add(cost) > ceiling {
@@ -730,7 +759,7 @@ impl CatalogDraft {
             })
             .context(ReserveReleaseSnafu);
         }
-        Ok(())
+        self.ledger.reserve_copies(cost).context(StageReleaseSnafu)
     }
 
     /// The bytes the base and the draft hold now.
@@ -769,14 +798,14 @@ impl CatalogDraft {
         } = &mut self.next;
         let dictionary = &mut dictionaries[usize::from(dimension.0)];
         let id = dictionary.next_id().expect("the cost check found an id");
-        if let Err(source) = persist::put_label(batch, dimension, id, value) {
+        if let Err(error) = persist::put_label(batch, dimension, id, value, self.ledger.account()) {
             self.failed = true;
-            return Err(source).context(WriteLabelSnafu {
-                dimension: dimension.0,
-                id,
-            });
+            return Err(error);
         }
-        let inserted = dictionary.insert(&shared.hasher, hash, value, &mut self.ledger);
+        let inserted = dictionary
+            .insert(&shared.hasher, hash, value, &mut self.ledger)
+            .context(StageResolutionSnafu);
+        let inserted = self.written(inserted)?;
         debug_assert_eq!(inserted, id, "the dictionary took the id it named");
         self.changed = true;
         Ok(id)
@@ -806,7 +835,12 @@ impl CatalogDraft {
                 self.written(counted)?;
             }
         }
-        let inserted = self.next.combos.insert(labels, &mut self.ledger);
+        let inserted = self
+            .next
+            .combos
+            .insert(labels, &mut self.ledger)
+            .context(StageResolutionSnafu);
+        let inserted = self.written(inserted)?;
         debug_assert_eq!(inserted, id, "the combinations took the id they named");
         self.changed = true;
         Ok(id)

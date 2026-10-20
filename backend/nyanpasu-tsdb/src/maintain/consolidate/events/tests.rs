@@ -12,6 +12,7 @@ use super::*;
 use crate::{
     ColumnType, EventCursor, EventPredicate, EventQuery, EventValue, Maintain, Maintained,
     Retention, RetentionPolicy, Tsdb,
+    budget::MemoryBudget,
     db::tests::{CLOSED, LOGS, UUID, open_with, schema},
     layout::{CONSOLIDATION, keys::KeyReader},
     maintain::tests::{check_accounting, check_settled},
@@ -22,6 +23,34 @@ use crate::{
     version::Snapshot,
     write::{EventRow, Input, Value, chunking::event_columns},
 };
+
+/// Collects fixture L0 metadata under a fresh test account.
+fn collect_l0(
+    read: &impl StorageRead,
+    events: &Events<'_>,
+    extent: i64,
+    chosen: &Chosen,
+) -> Result<BudgetVec<super::Input>, ConsolidateError> {
+    super::collect_l0(read, events, extent, chosen, &crate::budget::test_account())
+}
+
+/// Collects fixture run metadata under a fresh test account.
+fn collect_runs(
+    read: &impl StorageRead,
+    events: &Events<'_>,
+    extent: i64,
+    runs: &[Run],
+    count: usize,
+) -> Result<BudgetVec<super::Input>, ConsolidateError> {
+    super::collect_runs(
+        read,
+        events,
+        extent,
+        runs,
+        count,
+        &crate::budget::test_account(),
+    )
+}
 
 const DAY: i64 = 86_400_000;
 const HOUR: i64 = 3_600_000;
@@ -1027,7 +1056,17 @@ fn large_values_survive_consolidation_byte_for_byte_and_are_never_held_whole() {
             chunk: listed.chunk,
         };
         let budget = MemoryBudget::new(u64::MAX);
-        let reader = ChunkReader::open(&source, &budget, listed.entry.fragment0).unwrap();
+        let reader = ChunkReader::open(
+            &source,
+            &crate::budget::MemoryAccount::new(
+                &budget,
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            listed.entry.fragment0,
+        )
+        .unwrap();
         large.extend(
             reader
                 .large_values()
@@ -1966,10 +2005,8 @@ fn every_event_round_progresses_at_the_smallest_bounds_opening_accepts() {
     assert!(!chunks.is_empty() && cursor == Some(0) && marks.is_empty());
 }
 
-/// What `reading` holds against what it reserved: the capacity of every buffer the pool
-/// reserves for, and those reservations; and what the pool's size counts without a
-/// reservation, the ways and the heap themselves.
-fn held<R: StorageRead>(reading: &Reading<'_, R>) -> (u64, u64, u64) {
+/// Actual reader capacities and structural storage against the round's live allocation charge.
+fn held<R: StorageRead>(reading: &Reading<'_, R>, account: &MemoryAccount) -> (u64, u64, u64) {
     let bytes = |buffers: &[(&'static str, usize)]| -> u64 {
         buffers.iter().map(|&(_, bytes)| bytes as u64).sum()
     };
@@ -1980,23 +2017,17 @@ fn held<R: StorageRead>(reading: &Reading<'_, R>) -> (u64, u64, u64) {
         + bytes(&ints.u64s.block.buffers())
         + bytes(&ints.u32s.block.buffers())
         + bytes(&decode.bytes.block.buffers());
-    let mut reserved = decode.scratch.bytes()
-        + ints.i64s.held.bytes()
-        + ints.u64s.held.bytes()
-        + ints.u32s.held.bytes()
-        + decode.bytes.held.bytes();
+    let reserved = account.round_live_bytes() - account.lent_bytes();
     for way in &reading.ways {
         capacities += (way.ranks.capacity() * size_of::<Rank>()) as u64;
-        reserved += way.held.bytes();
         if let Some(open) = &way.open {
             // A reader holds a reservation of exactly its directory.
             capacities += open.reader.memory();
-            reserved += open.reader.memory();
         }
     }
     let structure = reading.ways.capacity() * size_of::<Way>()
         + reading.heap.capacity() * size_of::<Reverse<(Rank, usize)>>();
-    (capacities, reserved, structure as u64)
+    (capacities, reserved - structure as u64, structure as u64)
 }
 
 // Reading a round's inputs holds no more than its pool, which its entries size: at every step
@@ -2047,29 +2078,43 @@ fn reading_a_rounds_inputs_holds_no_more_than_planned() {
         chosen,
     } = choose_runs(&snapshot, &events, 0, all, &decode).unwrap();
     assert_eq!(chosen.ways, runs);
-    assert!(chosen.pool.compressed);
-    let inputs = collect_runs(&snapshot, &events, 0, &taken[..runs], chosen.inputs).unwrap();
-    let planned = chosen.pool.bytes(&decode);
+    assert!(chosen.reading.compressed);
+    let planned = fixed_memory(events.layout, false) + chosen.memory;
     let pool = MemoryBudget::new(planned);
+    let account = MemoryAccount::planned(&pool, "event round", MemoryPlan::bytes(planned)).unwrap();
+    let inputs = super::collect_runs(
+        &snapshot,
+        &events,
+        0,
+        &taken[..runs],
+        chosen.inputs,
+        &account,
+    )
+    .unwrap();
     let mut reading = Reading::new(
         &snapshot,
         &inputs,
         chosen.ways,
         &events,
-        &pool,
-        &chosen.pool,
+        &account,
+        &chosen.reading,
     )
     .unwrap();
     let check = |reading: &Reading<'_, _>| {
-        let (capacities, reserved, structure) = held(reading);
+        let (capacities, reserved, structure) = held(reading, &account);
         assert!(
             capacities <= reserved,
             "{capacities} held, {reserved} reserved"
         );
         assert!(
-            pool.reserved() + structure <= planned,
-            "{} reserved and {structure} of ways, {planned} planned",
-            pool.reserved()
+            capacities + structure + chosen.reading.lent + DECOMPRESSION_CONTEXT
+                <= chosen.reading.bytes()
+        );
+        assert_eq!(pool.reserved(), planned);
+        assert!(
+            account.peak_bytes() <= planned && capacities + structure <= planned,
+            "{} peak, {capacities} held and {structure} of ways, {planned} planned",
+            account.peak_bytes()
         );
     };
     let mut output = store.tsdb.storage().batch().unwrap();
@@ -2077,9 +2122,16 @@ fn reading_a_rounds_inputs_holds_no_more_than_planned() {
         batch: &mut output,
         chunk: ChunkId(u64::MAX),
     };
-    let mut builder =
-        ChunkBuilder::new(&mut sink, ChunkKind::Consolidated, 0, None, events.layout).unwrap();
-    let mut window = Window::new(events.bytes().count());
+    let mut builder = ChunkBuilder::new(
+        &mut sink,
+        ChunkKind::Consolidated,
+        0,
+        None,
+        events.layout,
+        &account,
+    )
+    .unwrap();
+    let mut window = Window::new(events.bytes().count(), &account).unwrap();
     let (mut rows, mut cost) = (0, RowCost::default());
     let mut last = None;
     let (mut windows, mut cuts) = (0, 0);
@@ -2113,14 +2165,26 @@ fn reading_a_rounds_inputs_holds_no_more_than_planned() {
     assert_eq!(last, Some(all_rows as usize));
     assert!(windows >= 3 && cuts >= 1, "{windows} windows, {cuts} cut");
     let built = builder.finish().unwrap();
+    assert!(account.peak_bytes() <= planned);
+    assert_eq!(pool.reserved(), planned);
     // The chunk holds the window's events in order, each once.
     let source = StoredChunk {
         storage: &output,
         chunk: ChunkId(u64::MAX),
     };
     let budget = MemoryBudget::new(u64::MAX);
-    let reader = ChunkReader::open(&source, &budget, built.fragment0).unwrap();
-    let mut decoder = crate::codec::block::BlockDecoder::raw();
+    let reader = ChunkReader::open(
+        &source,
+        &crate::budget::MemoryAccount::new(
+            &budget,
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
+        built.fragment0,
+    )
+    .unwrap();
+    let mut decoder = crate::codec::block::BlockDecoder::raw(&crate::budget::test_account());
     let mut ranks = vec![(0, 0, 0); built.rows as usize];
     for column in [KEY, INCARNATION, SEQUENCE] {
         for block in 0..reader.blocks(column).unwrap().len() as u32 {
@@ -2384,7 +2448,17 @@ fn blocks_by_codec<S: Storage>(tsdb: &Tsdb<S>, chunks: &[Listed]) -> (usize, usi
             storage: &snapshot,
             chunk: listed.chunk,
         };
-        let reader = ChunkReader::open(&source, &budget, listed.entry.fragment0).unwrap();
+        let reader = ChunkReader::open(
+            &source,
+            &crate::budget::MemoryAccount::new(
+                &budget,
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            listed.entry.fragment0,
+        )
+        .unwrap();
         for column in 0..reader.columns().len() as u16 {
             for block in reader.blocks(column).unwrap() {
                 match block.codec {
@@ -2485,8 +2559,15 @@ fn foreign_chunk(store: &Store, chunk: u64, keys: &[i64], recorded: Option<(i64,
         chunk: ChunkId(chunk),
     };
     let fingerprint = store.tsdb.shape().fingerprint;
-    let mut builder =
-        ChunkBuilder::new(&mut sink, ChunkKind::L0Base, fingerprint, None, &layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut sink,
+        ChunkKind::L0Base,
+        fingerprint,
+        None,
+        &layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     let rows = keys.len();
     let seqs: Vec<u64> = (0..rows as u64).collect();
     let zeros = vec![0u64; rows];
@@ -2948,19 +3029,27 @@ fn the_cost_of_an_input_covers_what_reading_it_holds() {
             longest: std::cell::Cell::new(0),
         };
         let input = [super::Input { way: 0, listed }];
-        let mut pool_plan = Pool::default();
-        pool_plan.add(cost);
-        let pool = MemoryBudget::new(u64::MAX);
-        let mut reading = Reading::new(&lending, &input, 1, &events, &pool, &pool_plan).unwrap();
-        let mut window = Window::new(events.bytes().count());
+        let mut input_plan = InputPlan::new(&DecodeCost::of(events.layout));
+        input_plan.add(cost, &DecodeCost::of(events.layout));
+        let account = crate::budget::test_account();
+        let mut reading =
+            Reading::new(&lending, &input, 1, &events, &account, &input_plan).unwrap();
+        let mut window = Window::new(events.bytes().count(), &account).unwrap();
         let (mut directory, mut ranks) = (0, 0);
         let mut output = store.tsdb.storage().batch().unwrap();
         let mut sink = BatchSink {
             batch: &mut output,
             chunk: ChunkId(u64::MAX),
         };
-        let mut builder =
-            ChunkBuilder::new(&mut sink, ChunkKind::Consolidated, 0, None, events.layout).unwrap();
+        let mut builder = ChunkBuilder::new(
+            &mut sink,
+            ChunkKind::Consolidated,
+            0,
+            None,
+            events.layout,
+            &crate::budget::test_account(),
+        )
+        .unwrap();
         loop {
             reading.switch().unwrap();
             if reading.heap.is_empty() {
@@ -3058,5 +3147,36 @@ fn the_least_round_covers_the_rounds_of_the_heaviest_chunks() {
         assert_eq!(merge.memory, room);
         assert_eq!(runs(room - 1).ways, 1);
         assert!(l0(room).memory <= room);
+    }
+}
+
+#[test]
+fn traffic_allocation_floors() {
+    let schema = crate::write::chunking::tests::traffic_schema();
+    let shape = crate::write::chunking::Shape::new(&schema);
+    let layout = crate::write::chunking::event_columns(&schema.events[0]);
+    let raw = super::least_round(&layout, false);
+    let compressed = super::least_round(&layout, true);
+    let series = super::super::least_round(&shape);
+    for (name, profile, expected) in [
+        ("desktop", Profile::desktop(), 2_798_929),
+        ("x86_device", Profile::x86_device(), 1_714_177),
+        ("low_end", Profile::low_end(), 901_523),
+        ("mobile", Profile::mobile(), 901_523),
+    ] {
+        let staging = crate::write::chunking::least_staging(&schema, &shape, profile.head);
+        assert_eq!(
+            (staging, series, raw, compressed),
+            (expected, 901_523, 1_564_251, 1_826_544)
+        );
+        println!(
+            "TRAFFIC_FLOORS {name} least_staging={staging} series={series} raw={raw} compressing={compressed}"
+        );
+        if name == "mobile" {
+            assert!(staging < profile.staging);
+            let disk = MemoryDisk::new();
+            let storage = disk.open().unwrap();
+            assert!(crate::Tsdb::open(storage, schema.clone(), profile).is_ok());
+        }
     }
 }

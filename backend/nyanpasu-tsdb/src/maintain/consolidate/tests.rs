@@ -11,6 +11,7 @@ use super::*;
 use crate::{
     FieldMask, GroupKey, GroupRequest, KeyPart, LabelId, Maintain, MaintainError, Maintained,
     OpenError, Profile, Retention, RetentionPolicy, SeriesQuery, Tsdb,
+    budget::MemoryBudget,
     chunk::{
         FragmentSink,
         format::{BLOCK_TARGET_LEN, MAX_FRAGMENTS, MIN_FRAGMENT0_LEN},
@@ -28,6 +29,46 @@ use crate::{
     version::Version,
     write::{Input, SeriesPoint, Written, chunking::least_staging},
 };
+
+/// Collects chosen fixture inputs with an independently owned test account.
+fn collect(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extent: i64,
+    buckets: Option<RangeInclusive<i64>>,
+    retake: Option<Listed>,
+    chosen: &Chosen,
+    shape: &Shape,
+) -> Result<BudgetVec<Listed>, ConsolidateError> {
+    super::collect(
+        read,
+        stream,
+        extent,
+        buckets,
+        retake,
+        chosen,
+        shape,
+        &crate::budget::test_account(),
+    )
+}
+
+/// Exposes bounded stack selection to the existing candidate-list fixtures.
+fn choose_late(
+    read: &impl StorageRead,
+    stream: StreamRef,
+    extent: i64,
+    bucket: i64,
+    shape: &Shape,
+    limits: Limits,
+    inputs: &mut Vec<Listed>,
+) -> Result<Peak, ConsolidateError> {
+    let mut candidates = [NO_INPUT; MERGE_CANDIDATES];
+    let (count, peak) =
+        super::choose_late(read, stream, extent, bucket, shape, limits, &mut candidates)?;
+    inputs.clear();
+    inputs.extend_from_slice(&candidates[..count]);
+    Ok(peak)
+}
 
 /// A group a query read: its label ids, and its two sums.
 type Group = (Vec<u32>, Vec<u64>);
@@ -384,7 +425,12 @@ fn a_quiet_extent_becomes_one_compressed_chunk_with_the_same_sums() {
             storage: &snapshot,
             chunk: chunk.chunk,
         },
-        &MemoryBudget::new(u64::MAX),
+        &crate::budget::MemoryAccount::new(
+            &MemoryBudget::new(u64::MAX),
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
         chunk.entry.fragment0,
     )
     .unwrap();
@@ -854,9 +900,19 @@ impl FragmentSource for Fragments {
 /// Builds a series chunk of `rows` rows of `fields` fields, compressed or not, with values
 /// that compress somewhat, and its entry.
 fn series_chunk(rows: usize, fields: usize, compressed: bool) -> (Fragments, ChunkEntry) {
+    series_chunk_at(rows, fields, compressed, None)
+}
+
+/// Builds fixture rows at one bucket, or spreads them across buckets when none is specified.
+fn series_chunk_at(
+    rows: usize,
+    fields: usize,
+    compressed: bool,
+    bucket: Option<i64>,
+) -> (Fragments, ChunkEntry) {
     let layout = series_columns(fields);
     let mut fragments = Fragments::default();
-    let mut compressor = compress::new_compressor().unwrap();
+    let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
     let kind = if compressed {
         ChunkKind::Consolidated
     } else {
@@ -868,9 +924,10 @@ fn series_chunk(rows: usize, fields: usize, compressed: bool) -> (Fragments, Chu
         1,
         compressed.then_some(&mut compressor),
         &layout,
+        &crate::budget::test_account(),
     )
     .unwrap();
-    let mut append = AppendRows::new(fields);
+    let mut append = AppendRows::new(fields, &crate::budget::test_account()).unwrap();
     for row in 0..rows {
         if append.is_full() {
             append.append(&mut builder).unwrap();
@@ -880,7 +937,7 @@ fn series_chunk(rows: usize, fields: usize, compressed: bool) -> (Fragments, Chu
             *value = traffic(row as i64 * 1000, field as u32)[0];
         }
         append.push(&Row {
-            bucket: (row / 1000) as i64,
+            bucket: bucket.unwrap_or((row / 1000) as i64),
             combo: row as u32,
             fields: values,
         });
@@ -915,8 +972,17 @@ fn the_cost_of_a_way_is_what_reading_its_chunk_holds() {
         let layout = series_columns(fields);
         let (fragments, entry) = series_chunk(rows, fields, compressed);
         let cost = WayCost::of(&layout, &entry);
-        let reader =
-            ChunkReader::open(&fragments, &MemoryBudget::new(u64::MAX), entry.fragment0).unwrap();
+        let reader = ChunkReader::open(
+            &fragments,
+            &crate::budget::MemoryAccount::new(
+                &MemoryBudget::new(u64::MAX),
+                "test reader",
+                crate::budget::MemoryPlan::default(),
+            )
+            .unwrap(),
+            entry.fragment0,
+        )
+        .unwrap();
         let structure = (size_of::<Way>() + size_of::<Reverse<(i64, u32, usize)>>()) as u64;
         assert_eq!(cost.held - structure, reader.memory(), "{case}");
         let (mut decode, mut scratch) = (0, 0);
@@ -1011,22 +1077,48 @@ fn reading_a_rounds_inputs_holds_no_more_than_planned() {
         limits,
     )
     .unwrap();
-    let inputs = collect(&snapshot, MINUTES, 0, pending, Some(last), &chosen, shape).unwrap();
+    let planned = chosen.memory;
+    let pool = MemoryBudget::new(planned);
+    let account = MemoryAccount::planned(&pool, "round", MemoryPlan::bytes(planned)).unwrap();
+    let inputs = super::collect(
+        &snapshot,
+        MINUTES,
+        0,
+        pending,
+        Some(last),
+        &chosen,
+        shape,
+        &account,
+    )
+    .unwrap();
     assert!(chosen.complete);
     // The last chunk, bucket 3, bucket 4 and its two deltas, bucket 5 and its delta.
     assert_eq!(chosen.pending, 6);
     assert_eq!(inputs.len(), 7);
-    let planned = chosen.peak.pool();
-    let pool = MemoryBudget::new(planned);
     let layout = series_columns(shape.fields);
-    let mut rows = Rows::new(&snapshot, &inputs, &layout, &pool, &chosen.peak).unwrap();
-    let standing = chosen.peak.lent + chosen.peak.decompression();
+    let mut rows = Rows::new(&snapshot, &inputs, &layout, &account, &chosen.peak).unwrap();
     let mut previous = None;
     let mut count = 0;
     while let Some(row) = rows.next().unwrap() {
         let (reserved, structure) = rows.held();
-        assert!(reserved <= pool.reserved() - standing);
-        assert!(pool.reserved() + structure <= planned);
+        assert_eq!(
+            reserved,
+            account.round_live_bytes()
+                - chosen.peak.lent
+                - chosen.peak.decompression()
+                - structure
+                - (inputs.capacity() * size_of::<Listed>()) as u64
+        );
+        assert!(
+            reserved
+                + structure
+                + chosen.peak.lent
+                + chosen.peak.decompression()
+                + (inputs.capacity() * size_of::<Listed>()) as u64
+                <= pool.reserved()
+        );
+        assert!(account.peak_bytes() <= planned);
+        assert_eq!(pool.reserved(), planned);
         let key = (row.bucket, row.combo);
         assert!(previous < Some(key), "{previous:?} then {key:?}");
         previous = Some(key);
@@ -1437,7 +1529,7 @@ fn the_zstd_contexts_fit_their_allowances() {
             })
             .collect()
     };
-    let mut reused = compress::new_compressor().unwrap();
+    let mut reused = compress::new_compressor(&crate::budget::test_account()).unwrap();
     let mut most = 0;
     let lens = (MIN_COMPRESSED_INPUT..=largest)
         .step_by(97)
@@ -1448,14 +1540,15 @@ fn the_zstd_contexts_fit_their_allowances() {
         } else {
             noise(len, round as u64)
         };
-        let mut frame = Vec::with_capacity(compress::frame_len(len));
-        let mut fresh = compress::new_compressor().unwrap();
-        fresh.compress_to_buffer(&data, &mut frame).unwrap();
-        frame.clear();
-        reused.compress_to_buffer(&data, &mut frame).unwrap();
+        let mut frame = crate::budget::test_account()
+            .buffer(compress::frame_len(len))
+            .unwrap();
+        let mut fresh = compress::new_compressor(&crate::budget::test_account()).unwrap();
+        frame.compress_into(&mut fresh, &data).unwrap();
+        frame.compress_into(&mut reused, &data).unwrap();
         most = most
-            .max(fresh.context_mut().sizeof())
-            .max(reused.context_mut().sizeof());
+            .max(fresh.workspace_size())
+            .max(reused.workspace_size());
     }
     assert!(most as u64 <= COMPRESSION_CONTEXT, "{most} bytes");
     // The allowance is the measure rounded up, not a guess far above it.
@@ -1580,6 +1673,113 @@ fn the_least_round_covers_a_round_of_full_chunks() {
         assert!(taking.take(&layout, &half) && taking.take(&layout, &half));
     }
     assert_eq!(larger, [true, false]);
+}
+
+/// Full series chunks consolidate and two half chunks merge at the unchanged staging floor.
+#[test]
+fn rounds_of_full_chunks_make_progress_at_the_least_round() {
+    for fields in [2, MAX_FIELDS] {
+        let mut spec = schema();
+        spec.series.as_mut().unwrap().fields = (0..fields)
+            .map(|field| crate::FieldSpec {
+                name: String::leak(format!("f{field}")),
+                aggregate: crate::Aggregate::SaturatingSum,
+            })
+            .collect();
+        let shape = Shape::new(&spec);
+        let least = least_round(&shape);
+        let profile = Profile {
+            head: 64 * 1024,
+            staging: least,
+            ..Profile::desktop()
+        };
+        let disk = MemoryDisk::new();
+        let tsdb = Tsdb::open(disk.open().unwrap(), spec, profile).unwrap();
+        let rows = shape.series_chunk_rows;
+        let mut batch = tsdb.storage().batch().unwrap();
+        // Full groups retire their directories and decode buffers under one admitted plan.
+        for id in 1..=3 {
+            let (fragments, entry) = series_chunk_at(rows, fields, false, Some(id as i64));
+            for (index, bytes) in fragments.0 {
+                batch
+                    .put_fragment(
+                        FragmentId {
+                            chunk: ChunkId(id),
+                            index,
+                        },
+                        &bytes,
+                    )
+                    .unwrap();
+            }
+            manifest::write_chunk(&mut batch, MINUTES, 0, ChunkId(id), &entry).unwrap();
+            crate::write::chunking::change_extent(
+                &mut batch,
+                MINUTES,
+                0,
+                crate::write::chunking::ExtentChange::ChunkWritten(entry.bytes),
+            )
+            .unwrap();
+        }
+        batch.commit(Durability::Durable).unwrap();
+        let current = tsdb.current();
+        let context = tsdb.round_context(&current);
+        let mut next = 100;
+        for _ in 0..3 {
+            let read = tsdb.storage().snapshot().unwrap();
+            let mut batch = tsdb.storage().batch().unwrap();
+            let changed = super::consolidate(&mut batch, &read, &context, MINUTE, 0, next).unwrap();
+            assert!(changed.done.chunks_rewritten >= 1);
+            assert!(changed.done.chunks_built >= 1);
+            next = changed.next_chunk.unwrap();
+            drop(changed);
+            assert_eq!(tsdb.staging_reserved(), 0);
+            let complete = manifest::read_stream(&batch, MINUTES).unwrap().consolidated == Some(0);
+            batch.commit(Durability::Durable).unwrap();
+            if complete {
+                break;
+            }
+        }
+        let read = tsdb.storage().snapshot().unwrap();
+        assert_eq!(
+            manifest::read_stream(&read, MINUTES).unwrap().consolidated,
+            Some(0)
+        );
+        // Two late chunks fill one output; their duplicate keys must sum, without growing it.
+        let mut batch = tsdb.storage().batch().unwrap();
+        for id in 4..=5 {
+            let (fragments, entry) = series_chunk_at(rows / 2, fields, false, Some(0));
+            for (index, bytes) in fragments.0 {
+                batch
+                    .put_fragment(
+                        FragmentId {
+                            chunk: ChunkId(id),
+                            index,
+                        },
+                        &bytes,
+                    )
+                    .unwrap();
+            }
+            manifest::write_chunk(&mut batch, MINUTES, 0, ChunkId(id), &entry).unwrap();
+            crate::write::chunking::change_extent(
+                &mut batch,
+                MINUTES,
+                0,
+                crate::write::chunking::ExtentChange::ChunkWritten(entry.bytes),
+            )
+            .unwrap();
+        }
+        batch.commit(Durability::Durable).unwrap();
+        let read = tsdb.storage().snapshot().unwrap();
+        let mut batch = tsdb.storage().batch().unwrap();
+        let changed = super::merge(&mut batch, &read, &context, MINUTE, 0, next).unwrap();
+        assert_eq!(
+            (changed.done.chunks_rewritten, changed.done.chunks_built),
+            (2, 1)
+        );
+        drop(changed);
+        assert_eq!(tsdb.staging_reserved(), 0);
+        batch.commit(Durability::Durable).unwrap();
+    }
 }
 
 // On mobile, the traffic schema's hour tier consolidates a full extent, a day, within its 1 MiB

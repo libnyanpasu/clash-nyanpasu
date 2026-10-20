@@ -47,16 +47,16 @@ use super::{
         CatalogProblem, ComboKeySnafu, DeleteKeySnafu, DeleteRecordSnafu, DeleteUsesSnafu,
         InvalidComboSnafu, InvalidKeySnafu, InvalidLabelSnafu, InvalidRecordSnafu,
         InvalidUsesSnafu, LabelKeySnafu, LoadError, PinError, ReadCountSnafu, ReadKeySnafu,
-        ReadUsesSnafu, ReserveMemorySnafu, ScanCombosSnafu, ScanLabelsSnafu, UsesError,
-        UsesOverflowSnafu, UsesUnderflowSnafu, WriteCountSnafu, WriteKeySnafu, WriteUsesSnafu,
-        ZeroPinsSnafu, ZeroUsesSnafu,
+        ReadUsesSnafu, ReserveMemorySnafu, ResolveError, ScanCombosSnafu, ScanLabelsSnafu,
+        StageResolutionSnafu, UsesError, UsesOverflowSnafu, UsesUnderflowSnafu, WriteCountSnafu,
+        WriteKeySnafu, WriteLabelSnafu, WriteUsesSnafu, ZeroPinsSnafu, ZeroUsesSnafu,
     },
     ids::MAX_ID,
     paged::Ledger,
 };
 use crate::{
     LabelId, Schema,
-    budget::BudgetExceeded,
+    budget::{BudgetExceeded, MemoryAccount},
     layout::{
         COMBO_INDEX, COMBOS, LABEL_USES, LABELS, PIN_KEYS, PINS,
         keys::{KeyBuf, KeyError, KeyReader},
@@ -147,14 +147,22 @@ pub(super) fn index_key(labels: &[u32]) -> KeyBuf {
         .fold(KeyBuf::new(), |key, &label| key.u32(label))
 }
 
+/// Writes a label through exact charged output, before any catalog page is changed.
 pub(super) fn put_label(
     batch: &mut impl StorageWrite,
     dimension: LabelId,
     id: u32,
     value: &[u8],
-) -> Result<(), StorageError> {
-    let record = encode(&LabelRecord { value });
-    batch.put(LABELS, label_key(dimension, id).as_slice(), &record)
+    account: &MemoryAccount,
+) -> Result<(), ResolveError> {
+    let record =
+        record::encode_within(account, &LabelRecord { value }).context(StageResolutionSnafu)?;
+    batch
+        .put(LABELS, label_key(dimension, id).as_slice(), &record)
+        .context(WriteLabelSnafu {
+            dimension: dimension.0,
+            id,
+        })
 }
 
 pub(super) fn delete_label(
@@ -389,7 +397,9 @@ pub(super) fn load(
     let plans = plan_labels(read, schema.labels.len())?;
     let combos = highest_combo(read, schema)?;
     let mut inner = Inner::empty(schema, hasher);
-    ledger.alloc(inner.fixed_bytes());
+    ledger
+        .alloc(inner.fixed_bytes())
+        .context(ReserveMemorySnafu)?;
     let dimensions = inner.combos.dimensions();
     let needed = plans
         .iter()

@@ -29,7 +29,7 @@ use crate::{
         memory::{MemoryDisk, MemoryStorage},
     },
     version::{OpenMarker, Registry, Version},
-    write::{ComboId, Input, PinOp, SeriesPoint},
+    write::{ComboId, Input, PinOp, SeriesPoint, chunking::series_columns},
 };
 
 pub(crate) fn at(point: SeriesPoint<'static>, at: i64) -> SeriesPoint<'static> {
@@ -107,7 +107,7 @@ fn lists(groups: &SeriesGroups) -> Lists {
 
 /// What a result's reservation must equal: its lists, and each list's buffers.
 fn held_by(groups: &SeriesGroups) -> u64 {
-    let lists = (groups.lists.capacity() * size_of::<GroupList>()) as u64;
+    let lists = (groups.lists.get().capacity() * size_of::<GroupList>()) as u64;
     lists + groups.lists().iter().map(GroupList::bytes).sum::<u64>()
 }
 
@@ -722,7 +722,10 @@ fn a_head_combination_the_catalog_lacks_is_corrupted() {
         catalog: Catalog::new(&schema),
         head: current.head.clone(),
     };
-    let registry = Registry::new(damaged, Arc::new(schema), Arc::new(OpenMarker));
+    let head = crate::budget::MemoryBudget::new(u64::MAX)
+        .try_reserve("head", damaged.head.bytes())
+        .unwrap();
+    let registry = Registry::new(damaged, Arc::new(schema), Arc::new(OpenMarker), head);
     let snapshot = registry
         .capture(tsdb.storage(), &MemoryBudget::new(u64::MAX))
         .unwrap();
@@ -912,7 +915,7 @@ fn reading_chunks_is_reserved_before_the_first_one_is_opened() {
     // A small chunk lends at most a data fragment at once.
     let lent = lent_memory(chunks[0].entry.fragment0);
     assert_eq!(lent, MAX_DATA_FRAGMENT_LEN as u64);
-    let reading = DECOMPRESSION_CONTEXT + lent;
+    let reading = SERIES_DECOMPRESSION_CONTEXT + lent;
     let budget = snapshot.budget();
     let before = budget.reserved();
     let available = Profile::desktop().query - before;
@@ -932,19 +935,19 @@ fn reading_chunks_is_reserved_before_the_first_one_is_opened() {
 
     // Less than the decoder: the head alone is read, a chunk is not.
     let hog = budget
-        .try_reserve("test", available - (DECOMPRESSION_CONTEXT - 1))
+        .try_reserve("test", available - (SERIES_DECOMPRESSION_CONTEXT - 1))
         .unwrap();
     let head = snapshot.series(&query(hour(5..6), &total, 0b11)).unwrap();
     assert_eq!(lists(&head), vec![HashMap::from([(vec![], vec![3, 4])])]);
     drop((head, hog));
-    let error = refused(DECOMPRESSION_CONTEXT - 1);
+    let error = refused(SERIES_DECOMPRESSION_CONTEXT - 1);
     assert!(
         matches!(error, SeriesQueryError::ReserveDecoder { .. }),
         "{error:?}"
     );
 
     // The decoder, but not the fragment it reads from.
-    for room in [DECOMPRESSION_CONTEXT + 1024, reading - 1] {
+    for room in [SERIES_DECOMPRESSION_CONTEXT + 1024, reading - 1] {
         let error = refused(room);
         assert!(
             matches!(error, SeriesQueryError::ReserveFragment { chunk, .. } if chunk == chunks[0].chunk.0),
@@ -986,7 +989,7 @@ fn the_decompression_context_fits_its_reservation() {
         MAX_BLOCK_LEN
     );
     let size = context.sizeof() as u64;
-    assert!(size <= DECOMPRESSION_CONTEXT, "{size} bytes");
+    assert!(size <= SERIES_DECOMPRESSION_CONTEXT, "{size} bytes");
 }
 
 /// The fragments of a chunk, its directory first.
@@ -1087,9 +1090,17 @@ fn big_chunk(tsdb: &mut Tsdb<MemoryStorage>, compressed: bool) -> BigChunk {
     let layout = series_columns(2);
     let kind = ChunkKind::Consolidated;
     let fingerprint = tsdb.shape().fingerprint;
-    let mut compressor = compress::new_compressor().unwrap();
+    let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
     let compressor = compressed.then_some(&mut compressor);
-    let mut builder = ChunkBuilder::new(&mut sink, kind, fingerprint, compressor, &layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut sink,
+        kind,
+        fingerprint,
+        compressor,
+        &layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     let column = |values| BatchColumn {
         values,
         validity: None,
@@ -1152,7 +1163,17 @@ fn blocks_outside_the_range_or_the_fields_are_never_read() {
         storage: &snapshot,
         chunk,
     };
-    let reader = ChunkReader::open(&source, &MemoryBudget::new(u64::MAX), entry.fragment0).unwrap();
+    let reader = ChunkReader::open(
+        &source,
+        &crate::budget::MemoryAccount::new(
+            &MemoryBudget::new(u64::MAX),
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
+        entry.fragment0,
+    )
+    .unwrap();
     let overlaps = |entry: &BlockEntry| {
         entry.first_row < selected.end && entry.first_row + entry.rows > selected.start
     };
@@ -1247,7 +1268,17 @@ fn a_column_reserves_each_block_before_decoding_it() {
         storage: &snapshot,
         chunk,
     };
-    let reader = ChunkReader::open(&source, &MemoryBudget::new(u64::MAX), entry.fragment0).unwrap();
+    let reader = ChunkReader::open(
+        &source,
+        &crate::budget::MemoryAccount::new(
+            &MemoryBudget::new(u64::MAX),
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
+        entry.fragment0,
+    )
+    .unwrap();
     let column = FIRST_FIELD + 1;
     let ty = reader.columns()[usize::from(column)].ty;
     let blocks = reader.blocks(column).unwrap();
@@ -1260,11 +1291,16 @@ fn a_column_reserves_each_block_before_decoding_it() {
     assert_ne!(small.scratch, 0, "the downloads' blocks are compressed");
 
     let budget = MemoryBudget::new(large.output + large.scratch);
+    let account = crate::budget::MemoryAccount::new(
+        &budget,
+        "test decode",
+        crate::budget::MemoryPlan::default(),
+    )
+    .unwrap();
     let mut decoder = Decoder {
-        blocks: BlockDecoder::new().unwrap(),
-        scratch: empty(&budget),
-        lent: empty(&budget),
-        context: empty(&budget),
+        blocks: BlockDecoder::for_buffers(&account),
+        account: account.clone(),
+        _padding: account.lease(crate::budget::MemoryPlan::default()).unwrap(),
     };
     let mut decode = Decode {
         chunk: chunk.0,
@@ -1272,19 +1308,19 @@ fn a_column_reserves_each_block_before_decoding_it() {
         source: &source,
         decoder: &mut decoder,
     };
-    let mut downloads_column = Column::<u64>::new(column, &budget);
+    let mut downloads_column = Column::<u64>::new(column);
     let end = 3 * ROWS - 1;
     for (row, memory) in [(end, small), (1, large), (end, small)] {
         let value = downloads_column.value(&mut decode, row).unwrap();
         assert_eq!(value, downloads[row as usize]);
-        assert_eq!(downloads_column.output.bytes(), memory.output);
+        assert_eq!(downloads_column.block.memory(), memory.output);
         assert_eq!(output_held(&downloads_column.block), memory.output);
-        assert_eq!(decode.decoder.scratch.bytes(), memory.scratch);
+        assert_eq!(account.live_bytes(), memory.output + memory.scratch);
         assert_eq!(scratch_held(&decode.decoder.blocks), memory.scratch);
     }
 
     // What is left holds the small block, so another column's large one does not fit.
-    let mut other = Column::<u64>::new(column, &budget);
+    let mut other = Column::<u64>::new(column);
     let error = other.value(&mut decode, 0).unwrap_err();
     assert!(
         matches!(error, SeriesQueryError::ReserveBlock { chunk: id, .. } if id == chunk.0),
@@ -1300,7 +1336,11 @@ fn a_column_reserves_each_block_before_decoding_it() {
         (0, 0..0, 0)
     );
     drop(other);
-    assert_eq!(budget.reserved(), small.output + small.scratch);
+    assert_eq!(
+        account.live_bytes(),
+        small.output + scratch_held(&decode.decoder.blocks)
+    );
+    assert_eq!(budget.reserved(), large.output + large.scratch);
 }
 
 // A query of an old snapshot sees neither later writes nor later chunking (§7.1).
@@ -1424,4 +1464,68 @@ fn the_first_retained_bucket_is_exact_at_the_ends_of_the_timeline() {
     let pairs = grid(1, 2);
     assert_eq!(first_retained_bucket(pairs, i64::MAX / 2), None);
     assert_eq!(first_retained_bucket(pairs, i64::MIN), Some(i64::MIN));
+}
+
+#[test]
+fn groups_outlive_the_scan_snapshot_and_store() {
+    fn send_sync<T: Send + Sync>() {}
+    send_sync::<SeriesGroups>();
+    let (_disk, tsdb) = many_targets(30);
+    let snapshot = tsdb.reader().capture().unwrap();
+    let budget = snapshot.budget().clone();
+    let requests = [GroupRequest {
+        filters: &[],
+        key: GroupKey::Labels(&[TARGET]),
+    }];
+    let groups = snapshot
+        .series(&query(hour(0..1), &requests, 0b11))
+        .unwrap();
+    let expected = lists(&groups);
+    let held = held_by(&groups);
+    drop(snapshot);
+    drop(tsdb);
+    assert_eq!(budget.reserved(), held);
+    assert_eq!(lists(&groups), expected);
+    assert_eq!(groups.lists()[0].len(), 30);
+    drop(groups);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
+fn finishing_groups_moves_buffers_and_admits_the_list_before_transfer() {
+    for fail in [false, true] {
+        let budget = MemoryBudget::new(4096);
+        let account = MemoryAccount::new(&budget, "test groups", MemoryPlan::default()).unwrap();
+        let mut list = GroupBuffer::new(&account, 1, 1).unwrap();
+        list.add(&[KeyPart::Label(7)], &[11], &account).unwrap();
+        let keys = list.keys.as_ptr();
+        let sums = list.sums.as_ptr();
+        let mut lists = account.buffer(1).unwrap();
+        lists.push(list);
+        if fail {
+            account.fail_after(0);
+        }
+        let result = account.finish(GroupsBuffer {
+            account: &account,
+            lists,
+        });
+        if fail {
+            assert!(result.is_err());
+            drop(account);
+            assert_eq!(budget.reserved(), 0);
+        } else {
+            let result = result.unwrap();
+            assert_eq!(result.get()[0].keys.as_ptr(), keys);
+            assert_eq!(result.get()[0].sums.as_ptr(), sums);
+            drop(account);
+            let list = &result.get()[0];
+            assert_eq!(
+                budget.reserved(),
+                size_of::<GroupList>() as u64 + list.bytes()
+            );
+            assert_eq!(list.iter().next().unwrap().sums, &[11]);
+            drop(result);
+            assert_eq!(budget.reserved(), 0);
+        }
+    }
 }

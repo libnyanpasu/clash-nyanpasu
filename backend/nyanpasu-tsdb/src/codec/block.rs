@@ -44,9 +44,12 @@
 
 use std::io;
 
+use crate::{
+    budget::{BudgetExceeded, BudgetVec, MemoryAccount},
+    codec::compress::{Compressor, Decompressor},
+};
 use snafu::{OptionExt, ensure};
 use zerocopy::FromBytes;
-use zstd::bulk::{Compressor, Decompressor};
 
 use super::{
     BlockFlagsSnafu, Codec, ColumnWidthSnafu, CompressedSnafu, DeclaredLengthSnafu, DecodeError,
@@ -58,7 +61,6 @@ use super::{
     compress,
     cursor::Cursor,
     int::{self, IntEncoding, IntSizes, IntType, IntValue},
-    reserve_cap,
 };
 
 const FLAG_NULLS: u8 = 1;
@@ -121,27 +123,40 @@ impl Default for ScratchCaps {
     }
 }
 
+impl ScratchCaps {
+    /// Planned encoding capacities, without constructing or allocating scratch storage.
+    pub(crate) fn buffers(self) -> [(&'static str, usize, usize); 4] {
+        [
+            ("scratch body", 0, self.body),
+            ("scratch frame", 0, self.frame),
+            ("scratch present", 0, self.bytes_rows * size_of::<u32>()),
+            ("scratch order", 0, self.dictionary_rows * size_of::<u32>()),
+        ]
+    }
+}
+
 /// Buffers the encoder reuses from block to block: the body, its compressed frame, the rows
 /// of a bytes block with a value, and the dictionary's order. Each gets its whole cap in
 /// [`ScratchCaps`] when first used, and is never given back: the integer encoder reads its values
 /// with nulls carried over as it goes, and the offsets of plain and dictionary blocks are
 /// computed as they are read, so no buffer holds a copy of the values.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct EncodeScratch {
-    body: Vec<u8>,
-    frame: Vec<u8>,
-    present: Vec<u32>,
+    body: BudgetVec<u8>,
+    frame: BudgetVec<u8>,
+    present: BudgetVec<u32>,
     bytes: BytesScratch,
     caps: ScratchCaps,
 }
 
 impl EncodeScratch {
-    pub(crate) fn new(caps: ScratchCaps) -> Self {
+    /// Attaches empty encoding buffers to their caller's admitted chunk envelope.
+    pub(crate) fn new(account: &MemoryAccount, caps: ScratchCaps) -> Self {
         Self {
-            body: Vec::new(),
-            frame: Vec::new(),
-            present: Vec::new(),
-            bytes: BytesScratch::new(caps.dictionary_rows),
+            body: account.buffer(0).expect("empty storage is free"),
+            frame: account.buffer(0).expect("empty storage is free"),
+            present: account.buffer(0).expect("empty storage is free"),
+            bytes: BytesScratch::new(account, caps.dictionary_rows),
             caps,
         }
     }
@@ -178,7 +193,7 @@ impl Encoded<'_> {
         2 + self.payload.len()
     }
 
-    pub(crate) fn write(&self, out: &mut Vec<u8>) {
+    pub(crate) fn write(&self, out: &mut crate::budget::BudgetVec<u8>) {
         out.push(self.codec as u8);
         out.push(self.encoding.tag());
         out.extend_from_slice(self.payload);
@@ -190,7 +205,7 @@ impl Encoded<'_> {
 pub(crate) fn encode_ints<'s, T: IntValue>(
     values: &[T],
     validity: Option<&[bool]>,
-    compressor: Option<&mut Compressor<'static>>,
+    compressor: Option<&mut Compressor>,
     scratch: &'s mut EncodeScratch,
 ) -> io::Result<Encoded<'s>> {
     let EncodeScratch {
@@ -236,7 +251,7 @@ pub(crate) fn encode_bytes<'s>(
     validity: Option<&[bool]>,
     large: &[(u32, u32)],
     hint: BytesHint,
-    compressor: Option<&mut Compressor<'static>>,
+    compressor: Option<&mut Compressor>,
     scratch: &'s mut EncodeScratch,
 ) -> io::Result<Encoded<'s>> {
     let EncodeScratch {
@@ -256,7 +271,7 @@ pub(crate) fn encode_bytes<'s>(
     }
     let mut large_rows = large.iter().map(|&(row, _)| row as usize).peekable();
     present.clear();
-    reserve_cap(present, values.len(), caps.bytes_rows);
+    present.reserve(values.len(), caps.bytes_rows);
     for row in 0..values.len() {
         if large_rows.next_if_eq(&row).is_none() && nulls.is_none_or(|validity| validity[row]) {
             present.push(row as u32);
@@ -299,15 +314,15 @@ pub(crate) fn encode_bytes<'s>(
 
 /// Empties `body`, makes room for the `len` bytes it is about to hold, within `max`, and
 /// writes the header.
-fn start_body(body: &mut Vec<u8>, len: usize, max: usize, rows: usize, flags: u8) {
+fn start_body(body: &mut BudgetVec<u8>, len: usize, max: usize, rows: usize, flags: u8) {
     debug_assert!(rows <= MAX_BLOCK_ROWS);
     body.clear();
-    reserve_cap(body, len, max);
+    body.reserve(len, max);
     body.push(flags);
     body.extend_from_slice(&(rows as u32).to_le_bytes());
 }
 
-fn write_bitmap(out: &mut Vec<u8>, bits: impl Iterator<Item = bool>) {
+fn write_bitmap(out: &mut crate::budget::BudgetVec<u8>, bits: impl Iterator<Item = bool>) {
     let mut byte = 0u8;
     let mut count = 0;
     for bit in bits {
@@ -325,9 +340,9 @@ fn write_bitmap(out: &mut Vec<u8>, bits: impl Iterator<Item = bool>) {
 
 fn finish<'s>(
     encoding: Encoding,
-    compressor: Option<&mut Compressor<'static>>,
+    compressor: Option<&mut Compressor>,
     body: &'s [u8],
-    frame: &'s mut Vec<u8>,
+    frame: &'s mut BudgetVec<u8>,
     max_frame: usize,
 ) -> io::Result<Encoded<'s>> {
     debug_assert!(body.len() <= MAX_BLOCK_LEN);
@@ -399,21 +414,6 @@ impl DecodeMemory {
     }
 }
 
-/// Empties `buffer`, and lets go of its allocation unless it has room for exactly `len`
-/// elements.
-fn release<T>(buffer: &mut Vec<T>, len: usize) {
-    if buffer.capacity() == len {
-        buffer.clear();
-    } else {
-        *buffer = Vec::new();
-    }
-}
-
-/// Gives a buffer [`release`] emptied room for exactly `len` elements.
-fn size_to<T>(buffer: &mut Vec<T>, len: usize) {
-    buffer.reserve_exact(len);
-}
-
 /// The elements each buffer of an [`IntBlock`] holds for a block of `shape`: its values, and
 /// its validity bitmap.
 fn int_shares(shape: BlockShape) -> (usize, usize) {
@@ -422,14 +422,14 @@ fn int_shares(shape: BlockShape) -> (usize, usize) {
 
 /// The bytes `buffer` holds.
 #[cfg(test)]
-fn held<T>(buffer: &Vec<T>) -> usize {
+fn held<T>(buffer: &BudgetVec<T>) -> usize {
     buffer.capacity() * size_of::<T>()
 }
 
 /// Which rows of a decoded block have a value.
 #[derive(Debug, Default)]
 pub(crate) struct Validity {
-    bits: Vec<u8>,
+    bits: BudgetVec<u8>,
     nulls: bool,
 }
 
@@ -451,7 +451,7 @@ fn bit(bits: &[u8], row: usize) -> bool {
 /// A decoded integer block, reused from block to block.
 #[derive(Debug, Default)]
 pub(crate) struct IntBlock<T> {
-    values: Vec<T>,
+    values: BudgetVec<T>,
     validity: Validity,
 }
 
@@ -474,16 +474,26 @@ impl<T: IntValue> IntBlock<T> {
         self.validity.is_valid(row).then(|| self.values[row])
     }
 
-    fn release(&mut self, shape: BlockShape) {
+    /// Clears reusable capacities and retires every obsolete allocation before replacement.
+    fn discard(&mut self, account: &MemoryAccount, shape: BlockShape) {
         let (values, validity) = int_shares(shape);
-        release(&mut self.values, values);
-        release(&mut self.validity.bits, validity);
+        self.values.attach(account);
+        self.values.discard_unless(values);
+        self.validity.bits.attach(account);
+        self.validity.bits.discard_unless(validity);
     }
 
-    fn size(&mut self, shape: BlockShape) {
+    /// Allocates only the capacities whose old storage has already been discarded.
+    fn allocate(&mut self, shape: BlockShape) -> Result<(), BudgetExceeded> {
         let (values, validity) = int_shares(shape);
-        size_to(&mut self.values, values);
-        size_to(&mut self.validity.bits, validity);
+        self.values.try_grow_to(values)?;
+        self.validity.bits.try_grow_to(validity)?;
+        Ok(())
+    }
+
+    /// Actual heap capacity retained by this decoded integer output.
+    pub(crate) fn memory(&self) -> u64 {
+        (self.values.capacity() * size_of::<T>() + self.validity.bits.capacity()) as u64
     }
 
     /// Each buffer: its name and the bytes it holds.
@@ -508,10 +518,10 @@ pub(crate) struct LargeRef {
 #[derive(Debug, Default)]
 pub(crate) struct BytesBlock {
     /// `rows + 1` offsets; a null or large row has an empty range.
-    offsets: Vec<u32>,
-    heap: Vec<u8>,
+    offsets: BudgetVec<u32>,
+    heap: BudgetVec<u8>,
     validity: Validity,
-    large: Vec<LargeRef>,
+    large: BudgetVec<LargeRef>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -580,20 +590,44 @@ impl BytesBlock {
         (shape.rows + 1, heap, shape.rows.div_ceil(8), large)
     }
 
-    fn release(&mut self, shape: BlockShape, large_count: u32, hint: BytesHint) {
+    fn discard(
+        &mut self,
+        account: &MemoryAccount,
+        shape: BlockShape,
+        large_count: u32,
+        hint: BytesHint,
+    ) {
         let (offsets, heap, validity, large) = Self::shares(shape, large_count, hint);
-        release(&mut self.offsets, offsets);
-        release(&mut self.heap, heap);
-        release(&mut self.validity.bits, validity);
-        release(&mut self.large, large);
+        self.offsets.attach(account);
+        self.offsets.discard_unless(offsets);
+        self.heap.attach(account);
+        self.heap.discard_unless(heap);
+        self.validity.bits.attach(account);
+        self.validity.bits.discard_unless(validity);
+        self.large.attach(account);
+        self.large.discard_unless(large);
     }
 
-    fn size(&mut self, shape: BlockShape, large_count: u32, hint: BytesHint) {
+    fn allocate(
+        &mut self,
+        shape: BlockShape,
+        large_count: u32,
+        hint: BytesHint,
+    ) -> Result<(), BudgetExceeded> {
         let (offsets, heap, validity, large) = Self::shares(shape, large_count, hint);
-        size_to(&mut self.offsets, offsets);
-        size_to(&mut self.heap, heap);
-        size_to(&mut self.validity.bits, validity);
-        size_to(&mut self.large, large);
+        self.offsets.try_grow_to(offsets)?;
+        self.heap.try_grow_to(heap)?;
+        self.validity.bits.try_grow_to(validity)?;
+        self.large.try_grow_to(large)?;
+        Ok(())
+    }
+
+    /// Actual heap capacity retained by this decoded bytes output.
+    pub(crate) fn memory(&self) -> u64 {
+        (self.offsets.capacity() * size_of::<u32>()
+            + self.heap.capacity()
+            + self.validity.bits.capacity()
+            + self.large.capacity() * size_of::<LargeRef>()) as u64
     }
 
     /// Each buffer: its name and the bytes it holds.
@@ -613,9 +647,9 @@ impl BytesBlock {
 /// of its dictionary's entries.
 #[derive(Debug, Default)]
 struct Scratch {
-    body: Vec<u8>,
-    ends: Vec<u32>,
-    dict_ends: Vec<u32>,
+    body: BudgetVec<u8>,
+    ends: BudgetVec<u32>,
+    dict_ends: BudgetVec<u32>,
 }
 
 impl Scratch {
@@ -639,18 +673,30 @@ impl Scratch {
         (body + (ends + dict_ends) * size_of::<u32>()) as u64
     }
 
-    fn release(&mut self, shape: BlockShape) {
+    /// Clears reusable capacities and retires every obsolete allocation before replacement.
+    fn discard(&mut self, account: &MemoryAccount, shape: BlockShape) {
         let (body, ends, dict_ends) = Self::shares(shape);
-        release(&mut self.body, body);
-        release(&mut self.ends, ends);
-        release(&mut self.dict_ends, dict_ends);
+        self.body.attach(account);
+        self.body.discard_unless(body);
+        self.ends.attach(account);
+        self.ends.discard_unless(ends);
+        self.dict_ends.attach(account);
+        self.dict_ends.discard_unless(dict_ends);
     }
 
-    fn size(&mut self, shape: BlockShape) {
+    /// Actual capacity retained across the scratch buffers.
+    fn retained(&self) -> u64 {
+        (self.body.capacity()
+            + (self.ends.capacity() + self.dict_ends.capacity()) * size_of::<u32>()) as u64
+    }
+
+    /// Allocates only the capacities whose old storage has already been discarded.
+    fn allocate(&mut self, shape: BlockShape) -> Result<(), BudgetExceeded> {
         let (body, ends, dict_ends) = Self::shares(shape);
-        size_to(&mut self.body, body);
-        size_to(&mut self.ends, ends);
-        size_to(&mut self.dict_ends, dict_ends);
+        self.body.try_grow_to(body)?;
+        self.ends.try_grow_to(ends)?;
+        self.dict_ends.try_grow_to(dict_ends)?;
+        Ok(())
     }
 }
 
@@ -660,26 +706,46 @@ impl Scratch {
 /// block's [`DecodeMemory`].
 pub(crate) struct BlockDecoder {
     /// `None` for a decoder of raw blocks only, which needs no zstd context.
-    decompressor: Option<Decompressor<'static>>,
+    decompressor: Option<Decompressor>,
     scratch: Scratch,
+    /// The operation envelope shared by outputs and scratch.
+    account: MemoryAccount,
 }
 
 impl BlockDecoder {
-    pub(crate) fn new() -> io::Result<Self> {
-        Ok(Self {
-            decompressor: Some(compress::new_decompressor()?),
+    /// Isolates a fixture's buffer budget from its independently charged dependency workspace.
+    #[cfg(test)]
+    pub(crate) fn for_buffers(account: &MemoryAccount) -> Self {
+        Self {
+            decompressor: Some(compress::new_decompressor(&crate::budget::test_account()).unwrap()),
             scratch: Scratch::default(),
+            account: account.clone(),
+        }
+    }
+
+    /// Creates a decoder with charged dependency workspace and initially empty scratch.
+    pub(crate) fn new(account: &MemoryAccount) -> io::Result<Self> {
+        Ok(Self {
+            decompressor: Some(compress::new_decompressor(account)?),
+            scratch: Scratch::default(),
+            account: account.clone(),
         })
     }
 
     /// A decoder of raw blocks only, without a zstd context: for L0 chunks, which are never
     /// compressed (§6.3 rule 2). A compressed block is damage to it
     /// ([`DecodeError::Compressed`]).
-    pub(crate) fn raw() -> Self {
+    pub(crate) fn raw(account: &MemoryAccount) -> Self {
         Self {
             decompressor: None,
             scratch: Scratch::default(),
+            account: account.clone(),
         }
+    }
+
+    /// The operation envelope shared by decoder outputs, scratch and fragment readers.
+    pub(crate) fn account(&self) -> &MemoryAccount {
+        &self.account
     }
 
     /// Each scratch buffer: its name and the bytes it holds. The zstd context is not among
@@ -693,7 +759,53 @@ impl BlockDecoder {
         ]
     }
 
-    pub(crate) fn decode_ints<T: IntValue>(
+    /// Drops all obsolete output and scratch storage before admitting any replacement.
+    pub(crate) fn prepare_ints<'a, T: IntValue>(
+        &'a mut self,
+        shape: BlockShape,
+        out: &'a mut IntBlock<T>,
+    ) -> Result<PreparedInts<'a, T>, BudgetExceeded> {
+        debug_assert!(check_shape(shape).is_ok());
+        self.scratch.discard(&self.account, shape);
+        out.discard(&self.account, shape);
+        let target = Scratch::memory(shape) + DecodeMemory::ints(shape, T::TYPE).output;
+        self.account
+            .admit(target - self.scratch.retained() - out.memory())?;
+        self.scratch.allocate(shape)?;
+        out.allocate(shape)?;
+        Ok(PreparedInts {
+            decoder: self,
+            out,
+            shape,
+        })
+    }
+
+    /// Admits a bytes block after every obsolete buffer has dropped, retaining equal capacities.
+    pub(crate) fn prepare_bytes<'a>(
+        &'a mut self,
+        shape: BlockShape,
+        large_count: u32,
+        hint: BytesHint,
+        out: &'a mut BytesBlock,
+    ) -> Result<PreparedBytes<'a>, BudgetExceeded> {
+        debug_assert!(check_shape(shape).is_ok());
+        self.scratch.discard(&self.account, shape);
+        out.discard(&self.account, shape, large_count, hint);
+        let target = Scratch::memory(shape) + DecodeMemory::bytes(shape, large_count, hint).output;
+        self.account
+            .admit(target - self.scratch.retained() - out.memory())?;
+        self.scratch.allocate(shape)?;
+        out.allocate(shape, large_count, hint)?;
+        Ok(PreparedBytes {
+            decoder: self,
+            out,
+            shape,
+            large_count,
+            hint,
+        })
+    }
+
+    fn decode_ints_impl<T: IntValue>(
         &mut self,
         stored: &[u8],
         shape: BlockShape,
@@ -706,11 +818,6 @@ impl BlockDecoder {
             .fail();
         };
         check_shape(shape)?;
-        // Every buffer lets go of what it does not keep before any is allocated.
-        self.scratch.release(shape);
-        out.release(shape);
-        self.scratch.size(shape);
-        out.size(shape);
         let body = body(
             &mut self.decompressor,
             &mut self.scratch.body,
@@ -733,7 +840,7 @@ impl BlockDecoder {
     /// - every present value of a fixed column has the column's width. The block itself
     ///   stores only the length its values share, and readers take a fixed column's values
     ///   to be of its width.
-    pub(crate) fn decode_bytes(
+    fn decode_bytes_impl(
         &mut self,
         stored: &[u8],
         shape: BlockShape,
@@ -748,11 +855,6 @@ impl BlockDecoder {
             .fail();
         };
         check_shape(shape)?;
-        // Every buffer lets go of what it does not keep before any is allocated.
-        self.scratch.release(shape);
-        out.release(shape, large_count, hint);
-        self.scratch.size(shape);
-        out.size(shape, large_count, hint);
         let body = body(
             &mut self.decompressor,
             &mut self.scratch.body,
@@ -807,7 +909,7 @@ impl BlockDecoder {
         if let BytesHint::Fixed(width) = hint {
             let mut start = 0;
             // The ends do not decrease: every encoding's decoder checks them.
-            for &end in &self.scratch.ends {
+            for &end in self.scratch.ends.iter() {
                 let len = end - start;
                 ensure!(len == u32::from(width), ColumnWidthSnafu { len, width });
                 start = end;
@@ -823,6 +925,49 @@ impl BlockDecoder {
             out.offsets.push(end);
         }
         Ok(())
+    }
+}
+
+/// Integer output and scratch whose allocation has already been admitted for one block.
+pub(crate) struct PreparedInts<'a, T> {
+    /// The decoder whose scratch was admitted with the output.
+    decoder: &'a mut BlockDecoder,
+    /// The fixed-capacity destination for this prepared integer block.
+    out: &'a mut IntBlock<T>,
+    shape: BlockShape,
+}
+
+impl<T: IntValue> PreparedInts<'_, T> {
+    /// Decodes only the shape whose storage was admitted before the fragment was borrowed.
+    pub(crate) fn decode(self, stored: &[u8], shape: BlockShape) -> Result<(), DecodeError> {
+        assert_eq!(
+            self.shape, shape,
+            "prepared storage must match the directory block"
+        );
+        self.decoder.decode_ints_impl(stored, shape, self.out)
+    }
+}
+
+/// Bytes output and scratch whose allocation has already been admitted for one block.
+pub(crate) struct PreparedBytes<'a> {
+    /// The decoder whose scratch was admitted with the output.
+    decoder: &'a mut BlockDecoder,
+    /// The fixed-capacity destination for this prepared bytes block.
+    out: &'a mut BytesBlock,
+    shape: BlockShape,
+    large_count: u32,
+    hint: BytesHint,
+}
+
+impl PreparedBytes<'_> {
+    /// Decodes only the previously admitted shape and column constraints.
+    pub(crate) fn decode(self, stored: &[u8], shape: BlockShape) -> Result<(), DecodeError> {
+        assert_eq!(
+            self.shape, shape,
+            "prepared storage must match the directory block"
+        );
+        self.decoder
+            .decode_bytes_impl(stored, shape, self.large_count, self.hint, self.out)
     }
 }
 
@@ -889,8 +1034,8 @@ pub(crate) fn view_ints<T: IntValue>(
 
 /// Checks the tags and returns the body, decompressing it into `buffer` when needed.
 fn body<'a>(
-    decompressor: &mut Option<Decompressor<'static>>,
-    buffer: &'a mut Vec<u8>,
+    decompressor: &mut Option<Decompressor>,
+    buffer: &'a mut BudgetVec<u8>,
     stored: &'a [u8],
     shape: BlockShape,
 ) -> Result<&'a [u8], DecodeError> {
@@ -991,6 +1136,35 @@ fn ensure_consumed(input: &Cursor<'_>) -> Result<(), DecodeError> {
 }
 
 #[cfg(test)]
+impl BlockDecoder {
+    /// Test convenience that checks hostile shapes before using the charged preparation API.
+    pub(crate) fn decode_ints<T: IntValue>(
+        &mut self,
+        stored: &[u8],
+        shape: BlockShape,
+        out: &mut IntBlock<T>,
+    ) -> Result<(), DecodeError> {
+        check_shape(shape)?;
+        self.prepare_ints(shape, out).unwrap().decode(stored, shape)
+    }
+
+    /// Test convenience for charged bytes decoding; the format assertions remain unchanged.
+    pub(crate) fn decode_bytes(
+        &mut self,
+        stored: &[u8],
+        shape: BlockShape,
+        count: u32,
+        hint: BytesHint,
+        out: &mut BytesBlock,
+    ) -> Result<(), DecodeError> {
+        check_shape(shape)?;
+        self.prepare_bytes(shape, count, hint, out)
+            .unwrap()
+            .decode(stored, shape)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use proptest::prelude::*;
     use strum::VariantArray;
@@ -998,8 +1172,73 @@ mod tests {
     use super::*;
     use crate::codec::{MAX_INLINE_VALUE_LEN, bytes::BytesEncoding};
 
+    #[test]
+    fn decoder_replacements_drop_all_obsolete_storage_before_any_new_allocation() {
+        use std::{
+            cell::{Cell, RefCell},
+            rc::Rc,
+        };
+        let account = crate::budget::test_account();
+        let actual = Rc::new(Cell::new(0u64));
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = actual.clone();
+        let recorded = events.clone();
+        account.observe_allocations(move |allocate, bytes, charge| {
+            let next = if allocate {
+                observed.get() + bytes
+            } else {
+                observed.get() - bytes
+            };
+            assert!(next <= charge);
+            observed.set(next);
+            if bytes != 0 {
+                recorded.borrow_mut().push((allocate, bytes));
+            }
+        });
+        let mut decoder = BlockDecoder::raw(&account);
+        let mut out = BytesBlock::default();
+        let shape = |encoding, rows, uncompressed_len| BlockShape {
+            codec: Codec::Zstd,
+            encoding: Encoding::Bytes(encoding),
+            rows,
+            uncompressed_len,
+        };
+        let first = shape(BytesEncoding::Dictionary, 16, 32);
+        decoder
+            .prepare_bytes(first, 0, BytesHint::LowCardinality, &mut out)
+            .unwrap();
+        let old = out.memory() + decoder.scratch.retained();
+        assert_eq!(actual.get(), old);
+        events.borrow_mut().clear();
+        let second = shape(BytesEncoding::Plain, 8, 64);
+        decoder
+            .prepare_bytes(second, 0, BytesHint::LowCardinality, &mut out)
+            .unwrap();
+        let events_before_first_allocation: u64 = events
+            .borrow()
+            .iter()
+            .take_while(|(allocate, _)| !allocate)
+            .map(|(_, bytes)| bytes)
+            .sum();
+        assert_eq!(events_before_first_allocation, old);
+        assert_eq!(actual.get(), out.memory() + decoder.scratch.retained());
+        let pointer = out.heap.as_ptr();
+        events.borrow_mut().clear();
+        decoder
+            .prepare_bytes(second, 0, BytesHint::LowCardinality, &mut out)
+            .unwrap();
+        assert!(events.borrow().is_empty());
+        assert_eq!(out.heap.as_ptr(), pointer);
+        drop(out);
+        drop(decoder);
+        assert_eq!(actual.get(), 0);
+        assert_eq!(account.live_bytes(), 0);
+    }
+
     fn stored(encoded: &Encoded<'_>) -> (Vec<u8>, BlockShape, usize) {
-        let mut out = Vec::new();
+        let mut out = crate::budget::test_account()
+            .buffer(encoded.stored_len())
+            .unwrap();
         encoded.write(&mut out);
         let shape = BlockShape {
             codec: encoded.codec,
@@ -1007,7 +1246,7 @@ mod tests {
             uncompressed_len: encoded.uncompressed_len,
             rows: 0,
         };
-        (out, shape, encoded.stored_len())
+        (out.to_vec(), shape, encoded.stored_len())
     }
 
     fn int_block<T: IntValue + 'static>(
@@ -1025,8 +1264,11 @@ mod tests {
         validity: Option<&[bool]>,
         compressed: bool,
     ) -> Result<(), TestCaseError> {
-        let mut compressor = compress::new_compressor().unwrap();
-        let mut scratch = EncodeScratch::default();
+        let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
+        let mut scratch = EncodeScratch::new(
+            &crate::budget::test_account(),
+            crate::codec::block::ScratchCaps::default(),
+        );
         let encoded = encode_ints(
             values,
             validity,
@@ -1038,7 +1280,7 @@ mod tests {
         shape.rows = values.len();
         let raw = values.len() * int_raw_len(T::TYPE, validity.is_some());
         prop_assert!(stored_len <= raw + MAX_BLOCK_OVERHEAD);
-        let mut decoder = BlockDecoder::new().unwrap();
+        let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
         let mut out = IntBlock::default();
         decoder.decode_ints(&bytes, shape, &mut out).unwrap();
         prop_assert_eq!(out.len(), values.len());
@@ -1114,8 +1356,8 @@ mod tests {
             let values: Vec<&[u8]> = rows.iter().map(|(value, _)| value.as_slice()).collect();
             let validity: Option<Vec<bool>> =
                 nullable.then(|| rows.iter().map(|&(_, kind)| kind != 0).collect());
-            let mut compressor = compress::new_compressor().unwrap();
-            let mut scratch = EncodeScratch::default();
+            let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
+            let mut scratch = EncodeScratch::new(&crate::budget::test_account(), crate::codec::block::ScratchCaps::default());
             let encoded = encode_bytes(
                 &values[..],
                 validity.as_deref(),
@@ -1135,7 +1377,7 @@ mod tests {
                 })
                 .sum();
             prop_assert!(stored_len <= raw + MAX_BLOCK_OVERHEAD);
-            let mut decoder = BlockDecoder::new().unwrap();
+            let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
             let mut out = BytesBlock::default();
             decoder
                 .decode_bytes(&bytes, shape, large.len() as u32, hint, &mut out)
@@ -1165,7 +1407,7 @@ mod tests {
             let mut stored = vec![Codec::Raw as u8, encoding.tag()];
             stored.extend_from_slice(&body);
             let shape = BlockShape { codec: Codec::Raw, encoding, uncompressed_len: body.len(), rows };
-            let mut decoder = BlockDecoder::new().unwrap();
+            let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
             let _ = decoder.decode_ints(&stored, shape, &mut IntBlock::<i64>::default());
             let _ = decoder.decode_ints(&stored, shape, &mut IntBlock::<u32>::default());
             let _ = decoder.decode_bytes(&stored, shape, large_count, BytesHint::Text, &mut BytesBlock::default());
@@ -1175,7 +1417,10 @@ mod tests {
 
     #[test]
     fn nullable_blocks_without_nulls_carry_no_bitmap() {
-        let mut scratch = EncodeScratch::default();
+        let mut scratch = EncodeScratch::new(
+            &crate::budget::test_account(),
+            crate::codec::block::ScratchCaps::default(),
+        );
         let values = [5u64, 6, 7];
         let without = encode_ints(&values, None, None, &mut scratch)
             .unwrap()
@@ -1188,7 +1433,10 @@ mod tests {
 
     #[test]
     fn a_tag_that_disagrees_with_the_directory_is_rejected() {
-        let mut scratch = EncodeScratch::default();
+        let mut scratch = EncodeScratch::new(
+            &crate::budget::test_account(),
+            crate::codec::block::ScratchCaps::default(),
+        );
         let encoded = encode_ints(&[1u64, 2, 3], None, None, &mut scratch).unwrap();
         let (bytes, mut shape, _) = stored(&encoded);
         shape.rows = 3;
@@ -1196,18 +1444,18 @@ mod tests {
         if encoded.encoding == shape.encoding {
             shape.encoding = Encoding::Int(IntEncoding::Delta);
         }
-        let result = BlockDecoder::new().unwrap().decode_ints(
-            &bytes,
-            shape,
-            &mut IntBlock::<u64>::default(),
-        );
+        let result = BlockDecoder::new(&crate::budget::test_account())
+            .unwrap()
+            .decode_ints(&bytes, shape, &mut IntBlock::<u64>::default());
         assert!(matches!(result, Err(DecodeError::TagMismatch { .. })));
     }
 
     #[test]
     fn a_zstd_block_declaring_too_much_is_rejected_before_decompressing() {
-        let mut compressor = compress::new_compressor().unwrap();
-        let mut frame = Vec::new();
+        let mut compressor = compress::new_compressor(&crate::budget::test_account()).unwrap();
+        let mut frame = crate::budget::test_account()
+            .buffer(0)
+            .expect("empty storage is free");
         let bomb = vec![0u8; MAX_BLOCK_LEN * 4];
         assert_eq!(
             compress::compress(
@@ -1227,7 +1475,7 @@ mod tests {
             uncompressed_len: bomb.len(),
             rows: 1,
         };
-        let mut decoder = BlockDecoder::new().unwrap();
+        let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
         let result = decoder.decode_ints(&stored, shape, &mut IntBlock::<u64>::default());
         assert!(matches!(result, Err(DecodeError::DeclaredLength { .. })));
         assert_eq!(decoder.scratch.body.capacity(), 0);
@@ -1237,7 +1485,10 @@ mod tests {
     fn a_large_reference_past_the_directory_is_rejected() {
         let long = vec![b'x'; MAX_INLINE_VALUE_LEN + 1];
         let values: [&[u8]; 2] = [b"short", &long];
-        let mut scratch = EncodeScratch::default();
+        let mut scratch = EncodeScratch::new(
+            &crate::budget::test_account(),
+            crate::codec::block::ScratchCaps::default(),
+        );
         let encoded = encode_bytes(
             &values[..],
             None,
@@ -1249,7 +1500,7 @@ mod tests {
         .unwrap();
         let (bytes, mut shape, _) = stored(&encoded);
         shape.rows = 2;
-        let mut decoder = BlockDecoder::new().unwrap();
+        let mut decoder = BlockDecoder::new(&crate::budget::test_account()).unwrap();
         let mut out = BytesBlock::default();
         decoder
             .decode_bytes(&bytes, shape, 4, BytesHint::Text, &mut out)

@@ -1535,3 +1535,54 @@ mod redb {
         assert!(matches!(error, OpenError::SchemaMismatch { .. }));
     }
 }
+
+/// The registry owns resident credit even after the writer goes away; snapshots have theirs.
+#[test]
+fn a_reader_outliving_the_writer_keeps_the_resident_claim_until_its_registry_drops() {
+    let disk = MemoryDisk::new();
+    let mut tsdb = open(&disk);
+    write_simple(&mut tsdb, 1, Durability::Durable);
+    let heads = tsdb.head_budget.clone();
+    let queries = tsdb.shared.query_budget.clone();
+    let resident = heads.reserved();
+    assert_eq!(resident, tsdb.current().head.bytes());
+    let reader = tsdb.reader();
+    let snapshot = reader.capture().unwrap();
+    let version = Arc::downgrade(&tsdb.current());
+    drop(tsdb);
+    assert_eq!(heads.reserved(), resident);
+    drop(reader);
+    assert_eq!(heads.reserved(), 0);
+    assert!(version.upgrade().is_some());
+    assert_eq!(queries.reserved(), snapshot.reserved());
+    drop(snapshot);
+    assert!(version.upgrade().is_none());
+    assert_eq!(queries.reserved(), 0);
+}
+
+/// Replacing pages leaves old publications covered until their final snapshot drops.
+#[test]
+fn replaced_head_versions_live_until_the_last_snapshot_of_each_publication_drops() {
+    let disk = MemoryDisk::new();
+    let mut tsdb = open(&disk);
+    write_simple(&mut tsdb, 1, Durability::Durable);
+    let first = tsdb.reader().capture().unwrap();
+    let another = tsdb.reader().capture().unwrap();
+    let old = Arc::downgrade(&tsdb.current());
+    let old_bytes = first.reserved();
+    let queries = tsdb.shared.query_budget.clone();
+    assert_eq!(queries.reserved(), 2 * old_bytes);
+    write_simple(&mut tsdb, 2, Durability::Durable);
+    let current = tsdb.current();
+    assert_ne!(current.publication, first.version().publication);
+    assert!(current.head.copied_from(&first.version().head) > 0);
+    assert_eq!(tsdb.head_reserved(), current.head.bytes());
+    assert_eq!(tsdb.staging_reserved(), 0);
+    drop(first);
+    assert!(old.upgrade().is_some());
+    assert_eq!(queries.reserved(), old_bytes);
+    assert_eq!(another.version().publication + 1, current.publication);
+    drop(another);
+    assert!(old.upgrade().is_none());
+    assert_eq!(queries.reserved(), 0);
+}

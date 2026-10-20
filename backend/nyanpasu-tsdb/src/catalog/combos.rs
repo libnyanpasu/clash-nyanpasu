@@ -12,6 +12,7 @@ use super::{
     ids::Ids,
     paged::{Ledger, Paged},
 };
+use crate::budget::BudgetExceeded;
 
 #[derive(Clone)]
 pub(crate) struct Combos {
@@ -33,7 +34,10 @@ impl Combos {
     pub(crate) fn free(dimensions: usize, slots: u32, ledger: &mut Ledger) -> Self {
         Self {
             columns: (0..dimensions)
-                .map(|_| Paged::filled(slots as usize, 0, ledger))
+                .map(|_| {
+                    Paged::filled(slots as usize, 0, ledger)
+                        .expect("the loader admitted its columns")
+                })
                 .collect(),
             ids: Ids::free(slots, ledger),
         }
@@ -89,19 +93,23 @@ impl Combos {
     /// # Panics
     ///
     /// If the ids ran out, or `labels` does not have one id per dimension.
-    pub(crate) fn insert(&mut self, labels: &[u32], ledger: &mut Ledger) -> u32 {
+    pub(crate) fn insert(
+        &mut self,
+        labels: &[u32],
+        ledger: &mut Ledger,
+    ) -> Result<u32, BudgetExceeded> {
         assert_eq!(labels.len(), self.columns.len(), "one label per dimension");
         let slot = self.ids.next_slot().expect("the ids ran out");
         let fresh = slot == self.ids.slots();
         for (column, &label) in self.columns.iter_mut().zip(labels) {
             if fresh {
-                column.push(label, ledger);
+                column.push(label, ledger)?;
             } else {
-                column.set(slot as usize, label, ledger);
+                column.set(slot as usize, label, ledger)?;
             }
         }
-        self.ids.take(slot, ledger);
-        slot + 1
+        self.ids.take(slot, ledger)?;
+        Ok(slot + 1)
     }
 
     /// Stores combination `id` in its free slot while loading. Only the loader holds the
@@ -113,7 +121,9 @@ impl Combos {
     pub(crate) fn load(&mut self, id: u32, labels: &[u32], ledger: &mut Ledger) {
         let slot = id - 1;
         for (column, &label) in self.columns.iter_mut().zip(labels) {
-            column.set(slot as usize, label, ledger);
+            column
+                .set(slot as usize, label, ledger)
+                .expect("loading owns its columns");
         }
         self.ids.load(slot, ledger);
     }
@@ -128,9 +138,10 @@ impl Combos {
     /// # Panics
     ///
     /// If `id` is 0 or not live.
-    pub(crate) fn release(&mut self, id: u32, ledger: &mut Ledger) {
+    pub(crate) fn release(&mut self, id: u32, ledger: &mut Ledger) -> Result<(), BudgetExceeded> {
         assert!(id != 0, "combination 0 is implicit and never released");
-        self.ids.release(id - 1, ledger);
+        self.ids.release(id - 1, ledger)?;
+        Ok(())
     }
 
     /// A live combination whose dimension `position` is `label`, if any. It scans every

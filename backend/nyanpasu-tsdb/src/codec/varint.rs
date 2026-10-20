@@ -16,7 +16,7 @@ pub(crate) fn len(value: u64) -> usize {
     bits.div_ceil(7)
 }
 
-pub(crate) fn put(out: &mut Vec<u8>, mut value: u64) {
+pub(crate) fn put(out: &mut crate::budget::BudgetVec<u8>, mut value: u64) {
     while value >= 0x80 {
         out.push(value as u8 | 0x80);
         value >>= 7;
@@ -54,7 +54,7 @@ mod tests {
     proptest! {
         #[test]
         fn round_trips_with_its_computed_length(value in any::<u64>()) {
-            let mut out = Vec::new();
+            let mut out = crate::budget::test_account().buffer(10).unwrap();
             put(&mut out, value);
             prop_assert_eq!(out.len(), len(value));
             prop_assert_eq!(decode(&out), Some((value, out.len())));

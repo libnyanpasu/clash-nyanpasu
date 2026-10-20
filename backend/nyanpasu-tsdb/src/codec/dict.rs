@@ -26,7 +26,6 @@ use super::{
     bytes::{ByteValues, BytesScratch, decode_offsets, running_ends},
     cursor::Cursor,
     int::{self, IntSizes, IntType},
-    reserve_cap,
 };
 
 /// Sorts the present values into `scratch.order` and returns the payload size.
@@ -37,7 +36,7 @@ pub(super) fn measure(
 ) -> usize {
     let order = &mut scratch.order;
     order.clear();
-    reserve_cap(order, present.len(), scratch.max_order);
+    order.reserve(present.len(), scratch.max_order);
     order.extend(0..present.len() as u32);
     let value = |position: u32| values.value(present[position as usize] as usize);
     // Unstable, so that it sorts in place; equal values have one entry whatever their order.
@@ -74,7 +73,7 @@ pub(super) fn encode(
     values: &(impl ByteValues + ?Sized),
     present: &mut [u32],
     scratch: &BytesScratch,
-    out: &mut Vec<u8>,
+    out: &mut crate::budget::BudgetVec<u8>,
 ) {
     let order = &scratch.order;
     let count = entries(values, present, order).count();
@@ -91,7 +90,7 @@ pub(super) fn encode(
     // A value's code is its entry's rank in `order`.
     let mut code = 0u32;
     let mut previous: Option<&[u8]> = None;
-    for &position in order {
+    for &position in order.iter() {
         let value = values.value(present[position as usize] as usize);
         if previous.is_some_and(|previous| previous != value) {
             code += 1;
@@ -105,9 +104,9 @@ pub(super) fn encode(
 pub(super) fn decode(
     input: &mut Cursor<'_>,
     count: usize,
-    heap: &mut Vec<u8>,
-    ends: &mut Vec<u32>,
-    dict_ends: &mut Vec<u32>,
+    heap: &mut crate::budget::BudgetVec<u8>,
+    ends: &mut crate::budget::BudgetVec<u32>,
+    dict_ends: &mut crate::budget::BudgetVec<u32>,
 ) -> Result<(), DecodeError> {
     let entries = input.u32().context(TruncatedHeapSnafu)?;
     // Every entry is a distinct value of the block, so there are no more entries than values.
@@ -163,9 +162,12 @@ mod tests {
     fn every_distinct_value_has_one_entry_in_byte_order() {
         let values: [&[u8]; 6] = [b"b", b"a", b"c", b"a", b"b", b"a"];
         let present: Vec<u32> = (0..6).collect();
-        let mut scratch = BytesScratch::default();
+        let mut scratch =
+            BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
         let size = measure(&values[..], &present, &mut scratch);
-        let mut out = Vec::new();
+        let mut out = crate::budget::test_account()
+            .buffer(MAX_BLOCK_LEN + 1024)
+            .unwrap();
         encode(&values[..], &mut present.clone(), &scratch, &mut out);
         assert_eq!(out.len(), size);
         assert_eq!(out[..4], 3u32.to_le_bytes());
@@ -173,12 +175,22 @@ mod tests {
             out.windows(3).any(|entries| entries == b"abc"),
             "{out:02x?}"
         );
-        let (mut heap, mut ends, mut dict_ends) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut heap, mut ends, mut dict_ends) = (
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_LEN)
+                .unwrap(),
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_ROWS)
+                .unwrap(),
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_ROWS)
+                .unwrap(),
+        );
         let mut input = Cursor::new(&out);
         decode(&mut input, 6, &mut heap, &mut ends, &mut dict_ends).unwrap();
         assert_eq!(input.remaining(), 0);
-        assert_eq!(heap, b"bacaba");
-        assert_eq!(dict_ends, [1, 2, 3]);
+        assert_eq!(&*heap, b"bacaba");
+        assert_eq!(&*dict_ends, [1, 2, 3]);
     }
 
     /// A one-entry dictionary of a 16 KiB value referenced by many codes would expand to
@@ -188,13 +200,26 @@ mod tests {
         let value = vec![b'x'; 16 * 1024];
         let values: Vec<&[u8]> = vec![&value; 9];
         let present: Vec<u32> = (0..9).collect();
-        let mut scratch = BytesScratch::default();
+        let mut scratch =
+            BytesScratch::new(&crate::budget::test_account(), crate::codec::MAX_BLOCK_ROWS);
         measure(&values[..], &present, &mut scratch);
-        let mut out = Vec::new();
+        let mut out = crate::budget::test_account()
+            .buffer(MAX_BLOCK_LEN + 1024)
+            .unwrap();
         encode(&values[..], &mut present.clone(), &scratch, &mut out);
         // The payload is one entry plus nine zero-width codes.
         assert!(out.len() < value.len() + 16);
-        let (mut heap, mut ends, mut dict_ends) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut heap, mut ends, mut dict_ends) = (
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_LEN)
+                .unwrap(),
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_ROWS)
+                .unwrap(),
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_ROWS)
+                .unwrap(),
+        );
         let result = decode(
             &mut Cursor::new(&out),
             9,
@@ -215,7 +240,17 @@ mod tests {
         hostile.push(b'a');
         hostile.push(1);
         hostile.push(0b10);
-        let (mut heap, mut ends, mut dict_ends) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut heap, mut ends, mut dict_ends) = (
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_LEN)
+                .unwrap(),
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_ROWS)
+                .unwrap(),
+            crate::budget::test_account()
+                .buffer(crate::codec::MAX_BLOCK_ROWS)
+                .unwrap(),
+        );
         let result = decode(
             &mut Cursor::new(&hostile),
             2,

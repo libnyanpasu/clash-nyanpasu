@@ -92,6 +92,10 @@ impl LoadError {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum ResolveError {
+    /// Staging cannot cover a draft allocation; the caller discards the batch and draft.
+    #[snafu(display("staging cannot cover the catalog draft's copies"))]
+    StageResolution { source: BudgetExceeded },
+
     #[snafu(display("failed to read the reverse lookup of combinations"))]
     ReadComboIndex { source: StorageError },
 
@@ -129,6 +133,7 @@ impl ResolveError {
             | Self::WriteComboIndex { source, .. } => source.kind(),
             Self::InvalidComboIndex { .. } | Self::StaleComboIndex { .. } => ErrorKind::Corrupted,
             Self::CountUses { source, .. } => source.kind(),
+            Self::StageResolution { source } => source.kind(),
         }
     }
 }
@@ -271,6 +276,10 @@ impl PinError {
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum ReleaseError {
+    /// Staging refused the release before any catalog or storage mutation.
+    #[snafu(display("staging cannot cover the catalog release's copies"))]
+    StageRelease { source: BudgetExceeded },
+
     /// Debug builds check that a released combination is not pinned.
     #[cfg(debug_assertions)]
     #[snafu(display("failed to check the pins of combination {id}"))]
@@ -301,7 +310,7 @@ impl ReleaseError {
         match self {
             #[cfg(debug_assertions)]
             Self::CheckPin { source, .. } => source.kind(),
-            Self::ReserveRelease { source } => source.kind(),
+            Self::ReserveRelease { source } | Self::StageRelease { source } => source.kind(),
             Self::DeleteCombo { source, .. }
             | Self::DeleteComboIndex { source, .. }
             | Self::DeleteLabel { source, .. } => source.kind(),

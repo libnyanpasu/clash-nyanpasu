@@ -271,15 +271,15 @@ The design says its code sketches show shape, not the final API. Where the code 
   (`ChunkBuilder::append_column`). A large value is copied a fragment at a time
   (`ChunkBuilder::large_value`, `ChunkReader::read_large_piece`), each input fragment becoming
   one output fragment, so the format does not change and no round holds a large value whole.
-  A way opens its next chunk only after the shared buffers are let go, so a round's pool holds
+  A way opens its next chunk only after the shared buffers are let go, so its round plan covers
   the larger of the two, not both. Its directory is sized as a planned chunk's
   (`builder::planned_directory`), since the manifest entry does not record its blocks.
 - Not every profile consolidates every event stream, which §4.3 and §7.4 have every profile
   do. What a stream's rounds do depends on its spec and the profile's staging alone, so each
   round works it out per stream from the columns the schema's shape holds, with no
   allocation (`consolidates`, `compresses`), and it holds while the store is open. For
-  traffic's `closed` stream the smallest round takes 1,563,275 bytes writing raw blocks and
-  1,825,568 compressing:
+  traffic's `closed` stream the smallest round takes 1,564,251 bytes writing raw blocks and
+  1,826,544 compressing:
   - staging at or above the compressing floor (desktop, x86 devices, low end): the stream's
     windows consolidate and its runs merge, compressed;
   - staging between the two floors: they do, with raw blocks, which §6.3 rule 3 allows per
@@ -299,6 +299,35 @@ The design says its code sketches show shape, not the final API. Where the code 
   of late rows raises the ways; mobile's query budget scans 22 chunks of the test schema's
   `closed` that overlap at one key. Its L0 chunks also stay larger on disk: 63 bytes a row on
   redb, against 37 for consolidated compressed chunks.
+
+## Allocation ownership
+
+Data-sized execution storage is admitted before allocation from its operation's `MemoryAccount`:
+queries use the query budget; writes, opening's chunking and maintenance use staging; journal
+replay uses the head budget. Shared layouts size both plans and constructors. Charged vectors and
+std heaps cannot grow past leased capacity; preserving growth admits both allocations. Immutable
+graphs and bounded dependency workspaces use admitted constructors, then transfer charge with the
+payload. Journal and catalog label output is measured before postcard writes into fixed slices.
+Chunk boundaries stream. Debug invariants check capacities against charges, live leases against
+reserved credit, retained payloads against their allowances, and catalog allocations against their
+layout costs. Replacement peaks include old and new storage before retirement; tests observe peaks
+with retained children.
+
+Published catalog and head versions share pages without individual claims. The catalog's resident
+policy admits its loaded graph before construction and checks draft peaks and the release reserve;
+the registry owns the resident head reservation. Draft copies and new head storage hold staging
+credit until publication or withdrawal. Snapshots reserve capture credit before pinning a version.
+Pending guards drop withdrawn graphs before returning credit. Maintenance admits one fixed round
+sub-budget; its children keep the parent admission alive until their final drop.
+
+Fixed metadata keeps the documented schema and format allowance: validation maps, bounded record
+encoding, one decoded item per reader, errors, key prefixes, `Shape`, wrapper names and control
+Arcs or account Rcs. Schema bounds are 65,535 labels, 16 dimensions and fields, 255 tiers and
+streams, and 61 event columns per stream. Keys and metadata records have format bounds. Errors and
+controls are per operation or handle, independent of stored row counts. MemoryDisk's simulated
+disk payload and backend tree/transaction internals are storage and measured `backend_overhead`,
+respectively; the exported conformance suite is test support. These exceptions are not an
+allocator or RSS bound.
 
 ## Errors
 

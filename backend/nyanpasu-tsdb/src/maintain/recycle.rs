@@ -36,7 +36,7 @@ use snafu::{ResultExt, Snafu, ensure};
 use super::{Changed, Context, Maintained, Round};
 use crate::{
     ColumnType, ErrorKind, LabelId, Schema, StreamId, TierId,
-    budget::BudgetExceeded,
+    budget::{BudgetExceeded, MemoryAccount, MemoryPlan},
     catalog::{CatalogDraft, PinError, ReleaseError, UsesError, is_pinned, label_uses},
     layout::{
         manifest::{self, ManifestError, StreamRef},
@@ -138,7 +138,11 @@ pub(super) fn recycle(
     }
     done.references_forgotten = examined as u64;
     let current = &context.current.catalog;
-    let mut draft = current.draft(context.profile.catalog);
+    let copies = MemoryAccount::new(context.staging_budget, "staging", MemoryPlan::default())
+        .context(ReserveStagingSnafu)?;
+    let mut draft = current
+        .draft(context.profile.catalog, &copies)
+        .context(ReserveStagingSnafu)?;
     examined += release_candidates(
         batch,
         context.schema,
@@ -148,16 +152,10 @@ pub(super) fn recycle(
     )?;
     // The planner found an entry or a candidate in the state the round starts from.
     ensure!(examined > 0, NothingToRecycleSnafu);
-    // The draft's copies stay allocated beside the current catalog until publication, as a
-    // batch's do (`write::stage`).
-    let copies = draft.peak().saturating_sub(current.bytes());
-    let staging = context
-        .staging_budget
-        .try_reserve("staging", copies)
-        .context(ReserveStagingSnafu)?;
+    let (catalog, staging) = draft.finish();
     Ok(Changed {
         head: context.current.head.clone(),
-        catalog: Some(draft.finish()),
+        catalog: Some(catalog),
         staging,
         journal_removed: 0,
         next_chunk: None,
@@ -273,7 +271,11 @@ fn check(
             }
             let unused = match draft.release_combo(batch, id) {
                 Ok(unused) => unused,
-                Err(ReleaseError::ReserveRelease { .. }) if !first => return Ok(Checked::Refused),
+                Err(ReleaseError::ReserveRelease { .. } | ReleaseError::StageRelease { .. })
+                    if !first =>
+                {
+                    return Ok(Checked::Refused);
+                }
                 Err(source) => return Err(source).context(ReleaseComboSnafu { id }),
             };
             for (dimension, label) in unused {
@@ -295,7 +297,11 @@ fn check(
             }
             match draft.release_label(batch, dimension, id) {
                 Ok(()) => {}
-                Err(ReleaseError::ReserveRelease { .. }) if !first => return Ok(Checked::Refused),
+                Err(ReleaseError::ReserveRelease { .. } | ReleaseError::StageRelease { .. })
+                    if !first =>
+                {
+                    return Ok(Checked::Refused);
+                }
                 Err(source) => return Err(source).context(ReleaseLabelSnafu { dimension, id }),
             }
             done.labels_released += 1;

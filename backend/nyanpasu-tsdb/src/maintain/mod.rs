@@ -33,8 +33,8 @@ use crate::{
         meta::{MetaError, StateRecord, read_state, write_state},
     },
     storage::{CommitFailure, StorageError, StorageRead, StorageWrite},
-    version::Version,
-    write::{chunking::Shape, commit::Next},
+    version::{StagedVersion, Version},
+    write::chunking::Shape,
 };
 
 /// One maintenance call (§9.2).
@@ -157,7 +157,7 @@ pub(crate) struct Context<'a> {
 
 /// A staged round: the version it publishes once committed, and what it did.
 pub(crate) struct Staged {
-    pub(crate) next: Next,
+    pub(crate) next: StagedVersion,
     pub(crate) done: Maintained,
 }
 
@@ -301,7 +301,7 @@ pub(crate) fn stage(
         .try_reserve("head", 0)
         .expect("nothing fits any budget");
     Ok(Staged {
-        next: Next {
+        next: StagedVersion {
             version: Version {
                 publication: next.publication,
                 catalog: changed.catalog.unwrap_or_else(|| current.catalog.clone()),

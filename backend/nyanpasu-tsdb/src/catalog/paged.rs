@@ -31,6 +31,8 @@
 
 use std::{iter, sync::Arc};
 
+use crate::budget::{BudgetExceeded, Lease, MemoryAccount, MemoryPlan, Reservation};
+
 /// The size of an `Arc`'s header: its strong and weak counts, which precede the data.
 pub(crate) const ARC_HEADER: usize = 2 * size_of::<usize>();
 
@@ -60,14 +62,47 @@ pub(crate) const fn spine_bytes<T>(count: usize) -> u64 {
 ///
 /// A page is the writer's own exactly when no other version holds it, so a page shared
 /// with the base version is never counted, and dropping one frees nothing.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Ledger {
     owned: u64,
     peak: u64,
     allocated: u64,
+    /// A draft's high-water staging charge; loaders use the resident policy alone.
+    copies: Option<Lease>,
 }
 
 impl Ledger {
+    /// Starts a draft's staging owner before any of its structure or pages are copied.
+    pub(crate) fn staging(account: &MemoryAccount) -> Result<Self, BudgetExceeded> {
+        Ok(Self {
+            copies: Some(account.lease(MemoryPlan::default())?),
+            ..Self::default()
+        })
+    }
+
+    /// Admits a release's copies before any batch or catalog mutation can occur.
+    pub(crate) fn reserve_copies(&mut self, bytes: u64) -> Result<(), BudgetExceeded> {
+        if let Some(copies) = &mut self.copies {
+            copies.try_cover(MemoryPlan::bytes(self.owned.saturating_add(bytes)))?;
+        }
+        Ok(())
+    }
+
+    /// The draft's staging owner, also covering its transient serialized label values.
+    pub(super) fn account(&self) -> &MemoryAccount {
+        self.copies
+            .as_ref()
+            .expect("a draft has a staging owner")
+            .account()
+    }
+
+    /// Moves the draft's staging allowance to the publication owner.
+    pub(crate) fn finish(self) -> Reservation {
+        self.copies
+            .expect("a draft has a staging owner")
+            .into_reservation()
+    }
+
     /// The bytes held now.
     pub(crate) fn owned(&self) -> u64 {
         self.owned
@@ -83,10 +118,13 @@ impl Ledger {
         self.allocated
     }
 
-    pub(crate) fn alloc(&mut self, bytes: u64) {
+    /// Charges an allocation before its storage is created, retaining the draft's high water.
+    pub(crate) fn alloc(&mut self, bytes: u64) -> Result<(), BudgetExceeded> {
+        self.reserve_copies(bytes)?;
         self.owned += bytes;
         self.allocated += bytes;
         self.peak = self.peak.max(self.owned);
+        Ok(())
     }
 
     fn free(&mut self, bytes: u64) {
@@ -122,16 +160,20 @@ impl<T: Copy> Pages<T> {
     }
 
     /// Pages of the lengths `lens`, each element `value`.
-    pub(crate) fn filled(lens: &[usize], value: T, ledger: &mut Ledger) -> Self {
+    pub(crate) fn filled(
+        lens: &[usize],
+        value: T,
+        ledger: &mut Ledger,
+    ) -> Result<Self, BudgetExceeded> {
         if lens.is_empty() {
-            return Self::new();
+            return Ok(Self::new());
         }
-        ledger.alloc(Self::filled_cost(lens));
+        ledger.alloc(Self::filled_cost(lens))?;
         let spine = lens
             .iter()
             .map(|&len| iter::repeat_n(value, len).collect::<Arc<[T]>>())
             .collect();
-        Self { spine: Some(spine) }
+        Ok(Self { spine: Some(spine) })
     }
 
     pub(crate) fn count(&self) -> usize {
@@ -174,13 +216,17 @@ impl<T: Copy> Pages<T> {
 
     /// Page `index`, writable. Copies the spine and the page first if another version holds
     /// them.
-    pub(crate) fn page_mut(&mut self, index: usize, ledger: &mut Ledger) -> &mut [T] {
-        let page = &mut self.spine_mut(ledger)[index];
+    pub(crate) fn page_mut(
+        &mut self,
+        index: usize,
+        ledger: &mut Ledger,
+    ) -> Result<&mut [T], BudgetExceeded> {
+        let page = &mut self.spine_mut(ledger)?[index];
         if Arc::get_mut(page).is_none() {
-            ledger.alloc(page_bytes::<T>(page.len()));
+            ledger.alloc(page_bytes::<T>(page.len()))?;
             *page = Arc::from(&page[..]);
         }
-        Arc::get_mut(page).expect("a page just copied has no other holder")
+        Ok(Arc::get_mut(page).expect("a page just copied has no other holder"))
     }
 
     /// The bytes [`replace`](Self::replace) allocates besides the new page.
@@ -193,9 +239,15 @@ impl<T: Copy> Pages<T> {
 
     /// Replaces page `index` with `page`, whose bytes the caller has already allocated
     /// through `ledger`.
-    pub(crate) fn replace(&mut self, index: usize, page: Arc<[T]>, ledger: &mut Ledger) {
-        let old = std::mem::replace(&mut self.spine_mut(ledger)[index], page);
+    pub(crate) fn replace(
+        &mut self,
+        index: usize,
+        page: Arc<[T]>,
+        ledger: &mut Ledger,
+    ) -> Result<(), BudgetExceeded> {
+        let old = std::mem::replace(&mut self.spine_mut(ledger)?[index], page);
         drop_page(old, ledger);
+        Ok(())
     }
 
     /// The bytes [`push`](Self::push) allocates besides the new page.
@@ -205,8 +257,12 @@ impl<T: Copy> Pages<T> {
 
     /// Appends `page`, whose bytes the caller has already allocated through `ledger`. The
     /// spine is a single allocation, so it is rebuilt one page longer.
-    pub(crate) fn push(&mut self, page: Arc<[T]>, ledger: &mut Ledger) {
-        ledger.alloc(self.push_spine_cost());
+    pub(crate) fn push(
+        &mut self,
+        page: Arc<[T]>,
+        ledger: &mut Ledger,
+    ) -> Result<(), BudgetExceeded> {
+        ledger.alloc(self.push_spine_cost())?;
         let spine: Arc<[Arc<[T]>]> = match &self.spine {
             Some(spine) => spine.iter().cloned().chain(iter::once(page)).collect(),
             None => iter::once(page).collect(),
@@ -214,6 +270,7 @@ impl<T: Copy> Pages<T> {
         if let Some(old) = self.spine.replace(spine) {
             drop_spine(old, ledger);
         }
+        Ok(())
     }
 
     /// Drops the array, freeing in `ledger` what only it held.
@@ -229,16 +286,16 @@ impl<T: Copy> Pages<T> {
             .expect("an array with pages has a spine")
     }
 
-    fn spine_mut(&mut self, ledger: &mut Ledger) -> &mut [Arc<[T]>] {
+    fn spine_mut(&mut self, ledger: &mut Ledger) -> Result<&mut [Arc<[T]>], BudgetExceeded> {
         let spine = self
             .spine
             .as_mut()
             .expect("an array with pages has a spine");
         if Arc::get_mut(spine).is_none() {
-            ledger.alloc(spine_bytes::<T>(spine.len()));
+            ledger.alloc(spine_bytes::<T>(spine.len()))?;
             *spine = Arc::from(&spine[..]);
         }
-        Arc::get_mut(spine).expect("a spine just copied has no other holder")
+        Ok(Arc::get_mut(spine).expect("a spine just copied has no other holder"))
     }
 }
 
@@ -353,11 +410,15 @@ impl<T: Copy + Default> Paged<T> {
     }
 
     /// An array of `len` copies of `value`, its pages full but the last.
-    pub(crate) fn filled(len: usize, value: T, ledger: &mut Ledger) -> Self {
+    pub(crate) fn filled(
+        len: usize,
+        value: T,
+        ledger: &mut Ledger,
+    ) -> Result<Self, BudgetExceeded> {
         if len == 0 {
-            return Self::new();
+            return Ok(Self::new());
         }
-        ledger.alloc(Self::filled_cost(len));
+        ledger.alloc(Self::filled_cost(len))?;
         let pages = len.div_ceil(Self::PER_PAGE);
         let spine = (0..pages)
             .map(|page| {
@@ -365,10 +426,10 @@ impl<T: Copy + Default> Paged<T> {
                 iter::repeat_n(value, page_len).collect::<Arc<[T]>>()
             })
             .collect();
-        Self {
+        Ok(Self {
             pages: Pages { spine: Some(spine) },
             len,
-        }
+        })
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -396,13 +457,19 @@ impl<T: Copy + Default> Paged<T> {
     /// # Panics
     ///
     /// If `index` is out of bounds.
-    pub(crate) fn set(&mut self, index: usize, value: T, ledger: &mut Ledger) {
+    pub(crate) fn set(
+        &mut self,
+        index: usize,
+        value: T,
+        ledger: &mut Ledger,
+    ) -> Result<(), BudgetExceeded> {
         assert!(
             index < self.len,
             "index {index} past an array of {}",
             self.len
         );
-        self.pages.page_mut(index / Self::PER_PAGE, ledger)[index % Self::PER_PAGE] = value;
+        self.pages.page_mut(index / Self::PER_PAGE, ledger)?[index % Self::PER_PAGE] = value;
+        Ok(())
     }
 
     /// The bytes [`push`](Self::push) allocates.
@@ -414,28 +481,29 @@ impl<T: Copy + Default> Paged<T> {
         }
     }
 
-    pub(crate) fn push(&mut self, value: T, ledger: &mut Ledger) {
+    pub(crate) fn push(&mut self, value: T, ledger: &mut Ledger) -> Result<(), BudgetExceeded> {
         match self.push_plan() {
             Push::InPlace => {}
             Push::Grow(len) => {
-                ledger.alloc(page_bytes::<T>(len));
+                ledger.alloc(page_bytes::<T>(len))?;
                 let old = self.pages.page(0);
                 let page = old
                     .iter()
                     .copied()
                     .chain(iter::repeat_n(T::default(), len - old.len()))
                     .collect();
-                self.pages.replace(0, page, ledger);
+                self.pages.replace(0, page, ledger)?;
             }
             Push::NewPage(len) => {
-                ledger.alloc(page_bytes::<T>(len));
+                ledger.alloc(page_bytes::<T>(len))?;
                 self.pages
-                    .push(iter::repeat_n(T::default(), len).collect(), ledger);
+                    .push(iter::repeat_n(T::default(), len).collect(), ledger)?;
             }
         }
         let index = self.len;
         self.len += 1;
-        self.pages.page_mut(index / Self::PER_PAGE, ledger)[index % Self::PER_PAGE] = value;
+        self.pages.page_mut(index / Self::PER_PAGE, ledger)?[index % Self::PER_PAGE] = value;
+        Ok(())
     }
 
     pub(crate) fn bytes(&self) -> u64 {
@@ -493,6 +561,31 @@ mod tests {
         result
     }
 
+    /// Refusing a shared page's charge happens before the page is copied or changed.
+    #[test]
+    fn a_page_copy_is_refused_before_its_allocation() {
+        let base = Paged::filled(2 * Paged::<u32>::PER_PAGE, 7, &mut Ledger::default()).unwrap();
+        let mut next = base.clone();
+        let spine = spine_bytes::<u32>(2);
+        let budget = crate::budget::MemoryBudget::new(spine + PAGE_ALLOC as u64 - 1);
+        let account = MemoryAccount::new(&budget, "staging", MemoryPlan::default()).unwrap();
+        let mut ledger = Ledger::staging(&account).unwrap();
+        let error = next.set(0, 9, &mut ledger).unwrap_err();
+        assert_eq!(
+            (error.needed, error.available),
+            (PAGE_ALLOC as u64, PAGE_ALLOC as u64 - 1)
+        );
+        assert_eq!(ledger.allocated(), spine);
+        assert_eq!(budget.reserved(), spine);
+        assert!(Arc::ptr_eq(&next.pages.spine()[0], &base.pages.spine()[0]));
+        assert_eq!(next.get(0), 7);
+        assert_eq!(base.get(0), 7);
+        drop(next);
+        drop(ledger);
+        drop(account);
+        assert_eq!(budget.reserved(), 0);
+    }
+
     #[test]
     fn full_pages_are_one_allocation_class() {
         assert_eq!(page_bytes::<u8>(Paged::<u8>::PER_PAGE), PAGE_ALLOC as u64);
@@ -515,7 +608,7 @@ mod tests {
         let mut page_lens = Vec::new();
         for value in 0..2 * Paged::<u32>::PER_PAGE as u32 + 1 {
             exact(&mut ledger, array.push_cost(), |ledger| {
-                array.push(value, ledger)
+                array.push(value, ledger).unwrap()
             });
             let lens: Vec<usize> = (0..array.pages.count())
                 .map(|page| array.pages.page(page).len())
@@ -551,14 +644,16 @@ mod tests {
     #[test]
     fn a_write_to_a_shared_array_copies_its_spine_and_one_page() {
         let mut ledger = Ledger::default();
-        let base = Paged::filled(3 * Paged::<u64>::PER_PAGE, 7u64, &mut ledger);
+        let base = Paged::filled(3 * Paged::<u64>::PER_PAGE, 7u64, &mut ledger).unwrap();
         let mut next = base.clone();
         let mut ledger = Ledger::default();
 
         let index = Paged::<u64>::PER_PAGE + 5;
         let cost = next.set_cost(index);
         assert_eq!(cost, spine_bytes::<u64>(3) + PAGE_ALLOC as u64);
-        exact(&mut ledger, cost, |ledger| next.set(index, 9, ledger));
+        exact(&mut ledger, cost, |ledger| {
+            next.set(index, 9, ledger).unwrap()
+        });
         assert_eq!(next.get(index), 9);
         assert_eq!(base.get(index), 7);
         assert_eq!(next.unshared(&base), cost);
@@ -566,7 +661,9 @@ mod tests {
 
         // The copies are the writer's own now: writing them again copies nothing.
         assert_eq!(next.set_cost(index + 1), 0);
-        exact(&mut ledger, 0, |ledger| next.set(index + 1, 9, ledger));
+        exact(&mut ledger, 0, |ledger| {
+            next.set(index + 1, 9, ledger).unwrap()
+        });
         // Another page of the shared array still needs a copy, but not the spine.
         assert_eq!(next.set_cost(0), PAGE_ALLOC as u64);
     }
@@ -574,10 +671,10 @@ mod tests {
     #[test]
     fn discarding_frees_only_what_no_other_version_holds() {
         let mut ledger = Ledger::default();
-        let base = Paged::filled(2 * Paged::<u32>::PER_PAGE, 1u32, &mut ledger);
+        let base = Paged::filled(2 * Paged::<u32>::PER_PAGE, 1u32, &mut ledger).unwrap();
         let mut next = base.clone();
         let mut ledger = Ledger::default();
-        next.set(0, 2, &mut ledger);
+        next.set(0, 2, &mut ledger).unwrap();
         assert_eq!(ledger.owned(), spine_bytes::<u32>(2) + PAGE_ALLOC as u64);
         next.discard(&mut ledger);
         assert_eq!(ledger.owned(), 0);
@@ -586,7 +683,7 @@ mod tests {
         // An array the writer shares only with itself frees nothing until the last holder
         // drops it.
         let mut ledger = Ledger::default();
-        let own = Paged::filled(10, 0u32, &mut ledger);
+        let own = Paged::filled(10, 0u32, &mut ledger).unwrap();
         let other = own.clone();
         own.discard(&mut ledger);
         assert_eq!(ledger.owned(), Paged::<u32>::filled_cost(10));
@@ -624,13 +721,13 @@ mod tests {
             for op in ops {
                 match op {
                     Op::Push(value) => {
-                        exact(&mut ledger, next.push_cost(), |ledger| next.push(value, ledger));
+                        exact(&mut ledger, next.push_cost(), |ledger| next.push(value, ledger).unwrap());
                         model.push(value);
                     }
                     Op::Set(index, value) if !model.is_empty() => {
                         let index = index % model.len();
                         exact(&mut ledger, next.set_cost(index), |ledger| {
-                            next.set(index, value, ledger)
+                            next.set(index, value, ledger).unwrap()
                         });
                         model[index] = value;
                     }

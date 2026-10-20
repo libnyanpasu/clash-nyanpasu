@@ -823,7 +823,12 @@ fn blocks_whose_stats_rule_out_the_filter_are_never_decoded() {
             storage: snapshot.storage(),
             chunk,
         },
-        &MemoryBudget::new(u64::MAX),
+        &crate::budget::MemoryAccount::new(
+            &MemoryBudget::new(u64::MAX),
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
         store.chunks(CLOSED)[0].entry.fragment0,
     )
     .unwrap();
@@ -953,7 +958,12 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
             storage: snapshot.storage(),
             chunk,
         },
-        &MemoryBudget::new(u64::MAX),
+        &crate::budget::MemoryAccount::new(
+            &MemoryBudget::new(u64::MAX),
+            "test reader",
+            crate::budget::MemoryPlan::default(),
+        )
+        .unwrap(),
         store.chunks(CLOSED)[0].entry.fragment0,
     )
     .unwrap();
@@ -973,16 +983,17 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
     assert!(last < first, "{last} < {first}");
     let start = |limit: u64| {
         let budget = MemoryBudget::new(limit);
-        let ledger = Ledger {
-            reservation: budget.try_reserve("test", 0).unwrap(),
-            held: 0,
+        let account = MemoryAccount::new(&budget, "test", MemoryPlan::default()).unwrap();
+        let decode = Decode {
+            decoder: BlockDecoder::for_buffers(&account),
+            buffers: Buffers::default(),
         };
-        (budget, ledger, Decode::new().unwrap(), ReadLog::default())
+        (budget, account, decode, ReadLog::default())
     };
 
-    let (budget, mut ledger, mut decode, mut log) = start(first - 1);
+    let (budget, account, mut decode, mut log) = start(first - 1);
     let error = decode
-        .ints::<i64>(&at, KEY, 0, &mut ledger, &mut log)
+        .ints::<i64>(&at, KEY, 0, &mut log)
         .map(drop)
         .unwrap_err();
     assert!(
@@ -990,16 +1001,15 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
         "{error:?}"
     );
     assert_eq!(log.decoded, []);
-    drop(ledger);
+    drop(account);
+    drop(decode);
     assert_eq!(budget.reserved(), 0);
 
-    let (budget, mut ledger, mut decode, mut log) = start(first);
+    let (budget, account, mut decode, mut log) = start(first);
     let block = BLOCK_ROWS as u32;
     for (row, held) in [(0, first), (2 * block, last), (block, first)] {
-        decode
-            .ints::<i64>(&at, KEY, row, &mut ledger, &mut log)
-            .unwrap();
-        assert_eq!(ledger.held, held, "after the block of row {row}");
+        decode.ints::<i64>(&at, KEY, row, &mut log).unwrap();
+        assert_eq!(account.live_bytes(), held, "after the block of row {row}");
         assert_eq!(budget.reserved(), first);
     }
     assert_eq!(
@@ -1064,7 +1074,7 @@ fn overlapping(count: usize) -> Store {
     store
 }
 
-/// The bytes a vector the ledger grows holds for `len` items of `T`.
+/// The bytes a charged vector grows to hold for `len` items of `T`.
 fn pushed<T>(len: usize) -> u64 {
     let mut capacity = 0;
     while capacity < len {
@@ -1074,9 +1084,9 @@ fn pushed<T>(len: usize) -> u64 {
 }
 
 /// The bytes a scan's chunk list holds for `count` chunks that all overlap: the links, which
-/// grow as they are listed, and the last links and the ranges of as many chains.
+/// grow as they are listed, and the ranges of as many chains; last-link scratch has dropped.
 fn listed(count: usize) -> u64 {
-    pushed::<Link>(count) + (count * (size_of::<usize>() + size_of::<Range<usize>>())) as u64
+    pushed::<Link>(count) + (count * size_of::<Range<usize>>()) as u64
 }
 
 // The admission reserves the merge of every way at once (§7.4): one byte short, it fails
@@ -1152,13 +1162,10 @@ fn chunks_that_do_not_overlap_are_one_way() {
         run: chunk,
         chain: 0,
     };
-    let mut ledger = Ledger {
-        reservation: MemoryBudget::new(u64::MAX).try_reserve("test", 0).unwrap(),
-        held: 0,
-    };
+    let account = crate::budget::test_account();
     // A sequence-keyed stream's chunks follow each other.
     let mut disjoint = [link(3, (21, 30)), link(1, (0, 10)), link(2, (11, 20))];
-    let chains = chain(&mut disjoint, &mut ledger).unwrap();
+    let chains = chain(&mut disjoint, &account).unwrap();
     assert_eq!(chains.len(), 1);
     assert_eq!(chains[0], 0..3);
     let ids: Vec<_> = disjoint.iter().map(|link| link.chunk.0).collect();
@@ -1171,9 +1178,9 @@ fn chunks_that_do_not_overlap_are_one_way() {
         link(4, (15, 30)),
         link(5, (21, 25)),
     ];
-    let chains = chain(&mut overlapping, &mut ledger).unwrap();
+    let chains = chain(&mut overlapping, &account).unwrap();
     assert_eq!(chains.len(), 3);
-    for range in chains {
+    for range in chains.iter().cloned() {
         let chain = &overlapping[range];
         assert!(chain.windows(2).all(|pair| pair[0].keys.1 < pair[1].keys.0));
     }
@@ -1193,10 +1200,7 @@ fn a_runs_chunks_are_one_way_where_they_share_a_key() {
         run,
         chain: 0,
     };
-    let mut ledger = Ledger {
-        reservation: MemoryBudget::new(u64::MAX).try_reserve("test", 0).unwrap(),
-        held: 0,
-    };
+    let account = crate::budget::test_account();
     let mut links = [
         link(15, 10, (11, 15)),
         link(13, 10, (5, 9)),
@@ -1207,20 +1211,30 @@ fn a_runs_chunks_are_one_way_where_they_share_a_key() {
         link(10, 10, (0, 5)),
         link(30, 10, (12, 20)),
     ];
-    let chains = chain(&mut links, &mut ledger).unwrap();
+    let chains = chain(&mut links, &account).unwrap();
     let ids: Vec<Vec<u64>> = chains
-        .into_iter()
-        .map(|range| links[range].iter().map(|link| link.chunk.0).collect())
+        .iter()
+        .map(|range| {
+            links[range.clone()]
+                .iter()
+                .map(|link| link.chunk.0)
+                .collect()
+        })
         .collect();
     assert_eq!(ids, [vec![10, 11, 12, 13, 14], vec![20, 15], vec![30]]);
     // Many chunks of a run of one key keep its order once the chains are grouped, though
     // another run's chunk moves before them: that sort is not stable.
     let mut links: Vec<Link> = (100..164).map(|chunk| link(chunk, 100, (5, 5))).collect();
     links.extend([link(1, 1, (4, 6)), link(2, 2, (7, 9))]);
-    let chains = chain(&mut links, &mut ledger).unwrap();
+    let chains = chain(&mut links, &account).unwrap();
     let ids: Vec<Vec<u64>> = chains
-        .into_iter()
-        .map(|range| links[range].iter().map(|link| link.chunk.0).collect())
+        .iter()
+        .map(|range| {
+            links[range.clone()]
+                .iter()
+                .map(|link| link.chunk.0)
+                .collect()
+        })
         .collect();
     assert_eq!(ids, [vec![1, 2], (100..164).collect()]);
 }
@@ -1433,6 +1447,124 @@ fn a_large_text_value_is_returned_whole_and_reserved_first() {
     assert_eq!(budget.reserved(), 0);
 }
 
+#[test]
+fn large_value_admission_precedes_fetch_and_covers_every_lent_fragment() {
+    use std::cell::Cell;
+
+    use crate::storage::{self, KeyRange, Ns};
+
+    struct Watching<'a, R> {
+        storage: &'a R,
+        before: &'a dyn Fn(),
+    }
+
+    impl<R: StorageRead> StorageRead for Watching<'_, R> {
+        fn get<T>(
+            &self,
+            ns: Ns,
+            key: &[u8],
+            f: impl FnOnce(Option<&[u8]>) -> T,
+        ) -> storage::Result<T> {
+            self.storage.get(ns, key, f)
+        }
+
+        fn scan<B>(
+            &self,
+            ns: Ns,
+            range: KeyRange<'_>,
+            direction: Direction,
+            f: impl FnMut(&[u8], &[u8]) -> ControlFlow<B>,
+        ) -> storage::Result<Option<B>> {
+            self.storage.scan(ns, range, direction, f)
+        }
+
+        fn fragment<T>(
+            &self,
+            id: FragmentId,
+            limit: usize,
+            f: impl FnOnce(Option<&[u8]>) -> T,
+        ) -> storage::Result<T> {
+            (self.before)();
+            self.storage.fragment(id, limit, f)
+        }
+    }
+
+    let mut store = Store::new(Profile {
+        event_buffer_rows: 1,
+        ..Profile::desktop()
+    });
+    let mut line = long_text(2);
+    line.resize(1 << 20, b'.');
+    let seq = store.tsdb.next_event_seq();
+    store
+        .tsdb
+        .write(
+            &Input {
+                batch_id: 1,
+                now: Timestamp(0),
+                series: &[],
+                events: &[EventRow {
+                    stream: LOGS,
+                    key: 1,
+                    seq,
+                    values: &[Value::Bytes(&line)],
+                }],
+                aux: &[],
+                pins: &[],
+            },
+            Durability::Durable,
+        )
+        .unwrap();
+    let snapshot = store.snapshot();
+    let listed = &store.chunks(LOGS)[0];
+    let budget = MemoryBudget::new(u64::MAX);
+    let account = MemoryAccount::new(&budget, "large value", MemoryPlan::default()).unwrap();
+    let reader = ChunkReader::open(
+        &StoredChunk {
+            storage: snapshot.storage(),
+            chunk: listed.chunk,
+        },
+        &account,
+        listed.entry.fragment0,
+    )
+    .unwrap();
+    let len = u64::from(reader.large_values()[0].len);
+    let lent = MAX_DATA_FRAGMENT_LEN as u64;
+    account.reserve_lent(lent).unwrap();
+    let calls = Cell::new(0);
+    let before = || {
+        calls.set(calls.get() + 1);
+        assert_eq!(account.live_bytes(), len + lent);
+        assert!(budget.reserved() >= len + lent);
+    };
+    let storage = Watching {
+        storage: snapshot.storage(),
+        before: &before,
+    };
+    let at = At {
+        storage: &storage,
+        chunk: listed.chunk,
+        reader: &reader,
+    };
+    account.fail_after(0);
+    assert!(matches!(
+        at.read_large(0),
+        Err(EventScanError::ReserveLargeValue { index: 0, .. })
+    ));
+    assert_eq!(calls.get(), 0);
+    assert_eq!(account.live_bytes(), lent);
+    account.fail_after(1);
+    let value = at.read_large(0).unwrap();
+    assert_eq!(&*value, line);
+    assert!(reader.large_values()[0].fragments > 1);
+    assert_eq!(calls.get(), reader.large_values()[0].fragments);
+    drop(value);
+    assert_eq!(account.live_bytes(), lent);
+    drop(reader);
+    drop(account);
+    assert_eq!(budget.reserved(), 0);
+}
+
 // A combination filter with `exclude` drops the rows whose rule it lists, from chunks and the
 // head alike, and a row without a combination, whose null meets no condition.
 #[test]
@@ -1603,7 +1735,7 @@ fn a_page_keeps_its_events_bytes_until_it_is_dropped() {
     assert_eq!(store.chunks(LOGS).len(), 1);
     store.write(&[], &[line(3, 2)]);
     let snapshot = store.snapshot();
-    let budget = snapshot.budget();
+    let budget = snapshot.budget().clone();
     let before = budget.reserved();
     let page = snapshot
         .scan_events(&EventQuery {
@@ -1618,8 +1750,117 @@ fn a_page_keeps_its_events_bytes_until_it_is_dropped() {
     let texts: usize = WORDS.iter().map(|word| word.len()).sum();
     let held = 3 * (size_of::<Event>() + size_of::<EventValue>()) + texts;
     assert_eq!(budget.reserved(), before + held as u64);
+    fn send_sync<T: Send + Sync>(_: &T) {}
+    send_sync(&page);
+    drop(snapshot);
+    drop(store);
+    assert_eq!(budget.reserved(), held as u64);
+    assert_eq!(page.events().len(), 3);
     drop(page);
-    assert_eq!(budget.reserved(), before);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
+fn every_page_allocation_can_fail_without_releasing_an_existing_page() {
+    let mut store = Store::new(Profile {
+        event_buffer_rows: 2,
+        ..Profile::desktop()
+    });
+    store.write(
+        &[],
+        &[
+            LogRow {
+                key: 1,
+                word: 0,
+                long: false,
+            },
+            LogRow {
+                key: 2,
+                word: 1,
+                long: false,
+            },
+        ],
+    );
+    store.write(
+        &[],
+        &[LogRow {
+            key: 3,
+            word: 2,
+            long: false,
+        }],
+    );
+    let snapshot = store.snapshot();
+    let budget = MemoryBudget::new(u64::MAX);
+    let query = EventQuery {
+        stream: LOGS,
+        range: TimeRange::new(Timestamp(0), Timestamp(10)).unwrap(),
+        direction: Direction::Forward,
+        cursor: None,
+        predicate: &EventPredicate::default(),
+        limit: 3,
+    };
+    let previous = scan(
+        snapshot.storage(),
+        snapshot.version(),
+        snapshot.catalog(),
+        snapshot.schema(),
+        &budget,
+        &query,
+        &mut ReadLog::default(),
+    )
+    .unwrap();
+    let held = held_by(&previous);
+    assert_eq!(budget.reserved(), held);
+    let mut succeeded = false;
+    for boundary in 0..64 {
+        let result = {
+            let account =
+                MemoryAccount::new(&budget, "page failure", MemoryPlan::default()).unwrap();
+            let mut log = ReadLog::default();
+            let mut scan = Scan {
+                storage: snapshot.storage(),
+                catalog: &snapshot.version().catalog,
+                spec: &snapshot.schema().events[usize::from(LOGS.0)],
+                dimensions: &[],
+                filters: &[],
+                direction: query.direction,
+                bounds: Bounds::new(&query).unwrap(),
+                account: account.clone(),
+                log: &mut log,
+            };
+            let (positions, mut decode) = scan
+                .merge(LOGS, &snapshot.version().head, query.limit)
+                .unwrap();
+            account.fail_after(boundary);
+            account.finish(PageBuilder {
+                scan: &mut scan,
+                positions: &positions,
+                decode: &mut decode,
+            })
+        };
+        match result {
+            Ok(events) => {
+                assert!(boundary > 3);
+                assert_eq!(budget.reserved(), 2 * held);
+                assert_eq!(&**events.get(), previous.events());
+                drop(events);
+                succeeded = true;
+            }
+            Err(error) => assert_eq!(error.kind(), ErrorKind::Local, "{boundary}: {error:?}"),
+        }
+        assert_eq!(budget.reserved(), held, "after boundary {boundary}");
+        assert_eq!(previous.events().len(), 3);
+        assert_eq!(
+            previous.events()[2].values,
+            [EventValue::Bytes(WORDS[2].into())]
+        );
+        if succeeded {
+            break;
+        }
+    }
+    assert!(succeeded);
+    drop(previous);
+    assert_eq!(budget.reserved(), 0);
 }
 
 // A full page looks no further than its last row. Here the next row is a 1 MiB line in the
@@ -1716,7 +1957,15 @@ fn foreign_chunk(store: &Store, chunk: ChunkId, key: i64, combo: u32, host: u32)
     let layout = event_columns(spec);
     let kind = ChunkKind::L0Base;
     let fingerprint = store.tsdb.shape().fingerprint;
-    let mut builder = ChunkBuilder::new(&mut sink, kind, fingerprint, None, &layout).unwrap();
+    let mut builder = ChunkBuilder::new(
+        &mut sink,
+        kind,
+        fingerprint,
+        None,
+        &layout,
+        &crate::budget::test_account(),
+    )
+    .unwrap();
     let mut id = Vec::new();
     Identity::new(IDS[1]).write_column(&mut id);
     let nothing: [&[u8]; 1] = [b""];
@@ -1912,7 +2161,10 @@ fn references_the_catalog_lacks_are_corrupted() {
         catalog: Catalog::new(&schema()),
         head: current.head.clone(),
     };
-    let registry = Registry::new(damaged, Arc::new(schema()), Arc::new(OpenMarker));
+    let head = crate::budget::MemoryBudget::new(u64::MAX)
+        .try_reserve("head", damaged.head.bytes())
+        .unwrap();
+    let registry = Registry::new(damaged, Arc::new(schema()), Arc::new(OpenMarker), head);
     let damaged = registry
         .capture(store.tsdb.storage(), &MemoryBudget::new(u64::MAX))
         .unwrap();
@@ -1932,32 +2184,53 @@ fn references_the_catalog_lacks_are_corrupted() {
 // eight; a stripe that grows moves its ranks and its matches.
 #[test]
 fn a_growing_buffer_is_reserved_with_the_one_it_replaces() {
-    let ledger = |limit| Ledger {
-        reservation: MemoryBudget::new(limit).try_reserve("test", 0).unwrap(),
-        held: 0,
+    let account = |limit| {
+        MemoryAccount::new(&MemoryBudget::new(limit), "test", MemoryPlan::default()).unwrap()
     };
     let (four, eight) = (4 * 8, 8 * 8);
     for (limit, grows) in [(four + eight - 1, false), (four + eight, true)] {
-        let mut ledger = ledger(limit);
-        let mut vec = Vec::new();
+        let account = account(limit);
+        let peak = std::rc::Rc::new(std::cell::Cell::new(0));
+        let live = std::rc::Rc::new(std::cell::Cell::new(0));
+        let (observed_peak, observed_live) = (peak.clone(), live.clone());
+        account.observe_allocations(move |allocate, bytes, charge| {
+            let next = if allocate {
+                observed_live.get() + bytes
+            } else {
+                observed_live.get() - bytes
+            };
+            assert!(next <= charge);
+            observed_peak.set(observed_peak.get().max(next));
+            observed_live.set(next);
+        });
+        let mut vec = account.buffer(0).unwrap();
         for item in 0..4u64 {
-            ledger.push(&mut vec, item).unwrap();
+            vec.try_push(item).unwrap();
         }
-        assert_eq!(ledger.push(&mut vec, 4).is_ok(), grows, "{limit}");
+        assert_eq!(vec.try_push(4).is_ok(), grows, "{limit}");
         let expected = if grows { (5, eight) } else { (4, four) };
-        assert_eq!((vec.len(), ledger.held), expected);
+        assert_eq!((vec.len(), account.live_bytes()), expected);
+        assert_eq!(peak.get(), if grows { four + eight } else { four });
+        assert_eq!(
+            &*vec,
+            if grows {
+                &[0, 1, 2, 3, 4][..]
+            } else {
+                &[0, 1, 2, 3][..]
+            }
+        );
     }
 
     let (small, large) = (100, BUILDER_STRIPE_ROWS);
     let both = stripe_bytes(small) + stripe_bytes(large);
     for (limit, grows) in [(stripe_bytes(large), false), (both, true)] {
-        let mut ledger = ledger(limit);
-        let (mut ranks, mut matches) = (Vec::new(), Vec::new());
-        reset_stripe(&mut ranks, &mut matches, small, &mut ledger).unwrap();
-        let grown = reset_stripe(&mut ranks, &mut matches, large, &mut ledger);
+        let account = account(limit);
+        let (mut ranks, mut matches) = (account.buffer(0).unwrap(), account.buffer(0).unwrap());
+        reset_stripe(&mut ranks, &mut matches, small).unwrap();
+        let grown = reset_stripe(&mut ranks, &mut matches, large);
         assert_eq!(grown.is_ok(), grows, "{limit}");
         if grows {
-            assert_eq!(ledger.held, stripe_bytes(large));
+            assert_eq!(account.live_bytes(), stripe_bytes(large));
             assert_eq!((ranks.capacity(), matches.capacity()), (large, large));
         }
     }

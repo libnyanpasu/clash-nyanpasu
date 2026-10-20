@@ -1,6 +1,8 @@
 //! Rebuilding the head from journal records written by hand: how records add up, and how
 //! damage is refused.
 
+use crate::budget::{test_buffer, test_value};
+
 use std::collections::BTreeSet;
 
 use super::{
@@ -540,13 +542,15 @@ fn a_rebuild_reserves_a_records_deltas_before_it_decodes_them() {
     let mut catalog = Catalog::new(&schema);
     let storage = MemoryDisk::new().open().unwrap();
     let mut batch = storage.batch().unwrap();
-    let mut draft = catalog.draft(u64::MAX);
+    let mut draft = catalog
+        .draft(u64::MAX, &crate::budget::test_account())
+        .unwrap();
     for combo in 1..COMBOS {
         let target = format!("t{combo}");
         let labels: [&[u8]; 3] = [b"match", b"curl", target.as_bytes()];
         assert_eq!(draft.resolve_combo(&mut batch, &labels).unwrap().id, combo);
     }
-    catalog = draft.finish();
+    catalog = draft.finish().0;
     let value = series_value(0, &combos, &fields);
     let key = series_key(0);
     let journal_bytes = (key.len() + value.len()) as u64;
@@ -621,7 +625,7 @@ fn added(head: &Head, source: SeriesSource, combo: u32) -> SeriesAdded {
     SeriesAdded {
         source,
         cost: Accumulator::merge_cost(head.accumulator(source), &deltas, 2),
-        deltas,
+        deltas: test_value(deltas),
         update: SourceUpdate {
             written: Timestamp(0),
             records: 1,
@@ -642,15 +646,35 @@ fn the_next_head_shares_what_the_update_does_not_touch() {
     };
     let empty = Head::empty(2);
     let update = HeadUpdate {
-        series: vec![added(&empty, minute, 0)],
-        events: Vec::new(),
+        series: test_buffer(vec![added(&empty, minute, 0)]),
+        events: BudgetVec::default(),
     };
-    let first = empty.next(update, &[Fate::Keep], |_| false, 2);
+    let first = empty
+        .next(
+            update,
+            &[Fate::Keep],
+            |_| false,
+            2,
+            &crate::budget::test_account(),
+        )
+        .unwrap()
+        .into_parts()
+        .0;
     let update = HeadUpdate {
-        series: vec![added(&first, hour, 0)],
-        events: Vec::new(),
+        series: test_buffer(vec![added(&first, hour, 0)]),
+        events: BudgetVec::default(),
     };
-    let second = first.next(update, &[Fate::Keep, Fate::Keep], |_| false, 2);
+    let second = first
+        .next(
+            update,
+            &[Fate::Keep, Fate::Keep],
+            |_| false,
+            2,
+            &crate::budget::test_account(),
+        )
+        .unwrap()
+        .into_parts()
+        .0;
     assert_eq!(second.sources(), [minute, hour]);
     assert!(std::ptr::eq(
         first.accumulator(minute).unwrap(),
@@ -663,4 +687,47 @@ fn the_next_head_shares_what_the_update_does_not_touch() {
             + second.accumulator(hour).unwrap().bytes()
             + size_of::<(SeriesSource, Arc<Accumulator>)>() as u64
     );
+}
+
+/// Admission refuses the entire copy graph before construction; its final charge moves intact.
+#[test]
+fn a_next_head_admits_exact_copies_and_transfers_them_without_charging_shared_pages() {
+    let empty = Head::empty(2);
+    let source = SeriesSource {
+        tier: HOUR,
+        bucket: 0,
+    };
+    let update = || HeadUpdate {
+        series: test_buffer(vec![added(&empty, source, 0)]),
+        events: BudgetVec::default(),
+    };
+    let copies = series_spine_bytes(1) + update().series[0].cost.copied;
+    for limit in [copies - 1, copies] {
+        let budget = MemoryBudget::new(limit);
+        let account = MemoryAccount::new(&budget, "staging", MemoryPlan::default()).unwrap();
+        let observed = std::rc::Rc::new(std::cell::Cell::new(0));
+        let probe = observed.clone();
+        account.observe_allocations(move |allocated, bytes, live| {
+            if allocated {
+                assert!(bytes <= live);
+                probe.set(probe.get() + bytes);
+            }
+        });
+        let next = empty.next(update(), &[Fate::Keep], |_| false, 2, &account);
+        if limit < copies {
+            assert!(next.is_err());
+            assert_eq!(observed.get(), 0);
+            assert_eq!(budget.reserved(), 0);
+        } else {
+            let next = next.unwrap();
+            assert_eq!(observed.get(), copies);
+            assert_eq!(next.charge_bytes(), copies);
+            assert_eq!(next.get().copied_from(&empty), copies);
+            assert!(Arc::ptr_eq(&next.get().events, &empty.events));
+            drop(account);
+            assert_eq!(budget.reserved(), copies);
+            drop(next);
+            assert_eq!(budget.reserved(), 0);
+        }
+    }
 }

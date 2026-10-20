@@ -115,35 +115,33 @@ pub(crate) fn fits(columns: usize, rows: usize, cost: RowCost) -> bool {
 
 /// Splits rows, costed one by one, into consecutive chunk row ranges, each as long as the
 /// limits allow. Fails when there are too many columns, or when one row cannot fit a chunk
-/// on its own.
+/// on its own. Validates individual rows first, then yields boundaries without collecting them.
 pub(crate) fn plan_chunks(
     columns: usize,
     rows: &[RowCost],
-) -> Result<Vec<Range<usize>>, PlanError> {
+) -> Result<impl Iterator<Item = Range<usize>> + '_, PlanError> {
     ensure!(
         (1..=MAX_COLUMNS).contains(&columns),
         PlanColumnsSnafu { columns }
     );
-    let mut ranges = Vec::new();
-    let mut start = 0;
-    let mut total = RowCost::default();
     for (row, &cost) in rows.iter().enumerate() {
-        if fits(columns, row + 1 - start, total + cost) {
-            total = total + cost;
-            continue;
+        ensure!(fits(columns, 1, cost), RowTooLargeSnafu { row });
+    }
+    let mut start = 0;
+    Ok(std::iter::from_fn(move || {
+        if start == rows.len() {
+            return None;
         }
-        ensure!(
-            row > start && fits(columns, 1, cost),
-            RowTooLargeSnafu { row }
-        );
-        ranges.push(start..row);
-        start = row;
-        total = cost;
-    }
-    if start < rows.len() {
-        ranges.push(start..rows.len());
-    }
-    Ok(ranges)
+        let mut end = start;
+        let mut total = RowCost::default();
+        while end < rows.len() && fits(columns, end + 1 - start, total + rows[end]) {
+            total = total + rows[end];
+            end += 1;
+        }
+        let range = start..end;
+        start = end;
+        Some(range)
+    }))
 }
 
 #[cfg(test)]
@@ -165,7 +163,7 @@ mod tests {
             columns in 1usize..=MAX_COLUMNS,
             rows in prop::collection::vec(row_cost(), 0..3000),
         ) {
-            let ranges = plan_chunks(columns, &rows).unwrap();
+            let ranges = plan_chunks(columns, &rows).unwrap().collect::<Vec<_>>();
             let mut next = 0;
             for (index, range) in ranges.iter().enumerate() {
                 prop_assert_eq!(range.start, next);
@@ -186,7 +184,7 @@ mod tests {
     #[test]
     fn the_row_limit_ends_a_chunk() {
         let rows = vec![int_cost(IntType::U32, false); MAX_ROWS + 1];
-        let ranges = plan_chunks(1, &rows).unwrap();
+        let ranges = plan_chunks(1, &rows).unwrap().collect::<Vec<_>>();
         assert_eq!(ranges, [0..MAX_ROWS, MAX_ROWS..MAX_ROWS + 1]);
     }
 
@@ -194,7 +192,7 @@ mod tests {
     fn the_byte_limit_ends_a_chunk() {
         // 8 KiB per row: about 500 rows reach 4 MiB.
         let rows = vec![bytes_cost(8 * 1024, BytesHint::Text, false); 1000];
-        let ranges = plan_chunks(1, &rows).unwrap();
+        let ranges = plan_chunks(1, &rows).unwrap().collect::<Vec<_>>();
         assert!(ranges.len() >= 2);
         let first: RowCost = rows[ranges[0].clone()].iter().copied().sum();
         assert!(first.inline <= MAX_CHUNK_LEN);

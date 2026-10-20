@@ -49,23 +49,25 @@
 //!   once, however many inputs there are, as in the event scan.
 //!
 //! The inputs of one bucket are read together, a k-way merge; the buckets follow one another,
-//! so a round holds the inputs of one bucket at a time. Their reservations come out of a pool
-//! that is exactly the round's reservation: a chunk whose blocks need more than its entry
-//! allows is damaged.
+//! so a round holds the inputs of one bucket at a time. Chosen inputs become one account's
+//! allocation plan before any data-sized buffer is allocated. Dropped buffers and directories
+//! return credit to that same account; execution cannot exceed the admitted plan.
 
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
     ops::{ControlFlow, Range, RangeInclusive},
 };
 
+use crate::codec::compress::{COMPRESSION_CONTEXT, Compressor, DECOMPRESSION_CONTEXT};
 use snafu::{IntoError, OptionExt, ResultExt, Snafu, ensure};
-use zstd::bulk::Compressor;
+
+#[cfg(test)]
+use crate::chunk::reader::decode_memory;
 
 use super::{Changed, Context, Maintained, Round};
 use crate::{
     ErrorKind, TierId, Timestamp,
-    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    budget::{BudgetExceeded, BudgetHeap, BudgetVec, MemoryAccount, MemoryPlan},
     chunk::{
         BatchSink, FragmentSource, StoredChunk,
         builder::{
@@ -76,7 +78,7 @@ use crate::{
             ChunkKind, MAX_CHUNK_LEN, PhysicalType, directory_memory, max_fragment0_len,
             open_memory,
         },
-        reader::{ChunkReader, decode_memory, lent_memory, metadata_within_limits},
+        reader::{ChunkReader, lent_memory, metadata_within_limits},
     },
     codec::{
         Codec, Encoding,
@@ -95,19 +97,6 @@ use crate::{
 mod events;
 
 pub(super) use self::events::{consolidate as consolidate_events, merge as merge_runs};
-
-/// The bytes a [`Compressor`] holds once it has compressed blocks of every size the builder
-/// compresses, from `MIN_COMPRESSED_INPUT` to `BLOCK_TARGET_LEN + MAX_BODY_OVERHEAD`.
-/// `compress2` pledges each block's size, so the window follows the block (§6.3 rule 5), and
-/// a reused context keeps the largest workspace any of them needed. zstd 1.5.7's
-/// `ZSTD_sizeof_CCtx` peaks at 218,110 bytes over that range, at blocks of about 16 KiB, whose
-/// parameter table has the larger hash table; rounded up. A test measures it.
-const COMPRESSION_CONTEXT: u64 = 224 * 1024;
-
-/// The bytes of the zstd context of a [`BlockDecoder`]: zstd 1.5.7's `ZSTD_sizeof_DCtx`,
-/// 95,984 bytes, rounded up. Bulk decompression writes into the caller's buffer, so the
-/// context allocates no window. A test measures it.
-const DECOMPRESSION_CONTEXT: u64 = 100 * 1024;
 
 /// The most rows handed to the builder per call; it bounds one append's buffers.
 const APPEND_ROWS: usize = 256;
@@ -247,11 +236,6 @@ pub(super) fn consolidate(
     let profile = context.profile;
     let layout = series_columns(shape.fields);
     let fixed = fixed_memory(&layout, true);
-    // Held until every buffer of the round is gone: locals drop in reverse order.
-    let mut reservation = context
-        .staging_budget
-        .try_reserve("consolidation", fixed)
-        .context(ReserveSnafu)?;
     let buckets = buckets_of(shape.grids[usize::from(tier.0)], extent)
         .expect("the planner consolidates an extent that holds buckets");
     let last = match manifest::read_progress(read, stream, extent).context(ReadProgressSnafu)? {
@@ -283,7 +267,8 @@ pub(super) fn consolidate(
         bytes: profile.consolidate_bytes,
         room: profile
             .staging
-            .saturating_sub(context.staging_budget.reserved()),
+            .saturating_sub(context.staging_budget.reserved())
+            .saturating_sub(fixed),
     };
     let retake = last.filter(|last| (last.entry.rows as usize) < shape.series_chunk_rows);
     let chosen = choose_retaking(read, stream, extent, pending.clone(), retake, shape, limits)?;
@@ -292,17 +277,31 @@ pub(super) fn consolidate(
         NoRoomSnafu { room: limits.room }
     );
 
+    let allocation = MemoryAccount::planned(
+        context.staging_budget,
+        "consolidation",
+        MemoryPlan::bytes(fixed + chosen.memory),
+    )
+    .context(ReserveSnafu)?;
     let mut done = Maintained {
         consolidations: 1,
         ..Maintained::default()
     };
     let mut written = Written::default();
     if chosen.pending > 0 {
-        reservation.try_grow(chosen.memory).context(ReserveSnafu)?;
-        let inputs = collect(read, stream, extent, pending, retake, &chosen, shape)?;
-        let pool = MemoryBudget::new(chosen.peak.pool());
-        let mut compressor = compress::new_compressor().context(CreateCompressorSnafu)?;
-        let mut rows = Rows::new(read, &inputs, &layout, &pool, &chosen.peak)?;
+        let inputs = collect(
+            read,
+            stream,
+            extent,
+            pending,
+            retake,
+            &chosen,
+            shape,
+            &allocation,
+        )?;
+        let mut compressor =
+            compress::new_compressor(&allocation).context(CreateCompressorSnafu)?;
+        let mut rows = Rows::new(read, &inputs, &layout, &allocation, &chosen.peak)?;
         let output = Output {
             kind: ChunkKind::Consolidated,
             fingerprint: shape.fingerprint,
@@ -317,6 +316,7 @@ pub(super) fn consolidate(
             Some(&mut compressor),
             &mut next_chunk,
             &mut replacement,
+            &allocation,
         )?;
         drop(rows);
         replace(batch, stream, &inputs, replacement)?;
@@ -362,19 +362,25 @@ pub(super) fn merge(
     let extent = shape.grids[usize::from(tier.0)].extent_of_bucket(bucket);
     let layout = series_columns(shape.fields);
     let fixed = fixed_memory(&layout, false) + MERGE_LIST;
-    let mut reservation = context
-        .staging_budget
-        .try_reserve("delta merge", fixed)
-        .context(ReserveSnafu)?;
+
     let limits = Limits {
         chunks: profile.consolidate_chunks,
         bytes: profile.consolidate_bytes,
         room: profile
             .staging
-            .saturating_sub(context.staging_budget.reserved()),
+            .saturating_sub(context.staging_budget.reserved())
+            .saturating_sub(fixed),
     };
-    let mut inputs = Vec::with_capacity(MERGE_CANDIDATES);
-    let peak = choose_late(read, stream, extent, bucket, shape, limits, &mut inputs)?;
+    let mut candidates = [NO_INPUT; MERGE_CANDIDATES];
+    let (count, peak) = choose_late(read, stream, extent, bucket, shape, limits, &mut candidates)?;
+    let allocation = MemoryAccount::planned(
+        context.staging_budget,
+        "delta merge",
+        MemoryPlan::bytes(fixed + peak.pool()),
+    )
+    .context(ReserveSnafu)?;
+    let mut inputs = allocation.buffer(MERGE_CANDIDATES).context(ReserveSnafu)?;
+    inputs.extend_from_slice(&candidates[..count]);
 
     let mut done = Maintained {
         merges: 1,
@@ -385,10 +391,7 @@ pub(super) fn merge(
         // them. A later late chunk sets the mark again.
         manifest::clear_crowding(batch, stream, bucket).context(MarkCrowdingSnafu { bucket })?;
     } else {
-        let pool_bytes = peak.pool();
-        reservation.try_grow(pool_bytes).context(ReserveSnafu)?;
-        let pool = MemoryBudget::new(pool_bytes);
-        let mut rows = Rows::new(read, &inputs, &layout, &pool, &peak)?;
+        let mut rows = Rows::new(read, &inputs, &layout, &allocation, &peak)?;
         let output = Output {
             kind: ChunkKind::L0Delta,
             fingerprint: shape.fingerprint,
@@ -397,7 +400,14 @@ pub(super) fn merge(
             layout: &layout,
         };
         let mut replacement = Replacement::new(stream, extent);
-        let written = output.write(batch, &mut rows, None, &mut next_chunk, &mut replacement)?;
+        let written = output.write(
+            batch,
+            &mut rows,
+            None,
+            &mut next_chunk,
+            &mut replacement,
+            &allocation,
+        )?;
         drop(rows);
         replace(batch, stream, &inputs, replacement)?;
         done.chunks_rewritten = inputs.len() as u64;
@@ -565,6 +575,10 @@ fn choose(
 /// Collects the inputs `chosen` counted into a list of exactly their number: `retake` when it
 /// was retaken, then the first L0 chunks of `buckets` by (bucket, id). It reads the snapshot
 /// [`choose`] read, so it finds the same chunks in the same order.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the chosen snapshot inputs and their round account"
+)]
 fn collect(
     read: &impl StorageRead,
     stream: StreamRef,
@@ -573,8 +587,9 @@ fn collect(
     retake: Option<Listed>,
     chosen: &Chosen,
     shape: &Shape,
-) -> Result<Vec<Listed>, ConsolidateError> {
-    let mut inputs = Vec::with_capacity(chosen.inputs);
+    account: &MemoryAccount,
+) -> Result<BudgetVec<Listed>, ConsolidateError> {
+    let mut inputs = account.buffer(chosen.inputs).context(ReserveSnafu)?;
     if chosen.retaken {
         inputs.push(retake.expect("a chunk was retaken"));
     }
@@ -618,15 +633,18 @@ fn choose_late(
     bucket: i64,
     shape: &Shape,
     limits: Limits,
-    inputs: &mut Vec<Listed>,
-) -> Result<Peak, ConsolidateError> {
-    inputs.clear();
+    inputs: &mut [Listed; MERGE_CANDIDATES],
+) -> Result<(usize, Peak), ConsolidateError> {
+    let mut count = 0;
     let stopped = manifest::scan_l0(read, stream, bucket..=bucket, |bucket, rows, chunk| {
         match input(read, stream, extent, chunk, shape, Placed::L0(bucket, rows)) {
-            Ok(listed) => inputs.push(listed),
+            Ok(listed) => {
+                inputs[count] = listed;
+                count += 1;
+            }
             Err(error) => return ControlFlow::Break(Err(error)),
         }
-        if inputs.len() < MERGE_CANDIDATES {
+        if count < MERGE_CANDIDATES {
             ControlFlow::Continue(())
         } else {
             ControlFlow::Break(Ok(()))
@@ -641,7 +659,7 @@ fn choose_late(
     let mut taking = Taking::new(limits, 0);
     // `one` is the longest prefix of two chunks or more whose rows fit one chunk.
     let (mut taken, mut one, mut rows) = (0, None, 0u64);
-    for listed in inputs.iter() {
+    for listed in &inputs[..count] {
         rows += u64::from(listed.entry.rows);
         if rows > shape.series_chunk_rows as u64 || !taking.take(&layout, &listed.entry) {
             break;
@@ -652,9 +670,8 @@ fn choose_late(
         }
     }
     let (count, mut taking) = one.unwrap_or((0, Taking::new(limits, 0)));
-    inputs.truncate(count);
     taking.close_group();
-    Ok(taking.peak)
+    Ok((count, taking.peak))
 }
 
 /// Where a round found an input: in the L0 index, under a bucket and with rows; or as the
@@ -718,6 +735,21 @@ const MERGE_LIST: u64 = (MERGE_CANDIDATES * size_of::<Listed>()) as u64;
 
 /// The bytes each input adds to a consolidation's list of inputs.
 const LISTED: u64 = size_of::<Listed>() as u64;
+
+/// An unused stack slot while the bounded merge candidates are selected.
+const NO_INPUT: Listed = Listed {
+    extent: 0,
+    chunk: ChunkId(0),
+    entry: ChunkEntry {
+        kind: 0,
+        run: 0,
+        key_range: (0, 0),
+        rows: 0,
+        fragments: 0,
+        fragment0: 0,
+        bytes: 0,
+    },
+};
 
 /// What reading one input holds, from its manifest entry (§7.4).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -928,10 +960,10 @@ pub(crate) fn least_round(shape: &Shape) -> u64 {
 /// The rows a round writes, as the builder takes them: column by column, at most
 /// [`APPEND_ROWS`] at a time.
 struct AppendRows {
-    buckets: Vec<i64>,
-    combos: Vec<u32>,
+    buckets: BudgetVec<i64>,
+    combos: BudgetVec<u32>,
     /// Field after field, [`APPEND_ROWS`] each.
-    fields: Vec<u64>,
+    fields: BudgetVec<u64>,
     width: usize,
 }
 
@@ -940,13 +972,15 @@ impl AppendRows {
         (APPEND_ROWS * (size_of::<i64>() + size_of::<u32>() + fields * size_of::<u64>())) as u64
     }
 
-    fn new(fields: usize) -> Self {
-        Self {
-            buckets: Vec::with_capacity(APPEND_ROWS),
-            combos: Vec::with_capacity(APPEND_ROWS),
-            fields: vec![0; fields * APPEND_ROWS],
+    fn new(fields: usize, account: &MemoryAccount) -> Result<Self, BudgetExceeded> {
+        let mut values = account.buffer(fields * APPEND_ROWS)?;
+        values.resize(fields * APPEND_ROWS, 0);
+        Ok(Self {
+            buckets: account.buffer(APPEND_ROWS)?,
+            combos: account.buffer(APPEND_ROWS)?,
+            fields: values,
             width: fields,
-        }
+        })
     }
 
     fn is_full(&self) -> bool {
@@ -1023,11 +1057,12 @@ impl Output<'_> {
         &self,
         batch: &mut impl StorageWrite,
         rows: &mut Rows<'_, impl StorageRead>,
-        mut compressor: Option<&mut Compressor<'static>>,
+        mut compressor: Option<&mut Compressor>,
         next_chunk: &mut u64,
         replacement: &mut Replacement,
+        account: &MemoryAccount,
     ) -> Result<Written, ConsolidateError> {
-        let mut append = AppendRows::new(self.fields);
+        let mut append = AppendRows::new(self.fields, account).context(ReserveSnafu)?;
         let mut written = Written::default();
         let mut run = None;
         let mut pending = rows.next()?;
@@ -1048,6 +1083,7 @@ impl Output<'_> {
                 self.fingerprint,
                 compressor.as_deref_mut(),
                 self.layout,
+                account,
             )
             .context(BuildSnafu { chunk: chunk.0 })?;
             let mut taken = 0;
@@ -1100,18 +1136,15 @@ struct Rows<'a, R> {
     inputs: &'a [Listed],
     layout: &'a [ColumnLayout],
     fields: usize,
-    pool: &'a MemoryBudget,
     decoder: Decoder,
     /// The first input of the next group.
     next: usize,
-    ways: Vec<Way>,
-    heap: BinaryHeap<Reverse<(i64, u32, usize)>>,
+    ways: BudgetVec<Way>,
+    heap: BudgetHeap<Reverse<(i64, u32, usize)>>,
     /// The row being summed, handed over once a row with another key comes.
     summing: Option<Row>,
-    /// The fragment the backend lends while a block decodes, and the decoder's zstd context,
-    /// reserved for the whole round.
-    #[allow(dead_code, reason = "held for its Drop, which returns their bytes")]
-    standing: Reservation,
+    /// The round account used to open each group after the previous group retires.
+    account: MemoryAccount,
 }
 
 impl<'a, R: StorageRead> Rows<'a, R> {
@@ -1119,33 +1152,27 @@ impl<'a, R: StorageRead> Rows<'a, R> {
         read: &'a R,
         inputs: &'a [Listed],
         layout: &'a [ColumnLayout],
-        pool: &'a MemoryBudget,
+        account: &MemoryAccount,
         peak: &Peak,
     ) -> Result<Self, ConsolidateError> {
-        let standing = pool
-            .try_reserve("lent fragment", peak.lent + peak.decompression())
-            .expect("the pool holds the lent fragment and the zstd context");
+        account.reserve_lent(peak.lent).context(ReserveSnafu)?;
         // L0 chunks are never compressed, so reading only them needs no zstd context.
         let blocks = if peak.compressed {
-            BlockDecoder::new().context(CreateDecoderSnafu)?
+            BlockDecoder::new(account).context(CreateDecoderSnafu)?
         } else {
-            BlockDecoder::raw()
+            BlockDecoder::raw(account)
         };
         Ok(Self {
             read,
             inputs,
             layout,
             fields: layout.len() - usize::from(FIRST_FIELD),
-            pool,
-            decoder: Decoder {
-                blocks,
-                scratch: empty(pool),
-            },
+            decoder: Decoder { blocks },
             next: 0,
-            ways: Vec::new(),
-            heap: BinaryHeap::new(),
+            ways: account.buffer(0).context(ReserveSnafu)?,
+            heap: account.buffer(0).context(ReserveSnafu)?.into_heap(),
             summing: None,
-            standing,
+            account: account.clone(),
         })
     }
 
@@ -1205,13 +1232,14 @@ impl<'a, R: StorageRead> Rows<'a, R> {
             .count();
         let group = &inputs[start..start + len];
         self.next = start + len;
-        self.ways = Vec::new();
-        self.heap = BinaryHeap::new();
-        self.ways.reserve_exact(len);
-        self.heap.reserve(len);
+        // Both old structures retire before either replacement is admitted.
+        self.ways.discard_unless(len);
+        self.heap.discard_unless(len);
+        self.ways.reset_to(len).context(ReserveSnafu)?;
+        self.heap.reset_to(len).context(ReserveSnafu)?;
         for listed in group {
             self.ways
-                .push(Way::open(self.read, listed, self.layout, self.pool)?);
+                .push(Way::open(self.read, listed, self.layout, &self.account)?);
         }
         for (index, way) in self.ways.iter_mut().enumerate() {
             let mut read = Read {
@@ -1230,9 +1258,7 @@ impl<'a, R: StorageRead> Rows<'a, R> {
 
 #[cfg(test)]
 impl<R> Rows<'_, R> {
-    /// What the open ways hold now, by their buffers' capacities: their directories, decoded
-    /// blocks and the decoder's scratch, which the pool reserves as they grow; and the ways
-    /// and the heap themselves, which the pool's size counts.
+    /// What the open ways hold by actual capacities, plus their ways and heap storage.
     fn held(&self) -> (u64, u64) {
         let bytes = |buffers: &[(&'static str, usize)]| -> u64 {
             buffers.iter().map(|&(_, bytes)| bytes as u64).sum()
@@ -1257,7 +1283,6 @@ impl<R> Rows<'_, R> {
 /// The block decoder a round shares across its inputs, with its scratch reserved.
 struct Decoder {
     blocks: BlockDecoder,
-    scratch: Reservation,
 }
 
 /// What reading a block of a way needs besides the way.
@@ -1278,16 +1303,16 @@ struct Way {
 }
 
 impl Way {
-    /// Opens `listed`, whose directory the reader reserves from `pool`, and checks it is the
+    /// Opens `listed`, whose directory the reader charges to the round, and checks it is the
     /// series chunk its entry says.
     fn open(
         read: &impl StorageRead,
         listed: &Listed,
         layout: &[ColumnLayout],
-        pool: &MemoryBudget,
+        account: &MemoryAccount,
     ) -> Result<Self, ConsolidateError> {
         let chunk = listed.chunk;
-        let reader = open_input(read, listed, pool)?;
+        let reader = open_input(read, listed, account)?;
         let shaped = reader.rows() == listed.entry.rows
             && reader.columns().len() == layout.len()
             && reader
@@ -1301,9 +1326,9 @@ impl Way {
             rows: reader.rows(),
             reader,
             row: 0,
-            bucket: Cursor::new(BUCKET, pool),
-            combo: Cursor::new(COMBO, pool),
-            fields: std::array::from_fn(|field| Cursor::new(FIRST_FIELD + field as u16, pool)),
+            bucket: Cursor::new(BUCKET),
+            combo: Cursor::new(COMBO),
+            fields: std::array::from_fn(|field| Cursor::new(FIRST_FIELD + field as u16)),
         })
     }
 
@@ -1332,30 +1357,24 @@ impl Way {
     }
 }
 
-/// Opens the chunk of input `listed`, whose directory the reader reserves from `pool`. A
-/// directory the pool has no room for is larger than the input's entry allows.
+/// Opens the chunk of input `listed`, charging its directory to the round account before
+/// parsing. A directory exceeding the admitted plan is larger than its entry allows.
 fn open_input(
     read: &impl StorageRead,
     listed: &Listed,
-    pool: &MemoryBudget,
+    account: &MemoryAccount,
 ) -> Result<ChunkReader, ConsolidateError> {
     let chunk = listed.chunk;
     let source = StoredChunk {
         storage: read,
         chunk,
     };
-    ChunkReader::open(&source, pool, listed.entry.fragment0).map_err(|error| match error {
+    ChunkReader::open(&source, account, listed.entry.fragment0).map_err(|error| match error {
         ReadError::ReserveDirectory { source } => {
             InputMemorySnafu { chunk: chunk.0 }.into_error(source)
         }
         error => OpenInputSnafu { chunk: chunk.0 }.into_error(error),
     })
-}
-
-/// A reservation of nothing yet, to grow.
-fn empty(pool: &MemoryBudget) -> Reservation {
-    pool.try_reserve("consolidation block", 0)
-        .expect("nothing fits any budget")
 }
 
 /// One column of a way, with its decoded block.
@@ -1364,24 +1383,21 @@ struct Cursor<T> {
     /// The rows of the decoded block; empty before the first.
     rows: Range<u32>,
     block: IntBlock<T>,
-    /// What the block's buffers hold: the output of the last block decoded into them.
-    output: Reservation,
 }
 
 impl<T: IntValue> Cursor<T> {
-    fn new(column: u16, pool: &MemoryBudget) -> Self {
+    fn new(column: u16) -> Self {
         Self {
             column,
             rows: 0..0,
             block: IntBlock::default(),
-            output: empty(pool),
         }
     }
 
     /// The column's value in `row`, decoding the block that holds it when it is not the one
     /// decoded. A row only moves forward, so each block decodes once. Before a read the
-    /// buffers are reserved up to what the block declares, and after it they shrink to it, as a
-    /// query does (`chunk::reader::decode_memory`).
+    /// charged buffers are sized to the block before its bytes are read, retiring obsolete
+    /// storage before allocating replacements (`chunk::reader::decode_memory`).
     fn value(
         &mut self,
         reader: &ChunkReader,
@@ -1394,28 +1410,20 @@ impl<T: IntValue> Cursor<T> {
             let blocks = reader.blocks(column).expect("the chunk has the column");
             let block = blocks.partition_point(|entry| entry.first_row + entry.rows <= row);
             let entry = blocks[block];
-            let memory = decode_memory(entry.shape(), reader.columns()[usize::from(column)].ty);
-            let scratch = &mut read.decoder.scratch;
-            grow_to(&mut self.output, memory.output)
-                .and_then(|()| grow_to(scratch, memory.scratch))
+            let prepared = read
+                .decoder
+                .blocks
+                .prepare_ints(entry.shape(), &mut self.block)
                 .context(InputMemorySnafu { chunk: chunk.0 })?;
             self.rows = 0..0;
             let block = block as u32;
             reader
-                .read_ints(
-                    &read.source,
-                    column,
-                    block,
-                    &mut read.decoder.blocks,
-                    &mut self.block,
-                )
+                .read_prepared_ints(&read.source, column, block, prepared)
                 .context(ReadInputSnafu {
                     chunk: chunk.0,
                     column,
                     block,
                 })?;
-            shrink_to(&mut self.output, memory.output);
-            shrink_to(&mut read.decoder.scratch, memory.scratch);
             ensure!(
                 !self.block.validity().has_nulls(),
                 NullValuesSnafu {
@@ -1427,17 +1435,6 @@ impl<T: IntValue> Cursor<T> {
         }
         Ok(self.block.values()[(row - self.rows.start) as usize])
     }
-}
-
-/// Grows `held` to `part` when it holds less: before a read, it covers both what the buffers
-/// hold and what the block declares.
-fn grow_to(held: &mut Reservation, part: u64) -> Result<(), BudgetExceeded> {
-    held.try_grow(part.saturating_sub(held.bytes()))
-}
-
-/// Shrinks `held` to `part`: after a read, the buffers hold exactly the block's.
-fn shrink_to(held: &mut Reservation, part: u64) {
-    held.shrink(held.bytes() - part);
 }
 
 /// A consolidation or merge round, or planning one, failed. Nothing it staged is visible.

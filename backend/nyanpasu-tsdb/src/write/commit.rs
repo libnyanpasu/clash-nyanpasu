@@ -13,31 +13,15 @@
 
 use super::{Written, stage::Staged};
 use crate::{
-    budget::Reservation,
     storage::{CommitFailure, Durability, StorageWrite},
-    version::{Registry, Version},
+    version::{Registry, StagedVersion},
 };
 
-/// A version staged in a transaction, with the memory it holds until it is published or
-/// withdrawn.
-pub(crate) struct Next {
-    pub(crate) version: Version,
-    /// The bytes by which `version`'s head outgrows the current one's, reserved from the
-    /// head budget. Publishing hands them to the owner's head reservation; withdrawing the
-    /// version returns them.
-    pub(crate) growth: Reservation,
-    /// The staging memory still allocated (§7.1, §7.4): what `version` copies from the
-    /// current version, which stays allocated twice until the old version goes.
-    pub(crate) staging: Reservation,
-}
-
-/// Commits `batch`, in which `staged` was staged, and publishes its version. `head` is the
-/// owner's reservation of the current head's bytes; it follows the published head.
+/// Commits `batch`, in which `staged` was staged, and publishes its version and resident claim.
 pub(crate) fn commit(
     batch: impl StorageWrite,
     staged: Staged,
     registry: &Registry,
-    head: &mut Reservation,
     durability: Durability,
 ) -> Result<Written, CommitFailure> {
     let Staged {
@@ -46,17 +30,16 @@ pub(crate) fn commit(
         staging,
         written,
     } = staged;
-    let next = Next {
+    let next = StagedVersion {
         version,
         growth,
         staging,
     };
-    publish(batch, next, registry, head, durability)?;
+    publish(batch, next, registry, durability)?;
     Ok(written)
 }
 
-/// Commits `batch`, in which `next` was staged, and publishes its version. `head` is the
-/// owner's reservation of the current head's bytes; it follows the published head.
+/// Commits `batch`, in which `next` was staged, and transfers its claims to the registry owner.
 ///
 /// On a failure the pending version is withdrawn and its reservation returned, whether or
 /// not the batch applied: after an unknown outcome the owner recovers from storage (§7.5).
@@ -64,23 +47,15 @@ pub(crate) fn commit(
 /// covered are then held once, by the current version or by the snapshots that reserved them.
 pub(crate) fn publish(
     batch: impl StorageWrite,
-    next: Next,
+    next: StagedVersion,
     registry: &Registry,
-    head: &mut Reservation,
     durability: Durability,
 ) -> Result<(), CommitFailure> {
-    let Next {
-        version,
-        growth,
-        staging,
-    } = next;
-    let pending = registry.register(version, growth);
+    let pending = registry.register(next);
     if let Err(failure) = batch.commit(durability) {
         pending.fail(&failure);
-        drop(staging);
         return Err(failure);
     }
-    pending.publish(head);
-    drop(staging);
+    pending.publish();
     Ok(())
 }

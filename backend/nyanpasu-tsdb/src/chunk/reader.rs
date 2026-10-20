@@ -13,7 +13,7 @@
 //!   fetched and returned when the reader is dropped;
 //! - a block's [`decode_memory`] is what reading it leaves the decoder and the decoded block
 //!   holding, which the caller reserves as it says;
-//! - a large value takes its length, [`LargeEntry::len`], in the caller's `Vec`.
+//! - a large value takes its length, [`LargeEntry::len`], in the caller's charged buffer.
 
 use snafu::{OptionExt, ResultExt, ensure};
 
@@ -28,13 +28,12 @@ use super::{
     format::{
         BlockEntry, ChunkKind, ColumnDesc, Directory, FRAGMENT0_LENS, LargeEntry, MAX_CHUNK_LEN,
         MAX_DATA_FRAGMENT_LEN, MAX_FRAGMENTS, MAX_LARGE_VALUES, MAX_ROWS, PhysicalType,
-        open_memory,
     },
 };
 use crate::{
-    budget::{MemoryBudget, Reservation},
+    budget::{BudgetVec, MemoryAccount, MemoryPlan},
     codec::{
-        block::{self, BlockDecoder, BlockShape, BytesBlock, DecodeMemory, IntBlock, IntView},
+        block::{self, BlockShape, DecodeMemory, IntView, PreparedBytes, PreparedInts},
         bytes::BytesHint,
         checksum::{self, TRAILER_LEN},
         int::IntValue,
@@ -106,48 +105,52 @@ pub(crate) fn decode_memory(shape: BlockShape, column: PhysicalType) -> DecodeMe
 #[derive(Debug)]
 pub(crate) struct ChunkReader {
     directory: Directory,
-    /// The directory's bytes, held for as long as the reader is open.
-    #[allow(
-        dead_code,
-        reason = "held for its Drop, which returns the directory's bytes"
-    )]
-    reservation: Reservation,
+    /// The caller's envelope covering loans and data buffers.
+    account: MemoryAccount,
 }
 
 impl ChunkReader {
     /// Opens the chunk whose fragments `source` reads, whose fragment 0 is `fragment0` bytes
     /// long, trailer included, as its manifest entry records. Before fetching fragment 0, it
-    /// reserves from `budget` what parsing a fragment 0 of that length can hold
-    /// ([`open_memory`]), and the fetch lends no more than that length. A fragment 0 of another
-    /// length is damage, found before it is parsed. Once parsed, the reader keeps only the
-    /// directory's [`memory`](Self::memory), until it is dropped.
+    /// reserves through `account` what parsing a fragment 0 of that length can hold
+    /// ([`open_memory`](super::format::open_memory)); the fetch lends no more than that length.
+    /// A fragment 0 of another length is damage, found before it is parsed. Once parsed, the
+    /// reader keeps only the directory's [`memory`](Self::memory), until it is dropped.
     pub(crate) fn open(
         source: &impl FragmentSource,
-        budget: &MemoryBudget,
+        account: &MemoryAccount,
         fragment0: u32,
     ) -> Result<Self, ReadError> {
         check_recorded(fragment0)?;
-        let bound = open_memory(fragment0 as usize - TRAILER_LEN);
-        let mut reservation = budget
-            .try_reserve("chunk directory", bound)
-            .context(ReserveDirectorySnafu)?;
-        with_fragment(source, 0, fragment0 as usize, |content| {
-            let actual = content.len() + TRAILER_LEN;
-            ensure!(
-                actual == fragment0 as usize,
-                Fragment0LengthSnafu {
-                    recorded: fragment0,
-                    actual
-                }
-            );
-            let directory = Directory::parse(content)?;
-            // open_memory bounds what parsing holds, and so what the directory keeps.
-            reservation.shrink(bound - directory.memory());
-            Ok(Self {
-                directory,
-                reservation,
-            })
+        let directory = account
+            .value(
+                "chunk directory",
+                MemoryPlan::bytes(super::format::open_memory(fragment0 as usize - TRAILER_LEN)),
+                || {
+                    with_fragment(source, account, 0, fragment0 as usize, |content| {
+                        let actual = content.len() + TRAILER_LEN;
+                        ensure!(
+                            actual == fragment0 as usize,
+                            Fragment0LengthSnafu {
+                                recorded: fragment0,
+                                actual
+                            }
+                        );
+                        super::format::parse_directory(content, |_| {})
+                    })
+                },
+            )
+            .context(ReserveDirectorySnafu)?
+            .transpose()?;
+        Ok(Self {
+            directory: Directory::from_payload(directory),
+            account: account.clone(),
         })
+    }
+
+    /// The operation envelope used for block and large-value allocations and fragment loans.
+    pub(crate) fn account(&self) -> &MemoryAccount {
+        &self.account
     }
 
     /// The bytes the reader holds: its directory's heap, exactly.
@@ -193,45 +196,42 @@ impl ChunkReader {
         &self.directory.large
     }
 
-    /// Decodes block `block` of integer column `column` into `out`. The column must be of
+    /// Decodes block `block` into its previously admitted integer output. The column must be of
     /// `T`'s type; a chunk whose column differs does not match the caller's schema.
-    pub(crate) fn read_ints<T: IntValue>(
+    pub(crate) fn read_prepared_ints<T: IntValue>(
         &self,
         source: &impl FragmentSource,
         column: u16,
         block: u32,
-        decoder: &mut BlockDecoder,
-        out: &mut IntBlock<T>,
+        prepared: PreparedInts<'_, T>,
     ) -> Result<(), ReadError> {
         let entry = self.int_block::<T>(column, block)?;
         self.with_block(source, entry, |stored| {
-            decoder
-                .decode_ints(stored, entry.shape(), out)
+            prepared
+                .decode(stored, entry.shape())
                 .context(DecodeBlockSnafu { column, block })
         })
     }
 
-    /// Decodes block `block` of bytes column `column` into `out`.
-    pub(crate) fn read_bytes(
+    /// Decodes block `block` into its previously admitted bytes output.
+    pub(crate) fn read_prepared_bytes(
         &self,
         source: &impl FragmentSource,
         column: u16,
         block: u32,
-        decoder: &mut BlockDecoder,
-        out: &mut BytesBlock,
+        prepared: PreparedBytes<'_>,
     ) -> Result<(), ReadError> {
-        let (entry, hint) = self.bytes_block(column, block)?;
-        let large_count = self.large_count();
+        let (entry, _) = self.bytes_block(column, block)?;
         self.with_block(source, entry, |stored| {
-            decoder
-                .decode_bytes(stored, entry.shape(), large_count, hint, out)
+            prepared
+                .decode(stored, entry.shape())
                 .context(DecodeBlockSnafu { column, block })
         })
     }
 
     /// Hands `f` the values of a raw, uncompressed integer block in place, valid while the
     /// fragment is borrowed. `None` when the block is stored otherwise; then
-    /// [`read_ints`](Self::read_ints) decodes it.
+    /// [`read_prepared_ints`](Self::read_prepared_ints) decodes it.
     pub(crate) fn view_ints<T: IntValue, R>(
         &self,
         source: &impl FragmentSource,
@@ -256,7 +256,7 @@ impl ChunkReader {
         &self,
         source: &impl FragmentSource,
         index: u32,
-        out: &mut Vec<u8>,
+        out: &mut BudgetVec<u8>,
     ) -> Result<(), ReadError> {
         let entry = self
             .directory
@@ -266,10 +266,9 @@ impl ChunkReader {
         // Validated against the largest large value when the chunk was opened.
         let len = entry.len as usize;
         if out.capacity() < len {
-            *out = Vec::new();
+            out.reset_to(len).context(ReserveDirectorySnafu)?;
         }
         out.clear();
-        out.reserve_exact(len);
         for fragment in entry.first_fragment..entry.first_fragment + entry.fragments {
             self.with_data(source, fragment, |content| {
                 out.extend_from_slice(content);
@@ -327,7 +326,7 @@ impl ChunkReader {
         Ok((entry, hint))
     }
 
-    fn large_count(&self) -> u32 {
+    pub(crate) fn large_count(&self) -> u32 {
         self.directory.large.len() as u32
     }
 
@@ -365,17 +364,23 @@ impl ChunkReader {
         f: impl FnOnce(&[u8]) -> Result<R, ReadError>,
     ) -> Result<R, ReadError> {
         let expected = self.directory.fragment_lens[index as usize] as usize;
-        with_fragment(source, index, expected + TRAILER_LEN, |content| {
-            ensure!(
-                content.len() == expected,
-                ContentLengthSnafu {
-                    index,
-                    expected,
-                    actual: content.len()
-                }
-            );
-            f(content)
-        })
+        with_fragment(
+            source,
+            &self.account,
+            index,
+            expected + TRAILER_LEN,
+            |content| {
+                ensure!(
+                    content.len() == expected,
+                    ContentLengthSnafu {
+                        index,
+                        expected,
+                        actual: content.len()
+                    }
+                );
+                f(content)
+            },
+        )
     }
 }
 
@@ -383,15 +388,55 @@ impl ChunkReader {
 /// long, checks its checksum, and hands `f` its content.
 fn with_fragment<R>(
     source: &impl FragmentSource,
+    account: &MemoryAccount,
     index: u32,
     limit: usize,
     f: impl FnOnce(&[u8]) -> Result<R, ReadError>,
 ) -> Result<R, ReadError> {
-    source
-        .get(index, limit, |bytes| {
-            let bytes = bytes.context(MissingFragmentSnafu { index })?;
-            let content = checksum::verify(bytes).context(ChecksumSnafu { index })?;
-            f(content)
+    account
+        .lend(limit as u64, || {
+            source
+                .get(index, limit, |bytes| {
+                    let bytes = bytes.context(MissingFragmentSnafu { index })?;
+                    let content = checksum::verify(bytes).context(ChecksumSnafu { index })?;
+                    f(content)
+                })
+                .context(ReadFragmentSnafu { index })?
         })
-        .context(ReadFragmentSnafu { index })?
+        .context(ReserveDirectorySnafu)?
+}
+
+#[cfg(test)]
+impl ChunkReader {
+    /// Test convenience that admits integer storage through the same production context.
+    pub(crate) fn read_ints<T: IntValue>(
+        &self,
+        source: &impl FragmentSource,
+        column: u16,
+        block: u32,
+        decoder: &mut crate::codec::block::BlockDecoder,
+        out: &mut crate::codec::block::IntBlock<T>,
+    ) -> Result<(), ReadError> {
+        let shape = self.int_block::<T>(column, block)?.shape();
+        let prepared = decoder
+            .prepare_ints(shape, out)
+            .map_err(|source| ReadError::ReserveDirectory { source })?;
+        self.read_prepared_ints(source, column, block, prepared)
+    }
+
+    /// Test convenience that admits bytes storage through the production context.
+    pub(crate) fn read_bytes(
+        &self,
+        source: &impl FragmentSource,
+        column: u16,
+        block: u32,
+        decoder: &mut crate::codec::block::BlockDecoder,
+        out: &mut crate::codec::block::BytesBlock,
+    ) -> Result<(), ReadError> {
+        let (entry, hint) = self.bytes_block(column, block)?;
+        let prepared = decoder
+            .prepare_bytes(entry.shape(), self.large_count(), hint, out)
+            .map_err(|source| ReadError::ReserveDirectory { source })?;
+        self.read_prepared_bytes(source, column, block, prepared)
+    }
 }

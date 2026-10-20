@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use crate::{key::Key, query::Groups};
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    model::{Dimension, Dimensions, Metric, group_key},
+    model::{Dimension, Dimensions, Metric},
     query::Usage,
 };
 
@@ -35,100 +36,147 @@ pub struct Topology {
     pub edges: Vec<TopologyEdge>,
 }
 
-type Node = (u8, String);
-
-/// Flows of `rows` through `layers`. A path with an empty `Chain` key skips that layer, so its
-/// neighbours connect directly. With `limit_per_layer`, a layer keeps its heaviest nodes by
-/// `metric` and merges the rest into one node, redirecting their edges, so each layer still
-/// sums to the traffic that passes it.
-pub fn project<'a>(
-    rows: impl IntoIterator<Item = (&'a Dimensions, Usage)>,
+/// Flows through the same borrowed grouping and projection path used for stored queries.
+pub fn project<'a, I>(
+    rows: I,
     layers: &[Dimension],
     metric: Metric,
-    limit_per_layer: Option<usize>,
-) -> Topology {
-    let mut nodes: HashMap<Node, Usage> = HashMap::new();
-    let mut edges: HashMap<(Node, Node), Usage> = HashMap::new();
-
-    for (dimensions, usage) in rows {
-        let path = layers.iter().enumerate().filter_map(|(i, &dimension)| {
-            let key = group_key(dimensions, dimension);
-            (dimension != Dimension::Chain || !key.is_empty()).then_some((i as u8, key))
-        });
-        let mut previous: Option<Node> = None;
-        for node in path {
-            add(nodes.entry(node.clone()).or_default(), usage);
-            if let Some(source) = previous.replace(node.clone()) {
-                add(edges.entry((source, node)).or_default(), usage);
+    limit: Option<usize>,
+) -> Topology
+where
+    I: IntoIterator<Item = (&'a Dimensions, Usage)>,
+    I::IntoIter: Clone,
+{
+    let rows = rows.into_iter();
+    let mut groups: Vec<_> = layers
+        .iter()
+        .map(|_| Groups::new(rows.size_hint().1.unwrap_or(0)))
+        .collect();
+    for (d, u) in rows.clone() {
+        for (&dimension, g) in layers.iter().zip(&mut groups) {
+            let key = Key::of(d, dimension);
+            if dimension != Dimension::Chain || !key.is_empty() {
+                g.add(Some(key), u, None);
             }
         }
     }
+    let mut projection = Projection::new(groups.iter(), metric, limit);
+    for (d, u) in rows {
+        projection.session(d, u, layers);
+    }
+    projection.finish()
+}
 
-    let mut ordered: Vec<(Node, Usage)> = nodes.into_iter().collect();
-    ordered.sort_by(|((a_layer, a_key), a), ((b_layer, b_key), b)| {
-        a_layer
-            .cmp(b_layer)
-            .then_with(|| metric.of(b).cmp(&metric.of(a)))
-            .then_with(|| a_key.cmp(b_key))
-    });
-
-    let mut kept: HashSet<Node> = HashSet::new();
-    let mut taken: BTreeMap<u8, usize> = BTreeMap::new();
-    let mut merged: BTreeMap<u8, Usage> = BTreeMap::new();
-    let mut out = Vec::new();
-    for ((layer, key), usage) in ordered {
-        let taken = taken.entry(layer).or_default();
-        if limit_per_layer.is_none_or(|limit| *taken < limit) {
-            *taken += 1;
-            out.push(TopologyNode {
-                id: node_id(layer, Some(&key)),
-                layer,
-                key: Some(key.clone()),
-                usage,
-            });
-            kept.insert((layer, key));
-        } else {
-            add(merged.entry(layer).or_default(), usage);
+pub(crate) struct Projection<'a> {
+    kept: Vec<HashMap<Key<'a>, usize>>,
+    merged: Vec<Option<usize>>,
+    nodes: Vec<TopologyNode>,
+    edges: HashMap<(usize, usize), Usage>,
+}
+impl<'a> Projection<'a> {
+    pub fn new<'g>(
+        groups: impl Iterator<Item = &'g Groups<'a>>,
+        metric: Metric,
+        limit: Option<usize>,
+    ) -> Self
+    where
+        'a: 'g,
+    {
+        let groups: Vec<_> = groups.collect();
+        let node_count = groups
+            .iter()
+            .map(|g| {
+                let kept = limit.unwrap_or(g.values.len()).min(g.values.len());
+                kept + usize::from(g.has_overflow || g.values.len() > kept)
+            })
+            .sum();
+        let mut out = Self {
+            kept: Vec::with_capacity(5),
+            merged: Vec::with_capacity(5),
+            nodes: Vec::with_capacity(node_count),
+            edges: HashMap::new(),
+        };
+        for (layer, g) in groups.into_iter().enumerate() {
+            let ordered = g.ordered(metric);
+            let count = limit.unwrap_or(ordered.len()).min(ordered.len());
+            let mut kept = HashMap::with_capacity(count);
+            for &(key, value) in &ordered[..count] {
+                let text = key.owned();
+                kept.insert(key, out.nodes.len());
+                out.nodes.push(TopologyNode {
+                    id: node_id(layer as u8, Some(&text)),
+                    layer: layer as u8,
+                    key: Some(text),
+                    usage: value.usage,
+                });
+            }
+            let merged = if g.has_overflow || ordered.len() > count {
+                let usage = ordered[count..]
+                    .iter()
+                    .fold(g.overflow, |s, (_, v)| s.saturating_add(v.usage));
+                let index = out.nodes.len();
+                out.nodes.push(TopologyNode {
+                    id: node_id(layer as u8, None),
+                    layer: layer as u8,
+                    key: None,
+                    usage,
+                });
+                Some(index)
+            } else {
+                None
+            };
+            out.kept.push(kept);
+            out.merged.push(merged);
+        }
+        let bound = out.nodes.len().saturating_mul(out.nodes.len());
+        out.edges = HashMap::with_capacity(bound.min(4096));
+        out
+    }
+    pub fn kept(&self, layer: usize, key: Option<Key<'_>>) -> Option<usize> {
+        key.and_then(|k| self.kept[layer].get(&k).copied())
+    }
+    pub fn resolve(&self, layer: usize, key: Option<Key<'_>>) -> Option<usize> {
+        key.and_then(|k| self.kept[layer].get(&k).copied())
+            .or(self.merged[layer])
+    }
+    pub fn session(&mut self, d: &Dimensions, usage: Usage, layers: &[Dimension]) {
+        let mut path = [None; 5];
+        for (i, &dimension) in layers.iter().enumerate() {
+            let key = Key::of(d, dimension);
+            if dimension != Dimension::Chain || !key.is_empty() {
+                path[i] = self.resolve(i, Some(key));
+            }
+        }
+        self.path(path.into_iter().take(layers.len()), usage);
+    }
+    pub fn path(&mut self, path: impl Iterator<Item = Option<usize>>, usage: Usage) {
+        let mut previous = None;
+        for node in path.flatten() {
+            if let Some(source) = previous.replace(node) {
+                let slot = self.edges.entry((source, node)).or_default();
+                *slot = slot.saturating_add(usage);
+            }
         }
     }
-    out.extend(merged.into_iter().map(|(layer, usage)| TopologyNode {
-        id: node_id(layer, None),
-        layer,
-        key: None,
-        usage,
-    }));
-    // Stable: within a layer the merged node stays behind the kept ones.
-    out.sort_by_key(|node| node.layer);
-
-    let id =
-        |(layer, key): Node| node_id(layer, kept.contains(&(layer, key.clone())).then_some(&*key));
-    let mut redirected: BTreeMap<(String, String), Usage> = BTreeMap::new();
-    for ((source, target), usage) in edges {
-        add(
-            redirected.entry((id(source), id(target))).or_default(),
-            usage,
-        );
-    }
-
-    Topology {
-        nodes: out,
-        edges: redirected
+    pub fn finish(self) -> Topology {
+        let mut edges: Vec<_> = self
+            .edges
             .into_iter()
-            .map(|((source, target), usage)| TopologyEdge {
-                source,
-                target,
+            .map(|((s, t), usage)| TopologyEdge {
+                source: self.nodes[s].id.clone(),
+                target: self.nodes[t].id.clone(),
                 usage,
             })
-            .collect(),
+            .collect();
+        edges.sort_unstable_by(|a, b| (&a.source, &a.target).cmp(&(&b.source, &b.target)));
+        Topology {
+            nodes: self.nodes,
+            edges,
+        }
     }
 }
 
-fn add(slot: &mut Usage, usage: Usage) {
-    *slot = slot.saturating_add(usage);
-}
-
-/// Unique per layer and key; the JSON encoding keeps separators inside a key from colliding, and
-/// the merged node (`None`, JSON null) never equals a real key (a string).
+/// JSON keeps separators inside keys from colliding, and None never equals a real key.
 fn node_id(layer: u8, key: Option<&str>) -> String {
     serde_json::to_string(&(layer, key)).expect("a number and a string always encode")
 }

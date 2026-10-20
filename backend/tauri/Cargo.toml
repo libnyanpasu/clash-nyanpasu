@@ -43,6 +43,7 @@ nyanpasu-widget = { path = '../nyanpasu-widget' }
 nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol', features = [
   'ipc-host',
 ] }
+nyanpasu-tsdb = { path = '../nyanpasu-tsdb', features = ['redb'] }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
 nyanpasu-geodata = { path = '../nyanpasu-geodata' }
 nyanpasu-panics = { path = '../nyanpasu-panics' }

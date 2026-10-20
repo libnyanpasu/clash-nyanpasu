@@ -261,7 +261,8 @@ export function createRpcClient(
       filters: TrafficFilter[],
       before: {
         closed_at: number
-        id: string
+        incarnation: number
+        seq: number
       } | null,
       limit: number,
     ) =>
@@ -1094,7 +1095,8 @@ export type ClosedConnection = {
 /**  Exclusive position for newest-first paging. */
 export type ClosedCursor = {
   closed_at: number
-  id: string
+  incarnation: number
+  seq: number
 }
 
 export type ClosedPage = {

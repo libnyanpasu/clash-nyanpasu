@@ -2,16 +2,23 @@ use std::{
     ops::Deref,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
     },
     time::Duration,
 };
 
+use super::TrafficStorage;
 use nyanpasu_traffic::{
-    ActiveConnection, Bytes, ClosedCursor, ClosedPage, ClosedSelection, Dimension, Dimensions,
-    FlushBatch, Flushed, Frame, Metric, Rate, RedbTrafficStore, ReportRequest, RuleKey, Sample,
-    SessionMeta, Tier, TopologyRequest, TrafficError, TrafficFilter, TrafficQuery, TrafficRange,
-    TrafficResult, TrafficScope, TrafficStore, TrafficSummary, Usage, UsageGroup,
+    Bytes, ClosedPage, Dimension, Dimensions, Frame, Metric, Rate, ReportRequest, RuleKey, Sample,
+    Tier, TopologyRequest, TrafficFilter, TrafficQuery, TrafficRange, TrafficScope, TrafficSummary,
+    Usage, UsageGroup,
+};
+use nyanpasu_tsdb::{
+    Profile,
+    storage::{
+        Storage, StorageError,
+        redb::{RedbBatch, RedbSnapshot, RedbStorage},
+    },
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -76,87 +83,70 @@ impl Clock for FakeClock {
     }
 }
 
-/// A real store whose loads and flushes can be made to fail, as a full disk or a dying app would.
-struct FlakyStore {
-    inner: RedbTrafficStore,
-    fail_load: AtomicBool,
+#[derive(Default)]
+struct Switches {
     fail_flush: AtomicBool,
-    fail_collect: AtomicBool,
-    flushes: AtomicUsize,
-    collections: AtomicUsize,
-    collected: AtomicU64,
+    backend_failure: AtomicBool,
+    backend_failure_at: AtomicUsize,
+    batches: AtomicUsize,
+    refuse_at: AtomicUsize,
 }
-
-impl FlakyStore {
+struct FaultStorage {
+    inner: RedbStorage,
+    switches: Arc<Switches>,
+}
+impl Storage for FaultStorage {
+    type Snapshot = RedbSnapshot;
+    type Batch<'s> = RedbBatch<'s>;
+    fn snapshot(&self) -> Result<Self::Snapshot, StorageError> {
+        self.inner.snapshot()
+    }
+    fn batch(&self) -> Result<Self::Batch<'_>, StorageError> {
+        let attempt = self.switches.batches.fetch_add(1, Ordering::SeqCst) + 1;
+        if self.switches.backend_failure.swap(false, Ordering::SeqCst)
+            || self.switches.backend_failure_at.load(Ordering::SeqCst) == attempt
+        {
+            return Err(StorageError::Failed {
+                source: Box::new(std::io::Error::other("injected backend failure")),
+            });
+        }
+        if self.switches.fail_flush.load(Ordering::SeqCst)
+            || self.switches.refuse_at.load(Ordering::SeqCst) == attempt
+        {
+            return Err(StorageError::Limit {
+                detail: "injected local refusal".into(),
+            });
+        }
+        self.inner.batch()
+    }
+}
+struct FaultOpener {
+    path: std::path::PathBuf,
+    fail_load: AtomicBool,
+    switches: Arc<Switches>,
+}
+impl FaultOpener {
     fn fail_load(&self, fail: bool) {
         self.fail_load.store(fail, Ordering::SeqCst);
     }
-
     fn fail_flush(&self, fail: bool) {
-        self.fail_flush.store(fail, Ordering::SeqCst);
+        self.switches.fail_flush.store(fail, Ordering::SeqCst);
     }
-
-    fn fail_collect(&self, fail: bool) {
-        self.fail_collect.store(fail, Ordering::SeqCst);
-    }
-
-    /// Flushes attempted, failed ones included.
     fn flushes(&self) -> usize {
-        self.flushes.load(Ordering::SeqCst)
-    }
-
-    /// Collections attempted, failed ones included.
-    fn collections(&self) -> usize {
-        self.collections.load(Ordering::SeqCst)
-    }
-
-    /// Dimension combinations the collections deleted, in total.
-    fn collected(&self) -> u64 {
-        self.collected.load(Ordering::SeqCst)
+        self.switches.batches.load(Ordering::SeqCst)
     }
 }
-
-impl TrafficStore for FlakyStore {
-    fn load(&self) -> TrafficResult<Option<(SessionMeta, Vec<ActiveConnection>)>> {
+impl TrafficStorage<FaultStorage> for FaultOpener {
+    fn open(&self) -> Result<FaultStorage, StorageError> {
         if self.fail_load.load(Ordering::SeqCst) {
-            return Err(TrafficError::Storage("load failed on demand".into()));
+            return Err(StorageError::Failed {
+                source: Box::new(std::io::Error::other("injected opener failure")),
+            });
         }
-        self.inner.load()
-    }
-
-    fn flush(&self, batch: &FlushBatch) -> TrafficResult<Flushed> {
-        self.flushes.fetch_add(1, Ordering::SeqCst);
-        if self.fail_flush.load(Ordering::SeqCst) {
-            return Err(TrafficError::Storage("flush failed on demand".into()));
-        }
-        self.inner.flush(batch)
-    }
-
-    fn closed_connections(
-        &self,
-        before: Option<&ClosedCursor>,
-        limit: usize,
-        selection: &ClosedSelection,
-    ) -> TrafficResult<ClosedPage> {
-        self.inner.closed_connections(before, limit, selection)
-    }
-
-    fn closed_count(&self) -> TrafficResult<u64> {
-        self.inner.closed_count()
-    }
-
-    fn usage(&self, tier: Tier, from: Option<u32>) -> TrafficResult<Vec<(Arc<Dimensions>, Usage)>> {
-        self.inner.usage(tier, from)
-    }
-
-    fn collect_tuples(&self, keep: &[Arc<Dimensions>]) -> TrafficResult<u64> {
-        self.collections.fetch_add(1, Ordering::SeqCst);
-        if self.fail_collect.load(Ordering::SeqCst) {
-            return Err(TrafficError::Storage("collect failed on demand".into()));
-        }
-        let collected = self.inner.collect_tuples(keep)?;
-        self.collected.fetch_add(collected, Ordering::SeqCst);
-        Ok(collected)
+        Ok(FaultStorage {
+            inner: RedbStorage::open(&self.path, Profile::desktop().backend_cache)?,
+            switches: self.switches.clone(),
+        })
     }
 }
 
@@ -172,13 +162,14 @@ impl super::LocalSourceLocation for FakeLocalSource {
 /// Everything the actor is injected with, except the frames' consumer.
 struct Env {
     _dir: TempDir,
-    store: Arc<FlakyStore>,
+    store: Arc<FaultOpener>,
     profiles: Arc<FakeProfiles>,
     retention: Arc<FakeRetention>,
     clock: Arc<FakeClock>,
     frames: watch::Sender<Option<Arc<ClashConnectionsFrame>>>,
     geo: watch::Sender<Option<Arc<nyanpasu_geodata::IpIndex>>>,
     local_source: Arc<FakeLocalSource>,
+    limits: Profile,
 }
 
 impl Env {
@@ -193,7 +184,8 @@ impl Env {
     ) -> anyhow::Result<TrafficClient> {
         TrafficClient::spawn(
             TrafficArgs {
-                store: self.store.clone(),
+                storage: self.store.clone(),
+                profile: self.limits.clone(),
                 profiles: self.profiles.clone(),
                 retention: self.retention.clone(),
                 clock: self.clock.clone(),
@@ -228,16 +220,16 @@ impl Deref for Harness {
 
 impl Harness {
     async fn new(profile: &str) -> Self {
+        Self::with_limits(profile, Profile::desktop()).await
+    }
+
+    async fn with_limits(profile: &str, limits: Profile) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let env = Env {
-            store: Arc::new(FlakyStore {
-                inner: RedbTrafficStore::open(&dir.path().join("traffic.redb")).unwrap(),
+            store: Arc::new(FaultOpener {
+                path: dir.path().join("traffic.tsdb"),
                 fail_load: AtomicBool::new(false),
-                fail_flush: AtomicBool::new(false),
-                fail_collect: AtomicBool::new(false),
-                flushes: AtomicUsize::new(0),
-                collections: AtomicUsize::new(0),
-                collected: AtomicU64::new(0),
+                switches: Arc::new(Switches::default()),
             }),
             _dir: dir,
             profiles: Arc::new(FakeProfiles(Mutex::new(Some(profile.to_owned())))),
@@ -246,6 +238,7 @@ impl Harness {
             frames: watch::channel(None).0,
             geo: watch::channel(None).0,
             local_source: Arc::new(FakeLocalSource::default()),
+            limits,
         };
         env.retention.keep_days(7);
         let shutdown = CancellationToken::new();
@@ -274,11 +267,6 @@ impl Harness {
         self.client.observe(Some(frame)).await.unwrap();
     }
 
-    /// A connection that opens at the start of `hour` and closes a minute later.
-    async fn close_in_hour(&self, hour: i64) {
-        self.close_in_hour_by(hour, "curl").await;
-    }
-
     async fn close_in_hour_by(&self, hour: i64, process: &str) {
         let wall = hour * HOUR;
         let id = format!("c{hour}");
@@ -296,6 +284,32 @@ impl Harness {
             Vec::new(),
         ))
         .await;
+    }
+
+    async fn stored_usage(&self, tier: Tier, from: Option<u32>) -> Vec<UsageGroup> {
+        let (range, now) = match (tier, from) {
+            (Tier::Minute, from) => (
+                TrafficRange::Last6Hours,
+                i64::from(from.unwrap_or(0)) * MINUTE + 6 * HOUR,
+            ),
+            (Tier::Hour, Some(from)) => (
+                TrafficRange::Last24Hours,
+                i64::from(from) * HOUR + 24 * HOUR,
+            ),
+            (Tier::Hour, None) => (TrafficRange::All, self.clock.now_ms()),
+        };
+        let old = self.clock.now_ms();
+        self.clock.set(now);
+        let report = self
+            .client
+            .stored_report(request(
+                query(range, TrafficScope::Closed, &[]),
+                &[Dimension::Process],
+            ))
+            .await
+            .unwrap();
+        self.clock.set(old);
+        report.rankings.into_iter().next().unwrap().groups
     }
 
     async fn report(&self, request: ReportRequest) -> nyanpasu_traffic::TrafficReport {
@@ -355,6 +369,299 @@ fn frame(wall_ms: i64, mono_ms: u64, totals: Bytes, connections: Vec<Sample>) ->
         totals,
         connections,
     }
+}
+
+fn many_samples(count: usize, upload: u64) -> Vec<Sample> {
+    (0..count)
+        .map(|i| sample(&format!("id-{i}"), "curl", upload, 0))
+        .collect()
+}
+
+#[tokio::test]
+async fn recording_continues_after_active_records_span_transactions() {
+    let mut h = Harness::with_limits(
+        "p1",
+        Profile {
+            batch_bytes: 4096,
+            ..Profile::desktop()
+        },
+    )
+    .await;
+    h.observe(frame(1000, 0, bytes(10000, 0), many_samples(100, 100)))
+        .await;
+    let before = h.store.flushes();
+    h.client.flush().await.unwrap();
+    assert!(h.store.flushes() - before > 2);
+    h.observe(frame(2000, 1000, bytes(15000, 0), many_samples(100, 150)))
+        .await;
+    assert_eq!(h.client.summary().await.unwrap().last_sample_at, Some(2000));
+    assert_eq!(h.total(everything()).await, usage(15000, 0, 100));
+    h.client.flush().await.unwrap();
+    h.restart().await;
+    assert_eq!(h.total(everything()).await, usage(15000, 0, 100));
+}
+
+#[tokio::test]
+async fn pending_size_flushes_in_the_observe_handler() {
+    let h = Harness::with_limits(
+        "p1",
+        Profile {
+            batch_bytes: 16384,
+            ..Profile::desktop()
+        },
+    )
+    .await;
+    let large = sample("a", &"p".repeat(1000), 100, 0);
+    h.observe(frame(1000, 0, bytes(100, 0), vec![large])).await;
+    assert!(
+        h.client
+            .stored_closed()
+            .await
+            .unwrap()
+            .connections
+            .is_empty()
+    );
+    h.observe(frame(2000, 1000, bytes(100, 0), vec![])).await;
+    // No explicit flush and no timer: Observe's acknowledgement includes the size flush.
+    assert_eq!(h.client.stored_closed().await.unwrap().connections.len(), 1);
+    assert_eq!(h.total(everything()).await, usage(100, 0, 1));
+}
+
+#[tokio::test]
+async fn an_extreme_close_frame_does_not_stall_recording() {
+    let mut h = Harness::with_limits(
+        "p1",
+        Profile {
+            batch_bytes: 4096,
+            ..Profile::desktop()
+        },
+    )
+    .await;
+    h.observe(frame(1000, 0, bytes(10000, 0), many_samples(100, 100)))
+        .await;
+    h.client.flush().await.unwrap();
+    h.observe(frame(2000, 1000, bytes(10000, 0), vec![])).await;
+    assert_eq!(
+        h.client.stored_closed().await.unwrap().connections.len(),
+        100
+    );
+    h.observe(frame(
+        3000,
+        2000,
+        bytes(10007, 0),
+        vec![sample("new", "curl", 7, 0)],
+    ))
+    .await;
+    assert_eq!(h.client.summary().await.unwrap().last_sample_at, Some(3000));
+    assert_eq!(h.total(everything()).await, usage(10007, 0, 101));
+    h.restart().await;
+    assert_eq!(h.total(everything()).await, usage(10007, 0, 101));
+}
+
+#[tokio::test]
+async fn a_refused_active_followup_never_reapplies_the_committed_close() {
+    let mut h = Harness::with_limits(
+        "p1",
+        Profile {
+            batch_bytes: 16384,
+            ..Profile::desktop()
+        },
+    )
+    .await;
+    h.observe(a_first()).await;
+    h.client.flush().await.unwrap();
+    h.observe(frame(2000, 1000, bytes(40100, 200), many_samples(400, 100)))
+        .await;
+    assert!(
+        h.client
+            .stored_closed()
+            .await
+            .unwrap()
+            .connections
+            .is_empty()
+    );
+    let before = h.store.flushes();
+    // The fixed transaction and one active-only transaction commit before the refusal.
+    h.store
+        .switches
+        .refuse_at
+        .store(before + 3, Ordering::SeqCst);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.store.flushes(), before + 3);
+    assert_eq!(h.client.stored_closed().await.unwrap().connections.len(), 1);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.client.stored_closed().await.unwrap().connections.len(), 1);
+    h.observe(frame(3000, 2000, bytes(60100, 200), many_samples(400, 150)))
+        .await;
+    assert_eq!(h.client.summary().await.unwrap().last_sample_at, Some(3000));
+    assert_eq!(h.total(everything()).await, usage(60100, 200, 401));
+    h.restart().await;
+    assert_eq!(h.total(everything()).await, usage(60100, 200, 401));
+}
+
+#[tokio::test]
+async fn a_refused_close_group_retries_only_the_uncommitted_connections() {
+    let mut h = Harness::with_limits(
+        "p1",
+        Profile {
+            batch_bytes: 4096,
+            ..Profile::desktop()
+        },
+    )
+    .await;
+    h.observe(frame(1000, 0, bytes(10000, 0), many_samples(100, 100)))
+        .await;
+    h.client.flush().await.unwrap();
+    let before = h.store.flushes();
+    h.store
+        .switches
+        .refuse_at
+        .store(before + 2, Ordering::SeqCst);
+    h.observe(frame(2000, 1000, bytes(10000, 0), vec![])).await;
+    let committed = h.client.stored_closed().await.unwrap().connections.len();
+    assert!(committed > 0 && committed < 100);
+    h.client.flush().await.unwrap();
+    assert_eq!(
+        h.client.stored_closed().await.unwrap().connections.len(),
+        100
+    );
+    assert_eq!(h.total(everything()).await, usage(10000, 0, 100));
+    h.restart().await;
+    assert_eq!(h.total(everything()).await, usage(10000, 0, 100));
+}
+
+#[tokio::test]
+async fn recovery_between_core_changing_close_groups_preserves_instance_and_events() {
+    for active_followup in [false, true] {
+        let mut h = Harness::with_limits(
+            "p1",
+            Profile {
+                batch_bytes: 4096,
+                ..Profile::desktop()
+            },
+        )
+        .await;
+        h.observe(frame(1000, 0, bytes(10000, 0), many_samples(100, 100)))
+            .await;
+        h.client.flush().await.unwrap();
+        h.store
+            .switches
+            .backend_failure_at
+            .store(h.store.flushes() + 2, Ordering::SeqCst);
+        let mut changed = frame(
+            2000,
+            1000,
+            bytes(15000, 0),
+            if active_followup {
+                many_samples(100, 150)
+            } else {
+                vec![]
+            },
+        );
+        changed.instance_id = "core-2".into();
+        h.observe(changed).await;
+        let committed = h.client.stored_closed().await.unwrap().connections.len();
+        assert!(committed > 0 && committed < 100);
+        assert_eq!(h.client.summary().await.unwrap().last_sample_at, Some(1000));
+        let remaining = h.client.active_connection_ids(vec![]).await.unwrap();
+        assert_eq!(remaining.len() + committed, 100);
+        // Reuse an id whose old record was still on disk when the backend failed.
+        let mut next = frame(
+            3000,
+            2000,
+            bytes(150, 0),
+            vec![sample(&remaining[0], "curl", 150, 0)],
+        );
+        next.instance_id = "core-2".into();
+        h.observe(next).await;
+        h.client.flush().await.unwrap();
+        assert_eq!(
+            h.client.stored_closed().await.unwrap().connections.len(),
+            100
+        );
+        assert_eq!(h.total(everything()).await, usage(10150, 0, 101));
+        h.restart().await;
+        assert_eq!(h.total(everything()).await, usage(10150, 0, 101));
+        assert_eq!(
+            h.client.stored_closed().await.unwrap().connections.len(),
+            100
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_backend_failure_anywhere_in_a_core_changing_split_flush_counts_once() {
+    // Every transaction of the split flush fails once in turn: close groups, the metadata
+    // with the first active records, and the active follow-ups.
+    for attempt in 1..=12 {
+        let mut h = Harness::with_limits(
+            "p1",
+            Profile {
+                batch_bytes: 4096,
+                ..Profile::desktop()
+            },
+        )
+        .await;
+        h.observe(frame(1000, 0, bytes(10000, 0), many_samples(100, 100)))
+            .await;
+        h.client.flush().await.unwrap();
+        h.store
+            .switches
+            .backend_failure_at
+            .store(h.store.flushes() + attempt, Ordering::SeqCst);
+        // The same ids under a new core: every old connection closes, new ones begin.
+        let mut changed = frame(2000, 1000, bytes(15000, 0), many_samples(100, 150));
+        changed.instance_id = "core-2".into();
+        h.observe(changed).await;
+        h.client.flush().await.unwrap();
+        let mut next = frame(3000, 2000, bytes(20000, 0), many_samples(100, 200));
+        next.instance_id = "core-2".into();
+        h.observe(next).await;
+        h.client.flush().await.unwrap();
+        let expected = usage(30000, 0, 200);
+        assert_eq!(h.total(everything()).await, expected, "attempt {attempt}");
+        h.restart().await;
+        assert_eq!(h.total(everything()).await, expected, "attempt {attempt}");
+    }
+}
+
+#[tokio::test]
+async fn restart_after_an_active_followup_refusal_recovers_deltas_from_older_counters() {
+    let mut h = Harness::with_limits(
+        "p1",
+        Profile {
+            batch_bytes: 4096,
+            ..Profile::desktop()
+        },
+    )
+    .await;
+    h.observe(frame(1000, 0, bytes(10000, 0), many_samples(100, 100)))
+        .await;
+    h.client.flush().await.unwrap();
+    h.observe(frame(2000, 1000, bytes(15000, 0), many_samples(100, 150)))
+        .await;
+    h.store
+        .switches
+        .refuse_at
+        .store(h.store.flushes() + 2, Ordering::SeqCst);
+    h.client.flush().await.unwrap();
+
+    // Leave the remaining aux records one flush older, including at post_stop.
+    h.store.fail_flush(true);
+    h.shutdown.cancel();
+    h.tasks.close();
+    h.tasks.wait().await;
+    h.store.fail_flush(false);
+    h.shutdown = CancellationToken::new();
+    h.tasks = TaskTracker::new();
+    h.client = h.env.spawn(&h.shutdown, &h.tasks).await;
+    let older = h.total(everything()).await.bytes.upload;
+    assert!(older > 10000 && older < 15000);
+    h.observe(frame(3000, 2000, bytes(20000, 0), many_samples(100, 200)))
+        .await;
+    assert_eq!(h.total(everything()).await, usage(20000, 0, 100));
+    h.restart().await;
+    assert_eq!(h.total(everything()).await, usage(20000, 0, 100));
 }
 
 /// The first frame of connection `a` and the follow-up 1s later that adds
@@ -450,9 +757,9 @@ fn keys(groups: &[UsageGroup]) -> Vec<&str> {
 }
 
 /// The one dimension combination a usage listing holds.
-fn only(rows: Vec<(Arc<Dimensions>, Usage)>) -> Usage {
+fn only(rows: Vec<UsageGroup>) -> Usage {
     assert_eq!(rows.len(), 1, "{rows:?}");
-    rows[0].1
+    rows[0].usage
 }
 
 #[tokio::test]
@@ -474,7 +781,7 @@ async fn summary_and_report_include_unflushed_deltas() {
     // A live connection reaches the usage tables only when it closes, so the answer comes from
     // memory both before and after a flush.
     let report = h.report(request(everything(), &[Dimension::Process])).await;
-    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
+    assert!(h.stored_usage(Tier::Hour, None).await.is_empty());
     assert_eq!(report.total, usage(150, 260, 1));
     assert_eq!(report.current_rate, Some(rate));
     assert_eq!(report.rankings[0].groups.len(), 1);
@@ -483,9 +790,7 @@ async fn summary_and_report_include_unflushed_deltas() {
     assert_eq!(report.rankings[0].groups[0].current_rate, Some(rate));
 
     h.client.flush().await.unwrap();
-    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
-    let (_, active) = h.store.load().unwrap().unwrap();
-    assert_eq!(active[0].bytes(), bytes(150, 260));
+    assert!(h.stored_usage(Tier::Hour, None).await.is_empty());
     assert_eq!(
         h.report(request(everything(), &[Dimension::Process])).await,
         report
@@ -645,7 +950,7 @@ async fn usage_by_keys_merges_stored_pending_and_live_traffic() {
         vec![sample("c", "curl", 1, 1)],
     ))
     .await;
-    assert_eq!(h.store.usage(Tier::Hour, None).unwrap().len(), 1);
+    assert_eq!(h.stored_usage(Tier::Hour, None).await.len(), 1);
 
     let h = &h;
     let by_keys = |scope| async move {
@@ -740,11 +1045,11 @@ async fn a_failed_flush_is_retried_and_written_exactly_once() {
 
     h.store.fail_flush(true);
     h.client.flush().await.unwrap();
-    assert!(h.store.load().unwrap().is_none());
-    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
+    assert!(h.stored_usage(Tier::Hour, None).await.is_empty());
     assert!(
-        h.store
-            .closed_connections(None, 10, &ClosedSelection::default())
+        h.client
+            .stored_closed()
+            .await
             .unwrap()
             .connections
             .is_empty()
@@ -756,25 +1061,15 @@ async fn a_failed_flush_is_retried_and_written_exactly_once() {
     h.store.fail_flush(false);
     h.client.flush().await.unwrap();
     assert_eq!(
-        only(h.store.usage(Tier::Hour, None).unwrap()),
+        only(h.stored_usage(Tier::Hour, None).await),
         usage(10, 20, 1)
     );
-    assert_eq!(
-        h.store
-            .closed_connections(None, 10, &ClosedSelection::default())
-            .unwrap()
-            .connections
-            .len(),
-        1
-    );
-    let (_, active) = h.store.load().unwrap().unwrap();
-    assert_eq!(active.len(), 1);
-    assert_eq!(active[0].id, "b");
+    assert_eq!(h.client.stored_closed().await.unwrap().connections.len(), 1);
 
     // Another flush has nothing left to write again.
     h.client.flush().await.unwrap();
     assert_eq!(
-        only(h.store.usage(Tier::Hour, None).unwrap()),
+        only(h.stored_usage(Tier::Hour, None).await),
         usage(10, 20, 1)
     );
     assert_eq!(h.total(everything()).await, usage(11, 22, 2));
@@ -809,15 +1104,15 @@ async fn traffic_is_split_over_the_minute_and_hour_buckets_it_happened_in() {
     h.clock.set(62 * MINUTE);
     h.client.flush().await.unwrap();
 
-    let stored = |tier, from| only(h.store.usage(tier, Some(from)).unwrap());
-    assert_eq!(stored(Tier::Hour, 0), usage(160, 0, 1));
+    let stored = async |tier, from| only(h.stored_usage(tier, Some(from)).await);
+    assert_eq!(stored(Tier::Hour, 0).await, usage(160, 0, 1));
     // The close is counted in the hour it happened in, with the traffic of that hour.
-    assert_eq!(stored(Tier::Hour, 1), usage(60, 0, 1));
-    assert!(h.store.usage(Tier::Hour, Some(2)).unwrap().is_empty());
-    assert_eq!(stored(Tier::Minute, 59), usage(160, 0, 1));
-    assert_eq!(stored(Tier::Minute, 60), usage(60, 0, 1));
-    assert_eq!(stored(Tier::Minute, 62), usage(0, 0, 1));
-    assert!(h.store.usage(Tier::Minute, Some(63)).unwrap().is_empty());
+    assert_eq!(stored(Tier::Hour, 1).await, usage(60, 0, 1));
+    assert!(h.stored_usage(Tier::Hour, Some(2)).await.is_empty());
+    assert_eq!(stored(Tier::Minute, 59).await, usage(160, 0, 1));
+    assert_eq!(stored(Tier::Minute, 60).await, usage(60, 0, 1));
+    assert_eq!(stored(Tier::Minute, 62).await, usage(0, 0, 1));
+    assert!(h.stored_usage(Tier::Minute, Some(63)).await.is_empty());
 
     // Two hours later the last hour no longer reaches it, the last six do.
     h.clock.set(62 * MINUTE + 2 * HOUR);
@@ -856,7 +1151,7 @@ async fn shortening_the_retention_deletes_what_it_no_longer_covers() {
     .await;
     h.client.flush().await.unwrap();
     assert_eq!(
-        only(h.store.usage(Tier::Hour, None).unwrap()),
+        only(h.stored_usage(Tier::Hour, None).await),
         usage(10, 10, 1)
     );
 
@@ -864,7 +1159,7 @@ async fn shortening_the_retention_deletes_what_it_no_longer_covers() {
     h.clock.set(3 * DAY);
     h.client.flush().await.unwrap();
     assert_eq!(
-        only(h.store.usage(Tier::Hour, None).unwrap()),
+        only(h.stored_usage(Tier::Hour, None).await),
         usage(10, 10, 1)
     );
     assert_eq!(h.client.summary().await.unwrap().closed_connections, 1);
@@ -872,10 +1167,11 @@ async fn shortening_the_retention_deletes_what_it_no_longer_covers() {
     // ... one day does not, and the next flush notices.
     h.retention.keep_days(1);
     h.client.flush().await.unwrap();
-    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
+    assert!(h.stored_usage(Tier::Hour, None).await.is_empty());
     assert!(
-        h.store
-            .closed_connections(None, 10, &ClosedSelection::default())
+        h.client
+            .stored_closed()
+            .await
             .unwrap()
             .connections
             .is_empty()
@@ -907,153 +1203,11 @@ async fn keeping_everything_deletes_nothing() {
     h.clock.set(400 * DAY);
     h.client.flush().await.unwrap();
     assert_eq!(
-        only(h.store.usage(Tier::Hour, None).unwrap()),
+        only(h.stored_usage(Tier::Hour, None).await),
         usage(10, 10, 1)
     );
-    assert_eq!(
-        h.store
-            .closed_connections(None, 10, &ClosedSelection::default())
-            .unwrap()
-            .connections
-            .len(),
-        1
-    );
+    assert_eq!(h.client.stored_closed().await.unwrap().connections.len(), 1);
     assert_eq!(h.total(everything()).await, usage(10, 10, 1));
-}
-
-#[tokio::test]
-async fn unreferenced_dimensions_are_collected_after_hour_rows_expire_at_most_hourly() {
-    let h = Harness::new("p1").await;
-    // One closed connection each in hours 1, 24 and 25; a connection's hour rows reach the hour
-    // tier when it closes. All are stored while the seven days still cover them.
-    for hour in [1, 24, 25] {
-        h.close_in_hour(hour).await;
-    }
-    // The first flush after a start reconciles once, whatever the previous run left behind.
-    h.clock.set(2 * HOUR);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 1);
-
-    // Hour 1 expires.
-    h.clock.set(8 * DAY + 30 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 2);
-
-    // Hour 24 expires, but the last collection is less than an hour old.
-    h.clock.set(8 * DAY + 61 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 2);
-
-    // Nothing expires.
-    h.clock.set(8 * DAY + 62 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 2);
-
-    // Hour 25 expires, and the last collection is old enough.
-    h.clock.set(8 * DAY + 2 * HOUR);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 3);
-
-    // Keeping everything expires nothing.
-    h.retention.keep(None);
-    h.clock.set(40 * DAY);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 3);
-}
-
-#[tokio::test]
-async fn a_collection_still_due_runs_once_the_cooldown_passes() {
-    let h = Harness::new("p1").await;
-    for hour in [1, 24] {
-        h.close_in_hour(hour).await;
-    }
-    h.clock.set(2 * HOUR);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 1);
-
-    // Hour 1 expires.
-    h.clock.set(8 * DAY + 30 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 2);
-
-    // Hour 24 expires within the cooldown: its collection waits.
-    h.clock.set(8 * DAY + 61 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 2);
-
-    // Nothing expires any more, but the cooldown is over.
-    h.clock.set(8 * DAY + 90 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 3);
-
-    // And once it ran, nothing is due.
-    h.clock.set(8 * DAY + 3 * HOUR);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 3);
-}
-
-#[tokio::test]
-async fn a_failed_collection_is_retried_by_a_later_flush() {
-    let h = Harness::new("p1").await;
-    h.close_in_hour(1).await;
-    h.clock.set(2 * HOUR);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 1);
-
-    h.store.fail_collect(true);
-    h.clock.set(8 * DAY + 30 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 2);
-
-    // No hour row expires now, and the failure started no cooldown.
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 3);
-
-    h.store.fail_collect(false);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 4);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 4);
-}
-
-#[tokio::test]
-async fn a_restart_collects_what_expired_while_the_cooldown_still_ran() {
-    let mut h = Harness::new("p1").await;
-    // Distinct processes: each expired hour orphans a dimension combination of its own.
-    h.close_in_hour_by(1, "curl").await;
-    h.close_in_hour_by(24, "wget").await;
-    h.clock.set(2 * HOUR);
-    h.client.flush().await.unwrap();
-
-    // Hour 1 expires and its combination is collected.
-    h.clock.set(8 * DAY + 30 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collected(), 1);
-
-    // Hour 24 expires within the cooldown: the app ends before its collection may run.
-    h.clock.set(8 * DAY + 61 * MINUTE);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collected(), 1);
-
-    // No hour row expires after the restart, yet the orphan is collected.
-    h.restart().await;
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collected(), 2);
-}
-
-#[tokio::test]
-async fn a_restart_while_writes_fail_reconciles_once_they_succeed() {
-    let mut h = Harness::new("p1").await;
-    h.store.fail_flush(true);
-    h.restart().await;
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 0);
-
-    h.store.fail_flush(false);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 1);
-    h.client.flush().await.unwrap();
-    assert_eq!(h.store.collections(), 1);
 }
 
 #[tokio::test]
@@ -1109,21 +1263,18 @@ async fn a_store_that_keeps_refusing_neither_grows_the_session_nor_loses_what_it
         assert_eq!(held(h.client.summary().await.unwrap()), before);
         assert_eq!(h.total(everything()).await, usage(11, 22, 2));
     }
-    assert!(h.store.usage(Tier::Hour, None).unwrap().is_empty());
+    assert!(h.stored_usage(Tier::Hour, None).await.is_empty());
 
     // The store accepts again: what was held is written, once.
     h.store.fail_flush(false);
     h.client.flush().await.unwrap();
     assert_eq!(
-        only(h.store.usage(Tier::Hour, None).unwrap()),
+        only(h.stored_usage(Tier::Hour, None).await),
         usage(10, 20, 1)
     );
-    let (_, active) = h.store.load().unwrap().unwrap();
-    assert_eq!(active.len(), 1);
-    assert_eq!(active[0].bytes(), bytes(1, 2));
     h.client.flush().await.unwrap();
     assert_eq!(
-        only(h.store.usage(Tier::Hour, None).unwrap()),
+        only(h.stored_usage(Tier::Hour, None).await),
         usage(10, 20, 1)
     );
 
@@ -1176,8 +1327,6 @@ async fn an_unreadable_store_disables_recording_and_is_never_written() {
 
     // What the store holds is untouched, for the next start to read.
     h.store.fail_load(false);
-    let (_, active) = h.store.load().unwrap().unwrap();
-    assert_eq!(active.len(), 1);
 }
 
 #[tokio::test]
@@ -1259,6 +1408,42 @@ async fn restart_with_the_same_instance_does_not_recount() {
 }
 
 #[tokio::test]
+async fn backend_failure_recovers_the_session_from_auxiliary_state() {
+    let mut h = Harness::new("p1").await;
+    h.observe(a_first()).await;
+    h.client.flush().await.unwrap();
+    h.observe(a_second()).await;
+    h.store
+        .switches
+        .backend_failure
+        .store(true, Ordering::SeqCst);
+    // Keep recovery pending after the backend failure, to verify query admission as well.
+    h.store.fail_load(true);
+    h.client.flush().await.unwrap();
+    assert!(
+        h.client
+            .summary()
+            .await
+            .unwrap_err()
+            .to_string()
+            .starts_with("traffic storage:")
+    );
+    assert!(h.client.report(request(everything(), &[])).await.is_err());
+    assert!(h.client.active_connection_ids(vec![]).await.is_err());
+    h.store.fail_load(false);
+    h.client.flush().await.unwrap();
+    assert_eq!(h.total(everything()).await, usage(100, 200, 1));
+    assert_eq!(
+        h.client.summary().await.unwrap().last_sample_at,
+        Some(1_000)
+    );
+    h.observe(a_second()).await;
+    assert_eq!(h.total(everything()).await, usage(150, 260, 1));
+    h.restart().await;
+    assert_eq!(h.total(everything()).await, usage(150, 260, 1));
+}
+
+#[tokio::test]
 async fn closed_connections_appear_before_and_after_flush() {
     let h = Harness::new("p1").await;
     h.observe(frame(
@@ -1284,8 +1469,9 @@ async fn closed_connections_appear_before_and_after_flush() {
         .await
         .unwrap();
     assert!(
-        h.store
-            .closed_connections(None, 10, &ClosedSelection::default())
+        h.client
+            .stored_closed()
+            .await
             .unwrap()
             .connections
             .is_empty()

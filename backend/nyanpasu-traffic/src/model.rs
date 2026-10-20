@@ -1,4 +1,10 @@
-use std::collections::BTreeMap;
+use nyanpasu_tsdb::{EventCursor, EventSeq};
+use std::{
+    borrow::Cow,
+    cmp::Reverse,
+    collections::{BTreeMap, BinaryHeap},
+    sync::Arc,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -182,21 +188,11 @@ impl Dimension {
     }
 }
 
-pub fn group_key(d: &Dimensions, g: Dimension) -> String {
-    match g {
-        Dimension::Origin => d.origin().to_owned(),
-        Dimension::Process => d.process.clone(),
-        Dimension::Source => d.source.clone(),
-        Dimension::Inbound => d.inbound.clone(),
-        Dimension::Target => d.target.clone(),
-        Dimension::Protocol => d.protocol.clone(),
-        Dimension::Rule => d.rule.label(),
-        Dimension::Chain => d.groups().collect::<Vec<_>>().join(" → "),
-        Dimension::Exit => d.exit().to_owned(),
-        Dimension::Profile => d.profile.clone().unwrap_or_default(),
-        Dimension::SourceRegion => d.source_region.clone(),
-        Dimension::DestinationRegion => d.destination_region.clone(),
-        Dimension::DestinationBasis => d.destination_basis.map_or("", GeoBasis::as_str).to_owned(),
+pub fn group_key(d: &Dimensions, g: Dimension) -> Cow<'_, str> {
+    match crate::key::Key::of(d, g) {
+        crate::key::Key::Text(text) => Cow::Borrowed(text),
+        crate::key::Key::Chain([]) => Cow::Borrowed(""),
+        key => Cow::Owned(key.owned()),
     }
 }
 
@@ -328,11 +324,12 @@ pub struct ClosedConnection {
 }
 
 /// Exclusive position for newest-first paging.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct ClosedCursor {
     pub closed_at: i64,
-    pub id: String,
+    pub incarnation: u64,
+    pub seq: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -343,10 +340,6 @@ pub struct ClosedPage {
 }
 
 pub(crate) const MAX_CLOSED_PAGE: usize = 500;
-/// How many stored closed connections one page reads at most; a selection that matches few of
-/// them ends a page early with a cursor to continue from.
-pub(crate) const MAX_CLOSED_SCAN: usize = 20_000;
-
 /// Which closed connections a listing selects: closed at or after `since_ms`, satisfying every
 /// filter the way a report does.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -358,10 +351,7 @@ pub struct ClosedSelection {
 impl ClosedSelection {
     pub fn matches(&self, conn: &ClosedConnection) -> bool {
         self.since_ms.is_none_or(|since| conn.closed_at >= since)
-            && self
-                .filters
-                .iter()
-                .all(|f| group_key(&conn.dimensions, f.dimension) == f.value)
+            && crate::key::matches(&conn.dimensions, &self.filters)
     }
 
     /// Whether no connection closed before `closed_at` can match any more.
@@ -370,67 +360,131 @@ impl ClosedSelection {
     }
 }
 
-/// The store's key order for closed connections; connections closed before the epoch sort
-/// first.
-pub(crate) fn closed_key(closed_at: i64) -> u64 {
-    u64::try_from(closed_at).unwrap_or(0)
+/// A closed event awaiting a flush, sharing its dimensions with pending usage.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PendingClosed {
+    pub id: String,
+    pub started_at: i64,
+    pub first_seen_at: i64,
+    pub closed_at: i64,
+    pub seq: EventSeq,
+    pub bytes: Bytes,
+    pub dimensions: Arc<Dimensions>,
 }
 
-impl ClosedConnection {
-    pub(crate) fn cursor(&self) -> ClosedCursor {
+impl PendingClosed {
+    pub fn cursor(&self) -> ClosedCursor {
         ClosedCursor {
             closed_at: self.closed_at,
-            id: self.id.clone(),
+            incarnation: self.seq.incarnation,
+            seq: self.seq.seq,
         }
     }
-
-    fn key(&self) -> (u64, &str) {
-        (closed_key(self.closed_at), &self.id)
+    fn into_connection(self) -> ClosedConnection {
+        ClosedConnection {
+            id: self.id,
+            started_at: self.started_at,
+            first_seen_at: self.first_seen_at,
+            closed_at: self.closed_at,
+            bytes: self.bytes,
+            dimensions: Arc::unwrap_or_clone(self.dimensions),
+        }
+    }
+    fn connection(&self) -> ClosedConnection {
+        ClosedConnection {
+            id: self.id.clone(),
+            started_at: self.started_at,
+            first_seen_at: self.first_seen_at,
+            closed_at: self.closed_at,
+            bytes: self.bytes,
+            dimensions: (*self.dimensions).clone(),
+        }
     }
 }
 
-impl ClosedCursor {
-    fn key(&self) -> (u64, &str) {
-        (closed_key(self.closed_at), &self.id)
+impl From<ClosedCursor> for EventCursor {
+    fn from(cursor: ClosedCursor) -> Self {
+        // `closed` is a window stream: its epoch is always 0 (tsdb DESIGN.md, stream epochs).
+        Self {
+            epoch: 0,
+            key: cursor.closed_at,
+            incarnation: cursor.incarnation,
+            seq: cursor.seq,
+        }
     }
 }
+impl From<EventCursor> for ClosedCursor {
+    fn from(cursor: EventCursor) -> Self {
+        Self {
+            closed_at: cursor.key,
+            incarnation: cursor.incarnation,
+            seq: cursor.seq,
+        }
+    }
+}
+#[derive(Default)]
+pub(crate) struct ClosedRecords {
+    pub connections: Vec<PendingClosed>,
+    pub next: Option<ClosedCursor>,
+}
 
-/// Adds the closed connections that are not stored yet and that `selection` picks to a stored
-/// page of the same selection, keeping its newest-first order and its cursor, so paging never
-/// skips or repeats a connection when a flush moves them into the store between pages.
-pub fn merge_closed_page(
-    stored: ClosedPage,
-    pending: &[ClosedConnection],
+/// Merges one stored page with pending events in descending (closed_at, incarnation, seq)
+/// order. Tsdb has no scan budget: a short stored page reached the end of its selection.
+/// Only the returned page materializes RPC connections; selection holds at most limit + 1 refs.
+pub(crate) fn merge_closed_page(
+    stored: ClosedRecords,
+    pending: &[PendingClosed],
     before: Option<&ClosedCursor>,
     limit: usize,
     selection: &ClosedSelection,
+    cutoff: Option<i64>,
 ) -> ClosedPage {
     let limit = limit.clamp(1, MAX_CLOSED_PAGE);
-    let before = before.map(ClosedCursor::key);
-    // The store's remaining entries sort below its page, so pending ones there belong to a
-    // later page, which starts from this page's last entry.
-    let floor = stored.next.as_ref().map(ClosedCursor::key);
-    let mut connections = stored.connections;
-    connections.extend(
-        pending
-            .iter()
-            .filter(|c| {
-                before.is_none_or(|b| c.key() < b)
-                    && floor.is_none_or(|f| c.key() > f)
-                    && selection.matches(c)
-            })
-            .cloned(),
-    );
-    connections.sort_unstable_by(|a, b| b.key().cmp(&a.key()));
-    // A stored page that hit the scan budget can be empty yet continue, so its own cursor carries
-    // on unless pending connections push its entries off this page.
-    let next = if connections.len() > limit {
-        connections.truncate(limit);
-        connections.last().map(ClosedConnection::cursor)
+    let mut selected = BinaryHeap::with_capacity(limit + 2);
+    for (i, conn) in stored.connections.iter().chain(pending).enumerate() {
+        let cursor = conn.cursor();
+        if before.is_some_and(|b| cursor >= *b)
+            || (i >= stored.connections.len() && stored.next.is_some_and(|floor| cursor <= floor))
+            || selection
+                .since_ms
+                .into_iter()
+                .chain(cutoff)
+                .max()
+                .is_some_and(|since| conn.closed_at < since)
+            || !crate::key::matches(&conn.dimensions, &selection.filters)
+        {
+            continue;
+        }
+        selected.push(Reverse((cursor, i)));
+        if selected.len() > limit + 1 {
+            selected.pop();
+        }
+    }
+    let mut selected = selected.into_vec();
+    selected.sort_unstable_by_key(|a| Reverse(a.0.0));
+    let more = selected.len() > limit;
+    selected.truncate(limit);
+    let next = if more {
+        selected.last().map(|c| c.0.0)
     } else {
         stored.next
     };
-    ClosedPage { connections, next }
+    let stored_len = stored.connections.len();
+    let mut stored: Vec<_> = stored.connections.into_iter().map(Some).collect();
+    ClosedPage {
+        connections: selected
+            .into_iter()
+            .map(|c| {
+                let i = c.0.1;
+                if i < stored_len {
+                    stored[i].take().expect("selected once").into_connection()
+                } else {
+                    pending[i - stored_len].connection()
+                }
+            })
+            .collect(),
+        next,
+    }
 }
 
 /// Exclusive position for heaviest-first paging of grouped usage: the last group of a page, with
@@ -531,6 +585,9 @@ mod tests {
     fn every_dimension_has_a_distinct_name() {
         let names: std::collections::HashSet<_> = Dimension::ALL.iter().map(|d| d.name()).collect();
         assert_eq!(names.len(), Dimension::ALL.len());
+        for (i, dimension) in Dimension::ALL.into_iter().enumerate() {
+            assert_eq!(dimension as usize, i);
+        }
     }
 
     #[test]
@@ -546,21 +603,25 @@ mod tests {
         assert_eq!(d.destination_region, "unknown");
     }
 
-    fn closed(id: &str, closed_at: i64) -> ClosedConnection {
-        ClosedConnection {
+    fn closed(id: &str, closed_at: i64) -> PendingClosed {
+        PendingClosed {
             id: id.into(),
             started_at: 0,
             first_seen_at: 0,
             closed_at,
             bytes: Bytes::default(),
-            dimensions: dims(&["DIRECT"]),
+            dimensions: Arc::new(dims(&["DIRECT"])),
+            seq: EventSeq {
+                incarnation: 1,
+                seq: id.parse().unwrap_or_else(|_| u64::from(id.as_bytes()[0])),
+            },
         }
     }
 
-    fn page(connections: Vec<ClosedConnection>, next: Option<&ClosedConnection>) -> ClosedPage {
-        ClosedPage {
+    fn page(connections: Vec<PendingClosed>, next: Option<&PendingClosed>) -> ClosedRecords {
+        ClosedRecords {
             connections,
-            next: next.map(ClosedConnection::cursor),
+            next: next.map(PendingClosed::cursor),
         }
     }
 
@@ -575,7 +636,7 @@ mod tests {
     #[test]
     fn pending_closed_connections_lead_a_complete_stored_page() {
         let stored = page(vec![closed("b", 20), closed("a", 10)], None);
-        let merged = merge_closed_page(stored, &[closed("c", 30)], None, 10, &everything());
+        let merged = merge_closed_page(stored, &[closed("c", 30)], None, 10, &everything(), None);
         assert_eq!(ids(&merged), ["c", "b", "a"]);
         assert_eq!(merged.next, None);
     }
@@ -583,7 +644,7 @@ mod tests {
     #[test]
     fn a_truncated_merge_continues_after_its_last_entry() {
         let stored = page(vec![closed("b", 20), closed("a", 10)], None);
-        let merged = merge_closed_page(stored, &[closed("c", 30)], None, 2, &everything());
+        let merged = merge_closed_page(stored, &[closed("c", 30)], None, 2, &everything(), None);
         assert_eq!(ids(&merged), ["c", "b"]);
         assert_eq!(merged.next, Some(closed("b", 20).cursor()));
     }
@@ -598,6 +659,7 @@ mod tests {
             None,
             10,
             &everything(),
+            None,
         );
         assert_eq!(ids(&merged), ["e", "d", "c"]);
         assert_eq!(merged.next, Some(c.cursor()));
@@ -612,13 +674,14 @@ mod tests {
             Some(&closed("b", 20).cursor()),
             10,
             &everything(),
+            None,
         );
         assert_eq!(ids(&merged), ["a"]);
         assert_eq!(merged.next, None);
     }
 
     #[test]
-    fn merged_ties_on_closed_at_fall_back_to_the_id() {
+    fn merged_ties_on_closed_at_fall_back_to_the_sequence() {
         let stored = page(vec![closed("b", 20)], None);
         let merged = merge_closed_page(
             stored,
@@ -626,6 +689,7 @@ mod tests {
             None,
             10,
             &everything(),
+            None,
         );
         assert_eq!(ids(&merged), ["c", "b", "a"]);
     }
@@ -641,16 +705,24 @@ mod tests {
             None,
             usize::MAX,
             &everything(),
+            None,
         );
         assert_eq!(merged.connections.len(), MAX_CLOSED_PAGE);
         assert!(merged.next.is_some());
 
-        let merged = merge_closed_page(page(Vec::new(), None), &pending, None, 0, &everything());
+        let merged = merge_closed_page(
+            page(Vec::new(), None),
+            &pending,
+            None,
+            0,
+            &everything(),
+            None,
+        );
         assert_eq!(merged.connections.len(), 1);
     }
 
     #[test]
-    fn merge_keeps_paging_after_an_empty_budget_page() {
+    fn merge_preserves_a_stored_continuation_without_pending_events() {
         let k = closed("k", 10);
         let merged = merge_closed_page(
             page(Vec::new(), Some(&k)),
@@ -658,6 +730,7 @@ mod tests {
             None,
             10,
             &ClosedSelection::default(),
+            None,
         );
         assert!(merged.connections.is_empty());
         assert_eq!(merged.next, Some(k.cursor()));
@@ -666,7 +739,7 @@ mod tests {
     #[test]
     fn merge_filters_pending_connections() {
         let mut wget = closed("b", 20);
-        wget.dimensions.process = "wget".into();
+        Arc::make_mut(&mut wget.dimensions).process = "wget".into();
         let selection = ClosedSelection {
             since_ms: None,
             filters: vec![TrafficFilter {
@@ -680,6 +753,7 @@ mod tests {
             None,
             10,
             &selection,
+            None,
         );
         assert_eq!(ids(&merged), ["c", "a"]);
         assert_eq!(merged.next, None);
@@ -694,6 +768,7 @@ mod tests {
             None,
             10,
             &since,
+            None,
         );
         assert_eq!(ids(&merged), ["c", "b"]);
     }

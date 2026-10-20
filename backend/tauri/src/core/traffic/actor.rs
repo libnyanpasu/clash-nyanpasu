@@ -5,26 +5,29 @@ use std::{sync::Arc, time::Duration};
 
 use nyanpasu_geodata::IpIndex;
 use nyanpasu_traffic::{
-    ClosedCursor, ClosedPage, ClosedSelection, Dimension, Frame, Metric, Prune, ReportRequest, Row,
-    Session, Tier, TrafficError, TrafficFilter, TrafficQuery, TrafficRange, TrafficReport,
-    TrafficResult, TrafficScope, TrafficStore, TrafficSummary, UsageCursor, UsageGroup, UsagePage,
-    check_filters, filter_rows, merge_closed_page, report, usage_by_keys, usage_page,
+    ClosedCursor, ClosedPage, ClosedSelection, Dimension, Frame, Metric, ReportRequest, Session,
+    TrafficDb, TrafficError, TrafficFilter, TrafficQuery, TrafficRange, TrafficReport,
+    TrafficResult, TrafficSummary, UsageCursor, UsageGroup, UsagePage, check_filters,
+    store::{FlushError, Recovery},
 };
+use nyanpasu_tsdb::{Profile, storage::Storage};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
+use std::marker::PhantomData;
 use tokio::{sync::watch, task::JoinHandle, time::MissedTickBehavior};
 
 use super::{
     geo::CountryLookup,
-    ports::{Clock, LocalSourceLocation, ProfileSelection, RetentionPolicy},
+    ports::{Clock, LocalSourceLocation, ProfileSelection, RetentionPolicy, TrafficStorage},
     source::frame_from_snapshot,
 };
 use crate::core::clash::ws::ClashConnectionsFrame;
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(30);
-/// Dimension combinations that no usage row refers to are collected at most this often.
-const COLLECT_INTERVAL_MS: i64 = 60 * 60 * 1000;
-
 pub(super) enum Message {
+    #[cfg(test)]
+    StoredReport(ReportRequest, RpcReplyPort<TrafficResult<TrafficReport>>),
+    #[cfg(test)]
+    StoredClosed(RpcReplyPort<TrafficResult<ClosedPage>>),
     Observe(Frame, RpcReplyPort<()>),
     Disconnected(RpcReplyPort<()>),
     Flush(RpcReplyPort<()>),
@@ -54,8 +57,9 @@ pub(super) enum Message {
     ActiveIds(Vec<TrafficFilter>, RpcReplyPort<TrafficResult<Vec<String>>>),
 }
 
-pub struct TrafficArgs {
-    pub store: Arc<dyn TrafficStore>,
+pub struct TrafficArgs<S: Storage> {
+    pub storage: Arc<dyn TrafficStorage<S>>,
+    pub profile: Profile,
     pub profiles: Arc<dyn ProfileSelection>,
     pub retention: Arc<dyn RetentionPolicy>,
     pub clock: Arc<dyn Clock>,
@@ -65,34 +69,31 @@ pub struct TrafficArgs {
     pub local_source: Arc<dyn LocalSourceLocation>,
 }
 
-pub(super) struct TrafficActor;
+pub(super) struct TrafficActor<S: Storage>(pub PhantomData<fn() -> S>);
 
-pub(super) struct State {
-    store: Arc<dyn TrafficStore>,
+pub(super) struct State<S: Storage> {
+    storage: Arc<dyn TrafficStorage<S>>,
+    db: TrafficDb<S>,
     profiles: Arc<dyn ProfileSelection>,
     retention: Arc<dyn RetentionPolicy>,
     clock: Arc<dyn Clock>,
     session: Session,
-    /// When the unreferenced dimension combinations were last collected.
-    collected_at: Option<i64>,
-    /// Hour rows expired since the last successful collection. Starts due: the previous run may
-    /// have ended before a collection that was still waiting out its cooldown.
-    collection_due: bool,
     pump: JoinHandle<()>,
 }
 
-impl Actor for TrafficActor {
+impl<S: Storage> Actor for TrafficActor<S> {
     type Msg = Message;
-    type State = State;
-    type Arguments = TrafficArgs;
+    type State = State<S>;
+    type Arguments = TrafficArgs<S>;
 
     async fn pre_start(
         &self,
         myself: ActorRef<Message>,
-        args: TrafficArgs,
-    ) -> Result<State, ActorProcessingErr> {
+        args: TrafficArgs<S>,
+    ) -> Result<State<S>, ActorProcessingErr> {
         let TrafficArgs {
-            store,
+            storage,
+            profile,
             profiles,
             retention,
             clock,
@@ -102,17 +103,20 @@ impl Actor for TrafficActor {
         } = args;
         // An unreadable store must not start an empty session: the stored live connections would
         // be recorded again and the store diverge from what the session knows.
-        let session = match blocking(&store, |store| store.load()).await? {
-            Some((meta, active)) => Session::restore(meta, active),
-            None => Session::new(),
-        };
+        let opener = storage.clone();
+        let (mut db, restored) = crate::utils::blocking::join(
+            tokio::task::spawn_blocking(move || opener.initialize(profile)).await,
+        )?;
+        db.set_retention(retention.retention());
+        let session = restored.map_or_else(Session::new, |(meta, active)| {
+            Session::restore(meta, active)
+        });
         Ok(State {
-            store,
+            storage,
+            db,
             profiles,
             retention,
             session,
-            collected_at: None,
-            collection_due: true,
             pump: tokio::spawn(pump(myself, frames, geo, local_source, clock.clone())),
             clock,
         })
@@ -122,13 +126,38 @@ impl Actor for TrafficActor {
         &self,
         _: ActorRef<Message>,
         message: Message,
-        state: &mut State,
+        state: &mut State<S>,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            #[cfg(test)]
+            Message::StoredReport(request, reply) => {
+                let _ = reply.send(state.db.report(
+                    &Session::new(),
+                    &request,
+                    state.clock.now_ms(),
+                ));
+            }
+            #[cfg(test)]
+            Message::StoredClosed(reply) => {
+                let _ = reply.send(state.db.closed_connections(
+                    &Session::new(),
+                    &ClosedSelection::default(),
+                    None,
+                    500,
+                    state.clock.now_ms(),
+                ));
+            }
             Message::Observe(frame, reply) => {
-                state
-                    .session
-                    .observe(&frame, state.profiles.current().as_deref());
+                if !state.db.needs_recovery() {
+                    state
+                        .session
+                        .observe(&frame, state.profiles.current().as_deref(), &mut || {
+                            state.db.next_event_seq()
+                        });
+                    if state.session.pending_bytes() >= state.db.batch_bytes() / 2 {
+                        state.flush();
+                    }
+                }
                 let _ = reply.send(());
             }
             Message::Disconnected(reply) => {
@@ -136,27 +165,50 @@ impl Actor for TrafficActor {
                 let _ = reply.send(());
             }
             Message::Flush(reply) => {
-                state.flush().await;
+                state.flush();
                 let _ = reply.send(());
             }
             Message::Summary(reply) => {
-                let _ = reply.send(state.summary().await);
+                let _ = reply.send(state.db.summary(&state.session));
             }
             Message::Report(request, reply) => {
-                let _ = reply.send(state.report(request).await);
+                let _ = reply.send(request.checked().and_then(|request| {
+                    state
+                        .db
+                        .report(&state.session, &request, state.clock.now_ms())
+                }));
             }
             Message::Usage(query, dimension, metric, after, limit, reply) => {
-                let _ = reply.send(state.usage(query, dimension, metric, after, limit).await);
+                let _ = reply.send(state.db.usage_page(
+                    &state.session,
+                    &query,
+                    dimension,
+                    metric,
+                    after.as_ref(),
+                    limit,
+                    state.clock.now_ms(),
+                ));
             }
             Message::UsageByKeys(query, dimension, keys, reply) => {
-                let _ = reply.send(state.usage_by_keys(query, dimension, keys).await);
+                let _ = reply.send(state.db.usage_by_keys(
+                    &state.session,
+                    &query,
+                    dimension,
+                    &keys,
+                    state.clock.now_ms(),
+                ));
             }
             Message::ClosedConnections(range, filters, cursor, limit, reply) => {
-                let _ = reply.send(
-                    state
-                        .closed_connections(range, filters, cursor, limit)
-                        .await,
-                );
+                let _ = reply.send(state.db.closed_connections(
+                    &state.session,
+                    &ClosedSelection {
+                        since_ms: range.start_ms(state.clock.now_ms()),
+                        filters,
+                    },
+                    cursor.as_ref(),
+                    limit,
+                    state.clock.now_ms(),
+                ));
             }
             Message::ActiveIds(filters, reply) => {
                 let _ = reply.send(state.active_ids(&filters));
@@ -168,7 +220,7 @@ impl Actor for TrafficActor {
     async fn post_stop(
         &self,
         _: ActorRef<Message>,
-        state: &mut State,
+        state: &mut State<S>,
     ) -> Result<(), ActorProcessingErr> {
         state.pump.abort();
         if let Err(error) = (&mut state.pump).await
@@ -176,174 +228,78 @@ impl Actor for TrafficActor {
         {
             std::panic::resume_unwind(panic);
         }
-        state.flush().await;
+        state.flush();
         Ok(())
     }
 }
 
-impl State {
-    /// Writes what is pending and deletes what the retention no longer covers. A batch the store
-    /// refuses goes back to the session, so the next flush carries it again.
-    async fn flush(&mut self) {
-        let now = self.clock.now_ms();
-        let batch = self
-            .session
-            .take_batch(now, Prune::new(now, self.retention.retention()));
-        let flushed = blocking(&self.store, move |store| Ok((store.flush(&batch), batch))).await;
-        let hours_pruned = match flushed {
-            Ok((Ok(flushed), _)) => flushed.hours_pruned,
-            Ok((Err(error), batch)) => {
-                tracing::warn!("failed to flush traffic statistics, retrying next time: {error}");
-                self.session.requeue(batch);
-                return;
+impl<S: Storage> State<S> {
+    fn recover(&mut self) -> bool {
+        match self.db.recover(|| self.storage.open()) {
+            Ok(Recovery::Restored(restored)) => {
+                self.session = restored.map_or_else(Session::new, |(meta, active)| {
+                    Session::restore(meta, active)
+                });
+                true
+            }
+            Ok(Recovery::WaitingForReaders) => {
+                tracing::warn!("traffic recovery is waiting for readers; retrying next flush");
+                false
             }
             Err(error) => {
-                tracing::warn!("failed to flush traffic statistics: {error}");
-                return;
-            }
-        };
-        // Only expired hour rows can leave dimension combinations unreferenced. The collection
-        // stays due until one succeeds, however long the cooldown or a failure delays it.
-        self.collection_due |= hours_pruned;
-        if self.collection_due
-            && self
-                .collected_at
-                .is_none_or(|at| now.saturating_sub(at) >= COLLECT_INTERVAL_MS)
-        {
-            let keep = self.session.referenced_dimensions();
-            match blocking(&self.store, move |store| store.collect_tuples(&keep)).await {
-                Ok(_) => {
-                    self.collected_at = Some(now);
-                    self.collection_due = false;
-                }
-                Err(error) => tracing::warn!("failed to collect traffic dimensions: {error}"),
+                tracing::warn!(
+                    "failed to recover traffic statistics; retrying next flush: {error}"
+                );
+                false
             }
         }
     }
 
-    async fn summary(&self) -> TrafficResult<TrafficSummary> {
-        let stored_closed = blocking(&self.store, |store| store.closed_count()).await?;
-        Ok(self.session.summary(stored_closed))
+    fn flush(&mut self) {
+        if self.db.needs_recovery() && !self.recover() {
+            return;
+        }
+        let now = self.clock.now_ms();
+        let batch = self.session.take_batch(now);
+        match self.db.flush(&batch, now, self.retention.retention()) {
+            Ok(()) => {}
+            Err(FlushError::NotApplied(error)) => {
+                tracing::warn!("traffic batch was refused; retrying next flush: {error}");
+                self.session.requeue(batch);
+            }
+            Err(FlushError::Partial {
+                error,
+                closed,
+                active,
+            }) => {
+                tracing::warn!(
+                    "traffic batch partially committed; retrying only unwritten data: {error}"
+                );
+                self.session.requeue(batch.uncommitted(closed, active));
+            }
+            Err(error @ FlushError::Oversized { .. }) => {
+                // Only a batch without per-close buckets cannot be divided safely. Drop its
+                // uncommitted input, with an error, rather than freeze all future recording.
+                // Already committed transactions are never replayed.
+                tracing::error!(%error, "discarding unrepresentable pending traffic input; recording continues");
+            }
+            Err(FlushError::Recovery(error)) => {
+                tracing::warn!("traffic storage failed; recovering: {error}");
+                // Recovery replaces the session that produced this input; never replay it.
+                drop(batch);
+                self.recover();
+            }
+            Err(FlushError::Applied(error)) => {
+                tracing::warn!("traffic maintenance failed: {error}")
+            }
+        }
     }
-
-    async fn report(&self, request: ReportRequest) -> TrafficResult<TrafficReport> {
-        let request = request.checked()?;
-        self.with_rows(&request.query, |rows| report(rows, &request))
-            .await
-    }
-
-    async fn usage(
-        &self,
-        query: TrafficQuery,
-        dimension: Dimension,
-        metric: Metric,
-        after: Option<UsageCursor>,
-        limit: usize,
-    ) -> TrafficResult<UsagePage> {
-        query.check()?;
-        self.with_rows(&query, |rows| {
-            usage_page(
-                filter_rows(rows, &query.filters),
-                dimension,
-                metric,
-                after.as_ref(),
-                limit,
-            )
-        })
-        .await
-    }
-
-    /// In request order; keys without traffic are left out.
-    async fn usage_by_keys(
-        &self,
-        query: TrafficQuery,
-        dimension: Dimension,
-        keys: Vec<String>,
-    ) -> TrafficResult<Vec<UsageGroup>> {
-        query.check()?;
-        self.with_rows(&query, |rows| {
-            usage_by_keys(filter_rows(rows, &query.filters), dimension, &keys)
-        })
-        .await
-    }
-
-    /// A closed connection counts in the bucket of its close time, so the ones closed since the
-    /// range's first bucket began are exactly those a report over the range counts.
-    async fn closed_connections(
-        &self,
-        range: TrafficRange,
-        filters: Vec<TrafficFilter>,
-        cursor: Option<ClosedCursor>,
-        limit: usize,
-    ) -> TrafficResult<ClosedPage> {
-        check_filters(&filters)?;
-        let selection = ClosedSelection {
-            since_ms: range.start_ms(self.clock.now_ms()),
-            filters,
-        };
-        let before = cursor.clone();
-        let scan = selection.clone();
-        let stored = blocking(&self.store, move |store| {
-            store.closed_connections(before.as_ref(), limit, &scan)
-        })
-        .await?;
-        Ok(merge_closed_page(
-            stored,
-            self.session.pending_closed(),
-            cursor.as_ref(),
-            limit,
-            &selection,
-        ))
-    }
-
     fn active_ids(&self, filters: &[TrafficFilter]) -> TrafficResult<Vec<String>> {
+        if self.db.needs_recovery() {
+            return Err(TrafficError::Storage("recovery is pending".into()));
+        }
         check_filters(filters)?;
         Ok(self.session.active_ids(filters))
-    }
-
-    /// Hands `f` the usage rows `query` selects by range and scope. Closed connections are what
-    /// the store and the pending buffer hold, live ones what the session holds; the two never
-    /// overlap, so `All` is their union.
-    async fn with_rows<T>(
-        &self,
-        query: &TrafficQuery,
-        f: impl FnOnce(Vec<Row<'_>>) -> T,
-    ) -> TrafficResult<T> {
-        let tier: Tier = query.range.tier();
-        let from = query.range.start(self.clock.now_ms());
-        let stored = match query.scope {
-            TrafficScope::Active => Vec::new(),
-            TrafficScope::All | TrafficScope::Closed => {
-                blocking(&self.store, move |store| store.usage(tier, from)).await?
-            }
-        };
-        let mut rows: Vec<Row<'_>> = Vec::new();
-        if query.scope != TrafficScope::Active {
-            rows.extend(stored.iter().map(|(d, usage)| (&**d, *usage, None)));
-            rows.extend(self.session.pending_rows(tier, from));
-        }
-        if query.scope != TrafficScope::Closed {
-            rows.extend(self.session.active_rows(tier, from));
-        }
-        Ok(f(rows))
-    }
-}
-
-/// Runs a synchronous store call off the runtime. A panic inside it is a bug
-/// and keeps unwinding; a cancelled task is reported as a storage error.
-async fn blocking<T: Send + 'static>(
-    store: &Arc<dyn TrafficStore>,
-    call: impl FnOnce(&dyn TrafficStore) -> TrafficResult<T> + Send + 'static,
-) -> TrafficResult<T> {
-    let store = store.clone();
-    match tokio::task::spawn_blocking(move || call(store.as_ref())).await {
-        Ok(result) => result,
-        Err(error) => match error.try_into_panic() {
-            Ok(panic) => std::panic::resume_unwind(panic),
-            Err(error) => Err(TrafficError::Storage(format!(
-                "storage task did not complete: {error}"
-            ))),
-        },
     }
 }
 

@@ -319,7 +319,7 @@ fn columns<'c>(context: &'c Context<'_>, stream: usize) -> &'c [ColumnLayout] {
 /// Whether the windows of a stream whose chunks have the columns `layout` consolidate and its
 /// runs merge: when the profile's staging holds its smallest round (see [the
 /// module](self#under-what-staging)). It allocates nothing, so planning can work it out.
-fn consolidates(layout: &[ColumnLayout], profile: &Profile) -> bool {
+pub(in crate::maintain) fn consolidates(layout: &[ColumnLayout], profile: &Profile) -> bool {
     profile.staging >= least_round(layout, false)
 }
 

@@ -20,8 +20,8 @@ use crate::Snapshot;
 
 pub use self::{
     events::{
-        Event, EventCondition, EventCursor, EventFilter, EventPage, EventPredicate, EventQuery,
-        EventScanError, EventValue,
+        Event, EventCondition, EventCursor, EventDegradation, EventFilter, EventPage,
+        EventPredicate, EventQuery, EventScanError, EventValue,
     },
     series::{
         FieldMask, Group, GroupKey, GroupList, GroupRequest, KeyPart, LabelMap, SeriesGroups,

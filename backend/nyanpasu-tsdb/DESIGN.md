@@ -300,6 +300,37 @@ The design says its code sketches show shape, not the final API. Where the code 
   `closed` that overlap at one key. Its L0 chunks also stay larger on disk: 63 bytes a row on
   redb, against 37 for consolidated compressed chunks.
 
+## Transactional diagnostics
+
+Store format 3 requires diagnostics in namespace 15: global sequence and recycling totals at
+`[0]`, cumulative counters for every tier and event stream at `[1,kind,id]`, and loss records
+at `[2,seq % 64]`. Records use the ordinary format-byte and postcard framing. Only a new
+dataset's durable open initializes them; reopen refuses older store formats, missing records,
+invalid schema fields and inconsistent ring history. There is no migration or missing-as-zero
+fallback.
+
+Late and folded counts use input points or events, as `Written` does, even when points share
+one stored aggregate. Folded field sums add accepted folded series points' field values;
+mirrored events add no sums. Label overflows count accepted input event cells. Retention counts
+extents and the chunk plus journal bytes their extent record already holds. Age wins a tie with
+the byte cap. Only expiration counts deletions; cleanup never counts them again. Recycling
+counts actual successful combination and label-value releases globally, once per lifetime.
+Counters saturate; u64 input counts and field sums do not overflow in practice.
+
+Each operation stages its diagnostics in its own data transaction. Chunking, consolidation,
+opening and checkpoints never recount losses. A write appends one summary per affected stream
+and kind, ordered by tier id, event stream id, then `Late`, `Fold`, `LabelOverflow`. Expiration
+appends its one reason's summary; recycling is lossless and appends none. Transactions follow
+execution order, including backlog rounds before a batch. Entries carry sequence, incarnation,
+publication, caller time, stream, typed bounding range and deltas. The newest 64 survive;
+readers visit expected sequences, not slot-key order. Rollback can reuse a sequence in a new
+incarnation, so `(incarnation,seq)` identifies an entry. Exhausted sequencing is corruption.
+There are no strings, catalog references, unbounded history or tracing dependency. E8's status
+will expose the counters and surviving history for host logging.
+
+Fixed records use the metadata allowance below. Write summaries have staging credit until
+they are staged and dropped, before chunk planning; no head storage or profile floors change.
+
 ## Allocation ownership
 
 Data-sized execution storage is admitted before allocation from its operation's `MemoryAccount`:
@@ -423,6 +454,38 @@ BackendFailed flags recovery; Local and Corrupted errors leave the state unchang
 lock spans compaction's durable work. The caller decides when to retry Deferred; there is no
 polling or duration bound. Suspend, close and maintenance never invoke compaction.
 
+## Coherent status and event degradation
+
+`Tsdb::status()` and `Snapshot::status()` share one implementation. The facade captures one
+storage transaction and its matching version through G then R; readers can use a capture. Reads
+release both locks before scanning. The snapshot also captures the single ephemeral `behind`
+flag under R. Outside Open, status returns lifecycle and query-credit usage without dataset
+values; a retired snapshot never exposes its old totals as current. BackendFailed flags recovery;
+Local admission errors and Corrupted metadata do not.
+
+Status makes one manifest metadata pass per stream, plus head rows, catalog ids, pins,
+persistent marks/runs and recycle candidates. It decodes no chunk payload, takes no clock or
+retention policy and runs no maintenance. Live rows sum each unexpired `ChunkEntry.rows` and
+head accumulator combinations or event rows: overlapping aggregate chunks count separately.
+Bytes sum chunk fragments and head journal bytes including journal keys. Bounds are actual
+bucket numbers or event keys, not extent boundaries. Expiration reports the last expired extent;
+downsampling is absent. Expired chunks and their bytes appear only as pending cleanup.
+
+E7 counters keep their input units. Catalog sizes exclude implicit id 0; its presence and pins
+are explicit. Resident folded combinations contain overflow labels; released totals count actual
+recycling. Persistent work counts are observations, not predictions of rounds due. Ring entries
+are the surviving, sequence-ordered 64 records. The result retains only owned scalars and arrays:
+one element per schema stream and at most 64 ring entries, charged to the query budget until
+drop. It keeps no backend transaction, catalog token or version; workspace credit returns before
+return. Query reserved bytes are an observation of concurrent usage at return.
+
+`EventPage::folded()` reports examined folded event rows and individual overflowing Label cells
+before filtering, even when predicate statistics reject a block. Counting then reads only its
+Series/Label ids and any boundary/cursor ranks, preserving other payload skips. Null cells do
+not count. Rows outside the range or before the cursor do not count; head selection and chunk
+prefetch can examine past a page limit, so these are per-scan counts, not distinct across pages.
+`SeriesGroups` metadata is unchanged. No stored record or format version changes for status.
+
 ## Errors
 
 Errors follow snafu's own guidance (`guide/philosophy.md`).
@@ -461,6 +524,7 @@ Each public operation returns the error type of its module:
 | capturing a snapshot  | `version::CaptureError`                                                                             |
 | summing series        | `query::SeriesQueryError`                                                                           |
 | scanning events       | `query::EventScanError`                                                                             |
+| reading status        | `status::StatusError`                                                                               |
 | maintaining           | `maintain::MaintainError`                                                                           |
 
 ## Data mapping and variants
@@ -523,7 +587,6 @@ Crates offering a stable hash trait were considered and rejected:
   the lifecycle gives streams epochs, and their keys are monotonic, so their runs never overlap
   and a scan reads them as one way. The planner skips them; their chunks keep the event
   bookkeeping all the same.
-- The lossy-operation ring, `status()` and the logs of lossy maintenance rounds (§9.4).
 - The incarnation counter kept outside the database for tmpfs hosts (§8.3), which only the
   untested tier-2 profile needs.
 - Consumers: traffic, core logs and job logs, and migration of the traffic database.
@@ -537,7 +600,6 @@ Crates offering a stable hash trait were considered and rejected:
 | `crc32fast`         | Checksums                                                                           |
 | `zerocopy`          | Typed little-endian views of validated column blocks, with no `unsafe`              |
 | `rustc-hash`        | Hashing integer keys. Strings that outsiders control use the standard SipHash       |
-| `tracing`           | Logs of lossy operations (§9.4)                                                     |
 | `snafu`             | Domain errors with context selectors, as elsewhere in the workspace                 |
 | `strum`             | Enum tags and variant lists derived from the definitions                            |
 | `serde`, `postcard` | The stable byte form of structures, such as the schema fingerprint's input          |

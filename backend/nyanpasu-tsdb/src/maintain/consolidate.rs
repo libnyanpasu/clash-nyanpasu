@@ -98,6 +98,18 @@ mod events;
 
 pub(super) use self::events::{consolidate as consolidate_events, merge as merge_runs};
 
+/// Whether the profile gates off any windowed event stream, without planning work.
+pub(crate) fn event_consolidation_gated(
+    schema: &crate::Schema,
+    profile: &crate::Profile,
+    shape: &Shape,
+) -> bool {
+    schema.events.iter().enumerate().any(|(index, spec)| {
+        matches!(spec.extent, crate::ExtentSpec::Window(_))
+            && !events::consolidates(shape.stream_columns(crate::StreamId(index as u8)), profile)
+    })
+}
+
 /// The most rows handed to the builder per call; it bounds one append's buffers.
 const APPEND_ROWS: usize = 256;
 

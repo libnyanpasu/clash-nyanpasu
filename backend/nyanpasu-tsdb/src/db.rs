@@ -41,11 +41,6 @@ pub struct Tsdb<S: Storage> {
     last_durable: Option<Timestamp>,
     /// The bytes written by the commits since the last durable one.
     since_durable: u64,
-    /// Whether maintenance is behind (§4.3, "积压"). A [`maintain`](Self::maintain) call that
-    /// returns `more` sets it, and one that finishes clears it; so does a commit that finds no
-    /// round due or whose round fails ([`catch_up`](Self::catch_up)). Kept in memory only, so
-    /// an open starts with it clear.
-    behind: bool,
 }
 
 impl<S: Storage> Tsdb<S> {
@@ -64,6 +59,7 @@ impl<S: Storage> Tsdb<S> {
                     opened.head,
                 ),
                 MemoryBudget::new(profile.query),
+                maintain::event_consolidation_gated(&schema, &profile, &opened.shape),
             )),
             schema,
             shape: opened.shape,
@@ -73,9 +69,15 @@ impl<S: Storage> Tsdb<S> {
             next_event_seq: 0,
             last_durable: None,
             since_durable: 0,
-            behind: false,
             profile,
         })
+    }
+
+    /// Reads one coherent, query-charged diagnostic view. Cost is one manifest metadata pass
+    /// per stream plus head, catalog and persistent-work scans; no chunk payload is decoded.
+    /// Takes no clock or policy and performs no maintenance. Outside Open, returns state only.
+    pub fn status(&self) -> Result<crate::Status, crate::StatusError> {
+        self.shared.status()
     }
 
     /// Writes one batch in one transaction and publishes it. The outcome, when it is not
@@ -133,7 +135,7 @@ impl<S: Storage> Tsdb<S> {
     /// consumer's next `maintain` call meets the failure, so a damaged chunk fails no batch,
     /// and no later commit pays again for a round that keeps failing.
     fn catch_up(&mut self, storage: &S, now: Timestamp) -> Result<Maintained, WriteError> {
-        if !self.behind {
+        if !self.shared.registry.behind() {
             return Ok(Maintained::default());
         }
         match self.backlog_round(storage, now) {
@@ -142,7 +144,7 @@ impl<S: Storage> Tsdb<S> {
                 Err(error).context(BacklogSnafu)
             }
             Ok(None) | Err(_) => {
-                self.behind = false;
+                self.shared.registry.set_behind(false);
                 Ok(Maintained::default())
             }
         }
@@ -242,7 +244,7 @@ impl<S: Storage> Tsdb<S> {
             self.shared.registry.require_recovery();
         }
         if let Ok(done) = &maintained {
-            self.behind = done.more;
+            self.shared.registry.set_behind(done.more);
         }
         maintained
     }
@@ -290,7 +292,13 @@ impl<S: Storage> Tsdb<S> {
         let batch = storage.batch().context(maintain::BeginRoundSnafu)?;
         let mut batch = Counted::new(batch);
         let current = shared.registry.current();
-        let staged = maintain::stage(&mut batch, snapshot, &self.round_context(&current), round)?;
+        let staged = maintain::stage(
+            &mut batch,
+            snapshot,
+            &self.round_context(&current),
+            round,
+            now,
+        )?;
         let bytes = batch.written();
         let durability = self.durability_due(now);
         drop(current);
@@ -403,7 +411,6 @@ impl<S: Storage> Tsdb<S> {
         self.next_event_seq = 0;
         self.last_durable = None;
         self.since_durable = 0;
-        self.behind = false;
         self.shared
             .install(opened.storage, opened.version, opened.head);
         Ok(RecoveryProgress::Recovered {
@@ -547,7 +554,7 @@ impl<S: Storage> Tsdb<S> {
     }
 
     pub(crate) fn behind(&self) -> bool {
-        self.behind
+        self.shared.registry.behind()
     }
 
     /// Detaches the backend for a test that crashes it instead of closing it cleanly.

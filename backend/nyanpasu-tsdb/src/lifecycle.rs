@@ -23,9 +23,12 @@ use crate::{
     catalog::{Catalog, LoadError},
     chunk::format::MAX_CHUNK_LEN,
     head::{Head, HeadUpdate, JournalSources, RebuildError, Rebuilt},
-    layout::meta::{
-        FormatRecord, MetaError, STORE_FORMAT, StateRecord, read_format, read_state, write_format,
-        write_state,
+    layout::{
+        diagnostics::{self, DiagnosticsError},
+        meta::{
+            FormatRecord, MetaError, STORE_FORMAT, StateRecord, read_format, read_state,
+            write_format, write_state,
+        },
     },
     storage::{
         CommitFailure, Direction, Durability, KeyRange, Ns, Storage, StorageError, StorageRead,
@@ -336,6 +339,7 @@ fn commit_incarnation<S: Storage>(storage: &S, schema: &Schema) -> Result<StateR
                 schema_version: schema.version,
             };
             write_format(&mut batch, &format).context(WriteFormatSnafu)?;
+            diagnostics::initialize(&mut batch, schema).context(DiagnosticsSnafu)?;
             StateRecord::INITIAL
         }
         Some(format) => {
@@ -355,7 +359,9 @@ fn commit_incarnation<S: Storage>(storage: &S, schema: &Schema) -> Result<StateR
                     fingerprint
                 }
             );
-            read_state(&batch).context(ReadStateSnafu)?
+            let state = read_state(&batch).context(ReadStateSnafu)?;
+            diagnostics::validate(&batch, schema, &state).context(DiagnosticsSnafu)?;
+            state
         }
     };
     let state = StateRecord {
@@ -396,6 +402,10 @@ fn check_empty(read: &impl StorageRead) -> Result<(), OpenError> {
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum OpenError {
+    /// Required format-3 diagnostic initialization or validation failed.
+    #[snafu(display("failed to initialize or validate diagnostics"))]
+    Diagnostics { source: DiagnosticsError },
+
     #[snafu(display("invalid schema"))]
     InvalidSchema { source: SchemaError },
 
@@ -513,6 +523,7 @@ pub enum OpenError {
 impl OpenError {
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::Diagnostics { source } => source.kind(),
             Self::InvalidSchema { source } => source.kind(),
             Self::InvalidProfile { source } => source.kind(),
             Self::StagingTooSmall { .. } | Self::ConsolidationBounds { .. } => ErrorKind::Local,

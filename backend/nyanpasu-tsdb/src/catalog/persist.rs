@@ -238,6 +238,53 @@ pub(crate) fn is_pinned(read: &impl StorageRead, id: u32) -> Result<bool, PinErr
     Ok(pin_count(read, id)? > 0)
 }
 
+/// Distinct pinned combinations (including 0) and pin keys, from one captured view.
+/// Streams fixed pin records without collecting ids or copying key bytes.
+pub(crate) fn pin_totals(
+    read: &impl StorageRead,
+    known: impl Fn(u32) -> bool,
+) -> Result<(u64, u64), PinError> {
+    let (mut combos, mut counted, mut keys, mut overflow) = (0u64, 0u64, 0u64, 0u64);
+    let bad = read
+        .scan(PINS, KeyRange::All, Direction::Forward, |key, value| {
+            let valid = || {
+                let id = u32::from_be_bytes(key.try_into().ok()?);
+                let record: PinRecord = decode(value).ok()?;
+                (id > 0 && known(id) && record.count > 0).then_some(record.count)
+            };
+            match valid().and_then(|n| counted.checked_add(n)) {
+                Some(total) => {
+                    counted = total;
+                    combos += 1;
+                    ControlFlow::Continue(())
+                }
+                None => ControlFlow::Break(()),
+            }
+        })
+        .context(super::error::ScanPinsSnafu)?;
+    ensure!(bad.is_none(), super::error::InvalidPinsSnafu);
+    let bad = read
+        .scan(
+            PIN_KEYS,
+            KeyRange::All,
+            Direction::Forward,
+            |_, value| match decode::<PinKeyRecord>(value) {
+                Ok(record) if known(record.combo) => {
+                    keys += 1;
+                    overflow += u64::from(record.combo == 0);
+                    ControlFlow::Continue(())
+                }
+                _ => ControlFlow::Break(()),
+            },
+        )
+        .context(super::error::ScanPinsSnafu)?;
+    ensure!(
+        bad.is_none() && counted.checked_add(overflow) == Some(keys),
+        super::error::InvalidPinsSnafu
+    );
+    Ok((combos + u64::from(overflow > 0), keys))
+}
+
 /// The combination pinned under the consumer's `key`, if any.
 pub(crate) fn pinned_combo(read: &impl StorageRead, key: &[u8]) -> Result<Option<u32>, PinError> {
     let combo = read

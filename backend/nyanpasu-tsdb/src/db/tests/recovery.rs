@@ -10,11 +10,11 @@ fn recovery_resets_owner_bookkeeping_only_when_the_candidate_is_installed() {
     let mut store = open(&disk);
     write_simple(&mut store, 1, Durability::Durable);
     write_simple(&mut store, 2, Durability::Consistent);
-    store.behind = true;
+    store.shared.registry.set_behind(true);
     let old_head = store.head_budget.clone();
     let old_staging = store.staging_budget.clone();
     let shared = store.shared.clone();
-    let bookkeeping = (store.last_durable, store.since_durable, store.behind);
+    let bookkeeping = (store.last_durable, store.since_durable, store.behind());
     assert!(bookkeeping.0.is_some());
     assert!(bookkeeping.1 > 0);
     let before = store.next_event_seq();
@@ -31,7 +31,7 @@ fn recovery_resets_owner_bookkeeping_only_when_the_candidate_is_installed() {
     ));
     assert_eq!(shared.registry.state(), LifecycleState::WaitingForReaders);
     assert_eq!(
-        (store.last_durable, store.since_durable, store.behind),
+        (store.last_durable, store.since_durable, store.behind()),
         bookkeeping
     );
     assert_eq!(
@@ -56,7 +56,7 @@ fn recovery_resets_owner_bookkeeping_only_when_the_candidate_is_installed() {
     assert!(matches!(error, RecoveryError::Reopen { .. }));
     assert_eq!(shared.registry.state(), LifecycleState::Unavailable);
     assert_eq!(
-        (store.last_durable, store.since_durable, store.behind),
+        (store.last_durable, store.since_durable, store.behind()),
         bookkeeping
     );
     assert_eq!(
@@ -83,7 +83,7 @@ fn recovery_resets_owner_bookkeeping_only_when_the_candidate_is_installed() {
     assert!(matches!(error, RecoveryError::Restore { .. }));
     assert_eq!(shared.registry.state(), LifecycleState::Unavailable);
     assert_eq!(
-        (store.last_durable, store.since_durable, store.behind),
+        (store.last_durable, store.since_durable, store.behind()),
         bookkeeping
     );
     assert_eq!(
@@ -119,7 +119,7 @@ fn recovery_resets_owner_bookkeeping_only_when_the_candidate_is_installed() {
     assert_eq!(restored, incarnation);
     assert!(incarnation > failed_incarnation);
     assert_eq!(
-        (store.last_durable, store.since_durable, store.behind),
+        (store.last_durable, store.since_durable, store.behind()),
         (None, 0, false)
     );
     assert_eq!(

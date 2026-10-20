@@ -9,7 +9,7 @@
 
 use std::{collections::HashMap, time::Duration};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use crate::{
@@ -22,11 +22,11 @@ use crate::{
 pub struct LabelId(pub u16);
 
 /// A series tier: an index into [`SeriesSpec::tiers`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TierId(pub u8);
 
 /// An event stream: an index into [`Schema::events`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StreamId(pub u8);
 
 /// A dataset's structure. The declaration order of every schema type's fields and variants

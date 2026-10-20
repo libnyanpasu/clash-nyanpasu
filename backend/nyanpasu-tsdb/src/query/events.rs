@@ -162,9 +162,27 @@ pub struct EventPage {
     cursor: Option<EventCursor>,
     truncated_by_retention: bool,
     retention_watermark: Option<Timestamp>,
+    /// Degradation of examined in-range rows, including those predicates discarded.
+    folded: EventDegradation,
+}
+
+/// Degradation among examined in-range rows, independent of predicate acceptance.
+/// Head selection and chunk stripes may examine past the page limit; counts are per scan,
+/// not distinct across pages. Rows before the cursor or outside the range do not count.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EventDegradation {
+    /// Examined events whose Series combination contains at least one overflow marker.
+    pub rows: u64,
+    /// Examined non-null Label cells holding overflow id 0, counted individually.
+    pub label_overflows: u64,
 }
 
 impl EventPage {
+    /// Folded event rows and overflow cells seen before filtering, including rejected rows.
+    pub fn folded(&self) -> EventDegradation {
+        self.folded
+    }
+
     pub fn events(&self) -> &[Event] {
         self.events.get()
     }
@@ -407,9 +425,11 @@ pub(crate) fn scan<S: Storage>(
             cursor: None,
             truncated_by_retention,
             retention_watermark: watermark,
+            folded: EventDegradation::default(),
         });
     };
     let mut scan = Scan {
+        folded: EventDegradation::default(),
         revoked,
         storage,
         catalog: &version.catalog,
@@ -443,6 +463,7 @@ pub(crate) fn scan<S: Storage>(
         cursor,
         truncated_by_retention,
         retention_watermark: watermark,
+        folded: scan.folded,
     })
 }
 
@@ -646,6 +667,8 @@ enum Source<'s> {
 }
 
 struct Scan<'s, 'q, R> {
+    /// Loss metadata is counted before predicates, never while materializing selected values.
+    folded: EventDegradation,
     /// The instance flag, independent of the backend snapshot.
     revoked: QueryCheck<'s>,
     storage: &'s R,
@@ -834,7 +857,23 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 if rank.0 > self.bounds.last && self.direction == Direction::Forward {
                     break;
                 }
-                if !self.bounds.admits(rank) || !self.row_matches(&row)? {
+                if !self.bounds.admits(rank) {
+                    continue;
+                }
+                for value in &row.values {
+                    match *value {
+                        StoredValue::Combo(combo) => {
+                            let labels = self
+                                .catalog
+                                .combo(combo)
+                                .context(UnknownCombinationSnafu { chunk: None, combo })?;
+                            self.folded.rows += u64::from(labels.into_iter().any(|id| id == 0));
+                        }
+                        StoredValue::Label(0) => self.folded.label_overflows += 1,
+                        _ => {}
+                    }
+                }
+                if !self.row_matches(&row)? {
                     continue;
                 }
                 best.push(Selected { rank, rows: from });
@@ -1005,6 +1044,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             let column = FIRST_COLUMN + filter.column as u16;
             let (_, entry, span) = block_at(&open.reader, column, row).map_err(read)?;
             if rules_out(&filter.condition, &entry.stats) {
+                self.count_skipped(open, ranks, matches, span.clone(), decode)?;
                 pass_span(&mut open.rows, span, self.direction);
                 return Ok(());
             }
@@ -1039,11 +1079,139 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             rank.2 = seqs.values()[(row - first) as usize];
             *rank = self::rank(*rank, self.direction);
         }
+        let examined = intersect(stripe.clone(), open.rows.clone());
+        let offset = (examined.start - stripe.start) as usize;
+        self.count_columns(
+            &at,
+            examined.clone(),
+            Some(&ranks[offset..offset + examined.len()]),
+            decode,
+        )?;
         matches.resize(len, true);
         for filter in filters {
             self.evaluate(&at, filter, stripe.clone(), matches, decode)?;
         }
         open.stripe = stripe;
+        Ok(())
+    }
+
+    /// Counts ids even when predicate stats skip payload blocks. Whole in-range key blocks
+    /// need no key decode; boundary/cursor blocks decode ranks to count only admitted rows.
+    fn count_skipped(
+        &mut self,
+        open: &OpenChunk,
+        ranks: &mut BudgetVec<Rank>,
+        matches: &mut BudgetVec<bool>,
+        span: Range<u32>,
+        decode: &mut Decode,
+    ) -> Result<(), EventScanError> {
+        if !self
+            .spec
+            .columns
+            .iter()
+            .any(|c| matches!(c.ty, ColumnType::Series | ColumnType::Label(_)))
+        {
+            return Ok(());
+        }
+        let span = intersect(span, open.rows.clone());
+        let mut row = span.start;
+        let keys = self.bounds.keys(self.direction);
+        while row < span.end {
+            let (_, entry, key_span) =
+                block_at(&open.reader, KEY, row).context(ReadBlockSnafu {
+                    chunk: open.chunk.0,
+                })?;
+            let mut part = intersect(span.clone(), key_span);
+            let whole = self.bounds.after.is_none()
+                && matches!(entry.stats.range,
+                Some(IntRange::Signed { min, max }) if min >= *keys.start() && max <= *keys.end());
+            let at = At {
+                revoked: self.revoked,
+                storage: self.storage,
+                chunk: open.chunk,
+                reader: &open.reader,
+            };
+            if whole {
+                self.count_columns(&at, part.clone(), None, decode)?;
+            } else {
+                for column in [INCARNATION, SEQUENCE] {
+                    let (_, _, block_span) =
+                        block_at(&open.reader, column, row).context(ReadBlockSnafu {
+                            chunk: open.chunk.0,
+                        })?;
+                    part = intersect(part, block_span);
+                }
+                reset_stripe(ranks, matches, part.len()).context(ReserveReadSnafu {
+                    chunk: open.chunk.0,
+                })?;
+                let (block, first) = decode.ints::<i64>(&at, KEY, row, self.log)?;
+                ranks.extend(
+                    part.clone()
+                        .map(|r| (block.values()[(r - first) as usize], 0, 0)),
+                );
+                let (block, first) = decode.ints::<u64>(&at, INCARNATION, row, self.log)?;
+                for (rank, r) in ranks.iter_mut().zip(part.clone()) {
+                    rank.1 = block.values()[(r - first) as usize];
+                }
+                let (block, first) = decode.ints::<u64>(&at, SEQUENCE, row, self.log)?;
+                for (rank, r) in ranks.iter_mut().zip(part.clone()) {
+                    rank.2 = block.values()[(r - first) as usize];
+                    *rank = self::rank(*rank, self.direction);
+                }
+                self.count_columns(&at, part.clone(), Some(ranks), decode)?;
+            }
+            row = part.end;
+        }
+        Ok(())
+    }
+
+    /// Counts the single Series column and every Label column without reading other payload.
+    /// Existing charged decode buffers are reused; each row range is examined once per way.
+    fn count_columns(
+        &mut self,
+        at: &At<'_, R>,
+        span: Range<u32>,
+        ranks: Option<&[Rank]>,
+        decode: &mut Decode,
+    ) -> Result<(), EventScanError> {
+        let bounds = self.bounds;
+        for (index, spec) in self.spec.columns.iter().enumerate() {
+            if !matches!(spec.ty, ColumnType::Series | ColumnType::Label(_)) {
+                continue;
+            }
+            let column = FIRST_COLUMN + index as u16;
+            let mut row = span.start;
+            while row < span.end {
+                let (_, _, block_span) = block_at(at.reader, column, row)
+                    .context(ReadBlockSnafu { chunk: at.chunk.0 })?;
+                let part = intersect(span.clone(), block_span);
+                let (block, first) = decode.ints::<u32>(at, column, row, self.log)?;
+                for r in part.clone() {
+                    if ranks.is_some_and(|ranks| !bounds.admits(ranks[(r - span.start) as usize])) {
+                        continue;
+                    }
+                    let Some(id) = block.get((r - first) as usize) else {
+                        continue;
+                    };
+                    match spec.ty {
+                        ColumnType::Series => {
+                            let labels =
+                                self.catalog.combo(id).context(UnknownCombinationSnafu {
+                                    chunk: Some(at.chunk.0),
+                                    combo: id,
+                                })?;
+                            self.folded.rows += u64::from(labels.into_iter().any(|id| id == 0));
+                        }
+                        ColumnType::Label(dimension) => {
+                            known_label(self.catalog, dimension, id, at.chunk)?;
+                            self.folded.label_overflows += u64::from(id == 0);
+                        }
+                        _ => unreachable!("only catalog id columns are counted"),
+                    }
+                }
+                row = part.end;
+            }
+        }
         Ok(())
     }
 

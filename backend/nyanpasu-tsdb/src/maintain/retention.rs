@@ -31,14 +31,17 @@ use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use super::{Changed, Context, Maintain, Maintained, Round};
 use crate::{
-    ErrorKind, ExtentSpec, Retention, StreamId, TierId, Timestamp,
+    ErrorKind, ExtentSpec, LossKind, LossRecord, Retention, StreamId, TierId, Timestamp,
     budget::{BudgetExceeded, MemoryAccount, MemoryPlan},
     chunk::{format::ChunkKind, reader::metadata_within_limits},
     head::{
         Expiring,
         journal::{DeletePrefixError, JournalKey, delete_prefix},
     },
-    layout::manifest::{self, ExtentRecord, Listed, ManifestError, StreamRecord, StreamRef},
+    layout::{
+        diagnostics::{self, DiagnosticsError},
+        manifest::{self, ExtentRecord, Listed, ManifestError, StreamRecord, StreamRef},
+    },
     storage::{Direction, StorageError, StorageRead, StorageWrite},
     time::Span,
     write::chunking::ExtentCounter,
@@ -92,8 +95,14 @@ pub(super) fn plan(
 ) -> Result<Option<Round>, RetentionError> {
     for (stream, retention, width) in streams(context, request) {
         let record = stream_record(read, stream)?;
-        if let Some(extent) = expiring(read, stream, record, retention, width, request.now)? {
-            return Ok(Some(Round::Expire { stream, extent }));
+        if let Some((extent, reason)) =
+            expiring(read, stream, record, retention, width, request.now)?
+        {
+            return Ok(Some(Round::Expire {
+                stream,
+                extent,
+                reason,
+            }));
         }
     }
     for (stream, ..) in streams(context, request) {
@@ -133,7 +142,7 @@ fn expiring(
     retention: Retention,
     width: Span,
     now: Timestamp,
-) -> Result<Option<i64>, RetentionError> {
+) -> Result<Option<(i64, LossKind)>, RetentionError> {
     let first = match record.expired {
         None => i64::MIN,
         Some(expired) => match expired.checked_add(1) {
@@ -157,7 +166,14 @@ fn expiring(
         end <= i128::from(now.0) - age
     });
     let over = retention.max_bytes.is_some_and(|cap| record.bytes > cap);
-    Ok((old || over).then_some(oldest))
+    Ok((old || over).then_some((
+        oldest,
+        if old {
+            LossKind::DeleteAge
+        } else {
+            LossKind::DeleteBytes
+        },
+    )))
 }
 
 /// Expires `extent` of `stream`, the oldest extent it has not expired: advances the watermark
@@ -168,6 +184,7 @@ pub(super) fn expire(
     context: &Context<'_>,
     stream: StreamRef,
     extent: i64,
+    mut loss: LossRecord,
 ) -> Result<Changed, RetentionError> {
     let head = &context.current.head;
     let expiring = match stream {
@@ -203,6 +220,13 @@ pub(super) fn expire(
     // agree unless one of them is damaged.
     let held = head.expiring_journal_bytes(expiring);
     let old = manifest::read_extent(&*batch, stream, extent).context(ReadExtentSnafu { extent })?;
+    // The extent record already holds both byte counts; no row or chunk scan is needed.
+    loss.delta.extents = 1;
+    loss.delta.bytes = old.bytes().context(ExtentCountSnafu {
+        extent,
+        counter: ExtentCounter::ChunkBytes,
+    })?;
+    diagnostics::record(batch, loss).context(DiagnosticsSnafu)?;
     ensure!(
         deleted == held && old.journal_bytes == held,
         JournalMismatchSnafu {
@@ -413,6 +437,10 @@ fn settle(
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum RetentionError {
+    /// Expiration's counters and loss record failed in the expiration transaction.
+    #[snafu(display("failed to stage expiration diagnostics"))]
+    Diagnostics { source: DiagnosticsError },
+
     #[snafu(display("failed to read the record of {stream:?}"))]
     ReadStream {
         stream: StreamRef,
@@ -493,6 +521,7 @@ pub enum RetentionError {
 impl RetentionError {
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::Diagnostics { source } => source.kind(),
             Self::ReadStream { source, .. }
             | Self::ScanExtents { source, .. }
             | Self::AdvanceWatermark { source }

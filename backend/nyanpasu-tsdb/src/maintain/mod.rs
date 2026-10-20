@@ -20,15 +20,16 @@ mod retention;
 
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
-pub(crate) use self::consolidate::least_round;
+pub(crate) use self::consolidate::{event_consolidation_gated, least_round};
 pub use self::{consolidate::ConsolidateError, recycle::RecycleError, retention::RetentionError};
 use crate::{
-    ErrorKind, ExtentSpec, Profile, Retention, RetentionPolicy, Schema, StreamId, TierId,
-    Timestamp,
+    ErrorKind, ExtentSpec, LossDelta, LossKind, LossRange, LossRecord, Profile, Retention,
+    RetentionPolicy, Schema, StreamId, TierId, Timestamp,
     budget::{MemoryBudget, Reservation},
     catalog::Catalog,
     head::Head,
     layout::{
+        diagnostics::{self, DiagnosticsError},
         manifest::StreamRef,
         meta::{MetaError, StateRecord, read_state, write_state},
     },
@@ -125,7 +126,12 @@ impl Maintained {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Round {
     /// Expires `extent` of `stream`, the oldest extent it has not expired (§9.1).
-    Expire { stream: StreamRef, extent: i64 },
+    Expire {
+        stream: StreamRef,
+        extent: i64,
+        /// Age or bytes; age wins when both limits require expiration.
+        reason: LossKind,
+    },
     /// Deletes chunks of the extents of `stream` up to its watermark, `expired` (§9.1).
     Cleanup { stream: StreamRef, expired: i64 },
     /// Deletes the references of the extents cleanup emptied, and releases the combinations
@@ -245,6 +251,7 @@ pub(crate) fn stage(
     read: &impl StorageRead,
     context: &Context<'_>,
     round: Round,
+    now: Timestamp,
 ) -> Result<Staged, MaintainError> {
     let current = context.current;
     let state = read_state(&*batch).context(ReadStateSnafu)?;
@@ -258,8 +265,30 @@ pub(crate) fn stage(
         }
     );
     let changed = match round {
-        Round::Expire { stream, extent } => retention::expire(batch, context, stream, extent)
-            .context(ExpireSnafu { stream, extent })?,
+        Round::Expire {
+            stream,
+            extent,
+            reason,
+        } => retention::expire(
+            batch,
+            context,
+            stream,
+            extent,
+            LossRecord {
+                seq: 0,
+                incarnation: state.incarnation,
+                publication: state
+                    .publication
+                    .checked_add(1)
+                    .context(CounterOverflowSnafu)?,
+                at_ms: now.0,
+                stream,
+                kind: reason,
+                range: LossRange::Extent(extent),
+                delta: LossDelta::default(),
+            },
+        )
+        .context(ExpireSnafu { stream, extent })?,
         Round::Cleanup { stream, expired } => {
             retention::cleanup(batch, context, stream, expired).context(CleanupSnafu { stream })?
         }
@@ -281,6 +310,12 @@ pub(crate) fn stage(
                 .context(MergeRunsSnafu { stream, extent })?
         }
     };
+    diagnostics::recycle(
+        batch,
+        changed.done.combos_released,
+        changed.done.labels_released,
+    )
+    .context(DiagnosticsSnafu)?;
     let next = StateRecord {
         publication: state
             .publication
@@ -321,6 +356,10 @@ pub(crate) fn stage(
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum MaintainError {
+    /// Actual catalog releases could not be counted in the round's transaction.
+    #[snafu(display("failed to stage maintenance diagnostics"))]
+    Diagnostics { source: DiagnosticsError },
+
     /// Admissions remain closed until a suspended store is successfully recovered.
     #[snafu(display("the store is suspended or closed"))]
     Closed,
@@ -429,6 +468,7 @@ pub enum MaintainError {
 impl MaintainError {
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::Diagnostics { source } => source.kind(),
             Self::RecoveryNeeded => ErrorKind::BackendFailed,
             Self::Closed => ErrorKind::Local,
             Self::PolicyShape { .. } | Self::EpochRetention { .. } => ErrorKind::Local,

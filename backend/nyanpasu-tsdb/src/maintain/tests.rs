@@ -1246,6 +1246,7 @@ fn planning_reads_do_not_grow_with_the_extents() {
     let first = Some(Round::Expire {
         stream: EVENTS,
         extent: 0,
+        reason: crate::LossKind::DeleteBytes,
     });
     assert_eq!(round, first);
     assert_eq!(planning_reads(32, &tight), (few, first));

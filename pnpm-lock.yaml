@@ -326,8 +326,8 @@ importers:
         specifier: 5.9.2
         version: 5.9.2(@sinclair/typebox@0.31.28)(ajv@8.17.1)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@inlang/paraglide-js':
-        specifier: 2.29.0
-        version: 2.29.0(typescript@7.0.2)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.1))
+        specifier: 2.29.1
+        version: 2.29.1(typescript@7.0.2)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.1))
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -1608,8 +1608,8 @@ packages:
   '@iconify/utils@3.1.7':
     resolution: {integrity: sha512-JZHlwdID+dy+lTgbYC8NEC4zeugqeYsc6jewvzb4c58kHauJn+X7rNwQjxz5p2qSjqaEeQoLkCIQ9v/H4PK0/w==}
 
-  '@inlang/paraglide-js@2.29.0':
-    resolution: {integrity: sha512-1yBsi2ycRLRLOsZJRFf4wk6kycUOohoqrVyZye85D1fRHcd6IfhRAQWpGZPSJI5prgslpe3oHE8gOVXZr9aTww==}
+  '@inlang/paraglide-js@2.29.1':
+    resolution: {integrity: sha512-rE1AH0Uc86WEb+0HUKAdrfOfu1aqpGkvHebEK3PEIFYC2VJj0asF2BI8QYKSalNHTqrctsrImm647NBBg2QzSw==}
     hasBin: true
     peerDependencies:
       eslint: ^9.0.0 || ^10.0.0
@@ -7871,7 +7871,7 @@ snapshots:
       '@iconify/types': 2.0.0
       import-meta-resolve: 4.2.0
 
-  '@inlang/paraglide-js@2.29.0(typescript@7.0.2)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.1))':
+  '@inlang/paraglide-js@2.29.1(typescript@7.0.2)(vite@8.3.4(@types/node@24.19.2)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(terser@5.36.0)(yaml@2.9.1))':
     dependencies:
       '@inlang/recommend-sherlock': 0.2.1
       '@inlang/sdk': 4.0.4

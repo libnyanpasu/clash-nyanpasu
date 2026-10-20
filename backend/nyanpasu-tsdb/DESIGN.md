@@ -96,13 +96,15 @@ Errors follow snafu's own guidance (`guide/philosophy.md`).
 
 Each public operation returns the error type of its module:
 
-| Operation                       | Error type                         |
-| ------------------------------- | ---------------------------------- |
-| validating a schema             | `schema::SchemaError`              |
-| opening, recovering, suspending | `lifecycle::OpenError`, …          |
-| staging and committing          | `write::StageError`, `CommitError` |
-| capturing and querying          | `query::QueryError`                |
-| maintaining                     | `maintain::MaintainError`          |
+| Operation            | Error type                                              |
+| -------------------- | ------------------------------------------------------- |
+| validating a schema  | `schema::SchemaError`                                   |
+| opening              | `lifecycle::OpenError`                                  |
+| writing a batch      | `write::WriteError`, with `InputError` and `StageError` |
+| capturing a snapshot | `version::CaptureError`                                 |
+| summing series       | `query::SeriesQueryError`                               |
+| scanning events      | `query::EventScanError`                                 |
+| maintaining          | `maintain::MaintainError`                               |
 
 ## Data mapping and variants
 

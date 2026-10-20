@@ -18,6 +18,7 @@ postcard = { version = '1.1', default-features = false, features = ['use-std'] }
 # 4.4 is the version whose commit, close and I/O-failure semantics the design
 # was checked against (design §3.2, §7.5).
 redb = { version = '4.4.0', optional = true }
+rustc-hash = '2'
 serde = { version = '1', features = ['derive'] }
 snafu.workspace = true
 # Derives the stored tags of enums, and the lists of their variants.

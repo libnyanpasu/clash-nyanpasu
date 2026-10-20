@@ -9,6 +9,7 @@ members = [
   'nyanpasu-helper',
   'nyanpasu-config',
   'nyanpasu-traffic',
+  'nyanpasu-tsdb',
   'nyanpasu-geodata',
   'nyanpasu-panics',
   'nyanpasu-platform',

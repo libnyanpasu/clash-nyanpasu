@@ -1,12 +1,12 @@
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import RuleSettingsRounded from '~icons/material-symbols/rule-settings-rounded'
 import { filesize } from 'filesize'
-import { useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useBlockTask } from '@/components/providers/block-task-provider'
+import { calculateSubscriptionQuota } from '@/components/widgets/dashboard-daily-utils'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatError } from '@/utils'
@@ -22,8 +22,6 @@ import {
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import UpdateOptionEditor from './update-option-editor'
 
-const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
-
 export const SubscriptionCard = ({
   profile,
 }: {
@@ -36,24 +34,8 @@ export const SubscriptionCard = ({
   const updatedAt = remote?.updated_at ?? null
   const expire = remote?.subscription?.expire
 
-  const { progress, total, used } = useMemo(() => {
-    let progress = 0
-    let total = 0
-    let used = 0
-
-    const sub = getRemoteSource(profile)?.subscription
-    if (sub) {
-      total = sub.total ?? 0
-
-      used = (sub.download ?? 0) + (sub.upload ?? 0)
-
-      if (total > 0) {
-        progress = clampPercentage((used / total) * 100)
-      }
-    }
-
-    return { progress, total, used }
-  }, [profile])
+  const quota = calculateSubscriptionQuota(remote?.subscription)
+  const remainingLabel = m.profile_card_remaining()
 
   const blockTask = useBlockTask(
     `update-remote-profile-${profile.uid}`,
@@ -84,20 +66,30 @@ export const SubscriptionCard = ({
 
       <CardContent>
         {/* Transforms are plain remote files and carry no traffic quota. */}
-        {!isTransformItem(profile) && (
-          <>
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-bold">{progress.toFixed(2)}%</div>
+        {!isTransformItem(profile) &&
+          (quota ? (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-bold">
+                  {remainingLabel} {quota.remainingPercent.toFixed(2)}%
+                </div>
 
-              <div className="text-sm font-bold">
-                {filesize(used, { standard: 'iec' })} /
-                {filesize(total, { standard: 'iec' })}
+                <div className="text-sm font-bold">
+                  {filesize(quota.remaining, { standard: 'iec' })} /
+                  {filesize(quota.total, { standard: 'iec' })}
+                </div>
               </div>
-            </div>
 
-            <LinearProgress value={progress} />
-          </>
-        )}
+              <LinearProgress
+                value={quota.remainingPercent}
+                aria-label={remainingLabel}
+              />
+            </>
+          ) : (
+            <p className="text-on-surface-variant text-sm">
+              {m.profile_card_quota_unknown()}
+            </p>
+          ))}
 
         <div className="flex items-center justify-between gap-2 text-sm font-bold">
           <Tooltip>

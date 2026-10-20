@@ -18,3 +18,6 @@ backend/nyanpasu-runtime/
 
 # Deno task catalog uses the same formatter as repository scripts.
 deno.jsonc
+
+# Byte-exact oracle output of the old traffic store; the migration test compares bytes.
+backend/nyanpasu-traffic/tests/legacy_v3/expected.json

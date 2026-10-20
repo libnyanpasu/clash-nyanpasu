@@ -326,6 +326,149 @@ fn bytes(upload: u64, download: u64) -> Bytes {
     Bytes { upload, download }
 }
 
+#[tokio::test]
+async fn startup_imports_v3_and_continues_the_restored_session() {
+    use nyanpasu_traffic::{ActiveConnection, ClosedConnection, SessionMeta};
+    use redb::{Database, TableDefinition};
+    use std::collections::BTreeMap;
+
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("traffic.redb");
+    let db = Database::create(&old).unwrap();
+    let txn = db.begin_write().unwrap();
+    txn.open_table(TableDefinition::<&str, u64>::new("schema"))
+        .unwrap()
+        .insert("version", 3)
+        .unwrap();
+    let meta = SessionMeta {
+        last_sample_at: Some(1000),
+        instance_id: Some(CORE.into()),
+        global_counters: Some(bytes(10, 20)),
+    };
+    txn.open_table(TableDefinition::<&str, &[u8]>::new("session"))
+        .unwrap()
+        .insert("meta", serde_json::to_vec(&meta).unwrap().as_slice())
+        .unwrap();
+    let active = ActiveConnection {
+        id: A.into(),
+        started_at: 500,
+        first_seen_at: 1000,
+        counters: bytes(10, 20),
+        dimensions: dims("legacy"),
+        minutes: BTreeMap::from([(0, bytes(10, 20))]),
+        hours: BTreeMap::from([(0, bytes(10, 20))]),
+    };
+    txn.open_table(TableDefinition::<&str, &[u8]>::new("active"))
+        .unwrap()
+        .insert(A, serde_json::to_vec(&active).unwrap().as_slice())
+        .unwrap();
+    txn.open_table(TableDefinition::<u64, &[u8]>::new("tuples"))
+        .unwrap()
+        .insert(0, serde_json::to_vec(&dims("closed")).unwrap().as_slice())
+        .unwrap();
+    for name in ["minute_usage", "hour_usage"] {
+        txn.open_table(TableDefinition::<(u32, u64), (u64, u64, u64)>::new(name))
+            .unwrap()
+            .insert((0, 0), (3, 4, 1))
+            .unwrap();
+    }
+    let closed = ClosedConnection {
+        id: "closed".into(),
+        started_at: 1,
+        first_seen_at: 2,
+        closed_at: 999,
+        bytes: bytes(3, 4),
+        dimensions: dims("closed"),
+    };
+    txn.open_table(TableDefinition::<(u64, &str), &[u8]>::new("closed"))
+        .unwrap()
+        .insert(
+            (999, "closed"),
+            serde_json::to_vec(&closed).unwrap().as_slice(),
+        )
+        .unwrap();
+    txn.commit().unwrap();
+    drop(db);
+
+    let profile = Profile::desktop();
+    let shutdown = CancellationToken::new();
+    let tasks = TaskTracker::new();
+    let (_frames, frames) = watch::channel(None);
+    let (_geo, geo) = watch::channel(None);
+    let client = TrafficClient::spawn(
+        TrafficArgs {
+            storage: Arc::new(super::TrafficFileStorage::new(
+                dir.path().join("traffic.tsdb"),
+                profile.backend_cache,
+            )),
+            profile,
+            profiles: Arc::new(FakeProfiles(Mutex::new(Some("new-profile".into())))),
+            retention: Arc::new(FakeRetention(Mutex::new(None))),
+            clock: Arc::new(FakeClock(AtomicI64::new(2000))),
+            frames,
+            geo,
+            local_source: Arc::new(FakeLocalSource::default()),
+        },
+        shutdown.clone(),
+        &tasks,
+    )
+    .await
+    .unwrap();
+    assert!(!old.exists());
+    let summary = client.summary().await.unwrap();
+    assert_eq!(summary.last_sample_at, Some(1000));
+    assert_eq!(summary.active_connections, 1);
+    assert_eq!(summary.closed_connections, 1);
+    client
+        .observe(Some(frame(
+            2000,
+            2000,
+            bytes(15, 27),
+            vec![sample(A, "changed", 15, 27)],
+        )))
+        .await
+        .unwrap();
+    let report = client
+        .report(request(
+            query(TrafficRange::All, TrafficScope::All, &[]),
+            &[Dimension::Process, Dimension::Profile],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(report.total, usage(18, 31, 2));
+    // A continued connection takes the latest sample's dimensions but keeps its profile;
+    // a new connection would have been attributed to "new-profile".
+    let keys = |ranking: usize| -> Vec<_> {
+        report.rankings[ranking]
+            .groups
+            .iter()
+            .map(|g| g.key.as_str())
+            .collect()
+    };
+    assert_eq!(keys(0), ["changed", "closed"]);
+    assert_eq!(keys(1), [""]);
+    client.flush().await.unwrap();
+    shutdown.cancel();
+    tasks.close();
+    tasks.wait().await;
+    let (db, restored) = super::TrafficFileStorage::new(
+        dir.path().join("traffic.tsdb"),
+        Profile::desktop().backend_cache,
+    )
+    .initialize(Profile::desktop())
+    .unwrap();
+    let (meta, active) = restored.unwrap();
+    assert_eq!(meta.global_counters, Some(bytes(15, 27)));
+    assert_eq!(active[0].counters, bytes(15, 27));
+    assert_eq!(active[0].bytes(), bytes(15, 27));
+    assert_eq!(
+        db.summary(&nyanpasu_traffic::Session::new())
+            .unwrap()
+            .closed_connections,
+        1
+    );
+}
+
 fn usage(upload: u64, download: u64, connections: u64) -> Usage {
     Usage {
         bytes: bytes(upload, download),

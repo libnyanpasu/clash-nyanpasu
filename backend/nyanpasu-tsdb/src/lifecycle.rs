@@ -5,12 +5,13 @@
 //!   out and fold or chunk the journal below its cap, as after the profile shrank, in a
 //!   durable commit (§4.2);
 //! - recovery after an unknown commit or a failed backend: revoke snapshots, close by
-//!   dropping the backend, wait until their reservations are returned, reopen, rebuild;
-//! - the unavailable state, retried at the owner's next scheduled commit;
-//! - suspend and resume;
-//! - physical compaction, only once no snapshot is alive.
-//!
-//! Only opening is implemented so far.
+//!   dropping the backend, return while reservations remain, then reopen and rebuild;
+//! - recovery restores host auxiliary state before installing the new instance; failed
+//!   attempts leave an unavailable facade, retried only when the host calls again;
+//! - suspend and explicit close revoke, checkpoint durably without maintenance, and always
+//!   retire the backend. Recovery also resumes a suspended store; explicit close is terminal;
+//! - explicit physical compaction excludes captures, defers to backend snapshot ownership,
+//!   and never revokes healthy queries or runs as part of another owner operation.
 
 use std::ops::ControlFlow;
 
@@ -33,6 +34,15 @@ use crate::{
     version::Version,
     write::chunking::{ChunkingError, Execution, Planning, Shape, least_staging, widest_build},
 };
+
+mod checkpoint;
+pub use checkpoint::CheckpointError;
+pub(crate) use checkpoint::checkpoint;
+mod compaction;
+pub use compaction::{CompactError, CompactStorage, Compaction};
+mod recovery;
+pub(crate) use recovery::prepare as prepare_recovery;
+pub use recovery::{RecoveryError, RecoveryProgress, RecoveryView};
 
 /// An opened dataset, before the facade wraps it.
 pub(crate) struct Opened<S> {
@@ -528,122 +538,4 @@ impl OpenError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        db::tests::{self as db, LABELS, LOGS},
-        storage::memory::MemoryDisk,
-        write::{EventRow, Value},
-    };
-
-    /// Replay measures retained children beside live construction leases on both opens.
-    #[test]
-    fn populated_open_and_reopen_stay_within_their_admitted_plans() {
-        let disk = MemoryDisk::new();
-        let mut store = db::open(&disk);
-        let values = [Value::Bytes(b"retained journal row")];
-        for id in 1..=24 {
-            let points = [db::point(LABELS, &[1, 2])];
-            let events = [EventRow {
-                stream: LOGS,
-                key: id as i64,
-                seq: store.next_event_seq(),
-                values: &values,
-            }];
-            store
-                .write(&db::batch(id, &points, &events), Durability::Durable)
-                .unwrap();
-        }
-        let expected = store.current().head.clone();
-        drop(store.into_storage());
-        for _ in 0..2 {
-            let opened = open(disk.open().unwrap(), &db::schema(), &Profile::desktop()).unwrap();
-            assert_eq!(opened.version.head, expected);
-            for (planned, observed) in opened.allocation_peaks {
-                assert!(
-                    observed <= planned,
-                    "observed {observed}, admitted {planned}"
-                );
-            }
-            assert!(opened.allocation_peaks[0].1 >= expected.bytes());
-            assert_eq!(opened.head_budget.reserved(), opened.version.head.bytes());
-            assert_eq!(opened.staging_budget.reserved(), 0);
-            drop(opened);
-        }
-    }
-
-    /// Left-out replay sources build within the opening plan at the unchanged staging floor.
-    #[test]
-    fn opening_left_out_sources_observes_the_build_peak_at_minimum_staging() {
-        let disk = MemoryDisk::new();
-        let mut store = db::open(&disk);
-        for id in 1..=12 {
-            db::write_simple(&mut store, id, Durability::Durable);
-        }
-        drop(store.into_storage());
-        let schema = db::schema();
-        let shape = Shape::new(&schema);
-        let head = Head::empty(schema.events.len()).bytes() + 64;
-        let profile = Profile {
-            head,
-            event_buffer_bytes: 1,
-            staging: least_staging(&schema, &shape, head),
-            ..Profile::desktop()
-        };
-        for first in [true, false] {
-            let opened = open(disk.open().unwrap(), &schema, &profile).unwrap();
-            for (planned, observed) in opened.allocation_peaks {
-                assert!(
-                    observed <= planned,
-                    "observed {observed}, admitted {planned}"
-                );
-            }
-            if first {
-                assert!(
-                    opened.allocation_peaks[1].1 > 0,
-                    "left-out records were built"
-                );
-            }
-            assert!(opened.version.head.bytes() <= profile.head);
-            assert_eq!(opened.staging_budget.reserved(), 0);
-            drop(opened);
-        }
-    }
-
-    /// Settlement measures charged execution beside its planning arrays and retained head.
-    #[test]
-    fn opening_journal_settlement_observes_the_execution_peak() {
-        let disk = MemoryDisk::new();
-        let mut store = db::open(&disk);
-        for id in 1..=100 {
-            let points = [db::point(LABELS, &[1, 2])];
-            let mut input = db::batch(id, &points, &[]);
-            input.now = crate::Timestamp(0);
-            store.write(&input, Durability::Durable).unwrap();
-        }
-        let expected = store.current().head.clone();
-        drop(store.into_storage());
-        let profile = Profile {
-            journal_bytes: 128,
-            ..Profile::desktop()
-        };
-        for first in [true, false] {
-            let opened = open(disk.open().unwrap(), &db::schema(), &profile).unwrap();
-            for (planned, observed) in opened.allocation_peaks {
-                assert!(
-                    observed <= planned,
-                    "observed {observed}, admitted {planned}"
-                );
-            }
-            if first {
-                assert!(opened.allocation_peaks[2].1 > 0, "settlement was built");
-            }
-            assert_eq!(
-                opened.version.head.series().count(),
-                expected.series().count()
-            );
-            assert_eq!(opened.staging_budget.reserved(), 0);
-            drop(opened);
-        }
-    }
-}
+mod tests;

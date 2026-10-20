@@ -764,16 +764,7 @@ fn chunks_outside_the_range_are_never_read() {
             predicate: &EventPredicate::default(),
             limit: 10,
         };
-        let page = scan(
-            snapshot.storage(),
-            snapshot.version(),
-            snapshot.catalog(),
-            snapshot.schema(),
-            snapshot.budget(),
-            &query,
-            &mut log,
-        )
-        .unwrap();
+        let page = scan(&snapshot, snapshot.budget(), &query, &mut log).unwrap();
         assert_eq!(page.events().len(), 2);
         assert_eq!(
             log.opened, [inside; 2],
@@ -857,16 +848,7 @@ fn blocks_whose_stats_rule_out_the_filter_are_never_decoded() {
             predicate: &EventPredicate { filters: &filters },
             limit: 5_000,
         };
-        let page = scan(
-            snapshot.storage(),
-            snapshot.version(),
-            snapshot.catalog(),
-            snapshot.schema(),
-            snapshot.budget(),
-            &query,
-            &mut log,
-        )
-        .unwrap();
+        let page = scan(&snapshot, snapshot.budget(), &query, &mut log).unwrap();
         assert_eq!(page.events().len(), BLOCK_ROWS as usize);
         assert!(
             page.events()
@@ -913,15 +895,7 @@ fn a_chunk_opens_within_the_scans_budget() {
     let run = |limit: u64| {
         let budget = MemoryBudget::new(limit);
         let mut log = ReadLog::default();
-        let result = scan(
-            snapshot.storage(),
-            snapshot.version(),
-            snapshot.catalog(),
-            snapshot.schema(),
-            &budget,
-            &query,
-            &mut log,
-        );
+        let result = scan(&snapshot, &budget, &query, &mut log);
         assert_eq!(log.opened[0], chunk);
         assert_eq!(budget.reserved(), result.as_ref().map_or(0, held_by));
         (result, log)
@@ -967,7 +941,9 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
         store.chunks(CLOSED)[0].entry.fragment0,
     )
     .unwrap();
+    let revoked = std::sync::atomic::AtomicBool::new(false);
     let at = At {
+        revoked: QueryCheck::unarmed(&revoked),
         storage: snapshot.storage(),
         chunk,
         reader: &reader,
@@ -1031,16 +1007,7 @@ fn a_range_skips_blocks_by_their_keys() {
         predicate: &EventPredicate::default(),
         limit: 100,
     };
-    let page = scan(
-        snapshot.storage(),
-        snapshot.version(),
-        snapshot.catalog(),
-        snapshot.schema(),
-        snapshot.budget(),
-        &query,
-        &mut log,
-    )
-    .unwrap();
+    let page = scan(&snapshot, snapshot.budget(), &query, &mut log).unwrap();
     let keys: Vec<_> = page.events().iter().map(|event| event.key).collect();
     assert_eq!(keys, (8_500..8_510).collect::<Vec<_>>());
     for block in [0, 1] {
@@ -1117,15 +1084,7 @@ fn a_merge_of_more_ways_than_the_budget_holds_fails_at_admission() {
     let admission = listed(ways) + merge_memory(ways, 1, columns, lent);
     let run = |limit: u64| {
         let budget = MemoryBudget::new(limit);
-        let result = scan(
-            snapshot.storage(),
-            snapshot.version(),
-            snapshot.catalog(),
-            snapshot.schema(),
-            &budget,
-            &query,
-            &mut ReadLog::default(),
-        );
+        let result = scan(&snapshot, &budget, &query, &mut ReadLog::default());
         assert_eq!(budget.reserved(), result.as_ref().map_or(0, held_by));
         result
     };
@@ -1165,7 +1124,12 @@ fn chunks_that_do_not_overlap_are_one_way() {
     let account = crate::budget::test_account();
     // A sequence-keyed stream's chunks follow each other.
     let mut disjoint = [link(3, (21, 30)), link(1, (0, 10)), link(2, (11, 20))];
-    let chains = chain(&mut disjoint, &account).unwrap();
+    let chains = chain(
+        &mut disjoint,
+        &account,
+        QueryCheck::unarmed(&std::sync::atomic::AtomicBool::new(false)),
+    )
+    .unwrap();
     assert_eq!(chains.len(), 1);
     assert_eq!(chains[0], 0..3);
     let ids: Vec<_> = disjoint.iter().map(|link| link.chunk.0).collect();
@@ -1178,7 +1142,12 @@ fn chunks_that_do_not_overlap_are_one_way() {
         link(4, (15, 30)),
         link(5, (21, 25)),
     ];
-    let chains = chain(&mut overlapping, &account).unwrap();
+    let chains = chain(
+        &mut overlapping,
+        &account,
+        QueryCheck::unarmed(&std::sync::atomic::AtomicBool::new(false)),
+    )
+    .unwrap();
     assert_eq!(chains.len(), 3);
     for range in chains.iter().cloned() {
         let chain = &overlapping[range];
@@ -1211,7 +1180,12 @@ fn a_runs_chunks_are_one_way_where_they_share_a_key() {
         link(10, 10, (0, 5)),
         link(30, 10, (12, 20)),
     ];
-    let chains = chain(&mut links, &account).unwrap();
+    let chains = chain(
+        &mut links,
+        &account,
+        QueryCheck::unarmed(&std::sync::atomic::AtomicBool::new(false)),
+    )
+    .unwrap();
     let ids: Vec<Vec<u64>> = chains
         .iter()
         .map(|range| {
@@ -1226,7 +1200,12 @@ fn a_runs_chunks_are_one_way_where_they_share_a_key() {
     // another run's chunk moves before them: that sort is not stable.
     let mut links: Vec<Link> = (100..164).map(|chunk| link(chunk, 100, (5, 5))).collect();
     links.extend([link(1, 1, (4, 6)), link(2, 2, (7, 9))]);
-    let chains = chain(&mut links, &account).unwrap();
+    let chains = chain(
+        &mut links,
+        &account,
+        QueryCheck::unarmed(&std::sync::atomic::AtomicBool::new(false)),
+    )
+    .unwrap();
     let ids: Vec<Vec<u64>> = chains
         .iter()
         .map(|range| {
@@ -1341,16 +1320,7 @@ fn a_run_whose_chunks_share_a_key_is_one_way() {
             predicate: &EventPredicate::default(),
             limit: 1,
         };
-        let page = scan(
-            snapshot.storage(),
-            snapshot.version(),
-            snapshot.catalog(),
-            snapshot.schema(),
-            snapshot.budget(),
-            &query,
-            &mut log,
-        )
-        .unwrap();
+        let page = scan(&snapshot, snapshot.budget(), &query, &mut log).unwrap();
         drop(page);
         assert_eq!(log.ways, [1]);
         assert_eq!(
@@ -1429,16 +1399,7 @@ fn a_large_text_value_is_returned_whole_and_reserved_first() {
     // Enough for the merge and the chunk, but not for the line.
     let budget =
         MemoryBudget::new(merge_memory(1, 1, 1, MAX_DATA_FRAGMENT_LEN as u64) + 512 * 1024);
-    let error = scan(
-        snapshot.storage(),
-        snapshot.version(),
-        snapshot.catalog(),
-        snapshot.schema(),
-        &budget,
-        &query,
-        &mut ReadLog::default(),
-    )
-    .unwrap_err();
+    let error = scan(&snapshot, &budget, &query, &mut ReadLog::default()).unwrap_err();
     assert!(
         matches!(error, EventScanError::ReserveLargeValue { index: 0, .. }),
         "{error:?}"
@@ -1541,7 +1502,9 @@ fn large_value_admission_precedes_fetch_and_covers_every_lent_fragment() {
         storage: snapshot.storage(),
         before: &before,
     };
+    let revoked = std::sync::atomic::AtomicBool::new(false);
     let at = At {
+        revoked: QueryCheck::unarmed(&revoked),
         storage: &storage,
         chunk: listed.chunk,
         reader: &reader,
@@ -1799,16 +1762,7 @@ fn every_page_allocation_can_fail_without_releasing_an_existing_page() {
         predicate: &EventPredicate::default(),
         limit: 3,
     };
-    let previous = scan(
-        snapshot.storage(),
-        snapshot.version(),
-        snapshot.catalog(),
-        snapshot.schema(),
-        &budget,
-        &query,
-        &mut ReadLog::default(),
-    )
-    .unwrap();
+    let previous = scan(&snapshot, &budget, &query, &mut ReadLog::default()).unwrap();
     let held = held_by(&previous);
     assert_eq!(budget.reserved(), held);
     let mut succeeded = false;
@@ -1818,6 +1772,7 @@ fn every_page_allocation_can_fail_without_releasing_an_existing_page() {
                 MemoryAccount::new(&budget, "page failure", MemoryPlan::default()).unwrap();
             let mut log = ReadLog::default();
             let mut scan = Scan {
+                revoked: snapshot.revoked(),
                 storage: snapshot.storage(),
                 catalog: &snapshot.version().catalog,
                 spec: &snapshot.schema().events[usize::from(LOGS.0)],
@@ -1924,16 +1879,7 @@ fn a_full_page_reads_nothing_past_its_last_row() {
     let budget =
         MemoryBudget::new(merge_memory(1, 1, 1, MAX_DATA_FRAGMENT_LEN as u64) + 512 * 1024);
     let mut log = ReadLog::default();
-    let page = scan(
-        snapshot.storage(),
-        snapshot.version(),
-        snapshot.catalog(),
-        snapshot.schema(),
-        &budget,
-        &query,
-        &mut log,
-    )
-    .unwrap();
+    let page = scan(&snapshot, &budget, &query, &mut log).unwrap();
     let keys: Vec<_> = page.events().iter().map(|event| event.key).collect();
     assert_eq!(keys, [1]);
     assert_eq!(page.cursor().map(|cursor| cursor.key), Some(1));
@@ -1949,7 +1895,8 @@ fn a_full_page_reads_nothing_past_its_last_row() {
 fn foreign_chunk(store: &Store, chunk: ChunkId, key: i64, combo: u32, host: u32) {
     let schema = schema();
     let spec = &schema.events[usize::from(CLOSED.0)];
-    let mut batch = store.tsdb.storage().batch().unwrap();
+    let batch_storage = store.tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     let mut sink = BatchSink {
         batch: &mut batch,
         chunk,
@@ -2007,6 +1954,7 @@ fn foreign_chunk(store: &Store, chunk: ChunkId, key: i64, combo: u32, host: u32)
     let extent = event_extent(spec, key);
     manifest::write_chunk(&mut batch, StreamRef::Events(CLOSED), extent, chunk, &entry).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
 }
 
 // An entry that records a length no fragment 0 has is damage: the scan fails `Corrupted` before
@@ -2032,10 +1980,12 @@ fn an_entry_recording_no_fragment_0_a_chunk_has_is_corrupted() {
             fragment0,
             bytes: 1_000,
         };
-        let mut batch = store.tsdb.storage().batch().unwrap();
+        let batch_storage = store.tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         let (stream, extent) = (StreamRef::Events(CLOSED), event_extent(spec, 10));
         manifest::write_chunk(&mut batch, stream, extent, ChunkId(1), &entry).unwrap();
         batch.commit(Durability::Durable).unwrap();
+        drop(batch_storage);
         let error = store
             .snapshot()
             .scan_events(&EventQuery {
@@ -2165,9 +2115,12 @@ fn references_the_catalog_lacks_are_corrupted() {
         .try_reserve("head", damaged.head.bytes())
         .unwrap();
     let registry = Registry::new(damaged, Arc::new(schema()), Arc::new(OpenMarker), head);
-    let damaged = registry
-        .capture(store.tsdb.storage(), &MemoryBudget::new(u64::MAX))
-        .unwrap();
+    let shared = Arc::new(crate::version::Shared::new(
+        store.tsdb.into_storage(),
+        registry,
+        MemoryBudget::new(u64::MAX),
+    ));
+    let damaged = shared.capture().unwrap();
     let error = scan_at(&damaged, 40, &by_combination).unwrap_err();
     assert!(
         matches!(
@@ -2355,4 +2308,29 @@ fn an_identity_matches_the_text_it_was_written_as() {
         let found: Vec<_> = page.events().iter().map(|event| event.key).collect();
         assert_eq!(found, keys);
     }
+}
+
+/// Even two overlapping links must check between their scans of existing chain tails.
+#[test]
+fn chain_placement_checks_revocation_on_each_link() {
+    let disk = MemoryDisk::new();
+    let store = crate::db::tests::open(&disk);
+    let shared = store.shared().clone();
+    shared.at_query("events::chain:3", 1, move || drop(store));
+    let mut links = [1, 2].map(|id| Link {
+        chunk: ChunkId(id),
+        fragment0: 0,
+        keys: (0, 10),
+        run: id,
+        chain: 0,
+    });
+    let result = chain(&mut links, &crate::budget::test_account(), shared.revoked());
+    // Release the captured owner even if a regression skipped the second check.
+    shared.at_query("*", 0, || {});
+    assert!(matches!(
+        result,
+        Err(EventScanError::CheckOpen {
+            source: crate::storage::StorageError::Closed
+        })
+    ));
 }

@@ -1860,9 +1860,11 @@ fn a_recycling_round_reserves_its_catalog_copies() {
 fn a_candidate_of_an_unknown_dimension_is_corrupted() {
     let disk = MemoryDisk::new();
     let mut tsdb = open(&disk);
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     references::queue(&mut batch, Entity::Label(LabelId(99), 1)).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     let error = run(&mut tsdb, 0, &policy(keep(), keep(), keep()), 1).unwrap_err();
     assert!(
         matches!(
@@ -1887,10 +1889,12 @@ fn a_stored_count_of_zero_uses_is_corrupted() {
     let mut tsdb = open(&disk);
     commit(&mut tsdb, 1, 0, &[point(HOUR, 0, LABELS)], &[], &[]);
     let curl = label(&tsdb, PROCESS, b"curl").unwrap();
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     references::queue(&mut batch, Entity::Label(PROCESS, curl)).unwrap();
     raw::put_uses_record(&mut batch, PROCESS, curl, 0).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     let stored = dump_storage(&tsdb);
 
     let error = run(&mut tsdb, 0, &policy(keep(), keep(), keep()), 1).unwrap_err();
@@ -1926,10 +1930,12 @@ fn a_stored_count_of_zero_pins_is_corrupted() {
     }];
     commit(&mut tsdb, 1, 0, &[], &[], &pin);
     let id = combo(&tsdb, lonely).unwrap();
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     references::queue(&mut batch, Entity::Combo(id)).unwrap();
     raw::put_pin_record(&mut batch, id, 0).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     let stored = dump_storage(&tsdb);
 
     let error = run(&mut tsdb, 0, &policy(keep(), keep(), keep()), 1).unwrap_err();
@@ -2025,11 +2031,13 @@ fn a_candidate_of_an_id_not_live_is_dropped() {
     let mut tsdb = open(&disk);
     commit(&mut tsdb, 1, 0, &[point(HOUR, 0, LABELS)], &[], &[]);
     let catalog = tsdb.current().catalog.clone();
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     for entity in [Entity::Combo(9), Entity::Label(HOST, 9)] {
         references::queue(&mut batch, entity).unwrap();
     }
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     let done = finish(&mut tsdb, 0, &policy(keep(), keep(), keep()));
     assert_eq!(
         (
@@ -2076,18 +2084,21 @@ fn recycling_makes_progress_when_staging_fits_one_release_but_not_the_round() {
     let mut single = 0;
     for id in 1..=VALUES {
         let mut draft = current.catalog.draft(profile.catalog, &account).unwrap();
-        let mut batch = tsdb.storage().batch().unwrap();
+        let batch_storage = tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         draft.release_label(&mut batch, HOST, id).unwrap();
         single = single.max(draft.peak() - current.catalog.bytes());
     }
     let mut draft = current.catalog.draft(profile.catalog, &account).unwrap();
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     for id in 1..=VALUES {
         draft.release_label(&mut batch, HOST, id).unwrap();
     }
     assert!(draft.peak() - current.catalog.bytes() > single);
     drop(draft);
     drop(batch);
+    drop(batch_storage);
     drop(current);
     let budget = tsdb.staging_budget().clone();
     let occupied = budget

@@ -52,7 +52,7 @@ use std::{
 };
 
 use rustc_hash::FxBuildHasher;
-use snafu::{OptionExt, ResultExt, Snafu, ensure};
+use snafu::{IntoError, OptionExt, ResultExt, Snafu, ensure};
 
 #[cfg(test)]
 use crate::chunk::reader::decode_memory;
@@ -86,7 +86,7 @@ use crate::{
     schema::{MAX_DIMENSIONS, MAX_FIELDS},
     storage::{Direction, Storage, StorageRead},
     time::Grid,
-    version::CatalogToken,
+    version::{CatalogToken, QueryCheck},
 };
 
 /// A grouped-sum query over one tier (§8.1 `SeriesGroup`).
@@ -449,6 +449,26 @@ impl<S: Storage> Snapshot<S> {
     /// Sums the selected fields of the rows in `query`'s range and tier, into one list of
     /// groups per request, in one scan of the chunks and the head (§8.1).
     pub fn series(&self, query: &SeriesQuery<'_>) -> Result<SeriesGroups, SeriesQueryError> {
+        self.revoked()
+            .check("series::series:1")
+            .context(CheckOpenSnafu)?;
+        let result = self.series_inner(query);
+        if let Err(error) = &result {
+            if error.kind() == ErrorKind::BackendFailed {
+                self.report(error.kind());
+            } else {
+                self.check_open().context(CheckOpenSnafu)?;
+            }
+        } else {
+            self.revoked()
+                .check("series::series:2")
+                .context(CheckOpenSnafu)?;
+        }
+        result
+    }
+
+    /// Executes the admitted query; the public boundary reports failures and checks completion.
+    fn series_inner(&self, query: &SeriesQuery<'_>) -> Result<SeriesGroups, SeriesQueryError> {
         let schema = self.schema();
         let tier_id = query.tier;
         let (series, tier) = schema
@@ -537,6 +557,7 @@ impl<S: Storage> Snapshot<S> {
             .buffer(key_width.unwrap_or(0))
             .context(ReserveScanSnafu)?;
         let mut scan = Scan {
+            revoked: self.revoked(),
             budget,
             catalog: &self.version().catalog,
             dimensions: &series.dimensions,
@@ -629,6 +650,8 @@ impl LabelMap<'_> {
 
 /// One query's scan: where rows come from, and the groups they go to.
 struct Scan<'a, 'm> {
+    /// The instance flag, borrowed without retaining its capture gate.
+    revoked: QueryCheck<'a>,
     /// The snapshot's budget, which the decoder, the chunks and the blocks reserve from.
     budget: &'a MemoryBudget,
     catalog: &'a Catalog,
@@ -667,6 +690,9 @@ impl Scan<'_, '_> {
         let extents = grid.extent_of_bucket(numbers.start)..=grid.extent_of_bucket(numbers.end - 1);
         let mut decoder = None;
         let stopped = manifest::scan_chunks(read, stream, extents, Direction::Forward, |listed| {
+            if let Err(error) = self.revoked.check("series::chunks:1") {
+                return ControlFlow::Break(CheckOpenSnafu.into_error(error));
+            }
             if !buckets.meets(grid, &listed) {
                 return ControlFlow::Continue(());
             }
@@ -727,6 +753,9 @@ impl Scan<'_, '_> {
         decoder: &mut Decoder,
         fragment0: u32,
     ) -> Result<(), SeriesQueryError> {
+        self.revoked
+            .check("series::chunk:1")
+            .context(CheckOpenSnafu)?;
         let reader = ChunkReader::open(source, &decoder.account, fragment0)
             .context(OpenChunkSnafu { chunk })?;
         let columns = reader.columns();
@@ -737,6 +766,7 @@ impl Scan<'_, '_> {
                 .all(|(desc, layout)| desc.ty == layout.ty && desc.nullable == layout.nullable);
         ensure!(shaped, ChunkColumnsSnafu { chunk });
         let mut decode = Decode {
+            revoked: self.revoked,
             chunk,
             reader: &reader,
             source,
@@ -754,6 +784,9 @@ impl Scan<'_, '_> {
             .blocks(BUCKET)
             .expect("a series chunk has a bucket column");
         for entry in blocks {
+            self.revoked
+                .check("series::chunk:2")
+                .context(CheckOpenSnafu)?;
             let rows = entry.first_row..entry.first_row + entry.rows;
             match entry.stats.range {
                 Some(IntRange::Signed { min, max })
@@ -814,10 +847,16 @@ impl Scan<'_, '_> {
             accumulator,
         ) in head.series()
         {
+            self.revoked
+                .check("series::head:1")
+                .context(CheckOpenSnafu)?;
             if source != tier || !self.buckets.contains(&bucket) {
                 continue;
             }
             for (combos, columns) in accumulator.pages() {
+                self.revoked
+                    .check("series::head:2")
+                    .context(CheckOpenSnafu)?;
                 for (row, &combo) in combos.iter().enumerate() {
                     for (value, field) in values.iter_mut().zip(self.fields.indices()) {
                         *value = columns[field][row];
@@ -894,6 +933,8 @@ fn combination<'o>(
 
 /// What decoding a block of the open chunk needs.
 struct Decode<'c, F> {
+    /// Checked on both sides of each actual block decode.
+    revoked: QueryCheck<'c>,
     chunk: u64,
     reader: &'c ChunkReader,
     source: &'c F,
@@ -937,6 +978,10 @@ impl<T: IntValue> Column<T> {
         row: u32,
     ) -> Result<T, SeriesQueryError> {
         if !self.rows.contains(&row) {
+            decode
+                .revoked
+                .check("series::value:1")
+                .context(CheckOpenSnafu)?;
             let (chunk, column) = (decode.chunk, self.index);
             let blocks = decode
                 .reader
@@ -959,6 +1004,10 @@ impl<T: IntValue> Column<T> {
                     column,
                     block,
                 })?;
+            decode
+                .revoked
+                .check("series::value:2")
+                .context(CheckOpenSnafu)?;
             ensure!(
                 !self.block.validity().has_nulls(),
                 NullValuesSnafu { chunk, column }
@@ -974,6 +1023,12 @@ impl<T: IntValue> Column<T> {
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum SeriesQueryError {
+    /// The owner retired the instance before this operation could continue.
+    #[snafu(display("the store is closed to this operation"))]
+    CheckOpen {
+        source: crate::storage::StorageError,
+    },
+
     #[snafu(display("the schema has no series tier {tier:?}"))]
     UnknownTier { tier: TierId },
 
@@ -1054,6 +1109,7 @@ pub enum SeriesQueryError {
 impl SeriesQueryError {
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::CheckOpen { source } => source.kind(),
             Self::UnknownTier { .. }
             | Self::UnknownField { .. }
             | Self::NotADimension { .. }

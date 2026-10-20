@@ -195,7 +195,8 @@ fn rejects_metadata<S: Storage>(tsdb: &mut Tsdb<S>, stream: StreamRef) {
         }
         let context = tsdb.round_context(&before);
         assert!(recycle::plan(&read, &context).unwrap().is_none());
-        let mut batch = tsdb.storage().batch().unwrap();
+        let batch_storage = tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         let error = recycle::recycle(&mut batch, &context).err().unwrap();
         assert_eq!(error.kind(), ErrorKind::Corrupted);
         assert_eq!(dump(&batch), storage);

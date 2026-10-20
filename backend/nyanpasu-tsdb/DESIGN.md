@@ -329,6 +329,100 @@ disk payload and backend tree/transaction internals are storage and measured `ba
 respectively; the exported conformance suite is test support. These exceptions are not an
 allocator or RSS bound.
 
+## Retirement and revocation
+
+`Shared` owns the backend in `RwLock<Option<S>>` and the registry's admission state:
+`Open`, `RecoveryNeeded`, `Recovering`, `WaitingForReaders`, `Unavailable`, `Suspended`, or
+`Closed`.
+Dropping `Tsdb` closes admission, sets its one atomic revocation flag, detaches the backend and
+resident roots, then drops them outside the locks.
+Readers own only `Shared`; snapshots own a storage transaction and a charged version.
+Snapshot fields drop the transaction before the version payload and its capture credit.
+Results retain their allocation charges. Even an empty version includes fixed catalog and head
+allocations, so `query_budget.reserved() == 0` means all snapshots and charged results have gone.
+Idle readers and catalog tokens do not block that condition. Recovery returns to the host
+while claims remain; the budget has no wait API, and retirement never waits for query completion.
+
+The lock order, documented on `Shared`, is G (backend gate), R (registry), backend locks, then
+budget mutexes. Capture holds G-read and R-read through reserve-before-pin. Writes and maintenance
+hold G-read, taking R briefly; no R guard spans commit, rollback or fsync.
+Retirement takes G-write then R-write only to detach; backend close runs after both are released.
+Queries hold neither G nor R while scanning. They check revocation at entry, successful return,
+manifest entries, decoded blocks, stripe refills, large-value pieces and head/merge/page batches.
+A revoked query returns its module's `CheckOpen { source: StorageError::Closed }`, kind `Local`,
+and releases its workspace and partial result. The caller's snapshot retains its capture claim.
+On a failed query, revocation replaces the inner error with `CheckOpen`, except `BackendFailed`,
+which is still reported and returned unchanged.
+Only query errors of kind `BackendFailed` latch `Open` to `RecoveryNeeded`; the next owner write
+or maintenance refuses admission. Local and corrupted errors leave admission unchanged, and a late
+failure cannot reopen `Closed`. An already admitted commit may finish without clearing a latch.
+
+## Suspend and explicit close
+
+`suspend(now)` closes admission and revokes under G-write then R-write. It releases both,
+then holds G-read while rewriting the stored state record unchanged and committing Durable.
+There is no new publication: `last_batch`, journal pointers and publication/head correspondence
+stay intact. No maintenance or compaction runs. Finally, success or error, retirement detaches
+under G-write then R-write and drops the backend and roots outside both locks. Started synchronous
+commit and backend Drop I/O complete on the caller's thread; neither has a timeout.
+Only a confirmed Durable commit resets durable counters and dates the last durable commit.
+
+Suspend ends `Suspended`, including checkpoint failure. Resume uses `recover_with`, below.
+`close(now)` uses the same protocol but ends terminal `Closed`. Repeated suspend/close calls do
+no checkpoint and return success; close after suspend makes it terminal, and suspend after close
+leaves it closed. Detached recovery states have no backend to checkpoint; stopping them succeeds
+without changing durable bookkeeping. Drop still retires without a checkpoint. A host that needs
+the checkpoint's outcome calls close explicitly; backend Drop itself cannot report I/O failures.
+In `Suspended` and `Closed`, write and maintain return their Local `Closed` variants and capture
+returns `CheckOpen { Closed }`. Sequences remain infallible and continue in the old incarnation.
+
+## Recovery and resume
+
+`recover_with(reopen, restore)` also resumes a suspended store. Closed returns Local
+`RecoveryError::Closed` without changing state or invoking either closure. Otherwise it retires
+the instance into `Recovering`, using the same unlocked
+backend/root destruction as Drop. If query credit remains, it returns `WaitingForReaders` and
+calls neither closure. The host releases snapshots/results and retries on its own schedule.
+After drain, reopening, ordinary open validation/rebuild/settlement, and synchronous host
+restoration run without either shared lock. `RecoveryView` lends auxiliary bytes and metadata
+from one post-settlement snapshot; its borrowed state cannot escape. The host builds an owned
+replacement and propagates read failures. It discards pending inputs computed from the old
+state, never replays them. The callback's external effects cannot be rolled back.
+
+Only success installs the backend, version and a fresh catalog marker under G then R, clears
+revocation and enters `Open`. It returns `Recovered` with the restored host value, incarnation,
+publication and last surviving batch. At installation, event sequence, durability bookkeeping and
+`behind` reset together with the new incarnation, shape and head/staging budgets. Until then
+`next_event_seq` continues in the old incarnation; the other owner bookkeeping remains unchanged.
+`Shared`, the query budget and existing Reader clones survive. Old graphs drain before new ones
+are built; old query failures cannot reach the new instance.
+
+Any recovery error drops the candidate outside the locks and leaves `Unavailable`, with no backend
+or published version. The host receives the typed cause and may retry explicitly; durable opening
+changes may already have happened. `RecoveryNeeded`, `Recovering`, `WaitingForReaders` and
+`Unavailable` return `RecoveryNeeded` from write, maintain and capture. Revoked running queries
+retain their own Local `CheckOpen` errors. Every state except `Closed` can start another recovery
+attempt. There is no automatic retry or wait.
+Reopening must target the same dataset; recovery from an old backup needs the deferred external
+incarnation counter.
+
+## Explicit physical compaction
+
+`CompactStorage` is an optional lifecycle capability, separate from transactional `Storage`.
+`Tsdb::compact()` exists only for backends implementing it. MemoryStorage returns `Unsupported`;
+RedbStorage maps its existing Compacted/Unchanged outcomes to `Executed { changed }`, and a live
+read transaction to `Deferred`. Other backends must likewise defer if shared backend ownership
+prevents exclusivity. There is no facade snapshot counter or query-budget drain check: idle
+Readers and results own no storage snapshot, and do not defer compaction.
+
+The owner takes G-write, checks admission briefly under R, then releases R before calling the
+backend. Captures wait on G and proceed afterwards. Compaction changes neither publication nor
+revocation. Existing healthy queries keep working after a Deferred attempt. Only Open admits it;
+recovery states return `CompactError::RecoveryNeeded`, and Suspended/Closed return Local Closed.
+BackendFailed flags recovery; Local and Corrupted errors leave the state unchanged. No registry
+lock spans compaction's durable work. The caller decides when to retry Deferred; there is no
+polling or duration bound. Suspend, close and maintenance never invoke compaction.
+
 ## Errors
 
 Errors follow snafu's own guidance (`guide/philosophy.md`).
@@ -356,15 +450,18 @@ Errors follow snafu's own guidance (`guide/philosophy.md`).
 
 Each public operation returns the error type of its module:
 
-| Operation            | Error type                                                                                          |
-| -------------------- | --------------------------------------------------------------------------------------------------- |
-| validating a schema  | `schema::SchemaError`                                                                               |
-| opening              | `lifecycle::OpenError`                                                                              |
-| writing a batch      | `write::WriteError`, with `InputError`, `StageError` and, from the backlog's round, `MaintainError` |
-| capturing a snapshot | `version::CaptureError`                                                                             |
-| summing series       | `query::SeriesQueryError`                                                                           |
-| scanning events      | `query::EventScanError`                                                                             |
-| maintaining          | `maintain::MaintainError`                                                                           |
+| Operation             | Error type                                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| validating a schema   | `schema::SchemaError`                                                                               |
+| opening               | `lifecycle::OpenError`                                                                              |
+| recovering            | `lifecycle::RecoveryError`                                                                          |
+| suspending or closing | `lifecycle::CheckpointError`                                                                        |
+| compacting            | `lifecycle::CompactError`                                                                           |
+| writing a batch       | `write::WriteError`, with `InputError`, `StageError` and, from the backlog's round, `MaintainError` |
+| capturing a snapshot  | `version::CaptureError`                                                                             |
+| summing series        | `query::SeriesQueryError`                                                                           |
+| scanning events       | `query::EventScanError`                                                                             |
+| maintaining           | `maintain::MaintainError`                                                                           |
 
 ## Data mapping and variants
 

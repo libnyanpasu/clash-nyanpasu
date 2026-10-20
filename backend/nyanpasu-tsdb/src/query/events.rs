@@ -60,8 +60,7 @@ use crate::chunk::reader::decode_memory;
 
 use super::{LabelFilter, rows_of};
 use crate::{
-    ColumnType, ErrorKind, EventStreamSpec, ExtentSpec, LabelId, Schema, StreamId, TimeRange,
-    Timestamp,
+    ColumnType, ErrorKind, EventStreamSpec, ExtentSpec, LabelId, StreamId, TimeRange, Timestamp,
     budget::{
         BudgetExceeded, BudgetVec, FrozenVec, MemoryAccount, MemoryBudget, MemoryPlan, Reserved,
         Retain, Retained,
@@ -85,7 +84,7 @@ use crate::{
     layout::manifest::{self, ManifestError, StreamRef, event_extent, retained_from},
     storage::{ChunkId, Direction, Storage, StorageRead},
     time::Span,
-    version::{CatalogToken, Snapshot, Version},
+    version::{CatalogToken, QueryCheck, Snapshot},
     write::{ComboId, EventSeq},
 };
 
@@ -296,15 +295,22 @@ pub(crate) fn merge_memory(ways: usize, selected: usize, columns: usize, lent: u
 impl<S: Storage> Snapshot<S> {
     /// Scans one page of `query.stream` (§8.3).
     pub fn scan_events(&self, query: &EventQuery<'_>) -> Result<EventPage, EventScanError> {
-        scan(
-            self.storage(),
-            self.version(),
-            self.catalog(),
-            self.schema(),
-            self.budget(),
-            query,
-            &mut ReadLog::default(),
-        )
+        self.revoked()
+            .check("events::scan_events:1")
+            .context(CheckOpenSnafu)?;
+        let result = scan(self, self.budget(), query, &mut ReadLog::default());
+        if let Err(error) = &result {
+            if error.kind() == ErrorKind::BackendFailed {
+                self.report(error.kind());
+            } else {
+                self.check_open().context(CheckOpenSnafu)?;
+            }
+        } else {
+            self.revoked()
+                .check("events::scan_events:2")
+                .context(CheckOpenSnafu)?;
+        }
+        result
     }
 }
 
@@ -341,15 +347,19 @@ impl ReadLog {
 
 /// The scan behind [`Snapshot::scan_events`], over the parts of a snapshot, which logs what
 /// it reads into `log`. The page keeps `catalog`, the token of the snapshot's catalog.
-pub(crate) fn scan<R: StorageRead>(
-    storage: &R,
-    version: &Version,
-    catalog: CatalogToken,
-    schema: &Schema,
+pub(crate) fn scan<S: Storage>(
+    snapshot: &Snapshot<S>,
     budget: &MemoryBudget,
     query: &EventQuery<'_>,
     log: &mut ReadLog,
 ) -> Result<EventPage, EventScanError> {
+    let (storage, version, catalog, schema, revoked) = (
+        snapshot.storage(),
+        snapshot.version(),
+        snapshot.catalog(),
+        snapshot.schema(),
+        snapshot.revoked(),
+    );
     let stream = query.stream;
     let spec = schema
         .events
@@ -400,6 +410,7 @@ pub(crate) fn scan<R: StorageRead>(
         });
     };
     let mut scan = Scan {
+        revoked,
         storage,
         catalog: &version.catalog,
         spec,
@@ -635,6 +646,8 @@ enum Source<'s> {
 }
 
 struct Scan<'s, 'q, R> {
+    /// The instance flag, independent of the backend snapshot.
+    revoked: QueryCheck<'s>,
     storage: &'s R,
     catalog: &'s Catalog,
     spec: &'s EventStreamSpec,
@@ -663,7 +676,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         limit: usize,
     ) -> Result<(BudgetVec<Position<'s>>, Decode), EventScanError> {
         let mut links = self.list_chunks(stream)?;
-        let chains = chain(&mut links, &self.account)?;
+        let chains = chain(&mut links, &self.account, self.revoked)?;
         let buffer = head.events(stream);
         let head_rows = usize::try_from(buffer.rows()).unwrap_or(usize::MAX);
         // The selection holds one row past the limit before it drops the worst.
@@ -672,6 +685,9 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         // The largest fragment one of the chunks lends, once each entry is checked.
         let mut lent = 0;
         for link in links.iter() {
+            self.revoked
+                .check("events::merge:1")
+                .context(CheckOpenSnafu)?;
             check_recorded(link.fragment0).context(OpenChunkSnafu {
                 chunk: link.chunk.0,
             })?;
@@ -694,6 +710,9 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         let mut decode = Decode::new(&self.account)?;
         let mut ways = self.account.buffer(entries).map_err(admit)?;
         for links in chains.iter().cloned() {
+            self.revoked
+                .check("events::merge:2")
+                .context(CheckOpenSnafu)?;
             let mut ranks = self.account.buffer(0).map_err(admit)?;
             let mut matches = self.account.buffer(0).map_err(admit)?;
             ranks.plan_capacity(BUILDER_STRIPE_ROWS).map_err(admit)?;
@@ -715,6 +734,11 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         }
         let mut positions = self.account.buffer(0).context(ReservePageSnafu)?;
         while let Some(Reverse((rank, index))) = heap.pop() {
+            if positions.len().is_multiple_of(BUILDER_STRIPE_ROWS) {
+                self.revoked
+                    .check("events::merge:3")
+                    .context(CheckOpenSnafu)?;
+            }
             let way = &mut ways[index];
             let position = Position {
                 order: self::rank(rank, self.direction),
@@ -743,6 +767,9 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             extents,
             Direction::Forward,
             |listed| {
+                if let Err(error) = self.revoked.check("events::list_chunks:1") {
+                    return ControlFlow::Break(CheckOpenSnafu.into_error(error));
+                }
                 let (first, last) = listed.entry.key_range;
                 if first > *keys.end() || last < *keys.start() {
                     return ControlFlow::Continue(());
@@ -756,13 +783,13 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 };
                 match links.try_push(link) {
                     Ok(()) => ControlFlow::Continue(()),
-                    Err(exceeded) => ControlFlow::Break(exceeded),
+                    Err(exceeded) => ControlFlow::Break(ReserveChunkListSnafu.into_error(exceeded)),
                 }
             },
         )
         .context(ListChunksSnafu)?;
         match full {
-            Some(exceeded) => Err(exceeded).context(ReserveChunkListSnafu),
+            Some(error) => Err(error),
             None => Ok(links),
         }
     }
@@ -782,13 +809,22 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             .buffer(capacity)
             .context(ReservePageSnafu)?
             .into_heap();
-        let segments = buffer
-            .segments()
-            .iter()
-            .filter(|segment| extents.contains(&segment.extent()));
-        for segment in segments {
+        for segment in buffer.segments() {
+            self.revoked
+                .check("events::select_head:1")
+                .context(CheckOpenSnafu)?;
+            if !extents.contains(&segment.extent()) {
+                continue;
+            }
             let mut rows = segment.record().rows();
+            let mut visited = 0usize;
             loop {
+                if visited.is_multiple_of(BUILDER_STRIPE_ROWS) {
+                    self.revoked
+                        .check("events::select_head:2")
+                        .context(CheckOpenSnafu)?;
+                }
+                visited += 1;
                 let from = rows.clone();
                 let Some(row) = rows.next() else {
                     break;
@@ -920,6 +956,9 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
     /// Opens a chunk whose fragment 0 is `fragment0` bytes long, which reserves its directory
     /// from the scan's budget.
     fn open(&mut self, chunk: ChunkId, fragment0: u32) -> Result<OpenChunk, EventScanError> {
+        self.revoked
+            .check("events::open:1")
+            .context(CheckOpenSnafu)?;
         self.log.opened(chunk);
         let source = StoredChunk {
             storage: self.storage,
@@ -946,6 +985,9 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         row: u32,
         decode: &mut Decode,
     ) -> Result<(), EventScanError> {
+        self.revoked
+            .check("events::load_stripe:1")
+            .context(CheckOpenSnafu)?;
         let chunk = open.chunk;
         let read = |source| ReadBlockSnafu { chunk: chunk.0 }.into_error(source);
         let keys = self.bounds.keys(self.direction);
@@ -976,6 +1018,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         let len = stripe.len();
         reset_stripe(ranks, matches, len).context(ReserveReadSnafu { chunk: chunk.0 })?;
         let at = At {
+            revoked: self.revoked,
             storage: self.storage,
             chunk,
             reader: &open.reader,
@@ -1125,6 +1168,11 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         let mut chunked: BudgetVec<usize> =
             self.account.buffer(from_chunks).context(ReservePageSnafu)?;
         for (index, position) in positions.iter().enumerate() {
+            if index.is_multiple_of(BUILDER_STRIPE_ROWS) {
+                self.revoked
+                    .check("events::materialize:1")
+                    .context(CheckOpenSnafu)?;
+            }
             let mut values = self.account.buffer(columns).context(ReservePageSnafu)?;
             values.extend((0..columns).map(|_| EventValue::Null));
             match &position.source {
@@ -1152,18 +1200,30 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             } => (chunk, fragment0, row),
             Source::Head(_) => unreachable!("only chunk positions are listed"),
         };
+        self.revoked
+            .check("events::materialize:2")
+            .context(CheckOpenSnafu)?;
         chunked.sort_unstable_by_key(|&index| place(index));
+        self.revoked
+            .check("events::materialize:3")
+            .context(CheckOpenSnafu)?;
         for group in chunked.chunk_by(|&a, &b| place(a).0 == place(b).0) {
             let (chunk, fragment0, _) = place(group[0]);
             let open = self.open(chunk, fragment0)?;
             let at = At {
+                revoked: self.revoked,
                 storage: self.storage,
                 chunk,
                 reader: &open.reader,
             };
             let spec = self.spec;
             for (column, spec) in spec.columns.iter().enumerate() {
-                for &index in group {
+                for (visited, &index) in group.iter().enumerate() {
+                    if visited.is_multiple_of(BUILDER_STRIPE_ROWS) {
+                        self.revoked
+                            .check("events::materialize:4")
+                            .context(CheckOpenSnafu)?;
+                    }
                     let row = place(index).2;
                     let value = self.read_value(&at, spec.ty, column, row, decode, retained)?;
                     events[index].values[column] = value;
@@ -1464,11 +1524,15 @@ fn below_64(range: RangeInclusive<i64>) -> u64 {
 fn chain(
     links: &mut [Link],
     account: &MemoryAccount,
+    revoked: QueryCheck<'_>,
 ) -> Result<BudgetVec<Range<usize>>, EventScanError> {
+    revoked.check("events::chain:1").context(CheckOpenSnafu)?;
     links.sort_unstable_by_key(|link| (link.keys, link.chunk));
+    revoked.check("events::chain:2").context(CheckOpenSnafu)?;
     // Each chain's last link, by index; there are at most as many chains as links.
     let mut lasts: BudgetVec<usize> = account.buffer(links.len()).context(ReserveChunkListSnafu)?;
     for index in 0..links.len() {
+        revoked.check("events::chain:3").context(CheckOpenSnafu)?;
         let link = links[index];
         // A run's chunks take consecutive ids, and the next starts at or after the key the
         // last one ends at: they may share it, but never overlap past it.
@@ -1496,10 +1560,15 @@ fn chain(
             }
         };
     }
+    revoked.check("events::chain:4").context(CheckOpenSnafu)?;
     links.sort_unstable_by_key(|link| (link.chain, link.keys, link.chunk));
+    revoked.check("events::chain:5").context(CheckOpenSnafu)?;
     let mut chains = account.buffer(lasts.len()).context(ReserveChunkListSnafu)?;
     let mut start = 0;
     for index in 1..=links.len() {
+        if (index - 1).is_multiple_of(BUILDER_STRIPE_ROWS) {
+            revoked.check("events::chain:6").context(CheckOpenSnafu)?;
+        }
         if index == links.len() || links[index].chain != links[start].chain {
             chains.push(start..index);
             start = index;
@@ -1523,6 +1592,8 @@ fn reset_stripe(
 
 /// An open chunk, where its blocks are read from.
 struct At<'a, R> {
+    /// Checked between backend reads, including individual large-value pieces.
+    revoked: QueryCheck<'a>,
     storage: &'a R,
     chunk: ChunkId,
     reader: &'a ChunkReader,
@@ -1539,19 +1610,34 @@ impl<R: StorageRead> At<'_, R> {
     /// Reads large value `index` whole, the length its entry states reserved first.
     fn read_large(&self, index: u32) -> Result<BudgetVec<u8>, EventScanError> {
         let chunk = self.chunk.0;
-        let len = self
+        self.revoked
+            .check("events::read_large:1")
+            .context(CheckOpenSnafu)?;
+        let entry = self
             .reader
             .large_values()
             .get(index as usize)
-            .map_or(0, |entry| entry.len);
+            .context(crate::chunk::error::NoSuchLargeValueSnafu { index })
+            .context(ReadLargeValueSnafu { chunk, index })?;
+        let len = entry.len;
         let mut value = self
             .reader
             .account()
             .buffer(len as usize)
             .context(ReserveLargeValueSnafu { chunk, index })?;
-        self.reader
-            .read_large(&self.source(), index, &mut value)
-            .context(ReadLargeValueSnafu { chunk, index })?;
+        for piece in 0..entry.fragments {
+            self.revoked
+                .check("events::read_large:2")
+                .context(CheckOpenSnafu)?;
+            self.reader
+                .read_large_piece(&self.source(), index, piece, |bytes| {
+                    value.extend_from_slice(bytes);
+                })
+                .context(ReadLargeValueSnafu { chunk, index })?;
+            self.revoked
+                .check("events::read_large:3")
+                .context(CheckOpenSnafu)?;
+        }
         Ok(value)
     }
 }
@@ -1604,9 +1690,11 @@ impl<B> Buffer<B> {
         if self.holds == Some(held) {
             return Ok(entry.first_row);
         }
+        at.revoked.check("events::read:1").context(CheckOpenSnafu)?;
         // Until the read succeeds, the buffer holds no block.
         self.holds = None;
         read(index, &mut self.block)?;
+        at.revoked.check("events::read:2").context(CheckOpenSnafu)?;
         log.decoded(held);
         self.holds = Some(held);
         Ok(entry.first_row)
@@ -1699,6 +1787,12 @@ impl Decode {
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum EventScanError {
+    /// The owner retired the instance before this operation could continue.
+    #[snafu(display("the store is closed to this operation"))]
+    CheckOpen {
+        source: crate::storage::StorageError,
+    },
+
     #[snafu(display("the schema has no event stream {stream:?}"))]
     UnknownStream { stream: StreamId },
 
@@ -1799,6 +1893,7 @@ pub enum EventScanError {
 impl EventScanError {
     pub fn kind(&self) -> ErrorKind {
         match self {
+            Self::CheckOpen { source } => source.kind(),
             Self::UnknownStream { .. }
             | Self::ZeroLimit
             | Self::UnknownColumn { .. }

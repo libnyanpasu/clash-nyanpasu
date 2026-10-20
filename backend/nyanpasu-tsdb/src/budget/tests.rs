@@ -2,20 +2,11 @@ use std::{
     sync::{
         Barrier,
         atomic::{AtomicU64, Ordering},
-        mpsc,
     },
     thread,
-    time::Duration,
 };
 
 use super::*;
-
-/// How long a test waits for something that must happen. It bounds a failure; it is
-/// never what makes a passing test pass.
-const PATIENCE: Duration = Duration::from_secs(30);
-
-/// How long a test watches for something that must not happen.
-const GRACE: Duration = Duration::from_millis(100);
 
 #[test]
 fn a_reservation_returns_its_bytes_when_dropped() {
@@ -232,43 +223,6 @@ fn merging_and_splitting_move_bytes_without_changing_the_count() {
 }
 
 #[test]
-fn a_handover_never_passes_through_zero() {
-    let budget = MemoryBudget::new(100);
-    let owner = budget.try_reserve("head", 40).unwrap();
-
-    let (started_tx, started_rx) = mpsc::channel();
-    let (done_tx, done_rx) = mpsc::channel();
-    let waiter = thread::spawn({
-        let budget = budget.clone();
-        move || {
-            started_tx.send(()).unwrap();
-            budget.wait_until_released();
-            done_tx.send(()).unwrap();
-        }
-    });
-    started_rx.recv_timeout(PATIENCE).unwrap();
-
-    // The only reservation changes hands twice. Releasing and re-reserving would pass
-    // through zero and could wake the waiter.
-    let mut new_owner = budget.try_reserve("head", 0).unwrap();
-    new_owner.merge(owner);
-    let part = new_owner.split(40);
-    assert_eq!(
-        (new_owner.bytes(), part.bytes(), budget.reserved()),
-        (0, 40, 40)
-    );
-    drop(new_owner);
-    assert!(
-        done_rx.recv_timeout(GRACE).is_err(),
-        "woke during a handover"
-    );
-
-    drop(part);
-    done_rx.recv_timeout(PATIENCE).unwrap();
-    waiter.join().unwrap();
-}
-
-#[test]
 #[should_panic(expected = "different budgets")]
 fn merging_reservations_of_different_budgets_is_a_programming_error() {
     let mut a = MemoryBudget::new(10).try_reserve("a", 1).unwrap();
@@ -348,71 +302,6 @@ fn concurrent_grow_and_shrink_end_at_zero() {
     });
 
     assert_eq!(budget.reserved(), 0);
-}
-
-#[test]
-fn waiting_returns_at_once_when_nothing_is_reserved() {
-    MemoryBudget::new(10).wait_until_released();
-}
-
-#[test]
-fn waiting_returns_when_another_thread_drops_the_last_reservation() {
-    let budget = MemoryBudget::new(100);
-    let first = budget.try_reserve("a", 10).unwrap();
-    let second = budget.try_reserve("b", 20).unwrap();
-
-    let (started_tx, started_rx) = mpsc::channel();
-    let (done_tx, done_rx) = mpsc::channel();
-    let waiter = thread::spawn({
-        let budget = budget.clone();
-        move || {
-            started_tx.send(()).unwrap();
-            budget.wait_until_released();
-            // Nothing may be held when the wait returns.
-            done_tx.send(budget.reserved()).unwrap();
-        }
-    });
-    started_rx.recv_timeout(PATIENCE).unwrap();
-
-    // One reservation is still held, so the waiter keeps waiting.
-    drop(first);
-    assert!(
-        done_rx.recv_timeout(GRACE).is_err(),
-        "woke with bytes reserved"
-    );
-
-    drop(second);
-    assert_eq!(done_rx.recv_timeout(PATIENCE), Ok(0));
-    waiter.join().unwrap();
-}
-
-// A wakeup lost between the waiter's check and its sleep would leave it blocked for
-// good, so the last drop is raced against the start of the wait many times over. A
-// lost wakeup shows as a waiter that never reports. The waiter is not scoped: a scope
-// would wait for it to finish, and a test that failed would hang instead.
-#[test]
-fn a_wait_racing_the_last_drop_is_never_left_asleep() {
-    for round in 0..500 {
-        let budget = MemoryBudget::new(10);
-        let reservation = budget.try_reserve("test", 10).unwrap();
-        let race = Arc::new(Barrier::new(2));
-        let (done_tx, done_rx) = mpsc::channel();
-
-        let waiter = thread::spawn({
-            let (budget, race) = (budget.clone(), race.clone());
-            move || {
-                race.wait();
-                budget.wait_until_released();
-                done_tx.send(()).unwrap();
-            }
-        });
-        race.wait();
-        drop(reservation);
-        done_rx
-            .recv_timeout(PATIENCE)
-            .unwrap_or_else(|_| panic!("round {round}: the waiter missed the wakeup"));
-        waiter.join().unwrap();
-    }
 }
 
 mod charged {

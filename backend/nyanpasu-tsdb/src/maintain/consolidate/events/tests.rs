@@ -2117,7 +2117,8 @@ fn reading_a_rounds_inputs_holds_no_more_than_planned() {
             account.peak_bytes()
         );
     };
-    let mut output = store.tsdb.storage().batch().unwrap();
+    let output_storage = store.tsdb.storage();
+    let mut output = output_storage.batch().unwrap();
     let mut sink = BatchSink {
         batch: &mut output,
         chunk: ChunkId(u64::MAX),
@@ -2553,7 +2554,8 @@ fn foreign_chunk(store: &Store, chunk: u64, keys: &[i64], recorded: Option<(i64,
     let schema = schema();
     let spec = &schema.events[usize::from(CLOSED.0)];
     let layout = event_columns(spec);
-    let mut batch = store.tsdb.storage().batch().unwrap();
+    let batch_storage = store.tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     let mut sink = BatchSink {
         batch: &mut batch,
         chunk: ChunkId(chunk),
@@ -2617,6 +2619,7 @@ fn foreign_chunk(store: &Store, chunk: u64, keys: &[i64], recorded: Option<(i64,
     let written = crate::write::chunking::ExtentChange::ChunkWritten(built.bytes);
     crate::write::chunking::change_extent(&mut batch, EVENTS, 0, written).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
 }
 
 // A round merges its inputs by the order of their rows and chains them by the keys their
@@ -3036,7 +3039,8 @@ fn the_cost_of_an_input_covers_what_reading_it_holds() {
             Reading::new(&lending, &input, 1, &events, &account, &input_plan).unwrap();
         let mut window = Window::new(events.bytes().count(), &account).unwrap();
         let (mut directory, mut ranks) = (0, 0);
-        let mut output = store.tsdb.storage().batch().unwrap();
+        let output_storage = store.tsdb.storage();
+        let mut output = output_storage.batch().unwrap();
         let mut sink = BatchSink {
             batch: &mut output,
             chunk: ChunkId(u64::MAX),

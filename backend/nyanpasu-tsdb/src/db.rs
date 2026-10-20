@@ -9,10 +9,13 @@ use snafu::{ResultExt, ensure};
 use crate::{
     ErrorKind, Profile, Schema, Timestamp,
     budget::MemoryBudget,
-    lifecycle::{self, OpenError},
+    lifecycle::{
+        self, CheckpointError, CompactError, CompactStorage, Compaction, OpenError, RecoveryError,
+        RecoveryProgress, RecoveryView,
+    },
     maintain::{self, Maintain, MaintainError, Maintained, Round},
-    storage::{Durability, Storage},
-    version::{CaptureError, OpenMarker, Registry, Snapshot, Version},
+    storage::{Durability, Storage, StorageError},
+    version::{CaptureError, LifecycleState, OpenMarker, Registry, Shared, Snapshot, Version},
     write::{
         BacklogSnafu, BeginBatchSnafu, CommitSnafu, EventSeq, Input, InvalidInputSnafu,
         RecoveryNeededSnafu, StageSnafu, WriteError, Written,
@@ -21,14 +24,6 @@ use crate::{
         stage::{self, Context, Counted},
     },
 };
-
-/// What the owner shares with the readers.
-struct Shared<S> {
-    storage: S,
-    registry: Registry,
-    /// All snapshots and queries together reserve from it (§7.4).
-    query_budget: MemoryBudget,
-}
 
 /// The owner's handle on an open dataset. Its calls are synchronous and run on the caller's
 /// thread; the store starts no thread or timer of its own (§3.1).
@@ -60,16 +55,16 @@ impl<S: Storage> Tsdb<S> {
         let opened = lifecycle::open(storage, &schema, &profile)?;
         let schema = Arc::new(schema);
         Ok(Self {
-            shared: Arc::new(Shared {
-                storage: opened.storage,
-                registry: Registry::new(
+            shared: Arc::new(Shared::new(
+                opened.storage,
+                Registry::new(
                     opened.version,
                     schema.clone(),
                     Arc::new(OpenMarker),
                     opened.head,
                 ),
-                query_budget: MemoryBudget::new(profile.query),
-            }),
+                MemoryBudget::new(profile.query),
+            )),
             schema,
             shape: opened.shape,
             head_budget: opened.head_budget,
@@ -97,17 +92,28 @@ impl<S: Storage> Tsdb<S> {
     /// After an unknown outcome, or any error of kind [`ErrorKind::BackendFailed`], every
     /// later write and capture fails with a `RecoveryNeeded` error until the owner recovers
     /// (§7.5).
+    /// Suspended or explicitly closed stores instead return [`WriteError::Closed`], kind Local.
     pub fn write(
         &mut self,
         input: &Input<'_>,
         durability: Durability,
     ) -> Result<Written, WriteError> {
-        ensure!(!self.shared.registry.needs_recovery(), RecoveryNeededSnafu);
+        let shared = self.shared.clone();
+        let storage = shared.storage();
+        ensure!(
+            !matches!(
+                shared.registry.state(),
+                LifecycleState::Suspended | LifecycleState::Closed
+            ),
+            crate::write::ClosedSnafu
+        );
+        ensure!(!shared.registry.needs_recovery(), RecoveryNeededSnafu);
+        let storage = storage.as_ref().expect("an admitted owner has a backend");
         input
             .validate(&self.schema, self.profile.batch_bytes)
             .context(InvalidInputSnafu)?;
-        let written = self.catch_up(input.now).and_then(|maintained| {
-            let written = self.stage_and_commit(input, durability)?;
+        let written = self.catch_up(storage, input.now).and_then(|maintained| {
+            let written = self.stage_and_commit(storage, input, durability)?;
             Ok(Written {
                 maintained,
                 ..written
@@ -126,11 +132,11 @@ impl<S: Storage> Tsdb<S> {
     /// due ends the backlog. So does a round failing with any kind but `BackendFailed`: the
     /// consumer's next `maintain` call meets the failure, so a damaged chunk fails no batch,
     /// and no later commit pays again for a round that keeps failing.
-    fn catch_up(&mut self, now: Timestamp) -> Result<Maintained, WriteError> {
+    fn catch_up(&mut self, storage: &S, now: Timestamp) -> Result<Maintained, WriteError> {
         if !self.behind {
             return Ok(Maintained::default());
         }
-        match self.backlog_round(now) {
+        match self.backlog_round(storage, now) {
             Ok(Some(done)) => Ok(done),
             Err(error) if error.kind() == ErrorKind::BackendFailed => {
                 Err(error).context(BacklogSnafu)
@@ -144,27 +150,29 @@ impl<S: Storage> Tsdb<S> {
 
     /// Plans the most urgent round a commit runs (`maintain::plan_backlog`) and runs it, as
     /// [`rounds`](Self::rounds) does; `None` when none is due.
-    fn backlog_round(&mut self, now: Timestamp) -> Result<Option<Maintained>, MaintainError> {
-        let snapshot = self
-            .shared
-            .storage
-            .snapshot()
-            .context(maintain::OpenSnapshotSnafu)?;
+    fn backlog_round(
+        &mut self,
+        storage: &S,
+        now: Timestamp,
+    ) -> Result<Option<Maintained>, MaintainError> {
+        let snapshot = storage.snapshot().context(maintain::OpenSnapshotSnafu)?;
         let current = self.shared.registry.current();
         let planned = maintain::plan_backlog(&snapshot, &self.round_context(&current), now)?;
         drop(current);
         planned
-            .map(|round| self.round(&snapshot, round, now))
+            .map(|round| self.round(storage, &snapshot, round, now))
             .transpose()
     }
 
     fn stage_and_commit(
         &mut self,
+        storage: &S,
         input: &Input<'_>,
         durability: Durability,
     ) -> Result<Written, WriteError> {
         let shared = &*self.shared;
-        let mut batch = Counted::new(shared.storage.batch().context(BeginBatchSnafu)?);
+        ensure!(!shared.registry.needs_recovery(), RecoveryNeededSnafu);
+        let mut batch = Counted::new(storage.batch().context(BeginBatchSnafu)?);
         let current = shared.registry.current();
         let context = Context {
             schema: &self.schema,
@@ -209,13 +217,25 @@ impl<S: Storage> Tsdb<S> {
     ///
     /// After an unknown outcome, or any error of kind [`ErrorKind::BackendFailed`], every
     /// later write, maintenance call and capture fails until the owner recovers (§7.5).
+    /// Suspended or explicitly closed stores return [`MaintainError::Closed`], kind Local,
+    /// without planning or running any round.
     pub fn maintain(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
+        let shared = self.shared.clone();
+        let storage = shared.storage();
+        ensure!(
+            !matches!(
+                shared.registry.state(),
+                LifecycleState::Suspended | LifecycleState::Closed
+            ),
+            maintain::ClosedSnafu
+        );
         ensure!(
             !self.shared.registry.needs_recovery(),
             maintain::RecoveryNeededSnafu
         );
+        let storage = storage.as_ref().expect("an admitted owner has a backend");
         request.validate(&self.schema)?;
-        let maintained = self.rounds(request);
+        let maintained = self.rounds(storage, request);
         if let Err(error) = &maintained
             && error.kind() == ErrorKind::BackendFailed
         {
@@ -227,17 +247,17 @@ impl<S: Storage> Tsdb<S> {
         maintained
     }
 
-    fn rounds(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
+    fn rounds(&mut self, storage: &S, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
         let mut done = Maintained::default();
         let mut left = request.rounds;
         loop {
             // The owner is the only writer, so a round's transaction starts from what the
             // planner read.
-            let snapshot = self
-                .shared
-                .storage
-                .snapshot()
-                .context(maintain::OpenSnapshotSnafu)?;
+            ensure!(
+                !self.shared.registry.needs_recovery(),
+                maintain::RecoveryNeededSnafu
+            );
+            let snapshot = storage.snapshot().context(maintain::OpenSnapshotSnafu)?;
             let current = self.shared.registry.current();
             let planned = maintain::plan(&snapshot, &self.round_context(&current), request)?;
             let Some(round) = planned else {
@@ -249,7 +269,7 @@ impl<S: Storage> Tsdb<S> {
             }
             left -= 1;
             drop(current);
-            done.add(self.round(&snapshot, round, request.now)?);
+            done.add(self.round(storage, &snapshot, round, request.now)?);
         }
     }
 
@@ -257,12 +277,17 @@ impl<S: Storage> Tsdb<S> {
     /// the transaction starts from, which the round reads the chunks it rewrites through.
     fn round(
         &mut self,
+        storage: &S,
         snapshot: &S::Snapshot,
         round: Round,
         now: Timestamp,
     ) -> Result<Maintained, MaintainError> {
         let shared = &*self.shared;
-        let batch = shared.storage.batch().context(maintain::BeginRoundSnafu)?;
+        ensure!(
+            !shared.registry.needs_recovery(),
+            maintain::RecoveryNeededSnafu
+        );
+        let batch = storage.batch().context(maintain::BeginRoundSnafu)?;
         let mut batch = Counted::new(batch);
         let current = shared.registry.current();
         let staged = maintain::stage(&mut batch, snapshot, &self.round_context(&current), round)?;
@@ -315,6 +340,7 @@ impl<S: Storage> Tsdb<S> {
 
     /// Allocates the sequence of a new event, before the event becomes visible to anyone
     /// (§8.3). Sequences restart at 0 with every incarnation, which every open increments.
+    /// Outside Open the counter continues in the old incarnation until recovery installs a new one.
     pub fn next_event_seq(&mut self) -> EventSeq {
         let seq = EventSeq {
             incarnation: self.incarnation,
@@ -322,6 +348,109 @@ impl<S: Storage> Tsdb<S> {
         };
         self.next_event_seq += 1;
         seq
+    }
+
+    /// Recovers or resumes this facade from the same dataset, with one host-supplied reopen
+    /// attempt (§7.5, §10.2). This is also the resume path after [`suspend`](Self::suspend).
+    /// Explicitly closed stores return [`RecoveryError::Closed`] without calling either closure.
+    ///
+    /// Retires the backend and revokes old queries first. If any snapshot or charged result
+    /// remains, returns [WaitingForReaders](RecoveryProgress::WaitingForReaders) without invoking
+    /// either closure. The host releases those objects and calls again on its own schedule.
+    ///
+    /// Once drained, opens and validates the dataset, then calls restore with a read-only view
+    /// of the recovered metadata and auxiliary state. Restore must propagate read errors and
+    /// build an owned replacement for the host's state; its external effects cannot be rolled
+    /// back. Discard pending input computed from the old state instead of replaying it.
+    ///
+    /// Only successful restoration installs the new instance and opens admission. Except Closed,
+    /// every error leaves the store unavailable, with no backend or published version. The host
+    /// owns that error and may explicitly retry. Opening may already have committed a new
+    /// incarnation or settled the journal, even when restoration fails. Reopen must target the
+    /// same dataset; restoring old backups requires an incarnation counter outside this API.
+    ///
+    /// The existing readers and query budget survive. Event sequence, durability and backlog
+    /// bookkeeping reset only at installation; until then sequences use the old incarnation.
+    pub fn recover_with<T>(
+        &mut self,
+        reopen: impl FnOnce() -> Result<S, StorageError>,
+        restore: impl for<'a> FnOnce(RecoveryView<'a, S>) -> Result<T, RecoveryError>,
+    ) -> Result<RecoveryProgress<T>, RecoveryError> {
+        if self.shared.registry.state() == LifecycleState::Closed {
+            return Err(RecoveryError::Closed);
+        }
+        drop(self.shared.retire(LifecycleState::Recovering));
+        if self.shared.query_budget.reserved() != 0 {
+            self.shared
+                .registry
+                .recovery_stopped(LifecycleState::WaitingForReaders);
+            return Ok(RecoveryProgress::WaitingForReaders);
+        }
+        let (opened, restored, state) =
+            match lifecycle::prepare_recovery(reopen, restore, &self.schema, &self.profile) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    self.shared
+                        .registry
+                        .recovery_stopped(LifecycleState::Unavailable);
+                    return Err(error);
+                }
+            };
+        self.shape = opened.shape;
+        self.head_budget = opened.head_budget;
+        self.staging_budget = opened.staging_budget;
+        self.incarnation = opened.incarnation;
+        self.next_event_seq = 0;
+        self.last_durable = None;
+        self.since_durable = 0;
+        self.behind = false;
+        self.shared
+            .install(opened.storage, opened.version, opened.head);
+        Ok(RecoveryProgress::Recovered {
+            restored,
+            incarnation: state.incarnation,
+            publication: state.publication,
+            last_batch: state.last_batch,
+        })
+    }
+
+    /// Closes admissions and revokes queries, checkpoints the existing metadata Durable, then
+    /// always detaches and drops the backend, even on checkpoint failure (§10.2).
+    /// No maintenance or compaction runs. Durable bookkeeping resets only on confirmed commit.
+    /// Resume with [`recover_with`](Self::recover_with), after old query charges have drained.
+    /// Repeated calls do nothing; an explicitly closed store stays closed.
+    pub fn suspend(&mut self, now: Timestamp) -> Result<(), CheckpointError> {
+        self.checkpoint_and_retire(now, LifecycleState::Suspended)
+    }
+
+    /// Like [`suspend`](Self::suspend), but terminal: recovery cannot reopen this facade.
+    /// Repeated calls do nothing. Call this to observe the checkpoint's outcome; ordinary
+    /// Drop retires without a checkpoint and cannot report backend close I/O failures.
+    /// Started synchronous commit and backend Drop I/O finish on the caller's thread.
+    pub fn close(&mut self, now: Timestamp) -> Result<(), CheckpointError> {
+        self.checkpoint_and_retire(now, LifecycleState::Closed)
+    }
+
+    /// Refuses admissions before checkpointing; retirement is unconditional on every result.
+    /// Already detached recovery states have no backend to checkpoint and keep their counters.
+    fn checkpoint_and_retire(
+        &mut self,
+        now: Timestamp,
+        state: LifecycleState,
+    ) -> Result<(), CheckpointError> {
+        let shared = self.shared.clone();
+        if !shared.stop(state) {
+            return Ok(());
+        }
+        let checkpoint = {
+            let storage = shared.storage();
+            storage.as_ref().map(lifecycle::checkpoint)
+        };
+        if matches!(checkpoint, Some(Ok(()))) {
+            self.committed(Durability::Durable, now, 0);
+        }
+        drop(shared.retire(state));
+        checkpoint.unwrap_or(Ok(()))
     }
 
     /// A handle that captures snapshots from any thread.
@@ -332,10 +461,61 @@ impl<S: Storage> Tsdb<S> {
     }
 }
 
+impl<S: CompactStorage> Tsdb<S> {
+    /// Attempts physical compaction exclusively (§9.3). Captures wait on the capture gate;
+    /// live backend snapshots may cause Deferred. Idle Readers and detached results do not.
+    /// No query is revoked, and no registry lock spans the backend call or its durable I/O.
+    /// Only Open admits compaction; other states return the same admission kind as write.
+    /// BackendFailed latches recovery. Other failures leave admission unchanged.
+    /// This synchronous operation has no duration bound and is never called implicitly.
+    pub fn compact(&mut self) -> Result<Compaction, CompactError> {
+        let mut storage = self.shared.exclusive_storage();
+        match self.shared.registry.state() {
+            LifecycleState::Open => (),
+            LifecycleState::Suspended | LifecycleState::Closed => return Err(CompactError::Closed),
+            _ => return Err(CompactError::RecoveryNeeded),
+        }
+        let result = storage
+            .as_mut()
+            .expect("an admitted owner has a backend")
+            .compact()
+            .map_err(|source| CompactError::Compact { source });
+        if let Err(error) = &result {
+            self.shared.report(error.kind());
+        }
+        result
+    }
+}
+
+/// Owner destruction retires without checkpointing; use explicit close to observe its outcome.
+impl<S: Storage> Drop for Tsdb<S> {
+    fn drop(&mut self) {
+        drop(self.shared.retire(LifecycleState::Closed));
+    }
+}
+
+/// A test's explicit borrow of the backend; batches cannot outlive its capture-gate guard.
+#[cfg(test)]
+pub(crate) struct StorageGuard<'a, S>(std::sync::RwLockReadGuard<'a, Option<S>>);
+
+#[cfg(test)]
+impl<S> std::ops::Deref for StorageGuard<'_, S> {
+    type Target = S;
+
+    fn deref(&self) -> &S {
+        self.0.as_ref().expect("the test's backend is open")
+    }
+}
+
 #[cfg(test)]
 impl<S: Storage> Tsdb<S> {
-    pub(crate) fn storage(&self) -> &S {
-        &self.shared.storage
+    pub(crate) fn storage(&self) -> StorageGuard<'_, S> {
+        StorageGuard(self.shared.storage())
+    }
+
+    /// The instance used to observe lifecycle boundaries without owning a backend separately.
+    pub(crate) fn shared(&self) -> &Arc<Shared<S>> {
+        &self.shared
     }
 
     pub(crate) fn registry(&self) -> &Registry {
@@ -370,21 +550,17 @@ impl<S: Storage> Tsdb<S> {
         self.behind
     }
 
-    /// Closes the dataset and hands back its storage, for a test that crashes or reopens it.
-    ///
-    /// # Panics
-    ///
-    /// If a reader is still alive.
+    /// Detaches the backend for a test that crashes it instead of closing it cleanly.
     pub(crate) fn into_storage(self) -> S {
-        let Ok(shared) = Arc::try_unwrap(self.shared) else {
-            panic!("a reader is still alive");
-        };
-        shared.storage
+        self.shared
+            .retire(LifecycleState::Closed)
+            ._storage
+            .expect("the test's backend is open")
     }
 }
 
-/// Captures snapshots for queries, from any thread. Clones share the owner's registry,
-/// storage and query budget.
+/// Captures snapshots for queries, from any thread. Clones share the instance's registry,
+/// backend gate and query budget. They do not keep the backend open after the owner retires.
 pub struct Reader<S: Storage> {
     shared: Arc<Shared<S>>,
 }
@@ -400,10 +576,9 @@ impl<S: Storage> Clone for Reader<S> {
 impl<S: Storage> Reader<S> {
     /// A snapshot of the last publication (§7.1), with the bytes of its catalog and head
     /// reserved from the query budget (§7.4) until it is dropped.
+    /// Suspended and closed stores return [`CaptureError::CheckOpen`] wrapping Closed, kind Local.
     pub fn capture(&self) -> Result<Snapshot<S>, CaptureError> {
-        self.shared
-            .registry
-            .capture(&self.shared.storage, &self.shared.query_budget)
+        self.shared.capture()
     }
 }
 

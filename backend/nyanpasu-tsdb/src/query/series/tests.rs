@@ -726,9 +726,12 @@ fn a_head_combination_the_catalog_lacks_is_corrupted() {
         .try_reserve("head", damaged.head.bytes())
         .unwrap();
     let registry = Registry::new(damaged, Arc::new(schema), Arc::new(OpenMarker), head);
-    let snapshot = registry
-        .capture(tsdb.storage(), &MemoryBudget::new(u64::MAX))
-        .unwrap();
+    let shared = Arc::new(crate::version::Shared::new(
+        tsdb.into_storage(),
+        registry,
+        MemoryBudget::new(u64::MAX),
+    ));
+    let snapshot = shared.capture().unwrap();
     let total = [GroupRequest {
         filters: &[],
         key: GroupKey::Total,
@@ -873,9 +876,11 @@ fn an_entry_recording_no_fragment_0_a_chunk_has_is_corrupted() {
     ];
     for fragment0 in recorded {
         let damaged = ChunkEntry { fragment0, ..entry };
-        let mut batch = tsdb.storage().batch().unwrap();
+        let batch_storage = tsdb.storage();
+        let mut batch = batch_storage.batch().unwrap();
         manifest::write_chunk(&mut batch, StreamRef::Tier(HOUR), 0, chunk, &damaged).unwrap();
         batch.commit(Durability::Durable).unwrap();
+        drop(batch_storage);
         let snapshot = tsdb.reader().capture().unwrap();
         let error = snapshot
             .series(&query(hour(0..24), &total, 0b11))
@@ -1082,7 +1087,8 @@ fn big_chunk(tsdb: &mut Tsdb<MemoryStorage>, compressed: bool) -> BigChunk {
     let downloads: Vec<u64> = (0..rows).map(|row| pattern[row % 16]).collect();
 
     let chunk = ChunkId(1 << 40);
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     let mut sink = BatchSink {
         batch: &mut batch,
         chunk,
@@ -1130,6 +1136,7 @@ fn big_chunk(tsdb: &mut Tsdb<MemoryStorage>, compressed: bool) -> BigChunk {
     };
     manifest::write_chunk(&mut batch, StreamRef::Tier(HOUR), 0, chunk, &entry).unwrap();
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
     BigChunk {
         chunk,
         entry,
@@ -1302,7 +1309,9 @@ fn a_column_reserves_each_block_before_decoding_it() {
         account: account.clone(),
         _padding: account.lease(crate::budget::MemoryPlan::default()).unwrap(),
     };
+    let revoked = std::sync::atomic::AtomicBool::new(false);
     let mut decode = Decode {
+        revoked: QueryCheck::unarmed(&revoked),
         chunk: chunk.0,
         reader: &reader,
         source: &source,

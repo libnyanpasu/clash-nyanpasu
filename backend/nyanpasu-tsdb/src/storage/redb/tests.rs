@@ -506,10 +506,43 @@ fn compaction_waits_until_every_snapshot_is_dropped() {
         batch.put(A, b"k", b"v").unwrap();
     });
     let view = storage.snapshot().unwrap();
+    let second = storage.snapshot().unwrap();
     assert_eq!(storage.compact().unwrap(), Compaction::Deferred);
     assert_eq!(get(&view, A, b"k"), Some(b"v".to_vec()));
     drop(view);
+    assert_eq!(storage.compact().unwrap(), Compaction::Deferred);
+    assert_eq!(get(&second, A, b"k"), Some(b"v".to_vec()));
+    drop(second);
     assert_eq!(storage.compact().unwrap(), Compaction::Compacted);
+}
+
+/// A real compaction I/O failure uses the ordinary backend mapping and blocks later operations.
+#[test]
+fn compaction_io_failure_is_reported_and_latched_until_reopen() {
+    let disk = FaultDisk::default();
+    let mut storage = open(&disk, 0);
+    commit(&storage, Durability::Durable, |batch| {
+        batch.put(A, b"k", b"v").unwrap();
+    });
+    disk.fail_next_io();
+    let error = storage.compact().unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::BackendFailed);
+    assert!(matches!(error, StorageError::Failed { .. }));
+    disk.assert_fault_fired();
+    assert!(matches!(
+        storage.snapshot(),
+        Err(StorageError::Failed { .. })
+    ));
+    assert!(matches!(
+        storage.compact(),
+        Err(StorageError::Failed { .. })
+    ));
+    drop(storage);
+    let storage = open(&disk, CACHE);
+    assert_eq!(
+        get(&storage.snapshot().unwrap(), A, b"k"),
+        Some(b"v".to_vec())
+    );
 }
 
 /// A journal record, the batch marker and four connections' auxiliary state: about what the

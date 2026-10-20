@@ -1317,9 +1317,11 @@ fn an_age_beyond_the_timeline_still_expires() {
 
 /// Commits `damage` into the storage under the store, as a damaged file would hold it.
 fn damage<S: Storage>(tsdb: &Tsdb<S>, damage: impl FnOnce(&mut S::Batch<'_>)) {
-    let mut batch = tsdb.storage().batch().unwrap();
+    let batch_storage = tsdb.storage();
+    let mut batch = batch_storage.batch().unwrap();
     damage(&mut batch);
     batch.commit(Durability::Durable).unwrap();
+    drop(batch_storage);
 }
 
 // An extent record up to the watermark that the manifest has no chunk for is damage: cleanup

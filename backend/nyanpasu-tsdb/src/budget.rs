@@ -19,7 +19,7 @@
 //! one [`Reserved`] result, so the result may outlive the account without releasing and
 //! reserving its bytes again.
 
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use snafu::{Snafu, ensure};
 
@@ -71,11 +71,8 @@ pub struct MemoryBudget {
 struct Shared {
     limit: u64,
     /// Bytes held by live reservations, never above `limit`. Every change happens under
-    /// this lock, so a reserve that fails changes nothing and a waiter cannot miss the
-    /// moment the count reaches zero.
+    /// this lock, so a reserve that fails changes nothing.
     reserved: Mutex<u64>,
-    /// Signalled when `reserved` becomes zero.
-    released: Condvar,
     /// Keeps a fixed sub-budget's parent admission until its last reservation has dropped.
     _parent: Option<Reservation>,
 }
@@ -86,7 +83,6 @@ impl MemoryBudget {
             shared: Arc::new(Shared {
                 limit,
                 reserved: Mutex::new(0),
-                released: Condvar::new(),
                 _parent: None,
             }),
         }
@@ -99,7 +95,6 @@ impl MemoryBudget {
             shared: Arc::new(Shared {
                 limit: parent.bytes(),
                 reserved: Mutex::new(0),
-                released: Condvar::new(),
                 _parent: Some(parent),
             }),
         }
@@ -125,23 +120,6 @@ impl MemoryBudget {
         *self.lock()
     }
 
-    /// Blocks until no bytes are reserved. Recovery waits on it after revoking the
-    /// snapshots, so that the old catalog and head are gone before the new ones are built
-    /// (§7.4, §7.5).
-    ///
-    /// There is no timeout: the callers bound the wait themselves, because a query
-    /// notices its revocation at the next column block or row batch and then drops its
-    /// reservation.
-    pub fn wait_until_released(&self) {
-        let reserved = self.lock();
-        drop(
-            self.shared
-                .released
-                .wait_while(reserved, |reserved| *reserved != 0)
-                .unwrap_or_else(PoisonError::into_inner),
-        );
-    }
-
     fn take(&self, what: &'static str, bytes: u64) -> Result<(), BudgetExceeded> {
         let mut reserved = self.lock();
         let available = self.shared.limit - *reserved;
@@ -163,9 +141,6 @@ impl MemoryBudget {
         }
         let mut reserved = self.lock();
         *reserved -= bytes;
-        if *reserved == 0 {
-            self.shared.released.notify_all();
-        }
     }
 
     /// A poisoned lock still holds a consistent count: nothing inside a critical section
@@ -181,8 +156,8 @@ impl MemoryBudget {
 /// Bytes held in a [`MemoryBudget`], returned when this is dropped.
 ///
 /// Growing, shrinking, merging and splitting change the budget's count by exactly the
-/// bytes involved, so a handover between owners never passes through zero and never wakes
-/// a [`wait_until_released`](MemoryBudget::wait_until_released) early.
+/// bytes involved, so a handover between owners never passes through zero. Lifecycle code
+/// inspects [`MemoryBudget::reserved`] and returns to the host while old claims remain.
 #[derive(Debug)]
 pub struct Reservation {
     budget: MemoryBudget,

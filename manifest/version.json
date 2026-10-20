@@ -6,8 +6,8 @@
     "clash_rs": "v0.10.10",
     "clash_premium": "2023-09-05-gdcc8d87",
     "clash_rs_alpha": "0.10.10-alpha+sha.39282d2",
-    "meow": "v0.24.0",
-    "meow_alpha": "alpha-c526beb"
+    "meow": "v0.25.0",
+    "meow_alpha": "alpha-daafe05"
   },
   "arch_template": {
     "mihomo": {
@@ -67,5 +67,5 @@
       "darwin-x64": "meow-{}-x86_64-apple-darwin.tar.gz"
     }
   },
-  "updated_at": "2026-10-19T22:22:58.680Z"
+  "updated_at": "2026-10-20T22:22:55.073Z"
 }

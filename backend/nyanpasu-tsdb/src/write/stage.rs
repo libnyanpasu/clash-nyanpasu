@@ -1,6 +1,1154 @@
+//! Staging (§4.4) encodes one validated batch into a write transaction and derives the
+//! version it publishes. It changes no shared state: the next catalog and head exist only in
+//! the returned [`Staged`], and every write goes into the transaction. On an error the
+//! caller drops both, and nothing happened.
+//!
 //! Staging:
 //!
-//! - checks the batch id;
-//! - looks up and registers catalog entries, with the fold ladder;
-//! - reserves head space;
-//! - turns sources into chunks in the same commit under memory pressure.
+//! - checks the batch id against the one in the transaction's state record;
+//! - resolves combinations and labels in a catalog draft, down the fold ladder (§5.2);
+//! - writes one journal record per (tier, bucket) and per (stream, extent), and counts each
+//!   in its extent's record;
+//! - writes the pins and the auxiliary state;
+//! - plans the chunking and folding the triggers, the head budget, the journal cap and the
+//!   staging budget call for, from the sizes of the head the batch would publish, then
+//!   chunks, folds and builds that head (`chunking`);
+//! - reserves the head's growth from the head budget, and writes the next state record.
+//!
+//! # Memory (§7.4)
+//!
+//! Every allocation that grows with the batch or the stored data is reserved in the staging
+//! budget before it is made, and returned once it is freed: the batch's sorted points and
+//! rows, their catalog ids, its deltas and records, the plan, and what executing the plan
+//! allocates. A record is encoded straight from the batch into a buffer of its exact length;
+//! no row is held decoded beyond the one being written. What stays allocated twice until the
+//! version is published or withdrawn stays reserved: the pages and buffers the next head
+//! copies, the batch's records it keeps, and the catalog draft's copies.
+
+use std::ops::ControlFlow;
+
+use snafu::{OptionExt, ResultExt, Snafu, ensure};
+
+use super::{AuxOp, EventRow, Input, PinOp, Value, Written};
+use crate::{
+    ColumnType, ErrorKind, EventStreamSpec, LabelId, Profile, Schema, SeriesSpec, StreamId,
+    Timestamp,
+    budget::{BudgetExceeded, MemoryBudget, Reservation},
+    catalog::{CatalogDraft, PinError, ResolveError, ResolvedCombo},
+    head::{
+        HeadUpdate, SeriesAdded, SeriesSource,
+        events::Segment,
+        journal::{EventRecord, Identity, JournalKey, SeriesRecord, StoredRow, StoredValue},
+        series::{Accumulator, SourceDeltas, SourceUpdate, Sums},
+    },
+    layout::{
+        AUX, JOURNAL,
+        manifest::{StreamRef, event_extent},
+        meta::{MetaError, StateRecord, read_state, write_state},
+    },
+    storage::{
+        ChunkId, CommitFailure, Direction, Durability, FragmentId, KeyRange, Ns, StorageError,
+        StorageRead, StorageWrite,
+    },
+    version::Version,
+};
+
+use super::chunking::{ChunkingError, Execution, ExtentChange, Planning, Shape, change_extent};
+
+/// What staging reads besides the batch.
+pub(crate) struct Context<'a> {
+    pub(crate) schema: &'a Schema,
+    pub(crate) profile: &'a Profile,
+    pub(crate) shape: &'a Shape,
+    /// The version the batch builds on: the current one.
+    pub(crate) current: &'a Version,
+    pub(crate) head_budget: &'a MemoryBudget,
+    pub(crate) staging_budget: &'a MemoryBudget,
+}
+
+/// A staged batch: the version it publishes once committed.
+pub(crate) struct Staged {
+    pub(crate) version: Version,
+    /// The bytes by which `version`'s head outgrows the current one's, reserved from the
+    /// head budget. Publishing hands them to the owner's head reservation; dropping the
+    /// version unpublished returns them.
+    pub(crate) growth: Reservation,
+    /// The staging memory (§7.1, §7.4) still allocated: what `version`'s head copies from the
+    /// current version, which stays allocated twice until the old version goes, and the
+    /// catalog draft's copies. Held until the version is published or withdrawn.
+    pub(crate) staging: Reservation,
+    pub(crate) written: Written,
+}
+
+/// Stages `input`, which [`Input::validate`] accepted, into `batch`.
+pub(crate) fn stage(
+    batch: &mut impl StorageWrite,
+    context: &Context<'_>,
+    input: &Input<'_>,
+) -> Result<Staged, StageError> {
+    let state = read_state(&*batch).context(ReadStateSnafu)?;
+    // The owner is the only writer, so only damage makes the stored publication another
+    // than the current version's.
+    ensure!(
+        state.publication == context.current.publication,
+        UnknownPublicationSnafu {
+            found: state.publication,
+            expected: context.current.publication
+        }
+    );
+    if let Some(last) = state.last_batch {
+        ensure!(
+            input.batch_id > last,
+            StaleBatchSnafu {
+                batch_id: input.batch_id,
+                last
+            }
+        );
+    }
+    let mut written = Written {
+        publication: 0,
+        folded: 0,
+        label_overflows: 0,
+    };
+    let mut staging = context
+        .staging_budget
+        .try_reserve("staging", 0)
+        .context(ReserveStagingSnafu)?;
+    let mut draft = context.current.catalog.draft(context.profile.catalog);
+    let mut journal = Journal {
+        next_seq: state.next_journal_seq,
+        bytes: 0,
+    };
+    let series = stage_series(
+        batch,
+        &mut draft,
+        context,
+        input,
+        &mut written,
+        &mut staging,
+    )?;
+    let series = journal.series(batch, context.shape, input.now, series, &mut staging)?;
+    let events = journal.events(
+        batch,
+        &mut draft,
+        context.schema,
+        input,
+        &mut written,
+        &mut staging,
+    )?;
+    stage_pins(batch, &mut draft, input)?;
+    stage_aux(batch, input)?;
+    let Journal {
+        next_seq,
+        bytes: batch_bytes,
+    } = journal;
+    let update = HeadUpdate { series, events };
+    let journal_bytes = state
+        .journal_bytes
+        .checked_add(batch_bytes)
+        .context(CounterOverflowSnafu)?;
+    // The catalog's ledger admitted the draft's growth against the catalog budget as it
+    // happened; its copies stay allocated beside the base until publication.
+    let catalog_copies = draft.peak().saturating_sub(context.current.catalog.bytes());
+    staging
+        .try_grow(catalog_copies)
+        .context(ReserveStagingSnafu)?;
+
+    let profile = context.profile;
+    let current_head = &context.current.head;
+    let plan = Planning {
+        schema: context.schema,
+        profile,
+        shape: context.shape,
+        current: current_head,
+        update: &update,
+        journal_bytes,
+        head_limit: current_head
+            .bytes()
+            .saturating_add(profile.head.saturating_sub(context.head_budget.reserved())),
+        staging_available: profile
+            .staging
+            .saturating_sub(context.staging_budget.reserved()),
+    }
+    .plan_commit(Some(input.now), &mut staging)
+    .context(ReserveStagingSnafu)?;
+    staging
+        .try_grow(plan.staging)
+        .context(ReserveStagingSnafu)?;
+    let executed = Execution {
+        batch: &mut *batch,
+        schema: context.schema,
+        shape: context.shape,
+        next_chunk: state.next_chunk,
+        next_seq,
+    }
+    .run(&plan, current_head, update)
+    .context(ChunkingSnafu)?;
+    drop(plan);
+    let head = executed.head;
+    // Everything else staging allocated is gone with the batch's deltas and the records the
+    // head does not keep.
+    let held = head.copied_from(current_head) + catalog_copies;
+    debug_assert!(
+        held <= staging.bytes(),
+        "staging reserved {} bytes, but {held} stay allocated",
+        staging.bytes()
+    );
+    staging.shrink(staging.bytes().saturating_sub(held));
+    let growth = context
+        .head_budget
+        .try_reserve("head", head.bytes().saturating_sub(current_head.bytes()))
+        .context(ReserveHeadSnafu)?;
+
+    let next = StateRecord {
+        publication: state
+            .publication
+            .checked_add(1)
+            .context(CounterOverflowSnafu)?,
+        last_batch: Some(input.batch_id),
+        next_journal_seq: executed.next_seq,
+        journal_bytes: journal_bytes
+            .checked_add(executed.journal_added)
+            .and_then(|bytes| bytes.checked_sub(executed.journal_removed))
+            .context(CounterOverflowSnafu)?,
+        next_chunk: executed.next_chunk,
+        ..state
+    };
+    write_state(batch, &next).context(WriteStateSnafu)?;
+    written.publication = next.publication;
+    Ok(Staged {
+        version: Version {
+            publication: next.publication,
+            catalog: draft.finish(),
+            head,
+        },
+        growth,
+        staging,
+        written,
+    })
+}
+
+/// Resolves every series point's combination and sums the points per (tier, bucket), with
+/// what merging each source's deltas into the current head costs. The points are put in
+/// (source, combination) order by their indices, and each source's deltas are allocated at
+/// exactly their combinations: every allocation is reserved in `staging` first.
+fn stage_series(
+    batch: &mut impl StorageWrite,
+    draft: &mut CatalogDraft,
+    context: &Context<'_>,
+    input: &Input<'_>,
+    written: &mut Written,
+    staging: &mut Reservation,
+) -> Result<Vec<SeriesAdded>, StageError> {
+    let points = input.series.len();
+    if points == 0 {
+        return Ok(Vec::new());
+    }
+    let fields = context.shape.fields;
+    // Each point's combination, and the points' order.
+    let scratch = (2 * points * size_of::<u32>()) as u64;
+    staging.try_grow(scratch).context(ReserveStagingSnafu)?;
+    let mut combos = Vec::with_capacity(points);
+    for (index, point) in input.series.iter().enumerate() {
+        let resolved = draft
+            .resolve_combo(batch, point.labels)
+            .context(ResolveSeriesSnafu { point: index })?;
+        written.folded += u64::from(resolved.fold.is_some());
+        combos.push(resolved.id);
+    }
+    let source_of = |index: u32| {
+        let point = &input.series[index as usize];
+        SeriesSource {
+            tier: point.tier,
+            bucket: context.shape.grids[usize::from(point.tier.0)]
+                .bucket()
+                .index_of(point.at),
+        }
+    };
+    let combo_of = |index: u32| combos[index as usize];
+    let points = u32::try_from(points).expect("a batch holds fewer than 2^32 points");
+    let mut order: Vec<u32> = (0..points).collect();
+    order.sort_unstable_by_key(|&index| (source_of(index), combo_of(index)));
+    let same_source = |a: &u32, b: &u32| source_of(*a) == source_of(*b);
+    let sources = order.chunk_by(same_source).count();
+    staging
+        .try_grow((sources * size_of::<SeriesAdded>()) as u64)
+        .context(ReserveStagingSnafu)?;
+    let mut added = Vec::with_capacity(sources);
+    for run in order.chunk_by(same_source) {
+        let source = source_of(run[0]);
+        let distinct = run.chunk_by(|a, b| combo_of(*a) == combo_of(*b)).count();
+        staging
+            .try_grow(SourceDeltas::bytes(distinct as u64, fields))
+            .context(ReserveStagingSnafu)?;
+        let mut deltas = SourceDeltas::with_capacity(distinct, fields);
+        for &index in run {
+            let (combo, values) = (combo_of(index), input.series[index as usize].fields);
+            if deltas.combos.last() == Some(&combo) {
+                let start = deltas.fields.len() - fields;
+                for (sum, &value) in deltas.fields[start..].iter_mut().zip(values) {
+                    *sum = sum.saturating_add(value);
+                }
+            } else {
+                deltas.combos.push(combo);
+                deltas.fields.extend_from_slice(values);
+            }
+        }
+        let current = context.current.head.accumulator(source);
+        added.push(SeriesAdded {
+            source,
+            cost: Accumulator::merge_cost(current, &deltas, fields),
+            deltas,
+            update: SourceUpdate {
+                written: input.now,
+                records: 1,
+                // Known once the record is written.
+                journal_bytes: 0,
+            },
+        });
+    }
+    drop((order, combos));
+    staging.shrink(scratch);
+    Ok(added)
+}
+
+/// The catalog ids of event rows' values, resolved in the rows' sorted order: each row's
+/// combination when it has a series value, then each of its label values' ids, in column
+/// order.
+struct Resolved {
+    combos: Vec<ResolvedCombo>,
+    labels: Vec<u32>,
+}
+
+/// Where the next row's ids are in [`Resolved`].
+#[derive(Clone)]
+struct Ids<'r> {
+    combos: std::slice::Iter<'r, ResolvedCombo>,
+    labels: std::slice::Iter<'r, u32>,
+}
+
+impl Ids<'_> {
+    fn combo(&mut self) -> ResolvedCombo {
+        *self
+            .combos
+            .next()
+            .expect("a combination resolved per series value")
+    }
+
+    fn label(&mut self) -> u32 {
+        *self.labels.next().expect("an id resolved per label value")
+    }
+}
+
+/// The labels of a row's series value, which its folded-label columns depend on.
+fn series_labels<'a>(spec: &EventStreamSpec, row: &EventRow<'a>) -> Option<&'a [&'a [u8]]> {
+    spec.columns
+        .iter()
+        .zip(row.values)
+        .find_map(|(column, value)| match (column.ty, *value) {
+            (ColumnType::Series, Value::Series(labels)) => Some(labels),
+            _ => None,
+        })
+}
+
+/// The label values of a row: their columns, and their bytes.
+fn label_values<'s, 'a>(
+    spec: &'s EventStreamSpec,
+    row: &EventRow<'a>,
+) -> impl Iterator<Item = (&'s crate::ColumnSpec, LabelId, &'a [u8])> + use<'s, 'a> {
+    spec.columns
+        .iter()
+        .zip(row.values)
+        .filter_map(|(column, value)| match (column.ty, *value) {
+            (ColumnType::Label(dimension), Value::Bytes(bytes)) => Some((column, dimension, bytes)),
+            _ => None,
+        })
+}
+
+/// Resolves the series value and the label values of event row `index`, in that order.
+fn resolve_row(
+    batch: &mut impl StorageWrite,
+    draft: &mut CatalogDraft,
+    spec: &EventStreamSpec,
+    input: &Input<'_>,
+    index: usize,
+    written: &mut Written,
+    resolved: &mut Resolved,
+) -> Result<(), StageError> {
+    let row = &input.events[index];
+    if let Some(labels) = series_labels(spec, row) {
+        let combo = draft
+            .resolve_combo(batch, labels)
+            .context(ResolveEventSeriesSnafu { row: index })?;
+        written.folded += u64::from(combo.fold.is_some());
+        resolved.combos.push(combo);
+    }
+    for (column, dimension, value) in label_values(spec, row) {
+        let id = draft
+            .resolve_label(batch, dimension, value)
+            .context(ResolveLabelSnafu {
+                row: index,
+                column: column.name,
+            })?;
+        written.label_overflows += u64::from(id == 0);
+        resolved.labels.push(id);
+    }
+    Ok(())
+}
+
+/// The stored form of `row`, its catalog ids taken from `ids`, in the buffer of `values`.
+fn stored_row<'a>(
+    series: Option<&SeriesSpec>,
+    spec: &EventStreamSpec,
+    row: &EventRow<'a>,
+    ids: &mut Ids<'_>,
+    mut values: Vec<StoredValue<'a>>,
+) -> StoredRow<'a> {
+    values.clear();
+    // The series value first: the folded-label columns depend on its fold, and may come
+    // before it.
+    let resolved = series_labels(spec, row).map(|labels| (ids.combo(), labels));
+    for (column, value) in spec.columns.iter().zip(row.values) {
+        values.push(match (column.ty, *value) {
+            (ColumnType::FoldedLabel(label), _) => {
+                folded_value(series, resolved, label).map_or(StoredValue::Null, StoredValue::Bytes)
+            }
+            (_, Value::Null) => StoredValue::Null,
+            (_, Value::Series(_)) => {
+                let (combo, _) = resolved.expect("the series value was resolved above");
+                StoredValue::Combo(combo.id)
+            }
+            (ColumnType::Label(_), Value::Bytes(_)) => StoredValue::Label(ids.label()),
+            (ColumnType::Identity, Value::Bytes(text)) => {
+                StoredValue::Identity(Identity::new(text))
+            }
+            (_, Value::Bytes(bytes)) => StoredValue::Bytes(bytes),
+            (_, Value::I64(value)) => StoredValue::I64(value),
+            (_, Value::U64(value)) => StoredValue::U64(value),
+        });
+    }
+    StoredRow {
+        key: row.key,
+        incarnation: row.seq.incarnation,
+        seq: row.seq.seq,
+        values,
+    }
+}
+
+/// What a `FoldedLabel(label)` column keeps (§11.1): the row's own value of `label` when
+/// the fold that resolved the row's series value replaced `label` with the overflow marker.
+fn folded_value<'a>(
+    series: Option<&SeriesSpec>,
+    resolved: Option<(ResolvedCombo, &[&'a [u8]])>,
+    label: LabelId,
+) -> Option<&'a [u8]> {
+    let series = series?;
+    let (combo, labels) = resolved?;
+    if !combo.fold?.folds(series, label) {
+        return None;
+    }
+    let position = series
+        .dimensions
+        .iter()
+        .position(|&dimension| dimension == label)
+        .expect("a valid schema keeps only series dimensions in folded-label columns");
+    Some(labels[position])
+}
+
+/// Pins the combination of each `Pin` op under its key, resolved as a series point with the
+/// same labels would be, and takes the pin under the key of each `Unpin` op off the
+/// combination it pins (see [`PinOp`]).
+fn stage_pins(
+    batch: &mut impl StorageWrite,
+    draft: &mut CatalogDraft,
+    input: &Input<'_>,
+) -> Result<(), StageError> {
+    for (index, op) in input.pins.iter().enumerate() {
+        match *op {
+            PinOp::Pin { key, labels } => {
+                let combo = draft
+                    .resolve_combo(batch, labels)
+                    .context(ResolvePinSnafu { pin: index })?
+                    .id;
+                let pinned = draft
+                    .pin(batch, key, combo)
+                    .context(PinSnafu { pin: index })?;
+                ensure!(pinned, AlreadyPinnedSnafu { pin: index });
+            }
+            PinOp::Unpin { key } => {
+                let unpinned = draft.unpin(batch, key).context(UnpinSnafu { pin: index })?;
+                ensure!(unpinned, NotPinnedSnafu { pin: index });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn stage_aux(batch: &mut impl StorageWrite, input: &Input<'_>) -> Result<(), StageError> {
+    for (index, op) in input.aux.iter().enumerate() {
+        match *op {
+            AuxOp::Put { key, value } => batch
+                .put(AUX, key, value)
+                .context(PutAuxSnafu { entry: index })?,
+            AuxOp::Delete { key } => batch
+                .delete(AUX, key)
+                .context(DeleteAuxSnafu { entry: index })?,
+        }
+    }
+    Ok(())
+}
+
+/// The journal records a batch writes.
+struct Journal {
+    next_seq: u64,
+    /// The bytes of the records, keys included.
+    bytes: u64,
+}
+
+impl Journal {
+    /// One record per (tier, bucket), each written into a buffer of its exact length, which
+    /// is reserved in `staging` while it lives. Returns `added` with each record's bytes.
+    fn series(
+        &mut self,
+        batch: &mut impl StorageWrite,
+        shape: &Shape,
+        now: Timestamp,
+        mut added: Vec<SeriesAdded>,
+        staging: &mut Reservation,
+    ) -> Result<Vec<SeriesAdded>, StageError> {
+        let fields = shape.fields;
+        for added in &mut added {
+            let rows = Sums::new(None, Some(&added.deltas), fields);
+            let (len, count) = SeriesRecord::measure(now.0, rows.clone(), fields);
+            staging.try_grow(len as u64).context(ReserveStagingSnafu)?;
+            let record = SeriesRecord::write(now.0, rows, fields, len, count);
+            let source = added.source;
+            let key = JournalKey::Series {
+                tier: source.tier,
+                bucket: source.bucket,
+                seq: self.next_seq,
+            };
+            let stream = StreamRef::Tier(source.tier);
+            let journal_bytes = self.put(batch, key, stream, shape.extent_of(source), &record)?;
+            drop(record);
+            staging.shrink(len as u64);
+            added.update.journal_bytes = journal_bytes;
+        }
+        Ok(added)
+    }
+
+    /// One record per (stream, extent), its rows sorted as chunks keep them (§8.3), so that
+    /// chunking merges records without decoding them whole. The rows are put in order by
+    /// their indices, then resolved in that order, and each record is encoded straight from
+    /// the batch, measured first, into a buffer of its exact length: no row is held decoded
+    /// beyond the one being written. Every allocation is reserved in `staging` first.
+    ///
+    /// Returns each stream's new segments, which keep the records.
+    fn events(
+        &mut self,
+        batch: &mut impl StorageWrite,
+        draft: &mut CatalogDraft,
+        schema: &Schema,
+        input: &Input<'_>,
+        written: &mut Written,
+        staging: &mut Reservation,
+    ) -> Result<Vec<(StreamId, Vec<Segment>)>, StageError> {
+        let rows = input.events.len();
+        if rows == 0 {
+            return Ok(Vec::new());
+        }
+        let spec_of =
+            |index: u32| &schema.events[usize::from(input.events[index as usize].stream.0)];
+        let place = |index: u32| {
+            let row = &input.events[index as usize];
+            (
+                row.stream,
+                event_extent(spec_of(index), row.key),
+                row.key,
+                row.seq,
+            )
+        };
+        // The order, each row's ids and one row's values.
+        let combos = (0..rows)
+            .filter(|&index| {
+                let row = &input.events[index];
+                series_labels(&schema.events[usize::from(row.stream.0)], row).is_some()
+            })
+            .count();
+        let labels: usize = input
+            .events
+            .iter()
+            .map(|row| label_values(&schema.events[usize::from(row.stream.0)], row).count())
+            .sum();
+        let widest = input
+            .events
+            .iter()
+            .map(|row| row.values.len())
+            .max()
+            .unwrap_or(0);
+        let scratch = (rows * size_of::<u32>()
+            + combos * size_of::<ResolvedCombo>()
+            + labels * size_of::<u32>()
+            + widest * size_of::<StoredValue<'_>>()) as u64;
+        staging.try_grow(scratch).context(ReserveStagingSnafu)?;
+        let rows = u32::try_from(rows).expect("a batch holds fewer than 2^32 rows");
+        let mut order: Vec<u32> = (0..rows).collect();
+        order.sort_unstable_by_key(|&index| place(index));
+        let mut resolved = Resolved {
+            combos: Vec::with_capacity(combos),
+            labels: Vec::with_capacity(labels),
+        };
+        for &index in &order {
+            let index = index as usize;
+            let spec = &schema.events[usize::from(input.events[index].stream.0)];
+            resolve_row(batch, draft, spec, input, index, written, &mut resolved)?;
+        }
+
+        let same_stream = |a: &u32, b: &u32| place(*a).0 == place(*b).0;
+        let same_record = |a: &u32, b: &u32| {
+            let (a, b) = (place(*a), place(*b));
+            (a.0, a.1) == (b.0, b.1)
+        };
+        let streams = order.chunk_by(same_stream).count();
+        let records = order.chunk_by(same_record).count();
+        let kept = streams * size_of::<(StreamId, Vec<Segment>)>() + records * size_of::<Segment>();
+        staging.try_grow(kept as u64).context(ReserveStagingSnafu)?;
+        let mut out = Vec::with_capacity(streams);
+        let series = schema.series.as_ref();
+        let now = input.now;
+        let mut ids = Ids {
+            combos: resolved.combos.iter(),
+            labels: resolved.labels.iter(),
+        };
+        let mut values = Vec::with_capacity(widest);
+        for stream_rows in order.chunk_by(same_stream) {
+            let stream = place(stream_rows[0]).0;
+            let spec = spec_of(stream_rows[0]);
+            let mut segments = Vec::with_capacity(stream_rows.chunk_by(same_record).count());
+            for record_rows in stream_rows.chunk_by(same_record) {
+                let count = record_rows.len() as u64;
+                let mut measuring = ids.clone();
+                let mut len = EventRecord::header_len(now.0, count);
+                for &index in record_rows {
+                    let row = &input.events[index as usize];
+                    let stored = stored_row(series, spec, row, &mut measuring, values);
+                    len += stored.encoded_len();
+                    values = stored.values;
+                }
+                staging.try_grow(len as u64).context(ReserveStagingSnafu)?;
+                let mut record = EventRecord::start(len, now.0, count);
+                for &index in record_rows {
+                    let row = &input.events[index as usize];
+                    let stored = stored_row(series, spec, row, &mut ids, values);
+                    record.push(&stored);
+                    values = stored.values;
+                }
+                let record = record.finish();
+                let extent = place(record_rows[0]).1;
+                let seq = self.next_seq;
+                let key = JournalKey::Events {
+                    stream,
+                    extent,
+                    seq,
+                };
+                let journal_bytes =
+                    self.put(batch, key, StreamRef::Events(stream), extent, &record)?;
+                segments.push(Segment::new(
+                    seq,
+                    record.into_boxed_slice(),
+                    count,
+                    now,
+                    journal_bytes,
+                    extent,
+                ));
+            }
+            out.push((stream, segments));
+        }
+        drop((order, resolved, values));
+        staging.shrink(scratch);
+        Ok(out)
+    }
+
+    /// Writes one record under `key`, which holds the next sequence, counts it in its
+    /// `extent` of `stream`, and returns its bytes.
+    fn put(
+        &mut self,
+        batch: &mut impl StorageWrite,
+        key: JournalKey,
+        stream: StreamRef,
+        extent: i64,
+        record: &[u8],
+    ) -> Result<u64, StageError> {
+        let seq = key.seq();
+        let key = key.encode();
+        batch
+            .put(JOURNAL, key.as_slice(), record)
+            .context(WriteJournalSnafu { seq })?;
+        let bytes = (key.as_slice().len() + record.len()) as u64;
+        change_extent(batch, stream, extent, ExtentChange::JournalWritten(bytes))
+            .context(CountJournalSnafu { seq })?;
+        self.bytes += bytes;
+        self.next_seq = seq.checked_add(1).context(CounterOverflowSnafu)?;
+        Ok(bytes)
+    }
+}
+
+/// A write batch that counts the bytes written into it: keys, values and fragments. The
+/// owner makes a commit durable early once enough bytes have accumulated (§7.4).
+pub(crate) struct Counted<W> {
+    batch: W,
+    written: u64,
+}
+
+impl<W> Counted<W> {
+    pub(crate) fn new(batch: W) -> Self {
+        Self { batch, written: 0 }
+    }
+
+    pub(crate) fn written(&self) -> u64 {
+        self.written
+    }
+}
+
+impl<W: StorageRead> StorageRead for Counted<W> {
+    fn get<T>(
+        &self,
+        ns: Ns,
+        key: &[u8],
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T, StorageError> {
+        self.batch.get(ns, key, f)
+    }
+
+    fn scan<B>(
+        &self,
+        ns: Ns,
+        range: KeyRange<'_>,
+        direction: Direction,
+        f: impl FnMut(&[u8], &[u8]) -> ControlFlow<B>,
+    ) -> Result<Option<B>, StorageError> {
+        self.batch.scan(ns, range, direction, f)
+    }
+
+    fn fragment<T>(
+        &self,
+        id: FragmentId,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T, StorageError> {
+        self.batch.fragment(id, f)
+    }
+}
+
+impl<W: StorageWrite> StorageWrite for Counted<W> {
+    fn put(&mut self, ns: Ns, key: &[u8], value: &[u8]) -> Result<(), StorageError> {
+        self.batch.put(ns, key, value)?;
+        self.written += (key.len() + value.len()) as u64;
+        Ok(())
+    }
+
+    fn delete(&mut self, ns: Ns, key: &[u8]) -> Result<(), StorageError> {
+        self.batch.delete(ns, key)?;
+        self.written += key.len() as u64;
+        Ok(())
+    }
+
+    fn put_fragment(&mut self, id: FragmentId, bytes: &[u8]) -> Result<(), StorageError> {
+        self.batch.put_fragment(id, bytes)?;
+        self.written += bytes.len() as u64;
+        Ok(())
+    }
+
+    fn delete_chunk(&mut self, chunk: ChunkId) -> Result<(), StorageError> {
+        self.batch.delete_chunk(chunk)
+    }
+
+    fn commit(self, durability: Durability) -> Result<(), CommitFailure> {
+        self.batch.commit(durability)
+    }
+}
+
+/// Staging a batch failed. The batch was not applied: drop its transaction (§4.4).
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
+pub enum StageError {
+    #[snafu(display("failed to read the state record"))]
+    ReadState { source: MetaError },
+
+    /// The state record decodes, but names another publication than the current version's.
+    /// The owner is the only writer, so the record is damaged.
+    #[snafu(display("the state record shows publication {found}, not the current {expected}"))]
+    UnknownPublication { found: u64, expected: u64 },
+
+    /// A batch whose id is not above the last committed one would count its deltas twice
+    /// (§4.4). A crash-consistent commit counts as committed.
+    #[snafu(display("batch {batch_id} is not after the last committed batch, {last}"))]
+    StaleBatch { batch_id: u64, last: u64 },
+
+    #[snafu(display("failed to resolve the combination of series point {point}"))]
+    ResolveSeries { point: usize, source: ResolveError },
+
+    #[snafu(display("failed to resolve the series value of event row {row}"))]
+    ResolveEventSeries { row: usize, source: ResolveError },
+
+    #[snafu(display("failed to resolve the label in column `{column}` of event row {row}"))]
+    ResolveLabel {
+        row: usize,
+        column: &'static str,
+        source: ResolveError,
+    },
+
+    #[snafu(display("failed to resolve the combination of pin {pin}"))]
+    ResolvePin { pin: usize, source: ResolveError },
+
+    #[snafu(display("failed to pin the combination of pin {pin}"))]
+    Pin { pin: usize, source: PinError },
+
+    /// A pin key pins one combination at a time: unpin it first.
+    #[snafu(display("pin {pin} uses a key that pins a combination already"))]
+    AlreadyPinned { pin: usize },
+
+    /// Every unpin names the key of an earlier pin.
+    #[snafu(display("pin {pin} unpins a key that pins nothing"))]
+    NotPinned { pin: usize },
+
+    #[snafu(display("failed to unpin the combination of pin {pin}"))]
+    Unpin { pin: usize, source: PinError },
+
+    #[snafu(display("failed to write auxiliary entry {entry}"))]
+    PutAux { entry: usize, source: StorageError },
+
+    #[snafu(display("failed to delete auxiliary entry {entry}"))]
+    DeleteAux { entry: usize, source: StorageError },
+
+    #[snafu(display("failed to write journal record {seq}"))]
+    WriteJournal { seq: u64, source: StorageError },
+
+    #[snafu(display("failed to count journal record {seq} in its extent"))]
+    CountJournal { seq: u64, source: ChunkingError },
+
+    /// Chunking empties the head down to what fits, so only a budget smaller than an empty
+    /// head ends here.
+    #[snafu(display("the head has no room for the batch"))]
+    ReserveHead { source: BudgetExceeded },
+
+    /// The staging budget cannot hold the batch's own records and deltas beside the chunk
+    /// builds that the head budget or the journal cap require (§7.4). A trigger alone never
+    /// ends here: its chunking waits for a commit that has room. Raise the budget, or write
+    /// smaller batches.
+    #[snafu(display("the staging budget has no room for the batch"))]
+    ReserveStaging { source: BudgetExceeded },
+
+    #[snafu(display("failed to chunk or fold the journal"))]
+    Chunking { source: ChunkingError },
+
+    /// A counter of the state record would pass `u64::MAX`, which only damage can cause.
+    #[snafu(display("a counter of the state record would overflow"))]
+    CounterOverflow,
+
+    #[snafu(display("failed to write the state record"))]
+    WriteState { source: StorageError },
+}
+
+impl StageError {
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            Self::ReadState { source } => source.kind(),
+            Self::UnknownPublication { .. } => ErrorKind::Corrupted,
+            Self::StaleBatch { .. } | Self::AlreadyPinned { .. } | Self::NotPinned { .. } => {
+                ErrorKind::Local
+            }
+            Self::ResolveSeries { source, .. }
+            | Self::ResolveEventSeries { source, .. }
+            | Self::ResolveLabel { source, .. }
+            | Self::ResolvePin { source, .. } => source.kind(),
+            Self::Pin { source, .. } | Self::Unpin { source, .. } => source.kind(),
+            Self::PutAux { source, .. }
+            | Self::DeleteAux { source, .. }
+            | Self::WriteJournal { source, .. }
+            | Self::WriteState { source } => source.kind(),
+            Self::ReserveHead { source } | Self::ReserveStaging { source } => source.kind(),
+            Self::CountJournal { source, .. } | Self::Chunking { source } => source.kind(),
+            Self::CounterOverflow => ErrorKind::Corrupted,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::{
+        Aggregate, FieldSpec, TierSpec,
+        catalog::{Catalog, Fold},
+        db::tests::{CLOSED, HOUR, LABELS, LOGS, MINUTE, UUID, closed_values, schema},
+        head::Head,
+        storage::{Storage, memory::MemoryDisk},
+        write::{EventSeq, SeriesPoint},
+    };
+
+    /// Staging reserves what it keeps of a batch at the capacities it allocates: each
+    /// source's deltas and its entry, then each stream's records and their lists. What it
+    /// sorts and resolves along the way is returned once it is dropped, and so is each series
+    /// record once it is written.
+    #[test]
+    fn staging_reserves_a_batchs_deltas_and_records_at_their_capacities() {
+        let schema = schema();
+        let profile = Profile::desktop();
+        let shape = Shape::new(&schema);
+        let version = Version {
+            publication: 0,
+            catalog: Catalog::new(&schema),
+            head: Head::empty(2),
+        };
+        let budget = MemoryBudget::new(u64::MAX);
+        let context = Context {
+            schema: &schema,
+            profile: &profile,
+            shape: &shape,
+            current: &version,
+            head_budget: &budget,
+            staging_budget: &budget,
+        };
+        let point = |tier, at, labels, fields| SeriesPoint {
+            tier,
+            at: Timestamp(at),
+            labels,
+            fields,
+        };
+        let other: &[&[u8]] = &[b"direct", b"git", b"b.com"];
+        let points = [
+            point(HOUR, 0, LABELS, &[1, 2]),
+            point(HOUR, 7_200_000, other, &[3, 4]),
+            point(HOUR, 1, LABELS, &[5, 6]),
+            point(MINUTE, 0, other, &[7, 8]),
+            point(HOUR, 7_200_001, LABELS, &[9, 9]),
+        ];
+        let values = closed_values(Value::Series(LABELS));
+        let mut uuid = closed_values(Value::Null);
+        uuid[5] = Value::Bytes(UUID);
+        let row = |stream, key, seq, values| EventRow {
+            stream,
+            key,
+            seq: EventSeq {
+                incarnation: 1,
+                seq,
+            },
+            values,
+        };
+        let line: &[Value<'_>] = &[Value::Bytes(b"line")];
+        let rows = [
+            row(CLOSED, 90_000_000, 0, &values[..]),
+            row(LOGS, 3, 1, line),
+            row(CLOSED, 5, 2, &uuid[..]),
+            row(CLOSED, 4, 3, &values[..]),
+            row(LOGS, 1, 4, line),
+        ];
+        let input = Input {
+            batch_id: 1,
+            now: Timestamp(0),
+            series: &points,
+            events: &rows,
+            aux: &[],
+            pins: &[],
+        };
+        let storage = MemoryDisk::new().open().unwrap();
+        let mut batch = storage.batch().unwrap();
+        let mut draft = version.catalog.draft(profile.catalog);
+        let mut written = Written {
+            publication: 0,
+            folded: 0,
+            label_overflows: 0,
+        };
+        let mut staging = budget.try_reserve("staging", 0).unwrap();
+
+        let added = stage_series(
+            &mut batch,
+            &mut draft,
+            &context,
+            &input,
+            &mut written,
+            &mut staging,
+        )
+        .unwrap();
+        // Three sources, the hour bucket 0 with one combination twice.
+        assert_eq!(added.len(), 3);
+        let deltas: usize = added
+            .iter()
+            .map(|added| {
+                added.deltas.combos.capacity() * size_of::<u32>()
+                    + added.deltas.fields.capacity() * size_of::<u64>()
+            })
+            .sum();
+        let entries = added.capacity() * size_of::<SeriesAdded>();
+        assert_eq!(staging.bytes(), (deltas + entries) as u64);
+        assert_eq!(deltas, (1 + 2 + 1) * (4 + 2 * 8));
+
+        let mut journal = Journal {
+            next_seq: 0,
+            bytes: 0,
+        };
+        let held = staging.bytes();
+        journal
+            .series(&mut batch, &shape, input.now, added, &mut staging)
+            .unwrap();
+        assert_eq!(staging.bytes(), held);
+        let events = journal
+            .events(
+                &mut batch,
+                &mut draft,
+                &schema,
+                &input,
+                &mut written,
+                &mut staging,
+            )
+            .unwrap();
+        // The closed rows of two extents, and the log lines of one.
+        let records: Vec<usize> = events
+            .iter()
+            .flat_map(|(_, segments)| segments)
+            .map(Segment::record_len)
+            .collect();
+        assert_eq!(records.len(), 3);
+        let lists = events.capacity() * size_of::<(StreamId, Vec<Segment>)>()
+            + events
+                .iter()
+                .map(|(_, segments)| segments.capacity() * size_of::<Segment>())
+                .sum::<usize>();
+        let kept = records.iter().sum::<usize>() + lists;
+        assert_eq!(staging.bytes(), held + kept as u64);
+        // Each record's rows are in the order chunks keep them.
+        for (_, segments) in &events {
+            for segment in segments {
+                let rows: Vec<_> = segment.record().rows().map(|row| row.order()).collect();
+                assert!(rows.is_sorted(), "{rows:?}");
+            }
+        }
+    }
+
+    /// Codex's case: sixteen dimensions of two one-byte values each, and 30,000 distinct
+    /// combinations in one batch, under a small head and the least staging an open accepts.
+    /// Resolving them allocates nothing but the catalog's growth, which its own budget
+    /// admits, and the scratch reserved first, so the batch fails on its deltas' reservation,
+    /// within the budget, and changes nothing.
+    #[test]
+    fn a_batch_of_many_combinations_fails_within_the_staging_budget() {
+        use crate::{
+            LabelSpec, TierId, Tsdb,
+            db::tests::dump_storage,
+            schema::MAX_DIMENSIONS,
+            write::{Input, WriteError},
+        };
+
+        let dimensions: Vec<LabelId> = (0..MAX_DIMENSIONS as u16).map(LabelId).collect();
+        let schema = Schema {
+            version: 1,
+            labels: dimensions
+                .iter()
+                .map(|dimension| LabelSpec {
+                    name: String::leak(format!("d{}", dimension.0)),
+                })
+                .collect(),
+            series: Some(SeriesSpec {
+                dimensions: dimensions.clone(),
+                fields: vec![FieldSpec {
+                    name: "bytes",
+                    aggregate: Aggregate::SaturatingSum,
+                }],
+                tiers: vec![TierSpec {
+                    name: "hour",
+                    bucket: Duration::from_secs(3600),
+                    extent: Duration::from_secs(86_400),
+                }],
+                fold: Vec::new(),
+            }),
+            events: Vec::new(),
+        };
+        let head = 1024;
+        let profile = Profile {
+            head,
+            staging: super::super::chunking::least_staging(&schema, &Shape::new(&schema), head),
+            event_buffer_bytes: 1,
+            ..Profile::desktop()
+        };
+        let disk = MemoryDisk::new();
+        let mut tsdb = Tsdb::open(disk.open().unwrap(), schema, profile).unwrap();
+        // Combination n takes the value of bit i of n in dimension i.
+        let values: [&[u8]; 2] = [b"a", b"b"];
+        let points: Vec<SeriesPoint<'static>> = (0..30_000u32)
+            .map(|n| SeriesPoint {
+                tier: TierId(0),
+                at: Timestamp(1_000 * 3_600_000),
+                labels: Vec::leak(
+                    (0..MAX_DIMENSIONS)
+                        .map(|bit| values[(n >> bit) as usize & 1])
+                        .collect(),
+                ),
+                fields: &[1],
+            })
+            .collect();
+        let input = Input {
+            batch_id: 1,
+            now: Timestamp(0),
+            series: &points,
+            events: &[],
+            aux: &[],
+            pins: &[],
+        };
+        let before = dump_storage(&tsdb);
+        let error = tsdb.write(&input, Durability::Durable).unwrap_err();
+        let deltas = SourceDeltas::bytes(30_000, 1);
+        assert!(
+            matches!(
+                &error,
+                WriteError::Stage {
+                    source: StageError::ReserveStaging { source }
+                } if source.needed == deltas
+            ),
+            "{error:?}"
+        );
+        assert_eq!(error.kind(), ErrorKind::Local);
+        assert_eq!(tsdb.staging_reserved(), 0);
+        assert_eq!(dump_storage(&tsdb), before);
+    }
+
+    #[test]
+    fn a_folded_label_keeps_the_rows_value_only_when_its_dimension_was_folded() {
+        let (rule, target) = (LabelId(0), LabelId(1));
+        let series = SeriesSpec {
+            dimensions: vec![rule, target],
+            fields: vec![FieldSpec {
+                name: "bytes",
+                aggregate: Aggregate::SaturatingSum,
+            }],
+            tiers: vec![TierSpec {
+                name: "hour",
+                bucket: Duration::from_secs(3600),
+                extent: Duration::from_secs(86_400),
+            }],
+            fold: vec![vec![target]],
+        };
+        let labels: &[&[u8]] = &[b"match", b"a.com"];
+        let resolved = |fold| Some((ResolvedCombo { id: 3, fold }, labels));
+
+        assert_eq!(folded_value(Some(&series), resolved(None), target), None);
+        let step = Some(Fold::Step(0));
+        assert_eq!(
+            folded_value(Some(&series), resolved(step), target),
+            Some(&b"a.com"[..])
+        );
+        assert_eq!(folded_value(Some(&series), resolved(step), rule), None);
+        let whole = Some(Fold::Whole);
+        assert_eq!(
+            folded_value(Some(&series), resolved(whole), rule),
+            Some(&b"match"[..])
+        );
+        assert_eq!(
+            folded_value(Some(&series), resolved(whole), target),
+            Some(&b"a.com"[..])
+        );
+        // A row without a series value keeps nothing.
+        assert_eq!(folded_value(Some(&series), None, target), None);
+    }
+}

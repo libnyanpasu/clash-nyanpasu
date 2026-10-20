@@ -27,12 +27,9 @@
 //!
 //! [postcard]: https://docs.rs/postcard
 
-use std::{fmt, marker::PhantomData, ops::RangeInclusive};
+use std::ops::RangeInclusive;
 
-use serde::{
-    Deserialize, Deserializer, Serialize,
-    de::{Error as _, SeqAccess, Visitor},
-};
+use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, ensure};
 use strum::FromRepr;
 
@@ -48,6 +45,7 @@ use crate::{
         checksum::TRAILER_LEN,
         int::IntType,
     },
+    layout::record::bounded,
     storage::MAX_FRAGMENT_LEN,
 };
 
@@ -172,7 +170,7 @@ pub(crate) enum ChunkKind {
 
 /// How a column is stored. The write path maps schema columns onto these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PhysicalType {
+pub enum PhysicalType {
     /// `summed` applies to `u64` columns only: their blocks and the chunk record saturating
     /// sums, so a query can total a series field from headers alone (§6.1).
     Int {
@@ -484,59 +482,6 @@ pub(crate) struct BlockRecord {
     pub(crate) stored_len: u32,
     pub(crate) uncompressed_len: u32,
     pub(crate) stats: IntStats,
-}
-
-/// Deserializes a list of at most `N` records. A longer one fails as soon as its length
-/// prefix says so, or, when the input could not hold that many, at record `N + 1`: either
-/// way before the list holds more than `N`, so a hostile length allocates nothing past the
-/// format's limit.
-///
-/// serde's own `Vec` is bounded by the input alone. Its visitor preallocates
-/// `size_hint::cautious` elements (`serde_core-1.0.229/src/de/impls.rs:1161-1162`), at most
-/// 1 MiB of them (`private/size_hint.rs:12-23`), and postcard hints a length only when the
-/// remaining input has at least that many bytes (`postcard-1.1.3/src/de/deserializer.rs:164-169`).
-/// A record takes a few bytes there and tens in memory, though, so the list could still grow
-/// to several MiB from one fragment.
-///
-/// The list gets room for the records its prefix claims, once, and never grows, so it never
-/// reallocates: a reallocation would hold the old and the new allocation at once. postcard
-/// hints that length only when the input has a byte per claimed record left. A list it cannot
-/// hint cannot be complete, since every record takes a byte at least, so it fails at once; a
-/// list it hints takes at most the fragment's length in records, even when they then fail to
-/// decode (see [`open_memory`]).
-fn bounded<'de, D, T, const N: usize>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    struct Bounded<T, const N: usize>(PhantomData<T>);
-
-    impl<'de, T: Deserialize<'de>, const N: usize> Visitor<'de> for Bounded<T, N> {
-        type Value = Vec<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(formatter, "at most {N} records")
-        }
-
-        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<T>, A::Error> {
-            let Some(len) = seq.size_hint() else {
-                return Err(A::Error::custom("a list longer than the input"));
-            };
-            if len > N {
-                return Err(A::Error::invalid_length(len, &self));
-            }
-            let mut records = Vec::with_capacity(len);
-            while let Some(record) = seq.next_element()? {
-                if records.len() == len {
-                    return Err(A::Error::invalid_length(len + 1, &self));
-                }
-                records.push(record);
-            }
-            Ok(records)
-        }
-    }
-
-    deserializer.deserialize_seq(Bounded::<T, N>(PhantomData))
 }
 
 impl DirectoryRecord {

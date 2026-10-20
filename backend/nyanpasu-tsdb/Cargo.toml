@@ -22,6 +22,8 @@ serde = { version = '1', features = ['derive'] }
 snafu.workspace = true
 # Derives the stored tags of enums, and the lists of their variants.
 strum = { version = '0.28', features = ['derive'] }
+# Recognizes and restores canonical UUIDs in identity columns (§11.1).
+uuid = { version = '1', default-features = false }
 zerocopy = '0.8'
 zstd = '0.14'
 

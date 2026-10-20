@@ -153,7 +153,7 @@ impl<'a> KeyReader<'a> {
 #[derive(Debug, Snafu, PartialEq, Eq)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
-pub(crate) enum KeyError {
+pub enum KeyError {
     /// The key ends inside a component.
     #[snafu(display(
         "key is short: {needed} bytes needed at offset {offset}, {available} available"
@@ -170,7 +170,7 @@ pub(crate) enum KeyError {
 }
 
 impl KeyError {
-    pub(crate) fn kind(&self) -> ErrorKind {
+    pub fn kind(&self) -> ErrorKind {
         ErrorKind::Corrupted
     }
 }

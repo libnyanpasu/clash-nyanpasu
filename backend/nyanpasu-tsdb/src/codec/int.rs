@@ -32,7 +32,7 @@ use super::{
 /// The physical integer types of a column (the chunk card's table maps schema types onto
 /// them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum IntType {
+pub enum IntType {
     I64,
     U64,
     U32,

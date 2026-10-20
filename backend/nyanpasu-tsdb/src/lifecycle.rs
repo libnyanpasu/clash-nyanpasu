@@ -98,16 +98,30 @@ pub(crate) fn open<S: Storage>(
             bytes: profile.consolidate_bytes,
         }
     );
+    #[cfg(test)]
+    let faults = storage.fault_schedule().unwrap_or_default();
     let state = commit_incarnation(&storage, schema)?;
 
     let snapshot = storage.snapshot().context(OpenSnapshotSnafu)?;
+    #[cfg(test)]
+    faults.boundary("open.catalog.before");
     let catalog = Catalog::load(&snapshot, schema, profile.catalog).context(LoadCatalogSnafu)?;
+    #[cfg(test)]
+    faults.boundary("open.catalog.after");
     let head_budget = MemoryBudget::new(profile.head);
+    #[cfg(test)]
+    head_budget.schedule(storage.fault_schedule());
+    #[cfg(test)]
+    faults.boundary("open.head.before");
     let rebuilt = Head::rebuild_within(&snapshot, schema, &catalog, &state, &head_budget, &shape)
         .context(RebuildHeadSnafu)?;
     #[cfg(test)]
+    faults.boundary("open.head.after");
+    #[cfg(test)]
     let replay_peak = rebuilt.observed_peak;
     let staging_budget = MemoryBudget::new(profile.staging);
+    #[cfg(test)]
+    staging_budget.schedule(storage.fault_schedule());
     let settled = Opening {
         schema,
         profile,
@@ -549,4 +563,4 @@ impl OpenError {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

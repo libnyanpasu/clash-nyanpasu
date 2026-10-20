@@ -19,6 +19,8 @@ use redb::StorageBackend;
 #[derive(Clone, Default)]
 pub(super) struct FaultDisk {
     disk: Arc<Mutex<Disk>>,
+    /// Shared ordinal recorder, disabled for the older single-fault conformance tests.
+    schedule: crate::verification::faults::FaultSchedule,
 }
 
 #[derive(Default)]
@@ -55,6 +57,31 @@ enum Fault {
 }
 
 impl FaultDisk {
+    /// Independent replay image, with no graceful close of the original instance.
+    pub(super) fn fork(&self) -> Self {
+        let durable = self.lock().durable.clone();
+        Self {
+            disk: Arc::new(Mutex::new(Disk {
+                current: durable.clone(),
+                durable,
+                ..Disk::default()
+            })),
+            schedule: Default::default(),
+        }
+    }
+
+    /// The same controller used above the storage port; invalidation owns only disk state.
+    pub(super) fn schedule(&self) -> crate::verification::faults::FaultSchedule {
+        let disk = self.disk.clone();
+        self.schedule.actions(
+            || {},
+            move || {
+                lock(&disk).generation += 1;
+            },
+        );
+        self.schedule.clone()
+    }
+
     /// The backend of a new instance, which opens the durable image. The backend of every
     /// earlier instance stops working, as if its process had exited.
     pub(super) fn backend(&self) -> FaultBackend {
@@ -65,6 +92,7 @@ impl FaultDisk {
         FaultBackend {
             disk: self.disk.clone(),
             generation: disk.generation,
+            schedule: self.schedule.clone(),
         }
     }
 
@@ -138,9 +166,17 @@ impl Disk {
 pub(super) struct FaultBackend {
     disk: Arc<Mutex<Disk>>,
     generation: u64,
+    /// Injected explicitly by its owning FaultDisk.
+    schedule: crate::verification::faults::FaultSchedule,
 }
 
 impl FaultBackend {
+    /// A crashed generation never reaches a later write, including destruction's close I/O.
+    fn step(&self, name: &'static str) -> io::Result<()> {
+        drop(self.disk()?);
+        self.schedule.io(name)
+    }
+
     /// The disk, while this backend's instance is the newest.
     fn disk(&self) -> io::Result<MutexGuard<'_, Disk>> {
         let disk = lock(&self.disk);
@@ -166,11 +202,17 @@ fn out_of_range() -> io::Error {
 
 // Offsets and lengths fit in `usize` on the 64-bit targets the crate supports.
 impl StorageBackend for FaultBackend {
+    fn close(&self) -> io::Result<()> {
+        self.step("disk.close")
+    }
+
     fn len(&self) -> io::Result<u64> {
+        self.step("disk.len")?;
         Ok(self.disk()?.current.len() as u64)
     }
 
     fn read(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
+        self.step("disk.read")?;
         let mut disk = self.disk()?;
         disk.take_io_fault()?;
         disk.stats.reads += 1;
@@ -184,6 +226,7 @@ impl StorageBackend for FaultBackend {
     }
 
     fn set_len(&self, len: u64) -> io::Result<()> {
+        self.step("disk.set_len")?;
         let mut disk = self.disk()?;
         disk.take_io_fault()?;
         if matches!(disk.fault, Some(Fault::Truncate)) && len < disk.current.len() as u64 {
@@ -195,6 +238,7 @@ impl StorageBackend for FaultBackend {
     }
 
     fn sync_data(&self) -> io::Result<()> {
+        self.step("disk.sync.before")?;
         let mut disk = self.disk()?;
         disk.take_io_fault()?;
         if let Some(Fault::CommitSync { applied }) = disk.fault
@@ -209,10 +253,12 @@ impl StorageBackend for FaultBackend {
         disk.stats.syncs += 1;
         disk.durable = disk.current.clone();
         disk.header_written = false;
-        Ok(())
+        drop(disk);
+        self.step("disk.sync.after")
     }
 
     fn write(&self, offset: u64, data: &[u8]) -> io::Result<()> {
+        self.step("disk.write")?;
         let mut disk = self.disk()?;
         disk.take_io_fault()?;
         let start = offset as usize;

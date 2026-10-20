@@ -239,14 +239,18 @@ fn dump(read: &impl StorageRead, probes: &[FragmentId]) -> Dump {
 /// Writes generation `n` everywhere at once: the same key in both namespaces, and
 /// fragment 0 of chunk `n`, deleting the chunk of generation `n - 1`.
 fn write_generation(batch: &mut impl StorageWrite, n: u64) {
-    batch.put(A, b"generation", &n.to_be_bytes()).unwrap();
-    batch.put(B, b"generation", &n.to_be_bytes()).unwrap();
-    batch
-        .put_fragment(frag(n, 0), &payload(frag(n, 0)))
-        .unwrap();
+    stage_generation(batch, n).unwrap();
+}
+
+/// The same atomicity fixture with propagated errors for exhaustive disk schedules.
+pub(crate) fn stage_generation(batch: &mut impl StorageWrite, n: u64) -> Result<(), StorageError> {
+    batch.put(A, b"generation", &n.to_be_bytes())?;
+    batch.put(B, b"generation", &n.to_be_bytes())?;
+    batch.put_fragment(frag(n, 0), &payload(frag(n, 0)))?;
     if n > 0 {
-        batch.delete_chunk(ChunkId(n - 1)).unwrap();
+        batch.delete_chunk(ChunkId(n - 1))?;
     }
+    Ok(())
 }
 
 /// The generation a view holds, after checking that it holds all of that generation's

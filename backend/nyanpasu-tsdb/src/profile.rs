@@ -3,7 +3,8 @@
 //! it, and every value can be overridden.
 //!
 //! A preset is a starting point: the design lists its values as initial ones, and the
-//! benchmarks of §12 revise the first-tier values. A field that the design leaves to
+//! benchmarks of §12 inform recommendations; no preset or floor is calibrated by default.
+//! Measurements and verification limits live in the crate's BENCHMARKS.md. A field left to
 //! those benchmarks says so in its doc.
 //!
 //! The table of §10.1 writes the desktop and x86 budgets in MB and the mobile budget in
@@ -169,7 +170,7 @@ impl Profile {
     }
 
     /// Tier 2: 64-bit low-end devices such as aarch64 routers, 16 MB. It is conservative
-    /// and untested: it builds and runs, nothing more is promised (§0.2).
+    /// and untested on that target; no build or runtime validation is claimed (§0.2).
     ///
     /// Every commit is durable, because the data lives on tmpfs, where a sync costs
     /// little. The real loss interval is the host's copy of the database to flash every 15

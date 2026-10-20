@@ -19,6 +19,8 @@
 //! one [`Reserved`] result, so the result may outlive the account without releasing and
 //! reserving its bytes again.
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use snafu::{Snafu, ensure};
@@ -73,6 +75,9 @@ struct Shared {
     /// Bytes held by live reservations, never above `limit`. Every change happens under
     /// this lock, so a reserve that fails changes nothing.
     reserved: Mutex<u64>,
+    /// Exact reservation high-water mark, updated under the reservation lock.
+    #[cfg(test)]
+    peak: AtomicU64,
     /// Keeps a fixed sub-budget's parent admission until its last reservation has dropped.
     _parent: Option<Reservation>,
     /// Instance-local admission faults; absent outside verification fixtures.
@@ -86,6 +91,8 @@ impl MemoryBudget {
             shared: Arc::new(Shared {
                 limit,
                 reserved: Mutex::new(0),
+                #[cfg(test)]
+                peak: AtomicU64::new(0),
                 _parent: None,
                 #[cfg(test)]
                 faults: Mutex::new(None),
@@ -100,6 +107,8 @@ impl MemoryBudget {
             shared: Arc::new(Shared {
                 limit: parent.bytes(),
                 reserved: Mutex::new(0),
+                #[cfg(test)]
+                peak: AtomicU64::new(0),
                 // This transfers prepaid credit; it is not another fallible root admission.
                 #[cfg(test)]
                 faults: Mutex::new(None),
@@ -128,6 +137,20 @@ impl MemoryBudget {
         *self.lock()
     }
 
+    /// Largest simultaneous charge since construction or the last reset.
+    /// A child measures its admissions; its parent already holds the child's whole envelope.
+    #[cfg(test)]
+    pub(crate) fn peak(&self) -> u64 {
+        self.shared.peak.load(Ordering::Relaxed)
+    }
+
+    /// Starts a measurement at the current resident charge, serialized with admissions.
+    #[cfg(test)]
+    pub(crate) fn reset_peak(&self) {
+        let reserved = self.lock();
+        self.shared.peak.store(*reserved, Ordering::Relaxed);
+    }
+
     fn take(&self, what: &'static str, bytes: u64) -> Result<(), BudgetExceeded> {
         #[cfg(test)]
         if bytes != 0
@@ -151,6 +174,8 @@ impl MemoryBudget {
             }
         );
         *reserved += bytes;
+        #[cfg(test)]
+        self.shared.peak.fetch_max(*reserved, Ordering::Relaxed);
         Ok(())
     }
 

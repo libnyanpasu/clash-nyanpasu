@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+# --smoke belongs to the standalone benchmark, not libtest.
+bench = false
+
 [features]
 # The redb backend (design §3.4). The port, the core and the in-memory backend
 # build without it.
@@ -31,3 +35,7 @@ zstd = '0.14'
 [dev-dependencies]
 proptest = { version = '1', default-features = false, features = ['std'] }
 tempfile = '3'
+
+[[bench]]
+name = 'tsdb'
+harness = false

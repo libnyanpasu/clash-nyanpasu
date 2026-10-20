@@ -34,6 +34,7 @@ use crate::{
     write::{EventRow, Input, Value, chunking::event_columns},
 };
 
+mod bench;
 mod degradation;
 
 const DAY: i64 = 86_400_000;

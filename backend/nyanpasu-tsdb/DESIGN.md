@@ -1,24 +1,23 @@
 # nyanpasu-tsdb design notes
 
-The design is [`docs/design/nyanpasu-tsdb.md`](../../docs/design/nyanpasu-tsdb.md); "§n" refers to its
-sections. This file maps it onto the crate and records where the code departs from the
-design's sketches.
+The design is [nyanpasu-tsdb.md](../../docs/design/nyanpasu-tsdb.md); "§n" refers to its sections.
+This file maps it onto the crate and records where the code departs from the design's sketches.
 
 ## Layout
 
 Dependencies point down the table; a module uses only the rows below it.
 
-| Module                                                      | Owns                                                                                  | Design            |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------- |
-| `db`, `lifecycle`                                           | The owner's `Tsdb` handle and the shared reader; open, recovery, suspend, compaction  | §7.5, §9.3, §10.2 |
-| `write`, `query`, `maintain`                                | Staging and publishing batches; series and event queries; budgeted maintenance rounds | §4, §8, §9        |
-| `version`, `status`                                         | The version registry; status and the lossy-operation ring                             | §7.1, §9.4        |
-| `catalog`, `head`                                           | The in-memory state, one immutable version per publication                            | §4.2, §5          |
-| `chunk`                                                     | The chunk format: builder, reader, validation                                         | §3.3, §6          |
-| `codec`                                                     | Column encodings, checksums, zstd                                                     | §6.2, §6.3        |
-| `layout`                                                    | Namespaces, key encodings, metadata records, the chunk manifest                       | §3.2, §4          |
-| `storage`                                                   | The port, and the memory and redb backends                                            | §3                |
-| `schema`, `retention`, `profile`, `budget`, `time`, `error` | Definitions shared by everything above                                                | §2, §7.4, §10.1   |
+| Module                                                      | Owns                                                                                        | Design            |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------- |
+| `db`, `lifecycle`                                           | The owner's `Tsdb` handle and the shared reader; open, recovery, suspend, close, compaction | §7.5, §9.3, §10.2 |
+| `write`, `query`, `maintain`                                | Staging and publishing batches; series and event queries; budgeted maintenance rounds       | §4, §8, §9        |
+| `version`, `status`                                         | The version registry; status and the lossy-operation ring                                   | §7.1, §9.4        |
+| `catalog`, `head`                                           | The in-memory state, one immutable version per publication                                  | §4.2, §5          |
+| `chunk`                                                     | The chunk format: builder, reader, validation                                               | §3.3, §6          |
+| `codec`                                                     | Column encodings, checksums, zstd                                                           | §6.2, §6.3        |
+| `layout`                                                    | Namespaces, key encodings, metadata records, the chunk manifest                             | §3.2, §4          |
+| `storage`                                                   | The port, and the memory and redb backends                                                  | §3                |
+| `schema`, `retention`, `profile`, `budget`, `time`, `error` | Definitions shared by everything above                                                      | §2, §7.4, §10.1   |
 
 Only the port (`storage`), the definitions and the facade are public; the rest is
 internal, so the format and the in-memory structures can change without breaking
@@ -74,6 +73,9 @@ The design says its code sketches show shape, not the final API. Where the code 
   staging, builds only the sources the head keeps, and writes a chunked source straight from
   the current pages and the batch's deltas. Staging resolves a batch's event rows in the
   order chunks keep them.
+  Quiet/age head triggers fire on a write, not on maintenance: an empty batch at a later clock
+  can flush a partial head and make its extent eligible for consolidation. Suspend/close only
+  checkpoint it and preserve the journal; neither performs that flush or maintenance.
 - A stream with more records in one extent than staging can merge at once is chunked in
   groups, each a sorted run of its own. A trigger whose chunk build does not fit what staging
   has left beside the batch waits for a later commit; head pressure and the journal cap still
@@ -95,7 +97,7 @@ The design says its code sketches show shape, not the final API. Where the code 
 
   §4.3 runs the round in the batch's transaction. Here it has a transaction of its own, before
   the batch's:
-  - a failing round cannot fail the batch or roll it back;
+  - a non-BackendFailed round failure cannot fail the batch or roll it back;
   - the round reads the chunks it rewrites through its snapshot, and the batch stages on the
     version the round published, with no second publication number inside one transaction;
   - it reuses `maintain`'s round (`Tsdb::round`) as it is.
@@ -114,7 +116,8 @@ The design says its code sketches show shape, not the final API. Where the code 
 - A stream's deletion watermark is the last extent retention expired, kept in a record of the
   `STREAMS` namespace and read through the storage of the transaction or snapshot at hand,
   not held in the version. Both of retention's limits expire the oldest extent first, so the
-  watermark is also the extents' expired mark: no extent carries a mark of its own. The same
+  watermark is also the extents' expired mark: no extent carries a mark of its own. An empty
+  stored extent is Corrupted: replacing its last data deletes the record instead. The same
   record counts the bytes of the stream's unexpired extents (§9.1); `manifest::replace_extent`
   and `manifest::expire` keep it exact, so a byte cap costs one read per stream.
 - Reads filter by the watermark alone, at the granularity of extents. §9.1 filters by the
@@ -194,9 +197,6 @@ The design says its code sketches show shape, not the final API. Where the code 
   built from them, mean what they say through a snapshot with an equal token. Ids are not
   typed by their catalog and results do not keep it alive: the first would change every
   query's signature, the second need a second reservation for the catalog a result retains.
-- The store format is 2. A dataset of format 1 has neither references nor counts of uses, so
-  recycling would release ids its data still holds; the crate was never released, so opening
-  refuses it (`OpenError::StoreFormat`) rather than migrating it.
 - A tier is consolidated an extent at a time, oldest first, behind a cursor in its stream
   record. An extent is due once it has ended, stayed quiet for Q, and a commit has chunked its
   journal records. Once the cursor passes an extent, every L0 chunk written there is a late
@@ -325,8 +325,8 @@ execution order, including backlog rounds before a batch. Entries carry sequence
 publication, caller time, stream, typed bounding range and deltas. The newest 64 survive;
 readers visit expected sequences, not slot-key order. Rollback can reuse a sequence in a new
 incarnation, so `(incarnation,seq)` identifies an entry. Exhausted sequencing is corruption.
-There are no strings, catalog references, unbounded history or tracing dependency. E8's status
-will expose the counters and surviving history for host logging.
+There are no strings, catalog references, unbounded history or tracing dependency. Hosts read
+these through [coherent status](#coherent-status-and-event-degradation).
 
 Fixed records use the metadata allowance below. Write summaries have staging credit until
 they are staged and dropped, before chunk planning; no head storage or profile floors change.
@@ -379,7 +379,8 @@ budget mutexes. Capture holds G-read and R-read through reserve-before-pin. Writ
 hold G-read, taking R briefly; no R guard spans commit, rollback or fsync.
 Retirement takes G-write then R-write only to detach; backend close runs after both are released.
 Queries hold neither G nor R while scanning. They check revocation at entry, successful return,
-manifest entries, decoded blocks, stripe refills, large-value pieces and head/merge/page batches.
+manifest entries, decoded blocks, stripe refills, large-value pieces, each event-chain link and
+head/merge/page batches.
 A revoked query returns its module's `CheckOpen { source: StorageError::Closed }`, kind `Local`,
 and releases its workspace and partial result. The caller's snapshot retains its capture claim.
 On a failed query, revocation replaces the inner error with `CheckOpen`, except `BackendFailed`,
@@ -571,10 +572,15 @@ operation from a fresh durable fixture with a fault and, separately, a crash at 
 Port probes reuse the lifecycle harness; disk schedules reuse the conformance generation and
 redb's FaultDisk. The oracle compares exact bytes across all namespaces and all physical
 fragments, including orphan fragments. One-round operations admit only the before or committed
-image; the two-round schedule also admits the first committed prefix. NotApplied cannot advance
-it. Reopen changes only the incarnation; recovery restores auxiliary state without replaying
-input. Weak budget probes and held root-budget handles check that teardown and the last old
-result return their charges.
+image. Reached `port.commit.after` boundaries, including the armed ordinal, select the exact
+prefix: none means before; one means the first round for two-round operations; two means final.
+NotApplied cannot advance that prefix. Before the first reached `disk.sync.after`, a disk
+schedule must retain the before image. Reported I/O errors are BackendFailed and latch a
+surviving instance; rollback Drop I/O is checked through that latch. Backend-close Drop cannot
+return I/O errors. redb can absorb a best-effort cache-eviction write failure by buffering
+and flushing it at commit; that case must be committed and remain usable. Reopen advances the
+incarnation; recovery restores auxiliary state without replaying input. Weak budget probes and
+held root-budget handles check that teardown and the last old result return their charges.
 
 Hooks outside the port cover root memory admission, catalog-load admission, catalog/head
 rebuild, and pending registration/publication. Zero-byte claims and transfers of prepaid
@@ -591,6 +597,19 @@ sync, check that G and R are free while the file remains locked, then release an
 asserting. These are in-process durable-image and lock tests, not subprocess kills or proof of
 hardware power-loss behavior. Those tests remain out of scope. Fixtures are synthetic and
 exhaustive, never sampled.
+
+The label-keyed cross-feature model keeps current and durable states, queries decoded public
+values and RecoveryView, and resolves Unknown through last_batch. Watermarks are monotone; byte
+caps are checked in both directions against public status bytes, and age retention converges by
+whole extents. Predicted write losses are checked against the ring in order, including its suffix
+when full. Fixed counterexamples cover chunk ordering, late deltas, zero sums, auxiliary rollback,
+sequence contracts and old-snapshot behavior. Proptest uses 64 cases in normal gates; a separate
+512-case run passed at E10. Budget teardown checks require zero when nothing remains held; exact
+peak measurements belong to the ignored release harness, not a tautological peak<=limit test.
+
+Platform results, provisional profile evidence, measurement commands and hardware limits live
+once in [BENCHMARKS.md](BENCHMARKS.md#e13-profile-evidence-and-verification-matrix). These tests
+are not verification of iOS lifecycle integration or actual power loss.
 
 ## Not in this implementation
 

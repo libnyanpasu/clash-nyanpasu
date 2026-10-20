@@ -47,6 +47,11 @@ impl Combos {
         self.columns.len()
     }
 
+    /// The id range, including implicit combination 0 and released slots.
+    pub(crate) fn slots(&self) -> usize {
+        self.ids.slots() as usize + 1
+    }
+
     pub(crate) fn is_live(&self, id: u32) -> bool {
         id.checked_sub(1).is_none_or(|slot| self.ids.is_live(slot))
     }

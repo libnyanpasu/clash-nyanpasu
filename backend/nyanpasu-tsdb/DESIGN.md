@@ -380,6 +380,19 @@ across the layout; taking the maximum aggregate bytes block would miss retained 
 beside a dictionary heap. Event maintenance still explicitly releases outputs before opening a
 chunk, preserving `max(open, decoded)` in its input plan; scratch retains its maxima separately.
 
+Series scans add selected fields into dense per-combination partial sums, then evaluate filters
+and group keys once per seen combination. Unsigned saturating addition is associative, including
+when several combinations share a mapped key. A separate presence byte preserves zero-field and
+zero-sum groups and validates each first-seen id against the immutable catalog; folded reporting
+still precedes filters. The first row in range admits both buffers through the scan account:
+`combo_slots * (1 + 8 * selected_fields)` bytes, including implicit id 0 and recycled holes.
+This adds O(catalog id slots) workspace to §8.2's groups and decode buffers; a narrow total query
+over a large catalog can therefore fail admission sooner. Empty scans allocate neither buffer.
+No row count, unchecked stored id or request count sizes these buffers. Their credit returns with
+the scan; only group keys and sums transfer to the result. Stripes end at the earliest current
+column block boundary, so columns need not have matching block sizes. Bucket statistics retain
+their existing whole-chunk/whole-block skips; boundary rows are checked before other columns load.
+
 Fixed metadata keeps the documented schema and format allowance: validation maps, bounded record
 encoding, one decoded item per reader, errors, key prefixes, `Shape`, wrapper names and control
 Arcs or account Rcs. Schema bounds are 65,535 labels, 16 dimensions and fields, 255 tiers and

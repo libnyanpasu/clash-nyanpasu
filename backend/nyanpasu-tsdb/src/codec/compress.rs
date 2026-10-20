@@ -102,7 +102,9 @@ pub(crate) fn frame_len(len: usize) -> usize {
     zstd::compress_bound(len)
 }
 
-/// Decompresses `frame` into `out`, which ends up exactly `len` bytes long.
+/// Decompresses `frame` into admitted storage that covers `len`, then checks the exact length.
+/// A retained larger buffer still bounds zstd's writes by its charged capacity, at most
+/// `MAX_BLOCK_LEN`; a frame that expands past its declared length is rejected afterwards.
 pub(crate) fn decompress(
     decompressor: &mut Decompressor,
     frame: &[u8],
@@ -117,10 +119,9 @@ pub(crate) fn decompress(
         }
     );
     out.clear();
-    assert_eq!(
-        out.capacity(),
-        len,
-        "decompression uses its admitted exact capacity"
+    assert!(
+        (len..=MAX_BLOCK_LEN).contains(&out.capacity()),
+        "decompression uses admitted capacity within the block limit"
     );
     let written = out
         .decompress_into(decompressor, frame)
@@ -311,6 +312,15 @@ mod tests {
             decompress(&mut decompressor, &frame, 1001, &mut out),
             Err(DecodeError::DecompressedLength {
                 expected: 1001,
+                actual: 1000
+            })
+        ));
+        // A previously larger block left spare capacity. Length validation still rejects
+        // a frame larger than declared, even when it fits the retained allocation.
+        assert!(matches!(
+            decompress(&mut decompressor, &frame, 999, &mut out),
+            Err(DecodeError::DecompressedLength {
+                expected: 999,
                 actual: 1000
             })
         ));

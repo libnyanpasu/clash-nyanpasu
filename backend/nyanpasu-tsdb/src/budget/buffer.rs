@@ -110,6 +110,18 @@ impl<T> BudgetVec<T> {
         }
     }
 
+    /// Clears storage that covers `capacity`, keeping its lease. Otherwise retires it before
+    /// any replacement allocation and returns the bytes the replacement needs admitted.
+    pub(crate) fn discard_if_too_small(&mut self, capacity: usize) -> u64 {
+        if self.capacity() >= capacity {
+            self.clear();
+            0
+        } else {
+            self.discard_unless(0);
+            (capacity * size_of::<T>()) as u64
+        }
+    }
+
     /// Gives a discarded buffer exactly its new capacity, without preserving obsolete contents.
     pub(crate) fn reset_to(&mut self, capacity: usize) -> Result<(), BudgetExceeded> {
         self.discard_unless(capacity);

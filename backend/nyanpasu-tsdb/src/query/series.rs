@@ -36,10 +36,11 @@
 //!   decodes from it, as large as the chunk's manifest entry says ([`lent_memory`]); and its
 //!   directory, which the reader reserves before it fetches fragment 0 and holds while the
 //!   chunk is open ([`ChunkReader::open`]);
-//! - for each block: what decoding it leaves in the column's buffer and in the decoder's
-//!   scratch ([`decode_memory`]), reserved before the read as the larger of what they hold and
-//!   what the block declares, and shrunk to the block's after it. The query keeps one decoder
-//!   and one buffer per column, and reuses them from block to block and chunk to chunk;
+//! - for each block: each output/scratch buffer's larger retained/required capacity, admitted
+//!   before the read ([`decode_memory`]). Buffers keep their largest need across blocks and
+//!   chunks, without shrinking after a read. Integer output is bounded by
+//!   `MAX_BLOCK_ROWS * width + ceil(MAX_BLOCK_ROWS/8)` per column; the shared decoder's scratch
+//!   by `MAX_BLOCK_LEN` (see [`crate::codec::block`]). The query keeps one output per column;
 //! - the groups, as they appear. There is no spilling and no approximation: too many groups
 //!   fail the query (§8.2).
 //!

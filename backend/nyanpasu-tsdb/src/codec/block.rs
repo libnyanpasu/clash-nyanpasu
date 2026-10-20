@@ -34,13 +34,19 @@
 //!
 //! # Memory
 //!
-//! Decoding a block first sizes every buffer it fills to exactly the block's share of it,
-//! which the block's shape and its column give before a byte of the block is read (see
-//! [`DecodeMemory`]), and then never grows one. A buffer whose share changes from the last
-//! block is let go of, and all of them are, before any is allocated again: the decode never
-//! holds a buffer's old and new allocation at once, as a reallocation would, nor the old
-//! shares of some buffers with the new shares of others. So it holds at most the larger of
-//! what the last block and this one declare, and afterwards exactly what this one declares.
+//! Each output and scratch buffer retains the largest capacity its blocks have needed so
+//! far. A covered buffer is cleared and keeps its lease; an undersized buffer drops before
+//! any replacement allocates, then gets exactly the needed capacity (no geometric growth).
+//! Admission adds only those replacements beside the retained leases, before reading a byte.
+//! Old and new storage of a buffer never coexist. Maxima are per buffer: a bytes block's heap
+//! and offsets can peak in different blocks, so their sum can exceed any one block's plan.
+//!
+//! With `R = MAX_BLOCK_ROWS = 32,768` and `B = MAX_BLOCK_LEN = 131,072`, integer output is
+//! bounded by `R * width + ceil(R/8)`, bytes output by `4*(R+1) + B + ceil(R/8)` plus
+//! `8*min(R, large_count)` for text. Scratch is at most `B` for integers, `B + 4*R` for
+//! plain/fixed bytes, and `B + 8*R` when dictionaries are allowed. The zstd context is separate.
+//! Shared buffers retain the component-wise maxima across their columns until explicitly
+//! released by their owner; large-value payloads are reserved separately by the reader.
 
 use std::io;
 
@@ -371,10 +377,10 @@ pub(crate) struct BlockShape {
     pub(crate) rows: usize,
 }
 
-/// What decoding one block holds, in bytes, once decoded: in the block it decodes into, and in
+/// What decoding one block needs, in bytes: in the block it decodes into, and in
 /// the [`BlockDecoder`]'s scratch. It follows from the block's shape and its column, as the
 /// chunk directory states them, so that a query reserves it before it reads a byte of the
-/// block (§7.4, §8.2). Each part is the sum of the shares a decode sizes its buffers to (see
+/// block (§7.4, §8.2). Each part is the sum of the shares a decode needs in its buffers (see
 /// [Memory](self#memory)):
 ///
 /// - **An integer block**: its `rows` values of the type's width, and a validity bit per row.
@@ -405,12 +411,33 @@ impl DecodeMemory {
 
     /// For a block of a bytes column of `hint`, in a chunk of `large_count` large values.
     pub(crate) fn bytes(shape: BlockShape, large_count: u32, hint: BytesHint) -> Self {
-        let (offsets, heap, validity, large) = BytesBlock::shares(shape, large_count, hint);
         Self {
-            output: (offsets * size_of::<u32>() + heap + validity + large * size_of::<LargeRef>())
-                as u64,
+            output: Self::bytes_buffers(shape, large_count, hint)
+                .iter()
+                .sum::<usize>() as u64,
             scratch: Scratch::memory(shape),
         }
+    }
+
+    /// Per-buffer byte needs, for plans retaining maxima across different bytes columns.
+    pub(crate) fn bytes_buffers(
+        shape: BlockShape,
+        large_count: u32,
+        hint: BytesHint,
+    ) -> [usize; 4] {
+        let (offsets, heap, validity, large) = BytesBlock::shares(shape, large_count, hint);
+        [
+            offsets * size_of::<u32>(),
+            heap,
+            validity,
+            large * size_of::<LargeRef>(),
+        ]
+    }
+
+    /// Per-buffer byte needs, for plans retaining scratch across codecs and encodings.
+    pub(crate) fn scratch_buffers(shape: BlockShape) -> [usize; 3] {
+        let (body, ends, dict_ends) = Scratch::shares(shape);
+        [body, ends * size_of::<u32>(), dict_ends * size_of::<u32>()]
     }
 }
 
@@ -474,13 +501,12 @@ impl<T: IntValue> IntBlock<T> {
         self.validity.is_valid(row).then(|| self.values[row])
     }
 
-    /// Clears reusable capacities and retires every obsolete allocation before replacement.
-    fn discard(&mut self, account: &MemoryAccount, shape: BlockShape) {
+    /// Clears covered buffers, retires undersized storage and returns replacement admission.
+    fn discard(&mut self, account: &MemoryAccount, shape: BlockShape) -> u64 {
         let (values, validity) = int_shares(shape);
         self.values.attach(account);
-        self.values.discard_unless(values);
         self.validity.bits.attach(account);
-        self.validity.bits.discard_unless(validity);
+        self.values.discard_if_too_small(values) + self.validity.bits.discard_if_too_small(validity)
     }
 
     /// Allocates only the capacities whose old storage has already been discarded.
@@ -596,16 +622,16 @@ impl BytesBlock {
         shape: BlockShape,
         large_count: u32,
         hint: BytesHint,
-    ) {
+    ) -> u64 {
         let (offsets, heap, validity, large) = Self::shares(shape, large_count, hint);
         self.offsets.attach(account);
-        self.offsets.discard_unless(offsets);
         self.heap.attach(account);
-        self.heap.discard_unless(heap);
         self.validity.bits.attach(account);
-        self.validity.bits.discard_unless(validity);
         self.large.attach(account);
-        self.large.discard_unless(large);
+        self.offsets.discard_if_too_small(offsets)
+            + self.heap.discard_if_too_small(heap)
+            + self.validity.bits.discard_if_too_small(validity)
+            + self.large.discard_if_too_small(large)
     }
 
     fn allocate(
@@ -673,18 +699,19 @@ impl Scratch {
         (body + (ends + dict_ends) * size_of::<u32>()) as u64
     }
 
-    /// Clears reusable capacities and retires every obsolete allocation before replacement.
-    fn discard(&mut self, account: &MemoryAccount, shape: BlockShape) {
+    /// Clears covered buffers, retires undersized storage and returns replacement admission.
+    fn discard(&mut self, account: &MemoryAccount, shape: BlockShape) -> u64 {
         let (body, ends, dict_ends) = Self::shares(shape);
         self.body.attach(account);
-        self.body.discard_unless(body);
         self.ends.attach(account);
-        self.ends.discard_unless(ends);
         self.dict_ends.attach(account);
-        self.dict_ends.discard_unless(dict_ends);
+        self.body.discard_if_too_small(body)
+            + self.ends.discard_if_too_small(ends)
+            + self.dict_ends.discard_if_too_small(dict_ends)
     }
 
     /// Actual capacity retained across the scratch buffers.
+    #[cfg(test)]
     fn retained(&self) -> u64 {
         (self.body.capacity()
             + (self.ends.capacity() + self.dict_ends.capacity()) * size_of::<u32>()) as u64
@@ -702,8 +729,8 @@ impl Scratch {
 
 /// Decodes blocks into caller buffers. It owns the decompression context and the buffers
 /// a decode needs on the side, so one decoder serves every block of a query without
-/// allocating behind its back: what a decode leaves it and the block it fills holding is the
-/// block's [`DecodeMemory`].
+/// allocating behind its back. Each buffer keeps its greatest need across blocks, bounded
+/// by the format (see [Memory](self#memory)); [`DecodeMemory`] describes a single block's need.
 pub(crate) struct BlockDecoder {
     /// `None` for a decoder of raw blocks only, which needs no zstd context.
     decompressor: Option<Decompressor>,
@@ -766,11 +793,9 @@ impl BlockDecoder {
         out: &'a mut IntBlock<T>,
     ) -> Result<PreparedInts<'a, T>, BudgetExceeded> {
         debug_assert!(check_shape(shape).is_ok());
-        self.scratch.discard(&self.account, shape);
-        out.discard(&self.account, shape);
-        let target = Scratch::memory(shape) + DecodeMemory::ints(shape, T::TYPE).output;
-        self.account
-            .admit(target - self.scratch.retained() - out.memory())?;
+        let additional =
+            self.scratch.discard(&self.account, shape) + out.discard(&self.account, shape);
+        self.account.admit(additional)?;
         self.scratch.allocate(shape)?;
         out.allocate(shape)?;
         Ok(PreparedInts {
@@ -780,7 +805,7 @@ impl BlockDecoder {
         })
     }
 
-    /// Admits a bytes block after every obsolete buffer has dropped, retaining equal capacities.
+    /// Admits a bytes block after undersized storage has dropped, retaining larger capacities.
     pub(crate) fn prepare_bytes<'a>(
         &'a mut self,
         shape: BlockShape,
@@ -789,11 +814,9 @@ impl BlockDecoder {
         out: &'a mut BytesBlock,
     ) -> Result<PreparedBytes<'a>, BudgetExceeded> {
         debug_assert!(check_shape(shape).is_ok());
-        self.scratch.discard(&self.account, shape);
-        out.discard(&self.account, shape, large_count, hint);
-        let target = Scratch::memory(shape) + DecodeMemory::bytes(shape, large_count, hint).output;
-        self.account
-            .admit(target - self.scratch.retained() - out.memory())?;
+        let additional = self.scratch.discard(&self.account, shape)
+            + out.discard(&self.account, shape, large_count, hint);
+        self.account.admit(additional)?;
         self.scratch.allocate(shape)?;
         out.allocate(shape, large_count, hint)?;
         Ok(PreparedBytes {
@@ -1220,7 +1243,11 @@ mod tests {
             .take_while(|(allocate, _)| !allocate)
             .map(|(_, bytes)| bytes)
             .sum();
-        assert_eq!(events_before_first_allocation, old);
+        // Only the body grows; the larger dictionary heap, offsets and ends stay leased.
+        assert_eq!(
+            events_before_first_allocation,
+            first.uncompressed_len as u64
+        );
         assert_eq!(actual.get(), out.memory() + decoder.scratch.retained());
         let pointer = out.heap.as_ptr();
         events.borrow_mut().clear();
@@ -1233,6 +1260,121 @@ mod tests {
         drop(decoder);
         assert_eq!(actual.get(), 0);
         assert_eq!(account.live_bytes(), 0);
+    }
+
+    #[test]
+    fn integer_decode_allocates_only_when_a_buffer_needs_more_capacity() {
+        use std::{cell::Cell, rc::Rc};
+
+        let account = crate::budget::test_account();
+        let allocations = Rc::new(Cell::new(0));
+        let counted = allocations.clone();
+        account.observe_allocations(move |allocate, bytes, _| {
+            if allocate && bytes != 0 {
+                counted.set(counted.get() + 1);
+            }
+        });
+        let mut decoder = BlockDecoder::for_buffers(&account);
+        let mut out = IntBlock::<u64>::default();
+        let encoding_account = crate::budget::test_account();
+        let mut compressor = compress::new_compressor(&encoding_account).unwrap();
+        let mut scratch = EncodeScratch::new(&encoding_account, ScratchCaps::default());
+        let mut retained = [0; 5];
+        let mut expected_allocations = 0;
+        for (rows, compressed) in [
+            (256, true),
+            (64, false),
+            (512, true),
+            (8, true),
+            (512, false),
+            (1024, true),
+            (128, true),
+        ] {
+            let values: Vec<u64> = (0..rows).map(|i| (i % 31) as u64).collect();
+            let encoded = encode_ints(
+                &values,
+                None,
+                compressed.then_some(&mut compressor),
+                &mut scratch,
+            )
+            .unwrap();
+            let (stored, mut shape, _) = stored(&encoded);
+            shape.rows = rows;
+            let needs = [
+                rows * size_of::<u64>(),
+                rows.div_ceil(8),
+                if shape.codec == Codec::Zstd {
+                    shape.uncompressed_len
+                } else {
+                    0
+                },
+                0,
+                0,
+            ];
+            for (held, need) in retained.iter_mut().zip(needs) {
+                expected_allocations += usize::from(need > *held);
+                *held = (*held).max(need);
+            }
+            decoder
+                .prepare_ints(shape, &mut out)
+                .unwrap()
+                .decode(&stored, shape)
+                .unwrap();
+            assert_eq!(out.values(), values);
+            let held: Vec<_> = out
+                .buffers()
+                .into_iter()
+                .chain(decoder.buffers())
+                .map(|(_, bytes)| bytes)
+                .collect();
+            assert_eq!(held, retained);
+            assert_eq!(allocations.get(), expected_allocations);
+            assert_eq!(account.live_bytes(), retained.iter().sum::<usize>() as u64);
+        }
+        assert!(retained[2] > 0, "compressed scratch was exercised");
+        drop(out);
+        drop(decoder);
+        assert_eq!(account.live_bytes(), 0);
+    }
+
+    #[test]
+    fn bytes_admission_counts_growth_beside_retained_excess_capacity() {
+        let shape = |encoding, rows, uncompressed_len| BlockShape {
+            codec: Codec::Zstd,
+            encoding: Encoding::Bytes(encoding),
+            rows,
+            uncompressed_len,
+        };
+        let first = shape(BytesEncoding::Dictionary, 16, 32);
+        let second = shape(BytesEncoding::Plain, 8, 64);
+        // First: 582 output + 160 scratch. Second retains that output, both ends arrays,
+        // and grows only the body from 32 to 64: 582 + 192, despite its smaller block plan.
+        for limit in [773, 774] {
+            let budget = crate::budget::MemoryBudget::new(limit);
+            let account = MemoryAccount::new(&budget, "decode", Default::default()).unwrap();
+            let mut decoder = BlockDecoder::raw(&account);
+            let mut out = BytesBlock::default();
+            decoder
+                .prepare_bytes(first, 0, BytesHint::LowCardinality, &mut out)
+                .unwrap();
+            assert_eq!(account.live_bytes(), 742);
+            let result = decoder.prepare_bytes(second, 0, BytesHint::LowCardinality, &mut out);
+            if limit == 773 {
+                assert!(result.is_err());
+                assert_eq!(
+                    account.live_bytes(),
+                    710,
+                    "old body dropped before admission"
+                );
+            } else {
+                result.unwrap();
+                assert_eq!(account.live_bytes(), 774);
+            }
+            assert_eq!(out.memory(), 582);
+            drop(out);
+            drop(decoder);
+            assert_eq!(account.live_bytes(), 0);
+        }
     }
 
     fn stored(encoded: &Encoded<'_>) -> (Vec<u8>, BlockShape, usize) {

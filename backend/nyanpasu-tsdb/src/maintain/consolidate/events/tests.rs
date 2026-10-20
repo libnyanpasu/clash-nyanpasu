@@ -3155,6 +3155,92 @@ fn the_least_round_covers_the_rounds_of_the_heaviest_chunks() {
 }
 
 #[test]
+fn decode_cost_covers_retained_capacities_across_column_hints() {
+    let layout = closed_layout();
+    let cost = DecodeCost::of(&layout);
+    // Keeping text references beside the dictionary heap adds 2,048 output bytes. Opening
+    // still dominates decoded output in the least-round plan, so neither floor changes.
+    assert_eq!(
+        (cost.raw, cost.zstd),
+        ((260_386, 65_472), (260_386, 98_214))
+    );
+    assert_eq!(super::least_round(&layout, false), 1_783_006);
+    assert_eq!(super::least_round(&layout, true), 2_045_299);
+    for (codec, (output, scratch)) in [(Codec::Raw, cost.raw), (Codec::Zstd, cost.zstd)] {
+        let budget = MemoryBudget::new(output + scratch);
+        let account = MemoryAccount::new(&budget, "decode", MemoryPlan::default()).unwrap();
+        let mut decode = Decode::new(crate::codec::block::BlockDecoder::raw(&account));
+        for column in &layout {
+            let shape = BlockShape {
+                codec,
+                encoding: Encoding::Int(IntEncoding::Raw),
+                rows: max_rows(*column),
+                uncompressed_len: BLOCK_TARGET_LEN + MAX_BODY_OVERHEAD,
+            };
+            match column.ty {
+                PhysicalType::Int {
+                    ty: IntType::I64, ..
+                } => {
+                    decode
+                        .decoder
+                        .prepare_ints(shape, &mut decode.ints.i64s.block)
+                        .unwrap();
+                }
+                PhysicalType::Int {
+                    ty: IntType::U64, ..
+                } => {
+                    decode
+                        .decoder
+                        .prepare_ints(shape, &mut decode.ints.u64s.block)
+                        .unwrap();
+                }
+                PhysicalType::Int {
+                    ty: IntType::U32, ..
+                } => {
+                    decode
+                        .decoder
+                        .prepare_ints(shape, &mut decode.ints.u32s.block)
+                        .unwrap();
+                }
+                PhysicalType::Bytes(hint) => {
+                    for encoding in [
+                        BytesEncoding::Dictionary,
+                        BytesEncoding::Plain,
+                        BytesEncoding::Fixed,
+                    ] {
+                        if hint.allows(encoding) {
+                            decode
+                                .decoder
+                                .prepare_bytes(
+                                    BlockShape {
+                                        encoding: Encoding::Bytes(encoding),
+                                        ..shape
+                                    },
+                                    MAX_LARGE_VALUES as u32,
+                                    hint,
+                                    &mut decode.bytes.block,
+                                )
+                                .unwrap();
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(decode.held(), output);
+        assert_eq!(
+            decode
+                .decoder
+                .buffers()
+                .iter()
+                .map(|(_, bytes)| *bytes as u64)
+                .sum::<u64>(),
+            scratch
+        );
+        assert_eq!(account.live_bytes(), output + scratch);
+    }
+}
+
+#[test]
 fn traffic_allocation_floors() {
     let schema = crate::write::chunking::tests::traffic_schema();
     let shape = crate::write::chunking::Shape::new(&schema);

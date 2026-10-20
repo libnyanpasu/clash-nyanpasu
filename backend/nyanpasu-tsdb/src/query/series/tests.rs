@@ -1259,8 +1259,8 @@ fn scratch_held(decoder: &BlockDecoder) -> u64 {
 }
 
 // Before a block is decoded, the column's output and the decoder's scratch are reserved as
-// the larger of what they hold and what the block declares; after it, they are shrunk to the
-// block's, which is what the buffers then hold. A block that does not fit is never decoded.
+// each buffer's larger retained/required capacity. They retain the largest block's capacities
+// after smaller reads. A block that does not fit is never decoded.
 #[test]
 fn a_column_reserves_each_block_before_decoding_it() {
     let disk = MemoryDisk::new();
@@ -1320,7 +1320,7 @@ fn a_column_reserves_each_block_before_decoding_it() {
     };
     let mut downloads_column = Column::<u64>::new(column);
     let end = 3 * ROWS - 1;
-    for (row, memory) in [(end, small), (1, large), (end, small)] {
+    for (row, memory) in [(end, small), (1, large), (end, large)] {
         let value = downloads_column.value(&mut decode, row).unwrap();
         assert_eq!(value, downloads[row as usize]);
         assert_eq!(downloads_column.block.memory(), memory.output);
@@ -1329,7 +1329,7 @@ fn a_column_reserves_each_block_before_decoding_it() {
         assert_eq!(scratch_held(&decode.decoder.blocks), memory.scratch);
     }
 
-    // What is left holds the small block, so another column's large one does not fit.
+    // Retained capacity stays charged, so another column's large output does not fit.
     let mut other = Column::<u64>::new(column);
     let error = other.value(&mut decode, 0).unwrap_err();
     assert!(
@@ -1348,7 +1348,7 @@ fn a_column_reserves_each_block_before_decoding_it() {
     drop(other);
     assert_eq!(
         account.live_bytes(),
-        small.output + scratch_held(&decode.decoder.blocks)
+        large.output + scratch_held(&decode.decoder.blocks)
     );
     assert_eq!(budget.reserved(), large.output + large.scratch);
 }

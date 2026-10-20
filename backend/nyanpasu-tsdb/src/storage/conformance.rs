@@ -3,6 +3,7 @@
 //! [`conformance_tests!`], which makes one test of each check.
 
 use std::{
+    cell::Cell,
     ops::{Bound, ControlFlow},
     sync::mpsc,
     thread,
@@ -116,6 +117,11 @@ macro_rules! conformance_tests {
         }
 
         #[test]
+        fn conformance_fragment_limits() {
+            $crate::storage::conformance::fragment_limits::<$harness>();
+        }
+
+        #[test]
         fn conformance_durability_levels() {
             $crate::storage::conformance::durability_levels::<$harness>();
         }
@@ -179,7 +185,7 @@ fn scan_all(read: &impl StorageRead, ns: Ns) -> Vec<Entry> {
 }
 
 fn fragment(read: &impl StorageRead, id: FragmentId) -> Option<Vec<u8>> {
-    read.fragment(id, |bytes| bytes.map(<[u8]>::to_vec))
+    read.fragment(id, MAX_FRAGMENT_LEN, |bytes| bytes.map(<[u8]>::to_vec))
         .expect("read a fragment")
 }
 
@@ -839,7 +845,7 @@ impl Victim {
             Victim::Scan => failure(batch.scan(A, KeyRange::All, Direction::Forward, |_, _| {
                 ControlFlow::<()>::Continue(())
             })),
-            Victim::Fragment => failure(snapshot.fragment(frag(1, 0), |_| ())),
+            Victim::Fragment => failure(snapshot.fragment(frag(1, 0), MAX_FRAGMENT_LEN, |_| ())),
             Victim::Put => failure(batch.put(A, b"x", b"y")),
             Victim::Delete => failure(batch.delete(A, b"k")),
             Victim::PutFragment => failure(batch.put_fragment(frag(2, 0), b"z")),
@@ -902,7 +908,7 @@ fn check_failed_until_reopen<H: Harness>(
     });
     assert_eq!(failure(scanned).kind(), failed, "{case}");
     assert_eq!(
-        failure(before.fragment(frag(1, 0), |_| ())).kind(),
+        failure(before.fragment(frag(1, 0), MAX_FRAGMENT_LEN, |_| ())).kind(),
         failed,
         "{case}"
     );
@@ -1037,6 +1043,55 @@ pub(crate) fn fragments<H: Harness>() {
     assert_eq!(fragment(&view, frag(1, 1)), Some(payload(frag(1, 1))));
 }
 
+/// A fragment is lent only within the limit it is fetched by. One longer fails `Corrupted`
+/// before the callback runs, from a snapshot and from a batch, its own writes or the state it
+/// started from, and the backend stays usable; one within the limit, or a missing one, is lent
+/// as ever.
+pub(crate) fn fragment_limits<H: Harness>() {
+    fn check(read: &impl StorageRead, chunk: u64, lens: &[usize]) {
+        for (index, &len) in lens.iter().enumerate() {
+            let id = frag(chunk, index as u32);
+            let lent = read.fragment(id, len, |bytes| bytes.map(<[u8]>::len));
+            assert_eq!(lent.unwrap(), Some(len), "{id:?}");
+            if len == 0 {
+                continue;
+            }
+            let called = Cell::new(false);
+            let error = failure(read.fragment(id, len - 1, |_| called.set(true)));
+            assert!(
+                matches!(error, StorageError::Corrupted { .. }),
+                "{id:?}: {error:?}"
+            );
+            assert_eq!(error.kind(), ErrorKind::Corrupted);
+            assert!(!called.get(), "{id:?} was lent past its limit");
+        }
+        let missing = read.fragment(frag(chunk, 99), 0, |bytes| bytes.is_none());
+        assert!(missing.unwrap());
+    }
+
+    let harness = H::fresh();
+    let storage = harness.storage();
+    let lens = [0, 100, MAX_FRAGMENT_LEN];
+    commit(storage, Durability::Durable, |batch| {
+        for (index, &len) in lens.iter().enumerate() {
+            batch
+                .put_fragment(frag(1, index as u32), &vec![7; len])
+                .unwrap();
+        }
+    });
+    check(&snapshot(storage), 1, &lens);
+    let mut batch = storage.batch().unwrap();
+    for (index, &len) in lens.iter().enumerate() {
+        batch
+            .put_fragment(frag(2, index as u32), &vec![9; len])
+            .unwrap();
+    }
+    check(&batch, 1, &lens);
+    check(&batch, 2, &lens);
+    batch.commit(Durability::Durable).unwrap();
+    check(&snapshot(storage), 2, &lens);
+}
+
 /// `Consistent` then a clean close: kept. `Consistent` then a crash: lost. `Durable` then
 /// a crash: kept, together with the consistent commits before it.
 pub(crate) fn durability_levels<H: Harness>() {
@@ -1135,7 +1190,10 @@ fn check_corrupted(read: &impl StorageRead) {
         ControlFlow::<()>::Continue(())
     });
     assert_eq!(failure(scanned).kind(), corrupted);
-    assert_eq!(failure(read.fragment(frag(1, 0), |_| ())).kind(), corrupted);
+    assert_eq!(
+        failure(read.fragment(frag(1, 0), MAX_FRAGMENT_LEN, |_| ())).kind(),
+        corrupted
+    );
 
     assert_eq!(get(read, A, b"a"), Some(b"1".to_vec()));
     let before_k = KeyRange::Between(Bound::Unbounded, Bound::Excluded(b"k"));
@@ -1164,7 +1222,7 @@ pub(crate) fn closed_under_reader<H: Harness>() {
         let errors = [
             failure(view.get(A, b"k", |_| ())),
             failure(scanned),
-            failure(view.fragment(frag(1, 0), |_| ())),
+            failure(view.fragment(frag(1, 0), MAX_FRAGMENT_LEN, |_| ())),
         ];
         for error in errors {
             assert!(

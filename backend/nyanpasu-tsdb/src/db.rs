@@ -10,11 +10,12 @@ use crate::{
     ErrorKind, Profile, Schema, Timestamp,
     budget::{MemoryBudget, Reservation},
     lifecycle::{self, OpenError},
+    maintain::{self, Maintain, MaintainError, Maintained, Round},
     storage::{Durability, Storage},
-    version::{CaptureError, Registry, Snapshot},
+    version::{CaptureError, OpenMarker, Registry, Snapshot, Version},
     write::{
-        BeginBatchSnafu, CommitSnafu, EventSeq, Input, InvalidInputSnafu, RecoveryNeededSnafu,
-        StageSnafu, WriteError, Written,
+        BacklogSnafu, BeginBatchSnafu, CommitSnafu, EventSeq, Input, InvalidInputSnafu,
+        RecoveryNeededSnafu, StageSnafu, WriteError, Written,
         chunking::Shape,
         commit,
         stage::{self, Context, Counted},
@@ -47,6 +48,11 @@ pub struct Tsdb<S: Storage> {
     last_durable: Option<Timestamp>,
     /// The bytes written by the commits since the last durable one.
     since_durable: u64,
+    /// Whether maintenance is behind (§4.3, "积压"). A [`maintain`](Self::maintain) call that
+    /// returns `more` sets it, and one that finishes clears it; so does a commit that finds no
+    /// round due or whose round fails ([`catch_up`](Self::catch_up)). Kept in memory only, so
+    /// an open starts with it clear.
+    behind: bool,
 }
 
 impl<S: Storage> Tsdb<S> {
@@ -58,7 +64,7 @@ impl<S: Storage> Tsdb<S> {
         Ok(Self {
             shared: Arc::new(Shared {
                 storage: opened.storage,
-                registry: Registry::new(opened.version, schema.clone()),
+                registry: Registry::new(opened.version, schema.clone(), Arc::new(OpenMarker)),
                 query_budget: MemoryBudget::new(profile.query),
             }),
             schema,
@@ -70,12 +76,21 @@ impl<S: Storage> Tsdb<S> {
             next_event_seq: 0,
             last_durable: None,
             since_durable: 0,
+            behind: false,
             profile,
         })
     }
 
     /// Writes one batch in one transaction and publishes it. The outcome, when it is not
     /// success, is in the error: see [`WriteError::not_applied`].
+    ///
+    /// While maintenance is behind, because the last [`maintain`](Self::maintain) call
+    /// returned `more`, a valid batch first runs the most urgent round that needs no
+    /// retention policy, in a transaction of its own, as `maintain` runs a round, and
+    /// reports it in [`Written::maintained`] (§4.3, "积压"). A batch that finds no such round
+    /// due ends the backlog. A round failing with kind [`ErrorKind::BackendFailed`] fails the
+    /// write with [`WriteError::Backlog`], the batch not applied; any other failure of the
+    /// round ends the backlog too, and is left to the next `maintain` call.
     ///
     /// After an unknown outcome, or any error of kind [`ErrorKind::BackendFailed`], every
     /// later write and capture fails with a `RecoveryNeeded` error until the owner recovers
@@ -89,13 +104,55 @@ impl<S: Storage> Tsdb<S> {
         input
             .validate(&self.schema, self.profile.batch_bytes)
             .context(InvalidInputSnafu)?;
-        let written = self.stage_and_commit(input, durability);
+        let written = self.catch_up(input.now).and_then(|maintained| {
+            let written = self.stage_and_commit(input, durability)?;
+            Ok(Written {
+                maintained,
+                ..written
+            })
+        });
         if let Err(error) = &written
             && (error.kind() == ErrorKind::BackendFailed || !error.not_applied())
         {
             self.shared.registry.require_recovery();
         }
         written
+    }
+
+    /// Runs the round a commit makes before its batch while maintenance is behind, and says
+    /// what it did: nothing when maintenance is not behind (§4.3, "积压"). Finding no round
+    /// due ends the backlog. So does a round failing with any kind but `BackendFailed`: the
+    /// consumer's next `maintain` call meets the failure, so a damaged chunk fails no batch,
+    /// and no later commit pays again for a round that keeps failing.
+    fn catch_up(&mut self, now: Timestamp) -> Result<Maintained, WriteError> {
+        if !self.behind {
+            return Ok(Maintained::default());
+        }
+        match self.backlog_round(now) {
+            Ok(Some(done)) => Ok(done),
+            Err(error) if error.kind() == ErrorKind::BackendFailed => {
+                Err(error).context(BacklogSnafu)
+            }
+            Ok(None) | Err(_) => {
+                self.behind = false;
+                Ok(Maintained::default())
+            }
+        }
+    }
+
+    /// Plans the most urgent round a commit runs (`maintain::plan_backlog`) and runs it, as
+    /// [`rounds`](Self::rounds) does; `None` when none is due.
+    fn backlog_round(&mut self, now: Timestamp) -> Result<Option<Maintained>, MaintainError> {
+        let snapshot = self
+            .shared
+            .storage
+            .snapshot()
+            .context(maintain::OpenSnapshotSnafu)?;
+        let current = self.shared.registry.current();
+        let planned = maintain::plan_backlog(&snapshot, &self.round_context(&current), now)?;
+        planned
+            .map(|round| self.round(&snapshot, round, now))
+            .transpose()
     }
 
     fn stage_and_commit(
@@ -118,16 +175,116 @@ impl<S: Storage> Tsdb<S> {
         let bytes = batch.written();
         let written = commit::commit(batch, staged, &shared.registry, &mut self.head, durability)
             .context(CommitSnafu)?;
+        self.committed(durability, input.now, bytes);
+        Ok(written)
+    }
+
+    /// Tracks a commit made at `now` that wrote `bytes`, for
+    /// [`durability_due`](Self::durability_due).
+    fn committed(&mut self, durability: Durability, now: Timestamp, bytes: u64) {
         match durability {
             Durability::Durable => {
-                self.last_durable = Some(input.now);
+                self.last_durable = Some(now);
                 self.since_durable = 0;
             }
             Durability::Consistent => {
                 self.since_durable = self.since_durable.saturating_add(bytes);
             }
         }
-        Ok(written)
+    }
+
+    /// Runs at most `request.rounds` maintenance rounds, the most urgent first, and stops
+    /// early when nothing is left (§9.2). Each round is one transaction, committed with
+    /// [`durability_due`](Self::durability_due) at `request.now` and published like a batch.
+    /// The rounds made before a failing one stay made.
+    ///
+    /// A call whose budget ran out before the work did (`more`) leaves maintenance behind:
+    /// the next commits run a round each first, until one finds none due (see
+    /// [`write`](Self::write)). A call that finishes ends the backlog; a failing one leaves
+    /// it as it was.
+    ///
+    /// After an unknown outcome, or any error of kind [`ErrorKind::BackendFailed`], every
+    /// later write, maintenance call and capture fails until the owner recovers (§7.5).
+    pub fn maintain(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
+        ensure!(
+            !self.shared.registry.needs_recovery(),
+            maintain::RecoveryNeededSnafu
+        );
+        request.validate(&self.schema)?;
+        let maintained = self.rounds(request);
+        if let Err(error) = &maintained
+            && error.kind() == ErrorKind::BackendFailed
+        {
+            self.shared.registry.require_recovery();
+        }
+        if let Ok(done) = &maintained {
+            self.behind = done.more;
+        }
+        maintained
+    }
+
+    fn rounds(&mut self, request: &Maintain<'_>) -> Result<Maintained, MaintainError> {
+        let mut done = Maintained::default();
+        let mut left = request.rounds;
+        loop {
+            // The owner is the only writer, so a round's transaction starts from what the
+            // planner read.
+            let snapshot = self
+                .shared
+                .storage
+                .snapshot()
+                .context(maintain::OpenSnapshotSnafu)?;
+            let current = self.shared.registry.current();
+            let planned = maintain::plan(&snapshot, &self.round_context(&current), request)?;
+            let Some(round) = planned else {
+                return Ok(done);
+            };
+            if left == 0 {
+                done.more = true;
+                return Ok(done);
+            }
+            left -= 1;
+            done.add(self.round(&snapshot, round, request.now)?);
+        }
+    }
+
+    /// Stages `round` in a transaction of its own and publishes it. `snapshot` holds the state
+    /// the transaction starts from, which the round reads the chunks it rewrites through.
+    fn round(
+        &mut self,
+        snapshot: &S::Snapshot,
+        round: Round,
+        now: Timestamp,
+    ) -> Result<Maintained, MaintainError> {
+        let shared = &*self.shared;
+        let batch = shared.storage.batch().context(maintain::BeginRoundSnafu)?;
+        let mut batch = Counted::new(batch);
+        let current = shared.registry.current();
+        let staged = maintain::stage(&mut batch, snapshot, &self.round_context(&current), round)?;
+        let bytes = batch.written();
+        let durability = self.durability_due(now);
+        commit::publish(
+            batch,
+            staged.next,
+            &shared.registry,
+            &mut self.head,
+            durability,
+        )
+        .context(maintain::CommitSnafu)?;
+        self.committed(durability, now, bytes);
+        Ok(staged.done)
+    }
+
+    /// What planning and staging a round on `current` read besides storage.
+    pub(crate) fn round_context<'a>(&'a self, current: &'a Version) -> maintain::Context<'a> {
+        maintain::Context {
+            schema: &self.schema,
+            profile: &self.profile,
+            shape: &self.shape,
+            current,
+            head_budget: &self.head_budget,
+            staging_budget: &self.staging_budget,
+        }
     }
 
     /// The durability the next commit, made at `now`, needs to keep the profile's bounds
@@ -197,12 +354,20 @@ impl<S: Storage> Tsdb<S> {
         self.staging_budget.reserved()
     }
 
+    pub(crate) fn staging_budget(&self) -> &MemoryBudget {
+        &self.staging_budget
+    }
+
     pub(crate) fn shape(&self) -> &Shape {
         &self.shape
     }
 
     pub(crate) fn incarnation(&self) -> u64 {
         self.incarnation
+    }
+
+    pub(crate) fn behind(&self) -> bool {
+        self.behind
     }
 
     /// Closes the dataset and hands back its storage, for a test that crashes or reopens it.

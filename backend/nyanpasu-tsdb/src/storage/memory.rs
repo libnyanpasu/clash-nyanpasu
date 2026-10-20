@@ -35,7 +35,7 @@ use super::conformance::{CommitOutcome, OpClass};
 use super::{
     ChunkId, ClosedSnafu, CommitFailure, CorruptedSnafu, Direction, Durability, FragmentId,
     KeyRange, LimitSnafu, MAX_FRAGMENT_LEN, NotAppliedSnafu, Ns, Result, Storage, StorageError,
-    StorageRead, StorageWrite,
+    StorageRead, StorageWrite, check_lent,
 };
 use crate::ErrorKind;
 
@@ -459,8 +459,13 @@ impl StorageRead for MemorySnapshot {
         self.view()?.scan(ns, range, direction, f)
     }
 
-    fn fragment<T>(&self, id: FragmentId, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T> {
-        self.view()?.fragment(id, f)
+    fn fragment<T>(
+        &self,
+        id: FragmentId,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T> {
+        self.view()?.fragment(id, limit, f)
     }
 }
 
@@ -524,8 +529,13 @@ impl StorageRead for MemoryBatch<'_> {
         self.read(|view| view.scan(ns, range, direction, f))
     }
 
-    fn fragment<T>(&self, id: FragmentId, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T> {
-        self.read(|view| view.fragment(id, f))
+    fn fragment<T>(
+        &self,
+        id: FragmentId,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T> {
+        self.read(|view| view.fragment(id, limit, f))
     }
 }
 
@@ -696,9 +706,15 @@ impl View<'_> {
         }
     }
 
-    fn fragment<T>(&self, id: FragmentId, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T> {
+    fn fragment<T>(
+        &self,
+        id: FragmentId,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T> {
         if let Some(overlay) = self.overlay {
             if let Some(bytes) = overlay.fragments.get(&id) {
+                check_lent(id, bytes.len(), limit)?;
                 return Ok(f(Some(bytes)));
             }
             if overlay.deleted_chunks.contains(&id.chunk) {
@@ -707,8 +723,9 @@ impl View<'_> {
         }
         let chunk = self.image.chunks.get(&id.chunk);
         let stored = chunk.and_then(|fragments| fragments.get(&id.index));
-        if stored.is_some() {
+        if let Some(bytes) = stored {
             self.marks.check_fragment(id)?;
+            check_lent(id, bytes.len(), limit)?;
         }
         Ok(f(stored.map(|bytes| &**bytes)))
     }

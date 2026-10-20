@@ -49,11 +49,11 @@ use zerocopy::FromBytes;
 use zstd::bulk::{Compressor, Decompressor};
 
 use super::{
-    BlockFlagsSnafu, Codec, ColumnWidthSnafu, DeclaredLengthSnafu, DecodeError, Encoding,
-    LargeOutsideTextSnafu, LargeRefOrderSnafu, LargeRefSnafu, MAX_BLOCK_LEN, MAX_BLOCK_ROWS,
-    MissingTagsSnafu, PayloadLengthSnafu, RowCountSnafu, TagMismatchSnafu, TooManyRowsSnafu,
-    TrailingBytesSnafu, TruncatedHeaderSnafu, TruncatedIntsSnafu, TruncatedLargeRefsSnafu,
-    TruncatedValiditySnafu, WrongEncodingSnafu,
+    BlockFlagsSnafu, Codec, ColumnWidthSnafu, CompressedSnafu, DeclaredLengthSnafu, DecodeError,
+    Encoding, LargeOutsideTextSnafu, LargeRefOrderSnafu, LargeRefSnafu, MAX_BLOCK_LEN,
+    MAX_BLOCK_ROWS, MissingTagsSnafu, PayloadLengthSnafu, RowCountSnafu, TagMismatchSnafu,
+    TooManyRowsSnafu, TrailingBytesSnafu, TruncatedHeaderSnafu, TruncatedIntsSnafu,
+    TruncatedLargeRefsSnafu, TruncatedValiditySnafu, WrongEncodingSnafu,
     bytes::{self, ByteValues, BytesEncoding, BytesHint, BytesScratch, BytesSizes},
     compress,
     cursor::Cursor,
@@ -659,16 +659,27 @@ impl Scratch {
 /// allocating behind its back: what a decode leaves it and the block it fills holding is the
 /// block's [`DecodeMemory`].
 pub(crate) struct BlockDecoder {
-    decompressor: Decompressor<'static>,
+    /// `None` for a decoder of raw blocks only, which needs no zstd context.
+    decompressor: Option<Decompressor<'static>>,
     scratch: Scratch,
 }
 
 impl BlockDecoder {
     pub(crate) fn new() -> io::Result<Self> {
         Ok(Self {
-            decompressor: compress::new_decompressor()?,
+            decompressor: Some(compress::new_decompressor()?),
             scratch: Scratch::default(),
         })
+    }
+
+    /// A decoder of raw blocks only, without a zstd context: for L0 chunks, which are never
+    /// compressed (§6.3 rule 2). A compressed block is damage to it
+    /// ([`DecodeError::Compressed`]).
+    pub(crate) fn raw() -> Self {
+        Self {
+            decompressor: None,
+            scratch: Scratch::default(),
+        }
     }
 
     /// Each scratch buffer: its name and the bytes it holds. The zstd context is not among
@@ -878,7 +889,7 @@ pub(crate) fn view_ints<T: IntValue>(
 
 /// Checks the tags and returns the body, decompressing it into `buffer` when needed.
 fn body<'a>(
-    decompressor: &mut Decompressor<'static>,
+    decompressor: &mut Option<Decompressor<'static>>,
     buffer: &'a mut Vec<u8>,
     stored: &'a [u8],
     shape: BlockShape,
@@ -887,7 +898,7 @@ fn body<'a>(
         Codec::Raw => raw_body(stored, shape),
         Codec::Zstd => {
             compress::decompress(
-                decompressor,
+                decompressor.as_mut().context(CompressedSnafu)?,
                 payload(stored, shape)?,
                 shape.uncompressed_len,
                 buffer,

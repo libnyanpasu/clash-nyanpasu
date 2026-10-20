@@ -6,9 +6,12 @@
 //! Staging:
 //!
 //! - checks the batch id against the one in the transaction's state record;
+//! - drops the points and rows that fall in an extent retention expired (§9.1);
 //! - resolves combinations and labels in a catalog draft, down the fold ladder (§5.2);
 //! - writes one journal record per (tier, bucket) and per (stream, extent), and counts each
 //!   in its extent's record;
+//! - records the combinations and label values those records hold, by stream and extent
+//!   (§5.3, `references`);
 //! - writes the pins and the auxiliary state;
 //! - plans the chunking and folding the triggers, the head budget, the journal cap and the
 //!   staging budget call for, from the sizes of the head the batch would publish, then
@@ -19,19 +22,19 @@
 //!
 //! Every allocation that grows with the batch or the stored data is reserved in the staging
 //! budget before it is made, and returned once it is freed: the batch's sorted points and
-//! rows, their catalog ids, its deltas and records, the plan, and what executing the plan
-//! allocates. A record is encoded straight from the batch into a buffer of its exact length;
-//! no row is held decoded beyond the one being written. What stays allocated twice until the
-//! version is published or withdrawn stays reserved: the pages and buffers the next head
-//! copies, the batch's records it keeps, and the catalog draft's copies.
+//! rows, their catalog ids and references, its deltas and records, the plan, and what
+//! executing the plan allocates. A record is encoded straight from the batch into a buffer of
+//! its exact length; no row is held decoded beyond the one being written. What stays allocated
+//! twice until the version is published or withdrawn stays reserved: the pages and buffers the
+//! next head copies, the batch's records it keeps, and the catalog draft's copies.
 
 use std::ops::ControlFlow;
 
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
-use super::{AuxOp, EventRow, Input, PinOp, Value, Written};
+use super::{AuxOp, EventRow, Input, PinOp, SeriesPoint, Value, Written};
 use crate::{
-    ColumnType, ErrorKind, EventStreamSpec, LabelId, Profile, Schema, SeriesSpec, StreamId,
+    ColumnType, ErrorKind, EventStreamSpec, LabelId, Profile, Schema, SeriesSpec, StreamId, TierId,
     Timestamp,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::{CatalogDraft, PinError, ResolveError, ResolvedCombo},
@@ -43,9 +46,11 @@ use crate::{
     },
     layout::{
         AUX, JOURNAL,
-        manifest::{StreamRef, event_extent},
+        manifest::{ManifestError, StreamRef, event_extent, read_watermark},
         meta::{MetaError, StateRecord, read_state, write_state},
+        references::{self, Entity, ReferenceError},
     },
+    maintain::Maintained,
     storage::{
         ChunkId, CommitFailure, Direction, Durability, FragmentId, KeyRange, Ns, StorageError,
         StorageRead, StorageWrite,
@@ -53,7 +58,10 @@ use crate::{
     version::Version,
 };
 
-use super::chunking::{ChunkingError, Execution, ExtentChange, Planning, Shape, change_extent};
+use super::{
+    chunking::{ChunkingError, Execution, ExtentChange, Planning, Shape, change_extent},
+    references::References,
+};
 
 /// What staging reads besides the batch.
 pub(crate) struct Context<'a> {
@@ -109,24 +117,48 @@ pub(crate) fn stage(
         publication: 0,
         folded: 0,
         label_overflows: 0,
+        late: 0,
+        maintained: Maintained::default(),
     };
     let mut staging = context
         .staging_budget
         .try_reserve("staging", 0)
         .context(ReserveStagingSnafu)?;
     let mut draft = context.current.catalog.draft(context.profile.catalog);
-    let mut journal = Journal {
-        next_seq: state.next_journal_seq,
-        bytes: 0,
-    };
+    let watermarks = Watermarks::read(&*batch, context.schema, input, &mut staging)?;
     let series = stage_series(
         batch,
         &mut draft,
         context,
         input,
+        &watermarks,
         &mut written,
         &mut staging,
     )?;
+    // A tier's references are its sources' combinations; a row's, its catalog values.
+    let accepted = series
+        .iter()
+        .map(|added| added.deltas.combos.len())
+        .sum::<usize>()
+        + watermarks.row_references(context.schema, input);
+    staging
+        .try_grow(References::bytes(accepted))
+        .context(ReserveStagingSnafu)?;
+    let mut journal = Journal {
+        next_seq: state.next_journal_seq,
+        bytes: 0,
+        watermarks,
+        references: References::with_capacity(accepted),
+    };
+    for added in &series {
+        let source = added.source;
+        journal.references.push_tier(
+            StreamRef::Tier(source.tier),
+            context.shape.extent_of(source),
+            &added.deltas.combos,
+            context.current.head.accumulator(source),
+        );
+    }
     let series = journal.series(batch, context.shape, input.now, series, &mut staging)?;
     let events = journal.events(
         batch,
@@ -136,12 +168,20 @@ pub(crate) fn stage(
         &mut written,
         &mut staging,
     )?;
-    stage_pins(batch, &mut draft, input)?;
-    stage_aux(batch, input)?;
     let Journal {
         next_seq,
         bytes: batch_bytes,
+        watermarks,
+        references,
     } = journal;
+    let read = watermarks.bytes();
+    drop(watermarks);
+    staging.shrink(read);
+    // Before the pins, so that an unpin sees the references of the batch's own data.
+    references.record(batch).context(RecordReferencesSnafu)?;
+    staging.shrink(References::bytes(accepted));
+    stage_pins(batch, &mut draft, input)?;
+    stage_aux(batch, input)?;
     let update = HeadUpdate { series, events };
     let journal_bytes = state
         .journal_bytes
@@ -228,15 +268,17 @@ pub(crate) fn stage(
     })
 }
 
-/// Resolves every series point's combination and sums the points per (tier, bucket), with
-/// what merging each source's deltas into the current head costs. The points are put in
-/// (source, combination) order by their indices, and each source's deltas are allocated at
-/// exactly their combinations: every allocation is reserved in `staging` first.
+/// Resolves the combination of every series point that is not late, and sums those points
+/// per (tier, bucket), with what merging each source's deltas into the current head costs.
+/// The points are put in (source, combination) order by their indices, and each source's
+/// deltas are allocated at exactly their combinations: every allocation is reserved in
+/// `staging` first.
 fn stage_series(
     batch: &mut impl StorageWrite,
     draft: &mut CatalogDraft,
     context: &Context<'_>,
     input: &Input<'_>,
+    watermarks: &Watermarks,
     written: &mut Written,
     staging: &mut Reservation,
 ) -> Result<Vec<SeriesAdded>, StageError> {
@@ -245,16 +287,24 @@ fn stage_series(
         return Ok(Vec::new());
     }
     let fields = context.shape.fields;
-    // Each point's combination, and the points' order.
+    // Each point's combination, and the order of the points kept.
     let scratch = (2 * points * size_of::<u32>()) as u64;
     staging.try_grow(scratch).context(ReserveStagingSnafu)?;
     let mut combos = Vec::with_capacity(points);
+    let mut order = Vec::with_capacity(points);
     for (index, point) in input.series.iter().enumerate() {
+        if watermarks.late_point(context.shape, point) {
+            written.late += 1;
+            // Never read: the point is left out of the order.
+            combos.push(0);
+            continue;
+        }
         let resolved = draft
             .resolve_combo(batch, point.labels)
             .context(ResolveSeriesSnafu { point: index })?;
         written.folded += u64::from(resolved.fold.is_some());
         combos.push(resolved.id);
+        order.push(u32::try_from(index).expect("a batch holds fewer than 2^32 points"));
     }
     let source_of = |index: u32| {
         let point = &input.series[index as usize];
@@ -266,8 +316,6 @@ fn stage_series(
         }
     };
     let combo_of = |index: u32| combos[index as usize];
-    let points = u32::try_from(points).expect("a batch holds fewer than 2^32 points");
-    let mut order: Vec<u32> = (0..points).collect();
     order.sort_unstable_by_key(|&index| (source_of(index), combo_of(index)));
     let same_source = |a: &u32, b: &u32| source_of(*a) == source_of(*b);
     let sources = order.chunk_by(same_source).count();
@@ -457,7 +505,8 @@ fn folded_value<'a>(
 
 /// Pins the combination of each `Pin` op under its key, resolved as a series point with the
 /// same labels would be, and takes the pin under the key of each `Unpin` op off the
-/// combination it pins (see [`PinOp`]).
+/// combination it pins (see [`PinOp`]). A combination whose last pin goes while no stream
+/// references it may have become free: it becomes a candidate for release (§5.3).
 fn stage_pins(
     batch: &mut impl StorageWrite,
     draft: &mut CatalogDraft,
@@ -477,7 +526,11 @@ fn stage_pins(
             }
             PinOp::Unpin { key } => {
                 let unpinned = draft.unpin(batch, key).context(UnpinSnafu { pin: index })?;
-                ensure!(unpinned, NotPinnedSnafu { pin: index });
+                let unpinned = unpinned.context(NotPinnedSnafu { pin: index })?;
+                if unpinned.combo != 0 && unpinned.left == 0 {
+                    references::queue_unreferenced(batch, Entity::Combo(unpinned.combo))
+                        .context(QueueUnpinnedSnafu { pin: index })?;
+                }
             }
         }
     }
@@ -503,6 +556,10 @@ struct Journal {
     next_seq: u64,
     /// The bytes of the records, keys included.
     bytes: u64,
+    /// At or below them, a point or row is late, and has no record.
+    watermarks: Watermarks,
+    /// The combinations and label values the records hold, by stream and extent (§5.3).
+    references: References,
 }
 
 impl Journal {
@@ -538,10 +595,11 @@ impl Journal {
     }
 
     /// One record per (stream, extent), its rows sorted as chunks keep them (§8.3), so that
-    /// chunking merges records without decoding them whole. The rows are put in order by
-    /// their indices, then resolved in that order, and each record is encoded straight from
-    /// the batch, measured first, into a buffer of its exact length: no row is held decoded
-    /// beyond the one being written. Every allocation is reserved in `staging` first.
+    /// chunking merges records without decoding them whole. The rows that are not late are
+    /// put in order by their indices, then resolved in that order, and each record is encoded
+    /// straight from the batch, measured first, into a buffer of its exact length: no row is
+    /// held decoded beyond the one being written. Every allocation is reserved in `staging`
+    /// first.
     ///
     /// Returns each stream's new segments, which keep the records.
     fn events(
@@ -568,16 +626,18 @@ impl Journal {
                 row.seq,
             )
         };
-        // The order, each row's ids and one row's values.
-        let combos = (0..rows)
-            .filter(|&index| {
-                let row = &input.events[index];
-                series_labels(&schema.events[usize::from(row.stream.0)], row).is_some()
-            })
+        let late = |row: &EventRow<'_>| self.watermarks.late_row(schema, row);
+        // The order, each kept row's ids and one row's values.
+        let combos = input
+            .events
+            .iter()
+            .filter(|row| !late(row))
+            .filter(|row| series_labels(&schema.events[usize::from(row.stream.0)], row).is_some())
             .count();
         let labels: usize = input
             .events
             .iter()
+            .filter(|row| !late(row))
             .map(|row| label_values(&schema.events[usize::from(row.stream.0)], row).count())
             .sum();
         let widest = input
@@ -591,8 +651,14 @@ impl Journal {
             + labels * size_of::<u32>()
             + widest * size_of::<StoredValue<'_>>()) as u64;
         staging.try_grow(scratch).context(ReserveStagingSnafu)?;
-        let rows = u32::try_from(rows).expect("a batch holds fewer than 2^32 rows");
-        let mut order: Vec<u32> = (0..rows).collect();
+        let mut order = Vec::with_capacity(rows);
+        for (index, row) in input.events.iter().enumerate() {
+            if late(row) {
+                written.late += 1;
+            } else {
+                order.push(u32::try_from(index).expect("a batch holds fewer than 2^32 rows"));
+            }
+        }
         order.sort_unstable_by_key(|&index| place(index));
         let mut resolved = Resolved {
             combos: Vec::with_capacity(combos),
@@ -600,8 +666,20 @@ impl Journal {
         };
         for &index in &order {
             let index = index as usize;
-            let spec = &schema.events[usize::from(input.events[index].stream.0)];
+            let row = &input.events[index];
+            let spec = &schema.events[usize::from(row.stream.0)];
+            let (combos, labels) = (resolved.combos.len(), resolved.labels.len());
             resolve_row(batch, draft, spec, input, index, written, &mut resolved)?;
+            let (stream, extent) = (StreamRef::Events(row.stream), event_extent(spec, row.key));
+            for combo in &resolved.combos[combos..] {
+                self.references
+                    .push(stream, Entity::Combo(combo.id), extent);
+            }
+            let ids = &resolved.labels[labels..];
+            for ((_, dimension, _), &id) in label_values(spec, row).zip(ids) {
+                self.references
+                    .push(stream, Entity::Label(dimension, id), extent);
+            }
         }
 
         let same_stream = |a: &u32, b: &u32| place(*a).0 == place(*b).0;
@@ -693,6 +771,91 @@ impl Journal {
     }
 }
 
+/// The deletion watermarks of the tiers and streams a batch writes to (§9.1). A point or row
+/// whose extent is at or below its stream's arrives after retention expired the extent: it
+/// is dropped and counted, so that no expired extent is rebuilt, and it resolves nothing in
+/// the catalog.
+struct Watermarks {
+    /// By tier id; empty when the batch has no series points.
+    tiers: Vec<Option<i64>>,
+    /// By stream id; empty when the batch has no event rows.
+    streams: Vec<Option<i64>>,
+}
+
+impl Watermarks {
+    /// Reads the watermarks of every tier when the batch has series points, and of every
+    /// stream when it has event rows, into lists reserved in `staging` first.
+    fn read(
+        batch: &impl StorageRead,
+        schema: &Schema,
+        input: &Input<'_>,
+        staging: &mut Reservation,
+    ) -> Result<Self, StageError> {
+        let tiers = match &schema.series {
+            Some(series) if !input.series.is_empty() => series.tiers.len(),
+            _ => 0,
+        };
+        let streams = if input.events.is_empty() {
+            0
+        } else {
+            schema.events.len()
+        };
+        staging
+            .try_grow(Self::bytes_for(tiers, streams))
+            .context(ReserveStagingSnafu)?;
+        let read = |stream| read_watermark(batch, stream).context(ReadWatermarkSnafu { stream });
+        let mut watermarks = Self {
+            tiers: Vec::with_capacity(tiers),
+            streams: Vec::with_capacity(streams),
+        };
+        for tier in 0..tiers {
+            let tier = TierId(u8::try_from(tier).expect("tier ids are u8"));
+            watermarks.tiers.push(read(StreamRef::Tier(tier))?);
+        }
+        for stream in 0..streams {
+            let stream = StreamId(u8::try_from(stream).expect("stream ids are u8"));
+            watermarks.streams.push(read(StreamRef::Events(stream))?);
+        }
+        Ok(watermarks)
+    }
+
+    /// The bytes [`read`](Self::read) reserved.
+    fn bytes(&self) -> u64 {
+        Self::bytes_for(self.tiers.capacity(), self.streams.capacity())
+    }
+
+    fn bytes_for(tiers: usize, streams: usize) -> u64 {
+        ((tiers + streams) * size_of::<Option<i64>>()) as u64
+    }
+
+    fn late_point(&self, shape: &Shape, point: &SeriesPoint<'_>) -> bool {
+        let tier = usize::from(point.tier.0);
+        let grid = shape.grids[tier];
+        let extent = grid.extent_of_bucket(grid.bucket().index_of(point.at));
+        self.tiers[tier].is_some_and(|expired| extent <= expired)
+    }
+
+    fn late_row(&self, schema: &Schema, row: &EventRow<'_>) -> bool {
+        let stream = usize::from(row.stream.0);
+        let extent = event_extent(&schema.events[stream], row.key);
+        self.streams[stream].is_some_and(|expired| extent <= expired)
+    }
+
+    /// The most references the rows of `input` hold beside the late ones (§5.3): per row kept,
+    /// its series value and each of its label values.
+    fn row_references(&self, schema: &Schema, input: &Input<'_>) -> usize {
+        input
+            .events
+            .iter()
+            .filter(|row| !self.late_row(schema, row))
+            .map(|row| {
+                let spec = &schema.events[usize::from(row.stream.0)];
+                usize::from(series_labels(spec, row).is_some()) + label_values(spec, row).count()
+            })
+            .sum()
+    }
+}
+
 /// A write batch that counts the bytes written into it: keys, values and fragments. The
 /// owner makes a commit durable early once enough bytes have accumulated (§7.4).
 pub(crate) struct Counted<W> {
@@ -733,9 +896,10 @@ impl<W: StorageRead> StorageRead for Counted<W> {
     fn fragment<T>(
         &self,
         id: FragmentId,
+        limit: usize,
         f: impl FnOnce(Option<&[u8]>) -> T,
     ) -> Result<T, StorageError> {
-        self.batch.fragment(id, f)
+        self.batch.fragment(id, limit, f)
     }
 }
 
@@ -785,6 +949,12 @@ pub enum StageError {
     #[snafu(display("batch {batch_id} is not after the last committed batch, {last}"))]
     StaleBatch { batch_id: u64, last: u64 },
 
+    #[snafu(display("failed to read the deletion watermark of {stream:?}"))]
+    ReadWatermark {
+        stream: StreamRef,
+        source: ManifestError,
+    },
+
     #[snafu(display("failed to resolve the combination of series point {point}"))]
     ResolveSeries { point: usize, source: ResolveError },
 
@@ -814,6 +984,12 @@ pub enum StageError {
 
     #[snafu(display("failed to unpin the combination of pin {pin}"))]
     Unpin { pin: usize, source: PinError },
+
+    #[snafu(display("failed to queue the combination pin {pin} left without pins"))]
+    QueueUnpinned { pin: usize, source: ReferenceError },
+
+    #[snafu(display("failed to record the references of the batch"))]
+    RecordReferences { source: ReferenceError },
 
     #[snafu(display("failed to write auxiliary entry {entry}"))]
     PutAux { entry: usize, source: StorageError },
@@ -858,11 +1034,13 @@ impl StageError {
             Self::StaleBatch { .. } | Self::AlreadyPinned { .. } | Self::NotPinned { .. } => {
                 ErrorKind::Local
             }
+            Self::ReadWatermark { source, .. } => source.kind(),
             Self::ResolveSeries { source, .. }
             | Self::ResolveEventSeries { source, .. }
             | Self::ResolveLabel { source, .. }
             | Self::ResolvePin { source, .. } => source.kind(),
             Self::Pin { source, .. } | Self::Unpin { source, .. } => source.kind(),
+            Self::QueueUnpinned { source, .. } | Self::RecordReferences { source } => source.kind(),
             Self::PutAux { source, .. }
             | Self::DeleteAux { source, .. }
             | Self::WriteJournal { source, .. }
@@ -960,14 +1138,22 @@ mod tests {
             publication: 0,
             folded: 0,
             label_overflows: 0,
+            late: 0,
+            maintained: Maintained::default(),
         };
         let mut staging = budget.try_reserve("staging", 0).unwrap();
+        // Nothing has expired.
+        let watermarks = Watermarks {
+            tiers: vec![None; 2],
+            streams: vec![None; 2],
+        };
 
         let added = stage_series(
             &mut batch,
             &mut draft,
             &context,
             &input,
+            &watermarks,
             &mut written,
             &mut staging,
         )
@@ -985,9 +1171,12 @@ mod tests {
         assert_eq!(staging.bytes(), (deltas + entries) as u64);
         assert_eq!(deltas, (1 + 2 + 1) * (4 + 2 * 8));
 
+        let accepted = watermarks.row_references(&schema, &input);
         let mut journal = Journal {
             next_seq: 0,
             bytes: 0,
+            watermarks,
+            references: References::with_capacity(accepted),
         };
         let held = staging.bytes();
         journal
@@ -1027,11 +1216,12 @@ mod tests {
         }
     }
 
-    /// Codex's case: sixteen dimensions of two one-byte values each, and 30,000 distinct
+    /// Codex's case: sixteen dimensions of two one-byte values each, and many distinct
     /// combinations in one batch, under a small head and the least staging an open accepts.
     /// Resolving them allocates nothing but the catalog's growth, which its own budget
     /// admits, and the scratch reserved first, so the batch fails on its deltas' reservation,
-    /// within the budget, and changes nothing.
+    /// within the budget, and changes nothing. The combinations are as many as that staging
+    /// holds the scratch of (8 bytes each) but not their deltas besides (12 bytes each).
     #[test]
     fn a_batch_of_many_combinations_fails_within_the_staging_budget() {
         use crate::{
@@ -1072,11 +1262,13 @@ mod tests {
             event_buffer_bytes: 1,
             ..Profile::desktop()
         };
+        let combinations = u32::try_from(profile.staging / 20).unwrap();
+        assert!(combinations < 1 << MAX_DIMENSIONS);
         let disk = MemoryDisk::new();
         let mut tsdb = Tsdb::open(disk.open().unwrap(), schema, profile).unwrap();
         // Combination n takes the value of bit i of n in dimension i.
         let values: [&[u8]; 2] = [b"a", b"b"];
-        let points: Vec<SeriesPoint<'static>> = (0..30_000u32)
+        let points: Vec<SeriesPoint<'static>> = (0..combinations)
             .map(|n| SeriesPoint {
                 tier: TierId(0),
                 at: Timestamp(1_000 * 3_600_000),
@@ -1098,7 +1290,7 @@ mod tests {
         };
         let before = dump_storage(&tsdb);
         let error = tsdb.write(&input, Durability::Durable).unwrap_err();
-        let deltas = SourceDeltas::bytes(30_000, 1);
+        let deltas = SourceDeltas::bytes(u64::from(combinations), 1);
         assert!(
             matches!(
                 &error,

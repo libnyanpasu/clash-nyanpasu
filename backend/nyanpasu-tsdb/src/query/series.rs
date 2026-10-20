@@ -11,6 +11,10 @@
 //! - the head's accumulators of those buckets. The head is exactly the journal records that
 //!   no chunk holds (§4.2), so every delta counts once (§7.2).
 //!
+//! Buckets in an extent at or below the tier's deletion watermark are left out: retention
+//! expired them (§9.1), and cleanup may not have deleted their chunks yet. A range that
+//! starts before the watermark reports it was truncated (§9.4).
+//!
 //! # Skipping
 //!
 //! - A chunk is opened only when the manifest says its extent and buckets meet the range.
@@ -26,11 +30,12 @@
 //! [`BudgetExceeded`] instead of growing past it:
 //!
 //! - before the scan: buffers sized by the query itself;
-//! - before the first chunk is read: the block decoder's zstd context, and the fragment the
-//!   backend lends while the reader decodes from it ([`READING`]). A query that reads only the
-//!   head reserves neither;
-//! - for each chunk: its directory, which the reader reserves before decoding fragment 0 and
-//!   holds while the chunk is open ([`ChunkReader::open`]);
+//! - before the first chunk is read: the block decoder's zstd context
+//!   ([`DECOMPRESSION_CONTEXT`]). A query that reads only the head does not reserve it;
+//! - for each chunk, before it is opened: the fragment the backend lends while the reader
+//!   decodes from it, as large as the chunk's manifest entry says ([`lent_memory`]); and its
+//!   directory, which the reader reserves before it fetches fragment 0 and holds while the
+//!   chunk is open ([`ChunkReader::open`]);
 //! - for each block: what decoding it leaves in the column's buffer and in the decoder's
 //!   scratch ([`decode_memory`]), reserved before the read as the larger of what they hold and
 //!   what the block declares, and shrunk to the block's after it. The query keeps one decoder
@@ -55,7 +60,7 @@ use super::{
     rows_of,
 };
 use crate::{
-    ErrorKind, LabelId, Snapshot, TierId, TimeRange,
+    ErrorKind, LabelId, Snapshot, TierId, TimeRange, Timestamp,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::Catalog,
     chunk::{
@@ -63,17 +68,18 @@ use crate::{
         builder::ColumnLayout,
         error::ReadError,
         format::IntRange,
-        reader::{ChunkReader, decode_memory},
+        reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
     },
     codec::{
         block::{BlockDecoder, IntBlock},
         int::IntValue,
     },
     head::{Head, SeriesSource},
-    layout::manifest::{self, Listed, ManifestError, StreamRef},
+    layout::manifest::{self, Listed, ManifestError, StreamRef, retained_from},
     schema::{MAX_DIMENSIONS, MAX_FIELDS},
-    storage::{Direction, MAX_FRAGMENT_LEN, Storage, StorageRead},
+    storage::{Direction, Storage, StorageRead},
     time::Grid,
+    version::CatalogToken,
     write::chunking::series_columns,
 };
 
@@ -144,6 +150,10 @@ impl FieldMask {
 
 /// One part of a group key: a label id for [`GroupKey::Labels`], and a node, the other
 /// nodes or a skipped level for [`GroupKey::Mapped`].
+///
+/// A label id means what it says only through a snapshot whose [`Snapshot::catalog`] equals
+/// the result's [`SeriesGroups::catalog`]: after a release, a later write may give the id to
+/// another value (§5.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum KeyPart {
     Label(u32),
@@ -156,9 +166,10 @@ pub enum KeyPart {
 #[derive(Debug)]
 pub struct SeriesGroups {
     lists: Vec<GroupList>,
+    catalog: CatalogToken,
     covered: TimeRange,
-    /// Retention watermarks do not exist yet, so this is always `false` (§9.4).
     truncated_by_retention: bool,
+    retention_watermark: Option<Timestamp>,
     folded: bool,
     /// The lists' bytes, returned to the query budget when the result is dropped.
     #[allow(
@@ -174,16 +185,28 @@ impl SeriesGroups {
         &self.lists
     }
 
+    /// The token of the snapshot the result was read from, which names what the label ids of
+    /// its keys mean ([`KeyPart`]).
+    pub fn catalog(&self) -> CatalogToken {
+        self.catalog.clone()
+    }
+
     /// The time the query read: its range rounded out to whole buckets, from where the first
     /// starts to where the last ends (§8.4), clamped to the timestamps an `i64` holds.
     pub fn covered(&self) -> TimeRange {
         self.covered
     }
 
-    /// Whether retention deleted part of the range (§9.4). Retention watermarks do not exist
-    /// yet, so it is always `false`.
+    /// Whether the range starts before the tier's [retention
+    /// watermark](Self::retention_watermark), so that retention deleted part of it (§9.4).
     pub fn truncated_by_retention(&self) -> bool {
         self.truncated_by_retention
+    }
+
+    /// Where the tier's retained data starts: retention deleted every bucket before it, and
+    /// the groups leave them out (§9.1, §9.4). `None` while retention has deleted none.
+    pub fn retention_watermark(&self) -> Option<Timestamp> {
+        self.retention_watermark
     }
 
     /// Whether the scan met a folded combination in the range: one with the overflow marker,
@@ -365,15 +388,9 @@ fn grow<T>(
 /// The zstd decompression context a [`BlockDecoder`] owns, which [`decode_memory`] leaves
 /// to its owner: zstd 1.5's `ZSTD_DCtx`, whose size `ZSTD_sizeof_DCtx` reports. Bulk
 /// decompression writes into the caller's buffer, so the context allocates no window
-/// besides. A test measures it.
+/// besides. A test measures it. It is reserved before the first chunk is opened and held
+/// until the query ends (§7.4).
 const DECOMPRESSION_CONTEXT: u64 = 128 * 1024;
-
-/// What reading chunks holds whatever it reads, reserved before the first chunk is opened and
-/// held until the query ends (§7.4): the [decompression context](DECOMPRESSION_CONTEXT), and
-/// the fragment the backend lends while the reader decodes from it, which a redb access guard
-/// holds outside the backend's cache. The reader decodes fragment 0 and then one block at a
-/// time, so one fragment is lent at once, and an event scan counts it the same way.
-const READING: u64 = DECOMPRESSION_CONTEXT + MAX_FRAGMENT_LEN as u64;
 
 /// What a scan holds whatever it reads, reserved before it starts: the layout of a series
 /// chunk of `fields` fields, and the key of one row.
@@ -419,6 +436,23 @@ impl<S: Storage> Snapshot<S> {
         }
         let grid = plan::tier_grid(tier);
         let buckets = plan::round(grid, query.range);
+        let expired = manifest::read_watermark(self.storage(), StreamRef::Tier(tier_id))
+            .context(ReadWatermarkSnafu)?;
+        // Only for the result: it saturates at the ends of the timeline.
+        let watermark = expired.map(|expired| retained_from(grid.extent(), expired));
+        // The buckets the scan reads: those of the range not in an expired extent, bounded in
+        // bucket numbers, which are exact where the watermark's timestamp saturates.
+        let mut live = buckets.numbers.clone();
+        if let Some(expired) = expired {
+            live.start = match first_retained_bucket(grid, expired) {
+                Some(first) => live.start.max(first).min(live.end),
+                None => live.end,
+            };
+        }
+        let read = Buckets {
+            numbers: live,
+            covered: buckets.covered,
+        };
 
         let budget = self.budget();
         let key_width = query.requests.iter().map(GroupRequest::width).max();
@@ -437,7 +471,7 @@ impl<S: Storage> Snapshot<S> {
             dimensions: &series.dimensions,
             requests: query.requests,
             fields: query.fields,
-            buckets: buckets.numbers.clone(),
+            buckets: read.numbers.clone(),
             layout: series_columns(fields),
             key: Vec::with_capacity(key_width.unwrap_or(0)),
             lists: query
@@ -455,7 +489,7 @@ impl<S: Storage> Snapshot<S> {
             column.index = FIRST_FIELD + field as u16;
         }
         if !query.requests.is_empty() {
-            scan.chunks(self.storage(), StreamRef::Tier(tier_id), grid, &buckets)?;
+            scan.chunks(self.storage(), StreamRef::Tier(tier_id), grid, &read)?;
             scan.head(&self.version().head, tier_id)?;
         }
         let Scan {
@@ -469,11 +503,27 @@ impl<S: Storage> Snapshot<S> {
         }
         Ok(SeriesGroups {
             lists,
+            catalog: self.catalog(),
             covered: buckets.covered,
-            truncated_by_retention: false,
+            truncated_by_retention: watermark
+                .is_some_and(|watermark| query.range.start() < watermark),
+            retention_watermark: watermark,
             folded,
             held,
         })
+    }
+}
+
+/// The first bucket of `grid` after the extents up to `expired`, or `None` when no bucket
+/// number follows them. Computed in `i128`, where it is exact: a first bucket below
+/// `i64::MIN` means that every bucket number is retained.
+fn first_retained_bucket(grid: Grid, expired: i64) -> Option<i64> {
+    let per_extent = i128::from(grid.extent().millis() / grid.bucket().millis());
+    let first = (i128::from(expired) + 1) * per_extent;
+    match i64::try_from(first) {
+        Ok(first) => Some(first),
+        Err(_) if first < 0 => Some(i64::MIN),
+        Err(_) => None,
     }
 }
 
@@ -575,22 +625,29 @@ impl Scan<'_> {
         decoder: &mut Option<Decoder>,
     ) -> Result<(), SeriesQueryError> {
         if decoder.is_none() {
-            let reading = self
+            let context = self
                 .budget
-                .try_reserve("series decoder", READING)
+                .try_reserve("series decoder", DECOMPRESSION_CONTEXT)
                 .context(ReserveDecoderSnafu)?;
             *decoder = Some(Decoder {
                 blocks: BlockDecoder::new().context(CreateDecoderSnafu)?,
                 scratch: empty(self.budget),
-                reading,
+                lent: empty(self.budget),
+                context,
             });
         }
         let decoder = decoder.as_mut().expect("created above");
+        // One chunk is read at a time, and its reader fetches one fragment at a time.
+        let chunk = listed.chunk.0;
+        check_recorded(listed.entry.fragment0).context(OpenChunkSnafu { chunk })?;
+        let lent = lent_memory(listed.entry.fragment0);
+        reserve_up_to(&mut decoder.lent, lent).context(ReserveFragmentSnafu { chunk })?;
+        settle(&mut decoder.lent, lent);
         let source = StoredChunk {
             storage: read,
             chunk: listed.chunk,
         };
-        self.chunk(listed.chunk.0, &source, decoder)
+        self.chunk(chunk, &source, decoder, listed.entry.fragment0)
     }
 
     fn chunk(
@@ -598,8 +655,10 @@ impl Scan<'_> {
         chunk: u64,
         source: &impl FragmentSource,
         decoder: &mut Decoder,
+        fragment0: u32,
     ) -> Result<(), SeriesQueryError> {
-        let reader = ChunkReader::open(source, self.budget).context(OpenChunkSnafu { chunk })?;
+        let reader =
+            ChunkReader::open(source, self.budget, fragment0).context(OpenChunkSnafu { chunk })?;
         let columns = reader.columns();
         let shaped = columns.len() == self.layout.len()
             && columns
@@ -773,12 +832,14 @@ struct Decoder {
     blocks: BlockDecoder,
     /// What the decoder's scratch holds: the scratch of the last block it decoded.
     scratch: Reservation,
-    /// [`READING`]: the zstd context, and the fragment lent while the reader decodes.
+    /// The fragment the backend lends while the reader of the open chunk decodes from it.
+    lent: Reservation,
+    /// The [zstd context](DECOMPRESSION_CONTEXT).
     #[allow(
         dead_code,
-        reason = "held for its Drop, which returns the context's and the fragment's bytes"
+        reason = "held for its Drop, which returns the context's bytes"
     )]
-    reading: Reservation,
+    context: Reservation,
 }
 
 /// A reservation of nothing yet, to grow.
@@ -887,13 +948,20 @@ pub enum SeriesQueryError {
     #[snafu(display("request {request} reads {dimension:?}, which is not a series dimension"))]
     NotADimension { request: usize, dimension: LabelId },
 
+    #[snafu(display("failed to read the deletion watermark of the tier"))]
+    ReadWatermark { source: ManifestError },
+
     #[snafu(display("no room in the query budget to start the scan"))]
     ReserveScan { source: BudgetExceeded },
 
-    /// The query budget has no room for what reading chunks holds: the block decoder's zstd
-    /// context, and the fragment the backend lends while the reader decodes from it.
-    #[snafu(display("no room in the query budget for the block decoder and its fragment"))]
+    /// The query budget has no room for the block decoder's zstd context.
+    #[snafu(display("no room in the query budget for the block decoder"))]
     ReserveDecoder { source: BudgetExceeded },
+
+    /// The query budget has no room for the fragment the backend lends while the chunk's
+    /// reader decodes from it.
+    #[snafu(display("no room in the query budget for a fragment of chunk {chunk}"))]
+    ReserveFragment { chunk: u64, source: BudgetExceeded },
 
     #[snafu(display("no room in the query budget for the list of each request's groups"))]
     ReserveLists { source: BudgetExceeded },
@@ -957,10 +1025,11 @@ impl SeriesQueryError {
             | Self::CreateDecoder { .. } => ErrorKind::Local,
             Self::ReserveScan { source }
             | Self::ReserveDecoder { source }
+            | Self::ReserveFragment { source, .. }
             | Self::ReserveLists { source }
             | Self::ReserveBlock { source, .. }
             | Self::ReserveGroups { source, .. } => source.kind(),
-            Self::ListChunks { source } => source.kind(),
+            Self::ListChunks { source } | Self::ReadWatermark { source } => source.kind(),
             Self::OpenChunk { source, .. } | Self::ReadBlock { source, .. } => source.kind(),
             Self::ChunkColumns { .. }
             | Self::NullValues { .. }

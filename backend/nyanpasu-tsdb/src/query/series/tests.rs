@@ -14,7 +14,7 @@ use crate::{
         BatchSink,
         builder::{ChunkBuilder, Column as BatchColumn, Values},
         error::ReadError,
-        format::{BlockEntry, ChunkKind},
+        format::{BlockEntry, ChunkKind, MAX_DATA_FRAGMENT_LEN, MIN_FRAGMENT0_LEN},
     },
     codec::{MAX_BLOCK_LEN, compress},
     db::{
@@ -25,10 +25,10 @@ use crate::{
     },
     layout::manifest::{ChunkEntry, Listed},
     storage::{
-        ChunkId, Durability, FragmentId, StorageWrite,
+        ChunkId, Durability, FragmentId, MAX_FRAGMENT_LEN, StorageWrite,
         memory::{MemoryDisk, MemoryStorage},
     },
-    version::{Registry, Version},
+    version::{OpenMarker, Registry, Version},
     write::{ComboId, Input, PinOp, SeriesPoint},
 };
 
@@ -722,7 +722,7 @@ fn a_head_combination_the_catalog_lacks_is_corrupted() {
         catalog: Catalog::new(&schema),
         head: current.head.clone(),
     };
-    let registry = Registry::new(damaged, Arc::new(schema));
+    let registry = Registry::new(damaged, Arc::new(schema), Arc::new(OpenMarker));
     let snapshot = registry
         .capture(tsdb.storage(), &MemoryBudget::new(u64::MAX))
         .unwrap();
@@ -851,9 +851,49 @@ fn groups_past_the_budget_fail_the_query_and_return_its_reservation() {
     assert_eq!(budget.reserved(), before + available - scan - needed / 2);
 }
 
-// The decoder and the fragment it reads from are reserved before the first chunk is read, and
-// only when one is: a query of the head alone does without them. A chunk's directory is
-// reserved before it is decoded.
+// An entry that records a length no fragment 0 has is damage: the query fails `Corrupted`
+// before it reserves the fragment it would be lent by it, where it would have failed for room.
+#[test]
+fn an_entry_recording_no_fragment_0_a_chunk_has_is_corrupted() {
+    let disk = MemoryDisk::new();
+    let mut tsdb = open_with(&disk, Profile::desktop());
+    let BigChunk { chunk, entry, .. } = big_chunk(&mut tsdb, false);
+    let total = [GroupRequest {
+        filters: &[],
+        key: GroupKey::Total,
+    }];
+    let recorded = [
+        0,
+        MIN_FRAGMENT0_LEN as u32 - 1,
+        MAX_FRAGMENT_LEN as u32 + 1,
+        u32::MAX,
+    ];
+    for fragment0 in recorded {
+        let damaged = ChunkEntry { fragment0, ..entry };
+        let mut batch = tsdb.storage().batch().unwrap();
+        manifest::write_chunk(&mut batch, StreamRef::Tier(HOUR), 0, chunk, &damaged).unwrap();
+        batch.commit(Durability::Durable).unwrap();
+        let snapshot = tsdb.reader().capture().unwrap();
+        let error = snapshot
+            .series(&query(hour(0..24), &total, 0b11))
+            .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                SeriesQueryError::OpenChunk {
+                    chunk: found,
+                    source: ReadError::RecordedFragment0 { recorded }
+                } if found == chunk.0 && recorded == fragment0
+            ),
+            "{error:?}"
+        );
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+    }
+}
+
+// The decoder is reserved before the first chunk is read, and only when one is: a query of the
+// head alone does without it. The fragment the reader decodes from is reserved before each
+// chunk is opened, as its manifest entry says, and the chunk's directory before it is fetched.
 #[test]
 fn reading_chunks_is_reserved_before_the_first_one_is_opened() {
     let disk = MemoryDisk::new();
@@ -868,6 +908,11 @@ fn reading_chunks_is_reserved_before_the_first_one_is_opened() {
     );
     assert_eq!(chunked_buckets(&tsdb), [0]);
     let snapshot = tsdb.reader().capture().unwrap();
+    let chunks = manifest::stream_chunks(snapshot.storage(), StreamRef::Tier(HOUR)).unwrap();
+    // A small chunk lends at most a data fragment at once.
+    let lent = lent_memory(chunks[0].entry.fragment0);
+    assert_eq!(lent, MAX_DATA_FRAGMENT_LEN as u64);
+    let reading = DECOMPRESSION_CONTEXT + lent;
     let budget = snapshot.budget();
     let before = budget.reserved();
     let available = Profile::desktop().query - before;
@@ -885,23 +930,30 @@ fn reading_chunks_is_reserved_before_the_first_one_is_opened() {
         error
     };
 
-    // Less than the decoder and a fragment: the head alone is read, a chunk is not.
+    // Less than the decoder: the head alone is read, a chunk is not.
     let hog = budget
-        .try_reserve("test", available - (READING - 1))
+        .try_reserve("test", available - (DECOMPRESSION_CONTEXT - 1))
         .unwrap();
     let head = snapshot.series(&query(hour(5..6), &total, 0b11)).unwrap();
     assert_eq!(lists(&head), vec![HashMap::from([(vec![], vec![3, 4])])]);
     drop((head, hog));
-    for room in [READING - 1, DECOMPRESSION_CONTEXT + 1024] {
+    let error = refused(DECOMPRESSION_CONTEXT - 1);
+    assert!(
+        matches!(error, SeriesQueryError::ReserveDecoder { .. }),
+        "{error:?}"
+    );
+
+    // The decoder, but not the fragment it reads from.
+    for room in [DECOMPRESSION_CONTEXT + 1024, reading - 1] {
         let error = refused(room);
         assert!(
-            matches!(error, SeriesQueryError::ReserveDecoder { .. }),
+            matches!(error, SeriesQueryError::ReserveFragment { chunk, .. } if chunk == chunks[0].chunk.0),
             "{room}: {error:?}"
         );
     }
 
     // The decoder and a fragment, but not the chunk's directory.
-    let error = refused(READING + 1024);
+    let error = refused(reading + 1024);
     assert!(
         matches!(
             error,
@@ -1062,6 +1114,7 @@ fn big_chunk(tsdb: &mut Tsdb<MemoryStorage>, compressed: bool) -> BigChunk {
         key_range: built.key_range,
         rows: built.rows,
         fragments: built.fragments,
+        fragment0: built.fragment0,
         bytes: built.bytes,
     };
     manifest::write_chunk(&mut batch, StreamRef::Tier(HOUR), 0, chunk, &entry).unwrap();
@@ -1099,7 +1152,7 @@ fn blocks_outside_the_range_or_the_fields_are_never_read() {
         storage: &snapshot,
         chunk,
     };
-    let reader = ChunkReader::open(&source, &MemoryBudget::new(u64::MAX)).unwrap();
+    let reader = ChunkReader::open(&source, &MemoryBudget::new(u64::MAX), entry.fragment0).unwrap();
     let overlaps = |entry: &BlockEntry| {
         entry.first_row < selected.end && entry.first_row + entry.rows > selected.start
     };
@@ -1184,14 +1237,17 @@ fn a_column_reserves_each_block_before_decoding_it() {
     let disk = MemoryDisk::new();
     let mut tsdb = open_with(&disk, Profile::desktop());
     let BigChunk {
-        chunk, downloads, ..
+        chunk,
+        entry,
+        downloads,
+        ..
     } = big_chunk(&mut tsdb, true);
     let snapshot = tsdb.storage().snapshot().unwrap();
     let source = StoredChunk {
         storage: &snapshot,
         chunk,
     };
-    let reader = ChunkReader::open(&source, &MemoryBudget::new(u64::MAX)).unwrap();
+    let reader = ChunkReader::open(&source, &MemoryBudget::new(u64::MAX), entry.fragment0).unwrap();
     let column = FIRST_FIELD + 1;
     let ty = reader.columns()[usize::from(column)].ty;
     let blocks = reader.blocks(column).unwrap();
@@ -1207,7 +1263,8 @@ fn a_column_reserves_each_block_before_decoding_it() {
     let mut decoder = Decoder {
         blocks: BlockDecoder::new().unwrap(),
         scratch: empty(&budget),
-        reading: empty(&budget),
+        lent: empty(&budget),
+        context: empty(&budget),
     };
     let mut decode = Decode {
         chunk: chunk.0,
@@ -1342,4 +1399,29 @@ mod redb {
         let (found, ..) = ask(&open());
         assert_eq!(found, expected);
     }
+}
+
+// The first retained bucket is exact where the watermark's timestamp saturates: past the last
+// bucket number there is none, and below the first every bucket is retained.
+#[test]
+fn the_first_retained_bucket_is_exact_at_the_ends_of_the_timeline() {
+    let grid = |bucket, extent| {
+        crate::time::Grid::new(
+            crate::time::Span::new(bucket).unwrap(),
+            crate::time::Span::new(extent).unwrap(),
+        )
+        .unwrap()
+    };
+    let hours = grid(HOUR_MS, 24 * HOUR_MS);
+    assert_eq!(first_retained_bucket(hours, 0), Some(24));
+    assert_eq!(first_retained_bucket(hours, -2), Some(-24));
+    // The last extent: its saturated end would name its own last bucket.
+    let last = hours.extent_of_bucket(hours.bucket().index_of(Timestamp(i64::MAX)));
+    assert_eq!(first_retained_bucket(hours, last), Some((last + 1) * 24));
+    let millis = grid(1, 1);
+    assert_eq!(first_retained_bucket(millis, i64::MAX - 1), Some(i64::MAX));
+    assert_eq!(first_retained_bucket(millis, i64::MAX), None);
+    let pairs = grid(1, 2);
+    assert_eq!(first_retained_bucket(pairs, i64::MAX / 2), None);
+    assert_eq!(first_retained_bucket(pairs, i64::MIN), Some(i64::MIN));
 }

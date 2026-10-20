@@ -1,7 +1,7 @@
 //! The byte layout of a chunk (§3.3, §6.1), version [`FORMAT_VERSION`].
 //!
-//! A chunk is a run of fragments, each at most [`MAX_FRAGMENT_LEN`] bytes and ending with a
-//! CRC32 trailer:
+//! A chunk is a run of fragments, each ending with a CRC32 trailer: fragment 0 is at most
+//! [`MAX_FRAGMENT_LEN`] bytes, and every data fragment at most [`MAX_DATA_FRAGMENT_LEN`].
 //!
 //! - **Fragment 0**, written last, is the [`MAGIC`] and the [`FORMAT_VERSION`] (`u16`,
 //!   little-endian), then the [postcard] encoding of a [`DirectoryRecord`]: the header, the
@@ -40,7 +40,7 @@ use super::error::{
 use crate::{
     codec::{
         Codec, Encoding, MAX_BLOCK_LEN, MAX_BLOCK_ROWS, MAX_INLINE_VALUE_LEN,
-        block::BlockShape,
+        block::{BlockShape, MAX_BLOCK_OVERHEAD},
         bytes::{BytesHint, BytesHintKind},
         checksum::TRAILER_LEN,
         int::IntType,
@@ -69,8 +69,10 @@ pub(crate) const MAX_CHUNK_LEN: u64 = 4 * 1024 * 1024;
 /// The raw size the builder fills a block to. §6.3 rule 2 asks for 16–64 KiB: zstd's ratio
 /// drops quickly below 16 KiB, and larger blocks cost random access. Since a single inline
 /// value takes at most [`MAX_VALUE_RAW_LEN`], every block but a column's last holds at
-/// least [`MIN_BLOCK_FILL`].
-pub(crate) const BLOCK_TARGET_LEN: usize = 32 * 1024;
+/// least [`MIN_BLOCK_FILL`]. It is 32 bytes short of 32 KiB so that two full blocks, each
+/// stored in at most [`MAX_BLOCK_OVERHEAD`] bytes more, share a data fragment (asserted
+/// below); at 32 KiB, a fragment of raw blocks would hold one.
+pub(crate) const BLOCK_TARGET_LEN: usize = 32 * 1024 - 32;
 
 /// The largest raw size of one inline value: a nullable text value of
 /// [`MAX_INLINE_VALUE_LEN`] bytes (see [`bytes_raw_len`](crate::codec::block::bytes_raw_len)).
@@ -83,13 +85,27 @@ pub(crate) const MIN_BLOCK_FILL: usize = BLOCK_TARGET_LEN - MAX_VALUE_RAW_LEN;
 /// The longest large value; a chunk could not hold a longer one anyway.
 pub(crate) const MAX_LARGE_VALUE_LEN: usize = MAX_CHUNK_LEN as usize;
 
-/// What a fragment holds before its trailer.
-pub(crate) const FRAGMENT_PAYLOAD_LEN: usize = MAX_FRAGMENT_LEN - TRAILER_LEN;
+/// The most bytes a data fragment takes, its trailer included: blocks, or a piece of a large
+/// value. A builder fills one data fragment at a time, and the backend lends a reader the one
+/// a block is in while the block decodes, so this bounds what both hold of a chunk's data
+/// (§7.4). It is far below the storage port's [`MAX_FRAGMENT_LEN`], which only fragment 0
+/// needs: a directory of [`MAX_BLOCKS`] blocks is longer than a data fragment.
+///
+/// The format validates against this constant whatever the backend, but its value fits
+/// redb, the first backend. redb 4.4 stores a value of at least a page in a leaf of its own,
+/// of the value's length plus 20 bytes: the leaf's 4-byte header, the value's 4-byte length,
+/// and the fragment key, a `(u64, u32)` of 12 bytes. `allocate_helper` (`page_manager.rs`)
+/// rounds every allocation up to a power of two of 4 KiB pages. So a full fragment of
+/// 64 KiB − 20 fills 16 pages exactly, where 64 KiB would take 32.
+pub(crate) const MAX_DATA_FRAGMENT_LEN: usize = 64 * 1024 - 20;
+
+/// What a data fragment holds before its trailer.
+pub(crate) const DATA_PAYLOAD_LEN: usize = MAX_DATA_FRAGMENT_LEN - TRAILER_LEN;
 
 /// What a large value of `len` bytes takes in storage: its bytes, and a trailer for each
 /// fragment of them.
 pub(crate) const fn large_stored_len(len: usize) -> u64 {
-    (len + TRAILER_LEN * len.div_ceil(FRAGMENT_PAYLOAD_LEN)) as u64
+    (len + TRAILER_LEN * len.div_ceil(DATA_PAYLOAD_LEN)) as u64
 }
 
 /// Columns of one chunk. With [`MAX_BLOCKS`] and [`MAX_LARGE_VALUES`] it keeps fragment 0
@@ -108,9 +124,9 @@ pub(crate) const MAX_LARGE_VALUES: usize = 256;
 
 /// Fragments of one chunk: fragment 0, at most one data fragment per block (a data fragment
 /// is written only with a block in it), and the large values' fragments, of which there
-/// are at most one per value plus one per [`FRAGMENT_PAYLOAD_LEN`] of their total length.
+/// are at most one per value plus one per [`DATA_PAYLOAD_LEN`] of their total length.
 pub(crate) const MAX_FRAGMENTS: usize =
-    1 + MAX_BLOCKS + MAX_LARGE_VALUES + MAX_LARGE_VALUE_LEN.div_ceil(FRAGMENT_PAYLOAD_LEN);
+    1 + MAX_BLOCKS + MAX_LARGE_VALUES + MAX_LARGE_VALUE_LEN.div_ceil(DATA_PAYLOAD_LEN);
 
 // The longest postcard encoding of each record of fragment 0. postcard writes a `u8` and a
 // `bool` as one byte, an `Option` and an enum variant with a one-byte tag first, and every
@@ -134,10 +150,23 @@ pub(crate) const MAX_LIST_PREFIX_LEN: usize = 2;
 // every `Option` absent, which bounds how many of them a fragment 0 can hold. A test encodes
 // each record at its shortest.
 
+/// [`HeaderRecord`].
+pub(crate) const MIN_HEADER_LEN: usize = 6;
 /// [`ColumnRecord`].
 pub(crate) const MIN_COLUMN_LEN: usize = 6 + 3;
 /// [`BlockRecord`].
 pub(crate) const MIN_BLOCK_ENTRY_LEN: usize = 9 + 3;
+/// [`LargeEntry`].
+pub(crate) const MIN_LARGE_ENTRY_LEN: usize = 3;
+
+/// The shortest fragment 0, trailer included: the prefix, a header, the three lists' one-byte
+/// length prefixes, and the one column and one block every chunk has.
+pub(crate) const MIN_FRAGMENT0_LEN: usize =
+    PREFIX_LEN + MIN_HEADER_LEN + 3 + MIN_COLUMN_LEN + MIN_BLOCK_ENTRY_LEN + TRAILER_LEN;
+
+/// The lengths fragment 0 can have, trailer included. A manifest entry that records another is
+/// damaged.
+pub(crate) const FRAGMENT0_LENS: RangeInclusive<usize> = MIN_FRAGMENT0_LEN..=MAX_FRAGMENT_LEN;
 
 /// The longest fragment 0 of a chunk with these counts, trailer included.
 pub(crate) const fn max_fragment0_len(columns: usize, blocks: usize, large_values: usize) -> usize {
@@ -153,6 +182,9 @@ pub(crate) const fn max_fragment0_len(columns: usize, blocks: usize, large_value
 const _: () = assert!(MAX_COLUMNS < 1 << 14 && MAX_BLOCKS < 1 << 14 && MAX_LARGE_VALUES < 1 << 14);
 const _: () =
     assert!(max_fragment0_len(MAX_COLUMNS, MAX_BLOCKS, MAX_LARGE_VALUES) <= MAX_FRAGMENT_LEN);
+const _: () = assert!(MAX_DATA_FRAGMENT_LEN <= MAX_FRAGMENT_LEN);
+const _: () =
+    assert!(2 * (BLOCK_TARGET_LEN + MAX_BLOCK_OVERHEAD).next_multiple_of(8) <= DATA_PAYLOAD_LEN);
 const _: () = assert!(MAX_BLOCKS * BLOCK_TARGET_LEN >= MAX_CHUNK_LEN as usize);
 const _: () = assert!(BLOCK_TARGET_LEN <= MAX_BLOCK_LEN && MIN_BLOCK_FILL > 0);
 
@@ -624,6 +656,46 @@ impl Directory {
     }
 }
 
+/// The [`memory`](Directory::memory) of the directory of a chunk with these counts: parsing
+/// gives each list exactly its length, so a caller that knows the counts, as consolidation
+/// does from the manifest (§7.4), knows it before it opens the chunk.
+pub(crate) const fn directory_memory(
+    columns: usize,
+    blocks: usize,
+    large: usize,
+    fragments: usize,
+) -> u64 {
+    (columns * size_of::<ColumnDesc>()
+        + blocks * size_of::<BlockEntry>()
+        + large * size_of::<LargeEntry>()
+        + fragments * size_of::<u32>()) as u64
+}
+
+/// The most [`memory`](Directory::memory) the directory of a chunk of `columns` columns and
+/// `fragments` fragments holds, once parsed from a fragment 0 of `len` content bytes: no more
+/// blocks and large values than `len` holds at their shortest encodings, nor than `blocks` and
+/// `large`, the most the caller's chunks have. A caller that sizes a chunk's reading before it
+/// opens it (§7.4) counts on it; a chunk that needs more is not one of its chunks.
+pub(crate) const fn directory_within(
+    columns: usize,
+    len: usize,
+    blocks: usize,
+    large: usize,
+    fragments: usize,
+) -> u64 {
+    let blocks = if blocks < len / MIN_BLOCK_ENTRY_LEN {
+        blocks
+    } else {
+        len / MIN_BLOCK_ENTRY_LEN
+    };
+    let large = if large < len / MIN_LARGE_ENTRY_LEN {
+        large
+    } else {
+        len / MIN_LARGE_ENTRY_LEN
+    };
+    directory_memory(columns, blocks, large, fragments)
+}
+
 /// The bytes `buffer` holds.
 fn held<T>(buffer: &Vec<T>) -> usize {
     buffer.capacity() * size_of::<T>()
@@ -814,7 +886,7 @@ fn parse_block(
     ensure!(
         offset % 8 == 0
             && stored_len >= 2
-            && u64::from(offset) + u64::from(stored_len) <= FRAGMENT_PAYLOAD_LEN as u64,
+            && u64::from(offset) + u64::from(stored_len) <= DATA_PAYLOAD_LEN as u64,
         problem(BlockProblem::Extent {
             offset,
             len: stored_len
@@ -853,7 +925,7 @@ fn check_large(entry_record: &LargeEntry, entry: u32, header: &Header) -> Result
     );
     ensure!(
         first_fragment >= 1
-            && fragments as usize == (len as usize).div_ceil(FRAGMENT_PAYLOAD_LEN)
+            && fragments as usize == (len as usize).div_ceil(DATA_PAYLOAD_LEN)
             && u64::from(first_fragment) + u64::from(fragments) <= u64::from(header.fragments),
         problem(LargeProblem::Fragments {
             first: first_fragment,
@@ -917,7 +989,7 @@ fn fragment_lens(
                 }
             );
             *owner = Owner::Large;
-            let len = remaining.min(FRAGMENT_PAYLOAD_LEN);
+            let len = remaining.min(DATA_PAYLOAD_LEN);
             lens[fragment as usize] = len as u32;
             remaining -= len;
         }

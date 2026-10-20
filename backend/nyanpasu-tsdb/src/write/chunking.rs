@@ -154,7 +154,7 @@ impl Shape {
         self.grids[usize::from(source.tier.0)].extent_of_bucket(source.bucket)
     }
 
-    fn stream_columns(&self, stream: StreamId) -> &[ColumnLayout] {
+    pub(crate) fn stream_columns(&self, stream: StreamId) -> &[ColumnLayout] {
         &self.events[usize::from(stream.0)]
     }
 }
@@ -457,11 +457,15 @@ pub(crate) fn widest_build(schema: &Schema, shape: &Shape) -> u64 {
     series.into_iter().chain(streams).max().unwrap_or(0)
 }
 
-/// The least staging budget a profile whose head budget is `head` bytes needs: what a commit
-/// without a batch holds to chunk any one source, the [`widest_build`] beside the plan of
-/// every source such a head can hold and the catalog draft's own structure, which every
-/// commit copies. With less, a trigger would wait for a commit with room for its build, and
-/// no commit would ever leave it (§7.4).
+/// The least staging budget a profile whose head budget is `head` bytes needs, the one floor
+/// of every trigger that holds staging (§7.4):
+///
+/// - what a commit without a batch holds to chunk any one source: the [`widest_build`] beside
+///   the plan of every source such a head can hold and the catalog draft's own structure,
+///   which every commit copies. With less, a trigger would wait for a commit with room for
+///   its build, and no commit would ever leave it;
+/// - the smallest consolidation or merge round that makes progress
+///   ([`least_round`](crate::maintain::least_round)). With less, maintenance would stall.
 pub(crate) fn least_staging(schema: &Schema, shape: &Shape, head: u64) -> u64 {
     let catalog = Catalog::new(schema);
     let draft = catalog.draft(u64::MAX).peak() - catalog.bytes();
@@ -473,7 +477,9 @@ pub(crate) fn least_staging(schema: &Schema, shape: &Shape, head: u64) -> u64 {
         None => 0,
     };
     let sources = usize::try_from(sources).unwrap_or(usize::MAX);
-    widest_build(schema, shape) + Plan::own_bytes(sources, schema.events.len()) + draft
+    let chunking =
+        widest_build(schema, shape) + Plan::own_bytes(sources, schema.events.len()) + draft;
+    chunking.max(crate::maintain::least_round(shape))
 }
 
 /// A source the planner can chunk.
@@ -988,17 +994,19 @@ pub enum ExtentCounter {
     ChunkBytes,
 }
 
-/// Applies `change` to the record of `extent` in `batch`, which reads its own writes. Each
-/// change is written as it is made, so a commit holds nothing per extent it touches, however
-/// many, and the batch still publishes all of them at once. A stored count that the change
-/// would take below zero or past `u64::MAX` is damage.
+/// Applies `change` to the record of `extent` in `batch`, which reads its own writes, and
+/// through it to its stream's count of bytes ([`manifest::replace_extent`]). Each change is
+/// written as it is made, so a commit holds nothing per extent it touches, however many, and
+/// the batch still publishes all of them at once. A stored count that the change would take
+/// below zero or past `u64::MAX` is damage.
 pub(crate) fn change_extent(
     batch: &mut impl StorageWrite,
     stream: StreamRef,
     extent: i64,
     change: ExtentChange,
 ) -> Result<(), ChunkingError> {
-    let mut record = manifest::read_extent(&*batch, stream, extent).context(ReadExtentSnafu)?;
+    let old = manifest::read_extent(&*batch, stream, extent).context(ReadExtentSnafu)?;
+    let mut record = old;
     let counter = |counter| ExtentCountSnafu {
         stream,
         extent,
@@ -1028,7 +1036,7 @@ pub(crate) fn change_extent(
                 .context(counter(ExtentCounter::ChunkBytes))?;
         }
     }
-    manifest::write_extent(batch, stream, extent, &record).context(WriteExtentSnafu)
+    manifest::replace_extent(batch, stream, extent, &old, &record).context(WriteExtentSnafu)
 }
 
 /// What executing a plan leaves.
@@ -1176,6 +1184,7 @@ impl<W: StorageWrite> Execution<'_, W> {
             key_range: built.key_range,
             rows: built.rows,
             fragments: built.fragments,
+            fragment0: built.fragment0,
             bytes: built.bytes,
         };
         manifest::write_chunk(self.batch, stream, extent, chunk, &entry)
@@ -1994,7 +2003,7 @@ pub enum ChunkingError {
     },
 
     #[snafu(display("failed to write the record of an extent"))]
-    WriteExtent { source: StorageError },
+    WriteExtent { source: ManifestError },
 
     /// A chunk id or journal sequence would pass `u64::MAX`, which only damage can cause.
     #[snafu(display("a counter of the state record would overflow"))]
@@ -2004,7 +2013,9 @@ pub enum ChunkingError {
 impl ChunkingError {
     pub fn kind(&self) -> ErrorKind {
         match self {
-            Self::ReadManifest { source } | Self::ReadExtent { source } => source.kind(),
+            Self::ReadManifest { source }
+            | Self::ReadExtent { source }
+            | Self::WriteExtent { source } => source.kind(),
             Self::Plan { source } => source.kind(),
             Self::Build { source, .. } => source.kind(),
             Self::ParseJournalKey { source } => source.kind(),
@@ -2012,8 +2023,7 @@ impl ChunkingError {
             Self::WriteChunk { source, .. }
             | Self::ReadJournal { source }
             | Self::DeleteJournal { source }
-            | Self::WriteSummary { source, .. }
-            | Self::WriteExtent { source } => source.kind(),
+            | Self::WriteSummary { source, .. } => source.kind(),
             Self::JournalMismatch { .. }
             | Self::ExtentCount { .. }
             | Self::CounterOverflow
@@ -2023,4 +2033,4 @@ impl ChunkingError {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

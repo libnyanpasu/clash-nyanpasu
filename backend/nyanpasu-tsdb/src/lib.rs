@@ -39,6 +39,7 @@ pub use budget::{BudgetExceeded, MemoryBudget, Reservation};
 pub use db::{Reader, Tsdb};
 pub use error::ErrorKind;
 pub use lifecycle::OpenError;
+pub use maintain::{Maintain, MaintainError, Maintained};
 pub use profile::{Profile, ProfileError};
 pub use query::{
     Event, EventCondition, EventCursor, EventFilter, EventPage, EventPredicate, EventQuery,
@@ -51,7 +52,7 @@ pub use schema::{
     LabelSpec, NameScope, Schema, SchemaError, SeriesSpec, StreamId, TierId, TierSpec,
 };
 pub use time::{DurationError, ReversedRange, TimeRange, Timestamp};
-pub use version::{CaptureError, Snapshot};
+pub use version::{CaptureError, CatalogToken, Snapshot};
 pub use write::{
     AuxOp, ComboId, EventRow, EventSeq, Input, InputError, MAX_PIN_KEY_LEN, PinOp, SeriesPoint,
     StageError, Value, WriteError, Written,

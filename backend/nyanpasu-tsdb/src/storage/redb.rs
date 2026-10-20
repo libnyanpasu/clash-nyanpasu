@@ -115,7 +115,7 @@ use snafu::{ResultExt, Snafu, ensure};
 use super::{
     ChunkId, CommitFailure, Direction, Durability, FragmentId, KeyBounds, KeyRange, LimitSnafu,
     MAX_FRAGMENT_LEN, NotAppliedSnafu, Ns, Result, Storage, StorageError, StorageRead,
-    StorageWrite,
+    StorageWrite, check_lent,
 };
 use crate::ErrorKind;
 
@@ -644,10 +644,15 @@ impl StorageRead for RedbSnapshot {
         }
     }
 
-    fn fragment<T>(&self, id: FragmentId, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T> {
+    fn fragment<T>(
+        &self,
+        id: FragmentId,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T> {
         self.instance.admit()?;
         match self.fragments()? {
-            Some(table) => read_fragment(&*table, &self.instance, id, f),
+            Some(table) => read_fragment(&*table, &self.instance, id, limit, f),
             None => Ok(f(None)),
         }
     }
@@ -763,10 +768,15 @@ impl StorageRead for RedbBatch<'_> {
         }
     }
 
-    fn fragment<T>(&self, id: FragmentId, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T> {
+    fn fragment<T>(
+        &self,
+        id: FragmentId,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T> {
         self.instance.admit()?;
         match self.open_existing(FRAGMENTS)? {
-            Some(table) => read_fragment(&table, self.instance, id, f),
+            Some(table) => read_fragment(&table, self.instance, id, limit, f),
             None => Ok(f(None)),
         }
     }
@@ -933,10 +943,20 @@ fn visit<'a, B>(
     Ok(None)
 }
 
+/// Reads fragment `id` and lends it to `f` when it holds at most `limit` bytes (see
+/// [`StorageRead::fragment`]).
+///
+/// redb learns a value's length only from the leaf that holds it, so it reads that leaf into
+/// its page cache, where `set_cache_size` (the profile's `backend_cache`) counts it, before the
+/// [`AccessGuard`] gives the length. A fragment past `limit` is refused on the guard and the
+/// guard dropped: its bytes stay in the cache, counted, or are freed, and are never lent. One
+/// within `limit` is lent through the guard, which keeps the page alive should the cache evict
+/// it meanwhile: that is what the reader reserved (§7.4, "后端在缓存之外的开销").
 fn read_fragment<T>(
     table: &impl ReadableTable<FragmentKey, Bytes>,
     instance: &Instance,
     id: FragmentId,
+    limit: usize,
     f: impl FnOnce(Option<&[u8]>) -> T,
 ) -> Result<T> {
     let bytes = table
@@ -949,5 +969,9 @@ fn read_fragment<T>(
         })
         .context(ReadFragmentSnafu { id })
         .map_err(|error| instance.report(error))?;
-    Ok(f(bytes.as_ref().map(|bytes| bytes.value())))
+    let lent = bytes.as_ref().map(AccessGuard::value);
+    if let Some(lent) = lent {
+        check_lent(id, lent.len(), limit)?;
+    }
+    Ok(f(lent))
 }

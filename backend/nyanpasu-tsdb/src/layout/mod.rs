@@ -6,6 +6,7 @@ pub(crate) mod keys;
 pub(crate) mod manifest;
 pub(crate) mod meta;
 pub(crate) mod record;
+pub(crate) mod references;
 
 use crate::storage::Ns;
 
@@ -27,6 +28,21 @@ pub(crate) const MANIFEST: Ns = Ns(6);
 pub(crate) const EXTENTS: Ns = Ns(7);
 /// The consumer's pin keys: pin key → the combination pinned under it (§5.3).
 pub(crate) const PIN_KEYS: Ns = Ns(8);
-// 9 to 15 are free for the store's later namespaces.
+/// What retention did to each tier and stream: stream → its deletion watermark (see
+/// `manifest`).
+pub(crate) const STREAMS: Ns = Ns(9);
+/// Consolidation's bookkeeping of the tiers and event streams: (stream, kind, key) → the L0
+/// indexes, the run index, the crowding marks and the progress of an extent (see `manifest`).
+pub(crate) const CONSOLIDATION: Ns = Ns(10);
+/// How many live combinations use each label value: (dimension, value id) → count (§5.3).
+pub(crate) const LABEL_USES: Ns = Ns(11);
+/// The newest extent of each stream that references a combination or a label value:
+/// (entity, stream) → extent (see `references`).
+pub(crate) const REFERENCES: Ns = Ns(12);
+/// The same references by stream and extent: (stream, extent, entity), with an empty value.
+pub(crate) const REFERENCE_INDEX: Ns = Ns(13);
+/// The combinations and label values that may have become free: entity, with an empty value.
+pub(crate) const RECYCLE_CANDIDATES: Ns = Ns(14);
+// 15 is free for the store's later namespaces.
 /// The consumer's auxiliary state, written in the same transaction as its batch (§4.1).
 pub(crate) const AUX: Ns = Ns(16);

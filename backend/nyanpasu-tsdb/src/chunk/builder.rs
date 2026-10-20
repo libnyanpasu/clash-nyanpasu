@@ -1,7 +1,10 @@
 //! The streaming chunk builder (§3.3).
 //!
 //! - The caller declares the columns, then appends batches of rows, with values for every
-//!   column, the key first. A k-way merge can thus hand over rows as it produces them.
+//!   column, the key first. A k-way merge can thus hand over rows as it produces them. A
+//!   caller that holds one column of its rows at a time hands them over a column at a time
+//!   instead ([`ChunkBuilder::append_column`]), and a large value a piece at a time
+//!   ([`ChunkBuilder::large_value`]).
 //! - Each column keeps one open block. When the block reaches about [`BLOCK_TARGET_LEN`]
 //!   raw bytes, it is encoded, compressed when the builder has a compressor, and placed in
 //!   the open data fragment, which is written as soon as the next block does not fit in it.
@@ -25,17 +28,18 @@
 //! - **Each column's open block.**
 //!   - An integer column caps its values, and its validity flags when it is nullable, at the
 //!     rows of a block, `BLOCK_TARGET_LEN / int_raw_len`: at most [`BLOCK_TARGET_LEN`]
-//!     (32 KiB) together, exactly what a full block holds.
+//!     (32 KiB − 32) together, exactly what a full block holds.
 //!   - A bytes column caps its ends (4 bytes each) and validity flags (1 byte each) at the
 //!     most rows a block holds, `BLOCK_TARGET_LEN` over [`bytes_raw_len`] of its cheapest
 //!     row: an empty or null value, or a full value of a non-null fixed column. It caps its
 //!     heap at `BLOCK_TARGET_LEN`, or at those rows' values for a fixed column. A text
 //!     column's large-value references add at most [`MAX_LARGE_VALUES`] of 8 bytes (2 KiB).
-//!     That is 58.7 KiB for nullable text (6 bytes a row, 5,461 rows), and 64 KiB at most,
-//!     for a non-null low-cardinality column (4 bytes a row, 8,192 rows).
-//! - **The fragment buffer**, at most [`MAX_FRAGMENT_LEN`] (256 KiB). It holds one data
-//!   fragment, one piece of a large value, or fragment 0 at a time, each written as soon as
-//!   it is complete.
+//!     That is 58.6 KiB for nullable text (6 bytes a row, 5,456 rows), and 63.9 KiB at most,
+//!     for a non-null low-cardinality column (4 bytes a row, 8,184 rows).
+//! - **The fragment buffer**, at most [`MAX_DATA_FRAGMENT_LEN`] (64 KiB − 20). It holds one
+//!   data fragment, one piece of a large value, or fragment 0 at a time, each written as soon
+//!   as it is complete. Fragment 0 of a planned chunk fits it, which is checked at compile
+//!   time below.
 //! - **The encoding scratch** of one block (see [`EncodeScratch`]), sized by the columns: the
 //!   longest body, `BLOCK_TARGET_LEN` plus 6 bytes; with a compressor, zstd's bound for that
 //!   body; with bytes columns, a `u32` per row of their largest block; and with a
@@ -63,31 +67,29 @@ use super::{
     FragmentSink,
     error::{
         BuildError, ChunkTooLargeSnafu, ColumnCountSnafu, ColumnLengthSnafu, CompressBlockSnafu,
-        FixedWidthSnafu, KeyColumnSnafu, NoColumnsSnafu, NullsSnafu, RowCountSnafu,
-        TooManyBlocksSnafu, TooManyColumnsSnafu, TooManyLargeValuesSnafu, UnstorableColumnSnafu,
-        ValidityLengthSnafu, ValueTooLongSnafu, ValuesTypeSnafu, WriteFragmentSnafu,
+        FixedWidthSnafu, KeyColumnSnafu, LargeIncompleteSnafu, NoColumnsSnafu, NotLargeSnafu,
+        NullsSnafu, PieceLengthSnafu, RowCountSnafu, TooManyBlocksSnafu, TooManyColumnsSnafu,
+        TooManyLargeValuesSnafu, UnknownColumnSnafu, UnstorableColumnSnafu, ValidityLengthSnafu,
+        ValueTooLongSnafu, ValuesTypeSnafu, WriteFragmentSnafu,
     },
     format::{
-        BLOCK_TARGET_LEN, BlockRecord, ChunkKind, ColumnRecord, DirectoryRecord,
-        FRAGMENT_PAYLOAD_LEN, HeaderRecord, IntRange, IntStats, LargeEntry, MAX_BLOCKS,
-        MAX_CHUNK_LEN, MAX_COLUMNS, MAX_LARGE_VALUE_LEN, MAX_LARGE_VALUES, MAX_ROWS,
-        MIN_BLOCK_FILL, PhysicalType, large_stored_len,
+        BLOCK_TARGET_LEN, BlockRecord, ChunkKind, ColumnRecord, DATA_PAYLOAD_LEN, DirectoryRecord,
+        HeaderRecord, IntRange, IntStats, LargeEntry, MAX_BLOCKS, MAX_CHUNK_LEN, MAX_COLUMNS,
+        MAX_DATA_FRAGMENT_LEN, MAX_LARGE_VALUE_LEN, MAX_LARGE_VALUES, MAX_ROWS, MIN_BLOCK_FILL,
+        PhysicalType, large_stored_len, max_fragment0_len,
     },
 };
-use crate::{
-    codec::{
-        MAX_INLINE_VALUE_LEN,
-        block::{
-            EncodeScratch, Encoded, MAX_BODY_OVERHEAD, ScratchCaps, bytes_raw_len, encode_bytes,
-            encode_ints, int_raw_len,
-        },
-        bytes::{ByteValues, BytesEncoding, BytesHint},
-        checksum::{self, TRAILER_LEN},
-        compress,
-        int::{IntType, IntValue},
-        reserve_cap,
+use crate::codec::{
+    MAX_INLINE_VALUE_LEN,
+    block::{
+        EncodeScratch, Encoded, MAX_BODY_OVERHEAD, ScratchCaps, bytes_raw_len, encode_bytes,
+        encode_ints, int_raw_len,
     },
-    storage::MAX_FRAGMENT_LEN,
+    bytes::{ByteValues, BytesEncoding, BytesHint},
+    checksum::{self, TRAILER_LEN},
+    compress,
+    int::{IntType, IntValue},
+    reserve_cap,
 };
 
 /// A column of a chunk, as the write path declares it.
@@ -124,8 +126,19 @@ pub(crate) fn working_memory(columns: &[ColumnLayout], compressed: bool) -> u64 
     let scratch = caps(&EncodeScratch::new(scratch_caps(columns, compressed)).buffers());
     let directory = caps(&DirectoryCaps::of(columns).buffers());
     let table = columns.len() * size_of::<OpenColumn>();
-    (open + MAX_FRAGMENT_LEN + scratch + directory + table) as u64
+    (open + MAX_DATA_FRAGMENT_LEN + scratch + directory + table) as u64
 }
+
+// The fragment buffer holds a data fragment at most, which fits fragment 0 of a chunk planned
+// within the limits, whose directory has at most the entries of `DirectoryCaps`. A block the
+// builder closes fits an empty data fragment twice, which format.rs asserts.
+const _: () = assert!(
+    max_fragment0_len(
+        MAX_COLUMNS,
+        MAX_COLUMNS + MAX_CHUNK_LEN as usize / MIN_BLOCK_FILL,
+        MAX_LARGE_VALUES
+    ) <= MAX_DATA_FRAGMENT_LEN
+);
 
 /// The sum of the caps of `buffers`, each a name, a capacity and a cap.
 fn caps(buffers: &[(&'static str, usize, usize)]) -> usize {
@@ -134,8 +147,9 @@ fn caps(buffers: &[(&'static str, usize, usize)]) -> usize {
 
 /// The most rows a block of a column of `layout` holds, which caps its row buffers: a fixed
 /// number for an integer column, and for a bytes column what its cheapest row allows, an
-/// empty or null value, or a value of a non-null fixed column's width.
-fn max_rows(layout: ColumnLayout) -> usize {
+/// empty or null value, or a value of a non-null fixed column's width. Consolidation sizes
+/// what reading a chunk's blocks holds by it (§7.4).
+pub(crate) fn max_rows(layout: ColumnLayout) -> usize {
     let row = match layout.ty {
         PhysicalType::Int { ty, .. } => int_raw_len(ty, layout.nullable),
         PhysicalType::Bytes(hint) => {
@@ -147,6 +161,14 @@ fn max_rows(layout: ColumnLayout) -> usize {
         }
     };
     BLOCK_TARGET_LEN / row
+}
+
+/// The most blocks and large values the directory of a chunk of `columns` planned within the
+/// limits has (see [`plan`](super::plan)), which a reader that sizes what it holds before it
+/// opens the chunk counts on (§7.4).
+pub(crate) fn planned_directory(columns: &[ColumnLayout]) -> (usize, usize) {
+    let caps = DirectoryCaps::of(columns);
+    (caps.blocks, caps.large)
 }
 
 /// What the encoding scratch of a builder for `columns` needs at most: the longest body of a
@@ -264,6 +286,9 @@ pub(crate) struct Column<'a> {
 pub(crate) struct BuiltChunk {
     pub(crate) rows: u32,
     pub(crate) fragments: u32,
+    /// Fragment 0's length, its trailer included. The manifest records it, so that a reader
+    /// knows what fetching the directory holds before it fetches it (§7.4).
+    pub(crate) fragment0: u32,
     /// All fragments together, which retention accounts by (§9.1).
     pub(crate) bytes: u64,
     pub(crate) key_range: (i64, i64),
@@ -345,18 +370,98 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
     /// batch.
     pub(crate) fn append(&mut self, batch: &[Column<'_>]) -> Result<(), BuildError> {
         self.check(batch)?;
-        let Values::I64(keys) = batch[0].values else {
-            unreachable!("the key column holds i64 values, checked above");
+        self.take_keys(&batch[0]);
+        for (open, column) in self.columns.iter_mut().zip(batch) {
+            open.append(column, &mut self.encoder, &mut self.out)?;
+        }
+        Ok(())
+    }
+
+    /// Appends rows to `column` alone, for a caller that hands the rows over a column at a
+    /// time, as a merge does that holds one column of them at once. They follow the rows the
+    /// column holds already, and [`finish`](Self::finish) checks that every column holds as
+    /// many as the key column. A column's blocks depend on its own values alone, so the chunk
+    /// holds the blocks [`append`](Self::append) would build; only their places in the data
+    /// fragments differ.
+    ///
+    /// A mistake in the values is reported before any of them is taken, as with `append`.
+    pub(crate) fn append_column(
+        &mut self,
+        column: usize,
+        values: &Column<'_>,
+    ) -> Result<(), BuildError> {
+        ensure!(column < self.columns.len(), UnknownColumnSnafu { column });
+        let rows = values.values.len();
+        let held = self.columns[column].rows();
+        ensure!(held + rows <= MAX_ROWS, RowCountSnafu { rows: held + rows });
+        self.check_column(column, values, rows)?;
+        if column == 0 {
+            self.take_keys(values);
+        }
+        self.columns[column].append(values, &mut self.encoder, &mut self.out)
+    }
+
+    /// Starts the large value of the next row of text column `column`, `len` bytes long, which
+    /// the caller then hands over a piece at a time ([`LargeValue::put`]) and records with
+    /// [`LargeValue::finish`]. A copy from another chunk thus holds one fragment of the value
+    /// at a time, never all of it (§6.5, §7.4). The pieces are those [`append`](Self::append)
+    /// cuts a value into, and a chunk's reader hands them out the same way, so each fragment
+    /// of the value copied becomes one fragment here. Dropping the guard before it finishes
+    /// leaves the chunk incomplete, as any error does.
+    pub(crate) fn large_value(
+        &mut self,
+        column: usize,
+        len: usize,
+    ) -> Result<LargeValue<'_, 'a, S>, BuildError> {
+        ensure!(column < self.columns.len(), UnknownColumnSnafu { column });
+        let Self {
+            columns,
+            encoder,
+            out,
+            ..
+        } = self;
+        let open = &mut columns[column];
+        let row = open.rows();
+        ensure!(row < MAX_ROWS, RowCountSnafu { rows: row + 1 });
+        let state = &mut open.state;
+        let is_text = state.layout.ty == PhysicalType::Bytes(BytesHint::Text);
+        ensure!(
+            is_text && (MAX_INLINE_VALUE_LEN + 1..=MAX_LARGE_VALUE_LEN).contains(&len),
+            NotLargeSnafu { column, len }
+        );
+        let OpenValues::Bytes(bytes) = &mut open.values else {
+            unreachable!("a text column has bytes values");
+        };
+        // As `append_bytes` places a large row: the block it closes goes first.
+        let cost = bytes_raw_len(0, BytesHint::Text, state.layout.nullable);
+        if !bytes.ends.is_empty() && state.raw + cost > BLOCK_TARGET_LEN {
+            state.close_bytes(bytes, encoder, out)?;
+        }
+        reserve_cap(&mut bytes.ends, 1, state.max_rows);
+        let flag = usize::from(state.layout.nullable);
+        reserve_cap(&mut state.validity, flag, state.max_rows);
+        reserve_cap(&mut bytes.large, 1, MAX_LARGE_VALUES);
+        let first_fragment = out.begin_large(len)?;
+        Ok(LargeValue {
+            builder: self,
+            column,
+            len,
+            received: 0,
+            first_fragment,
+        })
+    }
+
+    /// Takes the keys of `keys`, the key column of rows being appended: the key range, and
+    /// the chunk's rows.
+    fn take_keys(&mut self, keys: &Column<'_>) {
+        let Values::I64(keys) = keys.values else {
+            unreachable!("the key column holds i64 values, checked before");
         };
         for &key in keys {
             let (min, max) = self.key_range.get_or_insert((key, key));
             (*min, *max) = ((*min).min(key), (*max).max(key));
         }
         self.rows += keys.len();
-        for (open, column) in self.columns.iter_mut().zip(batch) {
-            open.append(column, &mut self.encoder, &mut self.out)?;
-        }
-        Ok(())
     }
 
     /// Writes the open blocks and fragment 0, and returns what the chunk took.
@@ -374,6 +479,18 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
         let Some(key_range) = self.key_range else {
             return RowCountSnafu { rows: 0usize }.fail();
         };
+        // Columns appended one at a time hold as many rows as the key column only when the
+        // caller gave each the same rows.
+        for (column, open) in self.columns.iter().enumerate() {
+            ensure!(
+                open.rows() == self.rows,
+                ColumnLengthSnafu {
+                    column,
+                    expected: self.rows,
+                    actual: open.rows()
+                }
+            );
+        }
         for open in &mut self.columns {
             open.close_block(&mut self.encoder, &mut self.out)?;
         }
@@ -409,16 +526,20 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
             large: std::mem::take(&mut self.out.large),
         };
         // MAX_COLUMNS, MAX_BLOCKS and MAX_LARGE_VALUES keep it within a fragment; format.rs
-        // asserts that at compile time. The buffer has had all of a fragment since the
-        // chunk's first block, which every chunk has, so writing fragment 0 never grows it.
+        // asserts that at compile time. The buffer has had all of a data fragment since the
+        // chunk's first block, which every chunk has, and fragment 0 of a planned chunk fits
+        // that (asserted above), so writing it never grows the buffer. A chunk that is not
+        // planned may have grown its directory past its caps, and its fragment 0 the buffer.
         let fragment = &mut self.out.fragment;
         directory.write(fragment);
         checksum::seal(fragment);
+        let fragment0 = fragment.len() as u32;
         observe(&self, &directory);
         self.out.put(0)?;
         Ok(BuiltChunk {
             rows: header.rows,
             fragments: header.fragments,
+            fragment0,
             bytes: self.out.written,
             key_range,
         })
@@ -440,46 +561,60 @@ impl<'a, S: FragmentSink> ChunkBuilder<'a, S> {
                 rows: self.rows + rows
             }
         );
-        for (column, (open, batch)) in self.columns.iter().zip(batch).enumerate() {
-            let layout = open.state.layout;
-            ensure!(batch.values.is_of(layout.ty), ValuesTypeSnafu { column });
-            let len = batch.values.len();
-            ensure!(
-                len == rows,
-                ColumnLengthSnafu {
-                    column,
-                    expected: rows,
-                    actual: len
-                }
-            );
-            if let Some(validity) = batch.validity {
-                ensure!(layout.nullable, NullsSnafu { column });
-                ensure!(
-                    validity.len() == rows,
-                    ValidityLengthSnafu {
-                        column,
-                        expected: rows,
-                        actual: validity.len()
-                    }
-                );
-            }
-            if let (Values::Bytes(values), PhysicalType::Bytes(hint)) = (batch.values, layout.ty) {
-                self.check_bytes(column, values, batch.validity, hint)?;
-            }
+        for (column, values) in batch.iter().enumerate() {
+            self.check_column(column, values, rows)?;
         }
         Ok(())
     }
 
+    /// Checks `values`, which are to be `rows` rows of `column`.
+    fn check_column(
+        &self,
+        column: usize,
+        values: &Column<'_>,
+        rows: usize,
+    ) -> Result<(), BuildError> {
+        let open = &self.columns[column];
+        let layout = open.state.layout;
+        ensure!(values.values.is_of(layout.ty), ValuesTypeSnafu { column });
+        let len = values.values.len();
+        ensure!(
+            len == rows,
+            ColumnLengthSnafu {
+                column,
+                expected: rows,
+                actual: len
+            }
+        );
+        if let Some(validity) = values.validity {
+            ensure!(layout.nullable, NullsSnafu { column });
+            ensure!(
+                validity.len() == rows,
+                ValidityLengthSnafu {
+                    column,
+                    expected: rows,
+                    actual: validity.len()
+                }
+            );
+        }
+        if let (Values::Bytes(bytes), PhysicalType::Bytes(hint)) = (values.values, layout.ty) {
+            self.check_bytes(column, open.rows(), bytes, values.validity, hint)?;
+        }
+        Ok(())
+    }
+
+    /// Checks the values of a bytes column, whose first is row `first_row` of the column.
     fn check_bytes(
         &self,
         column: usize,
+        first_row: usize,
         values: &[&[u8]],
         validity: Option<&[bool]>,
         hint: BytesHint,
     ) -> Result<(), BuildError> {
         let valid = |row: usize| validity.is_none_or(|validity| validity[row]);
         for (row, value) in values.iter().enumerate().filter(|&(row, _)| valid(row)) {
-            let (row, len) = (self.rows + row, value.len());
+            let (row, len) = (first_row + row, value.len());
             if let BytesHint::Fixed(width) = hint {
                 ensure!(
                     len == usize::from(width),
@@ -534,7 +669,7 @@ impl<S: FragmentSink> ChunkBuilder<'_, S> {
             (
                 "fragment".to_owned(),
                 self.out.fragment.capacity(),
-                MAX_FRAGMENT_LEN,
+                MAX_DATA_FRAGMENT_LEN,
             ),
             (
                 caps[0].0.to_owned(),
@@ -573,6 +708,57 @@ impl<S: FragmentSink> ChunkBuilder<'_, S> {
             ]),
         }
         buffers
+    }
+}
+
+/// A large value being written a piece at a time ([`ChunkBuilder::large_value`]).
+pub(crate) struct LargeValue<'b, 'a, S: FragmentSink> {
+    builder: &'b mut ChunkBuilder<'a, S>,
+    column: usize,
+    len: usize,
+    /// The bytes of the pieces written so far.
+    received: usize,
+    first_fragment: u32,
+}
+
+impl<S: FragmentSink> LargeValue<'_, '_, S> {
+    /// Writes the next piece of the value as a fragment of its own: [`DATA_PAYLOAD_LEN`] bytes,
+    /// or for the last piece, what is left of the value.
+    pub(crate) fn put(&mut self, piece: &[u8]) -> Result<(), BuildError> {
+        let expected = (self.len - self.received).min(DATA_PAYLOAD_LEN);
+        ensure!(
+            expected > 0 && piece.len() == expected,
+            PieceLengthSnafu {
+                expected,
+                actual: piece.len()
+            }
+        );
+        self.builder.out.put_piece(piece)?;
+        self.received += piece.len();
+        Ok(())
+    }
+
+    /// Records the value in its row of the column, once all of it is written.
+    pub(crate) fn finish(self) -> Result<(), BuildError> {
+        ensure!(
+            self.received == self.len,
+            LargeIncompleteSnafu {
+                len: self.len,
+                received: self.received
+            }
+        );
+        let ChunkBuilder { columns, out, .. } = self.builder;
+        let index = out.end_large(self.first_fragment, self.len);
+        let open = &mut columns[self.column];
+        let OpenValues::Bytes(bytes) = &mut open.values else {
+            unreachable!("a large value is in a text column, checked when it started");
+        };
+        let state = &mut open.state;
+        bytes.large.push((bytes.ends.len() as u32, index));
+        bytes.ends.push(bytes.heap.len() as u32);
+        state.take_validity(None, 0..1);
+        state.raw += bytes_raw_len(0, BytesHint::Text, state.layout.nullable);
+        Ok(())
     }
 }
 
@@ -709,6 +895,17 @@ impl OpenColumn {
                 ]
             }
         }
+    }
+
+    /// The rows the column holds: those of its closed blocks and of its open one.
+    fn rows(&self) -> usize {
+        let open = match &self.values {
+            OpenValues::I64(open) => open.len(),
+            OpenValues::U64(open) => open.len(),
+            OpenValues::U32(open) => open.len(),
+            OpenValues::Bytes(open) => open.ends.len(),
+        };
+        self.state.first_row as usize + open
     }
 
     fn append<S: FragmentSink>(
@@ -968,15 +1165,16 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
         ensure!(self.blocks.len() < MAX_BLOCKS, TooManyBlocksSnafu);
         let len = encoded.stored_len();
         let mut offset = self.fragment.len().next_multiple_of(8);
-        if offset + len > FRAGMENT_PAYLOAD_LEN {
+        if offset + len > DATA_PAYLOAD_LEN {
             self.flush()?;
             offset = 0;
         }
-        // A block of at most BLOCK_TARGET_LEN raw bytes fits an empty fragment many times.
-        debug_assert!(len <= FRAGMENT_PAYLOAD_LEN);
+        // A block of at most BLOCK_TARGET_LEN raw bytes fits an empty data fragment (format.rs
+        // asserts it).
+        debug_assert!(len <= DATA_PAYLOAD_LEN);
         // With the trailer that `flush` seals the fragment with, so that sealing never grows it.
         let additional = offset + len + TRAILER_LEN - self.fragment.len();
-        reserve_cap(&mut self.fragment, additional, MAX_FRAGMENT_LEN);
+        reserve_cap(&mut self.fragment, additional, MAX_DATA_FRAGMENT_LEN);
         self.fragment.resize(offset, 0);
         encoded.write(&mut self.fragment);
         // A chunk planned within the limits has at most the planned blocks; one that is not
@@ -1021,30 +1219,47 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
 
     /// Writes `value` to fragments of its own and returns its large-value index.
     fn write_large(&mut self, value: &[u8]) -> Result<u32, BuildError> {
+        let first_fragment = self.begin_large(value.len())?;
+        for piece in value.chunks(DATA_PAYLOAD_LEN) {
+            self.put_piece(piece)?;
+        }
+        Ok(self.end_large(first_fragment, value.len()))
+    }
+
+    /// Makes room for a large value of `len` bytes and returns its first fragment's index:
+    /// the value shares the one fragment buffer, so the open data fragment goes first.
+    fn begin_large(&mut self, len: usize) -> Result<u32, BuildError> {
         ensure!(self.large.len() < MAX_LARGE_VALUES, TooManyLargeValuesSnafu);
-        // The value shares the one fragment buffer, so the open data fragment goes first.
         self.flush()?;
-        let len = large_stored_len(value.len());
+        let stored = large_stored_len(len);
         ensure!(
-            self.written + len <= MAX_CHUNK_LEN,
+            self.written + stored <= MAX_CHUNK_LEN,
             ChunkTooLargeSnafu {
                 written: self.written,
-                len
+                len: stored
             }
         );
-        let first_fragment = self.next_index;
-        for piece in value.chunks(FRAGMENT_PAYLOAD_LEN) {
-            self.fragment.clear();
-            reserve_cap(
-                &mut self.fragment,
-                piece.len() + TRAILER_LEN,
-                MAX_FRAGMENT_LEN,
-            );
-            self.fragment.extend_from_slice(piece);
-            checksum::seal(&mut self.fragment);
-            self.put(self.next_index)?;
-            self.next_index += 1;
-        }
+        Ok(self.next_index)
+    }
+
+    /// Writes the next piece of the large value being written, as a fragment of its own.
+    fn put_piece(&mut self, piece: &[u8]) -> Result<(), BuildError> {
+        self.fragment.clear();
+        reserve_cap(
+            &mut self.fragment,
+            piece.len() + TRAILER_LEN,
+            MAX_DATA_FRAGMENT_LEN,
+        );
+        self.fragment.extend_from_slice(piece);
+        checksum::seal(&mut self.fragment);
+        self.put(self.next_index)?;
+        self.next_index += 1;
+        Ok(())
+    }
+
+    /// Records the large value of `len` bytes whose pieces start at `first_fragment`, and
+    /// returns its index.
+    fn end_large(&mut self, first_fragment: u32, len: usize) -> u32 {
         self.fragment.clear();
         // Like the blocks: within a planned chunk's large values, or else the format's limit.
         let max = if self.large.len() < self.caps.large {
@@ -1056,9 +1271,9 @@ impl<S: FragmentSink> FragmentWriter<'_, S> {
         self.large.push(LargeEntry {
             first_fragment,
             fragments: self.next_index - first_fragment,
-            len: value.len() as u32,
+            len: len as u32,
         });
-        Ok(self.large.len() as u32 - 1)
+        self.large.len() as u32 - 1
     }
 
     /// Writes the sealed `fragment` as fragment `index`, unless it would take the chunk past

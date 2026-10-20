@@ -32,6 +32,11 @@ The design says its code sketches show shape, not the final API. Where the code 
   (see [Errors](#errors)). `ErrorKind` remains, as the `kind()` of every error type.
 - `StorageRead::scan` returns the value its callback broke with, so a decoding error can
   stop a scan and come back out.
+- `StorageRead::fragment` takes the most bytes its caller reserved for the fragment. A longer
+  stored fragment fails `Corrupted` before it is lent, so a reader never holds more than it
+  reserved, however the fragment or its directory was damaged (§7.4). redb reads the leaf into
+  its page cache, where its cache budget counts it, before the length is known; the check
+  drops the guard before anything borrows the value.
 - `StorageWrite::commit` returns `Result<(), CommitFailure>`; there is nothing a receipt
   would carry.
 - `ColumnType` splits `Int` into `I64` and `U64`, and adds `FoldedLabel`: the column of
@@ -59,6 +64,12 @@ The design says its code sketches show shape, not the final API. Where the code 
   identity is a one-byte tag followed by its 16 bytes or its text.
 - An event stream has at most 61 columns, because its chunks add the key, the incarnation and
   the sequence.
+- Data fragments, blocks and large-value pieces, are at most 64 KiB − 20 bytes, well within
+  §3.3's 256 KB, and the builder fills a block to 32 KiB − 32. A full fragment then fills a
+  power-of-two run of redb pages, and two full blocks share one (`chunk::format`). Fragment 0
+  keeps the 256 KB, which a directory of 2,048 blocks needs. Its length is recorded in the
+  chunk's manifest entry, so a reader reserves what fetching it lends before it fetches it
+  (§7.4).
 - A commit plans from sizes before it builds anything: it reserves the plan's peak from
   staging, builds only the sources the head keeps, and writes a chunked source straight from
   the current pages and the batch's deltas. Staging resolves a batch's event rows in the
@@ -68,6 +79,226 @@ The design says its code sketches show shape, not the final API. Where the code 
   has left beside the batch waits for a later commit; head pressure and the journal cap still
   chunk. Opening refuses a staging budget below the widest chunk build plus the plan of a
   full head, so every trigger can fire.
+- The owner maintains with `Tsdb::maintain(&Maintain { now, retention, rounds })`, which runs
+  at most `rounds` rounds, the most urgent first, and returns `Maintained`, with `more` when
+  work remains. Each round is one transaction published like a batch.
+- A call that returns `more` leaves maintenance behind (§4.3, "积压"): its budget did not cover
+  the work due. Until a commit finds no round due, each commit first plans one round as
+  `maintain` would, less retention's rounds, which need the consumer's policy, and runs it as
+  `maintain` runs a round; then it stages its batch, and `Written::maintained` reports the
+  round. A round that fails with kind `BackendFailed` fails the write with
+  `WriteError::Backlog`, the batch not applied, and the store needs recovery. A round that fails
+  otherwise ends the backlog, and the batch commits: the consumer's next `maintain` call meets
+  the failure, so a damaged chunk fails no write, and no later commit pays again for a round
+  that keeps failing. The flag is held in memory, so an open starts with it clear; a call that
+  finishes clears it, and a failing call leaves it as it was.
+
+  §4.3 runs the round in the batch's transaction. Here it has a transaction of its own, before
+  the batch's:
+  - a failing round cannot fail the batch or roll it back;
+  - the round reads the chunks it rewrites through its snapshot, and the batch stages on the
+    version the round published, with no second publication number inside one transaction;
+  - it reuses `maintain`'s round (`Tsdb::round`) as it is.
+
+  It costs one more commit while behind: one more sync on a profile whose every commit is
+  durable. And the bytes since the last durable commit can pass `durable_after_bytes` by one
+  round's output on top of one batch, whose durability the consumer chose before the round ran.
+  Without a policy, a commit's round may also consolidate an extent that the consumer's next
+  call expires; that round's work is lost, and nothing else. Recycling needs no policy, so a
+  commit's round may recycle, leaving out each stream whose cleanup is due.
+
+  The rule covers a maintenance budget too small for the load. It does not cover a consumer
+  that never calls `maintain`, since only a call puts maintenance behind, and §9.2 makes
+  calling it the consumer's duty.
+
+- A stream's deletion watermark is the last extent retention expired, kept in a record of the
+  `STREAMS` namespace and read through the storage of the transaction or snapshot at hand,
+  not held in the version. Both of retention's limits expire the oldest extent first, so the
+  watermark is also the extents' expired mark: no extent carries a mark of its own. The same
+  record counts the bytes of the stream's unexpired extents (§9.1); `manifest::replace_extent`
+  and `manifest::expire` keep it exact, so a byte cap costs one read per stream.
+- Reads filter by the watermark alone, at the granularity of extents. §9.1 filters by the
+  later of the watermark and the current cutoff, but a query knows neither the policy nor the
+  clock, so an extent that straddles the cutoff stays wholly visible until it expires whole.
+- Only an extent with data expires. An empty extent before the cutoff gets no watermark of its
+  own, so a late write into it is kept until the next maintenance call expires it.
+- Maintenance's rounds run in this order of urgency: expire, clean up, recycle ids, consolidate
+  a series extent, merge a bucket's late chunks, consolidate an event window, merge an extent's
+  sorted runs. Expiring first keeps an extent the policy expires from being consolidated;
+  cleanup only deletes and returns the disk space retention promised before a consolidation
+  writes beside the old chunks; recycling follows the cleanup that frees ids, and comes before
+  the work that only saves space or reads, since a catalog under pressure folds new
+  combinations, which loses data (§5.2); consolidation cuts the most chunks, and finishing an
+  extent is what makes its leftover L0 chunks late. The tiers go before the event streams: a
+  series query reads every chunk of its range, where an event scan reads chunks whose keys do
+  not overlap as one way, so a window's L0 chunks, which overlap only by their late rows, cost a
+  scan little until they are rewritten; and a tier's rounds are the smaller. Merging runs comes
+  last: it rewrites consolidated data to keep a scan's ways within R.
+- Ids are recycled (§5.3) by references kept per stream and entity, not per chunk. For each
+  combination and label value, a record of namespace 12 (`layout::REFERENCES`) keeps the newest
+  extent of each stream whose data holds it, and namespace 13 lists the same records by stream
+  and extent, oldest first. Retention deletes a stream's extents oldest first, so once cleanup
+  has emptied the extents up to the watermark, a record at or below it names data that is gone.
+  A stream counts as cleaned up to its watermark only while no chunk lies at or below it, so an
+  expired extent keeps its ids until cleanup deletes its chunks. A stream without a watermark
+  has no cleaned extent; an epoch stream's records stay, since its one extent never expires.
+- The write path records the references of the points and rows a batch keeps, a late one
+  dropped referencing nothing. It reduces them to the newest extent of each (stream, entity),
+  reads one record each, and writes the record and moves its index entry only for a new pair or
+  a newer extent, so an accepted write into an older extent records a pair the stream had none
+  of. A tier's combination that the head holds in the point's bucket needs no read: its journal
+  record was recorded when it was written, and a record goes only once its extent is expired,
+  which takes the extent out of the head. Event buffers are not searched. Consolidation and
+  merges keep the entities of an extent, so they record nothing. The list is reserved from
+  staging.
+- Measured on traffic's schema (`the_references_of_traffic_cost_a_read_per_new_pair`), at the
+  rate of 50,000 closed connections a day written every 10 s, 5.8 rows and points a batch: with
+  the event tests' 2,000 targets, nearly every connection is a new combination (10,478 in six
+  hours), and the references read 11.2 records and write 19.4 entries a batch, of 47.0 reads
+  and 55.1 writes in all; with 10 targets (2,508 combinations) they read 8.4 and write 4.7, of
+  34.0 and 21.0. A row's combination costs a read in every batch, since event buffers are not
+  searched; a point's, only when it is new to the hour.
+- The live combinations that use a label value count it in namespace 11 (`LABEL_USES`): a new
+  combination adds a use to each of its values but the overflow marker, and a released one takes
+  it off. The counts live in storage only, so a new combination copies no catalog page for
+  them; a label value's own references, in `Label` columns, are records like a combination's.
+- Candidates for release are kept in namespace 14: an entity whose last record recycling
+  deleted, a label value whose count a released combination took to 0, and a combination whose
+  last unpin finds no record, queued in the batch that unpins. A recycling round, planned after
+  cleanup and before consolidation, first deletes the records of the cleaned extents, then
+  checks each candidate again (a combination live, without records and without pins; a value
+  live, without uses and without records) and releases it through the round's catalog draft,
+  which the round publishes. It examines at most `cleanup_chunks` index entries and candidates
+  in all, stale ones included. Planning reads a candidate, then per stream its record, its first
+  chunk up to the watermark and its first index entry there, however many records wait.
+- §5.3 rule 4 releases a combination and the label values it leaves unused in one transaction.
+  Here those values become candidates, released in a step of their own, possibly in a later
+  round: nothing references them by then, and each release stays within the catalog's reserve,
+  which fits one release in a fresh draft, not a combination with all its values. A round
+  releases one id at a time and ends at the first its draft refuses, which waits for the next
+  round; the first always fits, so every round forgets a record, drops a stale candidate or
+  releases an id.
+- Recycling converges once the workload stops: with finitely many writes and maintenance calls
+  that succeed, the records of cleaned extents and the candidates run out. Cleanup goes first,
+  so a cleanup backlog that never ends would starve it.
+- A query result owns its data and outlives its snapshot, but its ids are bare numbers
+  (`KeyPart::Label`, `EventValue::{Combo, Label}`) that a snapshot's catalog resolves, so after
+  a release and a reuse a later snapshot names another value. §5.3 rule 5 binds the ids to the
+  catalog's publication; here a `CatalogToken` binds them: a marker each open makes, an `Arc`
+  compared by address that every token keeps alive, so that no two opens, of one store or two,
+  share one, and a generation the catalog keeps in memory, 0 when loaded and one more for each
+  version whose draft released an id. Growth keeps it, since a new id never changes what an
+  old one means, so a consumer keeps rendering across batches that only add ids, where a
+  publication number would change with every batch. `Snapshot::catalog`,
+  `SeriesGroups::catalog` and `EventPage::catalog` return it, and a result's ids, and filters
+  built from them, mean what they say through a snapshot with an equal token. Ids are not
+  typed by their catalog and results do not keep it alive: the first would change every
+  query's signature, the second need a second reservation for the catalog a result retains.
+- The store format is 2. A dataset of format 1 has neither references nor counts of uses, so
+  recycling would release ids its data still holds; the crate was never released, so opening
+  refuses it (`OpenError::StoreFormat`) rather than migrating it.
+- A tier is consolidated an extent at a time, oldest first, behind a cursor in its stream
+  record. An extent is due once it has ended, stayed quiet for Q, and a commit has chunked its
+  journal records. Once the cursor passes an extent, every L0 chunk written there is a late
+  chunk, a base chunk of a bucket that no chunk covered included, and merges only with the late
+  chunks of its bucket: §4.3 makes late writes delta chunks, and a base chunk there is the same
+  late data.
+- Consolidation keeps its bookkeeping in namespace 10 (`layout::CONSOLIDATION`): an
+  index of every L0 chunk of a tier by (bucket, rows, chunk), a mark on each bucket with more than
+  four L0 chunks, and the last consolidated chunk of an extent being consolidated. So planning
+  reads a few records per tier, and a round takes an extent's L0 chunks in key order without
+  listing the extent. `write_chunk`, the write path's way to record a chunk, keeps the index and
+  the marks; maintenance's replacements and cleanup keep them too.
+- A consolidation round takes whole buckets in key order while they fit F, I and its memory,
+  and of a first bucket that does not fit whole as much as fits, its chunks with the fewest rows
+  first, which a bucket's merge takes in any order; the rest of that bucket becomes late
+  chunks. The extent's last consolidated chunk takes part again while it is not full and
+  fits beside an L0 chunk, so every consolidated chunk of an extent but its last is full.
+- A merge chooses among the 16 late chunks of a bucket with the fewest rows, which the L0 index
+  lists first, so a round reads as much whatever the bucket's backlog. It takes as many of them
+  as fit F, I and its memory and one chunk together, and writes one delta (§4.3), so it never
+  rewrites a full chunk. Any two chunks of the bucket hold at least the rows of its two
+  smallest, so when those do not fit one chunk, no two do. Each merge leaves the bucket a chunk
+  fewer at least, so its merges end. A bucket whose two smallest late chunks hold more than a
+  chunk's rows keeps them; its mark goes until a later late chunk sets it again. Late chunks
+  that would fit fewer chunks without fitting one, such as three of 0.6 M rows each into two,
+  stay as they are.
+- A round reserves its peak from staging before it allocates, sized from its inputs' manifest
+  entries: the output builder and the zstd compression context, the list of its inputs, each
+  input's directory and one decoded block per column while its bucket is read, and once, the
+  fragment the backend lends and what opening a chunk holds while it parses fragment 0, from
+  the length of fragment 0 the entry records. Blocks decode one at a time, so the lent fragment
+  counts once rather than per input (§7.4 counts it per way), as the event scan does. A round
+  that reads only L0 chunks uses a decoder without a zstd context. A consolidation counts its
+  inputs, then collects exactly that many; a merge chooses among a fixed 16 candidates. So no
+  round's memory depends on F, and the smallest round that makes progress
+  (`maintain::least_round`) depends on the schema alone: `least_staging`, the one staging
+  floor opening checks, includes it. Opening also refuses F below 2 or I below twice B for a
+  schema with tiers or a stream of time windows, whatever consolidates: a merge may take two
+  chunks as large as chunks get, and a consolidation has to take one.
+- An event stream of time windows is consolidated a window at a time, oldest first, behind the
+  same cursor as a tier; a window is due once it has ended, stayed quiet for T
+  (`event_buffer_age`), and a commit has chunked its journal records. Each round writes one
+  sorted run (§1), chunks of consecutive ids numbered by the first, and does not take the last
+  run in again: a later round's rows may come before it, which only a merge of runs puts in
+  order.
+- An event stream keeps its bookkeeping in the same namespace: an L0 index by (extent, first
+  key, chunk), a run index by (extent, bytes, run) that records each run's chunks, and a mark
+  on each extent that may hold more than R runs. The write path does not know R, so
+  `write_chunk` marks the extent of every L0 chunk it writes; a round that finishes a window,
+  or merges runs, sets or clears the mark by the extent's runs, and a merge round that finds R
+  runs or fewer only clears it. So planning reads the stream record, the first extent after the
+  cursor, and the first mark. Cleanup deletes an L0 chunk's index entry and run, and its
+  extent's mark, with the chunk. A run's key holds the run's bytes, which no chunk's entry
+  does, so the runs of an expired extent's consolidated chunks outlive them: once no chunk is
+  left up to the watermark, cleanup deletes them, oldest extent first, within what is left of
+  the round's `cleanup_chunks`, and planning finds them by the first run up to the watermark.
+- A consolidation takes a window's L0 chunks by first key while they fit F, I, its memory and
+  16 ways, and stops before the first that does not. Chunks whose keys do not overlap are read
+  one after another as one way, chained by their first keys as the event scan chains them, so a
+  window of closed connections, late by seconds, takes two ways or so however many chunks. The
+  scan also chains the chunks of one sorted run where they share a key, since a group of rows
+  with one key may fill more than a chunk; L0 chunks are runs of one chunk, so a
+  consolidation's chaining never meets that case. A merge takes the runs of an extent with the
+  fewest bytes, whole, while they fit, each run a way; each merge leaves the extent a run fewer
+  at least. An extent whose two smallest runs do not fit a round keeps them; its mark goes
+  until a later chunk sets it again.
+- An event round's ways hold a stripe of ranks each, as the event scan's do, never a decoded
+  block per column per input. The merge chooses a window of rows; the lengths of their bytes
+  values decide how many the chunk being built takes (§4.3) and how many a column's copy holds
+  at once; then each column is copied, each way's rows in its chunk's order through one set of
+  shared decode buffers, and handed to the builder a column at a time
+  (`ChunkBuilder::append_column`). A large value is copied a fragment at a time
+  (`ChunkBuilder::large_value`, `ChunkReader::read_large_piece`), each input fragment becoming
+  one output fragment, so the format does not change and no round holds a large value whole.
+  A way opens its next chunk only after the shared buffers are let go, so a round's pool holds
+  the larger of the two, not both. Its directory is sized as a planned chunk's
+  (`builder::planned_directory`), since the manifest entry does not record its blocks.
+- Not every profile consolidates every event stream, which §4.3 and §7.4 have every profile
+  do. What a stream's rounds do depends on its spec and the profile's staging alone, so each
+  round works it out per stream from the columns the schema's shape holds, with no
+  allocation (`consolidates`, `compresses`), and it holds while the store is open. For
+  traffic's `closed` stream the smallest round takes 1,563,275 bytes writing raw blocks and
+  1,825,568 compressing:
+  - staging at or above the compressing floor (desktop, x86 devices, low end): the stream's
+    windows consolidate and its runs merge, compressed;
+  - staging between the two floors: they do, with raw blocks, which §6.3 rule 3 allows per
+    block;
+  - staging below the raw floor (mobile, 1,048,576 bytes): no round of the stream is ever
+    planned. The write path still marks the extent of each L0 chunk; the planner reads no
+    mark of a stream it skips, and cleanup deletes a mark with its window's chunks.
+
+  A merge reads with a zstd context whatever the profile, since a consolidated chunk may have
+  been written compressed under another one, so both floors count it. Opening refuses no
+  profile for them; `least_staging` does not include them.
+
+  What mobile gives up: its windows stay L0 chunks, each a run of its own, never merged, so a
+  scan merges as many ways as chunks overlap at one key, and a scan whose ways do not fit the
+  query budget fails with `BudgetExceeded` (§4.3). Closed connections late by up to 30 s
+  overlap only their neighbours: a day of 50,000 written every 10 s scans in 2 ways. A burst
+  of late rows raises the ways; mobile's query budget scans 22 chunks of the test schema's
+  `closed` that overlap at one key. Its L0 chunks also stay larger on disk: 63 bytes a row on
+  redb, against 37 for consolidated compressed chunks.
 
 ## Errors
 
@@ -96,15 +327,15 @@ Errors follow snafu's own guidance (`guide/philosophy.md`).
 
 Each public operation returns the error type of its module:
 
-| Operation            | Error type                                              |
-| -------------------- | ------------------------------------------------------- |
-| validating a schema  | `schema::SchemaError`                                   |
-| opening              | `lifecycle::OpenError`                                  |
-| writing a batch      | `write::WriteError`, with `InputError` and `StageError` |
-| capturing a snapshot | `version::CaptureError`                                 |
-| summing series       | `query::SeriesQueryError`                               |
-| scanning events      | `query::EventScanError`                                 |
-| maintaining          | `maintain::MaintainError`                               |
+| Operation            | Error type                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------- |
+| validating a schema  | `schema::SchemaError`                                                                               |
+| opening              | `lifecycle::OpenError`                                                                              |
+| writing a batch      | `write::WriteError`, with `InputError`, `StageError` and, from the backlog's round, `MaintainError` |
+| capturing a snapshot | `version::CaptureError`                                                                             |
+| summing series       | `query::SeriesQueryError`                                                                           |
+| scanning events      | `query::EventScanError`                                                                             |
+| maintaining          | `maintain::MaintainError`                                                                           |
 
 ## Data mapping and variants
 
@@ -156,6 +387,17 @@ Crates offering a stable hash trait were considered and rejected:
   long-running gateway with heavy label churn grows its heap until it restarts.
 - Stream epochs (§1, §8.3). Until the lifecycle defines them, every extent of an
   `ExtentSpec::Epoch` stream is epoch 0.
+- Retention of epoch streams. Expiring an epoch stream's one extent would drop every later
+  row of it too, and `max_age` cannot date sequence keys, so `maintain` refuses a policy that
+  limits one (`MaintainError::EpochRetention`).
+- Splitting event extents by size under a byte cap (§9.1, "单个区段不超过字节上限的八分之一").
+  A cap expires whole time windows, so a cap below one window's bytes expires the newest
+  window too, and its later rows are dropped as late until the next window starts.
+- Consolidating epoch streams, such as core logs. Their one extent, epoch 0, never ends until
+  the lifecycle gives streams epochs, and their keys are monotonic, so their runs never overlap
+  and a scan reads them as one way. The planner skips them; their chunks keep the event
+  bookkeeping all the same.
+- The lossy-operation ring, `status()` and the logs of lossy maintenance rounds (§9.4).
 - The incarnation counter kept outside the database for tmpfs hosts (§8.3), which only the
   untested tier-2 profile needs.
 - Consumers: traffic, core logs and job logs, and migration of the traffic database.

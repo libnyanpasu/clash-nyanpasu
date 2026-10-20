@@ -17,9 +17,10 @@ use std::ops::ControlFlow;
 use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use crate::{
-    ErrorKind, Profile, ProfileError, Schema, SchemaError,
+    ErrorKind, ExtentSpec, Profile, ProfileError, Schema, SchemaError,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::{Catalog, LoadError},
+    chunk::format::MAX_CHUNK_LEN,
     head::{Head, HeadUpdate, JournalSources, RebuildError, Rebuilt},
     layout::meta::{
         FormatRecord, MetaError, STORE_FORMAT, StateRecord, read_format, read_state, write_format,
@@ -56,13 +57,29 @@ pub(crate) fn open<S: Storage>(
     profile.validate().context(InvalidProfileSnafu)?;
     let shape = Shape::new(schema);
     // Below one record's chunk build beside the plan of a full head, a trigger would wait
-    // forever and the head would fill: no commit could chunk.
+    // forever and the head would fill: no commit could chunk. Below the smallest maintenance
+    // round that makes progress, consolidation would stall.
     let needed = least_staging(schema, &shape, profile.head);
     ensure!(
         profile.staging >= needed,
         StagingTooSmallSnafu {
             staging: profile.staging,
             needed
+        }
+    );
+    // A merge takes two late chunks of a bucket, or two runs of a window, and a consolidation
+    // at least one chunk, which a round's F and I have to allow.
+    let consolidates = schema.series.is_some()
+        || schema
+            .events
+            .iter()
+            .any(|stream| matches!(stream.extent, ExtentSpec::Window(_)));
+    ensure!(
+        !consolidates
+            || (profile.consolidate_chunks >= 2 && profile.consolidate_bytes >= 2 * MAX_CHUNK_LEN),
+        ConsolidationBoundsSnafu {
+            chunks: profile.consolidate_chunks,
+            bytes: profile.consolidate_bytes,
         }
     );
     let state = commit_incarnation(&storage, schema)?;
@@ -335,11 +352,23 @@ pub enum OpenError {
 
     /// The profile's staging budget cannot hold the chunk build of one record of the widest
     /// stream or tier of the schema beside the plan of a full head, so a trigger could wait
-    /// forever (§7.4).
+    /// forever, or the smallest consolidation or merge round that makes progress, so that
+    /// maintenance would stall (§7.4).
     #[snafu(display(
-        "the staging budget of {staging} bytes cannot hold a chunk build of {needed} bytes"
+        "the staging budget of {staging} bytes cannot hold a chunk build or maintenance round \
+         of {needed} bytes"
     ))]
     StagingTooSmall { staging: u64, needed: u64 },
+
+    /// A maintenance round of the profile's F chunks and I bytes cannot take two chunks as
+    /// large as chunks get, as a merge of a bucket's late chunks or of a window's runs may
+    /// need to (§4.3). Checked for a schema with tiers or a stream of time windows: whatever
+    /// consolidates.
+    #[snafu(display(
+        "a round of {chunks} chunks and {bytes} bytes cannot take two chunks of a bucket or a \
+         window"
+    ))]
+    ConsolidationBounds { chunks: usize, bytes: u64 },
 
     #[snafu(display("failed to begin the transaction that opens the dataset"))]
     BeginBatch { source: StorageError },
@@ -434,7 +463,7 @@ impl OpenError {
         match self {
             Self::InvalidSchema { source } => source.kind(),
             Self::InvalidProfile { source } => source.kind(),
-            Self::StagingTooSmall { .. } => ErrorKind::Local,
+            Self::StagingTooSmall { .. } | Self::ConsolidationBounds { .. } => ErrorKind::Local,
             Self::BeginBatch { source }
             | Self::ScanStorage { source, .. }
             | Self::WriteFormat { source }

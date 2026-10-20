@@ -46,7 +46,7 @@ use std::{
     ops::{Bound, ControlFlow},
 };
 
-use snafu::Snafu;
+use snafu::{Snafu, ensure};
 
 use crate::ErrorKind;
 
@@ -96,8 +96,30 @@ pub trait StorageRead {
     ) -> Result<Option<B>>;
 
     /// Lends the fragment to `f`, or `None` when it was never written or its chunk was
-    /// deleted.
-    fn fragment<T>(&self, id: FragmentId, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T>;
+    /// deleted. A stored fragment longer than `limit` bytes is never lent: the call fails with
+    /// [`StorageError::Corrupted`] before `f` runs. A reader that reserved `limit` bytes for
+    /// what it is lent therefore never holds more (§7.4), however the fragment was damaged.
+    fn fragment<T>(
+        &self,
+        id: FragmentId,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T>;
+}
+
+/// Fails with [`StorageError::Corrupted`] when a stored fragment of `len` bytes is longer than
+/// the `limit` it is fetched by ([`StorageRead::fragment`]).
+pub(crate) fn check_lent(id: FragmentId, len: usize, limit: usize) -> Result<()> {
+    ensure!(
+        len <= limit,
+        CorruptedSnafu {
+            detail: format!(
+                "fragment {} of chunk {} has {len} bytes, past the {limit} its reader allows",
+                id.index, id.chunk.0
+            ),
+        }
+    );
+    Ok(())
 }
 
 /// A write transaction. Reads see its own writes, merged with the state it started from.

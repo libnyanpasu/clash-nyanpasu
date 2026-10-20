@@ -11,11 +11,12 @@ use super::{
     error::{BlockProblem, BuildError, ColumnProblem, HeaderProblem, LargeProblem, ReadError},
     format::{
         BLOCK_TARGET_LEN, BlockEntry, BlockRecord, ChunkKind, ColumnDesc, ColumnRecord, ColumnTag,
-        DirectoryRecord, FRAGMENT_PAYLOAD_LEN, HeaderRecord, IntRange, IntStats, LargeEntry,
+        DATA_PAYLOAD_LEN, DirectoryRecord, HeaderRecord, IntRange, IntStats, LargeEntry,
         MAX_BLOCK_ENTRY_LEN, MAX_BLOCKS, MAX_CHUNK_LEN, MAX_COLUMN_LEN, MAX_COLUMNS,
-        MAX_HEADER_LEN, MAX_LARGE_ENTRY_LEN, MAX_LARGE_VALUE_LEN, MAX_LARGE_VALUES,
-        MAX_LIST_PREFIX_LEN, MAX_ROWS, MAX_STATS_LEN, MIN_BLOCK_ENTRY_LEN, MIN_COLUMN_LEN,
-        PhysicalType, max_fragment0_len,
+        MAX_DATA_FRAGMENT_LEN, MAX_HEADER_LEN, MAX_LARGE_ENTRY_LEN, MAX_LARGE_VALUE_LEN,
+        MAX_LARGE_VALUES, MAX_LIST_PREFIX_LEN, MAX_ROWS, MAX_STATS_LEN, MIN_BLOCK_ENTRY_LEN,
+        MIN_COLUMN_LEN, MIN_FRAGMENT0_LEN, MIN_HEADER_LEN, MIN_LARGE_ENTRY_LEN, PhysicalType,
+        max_fragment0_len,
     },
     plan::{RowCost, bytes_cost, int_cost, plan_chunks},
     reader::ChunkReader,
@@ -34,7 +35,7 @@ use crate::{
         compress,
         int::IntType,
     },
-    storage::{MAX_FRAGMENT_LEN, StorageError},
+    storage::{self, ChunkId, FragmentId, MAX_FRAGMENT_LEN, StorageError},
 };
 
 const FINGERPRINT: u64 = 0x5eed_f00d;
@@ -90,9 +91,23 @@ impl FragmentSink for Fragments {
     }
 }
 
+/// Lends a fragment within the limit only, as the storage port does.
 impl FragmentSource for Fragments {
-    fn get<T>(&self, index: u32, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T, StorageError> {
-        Ok(f(self.map.get(&index).map(Vec::as_slice)))
+    fn get<T>(
+        &self,
+        index: u32,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T, StorageError> {
+        let stored = self.map.get(&index).map(Vec::as_slice);
+        if let Some(bytes) = stored {
+            let id = FragmentId {
+                chunk: ChunkId(0),
+                index,
+            };
+            storage::check_lent(id, bytes.len(), limit)?;
+        }
+        Ok(f(stored))
     }
 }
 
@@ -360,11 +375,19 @@ impl Table {
     }
 }
 
+/// Fragment 0's length, as the chunk's manifest entry would record it; 0 when it is missing.
+fn recorded(fragments: &Fragments) -> u32 {
+    fragments
+        .map
+        .get(&0)
+        .map_or(0, |fragment| fragment.len() as u32)
+}
+
 /// Opens a chunk with a budget of its own, which holds exactly the reader's bytes once it is
 /// open, and nothing when opening fails.
 fn open_chunk(fragments: &Fragments) -> Result<ChunkReader, ReadError> {
     let budget = MemoryBudget::new(u64::MAX);
-    let opened = ChunkReader::open(fragments, &budget);
+    let opened = ChunkReader::open(fragments, &budget, recorded(fragments));
     let held = opened.as_ref().map_or(0, ChunkReader::memory);
     assert_eq!(budget.reserved(), held);
     opened
@@ -534,7 +557,7 @@ fn check_round_trip(
     prop_assert_eq!(built.fragments as usize, fragments.map.len());
     prop_assert_eq!(built.bytes, fragments.total());
     prop_assert!(built.bytes <= MAX_CHUNK_LEN);
-    prop_assert!(fragments.largest.get() <= MAX_FRAGMENT_LEN);
+    prop_assert!(fragments.largest.get() <= MAX_DATA_FRAGMENT_LEN);
     let blocks: usize = reader
         .columns()
         .iter()
@@ -689,8 +712,8 @@ proptest! {
         large in prop::collection::vec(
             prop_oneof![
                 Just(MAX_INLINE_VALUE_LEN + 1),
-                Just(FRAGMENT_PAYLOAD_LEN),
-                Just(FRAGMENT_PAYLOAD_LEN + 1),
+                Just(DATA_PAYLOAD_LEN),
+                Just(DATA_PAYLOAD_LEN + 1),
                 (MAX_INLINE_VALUE_LEN + 1)..600_000,
             ],
             0..3,
@@ -709,11 +732,11 @@ proptest! {
 
 #[test]
 fn columns_split_into_blocks_and_large_values_span_fragments() {
-    let large = [FRAGMENT_PAYLOAD_LEN + 1, MAX_INLINE_VALUE_LEN + 1];
+    let large = [DATA_PAYLOAD_LEN + 1, MAX_INLINE_VALUE_LEN + 1];
     let table = Table::generate(9000, 42, &large);
     let (fragments, _) = table.build(false);
     let reader = open_chunk(&fragments).unwrap();
-    // 9000 keys of 8 bytes take three blocks of 4096 rows.
+    // 9000 keys of 8 bytes take three blocks of 4092 rows.
     assert_eq!(reader.blocks(0).unwrap().len(), 3);
     assert!(reader.blocks(5).unwrap().len() > 1);
     let mut spans: Vec<u32> = reader
@@ -738,7 +761,7 @@ fn compressed_round_trip_of_a_full_table() {
 /// and the chunk reads back as the same rows built in one batch.
 #[test]
 fn rows_streamed_in_small_batches_read_back_as_one_batch_does() {
-    let table = Table::generate(20_000, 3, &[40_000, FRAGMENT_PAYLOAD_LEN + 1]);
+    let table = Table::generate(20_000, 3, &[40_000, DATA_PAYLOAD_LEN + 1]);
     let whole = table.build(true);
     let streamed = table.build_streamed(true, &[1, 7, 300, 2]);
     check_round_trip(&table, &streamed, true).unwrap();
@@ -807,7 +830,7 @@ fn fragments_are_written_while_rows_arrive() {
     // block of each column and in the open fragment are written; a text block stores its
     // values as they are.
     let before_finish = written.get();
-    let held_back = (2 * BLOCK_TARGET_LEN + FRAGMENT_PAYLOAD_LEN) as u64;
+    let held_back = (2 * BLOCK_TARGET_LEN + DATA_PAYLOAD_LEN) as u64;
     assert!(appended > 2 * 1024 * 1024);
     assert!(
         before_finish + held_back >= appended as u64,
@@ -820,7 +843,7 @@ fn fragments_are_written_while_rows_arrive() {
 /// Each buffer of an open block gets its own cap, the most one block needs of it, the first
 /// time a row needs it, and keeps it from block to block: it never grows from one allocation
 /// to another, which would hold both for a moment. A nullable `i64` row is 9 bytes, so that
-/// column's cap is a block's 3640 rows; a one-byte low-cardinality value is 5, so 6553.
+/// column's cap is a block's 3637 rows; a one-byte low-cardinality value is 5, so 6547.
 #[test]
 fn an_open_block_takes_its_caps_at_once_and_keeps_them() {
     let layout = [
@@ -830,7 +853,7 @@ fn an_open_block_takes_its_caps_at_once_and_keeps_them() {
     ];
     let i64_rows = BLOCK_TARGET_LEN / int_raw_len(IntType::I64, true);
     let byte_rows = BLOCK_TARGET_LEN / bytes_raw_len(1, BytesHint::LowCardinality, false);
-    assert_eq!((i64_rows, byte_rows), (3640, 6553));
+    assert_eq!((i64_rows, byte_rows), (3637, 6547));
     let mut fragments = Fragments::default();
     let mut builder =
         ChunkBuilder::new(&mut fragments, ChunkKind::L0Base, 0, None, &layout).unwrap();
@@ -1115,6 +1138,32 @@ fn the_shortest_records_take_their_bound() {
         stats: IntStats::default(),
     };
     assert_eq!(len(&block), MIN_BLOCK_ENTRY_LEN);
+    let header = HeaderRecord {
+        kind: 0,
+        fingerprint: 0,
+        rows: 0,
+        fragments: 0,
+        key_min: 0,
+        key_max: 0,
+    };
+    assert_eq!(len(&header), MIN_HEADER_LEN);
+    let large = LargeEntry {
+        first_fragment: 0,
+        fragments: 0,
+        len: 0,
+    };
+    assert_eq!(len(&large), MIN_LARGE_ENTRY_LEN);
+    // A chunk has a column of a block at least, so no fragment 0 is shorter than this one.
+    let mut shortest = Vec::new();
+    DirectoryRecord {
+        header,
+        columns: vec![column],
+        blocks: vec![block],
+        large: Vec::new(),
+    }
+    .write(&mut shortest);
+    checksum::seal(&mut shortest);
+    assert_eq!(shortest.len(), MIN_FRAGMENT0_LEN);
 }
 
 mod limits {
@@ -1212,7 +1261,7 @@ mod limits {
         assert_eq!(error.kind(), ErrorKind::Local);
         drop(builder);
         assert!(fragments.total() <= MAX_CHUNK_LEN);
-        assert!(fragments.largest.get() <= MAX_FRAGMENT_LEN);
+        assert!(fragments.largest.get() <= MAX_DATA_FRAGMENT_LEN);
     }
 
     #[test]
@@ -1244,10 +1293,10 @@ mod limits {
             .unwrap_err();
         assert!(matches!(error, BuildError::ChunkTooLarge { .. }));
         drop(builder);
-        // The key block is still open; the first value's 13 fragments are written, none of
+        // The key block is still open; the first value's 49 fragments are written, none of
         // the second's.
-        assert_eq!(fragments.map.len(), 13);
-        assert_eq!(fragments.total(), (3 << 20) + 13 * TRAILER_LEN as u64);
+        assert_eq!(fragments.map.len(), 49);
+        assert_eq!(fragments.total(), (3 << 20) + 49 * TRAILER_LEN as u64);
     }
 
     #[test]
@@ -1728,7 +1777,7 @@ mod planning {
                 built.bytes
             );
             assert_eq!(built.bytes, fragments.total());
-            assert!(fragments.largest.get() <= MAX_FRAGMENT_LEN);
+            assert!(fragments.largest.get() <= MAX_DATA_FRAGMENT_LEN);
             read_everything(&fragments).unwrap();
         }
     }
@@ -1874,7 +1923,7 @@ mod hostile {
     /// A chunk with every column type, several blocks, compressed blocks and a large value
     /// over two fragments.
     fn chunk() -> Fragments {
-        let table = Table::generate(5000, 99, &[FRAGMENT_PAYLOAD_LEN + 10]);
+        let table = Table::generate(5000, 99, &[DATA_PAYLOAD_LEN + 10]);
         table.build(true).0
     }
 
@@ -2061,13 +2110,19 @@ mod hostile {
                 problem: HeaderProblem::Magic
             }
         ));
+        // Too short for the prefix: no manifest entry records such a fragment 0, and parsing
+        // one fails.
         let mut fragments = chunk();
         fragments.reseal(0, |content| content.truncate(3));
         assert!(matches!(
             corrupted(&fragments),
-            ReadError::InvalidHeader {
+            ReadError::RecordedFragment0 { recorded: 7 }
+        ));
+        assert!(matches!(
+            DirectoryRecord::read(&fragments.map[&0][..3]),
+            Err(ReadError::InvalidHeader {
                 problem: HeaderProblem::Magic
-            }
+            })
         ));
         let mut fragments = chunk();
         fragments.reseal(0, |content| content.extend_from_slice(&[0; 3]));
@@ -2093,7 +2148,7 @@ mod hostile {
     #[test]
     fn invalid_directory_entries_are_rejected_at_open() {
         // An offset past any fragment, and an unaligned one.
-        let past = entry_problem(0, |block| block.offset = FRAGMENT_PAYLOAD_LEN as u32 + 4);
+        let past = entry_problem(0, |block| block.offset = DATA_PAYLOAD_LEN as u32 + 4);
         assert!(matches!(past, BlockProblem::Extent { .. }), "{past:?}");
         let unaligned = entry_problem(0, |block| block.offset = 3);
         assert!(
@@ -2359,14 +2414,26 @@ mod hostile {
     }
 
     /// The directory fixes each fragment's length: a data fragment ends at its furthest
-    /// block, a large-value fragment holds its share of the value.
+    /// block, a large-value fragment holds its share of the value. A longer one is fetched by
+    /// that length, so the source refuses it; a shorter one is found once lent.
     #[test]
     fn a_fragment_of_another_length_than_its_directory_gives_is_rejected_when_read() {
         let mut fragments = chunk();
         let reader = open_chunk(&fragments).unwrap();
         let block = reader.blocks(0).unwrap()[0];
         fragments.reseal(block.fragment, |content| content.extend_from_slice(&[0; 8]));
-        let expected = fragments.map[&block.fragment].len() - TRAILER_LEN - 8;
+        assert!(matches!(
+            corrupted(&fragments),
+            ReadError::ReadFragment {
+                index,
+                source: StorageError::Corrupted { .. }
+            } if index == block.fragment
+        ));
+        let mut fragments = chunk();
+        fragments.reseal(block.fragment, |content| {
+            content.truncate(content.len() - 8)
+        });
+        let expected = fragments.map[&block.fragment].len() - TRAILER_LEN + 8;
         assert!(matches!(
             corrupted(&fragments),
             ReadError::ContentLength { index, expected: found, .. }
@@ -3066,7 +3133,7 @@ mod memory {
         assert_eq!(fragments.directory().large.len(), 1);
     }
 
-    /// The largest bytes block of these columns holds 6553 rows, fewer than a power of two:
+    /// The largest bytes block of these columns holds 6547 rows, fewer than a power of two:
     /// the scratch's present rows and the dictionary's order stop there, where doubling
     /// would reach 8192.
     #[test]
@@ -3076,7 +3143,7 @@ mod memory {
             .map(|index| vec![Cell::Int(index), Cell::Bytes(Vec::new())])
             .collect();
         let fragments = build_checked(&layout, false, &rows, &[100, 900]);
-        assert_eq!(fragments.directory().blocks[2].rows, 6553);
+        assert_eq!(fragments.directory().blocks[2].rows, 6547);
     }
 
     /// A planned chunk holds at most 255 large values, each longer than an inline value, and
@@ -3141,9 +3208,9 @@ mod memory {
         assert_eq!(working_memory(&event, false), EVENT);
     }
 
-    const SERIES: u64 = 483_006;
-    const SERIES_COMPRESSED: u64 = 515_955;
-    const EVENT: u64 = 698_840;
+    const SERIES: u64 = 286_186;
+    const SERIES_COMPRESSED: u64 = 319_103;
+    const EVENT: u64 = 501_816;
 }
 
 /// The reader's memory (§7.4, §8.2): what opening a chunk and decoding its blocks hold,
@@ -3599,6 +3666,136 @@ mod read_memory {
     /// Parsing a fragment 0 holds no more at its peak than [`open_memory`] of its length, from
     /// a small chunk's to one of MAX_BLOCKS records as short as they get, which is where the
     /// bound is tightest; and the directory keeps less.
+    /// A reader is lent no more than it reserved. Fragment 0 is fetched only once what parsing
+    /// a fragment 0 of the length its manifest entry records holds is reserved, and by that
+    /// length; a data fragment by the length its directory gives it. One longer than that is
+    /// refused by the source before anything sees it; one shorter is damage too, found before
+    /// it is parsed or decoded. After each failure the budget holds what it held before.
+    #[test]
+    fn a_reader_is_lent_no_more_than_it_reserved() {
+        /// Counts the fetches, and the longest fragment lent.
+        struct Lending<'a> {
+            fragments: &'a Fragments,
+            fetched: Cell<u32>,
+            longest: Cell<usize>,
+        }
+
+        impl FragmentSource for Lending<'_> {
+            fn get<T>(
+                &self,
+                index: u32,
+                limit: usize,
+                f: impl FnOnce(Option<&[u8]>) -> T,
+            ) -> Result<T, StorageError> {
+                self.fetched.set(self.fetched.get() + 1);
+                self.fragments.get(index, limit, |bytes| {
+                    let len = bytes.map_or(0, <[u8]>::len);
+                    self.longest.set(self.longest.get().max(len));
+                    f(bytes)
+                })
+            }
+        }
+
+        let lending = |fragments| Lending {
+            fragments,
+            fetched: Cell::new(0),
+            longest: Cell::new(0),
+        };
+        let fragments = chunk_of_300_blocks();
+        let length = recorded(&fragments);
+        let bound = open_memory(length as usize - TRAILER_LEN);
+        let source = lending(&fragments);
+        let budget = MemoryBudget::new(bound - 1);
+        let error = ChunkReader::open(&source, &budget, length).unwrap_err();
+        assert!(
+            matches!(error, ReadError::ReserveDirectory { .. }),
+            "{error}"
+        );
+        assert_eq!(source.fetched.get(), 0);
+        let budget = MemoryBudget::new(bound);
+        let reader = ChunkReader::open(&source, &budget, length).unwrap();
+        assert_eq!(budget.reserved(), reader.memory());
+        drop(reader);
+
+        // Fragment 0 longer than its entry records: never lent.
+        let source = lending(&fragments);
+        let budget = MemoryBudget::new(u64::MAX);
+        let error = ChunkReader::open(&source, &budget, length - 1).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                ReadError::ReadFragment {
+                    index: 0,
+                    source: StorageError::Corrupted { .. }
+                }
+            ),
+            "{error}"
+        );
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+        assert_eq!(source.longest.get(), 0);
+        assert_eq!(budget.reserved(), 0);
+        // Shorter, whether or not it would parse: lent within the reservation, then refused.
+        let mut garbled = chunk_of_300_blocks();
+        garbled.reseal(0, |content| content.truncate(content.len() / 2));
+        for (fragments, recorded) in [(&fragments, length + 1), (&garbled, length)] {
+            let source = lending(fragments);
+            let budget = MemoryBudget::new(u64::MAX);
+            let error = ChunkReader::open(&source, &budget, recorded).unwrap_err();
+            let actual = fragments.map[&0].len();
+            assert!(
+                matches!(
+                    error,
+                    ReadError::Fragment0Length { recorded: found, actual: len }
+                        if found == recorded && len == actual
+                ),
+                "{error}"
+            );
+            assert_eq!(error.kind(), ErrorKind::Corrupted);
+            assert_eq!(source.longest.get(), actual);
+            assert_eq!(budget.reserved(), 0);
+        }
+        // A recorded length no fragment 0 has is refused before anything is reserved.
+        for recorded in [MIN_FRAGMENT0_LEN as u32 - 1, MAX_FRAGMENT_LEN as u32 + 1] {
+            let source = lending(&fragments);
+            let error = ChunkReader::open(&source, &MemoryBudget::new(0), recorded).unwrap_err();
+            assert!(
+                matches!(error, ReadError::RecordedFragment0 { recorded: found } if found == recorded),
+                "{error}"
+            );
+            assert_eq!(error.kind(), ErrorKind::Corrupted);
+            assert_eq!(source.fetched.get(), 0);
+        }
+
+        // A data fragment longer than its directory gives it: never lent, and the open reader
+        // keeps its directory's reservation and nothing more.
+        let mut grown = chunk_of_300_blocks();
+        let block = open_chunk(&grown).unwrap().blocks(0).unwrap()[0];
+        grown.reseal(block.fragment, |content| content.extend_from_slice(&[0; 8]));
+        let source = lending(&grown);
+        let budget = MemoryBudget::new(u64::MAX);
+        let reader = ChunkReader::open(&source, &budget, recorded(&grown)).unwrap();
+        let held = budget.reserved();
+        let mut decoder = BlockDecoder::new().unwrap();
+        let mut out = IntBlock::<i64>::default();
+        let error = reader
+            .read_ints(&source, 0, 0, &mut decoder, &mut out)
+            .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                ReadError::ReadFragment {
+                    index,
+                    source: StorageError::Corrupted { .. }
+                } if index == block.fragment
+            ),
+            "{error}"
+        );
+        assert_eq!(source.longest.get(), grown.map[&0].len());
+        assert_eq!(budget.reserved(), held);
+        drop(reader);
+        assert_eq!(budget.reserved(), 0);
+    }
+
     #[test]
     fn parsing_a_directory_holds_no_more_than_its_bound() {
         let content =
@@ -3715,8 +3912,295 @@ mod read_memory {
         [(266_240, 131_072), (266_244, 393_216), (268_292, 262_144)];
     /// For the chunk of 300 blocks and the shortest fragment 0 of MAX_BLOCKS records: the
     /// length of fragment 0, the bound reserved to open it, and what the reader keeps.
-    const OPENING: [(usize, u64, u64); 2] = [(7_558, 275_728, 27_892), (28_331, 400_600, 188_564)];
+    const OPENING: [(usize, u64, u64); 2] = [(7_426, 275_336, 28_040), (28_331, 401_176, 188_564)];
     const MAX_BLOCKS_PEAK: u64 = 385_324;
     /// One way of the merge, the shared decoder's scratch, and eight ways with it.
-    const MERGE: (u64, u64, u64) = (589_728, 98_310, 4_816_134);
+    const MERGE: (u64, u64, u64) = (589_413, 98_214, 4_813_518);
+}
+
+/// Building a chunk a column at a time, as a merge that holds one column of its rows does,
+/// and copying a large value a fragment at a time.
+mod columns {
+    use super::*;
+    use crate::chunk::reader::ChunkReader;
+
+    impl Table {
+        /// Appends the rows a column at a time, each column in batches of the sizes in
+        /// `sizes`, taken in turn; a large text value goes a piece at a time.
+        fn append_columns(&self, builder: &mut ChunkBuilder<'_, Fragments>, sizes: &[usize]) {
+            let labels: Vec<&[u8]> = self.labels.iter().map(Vec::as_slice).collect();
+            let texts: Vec<&[u8]> = self.texts.iter().map(Vec::as_slice).collect();
+            let ids: Vec<&[u8]> = self.ids.iter().map(Vec::as_slice).collect();
+            for column in 0..7 {
+                let (mut start, mut turn) = (0, 0);
+                while start < self.rows() {
+                    let mut end = (start + sizes[turn % sizes.len()]).min(self.rows());
+                    turn += 1;
+                    let rows = start..end;
+                    let batch = match column {
+                        0 => Column {
+                            values: Values::I64(&self.keys[rows]),
+                            validity: None,
+                        },
+                        1 => Column {
+                            values: Values::U64(&self.upload[rows.clone()]),
+                            validity: Some(&self.upload_valid[rows]),
+                        },
+                        2 => Column {
+                            values: Values::U32(&self.levels[rows]),
+                            validity: None,
+                        },
+                        3 => Column {
+                            values: Values::I64(&self.signed[rows.clone()]),
+                            validity: Some(&self.signed_valid[rows]),
+                        },
+                        4 => Column {
+                            values: Values::Bytes(&labels[rows.clone()]),
+                            validity: Some(&self.labels_valid[rows]),
+                        },
+                        5 => {
+                            // Up to the next large value, which goes a piece at a time.
+                            let large = |row: usize| {
+                                self.texts_valid[row] && texts[row].len() > MAX_INLINE_VALUE_LEN
+                            };
+                            if large(start) {
+                                let value = texts[start];
+                                let mut writer = builder.large_value(5, value.len()).unwrap();
+                                for piece in value.chunks(DATA_PAYLOAD_LEN) {
+                                    writer.put(piece).unwrap();
+                                }
+                                writer.finish().unwrap();
+                                start += 1;
+                                continue;
+                            }
+                            end = (start..end).find(|&row| large(row)).unwrap_or(end);
+                            Column {
+                                values: Values::Bytes(&texts[start..end]),
+                                validity: Some(&self.texts_valid[start..end]),
+                            }
+                        }
+                        _ => Column {
+                            values: Values::Bytes(&ids[rows]),
+                            validity: None,
+                        },
+                    };
+                    builder.append_column(column, &batch).unwrap();
+                    start = end;
+                }
+            }
+        }
+    }
+
+    /// The fragments of the large values of a chunk, in order.
+    fn large_fragments(fragments: &Fragments) -> Vec<Vec<u8>> {
+        let reader = open_chunk(fragments).unwrap();
+        reader
+            .large_values()
+            .iter()
+            .flat_map(|entry| entry.first_fragment..entry.first_fragment + entry.fragments)
+            .map(|index| fragments.map[&index].clone())
+            .collect()
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(16))]
+
+        // A chunk built a column at a time, in batches of any sizes, with its large values a
+        // piece at a time, reads back as the same rows appended a batch at a time do: the same
+        // blocks and values, whatever fragments they are placed in.
+        #[test]
+        fn columns_appended_one_at_a_time_read_back_as_rows_do(
+            rows in 1usize..6000,
+            seed in any::<u64>(),
+            large in prop::collection::vec(
+                prop_oneof![
+                    Just(MAX_INLINE_VALUE_LEN + 1),
+                    Just(DATA_PAYLOAD_LEN),
+                    Just(DATA_PAYLOAD_LEN + 1),
+                    (MAX_INLINE_VALUE_LEN + 1)..300_000,
+                ],
+                0..3,
+            ),
+            compressed in any::<bool>(),
+            sizes in prop::collection::vec(1usize..2500, 1..6),
+        ) {
+            let table = Table::generate(rows, seed, &large);
+            let whole = table.build(compressed);
+            let columns = build_chunk(&table_layout(), compressed, |builder| {
+                table.append_columns(builder, &sizes);
+            });
+            check_round_trip(&table, &columns, compressed)?;
+            prop_assert!(content(&whole.0) == content(&columns.0));
+            prop_assert_eq!(large_fragments(&whole.0), large_fragments(&columns.0));
+        }
+    }
+
+    // A large value copied from another chunk a fragment at a time, as the reader hands its
+    // pieces out, takes one fragment for each of the source's, byte for byte.
+    #[test]
+    fn a_large_value_copied_a_fragment_at_a_time_keeps_its_fragments() {
+        let lens = [
+            MAX_INLINE_VALUE_LEN + 1,
+            DATA_PAYLOAD_LEN,
+            3 * DATA_PAYLOAD_LEN + 5,
+        ];
+        let table = Table::generate(50, 9, &lens);
+        let (source, _) = table.build(false);
+        let reader = open_chunk(&source).unwrap();
+        let layout = [bytes(BytesHint::Text, true)];
+        let key = [KEY_COLUMN, layout[0]];
+        let (copied, built) = build_chunk(&key, false, |builder| {
+            for (index, entry) in reader.large_values().iter().enumerate() {
+                let keys = [index as i64];
+                let column = Column {
+                    values: Values::I64(&keys),
+                    validity: None,
+                };
+                builder.append_column(0, &column).unwrap();
+                let mut large = builder.large_value(1, entry.len as usize).unwrap();
+                for piece in 0..entry.fragments {
+                    reader
+                        .read_large_piece(&source, index as u32, piece, |content| {
+                            large.put(content)
+                        })
+                        .unwrap()
+                        .unwrap();
+                }
+                large.finish().unwrap();
+            }
+        });
+        assert_eq!(built.rows, 3);
+        assert_eq!(large_fragments(&copied), large_fragments(&source));
+        let copy = open_chunk(&copied).unwrap();
+        let sizes = |reader: &ChunkReader| -> Vec<(u32, u32)> {
+            reader
+                .large_values()
+                .iter()
+                .map(|entry| (entry.len, entry.fragments))
+                .collect()
+        };
+        assert_eq!(sizes(&copy), sizes(&reader));
+        let mut lens_read: Vec<u32> = sizes(&copy).iter().map(|&(len, _)| len).collect();
+        lens_read.sort_unstable();
+        assert_eq!(lens_read, lens.map(|len| len as u32));
+        // A piece past the value's, and a value the chunk does not have, are damage.
+        let error = reader.read_large_piece(&source, 0, 99, |_| ()).unwrap_err();
+        assert!(matches!(
+            error,
+            ReadError::NoSuchPiece {
+                index: 0,
+                piece: 99
+            }
+        ));
+        assert_eq!(error.kind(), ErrorKind::Corrupted);
+        let error = reader.read_large_piece(&source, 99, 0, |_| ()).unwrap_err();
+        assert!(matches!(error, ReadError::NoSuchLargeValue { index: 99 }));
+    }
+
+    // Mistakes of a caller that appends a column at a time are local errors: a column the
+    // chunk lacks, a large value outside a text column or of no large length, a piece of
+    // another length than the builder's, a value ended early, and columns of other rows.
+    #[test]
+    fn column_and_piece_mistakes_are_local_errors() {
+        let layout = [
+            KEY_COLUMN,
+            int(IntType::U64, false),
+            bytes(BytesHint::Text, true),
+        ];
+        let keys = [1i64, 2];
+        let key = Column {
+            values: Values::I64(&keys),
+            validity: None,
+        };
+        let local = |error: BuildError| {
+            assert_eq!(error.kind(), ErrorKind::Local, "{error:?}");
+            error
+        };
+        let mut fragments = Fragments::default();
+        let mut builder = ChunkBuilder::new(
+            &mut fragments,
+            ChunkKind::L0Base,
+            FINGERPRINT,
+            None,
+            &layout,
+        )
+        .unwrap();
+        assert!(matches!(
+            local(builder.append_column(3, &key).unwrap_err()),
+            BuildError::UnknownColumn { column: 3 }
+        ));
+        assert!(matches!(
+            local(builder.append_column(1, &key).unwrap_err()),
+            BuildError::ValuesType { column: 1 }
+        ));
+        for (column, len) in [
+            (1, MAX_INLINE_VALUE_LEN + 1),
+            (2, MAX_INLINE_VALUE_LEN),
+            (2, MAX_LARGE_VALUE_LEN + 1),
+        ] {
+            let error = builder.large_value(column, len).err().unwrap();
+            assert!(
+                matches!(local(error), BuildError::NotLarge { column: found, len: found_len } if found == column && found_len == len)
+            );
+        }
+        assert!(matches!(
+            local(
+                builder
+                    .large_value(4, MAX_INLINE_VALUE_LEN + 1)
+                    .err()
+                    .unwrap()
+            ),
+            BuildError::UnknownColumn { column: 4 }
+        ));
+        builder.append_column(0, &key).unwrap();
+        let len = DATA_PAYLOAD_LEN + 10;
+        let mut large = builder.large_value(2, len).unwrap();
+        let piece = vec![7u8; DATA_PAYLOAD_LEN];
+        assert!(matches!(
+            local(large.put(&piece[..10]).unwrap_err()),
+            BuildError::PieceLength {
+                expected: DATA_PAYLOAD_LEN,
+                actual: 10
+            }
+        ));
+        large.put(&piece).unwrap();
+        assert!(matches!(
+            local(large.put(&piece[..11]).unwrap_err()),
+            BuildError::PieceLength {
+                expected: 10,
+                actual: 11
+            }
+        ));
+        let error = large.finish().unwrap_err();
+        assert!(matches!(
+            local(error),
+            BuildError::LargeIncomplete { len: found, received: DATA_PAYLOAD_LEN } if found == len
+        ));
+        // Columns that end with other rows than the key column.
+        let mut fragments = Fragments::default();
+        let mut builder = ChunkBuilder::new(
+            &mut fragments,
+            ChunkKind::L0Base,
+            FINGERPRINT,
+            None,
+            &layout,
+        )
+        .unwrap();
+        builder.append_column(0, &key).unwrap();
+        let one = [5u64];
+        let column = Column {
+            values: Values::U64(&one),
+            validity: None,
+        };
+        builder.append_column(1, &column).unwrap();
+        let error = builder.finish().unwrap_err();
+        assert!(matches!(
+            local(error),
+            BuildError::ColumnLength {
+                column: 1,
+                expected: 2,
+                actual: 1
+            }
+        ));
+    }
 }

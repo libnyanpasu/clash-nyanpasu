@@ -35,9 +35,15 @@ pub(crate) trait FragmentSink {
 }
 
 /// Where the reader reads a chunk's fragments. `f` sees `None` for a fragment that does not
-/// exist; a storage failure is the error.
+/// exist; a storage failure is the error, and so is a fragment longer than `limit`, which `f`
+/// never sees (see [`StorageRead::fragment`]).
 pub(crate) trait FragmentSource {
-    fn get<T>(&self, index: u32, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T, StorageError>;
+    fn get<T>(
+        &self,
+        index: u32,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T, StorageError>;
 }
 
 /// Writes the fragments of `chunk` into a write batch.
@@ -65,12 +71,18 @@ pub(crate) struct StoredChunk<'a, R> {
 }
 
 impl<R: StorageRead> FragmentSource for StoredChunk<'_, R> {
-    fn get<T>(&self, index: u32, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T, StorageError> {
+    fn get<T>(
+        &self,
+        index: u32,
+        limit: usize,
+        f: impl FnOnce(Option<&[u8]>) -> T,
+    ) -> Result<T, StorageError> {
         self.storage.fragment(
             FragmentId {
                 chunk: self.chunk,
                 index,
             },
+            limit,
             f,
         )
     }

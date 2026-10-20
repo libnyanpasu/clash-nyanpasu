@@ -88,6 +88,21 @@ pub enum BuildError {
 
     #[snafu(display("a chunk needs at least one column"))]
     NoColumns,
+
+    #[snafu(display("the chunk has no column {column}"))]
+    UnknownColumn { column: usize },
+
+    /// A value written a piece at a time is a large value of a text column: longer than an
+    /// inline value, and no longer than a chunk.
+    #[snafu(display("column {column} cannot take a large value of {len} bytes"))]
+    NotLarge { column: usize, len: usize },
+
+    /// A piece of a large value is not the length the builder cuts a value into.
+    #[snafu(display("a piece of a large value has {actual} bytes, not {expected}"))]
+    PieceLength { expected: usize, actual: usize },
+
+    #[snafu(display("a large value of {len} bytes ended after {received}"))]
+    LargeIncomplete { len: usize, received: usize },
 }
 
 impl BuildError {
@@ -111,7 +126,11 @@ impl BuildError {
             | Self::TooManyLargeValues
             | Self::TooManyBlocks
             | Self::ChunkTooLarge { .. }
-            | Self::NoColumns => ErrorKind::Local,
+            | Self::NoColumns
+            | Self::UnknownColumn { .. }
+            | Self::NotLarge { .. }
+            | Self::PieceLength { .. }
+            | Self::LargeIncomplete { .. } => ErrorKind::Local,
         }
     }
 }
@@ -144,11 +163,20 @@ pub enum ReadError {
     #[snafu(display("fragment {index} is missing"))]
     MissingFragment { index: u32 },
 
-    #[snafu(display("fragment {index} has {len} bytes, past the fragment limit"))]
-    FragmentLength { index: u32, len: usize },
-
     #[snafu(display("checksum mismatch in fragment {index}"))]
     Checksum { index: u32 },
+
+    /// The chunk's manifest entry records a length no fragment 0 has
+    /// ([`FRAGMENT0_LENS`](super::format::FRAGMENT0_LENS)).
+    #[snafu(display("the manifest entry records a fragment 0 of {recorded} bytes"))]
+    RecordedFragment0 { recorded: u32 },
+
+    /// Fragment 0 does not have the length the chunk's manifest entry records, by which the
+    /// reader reserved what parsing it holds.
+    #[snafu(display(
+        "fragment 0 has {actual} bytes, not the {recorded} its manifest entry records"
+    ))]
+    Fragment0Length { recorded: u32, actual: usize },
 
     #[snafu(display("fragment 0 does not decode as a directory"))]
     DecodeDirectory { source: postcard::Error },
@@ -187,6 +215,9 @@ pub enum ReadError {
     #[snafu(display("the chunk has no large value {index}"))]
     NoSuchLargeValue { index: u32 },
 
+    #[snafu(display("large value {index} has no piece {piece}"))]
+    NoSuchPiece { index: u32, piece: u32 },
+
     #[snafu(display("fragment {index} holds {actual} bytes, not the {expected} of its directory"))]
     ContentLength {
         index: u32,
@@ -206,8 +237,9 @@ impl ReadError {
             Self::ReserveDirectory { source } => source.kind(),
             Self::DecodeBlock { source, .. } => source.kind(),
             Self::MissingFragment { .. }
-            | Self::FragmentLength { .. }
             | Self::Checksum { .. }
+            | Self::RecordedFragment0 { .. }
+            | Self::Fragment0Length { .. }
             | Self::DecodeDirectory { .. }
             | Self::InvalidHeader { .. }
             | Self::InvalidColumn { .. }
@@ -217,6 +249,7 @@ impl ReadError {
             | Self::NoSuchColumn { .. }
             | Self::NoSuchBlock { .. }
             | Self::NoSuchLargeValue { .. }
+            | Self::NoSuchPiece { .. }
             | Self::ContentLength { .. } => ErrorKind::Corrupted,
         }
     }

@@ -119,6 +119,11 @@ pub enum DecodeError {
     #[snafu(display("failed to decompress the block: {source}"))]
     Decompress { source: std::io::Error },
 
+    /// A decoder of raw blocks met a compressed one: the block belongs to a chunk that is
+    /// never compressed.
+    #[snafu(display("the block is compressed, where only raw blocks are stored"))]
+    Compressed,
+
     #[snafu(display("block decompressed to {actual} bytes, not {expected}"))]
     DecompressedLength { expected: usize, actual: usize },
 

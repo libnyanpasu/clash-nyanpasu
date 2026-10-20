@@ -6,11 +6,18 @@
 //! - **Chunks.** The stream's chunks whose extent and key range meet the range. Chunks whose
 //!   key ranges do not overlap are read one after another as one way: they are chained
 //!   greedily by their first key, which takes as many ways as there are chunks overlapping at
-//!   one key, and never more than sorted runs (§1, §4.3). A stream keyed by a monotonic
-//!   sequence, as core logs are, reads all of its L0 chunks as one way.
+//!   one key, and never more than sorted runs (§1, §4.3). The chunks of one sorted run are one
+//!   way even where they share a key: a group of rows with one key may fill more than a
+//!   chunk, and the run's order goes on from each chunk to the next. A stream keyed by a
+//!   monotonic sequence, as core logs are, reads all of its L0 chunks as one way.
 //! - **The head.** The rows of the stream's journal records that are in bounds and match.
 //!   Only the first `limit` of them in scan order can reach the page, so they are selected and
 //!   sorted into one way.
+//!
+//! Keys in an extent at or below the stream's deletion watermark are left out: the range
+//! starts at the watermark at the earliest, since retention expired them (§9.1) and cleanup
+//! may not have deleted their chunks yet. A range that starts before it reports it was
+//! truncated (§9.4).
 //!
 //! The ways merge on their rows' rank: the order forward, and its bitwise complement backward,
 //! so one min-heap serves both directions, and the range, the cursor and the stats compare the
@@ -51,14 +58,15 @@ use snafu::{IntoError, OptionExt, ResultExt, Snafu, ensure};
 
 use super::{LabelFilter, rows_of};
 use crate::{
-    ColumnType, ErrorKind, EventStreamSpec, LabelId, Schema, StreamId, TimeRange,
+    ColumnType, ErrorKind, EventStreamSpec, ExtentSpec, LabelId, Schema, StreamId, TimeRange,
+    Timestamp,
     budget::{BudgetExceeded, MemoryBudget, Reservation},
     catalog::Catalog,
     chunk::{
         StoredChunk,
         error::ReadError,
         format::{BLOCK_TARGET_LEN, BlockEntry, IntRange, IntStats},
-        reader::{ChunkReader, decode_memory},
+        reader::{ChunkReader, check_recorded, decode_memory, lent_memory},
     },
     codec::{
         block::{BlockDecoder, BytesBlock, BytesValue, IntBlock},
@@ -69,9 +77,10 @@ use crate::{
         events::EventBuffer,
         journal::{Identity, Rows, StoredRow, StoredValue},
     },
-    layout::manifest::{self, ManifestError, StreamRef, event_extent},
-    storage::{ChunkId, Direction, MAX_FRAGMENT_LEN, Storage, StorageRead},
-    version::{Snapshot, Version},
+    layout::manifest::{self, ManifestError, StreamRef, event_extent, retained_from},
+    storage::{ChunkId, Direction, Storage, StorageRead},
+    time::Span,
+    version::{CatalogToken, Snapshot, Version},
     write::{ComboId, EventSeq},
 };
 
@@ -145,7 +154,10 @@ pub enum EventCondition<'a> {
 #[derive(Debug)]
 pub struct EventPage {
     events: Vec<Event>,
+    catalog: CatalogToken,
     cursor: Option<EventCursor>,
+    truncated_by_retention: bool,
+    retention_watermark: Option<Timestamp>,
     #[allow(
         dead_code,
         reason = "held for its Drop, which returns the events' bytes"
@@ -158,10 +170,29 @@ impl EventPage {
         &self.events
     }
 
+    /// The token of the snapshot the page was read from, which names what the ids of its
+    /// values mean ([`EventValue`]).
+    pub fn catalog(&self) -> CatalogToken {
+        self.catalog.clone()
+    }
+
     /// The position of the last event, to continue after, when the page is full. A page with
     /// fewer events than its limit reached the end of the range.
     pub fn cursor(&self) -> Option<EventCursor> {
         self.cursor
+    }
+
+    /// Whether the range starts before the stream's [retention
+    /// watermark](Self::retention_watermark), so that retention deleted part of it (§9.4).
+    pub fn truncated_by_retention(&self) -> bool {
+        self.truncated_by_retention
+    }
+
+    /// The first key the stream retains: retention deleted the events of every key before it,
+    /// and the scan leaves them out (§9.1, §9.4). `None` while retention has deleted none,
+    /// which is always the case for an epoch stream.
+    pub fn retention_watermark(&self) -> Option<Timestamp> {
+        self.retention_watermark
     }
 }
 
@@ -183,6 +214,10 @@ pub struct Event {
 /// | `Label`                                | `Label`: its id, 0 when it overflowed   |
 /// | `Dict`, `Fixed`, `Text`, `FoldedLabel` | `Bytes`                                 |
 /// | `Identity`                             | `Bytes`: the text it was written as     |
+///
+/// A `Combo` or `Label` id means what it says only through a snapshot whose
+/// [`Snapshot::catalog`] equals the page's [`EventPage::catalog`]: after a release, a later
+/// write may give the id to another value (§5.3).
 #[derive(Debug, PartialEq, Eq)]
 pub enum EventValue {
     Null,
@@ -231,12 +266,13 @@ const fn stripe_bytes(rows: usize) -> u64 {
 }
 
 /// The bytes a scan holds for as long as it runs, for what it allocates while reading: the
-/// decompression context, a fragment lent by the backend, and one decoded journal row of
-/// `columns` columns. Blocks are read one at a time, so the fragment is counted once, whatever
-/// the number of ways.
-fn standing_memory(columns: usize) -> u64 {
+/// decompression context, the `lent` bytes of a fragment lent by the backend, and one decoded
+/// journal row of `columns` columns. Chunks are opened and blocks read one at a time, so one
+/// fragment is lent at once, whatever the number of ways: the largest of the chunks' (see
+/// [`lent_memory`]).
+fn standing_memory(columns: usize, lent: u64) -> u64 {
     let row = size_of::<StoredRow<'static>>() + columns * size_of::<StoredValue<'static>>();
-    DECOMPRESSION_CONTEXT + MAX_FRAGMENT_LEN as u64 + row as u64
+    DECOMPRESSION_CONTEXT + lent + row as u64
 }
 
 /// What a merge of `ways` chunk ways and a head selection of `selected` rows reserves before
@@ -244,14 +280,17 @@ fn standing_memory(columns: usize) -> u64 {
 ///
 /// - each way: its state, its heap entry, and its stripe at [`BUILDER_STRIPE_ROWS`];
 /// - the head's way, its heap entry, and its selection;
-/// - the [standing memory](standing_memory) of the scan.
+/// - the [standing memory](standing_memory) of the scan, with a lent fragment of `lent`
+///   bytes.
 ///
 /// The shared decode buffers and the page are reserved as they grow, and each open chunk
 /// reserves its directory.
-pub(crate) fn merge_memory(ways: usize, selected: usize, columns: usize) -> u64 {
+pub(crate) fn merge_memory(ways: usize, selected: usize, columns: usize, lent: u64) -> u64 {
     let entry = (size_of::<Way<'static>>() + size_of::<Reverse<(Rank, usize)>>()) as u64;
     let head = entry + (selected * size_of::<Selected<'static>>()) as u64;
-    ways as u64 * (entry + stripe_bytes(BUILDER_STRIPE_ROWS)) + head + standing_memory(columns)
+    ways as u64 * (entry + stripe_bytes(BUILDER_STRIPE_ROWS))
+        + head
+        + standing_memory(columns, lent)
 }
 
 impl<S: Storage> Snapshot<S> {
@@ -260,6 +299,7 @@ impl<S: Storage> Snapshot<S> {
         scan(
             self.storage(),
             self.version(),
+            self.catalog(),
             self.schema(),
             self.budget(),
             query,
@@ -274,6 +314,9 @@ pub(crate) struct ReadLog {
     /// The chunks opened, in order.
     #[cfg(test)]
     pub(crate) opened: Vec<ChunkId>,
+    /// The ways of chunks each merge admitted.
+    #[cfg(test)]
+    pub(crate) ways: Vec<usize>,
     /// The blocks decoded: chunk, chunk column and block.
     #[cfg(test)]
     pub(crate) decoded: Vec<(ChunkId, u16, u32)>,
@@ -285,6 +328,11 @@ impl ReadLog {
         self.opened.push(_chunk);
     }
 
+    fn admitted(&mut self, _ways: usize) {
+        #[cfg(test)]
+        self.ways.push(_ways);
+    }
+
     fn decoded(&mut self, _block: (ChunkId, u16, u32)) {
         #[cfg(test)]
         self.decoded.push(_block);
@@ -292,10 +340,11 @@ impl ReadLog {
 }
 
 /// The scan behind [`Snapshot::scan_events`], over the parts of a snapshot, which logs what
-/// it reads into `log`.
+/// it reads into `log`. The page keeps `catalog`, the token of the snapshot's catalog.
 pub(crate) fn scan<R: StorageRead>(
     storage: &R,
     version: &Version,
+    catalog: CatalogToken,
     schema: &Schema,
     budget: &MemoryBudget,
     query: &EventQuery<'_>,
@@ -321,13 +370,32 @@ pub(crate) fn scan<R: StorageRead>(
             }
         );
     }
+    let watermark = match spec.extent {
+        ExtentSpec::Window(width) => {
+            let width = Span::from_duration(width)
+                .expect("a valid schema's windows are positive whole milliseconds");
+            manifest::read_watermark(storage, StreamRef::Events(stream))
+                .context(ReadWatermarkSnafu)?
+                .map(|expired| retained_from(width, expired))
+        }
+        // Retention does not expire an epoch stream's extents yet (`maintain`).
+        ExtentSpec::Epoch => None,
+    };
+    let truncated_by_retention = watermark.is_some_and(|watermark| query.range.start() < watermark);
+    let query = &EventQuery {
+        range: retained(query.range, watermark),
+        ..*query
+    };
     let reservation = budget
         .try_reserve("event scan", 0)
         .context(ReservePageSnafu)?;
     let Some(bounds) = Bounds::new(query) else {
         return Ok(EventPage {
             events: Vec::new(),
+            catalog,
             cursor: None,
+            truncated_by_retention,
+            retention_watermark: watermark,
             held: reservation,
         });
     };
@@ -361,9 +429,21 @@ pub(crate) fn scan<R: StorageRead>(
     let held = scan.ledger.reservation.split(page_bytes(&events));
     Ok(EventPage {
         events,
+        catalog,
         cursor,
+        truncated_by_retention,
+        retention_watermark: watermark,
         held,
     })
+}
+
+/// The part of `range` from `watermark` on, empty when it all lies before.
+fn retained(range: TimeRange, watermark: Option<Timestamp>) -> TimeRange {
+    let Some(watermark) = watermark else {
+        return range;
+    };
+    let start = range.start().max(watermark).min(range.end());
+    TimeRange::new(start, range.end()).expect("the start is clamped to the end")
 }
 
 /// The bytes a page's events hold, which [`Scan::materialize`] reserved before it allocated
@@ -538,7 +618,11 @@ impl Ledger {
 #[derive(Clone, Copy, Debug)]
 struct Link {
     chunk: ChunkId,
+    /// Fragment 0's length, as the chunk's manifest entry records it.
+    fragment0: u32,
     keys: (i64, i64),
+    /// The sorted run the chunk belongs to, as its manifest entry records it.
+    run: u64,
     chain: usize,
 }
 
@@ -565,6 +649,8 @@ struct ChunkWay {
 
 struct OpenChunk {
     chunk: ChunkId,
+    /// Fragment 0's length, as the chunk's manifest entry records it.
+    fragment0: u32,
     /// It holds a reservation of its directory's bytes.
     reader: ChunkReader,
     /// The rows the scan has not passed yet.
@@ -613,7 +699,12 @@ struct Position<'s> {
 }
 
 enum Source<'s> {
-    Chunk { chunk: ChunkId, row: u32 },
+    Chunk {
+        chunk: ChunkId,
+        /// Fragment 0's length, to open the chunk again by.
+        fragment0: u32,
+        row: u32,
+    },
     Head(Rows<'s>),
 }
 
@@ -654,13 +745,22 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         // The selection holds one row past the limit before it drops the worst.
         let selected = head_rows.min(limit) + 1;
         let columns = self.spec.columns.len();
+        // The largest fragment one of the chunks lends, once each entry is checked.
+        let mut lent = 0;
+        for link in &links {
+            check_recorded(link.fragment0).context(OpenChunkSnafu {
+                chunk: link.chunk.0,
+            })?;
+            lent = lent.max(lent_memory(link.fragment0));
+        }
+        self.log.admitted(chains.len());
         let admit = |error| AdmitScanSnafu { ways: chains.len() }.into_error(error);
         self.ledger
-            .admit(merge_memory(chains.len(), selected, columns))
+            .admit(merge_memory(chains.len(), selected, columns, lent))
             .map_err(admit)?;
         // Within what the admission reserved.
         let entries = chains.len() + 1;
-        let held = standing_memory(columns)
+        let held = standing_memory(columns, lent)
             + (entries * (size_of::<Way<'_>>() + size_of::<Reverse<(Rank, usize)>>())) as u64
             + (selected * size_of::<Selected<'_>>()) as u64;
         self.ledger.alloc(held).map_err(admit)?;
@@ -721,7 +821,9 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 }
                 let link = Link {
                     chunk: listed.chunk,
+                    fragment0: listed.entry.fragment0,
                     keys: (first, last),
+                    run: listed.entry.run,
                     chain: 0,
                 };
                 match ledger.push(&mut links, link) {
@@ -836,6 +938,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 pass(&mut open.rows, row, self.direction);
                 Source::Chunk {
                     chunk: open.chunk,
+                    fragment0: open.fragment0,
                     row,
                 }
             }
@@ -857,7 +960,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
                 let Some(link) = next else {
                     return Ok(None);
                 };
-                way.open = Some(self.open(links[link].chunk)?);
+                way.open = Some(self.open(links[link].chunk, links[link].fragment0)?);
                 continue;
             };
             let Some(row) = next_row(&open.rows, self.direction) else {
@@ -882,17 +985,19 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
         }
     }
 
-    /// Opens a chunk, which reserves its directory from the scan's budget.
-    fn open(&mut self, chunk: ChunkId) -> Result<OpenChunk, EventScanError> {
+    /// Opens a chunk whose fragment 0 is `fragment0` bytes long, which reserves its directory
+    /// from the scan's budget.
+    fn open(&mut self, chunk: ChunkId, fragment0: u32) -> Result<OpenChunk, EventScanError> {
         self.log.opened(chunk);
         let source = StoredChunk {
             storage: self.storage,
             chunk,
         };
-        let reader =
-            ChunkReader::open(&source, self.budget).context(OpenChunkSnafu { chunk: chunk.0 })?;
+        let reader = ChunkReader::open(&source, self.budget, fragment0)
+            .context(OpenChunkSnafu { chunk: chunk.0 })?;
         Ok(OpenChunk {
             chunk,
+            fragment0,
             rows: 0..reader.rows(),
             stripe: 0..0,
             reader,
@@ -1101,13 +1206,17 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             });
         }
         let place = |index: usize| match positions[index].source {
-            Source::Chunk { chunk, row } => (chunk, row),
+            Source::Chunk {
+                chunk,
+                fragment0,
+                row,
+            } => (chunk, fragment0, row),
             Source::Head(_) => unreachable!("only chunk positions are listed"),
         };
         chunked.sort_unstable_by_key(|&index| place(index));
         for group in chunked.chunk_by(|&a, &b| place(a).0 == place(b).0) {
-            let chunk = place(group[0]).0;
-            let open = self.open(chunk)?;
+            let (chunk, fragment0, _) = place(group[0]);
+            let open = self.open(chunk, fragment0)?;
             let at = At {
                 storage: self.storage,
                 chunk,
@@ -1116,7 +1225,7 @@ impl<'s, R: StorageRead> Scan<'s, '_, R> {
             let spec = self.spec;
             for (column, spec) in spec.columns.iter().enumerate() {
                 for &index in group {
-                    let row = place(index).1;
+                    let row = place(index).2;
                     let value = self.read_value(&at, spec.ty, column, row, decode)?;
                     events[index].values[column] = value;
                 }
@@ -1369,27 +1478,45 @@ fn below_64(range: RangeInclusive<i64>) -> u64 {
     (u64::MAX >> (63 - end) as u32) & (u64::MAX << start as u32)
 }
 
-/// Chains the links: in order of their first keys, each joins the first chain whose last
-/// chunk ends before it starts, or a new one. That takes as many chains as links overlap at
-/// one key. Sorts the links by chain and key, and returns each chain's range of them.
+/// Chains the links: in order of their first keys, each joins the chain whose last chunk is
+/// the one before it in its sorted run, or else the first chain whose last chunk ends before
+/// it starts, or a new one. That takes as many chains as links of different runs overlap at
+/// one key. Sorts the links by chain, key and id, which is a run's order, and returns each
+/// chain's range of them.
 fn chain(links: &mut [Link], ledger: &mut Ledger) -> Result<Vec<Range<usize>>, EventScanError> {
     links.sort_unstable_by_key(|link| (link.keys, link.chunk));
-    // There are at most as many chains as links.
-    let mut ends: Vec<i64> = ledger.vec(links.len()).context(ReserveChunkListSnafu)?;
-    for link in links.iter_mut() {
-        match ends.iter().position(|&end| end < link.keys.0) {
+    // Each chain's last link, by index; there are at most as many chains as links.
+    let mut lasts: Vec<usize> = ledger.vec(links.len()).context(ReserveChunkListSnafu)?;
+    for index in 0..links.len() {
+        let link = links[index];
+        // A run's chunks take consecutive ids, and the next starts at or after the key the
+        // last one ends at: they may share it, but never overlap past it.
+        let follows = |last: &Link| {
+            last.run == link.run
+                && last.chunk.0.checked_add(1) == Some(link.chunk.0)
+                && last.keys.1 <= link.keys.0
+        };
+        let chain = lasts
+            .iter()
+            .position(|&last| follows(&links[last]))
+            .or_else(|| {
+                lasts
+                    .iter()
+                    .position(|&last| links[last].keys.1 < link.keys.0)
+            });
+        links[index].chain = match chain {
             Some(chain) => {
-                ends[chain] = link.keys.1;
-                link.chain = chain;
+                lasts[chain] = index;
+                chain
             }
             None => {
-                link.chain = ends.len();
-                ends.push(link.keys.1);
+                lasts.push(index);
+                lasts.len() - 1
             }
-        }
+        };
     }
-    links.sort_unstable_by_key(|link| (link.chain, link.keys));
-    let mut chains = ledger.vec(ends.len()).context(ReserveChunkListSnafu)?;
+    links.sort_unstable_by_key(|link| (link.chain, link.keys, link.chunk));
+    let mut chains = ledger.vec(lasts.len()).context(ReserveChunkListSnafu)?;
     let mut start = 0;
     for index in 1..=links.len() {
         if index == links.len() || links[index].chain != links[start].chain {
@@ -1645,6 +1772,9 @@ pub enum EventScanError {
     #[snafu(display("the cursor is of epoch {cursor}, but the stream is at epoch {current}"))]
     CursorExpired { cursor: u64, current: u64 },
 
+    #[snafu(display("failed to read the deletion watermark of the stream"))]
+    ReadWatermark { source: ManifestError },
+
     #[snafu(display("failed to list the stream's chunks"))]
     ListChunks { source: ManifestError },
 
@@ -1723,7 +1853,7 @@ impl EventScanError {
             | Self::CursorExpired { .. }
             // zstd fails only when it cannot allocate its context.
             | Self::CreateDecoder { .. } => ErrorKind::Local,
-            Self::ListChunks { source } => source.kind(),
+            Self::ListChunks { source } | Self::ReadWatermark { source } => source.kind(),
             Self::ReserveChunkList { source }
             | Self::AdmitScan { source, .. }
             | Self::ReserveRead { source, .. }

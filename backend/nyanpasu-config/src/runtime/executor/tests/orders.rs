@@ -2,7 +2,7 @@ use serde_json::json;
 
 use super::support::*;
 use crate::{
-    clash::config::tun_stack::TunStack,
+    clash::config::{overrides::ManageableField, tun_stack::TunStack},
     profile::{Profiles, ScriptRuntime},
     runtime::{
         executor::{
@@ -35,6 +35,7 @@ pub fn base_inputs<'a>(
         whitelist_enabled: true,
         tun: TunParams {
             enable: false,
+            auto_route: ManageableField::Managed(true),
             flavor: TunFlavor::Standard {
                 stack: TunStack::Gvisor,
             },
@@ -423,6 +424,48 @@ fn unfiltered_profile_cannot_open_managed_proxy_ports() {
         .to_json();
     assert_eq!(configured["port"], json!(7892));
     assert_eq!(configured["socks-port"], json!(7893));
+}
+
+/// An unmanaged `auto-route` keeps the profile's value even where the field
+/// filter drops the rest of `tun`, while the TUN switch stays forced.
+#[test]
+fn unmanaged_auto_route_survives_field_filtering_while_tun_enable_stays_forced() {
+    for valid_fields in [vec![], vec!["tun"]] {
+        let profiles = profiles_with(
+            Some("sub-a"),
+            &[],
+            &valid_fields,
+            vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+        );
+        let content = MapContentSource::from_pairs(&[(
+            "sub-a.yaml",
+            "tun: { enable: false, auto-route: global, mtu: 1400 }\n",
+        )]);
+        let ov = overrides();
+        let mut inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
+        inputs.tun.auto_route = ManageableField::Unmanaged;
+        for whitelist_enabled in [false, true] {
+            inputs.whitelist_enabled = whitelist_enabled;
+            for enabled in [false, true] {
+                inputs.tun.enable = enabled;
+                let config = execute(&inputs, &content, &FakeScriptRunner::default())
+                    .unwrap()
+                    .final_config
+                    .to_json();
+                if !whitelist_enabled || valid_fields.contains(&"tun") {
+                    assert_eq!(config["tun"]["auto-route"], json!("global"));
+                    assert_eq!(config["tun"]["mtu"], json!(1400));
+                    assert_eq!(config["tun"]["enable"], json!(enabled));
+                } else if enabled {
+                    assert_eq!(config["tun"]["auto-route"], json!("global"));
+                    assert!(config["tun"].get("mtu").is_none());
+                    assert_eq!(config["tun"]["enable"], json!(true));
+                } else {
+                    assert!(config.get("tun").is_none());
+                }
+            }
+        }
+    }
 }
 
 /// #5609: a global Merge owns `tcp-concurrent` and `unified-delay` once they

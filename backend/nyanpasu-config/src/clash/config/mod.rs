@@ -39,6 +39,10 @@ pub struct ClashConfig {
     /// clash tun mode
     pub enable_tun_mode: bool,
 
+    /// Whether Nyanpasu forces `tun.auto-route` or leaves it to the profiles.
+    #[serde(default = "default_tun_auto_route")]
+    pub tun_auto_route: ManageableField<bool>,
+
     /// web ui list
     pub web_ui_list: Vec<String>,
 
@@ -85,12 +89,17 @@ fn default_expand_include_all() -> bool {
     true
 }
 
+fn default_tun_auto_route() -> ManageableField<bool> {
+    ManageableField::Managed(true)
+}
+
 /// The config of a fresh install.
 impl Default for ClashConfig {
     fn default() -> Self {
         Self {
             overrides: ClashGuardOverrides::default(),
             enable_tun_mode: false,
+            tun_auto_route: default_tun_auto_route(),
             web_ui_list: Vec::new(),
             enable_clash_fields: false,
             expand_include_all: default_expand_include_all(),
@@ -127,6 +136,52 @@ mod patch_tests {
         assert_eq!(config.socks_port, None);
         assert_eq!(config.http_port, None);
         assert!(!config.enable_clash_fields);
+    }
+
+    #[test]
+    fn tun_auto_route_defaults_to_managed_true_for_new_and_existing_configs() {
+        assert_eq!(
+            ClashConfig::default().tun_auto_route,
+            ManageableField::Managed(true)
+        );
+        for enabled in [false, true] {
+            let mut yaml = serde_yaml_ng::to_value(ClashConfig {
+                enable_tun_mode: enabled,
+                tun_stack: TunStack::System,
+                ..ClashConfig::default()
+            })
+            .unwrap();
+            yaml.as_mapping_mut().unwrap().remove("tun_auto_route");
+            let config: ClashConfig = serde_yaml_ng::from_value(yaml).unwrap();
+            assert_eq!(config.tun_auto_route, ManageableField::Managed(true));
+            assert_eq!(config.enable_tun_mode, enabled);
+            assert_eq!(config.tun_stack, TunStack::System);
+        }
+    }
+
+    #[test]
+    fn tun_auto_route_patches_round_trip_without_changing_the_tun_switch() {
+        let mut config = ClashConfig {
+            enable_tun_mode: true,
+            tun_stack: TunStack::System,
+            ..ClashConfig::default()
+        };
+        for field in [
+            ManageableField::Unmanaged,
+            ManageableField::Managed(false),
+            ManageableField::Managed(true),
+        ] {
+            let patch: ClashConfigPatch = serde_json::from_value(serde_json::json!({
+                "tun_auto_route": field,
+            }))
+            .unwrap();
+            config.apply(patch);
+            let saved = serde_yaml_ng::to_string(&config).unwrap();
+            let loaded: ClashConfig = serde_yaml_ng::from_str(&saved).unwrap();
+            assert_eq!(loaded.tun_auto_route, field);
+            assert!(loaded.enable_tun_mode);
+            assert_eq!(loaded.tun_stack, TunStack::System);
+        }
     }
 
     #[test]

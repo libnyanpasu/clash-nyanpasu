@@ -27,7 +27,10 @@ pub use ports::{PortError, ProfileContentSource, ScriptRunner};
 use error::{SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu};
 
 use crate::{
-    clash::config::{overrides::ClashGuardOverrides, tun_stack::TunStack},
+    clash::config::{
+        overrides::{ClashGuardOverrides, ManageableField},
+        tun_stack::TunStack,
+    },
     profile::{
         ProfileDefinition, ProfileId, Profiles, ScriptRuntime, TransformDefinition, TransformKind,
     },
@@ -83,6 +86,7 @@ pub struct ResolvedPortBindings {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TunParams {
     pub enable: bool,
+    pub auto_route: ManageableField<bool>,
     pub flavor: TunFlavor,
     /// Platform conditional as input: caller passes `cfg!(windows)` (spec §7.4).
     pub windows_fake_ip_filter: bool,

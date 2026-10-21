@@ -108,9 +108,21 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
     detail: async () => createLogsFixture(1)[0].record,
   }
 
+  const coreLogsLoading = { ...store.core, data: [], isLoading: true }
+
   return {
     ...(await importOriginal<object>()),
-    useClashLogs: () => useSyncExternalStore(store.subscribe, () => store.core),
+    // Like the real hook, a mounted viewer starts empty and receives its
+    // first page from IPC a moment later.
+    useClashLogs: () => {
+      const [loaded, setLoaded] = useState(false)
+      const core = useSyncExternalStore(store.subscribe, () => store.core)
+      useEffect(() => {
+        const timer = setTimeout(() => setLoaded(true), 30)
+        return () => clearTimeout(timer)
+      }, [])
+      return loaded ? core : coreLogsLoading
+    },
     // Like the real hook, a mounted viewer starts empty and receives its
     // first page from IPC a moment later.
     useFileLogs: () => {

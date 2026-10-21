@@ -84,11 +84,13 @@ platforms = ['windows']
 notes = 'Prebuilt Binaries License from wintun-0.14.1.zip.'
 
 [[component]]
-name = 'uwp-tool'
+name = 'enable-loopback'
 kind = 'resource'
-homepage = 'https://github.com/Kuingsmile/uwp-tool'
+homepage = 'https://github.com/libnyanpasu/enable-loopback'
+license = 'MIT'
+license-files = ['licenses/enable-loopback-LICENSE.txt']
 platforms = ['windows']
-notes = 'Provides enableLoopback.exe; the upstream publishes no license.'
+notes = 'Provides enableLoopback.exe.'
 
 [[component]]
 name = 'Natural Earth'

@@ -8,10 +8,7 @@ export default function NyanpasuVersion() {
   const { currentVersion } = useNyanpasuUpdate()
 
   return (
-    <SettingsCard
-      className="space-y-2 md:row-span-2"
-      data-slot="about-version-card"
-    >
+    <SettingsCard className="space-y-2" data-slot="about-version-card">
       <SettingsCardContent className="p-3 pb-0">
         <div
           className="flex flex-col items-center gap-3 px-5 py-6"

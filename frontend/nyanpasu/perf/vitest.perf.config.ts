@@ -162,7 +162,11 @@ export default defineConfig({
   },
   test: {
     include: ['perf/**/*.bench.test.tsx'],
-    setupFiles: ['perf/fixtures/app-setup.ts'],
+    // The render census hooks React before it loads.
+    setupFiles: [
+      'perf/fixtures/render-census.ts',
+      'perf/fixtures/app-setup.ts',
+    ],
     testTimeout: 300_000,
     browser: {
       enabled: true,

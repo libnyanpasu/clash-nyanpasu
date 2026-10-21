@@ -76,10 +76,20 @@ working tree ends with the changes applied.
 | `VITE_PERF_PROFILE`        | unset         | A path to write a `.cpuprofile` of 6 more actions (Chromium only)                 |
 | `VITE_PERF_PROFILE_ACTION` | `open`        | Traffic: `poll` profiles six polls of the first page, `switch` six switches to it |
 | `VITE_PERF_TRACE_REFLOW`   | unset         | `1` logs every layout read of 2 ms or more with its call site                     |
+| `VITE_PERF_RENDERS`        | unset         | `1` adds the components each action rendered to its report                        |
 
-A `.cpuprofile` opens in Chrome DevTools' Performance panel. WebKit has no
-profiler here; use `VITE_PERF_TRACE_REFLOW` and `avgSyncTime` to split its time
-between JavaScript and style/layout.
+## Finding where the time goes
+
+- `VITE_PERF_RENDERS=1` adds `renders` to each report, per action: its
+  commits, the components every commit rendered as `[mounts, updates]`
+  (`all`), those of the commit that rendered the most (`largest`), and the
+  components that rendered while their parent did not, with their nearest
+  parents (`unprompted`): a state, store or context update starts there.
+  Counting walks the fiber tree after each commit, so compare the timings of
+  such runs only with each other.
+- A `.cpuprofile` opens in Chrome DevTools' Performance panel. WebKit has no
+  profiler here; use `VITE_PERF_TRACE_REFLOW` and `avgSyncTime` to split its
+  time between JavaScript and style/layout.
 
 ## Adding a benchmark
 

@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react'
 import { keepReturn } from '@/components/router/cross-navigation'
 import { ReturnButton } from '@/components/router/return-button'
 import { useCrossNavigate } from '@/components/router/use-cross-navigate'
@@ -7,7 +8,7 @@ import {
   useMatchRoute,
   useNavigate,
 } from '@tanstack/react-router'
-import { trafficSearchSchema } from './_modules/search'
+import { trafficSearchSchema, type TrafficSearch } from './_modules/search'
 import { TRAFFIC_PAGES } from './_modules/traffic-context'
 import TrafficLayout from './_modules/traffic-layout'
 
@@ -44,24 +45,38 @@ function RouteComponent() {
     ) ?? TRAFFIC_PAGES[0]
   const { scope, range, filters } = search
 
+  // Stable, so switching between the pages leaves the page context alone.
+  const handleSearchChange = useCallback(
+    (update: Partial<TrafficSearch>) =>
+      navigate({
+        // The current child page, whichever it is.
+        to: '.',
+        search: (previous: TrafficSearch) => ({
+          ...previous,
+          ...update,
+          view: undefined,
+        }),
+        state: keepReturn,
+      }),
+    [navigate],
+  )
+  const handleViewConnections = useCallback(
+    () =>
+      crossNavigate({
+        from: 'traffic',
+        to: { to: '/main/connections', search: { scope, range, filters } },
+      }),
+    [crossNavigate, scope, range, filters],
+  )
+  const toolbarStart = useMemo(() => <ReturnButton />, [])
+
   return (
     <TrafficLayout
       view={page.view}
       search={search}
-      onSearchChange={(update) =>
-        navigate({
-          to: page.to,
-          search: (previous) => ({ ...previous, ...update, view: undefined }),
-          state: keepReturn,
-        })
-      }
-      onViewConnections={() =>
-        crossNavigate({
-          from: 'traffic',
-          to: { to: '/main/connections', search: { scope, range, filters } },
-        })
-      }
-      toolbarStart={<ReturnButton />}
+      onSearchChange={handleSearchChange}
+      onViewConnections={handleViewConnections}
+      toolbarStart={toolbarStart}
     />
   )
 }

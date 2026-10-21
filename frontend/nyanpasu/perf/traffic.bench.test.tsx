@@ -56,6 +56,7 @@ declare module 'vitest/browser' {
   interface BrowserCommands {
     throttleCpu: (rate: number) => Promise<void>
     startCpuProfile: () => Promise<void>
+    pauseCpuProfile: () => Promise<void>
     stopCpuProfile: (file: string) => Promise<void>
   }
 }
@@ -372,13 +373,15 @@ test(`traffic pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {
         prepare(tick)
         await measureFrames(() => reports.publish(tick), 900)
       } else if (action === 'switch') {
-        // The way back to the overview is a switch as well.
         prepare(tick)
         await measureFrames(() => {
           go(page)
         }, 900)
+        // The way back to the overview is not part of the profile.
+        await commands.pauseCpuProfile()
         await go('overview')
         await settle(900)
+        await commands.startCpuProfile()
       } else {
         prepare(tick)
         await measureFrames(() => {

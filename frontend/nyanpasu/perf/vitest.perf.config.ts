@@ -29,6 +29,44 @@ type CdpSession = {
 
 let profilerSession: CdpSession | undefined
 
+type CpuProfile = {
+  nodes: { id: number; children?: number[] }[]
+  startTime: number
+  endTime: number
+  samples: number[]
+  timeDeltas: number[]
+}
+
+// Pieces recorded before a pause, joined into one profile when it stops.
+let profilePieces: CpuProfile[] = []
+
+const joinProfiles = ([first, ...rest]: CpuProfile[]): CpuProfile =>
+  rest.reduce((joined, piece) => {
+    const offset = Math.max(...joined.nodes.map((node) => node.id))
+    const id = (node: number) => node + offset
+
+    return {
+      nodes: [
+        ...joined.nodes,
+        ...piece.nodes.map((node) => ({
+          ...node,
+          id: id(node.id),
+          children: node.children?.map(id),
+        })),
+      ],
+      startTime: joined.startTime,
+      endTime: piece.endTime,
+      samples: [...joined.samples, ...piece.samples.map(id)],
+      // The pause shows as a gap before the piece's first sample.
+      timeDeltas: [
+        ...joined.timeDeltas,
+        ...piece.timeDeltas.map((delta, index) =>
+          index === 0 ? delta + piece.startTime - joined.endTime : delta,
+        ),
+      ],
+    }
+  }, first)
+
 const newCdpSession: (
   ...args: Parameters<BrowserCommand<[]>>
 ) => Promise<CdpSession> = async (ctx) => {
@@ -50,23 +88,35 @@ const throttleCpu: BrowserCommand<[rate: number]> = async (ctx, rate) => {
 }
 
 const startCpuProfile: BrowserCommand<[]> = async (ctx) => {
-  profilerSession = await newCdpSession(ctx)
+  profilerSession ??= await newCdpSession(ctx)
   await profilerSession.send('Profiler.enable')
   await profilerSession.send('Profiler.setSamplingInterval', { interval: 100 })
   await profilerSession.send('Profiler.start')
 }
 
-const stopCpuProfile: BrowserCommand<[file: string]> = async (_ctx, file) => {
+const takeCpuProfile = async () => {
   if (!profilerSession) {
     throw new Error('startCpuProfile was not called')
   }
 
   const { profile } = (await profilerSession.send('Profiler.stop')) as {
-    profile: unknown
+    profile: CpuProfile
   }
+
+  return profile
+}
+
+/** Stops recording until the next `startCpuProfile`, into the same profile. */
+const pauseCpuProfile: BrowserCommand<[]> = async () => {
+  profilePieces.push(await takeCpuProfile())
+}
+
+const stopCpuProfile: BrowserCommand<[file: string]> = async (_ctx, file) => {
+  const profile = joinProfiles([...profilePieces, await takeCpuProfile()])
   const fs = await import('node:fs/promises')
   await fs.writeFile(file, JSON.stringify(profile))
   profilerSession = undefined
+  profilePieces = []
 }
 
 export default defineConfig({
@@ -120,7 +170,12 @@ export default defineConfig({
       provider: playwright(),
       instances: [{ browser }],
       viewport: { width: 1400, height: 900 },
-      commands: { throttleCpu, startCpuProfile, stopCpuProfile },
+      commands: {
+        throttleCpu,
+        startCpuProfile,
+        pauseCpuProfile,
+        stopCpuProfile,
+      },
     },
   },
 })

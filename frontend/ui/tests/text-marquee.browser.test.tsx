@@ -11,6 +11,9 @@ const STYLES = `
   .overflow-hidden { overflow: hidden }
   .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .flex { display: flex }
+  .relative { position: relative }
+  .absolute { position: absolute }
+  .top-0 { top: 0 }
   .whitespace-nowrap { white-space: nowrap }
 `
 
@@ -32,6 +35,36 @@ function mount(onTestFinished: (fn: () => void) => void) {
 
 const content = (container: HTMLElement) =>
   container.querySelector<HTMLElement>('[data-slot="text-marquee-content"]')!
+
+test('scrolling copies keep their gap when text exceeds the container width', async ({
+  onTestFinished,
+}) => {
+  const { container, root } = mount(onTestFinished)
+  root.render(
+    <TextMarquee pauseDuration={0} gap={32}>
+      {LONG}
+    </TextMarquee>,
+  )
+
+  await expect.poll(() => content(container)?.getAnimations().length).toBe(1)
+  const animation = content(container).getAnimations()[0]
+  animation.pause()
+
+  for (const progress of [0.25, 0.75]) {
+    animation.currentTime =
+      Number(animation.effect!.getTiming().duration) * progress
+    const [first, second] = content(container).children
+    const firstText = document.createRange()
+    firstText.selectNodeContents(first)
+    const secondText = document.createRange()
+    secondText.selectNodeContents(second)
+
+    expect(
+      secondText.getBoundingClientRect().left -
+        firstText.getBoundingClientRect().right,
+    ).toBeCloseTo(32, 0)
+  }
+})
 
 test('an overflowing marquee scrolls on the compositor, not per frame', async ({
   onTestFinished,

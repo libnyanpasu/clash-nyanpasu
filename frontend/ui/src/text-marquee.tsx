@@ -208,9 +208,9 @@ export default function TextMarquee({
               intrinsic size: a wider animated layout would let the text fit,
               switch the marquee off and shrink it again, flickering forever. */}
           <span
-            className="absolute top-0 left-full"
+            className="absolute top-0"
             style={{
-              paddingLeft: gap,
+              left: textWidth + gap,
             }}
             data-slot="text-marquee-content-item"
             data-index="1"

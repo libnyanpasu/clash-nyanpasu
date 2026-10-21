@@ -38,8 +38,6 @@ import { Route as mainMainRulesIndexRouteImport } from './pages/(main)/main/rule
 import { Route as mainMainSettingsIndexRouteImport } from './pages/(main)/main/settings/index'
 import { Route as mainMainSettingsAboutRouteRouteImport } from './pages/(main)/main/settings/about/route'
 import { Route as mainMainSettingsDebugRouteRouteImport } from './pages/(main)/main/settings/debug/route'
-import { Route as mainMainSettingsNyanpasuRouteRouteImport } from './pages/(main)/main/settings/nyanpasu/route'
-import { Route as mainMainSettingsUserInterfaceRouteRouteImport } from './pages/(main)/main/settings/user-interface/route'
 import { Route as mainMainTopologyIndexRouteImport } from './pages/(main)/main/topology/index'
 import { Route as trayMenuTrayMenuProxiesIndexRouteImport } from './pages/(tray-menu)/tray-menu/proxies/index'
 import { Route as trayMenuTrayMenuProxiesGroupRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/route'
@@ -64,6 +62,11 @@ import { Route as mainMainSettingsClashCoreManagerIndexRouteImport } from './pag
 import { Route as mainMainSettingsClashCoreIndexRouteImport } from './pages/(main)/main/settings/clash/core/index'
 import { Route as mainMainSettingsClashNetworkIndexRouteImport } from './pages/(main)/main/settings/clash/network/index'
 import { Route as mainMainSettingsClashRuntimeIndexRouteImport } from './pages/(main)/main/settings/clash/runtime/index'
+import { Route as mainMainSettingsNyanpasuInterfaceIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/interface/index'
+import { Route as mainMainSettingsNyanpasuLogsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/logs/index'
+import { Route as mainMainSettingsNyanpasuShortcutsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/shortcuts/index'
+import { Route as mainMainSettingsNyanpasuTrayIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/tray/index'
+import { Route as mainMainSettingsNyanpasuWidgetIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/widget/index'
 import { Route as mainMainSettingsSystemProxyIndexRouteImport } from './pages/(main)/main/settings/system/proxy/index'
 import { Route as mainMainSettingsSystemServiceIndexRouteImport } from './pages/(main)/main/settings/system/service/index'
 
@@ -219,18 +222,6 @@ const mainMainSettingsDebugRouteRoute =
     path: '/debug',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
-const mainMainSettingsNyanpasuRouteRoute =
-  mainMainSettingsNyanpasuRouteRouteImport.update({
-    id: '/nyanpasu',
-    path: '/nyanpasu',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
-const mainMainSettingsUserInterfaceRouteRoute =
-  mainMainSettingsUserInterfaceRouteRouteImport.update({
-    id: '/user-interface',
-    path: '/user-interface',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
 const mainMainTopologyIndexRoute = mainMainTopologyIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -374,6 +365,36 @@ const mainMainSettingsClashRuntimeIndexRoute =
     path: '/clash/runtime/',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
+const mainMainSettingsNyanpasuInterfaceIndexRoute =
+  mainMainSettingsNyanpasuInterfaceIndexRouteImport.update({
+    id: '/nyanpasu/interface/',
+    path: '/nyanpasu/interface/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsNyanpasuLogsIndexRoute =
+  mainMainSettingsNyanpasuLogsIndexRouteImport.update({
+    id: '/nyanpasu/logs/',
+    path: '/nyanpasu/logs/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsNyanpasuShortcutsIndexRoute =
+  mainMainSettingsNyanpasuShortcutsIndexRouteImport.update({
+    id: '/nyanpasu/shortcuts/',
+    path: '/nyanpasu/shortcuts/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsNyanpasuTrayIndexRoute =
+  mainMainSettingsNyanpasuTrayIndexRouteImport.update({
+    id: '/nyanpasu/tray/',
+    path: '/nyanpasu/tray/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsNyanpasuWidgetIndexRoute =
+  mainMainSettingsNyanpasuWidgetIndexRouteImport.update({
+    id: '/nyanpasu/widget/',
+    path: '/nyanpasu/widget/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainSettingsSystemProxyIndexRoute =
   mainMainSettingsSystemProxyIndexRouteImport.update({
     id: '/system/proxy/',
@@ -406,8 +427,6 @@ export interface FileRoutesByFullPath {
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRouteWithChildren
   '/main/settings/debug': typeof mainMainSettingsDebugRouteRouteWithChildren
-  '/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
-  '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/editor/css/': typeof editorEditorCssIndexRoute
   '/editor/profile/': typeof editorEditorProfileIndexRoute
@@ -442,6 +461,11 @@ export interface FileRoutesByFullPath {
   '/main/settings/clash/core/': typeof mainMainSettingsClashCoreIndexRoute
   '/main/settings/clash/network/': typeof mainMainSettingsClashNetworkIndexRoute
   '/main/settings/clash/runtime/': typeof mainMainSettingsClashRuntimeIndexRoute
+  '/main/settings/nyanpasu/interface/': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
+  '/main/settings/nyanpasu/logs/': typeof mainMainSettingsNyanpasuLogsIndexRoute
+  '/main/settings/nyanpasu/shortcuts/': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
+  '/main/settings/nyanpasu/tray/': typeof mainMainSettingsNyanpasuTrayIndexRoute
+  '/main/settings/nyanpasu/widget/': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/main/settings/system/proxy/': typeof mainMainSettingsSystemProxyIndexRoute
   '/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
 }
@@ -451,8 +475,6 @@ export interface FileRoutesByTo {
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
-  '/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
-  '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/editor/css': typeof editorEditorCssIndexRoute
   '/editor/profile': typeof editorEditorProfileIndexRoute
@@ -487,6 +509,11 @@ export interface FileRoutesByTo {
   '/main/settings/clash/core': typeof mainMainSettingsClashCoreIndexRoute
   '/main/settings/clash/network': typeof mainMainSettingsClashNetworkIndexRoute
   '/main/settings/clash/runtime': typeof mainMainSettingsClashRuntimeIndexRoute
+  '/main/settings/nyanpasu/interface': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
+  '/main/settings/nyanpasu/logs': typeof mainMainSettingsNyanpasuLogsIndexRoute
+  '/main/settings/nyanpasu/shortcuts': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
+  '/main/settings/nyanpasu/tray': typeof mainMainSettingsNyanpasuTrayIndexRoute
+  '/main/settings/nyanpasu/widget': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/main/settings/system/proxy': typeof mainMainSettingsSystemProxyIndexRoute
   '/main/settings/system/service': typeof mainMainSettingsSystemServiceIndexRoute
 }
@@ -511,8 +538,6 @@ export interface FileRoutesById {
   '/(main)/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/(main)/main/settings/about': typeof mainMainSettingsAboutRouteRouteWithChildren
   '/(main)/main/settings/debug': typeof mainMainSettingsDebugRouteRouteWithChildren
-  '/(main)/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
-  '/(main)/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/(tray-menu)/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/(editor)/editor/css/': typeof editorEditorCssIndexRoute
   '/(editor)/editor/profile/': typeof editorEditorProfileIndexRoute
@@ -547,6 +572,11 @@ export interface FileRoutesById {
   '/(main)/main/settings/clash/core/': typeof mainMainSettingsClashCoreIndexRoute
   '/(main)/main/settings/clash/network/': typeof mainMainSettingsClashNetworkIndexRoute
   '/(main)/main/settings/clash/runtime/': typeof mainMainSettingsClashRuntimeIndexRoute
+  '/(main)/main/settings/nyanpasu/interface/': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
+  '/(main)/main/settings/nyanpasu/logs/': typeof mainMainSettingsNyanpasuLogsIndexRoute
+  '/(main)/main/settings/nyanpasu/shortcuts/': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
+  '/(main)/main/settings/nyanpasu/tray/': typeof mainMainSettingsNyanpasuTrayIndexRoute
+  '/(main)/main/settings/nyanpasu/widget/': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/(main)/main/settings/system/proxy/': typeof mainMainSettingsSystemProxyIndexRoute
   '/(main)/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
 }
@@ -571,8 +601,6 @@ export interface FileRouteTypes {
     | '/main/profiles/inspect'
     | '/main/settings/about'
     | '/main/settings/debug'
-    | '/main/settings/nyanpasu'
-    | '/main/settings/user-interface'
     | '/tray-menu/proxies/group'
     | '/editor/css/'
     | '/editor/profile/'
@@ -607,6 +635,11 @@ export interface FileRouteTypes {
     | '/main/settings/clash/core/'
     | '/main/settings/clash/network/'
     | '/main/settings/clash/runtime/'
+    | '/main/settings/nyanpasu/interface/'
+    | '/main/settings/nyanpasu/logs/'
+    | '/main/settings/nyanpasu/shortcuts/'
+    | '/main/settings/nyanpasu/tray/'
+    | '/main/settings/nyanpasu/widget/'
     | '/main/settings/system/proxy/'
     | '/main/settings/system/service/'
   fileRoutesByTo: FileRoutesByTo
@@ -616,8 +649,6 @@ export interface FileRouteTypes {
     | '/tray-menu'
     | '/main/profiles/global'
     | '/main/profiles/inspect'
-    | '/main/settings/nyanpasu'
-    | '/main/settings/user-interface'
     | '/tray-menu/proxies/group'
     | '/editor/css'
     | '/editor/profile'
@@ -652,6 +683,11 @@ export interface FileRouteTypes {
     | '/main/settings/clash/core'
     | '/main/settings/clash/network'
     | '/main/settings/clash/runtime'
+    | '/main/settings/nyanpasu/interface'
+    | '/main/settings/nyanpasu/logs'
+    | '/main/settings/nyanpasu/shortcuts'
+    | '/main/settings/nyanpasu/tray'
+    | '/main/settings/nyanpasu/widget'
     | '/main/settings/system/proxy'
     | '/main/settings/system/service'
   id:
@@ -675,8 +711,6 @@ export interface FileRouteTypes {
     | '/(main)/main/profiles/inspect'
     | '/(main)/main/settings/about'
     | '/(main)/main/settings/debug'
-    | '/(main)/main/settings/nyanpasu'
-    | '/(main)/main/settings/user-interface'
     | '/(tray-menu)/tray-menu/proxies/group'
     | '/(editor)/editor/css/'
     | '/(editor)/editor/profile/'
@@ -711,6 +745,11 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/clash/core/'
     | '/(main)/main/settings/clash/network/'
     | '/(main)/main/settings/clash/runtime/'
+    | '/(main)/main/settings/nyanpasu/interface/'
+    | '/(main)/main/settings/nyanpasu/logs/'
+    | '/(main)/main/settings/nyanpasu/shortcuts/'
+    | '/(main)/main/settings/nyanpasu/tray/'
+    | '/(main)/main/settings/nyanpasu/widget/'
     | '/(main)/main/settings/system/proxy/'
     | '/(main)/main/settings/system/service/'
   fileRoutesById: FileRoutesById
@@ -926,20 +965,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsDebugRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
-    '/(main)/main/settings/nyanpasu': {
-      id: '/(main)/main/settings/nyanpasu'
-      path: '/nyanpasu'
-      fullPath: '/main/settings/nyanpasu'
-      preLoaderRoute: typeof mainMainSettingsNyanpasuRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
-    '/(main)/main/settings/user-interface': {
-      id: '/(main)/main/settings/user-interface'
-      path: '/user-interface'
-      fullPath: '/main/settings/user-interface'
-      preLoaderRoute: typeof mainMainSettingsUserInterfaceRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
     '/(main)/main/topology/': {
       id: '/(main)/main/topology/'
       path: '/'
@@ -1108,6 +1133,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsClashRuntimeIndexRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
+    '/(main)/main/settings/nyanpasu/interface/': {
+      id: '/(main)/main/settings/nyanpasu/interface/'
+      path: '/nyanpasu/interface'
+      fullPath: '/main/settings/nyanpasu/interface/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuInterfaceIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/nyanpasu/logs/': {
+      id: '/(main)/main/settings/nyanpasu/logs/'
+      path: '/nyanpasu/logs'
+      fullPath: '/main/settings/nyanpasu/logs/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuLogsIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/nyanpasu/shortcuts/': {
+      id: '/(main)/main/settings/nyanpasu/shortcuts/'
+      path: '/nyanpasu/shortcuts'
+      fullPath: '/main/settings/nyanpasu/shortcuts/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuShortcutsIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/nyanpasu/tray/': {
+      id: '/(main)/main/settings/nyanpasu/tray/'
+      path: '/nyanpasu/tray'
+      fullPath: '/main/settings/nyanpasu/tray/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuTrayIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/nyanpasu/widget/': {
+      id: '/(main)/main/settings/nyanpasu/widget/'
+      path: '/nyanpasu/widget'
+      fullPath: '/main/settings/nyanpasu/widget/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuWidgetIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
     '/(main)/main/settings/system/proxy/': {
       id: '/(main)/main/settings/system/proxy/'
       path: '/system/proxy'
@@ -1261,14 +1321,17 @@ const mainMainSettingsDebugRouteRouteWithChildren =
 interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRouteWithChildren
   mainMainSettingsDebugRouteRoute: typeof mainMainSettingsDebugRouteRouteWithChildren
-  mainMainSettingsNyanpasuRouteRoute: typeof mainMainSettingsNyanpasuRouteRoute
-  mainMainSettingsUserInterfaceRouteRoute: typeof mainMainSettingsUserInterfaceRouteRoute
   mainMainSettingsIndexRoute: typeof mainMainSettingsIndexRoute
   mainMainSettingsClashControlIndexRoute: typeof mainMainSettingsClashControlIndexRoute
   mainMainSettingsClashCoreManagerIndexRoute: typeof mainMainSettingsClashCoreManagerIndexRoute
   mainMainSettingsClashCoreIndexRoute: typeof mainMainSettingsClashCoreIndexRoute
   mainMainSettingsClashNetworkIndexRoute: typeof mainMainSettingsClashNetworkIndexRoute
   mainMainSettingsClashRuntimeIndexRoute: typeof mainMainSettingsClashRuntimeIndexRoute
+  mainMainSettingsNyanpasuInterfaceIndexRoute: typeof mainMainSettingsNyanpasuInterfaceIndexRoute
+  mainMainSettingsNyanpasuLogsIndexRoute: typeof mainMainSettingsNyanpasuLogsIndexRoute
+  mainMainSettingsNyanpasuShortcutsIndexRoute: typeof mainMainSettingsNyanpasuShortcutsIndexRoute
+  mainMainSettingsNyanpasuTrayIndexRoute: typeof mainMainSettingsNyanpasuTrayIndexRoute
+  mainMainSettingsNyanpasuWidgetIndexRoute: typeof mainMainSettingsNyanpasuWidgetIndexRoute
   mainMainSettingsSystemProxyIndexRoute: typeof mainMainSettingsSystemProxyIndexRoute
   mainMainSettingsSystemServiceIndexRoute: typeof mainMainSettingsSystemServiceIndexRoute
 }
@@ -1276,9 +1339,6 @@ interface mainMainSettingsRouteRouteChildren {
 const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
   mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRouteWithChildren,
   mainMainSettingsDebugRouteRoute: mainMainSettingsDebugRouteRouteWithChildren,
-  mainMainSettingsNyanpasuRouteRoute: mainMainSettingsNyanpasuRouteRoute,
-  mainMainSettingsUserInterfaceRouteRoute:
-    mainMainSettingsUserInterfaceRouteRoute,
   mainMainSettingsIndexRoute: mainMainSettingsIndexRoute,
   mainMainSettingsClashControlIndexRoute:
     mainMainSettingsClashControlIndexRoute,
@@ -1289,6 +1349,16 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
     mainMainSettingsClashNetworkIndexRoute,
   mainMainSettingsClashRuntimeIndexRoute:
     mainMainSettingsClashRuntimeIndexRoute,
+  mainMainSettingsNyanpasuInterfaceIndexRoute:
+    mainMainSettingsNyanpasuInterfaceIndexRoute,
+  mainMainSettingsNyanpasuLogsIndexRoute:
+    mainMainSettingsNyanpasuLogsIndexRoute,
+  mainMainSettingsNyanpasuShortcutsIndexRoute:
+    mainMainSettingsNyanpasuShortcutsIndexRoute,
+  mainMainSettingsNyanpasuTrayIndexRoute:
+    mainMainSettingsNyanpasuTrayIndexRoute,
+  mainMainSettingsNyanpasuWidgetIndexRoute:
+    mainMainSettingsNyanpasuWidgetIndexRoute,
   mainMainSettingsSystemProxyIndexRoute: mainMainSettingsSystemProxyIndexRoute,
   mainMainSettingsSystemServiceIndexRoute:
     mainMainSettingsSystemServiceIndexRoute,

@@ -8,8 +8,12 @@ import {
 } from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useSetting } from '@nyanpasu/query'
-import { type TrafficRetention } from '@nyanpasu/rpc/types'
+import {
+  fromNetworkStatisticWidgetOption,
+  toNetworkStatisticWidgetOption,
+  useSetting,
+  type NetworkStatisticWidgetOption,
+} from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -17,41 +21,40 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function TrafficRetentionSelector() {
-  const { value, upsert } = useSetting('traffic_retention')
+export default function NetworkStatisticWidgetSelector() {
+  const { value, upsert } = useSetting('network_statistic_widget')
 
-  const handleChange = useLockFn(async (retention: TrafficRetention) => {
-    await upsert(retention)
+  const handleChange = useLockFn(async (mode: NetworkStatisticWidgetOption) => {
+    await upsert(fromNetworkStatisticWidgetOption(mode))
   })
 
   const messages = {
-    '1d': m.settings_nyanpasu_traffic_retention_1d(),
-    '7d': m.settings_nyanpasu_traffic_retention_7d(),
-    '30d': m.settings_nyanpasu_traffic_retention_30d(),
-    '90d': m.settings_nyanpasu_traffic_retention_90d(),
-    forever: m.settings_nyanpasu_traffic_retention_forever(),
-  } satisfies Record<TrafficRetention, string>
+    disabled: m.settings_nyanpasu_network_statistic_widget_disabled(),
+    large: m.settings_nyanpasu_network_statistic_widget_large(),
+    small: m.settings_nyanpasu_network_statistic_widget_small(),
+  } satisfies Record<NetworkStatisticWidgetOption, string>
+
+  const current = value ? toNetworkStatisticWidgetOption(value) : 'disabled'
 
   return (
-    <SettingsCard data-slot="traffic-retention-selector">
+    <SettingsCard data-slot="network-statistic-widget-selector">
       <DropdownMenu align="end">
         <DropdownMenuTrigger asChild>
           <SettingsCardContent
-            data-slot="traffic-retention-selector-trigger"
+            data-slot="network-statistic-widget-selector-trigger"
             asChild
           >
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
               <ItemContainer>
                 <ItemLabel>
                   <ItemLabelText>
-                    {m.settings_nyanpasu_traffic_retention_label()}
+                    {m.settings_nyanpasu_network_statistic_widget_label()}
                   </ItemLabelText>
 
                   <ItemLabelDescription>
-                    {value ? `${messages[value]} · ` : null}
-                    {m.settings_nyanpasu_traffic_retention_hint()}
+                    {messages[current]}
                   </ItemLabelDescription>
                 </ItemLabel>
 
@@ -64,9 +67,9 @@ export default function TrafficRetentionSelector() {
         <DropdownMenuContent sideOffset={-16} alignOffset={16}>
           {Object.entries(messages).map(([key, message]) => (
             <DropdownMenuCheckboxItem
-              checked={value === key}
+              checked={current === key}
               key={key}
-              onSelect={() => handleChange(key as TrafficRetention)}
+              onSelect={() => handleChange(key as NetworkStatisticWidgetOption)}
             >
               {message}
             </DropdownMenuCheckboxItem>

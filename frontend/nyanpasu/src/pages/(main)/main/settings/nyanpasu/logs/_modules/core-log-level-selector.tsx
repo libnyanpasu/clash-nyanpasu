@@ -27,7 +27,7 @@ const LOG_LEVEL_OPTIONS = {
   silent: 'Silent',
 } as const
 
-export default function LogLevelSelector() {
+export default function CoreLogLevelSelector() {
   const { query, upsert } = useClashConfig()
 
   const value = useMemo(

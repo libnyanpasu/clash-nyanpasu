@@ -9,7 +9,7 @@ import {
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useSetting } from '@nyanpasu/query'
-import { ProxiesSelectorMode } from '@nyanpasu/rpc/types'
+import { type TrafficRetention } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,
@@ -17,38 +17,41 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function TrayProxiesSelector() {
-  const { value, upsert } = useSetting('tray_selector_mode')
+export default function TrafficRetentionSelector() {
+  const { value, upsert } = useSetting('traffic_retention')
 
-  const handleChange = useLockFn(async (mode: ProxiesSelectorMode) => {
-    await upsert(mode)
+  const handleChange = useLockFn(async (retention: TrafficRetention) => {
+    await upsert(retention)
   })
 
   const messages = {
-    normal: m.settings_nyanpasu_tray_type_normal(),
-    hidden: m.settings_nyanpasu_tray_type_hidden(),
-    submenu: m.settings_nyanpasu_tray_type_submenu(),
-  } satisfies Record<ProxiesSelectorMode, string>
+    '1d': m.settings_nyanpasu_traffic_retention_1d(),
+    '7d': m.settings_nyanpasu_traffic_retention_7d(),
+    '30d': m.settings_nyanpasu_traffic_retention_30d(),
+    '90d': m.settings_nyanpasu_traffic_retention_90d(),
+    forever: m.settings_nyanpasu_traffic_retention_forever(),
+  } satisfies Record<TrafficRetention, string>
 
   return (
-    <SettingsCard data-slot="tray-proxies-selector">
+    <SettingsCard data-slot="traffic-retention-selector">
       <DropdownMenu align="end">
         <DropdownMenuTrigger asChild>
           <SettingsCardContent
-            data-slot="tray-proxies-selector-trigger"
+            data-slot="traffic-retention-selector-trigger"
             asChild
           >
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
               <ItemContainer>
                 <ItemLabel>
                   <ItemLabelText>
-                    {m.settings_nyanpasu_tray_type()}
+                    {m.settings_nyanpasu_traffic_retention_label()}
                   </ItemLabelText>
 
                   <ItemLabelDescription>
-                    {value ? messages[value] : null}
+                    {value ? `${messages[value]} · ` : null}
+                    {m.settings_nyanpasu_traffic_retention_hint()}
                   </ItemLabelDescription>
                 </ItemLabel>
 
@@ -63,7 +66,7 @@ export default function TrayProxiesSelector() {
             <DropdownMenuCheckboxItem
               checked={value === key}
               key={key}
-              onSelect={() => handleChange(key as ProxiesSelectorMode)}
+              onSelect={() => handleChange(key as TrafficRetention)}
             >
               {message}
             </DropdownMenuCheckboxItem>

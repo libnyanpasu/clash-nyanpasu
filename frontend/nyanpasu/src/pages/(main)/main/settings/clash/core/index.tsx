@@ -5,9 +5,7 @@ import { SettingsGroup, SettingsLabel } from '../../_modules/settings-card'
 import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
 import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
 import BreakWhenProxyChangeSelector from './_modules/break-when-proxy-change-selector'
-import CoreLogStorageConfig from './_modules/core-log-storage-config'
 import LatencyTestConfig from './_modules/latency-test-config'
-import LogLevelSelector from './_modules/log-level-selector'
 import ManagedGuardFieldSelector from './_modules/managed-guard-field-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/core/')({
@@ -56,20 +54,6 @@ const ConnectionSettings = () => {
   )
 }
 
-const CoreLogSettings = () => {
-  return (
-    <div data-slot="core-log-settings-container">
-      <SettingsLabel>{m.settings_logs_core_label()}</SettingsLabel>
-
-      <SettingsGroup>
-        <LogLevelSelector />
-
-        <CoreLogStorageConfig />
-      </SettingsGroup>
-    </div>
-  )
-}
-
 function RouteComponent() {
   return (
     <>
@@ -83,8 +67,6 @@ function RouteComponent() {
         <LatencyTestSettings />
 
         <ConnectionSettings />
-
-        <CoreLogSettings />
       </div>
     </>
   )

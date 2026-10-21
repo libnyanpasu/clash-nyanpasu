@@ -2,8 +2,11 @@ import { WidgetImage } from '@/components/ui/image'
 import { m } from '@/paraglide/messages'
 import { mutations, queries } from '@/services/rpc'
 import { useWidgetIcon } from '@nyanpasu/query'
-import { IconSetStoreProvider, type IconSetStore } from './icon-set-store'
-import TrayIconConfig from './tray-icon-config'
+import {
+  IconSetStoreProvider,
+  type IconSetStore,
+} from '../../_modules/icon-set-store'
+import TrayIconConfig from '../../_modules/tray-icon-config'
 
 // The widget's own icons. Unlike the tray, the widget draws coloured artwork
 // on every platform, so the presets are offered everywhere.

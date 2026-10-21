@@ -6,9 +6,10 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
-import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
-import { ThemeMode } from '@nyanpasu/theme'
+import { useLockFn } from '@nyanpasu/hooks'
+import { useSetting } from '@nyanpasu/query'
+import { LoggingLevel_Serialize } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,
@@ -16,35 +17,38 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function ThemeModeSelector() {
-  const { themeMode, setThemeMode } = useExperimentalThemeContext()
+export default function AppLogLevelSelector() {
+  const { value, upsert } = useSetting('app_log_level')
 
-  const handleThemeModeChange = (value: string) => {
-    setThemeMode(value as ThemeMode)
-  }
+  const handleChange = useLockFn(async (mode: LoggingLevel_Serialize) => {
+    await upsert(mode)
+  })
 
   const messages = {
-    [ThemeMode.LIGHT]: m.settings_user_interface_theme_mode_light(),
-    [ThemeMode.DARK]: m.settings_user_interface_theme_mode_dark(),
-    [ThemeMode.SYSTEM]: m.settings_user_interface_theme_mode_system(),
-  } satisfies Record<ThemeMode, string>
+    trace: 'Trace',
+    debug: 'Debug',
+    info: 'Info',
+    warn: 'Warn',
+    error: 'Error',
+    silent: 'Silent',
+  } satisfies Record<LoggingLevel_Serialize, string>
 
   return (
-    <SettingsCard data-slot="theme-mode-selector">
+    <SettingsCard data-slot="log-level-selector">
       <DropdownMenu align="end">
         <DropdownMenuTrigger asChild>
-          <SettingsCardContent data-slot="theme-mode-selector-trigger" asChild>
+          <SettingsCardContent data-slot="log-level-selector-trigger" asChild>
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
               <ItemContainer>
                 <ItemLabel>
                   <ItemLabelText>
-                    {m.settings_user_interface_theme_mode_label()}
+                    {m.settings_nyanpasu_app_log_level_label()}
                   </ItemLabelText>
 
                   <ItemLabelDescription>
-                    {themeMode ? messages[themeMode] : null}
+                    {value ? messages[value] : null}
                   </ItemLabelDescription>
                 </ItemLabel>
 
@@ -57,9 +61,9 @@ export default function ThemeModeSelector() {
         <DropdownMenuContent sideOffset={-16} alignOffset={16}>
           {Object.entries(messages).map(([key, message]) => (
             <DropdownMenuCheckboxItem
-              checked={themeMode === key}
+              checked={value === key}
               key={key}
-              onSelect={() => handleThemeModeChange(key)}
+              onSelect={() => handleChange(key as LoggingLevel_Serialize)}
             >
               {message}
             </DropdownMenuCheckboxItem>

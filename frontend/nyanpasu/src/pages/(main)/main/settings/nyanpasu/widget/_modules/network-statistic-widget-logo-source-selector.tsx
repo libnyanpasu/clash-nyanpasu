@@ -9,7 +9,7 @@ import {
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useSetting } from '@nyanpasu/query'
-import { TrayMenuMode } from '@nyanpasu/rpc/types'
+import type { NetworkStatisticWidgetLogoSource } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,
@@ -17,37 +17,43 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function TrayMenuModeSelector() {
-  const { value, upsert } = useSetting('tray_menu_mode')
+export default function NetworkStatisticWidgetLogoSourceSelector() {
+  const { value, upsert } = useSetting('network_statistic_widget_logo')
 
-  const handleChange = useLockFn(async (mode: TrayMenuMode) => {
-    await upsert(mode)
-  })
+  const handleChange = useLockFn(
+    async (source: NetworkStatisticWidgetLogoSource) => {
+      if (!value) return
+
+      await upsert({ ...value, source })
+    },
+  )
 
   const messages = {
-    native: m.settings_nyanpasu_tray_menu_mode_native(),
-    webview: m.settings_nyanpasu_tray_menu_mode_webview(),
-  } satisfies Record<TrayMenuMode, string>
+    tray: m.settings_nyanpasu_network_statistic_widget_logo_source_tray(),
+    widget: m.settings_nyanpasu_network_statistic_widget_logo_source_widget(),
+  } satisfies Record<NetworkStatisticWidgetLogoSource, string>
+
+  const current = value?.source ?? 'tray'
 
   return (
-    <SettingsCard data-slot="tray-menu-mode-selector">
+    <SettingsCard data-slot="network-statistic-widget-logo-source-selector">
       <DropdownMenu align="end">
         <DropdownMenuTrigger asChild>
           <SettingsCardContent
-            data-slot="tray-menu-mode-selector-trigger"
+            data-slot="network-statistic-widget-logo-source-selector-trigger"
             asChild
           >
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
               <ItemContainer>
                 <ItemLabel>
                   <ItemLabelText>
-                    {m.settings_nyanpasu_tray_menu_mode()}
+                    {m.settings_nyanpasu_network_statistic_widget_logo_source_label()}
                   </ItemLabelText>
 
                   <ItemLabelDescription>
-                    {value ? messages[value as TrayMenuMode] : null}
+                    {messages[current]}
                   </ItemLabelDescription>
                 </ItemLabel>
 
@@ -60,9 +66,11 @@ export default function TrayMenuModeSelector() {
         <DropdownMenuContent sideOffset={-16} alignOffset={16}>
           {Object.entries(messages).map(([key, message]) => (
             <DropdownMenuCheckboxItem
-              checked={value === key}
+              checked={current === key}
               key={key}
-              onSelect={() => handleChange(key as TrayMenuMode)}
+              onSelect={() =>
+                handleChange(key as NetworkStatisticWidgetLogoSource)
+              }
             >
               {message}
             </DropdownMenuCheckboxItem>

@@ -5,7 +5,7 @@ import { page as browserPage, userEvent } from 'vitest/browser'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
 import { createTheme } from '@nyanpasu/theme'
-import ThemeColorConfig from '../src/pages/(main)/main/settings/user-interface/_modules/theme-color-config'
+import ThemeColorConfig from '../src/pages/(main)/main/settings/nyanpasu/interface/_modules/theme-color-config'
 
 const backend = vi.hoisted(() => ({
   settings: {} as Record<string, string>,

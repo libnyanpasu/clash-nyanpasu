@@ -1,14 +1,17 @@
 import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeployedCodeRounded from '~icons/material-symbols/deployed-code-rounded'
+import DesktopWindowsRounded from '~icons/material-symbols/desktop-windows-rounded'
+import KeyboardRounded from '~icons/material-symbols/keyboard-rounded'
 import LanRounded from '~icons/material-symbols/lan-rounded'
 import LicenseRounded from '~icons/material-symbols/license-rounded'
 import PaletteRounded from '~icons/material-symbols/palette-rounded'
 import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
-import SettingsRounded from '~icons/material-symbols/settings-rounded'
+import ReceiptLongRounded from '~icons/material-symbols/receipt-long-rounded'
 import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import VpnLockRounded from '~icons/material-symbols/vpn-lock-rounded'
+import WidgetsRounded from '~icons/material-symbols/widgets-rounded'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { ComponentProps, ReactNode, useId } from 'react'
 import { Button } from '@nyanpasu/ui/button'
@@ -231,7 +234,7 @@ export default function SettingsNavigate() {
 
       <SettingsNavigationGroup label={m.settings_group_nyanpasu()}>
         <SettingsNavigationItem
-          to="/main/settings/user-interface"
+          to="/main/settings/nyanpasu/interface"
           color="pink"
           icon={<PaletteRounded />}
           label={m.settings_label_user_interface()}
@@ -239,11 +242,35 @@ export default function SettingsNavigate() {
         />
 
         <SettingsNavigationItem
-          to="/main/settings/nyanpasu"
+          to="/main/settings/nyanpasu/tray"
+          color="cyan"
+          icon={<DesktopWindowsRounded />}
+          label={m.settings_label_tray()}
+          description={m.settings_label_tray_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/nyanpasu/widget"
+          color="green"
+          icon={<WidgetsRounded />}
+          label={m.settings_label_widget()}
+          description={m.settings_label_widget_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/nyanpasu/shortcuts"
           color="neutral"
-          icon={<SettingsRounded />}
-          label={m.settings_label_nyanpasu()}
-          description={m.settings_label_nyanpasu_description()}
+          icon={<KeyboardRounded />}
+          label={m.settings_nyanpasu_keyboard_shortcuts()}
+          description={m.settings_label_shortcuts_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/nyanpasu/logs"
+          color="orange"
+          icon={<ReceiptLongRounded />}
+          label={m.settings_label_logs()}
+          description={m.settings_label_logs_description()}
         />
 
         <SettingsNavigationItem

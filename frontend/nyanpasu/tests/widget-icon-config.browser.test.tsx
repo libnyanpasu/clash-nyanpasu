@@ -5,7 +5,7 @@ import { render } from 'vitest-browser-react'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import NetworkStatisticWidgetIconConfig from '../src/pages/(main)/main/settings/nyanpasu/_modules/network-statistic-widget-icon-config'
+import NetworkStatisticWidgetIconConfig from '../src/pages/(main)/main/settings/nyanpasu/widget/_modules/network-statistic-widget-icon-config'
 
 const state = vi.hoisted(() => ({
   upload: vi.fn(),

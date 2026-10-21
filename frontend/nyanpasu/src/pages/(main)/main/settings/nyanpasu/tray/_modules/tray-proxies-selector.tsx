@@ -8,12 +8,8 @@ import {
 } from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
-import {
-  fromNetworkStatisticWidgetOption,
-  toNetworkStatisticWidgetOption,
-  useSetting,
-  type NetworkStatisticWidgetOption,
-} from '@nyanpasu/query'
+import { useSetting } from '@nyanpasu/query'
+import { ProxiesSelectorMode } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,
@@ -21,40 +17,38 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function NetworkStatisticWidgetSelector() {
-  const { value, upsert } = useSetting('network_statistic_widget')
+export default function TrayProxiesSelector() {
+  const { value, upsert } = useSetting('tray_selector_mode')
 
-  const handleChange = useLockFn(async (mode: NetworkStatisticWidgetOption) => {
-    await upsert(fromNetworkStatisticWidgetOption(mode))
+  const handleChange = useLockFn(async (mode: ProxiesSelectorMode) => {
+    await upsert(mode)
   })
 
   const messages = {
-    disabled: m.settings_nyanpasu_network_statistic_widget_disabled(),
-    large: m.settings_nyanpasu_network_statistic_widget_large(),
-    small: m.settings_nyanpasu_network_statistic_widget_small(),
-  } satisfies Record<NetworkStatisticWidgetOption, string>
-
-  const current = value ? toNetworkStatisticWidgetOption(value) : 'disabled'
+    normal: m.settings_nyanpasu_tray_type_normal(),
+    hidden: m.settings_nyanpasu_tray_type_hidden(),
+    submenu: m.settings_nyanpasu_tray_type_submenu(),
+  } satisfies Record<ProxiesSelectorMode, string>
 
   return (
-    <SettingsCard data-slot="network-statistic-widget-selector">
+    <SettingsCard data-slot="tray-proxies-selector">
       <DropdownMenu align="end">
         <DropdownMenuTrigger asChild>
           <SettingsCardContent
-            data-slot="network-statistic-widget-selector-trigger"
+            data-slot="tray-proxies-selector-trigger"
             asChild
           >
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
               <ItemContainer>
                 <ItemLabel>
                   <ItemLabelText>
-                    {m.settings_nyanpasu_network_statistic_widget_label()}
+                    {m.settings_nyanpasu_tray_type()}
                   </ItemLabelText>
 
                   <ItemLabelDescription>
-                    {messages[current]}
+                    {value ? messages[value] : null}
                   </ItemLabelDescription>
                 </ItemLabel>
 
@@ -67,9 +61,9 @@ export default function NetworkStatisticWidgetSelector() {
         <DropdownMenuContent sideOffset={-16} alignOffset={16}>
           {Object.entries(messages).map(([key, message]) => (
             <DropdownMenuCheckboxItem
-              checked={current === key}
+              checked={value === key}
               key={key}
-              onSelect={() => handleChange(key as NetworkStatisticWidgetOption)}
+              onSelect={() => handleChange(key as ProxiesSelectorMode)}
             >
               {message}
             </DropdownMenuCheckboxItem>

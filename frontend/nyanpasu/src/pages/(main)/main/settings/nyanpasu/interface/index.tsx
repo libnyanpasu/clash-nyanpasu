@@ -1,13 +1,15 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
+import { SettingsGroup, SettingsLabel } from '../../_modules/settings-card'
 import CustomCssCard from './_modules/custom-css-card'
 import LanguageSelector from './_modules/language-selector'
 import ThemeColorConfig from './_modules/theme-color-config'
 import ThemeModeSelector from './_modules/theme-mode-selector'
 
-export const Route = createFileRoute('/(main)/main/settings/user-interface')({
+export const Route = createFileRoute(
+  '/(main)/main/settings/nyanpasu/interface/',
+)({
   component: RouteComponent,
   head: () => ({
     meta: [

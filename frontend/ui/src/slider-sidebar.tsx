@@ -4,6 +4,7 @@ import { motion } from 'motion/react'
 import {
   createContext,
   use,
+  useMemo,
   type ComponentProps,
   type PropsWithChildren,
 } from 'react'
@@ -47,15 +48,12 @@ export function SidebarProvider({
     onChange: onOpenChange,
   })
 
+  // Kept across renders, so a re-render of the page does not re-render
+  // every item reading the sidebar.
+  const value = useMemo(() => ({ open, setOpen }), [open, setOpen])
+
   return (
-    <SidebarContext.Provider
-      value={{
-        open,
-        setOpen,
-      }}
-    >
-      {children}
-    </SidebarContext.Provider>
+    <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>
   )
 }
 

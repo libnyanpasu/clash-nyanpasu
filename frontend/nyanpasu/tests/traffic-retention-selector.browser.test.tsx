@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
-import TrafficRetentionSelector from '../src/pages/(main)/main/settings/nyanpasu/_modules/traffic-retention-selector'
+import TrafficRetentionSelector from '../src/pages/(main)/main/settings/nyanpasu/logs/_modules/traffic-retention-selector'
 
 const backend = vi.hoisted(() => ({
   retention: '7d',

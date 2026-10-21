@@ -187,7 +187,7 @@ export const DefaultNavbar = () => {
         <NavbarLabel>{m.navbar_label_logs()}</NavbarLabel>
       </NavbarButton>
 
-      <NavbarButton to="/main/settings/system" section="/main/settings">
+      <NavbarButton to="/main/settings/system/proxy" section="/main/settings">
         <SettingsRounded />
 
         <NavbarLabel>{m.navbar_label_settings()}</NavbarLabel>
@@ -238,7 +238,7 @@ export const MobileNavbar = () => {
       </MoblieNavbarContainer>
 
       <MoblieNavbarContainer>
-        <NavbarButton to="/main/settings/system" section="/main/settings">
+        <NavbarButton to="/main/settings/system/proxy" section="/main/settings">
           <SettingsRounded />
         </NavbarButton>
 

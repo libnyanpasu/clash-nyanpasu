@@ -5,7 +5,7 @@ import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { ClashCores } from '@nyanpasu/query'
-import CoreManagerCard from '../src/pages/(main)/main/settings/clash/_modules/core-manager-card'
+import CoreManagerCard from '../src/pages/(main)/main/settings/clash/core-manager/_modules/core-manager-card'
 
 const state = vi.hoisted(() => ({
   queryPending: false,

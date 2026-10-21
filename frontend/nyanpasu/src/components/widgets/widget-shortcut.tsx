@@ -100,7 +100,7 @@ const ProxyTitleRow = () => {
         )}
         asChild
       >
-        <Link to="/main/settings/system">
+        <Link to="/main/settings/system/proxy">
           <TextMarquee className="px-2" fadeEdges fadeWidth={8}>
             {messages[status]}
           </TextMarquee>
@@ -324,7 +324,7 @@ const CurrentCoreCard = ({
       data-slot="current-core-card"
       asChild
     >
-      <Link to="/main/settings/clash">
+      <Link to="/main/settings/clash/core-manager">
         <div className="flex w-full min-w-0 shrink-0 items-center gap-3">
           <div
             className={cn(

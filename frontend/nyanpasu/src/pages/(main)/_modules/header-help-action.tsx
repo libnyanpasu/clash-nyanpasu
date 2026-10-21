@@ -7,20 +7,13 @@ import {
 } from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
-import { formatEnvInfos } from '@/utils'
 import { useLockFn } from '@nyanpasu/hooks'
-import { isBrowser, isTauri } from '@nyanpasu/platform'
+import { isBrowser } from '@nyanpasu/platform'
 import { Link } from '@tanstack/react-router'
-
-async function openHelpLink(url: string) {
-  if (isTauri()) return rpc.openThat(url)
-  window.location.assign(url)
-}
+import { openIssueReport, openWiki } from './help-links'
 
 const WikiItem = () => {
-  const handleClick = useLockFn(async () => {
-    await openHelpLink('https://nyanpasu.org')
-  })
+  const handleClick = useLockFn(openWiki)
 
   return (
     <DropdownMenuItem onClick={handleClick}>
@@ -30,35 +23,7 @@ const WikiItem = () => {
 }
 
 const IssuesItem = () => {
-  const handleClick = useLockFn(async () => {
-    const envs = await rpc.collectEnvs()
-
-    if (envs.status !== 'ok') {
-      return
-    }
-
-    const formattedEnv = encodeURIComponent(
-      formatEnvInfos(envs.data)
-        .split('\n')
-        .map((v) => `> ${v}`)
-        .join('\n'),
-    )
-
-    const params = new URLSearchParams({
-      assignees: '',
-      labels: 'T%3A+Bug%2CS%3A+Untriaged',
-      projects: '',
-      template: 'bug_report.yaml',
-    })
-
-    return openHelpLink(
-      'https://github.com/libnyanpasu/clash-nyanpasu/issues/new?' +
-        params.toString() +
-        // envs can't be serialized
-        '&env_infos=' +
-        formattedEnv,
-    )
-  })
+  const handleClick = useLockFn(openIssueReport)
 
   return (
     <DropdownMenuItem onClick={handleClick}>

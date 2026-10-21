@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, test, vi, type TestContext } from 'vitest'
 import { m } from '@/paraglide/messages'
 import type { ControllerAddress } from '@nyanpasu/query'
-import { useExternalControllerForm } from '../src/pages/(main)/main/settings/web-ui/_modules/use-external-controller-form'
+import { useExternalControllerForm } from '../src/pages/(main)/main/settings/clash/control/_modules/use-external-controller-form'
 
 // The editor's error dialog. Only `apply` may open it, so a submit that never
 // reaches `apply` must leave it closed too.

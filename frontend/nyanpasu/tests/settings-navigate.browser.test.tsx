@@ -10,34 +10,65 @@ import {
 } from '@tanstack/react-router'
 import SettingsNavigate from '../src/pages/(main)/main/settings/_modules/settings-navigate'
 
-vi.mock('@/hooks/use-current-core-icon', () => ({ default: () => '' }))
 vi.mock('@/assets/image/logo.svg?react', () => ({ default: () => null }))
 
-test('a settings section stays selected on its child pages', async () => {
+const renderAt = async (path: string) => {
   const rootRoute = createRootRoute({ component: SettingsNavigate })
-  const creditsRoute = createRoute({
+  const pageRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/main/settings/about/credits',
+    path,
   })
   const router = createRouter({
-    routeTree: rootRoute.addChildren([creditsRoute]),
-    history: createMemoryHistory({
-      initialEntries: ['/main/settings/about/credits'],
-    }),
+    routeTree: rootRoute.addChildren([pageRoute]),
+    history: createMemoryHistory({ initialEntries: [path] }),
   })
-  const view = await render(<RouterProvider router={router} />)
 
-  const about = view.getByRole('link', {
-    name: m.settings_label_about_description(),
-    exact: false,
-  })
-  await expect.element(about).toHaveAttribute('data-active', 'true')
+  return render(<RouterProvider router={router} />)
+}
+
+const item = (
+  view: Awaited<ReturnType<typeof renderAt>>,
+  label: string | RegExp,
+) => view.getByRole('link', { name: label, exact: false })
+
+test('the settings navigation groups its items under headings', async () => {
+  const view = await renderAt('/main/settings/debug')
+
+  for (const heading of [
+    m.settings_group_system(),
+    m.settings_group_clash(),
+    m.settings_group_nyanpasu(),
+    m.settings_group_about(),
+  ]) {
+    await expect
+      .element(view.getByRole('heading', { name: heading, exact: true }))
+      .toBeInTheDocument()
+  }
+
   await expect
-    .element(
-      view.getByRole('link', {
-        name: m.settings_label_debug_description(),
-        exact: false,
-      }),
-    )
+    .element(view.getByRole('group', { name: m.settings_group_nyanpasu() }))
+    .toBeInTheDocument()
+})
+
+test('an item stays selected on its child pages', async () => {
+  const view = await renderAt('/main/settings/debug/child')
+
+  const debug = item(view, m.settings_label_debug_description())
+  await expect.element(debug).toHaveAttribute('data-active', 'true')
+  await expect.element(debug).toHaveAttribute('aria-current', 'page')
+  await expect
+    .element(item(view, m.settings_label_proxy_description()))
+    .toHaveAttribute('data-active', 'false')
+})
+
+test('the licenses page selects only the licenses item', async () => {
+  const view = await renderAt('/main/settings/about/credits')
+
+  await expect
+    .element(item(view, m.settings_label_licenses_description()))
+    .toHaveAttribute('aria-current', 'page')
+  // About matches exactly, so the page under its path does not select it.
+  await expect
+    .element(item(view, /^Clash Nyanpasu/))
     .toHaveAttribute('data-active', 'false')
 })

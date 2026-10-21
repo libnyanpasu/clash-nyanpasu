@@ -238,6 +238,12 @@ function select(rows: MockRow[], query: TrafficQuery): MockRow[] {
     }))
 }
 
+/** A ranking of `dimension` ignores the filter on it, as in the backend. */
+const forRanking = (query: TrafficQuery, dimension: Dimension) => ({
+  ...query,
+  filters: query.filters.filter((filter) => filter.dimension !== dimension),
+})
+
 /** Every group of `dimension`, heaviest by `metric` first. */
 function groups(
   rows: MockRow[],
@@ -341,7 +347,8 @@ export function mockTrafficReport(
   request: ReportRequest,
   now: number,
 ): TrafficReport {
-  const rows = select(mockRows(now), request.query)
+  const generated = mockRows(now)
+  const rows = select(generated, request.query)
   const total = emptyUsage()
   let rate: Rate | null = null
 
@@ -354,7 +361,11 @@ export function mockTrafficReport(
     total,
     current_rate: request.query.scope === 'closed' ? null : rate,
     rankings: request.rankings.map((dimension) => {
-      const all = groups(rows, dimension, request.metric)
+      const all = groups(
+        select(generated, forRanking(request.query, dimension)),
+        dimension,
+        request.metric,
+      )
       const other = emptyUsage()
       all
         .slice(request.ranking_limit)
@@ -378,4 +389,5 @@ export const mockTrafficGroups = (
   dimension: Dimension,
   metric: Metric,
   now: number,
-) => groups(select(mockRows(now), query), dimension, metric)
+) =>
+  groups(select(mockRows(now), forRanking(query, dimension)), dimension, metric)

@@ -423,6 +423,26 @@ fn stored_and_session_queries_equal_the_session_only_path() {
                     dimension: Dimension::Chain,
                     value: "".into(),
                 }],
+                vec![
+                    TrafficFilter {
+                        dimension: Dimension::Process,
+                        value: "process-1".into(),
+                    },
+                    TrafficFilter {
+                        dimension: Dimension::Inbound,
+                        value: "inbound-1".into(),
+                    },
+                ],
+                vec![
+                    TrafficFilter {
+                        dimension: Dimension::Inbound,
+                        value: "inbound-1".into(),
+                    },
+                    TrafficFilter {
+                        dimension: Dimension::Target,
+                        value: "absent-from-catalog".into(),
+                    },
+                ],
             ] {
                 for metric in [Metric::Bytes, Metric::Connections] {
                     for limit in [None, Some(1), Some(3)] {
@@ -642,6 +662,58 @@ fn a_filter_missing_from_the_catalog_still_selects_live_rows() {
             .connections,
         1
     );
+}
+
+#[test]
+fn a_filtered_dimension_lists_its_stored_alternatives() {
+    let mut db = open(&MemoryDisk::new(), Profile::desktop());
+    let mut session = Session::new();
+    // Connections 0-2 (process-0..2, target-0..2) open, then all close and are stored.
+    let opened = frame(0, 6, 3);
+    session.observe(&opened, None, &mut || db.next_event_seq());
+    let closed = frame(1, 1, 3);
+    session.observe(&closed, None, &mut || db.next_event_seq());
+    db.flush(&session.take_batch(closed.wall_ms), closed.wall_ms, None)
+        .unwrap();
+    let filter = |dimension, value: &str| TrafficFilter {
+        dimension,
+        value: value.into(),
+    };
+    let keys =
+        |groups: &[UsageGroup]| -> Vec<String> { groups.iter().map(|g| g.key.clone()).collect() };
+    let asked = request(
+        TrafficScope::Closed,
+        vec![
+            filter(Dimension::Process, "process-1"),
+            filter(Dimension::Target, "absent-from-catalog"),
+        ],
+        Metric::Bytes,
+        None,
+    );
+    let report = db.report(&session, &asked, closed.wall_ms).unwrap();
+    assert_eq!(report.total, Usage::default());
+    let ranking = |d| report.rankings.iter().find(|r| r.dimension == d).unwrap();
+    // A ranking ignores only its own filter: the target missing from the catalog still
+    // empties the process ranking, and process-1 still narrows the target ranking.
+    assert_eq!(ranking(Dimension::Process).distinct, 0);
+    assert_eq!(keys(&ranking(Dimension::Target).groups), ["target-1"]);
+
+    let query = TrafficQuery {
+        filters: vec![filter(Dimension::Process, "process-1")],
+        ..asked.query
+    };
+    let page = db
+        .usage_page(
+            &session,
+            &query,
+            Dimension::Process,
+            Metric::Connections,
+            None,
+            10,
+            closed.wall_ms,
+        )
+        .unwrap();
+    assert_eq!(keys(&page.groups), ["process-0", "process-1", "process-2"]);
 }
 
 #[test]

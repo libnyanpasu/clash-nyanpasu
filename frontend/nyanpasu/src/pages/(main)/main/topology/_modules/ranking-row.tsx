@@ -43,8 +43,8 @@ export default function RankingRow({
   usage: Usage
   /** The amount the row leads with; the other one closes its second line. */
   metric: Metric
-  /** Its place in the list, 0 for the heaviest group. */
-  rank: number
+  /** Its place in the list, 0 for the heaviest group; null below the shown places. */
+  rank: number | null
   /** Whether the group is already a filter. */
   active: boolean
   onSelect: () => void
@@ -96,9 +96,11 @@ export default function RankingRow({
     layout === 'table' ? (
       <>
         <span className="flex min-w-0 items-baseline gap-1.5 @max-lg:col-start-1 @max-lg:row-start-1">
-          <span className="text-on-surface-variant shrink-0 text-[10px] tabular-nums">
-            {String(rank + 1).padStart(2, '0')}
-          </span>
+          {rank !== null && (
+            <span className="text-on-surface-variant shrink-0 text-[10px] tabular-nums">
+              {String(rank + 1).padStart(2, '0')}
+            </span>
+          )}
 
           <span
             className={cn(

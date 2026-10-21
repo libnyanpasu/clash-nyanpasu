@@ -249,6 +249,21 @@ impl TrafficQuery {
     pub fn check(&self) -> TrafficResult<()> {
         check_filters(&self.filters)
     }
+
+    /// The query a usage page of `dimension` counts: like a ranking, it ignores the filter on
+    /// its own dimension, so a filtered value keeps its alternatives beside it.
+    pub fn ignoring(&self, dimension: Dimension) -> TrafficQuery {
+        TrafficQuery {
+            range: self.range,
+            scope: self.scope,
+            filters: self
+                .filters
+                .iter()
+                .filter(|f| f.dimension != dimension)
+                .cloned()
+                .collect(),
+        }
+    }
 }
 
 /// Rejects filters that name a dimension more than once.

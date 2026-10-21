@@ -264,11 +264,6 @@ export default function RankingModal({
   const { query, search, onSearchChange } = useTrafficPage()
   const { filters } = search
   const selected = filters.find((filter) => filter.d === dimension)?.v
-  // The modal lists every value, so its own filter must not remove candidates.
-  const rankingQuery = {
-    ...query,
-    filters: query.filters.filter((filter) => filter.dimension !== dimension),
-  }
   // Stable across polls, so the listing does not re-render with each report.
   const handleSelect = useCallback(
     (key: string) => {
@@ -288,7 +283,7 @@ export default function RankingModal({
 
           <RankingRowTooltip>
             <List
-              query={rankingQuery}
+              query={query}
               dimension={dimension}
               selected={selected}
               onSelect={handleSelect}

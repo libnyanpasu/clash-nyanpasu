@@ -257,6 +257,11 @@ impl Catalog {
         self.inner.combos.get(id)
     }
 
+    /// The combination id range, including implicit 0 and holes left by recycling.
+    pub(crate) fn combo_slots(&self) -> usize {
+        self.inner.combos.slots()
+    }
+
     /// The bytes of this version: every page and spine it reaches, shared with other
     /// versions or not, and its own structure. See the module docs.
     pub(crate) fn bytes(&self) -> u64 {

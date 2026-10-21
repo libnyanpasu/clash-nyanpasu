@@ -30,16 +30,20 @@
 //! [`BudgetExceeded`] instead of growing past it:
 //!
 //! - before the scan: buffers sized by the query itself;
+//! - at the first row in range: one presence byte and the selected fields' `u64` partial sums
+//!   per catalog combination slot, including implicit 0 and recycled holes. Requests are
+//!   evaluated once per seen combination after the scan; empty scans allocate no partials;
 //! - before the first chunk is read: the block decoder's zstd context
 //!   ([`SERIES_DECOMPRESSION_CONTEXT`]). A query that reads only the head does not reserve it;
 //! - for each chunk, before it is opened: the fragment the backend lends while the reader
 //!   decodes from it, as large as the chunk's manifest entry says ([`lent_memory`]); and its
 //!   directory, which the reader reserves before it fetches fragment 0 and holds while the
 //!   chunk is open ([`ChunkReader::open`]);
-//! - for each block: what decoding it leaves in the column's buffer and in the decoder's
-//!   scratch ([`decode_memory`]), reserved before the read as the larger of what they hold and
-//!   what the block declares, and shrunk to the block's after it. The query keeps one decoder
-//!   and one buffer per column, and reuses them from block to block and chunk to chunk;
+//! - for each block: each output/scratch buffer's larger retained/required capacity, admitted
+//!   before the read ([`decode_memory`]). Buffers keep their largest need across blocks and
+//!   chunks, without shrinking after a read. Integer output is bounded by
+//!   `MAX_BLOCK_ROWS * width + ceil(MAX_BLOCK_ROWS/8)` per column; the shared decoder's scratch
+//!   by `MAX_BLOCK_LEN` (see [`crate::codec::block`]). The query keeps one output per column;
 //! - the groups, as they appear. There is no spilling and no approximation: too many groups
 //!   fail the query (§8.2).
 //!
@@ -445,6 +449,55 @@ const BUCKET: u16 = 0;
 const COMBO: u16 = 1;
 const FIRST_FIELD: u16 = 2;
 
+/// Dense by catalog id, including holes and implicit 0. Allocated only for the first row
+/// in range, never sized by an unchecked id from a chunk. All storage belongs to the scan.
+struct CombinationSums {
+    seen: BudgetVec<u8>,
+    sums: BudgetVec<u64>,
+    fields: usize,
+}
+
+impl CombinationSums {
+    fn row(
+        &mut self,
+        catalog: &Catalog,
+        combo: u32,
+        chunk: Option<u64>,
+    ) -> Result<&mut [u64], SeriesQueryError> {
+        if self.seen.is_empty() {
+            let slots = catalog.combo_slots();
+            let sums = slots
+                .checked_mul(self.fields)
+                .context(crate::budget::BudgetExceededSnafu {
+                    what: "combination sums",
+                    needed: u64::MAX,
+                    available: 0u64,
+                })
+                .context(ReserveCombinationsSnafu)?;
+            self.seen
+                .try_grow_to(slots)
+                .context(ReserveCombinationsSnafu)?;
+            self.sums
+                .try_grow_to(sums)
+                .context(ReserveCombinationsSnafu)?;
+            self.seen.resize(slots, 0);
+            self.sums.resize(sums, 0);
+        }
+        let seen = self
+            .seen
+            .get_mut(combo as usize)
+            .context(UnknownCombinationSnafu { chunk, combo })?;
+        if *seen == 0 {
+            catalog
+                .combo(combo)
+                .context(UnknownCombinationSnafu { chunk, combo })?;
+            *seen = 1;
+        }
+        let start = combo as usize * self.fields;
+        Ok(&mut self.sums[start..start + self.fields])
+    }
+}
+
 impl<S: Storage> Snapshot<S> {
     /// Sums the selected fields of the rows in `query`'s range and tier, into one list of
     /// groups per request, in one scan of the chunks and the head (§8.1).
@@ -569,6 +622,11 @@ impl<S: Storage> Snapshot<S> {
             lists,
             account: &groups,
             folded: false,
+            combinations: CombinationSums {
+                seen: workspace.buffer(0).context(ReserveScanSnafu)?,
+                sums: workspace.buffer(0).context(ReserveScanSnafu)?,
+                fields: masked,
+            },
             combo: Column::new(COMBO),
             values: std::array::from_fn(|_| Column::new(0)),
             bucket: Column::new(BUCKET),
@@ -579,6 +637,7 @@ impl<S: Storage> Snapshot<S> {
         if !query.requests.is_empty() {
             scan.chunks(self.storage(), StreamRef::Tier(tier_id), grid, &read)?;
             scan.head(&self.version().head, tier_id)?;
+            scan.group()?;
         }
         let Scan { lists, folded, .. } = scan;
         let lists = groups
@@ -666,8 +725,10 @@ struct Scan<'a, 'm> {
     key: BudgetVec<KeyPart>,
     lists: BudgetVec<GroupBuffer>,
     account: &'m MemoryAccount,
-    /// Whether a row in the range had a folded combination, admitted or not.
+    /// Whether a row in range had a folded combination, admitted or not.
     folded: bool,
+    /// Selected fields summed once per combination before requests are evaluated.
+    combinations: CombinationSums,
     combo: Column<u32>,
     /// The selected fields' columns, the first as many as there are selected fields.
     values: [Column<u64>; MAX_FIELDS],
@@ -811,34 +872,65 @@ impl Scan<'_, '_> {
         check: bool,
     ) -> Result<(), SeriesQueryError> {
         let masked = self.fields.indices().count();
-        let mut values = [0u64; MAX_FIELDS];
-        for row in rows {
+        let mut row = rows.start;
+        while row < rows.end {
+            let mut end = rows.end;
             if check {
-                let bucket = self.bucket.value(decode, row)?;
-                if !self.buckets.contains(&bucket) {
+                self.bucket.load(decode, row)?;
+                end = end.min(self.bucket.rows.end);
+                let buckets = &self.bucket.block.values()[(row - self.bucket.rows.start) as usize
+                    ..(end - self.bucket.rows.start) as usize];
+                // Do not fetch another column's block until it has a row in range.
+                let Some(first) = buckets
+                    .iter()
+                    .position(|bucket| self.buckets.contains(bucket))
+                else {
+                    row = end;
+                    continue;
+                };
+                row += first as u32;
+            }
+            self.combo.load(decode, row)?;
+            end = end.min(self.combo.rows.end);
+            for column in &mut self.values[..masked] {
+                column.load(decode, row)?;
+                end = end.min(column.rows.end);
+            }
+            // Columns can have different block boundaries. Every slice covers exactly the
+            // stripe shared by their current blocks; the inner loop does no block lookup.
+            let slice = |start: u32| (row - start) as usize..(end - start) as usize;
+            let combos = &self.combo.block.values()[slice(self.combo.rows.start)];
+            let columns: [&[u64]; MAX_FIELDS] = std::array::from_fn(|field| {
+                if field < masked {
+                    let column = &self.values[field];
+                    &column.block.values()[slice(column.rows.start)]
+                } else {
+                    &[]
+                }
+            });
+            let buckets = if check {
+                &self.bucket.block.values()[slice(self.bucket.rows.start)]
+            } else {
+                &[]
+            };
+            for (index, &combo) in combos.iter().enumerate() {
+                if check && !self.buckets.contains(&buckets[index]) {
                     continue;
                 }
+                let sums = self
+                    .combinations
+                    .row(self.catalog, combo, Some(decode.chunk))?;
+                for (sum, column) in sums.iter_mut().zip(&columns) {
+                    *sum = sum.saturating_add(column[index]);
+                }
             }
-            let combo = self.combo.value(decode, row)?;
-            for (value, column) in values.iter_mut().zip(&mut self.values[..masked]) {
-                *value = column.value(decode, row)?;
-            }
-            let mut labels = [0u32; MAX_DIMENSIONS];
-            let labels =
-                combination(self.catalog, combo, &mut labels).context(UnknownCombinationSnafu {
-                    chunk: Some(decode.chunk),
-                    combo,
-                })?;
-            self.add(labels, &values[..masked])?;
+            row = end;
         }
         Ok(())
     }
 
     /// Adds the head's sums of the buckets.
     fn head(&mut self, head: &Head, tier: TierId) -> Result<(), SeriesQueryError> {
-        let masked = self.fields.indices().count();
-        let mut values = [0u64; MAX_FIELDS];
-        let catalog = self.catalog;
         for (
             SeriesSource {
                 tier: source,
@@ -858,59 +950,68 @@ impl Scan<'_, '_> {
                     .check("series::head:2")
                     .context(CheckOpenSnafu)?;
                 for (row, &combo) in combos.iter().enumerate() {
-                    for (value, field) in values.iter_mut().zip(self.fields.indices()) {
-                        *value = columns[field][row];
+                    let sums = self.combinations.row(self.catalog, combo, None)?;
+                    for (sum, field) in sums.iter_mut().zip(self.fields.indices()) {
+                        *sum = sum.saturating_add(columns[field][row]);
                     }
-                    let mut labels = [0u32; MAX_DIMENSIONS];
-                    // The head's combinations were checked against the catalog as they entered
-                    // it, so one missing is damage, as in a chunk.
-                    let labels = combination(catalog, combo, &mut labels)
-                        .context(UnknownCombinationSnafu { chunk: None, combo })?;
-                    self.add(labels, &values[..masked])?;
                 }
             }
         }
         Ok(())
     }
 
-    /// Adds a row of a combination with `labels` and the selected fields' `values` to the
-    /// group of each request that admits it.
-    fn add(&mut self, labels: &[u32], values: &[u64]) -> Result<(), SeriesQueryError> {
-        // Before the filters, which may turn the folded rows away (§9.4).
-        self.folded |= labels.contains(&0);
-        let dimensions = self.dimensions;
-        let label = |dimension: LabelId| {
-            let position = dimensions
-                .iter()
-                .position(|&other| other == dimension)
-                .expect("the query checked its dimensions");
-            labels[position]
-        };
-        for (index, (request, list)) in self.requests.iter().zip(self.lists.iter_mut()).enumerate()
-        {
-            let admitted = request
-                .filters
-                .iter()
-                .all(|filter| filter.ids.contains(&label(filter.dimension)) != filter.exclude);
-            if !admitted {
+    /// Requests depend only on labels, so evaluate them once per seen combination. Saturating
+    /// unsigned addition is associative: grouping these partial sums gives the same answers.
+    fn group(&mut self) -> Result<(), SeriesQueryError> {
+        for combo in 0..self.combinations.seen.len() {
+            if self.combinations.seen[combo] == 0 {
                 continue;
             }
-            self.key.clear();
-            match request.key {
-                GroupKey::Total => {}
-                GroupKey::Labels(dimensions) => {
-                    for &dimension in dimensions {
-                        self.key.push(KeyPart::Label(label(dimension)));
+            self.revoked
+                .check("series::group:1")
+                .context(CheckOpenSnafu)?;
+            let mut labels = [0u32; MAX_DIMENSIONS];
+            let labels = combination(self.catalog, combo as u32, &mut labels)
+                .expect("seen combinations were validated against this immutable catalog");
+            // Before any request's filters, including combinations all requests reject.
+            self.folded |= labels.contains(&0);
+            let fields = self.combinations.fields;
+            let values = &self.combinations.sums[combo * fields..(combo + 1) * fields];
+            let label = |dimension: LabelId| {
+                let position = self
+                    .dimensions
+                    .iter()
+                    .position(|&other| other == dimension)
+                    .expect("the query checked its dimensions");
+                labels[position]
+            };
+            for (index, (request, list)) in
+                self.requests.iter().zip(self.lists.iter_mut()).enumerate()
+            {
+                let admitted = request
+                    .filters
+                    .iter()
+                    .all(|filter| filter.ids.contains(&label(filter.dimension)) != filter.exclude);
+                if !admitted {
+                    continue;
+                }
+                self.key.clear();
+                match request.key {
+                    GroupKey::Total => {}
+                    GroupKey::Labels(dimensions) => {
+                        for &dimension in dimensions {
+                            self.key.push(KeyPart::Label(label(dimension)));
+                        }
+                    }
+                    GroupKey::Mapped(maps) => {
+                        for map in maps {
+                            self.key.push(map.part(label(map.dimension)));
+                        }
                     }
                 }
-                GroupKey::Mapped(maps) => {
-                    for map in maps {
-                        self.key.push(map.part(label(map.dimension)));
-                    }
-                }
+                list.add(&self.key, values, self.account)
+                    .context(ReserveGroupsSnafu { request: index })?;
             }
-            list.add(&self.key, values, self.account)
-                .context(ReserveGroupsSnafu { request: index })?;
         }
         Ok(())
     }
@@ -970,13 +1071,13 @@ impl<T: IntValue> Column<T> {
         self.rows = 0..0;
     }
 
-    /// The column's value in `row`, decoding the block that holds it into the column's buffer
+    /// Ensures the block holding `row` is decoded into the column's buffer
     /// when it is not the one decoded, with its memory reserved as [`decode_memory`] says.
-    fn value(
+    fn load(
         &mut self,
         decode: &mut Decode<'_, impl FragmentSource>,
         row: u32,
-    ) -> Result<T, SeriesQueryError> {
+    ) -> Result<(), SeriesQueryError> {
         if !self.rows.contains(&row) {
             decode
                 .revoked
@@ -1014,6 +1115,16 @@ impl<T: IntValue> Column<T> {
             );
             self.rows = entry.first_row..entry.first_row + entry.rows;
         }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn value(
+        &mut self,
+        decode: &mut Decode<'_, impl FragmentSource>,
+        row: u32,
+    ) -> Result<T, SeriesQueryError> {
+        self.load(decode, row)?;
         Ok(self.block.values()[(row - self.rows.start) as usize])
     }
 }
@@ -1043,6 +1154,10 @@ pub enum SeriesQueryError {
 
     #[snafu(display("no room in the query budget to start the scan"))]
     ReserveScan { source: BudgetExceeded },
+
+    /// The scan's per-combination partial sums did not fit the query budget.
+    #[snafu(display("no room in the query budget for combination sums"))]
+    ReserveCombinations { source: BudgetExceeded },
 
     /// The query budget has no room for the block decoder's zstd context.
     #[snafu(display("no room in the query budget for the block decoder"))]
@@ -1115,6 +1230,7 @@ impl SeriesQueryError {
             | Self::NotADimension { .. }
             | Self::CreateDecoder { .. } => ErrorKind::Local,
             Self::ReserveScan { source }
+            | Self::ReserveCombinations { source }
             | Self::ReserveDecoder { source }
             | Self::ReserveFragment { source, .. }
             | Self::ReserveLists { source }

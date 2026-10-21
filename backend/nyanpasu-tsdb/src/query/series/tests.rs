@@ -858,6 +858,52 @@ fn groups_past_the_budget_fail_the_query_and_return_its_reservation() {
     assert_eq!(budget.reserved(), before + available - scan - needed / 2);
 }
 
+#[test]
+fn combination_partials_admit_each_buffer_and_return_all_credit() {
+    let (_disk, tsdb) = many_targets(3);
+    let catalog = &tsdb.current().catalog;
+    let slots = catalog.combo_slots();
+    let bytes = slots * (1 + 2 * size_of::<u64>());
+    for room in [slots - 1, bytes - 1, bytes] {
+        let budget = MemoryBudget::new(room as u64);
+        let account = MemoryAccount::new(&budget, "test partials", MemoryPlan::default()).unwrap();
+        let mut partials = CombinationSums {
+            seen: account.buffer(0).unwrap(),
+            sums: account.buffer(0).unwrap(),
+            fields: 2,
+        };
+        assert_eq!(budget.reserved(), 0, "no allocation before a row is seen");
+        let result = partials.row(catalog, 1, Some(123));
+        if room < bytes {
+            let error = result.unwrap_err();
+            assert!(matches!(
+                error,
+                SeriesQueryError::ReserveCombinations { .. }
+            ));
+            assert_eq!(error.kind(), ErrorKind::Local);
+            assert!(partials.seen.is_empty());
+            assert!(partials.sums.is_empty());
+        } else {
+            result.unwrap().copy_from_slice(&[7, u64::MAX]);
+            assert_eq!(partials.row(catalog, 1, None).unwrap(), &[7, u64::MAX]);
+            assert_eq!(partials.row(catalog, 0, None).unwrap(), &[0, 0]);
+            assert_eq!(account.live_bytes(), bytes as u64);
+            let error = partials.row(catalog, u32::MAX, Some(123)).unwrap_err();
+            assert!(matches!(
+                error,
+                SeriesQueryError::UnknownCombination {
+                    chunk: Some(123),
+                    combo: u32::MAX,
+                }
+            ));
+            assert_eq!(error.kind(), ErrorKind::Corrupted);
+            assert_eq!(account.live_bytes(), bytes as u64);
+        }
+        drop((partials, account));
+        assert_eq!(budget.reserved(), 0);
+    }
+}
+
 // An entry that records a length no fragment 0 has is damage: the query fails `Corrupted`
 // before it reserves the fragment it would be lent by it, where it would have failed for room.
 #[test]
@@ -1063,6 +1109,10 @@ struct BigChunk {
 /// several fragments; downloads repeat a few such values, which only zstd finds, so their
 /// blocks are compressed when the chunk is, as a consolidated chunk is.
 fn big_chunk(tsdb: &mut Tsdb<MemoryStorage>, compressed: bool) -> BigChunk {
+    big_chunk_values(tsdb, compressed, false)
+}
+
+fn big_chunk_values(tsdb: &mut Tsdb<MemoryStorage>, compressed: bool, narrow: bool) -> BigChunk {
     let points: Vec<SeriesPoint<'_>> = LABEL_SETS[..3]
         .iter()
         .map(|labels| point(labels, &[0, 0]))
@@ -1081,7 +1131,7 @@ fn big_chunk(tsdb: &mut Tsdb<MemoryStorage>, compressed: bool) -> BigChunk {
         state ^= state << 13;
         state ^= state >> 7;
         state ^= state << 17;
-        state
+        if narrow { state >> 32 } else { state }
     };
     let uploads: Vec<u64> = (0..rows).map(|_| noise()).collect();
     let pattern: Vec<u64> = (0..16).map(|_| noise()).collect();
@@ -1144,6 +1194,64 @@ fn big_chunk(tsdb: &mut Tsdb<MemoryStorage>, compressed: bool) -> BigChunk {
         combos,
         uploads,
         downloads,
+    }
+}
+
+// Many stripes, unequal column block sizes, and nonsaturating random values: dropping or
+// misindexing even one row changes the reference sums. The smaller randomized write model
+// above also exercises saturation, late writes, folds, head/chunk overlap and reopens.
+#[test]
+fn stripes_with_different_column_boundaries_equal_the_reference() {
+    for compressed in [false, true] {
+        let disk = MemoryDisk::new();
+        let mut tsdb = open_with(&disk, Profile::desktop());
+        let BigChunk {
+            combos,
+            uploads,
+            downloads,
+            ..
+        } = big_chunk_values(&mut tsdb, compressed, true);
+        let snapshot = tsdb.reader().capture().unwrap();
+        let mut model = Model::new();
+        for (row, &combo) in combos.iter().enumerate() {
+            let sums = model
+                .entry((HOUR, 10 + row as i64 / i64::from(ROWS), combo))
+                .or_default();
+            sums[0] += uploads[row];
+            sums[1] += downloads[row];
+        }
+        let requests = vec![
+            RequestSpec {
+                filters: vec![],
+                key: KeySpec::Total,
+            },
+            RequestSpec {
+                filters: vec![(TARGET, vec![0, 1], false)],
+                key: KeySpec::Labels(vec![RULE, TARGET]),
+            },
+            RequestSpec {
+                filters: vec![(PROCESS, vec![0], true)],
+                key: KeySpec::Mapped(vec![(TARGET, vec![(1, 2), (2, 2)], Some(0))]),
+            },
+        ];
+        let before = snapshot.budget().reserved();
+        for (start, end) in [(9, 11), (10, 12), (11, 13), (10, 13), (14, 15)] {
+            for mask in 0..4 {
+                let spec = QuerySpec {
+                    tier: HOUR,
+                    range: (start * HOUR_MS, end * HOUR_MS),
+                    mask,
+                    requests: requests.clone(),
+                };
+                let groups = run(&snapshot, &spec).unwrap();
+                let (expected, folded) = expected(&snapshot, &model, &spec);
+                assert_eq!(lists(&groups), expected, "{compressed} {spec:?}");
+                assert_eq!(groups.folded(), folded);
+                assert_eq!(snapshot.budget().reserved(), before + held_by(&groups));
+                drop(groups);
+                assert_eq!(snapshot.budget().reserved(), before);
+            }
+        }
     }
 }
 
@@ -1259,8 +1367,8 @@ fn scratch_held(decoder: &BlockDecoder) -> u64 {
 }
 
 // Before a block is decoded, the column's output and the decoder's scratch are reserved as
-// the larger of what they hold and what the block declares; after it, they are shrunk to the
-// block's, which is what the buffers then hold. A block that does not fit is never decoded.
+// each buffer's larger retained/required capacity. They retain the largest block's capacities
+// after smaller reads. A block that does not fit is never decoded.
 #[test]
 fn a_column_reserves_each_block_before_decoding_it() {
     let disk = MemoryDisk::new();
@@ -1320,7 +1428,7 @@ fn a_column_reserves_each_block_before_decoding_it() {
     };
     let mut downloads_column = Column::<u64>::new(column);
     let end = 3 * ROWS - 1;
-    for (row, memory) in [(end, small), (1, large), (end, small)] {
+    for (row, memory) in [(end, small), (1, large), (end, large)] {
         let value = downloads_column.value(&mut decode, row).unwrap();
         assert_eq!(value, downloads[row as usize]);
         assert_eq!(downloads_column.block.memory(), memory.output);
@@ -1329,7 +1437,7 @@ fn a_column_reserves_each_block_before_decoding_it() {
         assert_eq!(scratch_held(&decode.decoder.blocks), memory.scratch);
     }
 
-    // What is left holds the small block, so another column's large one does not fit.
+    // Retained capacity stays charged, so another column's large output does not fit.
     let mut other = Column::<u64>::new(column);
     let error = other.value(&mut decode, 0).unwrap_err();
     assert!(
@@ -1348,7 +1456,7 @@ fn a_column_reserves_each_block_before_decoding_it() {
     drop(other);
     assert_eq!(
         account.live_bytes(),
-        small.output + scratch_held(&decode.decoder.blocks)
+        large.output + scratch_held(&decode.decoder.blocks)
     );
     assert_eq!(budget.reserved(), large.output + large.scratch);
 }

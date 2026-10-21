@@ -635,3 +635,95 @@ traffic, RSS/cache attribution, and direct raw-consolidation stage comparisons r
 iOS private-container locking, OS expiration, close p99 on devices and killed-open repair remain
 deferred to actual iOS integration. Simulated durable-image crashes are not real power loss or
 process-kill tests. No root workflow, app or repository script is changed.
+
+## Series scan hot path
+
+Measured 2026-10-20, with decode buffers already kept from block to block, on the Windows
+environment above. Default toolchain, existing release profile, `CARGO_INCREMENTAL=0`,
+`CARGO_TARGET_DIR=G:/Programs/Rust/_target-traffic-tsdb`, and
+`cargo --config 'build.rustc-wrapper=""'`; one Cargo process at a time. No format, profile or
+toolchain configuration changes. These are warm synthetic observations from one process per
+variant, not confidence intervals or p99s. Raw logs/CSVs remain in that target directory.
+
+The traffic allocation fixture stores 500 combinations across 1,000 hours (500,000 rows),
+selects three fields and filters inbound `mixed-1`. Its normal report has five rankings and
+four topology levels, served by two series scans. Run from `backend/`:
+
+```powershell
+cargo --config 'build.rustc-wrapper=""' test -p nyanpasu-traffic --release --test report_allocations -- --ignored --nocapture
+```
+
+Before optimizing, temporary timing variants on a captured snapshot stopped after decoding
+columns, after catalog label resolution, or after normal request aggregation. `black_box` kept
+the intermediate values observable. The complete variants used either Total alone or Total
+plus Labels(Origin, Inbound, Target, Exit, Process), with the same filter on every request.
+The temporary hooks and snapshot access were removed. Five rounds ran per variant; rounds 3–4:
+
+| Before: timing variant, three fields        | Round 3 ms | Round 4 ms |
+| ------------------------------------------- | ---------: | ---------: |
+| Columns decoded/accessed, no catalog/groups |     8.2861 |     8.5149 |
+| Plus catalog label resolution, no groups    |    22.1636 |    21.7138 |
+| Complete Total                              |    28.4830 |    28.6981 |
+| Complete Total + five Labels requests       |    38.5672 |    38.4383 |
+
+The paired averages attribute about 13.54ms to repeated catalog label resolution, then 6.65ms
+to total filtering/grouping or 16.56ms to six-request filtering/grouping. These differences are
+timing estimates, not sampled CPU percentages. Hooks add overhead: their complete report was
+76.74/77.10ms, versus the untouched report's 73.43/72.42ms. Removing all three field columns
+left the complete total at 26.46/26.45ms, corroborating that field decoding was not dominant.
+
+The scan now iterates stripes bounded by the earliest column block boundary and accumulates selected
+fields by combination id. It resolves labels, filters and hashes keys once per seen combination
+after scanning chunks and head. Saturating unsigned addition permits regrouping; presence bytes
+preserve zero sums and zero-field groups. Existing chunk/block bucket-statistics skips remain.
+Raw `IntView` reads and format changes were unnecessary to meet the targets.
+
+| Workload                              |              Before round 3/4 ms |    After 3/4 ms |
+| ------------------------------------- | -------------------------------: | --------------: |
+| Total scan, three fields              | 28.4830 / 28.6981 (instrumented) | 4.4534 / 4.8004 |
+| Total + five Labels requests          | 38.5672 / 38.4383 (instrumented) | 4.4922 / 4.4264 |
+| Full traffic report, original harness |                73.4334 / 72.4188 | 9.0705 / 8.9926 |
+
+The isolated queries after the change use the same snapshot harness without the stage-selection hooks.
+The full report improves about 8x and falls below the supplied old-store 32ms reference;
+the total scan also clears 3x against the supplied approximately 27ms reference.
+
+| Full traffic report, each of rounds 3–4 |  Before |   After |
+| --------------------------------------- | ------: | ------: |
+| Heap allocations/reallocations          |   2,179 |   2,183 |
+| Requested allocation bytes              | 765,821 | 790,871 |
+
+The two new buffers per scan account for all four extra allocations and 25,050 requested
+bytes across the report. Each scan charges 501 catalog slots × (one presence byte + three
+u64 sums) = 12,525 bytes before allocation. That is additional scan workspace, not retained
+result memory. Catalog holes count too; large catalogs can exhaust the query budget sooner,
+even for a total query. No uncharged cache or persistent query-result cache was added.
+
+The all-feature benchmark smoke passed every shape, both durabilities and both engines:
+824 summary rows and 1,526 API samples before and after. Complete validated harness time was
+1.293s before / 1.257s after (space smoke 0.100s each), excluding compilation. Its tiny hourly
+series queries have four samples per cell, so these medians describe smoke only:
+
+| Hourly smoke engine / mode | Before series p50 µs | After series p50 µs |
+| -------------------------- | -------------------: | ------------------: |
+| memory / Consistent        |                 22.8 |                20.3 |
+| memory / Durable           |                 22.2 |                20.1 |
+| redb / Consistent          |                 30.3 |                27.1 |
+| redb / Durable             |                 30.1 |                27.5 |
+
+Exact root observers (`TSDB_BENCH_SCALE=smoke`, `TSDB_BENCH_SHAPE=hourly`, ignored release
+`status::bench_tests`, all features) measured maximum query charges of 246,796 bytes before /
+246,893 bytes after, on both memory and redb. These include captures and retained results,
+not allocator/RSS or backend cache memory. The peak grows by 97 bytes: the 225-byte partials
+overlap decoding, while the 128-byte group sums/index now allocate after the chunk decoder
+retires. The two scan caches of a traffic report are sequential, so its 25,050 requested
+bytes must not be added as simultaneous peak memory. Both observer tests passed; all three
+roots returned to zero after close.
+
+Verification: `cargo fmt --all`; Clippy all targets with `-D warnings`, all features and
+no default features; tsdb tests 740/690 passed plus two doc tests each (3/2 ignored), and
+traffic tests 91 unit plus one byte-for-byte legacy report oracle passed (two ignored).
+The original 40-case randomized query/write model remains, supplemented by a 60,000-row
+seeded random-value comparison over raw/compressed chunks, partial ranges, all field masks,
+filters, label groups and mapped groups. A separate admission test refuses each partial-sum
+buffer in turn, validates implicit 0 and invalid ids, and checks complete credit return.

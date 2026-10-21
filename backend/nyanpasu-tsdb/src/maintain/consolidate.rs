@@ -52,6 +52,9 @@
 //! so a round holds the inputs of one bucket at a time. Chosen inputs become one account's
 //! allocation plan before any data-sized buffer is allocated. Dropped buffers and directories
 //! return credit to that same account; execution cannot exceed the admitted plan.
+//! Decode buffers retain their largest need across blocks, within `MAX_BLOCK_ROWS * width +
+//! ceil(MAX_BLOCK_ROWS/8)` per integer output and `MAX_BLOCK_LEN` for the shared scratch body.
+//! The existing maximum-row output and maximum-body scratch plans cover that retention.
 
 use std::{
     cmp::Reverse,
@@ -1408,8 +1411,8 @@ impl<T: IntValue> Cursor<T> {
 
     /// The column's value in `row`, decoding the block that holds it when it is not the one
     /// decoded. A row only moves forward, so each block decodes once. Before a read the
-    /// charged buffers are sized to the block before its bytes are read, retiring obsolete
-    /// storage before allocating replacements (`chunk::reader::decode_memory`).
+    /// charged buffers retain each buffer's largest need, bounded by the column's format
+    /// limits. Undersized storage retires before replacements (`chunk::reader::decode_memory`).
     fn value(
         &mut self,
         reader: &ChunkReader,

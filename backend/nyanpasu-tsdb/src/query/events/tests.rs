@@ -924,10 +924,10 @@ fn a_chunk_opens_within_the_scans_budget() {
 }
 
 // A block's decode is reserved before it, by the protocol of `decode_memory`: one byte short,
-// nothing is decoded. Afterwards the scan holds exactly what the block takes, a smaller block
-// after it less, and a larger one after that more again, within what was reserved.
+// nothing is decoded. Afterwards each buffer retains its largest block's need, even when
+// subsequent blocks are smaller, within what was reserved.
 #[test]
-fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
+fn a_block_is_reserved_before_it_is_decoded_and_retains_its_largest_capacity() {
     let (store, chunk) = three_blocks();
     let snapshot = store.snapshot();
     let reader = ChunkReader::open(
@@ -986,9 +986,9 @@ fn a_block_is_reserved_before_it_is_decoded_and_held_at_its_size() {
 
     let (budget, account, mut decode, mut log) = start(first);
     let block = BLOCK_ROWS as u32;
-    for (row, held) in [(0, first), (2 * block, last), (block, first)] {
+    for row in [0, 2 * block, block] {
         decode.ints::<i64>(&at, KEY, row, &mut log).unwrap();
-        assert_eq!(account.live_bytes(), held, "after the block of row {row}");
+        assert_eq!(account.live_bytes(), first, "after the block of row {row}");
         assert_eq!(budget.reserved(), first);
     }
     assert_eq!(

@@ -333,9 +333,12 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
     await expect
       .poll(() => rpc.reports.at(-1)?.topology?.layers)
       .toEqual(['source_region', 'destination_region', 'destination_basis'])
-    expect(document.querySelectorAll('[data-slot="traffic-stat"]').length).toBe(
-      0,
-    )
+    // The overview's stats leave with it once its slide has ended.
+    await expect
+      .poll(
+        () => document.querySelectorAll('[data-slot="traffic-stat"]').length,
+      )
+      .toBe(0)
     expect(content.textContent).toContain(summary)
 
     const source = dimensionName('source')

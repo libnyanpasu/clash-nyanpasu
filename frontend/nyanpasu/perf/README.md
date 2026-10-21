@@ -16,8 +16,15 @@ actions after a warm-up (the connections benchmark reports page openings under
 | `avgMaxFrameGap`  | Longest gap between two animation frames per action; ~16.7 ms is smooth       |
 | `avgFramesOver50` | Frames per action that took over 50 ms                                        |
 | `avgLongTaskMax`  | Longest task the browser reported per action (Chromium only)                  |
+| `avgMaxBusy`      | Longest stretch the main thread was busy per action, rendering included       |
 | `avgSyncTime`     | Synchronous JavaScript from the action to its first DOM mutation              |
 | `avgReactRender`  | React render time per action, summed over commits (excludes the commit phase) |
+
+Frame gaps never read below a frame at the browser's 60 Hz, and the work of
+the action's own frame does not always show in them; check a frame budget,
+such as 8.3 ms at 120 Hz, against `avgMaxBusy`. An idle page reads about 3 ms.
+It reads 0 while `VITE_PERF_PROFILE` records a profile, which would otherwise
+mostly record the measurement.
 
 Frame timing is noisy: compare runs on the same machine, run each variant at
 least twice, and read changes smaller than a frame with suspicion.

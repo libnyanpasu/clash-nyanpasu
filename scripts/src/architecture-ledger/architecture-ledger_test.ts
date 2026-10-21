@@ -742,7 +742,15 @@ Deno.test("collectRustFiles: a tmp ancestor does not exclude the worktree", asyn
   const fixture = await Deno.makeTempDir();
   const repo = `${fixture}/tmp/worktree`;
   try {
-    for (const dir of ["src", "tmp", "target", "nyanpasu-runtime"]) {
+    for (
+      const dir of [
+        "src",
+        "tmp",
+        "target",
+        "nyanpasu-runtime",
+        "enable-loopback",
+      ]
+    ) {
       await Deno.mkdir(`${repo}/backend/${dir}`, { recursive: true });
       await Deno.writeTextFile(
         `${repo}/backend/${dir}/sample.rs`,

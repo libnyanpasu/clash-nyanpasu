@@ -16,6 +16,7 @@ Deno.test("files map to the parts that check them", () => {
     ["frontend/query/src/query-bindings.ts", ["backend", "frontend"]],
     ["backend/tauri/src/main.rs", ["backend"]],
     ["backend/nyanpasu-runtime", ["backend"]],
+    ["backend/enable-loopback", ["backend"]],
     ["backend/README.md", ["backend"]],
     ["rust-toolchain.toml", ["backend"]],
     ["scripts/src/ci/changed-parts.ts", ["scripts"]],

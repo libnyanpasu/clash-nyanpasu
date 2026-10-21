@@ -24,7 +24,9 @@ members = [
 # exclude, cargo pulls its member crates into this workspace and their
 # `workspace = true` inheritance resolves against this root, which has no
 # `anyhow` entry — surfacing as `dependency.anyhow was not found`.
-exclude = ['nyanpasu-runtime']
+# `enable-loopback` also owns an independent workspace; its inherited dependencies
+# must resolve there. Packaging downloads its release rather than building it here.
+exclude = ['nyanpasu-runtime', 'enable-loopback']
 
 [workspace.package]
 repository = 'https://github.com/keiko233/clash-nyanpasu.git'

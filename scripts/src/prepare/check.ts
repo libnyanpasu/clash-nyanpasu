@@ -5,6 +5,7 @@ import figlet from "npm:figlet";
 import { colorize, consola } from "../shared/logger.ts";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 import { createBinaryResolvers } from "./binaries.ts";
+import { getEnableLoopbackInfo } from "./enable-loopback.ts";
 import { normalizeArch, normalizePlatform } from "./platform.ts";
 import {
   formatProgressSize,
@@ -12,7 +13,12 @@ import {
   formatSpeed,
   ProgressRenderer,
 } from "./progress.ts";
-import { resolveResource, resolveSidecar, resolveWintun } from "./resources.ts";
+import {
+  resolveEnableLoopback,
+  resolveResource,
+  resolveSidecar,
+  resolveWintun,
+} from "./resources.ts";
 import { normalizeVersion } from "./versions.ts";
 import type {
   DownloadProgress,
@@ -248,13 +254,9 @@ async function main(args = parseArgs(Deno.args, {
     {
       name: "enableLoopback",
       func: (onProgress) =>
-        resolveResource(
+        resolveEnableLoopback(
           resourceContext,
-          {
-            file: "enableLoopback.exe",
-            downloadURL:
-              "https://github.com/Kuingsmile/uwp-tool/releases/download/latest/enableLoopback.exe",
-          },
+          getEnableLoopbackInfo(WORKSPACE_ROOT, arch),
           { force, onProgress },
         ),
       retry: 5,

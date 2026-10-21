@@ -64,8 +64,6 @@
   "traffic_dimension_destination_basis": "定位依據",
   "traffic_overview": "總覽",
   "traffic_sidebar": "流量分類",
-  "traffic_rankings": "分類排行",
-  "traffic_rankings_dimension": "排行維度",
   "traffic_stat_total": "總流量",
   "traffic_stat_connections": "連線",
   "traffic_stat_connections_hint": "統計值，並非精確計費。連線計入其關閉時所在的範圍，即使它的流量發生在範圍開始之前。",

@@ -347,7 +347,7 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       .toBe(0)
     expect(content.textContent).toContain(summary)
 
-    const rankings = m.traffic_rankings()
+    const rankings = dimensionName('source')
     await sidebarItem(view, rankings).click()
     await expect
       .element(view.getByRole('heading', { name: rankings, level: 1 }))
@@ -359,7 +359,6 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
             .length,
       )
       .toBe(1)
-    await view.getByRole('radio', { name: dimensionName('source') }).click()
     await expect
       .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
       .toBeInTheDocument()
@@ -607,7 +606,7 @@ test('the flow card and its rankings fill the page down to its bottom inset', as
     .toBeLessThanOrEqual(1)
 })
 
-test('all four sidebar entries select the matching page view', async ({
+test('every sidebar entry selects the matching page view', async ({
   onTestFinished,
 }) => {
   mockBackend()
@@ -616,7 +615,7 @@ test('all four sidebar entries select the matching page view', async ({
     ['overview', m.traffic_overview()],
     ['flow', m.topology_flow()],
     ['map', m.topology_geo_map()],
-    ['rankings', m.traffic_rankings()],
+    ['process', dimensionName('process')],
   ] as const
 
   for (const [value, label] of entries) {
@@ -635,8 +634,8 @@ test('all four sidebar entries select the matching page view', async ({
       await expect
         .poll(() => rpc.reports.at(-1)?.topology?.layers)
         .toEqual(['origin', 'rule', 'chain', 'exit'])
-    } else if (value === 'rankings') {
-      // The rankings open on the first dimension.
+    } else if (value === 'process') {
+      // A dimension's entry opens its full listing.
       const ranking = report.rankings.find(
         (item) => item.dimension === 'process',
       )!

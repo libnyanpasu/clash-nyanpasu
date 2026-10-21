@@ -499,7 +499,7 @@ test('the route stores category selection and filters in search state', async ({
   )
   expect(routeSearch()).not.toHaveProperty('view')
 
-  await sidebarItem(view, m.traffic_rankings()).click()
+  await sidebarItem(view, dimensionName('process')).click()
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))
     .toBe('/main/topology/process')
@@ -510,7 +510,7 @@ test('the route stores category selection and filters in search state', async ({
         document.querySelectorAll('[data-slot="traffic-ranking-list"]').length,
     )
     .toBe(1)
-  await view.getByRole('radio', { name: dimensionName('source') }).click()
+  await sidebarItem(view, dimensionName('source')).click()
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))
     .toBe('/main/topology/source')
@@ -570,8 +570,8 @@ test('a legacy source view opens the source ranking with its state', async ({
   expect(router.state.location.search).not.toHaveProperty('view')
   expect(router.state.location.state.returnTo).toEqual(returnTo)
   await expect
-    .element(view.getByRole('radio', { name: dimensionName('source') }))
-    .toHaveAttribute('aria-checked', 'true')
+    .element(sidebarItem(view, dimensionName('source')))
+    .toHaveAttribute('data-active', 'true')
   await expect
     .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
     .toBeInTheDocument()
@@ -739,10 +739,10 @@ test('sidebar changes preserve traffic state and the paused report', async ({
   await view.getByRole('button', { name: m.topology_pause() }).click()
   await expect.poll(() => backend.intervals.at(-1)).toBe(false)
 
-  await sidebarItem(view, m.traffic_rankings()).click()
+  await sidebarItem(view, dimensionName('process')).click()
   await expect
     .element(
-      view.getByRole('heading', { name: m.traffic_rankings(), level: 1 }),
+      view.getByRole('heading', { name: dimensionName('process'), level: 1 }),
     )
     .toBeInTheDocument()
 
@@ -1695,6 +1695,6 @@ test('a ranking tells when the listing is unavailable or empty', async ({
 
   rpc.usageError = false
   // Another dimension's listing was never fetched, so it asks again.
-  await view.getByRole('radio', { name: dimensionName('target') }).click()
+  await sidebarItem(view, dimensionName('target')).click()
   await expect.element(view.getByText(m.traffic_empty())).toBeInTheDocument()
 })

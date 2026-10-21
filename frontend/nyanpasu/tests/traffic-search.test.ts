@@ -130,7 +130,7 @@ const topologyOf = (view: TrafficView, search: Record<string, unknown> = {}) =>
 
 test('only flow and map requests include topology', () => {
   expect(topologyOf('overview')).toBeNull()
-  expect(topologyOf('rankings')).toBeNull()
+  expect(topologyOf('process')).toBeNull()
   expect(topologyOf('flow')).toEqual({
     layers: ['origin', 'rule', 'chain', 'exit'],
     limit_per_layer: 7,

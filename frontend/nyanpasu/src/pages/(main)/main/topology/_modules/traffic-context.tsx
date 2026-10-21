@@ -4,12 +4,11 @@ import DashboardRounded from '~icons/material-symbols/dashboard-rounded'
 import DevicesRounded from '~icons/material-symbols/devices-rounded'
 import DnsRounded from '~icons/material-symbols/dns-rounded'
 import LanOutlineRounded from '~icons/material-symbols/lan-outline-rounded'
-import LeaderboardRounded from '~icons/material-symbols/leaderboard-rounded'
 import LoginRounded from '~icons/material-symbols/login-rounded'
 import PublicRounded from '~icons/material-symbols/public-rounded'
 import { createContext, useContext } from 'react'
 import { m } from '@/paraglide/messages'
-import type { UsageLabel } from '@/utils/traffic-usage'
+import { dimensionName, type UsageLabel } from '@/utils/traffic-usage'
 import type {
   Dimension,
   TrafficQuery,
@@ -70,12 +69,14 @@ export const TRAFFIC_PAGES = [
     title: m.traffic_overview,
   },
   ...ANALYSIS_VIEWS,
-  {
-    view: 'rankings',
-    to: '/main/topology/$dimension',
-    icon: LeaderboardRounded,
-    title: m.traffic_rankings,
-  },
+  // Each dimension's full listing has its own entry.
+  ...RANKINGS.map(({ dimension, icon }) => ({
+    view: dimension,
+    to: '/main/topology/$dimension' as const,
+    params: { dimension },
+    icon,
+    title: () => dimensionName(dimension),
+  })),
 ] as const
 
 export type RankingDimension = (typeof RANKINGS)[number]['dimension']

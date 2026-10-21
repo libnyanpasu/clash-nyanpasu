@@ -93,6 +93,7 @@ export function AnimatedOutlet({
   const prevMatches = useRef(matches)
 
   const router = useRouter()
+  const prevState = useRef(router.state)
 
   // Frozen router for the exit animation, created once when isPresent becomes false
   const frozenRouterRef = useRef<typeof router | null>(null)
@@ -101,12 +102,21 @@ export function AnimatedOutlet({
 
   if (isPresent) {
     prevMatches.current = matches
+    prevState.current = router.state
     frozenRouterRef.current = null
   } else {
     if (!frozenRouterRef.current) {
       // The leaving page's matches and the router state it last rendered.
+      // The router sets the next location as it starts loading and commits
+      // the matches after, so the location they were resolved for is the
+      // page's.
       const frozenMatches = prevMatches.current
-      const frozenState = { ...router.state, matches: frozenMatches }
+      const { resolvedLocation, location } = prevState.current
+      const frozenState = {
+        ...prevState.current,
+        location: resolvedLocation ?? location,
+        matches: frozenMatches,
+      }
 
       // Helper: create a static frozen store for the exit animation.
       // useSelector (@tanstack/react-store) needs .get() and .subscribe(); a

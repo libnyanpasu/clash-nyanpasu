@@ -92,6 +92,7 @@ fs-err = { version = '3.1.2', features = ['tokio'] }
 gxhash = '3'
 
 [patch.crates-io]
+reqwest-websocket = { path = 'nyanpasu-runtime/vendor/reqwest-websocket' }
 # softbuffer 0.4.8 with its CoreGraphics backend reading the top byte as
 # premultiplied alpha, so the statistic widget's software renderer keeps
 # per-pixel transparency on macOS. Drop it once Slint moves to a softbuffer

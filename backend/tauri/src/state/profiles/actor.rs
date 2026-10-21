@@ -4,11 +4,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use nyanpasu_config::profile::{
-    ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
+    ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, FolderId, LocalBinding,
     ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition,
-    ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata, ProfileMetadataPatch,
-    ProfileSource, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch, RemoteSyncInterval,
-    ScriptRuntime, ScriptTransform, SubscriptionInfo, TransformDefinition, TransformKind,
+    ProfileDependencyIndex, ProfileFolder, ProfileId, ProfileItem, ProfileLayout, ProfileMetadata,
+    ProfileMetadataPatch, ProfileSource, ProfileValidationError, Profiles, RemoteProfileOptions,
+    RemoteProfileOptionsPatch, RemoteSyncInterval, ScriptRuntime, ScriptTransform,
+    SubscriptionInfo, TransformDefinition, TransformKind,
 };
 use nyanpasu_core::state::{
     PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
@@ -62,6 +63,9 @@ pub struct NewProfileRequest {
     pub metadata: ProfileMetadata,
     /// Add rewrites the materialized path to `{uid}.{ext}`.
     pub definition: ProfileDefinition,
+    /// Folder the new Config profile joins in the same commit.
+    #[serde(default)]
+    pub folder: Option<FolderId>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,6 +146,7 @@ struct PendingImport {
     transform: Option<TransformKind>,
     option: RemoteProfileOptions,
     update_interval_explicit: bool,
+    folder: Option<FolderId>,
     task: JoinHandle<()>,
 }
 
@@ -243,6 +248,18 @@ pub enum ProfilesActorMessage {
         op: ReorderOp,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
+    /// Replace the folders and the display order in one commit.
+    SetLayout {
+        layout: ProfileLayout,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    /// Create a folder holding `members`, which leave the folders they were in.
+    /// The reply carries the minted folder id.
+    CreateFolder {
+        name: String,
+        members: Vec<ProfileId>,
+        reply: RpcReplyPort<Result<(CommitReport, FolderId), ProfilesError>>,
+    },
     PatchMetadata {
         uid: ProfileId,
         patch: ProfileMetadataPatch,
@@ -283,6 +300,8 @@ pub enum ProfilesActorMessage {
         metadata: ProfileMetadata,
         option: RemoteProfileOptions,
         update_interval_explicit: bool,
+        /// Folder the imported Config joins in the same commit.
+        folder: Option<FolderId>,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
     CommitImported {
@@ -320,6 +339,7 @@ impl ProfilesActorMessage {
             | Self::Add { reply, .. }
             | Self::Delete { reply, .. }
             | Self::Reorder { reply, .. }
+            | Self::SetLayout { reply, .. }
             | Self::PatchMetadata { reply, .. }
             | Self::PatchRemoteOptions { reply, .. }
             | Self::ImportRemote { reply, .. }
@@ -327,6 +347,9 @@ impl ProfilesActorMessage {
                 let _ = reply.send(Err(ProfilesError::ShuttingDown));
             }
             Self::SetCurrentIfNone { reply, .. } => {
+                let _ = reply.send(Err(ProfilesError::ShuttingDown));
+            }
+            Self::CreateFolder { reply, .. } => {
                 let _ = reply.send(Err(ProfilesError::ShuttingDown));
             }
             Self::SyncRemote { reply, .. } => {
@@ -985,6 +1008,7 @@ impl ProfilesActor {
         url: url::Url,
         transform: Option<TransformKind>,
         option: RemoteProfileOptions,
+        folder: Option<&FolderId>,
     ) -> Result<(), ProfilesError> {
         let definition = Self::remote_import_definition(
             url,
@@ -1005,12 +1029,13 @@ impl ProfilesActor {
         let collision = uid.clone();
         ensure!(
             next.append_item(ProfileItem {
-                uid,
+                uid: uid.clone(),
                 metadata: metadata.clone(),
                 definition,
             }),
             ProfileIdCollisionSnafu { uid: collision }
         );
+        Self::join_folder(&mut next, &uid, folder)?;
         if let Err(errors) = next.validate() {
             return ValidationFailedSnafu { errors }.fail();
         }
@@ -1417,6 +1442,35 @@ impl ProfilesActor {
         }
     }
 
+    fn generate_folder_id(existing: &Profiles) -> FolderId {
+        loop {
+            let candidate = FolderId(format!("f{}", nanoid::nanoid!(11)));
+            if existing.folders.iter().all(|folder| folder.id != candidate) {
+                return candidate;
+            }
+        }
+    }
+
+    /// Appends a freshly added profile to `folder`. A Transform in a folder is
+    /// rejected by the document validation that every commit runs.
+    fn join_folder(
+        profiles: &mut Profiles,
+        uid: &ProfileId,
+        folder: Option<&FolderId>,
+    ) -> Result<(), ProfilesError> {
+        let Some(id) = folder else {
+            return Ok(());
+        };
+        let Some(folder) = profiles.folders.iter_mut().find(|folder| &folder.id == id) else {
+            return ValidationFailedSnafu {
+                errors: vec![ProfileValidationError::FolderNotFound { id: id.clone() }],
+            }
+            .fail();
+        };
+        folder.members.push(uid.clone());
+        Ok(())
+    }
+
     fn canonical_extension(definition: &ProfileDefinition) -> &'static str {
         match definition {
             ProfileDefinition::Config { .. } => "yaml",
@@ -1716,6 +1770,7 @@ impl Actor for ProfilesActor {
                     profiles.current = next.current;
                     profiles.global_transforms = next.global_transforms;
                     profiles.valid = next.valid;
+                    profiles.folders = next.folders;
                     profiles.items = next.items;
                     Ok(AffectsRule::Always)
                 })
@@ -1755,6 +1810,10 @@ impl Actor for ProfilesActor {
                             let mut next = before.clone();
                             if !next.append_item(item) {
                                 ProfileIdCollisionSnafu { uid }.fail()
+                            } else if let Err(error) =
+                                Self::join_folder(&mut next, &uid, request.folder.as_ref())
+                            {
+                                Err(error)
                             } else {
                                 Self::commit_with_resources(
                                     &myself,
@@ -1799,6 +1858,9 @@ impl Actor for ProfilesActor {
                         .map(|source| source.materialized().file.clone());
                     let mut next = before.clone();
                     next.remove_item_unchecked(&uid);
+                    for folder in &mut next.folders {
+                        folder.members.retain(|member| member != &uid);
+                    }
                     Self::commit_with_resources(
                         &myself,
                         state,
@@ -1859,6 +1921,48 @@ impl Actor for ProfilesActor {
                     Ok(AffectsRule::Never)
                 })
                 .await;
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::SetLayout { layout, reply } => {
+                let result = Self::run_state_write(&myself, state, move |profiles| {
+                    profiles
+                        .apply_layout(layout)
+                        .map_err(|errors| ValidationFailedSnafu { errors }.build())?;
+                    Ok(AffectsRule::Never)
+                })
+                .await;
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::CreateFolder {
+                name,
+                members,
+                reply,
+            } => {
+                // The actor is the only writer, so an id unused now stays
+                // unused until the commit below.
+                let id = Self::generate_folder_id(&Self::current_state(state));
+                let folder_id = id.clone();
+                let result = Self::run_state_write(&myself, state, move |profiles| {
+                    let mut folders = profiles.folders.clone();
+                    for folder in &mut folders {
+                        folder.members.retain(|member| !members.contains(member));
+                    }
+                    folders.push(ProfileFolder { id, name, members });
+                    let placed: indexmap::IndexSet<&ProfileId> =
+                        folders.iter().flat_map(|folder| &folder.members).collect();
+                    let ungrouped = profiles
+                        .items
+                        .iter()
+                        .filter(|(uid, item)| item.definition.is_config() && !placed.contains(uid))
+                        .map(|(uid, _)| uid.clone())
+                        .collect();
+                    profiles
+                        .apply_layout(ProfileLayout { folders, ungrouped })
+                        .map_err(|errors| ValidationFailedSnafu { errors }.build())?;
+                    Ok(AffectsRule::Never)
+                })
+                .await
+                .map(|report| (report, folder_id));
                 let _ = reply.send(result);
             }
             ProfilesActorMessage::PatchMetadata { uid, patch, reply } => {
@@ -2071,6 +2175,7 @@ impl Actor for ProfilesActor {
                 metadata,
                 option,
                 update_interval_explicit,
+                folder,
                 reply,
             } => {
                 let before = Self::current_state(state);
@@ -2080,6 +2185,7 @@ impl Actor for ProfilesActor {
                     url.clone(),
                     transform,
                     option.clone(),
+                    folder.as_ref(),
                 ) {
                     let _ = reply.send(Err(error));
                     return Ok(());
@@ -2115,6 +2221,7 @@ impl Actor for ProfilesActor {
                         transform,
                         option,
                         update_interval_explicit,
+                        folder,
                         task,
                     },
                 );
@@ -2180,6 +2287,10 @@ impl Actor for ProfilesActor {
                                 definition,
                             }) {
                                 ProfileIdCollisionSnafu { uid }.fail()
+                            } else if let Err(error) =
+                                Self::join_folder(&mut next, &uid, pending.folder.as_ref())
+                            {
+                                Err(error)
                             } else {
                                 // If the caller closed between the pre-check and
                                 // the first durable step, a complete valid profile
@@ -2568,6 +2679,50 @@ mod tests {
                 base.clone(),
                 with(&base, &|p| {
                     p.append_item(file_config("added", "added.yaml", &[]));
+                }),
+                None,
+            ),
+            (
+                "move the current profile into a new folder",
+                AffectsRule::Never,
+                base.clone(),
+                with(&base, &|p| {
+                    p.apply_layout(ProfileLayout {
+                        folders: vec![ProfileFolder {
+                            id: FolderId("f1".into()),
+                            name: "Work".into(),
+                            members: vec![id("sel")],
+                        }],
+                        ungrouped: vec![id("spare")],
+                    })
+                    .unwrap();
+                }),
+                None,
+            ),
+            (
+                "reorder the profiles inside a folder",
+                AffectsRule::Never,
+                with(&base, &|p| {
+                    p.apply_layout(ProfileLayout {
+                        folders: vec![ProfileFolder {
+                            id: FolderId("f1".into()),
+                            name: "Work".into(),
+                            members: vec![id("sel"), id("spare")],
+                        }],
+                        ungrouped: vec![],
+                    })
+                    .unwrap();
+                }),
+                with(&base, &|p| {
+                    p.apply_layout(ProfileLayout {
+                        folders: vec![ProfileFolder {
+                            id: FolderId("f1".into()),
+                            name: "Work".into(),
+                            members: vec![id("spare"), id("sel")],
+                        }],
+                        ungrouped: vec![],
+                    })
+                    .unwrap();
                 }),
                 None,
             ),

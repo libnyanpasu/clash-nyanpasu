@@ -1214,6 +1214,7 @@ impl NyanpasuClient {
                 },
                 option,
                 update_interval_explicit,
+                None,
             )
             .await?;
         let created = report
@@ -3335,6 +3336,7 @@ pub(crate) mod tests {
                     transforms: vec![],
                 }),
             },
+            folder: None,
         }
     }
 
@@ -4368,6 +4370,7 @@ pub(crate) mod tests {
                     transforms: vec![],
                 }),
             },
+            folder: None,
         }
     }
 
@@ -4392,6 +4395,7 @@ pub(crate) mod tests {
                     transforms: vec![],
                 }),
             },
+            folder: None,
         }
     }
 

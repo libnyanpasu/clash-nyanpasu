@@ -1,3 +1,4 @@
+import { useIsPresent } from 'motion/react'
 import { createContext, use, useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
@@ -8,6 +9,7 @@ import {
   createRoute,
   createRouter,
   RouterProvider,
+  useLocation,
 } from '@tanstack/react-router'
 
 // The outlet freezes the clash streams of a leaving page; none run here.
@@ -40,11 +42,37 @@ const layoutValue = (() => {
 })()
 
 const renders = { a: 0, b: 0 }
+const presenceRenders = { a: 0, b: 0 }
+
+function PresenceContent({ name }: { name: 'a' | 'b' }) {
+  presenceRenders[name] += 1
+
+  return null
+}
+
+// A motion component or a nested AnimatePresence in the page: what it
+// renders is rendered again when the presence it reads changes.
+function Presence({ name }: { name: 'a' | 'b' }) {
+  useIsPresent()
+
+  return <PresenceContent name={name} />
+}
+
+// Apart from the page, whose renders are counted.
+function Path({ name }: { name: string }) {
+  return <p data-path={name}>{useLocation().pathname}</p>
+}
 
 function Page({ name }: { name: 'a' | 'b' }) {
   renders[name] += 1
 
-  return <p data-page={name}>{use(LayoutValue)}</p>
+  return (
+    <>
+      <p data-page={name}>{use(LayoutValue)}</p>
+      <Path name={name} />
+      <Presence name={name} />
+    </>
+  )
 }
 
 function WrappingLayout() {
@@ -87,6 +115,8 @@ function mount(
   return {
     router,
     page: (name: string) => container.querySelector(`[data-page="${name}"]`),
+    path: (name: string) =>
+      container.querySelector(`[data-path="${name}"]`)?.textContent,
   }
 }
 
@@ -120,5 +150,39 @@ test('a page sliding out keeps the wrapper it had', async ({
   await expect.poll(() => page('b')?.textContent).toBe('1')
   expect(page('a')?.textContent).toBe('0')
   expect(renders.a).toBe(before)
+  await expect.poll(() => page('a')).toBeNull()
+})
+
+test('a page sliding out keeps the location it was shown at', async ({
+  onTestFinished,
+}) => {
+  const { router, page, path } = mount(
+    () => <AnimatedOutletPreset />,
+    onTestFinished,
+  )
+  await expect.poll(() => path('a')).toBe('/a')
+
+  await router.navigate({ to: '/b' as never })
+
+  await expect.poll(() => page('b')).toBeTruthy()
+  expect(path('a')).toBe('/a')
+  await expect.poll(() => page('a')).toBeNull()
+})
+
+test('a page sliding out is told once that it leaves', async ({
+  onTestFinished,
+}) => {
+  layoutValue.set(0)
+  const { router, page } = mount(WrappingLayout, onTestFinished)
+  await expect.poll(() => page('a')).toBeTruthy()
+
+  await router.navigate({ to: '/b' as never })
+  await expect.poll(() => page('b')).toBeTruthy()
+  const before = presenceRenders.a
+  // The layout renders again during the slide.
+  layoutValue.set(1)
+
+  await expect.poll(() => page('b')?.textContent).toBe('1')
+  expect(presenceRenders.a).toBe(before)
   await expect.poll(() => page('a')).toBeNull()
 })

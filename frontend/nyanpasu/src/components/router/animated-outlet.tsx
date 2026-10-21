@@ -1,5 +1,11 @@
-import { AnimatePresence, motion, useIsPresent, Variants } from 'motion/react'
-import { ComponentProps, useRef, type ReactNode } from 'react'
+import {
+  AnimatePresence,
+  motion,
+  PresenceContext,
+  useIsPresent,
+  Variants,
+} from 'motion/react'
+import { ComponentProps, use, useMemo, useRef, type ReactNode } from 'react'
 import {
   ClashConnectionDetailsFreezeBoundary,
   ClashWSFreezeBoundary,
@@ -76,10 +82,18 @@ export function AnimatedOutlet({
 }: AnimatedOutletProps) {
   const isPresent = useIsPresent()
 
+  // AnimatePresence gives a leaving child a new presence with each of its
+  // renders. The page is told once that it leaves, or every AnimatePresence
+  // and motion component in it renders again with each render of the layout
+  // during the slide.
+  const presence = use(PresenceContext)
+  const pagePresence = useMemo(() => presence, [presence?.isPresent])
+
   const matches = useMatches()
   const prevMatches = useRef(matches)
 
   const router = useRouter()
+  const prevState = useRef(router.state)
 
   // Frozen router for the exit animation, created once when isPresent becomes false
   const frozenRouterRef = useRef<typeof router | null>(null)
@@ -88,12 +102,21 @@ export function AnimatedOutlet({
 
   if (isPresent) {
     prevMatches.current = matches
+    prevState.current = router.state
     frozenRouterRef.current = null
   } else {
     if (!frozenRouterRef.current) {
       // The leaving page's matches and the router state it last rendered.
+      // The router sets the next location as it starts loading and commits
+      // the matches after, so the location they were resolved for is the
+      // page's.
       const frozenMatches = prevMatches.current
-      const frozenState = { ...router.state, matches: frozenMatches }
+      const { resolvedLocation, location } = prevState.current
+      const frozenState = {
+        ...prevState.current,
+        location: resolvedLocation ?? location,
+        matches: frozenMatches,
+      }
 
       // Helper: create a static frozen store for the exit animation.
       // useSelector (@tanstack/react-store) needs .get() and .subscribe(); a
@@ -144,13 +167,15 @@ export function AnimatedOutlet({
   return (
     <motion.div ref={ref} {...props}>
       <RouterContextProvider router={renderedRouter}>
-        {/* The exiting page keeps the stream samples it had when it started
-            leaving, so live updates do not re-render it during the slide. */}
-        <ClashWSFreezeBoundary frozen={!isPresent}>
-          <ClashConnectionDetailsFreezeBoundary frozen={!isPresent}>
-            {renderOutlet ? renderOutlet(<Outlet />) : <Outlet />}
-          </ClashConnectionDetailsFreezeBoundary>
-        </ClashWSFreezeBoundary>
+        <PresenceContext value={pagePresence}>
+          {/* The exiting page keeps the stream samples it had when it started
+              leaving, so live updates do not re-render it during the slide. */}
+          <ClashWSFreezeBoundary frozen={!isPresent}>
+            <ClashConnectionDetailsFreezeBoundary frozen={!isPresent}>
+              {renderOutlet ? renderOutlet(<Outlet />) : <Outlet />}
+            </ClashConnectionDetailsFreezeBoundary>
+          </ClashWSFreezeBoundary>
+        </PresenceContext>
       </RouterContextProvider>
     </motion.div>
   )

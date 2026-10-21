@@ -105,7 +105,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     );
     let span = tracing::info_span!("spawn_core_actors").entered();
     let (core_v2, service) = tauri::async_runtime::block_on(async {
-        let control = crate::core::actor_v2::local_host::build(&paths).await?;
+        let control = crate::core::actor_v2::local_host::build(&paths, &service_binary).await?;
         let local: crate::core::actor_v2::endpoint::EndpointHandle =
             Arc::new(crate::core::actor_v2::endpoint::LocalEndpoint::new(control));
         let core = crate::core::actor_v2::CoreClient::spawn(local)

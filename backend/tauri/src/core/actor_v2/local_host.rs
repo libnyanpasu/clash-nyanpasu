@@ -12,11 +12,12 @@ use snafu::{ResultExt, Snafu};
 
 use nyanpasu_paths::PathResolver;
 
-pub async fn build(paths: &PathResolver) -> Result<CoreControl> {
+pub async fn build(paths: &PathResolver, shutdown_helper: &std::path::Path) -> Result<CoreControl> {
     let runtime_root = paths.app_config_dir().join("runtime");
     let options = ManagerOptions {
         runtime_dir: Some(runtime_root.join("control")),
         local_ipc_policy: LocalIpcPolicy::Disable,
+        windows_shutdown_helper: Some(shutdown_helper.to_owned()),
         ..ManagerOptions::default()
     };
     let working_dir = paths.app_data_dir().to_owned();
@@ -102,7 +103,9 @@ mod tests {
         let paths =
             crate::client::tests::test_paths(root.path().join("config"), root.path().join("data"));
 
-        let control = build(&paths).await.unwrap();
+        let control = build(&paths, &root.path().join("helper.exe"))
+            .await
+            .unwrap();
 
         let _ = control.status();
         assert!(!control.executor_is_closed());
@@ -115,11 +118,17 @@ mod tests {
         std::fs::write(paths.application_config_path(), "core: mihomo\n").unwrap();
         std::fs::write(paths.nyanpasu_config_path(), "invalid: [").unwrap();
 
-        let control = build(&paths).await.unwrap();
+        let control = build(&paths, &root.path().join("helper.exe"))
+            .await
+            .unwrap();
         assert!(!control.executor_is_closed());
 
         std::fs::remove_file(paths.application_config_path()).unwrap();
-        assert!(build(&paths).await.is_err());
+        assert!(
+            build(&paths, &root.path().join("helper.exe"))
+                .await
+                .is_err()
+        );
     }
 
     #[test]

@@ -6,6 +6,7 @@
     "jsr:@std/assert@^1.0.19": "1.0.19",
     "jsr:@std/async@1": "1.1.1",
     "jsr:@std/cli@1": "1.0.27",
+    "jsr:@std/collections@^1.0.9": "1.0.10",
     "jsr:@std/fmt@1": "1.0.9",
     "jsr:@std/fs@*": "1.0.22",
     "jsr:@std/fs@^1.0.19": "1.0.22",
@@ -16,6 +17,7 @@
     "jsr:@std/path@^1.1.2": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/testing@*": "1.0.21",
+    "jsr:@std/toml@1": "1.0.2",
     "npm:@types/adm-zip@*": "0.5.7",
     "npm:@types/d3@7.4.3": "7.4.3",
     "npm:@types/figlet@*": "1.7.0",
@@ -32,6 +34,8 @@
     "npm:playwright@1.63.0": "1.63.0",
     "npm:prettier@3.9.9": "3.9.9",
     "npm:semver@*": "7.7.4",
+    "npm:spdx-expression-parse@5.0.0": "5.0.0",
+    "npm:spdx-license-list@6.12.0": "6.12.0",
     "npm:telegram@*": "2.26.22",
     "npm:telegram@2.26.22": "2.26.22",
     "npm:zod@*": "4.3.6"
@@ -48,6 +52,9 @@
     },
     "@std/cli@1.0.27": {
       "integrity": "eba97edd0891871a7410e835dd94b3c260c709cca5983df2689c25a71fbe04de"
+    },
+    "@std/collections@1.0.10": {
+      "integrity": "903af106a3d92970d74e20f7ebff77d9658af9bef4403f1dc42a7801c0575899"
     },
     "@std/fmt@1.0.9": {
       "integrity": "2487343e8899fb2be5d0e3d35013e54477ada198854e52dd05ed0422eddcabe0"
@@ -82,6 +89,12 @@
       "dependencies": [
         "jsr:@std/assert@^1.0.19",
         "jsr:@std/internal@^1.0.14"
+      ]
+    },
+    "@std/toml@1.0.2": {
+      "integrity": "5892ba489c5b512265a384238a8fe8dddbbb9498b4b210ef1b9f0336a423a39b",
+      "dependencies": [
+        "jsr:@std/collections"
       ]
     }
   },
@@ -1091,6 +1104,22 @@
         "ip-address",
         "smart-buffer"
       ]
+    },
+    "spdx-exceptions@2.5.0": {
+      "integrity": "sha512-PiU42r+xO4UbUS1buo3LPJkjlO7430Xn5SVAhdpzzsPHsjbYVflnnFdATgabnLude+Cqu25p6N+g2lw/PFsa4w=="
+    },
+    "spdx-expression-parse@5.0.0": {
+      "integrity": "sha512-vngmw3Rgn+o2arXNbnZaj5UtOEBuWBfvaI+Wc8GFfykIhA5/vdK9/Sp/XkLv63dykz2rxKDvKEHupF5P0FORcQ==",
+      "dependencies": [
+        "spdx-exceptions",
+        "spdx-license-ids"
+      ]
+    },
+    "spdx-license-ids@3.0.24": {
+      "integrity": "sha512-cLS9TtWkIQFyLkJ3/5aFQAOHOSKTlOs/7WDut/XPSdjom1fJhUdkepeJAKXa9Y05+FabHd0sti+Et559vDtkpQ=="
+    },
+    "spdx-license-list@6.12.0": {
+      "integrity": "sha512-+nUYqm3aZMSHbjsthK+i/HHI2okTElCvqwUd4k8QcSk+FTGgjq+fsdFj2wZOaX6XmR2JdWhf/NeflNnvKOjcnQ=="
     },
     "store2@2.14.4": {
       "integrity": "sha512-srTItn1GOvyvOycgxjAnPA63FZNwy0PTyUBFMHRM+hVFltAeoh0LmNBz9SZqUS9mMqGk8rfyWyXn3GH5ReJ8Zw=="

@@ -3,6 +3,7 @@ use crate::{
     model::*,
     query::{Row, Usage},
 };
+use nyanpasu_tsdb::EventSeq;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
@@ -31,32 +32,6 @@ pub struct Frame {
     pub connections: Vec<Sample>,
 }
 
-/// What a flush deletes. Data exactly at a cutoff is kept.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Prune {
-    /// Minute buckets before this one.
-    pub minutes_before: u32,
-    /// Hour buckets before this one; `None` keeps them forever.
-    pub hours_before: Option<u32>,
-    /// Closed connection details closed before this wall clock millisecond; `None` keeps them
-    /// forever.
-    pub closed_before: Option<i64>,
-}
-
-impl Prune {
-    /// What a flush at `now_ms` deletes under `retention`; `None` keeps hours and details forever.
-    pub fn new(now_ms: i64, retention: Option<Duration>) -> Self {
-        let before = retention.map(|retention| {
-            now_ms.saturating_sub(i64::try_from(retention.as_millis()).unwrap_or(i64::MAX))
-        });
-        Self {
-            minutes_before: minute_cutoff(now_ms),
-            hours_before: before.map(hour_of),
-            closed_before: before,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct FlushBatch {
     pub meta: SessionMeta,
@@ -69,8 +44,57 @@ pub struct FlushBatch {
     pub minutes: Vec<(u32, Arc<Dimensions>, Usage)>,
     /// The same by hour bucket.
     pub hours: Vec<(u32, Arc<Dimensions>, Usage)>,
-    pub closed: Vec<ClosedConnection>,
-    pub prune: Prune,
+    pub closed: Vec<PendingClosed>,
+    /// Per-connection contributions, in `closed` order, for bounded atomic close groups.
+    pub closed_buckets: Vec<ClosedBuckets>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ClosedBuckets {
+    pub minutes: BTreeMap<u32, Bytes>,
+    pub hours: BTreeMap<u32, Bytes>,
+}
+
+impl FlushBatch {
+    /// Keeps only data whose transactions have not committed.
+    pub fn uncommitted(mut self, closed: usize, active: usize) -> Self {
+        self.active.drain(..active);
+        if closed == self.closed.len() {
+            self.removed.clear();
+            self.minutes.clear();
+            self.hours.clear();
+            self.closed.clear();
+            self.closed_buckets.clear();
+        } else if closed > 0 {
+            let mut remaining = self.closed_part(closed..self.closed.len());
+            remaining.active = self.active;
+            return remaining;
+        }
+        self
+    }
+
+    pub(crate) fn closed_part(&self, range: std::ops::Range<usize>) -> Self {
+        let mut minutes = Pending::new();
+        let mut hours = Pending::new();
+        for (conn, buckets) in self.closed[range.clone()]
+            .iter()
+            .zip(&self.closed_buckets[range.clone()])
+        {
+            closed_usage(conn, buckets, &mut minutes, &mut hours);
+        }
+        Self {
+            meta: self.meta.clone(),
+            active: vec![],
+            removed: self.closed[range.clone()]
+                .iter()
+                .map(|c| c.id.clone())
+                .collect(),
+            minutes: drain_usage(&mut minutes),
+            hours: drain_usage(&mut hours),
+            closed: self.closed[range.clone()].to_vec(),
+            closed_buckets: self.closed_buckets[range].to_vec(),
+        }
+    }
 }
 
 /// Usage of closed connections that is not stored yet, by bucket and final dimensions.
@@ -88,7 +112,10 @@ pub struct Session {
     last_mono: Option<Duration>,
     minutes: Pending,
     hours: Pending,
-    closed: Vec<ClosedConnection>,
+    closed: Vec<PendingClosed>,
+    closed_buckets: Vec<ClosedBuckets>,
+    /// Conservative Input::bytes estimate for the indivisible part, excluding metadata.
+    pending_bytes: u64,
     removed: Vec<String>,
     /// The store refused the last batch and it is held in the buffers above: frames are ignored
     /// until the next batch is taken, so that the buffers stay as they are.
@@ -116,7 +143,12 @@ impl Session {
     /// `profile` is the current profile; connections first seen in this frame keep it for good.
     /// While the store refuses writes the frame is ignored: the counters are cumulative, so the
     /// first frame after the outage carries what the ignored ones would have added.
-    pub fn observe(&mut self, frame: &Frame, profile: Option<&str>) {
+    pub fn observe(
+        &mut self,
+        frame: &Frame,
+        profile: Option<&str>,
+        sequence: &mut impl FnMut() -> EventSeq,
+    ) {
         if self.refused {
             return;
         }
@@ -124,7 +156,7 @@ impl Session {
             let closed_at = self.meta.last_sample_at.unwrap_or(frame.wall_ms);
             let gone: Vec<_> = self.active.drain().map(|(_, c)| c).collect();
             for conn in gone {
-                self.close(conn, closed_at);
+                self.close(conn, closed_at, sequence());
             }
             self.meta.global_counters = None;
             self.last_mono = None;
@@ -188,7 +220,7 @@ impl Session {
             .map(|(_, c)| c)
             .collect();
         for conn in gone {
-            self.close(conn, frame.wall_ms);
+            self.close(conn, frame.wall_ms, sequence());
         }
 
         self.meta.last_sample_at = Some(frame.wall_ms);
@@ -203,15 +235,23 @@ impl Session {
     }
 
     /// Closed since the last batch, so not in the store yet.
-    pub fn pending_closed(&self) -> &[ClosedConnection] {
+    pub fn pending_closed(&self) -> &[PendingClosed] {
         &self.closed
+    }
+
+    /// Metadata has a fixed numeric allowance plus the instance id. Active aux records can
+    /// follow in separate transactions, so they do not trigger early flushes.
+    pub fn pending_bytes(&self) -> u64 {
+        self.pending_bytes
+            .saturating_add(128 + self.meta.instance_id.as_ref().map_or(0, |s| s.len() as u64))
     }
 
     /// Drains what the store has not seen yet, and resumes observing: the batch is the retry of
     /// a refused one, if there was one. Live connections drop the minute buckets that no
     /// minute-tier range reaches at `now_ms` any more; the hour buckets hold that traffic.
-    pub fn take_batch(&mut self, now_ms: i64, prune: Prune) -> FlushBatch {
+    pub fn take_batch(&mut self, now_ms: i64) -> FlushBatch {
         self.refused = false;
+        self.pending_bytes = 0;
         let cutoff = minute_cutoff(now_ms);
         for conn in self.active.values_mut() {
             let kept = conn.minutes.split_off(&cutoff);
@@ -232,17 +272,20 @@ impl Session {
             minutes: drain_usage(&mut self.minutes),
             hours: drain_usage(&mut self.hours),
             closed: std::mem::take(&mut self.closed),
-            prune,
+            closed_buckets: std::mem::take(&mut self.closed_buckets),
         }
     }
 
     /// Takes back a batch the store did not accept, so that the next one carries it again: what
-    /// it held merges with what accumulated since, and its prune is superseded by the next one.
+    /// it held merges with what accumulated since; the next flush uses the current retention policy.
     /// Frames are ignored until then, which keeps the buffers bounded by the live connections
     /// while the store keeps refusing; the rates are unknown meanwhile, as after `disconnect`.
     pub fn requeue(&mut self, batch: FlushBatch) {
         self.refused = true;
         self.disconnect();
+        self.pending_bytes = self
+            .pending_bytes
+            .saturating_add(closed_estimate(&batch.closed, &batch.closed_buckets));
         for (rows, pending) in [
             (batch.minutes, &mut self.minutes),
             (batch.hours, &mut self.hours),
@@ -252,6 +295,7 @@ impl Session {
             }
         }
         self.closed.splice(0..0, batch.closed);
+        self.closed_buckets.splice(0..0, batch.closed_buckets);
         // Still first: a connection may have reused one of these ids since.
         self.removed.splice(0..0, batch.removed);
         // A connection that is gone by now was removed above; the others go out as they are now.
@@ -264,31 +308,12 @@ impl Session {
         );
     }
 
-    /// The dimension combinations that rows not in the store yet refer to: those of live
-    /// connections, and of closed ones awaiting a flush.
-    pub fn referenced_dimensions(&self) -> Vec<Arc<Dimensions>> {
-        let pending = [&self.minutes, &self.hours]
-            .into_iter()
-            .flat_map(|pending| pending.keys().map(|(_, dimensions)| &**dimensions));
-        let live = self.active.values().map(|conn| &conn.dimensions);
-        pending
-            .chain(live)
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .map(|dimensions| Arc::new(dimensions.clone()))
-            .collect()
-    }
-
     /// The ids of the live connections that satisfy every filter, sorted.
     pub fn active_ids(&self, filters: &[TrafficFilter]) -> Vec<String> {
         let mut ids: Vec<String> = self
             .active
             .values()
-            .filter(|conn| {
-                filters
-                    .iter()
-                    .all(|f| group_key(&conn.dimensions, f.dimension) == f.value)
-            })
+            .filter(|conn| crate::key::matches(&conn.dimensions, filters))
             .map(|conn| conn.id.clone())
             .collect();
         ids.sort_unstable();
@@ -307,7 +332,11 @@ impl Session {
 
     /// One row per live connection: its traffic in the buckets of `tier` from `from` on, one
     /// connection, and its current rate.
-    pub fn active_rows(&self, tier: Tier, from: Option<u32>) -> impl Iterator<Item = Row<'_>> {
+    pub fn active_rows(
+        &self,
+        tier: Tier,
+        from: Option<u32>,
+    ) -> impl Iterator<Item = Row<'_>> + Clone {
         self.active.values().map(move |conn| {
             let buckets = match tier {
                 Tier::Minute => &conn.minutes,
@@ -329,8 +358,26 @@ impl Session {
         })
     }
 
+    /// Upper bound before range/filter selection, so query maps reserve once without collecting
+    /// rows. Optional/flattened iterators otherwise lose the known lengths of these buffers.
+    pub(crate) fn row_capacity(&self, tier: Tier, scope: TrafficScope) -> usize {
+        let pending = match tier {
+            Tier::Minute => self.minutes.len(),
+            Tier::Hour => self.hours.len(),
+        };
+        match scope {
+            TrafficScope::All => pending + self.active.len(),
+            TrafficScope::Active => self.active.len(),
+            TrafficScope::Closed => pending,
+        }
+    }
+
     /// The usage of closed connections that is not stored yet, from bucket `from` on.
-    pub fn pending_rows(&self, tier: Tier, from: Option<u32>) -> impl Iterator<Item = Row<'_>> {
+    pub fn pending_rows(
+        &self,
+        tier: Tier,
+        from: Option<u32>,
+    ) -> impl Iterator<Item = Row<'_>> + Clone {
         let pending = match tier {
             Tier::Minute => &self.minutes,
             Tier::Hour => &self.hours,
@@ -343,43 +390,96 @@ impl Session {
 
     /// Moves the connection's buckets under its final dimensions into the pending usage and counts
     /// it in the buckets of the close time.
-    fn close(&mut self, conn: ActiveConnection, closed_at: i64) {
+    fn close(&mut self, conn: ActiveConnection, closed_at: i64, seq: EventSeq) {
         self.dirty.remove(&conn.id);
         self.removed.push(conn.id.clone());
 
         let bytes = conn.bytes();
         let dimensions = Arc::new(conn.dimensions);
-        let traffic = |bytes| Usage {
-            bytes,
-            connections: 0,
+        let buckets = ClosedBuckets {
+            minutes: conn.minutes,
+            hours: conn.hours,
         };
-        for (&bucket, &bytes) in &conn.minutes {
-            add_usage(&mut self.minutes, bucket, &dimensions, traffic(bytes));
-        }
-        for (&bucket, &bytes) in &conn.hours {
-            add_usage(&mut self.hours, bucket, &dimensions, traffic(bytes));
-        }
-        let counted = Usage {
-            bytes: Bytes::default(),
-            connections: 1,
-        };
-        add_usage(
-            &mut self.minutes,
-            minute_of(closed_at),
-            &dimensions,
-            counted,
-        );
-        add_usage(&mut self.hours, hour_of(closed_at), &dimensions, counted);
-
-        self.closed.push(ClosedConnection {
+        let closed = PendingClosed {
             id: conn.id,
             started_at: conn.started_at,
             first_seen_at: conn.first_seen_at,
             closed_at,
             bytes,
-            dimensions: Dimensions::clone(&dimensions),
-        });
+            dimensions,
+            seq,
+        };
+        closed_usage(&closed, &buckets, &mut self.minutes, &mut self.hours);
+        self.pending_bytes = self.pending_bytes.saturating_add(closed_estimate(
+            std::slice::from_ref(&closed),
+            std::slice::from_ref(&buckets),
+        ));
+        self.closed.push(closed);
+        self.closed_buckets.push(buckets);
     }
+}
+
+fn closed_usage(
+    conn: &PendingClosed,
+    buckets: &ClosedBuckets,
+    minutes: &mut Pending,
+    hours: &mut Pending,
+) {
+    for (buckets, pending, close_bucket) in [
+        (&buckets.minutes, minutes, minute_of(conn.closed_at)),
+        (&buckets.hours, hours, hour_of(conn.closed_at)),
+    ] {
+        for (&bucket, &bytes) in buckets {
+            add_usage(
+                pending,
+                bucket,
+                &conn.dimensions,
+                Usage {
+                    bytes,
+                    connections: 0,
+                },
+            );
+        }
+        add_usage(
+            pending,
+            close_bucket,
+            &conn.dimensions,
+            Usage {
+                bytes: Bytes::default(),
+                connections: 1,
+            },
+        );
+    }
+}
+
+fn closed_estimate(closed: &[PendingClosed], buckets: &[ClosedBuckets]) -> u64 {
+    closed
+        .iter()
+        .zip(buckets)
+        .map(|(c, b)| {
+            let d = &c.dimensions;
+            // Each text can appear in several labels (origin, displays and canonical keys).
+            // Ten bytes per string/sequence bound postcard's length prefixes; numeric fields
+            // follow Input::bytes (32 per series point, 56 per event, plus id and aux key).
+            let text = d.process.len()
+                + d.source.len()
+                + d.inbound.len()
+                + d.target.len()
+                + d.protocol.len()
+                + d.rule.kind.len()
+                + d.rule.payload.len()
+                + d.profile.as_ref().map_or(0, String::len)
+                + d.source_region.len()
+                + d.destination_region.len()
+                + d.chains.iter().map(String::len).sum::<usize>();
+            let labels = 4 * text as u64 + 128 + 16 * d.chains.len() as u64;
+            (b.minutes.len() as u64 + b.hours.len() as u64 + 2) * (32 + labels)
+                + 56
+                + labels
+                + 2 * c.id.len() as u64
+                + 1
+        })
+        .sum()
 }
 
 /// Increase since `previous`, per component; a smaller value means the counter restarted and the
@@ -435,6 +535,18 @@ mod tests {
     use super::*;
     use crate::query::{ReportRequest, TrafficReport, report};
 
+    fn sequence_source() -> impl FnMut() -> EventSeq {
+        let mut next = 0;
+        move || {
+            let seq = EventSeq {
+                incarnation: 1,
+                seq: next,
+            };
+            next += 1;
+            seq
+        }
+    }
+
     const INSTANCE: &str = "core-1";
     const MINUTE: i64 = 60_000;
     const HOUR: i64 = 60 * MINUTE;
@@ -488,7 +600,7 @@ mod tests {
     }
 
     fn take(session: &mut Session, now_ms: i64) -> FlushBatch {
-        session.take_batch(now_ms, Prune::default())
+        session.take_batch(now_ms)
     }
 
     fn usage(upload: u64, download: u64, connections: u64) -> Usage {
@@ -534,6 +646,7 @@ mod tests {
 
     #[test]
     fn first_observation_counts_full_counters() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -544,6 +657,7 @@ mod tests {
                 vec![sample("a", 100, 400)],
             ),
             None,
+            &mut sequence,
         );
 
         assert_eq!(session.meta().global_counters, Some(bytes(300, 900)));
@@ -562,6 +676,7 @@ mod tests {
 
     #[test]
     fn later_frames_count_deltas() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -572,6 +687,7 @@ mod tests {
                 vec![sample("a", 100, 100)],
             ),
             None,
+            &mut sequence,
         );
         take(&mut session, 1_000);
         session.observe(
@@ -583,6 +699,7 @@ mod tests {
                 vec![sample("a", 130, 190)],
             ),
             None,
+            &mut sequence,
         );
 
         let batch = take(&mut session, 2_000);
@@ -593,10 +710,12 @@ mod tests {
 
     #[test]
     fn unchanged_connections_are_not_upserted_again() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(INSTANCE, 1_000, 0, bytes(10, 10), vec![sample("a", 10, 10)]),
             None,
+            &mut sequence,
         );
         assert_eq!(take(&mut session, 1_000).active.len(), 1);
         session.observe(
@@ -608,6 +727,7 @@ mod tests {
                 vec![sample("a", 10, 10)],
             ),
             None,
+            &mut sequence,
         );
 
         let batch = take(&mut session, 2_000);
@@ -625,6 +745,7 @@ mod tests {
         session.observe(
             &frame(INSTANCE, 3_000, 2_000, bytes(10, 10), vec![moved]),
             None,
+            &mut sequence,
         );
         let batch = take(&mut session, 3_000);
         assert_eq!(batch.active.len(), 1);
@@ -633,6 +754,7 @@ mod tests {
 
     #[test]
     fn counter_reset_counts_the_current_value() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -643,6 +765,7 @@ mod tests {
                 vec![sample("a", 500, 500)],
             ),
             None,
+            &mut sequence,
         );
         take(&mut session, 1_000);
         // Connection download restarted, upload kept growing.
@@ -655,6 +778,7 @@ mod tests {
                 vec![sample("a", 600, 20)],
             ),
             None,
+            &mut sequence,
         );
 
         let batch = take(&mut session, 2_000);
@@ -664,6 +788,7 @@ mod tests {
 
     #[test]
     fn missing_connection_is_closed_with_its_bytes() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -674,6 +799,7 @@ mod tests {
                 vec![sample("a", 10, 10), sample("b", 20, 20)],
             ),
             None,
+            &mut sequence,
         );
         take(&mut session, 1_000);
         session.observe(
@@ -685,6 +811,7 @@ mod tests {
                 vec![sample("b", 25, 25)],
             ),
             None,
+            &mut sequence,
         );
 
         let batch = take(&mut session, 2_000);
@@ -702,6 +829,7 @@ mod tests {
 
     #[test]
     fn active_ids_are_the_matching_live_connections_sorted() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         let wget = Sample {
             dimensions: dims("wget"),
@@ -716,6 +844,7 @@ mod tests {
                 vec![sample("c", 1, 1), wget, sample("a", 1, 1)],
             ),
             None,
+            &mut sequence,
         );
 
         let curl = [TrafficFilter {
@@ -728,6 +857,7 @@ mod tests {
 
     #[test]
     fn summary_counts_stored_and_unflushed_closed_connections() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -738,6 +868,7 @@ mod tests {
                 vec![sample("a", 10, 10), sample("b", 20, 20)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(
@@ -748,6 +879,7 @@ mod tests {
                 vec![sample("b", 25, 25)],
             ),
             None,
+            &mut sequence,
         );
 
         let summary = session.summary(5);
@@ -760,6 +892,7 @@ mod tests {
 
     #[test]
     fn instance_change_closes_everything_and_restarts_baselines() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -770,6 +903,7 @@ mod tests {
                 vec![sample("a", 100, 100)],
             ),
             None,
+            &mut sequence,
         );
         take(&mut session, 1_000);
 
@@ -777,6 +911,7 @@ mod tests {
         session.observe(
             &frame("core-2", 5_000, 9_000, bytes(7, 7), vec![sample("a", 5, 5)]),
             None,
+            &mut sequence,
         );
 
         assert_eq!(session.meta().instance_id.as_deref(), Some("core-2"));
@@ -799,6 +934,7 @@ mod tests {
 
     #[test]
     fn closing_writes_the_buckets_under_the_final_dimensions() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         let moving = |process: &str, upload| Sample {
             dimensions: dims(process),
@@ -814,6 +950,7 @@ mod tests {
                 vec![moving("curl", 10)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(
@@ -824,10 +961,12 @@ mod tests {
                 vec![moving("firefox", 25)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(INSTANCE, 2 * HOUR + MINUTE, 2, bytes(0, 0), vec![]),
             None,
+            &mut sequence,
         );
 
         let closed = session.pending_closed();
@@ -866,6 +1005,7 @@ mod tests {
 
     #[test]
     fn pending_rows_follow_the_tier_and_the_start() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -876,6 +1016,7 @@ mod tests {
                 vec![sample("a", 10, 0)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(
@@ -886,10 +1027,12 @@ mod tests {
                 vec![sample("a", 40, 0)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(INSTANCE, HOUR + 6 * MINUTE, 2, bytes(0, 0), vec![]),
             None,
+            &mut sequence,
         );
 
         let sum = |tier, from| {
@@ -910,6 +1053,7 @@ mod tests {
 
     #[test]
     fn a_connection_across_the_hour_splits_between_two_buckets() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -920,6 +1064,7 @@ mod tests {
                 vec![sample("a", 100, 10)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(
@@ -930,6 +1075,7 @@ mod tests {
                 vec![sample("a", 250, 40)],
             ),
             None,
+            &mut sequence,
         );
 
         let batch = take(&mut session, HOUR + 1_000);
@@ -952,6 +1098,7 @@ mod tests {
 
     #[test]
     fn minute_buckets_older_than_the_minute_tier_are_dropped_on_flush() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         let now = 1_000 * MINUTE;
         // 400 minutes ago, 360 (the cutoff itself), 300 and now.
@@ -966,6 +1113,7 @@ mod tests {
                     vec![sample("a", (i as u64 + 1) * 10, 0)],
                 ),
                 None,
+                &mut sequence,
             );
         }
         let before = take(&mut session, at(400));
@@ -997,10 +1145,12 @@ mod tests {
 
     #[test]
     fn profile_is_set_on_first_sight_and_never_rewritten() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(INSTANCE, 1_000, 0, bytes(0, 0), vec![sample("a", 1, 1)]),
             Some("p1"),
+            &mut sequence,
         );
         take(&mut session, 1_000);
 
@@ -1014,6 +1164,7 @@ mod tests {
                 vec![sample("a", 5, 5), sample("b", 7, 7)],
             ),
             Some("p2"),
+            &mut sequence,
         );
         let batch = take(&mut session, 2_000);
         let by_id = |id: &str| batch.active.iter().find(|c| c.id == id).unwrap();
@@ -1035,10 +1186,12 @@ mod tests {
                 vec![reported, sample("b", 7, 7)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(INSTANCE, 4_000, 3_000, bytes(0, 0), vec![]),
             Some("p9"),
+            &mut sequence,
         );
         let closed = take(&mut session, 4_000).closed;
         assert_eq!(closed.len(), 2);
@@ -1057,6 +1210,7 @@ mod tests {
 
     #[test]
     fn rates_need_elapsed_time_and_an_existing_connection() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -1067,6 +1221,7 @@ mod tests {
                 vec![sample("a", 100, 100)],
             ),
             None,
+            &mut sequence,
         );
         assert_eq!(session.summary(0).current_rate, None);
         assert!(rates_by(&session, Dimension::Process).is_empty());
@@ -1080,6 +1235,7 @@ mod tests {
                 vec![sample("a", 200, 300), sample("b", 50, 50)],
             ),
             None,
+            &mut sequence,
         );
         assert_eq!(
             session.summary(0).current_rate,
@@ -1107,6 +1263,7 @@ mod tests {
                 vec![sample("a", 200, 300)],
             ),
             None,
+            &mut sequence,
         );
         assert_eq!(session.summary(0).current_rate, None);
         assert!(rates_by(&session, Dimension::Process).is_empty());
@@ -1114,6 +1271,7 @@ mod tests {
 
     #[test]
     fn current_rate_sums_connections_per_group() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         let other = |id: &str, up, down| Sample {
             dimensions: dims("firefox"),
@@ -1128,6 +1286,7 @@ mod tests {
                 vec![sample("a", 0, 0), sample("b", 0, 0), other("c", 0, 0)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(
@@ -1138,6 +1297,7 @@ mod tests {
                 vec![sample("a", 10, 0), sample("b", 20, 0), other("c", 30, 0)],
             ),
             None,
+            &mut sequence,
         );
 
         let by_process = rates_by(&session, Dimension::Process);
@@ -1148,10 +1308,12 @@ mod tests {
 
     #[test]
     fn rates_are_whole_bytes_per_second_rounded_down() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(INSTANCE, 1_000, 0, bytes(0, 0), vec![sample("a", 0, 0)]),
             None,
+            &mut sequence,
         );
         // 10 bytes over 3s is 3.33 B/s; 2 bytes over 3s is 0.67 B/s.
         session.observe(
@@ -1163,6 +1325,7 @@ mod tests {
                 vec![sample("a", 10, 2)],
             ),
             None,
+            &mut sequence,
         );
 
         let expected = Rate {
@@ -1178,6 +1341,7 @@ mod tests {
 
     #[test]
     fn rates_saturate() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -1188,6 +1352,7 @@ mod tests {
                 vec![sample("a", 0, 0), sample("b", 0, 0)],
             ),
             None,
+            &mut sequence,
         );
         // u64::MAX bytes within a millisecond overflows a u64 rate; two such connections
         // overflow their sum.
@@ -1200,6 +1365,7 @@ mod tests {
                 vec![sample("a", u64::MAX, 0), sample("b", u64::MAX, 0)],
             ),
             None,
+            &mut sequence,
         );
 
         assert_eq!(session.summary(0).current_rate.unwrap().upload, u64::MAX);
@@ -1214,6 +1380,7 @@ mod tests {
 
     #[test]
     fn disconnect_clears_rates_but_keeps_baselines() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -1224,6 +1391,7 @@ mod tests {
                 vec![sample("a", 100, 100)],
             ),
             None,
+            &mut sequence,
         );
         session.observe(
             &frame(
@@ -1234,6 +1402,7 @@ mod tests {
                 vec![sample("a", 150, 150)],
             ),
             None,
+            &mut sequence,
         );
         assert!(session.summary(0).current_rate.is_some());
 
@@ -1252,6 +1421,7 @@ mod tests {
                 vec![sample("a", 160, 160)],
             ),
             None,
+            &mut sequence,
         );
         // Baselines survived: only the delta is counted, and no rate is known yet.
         assert_eq!(take(&mut session, 9_000).active[0].bytes(), bytes(160, 160));
@@ -1260,6 +1430,7 @@ mod tests {
 
     #[test]
     fn restore_counts_only_the_delta_since_the_last_flush() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(
@@ -1270,6 +1441,7 @@ mod tests {
                 vec![sample("a", 100, 100)],
             ),
             Some("p1"),
+            &mut sequence,
         );
         let batch = take(&mut session, 1_000);
 
@@ -1283,6 +1455,7 @@ mod tests {
                 vec![sample("a", 120, 140)],
             ),
             Some("p2"),
+            &mut sequence,
         );
 
         assert_eq!(restored.summary(0).current_rate, None);
@@ -1295,12 +1468,18 @@ mod tests {
 
     #[test]
     fn take_batch_drains_pending_state() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(INSTANCE, 1_000, 0, bytes(10, 10), vec![sample("a", 10, 10)]),
             None,
+            &mut sequence,
         );
-        session.observe(&frame(INSTANCE, 2_000, 1_000, bytes(10, 10), vec![]), None);
+        session.observe(
+            &frame(INSTANCE, 2_000, 1_000, bytes(10, 10), vec![]),
+            None,
+            &mut sequence,
+        );
 
         let batch = take(&mut session, 2_000);
         assert_eq!(batch.meta.last_sample_at, Some(2_000));
@@ -1316,17 +1495,6 @@ mod tests {
         assert!(again.hours.is_empty());
         assert_eq!(session.pending_rows(Tier::Hour, None).count(), 0);
         assert_eq!(again.meta, batch.meta);
-    }
-
-    #[test]
-    fn the_batch_carries_the_prune() {
-        let mut session = Session::new();
-        let prune = Prune {
-            minutes_before: 7,
-            hours_before: Some(3),
-            closed_before: None,
-        };
-        assert_eq!(session.take_batch(0, prune).prune, prune);
     }
 
     // ---- everything = live + closed -------------------------------------------------------
@@ -1462,14 +1630,15 @@ mod tests {
     /// Plays the scenario, flushing after every `flush_every` frames; returns the end state and
     /// the time of the last frame.
     fn play(scenario: &Scenario, flush_every: Option<usize>) -> (Session, MemStore, i64) {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         let mut store = MemStore::default();
         let mut now = 0;
         for (i, (frame, profile)) in scenario.frames.iter().enumerate() {
             now = frame.wall_ms;
-            session.observe(frame, Some(*profile));
+            session.observe(frame, Some(*profile), &mut sequence);
             if flush_every.is_some_and(|n| (i + 1) % n == 0) {
-                store.apply(&session.take_batch(now, Prune::default()));
+                store.apply(&session.take_batch(now));
             }
         }
         (session, store, now)
@@ -1600,6 +1769,7 @@ mod tests {
 
     #[test]
     fn a_requeued_batch_is_written_exactly_once() {
+        let mut sequence = sequence_source();
         let scenario = scenario();
         let now = scenario.frames.last().unwrap().0.wall_ms;
 
@@ -1612,7 +1782,7 @@ mod tests {
         let mut stored_active: HashMap<String, ActiveConnection> = HashMap::new();
         let mut attempts = 0;
         let mut flush = |session: &mut Session, store: &mut MemStore, now, fail: bool| {
-            let batch = session.take_batch(now, Prune::default());
+            let batch = session.take_batch(now);
             if fail {
                 session.requeue(batch);
                 return;
@@ -1629,7 +1799,7 @@ mod tests {
             if refused {
                 ignored.insert(i);
             }
-            session.observe(frame, Some(*profile));
+            session.observe(frame, Some(*profile), &mut sequence);
             if (i + 1) % 3 == 0 {
                 attempts += 1;
                 // Two failures in a row, then one that works.
@@ -1645,10 +1815,10 @@ mod tests {
         let mut reference = MemStore::default();
         for (i, (frame, profile)) in scenario.frames.iter().enumerate() {
             if !ignored.contains(&i) {
-                reference_session.observe(frame, Some(*profile));
+                reference_session.observe(frame, Some(*profile), &mut sequence);
             }
         }
-        reference.apply(&reference_session.take_batch(now, Prune::default()));
+        reference.apply(&reference_session.take_batch(now));
 
         let sorted = |rows: Vec<(Arc<Dimensions>, Usage)>| {
             let mut rows: Vec<_> = rows.into_iter().map(|(d, u)| ((*d).clone(), u)).collect();
@@ -1685,6 +1855,7 @@ mod tests {
 
     #[test]
     fn a_refused_session_ignores_frames_and_loses_nothing_it_held() {
+        let mut sequence = sequence_source();
         const LAST_ACCEPTED: usize = 20;
         const RECOVERED: usize = 34;
         let scenario = scenario();
@@ -1698,13 +1869,13 @@ mod tests {
             if ignored.contains(&i) {
                 continue;
             }
-            reference.observe(frame, Some(*profile));
+            reference.observe(frame, Some(*profile), &mut sequence);
             if flushes.contains(&i) {
-                reference_store.apply(&reference.take_batch(frame.wall_ms, Prune::default()));
+                reference_store.apply(&reference.take_batch(frame.wall_ms));
             }
         }
         let now = scenario.frames.last().unwrap().0.wall_ms;
-        reference_store.apply(&reference.take_batch(now, Prune::default()));
+        reference_store.apply(&reference.take_batch(now));
 
         let mut session = Session::new();
         let mut store = MemStore::default();
@@ -1720,16 +1891,13 @@ mod tests {
         };
         let mut held = None;
         for (i, (frame, profile)) in scenario.frames.iter().enumerate() {
-            session.observe(frame, Some(*profile));
+            session.observe(frame, Some(*profile), &mut sequence);
             if i == 9 {
-                commit(
-                    &mut store,
-                    &session.take_batch(frame.wall_ms, Prune::default()),
-                );
+                commit(&mut store, &session.take_batch(frame.wall_ms));
             }
             if i == LAST_ACCEPTED {
                 // The store refuses from here on.
-                let batch = session.take_batch(frame.wall_ms, Prune::default());
+                let batch = session.take_batch(frame.wall_ms);
                 session.requeue(batch);
                 let buffers = buffered(&session);
                 assert!(buffers[2..6].iter().all(|&n| n > 0), "{buffers:?}");
@@ -1740,22 +1908,22 @@ mod tests {
                 assert_eq!(session.summary(0).current_rate, None);
                 if i % 5 == 0 && i < RECOVERED {
                     // Another refused retry.
-                    let batch = session.take_batch(frame.wall_ms, Prune::default());
+                    let batch = session.take_batch(frame.wall_ms);
                     session.requeue(batch);
                     assert_eq!(Some(buffered(&session)), held, "retry at frame {i}");
                 }
             }
             if i == RECOVERED {
-                let batch = session.take_batch(frame.wall_ms, Prune::default());
+                let batch = session.take_batch(frame.wall_ms);
                 assert_eq!(batch.closed.len(), held.unwrap()[4]);
                 commit(&mut store, &batch);
                 // Held and written once: the next batch has none of it.
-                let again = session.take_batch(frame.wall_ms, Prune::default());
+                let again = session.take_batch(frame.wall_ms);
                 assert!(again.closed.is_empty() && again.removed.is_empty());
                 assert!(again.minutes.is_empty() && again.hours.is_empty());
             }
         }
-        commit(&mut store, &session.take_batch(now, Prune::default()));
+        commit(&mut store, &session.take_batch(now));
 
         let all = |session: &Session, store: &MemStore, range: TrafficRange| {
             let (tier, from) = (range.tier(), range.start(now));
@@ -1787,10 +1955,12 @@ mod tests {
 
     #[test]
     fn a_refused_session_resumes_with_the_delta_since_the_last_accepted_frame() {
+        let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
             &frame(INSTANCE, 1_000, 0, bytes(100, 0), vec![sample("a", 100, 0)]),
             None,
+            &mut sequence,
         );
         let batch = take(&mut session, 1_000);
         session.requeue(batch);
@@ -1805,6 +1975,7 @@ mod tests {
                 vec![sample("a", 300, 0), sample("b", 5, 0)],
             ),
             None,
+            &mut sequence,
         );
         assert_eq!(session.summary(0).active_connections, 1);
         assert_eq!(session.summary(0).last_sample_at, Some(1_000));
@@ -1823,6 +1994,7 @@ mod tests {
                 vec![sample("a", 400, 0)],
             ),
             None,
+            &mut sequence,
         );
         let rows: Vec<_> = session.active_rows(Tier::Hour, None).collect();
         assert_eq!(rows.len(), 1);
@@ -1831,68 +2003,5 @@ mod tests {
         // No rate from the first frame after the outage.
         assert_eq!(session.summary(0).current_rate, None);
         assert!(rates_by(&session, Dimension::Process).is_empty());
-    }
-
-    #[test]
-    fn prune_follows_the_clock_and_the_retention() {
-        let now = 10 * HOUR + 30 * MINUTE;
-        let day = Duration::from_secs(24 * 60 * 60);
-
-        let kept_a_day = Prune::new(30 * HOUR + 30 * MINUTE, Some(day));
-        assert_eq!(kept_a_day.minutes_before, 30 * 60 + 30 - 360);
-        assert_eq!(kept_a_day.hours_before, Some(6));
-        assert_eq!(kept_a_day.closed_before, Some(6 * HOUR + 30 * MINUTE));
-
-        let forever = Prune::new(now, None);
-        assert_eq!(forever.minutes_before, 10 * 60 + 30 - 360);
-        assert_eq!(forever.hours_before, None);
-        assert_eq!(forever.closed_before, None);
-
-        // A retention longer than the clock has run reaches back to the first bucket.
-        let young = Prune::new(HOUR, Some(day));
-        assert_eq!(
-            (young.hours_before, young.closed_before),
-            (Some(0), Some(HOUR - 24 * HOUR))
-        );
-    }
-
-    #[test]
-    fn referenced_dimensions_cover_live_and_pending_rows_once() {
-        let mut session = Session::new();
-        let other = |id: &str| Sample {
-            dimensions: dims("firefox"),
-            ..sample(id, 1, 1)
-        };
-        session.observe(
-            &frame(
-                INSTANCE,
-                MINUTE,
-                0,
-                bytes(0, 0),
-                vec![sample("a", 1, 1), sample("b", 1, 1), other("c")],
-            ),
-            None,
-        );
-        // "a" and "b" share their dimensions; "b" closes and leaves pending rows behind.
-        session.observe(
-            &frame(
-                INSTANCE,
-                2 * MINUTE,
-                1,
-                bytes(0, 0),
-                vec![sample("a", 1, 1), other("c")],
-            ),
-            None,
-        );
-        let mut processes: Vec<_> = session
-            .referenced_dimensions()
-            .iter()
-            .map(|d| d.process.clone())
-            .collect();
-        processes.sort();
-        assert_eq!(processes, ["curl", "firefox"]);
-
-        take(&mut session, 2 * MINUTE);
-        assert_eq!(session.referenced_dimensions().len(), 2);
     }
 }

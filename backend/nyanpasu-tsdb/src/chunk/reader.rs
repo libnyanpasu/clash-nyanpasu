@@ -11,8 +11,8 @@
 //!   length as the chunk's manifest entry records it;
 //! - an open reader holds a reservation of its directory's bytes, taken before fragment 0 is
 //!   fetched and returned when the reader is dropped;
-//! - a block's [`decode_memory`] is what reading it leaves the decoder and the decoded block
-//!   holding, which the caller reserves as it says;
+//! - a block's [`decode_memory`] describes each buffer's need; the decoder admits replacements
+//!   beside retained capacities before fetching the block;
 //! - a large value takes its length, [`LargeEntry::len`], in the caller's charged buffer.
 
 use snafu::{OptionExt, ResultExt, ensure};
@@ -82,17 +82,19 @@ pub(crate) fn metadata_within_limits(
         && u64::from(fragment0) < bytes
 }
 
-/// What reading a block of `shape` of a column of `column` leaves the decoded block and the
-/// decoder's scratch holding (see [`DecodeMemory`]); a text block is taken to refer to as many
+/// What reading a block of `shape` of a column of `column` needs in the decoded block and the
+/// decoder's scratch (see [`DecodeMemory`]); a text block is taken to refer to as many
 /// large values as a chunk can hold, which makes its output up to 8 bytes a row more than a
 /// chunk with fewer needs. Its shape is in the chunk directory, [`ChunkReader::blocks`].
 ///
-/// A read sizes the buffers to exactly the block, and lets every one go of what it does not
-/// keep before any grows, so it holds at most the larger of what the block before it and this
-/// one declare. A query keeps, for each decoded block, a reservation of the output it holds,
-/// and for each decoder one of its scratch; each starts at 0. Before a read, it grows each to
-/// the larger of what it holds and this block's part, then reads; after the read, it shrinks
-/// each to this block's part (§7.4, §8.2).
+/// Each buffer retains its largest need so far, with its lease, up to the per-column format
+/// bounds in [`block`]'s Memory section. Covered buffers are cleared; all undersized storage
+/// drops before any replacement allocates exactly its new need. Admission covers each buffer's
+/// larger retained/required capacity, not the maximum of aggregate block sizes. Buffers never
+/// shrink after a read; the owner may explicitly release them between phases (§7.4, §8.2).
+/// For `R = MAX_BLOCK_ROWS`, `B = MAX_BLOCK_LEN`, integer output is at most
+/// `R*width + ceil(R/8)`, bytes output `4*(R+1) + B + ceil(R/8)` plus at most 2,048 text-reference
+/// bytes. Scratch is bounded by `B` for integers and `B + 8*R` across all bytes encodings.
 pub(crate) fn decode_memory(shape: BlockShape, column: PhysicalType) -> DecodeMemory {
     match column {
         PhysicalType::Int { ty, .. } => DecodeMemory::ints(shape, ty),

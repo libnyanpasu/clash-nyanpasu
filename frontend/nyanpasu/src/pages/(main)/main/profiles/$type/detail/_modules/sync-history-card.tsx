@@ -29,6 +29,7 @@ import {
 } from '@nyanpasu/ui/accordion'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardHeader } from '@nyanpasu/ui/card'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { CircularProgress } from '@nyanpasu/ui/progress'
 import { ErrorMessage } from '@/components/error-message'
 import { m } from '@/paraglide/messages'
@@ -256,12 +257,10 @@ function Notice({
 }
 
 function Placeholder({
-  icon: Icon,
   busy,
   className,
   children,
 }: {
-  icon?: IconComponent
   busy?: boolean
   className?: string
   children: ReactNode
@@ -275,15 +274,7 @@ function Placeholder({
         className,
       )}
     >
-      {busy ? (
-        <CircularProgress className="size-8" indeterminate />
-      ) : (
-        Icon && (
-          <span className="bg-surface-variant text-primary grid size-12 place-items-center rounded-2xl">
-            <Icon className="size-6" aria-hidden="true" />
-          </span>
-        )
-      )}
+      {busy && <CircularProgress className="size-8" indeterminate />}
       <p>{children}</p>
     </div>
   )
@@ -457,12 +448,7 @@ export function SyncHistoryCard({ uid }: { uid: string }) {
             {m.profile_sync_loading()}
           </Placeholder>
         ) : runs.length === 0 ? (
-          <Placeholder
-            icon={HistoryToggleOffRounded}
-            className="bg-surface-variant/30 rounded-3xl"
-          >
-            {m.profile_sync_empty()}
-          </Placeholder>
+          <EmptyState tone="normal" message={m.profile_sync_empty()} />
         ) : (
           <>
             <Accordion value={expanded} onValueChange={setExpansion}>
@@ -504,9 +490,12 @@ export function SyncHistoryCard({ uid }: { uid: string }) {
                           )}
                         </ol>
                       ) : (
-                        <Placeholder icon={HistoryRounded}>
-                          {m.profile_sync_no_logs()}
-                        </Placeholder>
+                        <EmptyState
+                          size="compact"
+                          tone="normal"
+                          icon={HistoryRounded}
+                          message={m.profile_sync_no_logs()}
+                        />
                       )}
                     </div>
 

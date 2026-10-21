@@ -1,5 +1,4 @@
 import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
-import ArticleRounded from '~icons/material-symbols/article-rounded'
 import CheckRounded from '~icons/material-symbols/check-rounded'
 import ContentCopyRounded from '~icons/material-symbols/content-copy-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
@@ -12,7 +11,6 @@ import {
   useRef,
   useState,
   type ComponentProps,
-  type ReactNode,
 } from 'react'
 import { Button, buttonVariants } from '@nyanpasu/ui/button'
 import HighlightText from '@nyanpasu/ui/highlight-text'
@@ -53,24 +51,6 @@ export function LogSearch({
       onValueChange={onChange}
       clearLabel={m.common_clear()}
     />
-  )
-}
-
-export function LogEmptyState({
-  children = m.logs_empty_message(),
-}: {
-  children?: ReactNode
-}) {
-  return (
-    <div
-      className="text-on-surface-variant flex flex-col items-center justify-center gap-4 px-6 py-16 text-center text-sm"
-      data-slot="logs-no-logs"
-    >
-      <span className="bg-secondary-container text-on-secondary-container grid size-16 place-items-center rounded-2xl">
-        <ArticleRounded aria-hidden className="size-8" />
-      </span>
-      <p>{children}</p>
-    </div>
   )
 }
 

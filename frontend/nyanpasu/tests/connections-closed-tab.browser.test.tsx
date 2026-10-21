@@ -104,7 +104,7 @@ test('lists closed connections and loads older pages at the end', async ({
     return before === null
       ? {
           connections: [newest],
-          next: { closed_at: newest.closed_at, id: newest.id },
+          next: { closed_at: newest.closed_at, incarnation: 1, seq: 2 },
         }
       : { connections: [closed('a', 'older.example', 1_000)], next: null }
   })
@@ -126,7 +126,7 @@ test('lists closed connections and loads older pages at the end', async ({
   expect(container.textContent).not.toContain('/usr/bin/curl')
   expect(requested.slice(0, 2)).toEqual([
     null,
-    { closed_at: newest.closed_at, id: newest.id },
+    { closed_at: newest.closed_at, incarnation: 1, seq: 2 },
   ])
   expect(headers(container)).toContain(m.connections_column_closed_time())
 })
@@ -141,7 +141,7 @@ test('a search keeps loading older pages until it finds a match', async ({
     return before === null
       ? {
           connections: [newest],
-          next: { closed_at: newest.closed_at, id: newest.id },
+          next: { closed_at: newest.closed_at, incarnation: 1, seq: 2 },
         }
       : { connections: [closed('a', 'older.example', 1_000)], next: null }
   })

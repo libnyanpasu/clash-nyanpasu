@@ -8,6 +8,7 @@ import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { ShapeToggle } from '@nyanpasu/ui/shape-toggle'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
+import DeprecatedCoreBadge from '@/components/settings/deprecated-core-badge'
 import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
 import {
   SystemProxyButton,
@@ -341,13 +342,14 @@ const CurrentCoreCard = ({
 
           <div className="min-w-0 flex-1" data-slot="core-info">
             <div
-              className="truncate text-base leading-5 font-semibold"
+              className="flex min-w-0 items-center gap-2 text-base leading-5 font-semibold"
               title={currentCoreName || undefined}
               data-slot="core-name"
             >
-              <TextMarquee className="w-full">
+              <TextMarquee className="min-w-0">
                 {currentCoreName || '—'}
               </TextMarquee>
+              <DeprecatedCoreBadge core={currentCoreKey} />
             </div>
             {config.showVersion && (
               <div

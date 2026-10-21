@@ -2847,7 +2847,16 @@ mod hostile {
                     column: 5, source, ..
                 } => {
                     if short {
-                        assert!(matches!(source, DecodeError::Decompress { .. }), "{source}");
+                        // zstd can fit the frame in retained scratch from an earlier block;
+                        // the exact-length check then rejects the false declaration.
+                        assert!(
+                            matches!(
+                                source,
+                                DecodeError::Decompress { .. }
+                                    | DecodeError::DecompressedLength { .. }
+                            ),
+                            "{source}"
+                        );
                     } else {
                         assert!(
                             matches!(source, DecodeError::DecompressedLength { .. }),
@@ -3458,22 +3467,38 @@ mod read_memory {
         unsigned: IntBlock<u64>,
         narrow: IntBlock<u32>,
         bytes: BytesBlock,
+        outputs: [[usize; 4]; 4],
+        scratch: [usize; 3],
+        allocations: std::rc::Rc<std::cell::Cell<usize>>,
+        expected_allocations: usize,
     }
 
     impl Reading {
         fn new() -> Self {
+            let account = crate::budget::test_account();
+            let decoder = BlockDecoder::new(&account).unwrap();
+            let allocations = std::rc::Rc::new(std::cell::Cell::new(0));
+            let counted = allocations.clone();
+            account.observe_allocations(move |allocate, bytes, _| {
+                if allocate && bytes != 0 {
+                    counted.set(counted.get() + 1);
+                }
+            });
             Self {
-                decoder: BlockDecoder::new(&crate::budget::test_account()).unwrap(),
+                decoder,
                 signed: IntBlock::default(),
                 unsigned: IntBlock::default(),
                 narrow: IntBlock::default(),
                 bytes: BytesBlock::default(),
+                outputs: [[0; 4]; 4],
+                scratch: [0; 3],
+                allocations,
+                expected_allocations: 0,
             }
         }
 
         /// Reads block `block` of `column`. Whether the read succeeds or not, the decoder's
-        /// scratch and the decoded block then hold exactly what the block declares, whatever
-        /// they held before: its [`DecodeMemory`], for the chunk's large values.
+        /// scratch and output retain each buffer's largest need, within the format bounds.
         fn read(
             &mut self,
             reader: &ChunkReader,
@@ -3483,52 +3508,103 @@ mod read_memory {
         ) -> Result<(), ReadError> {
             let shape = reader.blocks(column)?[block as usize].shape();
             let large = reader.large_values().len() as u32;
-            let (read, output, exact) = match reader.columns()[usize::from(column)].ty {
-                PhysicalType::Int {
-                    ty: IntType::I64, ..
-                } => {
-                    let out = &mut self.signed;
-                    let read = reader.read_ints(fragments, column, block, &mut self.decoder, out);
-                    (
-                        read,
-                        total(&out.buffers()),
-                        DecodeMemory::ints(shape, IntType::I64),
-                    )
-                }
-                PhysicalType::Int {
-                    ty: IntType::U64, ..
-                } => {
-                    let out = &mut self.unsigned;
-                    let read = reader.read_ints(fragments, column, block, &mut self.decoder, out);
-                    (
-                        read,
-                        total(&out.buffers()),
-                        DecodeMemory::ints(shape, IntType::U64),
-                    )
-                }
-                PhysicalType::Int {
-                    ty: IntType::U32, ..
-                } => {
-                    let out = &mut self.narrow;
-                    let read = reader.read_ints(fragments, column, block, &mut self.decoder, out);
-                    (
-                        read,
-                        total(&out.buffers()),
-                        DecodeMemory::ints(shape, IntType::U32),
-                    )
+            let ty = reader.columns()[usize::from(column)].ty;
+            let (read, index, needs, buffers) = match ty {
+                PhysicalType::Int { ty, .. } => {
+                    let needs = [shape.rows * ty.width(), shape.rows.div_ceil(8), 0, 0];
+                    let (read, index, buffers) = match ty {
+                        IntType::I64 => (
+                            reader.read_ints(
+                                fragments,
+                                column,
+                                block,
+                                &mut self.decoder,
+                                &mut self.signed,
+                            ),
+                            0,
+                            self.signed.buffers(),
+                        ),
+                        IntType::U64 => (
+                            reader.read_ints(
+                                fragments,
+                                column,
+                                block,
+                                &mut self.decoder,
+                                &mut self.unsigned,
+                            ),
+                            1,
+                            self.unsigned.buffers(),
+                        ),
+                        IntType::U32 => (
+                            reader.read_ints(
+                                fragments,
+                                column,
+                                block,
+                                &mut self.decoder,
+                                &mut self.narrow,
+                            ),
+                            2,
+                            self.narrow.buffers(),
+                        ),
+                    };
+                    (read, index, needs, [buffers[0].1, buffers[1].1, 0, 0])
                 }
                 PhysicalType::Bytes(hint) => {
-                    let out = &mut self.bytes;
-                    let read = reader.read_bytes(fragments, column, block, &mut self.decoder, out);
-                    let exact = DecodeMemory::bytes(shape, large, hint);
-                    (read, total(&out.buffers()), exact)
+                    let read = reader.read_bytes(
+                        fragments,
+                        column,
+                        block,
+                        &mut self.decoder,
+                        &mut self.bytes,
+                    );
+                    (
+                        read,
+                        3,
+                        DecodeMemory::bytes_buffers(shape, large, hint),
+                        self.bytes.buffers().map(|(_, bytes)| bytes),
+                    )
                 }
             };
-            let held = DecodeMemory {
-                output,
-                scratch: total(&self.decoder.buffers()),
+            for (held, need) in self.outputs[index].iter_mut().zip(needs) {
+                self.expected_allocations += usize::from(need > *held);
+                *held = (*held).max(need);
+            }
+            for (held, need) in self
+                .scratch
+                .iter_mut()
+                .zip(DecodeMemory::scratch_buffers(shape))
+            {
+                self.expected_allocations += usize::from(need > *held);
+                *held = (*held).max(need);
+            }
+            assert_eq!(self.allocations.get(), self.expected_allocations);
+            assert_eq!(
+                buffers, self.outputs[index],
+                "after block {block} of column {column}"
+            );
+            assert_eq!(self.decoder.buffers().map(|(_, bytes)| bytes), self.scratch);
+            let rows = MAX_BLOCK_ROWS;
+            let bound = match ty {
+                PhysicalType::Int { ty, .. } => [rows * ty.width(), rows.div_ceil(8), 0, 0],
+                PhysicalType::Bytes(_) => [
+                    4 * (rows + 1),
+                    MAX_BLOCK_LEN,
+                    rows.div_ceil(8),
+                    8 * MAX_LARGE_VALUES,
+                ],
             };
-            assert_eq!(held, exact, "after block {block} of column {column}");
+            assert!(
+                buffers
+                    .into_iter()
+                    .zip(bound)
+                    .all(|(held, bound)| held <= bound)
+            );
+            assert!(
+                self.scratch
+                    .into_iter()
+                    .zip([MAX_BLOCK_LEN, 4 * rows, 4 * rows])
+                    .all(|(held, bound)| held <= bound)
+            );
             read
         }
     }
@@ -3569,11 +3645,10 @@ mod read_memory {
     /// The blocks of every column type and hint, in every encoding, raw and compressed, read
     /// in turn through shared buffers: blocks of many empty values follow blocks of long ones,
     /// and the bytes columns of every hint share one decoded block. Each read leaves the
-    /// buffers holding exactly what its block declares, within [`decode_memory`] of its column
-    /// in any chunk. The large values are read in turn into one `Vec`, which grows to exactly a
+    /// buffers holding their component-wise maxima, within the format bounds. The large values are read in turn into one `Vec`, which grows to exactly a
     /// value's length when it has less room.
     #[test]
-    fn every_read_holds_exactly_what_its_block_declares() {
+    fn every_read_retains_each_buffers_largest_need_within_format_bounds() {
         let layout = every_column();
         let rows = every_column_rows(61);
         let mut chunks: Vec<Fragments> = [false, true]
@@ -3649,11 +3724,10 @@ mod read_memory {
     }
 
     /// A text column whose blocks go from many empty values to a few long ones and back,
-    /// read in either order through one decoded block: each buffer grows and shrinks with the
-    /// blocks, the offsets one way while the heap goes the other, and holds exactly what each
-    /// block declares, never the most an earlier block needed.
+    /// read in either order through one decoded block. The offsets and heap peak in different
+    /// blocks; both retain their largest need without shrinking.
     #[test]
-    fn a_read_holds_its_block_as_the_blocks_grow_and_shrink() {
+    fn a_read_retains_capacity_as_block_shapes_grow_and_shrink() {
         let long = vec![b'x'; MAX_INLINE_VALUE_LEN];
         let mut values: Vec<&[u8]> = vec![b""; 7000];
         values.extend([&long[..]; 3]);
@@ -3678,7 +3752,7 @@ mod read_memory {
         }
         for buffer in ["offsets", "heap"] {
             assert!(changes.contains(&(buffer, true)), "{buffer} never grew");
-            assert!(changes.contains(&(buffer, false)), "{buffer} never shrank");
+            assert!(!changes.contains(&(buffer, false)), "{buffer} shrank");
         }
     }
 

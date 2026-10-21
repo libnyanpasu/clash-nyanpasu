@@ -23,6 +23,9 @@ Only the port (`storage`), the definitions and the facade are public; the rest i
 internal, so the format and the in-memory structures can change without breaking
 consumers.
 
+Hosts restore their state through `open_with` at open and `recover_with` after a failure.
+Both lend the same read-only `RecoveryView` over metadata and auxiliary state.
+
 ## Departures from the design's sketches
 
 The design says its code sketches show shape, not the final API. Where the code differs:
@@ -350,6 +353,45 @@ the registry owns the resident head reservation. Draft copies and new head stora
 credit until publication or withdrawal. Snapshots reserve capture credit before pinning a version.
 Pending guards drop withdrawn graphs before returning credit. Maintenance admits one fixed round
 sub-budget; its children keep the parent admission alive until their final drop.
+
+Decode output and scratch keep each buffer's greatest required capacity across blocks, without
+shrinking after a read. Covered storage is cleared with its lease intact; all undersized buffers
+drop before any replacement allocates exactly its new need. Admission adds the replacement bytes
+beside the retained leases, so complementary shapes cannot hide an allocation behind another
+buffer's excess capacity. This preserves B1: old and new storage of a buffer never coexist.
+
+The maxima are per buffer, not the largest aggregate block plan. With `R = MAX_BLOCK_ROWS = 32,768`
+and `B = MAX_BLOCK_LEN = 131,072`, integer output is at most `R*width + ceil(R/8)`; bytes output is
+at most `4*(R+1) + B + ceil(R/8)` plus `8*min(R, MAX_LARGE_VALUES)` for text. Scratch is at most
+`B` for integer columns, `B + 4*R` for plain/fixed bytes, and `B + 8*R` when dictionaries are
+allowed. These exclude the zstd context and separately reserved large-value payloads. Thus a
+64-bit integer column plus scratch is bounded by 397,312 bytes, low-cardinality bytes by 659,460,
+and text (at most 256 large references) by 530,436. Shared buffers sum component-wise maxima
+across their columns. No buffer grows speculatively to those bounds.
+Decompression writes within retained charged capacity and still checks its result against the
+current block's declared length; wrong-length frames remain corrupted even when spare room fits.
+
+Series queries keep one output per column and one shared integer decoder; their outputs retain
+the largest row count and scratch the largest compressed body. Series maintenance's existing
+per-column maximum-row plans and maximum-body scratch remain valid. Event queries' `M_merge`
+excludes decode buffers, which are admitted separately, so that formula is unchanged. Event
+maintenance's `DecodeCost` instead sums the maxima of each bytes-output and scratch component
+across the layout; taking the maximum aggregate bytes block would miss retained large references
+beside a dictionary heap. Event maintenance still explicitly releases outputs before opening a
+chunk, preserving `max(open, decoded)` in its input plan; scratch retains its maxima separately.
+
+Series scans add selected fields into dense per-combination partial sums, then evaluate filters
+and group keys once per seen combination. Unsigned saturating addition is associative, including
+when several combinations share a mapped key. A separate presence byte preserves zero-field and
+zero-sum groups and validates each first-seen id against the immutable catalog; folded reporting
+still precedes filters. The first row in range admits both buffers through the scan account:
+`combo_slots * (1 + 8 * selected_fields)` bytes, including implicit id 0 and recycled holes.
+This adds O(catalog id slots) workspace to §8.2's groups and decode buffers; a narrow total query
+over a large catalog can therefore fail admission sooner. Empty scans allocate neither buffer.
+No row count, unchecked stored id or request count sizes these buffers. Their credit returns with
+the scan; only group keys and sums transfer to the result. Stripes end at the earliest current
+column block boundary, so columns need not have matching block sizes. Bucket statistics retain
+their existing whole-chunk/whole-block skips; boundary rows are checked before other columns load.
 
 Fixed metadata keeps the documented schema and format allowance: validation maps, bounded record
 encoding, one decoded item per reader, errors, key prefixes, `Shape`, wrapper names and control

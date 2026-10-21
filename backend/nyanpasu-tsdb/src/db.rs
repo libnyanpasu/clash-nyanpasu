@@ -48,8 +48,31 @@ impl<S: Storage> Tsdb<S> {
     /// `backend_cache`, creating it if the storage holds none (see `lifecycle`).
     pub fn open(storage: S, schema: Schema, profile: Profile) -> Result<Self, OpenError> {
         let opened = lifecycle::open(storage, &schema, &profile)?;
+        Ok(Self::from_opened(opened, schema, profile))
+    }
+
+    /// Opens as [`open`](Self::open), then restores host state through the same read-only
+    /// view as [`recover_with`](Self::recover_with) (§7.5). Metadata and auxiliary records
+    /// come from one storage snapshot taken after opening settles the journal.
+    ///
+    /// Only successful restoration constructs the facade. On failure, the opened backend
+    /// is dropped before returning. Opening may already have committed an incarnation or
+    /// settled the journal; restore's external effects cannot be rolled back.
+    /// No reopen is attempted, so opening cannot produce [`RecoveryError::Reopen`].
+    pub fn open_with<T>(
+        storage: S,
+        schema: Schema,
+        profile: Profile,
+        restore: impl for<'a> FnOnce(RecoveryView<'a, S>) -> Result<T, RecoveryError>,
+    ) -> Result<(Self, T), RecoveryError> {
+        let (opened, restored, _) =
+            lifecycle::prepare_recovery(|| Ok(storage), restore, &schema, &profile)?;
+        Ok((Self::from_opened(opened, schema, profile), restored))
+    }
+
+    fn from_opened(opened: lifecycle::Opened<S>, schema: Schema, profile: Profile) -> Self {
         let schema = Arc::new(schema);
-        Ok(Self {
+        Self {
             shared: Arc::new(Shared::new(
                 opened.storage,
                 Registry::new(
@@ -70,7 +93,7 @@ impl<S: Storage> Tsdb<S> {
             last_durable: None,
             since_durable: 0,
             profile,
-        })
+        }
     }
 
     /// Reads one coherent, query-charged diagnostic view. Cost is one manifest metadata pass

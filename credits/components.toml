@@ -1,0 +1,120 @@
+# Third-party components the app ships without a package manager: downloaded
+# sidecars and resources, and bundled data. `deno task generate:credits` merges
+# them with the scanned cargo and npm dependencies.
+#
+# [[component]] fields:
+#   name           unique display name
+#   kind           "sidecar" | "resource" | "data"
+#   homepage       where the component comes from
+#   license        SPDX expression; omit when the upstream publishes no license,
+#                  so the component only declares where it comes from
+#   license-files  license or notice files under credits/; without them the
+#                  SPDX reference text of each license is used
+#   bundles        tauri.conf.json externalBin entries this component provides;
+#                  every packaged sidecar must appear in one component's bundles
+#   platforms      "windows" | "linux" | "macos", when not shipped everywhere
+#   notes          provenance shown with the component
+#
+# [[npm-override]] corrects the license of a scanned npm package (name, version,
+# license, notes); it must match an installed package.
+
+[[component]]
+name = 'mihomo'
+kind = 'sidecar'
+homepage = 'https://github.com/MetaCubeX/mihomo'
+license = 'GPL-3.0-only'
+bundles = ['sidecar/mihomo', 'sidecar/mihomo-alpha']
+notes = 'License of the Meta and Alpha release branches.'
+
+[[component]]
+name = 'clash-rs'
+kind = 'sidecar'
+homepage = 'https://github.com/ibigbug/clash-rs'
+license = 'Apache-2.0'
+license-files = [
+  'licenses/clash-rs-LICENSE.txt',
+  'licenses/clash-rs-NOTICE.txt'
+]
+bundles = ['sidecar/clash-rs', 'sidecar/clash-rs-alpha']
+notes = 'License and notice at commit 39282d29e421; the notice puts builds with the tuic feature under GPL-3.0.'
+
+[[component]]
+name = 'meow'
+kind = 'sidecar'
+homepage = 'https://github.com/meow-rs/meow-rs'
+license = 'MIT'
+license-files = ['licenses/meow-LICENSE.txt']
+bundles = ['sidecar/meow', 'sidecar/meow-alpha']
+notes = 'License at commit daafe055421b.'
+
+[[component]]
+name = 'Clash Premium'
+kind = 'sidecar'
+homepage = 'https://github.com/zhongfly/Clash-premium-backup'
+bundles = ['sidecar/clash']
+notes = 'Closed-source; the upstream publishes no license.'
+
+[[component]]
+name = 'nyanpasu-service'
+kind = 'sidecar'
+homepage = 'https://github.com/libnyanpasu/nyanpasu-runtime'
+license = 'GPL-3.0-only'
+bundles = ['sidecar/nyanpasu-service']
+
+[[component]]
+name = 'meta-rules-dat'
+kind = 'resource'
+homepage = 'https://github.com/MetaCubeX/meta-rules-dat'
+license = 'GPL-3.0-only'
+notes = 'Provides Country.mmdb, geoip.dat and geosite.dat.'
+
+[[component]]
+name = 'GeoLite2'
+kind = 'data'
+homepage = 'https://www.maxmind.com'
+notes = 'The GeoIP data in Country.mmdb and geoip.dat is derived from GeoLite2 data created by MaxMind.'
+
+[[component]]
+name = 'Wintun'
+kind = 'resource'
+homepage = 'https://www.wintun.net'
+license = 'LicenseRef-Wintun'
+license-files = ['licenses/wintun-LICENSE.txt']
+platforms = ['windows']
+notes = 'Prebuilt Binaries License from wintun-0.14.1.zip.'
+
+[[component]]
+name = 'enable-loopback'
+kind = 'resource'
+homepage = 'https://github.com/libnyanpasu/enable-loopback'
+license = 'MIT'
+license-files = ['licenses/enable-loopback-LICENSE.txt']
+platforms = ['windows']
+notes = 'Provides enableLoopback.exe.'
+
+[[component]]
+name = 'Natural Earth'
+kind = 'data'
+homepage = 'https://www.naturalearthdata.com'
+notes = 'Public domain; the offline topology map is generated from it.'
+
+[[npm-override]]
+name = 'fast-shallow-equal'
+version = '1.0.0'
+license = 'Unlicense'
+notes = 'package.json declares no license; its LICENSE file is the Unlicense.'
+
+[[npm-override]]
+name = 'react-universal-interface'
+version = '0.6.2'
+license = 'Unlicense'
+notes = 'package.json declares no license; its LICENSE file is the Unlicense.'
+
+# pnpm infers a missing license from a file named LICENSE, which a
+# case-sensitive filesystem does not match to this package's `license` file,
+# so Linux reports it as Unknown while Windows reports MIT.
+[[npm-override]]
+name = 'khroma'
+version = '2.1.0'
+license = 'MIT'
+notes = 'package.json declares no license; its license file is MIT.'

@@ -40,7 +40,12 @@
 //! fails with [`AdmitScan`](EventScanError::AdmitScan) when the ways do not fit. Everything
 //! else is reserved as it grows: the chunk list, a stripe past its allowance, the shared
 //! decode buffers by the protocol of [`decode_memory`], the page, and each large value before
-//! it is read, so a 1 MiB core-log line counts against the budget. A buffer that grows is
+//! it is read, so a 1 MiB core-log line counts against the budget. Decode buffers retain each
+//! buffer's largest need, never shrinking after a read, within the per-column format bounds
+//! in [`crate::codec::block`]. Shared buffers take component-wise maxima across columns.
+//! With `R = MAX_BLOCK_ROWS`, `B = MAX_BLOCK_LEN`, output is bounded by `R*width + ceil(R/8)`
+//! for integers and `4*(R+1) + B + ceil(R/8)` for bytes, plus at most 2,048 bytes of text
+//! references. Shared scratch is at most `B + 8*R`. Other storage that grows is
 //! reserved at its new size while the old one is alive, because a moving reallocation holds
 //! both ([`BudgetVec::try_grow_to`]). An open chunk reserves its own directory from the same budget
 //! ([`ChunkReader::open`]).

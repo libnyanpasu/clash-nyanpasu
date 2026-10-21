@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import {
   ScrollArea,
   useScrollArea,
@@ -36,7 +37,6 @@ import { useDataPageBottomInset } from '../_modules/data-page'
 import FileLogs from './_modules/file-logs'
 import {
   LogClearButton,
-  LogEmptyState,
   LogFollowButton,
   logPanelVariants,
   LogRecord,
@@ -242,9 +242,13 @@ function Viewer({
     <div data-slot="core-logs-viewer">
       {/* The deferred rows lag behind the loaded ones. */}
       {!logs.data.length && !logs.isLoading && (
-        <LogEmptyState>
-          {logs.more ? m.logs_search_incomplete() : m.logs_empty_message()}
-        </LogEmptyState>
+        <EmptyState
+          className="py-16"
+          data-slot="logs-no-logs"
+          message={
+            logs.more ? m.logs_search_incomplete() : m.logs_empty_message()
+          }
+        />
       )}
       <div
         className="relative"

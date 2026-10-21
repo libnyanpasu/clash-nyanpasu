@@ -1,0 +1,52 @@
+# cargo-about configuration for the open source credits; see
+# docs/plan/2026-10-21-open-source-credits.md. `deno task generate:credits`
+# applies the same `accepted` list to npm packages, so a dependency update that
+# brings in any other license fails until it is reviewed and added here.
+
+# Priority order: an `OR` expression resolves to the alternative ranked first.
+accepted = [
+  'Apache-2.0',
+  'MIT',
+  'Apache-2.0 WITH LLVM-exception',
+  'BSD-2-Clause',
+  'BSD-3-Clause',
+  'ISC',
+  'Zlib',
+  'Unicode-3.0',
+  'BSL-1.0',
+  '0BSD',
+  'MIT-0',
+  'CC0-1.0',
+  'Unlicense',
+  'MPL-2.0',
+  'CDLA-Permissive-2.0',
+  'bzip2-1.0.6',
+  'WTFPL',
+  'OFL-1.1',
+  'EPL-2.0',
+  'LGPL-3.0-or-later',
+  # Ranked before the LicenseRef-Slint-* alternatives, so Slint resolves to it.
+  'GPL-3.0-only',
+  # The deprecated identifier this repository's own crates still declare.
+  'GPL-3.0',
+]
+
+# The six release targets; platform-specific crates of every target are listed.
+targets = [
+  'x86_64-pc-windows-msvc',
+  'aarch64-pc-windows-msvc',
+  'x86_64-unknown-linux-gnu',
+  'aarch64-unknown-linux-gnu',
+  'x86_64-apple-darwin',
+  'aarch64-apple-darwin',
+]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# A git dependency, so no crate metadata; the repository root holds the license.
+[tauri-specta-query.clarify]
+license = 'MIT'
+
+[[tauri-specta-query.clarify.files]]
+path = '../../LICENSE'
+checksum = '79b0c7d284efc4c2dc8da73c01a6d10c19caf61e70fca813e642dc010049eee7'

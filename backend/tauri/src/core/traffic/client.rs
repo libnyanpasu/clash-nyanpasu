@@ -25,12 +25,13 @@ impl Drop for Inner {
 }
 
 impl TrafficClient {
-    pub async fn spawn(
-        args: TrafficArgs,
+    pub async fn spawn<S: nyanpasu_tsdb::storage::Storage>(
+        args: TrafficArgs<S>,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> Result<Self> {
-        let (actor, _) = Actor::spawn(None, TrafficActor, args).await?;
+        let (actor, _) =
+            Actor::spawn(None, TrafficActor::<S>(std::marker::PhantomData), args).await?;
         crate::client::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self(Arc::new(Inner { actor })))
     }
@@ -109,6 +110,17 @@ impl TrafficClient {
         Ok(self
             .call(|reply| Message::ActiveIds(filters, reply))
             .await??)
+    }
+
+    #[cfg(test)]
+    pub(super) async fn stored_report(&self, request: ReportRequest) -> Result<TrafficReport> {
+        Ok(self
+            .call(|reply| Message::StoredReport(request, reply))
+            .await??)
+    }
+    #[cfg(test)]
+    pub(super) async fn stored_closed(&self) -> Result<ClosedPage> {
+        Ok(self.call(Message::StoredClosed).await??)
     }
 
     /// Delivers what the pump would: a frame, or `None` for a lost feed.

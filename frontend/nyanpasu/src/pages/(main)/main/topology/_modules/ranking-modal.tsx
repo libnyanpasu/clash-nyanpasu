@@ -1,5 +1,6 @@
 import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo, useRef } from 'react'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
 import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import {
@@ -106,7 +107,13 @@ function UsageList({ query, dimension, selected, onSelect }: UsageListProps) {
             {m.traffic_loading_more()}
           </p>
         ) : (
-          groups.length === 0 && <Notice>{m.traffic_empty()}</Notice>
+          groups.length === 0 && (
+            <EmptyState
+              tone="normal"
+              className="min-h-40 flex-1"
+              message={m.traffic_empty()}
+            />
+          )
         )}
       </div>
     </ScrollArea>
@@ -140,7 +147,9 @@ function MockUsageList({
           onSelect={onSelect}
         />
 
-        {groups.length === 0 && <Notice>{m.traffic_empty()}</Notice>}
+        {groups.length === 0 && (
+          <EmptyState className="min-h-40 flex-1" message={m.traffic_empty()} />
+        )}
       </div>
     </ScrollArea>
   )

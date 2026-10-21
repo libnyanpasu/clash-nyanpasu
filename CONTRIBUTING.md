@@ -53,9 +53,10 @@ To ensure the project runs correctly locally, the following dependencies are req
 
 ### 2. Build Dependencies
 
-| Tool  | Link                                | Notes                                                      |
-| ----- | ----------------------------------- | ---------------------------------------------------------- |
-| cmake | [Official Site](https://cmake.org/) | Build dependency of `aws-lc-sys` (TLS backend `aws-lc-rs`) |
+| Tool              | Link                                                              | Notes                                                                                                     |
+| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| cmake             | [Official Site](https://cmake.org/)                               | Build dependency of `aws-lc-sys` (TLS backend `aws-lc-rs`)                                                |
+| cargo-about 0.9.2 | [Releases](https://github.com/EmbarkStudios/cargo-about/releases) | Generates the open source credits before every app build; install with `cargo binstall cargo-about@0.9.2` |
 
 On Linux, also install the Tauri system libraries, for example on Debian/Ubuntu:
 

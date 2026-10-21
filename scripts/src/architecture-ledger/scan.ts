@@ -34,6 +34,7 @@ const SKIP_DIR_NAMES = new Set([
   // Upstream submodule under `backend/`. The ledger measures this repo's own
   // migration residual; vendored upstream sources are not ours to migrate.
   "nyanpasu-runtime",
+  "enable-loopback",
 ]);
 
 export function emptyBucket(id: string, label: string): MetricBucket {

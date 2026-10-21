@@ -59,5 +59,7 @@ Rust files are excluded from Prettier. Backend staged changes already run Clippy
 and Rustfmt through `.lintstagedrc.js`. Tests are separate; run those relevant to
 the behavior as described in [testing and review](testing.md). Tauri checks also
 need the [gitignored build prerequisites](workflow.md#gitignored-build-prerequisites-a-fresh-worktree-lacks).
-The `backend/nyanpasu-runtime` submodule owns its own workspace and formatting
-configuration; do not apply the parent workspace's conventions to it implicitly.
+The `backend/nyanpasu-runtime` and `backend/enable-loopback` submodules own their
+workspaces and formatting configurations; do not apply the parent workspace's
+conventions to them implicitly. The latter is downloaded for packaging and is not
+a Rust dependency, so parent `cargo fmt --all` does not traverse it.

@@ -20,7 +20,7 @@ Put handwritten script source under `scripts/src/`, grouped by responsibility:
 | `manifest/`            | Core version resolution and version manifest generation                             |
 | `artifacts/`           | Build cache and artifact/file-server operations                                     |
 | `notifications/`       | Release notifications                                                               |
-| `generate/`            | Git metadata, data slots and offline map generation                                 |
+| `generate/`            | Git metadata, data slots, offline map and open source credits generation            |
 | `testing/`             | Browser integration checks requiring a running application                          |
 | `frontend/`            | Frontend workspace package-boundary inventory, policy checks and gate CLI           |
 | `ci/`                  | Pull request change classification for CI                                           |
@@ -29,7 +29,7 @@ Put handwritten script source under `scripts/src/`, grouped by responsibility:
 Keep Deno configuration, its lockfile, script documentation and editor configuration
 at `scripts/`; non-source fixtures belong in `scripts/fixtures/`. Co-locate
 `*_test.ts` files with their domain modules. The upstream `backend/nyanpasu-runtime`
-submodule owns its own tooling and is outside this layout.
+and `backend/enable-loopback` submodules own their tooling outside this layout.
 
 Split mixed responsibilities into concrete modules: argument parsing and command
 orchestration, pure computation, and infrastructure operations. Imports of library

@@ -34,3 +34,19 @@ pub trait Clock: Send + Sync + 'static {
     /// Milliseconds since the Unix epoch.
     fn now_ms(&self) -> i64;
 }
+
+/// Opens the same dataset at startup and after tsdb retires a failed backend.
+pub trait TrafficStorage<S: nyanpasu_tsdb::storage::Storage>: Send + Sync + 'static {
+    fn open(&self) -> Result<S, nyanpasu_tsdb::storage::StorageError>;
+
+    /// Startup policy may recreate disposable statistics; recovery never deletes the dataset.
+    fn initialize(
+        &self,
+        profile: nyanpasu_tsdb::Profile,
+    ) -> Result<nyanpasu_traffic::store::Opened<S>, nyanpasu_tsdb::RecoveryError> {
+        let storage = self
+            .open()
+            .map_err(|source| nyanpasu_tsdb::RecoveryError::Reopen { source })?;
+        nyanpasu_traffic::TrafficDb::open(storage, profile)
+    }
+}

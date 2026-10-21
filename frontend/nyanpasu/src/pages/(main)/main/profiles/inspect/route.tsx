@@ -1,6 +1,7 @@
 import ArticleRounded from '~icons/material-symbols/article-rounded'
 import { useEffect, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import {
   SegmentedButton,
   SegmentedButtonItem,
@@ -79,7 +80,11 @@ function RouteComponent() {
           </p>
         )}
         {!inspection.isError && inspection.data === null && (
-          <p role="status">{m.inspect_empty()}</p>
+          <EmptyState
+            tone="normal"
+            className="flex-1"
+            message={m.inspect_empty()}
+          />
         )}
         {!inspection.isError && inspection.data && (
           <SnapshotBrowser
@@ -202,9 +207,7 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
           )}
         </div>
         {!selected && (
-          <p role="status" className="text-on-surface-variant text-sm">
-            {m.inspect_filtered_empty()}
-          </p>
+          <EmptyState tone="normal" message={m.inspect_filtered_empty()} />
         )}
         {selected && (
           <div className="flex min-h-0 min-w-0 flex-col gap-3">

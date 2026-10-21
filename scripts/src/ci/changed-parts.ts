@@ -66,7 +66,7 @@ export const CHANGE_RULES: readonly ChangeRule[] = [
     parts: ["frontend"],
   },
   {
-    // `backend/nyanpasu-runtime` is a submodule and changes as one path.
+    // Backend submodule gitlinks also change as one path.
     patterns: [
       "backend/**",
       ".cargo/**",
@@ -76,7 +76,7 @@ export const CHANGE_RULES: readonly ChangeRule[] = [
     parts: ["backend"],
   },
   {
-    patterns: ["scripts/**", "deno.jsonc", "manifest/**"],
+    patterns: ["scripts/**", "deno.jsonc", "manifest/**", "credits/**"],
     parts: ["scripts"],
   },
 ];

@@ -18,7 +18,7 @@ import {
 } from '@tanstack/react-router'
 import HeaderMenu from '../src/pages/(main)/_modules/header-menu'
 import NyanpasuVersion from '../src/pages/(main)/main/settings/about/_modules/nyanpasu-version'
-import { Route } from '../src/pages/(main)/main/settings/about/route'
+import { Route } from '../src/pages/(main)/main/settings/about/index'
 
 const backend = vi.hoisted(() => ({
   phase: 'downloading',
@@ -151,28 +151,42 @@ test('About update cards remain legible at desktop and mobile widths', async ({
   const cards = view.container.querySelectorAll(
     '[data-slot^="about-"][data-slot$="-card"]',
   )
-  expect(cards).toHaveLength(3)
+  expect(cards).toHaveLength(4)
   expect(
     view.container.querySelector('[data-slot="about-release-channel-card"]'),
   ).toBeNull()
   expect(
     view.container.querySelector('[data-slot="about-update-endpoints-card"]'),
   ).toBeNull()
-  let grid = view.container.querySelector<HTMLElement>('.grid.grid-cols-1')
+  let masonry = view.container.querySelector<HTMLElement>(
+    '[data-slot="about-masonry"]',
+  )
   const viewport = view.container.querySelector<HTMLElement>(
     '[data-slot=scroll-area-viewport]',
   )
   expect(viewport).not.toBeNull()
-  expect(grid).not.toBeNull()
+  expect(masonry).not.toBeNull()
 
   await page.viewport(1440, 1000)
-  expect(getComputedStyle(grid!).gridTemplateColumns.split(' ')).toHaveLength(2)
-  expect(grid!.scrollWidth).toBeLessThanOrEqual(viewport!.clientWidth)
+  expect(getComputedStyle(masonry!).columnCount).toBe('2')
+  expect(masonry!.scrollWidth).toBeLessThanOrEqual(viewport!.clientWidth)
+  // Masonry packs each column: a card starts one gap below the card above it.
+  const columns = Map.groupBy(
+    [...cards].map((card) => card.getBoundingClientRect()),
+    (rect) => Math.round(rect.left),
+  )
+  expect(columns.size).toBe(2)
+  for (const rects of columns.values()) {
+    rects.sort((a, b) => a.top - b.top)
+    rects.slice(1).forEach((rect, index) => {
+      expect(rect.top - rects[index].bottom).toBeLessThanOrEqual(17)
+    })
+  }
   const update = view.container.querySelector<HTMLElement>(
     '[data-slot="about-version-card"]',
   )!
   expect(update.getBoundingClientRect().width).toBeLessThan(
-    grid!.clientWidth / 2,
+    masonry!.clientWidth / 2,
   )
   expect(
     update.querySelector('[data-slot="about-update-controls"]'),
@@ -180,7 +194,6 @@ test('About update cards remain legible at desktop and mobile widths', async ({
   const sourceCard = view.container.querySelector<HTMLElement>(
     '[data-slot="about-package-source-card"]',
   )!
-  expect(getComputedStyle(sourceCard).gridRowEnd).toBe('auto')
   const sourceContentHeight = Array.from(sourceCard.children).reduce(
     (height, child) => height + child.getBoundingClientRect().height,
     0,
@@ -195,8 +208,8 @@ test('About update cards remain legible at desktop and mobile widths', async ({
   expect(logo.getBoundingClientRect().height).toBe(128)
 
   await page.viewport(390, 844)
-  expect(getComputedStyle(grid!).gridTemplateColumns.split(' ')).toHaveLength(1)
-  expect(grid!.scrollWidth).toBeLessThanOrEqual(viewport!.clientWidth)
+  expect(getComputedStyle(masonry!).columnCount).toBe('1')
+  expect(masonry!.scrollWidth).toBeLessThanOrEqual(viewport!.clientWidth)
   const preferences = view.container.querySelector<HTMLElement>(
     '[data-slot="about-update-preferences-card"]',
   )
@@ -226,9 +239,11 @@ test('About update cards remain legible at desktop and mobile widths', async ({
       </ScrollArea>
     </TooltipProvider>,
   )
-  grid = view.container.querySelector<HTMLElement>('.grid.grid-cols-1')
-  expect(grid).not.toBeNull()
-  expect(getComputedStyle(grid!).gridTemplateColumns.split(' ')).toHaveLength(1)
+  masonry = view.container.querySelector<HTMLElement>(
+    '[data-slot="about-masonry"]',
+  )
+  expect(masonry).not.toBeNull()
+  expect(getComputedStyle(masonry!).columnCount).toBe('1')
 
   await router.navigate({ to: '/main/settings' })
   await view

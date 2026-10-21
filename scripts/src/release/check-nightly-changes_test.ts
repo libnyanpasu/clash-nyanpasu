@@ -21,6 +21,7 @@ Deno.test("nightly inputs exclude documentation and dedicated tests", () => {
       "frontend/nyanpasu/src/main.tsx",
       "backend/tauri/src/main.rs",
       "backend/nyanpasu-runtime",
+      "backend/enable-loopback",
       "manifest/version.json",
       "pnpm-lock.yaml",
       "backend/Cargo.lock",

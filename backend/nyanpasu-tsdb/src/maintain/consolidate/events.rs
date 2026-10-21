@@ -71,6 +71,11 @@
 //! No part depends on F, so the smallest round that makes progress ([`least_round`]) depends on
 //! the schema alone. Every buffer, directory and dependency draws from one account admitted
 //! for the complete plan; retirement returns reusable credit to that account.
+//! Decode output and scratch retain each buffer's largest need between reads, bounded by
+//! [`crate::codec::block`]'s format limits. [`DecodeCost`] sums component-wise maxima across
+//! columns; outputs are explicitly released before opening a chunk, while scratch stays leased.
+//! With `R = MAX_BLOCK_ROWS`, `B = MAX_BLOCK_LEN`, bytes output is at most
+//! `4*(R+1) + B + ceil(R/8)` plus 2,048 text-reference bytes; shared scratch is at most `B + 8*R`.
 //!
 //! # Under what staging
 //!
@@ -114,15 +119,16 @@ use crate::{
         },
         error::ReadError,
         format::{
-            BLOCK_TARGET_LEN, ChunkKind, MAX_CHUNK_LEN, MAX_COLUMNS, MAX_FRAGMENTS, MAX_ROWS,
-            PhysicalType, directory_within, max_fragment0_len, open_memory,
+            BLOCK_TARGET_LEN, ChunkKind, MAX_CHUNK_LEN, MAX_COLUMNS, MAX_FRAGMENTS,
+            MAX_LARGE_VALUES, MAX_ROWS, PhysicalType, directory_within, max_fragment0_len,
+            open_memory,
         },
         plan::{RowCost, bytes_cost, fits, int_cost},
         reader::{ChunkReader, decode_memory, lent_memory, metadata_within_limits},
     },
     codec::{
         Codec, Encoding, MAX_INLINE_VALUE_LEN,
-        block::{BlockShape, BytesBlock, BytesValue, IntBlock, MAX_BODY_OVERHEAD},
+        block::{BlockShape, BytesBlock, BytesValue, DecodeMemory, IntBlock, MAX_BODY_OVERHEAD},
         bytes::{BytesEncoding, BytesHint},
         checksum::TRAILER_LEN,
         compress,
@@ -379,7 +385,8 @@ const WAY: u64 = (size_of::<Way>() + size_of::<Reverse<(Rank, usize)>>()) as u64
 
 /// What the shared decode buffers and the decoder's scratch hold at most for a stream of
 /// `layout`, for blocks of a chunk the builder planned: the largest block of each buffer's type,
-/// and the scratch of the largest, `raw` when every block read is raw and `zstd` otherwise.
+/// taking each buffer's maximum separately, `raw` when every block read is raw and `zstd`
+/// otherwise. Different columns can maximize the heap, offsets and large references.
 #[derive(Clone, Copy, Debug)]
 struct DecodeCost {
     raw: (u64, u64),
@@ -390,7 +397,9 @@ impl DecodeCost {
     fn of(layout: &[ColumnLayout]) -> Self {
         let measure = |codec| {
             // One buffer per integer type, and one for bytes.
-            let (mut buffers, mut scratch) = ([0u64; 4], 0u64);
+            let mut buffers = [0u64; 3];
+            let mut bytes = [0usize; 4];
+            let mut scratch = [0usize; 3];
             for &column in layout {
                 let rows = max_rows(column);
                 // A block's body holds at most its rows' raw size and the overhead (codec::block),
@@ -427,12 +436,26 @@ impl DecodeCost {
                         uncompressed_len: body,
                         rows,
                     };
-                    let memory = decode_memory(shape, column.ty);
-                    buffers[buffer] = buffers[buffer].max(memory.output);
-                    scratch = scratch.max(memory.scratch);
+                    if let PhysicalType::Bytes(hint) = column.ty {
+                        let needs =
+                            DecodeMemory::bytes_buffers(shape, MAX_LARGE_VALUES as u32, hint);
+                        for (held, need) in bytes.iter_mut().zip(needs) {
+                            *held = (*held).max(need);
+                        }
+                    } else {
+                        buffers[buffer] =
+                            buffers[buffer].max(decode_memory(shape, column.ty).output);
+                    }
+                    for (held, need) in scratch.iter_mut().zip(DecodeMemory::scratch_buffers(shape))
+                    {
+                        *held = (*held).max(need);
+                    }
                 }
             }
-            (buffers.iter().sum(), scratch)
+            (
+                buffers.iter().sum::<u64>() + bytes.iter().sum::<usize>() as u64,
+                scratch.iter().sum::<usize>() as u64,
+            )
         };
         Self {
             raw: measure(Codec::Raw),
@@ -1920,8 +1943,8 @@ impl<B: Default> Buffer<B> {
 
     /// Makes the buffer hold the block of `column` of `at` that holds `row`, with `read` unless
     /// it holds it already, and returns the block's first row. The buffer's and the decoder's
-    /// charged storage is sized to the block before its bytes are read, retiring obsolete
-    /// buffers before replacements (`chunk::reader::decode_memory`).
+    /// charged storage retains each buffer's largest need; undersized buffers retire before
+    /// replacements (`chunk::reader::decode_memory`).
     fn read<R: StorageRead>(
         &mut self,
         at: &At<'_, R>,
@@ -1993,8 +2016,8 @@ impl Decode {
             + self.bytes.block.memory()
     }
 
-    /// Lets go of every decoded block, before a chunk opens. The decoder keeps the scratch of
-    /// its last block, which the input plan counts separately.
+    /// Lets go of every decoded block, before a chunk opens. The decoder keeps each scratch
+    /// buffer's largest need so far, which the input plan counts separately.
     fn release(&mut self) {
         self.ints.i64s.release();
         self.ints.u64s.release();

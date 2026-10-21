@@ -5,12 +5,14 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::runtime::value::{ConfigObject, ConfigValue};
+use crate::runtime::{
+    post_process::{apply_defaults, apply_settings},
+    value::{ConfigObject, ConfigValue},
+};
 
 use super::{
-    GuardInputs, TunFlavor, TunParams,
-    error::{InternalSnafu, RuntimePipelineError},
-    value_util::{obj_get, obj_insert, remove_at},
+    GuardInputs, TunParams,
+    plan::{finalize_ownership, guard_ownership},
 };
 
 pub(super) const HANDLE_FIELDS: [&str; 9] = [
@@ -106,170 +108,31 @@ pub(super) fn whitelist_filter(
     ConfigValue::Object(Arc::new(filtered))
 }
 
-/// Legacy HANDLE overwrite (enhance/mod.rs:110-116): the keys the typed
-/// overrides force + caller resolved ports, inserted at top level, bypassing
-/// stage-1 whitelist. Unmanaged override fields are not inserted. Nyanpasu
-/// owns `port` and `socks-port` like `mixed-port`: an unset one is removed, so
-/// a profile cannot open a listener the user turned off or take the
-/// `mixed-port` before the mixed listener binds (#5678).
-pub(super) fn apply_guard(
-    config: &ConfigValue,
-    guard: &GuardInputs<'_>,
-) -> Result<ConfigValue, RuntimePipelineError> {
-    let mut next = config.clone();
-    for (key, raw) in guard.overrides.forced_entries() {
-        let value = match ConfigValue::try_from(raw) {
-            Ok(value) => value,
-            Err(error) => {
-                return InternalSnafu {
-                    message: format!("convert guard override {key}: {error:?}"),
-                }
-                .fail();
-            }
-        };
-        next = obj_insert(&next, key, value);
-    }
-
-    next = obj_insert(
-        &next,
-        "mixed-port",
-        ConfigValue::Number(serde_json::Number::from(guard.ports.mixed_port)),
-    );
-    for (key, port) in [
-        ("port", guard.ports.port),
-        ("socks-port", guard.ports.socks_port),
-    ] {
-        next = match port {
-            Some(port) => obj_insert(
-                &next,
-                key,
-                ConfigValue::Number(serde_json::Number::from(port)),
-            ),
-            None => remove_at(&next, &[key.to_string()]).unwrap_or(next),
-        };
-    }
-    if let Some(controller) = &guard.ports.external_controller {
-        next = obj_insert(
-            &next,
-            "external-controller",
-            ConfigValue::String(Arc::from(controller.as_str())),
-        );
-    }
-    Ok(next)
+/// Legacy HANDLE overwrite (enhance/mod.rs:110-116): writes the keys of
+/// [`guard_ownership`] at top level, bypassing the stage-1 whitelist.
+/// Unmanaged override fields are left to the profiles.
+pub(super) fn apply_guard(config: &ConfigValue, guard: &GuardInputs<'_>) -> ConfigValue {
+    apply_settings(config, &guard_ownership(guard))
 }
 
-/// Finalizing composite node (spec 7.4): stage-2 filter, tun, then cache.
-/// One recorded node; changed_fields shows the net effect.
+/// Finalizing composite node (spec 7.4): stage-2 filter, then the keys of
+/// [`finalize_ownership`]: `tun`, its DNS takeover and the `profile` cache.
+/// The forced keys go first and the defaults fill in what is still missing,
+/// as `revise!` then `append!` did (enhance/tun.rs:26-109). One recorded
+/// node; changed_fields shows the net effect.
 pub(super) fn finalize(
     config: &ConfigValue,
     tun: &TunParams,
     whitelist_enabled: bool,
 ) -> ConfigValue {
     let full: Vec<String> = known_fields().map(str::to_string).collect();
+    let ownership = finalize_ownership(tun);
     let mut next = whitelist_filter(config, &full, whitelist_enabled);
-    next = apply_tun(&next, tun);
-    next = apply_cache(&next);
+    next = apply_settings(&next, &ownership);
+    next = apply_defaults(&next, &ownership);
     // TODO: 可选排序算法
     // next = apply_sort(&next);
     next
-}
-
-fn object_of(value: Option<&ConfigValue>) -> ConfigObject {
-    value
-        .and_then(ConfigValue::as_object_arc)
-        .map(|map| (**map).clone())
-        .unwrap_or_default()
-}
-
-fn append_default(map: &mut ConfigObject, key: &str, value: ConfigValue) {
-    if !map.contains_key(key) {
-        map.insert(Arc::from(key), value);
-    }
-}
-
-fn string_value(text: &str) -> ConfigValue {
-    ConfigValue::String(Arc::from(text))
-}
-
-fn string_list(items: &[&str]) -> ConfigValue {
-    ConfigValue::Array(Arc::from(
-        items
-            .iter()
-            .map(|item| string_value(item))
-            .collect::<Vec<_>>(),
-    ))
-}
-
-/// Mirrors enhance/tun.rs:26-109; `revise!` overwrites and `append!` fills
-/// missing keys only.
-fn apply_tun(config: &ConfigValue, params: &TunParams) -> ConfigValue {
-    let existing = obj_get(config, "tun");
-    if !params.enable && existing.is_none() {
-        return config.clone();
-    }
-
-    let mut tun = object_of(existing);
-    tun.insert(Arc::from("enable"), ConfigValue::Bool(params.enable));
-    if params.enable {
-        match params.flavor {
-            TunFlavor::ClashRs => {
-                append_default(&mut tun, "device-id", string_value("dev://utun1989"));
-                append_default(&mut tun, "auto-route", ConfigValue::Bool(true));
-            }
-            TunFlavor::Standard { stack } => {
-                append_default(&mut tun, "stack", string_value(stack.as_ref()));
-                append_default(&mut tun, "dns-hijack", string_list(&["any:53"]));
-                append_default(&mut tun, "auto-route", ConfigValue::Bool(true));
-                append_default(&mut tun, "auto-detect-interface", ConfigValue::Bool(true));
-            }
-        }
-    }
-
-    let mut next = obj_insert(config, "tun", ConfigValue::Object(Arc::new(tun)));
-    if params.enable {
-        next = apply_tun_dns(&next, params.windows_fake_ip_filter);
-    }
-    next
-}
-
-fn apply_tun_dns(config: &ConfigValue, windows_fake_ip_filter: bool) -> ConfigValue {
-    let mut dns = object_of(obj_get(config, "dns"));
-    dns.insert(Arc::from("enable"), ConfigValue::Bool(true));
-    append_default(&mut dns, "enhanced-mode", string_value("fake-ip"));
-    append_default(&mut dns, "fake-ip-range", string_value("198.18.0.1/16"));
-    append_default(
-        &mut dns,
-        "nameserver",
-        string_list(&["114.114.114.114", "223.5.5.5", "8.8.8.8"]),
-    );
-    append_default(
-        &mut dns,
-        "fallback",
-        ConfigValue::Array(Arc::from(Vec::<ConfigValue>::new())),
-    );
-    if windows_fake_ip_filter {
-        append_default(
-            &mut dns,
-            "fake-ip-filter",
-            string_list(&[
-                "dns.msftncsi.com",
-                "www.msftncsi.com",
-                "www.msftconnecttest.com",
-            ]),
-        );
-    }
-    obj_insert(config, "dns", ConfigValue::Object(Arc::new(dns)))
-}
-
-/// Mirrors enhance/mod.rs:250-261: existing `profile` keys are not merged.
-fn apply_cache(config: &ConfigValue) -> ConfigValue {
-    if obj_get(config, "profile").is_some() {
-        return config.clone();
-    }
-    let mut profile: ConfigObject = IndexMap::new();
-    profile.insert(Arc::from("store-selected"), ConfigValue::Bool(true));
-    profile.insert(Arc::from("store-fake-ip"), ConfigValue::Bool(false));
-    obj_insert(config, "profile", ConfigValue::Object(Arc::new(profile)))
 }
 
 /// Mirrors field.rs:115-147: known keys use HANDLE++OTHERS++DEFAULT order;

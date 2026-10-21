@@ -133,7 +133,6 @@ fn guard_inserts_override_keys_and_resolved_ports() {
         &value(json!({ "mode": "from-profile", "rules": [] })),
         &guard,
     )
-    .unwrap()
     .to_json();
 
     assert_eq!(result["mode"], json!("rule"));
@@ -157,9 +156,7 @@ fn guard_owns_proxy_ports_like_mixed_port() {
     let overrides = fixed_overrides();
     let profile = value(json!({ "port": 7890, "socks-port": 7891, "mixed-port": 1 }));
 
-    let unset = apply_guard(&profile, &guard_inputs(&overrides))
-        .unwrap()
-        .to_json();
+    let unset = apply_guard(&profile, &guard_inputs(&overrides)).to_json();
     assert!(unset.get("port").is_none());
     assert!(unset.get("socks-port").is_none());
     assert_eq!(unset["mixed-port"], json!(7890));
@@ -167,7 +164,7 @@ fn guard_owns_proxy_ports_like_mixed_port() {
     let mut configured = guard_inputs(&overrides);
     configured.ports.port = Some(7892);
     configured.ports.socks_port = Some(7893);
-    let configured = apply_guard(&profile, &configured).unwrap().to_json();
+    let configured = apply_guard(&profile, &configured).to_json();
     assert_eq!(configured["port"], json!(7892));
     assert_eq!(configured["socks-port"], json!(7893));
 }
@@ -192,7 +189,6 @@ fn guard_overwrites_managed_fields() {
         &value(json!({ "tcp-concurrent": false, "unified-delay": false })),
         &guard_inputs(&overrides),
     )
-    .unwrap()
     .to_json();
 
     assert_eq!(result["tcp-concurrent"], json!(true));
@@ -208,7 +204,6 @@ fn guard_leaves_unmanaged_fields_to_the_profile() {
         &value(json!({ "tcp-concurrent": false, "mode": "from-profile" })),
         &guard_inputs(&overrides),
     )
-    .unwrap()
     .to_json();
 
     assert_eq!(result["tcp-concurrent"], json!(false));

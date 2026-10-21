@@ -54,7 +54,17 @@ pub enum Mode {
     Script,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type, Patch)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    specta::Type,
+    Patch,
+    nyanpasu_macro::OwnedFields,
+)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, specta::Type)))]
 #[patch(attribute(serde(default, rename_all = "kebab-case")))]
@@ -99,34 +109,12 @@ impl ClashGuardOverrides {
     pub fn mode(&self) -> Mode {
         self.mode
     }
-
-    /// The top-level runtime config keys these overrides force, in field
-    /// order. An unmanaged field forces nothing, so whatever the profiles and
-    /// transforms produced for it stays.
-    pub fn forced_entries(&self) -> Vec<(&'static str, serde_json::Value)> {
-        let mut entries = vec![
-            ("log-level", serde_json::json!(self.log_level)),
-            ("allow-lan", serde_json::json!(self.allow_lan)),
-            ("mode", serde_json::json!(self.mode)),
-            ("secret", serde_json::json!(self.secret)),
-        ];
-        #[cfg(feature = "default-meta")]
-        {
-            if let Some(value) = self.unified_delay.managed() {
-                entries.push(("unified-delay", serde_json::json!(value)));
-            }
-            if let Some(value) = self.tcp_concurrent.managed() {
-                entries.push(("tcp-concurrent", serde_json::json!(value)));
-            }
-        }
-        entries.push(("ipv6", serde_json::json!(self.ipv6)));
-        entries
-    }
 }
 
 #[cfg(test)]
 mod patch_tests {
     use super::*;
+    use crate::runtime::post_process::OwnedFields;
     use struct_patch::Patch;
 
     /// The patch shares the config's `kebab-case` wire shape: it decodes
@@ -147,10 +135,10 @@ mod patch_tests {
         assert_eq!(overrides.secret, kept_secret, "absent secret unchanged");
     }
 
-    /// `forced_entries` lists every field when all are managed, so a field
-    /// added to the struct cannot silently stop reaching the runtime config.
+    /// `ownership_entries` lists every field, so a field added to the struct
+    /// cannot silently stop reaching the runtime config.
     #[test]
-    fn forced_entries_cover_every_managed_field() {
+    fn ownership_entries_cover_every_field() {
         let overrides = ClashGuardOverrides::default();
         let serialized = serde_json::to_value(&overrides).unwrap();
         let keys: std::collections::BTreeSet<&str> = serialized
@@ -159,25 +147,27 @@ mod patch_tests {
             .keys()
             .map(String::as_str)
             .collect();
-        let forced: std::collections::BTreeSet<&str> = overrides
-            .forced_entries()
+        let owned: std::collections::BTreeSet<&str> = overrides
+            .ownership_entries()
             .into_iter()
             .map(|(key, _)| key)
             .collect();
 
-        assert_eq!(forced, keys);
+        assert_eq!(owned, keys);
     }
 
     #[cfg(feature = "default-meta")]
     #[test]
-    fn unmanaged_fields_are_not_forced() {
+    fn unmanaged_fields_are_left_to_the_profiles() {
+        use crate::runtime::{post_process::Ownership, value::ConfigValue};
+
         let mut overrides = ClashGuardOverrides::default();
         overrides.tcp_concurrent = ManageableField::Unmanaged;
 
-        let forced = overrides.forced_entries();
+        let owned = overrides.ownership_entries();
 
-        assert!(!forced.iter().any(|(key, _)| *key == "tcp-concurrent"));
-        assert!(forced.contains(&("unified-delay", serde_json::json!(true))));
+        assert!(owned.contains(&("tcp-concurrent", Ownership::Inherited)));
+        assert!(owned.contains(&("unified-delay", Ownership::Forced(ConfigValue::Bool(true)))));
     }
 
     /// A serialized patch keeps the `kebab-case` keys and skips absent fields.

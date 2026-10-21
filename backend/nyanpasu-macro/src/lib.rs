@@ -3,6 +3,7 @@ use syn::{DeriveInput, parse_macro_input};
 
 mod builder_update;
 mod enum_wrapper_combined;
+mod owned_fields;
 mod unified_command;
 mod verge_patch;
 
@@ -30,6 +31,18 @@ pub fn enum_wrapper_from(input: TokenStream) -> TokenStream {
     match enum_wrapper_combined::enum_combined_wrapper(input) {
         Ok(token_stream) => TokenStream::from(token_stream),
         Err(e) => TokenStream::from(e.to_compile_error()),
+    }
+}
+
+/// Derives `nyanpasu_config::runtime::post_process::OwnedFields` and
+/// `OwnedField`: every field decides the runtime config key of its serde
+/// name, and a nested struct decides a table of its own fields.
+#[proc_macro_derive(OwnedFields)]
+pub fn owned_fields(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match owned_fields::owned_fields(input) {
+        Ok(tokens) => TokenStream::from(tokens),
+        Err(error) => TokenStream::from(error.to_compile_error()),
     }
 }
 

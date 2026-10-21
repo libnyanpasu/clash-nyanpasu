@@ -1081,6 +1081,7 @@
   "inspect_builtin": "Built-in transform",
   "inspect_forced_settings": "Apply forced settings",
   "inspect_filter": "Filter fields",
+  "inspect_keep_unmanaged": "Keep fields that follow the profile",
   "inspect_include_all": "Expand include-all",
   "inspect_defaults": "Fill in defaults",
   "inspect_base": "Composition base",

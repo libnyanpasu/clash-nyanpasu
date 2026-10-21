@@ -1079,6 +1079,7 @@
   "inspect_builtin": "内蔵の変換",
   "inspect_forced_settings": "強制設定を適用",
   "inspect_filter": "フィールド絞込",
+  "inspect_keep_unmanaged": "ファイルに従う項目を保持",
   "inspect_include_all": "include-all を展開",
   "inspect_defaults": "既定値を補完",
   "inspect_base": "組み合わせの基盤",

@@ -51,8 +51,8 @@ fn overrides() -> crate::clash::config::overrides::ClashGuardOverrides {
 
 #[test]
 fn selected_file_config_records_canonical_mainline() {
-    // §7.1：root → scoped → global → field filter → managed settings → defaults
-    // → builtin-transform → include-all
+    // §7.1：root → scoped → global → field filter → keep unmanaged → managed
+    // settings → defaults → builtin-transform → include-all
     let profiles = profiles_with(
         Some("sub-a"),
         &["global-fix"],
@@ -112,30 +112,37 @@ fn selected_file_config_records_canonical_mainline() {
     assert!(matches!(
         tags[4],
         OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::ManagedSettings,
+            step: BuiltinStepKind::KeepUnmanaged,
             ..
         }
     ));
     assert!(matches!(
         tags[5],
         OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::Defaults,
+            step: BuiltinStepKind::ManagedSettings,
             ..
         }
     ));
     assert!(matches!(
         tags[6],
-        OperatorTag::BuiltinTransform { step_index: 0, .. }
+        OperatorTag::BuiltinStep {
+            step: BuiltinStepKind::Defaults,
+            ..
+        }
     ));
     assert!(matches!(
         tags[7],
+        OperatorTag::BuiltinTransform { step_index: 0, .. }
+    ));
+    assert!(matches!(
+        tags[8],
         OperatorTag::BuiltinStep {
             step: BuiltinStepKind::IncludeAllExpansion,
             ..
         }
     ));
-    assert_eq!(artifact.graph.nodes.len(), 8);
-    assert_eq!(artifact.final_node, 7);
+    assert_eq!(artifact.graph.nodes.len(), 9);
+    assert_eq!(artifact.final_node, 8);
 
     // 语义断言：scoped + global 追加都生效，guard 覆盖 mode。
     let config = artifact.final_config.to_json();
@@ -522,4 +529,67 @@ fn recorded_patches_replay_into_the_built_config() {
             }
         }
     }
+}
+
+/// #5791: a field left to the profiles keeps their value even where the
+/// field filter does not allow its key, so one setting is enough. The keep
+/// step records just that key.
+#[test]
+fn unmanaged_fields_keep_the_profile_value_the_filter_drops() {
+    let profiles = profiles_with(
+        Some("sub-a"),
+        &[],
+        &[],
+        vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+    );
+    let content = MapContentSource::from_pairs(&[(
+        "sub-a.yaml",
+        "unified-delay: false\ntcp-concurrent: false\ncustom-unknown: 1\nproxies: []\n",
+    )]);
+    let unmanaged = super::builtin::unmanaged_overrides();
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("sub-a")),
+        &unmanaged,
+        &[],
+    );
+
+    let artifact = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap();
+
+    let config = artifact.final_config.to_json();
+    assert_eq!(config["unified-delay"], json!(false));
+    assert_eq!(config["tcp-concurrent"], json!(false));
+    assert!(config.get("custom-unknown").is_none());
+    let kept = artifact
+        .graph
+        .nodes
+        .iter()
+        .find(|node| {
+            matches!(
+                node.tag,
+                OperatorTag::BuiltinStep {
+                    step: BuiltinStepKind::KeepUnmanaged,
+                    ..
+                }
+            )
+        })
+        .unwrap();
+    let mut fields: Vec<_> = kept.changed_fields.iter().flatten().cloned().collect();
+    fields.sort();
+    assert_eq!(fields, ["tcp-concurrent", "unified-delay"]);
+
+    // Managed, the same keys are forced instead.
+    let managed = overrides();
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("sub-a")),
+        &managed,
+        &[],
+    );
+    let config = execute(&inputs, &content, &FakeScriptRunner::default())
+        .unwrap()
+        .final_config
+        .to_json();
+    assert_eq!(config["unified-delay"], json!(true));
+    assert_eq!(config["tcp-concurrent"], json!(true));
 }

@@ -1081,6 +1081,7 @@
   "inspect_builtin": "內建轉換",
   "inspect_forced_settings": "套用強制設定",
   "inspect_filter": "篩選欄位",
+  "inspect_keep_unmanaged": "保留跟隨設定檔的欄位",
   "inspect_include_all": "展開 include-all",
   "inspect_defaults": "補全預設值",
   "inspect_base": "組合基底",

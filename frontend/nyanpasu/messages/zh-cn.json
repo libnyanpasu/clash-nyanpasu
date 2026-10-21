@@ -1081,6 +1081,7 @@
   "inspect_builtin": "内置转换",
   "inspect_forced_settings": "应用强制设置",
   "inspect_filter": "过滤字段",
+  "inspect_keep_unmanaged": "保留跟随配置文件的字段",
   "inspect_include_all": "展开 include-all",
   "inspect_defaults": "补全默认值",
   "inspect_base": "组合基底",

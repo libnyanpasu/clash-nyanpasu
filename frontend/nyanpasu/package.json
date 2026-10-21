@@ -29,7 +29,7 @@
     "@nyanpasu/theme": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
     "@nyanpasu/utils": "workspace:^",
-    "@paper-design/shaders-react": "0.0.81",
+    "@paper-design/shaders-react": "0.0.82",
     "@tailwindcss/postcss": "4.3.3",
     "@tanstack/react-table": "9.3.1",
     "@tanstack/react-virtual": "3.14.21",

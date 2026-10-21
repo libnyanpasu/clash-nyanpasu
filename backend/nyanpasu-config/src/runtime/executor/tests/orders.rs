@@ -51,7 +51,8 @@ fn overrides() -> crate::clash::config::overrides::ClashGuardOverrides {
 
 #[test]
 fn selected_file_config_records_canonical_mainline() {
-    // §7.1：root → scoped → global → whitelist → guard → builtin-transform → finalizing
+    // §7.1：root → scoped → global → field filter → managed settings → defaults
+    // → builtin-transform → include-all
     let profiles = profiles_with(
         Some("sub-a"),
         &["global-fix"],
@@ -104,36 +105,37 @@ fn selected_file_config_records_canonical_mainline() {
     assert!(matches!(
         tags[3],
         OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::WhitelistFieldFilter,
+            step: BuiltinStepKind::FieldFilter,
             ..
         }
     ));
     assert!(matches!(
         tags[4],
         OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::GuardOverrides,
+            step: BuiltinStepKind::ManagedSettings,
             ..
         }
     ));
     assert!(matches!(
         tags[5],
-        OperatorTag::BuiltinTransform { step_index: 0, .. }
+        OperatorTag::BuiltinStep {
+            step: BuiltinStepKind::Defaults,
+            ..
+        }
     ));
     assert!(matches!(
         tags[6],
+        OperatorTag::BuiltinTransform { step_index: 0, .. }
+    ));
+    assert!(matches!(
+        tags[7],
         OperatorTag::BuiltinStep {
             step: BuiltinStepKind::IncludeAllExpansion,
             ..
         }
     ));
-    assert!(matches!(
-        tags[7],
-        OperatorTag::BuiltinStep {
-            step: BuiltinStepKind::Finalizing,
-            ..
-        }
-    ));
     assert_eq!(artifact.graph.nodes.len(), 8);
+    assert_eq!(artifact.final_node, 7);
 
     // 语义断言：scoped + global 追加都生效，guard 覆盖 mode。
     let config = artifact.final_config.to_json();
@@ -281,7 +283,7 @@ fn bare_target_reuses_shared_tail_with_none_selected() {
         tags[2],
         OperatorTag::BuiltinStep {
             selected_profile_id: None,
-            step: BuiltinStepKind::WhitelistFieldFilter
+            step: BuiltinStepKind::FieldFilter
         }
     ));
 
@@ -444,4 +446,80 @@ fn global_merge_owns_unmanaged_guard_fields() {
     assert_eq!(config["tcp-concurrent"], json!(false));
     assert!(config.get("unified-delay").is_none());
     assert_eq!(config["mode"], json!("rule"));
+}
+
+/// With the field filter off, no filter step is recorded.
+#[test]
+fn the_field_filter_step_is_left_out_while_the_filter_is_off() {
+    let profiles = profiles_with(
+        Some("sub-a"),
+        &[],
+        &[],
+        vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+    );
+    let content = MapContentSource::from_pairs(&[("sub-a.yaml", "proxies: []\n")]);
+    let ov = overrides();
+    let mut inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
+    inputs.whitelist_enabled = false;
+    inputs.expand_include_all = false;
+
+    let artifact = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap();
+
+    let steps: Vec<_> = artifact
+        .graph
+        .nodes
+        .iter()
+        .filter_map(|node| match &node.tag {
+            OperatorTag::BuiltinStep { step, .. } => Some(*step),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        steps,
+        [BuiltinStepKind::ManagedSettings, BuiltinStepKind::Defaults]
+    );
+    assert_eq!(artifact.final_node as usize, artifact.graph.nodes.len() - 1);
+}
+
+/// The filter, managed settings and defaults steps record the patches they
+/// made instead of diffing. Replaying the graph must still rebuild the config
+/// the pipeline produced, key order included, whatever the settings.
+#[test]
+fn recorded_patches_replay_into_the_built_config() {
+    let profiles = profiles_with(
+        Some("sub-a"),
+        &[],
+        &["dns"],
+        vec![config_file_item("sub-a", "sub-a.yaml", &[])],
+    );
+    let content = MapContentSource::from_pairs(&[(
+        "sub-a.yaml",
+        "port: 7890\nmode: global\ntun: { enable: true, stack: system, auto-route: false }\n\
+         custom-unknown: 1\ndns: { enable: false, nameserver: [1.1.1.1] }\nproxies: []\n\
+         profile: { store-selected: false }\nrules: []\n",
+    )]);
+    let ov = overrides();
+    for whitelist_enabled in [false, true] {
+        for tun in [false, true] {
+            for port in [None, Some(7892)] {
+                let mut inputs =
+                    base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
+                inputs.whitelist_enabled = whitelist_enabled;
+                inputs.tun.enable = tun;
+                inputs.tun.windows_fake_ip_filter = tun;
+                inputs.guard.ports.port = port;
+
+                let artifact = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap();
+
+                let case = format!("filter {whitelist_enabled}, tun {tun}, port {port:?}");
+                assert_eq!(
+                    serde_json::to_string(&artifact.graph.restore(artifact.final_node).unwrap())
+                        .unwrap(),
+                    serde_json::to_string(&artifact.final_config.to_json()).unwrap(),
+                    "{case}"
+                );
+                crate::runtime::snapshot::assert_restore_matches_materialize(&artifact.graph);
+            }
+        }
+    }
 }

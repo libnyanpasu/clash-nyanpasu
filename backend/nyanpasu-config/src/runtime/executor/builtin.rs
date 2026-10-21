@@ -1,19 +1,13 @@
-//! WhitelistFieldFilter / GuardOverrides / Finalizing (spec 7.4).
-//! Constants transplanted verbatim from enhance/field.rs:4-56.
+//! The field filter of post-processing (spec 7.4). Constants transplanted
+//! verbatim from enhance/field.rs:4-56.
 
 use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::runtime::{
-    post_process::{apply_defaults, apply_settings},
-    value::{ConfigObject, ConfigValue},
-};
+use json_patch::{Patch, PatchOperation, RemoveOperation, jsonptr::PointerBuf};
 
-use super::{
-    GuardInputs, TunParams,
-    plan::{finalize_ownership, guard_ownership},
-};
+use crate::runtime::value::{ConfigObject, ConfigValue};
 
 pub(super) const HANDLE_FIELDS: [&str; 9] = [
     "mode",
@@ -70,7 +64,7 @@ pub(super) const OTHERS_FIELDS: [&str; 31] = [
 ];
 
 /// 45-key full whitelist, DEFAULT ++ HANDLE ++ OTHERS (field.rs:58-65 order).
-pub(super) fn known_fields() -> impl Iterator<Item = &'static str> {
+pub fn known_fields() -> impl Iterator<Item = &'static str> {
     DEFAULT_FIELDS
         .into_iter()
         .chain(HANDLE_FIELDS)
@@ -89,55 +83,31 @@ pub(super) fn stage1_fields(valid: &[String]) -> Vec<String> {
     fields
 }
 
-pub(super) fn whitelist_filter(
-    config: &ConfigValue,
-    allow: &[String],
-    enabled: bool,
-) -> ConfigValue {
-    if !enabled {
-        return config.clone();
-    }
+/// Keeps the top-level keys in `allow`, with the patch that removes the rest.
+pub(super) fn filter_fields(config: &ConfigValue, allow: &[String]) -> (ConfigValue, Patch) {
     let Some(map) = config.as_object_arc() else {
-        return config.clone();
+        return (config.clone(), Patch(Vec::new()));
     };
-    let filtered: ConfigObject = map
-        .iter()
-        .filter(|(key, _)| allow.iter().any(|allowed| allowed.as_str() == key.as_ref()))
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    ConfigValue::Object(Arc::new(filtered))
-}
-
-/// Legacy HANDLE overwrite (enhance/mod.rs:110-116): writes the keys of
-/// [`guard_ownership`] at top level, bypassing the stage-1 whitelist.
-/// Unmanaged override fields are left to the profiles.
-pub(super) fn apply_guard(config: &ConfigValue, guard: &GuardInputs<'_>) -> ConfigValue {
-    apply_settings(config, &guard_ownership(guard))
-}
-
-/// Finalizing composite node (spec 7.4): stage-2 filter, then the keys of
-/// [`finalize_ownership`]: `tun`, its DNS takeover and the `profile` cache.
-/// The forced keys go first and the defaults fill in what is still missing,
-/// as `revise!` then `append!` did (enhance/tun.rs:26-109). One recorded
-/// node; changed_fields shows the net effect.
-pub(super) fn finalize(
-    config: &ConfigValue,
-    tun: &TunParams,
-    whitelist_enabled: bool,
-) -> ConfigValue {
-    let full: Vec<String> = known_fields().map(str::to_string).collect();
-    let ownership = finalize_ownership(tun);
-    let mut next = whitelist_filter(config, &full, whitelist_enabled);
-    next = apply_settings(&next, &ownership);
-    next = apply_defaults(&next, &ownership);
-    // TODO: 可选排序算法
-    // next = apply_sort(&next);
-    next
+    let mut removed = Vec::new();
+    let mut filtered = ConfigObject::with_capacity(map.len());
+    for (key, value) in map.iter() {
+        if allow.iter().any(|allowed| allowed.as_str() == key.as_ref()) {
+            filtered.insert(key.clone(), value.clone());
+        } else {
+            removed.push(PatchOperation::Remove(RemoveOperation {
+                path: PointerBuf::from_tokens([key.as_ref()]),
+            }));
+        }
+    }
+    if removed.is_empty() {
+        return (config.clone(), Patch(removed));
+    }
+    (ConfigValue::Object(Arc::new(filtered)), Patch(removed))
 }
 
 /// Mirrors field.rs:115-147: known keys use HANDLE++OTHERS++DEFAULT order;
 /// unknown keys keep their original relative order at the end.
-#[allow(dead_code)] // Unwired from `finalize` until the ordering TODO there is decided.
+#[allow(dead_code)] // Unwired until the ordering TODO in `execute` is decided.
 fn apply_sort(config: &ConfigValue) -> ConfigValue {
     let Some(map) = config.as_object_arc() else {
         return config.clone();

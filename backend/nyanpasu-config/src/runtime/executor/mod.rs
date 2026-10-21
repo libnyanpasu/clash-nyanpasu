@@ -20,6 +20,7 @@ use std::sync::Arc;
 use indexmap::{IndexMap, IndexSet};
 
 pub use artifact::{RuntimeArtifact, StepLog, StepLogEntry, StepLogLevel, TransformFailure};
+pub use builtin::known_fields;
 pub use error::RuntimePipelineError;
 pub use ports::{PortError, ProfileContentSource, ScriptRunner};
 
@@ -31,6 +32,7 @@ use crate::{
         ProfileDefinition, ProfileId, Profiles, ScriptRuntime, TransformDefinition, TransformKind,
     },
     runtime::{
+        post_process::{apply_defaults, apply_settings},
         snapshot::{
             BuiltinStepKind, ConfigExecutionRole, ConfigSnapshotsBuilder, OperatorTag,
             SnapshotNodeKey,
@@ -44,7 +46,7 @@ pub struct RuntimePipelineInputs<'a> {
     pub profiles: &'a Profiles,
     pub target: ExecutionTarget,
     pub guard: GuardInputs<'a>,
-    /// `ClashConfig.enable_clash_fields`: gates both whitelist passes.
+    /// `ClashConfig.enable_clash_fields`: whether the field filter runs.
     pub whitelist_enabled: bool,
     pub tun: TunParams,
     /// `ClashConfig.expand_include_all`: expand `include-all*` groups here
@@ -265,8 +267,9 @@ pub fn execute(
         }
     };
 
-    // Shared tail (spec §7.1): global → sample → whitelist → guard →
-    // builtin×N → include-all expansion → finalizing.
+    // Shared tail (spec §7.1): global → sample → field filter → managed
+    // settings → defaults → builtin×N → include-all expansion. Nyanpasu's own
+    // steps record the patch they made instead of diffing the trees.
     for (index, transform_id) in inputs.profiles.global_transforms.iter().enumerate() {
         let (next, kind, entries, failed) =
             apply_transform(inputs.profiles, content, runner, transform_id, &working);
@@ -289,28 +292,28 @@ pub fn execute(
         .map(|map| map.keys().map(|key| key.to_ascii_lowercase()).collect())
         .unwrap_or_default();
 
-    let stage1 = builtin::stage1_fields(&inputs.profiles.valid);
-    working = Arc::new(builtin::whitelist_filter(
-        &working,
-        &stage1,
-        inputs.whitelist_enabled,
-    ));
-    builder.push(
-        OperatorTag::BuiltinStep {
-            selected_profile_id: selected.clone(),
-            step: BuiltinStepKind::WhitelistFieldFilter,
-        },
-        working.clone(),
-    )?;
+    let step = |step| OperatorTag::BuiltinStep {
+        selected_profile_id: selected.clone(),
+        step,
+    };
+    if inputs.whitelist_enabled {
+        let stage1 = builtin::stage1_fields(&inputs.profiles.valid);
+        let (next, patch) = builtin::filter_fields(&working, &stage1);
+        working = Arc::new(next);
+        builder.push_delta(step(BuiltinStepKind::FieldFilter), working.clone(), patch)?;
+    }
 
-    working = Arc::new(builtin::apply_guard(&working, &inputs.guard));
-    builder.push(
-        OperatorTag::BuiltinStep {
-            selected_profile_id: selected.clone(),
-            step: BuiltinStepKind::GuardOverrides,
-        },
+    let ownership = plan::ownership(&inputs.guard, &inputs.tun);
+    let (next, patch) = apply_settings(&working, &ownership);
+    working = Arc::new(next);
+    builder.push_delta(
+        step(BuiltinStepKind::ManagedSettings),
         working.clone(),
+        patch,
     )?;
+    let (next, patch) = apply_defaults(&working, &ownership);
+    working = Arc::new(next);
+    builder.push_delta(step(BuiltinStepKind::Defaults), working.clone(), patch)?;
 
     for (index, builtin_transform) in inputs.builtin_transforms.iter().enumerate() {
         let mut entries = Vec::new();
@@ -353,28 +356,19 @@ pub fn execute(
         builder.push(tag, working.clone())?;
     }
 
-    working = Arc::new(builtin::finalize(
-        &working,
-        &inputs.tun,
-        inputs.whitelist_enabled,
-    ));
-    builder.push(
-        OperatorTag::BuiltinStep {
-            selected_profile_id: selected.clone(),
-            step: BuiltinStepKind::Finalizing,
-        },
-        working.clone(),
-    )?;
+    // TODO: 可选排序算法
+    // working = Arc::new(builtin::apply_sort(&working));
 
     // Legacy mod.rs:155-157 parity: ∩45 unconditionally; IndexSet preserves
     // order.
     applied_fields.retain(|key| builtin::known_fields().any(|field| field == key));
 
-    let graph = builder.build_stored()?;
+    let (graph, final_node) = builder.build_stored_with_current()?;
     let transform_failures = logs.failures.clone();
     Ok(RuntimeArtifact {
         final_config: working,
         graph,
+        final_node,
         step_logs: logs.into_step_logs(),
         applied_fields,
         transform_failures,

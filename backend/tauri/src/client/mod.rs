@@ -3629,14 +3629,17 @@ pub(crate) mod tests {
         client.reconcile_core().await.unwrap();
         let first = client.inspect_runtime().await.unwrap();
         assert!(!first.nodes.is_empty());
+        // The tail is recorded last, so the built document is the last node
+        // before the core's own view.
         let final_node = first
             .nodes
             .iter()
+            .rev()
             .find(|node| {
-                matches!(
+                !matches!(
                     node.tag,
                     nyanpasu_config::runtime::snapshot::OperatorTag::BuiltinStep {
-                        step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::Finalizing,
+                        step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::CoreController,
                         ..
                     }
                 )

@@ -98,7 +98,7 @@ fn graph(root: &Arc<ConfigValue>, steps: u32) -> StoredConfigSnapshotsGraph {
         .push(
             OperatorTag::BuiltinStep {
                 selected_profile_id: None,
-                step: BuiltinStepKind::Finalizing,
+                step: BuiltinStepKind::Defaults,
             },
             working,
         )
@@ -138,7 +138,7 @@ fn a_known_delta_costs_a_fraction_of_a_config_tree() {
     .unwrap();
     let tag = || OperatorTag::BuiltinStep {
         selected_profile_id: None,
-        step: BuiltinStepKind::GuardOverrides,
+        step: BuiltinStepKind::ManagedSettings,
     };
 
     let mut diffed = ConfigSnapshotsBuilder::new_root(root.clone(), OperatorTag::BareRoot);

@@ -12,7 +12,7 @@ use nyanpasu_config::{
     application::ClashCore,
     clash::config::overrides::ClashGuardOverrides,
     profile::{ProfileId, Profiles},
-    runtime::executor::ResolvedPortBindings,
+    runtime::executor::{ResolvedPortBindings, known_fields},
 };
 
 use super::golden_support::{composition, file_config, overlay};
@@ -142,6 +142,41 @@ fn golden_builtin_gating_clash_rs() {
     input.app.core = ClashCore::ClashRs;
     let yaml = build_to_yaml(&input, temp.path());
     assert_matches_fixture(&yaml, "builtin_clash_rs.yaml");
+}
+
+/// With the field filter on, every top-level key of the built config is a
+/// known Clash field, after the real builtin scripts of each core family too.
+/// Nothing filters the config again after those scripts run.
+#[test]
+fn golden_filtered_config_keeps_only_known_fields() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("base.yaml"),
+        "proxies: []\nallow_lan: true\nipv6: true\nextra-key: drop\ndns: { enabled: true }\n",
+    )
+    .unwrap();
+
+    for core in [ClashCore::Mihomo, ClashCore::ClashRs] {
+        let mut profiles = Profiles::default();
+        profiles.append_item(file_config("base", "base.yaml", &[]));
+        profiles.set_current(Some(ProfileId("base".into())));
+        profiles.valid = vec!["dns".to_string()];
+
+        let mut input = golden_input(profiles);
+        input.app.enable_builtin_enhanced = true;
+        input.app.core = core;
+        input.clash.enable_clash_fields = true;
+        input.clash.enable_tun_mode = true;
+        let yaml = build_to_yaml(&input, temp.path());
+
+        for key in yaml.as_mapping().unwrap().keys() {
+            let key = key.as_str().unwrap();
+            assert!(
+                known_fields().any(|field| field == key),
+                "{core:?} built an unknown top-level key `{key}`"
+            );
+        }
+    }
 }
 
 /// whitelist-on:enable_clash_fields=true 时未知键被过滤。

@@ -119,6 +119,7 @@ pub fn runtime_snapshot_data_from_artifact(
         exists_keys,
         inspection: std::sync::Arc::new(crate::client::runtime_inspection::RuntimeInspectionData {
             graph: artifact.graph,
+            final_node: artifact.final_node,
             step_logs: artifact.step_logs,
         }),
         postprocessing_output,

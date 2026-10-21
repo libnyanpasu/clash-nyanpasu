@@ -26,20 +26,22 @@ use super::{
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeInspectionData {
     pub graph: StoredConfigSnapshotsGraph,
+    /// The node of `graph` whose config is the built document.
+    pub final_node: Idx,
     pub step_logs: Vec<StepLog>,
 }
 
 /// The configuration the core reported running for an applied build, viewed
-/// as the finalizing node's child. It stays outside the build's graph, so
+/// as the final node's child. It stays outside the build's graph, so
 /// stamping a build never copies the graph.
 #[derive(Debug)]
 pub(crate) struct EffectiveInspection {
     pub config: nyanpasu_ipc::api::core::v2::CoreEffectiveConfig,
     pub host: (crate::core::actor_v2::endpoint::ExecutionHost, u64),
-    /// The finalizing node the effective document is compared against.
+    /// The final node the effective document is compared against.
     parent: Idx,
     tag: OperatorTag,
-    /// Computed once when stamped, against the finalizing node.
+    /// Computed once when stamped, against the final node.
     changed_fields: Option<Vec<String>>,
 }
 
@@ -95,9 +97,7 @@ impl RuntimeSnapshot {
             "effective snapshot does not match the applied build"
         );
         let graph = &self.inspection.graph;
-        let (parent, selected_profile_id) = self
-            .finalizing_node()
-            .ok_or_else(|| anyhow::anyhow!("runtime graph has no finalizing node"))?;
+        let (parent, selected_profile_id) = self.final_node();
         let config = document_json(&effective.config)?;
         let changed_fields = changed_fields_between(&graph.restore(parent)?, &config)
             .map(|fields| fields.into_iter().collect());
@@ -132,29 +132,36 @@ impl RuntimeSnapshot {
     }
 
     /// The node whose config is the built document, with its selected profile.
-    fn finalizing_node(&self) -> Option<(Idx, Option<ProfileId>)> {
-        self.inspection
+    fn final_node(&self) -> (Idx, Option<ProfileId>) {
+        let id = self.inspection.final_node;
+        let selected_profile_id = match self
+            .inspection
             .graph
             .nodes
-            .iter()
-            .enumerate()
-            .find_map(|(id, node)| match &node.tag {
+            .get(id as usize)
+            .map(|node| &node.tag)
+        {
+            Some(
                 OperatorTag::BuiltinStep {
                     selected_profile_id,
-                    step: BuiltinStepKind::Finalizing,
-                } => Some((id as Idx, selected_profile_id.clone())),
-                _ => None,
-            })
+                    ..
+                }
+                | OperatorTag::BuiltinTransform {
+                    selected_profile_id,
+                    ..
+                },
+            ) => selected_profile_id.clone(),
+            _ => None,
+        };
+        (id, selected_profile_id)
     }
 
     /// The built document as JSON, restored from the graph rather than
     /// re-parsed from `config_text`, so the view keeps the converter's
     /// semantics instead of acquiring the YAML parser's limits.
     fn config_json(&self) -> serde_json::Value {
-        let (finalizing, _) = self
-            .finalizing_node()
-            .expect("every runtime build ends with a finalizing node");
-        restored(self.inspection.graph.restore(finalizing))
+        let (final_node, _) = self.final_node();
+        restored(self.inspection.graph.restore(final_node))
     }
 
     fn has_logs(&self, tag: &OperatorTag) -> bool {
@@ -182,7 +189,7 @@ impl RuntimeSnapshot {
                     .map(|fields| fields.iter().cloned().collect()),
             })
             .collect();
-        // The core's view is projected as the finalizing node's last child.
+        // The core's view is projected as the final node's last child.
         if let Some(effective) = &self.effective {
             let id = nodes.len() as u32;
             nodes[effective.parent as usize].next.push(id);
@@ -418,17 +425,18 @@ pub(crate) mod tests {
     use std::sync::Arc;
 
     pub(crate) fn inspection_data() -> RuntimeInspectionData {
-        let graph = ConfigSnapshotsBuilder::new_root(
+        let (graph, final_node) = ConfigSnapshotsBuilder::new_root(
             Arc::new(
                 serde_json::from_value::<ConfigValue>(serde_json::json!({"mode": "rule"})).unwrap(),
             ),
             OperatorTag::BareRoot,
         )
-        .build_stored()
+        .build_stored_with_current()
         .unwrap();
         let key = graph.nodes[0].tag.node_key();
         RuntimeInspectionData {
             graph,
+            final_node,
             step_logs: vec![StepLog {
                 key,
                 entries: vec![StepLogEntry::new(StepLogLevel::Info, "built")],
@@ -461,15 +469,17 @@ pub(crate) mod tests {
             .push(
                 OperatorTag::BuiltinStep {
                     selected_profile_id: None,
-                    step: BuiltinStepKind::Finalizing,
+                    step: BuiltinStepKind::Defaults,
                 },
                 value,
             )
             .unwrap();
         let mut generated = snapshot();
         generated.config_text = Arc::from("external-controller: 127.0.0.1:9090\nsecret: private\n");
+        let (graph, final_node) = graph.build_stored_with_current().unwrap();
         generated.inspection = Arc::new(RuntimeInspectionData {
-            graph: graph.build_stored().unwrap(),
+            graph,
+            final_node,
             step_logs: vec![],
         });
         let effective = nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
@@ -594,7 +604,7 @@ pub(crate) mod tests {
     /// The JSON view is the built document itself; nesting deeper than the
     /// YAML parser accepts must not make it unavailable.
     #[test]
-    fn config_json_is_the_finalizing_document_at_any_depth() {
+    fn config_json_is_the_built_document_at_any_depth() {
         let mut nested = serde_json::json!("leaf");
         for _ in 0..200 {
             nested = serde_json::json!({ "inner": nested });
@@ -609,14 +619,16 @@ pub(crate) mod tests {
             .push(
                 OperatorTag::BuiltinStep {
                     selected_profile_id: None,
-                    step: BuiltinStepKind::Finalizing,
+                    step: BuiltinStepKind::Defaults,
                 },
                 root,
             )
             .unwrap();
         let mut snapshot = snapshot();
+        let (graph, final_node) = graph.build_stored_with_current().unwrap();
         snapshot.inspection = Arc::new(RuntimeInspectionData {
-            graph: graph.build_stored().unwrap(),
+            graph,
+            final_node,
             step_logs: vec![],
         });
         assert_eq!(snapshot.config_json(), document);
@@ -633,14 +645,16 @@ pub(crate) mod tests {
             .push(
                 OperatorTag::BuiltinStep {
                     selected_profile_id: None,
-                    step: BuiltinStepKind::Finalizing,
+                    step: BuiltinStepKind::Defaults,
                 },
                 value,
             )
             .unwrap();
         let mut generated = snapshot();
+        let (graph, final_node) = graph.build_stored_with_current().unwrap();
         generated.inspection = Arc::new(RuntimeInspectionData {
-            graph: graph.build_stored().unwrap(),
+            graph,
+            final_node,
             step_logs: vec![],
         });
         let revision = nyanpasu_ipc::api::status::ConfigRevisionInfo {
@@ -726,14 +740,16 @@ pub(crate) mod tests {
             .push(
                 OperatorTag::BuiltinStep {
                     selected_profile_id: None,
-                    step: BuiltinStepKind::Finalizing,
+                    step: BuiltinStepKind::Defaults,
                 },
                 value("global"),
             )
             .unwrap();
         let mut snapshot = snapshot();
+        let (graph, final_node) = builder.build_stored_with_current().unwrap();
         snapshot.inspection = Arc::new(RuntimeInspectionData {
-            graph: builder.build_stored().unwrap(),
+            graph,
+            final_node,
             step_logs: Vec::new(),
         });
         let summary = snapshot.inspection_summary();
@@ -773,7 +789,7 @@ pub(crate) mod tests {
         data.step_logs.push(StepLog {
             key: nyanpasu_config::runtime::snapshot::SnapshotNodeKey::Builtin {
                 selected_profile_id: None,
-                step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::Finalizing,
+                step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::Defaults,
             },
             entries: vec![StepLogEntry::new(StepLogLevel::Info, "another step")],
         });

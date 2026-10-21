@@ -1,6 +1,7 @@
 import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
 import LicenseRounded from '~icons/material-symbols/license-rounded'
 import PaletteRounded from '~icons/material-symbols/palette-rounded'
+import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
 import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
@@ -167,11 +168,19 @@ export default function SettingsNavigate() {
     >
       <SettingsNavigationGroup label={m.settings_group_system()}>
         <SettingsNavigationItem
-          to="/main/settings/system"
+          to="/main/settings/system/proxy"
           color="blue"
           icon={<VpnLockRounded />}
-          label={m.settings_label_system()}
-          description={m.settings_label_system_description()}
+          label={m.settings_label_proxy()}
+          description={m.settings_label_proxy_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/system/service"
+          color="green"
+          icon={<PowerSettingsNewRounded />}
+          label={m.settings_label_service()}
+          description={m.settings_label_service_description()}
         />
       </SettingsNavigationGroup>
 

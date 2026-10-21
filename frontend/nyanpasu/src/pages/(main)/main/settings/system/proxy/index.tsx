@@ -1,12 +1,10 @@
 import { AnimatePresence } from 'motion/react'
-import { useDeferredValue } from 'react'
 import { PageTitle } from '@/components/page-title'
 import {
   SystemProxyButton,
   TunModeButton,
 } from '@/components/settings/system-proxy'
 import { m } from '@/paraglide/messages'
-import { isMacOS, isWindows } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -15,20 +13,14 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../_modules/settings-card'
-import AutoLaunchSwitch from './_modules/auto-launch-switch'
+} from '../../_modules/settings-card'
 import CurrentSystemProxy from './_modules/current-system-proxy'
-import DnsCacheButton from './_modules/dns-cache-button'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
 import ProxyModeSelector from './_modules/proxy-mode-selector'
-import SilentLaunchSwitch from './_modules/slient-launch-switch'
-import SystemServiceCtrl from './_modules/system-service-ctrl'
-import SystemServiceSwitch from './_modules/system-service-switch'
-import UwpToolsButton from './_modules/uwp-tools-button'
 
-export const Route = createFileRoute('/(main)/main/settings/system')({
+export const Route = createFileRoute('/(main)/main/settings/system/proxy/')({
   component: RouteComponent,
 })
 
@@ -104,90 +96,17 @@ const CurrentProxy = () => {
   )
 }
 
-const SystemService = () => {
-  return (
-    <div data-slot="system-service-container">
-      <SettingsLabel>
-        {m.settings_system_proxy_system_service_ctrl_label()}
-      </SettingsLabel>
-
-      <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <SystemServiceSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
-
-        <SystemServiceCtrl />
-      </SettingsGroup>
-    </div>
-  )
-}
-
-const SystemLaunch = () => {
-  return (
-    <div data-slot="system-launch-container">
-      <SettingsLabel>{m.settings_system_proxy_launch_label()}</SettingsLabel>
-
-      <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <AutoLaunchSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
-
-        <SettingsCard>
-          <SettingsCardContent>
-            <SilentLaunchSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
-      </SettingsGroup>
-    </div>
-  )
-}
-
-const SystemTools = () => {
-  return (
-    <div data-slot="system-tools-container">
-      <SettingsLabel>
-        {m.settings_system_proxy_system_tools_label()}
-      </SettingsLabel>
-
-      <SettingsGroup>
-        <DnsCacheButton />
-
-        {isWindows && <UwpToolsButton />}
-      </SettingsGroup>
-    </div>
-  )
-}
-
 function RouteComponent() {
-  // Route changes render synchronously and this page is long, so the sections
-  // below the first screen mount in a deferred render right after the page
-  // has committed.
-  const showAll = useDeferredValue(true, false)
-
   return (
     <>
-      <PageTitle backTo="/main/settings">{m.settings_label_system()}</PageTitle>
+      <PageTitle backTo="/main/settings">{m.settings_label_proxy()}</PageTitle>
 
       <div className="space-y-4 px-4 pb-4">
         <ProxyMode />
 
         <ProxyGuard />
 
-        {showAll && (
-          <>
-            <CurrentProxy />
-
-            <SystemService />
-
-            <SystemLaunch />
-
-            {(isWindows || isMacOS) && <SystemTools />}
-          </>
-        )}
+        <CurrentProxy />
       </div>
     </>
   )

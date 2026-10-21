@@ -7,7 +7,8 @@ import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { Route as ClashRoute } from '@/pages/(main)/main/settings/clash/route'
 import { Route as SettingsRoute } from '@/pages/(main)/main/settings/route'
-import { Route as SystemRoute } from '@/pages/(main)/main/settings/system/route'
+import { Route as SystemProxyRoute } from '@/pages/(main)/main/settings/system/proxy/index'
+import { Route as SystemServiceRoute } from '@/pages/(main)/main/settings/system/service/index'
 import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -163,7 +164,8 @@ function createSettingsRouter() {
       mainRoute.addChildren([
         (settingsRoute as unknown as typeof mainRoute).addChildren([
           child(ClashRoute, '/clash') as never,
-          child(SystemRoute, '/system') as never,
+          child(SystemProxyRoute, '/system/proxy') as never,
+          child(SystemServiceRoute, '/system/service') as never,
           createRoute({
             path: '/blank',
             getParentRoute: () => settingsRoute as never,
@@ -178,7 +180,9 @@ function createSettingsRouter() {
   })
 }
 
-const PAGES = (env.VITE_PERF_PAGES ?? 'clash,system').split(',')
+const PAGES = (
+  env.VITE_PERF_PAGES ?? 'clash,system/proxy,system/service'
+).split(',')
 
 test(`switch settings pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {
   const router = createSettingsRouter()

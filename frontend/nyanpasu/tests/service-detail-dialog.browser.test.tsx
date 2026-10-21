@@ -3,7 +3,7 @@ import '@nyanpasu/theme/styles/theme.css'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { page } from 'vitest/browser'
-import SystemServiceCtrl from '../src/pages/(main)/main/settings/system/_modules/system-service-ctrl'
+import SystemServiceCtrl from '../src/pages/(main)/main/settings/system/service/_modules/system-service-ctrl'
 
 const service = vi.hoisted(() => ({
   name: 'nyanpasu-service',

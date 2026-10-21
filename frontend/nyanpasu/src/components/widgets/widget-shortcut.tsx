@@ -100,7 +100,7 @@ const ProxyTitleRow = () => {
         )}
         asChild
       >
-        <Link to="/main/settings/system">
+        <Link to="/main/settings/system/proxy">
           <TextMarquee className="px-2" fadeEdges fadeWidth={8}>
             {messages[status]}
           </TextMarquee>

@@ -57,7 +57,7 @@ test('an item stays selected on its child pages', async () => {
   await expect.element(debug).toHaveAttribute('data-active', 'true')
   await expect.element(debug).toHaveAttribute('aria-current', 'page')
   await expect
-    .element(item(view, m.settings_label_system_description()))
+    .element(item(view, m.settings_label_proxy_description()))
     .toHaveAttribute('data-active', 'false')
 })
 

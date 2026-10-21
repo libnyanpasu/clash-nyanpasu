@@ -1606,7 +1606,8 @@ schema_revision: {revision}
         .unwrap();
     }
 
-    /// The default clash config as 2.0.x wrote it, with boolean guard fields.
+    /// The default clash config as 2.0.x wrote it, with boolean guard fields
+    /// and no `tun` overrides.
     fn clash_config_2_0() -> serde_yaml::Mapping {
         let mut config: serde_yaml::Mapping = serde_yaml::from_str(
             &serde_yaml::to_string(&nyanpasu_config::clash::config::ClashConfig::default())
@@ -1619,6 +1620,7 @@ schema_revision: {revision}
             .unwrap();
         overrides.insert("unified-delay".into(), true.into());
         overrides.insert("tcp-concurrent".into(), false.into());
+        config.remove("tun");
         config
     }
 
@@ -1822,6 +1824,10 @@ tray_menu_close_behavior: hide
         serde_yaml::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
     }
 
+    fn managed_auto_route() -> serde_yaml::Value {
+        serde_yaml::from_str("{auto-route: {kind: managed, value: true}}").unwrap()
+    }
+
     #[test]
     fn a_fresh_install_gets_a_stamped_clash_config() {
         let case = LegacyCase::empty();
@@ -1831,20 +1837,23 @@ tray_menu_close_behavior: hide
         // that `typed_config` is about to create at head.
         assert_eq!(
             runner.store.module_state("clash_config"),
-            at_revision(1, false)
+            at_revision(2, false)
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(1));
-        assert_eq!(
-            runner
-                .store
-                .task_state("clash_config/manageable_guard_fields"),
-            None,
-            "nothing to convert in a file created at head"
-        );
+        assert_eq!(clash_config_stamp(&case), Some(2));
+        for step in [
+            "clash_config/manageable_guard_fields",
+            "clash_config/tun_overrides",
+        ] {
+            assert_eq!(
+                runner.store.task_state(step),
+                None,
+                "nothing to convert in a file created at head"
+            );
+        }
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config"), at_revision(1, true));
+        assert_eq!(state.module_state("clash_config"), at_revision(2, true));
         assert_clash_config_loads(&case);
     }
 
@@ -1854,10 +1863,14 @@ tray_menu_close_behavior: hide
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(1));
+        assert_eq!(clash_config_stamp(&case), Some(2));
         assert_eq!(clash_guard_field(&case, "tcp-concurrent"), managed(true));
+        assert_eq!(
+            clash_config_file(&case).into_payload()["tun"],
+            managed_auto_route()
+        );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config").applied_revision, 1);
+        assert_eq!(state.module_state("clash_config").applied_revision, 2);
         assert!(state.module_state("clash_config").stamped);
         assert_clash_config_loads(&case);
     }
@@ -1875,6 +1888,7 @@ tray_menu_close_behavior: hide
             .unwrap();
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));
+        expected.insert("tun".into(), managed_auto_route());
 
         let mut runner = case.runner();
         assert_eq!(
@@ -1883,18 +1897,20 @@ tray_menu_close_behavior: hide
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(1));
+        assert_eq!(clash_config_stamp(&case), Some(2));
         assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(
-            state.task_state("clash_config/manageable_guard_fields"),
-            Some(MigrationState::Completed)
-        );
+        for step in [
+            "clash_config/manageable_guard_fields",
+            "clash_config/tun_overrides",
+        ] {
+            assert_eq!(state.task_state(step), Some(MigrationState::Completed));
+        }
         assert_eq!(
             state.module_state("clash_config"),
             ModuleState {
-                applied_revision: 1,
+                applied_revision: 2,
                 baseline_revision: 0,
                 stamped: true,
             }

@@ -14,7 +14,8 @@ pub static MIGRATOR: ClashConfigMigrator = ClashConfigMigrator;
 
 static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwrap());
 static MANAGEABLE_GUARD_FIELDS: MigrateManageableGuardFields = MigrateManageableGuardFields;
-static STEPS: [&dyn MigrationStep; 1] = [&MANAGEABLE_GUARD_FIELDS];
+static TUN_OVERRIDES: MigrateTunOverrides = MigrateTunOverrides;
+static STEPS: [&dyn MigrationStep; 2] = [&MANAGEABLE_GUARD_FIELDS, &TUN_OVERRIDES];
 
 /// Revisions up to here were written without a stamp. Frozen: nothing before
 /// this module changed the file's schema, so there is no shape to probe.
@@ -25,7 +26,7 @@ pub struct ClashConfigDocument;
 
 impl StampedDocument for ClashConfigDocument {
     const DOCUMENT: &'static str = "clash_config";
-    const SCHEMA_REVISION: u64 = 1;
+    const SCHEMA_REVISION: u64 = 2;
 }
 
 /// How the running app reads and writes `clash-config.yaml`.
@@ -81,6 +82,9 @@ pub(in crate::core::migration) fn read_typed(
         manage_guard_fields(&mut payload).map_err(|error| {
             MigrationCheckError::Unrecognized(format!("{}: {error:#}", path.display()))
         })?;
+    }
+    if revision < TUN_OVERRIDES.revision() {
+        add_tun_overrides(&mut payload);
     }
     serde_yaml::from_value(Value::Mapping(payload)).map_err(|source| MigrationCheckError::Parse {
         path: path.to_path_buf(),
@@ -169,6 +173,65 @@ pub(in crate::core::migration) fn manage_override_fields(
     Ok(())
 }
 
+const TUN_KEY: &str = "tun";
+
+/// Adds the `tun` overrides with `auto-route` managed as `true`, the value the
+/// runtime config filled in before when the profiles left it out. A profile's
+/// own value now needs `auto-route` unmanaged.
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateTunOverrides;
+
+impl MigrationStep for MigrateTunOverrides {
+    fn id(&self) -> &'static str {
+        "clash_config/tun_overrides"
+    }
+
+    fn module(&self) -> &'static str {
+        "clash_config"
+    }
+
+    fn revision(&self) -> u64 {
+        2
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateTunOverrides"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+        let path = ctx.clash_config_path();
+        let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
+            .context("clash-config.yaml is gone")?;
+        let mut payload = file.payload;
+        add_tun_overrides(&mut payload);
+        write_document(
+            &path,
+            ClashConfigDocument::DOCUMENT,
+            self.revision(),
+            payload,
+            None,
+        )
+    }
+}
+
+/// Leaves an existing `tun` alone: `typed_config` may have written the file at
+/// head before this step runs on it.
+fn add_tun_overrides(payload: &mut Mapping) {
+    if payload.contains_key(TUN_KEY) {
+        return;
+    }
+    let mut auto_route = Mapping::new();
+    auto_route.insert("kind".into(), "managed".into());
+    auto_route.insert("value".into(), true.into());
+    let mut tun = Mapping::new();
+    tun.insert("auto-route".into(), Value::Mapping(auto_route));
+    payload.insert(TUN_KEY.into(), Value::Mapping(tun));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,5 +272,30 @@ mod tests {
         let mut config = payload("overrides:\n  tcp-concurrent: yes please\n");
 
         assert!(manage_guard_fields(&mut config).is_err());
+    }
+
+    #[test]
+    fn tun_overrides_manage_auto_route_as_true() {
+        let mut config = payload("enable_tun_mode: true\ntun_stack: system\n");
+
+        add_tun_overrides(&mut config);
+
+        assert_eq!(
+            config,
+            payload(
+                "enable_tun_mode: true\ntun_stack: system\n\
+                 tun: {auto-route: {kind: managed, value: true}}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn tun_overrides_already_present_are_left_alone() {
+        let src = "tun: {auto-route: {kind: unmanaged}}\n";
+        let mut config = payload(src);
+
+        add_tun_overrides(&mut config);
+
+        assert_eq!(config, payload(src));
     }
 }

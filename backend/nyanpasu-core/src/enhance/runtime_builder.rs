@@ -189,7 +189,7 @@ impl RuntimeBuilder {
             whitelist_enabled: input.clash.enable_clash_fields,
             tun: TunParams {
                 enable: input.clash.enable_tun_mode,
-                auto_route: input.clash.tun_auto_route,
+                overrides: input.clash.tun,
                 flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
                 windows_fake_ip_filter: cfg!(windows),
             },
@@ -333,7 +333,7 @@ mod tests {
                 input.app.enable_builtin_enhanced = false;
                 input.app.core = ClashCore::Meow;
                 input.clash.enable_tun_mode = enabled;
-                input.clash.tun_auto_route = auto_route;
+                input.clash.tun.auto_route = auto_route;
                 let config = RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner)
                     .unwrap()
                     .final_config

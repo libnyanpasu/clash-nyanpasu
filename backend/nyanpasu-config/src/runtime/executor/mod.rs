@@ -28,7 +28,7 @@ use error::{SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu};
 
 use crate::{
     clash::config::{
-        overrides::{ClashGuardOverrides, ManageableField},
+        overrides::{ClashGuardOverrides, TunOverrides},
         tun_stack::TunStack,
     },
     profile::{
@@ -86,7 +86,9 @@ pub struct ResolvedPortBindings {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TunParams {
     pub enable: bool,
-    pub auto_route: ManageableField<bool>,
+    /// The `tun` keys these settings decide while `enable` is on; an unmanaged
+    /// one is left to the profiles.
+    pub overrides: TunOverrides,
     pub flavor: TunFlavor,
     /// Platform conditional as input: caller passes `cfg!(windows)` (spec §7.4).
     pub windows_fake_ip_filter: bool,

@@ -1,6 +1,8 @@
 mod manageable;
+mod tun;
 
 pub use manageable::ManageableField;
+pub use tun::{TunOverrides, TunOverridesPatch};
 
 use serde::{Deserialize, Serialize};
 use struct_patch::Patch;

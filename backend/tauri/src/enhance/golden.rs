@@ -10,7 +10,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use nyanpasu_config::{
     application::ClashCore,
-    clash::config::overrides::ClashGuardOverrides,
+    clash::config::overrides::{ClashGuardOverrides, ManageableField},
     profile::{ProfileId, Profiles},
     runtime::executor::{ResolvedPortBindings, known_fields},
 };
@@ -176,6 +176,69 @@ fn golden_filtered_config_keeps_only_known_fields() {
                 "{core:?} built an unknown top-level key `{key}`"
             );
         }
+    }
+}
+
+/// #5791: the issue's `tun` block reaches meow-rs with its `auto-route:
+/// global` once `auto-route` is unmanaged, through the real builtin scripts,
+/// even where the field filter drops the rest of `tun`. Managed, it is
+/// overwritten.
+#[test]
+fn issue_5791_meow_auto_route_global_is_inherited_when_unmanaged() {
+    const ISSUE_PROFILE: &str = "proxies: []\ntun:\n  enable: true\n  auto-route: global\n  \
+                                 dns-hijack:\n    - any:53\n";
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("issue.yaml"), ISSUE_PROFILE).unwrap();
+
+    let global = serde_yaml::Value::from("global");
+    let cases = [
+        // (field filter, fields the filter allows, auto-route setting, expected)
+        (
+            false,
+            vec![],
+            ManageableField::Unmanaged,
+            Some(global.clone()),
+        ),
+        (
+            true,
+            vec!["tun"],
+            ManageableField::Unmanaged,
+            Some(global.clone()),
+        ),
+        (true, vec![], ManageableField::Unmanaged, Some(global)),
+        (
+            false,
+            vec![],
+            ManageableField::Managed(true),
+            Some(serde_yaml::Value::from(true)),
+        ),
+    ];
+    for (enable_clash_fields, valid, auto_route, expected) in cases {
+        let mut profiles = Profiles::default();
+        profiles.append_item(file_config("issue", "issue.yaml", &[]));
+        profiles.set_current(Some(ProfileId("issue".into())));
+        profiles.valid = valid.iter().map(|field| (*field).to_string()).collect();
+
+        let mut input = golden_input(profiles);
+        input.app.enable_builtin_enhanced = true;
+        input.app.core = ClashCore::Meow;
+        input.clash.enable_tun_mode = true;
+        input.clash.enable_clash_fields = enable_clash_fields;
+        input.clash.tun.auto_route = auto_route;
+        let yaml = build_to_yaml(&input, temp.path());
+
+        let case = format!("fields {enable_clash_fields} {valid:?}, {auto_route:?}");
+        assert_eq!(yaml["tun"].get("auto-route"), expected.as_ref(), "{case}");
+        assert_eq!(
+            yaml["tun"]["enable"],
+            serde_yaml::Value::from(true),
+            "{case}"
+        );
+        assert_eq!(
+            yaml["tun"]["dns-hijack"],
+            serde_yaml::from_str::<serde_yaml::Value>("[any:53]").unwrap(),
+            "{case}"
+        );
     }
 }
 

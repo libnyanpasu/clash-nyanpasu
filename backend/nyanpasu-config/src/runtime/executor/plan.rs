@@ -7,7 +7,7 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 
 use crate::runtime::{
-    post_process::{OwnedField, OwnedFields, Ownership, OwnershipEntries},
+    post_process::{OwnedFields, Ownership, OwnershipEntries},
     value::{ConfigObject, ConfigValue},
 };
 
@@ -91,10 +91,8 @@ pub(super) fn cache_ownership() -> (&'static str, Ownership) {
 }
 
 fn tun_entries(tun: &TunParams) -> OwnershipEntries {
-    let mut entries = vec![
-        ("enable", Ownership::Forced(ConfigValue::Bool(true))),
-        ("auto-route", tun.auto_route.ownership()),
-    ];
+    let mut entries = vec![("enable", Ownership::Forced(ConfigValue::Bool(true)))];
+    entries.extend(tun.overrides.ownership_entries());
     match tun.flavor {
         TunFlavor::ClashRs => {
             entries.push(("device-id", Ownership::Default(string("dev://utun1989"))));

@@ -2,7 +2,7 @@ use serde_json::json;
 
 use crate::{
     clash::config::{
-        overrides::{ClashGuardOverrides, ManageableField},
+        overrides::{ClashGuardOverrides, ManageableField, TunOverrides},
         tun_stack::TunStack,
     },
     runtime::{
@@ -51,10 +51,14 @@ pub fn unmanaged_overrides() -> ClashGuardOverrides {
     .unwrap()
 }
 
+fn auto_route(auto_route: ManageableField<bool>) -> TunOverrides {
+    TunOverrides { auto_route }
+}
+
 fn tun_off() -> TunParams {
     TunParams {
         enable: false,
-        auto_route: ManageableField::Managed(true),
+        overrides: TunOverrides::default(),
         flavor: TunFlavor::Standard {
             stack: TunStack::Gvisor,
         },
@@ -256,7 +260,7 @@ fn tun_disabled_with_existing_tun_key_forces_enable_false() {
 fn tun_enabled_standard_appends_defaults_and_dns() {
     let params = TunParams {
         enable: true,
-        auto_route: ManageableField::Managed(true),
+        overrides: TunOverrides::default(),
         flavor: TunFlavor::Standard {
             stack: TunStack::Gvisor,
         },
@@ -290,7 +294,7 @@ fn tun_enabled_standard_appends_defaults_and_dns() {
 fn tun_enabled_clash_rs_uses_device_branch_and_no_windows_filter() {
     let params = TunParams {
         enable: true,
-        auto_route: ManageableField::Managed(true),
+        overrides: TunOverrides::default(),
         flavor: TunFlavor::ClashRs,
         windows_fake_ip_filter: false,
     };
@@ -314,7 +318,7 @@ fn managed_auto_route_overwrites_profile_values_for_both_tun_flavors() {
         for enabled in [false, true] {
             let params = TunParams {
                 enable: true,
-                auto_route: ManageableField::Managed(enabled),
+                overrides: auto_route(ManageableField::Managed(enabled)),
                 flavor,
                 ..tun_off()
             };
@@ -337,7 +341,7 @@ fn unmanaged_auto_route_preserves_profile_values_and_other_tun_defaults() {
         for route in [json!("global"), json!(false), json!(true)] {
             let params = TunParams {
                 enable: true,
-                auto_route: ManageableField::Unmanaged,
+                overrides: auto_route(ManageableField::Unmanaged),
                 flavor,
                 ..tun_off()
             };
@@ -365,6 +369,8 @@ fn unmanaged_auto_route_preserves_profile_values_and_other_tun_defaults() {
     }
 }
 
+/// Left unmanaged, a missing `auto-route` stays missing, as for an unmanaged
+/// guard field.
 #[test]
 fn unmanaged_auto_route_does_not_supply_a_default() {
     for flavor in [
@@ -375,7 +381,7 @@ fn unmanaged_auto_route_does_not_supply_a_default() {
     ] {
         let params = TunParams {
             enable: true,
-            auto_route: ManageableField::Unmanaged,
+            overrides: auto_route(ManageableField::Unmanaged),
             flavor,
             ..tun_off()
         };
@@ -386,10 +392,28 @@ fn unmanaged_auto_route_does_not_supply_a_default() {
     }
 }
 
+/// With TUN off the forced `tun` keys are not written either.
+#[test]
+fn managed_auto_route_is_not_forced_while_tun_is_off() {
+    let params = TunParams {
+        overrides: auto_route(ManageableField::Managed(false)),
+        ..tun_off()
+    };
+    let config = value(json!({ "tun": { "enable": true, "auto-route": "global" } }));
+    let result = apply_tun_and_cache(&config, &params).to_json();
+    assert_eq!(
+        result["tun"],
+        json!({ "enable": false, "auto-route": "global" })
+    );
+
+    let absent = apply_tun_and_cache(&value(json!({})), &params).to_json();
+    assert!(absent.get("tun").is_none());
+}
+
 #[test]
 fn unmanaged_auto_route_does_not_let_the_profile_enable_tun() {
     let params = TunParams {
-        auto_route: ManageableField::Unmanaged,
+        overrides: auto_route(ManageableField::Unmanaged),
         ..tun_off()
     };
     let config = value(json!({ "tun": { "enable": true, "auto-route": "global" } }));

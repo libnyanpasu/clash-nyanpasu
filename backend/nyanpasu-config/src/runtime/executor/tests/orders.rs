@@ -2,7 +2,10 @@ use serde_json::json;
 
 use super::support::*;
 use crate::{
-    clash::config::{overrides::ManageableField, tun_stack::TunStack},
+    clash::config::{
+        overrides::{ManageableField, TunOverrides},
+        tun_stack::TunStack,
+    },
     profile::{Profiles, ScriptRuntime},
     runtime::{
         executor::{
@@ -35,7 +38,7 @@ pub fn base_inputs<'a>(
         whitelist_enabled: true,
         tun: TunParams {
             enable: false,
-            auto_route: ManageableField::Managed(true),
+            overrides: TunOverrides::default(),
             flavor: TunFlavor::Standard {
                 stack: TunStack::Gvisor,
             },
@@ -443,7 +446,7 @@ fn unmanaged_auto_route_survives_field_filtering_while_tun_enable_stays_forced()
         )]);
         let ov = overrides();
         let mut inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
-        inputs.tun.auto_route = ManageableField::Unmanaged;
+        inputs.tun.overrides.auto_route = ManageableField::Unmanaged;
         for whitelist_enabled in [false, true] {
             inputs.whitelist_enabled = whitelist_enabled;
             for enabled in [false, true] {

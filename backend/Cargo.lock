@@ -1757,7 +1757,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clash-api"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "backon",
  "chrono",
@@ -6791,7 +6791,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-manager"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "camino",
  "chrono",
@@ -6818,7 +6818,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-core-metadata"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "constcat",
  "enumset",
@@ -6856,7 +6856,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "derive_builder",
@@ -6881,7 +6881,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-jobs"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "futures-util",
  "jiff",
@@ -6920,7 +6920,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-logging"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "file-id",
@@ -6999,7 +6999,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-serde"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "indexmap 2.14.2",
  "nyanpasu-serde-derive",
@@ -7008,7 +7008,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-serde-derive"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro-crate 3.5.0",
  "proc-macro2",
@@ -7066,7 +7066,7 @@ dependencies = [
  "memchr",
  "nix 0.31.3",
  "os_pipe",
- "parking_lot 0.12.5",
+ "parking_lot 0.13.0",
  "processkit",
  "reqwest 0.13.5",
  "reqwest-websocket",
@@ -7116,7 +7116,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-windows-security"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "windows 0.62.2",

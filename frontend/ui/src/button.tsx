@@ -1,7 +1,15 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { AnimatePresence, motion } from 'motion/react'
 import { Slot } from 'radix-ui'
-import { lazy, Suspense, useCallback } from 'react'
+import {
+  cloneElement,
+  isValidElement,
+  lazy,
+  PropsWithChildren,
+  Suspense,
+  useCallback,
+  type ReactNode,
+} from 'react'
 import { chains, cn } from '@nyanpasu/utils'
 import { CircularProgress } from './progress'
 import { useRipple } from './ripple'
@@ -137,6 +145,16 @@ export const Button = ({
 }: ButtonProps) => {
   const Comp = asChild ? Slot.Root : 'button'
 
+  const content = (value: ReactNode) => (
+    <span className="contents" data-slot="button-content">
+      {value}
+    </span>
+  )
+  const buttonChildren =
+    asChild && isValidElement<PropsWithChildren>(children)
+      ? cloneElement(children, {}, content(children.props.children))
+      : content(children)
+
   const ripple = useRipple()
 
   const handleClick = disabled
@@ -160,6 +178,7 @@ export const Button = ({
           disabled,
           icon,
         }),
+        '[&:has(>[data-slot=button-loading])>[data-slot=button-content]]:invisible',
         className,
       )}
       onClick={handleClick}
@@ -167,7 +186,7 @@ export const Button = ({
       data-loading={String(Boolean(loading))}
       {...props}
     >
-      <Slot.Slottable>{children}</Slot.Slottable>
+      <Slot.Slottable>{buttonChildren}</Slot.Slottable>
 
       <AnimatePresence initial={false}>
         {loading && (

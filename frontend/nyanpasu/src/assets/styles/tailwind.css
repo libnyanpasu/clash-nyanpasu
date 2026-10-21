@@ -106,6 +106,24 @@
   --color-inverse-on-surface: var(--color-md-inverse-on-surface);
   --color-inverse-primary: var(--color-md-inverse-primary);
 
+  /* Fixed hues for per-item colors (see @nyanpasu/theme) */
+  --color-red-container: var(--color-md-red-container);
+  --color-on-red-container: var(--color-md-on-red-container);
+  --color-orange-container: var(--color-md-orange-container);
+  --color-on-orange-container: var(--color-md-on-orange-container);
+  --color-yellow-container: var(--color-md-yellow-container);
+  --color-on-yellow-container: var(--color-md-on-yellow-container);
+  --color-green-container: var(--color-md-green-container);
+  --color-on-green-container: var(--color-md-on-green-container);
+  --color-cyan-container: var(--color-md-cyan-container);
+  --color-on-cyan-container: var(--color-md-on-cyan-container);
+  --color-blue-container: var(--color-md-blue-container);
+  --color-on-blue-container: var(--color-md-on-blue-container);
+  --color-purple-container: var(--color-md-purple-container);
+  --color-on-purple-container: var(--color-md-on-purple-container);
+  --color-pink-container: var(--color-md-pink-container);
+  --color-on-pink-container: var(--color-md-on-pink-container);
+
   /* Progress Spin Animation (Circular) */
   --animate-progress-spin: progress-spin 5332ms cubic-bezier(0.4, 0, 0.2, 1)
     infinite both;

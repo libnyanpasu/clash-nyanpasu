@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useIsPresent, Variants } from 'motion/react'
-import { ComponentProps, useRef } from 'react'
+import { ComponentProps, useRef, type ReactNode } from 'react'
 import {
   ClashConnectionDetailsFreezeBoundary,
   ClashWSFreezeBoundary,
@@ -60,10 +60,20 @@ function getDirectionalVariant(direction: TransitionDirection) {
     : directionalSlideVariants.backward
 }
 
+export type AnimatedOutletProps = ComponentProps<typeof motion.div> & {
+  /**
+   * Wraps the routed page, for example in a provider of the parent layout's
+   * context. A leaving page keeps the wrapper it had when it started leaving,
+   * so a value given here does not change, nor re-render it, during the slide.
+   */
+  renderOutlet?: (outlet: ReactNode) => ReactNode
+}
+
 export function AnimatedOutlet({
   ref,
+  renderOutlet,
   ...props
-}: ComponentProps<typeof motion.div>) {
+}: AnimatedOutletProps) {
   const isPresent = useIsPresent()
 
   const matches = useMatches()
@@ -81,81 +91,47 @@ export function AnimatedOutlet({
     frozenRouterRef.current = null
   } else {
     if (!frozenRouterRef.current) {
-      // Build patched matches: old route data (prevMatches) but new match IDs
-      const patched = [
-        ...matches.map((m, i) => ({
-          ...(prevMatches.current[i] || m),
-          id: m.id,
-        })),
-        ...prevMatches.current.slice(matches.length),
-      ]
-
-      // Snapshot of router state with old route's matches
-      const patchedState = { ...router.state, matches: patched }
+      // The leaving page's matches and the router state it last rendered.
+      const frozenMatches = prevMatches.current
+      const frozenState = { ...router.state, matches: frozenMatches }
 
       // Helper: create a static frozen store for the exit animation.
-      // useStore (@tanstack/react-store) needs .get() and .subscribe(); returning a
+      // useSelector (@tanstack/react-store) needs .get() and .subscribe(); a
       // no-op unsubscribe means the frozen store never triggers re-renders.
       // Use function syntax to avoid <T> being parsed as JSX in .tsx files.
       function frozenStore<T>(value: T) {
         return {
           state: value,
           get: () => value,
-          subscribe: (_: () => void) => ({ unsubscribe: () => {} }),
+          subscribe: () => ({ unsubscribe: () => {} }),
         }
       }
 
-      // router.stores is a v1.168+ internal API not yet reflected in all type declarations
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const routerStores = (router as any).stores
-
-      // Build patched match stores keyed by match ID and by route ID.
-      // <Match>/<Outlet> look up by matchId via router.stores.matchStores;
-      // useMatch({ from: routeId }) goes through router.stores.getRouteMatchStore(routeId).
-      const fakeMatchStores = new Map(routerStores.matchStores)
-      const routeIdToFrozenStore = new Map<
-        string,
-        ReturnType<typeof frozenStore>
-      >()
-      patched.forEach((m) => {
-        const store = frozenStore(m)
-        // The real matchStores entries carry a `routeId` property alongside the
-        // store interface — mirror that so any code that reads it keeps working.
-        ;(store as typeof store & { routeId?: string }).routeId = m.routeId
-        fakeMatchStores.set(m.id, store)
-        if (m.routeId) routeIdToFrozenStore.set(m.routeId, store)
+      // The router keys its match stores by route id: <Outlet> renders the
+      // route after its own in `ids`, and <Match> and useMatch read
+      // `getMatchStore(routeId)`. Each store the leaving page can read is
+      // replaced with its value from when the page started leaving.
+      const byRoute = new Map<string, ReturnType<typeof frozenStore>>(
+        frozenMatches.map((match) => [match.routeId, frozenStore(match)]),
+      )
+      const value = (store: unknown) => ({ value: store, configurable: true })
+      const fakeStores = Object.create(router.stores, {
+        ids: value(frozenStore(frozenMatches.map((match) => match.routeId))),
+        matches: value(frozenStore(frozenMatches)),
+        byRoute: value(byRoute),
+        getMatchStore: value(
+          (routeId: string) => byRoute.get(routeId) ?? frozenStore(undefined),
+        ),
+        status: value(frozenStore(frozenState.status)),
+        location: value(frozenStore(frozenState.location)),
+        resolvedLocation: value(frozenStore(frozenState.resolvedLocation)),
+        __store: value(frozenStore(frozenState)),
       })
 
-      // Create fake stores with frozen match data (router.stores moved from router.__store in v1.168+)
-      const fakeStores = Object.create(routerStores)
-      Object.defineProperty(fakeStores, 'matches', {
-        value: frozenStore(patched),
-        configurable: true,
-      })
-      Object.defineProperty(fakeStores, 'matchesId', {
-        value: frozenStore(patched.map((m) => m.id)),
-        configurable: true,
-      })
-      Object.defineProperty(fakeStores, 'matchStores', {
-        value: fakeMatchStores,
-        configurable: true,
-      })
-      // getRouteMatchStore is called by useMatch({ from }) inside route components
-      Object.defineProperty(fakeStores, 'getRouteMatchStore', {
-        value: (routeId: string) =>
-          routeIdToFrozenStore.get(routeId) ?? frozenStore(undefined),
-        configurable: true,
-      })
-
-      // Create a fake router that delegates everything to the real router except stores/state
-      const fakeRouter = Object.create(router)
-      Object.defineProperty(fakeRouter, 'stores', {
-        value: fakeStores,
-        configurable: true,
-      })
-      Object.defineProperty(fakeRouter, 'state', {
-        get: () => patchedState,
-        configurable: true,
+      // A router that delegates everything to the real one but its stores and state
+      const fakeRouter = Object.create(router, {
+        stores: value(fakeStores),
+        state: { get: () => frozenState, configurable: true },
       })
 
       frozenRouterRef.current = fakeRouter
@@ -172,7 +148,7 @@ export function AnimatedOutlet({
             leaving, so live updates do not re-render it during the slide. */}
         <ClashWSFreezeBoundary frozen={!isPresent}>
           <ClashConnectionDetailsFreezeBoundary frozen={!isPresent}>
-            <Outlet />
+            {renderOutlet ? renderOutlet(<Outlet />) : <Outlet />}
           </ClashConnectionDetailsFreezeBoundary>
         </ClashWSFreezeBoundary>
       </RouterContextProvider>
@@ -198,7 +174,7 @@ export function AnimatedOutlet({
  * </div>
  * ```
  */
-export function AnimatedOutletPreset(props: ComponentProps<typeof motion.div>) {
+export function AnimatedOutletPreset(props: AnimatedOutletProps) {
   const matches = useMatches()
   const match = useMatch({ strict: false })
   const pathname = useRouterState({

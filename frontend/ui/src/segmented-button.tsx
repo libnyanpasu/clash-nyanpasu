@@ -11,6 +11,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -225,11 +226,13 @@ export const SegmentedButton = ({
 
     const itemBox = target.getBoundingClientRect()
     const rootBox = root.getBoundingClientRect()
+    const x = itemBox.left - rootBox.left
+    const width = itemBox.width
 
-    setPillRect({
-      x: itemBox.left - rootBox.left,
-      width: itemBox.width,
-    })
+    // The first resize observation repeats the layout effect's measurement.
+    setPillRect((current) =>
+      current?.x === x && current.width === width ? current : { x, width },
+    )
   }, [resolvedVariant, currentValue])
 
   useLayoutEffect(() => {
@@ -253,14 +256,14 @@ export const SegmentedButton = ({
     pillRect !== null &&
     !!currentValue
 
+  // Kept across renders, so measuring the pill does not re-render the items.
+  const context = useMemo(
+    () => ({ variant: resolvedVariant, currentValue, registerItemRef }),
+    [resolvedVariant, currentValue, registerItemRef],
+  )
+
   return (
-    <SegmentedButtonContext.Provider
-      value={{
-        variant: resolvedVariant,
-        currentValue,
-        registerItemRef,
-      }}
-    >
+    <SegmentedButtonContext.Provider value={context}>
       <ToggleGroupPrimitive.Root
         ref={rootRef}
         type="single"

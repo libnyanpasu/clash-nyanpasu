@@ -1,3 +1,4 @@
+import { useIsPresent } from 'motion/react'
 import { createContext, use, useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
@@ -40,11 +41,31 @@ const layoutValue = (() => {
 })()
 
 const renders = { a: 0, b: 0 }
+const presenceRenders = { a: 0, b: 0 }
+
+function PresenceContent({ name }: { name: 'a' | 'b' }) {
+  presenceRenders[name] += 1
+
+  return null
+}
+
+// A motion component or a nested AnimatePresence in the page: what it
+// renders is rendered again when the presence it reads changes.
+function Presence({ name }: { name: 'a' | 'b' }) {
+  useIsPresent()
+
+  return <PresenceContent name={name} />
+}
 
 function Page({ name }: { name: 'a' | 'b' }) {
   renders[name] += 1
 
-  return <p data-page={name}>{use(LayoutValue)}</p>
+  return (
+    <>
+      <p data-page={name}>{use(LayoutValue)}</p>
+      <Presence name={name} />
+    </>
+  )
 }
 
 function WrappingLayout() {
@@ -120,5 +141,23 @@ test('a page sliding out keeps the wrapper it had', async ({
   await expect.poll(() => page('b')?.textContent).toBe('1')
   expect(page('a')?.textContent).toBe('0')
   expect(renders.a).toBe(before)
+  await expect.poll(() => page('a')).toBeNull()
+})
+
+test('a page sliding out is told once that it leaves', async ({
+  onTestFinished,
+}) => {
+  layoutValue.set(0)
+  const { router, page } = mount(WrappingLayout, onTestFinished)
+  await expect.poll(() => page('a')).toBeTruthy()
+
+  await router.navigate({ to: '/b' as never })
+  await expect.poll(() => page('b')).toBeTruthy()
+  const before = presenceRenders.a
+  // The layout renders again during the slide.
+  layoutValue.set(1)
+
+  await expect.poll(() => page('b')?.textContent).toBe('1')
+  expect(presenceRenders.a).toBe(before)
   await expect.poll(() => page('a')).toBeNull()
 })

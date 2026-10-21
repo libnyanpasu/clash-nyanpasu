@@ -189,7 +189,7 @@ const closed = (id: string, target: string): ClosedConnection => ({
 test('a filtered closed view asks for the selection and pages past empty pages', async ({
   onTestFinished,
 }) => {
-  const cursor: ClosedCursor = { closed_at: 5_000, id: 'c1' }
+  const cursor: ClosedCursor = { closed_at: 5_000, incarnation: 1, seq: 1 }
   const calls: RpcCall['params'][] = []
   mockIPC((_, args) => {
     const { params } = args as RpcCall

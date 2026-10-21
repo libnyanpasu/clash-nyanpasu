@@ -118,7 +118,9 @@ pub struct ClientSetupArgs {
     pub window: Arc<dyn hotkey::ports::WindowControl>,
     pub accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
     /// `None` disables traffic recording: the store could not be opened.
-    pub traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
+    pub traffic_store: Option<
+        Arc<dyn crate::core::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>>,
+    >,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -410,7 +412,11 @@ impl NyanpasuClient {
         accelerators: Arc<dyn hotkey::ports::AcceleratorValidator>,
         http_frontend: Option<crate::server::debug_http::Frontend>,
         http_routes: Arc<dyn crate::server::debug_http::HttpRoutes>,
-        traffic_store: Option<Arc<dyn nyanpasu_traffic::TrafficStore>>,
+        traffic_store: Option<
+            Arc<
+                dyn crate::core::traffic::TrafficStorage<nyanpasu_tsdb::storage::redb::RedbStorage>,
+            >,
+        >,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> anyhow::Result<Self> {
@@ -598,7 +604,8 @@ impl NyanpasuClient {
             Some(store) => {
                 match crate::core::traffic::TrafficClient::spawn(
                     crate::core::traffic::TrafficArgs {
-                        store,
+                        storage: store,
+                        profile: nyanpasu_tsdb::Profile::desktop(),
                         profiles: Arc::new(traffic::SelectedProfile::new(
                             profiles.snapshot_handle(),
                         )),

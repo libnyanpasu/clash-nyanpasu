@@ -29,10 +29,11 @@ use crate::{
             ports::LocaleSink,
         },
     },
+    core::traffic::{TrafficFileStorage, TrafficStorage},
     utils::init::logging::ReloadSignal,
 };
 use anyhow::Context;
-use nyanpasu_traffic::{RedbTrafficStore, TrafficStore};
+use nyanpasu_tsdb::{Profile, storage::redb::RedbStorage};
 use tauri_specta::Event;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -283,9 +284,9 @@ pub fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(app: &M) -> anyhow::Resu
 /// Recording is optional, so a store that cannot be opened disables it rather
 /// than failing the launch. The history holds browsing targets, hence the
 /// owner-only directory.
-fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStore>> {
+fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStorage<RedbStorage>>> {
     let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
-    let open = || -> anyhow::Result<RedbTrafficStore> {
+    let open = || -> anyhow::Result<TrafficFileStorage> {
         std::fs::create_dir_all(&dir)?;
         #[cfg(unix)]
         {
@@ -294,7 +295,11 @@ fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficStore>> {
         }
         #[cfg(windows)]
         nyanpasu_utils::io::atomic_fs::harden_windows_directory_acl(&dir)?;
-        Ok(RedbTrafficStore::open(&dir.join("traffic.redb"))?)
+        let profile = Profile::desktop();
+        Ok(TrafficFileStorage::new(
+            dir.join("traffic.tsdb"),
+            profile.backend_cache,
+        ))
     };
     match open() {
         Ok(store) => Some(Arc::new(store)),

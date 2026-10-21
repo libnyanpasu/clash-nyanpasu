@@ -175,16 +175,15 @@ impl NyanpasuClient {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
-
+    use crate::core::traffic::{TrafficFileStorage, TrafficStorage};
     use nyanpasu_traffic::{
-        ActiveConnection, ClosedCursor, ClosedPage, ClosedSelection, Dimension, Dimensions,
-        FlushBatch, Flushed, Metric, RedbTrafficStore, ReportRequest, SessionMeta, Tier,
-        TrafficError, TrafficQuery, TrafficRange, TrafficResult, TrafficScope, TrafficStore, Usage,
+        Dimension, Metric, ReportRequest, TrafficQuery, TrafficRange, TrafficScope,
     };
+    use nyanpasu_tsdb::{
+        Profile,
+        storage::{StorageError, redb::RedbStorage},
+    };
+    use std::sync::Arc;
     use tempfile::tempdir;
 
     use super::super::{
@@ -200,41 +199,12 @@ mod tests {
         }
     }
 
-    /// A store whose session cannot be read; it must never be written.
-    #[derive(Default)]
-    struct UnreadableStore {
-        flushes: AtomicUsize,
-    }
-
-    impl TrafficStore for UnreadableStore {
-        fn load(&self) -> TrafficResult<Option<(SessionMeta, Vec<ActiveConnection>)>> {
-            Err(TrafficError::Storage("unreadable".into()))
-        }
-
-        fn flush(&self, _: &FlushBatch) -> TrafficResult<Flushed> {
-            self.flushes.fetch_add(1, Ordering::SeqCst);
-            Ok(Flushed::default())
-        }
-
-        fn closed_connections(
-            &self,
-            _: Option<&ClosedCursor>,
-            _: usize,
-            _: &ClosedSelection,
-        ) -> TrafficResult<ClosedPage> {
-            unreachable!("recording is disabled")
-        }
-
-        fn closed_count(&self) -> TrafficResult<u64> {
-            unreachable!("recording is disabled")
-        }
-
-        fn usage(&self, _: Tier, _: Option<u32>) -> TrafficResult<Vec<(Arc<Dimensions>, Usage)>> {
-            unreachable!("recording is disabled")
-        }
-
-        fn collect_tuples(&self, _: &[Arc<Dimensions>]) -> TrafficResult<u64> {
-            unreachable!("recording is disabled")
+    struct UnreadableStore;
+    impl TrafficStorage<RedbStorage> for UnreadableStore {
+        fn open(&self) -> Result<RedbStorage, StorageError> {
+            Err(StorageError::Failed {
+                source: Box::new(std::io::Error::other("unreadable")),
+            })
         }
     }
 
@@ -308,7 +278,7 @@ mod tests {
     #[test]
     fn an_unreadable_store_disables_recording_without_failing_the_client() {
         let dir = tempdir().unwrap();
-        let store = Arc::new(UnreadableStore::default());
+        let store = Arc::new(UnreadableStore);
         let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
         args.traffic_store = Some(store.clone());
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
@@ -319,16 +289,16 @@ mod tests {
             );
         });
         drop(client);
-        assert_eq!(store.flushes.load(Ordering::SeqCst), 0);
     }
 
     #[test]
     fn injected_store_starts_an_empty_session() {
         let dir = tempdir().unwrap();
         let mut args = test_client_args_with_endpoint(&dir, test_idle_endpoint());
-        args.traffic_store = Some(Arc::new(
-            RedbTrafficStore::open(&dir.path().join("traffic.redb")).unwrap(),
-        ));
+        args.traffic_store = Some(Arc::new(TrafficFileStorage::new(
+            dir.path().join("traffic.tsdb"),
+            Profile::desktop().backend_cache,
+        )));
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         tauri::async_runtime::block_on(async {
             let summary = client.traffic_summary().await.unwrap();

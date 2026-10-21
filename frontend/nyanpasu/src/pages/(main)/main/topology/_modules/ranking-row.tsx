@@ -23,6 +23,12 @@ export function RankingRowTooltip({ children }: { children: ReactNode }) {
 }
 
 /**
+ * The height of a card row: its padding and its two lines, one of text-sm and
+ * one of text-xs, a gap apart. Each line is truncated, so it never wraps.
+ */
+export const CARD_ROW_HEIGHT = '3.375rem'
+
+/**
  * A group of a ranking. Inside `AnimatePresence`, an animated row fades in
  * and slides to a new place. A leaving row goes at once: when a filter
  * replaces the whole list, animating every row out stalls the page. Its full

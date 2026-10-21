@@ -1,5 +1,6 @@
 import {
   memo,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -163,7 +164,10 @@ function UsageRows({
     return () => observer.disconnect()
   }, [viewport])
 
-  const items = virtualizer.getVirtualItems()
+  // The rows render in the pass after the page, which keeps their place at
+  // the list's estimated height, so opening the page is not one long task.
+  const rowsShown = useDeferredValue(true, false)
+  const items = rowsShown ? virtualizer.getVirtualItems() : []
 
   return (
     <RankingRowTooltip>

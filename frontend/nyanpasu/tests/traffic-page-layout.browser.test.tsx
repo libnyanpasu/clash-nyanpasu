@@ -453,6 +453,46 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
   }
 })
 
+test('a ranking card keeps its height while its rows fill in', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const target = report.rankings.find(
+    ({ dimension }) => dimension === 'target',
+  )!
+  const groups = target.groups
+  target.groups = ['a', 'b', 'c', 'd'].map((key) => group(`${key}.example.com`))
+  onTestFinished(() => {
+    target.groups = groups
+  })
+  // A card's height in each commit that shows it before its rows.
+  const before = new Map<string, number>()
+  const observer = new MutationObserver(() => {
+    for (const card of document.querySelectorAll<HTMLElement>(
+      '[data-slot="traffic-ranking"]',
+    )) {
+      if (card.querySelector('[data-slot="traffic-ranking-rows-placeholder"]'))
+        before.set(card.querySelector('h2')!.textContent!, card.offsetHeight)
+    }
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+  onTestFinished(() => observer.disconnect())
+
+  const view = await open(onTestFinished)
+  await expect
+    .element(view.getByRole('button', { name: /d\.example\.com/ }))
+    .toBeInTheDocument()
+
+  expect(before.size).toBe(3)
+  for (const card of document.querySelectorAll<HTMLElement>(
+    '[data-slot="traffic-ranking"]',
+  )) {
+    expect(card.offsetHeight).toBe(
+      before.get(card.querySelector('h2')!.textContent!),
+    )
+  }
+})
+
 test('the full listing of a ranking mounts only the rows in view', async ({
   onTestFinished,
 }) => {

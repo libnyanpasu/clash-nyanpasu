@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'motion/react'
-import type { ComponentType, SVGProps } from 'react'
+import { useDeferredValue, type ComponentType, type SVGProps } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import { keepReturn } from '@/components/router/cross-navigation'
@@ -8,7 +8,7 @@ import { usageAmount } from '@/utils/traffic-usage'
 import type { Ranking, Usage } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
 import { toggleFilter } from '../../_modules/traffic-filters'
-import RankingRow, { RankingRowTooltip } from './ranking-row'
+import RankingRow, { CARD_ROW_HEIGHT, RankingRowTooltip } from './ranking-row'
 import {
   useTrafficPage,
   withoutTrafficView,
@@ -76,6 +76,12 @@ export default function RankingCard({
 
   const { selected, pinned, others, other } = useRankingSelection(ranking)
 
+  // The card's frame shows with the page and its rows render in the pass
+  // after, so opening a page is not one long task. Until then their place is
+  // kept at the height they take, so nothing moves when they fill in.
+  const rowsShown = useDeferredValue(true, false)
+  const rows = ranking.groups.length + (pinned ? 1 : 0)
+
   const toggle = (key: string) =>
     onSearchChange({ filters: toggleFilter(filters, dimension, key) })
 
@@ -110,36 +116,48 @@ export default function RankingCard({
       </div>
 
       <div className="flex min-w-0 flex-col gap-0.5">
-        <RankingRowTooltip>
-          {/* A leaving row goes at once and the others measure their place
+        {!rowsShown && rows > 0 && (
+          <div
+            aria-hidden
+            data-slot="traffic-ranking-rows-placeholder"
+            style={{
+              height: `calc(${rows} * ${CARD_ROW_HEIGHT} + ${rows - 1} * 0.125rem)`,
+            }}
+          />
+        )}
+
+        {rowsShown && (
+          <RankingRowTooltip>
+            {/* A leaving row goes at once and the others measure their place
               when their rank changes, so the rows need not render again
               whenever the presence of one changes. */}
-          <AnimatePresence initial={false} presenceAffectsLayout={false}>
-            {ranking.groups.map((group, index) => (
-              <RankingRow
-                key={group.key}
-                label={labelOf(dimension, group.key)}
-                usage={group.usage}
-                metric={metric}
-                rank={index}
-                active={group.key === selected}
-                onSelect={() => toggle(group.key)}
-              />
-            ))}
+            <AnimatePresence initial={false} presenceAffectsLayout={false}>
+              {ranking.groups.map((group, index) => (
+                <RankingRow
+                  key={group.key}
+                  label={labelOf(dimension, group.key)}
+                  usage={group.usage}
+                  metric={metric}
+                  rank={index}
+                  active={group.key === selected}
+                  onSelect={() => toggle(group.key)}
+                />
+              ))}
 
-            {pinned && (
-              <RankingRow
-                key={pinned.key}
-                label={labelOf(dimension, pinned.key)}
-                usage={pinned.usage}
-                metric={metric}
-                rank={null}
-                active
-                onSelect={() => toggle(pinned.key)}
-              />
-            )}
-          </AnimatePresence>
-        </RankingRowTooltip>
+              {pinned && (
+                <RankingRow
+                  key={pinned.key}
+                  label={labelOf(dimension, pinned.key)}
+                  usage={pinned.usage}
+                  metric={metric}
+                  rank={null}
+                  active
+                  onSelect={() => toggle(pinned.key)}
+                />
+              )}
+            </AnimatePresence>
+          </RankingRowTooltip>
+        )}
 
         {others > 0 && (
           <p className="text-on-surface-variant truncate px-3 py-1.5 text-[11px] tabular-nums">

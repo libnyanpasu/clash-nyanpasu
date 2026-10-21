@@ -1,5 +1,4 @@
-import { AnimatePresence } from 'motion/react'
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
 import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
@@ -8,9 +7,11 @@ import {
   useMockTrafficSetting,
 } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
+import type { UsageLabel } from '@/utils/traffic-usage'
 import { useTrafficUsagePages } from '@nyanpasu/query'
 import {
   type Dimension,
+  type Metric,
   type TrafficQuery,
   type UsageGroup,
 } from '@nyanpasu/rpc/types'
@@ -53,38 +54,79 @@ type UsageListProps = {
   onSelect: (key: string) => void
 }
 
+type LabelOf = (dimension: Dimension, key: string) => UsageLabel
+
+/**
+ * A row reads nothing from the page context and keeps its props across
+ * renders, so neither a polled report nor another loaded page re-renders the
+ * rows already shown. The listing is not polled, so its rows do not animate.
+ */
+const UsageRow = memo(function UsageRow({
+  group,
+  rank,
+  active,
+  dimension,
+  metric,
+  labelOf,
+  onSelect,
+}: {
+  group: UsageGroup
+  rank: number
+  active: boolean
+  dimension: Dimension
+  metric: Metric
+  labelOf: LabelOf
+  onSelect: (key: string) => void
+}) {
+  return (
+    <RankingRow
+      label={labelOf(dimension, group.key)}
+      usage={group.usage}
+      metric={metric}
+      rank={rank}
+      active={active}
+      animated={false}
+      onSelect={() => onSelect(group.key)}
+    />
+  )
+})
+
 function UsageRows({
   groups,
   dimension,
   selected,
   onSelect,
-}: Omit<UsageListProps, 'query'> & { groups: UsageGroup[] }) {
-  const { search, labelOf } = useTrafficPage()
-
-  return (
-    <AnimatePresence initial={false}>
-      {groups.map((group, index) => (
-        <RankingRow
-          key={group.key}
-          label={labelOf(dimension, group.key)}
-          usage={group.usage}
-          metric={search.metric}
-          rank={index}
-          active={group.key === selected}
-          onSelect={() => onSelect(group.key)}
-        />
-      ))}
-    </AnimatePresence>
-  )
+  metric,
+  labelOf,
+}: Omit<UsageListProps, 'query'> & {
+  groups: UsageGroup[]
+  metric: Metric
+  labelOf: LabelOf
+}) {
+  return groups.map((group, index) => (
+    <UsageRow
+      key={group.key}
+      group={group}
+      rank={index}
+      active={group.key === selected}
+      dimension={dimension}
+      metric={metric}
+      labelOf={labelOf}
+      onSelect={onSelect}
+    />
+  ))
 }
 
 function UsageList({ query, dimension, selected, onSelect }: UsageListProps) {
-  const { search } = useTrafficPage()
+  const { search, labelOf } = useTrafficPage()
   const { metric } = search
   const { data, isError, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useTrafficUsagePages(query, dimension, metric)
 
-  const groups = data?.pages.flatMap((page) => page.groups) ?? []
+  const groups = useMemo(
+    () => data?.pages.flatMap((page) => page.groups) ?? [],
+    [data],
+  )
 
   return (
     <ScrollArea className="min-h-0 flex-1">
@@ -94,6 +136,8 @@ function UsageList({ query, dimension, selected, onSelect }: UsageListProps) {
           dimension={dimension}
           selected={selected}
           onSelect={onSelect}
+          metric={metric}
+          labelOf={labelOf}
         />
 
         {hasNextPage && !isFetchingNextPage && (
@@ -127,7 +171,7 @@ function MockUsageList({
   selected,
   onSelect,
 }: UsageListProps) {
-  const { search } = useTrafficPage()
+  const { search, labelOf } = useTrafficPage()
   const { metric } = search
   const now = useMockTrafficNow(true)
 
@@ -145,6 +189,8 @@ function MockUsageList({
           dimension={dimension}
           selected={selected}
           onSelect={onSelect}
+          metric={metric}
+          labelOf={labelOf}
         />
 
         {groups.length === 0 && (
@@ -175,10 +221,14 @@ export default function RankingModal({
     ...query,
     filters: query.filters.filter((filter) => filter.dimension !== dimension),
   }
-  const handleSelect = (key: string) => {
-    onSearchChange({ filters: setFilter(filters, dimension, key) })
-    onOpenChange(false)
-  }
+  // Stable across polls, so the listing does not re-render with each report.
+  const handleSelect = useCallback(
+    (key: string) => {
+      onSearchChange({ filters: setFilter(filters, dimension, key) })
+      onOpenChange(false)
+    },
+    [onSearchChange, filters, dimension, onOpenChange],
+  )
 
   const List = mocked ? MockUsageList : UsageList
 

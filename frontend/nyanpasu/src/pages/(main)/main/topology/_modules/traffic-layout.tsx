@@ -20,7 +20,7 @@ import { m } from '@/paraglide/messages'
 import { usageAmount } from '@/utils/traffic-usage'
 import { useLocalIpProbe, useSetting, useTrafficReport } from '@nyanpasu/query'
 import { type ReportRequest } from '@nyanpasu/rpc/types'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import {
   DataPage,
   dataPageLayoutVariants,
@@ -41,10 +41,10 @@ import {
   TRAFFIC_PAGES,
   TrafficPageContext,
   withoutTrafficView,
-  type RankingDimension,
   type TrafficView,
 } from './traffic-context'
 import TrafficToolbar from './traffic-toolbar'
+import { TrafficViewSettingsProvider } from './view-settings'
 
 const RANKING_LIMIT = 5
 
@@ -74,14 +74,14 @@ function TrafficSurface({ children }: PropsWithChildren) {
 
 // A switch re-renders only the entries it activates and leaves.
 const TrafficSidebarItem = memo(function TrafficSidebarItem({
-  page: { to, icon: Icon, title },
+  page,
   active,
-  dimension,
 }: {
   page: (typeof TRAFFIC_PAGES)[number]
   active: boolean
-  dimension: RankingDimension
 }) {
+  const { to, icon: Icon, title } = page
+
   return (
     <NavigationSidebarItem
       active={active}
@@ -90,7 +90,7 @@ const TrafficSidebarItem = memo(function TrafficSidebarItem({
         <Link
           from="/main/topology"
           to={to}
-          params={{ dimension }}
+          params={'params' in page ? page.params : undefined}
           search={withoutTrafficView}
           state={keepReturn}
         >
@@ -106,11 +106,8 @@ const TrafficSidebarItem = memo(function TrafficSidebarItem({
 /** The traffic pages' navigation, which only changes with the page shown. */
 const TrafficSidebar = memo(function TrafficSidebar({
   view,
-  dimension,
 }: {
   view: TrafficView
-  /** The dimension the rankings entry opens. */
-  dimension: RankingDimension
 }) {
   return (
     <NavigationSidebar aria-label={m.traffic_sidebar()}>
@@ -121,7 +118,6 @@ const TrafficSidebar = memo(function TrafficSidebar({
               key={page.view}
               page={page}
               active={view === page.view}
-              dimension={dimension}
             />
           ))}
         </NavigationSidebarContent>
@@ -185,9 +181,6 @@ export default function TrafficLayout({
     report.total.connections === 0 &&
     report.total.bytes.upload + report.total.bytes.download === 0
   const title = TRAFFIC_PAGES.find((page) => page.view === view)!.title()
-  // The rankings entry stays on the dimension it shows, else opens the first.
-  const dimension =
-    useParams({ strict: false }).dimension ?? RANKINGS[0].dimension
   // Kept across renders, so a switch between pages re-renders only what reads
   // the view.
   const pageContext = useMemo(
@@ -218,41 +211,43 @@ export default function TrafficLayout({
 
   return (
     <TrafficPageContext value={pageContext}>
-      <SidebarProvider defaultOpen={false}>
-        <div className={dataPageLayoutVariants()} data-slot="traffic-page">
-          <TrafficSidebar view={view} dimension={dimension} />
-          <DataPage
-            title={m.topology_title()}
-            toolbar={<TrafficToolbar>{toolbarStart}</TrafficToolbar>}
-          >
-            <TrafficSurface>
-              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-                <h1 className="m-0! text-lg! font-medium">{title}</h1>
-                {view !== 'overview' && report && !isError && (
-                  <p className="text-on-surface-variant text-xs tabular-nums">
-                    {usageAmount(report.total, 'bytes')} ·{' '}
-                    {usageAmount(report.total, 'connections')}
-                  </p>
-                )}
-              </div>
-              {isError ? (
-                <Notice error>{m.traffic_unavailable()}</Notice>
-              ) : (
-                <AnimatedOutletPreset
-                  className="relative flex min-w-0 flex-1 flex-col gap-3"
-                  // A page sliding out keeps the report it showed, rather than
-                  // re-rendering with the next page's.
-                  renderOutlet={(outlet) => (
-                    <TrafficPageContext value={pageContext}>
-                      {outlet}
-                    </TrafficPageContext>
+      <TrafficViewSettingsProvider>
+        <SidebarProvider defaultOpen={false}>
+          <div className={dataPageLayoutVariants()} data-slot="traffic-page">
+            <TrafficSidebar view={view} />
+            <DataPage
+              title={m.topology_title()}
+              toolbar={<TrafficToolbar>{toolbarStart}</TrafficToolbar>}
+            >
+              <TrafficSurface>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                  <h1 className="m-0! text-lg! font-medium">{title}</h1>
+                  {view !== 'overview' && report && !isError && (
+                    <p className="text-on-surface-variant text-xs tabular-nums">
+                      {usageAmount(report.total, 'bytes')} ·{' '}
+                      {usageAmount(report.total, 'connections')}
+                    </p>
                   )}
-                />
-              )}
-            </TrafficSurface>
-          </DataPage>
-        </div>
-      </SidebarProvider>
+                </div>
+                {isError ? (
+                  <Notice error>{m.traffic_unavailable()}</Notice>
+                ) : (
+                  <AnimatedOutletPreset
+                    className="relative flex min-w-0 flex-1 flex-col gap-3"
+                    // A page sliding out keeps the report it showed, rather than
+                    // re-rendering with the next page's.
+                    renderOutlet={(outlet) => (
+                      <TrafficPageContext value={pageContext}>
+                        {outlet}
+                      </TrafficPageContext>
+                    )}
+                  />
+                )}
+              </TrafficSurface>
+            </DataPage>
+          </div>
+        </SidebarProvider>
+      </TrafficViewSettingsProvider>
     </TrafficPageContext>
   )
 }

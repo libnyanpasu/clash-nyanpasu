@@ -33,6 +33,7 @@ import { TestQueryProvider as QueryClientProvider } from './query-provider'
 import '../src/utils/language'
 import { Route as overviewRoute } from '../src/pages/(main)/main/topology'
 import type { TrafficSearch } from '../src/pages/(main)/main/topology/_modules/search'
+import { TRAFFIC_VIEW_KV_KEY } from '../src/pages/(main)/main/topology/_modules/view-settings'
 import { Route as rankingsRoute } from '../src/pages/(main)/main/topology/$dimension'
 import { Route as flowRoute } from '../src/pages/(main)/main/topology/flow'
 import { Route as mapRoute } from '../src/pages/(main)/main/topology/map'
@@ -112,7 +113,11 @@ const report: TrafficReport = {
   topology: null,
 }
 
-const rpc = vi.hoisted(() => ({ reports: [] as ReportRequest[] }))
+const rpc = vi.hoisted(() => ({
+  reports: [] as ReportRequest[],
+  // The KV store, by key.
+  storage: new Map<string, string>(),
+}))
 
 type RpcCall = { method: string; params: Record<string, unknown> }
 
@@ -172,6 +177,15 @@ function mockBackend() {
         other: usage(0, 0, 0),
         next: null,
       }
+    }
+
+    if (method === 'get_storage_item') {
+      return rpc.storage.get(params.key as string) ?? null
+    }
+
+    if (method === 'set_storage_item') {
+      rpc.storage.set(params.key as string, params.value as string)
+      return null
     }
 
     throw new Error(`unexpected rpc ${method}`)
@@ -258,6 +272,9 @@ async function open(
     await view.unmount()
     queries.clear()
     clearMocks()
+    // The KV store caches what it reads.
+    localStorage.removeItem(`nyanpasu-kv-:${btoa(TRAFFIC_VIEW_KV_KEY)}`)
+    rpc.storage.clear()
     rpc.reports = []
     backend.intervals = []
     backend.retention = '7d'
@@ -347,7 +364,7 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       .toBe(0)
     expect(content.textContent).toContain(summary)
 
-    const rankings = m.traffic_rankings()
+    const rankings = dimensionName('source')
     await sidebarItem(view, rankings).click()
     await expect
       .element(view.getByRole('heading', { name: rankings, level: 1 }))
@@ -359,7 +376,6 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
             .length,
       )
       .toBe(1)
-    await view.getByRole('radio', { name: dimensionName('source') }).click()
     await expect
       .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
       .toBeInTheDocument()
@@ -567,47 +583,107 @@ test('the full listing of a ranking mounts only the rows in view', async ({
     .toBe(true)
 })
 
-test('the flow card and its rankings fill the page down to its bottom inset', async ({
+// The menu sits in a portal over the page, where a pointer click waits on
+// actionability checks that never settle in the test frame.
+const pick = async (locator: { element: () => Element }) =>
+  (locator.element() as HTMLElement).click()
+
+test('the flow card keeps its height whichever rankings show under it', async ({
   onTestFinished,
 }) => {
   mockBackend()
-  const view = await open(onTestFinished)
-  await sidebarItem(view, m.topology_flow()).click()
+  // Tall enough to leave room under the rankings for the card to take.
+  await page.viewport(1280, 1600)
+  const view = await open(onTestFinished, { view: 'flow' })
+  const cardHeight = () =>
+    document.querySelector<HTMLElement>('[data-slot="flow-card"]')!.offsetHeight
+  const rankingCards = () =>
+    document.querySelectorAll(
+      '[data-slot="traffic-view-rankings"] [data-slot="traffic-ranking"]',
+    ).length
+
+  await expect.poll(rankingCards).toBe(3)
+  const height = cardHeight()
+  expect(height).toBeGreaterThan(0)
+
+  // All five take a second row of cards.
+  await view.getByRole('button', { name: m.traffic_view_settings() }).click()
+  for (const title of [m.traffic_rank_source(), m.traffic_rank_inbound()]) {
+    await pick(view.getByRole('menuitemcheckbox', { name: title }))
+  }
+  await expect.poll(rankingCards).toBe(5)
+  expect(cardHeight()).toBe(height)
+  // The test ends once the settings are stored, not while they are on the way.
   await expect
-    .element(view.getByRole('heading', { name: m.topology_flow(), level: 1 }))
-    .toBeInTheDocument()
+    .poll(() => JSON.parse(rpc.storage.get(TRAFFIC_VIEW_KV_KEY) ?? 'null'))
+    .toEqual(
+      expect.objectContaining({
+        rankings: ['process', 'target', 'exit', 'source', 'inbound'],
+      }),
+    )
+})
+
+test('with no rankings chosen, the flow card fills the page above a way back to them', async ({
+  onTestFinished,
+}) => {
+  rpc.storage.set(TRAFFIC_VIEW_KV_KEY, JSON.stringify({ rankings: [] }))
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'flow' })
+  const show = view.getByRole('button', {
+    name: m.traffic_view_rankings_show(),
+  })
+
+  await expect.element(show).toBeInTheDocument()
+  expect(
+    view.getByRole('heading', { name: m.traffic_view_rankings() }).elements(),
+  ).toHaveLength(0)
 
   const content = document.querySelector<HTMLElement>(
     '[data-slot="traffic-content"]',
   )!
   const inset = parseFloat(getComputedStyle(content).paddingBottom)
 
-  // The card grows down to the rankings under it, and they reach the
-  // content's bottom padding, nothing else is left below.
+  // The card grows down to the button under it, set apart by its margin, and
+  // the button reaches the content's bottom padding.
   await expect
     .poll(() => {
       const card = document.querySelector<HTMLElement>(
         '[data-slot="flow-card"]',
-      )
+      )!
       const rankings = document.querySelector<HTMLElement>(
         '[data-slot="traffic-view-rankings"]',
-      )
+      )!
 
-      return card && rankings
-        ? Math.max(
-            content.getBoundingClientRect().bottom -
-              inset -
-              rankings.getBoundingClientRect().bottom,
-            rankings.getBoundingClientRect().top -
-              card.getBoundingClientRect().bottom -
-              parseFloat(getComputedStyle(card.parentElement!).rowGap),
-          )
-        : Infinity
+      return Math.max(
+        content.getBoundingClientRect().bottom -
+          inset -
+          rankings.getBoundingClientRect().bottom,
+        rankings.getBoundingClientRect().top -
+          card.getBoundingClientRect().bottom -
+          parseFloat(getComputedStyle(card.parentElement!).rowGap) -
+          parseFloat(getComputedStyle(rankings).marginTop),
+      )
     })
     .toBeLessThanOrEqual(1)
+
+  await show.click()
+  await pick(
+    view.getByRole('menuitemcheckbox', { name: m.traffic_rank_process() }),
+  )
+  // The open menu hides the page from role queries.
+  await expect
+    .poll(
+      () =>
+        document.querySelector('[data-slot="traffic-view-rankings"] h2')
+          ?.textContent,
+    )
+    .toBe(m.traffic_view_rankings())
+  await expect
+    .poll(() => JSON.parse(rpc.storage.get(TRAFFIC_VIEW_KV_KEY) ?? 'null'))
+    .toEqual(expect.objectContaining({ rankings: ['process'] }))
 })
 
-test('all four sidebar entries select the matching page view', async ({
+test('every sidebar entry selects the matching page view', async ({
   onTestFinished,
 }) => {
   mockBackend()
@@ -616,7 +692,7 @@ test('all four sidebar entries select the matching page view', async ({
     ['overview', m.traffic_overview()],
     ['flow', m.topology_flow()],
     ['map', m.topology_geo_map()],
-    ['rankings', m.traffic_rankings()],
+    ['process', dimensionName('process')],
   ] as const
 
   for (const [value, label] of entries) {
@@ -635,8 +711,8 @@ test('all four sidebar entries select the matching page view', async ({
       await expect
         .poll(() => rpc.reports.at(-1)?.topology?.layers)
         .toEqual(['origin', 'rule', 'chain', 'exit'])
-    } else if (value === 'rankings') {
-      // The rankings open on the first dimension.
+    } else if (value === 'process') {
+      // A dimension's entry opens its full listing.
       const ranking = report.rankings.find(
         (item) => item.dimension === 'process',
       )!

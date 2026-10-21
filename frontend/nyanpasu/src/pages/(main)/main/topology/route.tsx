@@ -49,8 +49,13 @@ function RouteComponent() {
   const matchRoute = useMatchRoute()
   const crossNavigate = useCrossNavigate()
   const page =
-    TRAFFIC_PAGES.find(({ to }) =>
-      matchRoute({ to, fuzzy: false, includeSearch: false }),
+    TRAFFIC_PAGES.find((item) =>
+      matchRoute({
+        to: item.to,
+        params: 'params' in item ? item.params : undefined,
+        fuzzy: false,
+        includeSearch: false,
+      }),
     ) ?? TRAFFIC_PAGES[0]
   const { scope, range, filters } = search
 

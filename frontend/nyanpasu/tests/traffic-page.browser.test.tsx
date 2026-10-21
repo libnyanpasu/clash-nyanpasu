@@ -48,6 +48,7 @@ import {
   type TrafficView,
 } from '../src/pages/(main)/main/topology/_modules/traffic-context'
 import TrafficLayout from '../src/pages/(main)/main/topology/_modules/traffic-layout'
+import { TRAFFIC_VIEW_KV_KEY } from '../src/pages/(main)/main/topology/_modules/view-settings'
 import { Route as rankingsRoute } from '../src/pages/(main)/main/topology/$dimension'
 import { Route as flowRoute } from '../src/pages/(main)/main/topology/flow'
 import { Route as mapRoute } from '../src/pages/(main)/main/topology/map'
@@ -187,6 +188,8 @@ const rpc = vi.hoisted(() => ({
   extraExitNodes: undefined as number | undefined,
   // How the map's destination regions were located.
   basisKeys: ['dialed', 'resolved'],
+  // The KV store, by key.
+  storage: new Map<string, string>(),
 }))
 
 function mockBackend(pages: Record<string, UsagePage> = {}) {
@@ -233,6 +236,15 @@ function mockBackend(pages: Record<string, UsagePage> = {}) {
           next: null,
         }
       )
+    }
+
+    if (method === 'get_storage_item') {
+      return rpc.storage.get(params.key as string) ?? null
+    }
+
+    if (method === 'set_storage_item') {
+      rpc.storage.set(params.key as string, params.value as string)
+      return null
     }
 
     throw new Error(`unexpected rpc ${method}`)
@@ -369,6 +381,9 @@ async function openRoute(
     await view.unmount()
     queries.clear()
     clearMocks()
+    // The KV store caches what it reads.
+    localStorage.removeItem(`nyanpasu-kv-:${btoa(TRAFFIC_VIEW_KV_KEY)}`)
+    rpc.storage.clear()
     rpc.reports = []
     rpc.pages = []
     rpc.unavailable = false
@@ -499,7 +514,7 @@ test('the route stores category selection and filters in search state', async ({
   )
   expect(routeSearch()).not.toHaveProperty('view')
 
-  await sidebarItem(view, m.traffic_rankings()).click()
+  await sidebarItem(view, dimensionName('process')).click()
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))
     .toBe('/main/topology/process')
@@ -510,7 +525,7 @@ test('the route stores category selection and filters in search state', async ({
         document.querySelectorAll('[data-slot="traffic-ranking-list"]').length,
     )
     .toBe(1)
-  await view.getByRole('radio', { name: dimensionName('source') }).click()
+  await sidebarItem(view, dimensionName('source')).click()
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))
     .toBe('/main/topology/source')
@@ -570,8 +585,8 @@ test('a legacy source view opens the source ranking with its state', async ({
   expect(router.state.location.search).not.toHaveProperty('view')
   expect(router.state.location.state.returnTo).toEqual(returnTo)
   await expect
-    .element(view.getByRole('radio', { name: dimensionName('source') }))
-    .toHaveAttribute('aria-checked', 'true')
+    .element(sidebarItem(view, dimensionName('source')))
+    .toHaveAttribute('data-active', 'true')
   await expect
     .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
     .toBeInTheDocument()
@@ -739,10 +754,10 @@ test('sidebar changes preserve traffic state and the paused report', async ({
   await view.getByRole('button', { name: m.topology_pause() }).click()
   await expect.poll(() => backend.intervals.at(-1)).toBe(false)
 
-  await sidebarItem(view, m.traffic_rankings()).click()
+  await sidebarItem(view, dimensionName('process')).click()
   await expect
     .element(
-      view.getByRole('heading', { name: m.traffic_rankings(), level: 1 }),
+      view.getByRole('heading', { name: dimensionName('process'), level: 1 }),
     )
     .toBeInTheDocument()
 
@@ -1232,6 +1247,111 @@ test('the flow and the map show the top rankings their picks filter', async ({
     .toHaveAttribute('aria-pressed', 'true')
 })
 
+// The view rankings' card titles, in their order.
+const viewRankingTitles = () =>
+  [
+    ...document.querySelectorAll(
+      '[data-slot="traffic-view-rankings"] [data-slot="traffic-ranking"] h2',
+    ),
+  ].map((title) => title.textContent)
+
+test('the view settings choose the rankings of the flow and the map alike', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'flow' })
+  const settings = view.getByRole('button', { name: m.traffic_view_settings() })
+
+  await expect
+    .poll(viewRankingTitles)
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_exit(),
+    ])
+
+  await settings.click()
+  // The menu stays open to pick several.
+  await view
+    .getByRole('menuitemcheckbox', { name: m.traffic_rank_exit() })
+    .click()
+  await view
+    .getByRole('menuitemcheckbox', { name: m.traffic_rank_source() })
+    .click()
+  await expect
+    .poll(viewRankingTitles)
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_source(),
+    ])
+  await expect
+    .poll(() => JSON.parse(rpc.storage.get(TRAFFIC_VIEW_KV_KEY) ?? 'null'))
+    .toEqual({
+      rankings: ['process', 'target', 'source'],
+      flowGraph: 'sankey',
+    })
+  await userEvent.keyboard('{Escape}')
+  await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull()
+
+  await sidebarItem(view, m.topology_geo_map()).click()
+  await expect
+    .poll(viewRankingTitles)
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_source(),
+    ])
+  // The drawing is the flow page's alone.
+  await settings.click()
+  await expect
+    .element(
+      view.getByRole('menuitemcheckbox', { name: m.traffic_rank_source() }),
+    )
+    .toHaveAttribute('aria-checked', 'true')
+  expect(
+    view
+      .getByRole('menuitemradio', { name: m.traffic_flow_graph_sankey() })
+      .elements(),
+  ).toHaveLength(0)
+})
+
+test('the flow page draws its paths as cards when the settings say so', async ({
+  onTestFinished,
+}) => {
+  rpc.storage.set(
+    TRAFFIC_VIEW_KV_KEY,
+    JSON.stringify({ rankings: ['process'], flowGraph: 'cards' }),
+  )
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'flow' })
+
+  await expect
+    .poll(() => document.querySelector('[data-slot="flow-card-graph"]'))
+    .not.toBeNull()
+  expect(document.querySelector('[data-slot="sankey"]')).toBeNull()
+  await expect.poll(viewRankingTitles).toEqual([m.traffic_rank_process()])
+
+  // Its nodes filter like the diagram's.
+  await press(node(view, 'rule', 'rule-1'))
+  await expect
+    .poll(() => last().query.filters)
+    .toEqual([{ dimension: 'rule', value: 'rule-1' }])
+
+  await chooseToolbarMenu(
+    view,
+    m.traffic_view_settings(),
+    m.traffic_flow_graph_sankey(),
+  )
+  await expect
+    .poll(() => document.querySelector('[data-slot="sankey"]'))
+    .not.toBeNull()
+  expect(document.querySelector('[data-slot="flow-card-graph"]')).toBeNull()
+  await expect
+    .poll(() => JSON.parse(rpc.storage.get(TRAFFIC_VIEW_KV_KEY) ?? 'null'))
+    .toEqual({ rankings: ['process'], flowGraph: 'sankey' })
+})
+
 test('hovering a node leaves only its adjacent edges lit', async ({
   onTestFinished,
 }) => {
@@ -1695,6 +1815,6 @@ test('a ranking tells when the listing is unavailable or empty', async ({
 
   rpc.usageError = false
   // Another dimension's listing was never fetched, so it asks again.
-  await view.getByRole('radio', { name: dimensionName('target') }).click()
+  await sidebarItem(view, dimensionName('target')).click()
   await expect.element(view.getByText(m.traffic_empty())).toBeInTheDocument()
 })

@@ -346,10 +346,9 @@ impl KeyframePolicy {
         if (patch_len as f32) > (full_len as f32 * self.delta_to_full_ratio) {
             return (SnapshotPayload::Full(current), changed_fields);
         }
-        // JSON Patch ignores object order and the sign of zero, and remove uses
-        // swap_remove. Keep a keyframe if replay would misrepresent the
-        // executor's YAML.
-        let payload = if json_patch::patch(&mut parent_json, &patch).is_err()
+        // JSON Patch ignores object order and the sign of zero. Keep a keyframe
+        // if replay would misrepresent the executor's YAML.
+        let payload = if apply_patch(&mut parent_json, &patch).is_err()
             || !same_representation(&parent_json, &current_json)
         {
             SnapshotPayload::Full(current)
@@ -811,7 +810,7 @@ impl StoredConfigSnapshotsGraph {
             }
         };
         for patch in deltas.into_iter().rev() {
-            json_patch::patch(&mut config, patch)?;
+            apply_patch(&mut config, patch)?;
         }
         Ok(config)
     }
@@ -830,7 +829,7 @@ impl StoredConfigSnapshotsGraph {
             SnapshotPayload::Full(value) => value.to_json(),
             SnapshotPayload::Delta(patch) => {
                 let mut config = parent.clone();
-                json_patch::patch(&mut config, patch)?;
+                apply_patch(&mut config, patch)?;
                 config
             }
         };
@@ -923,7 +922,7 @@ impl StoredConfigSnapshotsGraph {
                 let mut config = parent
                     .cloned()
                     .ok_or(SnapshotBuildError::MissingRoot { root_id: index })?;
-                json_patch::patch(&mut config, patch)?;
+                apply_patch(&mut config, patch)?;
                 (config, changed_fields_from_patch(patch))
             }
         };
@@ -995,6 +994,27 @@ pub fn changed_fields_from_patch(patch: &Patch) -> Option<IndexSet<ConfigField>>
     }
 
     (!fields.is_empty()).then_some(fields)
+}
+
+/// Replays `patch` as the snapshot store does. Removing an object key shifts
+/// the keys after it instead of swapping the last key into its place, as
+/// `json_patch` does, so a replay keeps the recorded key order. Not atomic:
+/// on error `doc` holds a partial replay, which every caller discards.
+fn apply_patch(doc: &mut serde_json::Value, patch: &Patch) -> Result<(), json_patch::PatchError> {
+    for (index, operation) in patch.0.iter().enumerate() {
+        if let PatchOperation::Remove(remove) = operation
+            && let Some((parent, key)) = remove.path.split_back()
+            && let Some(serde_json::Value::Object(map)) = doc.pointer_mut(parent.as_str())
+            && map.shift_remove(key.decoded().as_ref()).is_some()
+        {
+            continue;
+        }
+        json_patch::patch(doc, std::slice::from_ref(operation)).map_err(|mut error| {
+            error.operation = index;
+            error
+        })?;
+    }
+    Ok(())
 }
 
 /// The changed dot-paths between two configs, with the recorder's semantics.
@@ -1477,6 +1497,57 @@ mod tests {
             serde_json::to_string(&stored.restore(1).unwrap()).unwrap(),
             serde_json::to_string(&current.to_json()).unwrap()
         );
+    }
+
+    /// A field filter drops keys from the middle of the config. Replaying the
+    /// removal keeps the order of the keys after it, so the node stays a delta
+    /// instead of holding a whole config tree.
+    #[test]
+    fn removing_a_middle_key_is_stored_as_a_delta() {
+        let parent = value(json!({
+            "mode": "rule",
+            "tun": { "enable": true },
+            "dns": { "enable": true },
+            "proxies": ["a", "b"],
+            "rules": ["MATCH,DIRECT"],
+        }));
+        let current = value(json!({
+            "mode": "rule",
+            "dns": { "enable": true },
+            "proxies": ["a", "b"],
+            "rules": ["MATCH,DIRECT"],
+        }));
+        let mut builder = ConfigSnapshotsBuilder::new_root(parent, OperatorTag::BareRoot);
+        builder
+            .push(
+                builtin_step("primary", BuiltinStepKind::WhitelistFieldFilter),
+                current.clone(),
+            )
+            .unwrap();
+        let stored = builder.build_stored().unwrap();
+
+        assert!(matches!(
+            stored.nodes[1].snapshot.payload,
+            SnapshotPayload::Delta(_)
+        ));
+        assert_eq!(
+            serde_json::to_string(&stored.restore(1).unwrap()).unwrap(),
+            serde_json::to_string(&current.to_json()).unwrap()
+        );
+        assert_restore_matches_materialize(&stored);
+    }
+
+    #[test]
+    fn a_failed_replay_reports_the_failing_operation() {
+        let patch: Patch = serde_json::from_value(json!([
+            { "op": "add", "path": "/a", "value": 1 },
+            { "op": "remove", "path": "/missing" },
+        ]))
+        .unwrap();
+
+        let error = apply_patch(&mut json!({}), &patch).unwrap_err();
+
+        assert_eq!(error.operation, 1);
     }
 
     #[test]

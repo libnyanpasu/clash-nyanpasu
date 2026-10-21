@@ -1765,6 +1765,7 @@ dependencies = [
  "futures-util",
  "indexmap 2.14.2",
  "ipnet",
+ "nyanpasu-serde",
  "nyanpasu-utils",
  "reqwest 0.13.5",
  "reqwest-websocket",
@@ -6992,6 +6993,26 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "nyanpasu-serde"
+version = "0.1.0"
+dependencies = [
+ "indexmap 2.14.2",
+ "nyanpasu-serde-derive",
+ "serde",
+]
+
+[[package]]
+name = "nyanpasu-serde-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-crate 3.5.0",
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals 0.30.0",
+ "syn 3.0.9",
 ]
 
 [[package]]

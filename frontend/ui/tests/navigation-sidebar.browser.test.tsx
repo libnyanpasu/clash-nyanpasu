@@ -137,7 +137,9 @@ test('expanded clicks ripple across the row and expose keyboard focus', async ()
     .poll(() => item.querySelector('[data-slot="ripple-item"]'))
     .not.toBeNull()
   const ripple = item.querySelector<HTMLElement>('[data-slot="ripple-item"]')!
-  expect(ripple!.parentElement).toBe(item)
+  // Button's display: contents wrapper preserves the row as the positioning host.
+  expect(ripple.offsetParent).toBe(item)
+  expect(Number.parseFloat(ripple.style.width)).toBe(item.clientWidth)
   expect(capsule.querySelector('[data-slot="ripple-item"]')).toBeNull()
 
   await userEvent.keyboard('{Enter}')

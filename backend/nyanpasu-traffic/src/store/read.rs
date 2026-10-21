@@ -106,9 +106,11 @@ fn usage(sums: &[u64]) -> Usage {
     }
 }
 
+/// The session's rows of `query`'s range and scope that satisfy `filters`.
 fn rows<'a>(
     session: &'a Session,
-    query: &'a TrafficQuery,
+    query: &TrafficQuery,
+    filters: &'a [TrafficFilter],
     now_ms: i64,
 ) -> impl Iterator<Item = Row<'a>> + Clone {
     let tier = query.range.tier();
@@ -121,7 +123,7 @@ fn rows<'a>(
         .then(|| session.active_rows(tier, from))
         .into_iter()
         .flatten();
-    filter_rows(pending.chain(active), &query.filters)
+    filter_rows(pending.chain(active), filters)
 }
 
 impl<S: Storage> TrafficDb<S> {
@@ -191,33 +193,51 @@ impl<S: Storage> TrafficDb<S> {
         let filters = ids.filters();
         let empty = snapshot.find_label(LabelId(Dimension::Chain as u16), b"");
         let excluded = [empty.unwrap_or(0)];
-        let mut chain_filters = Vec::with_capacity(filters.len() + 1);
-        chain_filters.extend_from_slice(&filters);
-        if empty.is_some() {
-            chain_filters.push(LabelFilter {
-                dimension: LabelId(Dimension::Chain as u16),
-                ids: &excluded,
-                exclude: true,
-            });
-        }
+        let grouping_filters: Vec<Vec<_>> = plan
+            .dimensions
+            .iter()
+            .map(|g| {
+                let mut out = Vec::with_capacity(filters.len() + 1);
+                out.extend(
+                    filters
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| g.ignored != Some(*i))
+                        .map(|(_, f)| *f),
+                );
+                if g.skip_empty && empty.is_some() {
+                    out.push(LabelFilter {
+                        dimension: LabelId(Dimension::Chain as u16),
+                        ids: &excluded,
+                        exclude: true,
+                    });
+                }
+                out
+            })
+            .collect();
         let dimensions: Vec<_> = plan
             .dimensions
             .iter()
-            .map(|(d, _)| [LabelId(*d as u16)])
+            .map(|g| [LabelId(g.dimension as u16)])
             .collect();
         let mut requests = Vec::with_capacity(dimensions.len() + 1);
         requests.push(GroupRequest {
             filters: &filters,
             key: GroupKey::Total,
         });
-        for ((_, skip), dimension) in plan.dimensions.iter().zip(&dimensions) {
+        for (filters, dimension) in grouping_filters.iter().zip(&dimensions) {
             requests.push(GroupRequest {
-                filters: if *skip { &chain_filters } else { &filters },
+                filters,
                 key: GroupKey::Labels(dimension),
             });
         }
-        let stored = self.series(&snapshot, &request.query, now_ms, &requests, ids.missing)?;
-        let session_rows = rows(session, &request.query, now_ms);
+        // A value missing from the catalog matches no stored row; the scan is skipped when no
+        // request can admit one.
+        let missing = requests
+            .iter()
+            .all(|r| r.filters.iter().any(|f| !f.exclude && f.ids.is_empty()));
+        let stored = self.series(&snapshot, &request.query, now_ms, &requests, missing)?;
+        let session_rows = rows(session, &request.query, &[], now_ms);
         let capacity = session.row_capacity(request.query.range.tier(), request.query.scope);
         let mut state = ReportState::new(
             (0..plan.dimensions.len())
@@ -227,13 +247,13 @@ impl<S: Storage> TrafficDb<S> {
             for group in stored.lists()[0].iter() {
                 state.total.add(usage(group.sums), None);
             }
-            for (i, (dimension, _)) in plan.dimensions.iter().enumerate() {
+            for (i, grouping) in plan.dimensions.iter().enumerate() {
                 for group in stored.lists()[i + 1].iter() {
                     let KeyPart::Label(id) = group.key[0] else {
                         unreachable!("label group")
                     };
                     state.groups[i].add(
-                        display(&snapshot, *dimension, id)?,
+                        display(&snapshot, grouping.dimension, id)?,
                         usage(group.sums),
                         None,
                     );
@@ -241,7 +261,12 @@ impl<S: Storage> TrafficDb<S> {
             }
         }
         for row in session_rows.clone() {
-            state.add(row, &plan, request.query.scope != TrafficScope::Closed);
+            state.add(
+                row,
+                &plan,
+                &request.query.filters,
+                request.query.scope != TrafficScope::Closed,
+            );
         }
         let topology = if let Some(t) = &request.topology {
             let mut projection = Projection::new(
@@ -257,7 +282,7 @@ impl<S: Storage> TrafficDb<S> {
                     Vec::with_capacity(t.limit_per_layer.map_or(0, |limit| {
                         stored.as_ref().map_or(0, |s| s.lists()[i + 1].len()).min(
                             limit
-                                * if plan.dimensions[i].0 == Dimension::Profile {
+                                * if plan.dimensions[i].dimension == Dimension::Profile {
                                     2
                                 } else {
                                     1
@@ -330,7 +355,7 @@ impl<S: Storage> TrafficDb<S> {
                     projection.path(path.into_iter().take(t.layers.len()), usage(group.sums));
                 }
             }
-            for (d, u, _) in session_rows {
+            for (d, u, _) in filter_rows(session_rows, &request.query.filters) {
                 projection.session(d, u, &t.layers);
             }
             Some(projection.finish())
@@ -364,7 +389,7 @@ impl<S: Storage> TrafficDb<S> {
             },
         ];
         let stored = self.series(&snapshot, query, now_ms, &requests, ids.missing)?;
-        let rows = rows(session, query, now_ms);
+        let rows = rows(session, query, &query.filters, now_ms);
         let mut groups = Groups::new(
             session.row_capacity(query.range.tier(), query.scope)
                 + stored.as_ref().map_or(0, |s| s.lists()[1].len()),
@@ -401,7 +426,10 @@ impl<S: Storage> TrafficDb<S> {
         limit: usize,
         now_ms: i64,
     ) -> TrafficResult<UsagePage> {
-        self.with_groups(session, query, dimension, now_ms, |groups, total| {
+        // Checked before the listed dimension's filters are left out.
+        query.check()?;
+        let query = query.ignoring(dimension);
+        self.with_groups(session, &query, dimension, now_ms, |groups, total| {
             groups.page(total, metric, after, limit)
         })
     }

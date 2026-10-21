@@ -104,7 +104,8 @@ pub struct UsageGroup {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Ranking {
     pub dimension: Dimension,
-    /// Distinct values of the dimension among the filtered rows.
+    /// Distinct values of the dimension among the rows the ranking counts: those matching every
+    /// filter except one on this dimension.
     pub distinct: u64,
     /// Heaviest first.
     pub groups: Vec<UsageGroup>,
@@ -133,6 +134,28 @@ pub struct UsagePage {
 
 /// One dimension combination with its usage and, for live connections, its rate.
 pub type Row<'a> = (&'a Dimensions, Usage, Option<Rate>);
+
+/// Which filters a row fails.
+pub(crate) enum Miss {
+    None,
+    /// Only the filter at this index.
+    Only(usize),
+    Many,
+}
+impl Miss {
+    pub fn of(d: &Dimensions, filters: &[TrafficFilter]) -> Self {
+        let mut miss = Miss::None;
+        for (i, f) in filters.iter().enumerate() {
+            if Key::of(d, f.dimension) != Key::Text(&f.value) {
+                if !matches!(miss, Miss::None) {
+                    return Miss::Many;
+                }
+                miss = Miss::Only(i);
+            }
+        }
+        miss
+    }
+}
 
 pub fn filter_rows<'a, I>(
     rows: I,
@@ -248,9 +271,19 @@ impl<'a> Groups<'a> {
     }
 }
 
-/// Shared requests of one report. The bool excludes empty Chain only for a topology layer.
+/// One grouping of a report. A topology layer of Chain skips the empty chain. A ranking of a
+/// filtered dimension ignores that filter, the one at index `ignored`, so the filtered value
+/// keeps its alternatives beside it; the total and the topology honour every filter.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Grouping {
+    pub dimension: Dimension,
+    pub skip_empty: bool,
+    pub ignored: Option<usize>,
+}
+
+/// Shared requests of one report.
 pub(crate) struct ReportPlan {
-    pub dimensions: Vec<(Dimension, bool)>,
+    pub dimensions: Vec<Grouping>,
     pub rankings: Vec<usize>,
     pub layers: Vec<usize>,
 }
@@ -261,23 +294,32 @@ impl ReportPlan {
             rankings: Vec::with_capacity(request.rankings.len()),
             layers: Vec::with_capacity(5),
         };
+        let filters = &request.query.filters;
         for &d in &request.rankings {
-            let i = out.slot(d, false);
+            let i = out.slot(Grouping {
+                dimension: d,
+                skip_empty: false,
+                ignored: filters.iter().position(|f| f.dimension == d),
+            });
             out.rankings.push(i);
         }
         if let Some(t) = &request.topology {
             for &d in &t.layers {
-                let i = out.slot(d, d == Dimension::Chain);
+                let i = out.slot(Grouping {
+                    dimension: d,
+                    skip_empty: d == Dimension::Chain,
+                    ignored: None,
+                });
                 out.layers.push(i);
             }
         }
         out
     }
-    fn slot(&mut self, dimension: Dimension, skip: bool) -> usize {
-        if let Some(i) = self.dimensions.iter().position(|p| *p == (dimension, skip)) {
+    fn slot(&mut self, grouping: Grouping) -> usize {
+        if let Some(i) = self.dimensions.iter().position(|g| *g == grouping) {
             i
         } else {
-            self.dimensions.push((dimension, skip));
+            self.dimensions.push(grouping);
             self.dimensions.len() - 1
         }
     }
@@ -294,13 +336,26 @@ impl<'a> ReportState<'a> {
             groups: capacities.map(Groups::new).collect(),
         }
     }
-    pub fn add(&mut self, row: Row<'a>, plan: &ReportPlan, rated: bool) {
+    /// Adds an unfiltered row: to the total and every grouping when it matches every filter, or
+    /// to the groupings that ignore the one filter it fails.
+    pub fn add(&mut self, row: Row<'a>, plan: &ReportPlan, filters: &[TrafficFilter], rated: bool) {
         let (d, usage, rate) = row;
+        let miss = Miss::of(d, filters);
+        let ignored = match miss {
+            Miss::None => None,
+            Miss::Only(i) => Some(i),
+            Miss::Many => return,
+        };
         let rate = rate.filter(|_| rated);
-        self.total.add(usage, rate);
-        for ((dimension, skip), groups) in plan.dimensions.iter().zip(&mut self.groups) {
-            let key = Key::of(d, *dimension);
-            if !skip || !key.is_empty() {
+        if ignored.is_none() {
+            self.total.add(usage, rate);
+        }
+        for (grouping, groups) in plan.dimensions.iter().zip(&mut self.groups) {
+            if ignored.is_some() && grouping.ignored != ignored {
+                continue;
+            }
+            let key = Key::of(d, grouping.dimension);
+            if !grouping.skip_empty || !key.is_empty() {
                 groups.add(Some(key), usage, rate);
             }
         }
@@ -330,7 +385,8 @@ where
     I: IntoIterator<Item = Row<'a>>,
     I::IntoIter: Clone,
 {
-    let rows = filter_rows(rows, &request.query.filters);
+    let rows = rows.into_iter();
+    let filters = &request.query.filters;
     let plan = ReportPlan::new(request);
     let mut state = ReportState::new(
         plan.dimensions
@@ -338,8 +394,14 @@ where
             .map(|_| rows.size_hint().1.unwrap_or(0)),
     );
     for row in rows.clone() {
-        state.add(row, &plan, request.query.scope != TrafficScope::Closed);
+        state.add(
+            row,
+            &plan,
+            filters,
+            request.query.scope != TrafficScope::Closed,
+        );
     }
+    let rows = filter_rows(rows, filters);
     let topology = request.topology.as_ref().map(|t| {
         let mut projection = topology::Projection::new(
             plan.layers.iter().map(|&i| &state.groups[i]),
@@ -504,6 +566,66 @@ mod tests {
         );
         assert_eq!(r.total, usage(10, 20, 1));
         assert_eq!(keys(&r.rankings[0].groups), ["curl"]);
+    }
+
+    #[test]
+    fn a_ranking_ignores_the_filter_on_its_own_dimension() {
+        let f = Fixture::new();
+        let r = report(
+            f.rows(),
+            &request(
+                query(&[(Dimension::Process, "firefox")], TrafficScope::All),
+                &[Dimension::Process, Dimension::Target],
+                10,
+            ),
+        );
+        assert_eq!(r.total, usage(4, 8, 1));
+        let process = &r.rankings[0];
+        assert_eq!(keys(&process.groups), ["curl", "firefox", "wget"]);
+        assert_eq!(process.distinct, 3);
+        // The filtered value's group is the total.
+        assert_eq!(process.groups[1].usage, r.total);
+        assert_eq!(keys(&r.rankings[1].groups), ["a.com"]);
+    }
+
+    #[test]
+    fn a_ranking_keeps_the_filters_on_other_dimensions() {
+        let f = Fixture::new();
+        let r = report(
+            f.rows(),
+            &request(
+                query(
+                    &[(Dimension::Process, "curl"), (Dimension::Exit, "Node-B")],
+                    TrafficScope::All,
+                ),
+                &[Dimension::Process, Dimension::Exit, Dimension::Target],
+                10,
+            ),
+        );
+        assert_eq!(r.total, usage(0, 0, 1));
+        // Node-B carries curl and wget; curl reaches Node-A and Node-B.
+        assert_eq!(keys(&r.rankings[0].groups), ["wget", "curl"]);
+        assert_eq!(keys(&r.rankings[1].groups), ["Node-A", "Node-B"]);
+        assert_eq!(keys(&r.rankings[2].groups), ["b.com"]);
+    }
+
+    #[test]
+    fn the_topology_honours_every_filter() {
+        let f = Fixture::new();
+        let mut req = request(
+            query(&[(Dimension::Process, "firefox")], TrafficScope::All),
+            &[Dimension::Process],
+            10,
+        );
+        req.topology = Some(TopologyRequest {
+            layers: vec![Dimension::Process, Dimension::Exit],
+            limit_per_layer: None,
+        });
+        let r = report(f.rows(), &req);
+        assert_eq!(r.rankings[0].distinct, 3);
+        let topology = r.topology.unwrap();
+        let keys: Vec<_> = topology.nodes.iter().map(|n| n.key.as_deref()).collect();
+        assert_eq!(keys, [Some("firefox"), Some("Node-A")]);
     }
 
     #[test]

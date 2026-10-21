@@ -48,5 +48,10 @@ It walks `closed_connections` for every `fixture::selections()` entry with limit
 keeping only the connections, and records `Session::summary`. The result is written
 with `serde_json::to_vec`.
 
+The old implementation applied every filter to every ranking and usage page. A ranking
+or usage page now ignores the filter on its own dimension, so the test leaves the
+rankings, usage-page walks and keyed usage of each request's filtered dimensions out of
+both sides before comparing them; the query tests cover those.
+
 Do not regenerate expected data by calling the new store's query methods.
 `.prettierignore` excludes `expected.json`, because the test compares it byte for byte.

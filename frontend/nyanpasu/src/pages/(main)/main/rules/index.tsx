@@ -21,7 +21,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   DataPage,
-  dataPageSearchVariants,
   DataPageSurface,
   DataPageToolbar,
   useDataPageBottomInset,
@@ -294,9 +293,8 @@ function RouteComponent() {
           <ReturnButton />
 
           <SearchField
-            className={dataPageSearchVariants({
-              className: 'min-w-0 flex-1 basis-48',
-            })}
+            variant="glass"
+            className="min-w-0 flex-1 basis-48"
             data-slot="rules-search-input-field"
             placeholder={m.rules_search_placeholder()}
             clearLabel={m.common_clear()}

@@ -35,6 +35,12 @@ export const segmentedButtonVariants = cva(
           'bg-surface-variant/40 dark:bg-surface-variant/15',
           'transition-opacity',
         ],
+        glass: [
+          'h-9 w-auto shrink-0 rounded-full bg-transparent dark:bg-transparent',
+          'transition-opacity',
+          '*:data-[slot=segmented-button-slider-pill]:rounded-full',
+          '**:data-[slot=segmented-button-item-state-layer]:rounded-full',
+        ],
       },
       size: {
         sm: 'h-9 text-xs',
@@ -83,6 +89,11 @@ export const segmentedButtonItemVariants = cva(
         ],
         tabs: [
           'rounded-full px-4',
+          'text-on-surface-variant dark:text-on-surface-variant',
+          'data-[state=on]:text-on-secondary-container dark:data-[state=on]:text-on-secondary-container',
+        ],
+        glass: [
+          'rounded-full px-4 flex-none whitespace-nowrap',
           'text-on-surface-variant dark:text-on-surface-variant',
           'data-[state=on]:text-on-secondary-container dark:data-[state=on]:text-on-secondary-container',
         ],
@@ -195,7 +206,7 @@ export const SegmentedButton = ({
   )
 
   const measurePill = useCallback(() => {
-    if (resolvedVariant !== 'tabs') {
+    if (resolvedVariant !== 'tabs' && resolvedVariant !== 'glass') {
       setPillRect(null)
       return
     }
@@ -227,7 +238,8 @@ export const SegmentedButton = ({
 
   useEffect(() => {
     const root = rootRef.current
-    if (!root || resolvedVariant !== 'tabs') return
+    if (!root || (resolvedVariant !== 'tabs' && resolvedVariant !== 'glass'))
+      return
 
     const observer = new ResizeObserver(() => measurePill())
     observer.observe(root)
@@ -237,7 +249,9 @@ export const SegmentedButton = ({
   }, [measurePill, resolvedVariant])
 
   const showSliderPill =
-    resolvedVariant === 'tabs' && pillRect !== null && !!currentValue
+    (resolvedVariant === 'tabs' || resolvedVariant === 'glass') &&
+    pillRect !== null &&
+    !!currentValue
 
   return (
     <SegmentedButtonContext.Provider
@@ -341,7 +355,7 @@ export const SegmentedButtonItem = ({
       value={value}
       {...props}
     >
-      {variant === 'tabs' && (
+      {(variant === 'tabs' || variant === 'glass') && (
         <span
           aria-hidden
           data-slot="segmented-button-item-state-layer"

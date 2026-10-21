@@ -163,10 +163,11 @@ export default function FileLogs({ source }: { source: LogSource }) {
           >
             <ModalTrigger asChild>
               <Button
+                variant="glass"
                 icon
                 aria-label={m.logs_filters()}
                 title={m.logs_filters()}
-                className="focus-visible:ring-primary shrink-0 rounded-full focus-visible:ring-2"
+                className="focus-visible:ring-primary shrink-0 focus-visible:ring-2"
               >
                 <FilterListRounded aria-hidden className="size-5" />
                 {filterCount > 0 && (

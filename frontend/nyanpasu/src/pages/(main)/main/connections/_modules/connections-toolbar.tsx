@@ -2,15 +2,15 @@ import CloseRounded from '~icons/material-symbols/close-rounded'
 import ViewColumnRounded from '~icons/material-symbols/view-column-rounded'
 import type { ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import {
+  GlassControlGroup,
+  glassControlGroupVariants,
+} from '@nyanpasu/ui/glass-control-group'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
-import {
-  dataPageFloatingGroupVariants,
-  dataPageSearchVariants,
-  DataPageToolbar,
-} from '../../_modules/data-page'
+import { DataPageToolbar } from '../../_modules/data-page'
 import ConnectionsFilters from './connections-filters'
 import { isFiltered, type ConnectionsSelection } from './use-connection-rows'
 
@@ -44,21 +44,16 @@ export default function ConnectionsToolbar({
 
       {filtered && (
         <ConnectionsFilters
-          className={cn(
-            dataPageFloatingGroupVariants(),
-            'order-last basis-full',
-          )}
+          className={cn(glassControlGroupVariants(), 'order-last basis-full')}
           selection={selection}
           onSelectionChange={onSelectionChange}
         />
       )}
 
       <SearchField
-        className={cn(
-          // Too narrow to read a term, it wraps instead of squeezing.
-          dataPageSearchVariants(),
-          'min-w-[min(12rem,100%)] flex-1 basis-48',
-        )}
+        variant="glass"
+        // Too narrow to read a term, it wraps instead of squeezing.
+        className="min-w-[min(12rem,100%)] flex-1 basis-48"
         data-slot="connections-search"
         placeholder={m.connections_search_placeholder()}
         value={search}
@@ -67,27 +62,24 @@ export default function ConnectionsToolbar({
       />
 
       {tabs && (
-        <div
-          className={cn(
-            dataPageFloatingGroupVariants(),
-            'max-w-full overflow-x-auto',
-          )}
+        <GlassControlGroup
+          className="max-w-full overflow-x-auto"
           data-slot="data-page-controls"
         >
           {tabs}
-        </div>
+        </GlassControlGroup>
       )}
 
-      <div
-        className={cn(dataPageFloatingGroupVariants(), 'ml-auto shrink-0')}
+      <GlassControlGroup
+        className="ml-auto shrink-0"
         data-slot="connections-actions"
       >
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
+              variant="glass"
               onClick={onOpenSettings}
               aria-label={m.connections_column_settings()}
-              className="rounded-full"
               icon
             >
               <ViewColumnRounded />
@@ -101,9 +93,9 @@ export default function ConnectionsToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
+                variant="glass"
                 onClick={onCloseAll}
                 aria-label={m.connections_close_all_connections()}
-                className="rounded-full"
                 icon
               >
                 <CloseRounded />
@@ -115,7 +107,7 @@ export default function ConnectionsToolbar({
             </TooltipContent>
           </Tooltip>
         )}
-      </div>
+      </GlassControlGroup>
     </DataPageToolbar>
   )
 }

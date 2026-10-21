@@ -15,22 +15,6 @@ export const dataPageLayoutVariants = cva(
   'relative flex min-h-0 w-full flex-1 overflow-hidden',
 )
 
-export const dataPageFloatingGroupVariants = cva([
-  'bg-surface-variant text-on-surface-variant flex min-w-0 items-center gap-1 rounded-full p-1 [&>button]:h-9',
-  'shadow-lg shadow-shadow/15 dark:shadow-shadow/40',
-])
-
-export const dataPageSearchVariants = cva([
-  'bg-surface-variant dark:bg-surface-variant h-11 rounded-full shadow-lg',
-  'shadow-shadow/15 dark:shadow-shadow/40',
-])
-
-export const dataPageTabsVariants = cva([
-  'h-9 w-auto shrink-0 rounded-full bg-transparent dark:bg-transparent',
-  '*:data-[slot=segmented-button-slider-pill]:rounded-full',
-  '**:data-[slot=segmented-button-item-state-layer]:rounded-full',
-])
-
 const DataPageBottomInsetContext = createContext(0)
 
 /** Space below the last row so it can scroll clear of the floating controls. */

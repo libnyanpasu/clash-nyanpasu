@@ -15,7 +15,6 @@ import { SearchField } from '@nyanpasu/ui/search-field'
 import { SidebarProvider } from '@nyanpasu/ui/slider-sidebar'
 import {
   DataPage,
-  dataPageSearchVariants,
   DataPageToolbar,
 } from '../src/pages/(main)/main/_modules/data-page'
 
@@ -53,7 +52,8 @@ async function mountSidebar() {
           toolbar={
             <DataPageToolbar>
               <SearchField
-                className={dataPageSearchVariants({ className: 'flex-1' })}
+                variant="glass"
+                className="flex-1"
                 value=""
                 onValueChange={() => {}}
                 clearLabel="Clear"

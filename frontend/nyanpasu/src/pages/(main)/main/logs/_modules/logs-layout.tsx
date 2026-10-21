@@ -1,15 +1,13 @@
 import { memo, type ReactNode } from 'react'
+import { GlassControlGroup } from '@nyanpasu/ui/glass-control-group'
 import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@nyanpasu/ui/segmented-button'
 import { m } from '@/paraglide/messages'
-import { cn } from '@nyanpasu/utils'
 import {
   DataPage,
-  dataPageFloatingGroupVariants,
   DataPageSurface,
-  dataPageTabsVariants,
   DataPageToolbar,
 } from '../../_modules/data-page'
 import { Route as IndexRoute, LogLevelsLayout } from '../route'
@@ -29,9 +27,8 @@ const LogsSourceTabs = memo(function LogsSourceTabs({
   }
   return (
     <SegmentedButton
-      variant="tabs"
+      variant="glass"
       size="sm"
-      className={dataPageTabsVariants()}
       aria-label={m.logs_source_label()}
       value={source}
       onValueChange={(item) => {
@@ -43,11 +40,7 @@ const LogsSourceTabs = memo(function LogsSourceTabs({
       }}
     >
       {(['core', 'app', 'service'] as const).map((item) => (
-        <SegmentedButtonItem
-          key={item}
-          value={item}
-          className="flex-none rounded-full whitespace-nowrap"
-        >
+        <SegmentedButtonItem key={item} value={item}>
           {labels[item]}
         </SegmentedButtonItem>
       ))}
@@ -73,24 +66,18 @@ export function LogsLayout({
         toolbar={
           <DataPageToolbar data-slot="logs-toolbar">
             {search}
-            <div
-              className={cn(
-                dataPageFloatingGroupVariants(),
-                'max-w-full overflow-x-auto',
-              )}
+            <GlassControlGroup
+              className="max-w-full overflow-x-auto"
               data-slot="data-page-controls"
             >
               <LogsSourceTabs source={source} />
-            </div>
-            <div
-              className={cn(
-                dataPageFloatingGroupVariants(),
-                'max-w-full flex-wrap',
-              )}
+            </GlassControlGroup>
+            <GlassControlGroup
+              className="max-w-full flex-wrap"
               data-slot="logs-actions"
             >
               {actions}
-            </div>
+            </GlassControlGroup>
           </DataPageToolbar>
         }
       >

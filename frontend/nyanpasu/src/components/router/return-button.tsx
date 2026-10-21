@@ -43,6 +43,7 @@ export function ReturnButton({ className }: { className?: string }) {
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
+          variant="glass"
           className={cn('shrink-0', className)}
           data-slot="return-button"
           aria-label={label}

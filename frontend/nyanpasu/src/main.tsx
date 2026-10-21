@@ -22,6 +22,17 @@ if (!window.ResizeObserver) {
   window.ResizeObserver = ResizeObserver
 }
 
+// Prevent native link drags from exporting shortcuts or HTML outside the app.
+document.addEventListener(
+  'dragstart',
+  (event) => {
+    if (event.target instanceof Element && event.target.closest('a')) {
+      event.preventDefault()
+    }
+  },
+  true,
+)
+
 // prepare dark mode class on root element before React hydration to avoid FOUC
 document.documentElement.classList.toggle(
   'dark',

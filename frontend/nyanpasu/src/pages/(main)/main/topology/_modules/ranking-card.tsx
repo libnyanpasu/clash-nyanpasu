@@ -7,7 +7,7 @@ import { usageAmount } from '@/utils/traffic-usage'
 import type { Ranking } from '@nyanpasu/rpc/types'
 import { toggleFilter } from '../../_modules/traffic-filters'
 import RankingModal from './ranking-modal'
-import RankingRow from './ranking-row'
+import RankingRow, { RankingRowTooltip } from './ranking-row'
 import { useTrafficPage } from './traffic-context'
 
 function CountBadge({ count }: { count: number }) {
@@ -61,23 +61,25 @@ export default function RankingCard({
       </div>
 
       <div className="flex min-w-0 flex-col gap-0.5">
-        <AnimatePresence initial={false}>
-          {ranking.groups.map((group, index) => (
-            <RankingRow
-              key={group.key}
-              label={labelOf(dimension, group.key)}
-              usage={group.usage}
-              metric={metric}
-              rank={index}
-              active={group.key === selected}
-              onSelect={() =>
-                onSearchChange({
-                  filters: toggleFilter(filters, dimension, group.key),
-                })
-              }
-            />
-          ))}
-        </AnimatePresence>
+        <RankingRowTooltip>
+          <AnimatePresence initial={false}>
+            {ranking.groups.map((group, index) => (
+              <RankingRow
+                key={group.key}
+                label={labelOf(dimension, group.key)}
+                usage={group.usage}
+                metric={metric}
+                rank={index}
+                active={group.key === selected}
+                onSelect={() =>
+                  onSearchChange({
+                    filters: toggleFilter(filters, dimension, group.key),
+                  })
+                }
+              />
+            ))}
+          </AnimatePresence>
+        </RankingRowTooltip>
 
         {others > 0 && (
           <p className="text-on-surface-variant truncate px-3 py-1.5 text-[11px] tabular-nums">

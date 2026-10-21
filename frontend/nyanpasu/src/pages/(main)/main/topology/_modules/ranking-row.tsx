@@ -1,5 +1,9 @@
 import { motion } from 'motion/react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+import type { ReactNode } from 'react'
+import {
+  SharedTooltip,
+  useSharedTooltipTrigger,
+} from '@nyanpasu/ui/shared-tooltip'
 import { m } from '@/paraglide/messages'
 import parseTraffic from '@/utils/parse-traffic'
 import { usageAmount, type UsageLabel } from '@/utils/traffic-usage'
@@ -9,10 +13,21 @@ import { usePageTransition } from './transition'
 
 const traffic = (bytes: number) => parseTraffic(bytes).join(' ')
 
+/** The tooltip the ranking rows inside it share, for their full labels. */
+export function RankingRowTooltip({ children }: { children: ReactNode }) {
+  return (
+    <SharedTooltip className="max-w-96 rounded-2xl break-all">
+      {children}
+    </SharedTooltip>
+  )
+}
+
 /**
  * A group of a ranking. Inside `AnimatePresence`, an animated row fades in
  * and slides to a new place. A leaving row goes at once: when a filter
- * replaces the whole list, animating every row out stalls the page.
+ * replaces the whole list, animating every row out stalls the page. Its full
+ * label shows in the enclosing `SharedTooltip`, on hover and on keyboard
+ * focus.
  */
 export default function RankingRow({
   label,
@@ -42,6 +57,7 @@ export default function RankingRow({
   animated?: boolean
 }) {
   const { transition } = usePageTransition()
+  const tooltip = useSharedTooltipTrigger(label.title)
 
   const { upload, download } = usage.bytes
 
@@ -69,7 +85,11 @@ export default function RankingRow({
       first && 'bg-secondary-container/60',
       active && 'bg-secondary-container',
     ),
-    onClick: onSelect,
+    ...tooltip,
+    onClick: () => {
+      onSelect()
+      tooltip.onClick()
+    },
   }
 
   const content =
@@ -184,31 +204,19 @@ export default function RankingRow({
       </>
     )
 
-  // The tooltip hangs on the button, so focusing the row with the keyboard
-  // reveals the full label as well.
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {animated ? (
-          <motion.button
-            // Measured only when its place changes, not on every refresh.
-            layout="position"
-            layoutDependency={rank}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={transition}
-            {...props}
-          >
-            {content}
-          </motion.button>
-        ) : (
-          <button {...props}>{content}</button>
-        )}
-      </TooltipTrigger>
-
-      <TooltipContent className="max-w-96 rounded-2xl break-all">
-        {label.title}
-      </TooltipContent>
-    </Tooltip>
+  return animated ? (
+    <motion.button
+      // Measured only when its place changes, not on every refresh.
+      layout="position"
+      layoutDependency={rank}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={transition}
+      {...props}
+    >
+      {content}
+    </motion.button>
+  ) : (
+    <button {...props}>{content}</button>
   )
 }

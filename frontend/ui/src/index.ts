@@ -35,6 +35,7 @@ export * from './search-field'
 export * from './segmented-button'
 export * from './select'
 export * from './separator'
+export * from './shared-tooltip'
 export * from './sidebar'
 export {
   Sidebar as SliderSidebar,

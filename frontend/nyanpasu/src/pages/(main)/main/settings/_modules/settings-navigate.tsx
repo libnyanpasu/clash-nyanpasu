@@ -1,208 +1,244 @@
-import DisplayExternalInput from '~icons/material-symbols/display-external-input-rounded'
-import FrameBugOutlineRounded from '~icons/material-symbols/frame-bug-outline-rounded'
-import SettingsBoltRounded from '~icons/material-symbols/settings-b-roll-rounded'
-import SettingsEthernet from '~icons/material-symbols/settings-ethernet-rounded'
+import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
+import LicenseRounded from '~icons/material-symbols/license-rounded'
+import PaletteRounded from '~icons/material-symbols/palette-rounded'
 import SettingsRounded from '~icons/material-symbols/settings-rounded'
-import ViewQuilt from '~icons/material-symbols/view-quilt-rounded'
-import { ComponentProps, ReactNode } from 'react'
+import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
+import TuneRounded from '~icons/material-symbols/tune-rounded'
+import VpnLockRounded from '~icons/material-symbols/vpn-lock-rounded'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { ComponentProps, ReactNode, useId } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import { MaterialShape } from '@nyanpasu/ui/material-shape'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import LogoSvg from '@/assets/image/logo.svg?react'
-import useCurrentCoreIcon from '@/hooks/use-current-core-icon'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
+import packageJson from '@root/package.json'
 import { Link, useMatchRoute } from '@tanstack/react-router'
+
+const settingsNavigationGroupItemsVariants = cva([
+  'flex flex-col gap-0.5',
+  // Only the ends of a group get the large radius, like `SettingsGroup`.
+  '[&>*:first-child:not(:only-child)]:rounded-b-sm',
+  '[&>*:last-child:not(:only-child)]:rounded-t-sm',
+  '[&>*:not(:first-child):not(:last-child)]:rounded-sm',
+])
+
+const settingsNavigationItemVariants = cva([
+  'h-auto min-h-16 w-full justify-start rounded-3xl px-4 py-2.5',
+  'flex items-center gap-3 text-left',
+  'bg-surface text-on-surface dark:bg-surface dark:text-on-surface',
+  // A state layer over the item's own fill instead of the button's hover fill.
+  'data-[active=false]:hover:bg-surface',
+  'hover:shadow-[inset_0_0_0_100px] hover:shadow-on-surface/8',
+  'focus-visible:ring-primary focus-visible:ring-2 focus-visible:ring-inset',
+  'transition-[border-radius,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.2,0,0,1)]',
+  'motion-reduce:transition-none',
+  // The selected item rounds every corner, wherever it sits in its group.
+  'data-[active=true]:bg-secondary-container data-[active=true]:hover:bg-secondary-container',
+  'data-[active=true]:text-on-secondary-container data-[active=true]:rounded-3xl!',
+])
+
+const settingsNavigationItemIconVariants = cva(
+  [
+    'size-8 shrink-0 transition-colors duration-200',
+    '[&>svg]:size-5',
+    'group-data-[active=true]/settings-navigation-item:bg-primary',
+    'group-data-[active=true]/settings-navigation-item:text-on-primary',
+  ],
+  {
+    variants: {
+      color: {
+        red: 'bg-red-container text-on-red-container',
+        orange: 'bg-orange-container text-on-orange-container',
+        yellow: 'bg-yellow-container text-on-yellow-container',
+        green: 'bg-green-container text-on-green-container',
+        cyan: 'bg-cyan-container text-on-cyan-container',
+        blue: 'bg-blue-container text-on-blue-container',
+        purple: 'bg-purple-container text-on-purple-container',
+        pink: 'bg-pink-container text-on-pink-container',
+        neutral: 'bg-surface-variant text-on-surface-variant',
+      },
+    },
+  },
+)
+
+type SettingsNavigationItemColor = NonNullable<
+  VariantProps<typeof settingsNavigationItemIconVariants>['color']
+>
 
 const NyanpasuLogo = () => {
   return (
-    <LogoSvg className="[&_#element]:fill-primary [&_#bg]:fill-surface size-8" />
+    <LogoSvg className="h-5 w-4 [&_#bg]:fill-transparent [&_#element]:fill-current" />
   )
 }
 
-const CurrentCoreIcon = ({
-  className,
-  ...props
-}: Omit<ComponentProps<'img'>, 'src'>) => {
-  const currentCoreIconUrl = useCurrentCoreIcon()
+function SettingsNavigationGroup({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
+  const labelId = useId()
 
   return (
-    <img
-      src={currentCoreIconUrl}
-      className={cn('size-full', className)}
-      {...props}
-    />
+    <section className="flex flex-col" data-slot="settings-navigation-group">
+      <h2
+        id={labelId}
+        className="text-primary px-4 py-2 text-sm font-medium"
+        data-slot="settings-navigation-group-label"
+      >
+        {label}
+      </h2>
+
+      <div
+        role="group"
+        aria-labelledby={labelId}
+        className={settingsNavigationGroupItemsVariants()}
+      >
+        {children}
+      </div>
+    </section>
   )
 }
 
-const NavigateButton = ({
+function SettingsNavigationItem({
   icon,
+  color,
   label,
   description,
   className,
   ...props
 }: ComponentProps<typeof Link> & {
   icon: ReactNode
+  color: SettingsNavigationItemColor
   label: string
   description: string
-}) => {
+}) {
   const matchRoute = useMatchRoute()
 
-  // A section stays selected on its child pages, such as the credits under
-  // About.
-  const isActive = !!matchRoute({ to: props.to, fuzzy: true })
+  // An item stays selected on its child pages, unless the link asks for an
+  // exact match because another item lives under its path.
+  const isActive = !!matchRoute({
+    to: props.to,
+    fuzzy: !props.activeOptions?.exact,
+  })
 
   return (
     <Button
-      variant="fab"
-      data-active={String(isActive)}
       className={cn(
-        'h-16',
-        'flex items-center gap-2',
-        'data-[active=true]:bg-surface-variant/80',
-        'data-[active=false]:bg-transparent',
-        'data-[active=false]:shadow-none',
-        'data-[active=false]:hover:shadow-none',
-        'data-[active=false]:hover:bg-surface-variant/30',
+        'group/settings-navigation-item',
+        settingsNavigationItemVariants(),
         className,
       )}
+      data-active={String(isActive)}
+      data-slot="settings-navigation-item"
       asChild
     >
-      <Link {...props}>
-        <div className="flex max-w-full items-center gap-3">
-          <div className="size-8">{icon}</div>
+      <Link aria-current={isActive ? 'page' : undefined} {...props}>
+        <MaterialShape
+          className={settingsNavigationItemIconVariants({ color })}
+          // A circle at rest; the selected item morphs it into a cookie.
+          depth={isActive ? undefined : 0}
+          aria-hidden
+        >
+          {icon}
+        </MaterialShape>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="text-sm font-medium">{label}</div>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-sm leading-5 font-medium">{label}</span>
 
-            <TextMarquee className="text-xs text-zinc-500">
-              {description}
-            </TextMarquee>
-          </div>
-        </div>
+          <TextMarquee className="text-on-surface-variant group-data-[active=true]/settings-navigation-item:text-on-secondary-container/80 text-xs leading-4">
+            {description}
+          </TextMarquee>
+        </span>
       </Link>
     </Button>
   )
 }
 
-const SystemButton = () => {
-  return (
-    <NavigateButton
-      icon={<SettingsEthernet className="size-8" />}
-      label={m.settings_label_system()}
-      description={m.settings_label_system_description()}
-      to="/main/settings/system"
-    />
-  )
-}
-
-const UserInterfaceButton = () => {
-  return (
-    <NavigateButton
-      icon={<ViewQuilt className="size-8" />}
-      label={m.settings_label_user_interface()}
-      description={m.settings_label_user_interface_description()}
-      to="/main/settings/user-interface"
-    />
-  )
-}
-
-const ClashButton = () => {
-  return (
-    <NavigateButton
-      icon={<SettingsBoltRounded className="size-8" />}
-      label={m.settings_label_clash_settings()}
-      description={m.settings_label_clash_settings_description()}
-      to="/main/settings/clash"
-    />
-  )
-}
-
-const ExternalControllButton = () => {
-  return (
-    <NavigateButton
-      icon={
-        <div className="relative size-8">
-          <CurrentCoreIcon className="size-7.5" />
-
-          <div
-            className={cn(
-              'absolute -right-1 -bottom-1 size-4 p-0.5',
-              'text-primary bg-surface-variant rounded-full shadow-sm',
-            )}
-          >
-            <DisplayExternalInput className="size-3" />
-          </div>
-        </div>
-      }
-      label={m.settings_label_external_controll()}
-      description={m.settings_label_external_controll_description()}
-      to="/main/settings/web-ui"
-    />
-  )
-}
-
-const NyanpasuButton = () => {
-  return (
-    <NavigateButton
-      icon={
-        <div className="relative size-8">
-          <NyanpasuLogo />
-
-          <div
-            className={cn(
-              'absolute -right-1 -bottom-1 size-4 p-0.5',
-              'text-primary bg-surface-variant rounded-full shadow-sm',
-            )}
-          >
-            <SettingsRounded className="text-primary size-3" />
-          </div>
-        </div>
-      }
-      label={m.settings_label_nyanpasu()}
-      description={m.settings_label_nyanpasu_description()}
-      to="/main/settings/nyanpasu"
-    />
-  )
-}
-
-const DebugButton = () => {
-  return (
-    <NavigateButton
-      icon={<FrameBugOutlineRounded className="size-8" />}
-      label={m.settings_label_debug()}
-      description={m.settings_label_debug_description()}
-      to="/main/settings/debug"
-    />
-  )
-}
-
-const AboutButton = () => {
-  return (
-    <NavigateButton
-      icon={<NyanpasuLogo />}
-      label={m.settings_label_about()}
-      description={m.settings_label_about_description()}
-      to="/main/settings/about"
-    />
-  )
-}
-
 export default function SettingsNavigate() {
   return (
-    <div className="flex flex-col gap-2 p-2">
-      <SystemButton />
+    <nav
+      aria-label={m.settings_navigation()}
+      className="flex flex-col gap-4 p-3"
+      data-slot="settings-navigation"
+    >
+      <SettingsNavigationGroup label={m.settings_group_system()}>
+        <SettingsNavigationItem
+          to="/main/settings/system"
+          color="blue"
+          icon={<VpnLockRounded />}
+          label={m.settings_label_system()}
+          description={m.settings_label_system_description()}
+        />
+      </SettingsNavigationGroup>
 
-      <UserInterfaceButton />
+      <SettingsNavigationGroup label={m.settings_group_clash()}>
+        <SettingsNavigationItem
+          to="/main/settings/clash"
+          color="orange"
+          icon={<TuneRounded />}
+          label={m.settings_label_clash_settings()}
+          description={m.settings_label_clash_settings_description()}
+        />
 
-      <ClashButton />
+        <SettingsNavigationItem
+          to="/main/settings/web-ui"
+          color="blue"
+          icon={<SwapHorizRounded />}
+          label={m.settings_label_external_controll()}
+          description={m.settings_label_external_controll_description()}
+        />
+      </SettingsNavigationGroup>
 
-      <ExternalControllButton />
+      <SettingsNavigationGroup label={m.settings_group_nyanpasu()}>
+        <SettingsNavigationItem
+          to="/main/settings/user-interface"
+          color="pink"
+          icon={<PaletteRounded />}
+          label={m.settings_label_user_interface()}
+          description={m.settings_label_user_interface_description()}
+        />
 
-      <NyanpasuButton />
+        <SettingsNavigationItem
+          to="/main/settings/nyanpasu"
+          color="neutral"
+          icon={<SettingsRounded />}
+          label={m.settings_label_nyanpasu()}
+          description={m.settings_label_nyanpasu_description()}
+        />
 
-      <DebugButton />
+        <SettingsNavigationItem
+          to="/main/settings/debug"
+          color="red"
+          icon={<BugReportRounded />}
+          label={m.settings_label_debug()}
+          description={m.settings_label_debug_description()}
+        />
+      </SettingsNavigationGroup>
 
-      <AboutButton />
-    </div>
+      <SettingsNavigationGroup label={m.settings_group_about()}>
+        <SettingsNavigationItem
+          to="/main/settings/about"
+          activeOptions={{ exact: true }}
+          color="neutral"
+          icon={<NyanpasuLogo />}
+          label="Clash Nyanpasu"
+          description={m.settings_label_about_version({
+            version: packageJson.version,
+          })}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/about/credits"
+          color="yellow"
+          icon={<LicenseRounded />}
+          label={m.settings_label_licenses()}
+          description={m.settings_label_licenses_description()}
+        />
+      </SettingsNavigationGroup>
+    </nav>
   )
 }

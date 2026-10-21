@@ -13,7 +13,7 @@ function RouteComponent() {
   return (
     <Sidebar data-slot="settings-container">
       <SidebarContent
-        className="bg-surface-variant/10 [&>div>div]:block!"
+        className="bg-surface-variant/50 min-w-72 dark:bg-transparent [&>div>div]:block!"
         data-slot="settings-sidebar-scroll-area"
       >
         <SettingsNavigate />
@@ -21,9 +21,9 @@ function RouteComponent() {
 
       <AppContentScrollArea
         className={cn(
-          // A zero basis splits the width 3:1 with the sidebar regardless of
+          // A zero basis splits the width 2.5:1 with the sidebar regardless of
           // the routed content, so the sidebar keeps its width across routes.
-          'group/settings-content flex-[3_1_0%]',
+          'group/settings-content flex-[2.5_1_0%]',
           // for AnimatedOutletPreset transition to work properly,
           // the scroll area must have overflow: clip
           'overflow-clip',

@@ -23,6 +23,9 @@ Only the port (`storage`), the definitions and the facade are public; the rest i
 internal, so the format and the in-memory structures can change without breaking
 consumers.
 
+Hosts restore their state through `open_with` at open and `recover_with` after a failure.
+Both lend the same read-only `RecoveryView` over metadata and auxiliary state.
+
 ## Departures from the design's sketches
 
 The design says its code sketches show shape, not the final API. Where the code differs:

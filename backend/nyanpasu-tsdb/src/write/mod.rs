@@ -311,7 +311,7 @@ impl Input<'_> {
 
     /// The batch's size for the limit of §4.2: its byte strings, and 8 bytes for each
     /// number, sequence and timestamp.
-    fn bytes(&self) -> u64 {
+    pub fn bytes(&self) -> u64 {
         fn labels(labels: &[&[u8]]) -> u64 {
             labels.iter().map(|label| label.len() as u64).sum()
         }

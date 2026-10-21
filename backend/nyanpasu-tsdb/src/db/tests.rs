@@ -267,6 +267,110 @@ fn opening_creates_the_dataset_and_every_open_increments_the_incarnation() {
 }
 
 #[test]
+fn open_with_restores_auxiliary_state_and_last_batch_before_accepting_the_next_batch() {
+    let disk = MemoryDisk::new();
+    let mut store = open(&disk);
+    let aux = [
+        AuxOp::Put {
+            key: b"session",
+            value: b"metadata",
+        },
+        AuxOp::Put {
+            key: b"connection",
+            value: b"live",
+        },
+    ];
+    store
+        .write(
+            &Input {
+                aux: &aux,
+                ..batch(7, &[], &[])
+            },
+            Durability::Durable,
+        )
+        .unwrap();
+    drop(store);
+
+    let (mut store, restored) =
+        Tsdb::open_with(disk.open().unwrap(), schema(), Profile::desktop(), |view| {
+            assert_eq!(
+                (view.incarnation(), view.publication(), view.last_batch()),
+                (2, 1, Some(7))
+            );
+            assert_eq!(
+                view.aux_get(b"session", |value| value.map(<[u8]>::to_vec))?,
+                Some(b"metadata".to_vec())
+            );
+            let mut entries = Vec::new();
+            assert_eq!(
+                view.aux_scan(|key, value| {
+                    entries.push((key.to_vec(), value.to_vec()));
+                    ControlFlow::<()>::Continue(())
+                })?,
+                None
+            );
+            Ok(entries)
+        })
+        .unwrap();
+    assert_eq!(
+        restored,
+        vec![
+            (b"connection".to_vec(), b"live".to_vec()),
+            (b"session".to_vec(), b"metadata".to_vec()),
+        ]
+    );
+    store
+        .write(&batch(8, &[], &[]), Durability::Durable)
+        .unwrap();
+    let snapshot = store.reader().capture().unwrap();
+    assert_eq!(snapshot.version().publication, 2);
+    assert_eq!(read_state(snapshot.storage()).unwrap().last_batch, Some(8));
+}
+
+#[test]
+fn open_with_lends_empty_auxiliary_state_on_a_fresh_store() {
+    let disk = MemoryDisk::new();
+    let (store, last_batch) =
+        Tsdb::open_with(disk.open().unwrap(), schema(), Profile::desktop(), |view| {
+            assert_eq!((view.incarnation(), view.publication()), (1, 0));
+            assert_eq!(
+                view.aux_scan(|_, _| panic!("a fresh store has no auxiliary records"))?,
+                None::<()>
+            );
+            Ok(view.last_batch())
+        })
+        .unwrap();
+    assert_eq!(last_batch, None);
+    assert!(store.reader().capture().is_ok());
+}
+
+#[test]
+fn open_with_drops_the_backend_when_restore_fails() {
+    let disk = MemoryDisk::new();
+    let result = Tsdb::open_with::<()>(disk.open().unwrap(), schema(), Profile::desktop(), |_| {
+        Err(RecoveryError::Restore {
+            kind: ErrorKind::Local,
+            source: "host declined".into(),
+        })
+    });
+    let Err(error) = result else {
+        panic!("opened a store after restore failed");
+    };
+    assert!(matches!(error, RecoveryError::Restore { .. }));
+    assert_eq!(error.kind(), ErrorKind::Local);
+    assert_eq!(
+        std::error::Error::source(&error).unwrap().to_string(),
+        "host declined"
+    );
+
+    let mut store = open(&disk);
+    assert_eq!(store.incarnation(), 2);
+    store
+        .write(&batch(1, &[], &[]), Durability::Durable)
+        .unwrap();
+}
+
+#[test]
 fn a_dataset_of_another_schema_or_store_format_is_not_opened() {
     let disk = MemoryDisk::new();
     let mut tsdb = open(&disk);

@@ -1,10 +1,12 @@
 import { unwrapResult } from '@nyanpasu/rpc'
 import type {
+  FolderId,
   MutationOutcome,
   NewProfileRequest_Deserialize,
   ProfileDefinition_Deserialize,
   ProfileId,
   ProfileItem_Serialize,
+  ProfileLayout,
   ProfileMetadataPatch_Deserialize,
   ProfileSource_Serialize,
   RemoteProfileOptionsPatch_Deserialize,
@@ -67,6 +69,8 @@ export type CreateParams =
         option?: RemoteProfileOptionsPatch_Deserialize | null
         /** `null`/omitted imports a Config File; otherwise a Transform of this kind. */
         transform?: TransformKind | null
+        /** Folder the imported Config joins in the same commit. */
+        folder?: FolderId | null
       }
     }
   | {
@@ -156,6 +160,8 @@ export const useProfileMutations = () => {
   const setProfileValidFields = api.mutations.setProfileValidFields
   const setGlobalTransformsOptions = api.mutations.setGlobalTransforms
   const reorderProfilesByList = api.mutations.reorderProfilesByList
+  const setProfileLayout = api.mutations.setProfileLayout
+  const createProfileFolder = api.mutations.createProfileFolder
   const deleteProfile = api.mutations.deleteProfile
   const invalidate = () =>
     queryClient.invalidateQueries({
@@ -177,6 +183,7 @@ export const useProfileMutations = () => {
             params.data.name ?? null,
             params.data.option ?? null,
             params.data.transform ?? null,
+            params.data.folder ?? null,
           ]),
         )
       }
@@ -276,6 +283,26 @@ export const useProfileMutations = () => {
     onSuccess: invalidate,
   })
 
+  const setLayout = useMutation({
+    mutationKey: setProfileLayout.mutationKey,
+    mutationFn: async (layout: ProfileLayout) =>
+      unwrapResult(await invokeMutation(setProfileLayout, [layout])),
+    onSuccess: invalidate,
+  })
+
+  const createFolder = useMutation({
+    mutationKey: createProfileFolder.mutationKey,
+    mutationFn: async ({
+      name,
+      members,
+    }: {
+      name: string
+      members: ProfileId[]
+    }) =>
+      unwrapResult(await invokeMutation(createProfileFolder, [name, members])),
+    onSuccess: invalidate,
+  })
+
   const drop = useMutation({
     mutationKey: deleteProfile.mutationKey,
     mutationFn: async (uid: ProfileId) =>
@@ -293,6 +320,8 @@ export const useProfileMutations = () => {
     setValidFields,
     setGlobalTransforms,
     sort,
+    setLayout,
+    createFolder,
     drop,
   }
 }

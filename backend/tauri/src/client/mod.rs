@@ -63,8 +63,9 @@ use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
-        ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
-        RemoteProfileOptions, RemoteProfileOptionsPatch, TransformKind,
+        FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
+        ProfileMetadataPatch, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch,
+        TransformKind,
     },
     runtime::executor::ResolvedPortBindings,
 };
@@ -1188,6 +1189,7 @@ impl NyanpasuClient {
         name: Option<String>,
         options: Option<RemoteProfileOptionsPatch>,
         transform: Option<TransformKind>,
+        folder: Option<FolderId>,
     ) -> Result<runtime::MutationOutcome<ProfileId>> {
         let update_interval_explicit = options
             .as_ref()
@@ -1214,7 +1216,7 @@ impl NyanpasuClient {
                 },
                 option,
                 update_interval_explicit,
-                None,
+                folder,
             )
             .await?;
         let created = report
@@ -1256,6 +1258,29 @@ impl NyanpasuClient {
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.reorder(ReorderOp::ByList(list)).await?;
         Ok(self.after_commit(&report).await)
+    }
+
+    /// Replace the profile folders and the display order in one commit.
+    pub async fn set_profile_layout(
+        &self,
+        layout: ProfileLayout,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self.inner.profiles.set_layout(layout).await?;
+        Ok(self.after_commit(&report).await)
+    }
+
+    /// Create a folder around `members`, which leave the folders they were in.
+    pub async fn create_profile_folder(
+        &self,
+        name: String,
+        members: Vec<ProfileId>,
+    ) -> Result<runtime::MutationOutcome<FolderId>> {
+        let (report, folder) = self.inner.profiles.create_folder(name, members).await?;
+        Ok(runtime::MutationOutcome::from_parts(
+            folder,
+            self.collect_post_commit_degradations(&report).await,
+        )
+        .with_commit(report.receipt.clone()))
     }
 
     pub async fn refresh_profile(
@@ -4181,7 +4206,7 @@ pub(crate) mod tests {
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.with_proxy = Some(false);
             let uid = client
-                .import_profile(url, None, Some(patch), None)
+                .import_profile(url, None, Some(patch), None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -4239,12 +4264,14 @@ pub(crate) mod tests {
                     None,
                     None,
                     None,
+                    None,
                 )
                 .await
                 .unwrap();
             let uid = client
                 .import_profile(
                     url::Url::parse("https://example.com/subs/other.yaml").unwrap(),
+                    None,
                     None,
                     None,
                     None,
@@ -4299,7 +4326,7 @@ pub(crate) mod tests {
             patch.update_interval_minutes = Some(RemoteSyncInterval::from_minutes(45));
             let url = url::Url::parse("https://example.com/subs/explicit.yaml").unwrap();
             let uid = client
-                .import_profile(url, None, Some(patch), None)
+                .import_profile(url, None, Some(patch), None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -4336,7 +4363,7 @@ pub(crate) mod tests {
             patch.update_interval_minutes = Some(RemoteSyncInterval::DISABLED);
             let url = url::Url::parse("https://example.com/subs/manual.yaml").unwrap();
             let uid = client
-                .import_profile(url, None, Some(patch), None)
+                .import_profile(url, None, Some(patch), None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -4410,7 +4437,7 @@ pub(crate) mod tests {
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
-            let result = client.import_profile(url, None, None, None).await;
+            let result = client.import_profile(url, None, None, None, None).await;
             assert!(
                 result.is_err(),
                 "import must fail when the first download fails"
@@ -4675,7 +4702,7 @@ pub(crate) mod tests {
             // Ok(None) from set_current_if_none remains non-degraded applied.
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
             let outcome = client
-                .import_profile(url, None, None, None)
+                .import_profile(url, None, None, None, None)
                 .await
                 .expect("import");
             assert!(
@@ -4821,7 +4848,7 @@ pub(crate) mod tests {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let uid = client
-                .import_profile(url, None, None, None)
+                .import_profile(url, None, None, None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -4841,7 +4868,7 @@ pub(crate) mod tests {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
             let uid = client
-                .import_profile(url, Some("My VPN".into()), None, None)
+                .import_profile(url, Some("My VPN".into()), None, None, None)
                 .await
                 .expect("import")
                 .into_value();
@@ -4861,7 +4888,7 @@ pub(crate) mod tests {
             let client = test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name())).await;
             let url = url::Url::parse("https://example.com/overlay.yaml").unwrap();
             let uid = client
-                .import_profile(url, None, None, Some(TransformKind::Overlay))
+                .import_profile(url, None, None, Some(TransformKind::Overlay), None)
                 .await
                 .expect("import")
                 .into_value();

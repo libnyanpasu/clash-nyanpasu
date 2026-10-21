@@ -22,6 +22,7 @@ Put handwritten script source under `scripts/src/`, grouped by responsibility:
 | `notifications/`       | Release notifications                                                               |
 | `generate/`            | Git metadata, data slots, offline map and open source credits generation            |
 | `testing/`             | Browser integration checks requiring a running application                          |
+| `benchmark/`           | Alternating A/B runs of the frontend page benchmarks                                |
 | `frontend/`            | Frontend workspace package-boundary inventory, policy checks and gate CLI           |
 | `ci/`                  | Pull request change classification for CI                                           |
 | `shared/`              | Small modules reused across script categories, such as logging and repository paths |

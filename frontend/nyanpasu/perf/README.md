@@ -26,8 +26,25 @@ such as 8.3 ms at 120 Hz, against `avgMaxBusy`. An idle page reads about 3 ms.
 It reads 0 while `VITE_PERF_PROFILE` records a profile, which would otherwise
 mostly record the measurement.
 
-Frame timing is noisy: compare runs on the same machine, run each variant at
-least twice, and read changes smaller than a frame with suspicion.
+Frame timing is noisy. On a CPU with performance and efficiency cores, the
+scheduler moves the browser between them, so the same build can run two or
+three times slower from one minute to the next. Compare variants in
+alternating runs pinned to one kind of core, and read changes smaller than a
+frame with suspicion. From the repository root,
+
+```sh
+VITE_PERF_THROTTLE=4 deno task bench:ab --rounds 3 --cores performance traffic
+```
+
+runs a benchmark without (A) and with (B) the working tree's frontend changes,
+in turn, and prints each variant's range over the rounds and the median of
+B over A within a round. `--cores performance` runs on one thread of each
+performance core, `--cores efficiency` on the efficiency cores, which stand in
+for a slow machine (Windows and Linux; a CPU without hybrid cores uses all of
+them either way). `--base` picks the revision A is, `HEAD` by default; changes
+to the benchmarks themselves are part of the comparison, so commit those
+first, and stage new files with `git add -N` so the comparison sees them. The
+working tree ends with the changes applied.
 
 ## Options
 

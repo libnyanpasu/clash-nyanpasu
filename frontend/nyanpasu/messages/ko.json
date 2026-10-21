@@ -228,6 +228,8 @@
   "settings_clash_core_manager_card_done": "완료",
   "settings_clash_core_manager_card_version_read_error": "코어 버전을 읽을 수 없습니다",
   "settings_clash_core_manager_card_reinstall_core": "코어 다시 설치",
+  "settings_clash_core_manager_card_deprecation_notice": "Clash Premium은 지원이 중단되었으며 다음 마이너 버전에서 제거됩니다.",
+  "settings_clash_core_deprecated": "지원 중단",
   "settings_debug_utils_open_config_directory": "설정 디렉터리 열기",
   "settings_debug_utils_open_data_directory": "데이터 디렉터리 열기",
   "settings_debug_utils_open_core_directory": "코어 디렉터리 열기",

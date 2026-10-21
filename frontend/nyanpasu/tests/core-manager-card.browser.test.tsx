@@ -1,5 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
@@ -31,6 +32,7 @@ const state = vi.hoisted(() => ({
     downloader: { state: 'idle', downloaded: 0, total: 0, speed: 0 },
   })),
   refetchVersions: vi.fn(async () => state.cores),
+  switchCore: vi.fn(async (_core: string) => null),
   message: vi.fn(),
 }))
 
@@ -45,7 +47,7 @@ vi.mock('@nyanpasu/query', async (importOriginal) => ({
     updateCore: { mutateAsync: state.updateCore, isPending: false },
     inspectUpdater: state.inspectUpdater,
     refetchVersions: state.refetchVersions,
-    upsert: { mutateAsync: vi.fn(), isPending: false },
+    upsert: { mutateAsync: state.switchCore, isPending: false },
     restartSidecar: vi.fn(),
     fetchRemote: { mutateAsync: vi.fn(), isPending: false },
   }),
@@ -217,3 +219,38 @@ test.for(['pending', 'fetching'])(
     ).toHaveAttribute('aria-busy', phase === 'pending' ? 'true' : 'false')
   },
 )
+
+test('the deprecated core is marked and switching to it shows the removal notice', async ({
+  onTestFinished,
+}) => {
+  state.currentCore = 'mihomo'
+  state.switchCore.mockClear()
+  const view = await render(
+    <TooltipProvider>
+      <SnackbarProvider>
+        <BlockTaskProvider>
+          <CoreManagerCard />
+        </BlockTaskProvider>
+      </SnackbarProvider>
+    </TooltipProvider>,
+  )
+  onTestFinished(async () => view.unmount())
+
+  const badges = view.container.querySelectorAll(
+    '[data-slot="deprecated-core-badge"]',
+  )
+  expect(badges).toHaveLength(1)
+  expect(badges[0].closest('button')?.textContent).toContain(ClashCores.clash)
+
+  const notice = m.settings_clash_core_manager_card_deprecation_notice()
+
+  await view.getByText(ClashCores.clash, { exact: true }).click()
+  await expect.poll(() => state.switchCore.mock.lastCall?.[0]).toBe('clash')
+  await expect.element(view.getByText(notice, { exact: true })).toBeVisible()
+
+  await view.getByText(ClashCores['clash-rs'], { exact: true }).click()
+  await expect.poll(() => state.switchCore.mock.lastCall?.[0]).toBe('clash-rs')
+  await expect
+    .element(view.getByText(notice, { exact: true }))
+    .not.toBeInTheDocument()
+})

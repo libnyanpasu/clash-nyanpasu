@@ -5,12 +5,14 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::runtime::value::{ConfigObject, ConfigValue};
+use crate::runtime::{
+    post_process::{OwnedFields, Ownership, OwnershipEntries},
+    value::{ConfigObject, ConfigValue},
+};
 
 use super::{
     GuardInputs, TunFlavor, TunParams,
-    error::{InternalSnafu, RuntimePipelineError},
-    value_util::{obj_get, obj_insert, remove_at},
+    value_util::{empty_object, obj_get, obj_insert, remove_at},
 };
 
 pub(super) const HANDLE_FIELDS: [&str; 9] = [
@@ -112,24 +114,8 @@ pub(super) fn whitelist_filter(
 /// owns `port` and `socks-port` like `mixed-port`: an unset one is removed, so
 /// a profile cannot open a listener the user turned off or take the
 /// `mixed-port` before the mixed listener binds (#5678).
-pub(super) fn apply_guard(
-    config: &ConfigValue,
-    guard: &GuardInputs<'_>,
-) -> Result<ConfigValue, RuntimePipelineError> {
-    let mut next = config.clone();
-    for (key, raw) in guard.overrides.forced_entries() {
-        let value = match ConfigValue::try_from(raw) {
-            Ok(value) => value,
-            Err(error) => {
-                return InternalSnafu {
-                    message: format!("convert guard override {key}: {error:?}"),
-                }
-                .fail();
-            }
-        };
-        next = obj_insert(&next, key, value);
-    }
-
+pub(super) fn apply_guard(config: &ConfigValue, guard: &GuardInputs<'_>) -> ConfigValue {
+    let mut next = apply_forced(config, &guard.overrides.ownership_entries());
     next = obj_insert(
         &next,
         "mixed-port",
@@ -155,7 +141,32 @@ pub(super) fn apply_guard(
             ConfigValue::String(Arc::from(controller.as_str())),
         );
     }
-    Ok(next)
+    next
+}
+
+/// Writes the forced keys into `config`, descending into a table so that the
+/// keys it does not force stay. A table forcing nothing is skipped.
+pub(super) fn apply_forced(config: &ConfigValue, entries: &OwnershipEntries) -> ConfigValue {
+    let mut next = config.clone();
+    for (key, ownership) in entries {
+        let value = match ownership {
+            Ownership::Forced(value) => value.clone(),
+            Ownership::Table { entries, .. } if forces_any(entries) => {
+                apply_forced(obj_get(&next, key).unwrap_or(&empty_object()), entries)
+            }
+            _ => continue,
+        };
+        next = obj_insert(&next, key, value);
+    }
+    next
+}
+
+fn forces_any(entries: &OwnershipEntries) -> bool {
+    entries.iter().any(|(_, ownership)| match ownership {
+        Ownership::Forced(_) => true,
+        Ownership::Table { entries, .. } => forces_any(entries),
+        _ => false,
+    })
 }
 
 /// Finalizing composite node (spec 7.4): stage-2 filter, tun, then cache.

@@ -302,7 +302,7 @@ pub fn execute(
         working.clone(),
     )?;
 
-    working = Arc::new(builtin::apply_guard(&working, &inputs.guard)?);
+    working = Arc::new(builtin::apply_guard(&working, &inputs.guard));
     builder.push(
         OperatorTag::BuiltinStep {
             selected_profile_id: selected.clone(),

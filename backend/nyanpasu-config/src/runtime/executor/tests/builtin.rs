@@ -5,8 +5,11 @@ use crate::{
     runtime::{
         executor::{
             GuardInputs, ResolvedPortBindings, TunFlavor, TunParams,
-            builtin::{apply_guard, finalize, known_fields, stage1_fields, whitelist_filter},
+            builtin::{
+                apply_forced, apply_guard, finalize, known_fields, stage1_fields, whitelist_filter,
+            },
         },
+        post_process::Ownership,
         value::ConfigValue,
     },
 };
@@ -133,7 +136,6 @@ fn guard_inserts_override_keys_and_resolved_ports() {
         &value(json!({ "mode": "from-profile", "rules": [] })),
         &guard,
     )
-    .unwrap()
     .to_json();
 
     assert_eq!(result["mode"], json!("rule"));
@@ -157,9 +159,7 @@ fn guard_owns_proxy_ports_like_mixed_port() {
     let overrides = fixed_overrides();
     let profile = value(json!({ "port": 7890, "socks-port": 7891, "mixed-port": 1 }));
 
-    let unset = apply_guard(&profile, &guard_inputs(&overrides))
-        .unwrap()
-        .to_json();
+    let unset = apply_guard(&profile, &guard_inputs(&overrides)).to_json();
     assert!(unset.get("port").is_none());
     assert!(unset.get("socks-port").is_none());
     assert_eq!(unset["mixed-port"], json!(7890));
@@ -167,9 +167,37 @@ fn guard_owns_proxy_ports_like_mixed_port() {
     let mut configured = guard_inputs(&overrides);
     configured.ports.port = Some(7892);
     configured.ports.socks_port = Some(7893);
-    let configured = apply_guard(&profile, &configured).unwrap().to_json();
+    let configured = apply_guard(&profile, &configured).to_json();
     assert_eq!(configured["port"], json!(7892));
     assert_eq!(configured["socks-port"], json!(7893));
+}
+
+/// A forced table writes its keys into the mapping already there and keeps
+/// the rest; a missing or non-mapping value becomes a mapping.
+#[test]
+fn forced_tables_merge_into_the_mapping_at_their_key() {
+    let entries = vec![(
+        "tun",
+        Ownership::Table {
+            entries: vec![("auto-route", Ownership::Forced(ConfigValue::Bool(false)))],
+            create: true,
+        },
+    )];
+
+    let merged = apply_forced(
+        &value(json!({ "tun": { "auto-route": "global", "mtu": 1400 }, "mode": "rule" })),
+        &entries,
+    )
+    .to_json();
+    assert_eq!(
+        merged,
+        json!({ "tun": { "auto-route": false, "mtu": 1400 }, "mode": "rule" })
+    );
+
+    for profile in [json!({}), json!({ "tun": true })] {
+        let created = apply_forced(&value(profile), &entries).to_json();
+        assert_eq!(created, json!({ "tun": { "auto-route": false } }));
+    }
 }
 
 fn guard_inputs(overrides: &ClashGuardOverrides) -> GuardInputs<'_> {
@@ -192,7 +220,6 @@ fn guard_overwrites_managed_fields() {
         &value(json!({ "tcp-concurrent": false, "unified-delay": false })),
         &guard_inputs(&overrides),
     )
-    .unwrap()
     .to_json();
 
     assert_eq!(result["tcp-concurrent"], json!(true));
@@ -208,7 +235,6 @@ fn guard_leaves_unmanaged_fields_to_the_profile() {
         &value(json!({ "tcp-concurrent": false, "mode": "from-profile" })),
         &guard_inputs(&overrides),
     )
-    .unwrap()
     .to_json();
 
     assert_eq!(result["tcp-concurrent"], json!(false));

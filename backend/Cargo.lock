@@ -6736,6 +6736,7 @@ dependencies = [
  "json-patch",
  "language-tags",
  "nyanpasu-helper",
+ "nyanpasu-macro",
  "nyanpasu-utils",
  "nyanpasu-widget-protocol",
  "port_scanner",

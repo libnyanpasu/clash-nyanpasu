@@ -27,6 +27,7 @@ import {
 } from '@nyanpasu/ui/drawer'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { SearchField } from '@nyanpasu/ui/search-field'
+import TextMarquee from '@nyanpasu/ui/text-marquee'
 import {
   RENDER_MAP,
   WIDGET_MIN_SIZE_MAP,
@@ -122,7 +123,7 @@ function WidgetEntry({
     >
       <Icon className="text-on-surface-variant size-5 shrink-0" />
 
-      <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
+      <TextMarquee className="min-w-0 flex-1 text-sm">{title}</TextMarquee>
 
       <span className="text-on-surface-variant text-xs tabular-nums">
         {w}×{h}

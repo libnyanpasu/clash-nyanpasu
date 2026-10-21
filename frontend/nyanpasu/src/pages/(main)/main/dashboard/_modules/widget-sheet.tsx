@@ -25,6 +25,7 @@ import {
   DrawerHandle,
   DrawerTitle,
 } from '@nyanpasu/ui/drawer'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
@@ -221,9 +222,11 @@ export function WidgetSheet({
             ))}
 
             {filteredIds.length === 0 && (
-              <p className="text-on-surface-variant col-span-full py-4 text-center text-sm">
-                {m.dashboard_widget_library_no_results()}
-              </p>
+              <EmptyState
+                tone="normal"
+                className="col-span-full"
+                message={m.dashboard_widget_library_no_results()}
+              />
             )}
           </div>
         </ScrollArea>

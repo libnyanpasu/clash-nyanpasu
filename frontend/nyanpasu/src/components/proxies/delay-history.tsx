@@ -1,4 +1,5 @@
 import { ReactElement } from 'react'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
@@ -48,7 +49,11 @@ function DelayHistoryContent({ history }: { history: DelayHistorySample[] }) {
     <div className="space-y-2 py-1">
       <div className="font-medium">{m.proxies_delay_history_title()}</div>
       {recent.length === 0 ? (
-        <div>{m.proxies_delay_history_empty()}</div>
+        <EmptyState
+          size="compact"
+          tone="normal"
+          message={m.proxies_delay_history_empty()}
+        />
       ) : (
         <>
           <div className="text-on-surface-variant">

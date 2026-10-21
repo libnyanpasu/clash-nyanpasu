@@ -17,6 +17,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -271,11 +272,9 @@ export function LocateCurrentNodeButton({
 
 export function NoMatchingNodes() {
   return (
-    <p
+    <EmptyState
       data-slot="proxies-node-no-match"
-      className="text-on-surface-variant p-8 text-center text-sm"
-    >
-      {m.proxies_node_no_match()}
-    </p>
+      message={m.proxies_node_no_match()}
+    />
   )
 }

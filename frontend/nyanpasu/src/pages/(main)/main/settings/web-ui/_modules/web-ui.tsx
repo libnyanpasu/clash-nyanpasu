@@ -1,5 +1,4 @@
 import AddIcon from '~icons/material-symbols/add-rounded'
-import AllInboxRounded from '~icons/material-symbols/all-inbox-outline-rounded'
 import DeleteRounded from '~icons/material-symbols/delete-rounded'
 import EditSquareRounded from '~icons/material-symbols/edit-square-rounded'
 import OpenInNewRounded from '~icons/material-symbols/open-in-new-rounded'
@@ -15,6 +14,7 @@ import { Controller, useForm } from 'react-hook-form'
 import z from 'zod'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Input } from '@nyanpasu/ui/input'
 import {
   Modal,
@@ -282,18 +282,6 @@ const WebUIItem = ({ url }: { url: string }) => {
   )
 }
 
-const EmptyItem = () => {
-  return (
-    <Card variant="outline">
-      <CardContent className="min-h-40 items-center justify-center">
-        <AllInboxRounded className="size-10" />
-
-        <p>{m.settings_web_ui_empty_item()}</p>
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function WebUI() {
   const { value } = useClashSetting('web_ui_list')
 
@@ -304,7 +292,11 @@ export default function WebUI() {
           {value && value.length > 0 ? (
             value.map((item, index) => <WebUIItem key={index} url={item} />)
           ) : (
-            <EmptyItem />
+            <EmptyState
+              tone="normal"
+              className="min-h-40"
+              message={m.settings_web_ui_empty_item()}
+            />
           )}
         </SettingsCardContent>
       </SettingsCard>

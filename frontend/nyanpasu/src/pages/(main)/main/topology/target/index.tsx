@@ -1,5 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { m } from '@/paraglide/messages'
+import { createFileRoute } from '@tanstack/react-router'
 import Notice from '../_modules/notice'
 import RankingView from '../_modules/ranking-view'
 import { RANKINGS, useTrafficPage } from '../_modules/traffic-context'
@@ -13,7 +14,8 @@ function TargetPage() {
   const configuration = RANKINGS.find((item) => item.dimension === 'target')!
   const ranking = report?.rankings.find((item) => item.dimension === 'target')
 
-  if (empty) return <Notice>{m.traffic_empty()}</Notice>
+  if (empty)
+    return <EmptyState className="min-h-40 flex-1" message={m.traffic_empty()} />
   if (!ranking) return <Notice>{m.traffic_loading_more()}</Notice>
 
   return (

@@ -8,6 +8,7 @@ import { ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -231,9 +232,12 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
               {m.dashboard_widget_active_connections_waiting()}
             </p>
           ) : connections.length === 0 ? (
-            <p className="text-on-surface-variant text-sm" role="status">
-              {m.dashboard_widget_active_connections_empty()}
-            </p>
+            <EmptyState
+              size="compact"
+              tone="normal"
+              className="flex-1 overflow-hidden"
+              message={m.dashboard_widget_active_connections_empty()}
+            />
           ) : (
             <div
               ref={listRef}

@@ -17,6 +17,7 @@ import {
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
@@ -307,20 +308,6 @@ const GridViewProfile = memo(function GridViewProfile({
   )
 })
 
-const EmptyList = () => {
-  return (
-    <div
-      className={cn(
-        'flex flex-1 items-center justify-center text-center text-sm',
-        'text-on-surface-variant',
-        'dark:text-on-surface-variant-dark',
-      )}
-    >
-      {m.profile_empty_list_message()}
-    </div>
-  )
-}
-
 const NoMoreProfiles = () => {
   return (
     <div className="mb-4 flex h-16 items-center justify-center text-center text-sm text-gray-500">
@@ -395,7 +382,9 @@ export default function ProfilesList({
   const overflows = useListOverflows(gridRef, filteredProfiles.length)
 
   if (filteredProfiles.length === 0) {
-    return <EmptyList />
+    return (
+      <EmptyState className="flex-1" message={m.profile_empty_list_message()} />
+    )
   }
 
   return (

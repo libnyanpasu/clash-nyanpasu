@@ -8,6 +8,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { m } from '@/paraglide/messages'
 import { dimensionName } from '@/utils/traffic-usage'
 import { createFileRoute } from '@tanstack/react-router'
@@ -121,11 +122,17 @@ function TrafficFlowPage() {
         </div>
 
         {!topology?.nodes.length ? (
-          <div className="text-on-surface-variant grid min-h-64 flex-1 place-content-center text-center">
-            <p className="text-lg">
-              {topology ? m.traffic_empty() : m.traffic_loading_more()}
-            </p>
-          </div>
+          topology ? (
+            <EmptyState
+              tone="normal"
+              className="min-h-64 flex-1"
+              message={m.traffic_empty()}
+            />
+          ) : (
+            <div className="text-on-surface-variant grid min-h-64 flex-1 place-content-center text-center">
+              <p className="text-lg">{m.traffic_loading_more()}</p>
+            </div>
+          )
         ) : (
           <Sankey layers={layers} topology={topology} />
         )}

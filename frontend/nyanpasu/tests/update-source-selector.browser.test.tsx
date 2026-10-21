@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-react'
 import { userEvent } from 'vitest/browser'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import UpdateSourceSelector from '../src/pages/(main)/main/settings/about/_modules/update-source-selector'
+import UpdateSourceSelector from '../src/pages/(main)/main/settings/nyanpasu/updates/_modules/update-source-selector'
 
 const backend = vi.hoisted(() => ({
   sources: ['nyanpasu', 'github'],

@@ -2,14 +2,13 @@ import AnimatedLogo from '@/components/logo/animated-logo'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
 import { m } from '@/paraglide/messages'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
-import UpdateControls from './update-controls'
 
 export default function NyanpasuVersion() {
   const { currentVersion } = useNyanpasuUpdate()
 
   return (
-    <SettingsCard className="space-y-2" data-slot="about-version-card">
-      <SettingsCardContent className="p-3 pb-0">
+    <SettingsCard data-slot="about-version-card">
+      <SettingsCardContent className="p-3">
         <div
           className="flex flex-col items-center gap-3 px-5 py-6"
           data-slot="about-version-hero"
@@ -25,8 +24,6 @@ export default function NyanpasuVersion() {
           </span>
         </div>
       </SettingsCardContent>
-
-      <UpdateControls />
     </SettingsCard>
   )
 }

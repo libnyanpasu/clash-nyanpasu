@@ -5,7 +5,10 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { isBrowser } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  SettingsCard,
+  SettingsCardContent,
+} from '../../../_modules/settings-card'
 import AboutCardHeader from './about-card-header'
 import ReleaseChannelPreference from './release-channel-preference'
 

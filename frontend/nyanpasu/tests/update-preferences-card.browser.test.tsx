@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
-import UpdatePreferencesCard from '../src/pages/(main)/main/settings/about/_modules/update-preferences-card'
+import UpdatePreferencesCard from '../src/pages/(main)/main/settings/nyanpasu/updates/_modules/update-preferences-card'
 
 const state = vi.hoisted(() => ({
   autoCheck: true,

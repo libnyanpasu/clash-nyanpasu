@@ -4,7 +4,7 @@ import { Card } from '@nyanpasu/ui/card'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import type { AppUpdateChangelog, AppUpdateSnapshot } from '@nyanpasu/rpc/types'
-import UpdateControls from '../src/pages/(main)/main/settings/about/_modules/update-controls'
+import UpdateControls from '../src/pages/(main)/main/settings/nyanpasu/updates/_modules/update-controls'
 
 function UpdateCard() {
   return (

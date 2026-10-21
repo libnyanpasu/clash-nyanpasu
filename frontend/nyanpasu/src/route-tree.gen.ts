@@ -66,6 +66,7 @@ import { Route as mainMainSettingsNyanpasuInterfaceIndexRouteImport } from './pa
 import { Route as mainMainSettingsNyanpasuLogsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/logs/index'
 import { Route as mainMainSettingsNyanpasuShortcutsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/shortcuts/index'
 import { Route as mainMainSettingsNyanpasuTrayIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/tray/index'
+import { Route as mainMainSettingsNyanpasuUpdatesIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/updates/index'
 import { Route as mainMainSettingsNyanpasuWidgetIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/widget/index'
 import { Route as mainMainSettingsSystemProxyIndexRouteImport } from './pages/(main)/main/settings/system/proxy/index'
 import { Route as mainMainSettingsSystemServiceIndexRouteImport } from './pages/(main)/main/settings/system/service/index'
@@ -389,6 +390,12 @@ const mainMainSettingsNyanpasuTrayIndexRoute =
     path: '/nyanpasu/tray/',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
+const mainMainSettingsNyanpasuUpdatesIndexRoute =
+  mainMainSettingsNyanpasuUpdatesIndexRouteImport.update({
+    id: '/nyanpasu/updates/',
+    path: '/nyanpasu/updates/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainSettingsNyanpasuWidgetIndexRoute =
   mainMainSettingsNyanpasuWidgetIndexRouteImport.update({
     id: '/nyanpasu/widget/',
@@ -465,6 +472,7 @@ export interface FileRoutesByFullPath {
   '/main/settings/nyanpasu/logs/': typeof mainMainSettingsNyanpasuLogsIndexRoute
   '/main/settings/nyanpasu/shortcuts/': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/main/settings/nyanpasu/tray/': typeof mainMainSettingsNyanpasuTrayIndexRoute
+  '/main/settings/nyanpasu/updates/': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
   '/main/settings/nyanpasu/widget/': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/main/settings/system/proxy/': typeof mainMainSettingsSystemProxyIndexRoute
   '/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
@@ -513,6 +521,7 @@ export interface FileRoutesByTo {
   '/main/settings/nyanpasu/logs': typeof mainMainSettingsNyanpasuLogsIndexRoute
   '/main/settings/nyanpasu/shortcuts': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/main/settings/nyanpasu/tray': typeof mainMainSettingsNyanpasuTrayIndexRoute
+  '/main/settings/nyanpasu/updates': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
   '/main/settings/nyanpasu/widget': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/main/settings/system/proxy': typeof mainMainSettingsSystemProxyIndexRoute
   '/main/settings/system/service': typeof mainMainSettingsSystemServiceIndexRoute
@@ -576,6 +585,7 @@ export interface FileRoutesById {
   '/(main)/main/settings/nyanpasu/logs/': typeof mainMainSettingsNyanpasuLogsIndexRoute
   '/(main)/main/settings/nyanpasu/shortcuts/': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/(main)/main/settings/nyanpasu/tray/': typeof mainMainSettingsNyanpasuTrayIndexRoute
+  '/(main)/main/settings/nyanpasu/updates/': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
   '/(main)/main/settings/nyanpasu/widget/': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/(main)/main/settings/system/proxy/': typeof mainMainSettingsSystemProxyIndexRoute
   '/(main)/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
@@ -639,6 +649,7 @@ export interface FileRouteTypes {
     | '/main/settings/nyanpasu/logs/'
     | '/main/settings/nyanpasu/shortcuts/'
     | '/main/settings/nyanpasu/tray/'
+    | '/main/settings/nyanpasu/updates/'
     | '/main/settings/nyanpasu/widget/'
     | '/main/settings/system/proxy/'
     | '/main/settings/system/service/'
@@ -687,6 +698,7 @@ export interface FileRouteTypes {
     | '/main/settings/nyanpasu/logs'
     | '/main/settings/nyanpasu/shortcuts'
     | '/main/settings/nyanpasu/tray'
+    | '/main/settings/nyanpasu/updates'
     | '/main/settings/nyanpasu/widget'
     | '/main/settings/system/proxy'
     | '/main/settings/system/service'
@@ -749,6 +761,7 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/nyanpasu/logs/'
     | '/(main)/main/settings/nyanpasu/shortcuts/'
     | '/(main)/main/settings/nyanpasu/tray/'
+    | '/(main)/main/settings/nyanpasu/updates/'
     | '/(main)/main/settings/nyanpasu/widget/'
     | '/(main)/main/settings/system/proxy/'
     | '/(main)/main/settings/system/service/'
@@ -1161,6 +1174,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsNyanpasuTrayIndexRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
+    '/(main)/main/settings/nyanpasu/updates/': {
+      id: '/(main)/main/settings/nyanpasu/updates/'
+      path: '/nyanpasu/updates'
+      fullPath: '/main/settings/nyanpasu/updates/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuUpdatesIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
     '/(main)/main/settings/nyanpasu/widget/': {
       id: '/(main)/main/settings/nyanpasu/widget/'
       path: '/nyanpasu/widget'
@@ -1331,6 +1351,7 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsNyanpasuLogsIndexRoute: typeof mainMainSettingsNyanpasuLogsIndexRoute
   mainMainSettingsNyanpasuShortcutsIndexRoute: typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   mainMainSettingsNyanpasuTrayIndexRoute: typeof mainMainSettingsNyanpasuTrayIndexRoute
+  mainMainSettingsNyanpasuUpdatesIndexRoute: typeof mainMainSettingsNyanpasuUpdatesIndexRoute
   mainMainSettingsNyanpasuWidgetIndexRoute: typeof mainMainSettingsNyanpasuWidgetIndexRoute
   mainMainSettingsSystemProxyIndexRoute: typeof mainMainSettingsSystemProxyIndexRoute
   mainMainSettingsSystemServiceIndexRoute: typeof mainMainSettingsSystemServiceIndexRoute
@@ -1357,6 +1378,8 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
     mainMainSettingsNyanpasuShortcutsIndexRoute,
   mainMainSettingsNyanpasuTrayIndexRoute:
     mainMainSettingsNyanpasuTrayIndexRoute,
+  mainMainSettingsNyanpasuUpdatesIndexRoute:
+    mainMainSettingsNyanpasuUpdatesIndexRoute,
   mainMainSettingsNyanpasuWidgetIndexRoute:
     mainMainSettingsNyanpasuWidgetIndexRoute,
   mainMainSettingsSystemProxyIndexRoute: mainMainSettingsSystemProxyIndexRoute,

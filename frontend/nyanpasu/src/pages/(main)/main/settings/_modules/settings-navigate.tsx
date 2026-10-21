@@ -9,6 +9,7 @@ import PaletteRounded from '~icons/material-symbols/palette-rounded'
 import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
 import ReceiptLongRounded from '~icons/material-symbols/receipt-long-rounded'
 import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
+import SystemUpdateAltRounded from '~icons/material-symbols/system-update-alt-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import VpnLockRounded from '~icons/material-symbols/vpn-lock-rounded'
 import WidgetsRounded from '~icons/material-symbols/widgets-rounded'
@@ -271,6 +272,14 @@ export default function SettingsNavigate() {
           icon={<ReceiptLongRounded />}
           label={m.settings_label_logs()}
           description={m.settings_label_logs_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/nyanpasu/updates"
+          color="purple"
+          icon={<SystemUpdateAltRounded />}
+          label={m.settings_label_updates()}
+          description={m.settings_label_updates_description()}
         />
 
         <SettingsNavigationItem

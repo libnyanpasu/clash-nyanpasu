@@ -31,7 +31,7 @@ const UpdateButton = () => {
   return (
     <div className="relative">
       <MenuButton className="flex items-center justify-center" asChild>
-        <Link to="/main/settings/about">
+        <Link to="/main/settings/nyanpasu/updates">
           {isReady
             ? m.settings_about_update_ready_header()
             : m.header_new_version()}

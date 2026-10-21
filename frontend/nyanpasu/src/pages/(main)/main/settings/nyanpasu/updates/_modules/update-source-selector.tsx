@@ -14,7 +14,10 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { isBrowser } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import { type UpdateSource } from '@nyanpasu/rpc/types'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  SettingsCard,
+  SettingsCardContent,
+} from '../../../_modules/settings-card'
 import AboutCardHeader from './about-card-header'
 
 const SOURCES: UpdateSource[] = ['nyanpasu', 'github', 'ghfast', 'sourceforge']

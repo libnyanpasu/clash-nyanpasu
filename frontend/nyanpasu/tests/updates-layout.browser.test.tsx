@@ -17,8 +17,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import HeaderMenu from '../src/pages/(main)/_modules/header-menu'
-import NyanpasuVersion from '../src/pages/(main)/main/settings/about/_modules/nyanpasu-version'
-import { Route } from '../src/pages/(main)/main/settings/about/index'
+import UpdateStatusCard from '../src/pages/(main)/main/settings/nyanpasu/updates/_modules/update-status-card'
+import { Route } from '../src/pages/(main)/main/settings/nyanpasu/updates/index'
 
 const backend = vi.hoisted(() => ({
   phase: 'downloading',
@@ -66,11 +66,6 @@ vi.mock('@/components/providers/nyanpasu-update-provider', () => ({
     discardPackage: backend.discardPackage,
   }),
 }))
-vi.mock('@/components/logo/animated-logo', () => ({
-  default: ({ className }: { className?: string }) => (
-    <div className={className} data-slot="animated-logo" />
-  ),
-}))
 vi.mock('../src/pages/(main)/_modules/header-file-action', () => ({
   default: () => null,
 }))
@@ -104,7 +99,7 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
   isTauri: () => true,
 }))
 
-const AboutPage = Route.options.component ?? (() => null)
+const UpdatesPage = Route.options.component ?? (() => null)
 const rootRoute = createRootRoute({
   component: () => (
     <>
@@ -114,10 +109,10 @@ const rootRoute = createRootRoute({
   ),
 })
 
-const aboutRoute = createRoute({
+const updatesRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/main/settings/about',
-  component: AboutPage,
+  path: '/main/settings/nyanpasu/updates',
+  component: UpdatesPage,
 })
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -125,13 +120,13 @@ const settingsRoute = createRoute({
   component: () => null,
 })
 const router = createRouter({
-  routeTree: rootRoute.addChildren([aboutRoute, settingsRoute]),
+  routeTree: rootRoute.addChildren([updatesRoute, settingsRoute]),
   history: createMemoryHistory({
-    initialEntries: ['/main/settings/about?action=need-update'],
+    initialEntries: ['/main/settings/nyanpasu/updates?action=need-update'],
   }),
 })
 
-test('About update cards remain legible at desktop and mobile widths', async ({
+test('Update cards remain legible at desktop and mobile widths', async ({
   onTestFinished,
 }) => {
   const view = await render(
@@ -151,7 +146,7 @@ test('About update cards remain legible at desktop and mobile widths', async ({
   const cards = view.container.querySelectorAll(
     '[data-slot^="about-"][data-slot$="-card"]',
   )
-  expect(cards).toHaveLength(4)
+  expect(cards).toHaveLength(3)
   expect(
     view.container.querySelector('[data-slot="about-release-channel-card"]'),
   ).toBeNull()
@@ -159,7 +154,7 @@ test('About update cards remain legible at desktop and mobile widths', async ({
     view.container.querySelector('[data-slot="about-update-endpoints-card"]'),
   ).toBeNull()
   let masonry = view.container.querySelector<HTMLElement>(
-    '[data-slot="about-masonry"]',
+    '[data-slot="updates-masonry"]',
   )
   const viewport = view.container.querySelector<HTMLElement>(
     '[data-slot=scroll-area-viewport]',
@@ -183,7 +178,7 @@ test('About update cards remain legible at desktop and mobile widths', async ({
     })
   }
   const update = view.container.querySelector<HTMLElement>(
-    '[data-slot="about-version-card"]',
+    '[data-slot="about-update-card"]',
   )!
   expect(update.getBoundingClientRect().width).toBeLessThan(
     masonry!.clientWidth / 2,
@@ -201,12 +196,6 @@ test('About update cards remain legible at desktop and mobile widths', async ({
   expect(sourceCard.getBoundingClientRect().height).toBeLessThanOrEqual(
     sourceContentHeight + 1,
   )
-  const logo = view.container.querySelector<HTMLElement>(
-    '[data-slot="animated-logo"]',
-  )!
-  expect(logo.getBoundingClientRect().width).toBe(128)
-  expect(logo.getBoundingClientRect().height).toBe(128)
-
   await page.viewport(390, 844)
   expect(getComputedStyle(masonry!).columnCount).toBe('1')
   expect(masonry!.scrollWidth).toBeLessThanOrEqual(viewport!.clientWidth)
@@ -240,7 +229,7 @@ test('About update cards remain legible at desktop and mobile widths', async ({
     </TooltipProvider>,
   )
   masonry = view.container.querySelector<HTMLElement>(
-    '[data-slot="about-masonry"]',
+    '[data-slot="updates-masonry"]',
   )
   expect(masonry).not.toBeNull()
   expect(getComputedStyle(masonry!).columnCount).toBe('1')
@@ -249,7 +238,7 @@ test('About update cards remain legible at desktop and mobile widths', async ({
   await view
     .getByRole('link', { name: m.settings_about_update_ready_header() })
     .click()
-  expect(router.state.location.pathname).toBe('/main/settings/about')
+  expect(router.state.location.pathname).toBe('/main/settings/nyanpasu/updates')
   expect(router.state.location.search).toEqual({})
   await expect.element(view.getByRole('dialog')).not.toBeInTheDocument()
 })
@@ -264,7 +253,7 @@ test('update actions fit every locale at mobile widths in light and dark themes'
   await page.viewport(390, 844)
   const view = await render(
     <TooltipProvider>
-      <NyanpasuVersion />
+      <UpdateStatusCard />
     </TooltipProvider>,
   )
   onTestFinished(async () => {
@@ -298,11 +287,11 @@ test('update actions fit every locale at mobile widths in light and dark themes'
         document.documentElement.classList.toggle('dark', dark)
         await view.rerender(
           <TooltipProvider>
-            <NyanpasuVersion />
+            <UpdateStatusCard />
           </TooltipProvider>,
         )
         const card = view.container.querySelector<HTMLElement>(
-          '[data-slot="about-version-card"]',
+          '[data-slot="about-update-card"]',
         )!
         const icon = card
           .querySelector<HTMLElement>('[data-slot="about-update-status-icon"]')!

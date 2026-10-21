@@ -40,12 +40,12 @@ import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import type { AppUpdatePhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { AppUpdateChangelog } from '../../_modules/app-update-changelog'
-import { openExternal } from '../../_modules/open-external'
+import { AppUpdateChangelog } from '../../../_modules/app-update-changelog'
+import { openExternal } from '../../../_modules/open-external'
 import {
   SettingsCardContent,
   SettingsCardFooter,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
 const GITHUB_RELEASES_URL =
   'https://github.com/libnyanpasu/clash-nyanpasu/releases'

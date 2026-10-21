@@ -20,7 +20,7 @@ Put handwritten script source under `scripts/src/`, grouped by responsibility:
 | `manifest/`            | Core version resolution and version manifest generation                             |
 | `artifacts/`           | Build cache and artifact/file-server operations                                     |
 | `notifications/`       | Release notifications                                                               |
-| `generate/`            | Git metadata, data slots and offline map generation                                 |
+| `generate/`            | Git metadata, data slots, offline map and open source credits generation            |
 | `testing/`             | Browser integration checks requiring a running application                          |
 | `frontend/`            | Frontend workspace package-boundary inventory, policy checks and gate CLI           |
 | `ci/`                  | Pull request change classification for CI                                           |

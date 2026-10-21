@@ -149,6 +149,14 @@
       "description": "Generate the frontend topology map data",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/generate-topology-map.ts"
     },
+    "generate:credits": {
+      "description": "Generate the open source credits the about page lists",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/credits/generate-credits.ts"
+    },
+    "lint:credits": {
+      "description": "Check that every shipped dependency and component is credited under an accepted license",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/generate/credits/generate-credits.ts --check"
+    },
     "publish": {
       "description": "Bump monorepo versions for a release",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/release/publish.ts"

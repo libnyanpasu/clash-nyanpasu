@@ -56,6 +56,7 @@
     "portable": "deno task portable",
     "generate:git-info": "deno task generate:git-info",
     "generate:data-slots": "deno task generate:data-slots",
+    "generate:credits": "deno task generate:credits",
     "generate:manifest": "deno task generate:manifest",
     "generate:manifest:latest-version": "deno task generate:manifest:latest-version",
     "prepare": "husky",

@@ -11,7 +11,11 @@ use crate::runtime::{
 };
 
 /// 1:1 with the legacy `LogSpan` wire shape (enhance/utils.rs:18-25).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+///
+/// Declaration order is severity (`Log` lowest, `Error` highest); `Ord` relies on it.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, specta::Type,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum StepLogLevel {
     Log,

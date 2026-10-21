@@ -59,6 +59,11 @@ export function createRpcClient(
           revision: string
           target_core: string
           root_id: number
+          /**
+           *  The built final node. The core's effective view, when present, is a
+           *  later node and never this one.
+           */
+          final_id: number
           nodes: RuntimeInspectionNode[]
         } | null,
         IpcError
@@ -73,6 +78,11 @@ export function createRpcClient(
           revision: string
           target_core: string
           root_id: number
+          /**
+           *  The built final node. The core's effective view, when present, is a
+           *  later node and never this one.
+           */
+          final_id: number
           nodes: RuntimeInspectionNode[]
         } | null,
         IpcError
@@ -4288,6 +4298,11 @@ export type RuntimeInspection = {
   revision: string
   target_core: string
   root_id: number
+  /**
+   *  The built final node. The core's effective view, when present, is a
+   *  later node and never this one.
+   */
+  final_id: number
   nodes: RuntimeInspectionNode[]
 }
 
@@ -4307,6 +4322,8 @@ export type RuntimeInspectionNode = {
   tag: OperatorTag
   next: number[]
   has_logs: boolean
+  /**  The highest level among this node's step logs; `None` when it has none. */
+  max_log_level: StepLogLevel | null
   /**  None means unchanged or no comparison baseline (including independent roots). */
   changed_fields: string[] | null
 }
@@ -4593,7 +4610,11 @@ export type StepLogEntry = {
   message: string
 }
 
-/**  1:1 with the legacy `LogSpan` wire shape (enhance/utils.rs:18-25). */
+/**
+ *  1:1 with the legacy `LogSpan` wire shape (enhance/utils.rs:18-25).
+ *
+ *  Declaration order is severity (`Log` lowest, `Error` highest); `Ord` relies on it.
+ */
 export type StepLogLevel = 'log' | 'info' | 'warn' | 'error'
 
 export type StorageEntry = {

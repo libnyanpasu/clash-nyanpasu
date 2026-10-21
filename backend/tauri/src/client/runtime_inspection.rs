@@ -4,7 +4,7 @@ use std::sync::Arc;
 use nyanpasu_config::{
     profile::ProfileId,
     runtime::{
-        executor::{StepLog, StepLogEntry},
+        executor::{StepLog, StepLogEntry, StepLogLevel},
         snapshot::{
             BuiltinStepKind, Idx, OperatorTag, SnapshotBuildError, SnapshotDiffHunk,
             StoredConfigSnapshotsGraph, changed_fields_between,
@@ -54,6 +54,9 @@ pub struct RuntimeInspection {
     pub revision: String,
     pub target_core: String,
     pub root_id: u32,
+    /// The built final node. The core's effective view, when present, is a
+    /// later node and never this one.
+    pub final_id: u32,
     pub nodes: Vec<RuntimeInspectionNode>,
 }
 
@@ -63,6 +66,8 @@ pub struct RuntimeInspectionNode {
     pub tag: OperatorTag,
     pub next: Vec<u32>,
     pub has_logs: bool,
+    /// The highest level among this node's step logs; `None` when it has none.
+    pub max_log_level: Option<StepLogLevel>,
     /// None means unchanged or no comparison baseline (including independent roots).
     pub changed_fields: Option<Vec<String>>,
 }
@@ -164,38 +169,48 @@ impl RuntimeSnapshot {
         restored(self.inspection.graph.restore(final_node))
     }
 
-    fn has_logs(&self, tag: &OperatorTag) -> bool {
+    fn max_log_level(&self, tag: &OperatorTag) -> Option<StepLogLevel> {
         let key = tag.node_key();
         self.inspection
             .step_logs
             .iter()
-            .any(|log| log.key == key && !log.entries.is_empty())
+            .filter(|log| log.key == key)
+            .flat_map(|log| &log.entries)
+            .map(|entry| entry.level)
+            .max()
     }
 
     fn inspection_summary(&self) -> RuntimeInspection {
         let graph = &self.inspection.graph;
+        let (final_id, _) = self.final_node();
         let mut nodes: Vec<_> = graph
             .nodes
             .iter()
             .enumerate()
-            .map(|(id, node)| RuntimeInspectionNode {
-                id: id as u32,
-                has_logs: self.has_logs(&node.tag),
-                tag: node.tag.clone(),
-                next: node.next.clone().unwrap_or_default(),
-                changed_fields: node
-                    .changed_fields
-                    .as_ref()
-                    .map(|fields| fields.iter().cloned().collect()),
+            .map(|(id, node)| {
+                let max_log_level = self.max_log_level(&node.tag);
+                RuntimeInspectionNode {
+                    id: id as u32,
+                    has_logs: max_log_level.is_some(),
+                    max_log_level,
+                    tag: node.tag.clone(),
+                    next: node.next.clone().unwrap_or_default(),
+                    changed_fields: node
+                        .changed_fields
+                        .as_ref()
+                        .map(|fields| fields.iter().cloned().collect()),
+                }
             })
             .collect();
         // The core's view is projected as the final node's last child.
         if let Some(effective) = &self.effective {
             let id = nodes.len() as u32;
             nodes[effective.parent as usize].next.push(id);
+            let max_log_level = self.max_log_level(&effective.tag);
             nodes.push(RuntimeInspectionNode {
                 id,
-                has_logs: self.has_logs(&effective.tag),
+                has_logs: max_log_level.is_some(),
+                max_log_level,
                 tag: effective.tag.clone(),
                 next: Vec::new(),
                 changed_fields: effective.changed_fields.clone(),
@@ -217,6 +232,7 @@ impl RuntimeSnapshot {
             revision: self.revision.get().to_string(),
             target_core: self.target_core.to_string(),
             root_id: graph.root_id,
+            final_id,
             nodes,
         }
     }
@@ -514,6 +530,10 @@ pub(crate) mod tests {
         );
         let summary = applied.inspection_summary();
         assert_eq!(summary.nodes.len(), 3);
+        assert_eq!(
+            summary.final_id, 1,
+            "the core's view is never the final node"
+        );
         assert_eq!(summary.nodes[1].next, [2]);
         assert_eq!(
             summary.nodes[2].changed_fields,
@@ -525,6 +545,7 @@ pub(crate) mod tests {
         let unstamped = applied.without_effective_config();
         assert_ne!(unstamped.inspection_id, applied.inspection_id);
         assert_eq!(unstamped.inspection_summary().nodes.len(), 2);
+        assert_eq!(unstamped.inspection_summary().final_id, 1);
         assert!(
             unstamped
                 .inspection_content(&unstamped.inspection_id, 2)
@@ -693,11 +714,13 @@ pub(crate) mod tests {
         let snapshot = snapshot();
         let summary = snapshot.inspection_summary();
         assert_eq!(summary.root_id, 0);
+        assert_eq!(summary.final_id, 0);
         assert_eq!(summary.revision, "1");
         assert_eq!(summary.nodes.len(), 1);
         assert_eq!(summary.nodes[0].tag, OperatorTag::BareRoot);
         assert_eq!(summary.nodes[0].changed_fields, None);
         assert!(summary.nodes[0].has_logs);
+        assert_eq!(summary.nodes[0].max_log_level, Some(StepLogLevel::Info));
         let content = snapshot
             .inspection_content(&summary.snapshot_id, 0)
             .unwrap();
@@ -763,6 +786,7 @@ pub(crate) mod tests {
             let config: serde_json::Value = serde_yaml::from_str(&content.yaml).unwrap();
             assert!(content.logs.is_empty());
             assert!(!node.has_logs);
+            assert_eq!(node.max_log_level, None);
             match node.tag {
                 OperatorTag::FileConfigRoot { .. } => {
                     assert_eq!(node.changed_fields, None);
@@ -794,7 +818,35 @@ pub(crate) mod tests {
             entries: vec![StepLogEntry::new(StepLogLevel::Info, "another step")],
         });
         snapshot.inspection = Arc::new(data);
-        assert!(!snapshot.inspection_summary().nodes[0].has_logs);
+        let summary = snapshot.inspection_summary();
+        assert!(!summary.nodes[0].has_logs);
+        assert_eq!(summary.nodes[0].max_log_level, None);
+    }
+
+    #[test]
+    fn inspection_reports_the_highest_log_level_per_node() {
+        let mut snapshot = snapshot();
+        let mut data = inspection_data();
+        data.step_logs[0].entries = vec![
+            StepLogEntry::new(StepLogLevel::Warn, "slow"),
+            StepLogEntry::new(StepLogLevel::Error, "failed"),
+            StepLogEntry::new(StepLogLevel::Info, "after"),
+        ];
+        snapshot.inspection = Arc::new(data);
+        let node = &snapshot.inspection_summary().nodes[0];
+        assert_eq!(node.max_log_level, Some(StepLogLevel::Error));
+        assert!(node.has_logs);
+
+        let mut data = inspection_data();
+        data.step_logs[0].entries = vec![
+            StepLogEntry::new(StepLogLevel::Log, "trace"),
+            StepLogEntry::new(StepLogLevel::Info, "built"),
+        ];
+        snapshot.inspection = Arc::new(data);
+        assert_eq!(
+            snapshot.inspection_summary().nodes[0].max_log_level,
+            Some(StepLogLevel::Info)
+        );
     }
 
     #[test]

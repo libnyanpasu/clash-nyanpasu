@@ -111,7 +111,10 @@ export default function RankingCard({
 
       <div className="flex min-w-0 flex-col gap-0.5">
         <RankingRowTooltip>
-          <AnimatePresence initial={false}>
+          {/* A leaving row goes at once and the others measure their place
+              when their rank changes, so the rows need not render again
+              whenever the presence of one changes. */}
+          <AnimatePresence initial={false} presenceAffectsLayout={false}>
             {ranking.groups.map((group, index) => (
               <RankingRow
                 key={group.key}

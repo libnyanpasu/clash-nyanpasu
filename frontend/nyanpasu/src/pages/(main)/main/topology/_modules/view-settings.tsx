@@ -10,10 +10,16 @@ import { message } from '@/utils/notification'
 import { useKvStorage } from '@nyanpasu/query'
 import { RANKINGS, type RankingDimension } from './traffic-context'
 
+/** The drawings the flow page can show its paths as. */
+export const FLOW_GRAPHS = ['sankey', 'cards'] as const
+
+export type FlowGraph = (typeof FLOW_GRAPHS)[number]
+
 /** How the flow and the map pages are shown, the same on both. */
 export type TrafficViewSettings = {
   /** The rankings under the drawing, in the order of `RANKINGS`. */
   rankings: RankingDimension[]
+  flowGraph: FlowGraph
 }
 
 export const TRAFFIC_VIEW_KV_KEY = 'traffic-view'
@@ -21,6 +27,7 @@ export const TRAFFIC_VIEW_KV_KEY = 'traffic-view'
 export const DEFAULT_TRAFFIC_VIEW: TrafficViewSettings = {
   // The most asked-for rankings.
   rankings: RANKINGS.slice(0, 3).map(({ dimension }) => dimension),
+  flowGraph: 'sankey',
 }
 
 /** Coerces whatever the KV store holds into the view settings. */
@@ -35,6 +42,9 @@ export function toTrafficViewSettings(value: unknown): TrafficViewSettings {
           (stored.rankings as unknown[]).includes(dimension),
         )
       : DEFAULT_TRAFFIC_VIEW.rankings,
+    flowGraph: FLOW_GRAPHS.includes(stored.flowGraph as FlowGraph)
+      ? (stored.flowGraph as FlowGraph)
+      : DEFAULT_TRAFFIC_VIEW.flowGraph,
   }
 }
 

@@ -1,4 +1,5 @@
 import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
+import { lazy, Suspense } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Card } from '@nyanpasu/ui/card'
 import {
@@ -22,7 +23,11 @@ import {
 } from '../_modules/search'
 import { useTrafficPage } from '../_modules/traffic-context'
 import ViewRankings from '../_modules/view-rankings'
+import { useTrafficViewSettings } from '../_modules/view-settings'
 import { Sankey } from './_modules/sankey'
+
+// Loaded only by those who choose it.
+const CardGraph = lazy(() => import('./_modules/card-graph'))
 
 export const Route = createFileRoute('/(main)/main/topology/flow/')({
   component: TrafficFlowPage,
@@ -36,8 +41,17 @@ const limitName = (limit: Limit) =>
 const templateName = (template: LayerTemplate) =>
   LAYER_TEMPLATES[template].map(dimensionName).join(' → ')
 
+function Loading() {
+  return (
+    <div className="text-on-surface-variant grid min-h-64 flex-1 place-content-center text-center">
+      <p className="text-lg">{m.traffic_loading_more()}</p>
+    </div>
+  )
+}
+
 function TrafficFlowPage() {
   const { search, report, onSearchChange } = useTrafficPage()
+  const { flowGraph } = useTrafficViewSettings().settings
   const topology = report?.topology
   const { layers: layerTemplate, limit } = search
   const template = layerTemplate ?? DEFAULT_TEMPLATE
@@ -130,10 +144,12 @@ function TrafficFlowPage() {
               message={m.traffic_empty()}
             />
           ) : (
-            <div className="text-on-surface-variant grid min-h-64 flex-1 place-content-center text-center">
-              <p className="text-lg">{m.traffic_loading_more()}</p>
-            </div>
+            <Loading />
           )
+        ) : flowGraph === 'cards' ? (
+          <Suspense fallback={<Loading />}>
+            <CardGraph layers={layers} topology={topology} />
+          </Suspense>
         ) : (
           <Sankey layers={layers} topology={topology} />
         )}
@@ -142,7 +158,7 @@ function TrafficFlowPage() {
         </p>
       </Card>
 
-      <ViewRankings />
+      <ViewRankings flowGraph />
     </section>
   )
 }

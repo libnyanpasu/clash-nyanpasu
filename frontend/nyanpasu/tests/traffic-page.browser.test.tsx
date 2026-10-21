@@ -1287,7 +1287,10 @@ test('the view settings choose the rankings of the flow and the map alike', asyn
     ])
   await expect
     .poll(() => JSON.parse(rpc.storage.get(TRAFFIC_VIEW_KV_KEY) ?? 'null'))
-    .toEqual({ rankings: ['process', 'target', 'source'] })
+    .toEqual({
+      rankings: ['process', 'target', 'source'],
+      flowGraph: 'sankey',
+    })
   await userEvent.keyboard('{Escape}')
   await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull()
 
@@ -1299,12 +1302,54 @@ test('the view settings choose the rankings of the flow and the map alike', asyn
       m.traffic_rank_target(),
       m.traffic_rank_source(),
     ])
+  // The drawing is the flow page's alone.
   await settings.click()
   await expect
     .element(
       view.getByRole('menuitemcheckbox', { name: m.traffic_rank_source() }),
     )
     .toHaveAttribute('aria-checked', 'true')
+  expect(
+    view
+      .getByRole('menuitemradio', { name: m.traffic_flow_graph_sankey() })
+      .elements(),
+  ).toHaveLength(0)
+})
+
+test('the flow page draws its paths as cards when the settings say so', async ({
+  onTestFinished,
+}) => {
+  rpc.storage.set(
+    TRAFFIC_VIEW_KV_KEY,
+    JSON.stringify({ rankings: ['process'], flowGraph: 'cards' }),
+  )
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'flow' })
+
+  await expect
+    .poll(() => document.querySelector('[data-slot="flow-card-graph"]'))
+    .not.toBeNull()
+  expect(document.querySelector('[data-slot="sankey"]')).toBeNull()
+  await expect.poll(viewRankingTitles).toEqual([m.traffic_rank_process()])
+
+  // Its nodes filter like the diagram's.
+  await press(node(view, 'rule', 'rule-1'))
+  await expect
+    .poll(() => last().query.filters)
+    .toEqual([{ dimension: 'rule', value: 'rule-1' }])
+
+  await chooseToolbarMenu(
+    view,
+    m.traffic_view_settings(),
+    m.traffic_flow_graph_sankey(),
+  )
+  await expect
+    .poll(() => document.querySelector('[data-slot="sankey"]'))
+    .not.toBeNull()
+  expect(document.querySelector('[data-slot="flow-card-graph"]')).toBeNull()
+  await expect
+    .poll(() => JSON.parse(rpc.storage.get(TRAFFIC_VIEW_KV_KEY) ?? 'null'))
+    .toEqual({ rankings: ['process'], flowGraph: 'sankey' })
 })
 
 test('hovering a node leaves only its adjacent edges lit', async ({

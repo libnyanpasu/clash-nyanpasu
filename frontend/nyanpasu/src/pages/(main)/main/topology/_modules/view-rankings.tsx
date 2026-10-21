@@ -6,16 +6,59 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 import RankingCard from './ranking-card'
 import { RANKINGS, useTrafficPage } from './traffic-context'
-import { useTrafficViewSettings } from './view-settings'
+import {
+  FLOW_GRAPHS,
+  useTrafficViewSettings,
+  type FlowGraph,
+} from './view-settings'
+
+const graphName = (graph: FlowGraph) =>
+  graph === 'sankey'
+    ? m.traffic_flow_graph_sankey()
+    : m.traffic_flow_graph_cards()
+
+function FlowGraphOptions() {
+  const { settings, onSettingsChange } = useTrafficViewSettings()
+
+  return (
+    <>
+      <DropdownMenuSeparator />
+
+      <DropdownMenuLabel className="text-on-surface-variant text-sm">
+        {m.traffic_flow_graph()}
+      </DropdownMenuLabel>
+
+      <DropdownMenuRadioGroup
+        value={settings.flowGraph}
+        onValueChange={(next) =>
+          onSettingsChange({ flowGraph: next as FlowGraph })
+        }
+      >
+        {FLOW_GRAPHS.map((value) => (
+          <DropdownMenuRadioItem key={value} value={value}>
+            {graphName(value)}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+    </>
+  )
+}
 
 // Apart from the report, so a poll leaves the menu alone.
-const ViewSettings = memo(function ViewSettings() {
+const ViewSettings = memo(function ViewSettings({
+  flowGraph,
+}: {
+  flowGraph: boolean
+}) {
   const { settings, onSettingsChange } = useTrafficViewSettings()
   const { rankings } = settings
   const labelled = rankings.length === 0
@@ -64,6 +107,8 @@ const ViewSettings = memo(function ViewSettings() {
             {title()}
           </DropdownMenuCheckboxItem>
         ))}
+
+        {flowGraph && <FlowGraphOptions />}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -74,7 +119,12 @@ const ViewSettings = memo(function ViewSettings() {
  * picked in the drawing filters them in place, so its result reads on the
  * same page. With none chosen, only the way to choose them is left.
  */
-export default function ViewRankings() {
+export default function ViewRankings({
+  flowGraph = false,
+}: {
+  /** Whether the settings also choose the flow page's drawing. */
+  flowGraph?: boolean
+}) {
   const { report, empty } = useTrafficPage()
   const { rankings } = useTrafficViewSettings().settings
   const shown = rankings.length > 0
@@ -99,7 +149,7 @@ export default function ViewRankings() {
           </h2>
         )}
 
-        <ViewSettings />
+        <ViewSettings flowGraph={flowGraph} />
       </div>
 
       {shown && (

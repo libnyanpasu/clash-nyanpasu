@@ -490,6 +490,33 @@ impl ConfigSnapshotsBuilder {
         Ok(id)
     }
 
+    /// Appends a main-line node whose patch the caller built from the changes
+    /// it made, and advances the current position onto it. It skips the
+    /// conversion and diff of both trees that [`Self::push`] takes, so the
+    /// cost follows the size of the change. Replaying `patch` on the current
+    /// node must reproduce `value` exactly, key order included.
+    pub fn push_delta(
+        &mut self,
+        tag: OperatorTag,
+        value: Arc<ConfigValue>,
+        patch: Patch,
+    ) -> Result<NodeId, SnapshotBuildError> {
+        let parent_id = self.current_id;
+        if self.slab.get(parent_id).is_none() {
+            return Err(SnapshotBuildError::MissingRoot { root_id: parent_id });
+        }
+        let changed_fields = changed_fields_from_patch(&patch);
+        let id = self.insert_child(
+            parent_id,
+            tag,
+            value,
+            SnapshotPayload::Delta(patch),
+            changed_fields,
+        );
+        self.current_id = id;
+        Ok(id)
+    }
+
     /// Grafts a whole branch builder under `parent`. The branch root becomes
     /// an [`SnapshotBaseline::Independent`] node with a forced `Full` payload
     /// (no delta against the new parent); inner branch nodes keep their
@@ -1535,6 +1562,50 @@ mod tests {
             serde_json::to_string(&current.to_json()).unwrap()
         );
         assert_restore_matches_materialize(&stored);
+    }
+
+    /// A known patch records the same node as the diff would.
+    #[test]
+    fn a_known_delta_matches_the_diffed_node() {
+        let parent = value(json!({
+            "mode": "rule",
+            "tun": { "enable": false, "stack": "gvisor" },
+            "port": 7890,
+            "rules": ["MATCH,DIRECT"],
+        }));
+        let current = value(json!({
+            "mode": "global",
+            "tun": { "enable": true, "stack": "gvisor", "auto-route": true },
+            "rules": ["MATCH,DIRECT"],
+            "dns": { "enable": true },
+        }));
+        let patch: Patch = serde_json::from_value(json!([
+            { "op": "replace", "path": "/mode", "value": "global" },
+            { "op": "replace", "path": "/tun/enable", "value": true },
+            { "op": "add", "path": "/tun/auto-route", "value": true },
+            { "op": "remove", "path": "/port" },
+            { "op": "add", "path": "/dns", "value": { "enable": true } },
+        ]))
+        .unwrap();
+        let tag = || builtin_step("primary", BuiltinStepKind::GuardOverrides);
+
+        let mut diffed = ConfigSnapshotsBuilder::new_root(parent.clone(), OperatorTag::BareRoot);
+        diffed.push(tag(), current.clone()).unwrap();
+        let diffed = diffed.build_stored().unwrap();
+        let mut known = ConfigSnapshotsBuilder::new_root(parent, OperatorTag::BareRoot);
+        known.push_delta(tag(), current.clone(), patch).unwrap();
+        let known = known.build_stored().unwrap();
+
+        assert_eq!(
+            serde_json::to_string(&known.restore(1).unwrap()).unwrap(),
+            serde_json::to_string(&current.to_json()).unwrap()
+        );
+        // `IndexSet` equality ignores order.
+        assert_eq!(
+            known.nodes[1].changed_fields,
+            diffed.nodes[1].changed_fields
+        );
+        assert_restore_matches_materialize(&known);
     }
 
     #[test]

@@ -18,6 +18,10 @@ export const ClashCores = {
   'meow-alpha': 'Meow Alpha',
 } as Record<ClashCore_Serialize, string>
 
+/** Clash Premium is removed in the next minor version. */
+export const isDeprecatedClashCore = (core?: ClashCore_Deserialize | null) =>
+  core === 'clash'
+
 export type ClashCoresInfo = Record<ClashCore_Serialize, ClashCoresDetail>
 
 export type ClashCoresDetail = {

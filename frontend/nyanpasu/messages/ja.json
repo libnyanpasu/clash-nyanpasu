@@ -258,6 +258,8 @@
   "settings_clash_core_manager_card_done": "完了",
   "settings_clash_core_manager_card_version_read_error": "コアのバージョンを読み取れません",
   "settings_clash_core_manager_card_reinstall_core": "再インストール",
+  "settings_clash_core_manager_card_deprecation_notice": "Clash Premium は非推奨となり、次のマイナーバージョンで削除されます。",
+  "settings_clash_core_deprecated": "非推奨",
   "settings_debug_utils_open_config_directory": "設定ディレクトリを開く",
   "settings_debug_utils_open_data_directory": "データディレクトリを開く",
   "settings_debug_utils_open_core_directory": "コアディレクトリを開く",

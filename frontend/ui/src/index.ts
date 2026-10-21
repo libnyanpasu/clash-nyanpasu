@@ -43,6 +43,7 @@ export {
   useSidebar,
 } from './slider-sidebar'
 export * from './slider'
+export * from './snackbar'
 export * from './sparkline'
 export * from './switch'
 export { default as TextMarquee } from './text-marquee'

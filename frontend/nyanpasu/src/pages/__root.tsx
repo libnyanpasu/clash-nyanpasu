@@ -1,4 +1,5 @@
 import { lazy, useCallback, useEffect, useRef, type RefObject } from 'react'
+import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { useProfileLookup } from '@/components/profile-label'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
@@ -238,10 +239,12 @@ export default function App() {
           <ExperimentalThemeProvider>
             <CustomCssProvider>
               <TooltipProvider>
-                <WindowReadyReporter />
-                <MutationDegradationNotifier handler={degradationHandler} />
-                {appWindow?.label === 'main' && <DeepLinkImport />}
-                <Outlet />
+                <SnackbarProvider>
+                  <WindowReadyReporter />
+                  <MutationDegradationNotifier handler={degradationHandler} />
+                  {appWindow?.label === 'main' && <DeepLinkImport />}
+                  <Outlet />
+                </SnackbarProvider>
               </TooltipProvider>
             </CustomCssProvider>
           </ExperimentalThemeProvider>

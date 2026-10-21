@@ -1,4 +1,5 @@
 import {
+  memo,
   useMemo,
   useState,
   type PropsWithChildren,
@@ -70,6 +71,60 @@ function TrafficSurface({ children }: PropsWithChildren) {
   )
 }
 
+// A switch re-renders only the entries it activates and leaves.
+const TrafficSidebarItem = memo(function TrafficSidebarItem({
+  page: { to, icon: Icon, title },
+  active,
+}: {
+  page: (typeof TRAFFIC_PAGES)[number]
+  active: boolean
+}) {
+  return (
+    <NavigationSidebarItem
+      active={active}
+      icon={<Icon />}
+      renderLink={(content) => (
+        <Link
+          from="/main/topology"
+          to={to}
+          search={withoutTrafficView}
+          state={keepReturn}
+        >
+          {content}
+        </Link>
+      )}
+    >
+      {title()}
+    </NavigationSidebarItem>
+  )
+})
+
+/** The traffic pages' navigation, which only changes with the page shown. */
+const TrafficSidebar = memo(function TrafficSidebar({
+  view,
+}: {
+  view: TrafficView
+}) {
+  return (
+    <NavigationSidebar aria-label={m.traffic_sidebar()}>
+      <ScrollArea className="min-h-0 w-full flex-1 [&>div>div]:block!">
+        <NavigationSidebarContent className="pb-16">
+          {TRAFFIC_PAGES.map((page) => (
+            <TrafficSidebarItem
+              key={page.view}
+              page={page}
+              active={view === page.view}
+            />
+          ))}
+        </NavigationSidebarContent>
+      </ScrollArea>
+      <NavigationSidebarToggle aria-label={m.traffic_sidebar()}>
+        {m.navigation_sidebar_collapse()}
+      </NavigationSidebarToggle>
+    </NavigationSidebar>
+  )
+})
+
 export default function TrafficLayout({
   view,
   search,
@@ -122,52 +177,39 @@ export default function TrafficLayout({
     report.total.connections === 0 &&
     report.total.bytes.upload + report.total.bytes.download === 0
   const title = TRAFFIC_PAGES.find((page) => page.view === view)!.title()
+  // Kept across renders, so a switch between pages re-renders only what reads
+  // the view.
+  const pageContext = useMemo(
+    () => ({
+      search,
+      report,
+      query,
+      labelOf,
+      onSearchChange,
+      empty,
+      retention,
+      paused,
+      onPausedChange: setPaused,
+      onViewConnections,
+    }),
+    [
+      search,
+      report,
+      query,
+      labelOf,
+      onSearchChange,
+      empty,
+      retention,
+      paused,
+      onViewConnections,
+    ],
+  )
 
   return (
-    <TrafficPageContext
-      value={{
-        search,
-        report,
-        query,
-        labelOf,
-        onSearchChange,
-        empty,
-        retention,
-        paused,
-        onPausedChange: setPaused,
-        onViewConnections,
-      }}
-    >
+    <TrafficPageContext value={pageContext}>
       <SidebarProvider defaultOpen={false}>
         <div className={dataPageLayoutVariants()} data-slot="traffic-page">
-          <NavigationSidebar aria-label={m.traffic_sidebar()}>
-            <ScrollArea className="min-h-0 w-full flex-1 [&>div>div]:block!">
-              <NavigationSidebarContent className="pb-16">
-                {TRAFFIC_PAGES.map(({ view: item, to, icon: Icon, title }) => (
-                  <NavigationSidebarItem
-                    key={item}
-                    active={view === item}
-                    icon={<Icon />}
-                    renderLink={(content) => (
-                      <Link
-                        from="/main/topology"
-                        to={to}
-                        search={withoutTrafficView}
-                        state={keepReturn}
-                      >
-                        {content}
-                      </Link>
-                    )}
-                  >
-                    {title()}
-                  </NavigationSidebarItem>
-                ))}
-              </NavigationSidebarContent>
-            </ScrollArea>
-            <NavigationSidebarToggle aria-label={m.traffic_sidebar()}>
-              {m.navigation_sidebar_collapse()}
-            </NavigationSidebarToggle>
-          </NavigationSidebar>
+          <TrafficSidebar view={view} />
           <DataPage
             title={m.topology_title()}
             toolbar={<TrafficToolbar>{toolbarStart}</TrafficToolbar>}
@@ -185,7 +227,16 @@ export default function TrafficLayout({
               {isError ? (
                 <Notice error>{m.traffic_unavailable()}</Notice>
               ) : (
-                <AnimatedOutletPreset className="relative flex min-w-0 flex-1 flex-col gap-3" />
+                <AnimatedOutletPreset
+                  className="relative flex min-w-0 flex-1 flex-col gap-3"
+                  // A page sliding out keeps the report it showed, rather than
+                  // re-rendering with the next page's.
+                  renderOutlet={(outlet) => (
+                    <TrafficPageContext value={pageContext}>
+                      {outlet}
+                    </TrafficPageContext>
+                  )}
+                />
               )}
             </TrafficSurface>
           </DataPage>

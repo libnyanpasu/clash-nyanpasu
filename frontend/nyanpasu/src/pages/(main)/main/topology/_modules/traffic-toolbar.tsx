@@ -2,7 +2,7 @@ import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounde
 import LanOutlineRounded from '~icons/material-symbols/lan-outline-rounded'
 import PauseRounded from '~icons/material-symbols/pause-rounded'
 import PlayArrowRounded from '~icons/material-symbols/play-arrow-rounded'
-import type { PropsWithChildren } from 'react'
+import { memo, type PropsWithChildren } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
@@ -45,7 +45,8 @@ const METRICS = {
   connections: m.traffic_metric_connections,
 } satisfies Record<Metric, () => string>
 
-export default function TrafficToolbar({ children }: PropsWithChildren) {
+/** Reads only the page context, so a switch between pages skips it. */
+export default memo(function TrafficToolbar({ children }: PropsWithChildren) {
   const {
     search,
     retention,
@@ -242,4 +243,4 @@ export default function TrafficToolbar({ children }: PropsWithChildren) {
       )}
     </DataPageToolbar>
   )
-}
+})

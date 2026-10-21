@@ -19,6 +19,11 @@
       "platformAutomerge": false
     },
     {
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["tokio"],
+      "allowedVersions": "<1.54.0"
+    },
+    {
       "groupName": "Oxc packages",
       "matchPackageNames": ["/oxc/"]
     },

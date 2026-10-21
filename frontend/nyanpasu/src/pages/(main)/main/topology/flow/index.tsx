@@ -21,6 +21,7 @@ import {
   type Limit,
 } from '../_modules/search'
 import { useTrafficPage } from '../_modules/traffic-context'
+import ViewRankings from '../_modules/view-rankings'
 import { Sankey } from './_modules/sankey'
 
 export const Route = createFileRoute('/(main)/main/topology/flow/')({
@@ -44,7 +45,7 @@ function TrafficFlowPage() {
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 flex-1 flex-col gap-3"
       aria-label={m.topology_title()}
     >
       <Card
@@ -140,6 +141,8 @@ function TrafficFlowPage() {
           {m.topology_caption()}
         </p>
       </Card>
+
+      <ViewRankings />
     </section>
   )
 }

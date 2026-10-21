@@ -20,7 +20,7 @@ import { m } from '@/paraglide/messages'
 import { usageAmount } from '@/utils/traffic-usage'
 import { useLocalIpProbe, useSetting, useTrafficReport } from '@nyanpasu/query'
 import { type ReportRequest } from '@nyanpasu/rpc/types'
-import { Link } from '@tanstack/react-router'
+import { Link, useParams } from '@tanstack/react-router'
 import {
   DataPage,
   dataPageLayoutVariants,
@@ -41,6 +41,7 @@ import {
   TRAFFIC_PAGES,
   TrafficPageContext,
   withoutTrafficView,
+  type RankingDimension,
   type TrafficView,
 } from './traffic-context'
 import TrafficToolbar from './traffic-toolbar'
@@ -75,9 +76,11 @@ function TrafficSurface({ children }: PropsWithChildren) {
 const TrafficSidebarItem = memo(function TrafficSidebarItem({
   page: { to, icon: Icon, title },
   active,
+  dimension,
 }: {
   page: (typeof TRAFFIC_PAGES)[number]
   active: boolean
+  dimension: RankingDimension
 }) {
   return (
     <NavigationSidebarItem
@@ -87,6 +90,7 @@ const TrafficSidebarItem = memo(function TrafficSidebarItem({
         <Link
           from="/main/topology"
           to={to}
+          params={{ dimension }}
           search={withoutTrafficView}
           state={keepReturn}
         >
@@ -102,8 +106,11 @@ const TrafficSidebarItem = memo(function TrafficSidebarItem({
 /** The traffic pages' navigation, which only changes with the page shown. */
 const TrafficSidebar = memo(function TrafficSidebar({
   view,
+  dimension,
 }: {
   view: TrafficView
+  /** The dimension the rankings entry opens. */
+  dimension: RankingDimension
 }) {
   return (
     <NavigationSidebar aria-label={m.traffic_sidebar()}>
@@ -114,6 +121,7 @@ const TrafficSidebar = memo(function TrafficSidebar({
               key={page.view}
               page={page}
               active={view === page.view}
+              dimension={dimension}
             />
           ))}
         </NavigationSidebarContent>
@@ -177,6 +185,9 @@ export default function TrafficLayout({
     report.total.connections === 0 &&
     report.total.bytes.upload + report.total.bytes.download === 0
   const title = TRAFFIC_PAGES.find((page) => page.view === view)!.title()
+  // The rankings entry stays on the dimension it shows, else opens the first.
+  const dimension =
+    useParams({ strict: false }).dimension ?? RANKINGS[0].dimension
   // Kept across renders, so a switch between pages re-renders only what reads
   // the view.
   const pageContext = useMemo(
@@ -209,7 +220,7 @@ export default function TrafficLayout({
     <TrafficPageContext value={pageContext}>
       <SidebarProvider defaultOpen={false}>
         <div className={dataPageLayoutVariants()} data-slot="traffic-page">
-          <TrafficSidebar view={view} />
+          <TrafficSidebar view={view} dimension={dimension} />
           <DataPage
             title={m.topology_title()}
             toolbar={<TrafficToolbar>{toolbarStart}</TrafficToolbar>}

@@ -48,14 +48,10 @@ import {
   type TrafficView,
 } from '../src/pages/(main)/main/topology/_modules/traffic-context'
 import TrafficLayout from '../src/pages/(main)/main/topology/_modules/traffic-layout'
-import { Route as exitRoute } from '../src/pages/(main)/main/topology/exit'
+import { Route as rankingsRoute } from '../src/pages/(main)/main/topology/$dimension'
 import { Route as flowRoute } from '../src/pages/(main)/main/topology/flow'
-import { Route as inboundRoute } from '../src/pages/(main)/main/topology/inbound'
 import { Route as mapRoute } from '../src/pages/(main)/main/topology/map'
-import { Route as processRoute } from '../src/pages/(main)/main/topology/process'
 import { Route as trafficRoute } from '../src/pages/(main)/main/topology/route'
-import { Route as sourceRoute } from '../src/pages/(main)/main/topology/source'
-import { Route as targetRoute } from '../src/pages/(main)/main/topology/target'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 const productionTrafficRouteComponent = trafficRoute.options.component
@@ -120,7 +116,7 @@ const report: TrafficReport = {
     ranking('inbound', [group('mixed')]),
     ranking('target', [group('example.com', 4096), group('api.example.com')]),
     ranking('exit', [group('Node-A')]),
-    ranking('process', [group('C:/Tools/curl.exe')]),
+    ranking('process', [group('C:/Tools/curl.exe')], 3),
   ],
   topology: null,
 }
@@ -226,7 +222,17 @@ function mockBackend(pages: Record<string, UsagePage> = {}) {
 
       const after = params.after as { key: string } | null
 
-      return pages[after?.key ?? '']
+      return (
+        pages[after?.key ?? ''] ?? {
+          total: report.total,
+          groups:
+            report.rankings.find(
+              ({ dimension }) => dimension === params.groupBy,
+            )?.groups ?? [],
+          other: usage(0, 0, 0),
+          next: null,
+        }
+      )
     }
 
     throw new Error(`unexpected rpc ${method}`)
@@ -255,8 +261,12 @@ function TestTrafficLayout({
       search={search}
       onSearchChange={(update) =>
         navigate({
-          to: page.to,
-          search: (previous) => ({ ...previous, ...update, view: undefined }),
+          to: '.',
+          search: (previous: TrafficSearch) => ({
+            ...previous,
+            ...update,
+            view: undefined,
+          }),
           state: keepReturn,
         })
       }
@@ -324,11 +334,12 @@ async function openRoute(
       createTestRoute(overviewRoute, '/', '/', topologyRoute),
       createTestRoute(flowRoute, '/flow/', '/flow/', topologyRoute),
       createTestRoute(mapRoute, '/map/', '/map/', topologyRoute),
-      createTestRoute(sourceRoute, '/source/', '/source/', topologyRoute),
-      createTestRoute(inboundRoute, '/inbound/', '/inbound/', topologyRoute),
-      createTestRoute(targetRoute, '/target/', '/target/', topologyRoute),
-      createTestRoute(exitRoute, '/exit/', '/exit/', topologyRoute),
-      createTestRoute(processRoute, '/process/', '/process/', topologyRoute),
+      createTestRoute(
+        rankingsRoute,
+        '/$dimension/',
+        '/$dimension/',
+        topologyRoute,
+      ),
     ] as never),
   ] as never)
   const history = createMemoryHistory({
@@ -413,23 +424,39 @@ test('the first request is the last hour of everything, unfiltered', async ({
   expect(rpc.reports[0]).toEqual({
     query: { range: 'last_hour', scope: 'all', filters: [] },
     metric: 'bytes',
-    rankings: ['source', 'inbound', 'target', 'exit', 'process'],
+    rankings: ['process', 'target', 'exit', 'source', 'inbound'],
     ranking_limit: 5,
     topology: null,
   })
   // Overview uses one report for its cards and all five rankings.
   expect(rpc.reports.every((r) => r.rankings.length === 5)).toBe(true)
   expect(rpc.reports.every((r) => r.ranking_limit === 5)).toBe(true)
-  expect(
-    document.querySelectorAll('[data-slot="traffic-ranking"]'),
-  ).toHaveLength(5)
+  // The exit and the inbound have one value each, so they share a card.
+  await expect
+    .poll(() =>
+      [...document.querySelectorAll('[data-slot="traffic-ranking"] h2')].map(
+        (title) => title.textContent,
+      ),
+    )
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_source(),
+    ])
+  const single = view.getByRole('group', { name: m.traffic_rank_single() })
+  await expect
+    .element(single.getByRole('button', { name: /Node-A/ }))
+    .toBeInTheDocument()
+  await expect
+    .element(single.getByRole('button', { name: /mixed/ }))
+    .toBeInTheDocument()
   await expect
     .element(
       view.getByRole('heading', { name: m.traffic_overview(), level: 1 }),
     )
     .toBeInTheDocument()
 
-  // Devices counts the distinct sources, not the rows shown.
+  // No current rate here; devices count the distinct sources, not the rows.
   await expect
     .poll(() =>
       [...document.querySelectorAll('[data-slot="traffic-stat"]')].map(
@@ -439,11 +466,12 @@ test('the first request is the last hour of everything, unfiltered', async ({
     .toEqual([
       expect.stringContaining('5.00 KiB'),
       expect.stringContaining('12'),
-      expect.stringContaining('7'),
-      expect.stringContaining('1'),
-      expect.stringContaining('2'),
-      expect.stringContaining('1'),
-      expect.stringContaining('1'),
+      `${m.traffic_stat_rate()}—`,
+      `${dimensionName('process')}3`,
+      `${dimensionName('target')}2`,
+      `${dimensionName('exit')}1`,
+      `${dimensionName('source')}7`,
+      `${dimensionName('inbound')}1`,
     ])
 })
 
@@ -471,7 +499,18 @@ test('the route stores category selection and filters in search state', async ({
   )
   expect(routeSearch()).not.toHaveProperty('view')
 
-  await sidebarItem(view, dimensionName('source')).click()
+  await sidebarItem(view, m.traffic_rankings()).click()
+  await expect
+    .poll(() => router.state.location.pathname.replace(/\/$/, ''))
+    .toBe('/main/topology/process')
+  // The page transition settles on one ranking before the switch is used.
+  await expect
+    .poll(
+      () =>
+        document.querySelectorAll('[data-slot="traffic-ranking-list"]').length,
+    )
+    .toBe(1)
+  await view.getByRole('radio', { name: dimensionName('source') }).click()
   await expect
     .poll(() => router.state.location.pathname.replace(/\/$/, ''))
     .toBe('/main/topology/source')
@@ -502,12 +541,9 @@ test('the route stores category selection and filters in search state', async ({
     .toEqual(['origin', 'rule', 'chain', 'exit'])
 })
 
-test('a cold source URL shows loading until its first report arrives', async ({
+test('a legacy source view opens the source ranking with its state', async ({
   onTestFinished,
 }) => {
-  let releaseReport!: () => void
-  rpc.holdReport = new Promise<void>((resolve) => (releaseReport = resolve))
-  rpc.releaseReport = releaseReport
   mockBackend()
   const returnTo: ReturnTicket = {
     page: 'connections',
@@ -525,33 +561,24 @@ test('a cold source URL shows loading until its first report arrives', async ({
     { returnTo },
   )
 
-  await expect.poll(() => rpc.reports.length).toBeGreaterThan(0)
-  expect(router.state.location.pathname.replace(/\/$/, '')).toBe(
-    '/main/topology/source',
-  )
+  await expect
+    .poll(() => router.state.location.pathname.replace(/\/$/, ''))
+    .toBe('/main/topology/source')
   expect(router.state.location.search).toEqual(
     expect.objectContaining({ range: 'last7_days', scope: 'closed' }),
   )
   expect(router.state.location.search).not.toHaveProperty('view')
   expect(router.state.location.state.returnTo).toEqual(returnTo)
-  expect(rpc.reports[0].topology).toBeNull()
   await expect
-    .element(view.getByText(m.traffic_loading_more()))
-    .toBeInTheDocument()
-  await expect
-    .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
-    .not.toBeInTheDocument()
-
-  releaseReport()
-  rpc.releaseReport = undefined
-  rpc.holdReport = undefined
-
+    .element(view.getByRole('radio', { name: dimensionName('source') }))
+    .toHaveAttribute('aria-checked', 'true')
   await expect
     .element(view.getByRole('button', { name: /192\.168\.1\.2/ }))
     .toBeInTheDocument()
-  await expect
-    .element(view.getByText(m.traffic_loading_more()))
-    .not.toBeInTheDocument()
+  expect(rpc.pages.at(-1)).toEqual(
+    expect.objectContaining({ groupBy: 'source' }),
+  )
+  expect(rpc.reports.every(({ topology }) => topology === null)).toBe(true)
 })
 
 test('a cold map URL shows loading until its first report arrives', async ({
@@ -712,13 +739,10 @@ test('sidebar changes preserve traffic state and the paused report', async ({
   await view.getByRole('button', { name: m.topology_pause() }).click()
   await expect.poll(() => backend.intervals.at(-1)).toBe(false)
 
-  await sidebarItem(view, dimensionName('source')).click()
+  await sidebarItem(view, m.traffic_rankings()).click()
   await expect
     .element(
-      view.getByRole('heading', {
-        name: dimensionName('source'),
-        level: 1,
-      }),
+      view.getByRole('heading', { name: m.traffic_rankings(), level: 1 }),
     )
     .toBeInTheDocument()
 
@@ -757,6 +781,9 @@ test('a ranking row toggles its filter, and a chip or clear all removes it', asy
   const view = await open(onTestFinished)
   const filters = view.getByRole('group', { name: m.traffic_filters_label() })
   const example = view.getByRole('button', { name: /^example\.com/ })
+  const mixed = view
+    .getByRole('group', { name: m.traffic_rank_single() })
+    .getByRole('button', { name: /mixed/ })
   await expect.element(example).toHaveAttribute('aria-pressed', 'false')
 
   await example.click()
@@ -774,7 +801,7 @@ test('a ranking row toggles its filter, and a chip or clear all removes it', asy
     .poll(() => last().query.filters)
     .toEqual([{ dimension: 'target', value: 'api.example.com' }])
 
-  await view.getByRole('button', { name: /^mixed/ }).click()
+  await mixed.click()
   await expect.poll(() => last().query.filters).toHaveLength(2)
 
   await view
@@ -789,11 +816,11 @@ test('a ranking row toggles its filter, and a chip or clear all removes it', asy
     .toEqual([{ dimension: 'inbound', value: 'mixed' }])
 
   // The same row again takes the filter off.
-  await view.getByRole('button', { name: /^mixed/ }).click()
+  await mixed.click()
   await expect.poll(() => last().query.filters).toEqual([])
 
   await view.getByRole('button', { name: /^example\.com/ }).click()
-  await view.getByRole('button', { name: /^mixed/ }).click()
+  await mixed.click()
   await expect.poll(() => last().query.filters).toHaveLength(2)
   await view.getByRole('button', { name: m.traffic_filter_clear_all() }).click()
   await expect.poll(() => last().query.filters).toEqual([])
@@ -933,7 +960,7 @@ test('unavailable recording shows the error card instead of the figures', async 
     .not.toBeInTheDocument()
 })
 
-test('view all pages through every value and a pick filters and closes', async ({
+test('view all opens the full ranking, which pages through every value', async ({
   onTestFinished,
 }) => {
   const cursor = { usage: usage(1, 2, 1), key: 'first.example' }
@@ -952,7 +979,7 @@ test('view all pages through every value and a pick filters and closes', async (
       next: null,
     },
   })
-  const view = await open(onTestFinished, {
+  const { view, router } = await openRoute(onTestFinished, {
     scope: 'closed',
     filters: [
       { d: 'target', v: 'example.com' },
@@ -960,25 +987,26 @@ test('view all pages through every value and a pick filters and closes', async (
     ],
   })
 
-  // The host card is the third of the five.
+  // The host card is the second.
   await view
-    .getByRole('button', { name: m.traffic_rank_view_all() })
-    .nth(2)
+    .getByRole('link', { name: m.traffic_rank_view_all() })
+    .nth(1)
     .click()
-
   await expect
-    .element(view.getByRole('button', { name: /^second\.example/ }))
+    .poll(() => router.state.location.pathname.replace(/\/$/, ''))
+    .toBe('/main/topology/target')
+
+  // A ranked row reads its place first.
+  await expect
+    .element(view.getByRole('button', { name: /second\.example/ }))
     .toBeInTheDocument()
   expect(rpc.pages).toEqual([
     {
-      // The backend lists every value of the filtered dimension as a choice.
+      // The dimension's own filter changes nothing the backend lists.
       query: {
         range: 'last_hour',
         scope: 'closed',
-        filters: [
-          { dimension: 'target', value: 'example.com' },
-          { dimension: 'inbound', value: 'mixed' },
-        ],
+        filters: [{ dimension: 'inbound', value: 'mixed' }],
       },
       groupBy: 'target',
       metric: 'bytes',
@@ -988,16 +1016,15 @@ test('view all pages through every value and a pick filters and closes', async (
     expect.objectContaining({ after: cursor }),
   ])
 
-  await view.getByRole('button', { name: /^second\.example/ }).click()
+  await view.getByRole('button', { name: /second\.example/ }).click()
   await expect
     .poll(() => last().query.filters)
     .toEqual([
       { dimension: 'target', value: 'second.example' },
       { dimension: 'inbound', value: 'mixed' },
     ])
-  await expect
-    .element(view.getByRole('button', { name: m.common_close() }))
-    .not.toBeInTheDocument()
+  // Picking a value keeps the pages read so far.
+  expect(rpc.pages).toHaveLength(2)
 })
 
 test('a category paginates all values and replaces its selected filter', async ({
@@ -1027,7 +1054,6 @@ test('a category paginates all values and replaces its selected filter', async (
     ],
   })
 
-  await view.getByRole('button', { name: m.traffic_rank_view_all() }).click()
   await expect
     .element(view.getByRole('button', { name: /10\.0\.0\.3/ }))
     .toBeInTheDocument()
@@ -1036,10 +1062,7 @@ test('a category paginates all values and replaces its selected filter', async (
       query: {
         range: 'last_hour',
         scope: 'all',
-        filters: [
-          { dimension: 'source', value: '192.168.1.2' },
-          { dimension: 'target', value: 'example.com' },
-        ],
+        filters: [{ dimension: 'target', value: 'example.com' }],
       },
       groupBy: 'source',
       metric: 'bytes',
@@ -1056,9 +1079,6 @@ test('a category paginates all values and replaces its selected filter', async (
       { dimension: 'source', value: '10.0.0.3' },
       { dimension: 'target', value: 'example.com' },
     ])
-  await expect
-    .element(view.getByRole('button', { name: m.common_close() }))
-    .not.toBeInTheDocument()
 })
 
 const templateName = (template: LayerTemplate) =>
@@ -1166,6 +1186,52 @@ test('a node filters by its layer, the merged node does nothing', async ({
     .toEqual([{ dimension: 'exit', value: 'exit-3' }])
 })
 
+test('the flow and the map show the top rankings their picks filter', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'flow' })
+  const rankings = view.getByRole('region', { name: m.traffic_view_rankings() })
+
+  await expect.element(node(view, 'rule', 'rule-1')).toBeInTheDocument()
+  await expect
+    .poll(() =>
+      [
+        ...document.querySelectorAll(
+          '[data-slot="traffic-view-rankings"] [data-slot="traffic-ranking"] h2',
+        ),
+      ].map((title) => title.textContent),
+    )
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_exit(),
+    ])
+
+  // A node filters the rankings beside it, and a ranking row the drawing.
+  await press(node(view, 'rule', 'rule-1'))
+  await expect
+    .poll(() => last().query.filters)
+    .toEqual([{ dimension: 'rule', value: 'rule-1' }])
+  await rankings.getByRole('button', { name: /^example\.com/ }).click()
+  await expect
+    .poll(() => last().query.filters)
+    .toEqual([
+      { dimension: 'rule', value: 'rule-1' },
+      { dimension: 'target', value: 'example.com' },
+    ])
+  expect(last().topology).not.toBeNull()
+
+  await sidebarItem(view, m.topology_geo_map()).click()
+  await expect
+    .element(
+      view
+        .getByRole('region', { name: m.traffic_view_rankings() })
+        .getByRole('button', { name: /^example\.com/ }),
+    )
+    .toHaveAttribute('aria-pressed', 'true')
+})
+
 test('hovering a node leaves only its adjacent edges lit', async ({
   onTestFinished,
 }) => {
@@ -1180,6 +1246,12 @@ test('hovering a node leaves only its adjacent edges lit', async ({
 
   // Three gaps of two by two edges.
   await expect.poll(() => bands().length).toBe(12)
+
+  // Without the stylesheet the nodes are not absolutely positioned and spill
+  // over the rankings below the drawing, which would take the pointer.
+  document.querySelector<HTMLElement>(
+    '[data-slot="traffic-view-rankings"]',
+  )!.style.pointerEvents = 'none'
 
   // Move the real pointer onto the node: a cursor left over the page by an
   // earlier test would otherwise fire a mouseover on whichever node renders
@@ -1337,10 +1409,10 @@ test('the toolbar metric orders the rankings and the full list', async ({
   const view = await open(onTestFinished)
   const toolbar = () =>
     document.querySelector<HTMLElement>('[data-slot="traffic-toolbar"]')!
-  const inbound = view.getByRole('button', { name: /^mixed/ })
+  const host = view.getByRole('button', { name: /^api\.example\.com/ })
 
-  await expect.element(inbound).toBeInTheDocument()
-  expect(inbound.element().textContent).toContain('mixed3.00 KiB')
+  await expect.element(host).toBeInTheDocument()
+  expect(host.element().textContent).toContain('api.example.com3.00 KiB')
 
   const metric = view.getByRole('button', { name: m.traffic_metric_label() })
   expect(toolbar().contains(metric.element())).toBe(true)
@@ -1353,12 +1425,12 @@ test('the toolbar metric orders the rankings and the full list', async ({
   await expect.poll(() => last().metric).toBe('connections')
   // A row leads with the metric and ends its second line with the other one.
   await expect
-    .poll(() => inbound.element().textContent)
-    .toContain(`mixed${m.topology_connection_count({ count: 3 })}`)
-  expect(inbound.element().textContent).toMatch(/3\.00 KiB$/)
+    .poll(() => host.element().textContent)
+    .toContain(`api.example.com${m.topology_connection_count({ count: 3 })}`)
+  expect(host.element().textContent).toMatch(/3\.00 KiB$/)
 
   await view
-    .getByRole('button', { name: m.traffic_rank_view_all() })
+    .getByRole('link', { name: m.traffic_rank_view_all() })
     .nth(1)
     .click()
   await expect
@@ -1584,7 +1656,7 @@ test('the stat card with a hint and a ranking row reveal their tooltip on focus'
 
   const cards = () =>
     document.querySelectorAll<HTMLElement>('[data-slot="traffic-stat"]')
-  await expect.poll(() => cards().length).toBe(7)
+  await expect.poll(() => cards().length).toBe(8)
   expect(cards()[1].tabIndex).toBe(0)
   expect(cards()[2].tabIndex).toBe(-1)
 
@@ -1602,7 +1674,7 @@ test('the stat card with a hint and a ranking row reveal their tooltip on focus'
     .toBeInTheDocument()
 })
 
-test('view all tells when the listing is unavailable or empty', async ({
+test('a ranking tells when the listing is unavailable or empty', async ({
   onTestFinished,
 }) => {
   const empty = usage(0, 0, 0)
@@ -1610,10 +1682,10 @@ test('view all tells when the listing is unavailable or empty', async ({
   mockBackend({ '': { total: empty, groups: [], other: empty, next: null } })
   const view = await open(onTestFinished)
 
-  const viewAll = (index: number) =>
-    view.getByRole('button', { name: m.traffic_rank_view_all() }).nth(index)
-
-  await viewAll(0).click()
+  await view
+    .getByRole('link', { name: m.traffic_rank_view_all() })
+    .first()
+    .click()
   await expect
     .element(view.getByRole('status'))
     .toHaveTextContent(m.traffic_unavailable())
@@ -1621,9 +1693,8 @@ test('view all tells when the listing is unavailable or empty', async ({
     .element(view.getByText(m.traffic_loading_more()))
     .not.toBeInTheDocument()
 
-  await view.getByRole('button', { name: m.common_close() }).click()
   rpc.usageError = false
   // Another dimension's listing was never fetched, so it asks again.
-  await viewAll(1).click()
+  await view.getByRole('radio', { name: dimensionName('target') }).click()
   await expect.element(view.getByText(m.traffic_empty())).toBeInTheDocument()
 })

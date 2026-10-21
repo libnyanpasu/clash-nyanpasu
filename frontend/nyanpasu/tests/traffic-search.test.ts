@@ -12,6 +12,7 @@ import {
   trafficSearchSchema,
   VIEWS,
 } from '../src/pages/(main)/main/topology/_modules/search'
+import type { TrafficView } from '../src/pages/(main)/main/topology/_modules/traffic-context'
 
 test('an empty search is the last hour of everything with no legacy view', () => {
   const search = trafficSearchSchema.parse({})
@@ -123,52 +124,38 @@ test('a range is beyond the retention when it reaches back further', () => {
   expect(beyondRetention('last30_days', undefined)).toBe(false)
 })
 
+// The page shown, with the rest of the search as the URL holds it.
+const topologyOf = (view: TrafficView, search: Record<string, unknown> = {}) =>
+  toTopologyRequest({ ...trafficSearchSchema.parse(search), view })
+
 test('only flow and map requests include topology', () => {
-  expect(toTopologyRequest(trafficSearchSchema.parse({}))).toBeNull()
-  expect(
-    toTopologyRequest(trafficSearchSchema.parse({ view: 'overview' })),
-  ).toBeNull()
-  for (const view of [
-    'source',
-    'inbound',
-    'target',
-    'exit',
-    'process',
-  ] as const)
-    expect(toTopologyRequest(trafficSearchSchema.parse({ view }))).toBeNull()
-  expect(
-    toTopologyRequest(trafficSearchSchema.parse({ view: 'flow' })),
-  ).toEqual({
+  expect(topologyOf('overview')).toBeNull()
+  expect(topologyOf('rankings')).toBeNull()
+  expect(topologyOf('flow')).toEqual({
     layers: ['origin', 'rule', 'chain', 'exit'],
     limit_per_layer: 7,
   })
-  expect(
-    toTopologyRequest(
-      trafficSearchSchema.parse({ view: 'flow', layers: 'source' }),
-    )?.layers,
-  ).toEqual(['source', 'target', 'exit'])
-  expect(toTopologyRequest(trafficSearchSchema.parse({ view: 'map' }))).toEqual(
-    {
-      layers: ['source_region', 'destination_region', 'destination_basis'],
-      limit_per_layer: null,
-    },
-  )
+  expect(topologyOf('flow', { layers: 'source' })?.layers).toEqual([
+    'source',
+    'target',
+    'exit',
+  ])
+  expect(topologyOf('map')).toEqual({
+    layers: ['source_region', 'destination_region', 'destination_basis'],
+    limit_per_layer: null,
+  })
   expect(trafficSearchSchema.safeParse({ layers: 'nope' }).success).toBe(false)
 })
 
 test('the limit is a count or all, and all asks for no limit', () => {
-  const request = (limit: unknown) =>
-    toTopologyRequest(trafficSearchSchema.parse({ view: 'flow', limit }))!
+  const request = (limit: unknown) => topologyOf('flow', { limit })!
 
   expect(request(undefined).limit_per_layer).toBe(7)
   expect(request(5).limit_per_layer).toBe(5)
   expect(request(20).limit_per_layer).toBe(20)
   expect(request('all').limit_per_layer).toBeNull()
   // The map places every region whatever the limit.
-  expect(
-    toTopologyRequest(trafficSearchSchema.parse({ view: 'map', limit: 5 }))!
-      .limit_per_layer,
-  ).toBeNull()
+  expect(topologyOf('map', { limit: 5 })!.limit_per_layer).toBeNull()
   expect(trafficSearchSchema.safeParse({ limit: 6 }).success).toBe(false)
   expect(trafficSearchSchema.safeParse({ limit: '7' }).success).toBe(false)
 })

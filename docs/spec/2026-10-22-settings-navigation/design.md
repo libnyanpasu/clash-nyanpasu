@@ -283,13 +283,15 @@ stay apart whatever the theme seed is. Tailwind maps them to
 
 ### 5.5 Components
 
-Only the settings pages use this navigation, so it stays in
-`settings/_modules/settings-navigate.tsx` rather than `@nyanpasu/ui` (no
-abstraction for a single consumer). Groups and items are composed in JSX:
+The navigation parts live in `@nyanpasu/ui/navigation-list`, because Profiles
+(and later Proxies) consume them too; Settings kept them local only while it was
+the single consumer. See the [Profiles redesign](../2026-10-22-profiles-redesign/design.md)
+§3. The package has no router dependency, so the app computes `active` and
+renders the router `Link`. Groups and items are composed in JSX:
 
 ```tsx
-<SettingsNavigation aria-label={m.settings_navigation()}>
-  <SettingsNavigationGroup label={m.settings_group_clash()}>
+<NavigationList aria-label={m.settings_navigation()}>
+  <NavigationListGroup label={m.settings_group_clash()}>
     <SettingsNavigationItem
       to="/main/settings/clash/core-manager"
       color="purple"
@@ -298,17 +300,31 @@ abstraction for a single consumer). Groups and items are composed in JSX:
       description={m.settings_label_core_manager_description()}
     />
     …
-  </SettingsNavigationGroup>
-</SettingsNavigation>
+  </NavigationListGroup>
+</NavigationList>
 ```
 
-Styles are `cva` definitions such as `settingsNavigationItemVariants`. The item
+`SettingsNavigationItem` stays in `settings/_modules/settings-navigate.tsx`
+because it owns app logic: it computes `active` with `useMatchRoute` and renders
+the TanStack `Link` with `aria-current="page"`. It composes the package parts:
+
+```tsx
+<NavigationListItem active={isActive} asChild>
+  <Link aria-current={isActive ? 'page' : undefined} {...props}>
+    <NavigationListItemIcon color={color}>{icon}</NavigationListItemIcon>
+    <NavigationListItemText headline={label} supporting={description} />
+  </Link>
+</NavigationListItem>
+```
+
+Styles are `cva` definitions such as `navigationListItemVariants`. The item
 position (first, middle, last) comes from CSS sibling selectors on the group,
-like `SettingsGroup`, not from props. Slots: `settings-navigation`,
-`settings-navigation-group`, `settings-navigation-group-label`,
-`settings-navigation-item`; the icon keeps `MaterialShape`'s own `material-shape`
-slot. Existing slots such
-as `settings-sidebar-scroll-area` stay.
+like `SettingsGroup`, not from props. The icon reads the item's `active` state
+through a small context, so it morphs without a prop. Slots: `navigation-list`,
+`navigation-list-group`, `navigation-list-group-label`, `navigation-list-item`,
+`navigation-list-item-icon` (the shape inside keeps `MaterialShape`'s own
+`material-shape` slot). These replace the unreleased `settings-navigation*`
+slots. Existing slots such as `settings-sidebar-scroll-area` stay.
 
 Icons (`material-symbols`): Proxy `vpn-lock-rounded`, Service & Startup
 `power-settings-new-rounded`, Core Manager `deployed-code-rounded`, Core

@@ -6997,6 +6997,7 @@ version = "0.1.0"
 dependencies = [
  "nyanpasu-tsdb",
  "postcard",
+ "redb",
  "serde",
  "serde_json",
  "specta",

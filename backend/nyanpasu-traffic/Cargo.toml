@@ -15,6 +15,7 @@ thiserror.workspace = true
 tracing.workspace = true
 nyanpasu-tsdb = { path = '../nyanpasu-tsdb' }
 postcard = { version = '1', default-features = false, features = ['use-std'] }
+redb = '4.4.0'
 specta = { version = '^2.0.0-rc.25', optional = true, features = ['derive'] }
 
 [dev-dependencies]

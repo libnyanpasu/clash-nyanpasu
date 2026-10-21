@@ -1,5 +1,6 @@
 import CheckCircleRounded from '~icons/material-symbols/check-circle-rounded'
 import DeployedCodeUpdateOutlineRounded from '~icons/material-symbols/deployed-code-update-outline-rounded'
+import DescriptionOutlineRounded from '~icons/material-symbols/description-outline-rounded'
 import DownloadRounded from '~icons/material-symbols/download-rounded'
 import ErrorRounded from '~icons/material-symbols/error-rounded'
 import MoreHorizRounded from '~icons/material-symbols/more-horiz-rounded'
@@ -370,50 +371,59 @@ export default function UpdateControls() {
                       <span className="text-xs opacity-80">{statusDetail}</span>
                     )}
 
-                    {release && (
-                      <Modal>
-                        <ModalTrigger asChild>
-                          <Button
-                            className="-ml-2 h-auto self-start px-2 py-1 text-xs"
-                            variant="basic"
-                          >
-                            {m.settings_about_update_changelog()}
-                          </Button>
-                        </ModalTrigger>
-                        <ModalContent>
-                          <Card className="flex max-h-[90dvh] max-w-3xl min-w-80 flex-col">
-                            <CardHeader className="shrink-0">
-                              <ModalTitle>
-                                {m.settings_about_update_changelog_title({
-                                  version: release.version,
-                                })}
-                              </ModalTitle>
-                            </CardHeader>
-                            <CardContent
-                              asChild
-                              className="min-h-0 flex-1 overflow-hidden"
-                            >
-                              <ScrollArea className="max-h-[65dvh]">
-                                <AppUpdateChangelog
-                                  from={currentVersion}
-                                  to={release.version}
-                                  fallbackBody={release.body}
-                                />
-                              </ScrollArea>
-                            </CardContent>
-                            <CardFooter className="shrink-0 justify-end">
-                              <ModalClose>{m.common_close()}</ModalClose>
-                            </CardFooter>
-                          </Card>
-                        </ModalContent>
-                      </Modal>
-                    )}
                     {snapshot?.error && (
                       <span className="text-sm break-words" role="alert">
                         {snapshot.error}
                       </span>
                     )}
                   </div>
+                  {release && (
+                    <Modal>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <ModalTrigger asChild>
+                            <Button
+                              icon
+                              className="size-10 shrink-0"
+                              variant="basic"
+                              aria-label={m.settings_about_update_changelog()}
+                            >
+                              <DescriptionOutlineRounded className="size-5" />
+                            </Button>
+                          </ModalTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {m.settings_about_update_changelog()}
+                        </TooltipContent>
+                      </Tooltip>
+                      <ModalContent>
+                        <Card className="flex max-h-[90dvh] max-w-3xl min-w-80 flex-col">
+                          <CardHeader className="shrink-0">
+                            <ModalTitle>
+                              {m.settings_about_update_changelog_title({
+                                version: release.version,
+                              })}
+                            </ModalTitle>
+                          </CardHeader>
+                          <CardContent
+                            asChild
+                            className="min-h-0 flex-1 overflow-hidden"
+                          >
+                            <ScrollArea className="max-h-[65dvh]">
+                              <AppUpdateChangelog
+                                from={currentVersion}
+                                to={release.version}
+                                fallbackBody={release.body}
+                              />
+                            </ScrollArea>
+                          </CardContent>
+                          <CardFooter className="shrink-0 justify-end">
+                            <ModalClose>{m.common_close()}</ModalClose>
+                          </CardFooter>
+                        </Card>
+                      </ModalContent>
+                    </Modal>
+                  )}
                   {showMore && (
                     <motion.div
                       key="more"

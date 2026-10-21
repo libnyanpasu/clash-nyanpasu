@@ -76,6 +76,9 @@ pub enum ConfigExecutionRole {
 pub enum BuiltinStepKind {
     /// Drops the top-level keys the field filter does not allow.
     FieldFilter,
+    /// Brings back the keys left to the profiles that the field filter
+    /// dropped.
+    KeepUnmanaged,
     /// Writes the keys Nyanpasu forces and removes the ones it owns but has
     /// turned off.
     ManagedSettings,

@@ -77,6 +77,8 @@ export function stepKind(tag: OperatorTag): string {
       switch (tag.data.step) {
         case 'field_filter':
           return m.inspect_filter()
+        case 'keep_unmanaged':
+          return m.inspect_keep_unmanaged()
         case 'managed_settings':
           return m.inspect_forced_settings()
         case 'defaults':

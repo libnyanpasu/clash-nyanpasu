@@ -21,6 +21,97 @@ pub fn apply_defaults(config: &ConfigValue, entries: &OwnershipEntries) -> (Conf
     apply(config, entries, Pass::Defaults)
 }
 
+/// Copies each [`Ownership::Inherited`] key that `source` has into the
+/// `filtered` mapping, creating its missing parent mappings, with the patch as
+/// [`apply_settings`] does. The field filter only drops whole top-level keys
+/// of `source`, so a key `filtered` still has is the same and stays.
+pub fn keep_inherited(
+    filtered: &ConfigValue,
+    source: &ConfigValue,
+    entries: &OwnershipEntries,
+) -> (ConfigValue, Patch) {
+    let mut ops = Vec::new();
+    if let Some(source) = source.as_object_arc()
+        && inherits(entries)
+    {
+        let mut map = object_of(Some(filtered));
+        keep(
+            &mut map,
+            source,
+            entries,
+            &PointerBuf::new(),
+            Some(&mut ops),
+        );
+        if !ops.is_empty() {
+            return (ConfigValue::Object(Arc::new(map)), Patch(ops));
+        }
+    }
+    (filtered.clone(), Patch(ops))
+}
+
+fn inherits(entries: &OwnershipEntries) -> bool {
+    entries.iter().any(|(_, ownership)| match ownership {
+        Ownership::Inherited => true,
+        Ownership::Table { entries, .. } => inherits(entries),
+        _ => false,
+    })
+}
+
+/// Edits one mapping in place and reports whether it changed, recording as
+/// [`walk`] does.
+fn keep(
+    map: &mut ConfigObject,
+    source: &ConfigObject,
+    entries: &OwnershipEntries,
+    path: &PointerBuf,
+    mut ops: Option<&mut Vec<PatchOperation>>,
+) -> bool {
+    let mut changed = false;
+    for (key, ownership) in entries {
+        let Some(from) = source.get(*key) else {
+            continue;
+        };
+        match ownership {
+            Ownership::Inherited if !map.contains_key(*key) => {
+                map.insert(Arc::from(*key), from.clone());
+                if let Some(ops) = ops.as_deref_mut() {
+                    ops.push(add(path, key, from));
+                }
+                changed = true;
+            }
+            Ownership::Table { entries, .. } if inherits(entries) => {
+                let Some(from) = from.as_object_arc() else {
+                    continue;
+                };
+                match map.get(*key) {
+                    Some(ConfigValue::Object(table)) => {
+                        let mut table = (**table).clone();
+                        let child = path.with_trailing_token(*key);
+                        if keep(&mut table, from, entries, &child, ops.as_deref_mut()) {
+                            set(map, key, ConfigValue::Object(Arc::new(table)));
+                            changed = true;
+                        }
+                    }
+                    None => {
+                        let mut table = ConfigObject::new();
+                        if keep(&mut table, from, entries, path, None) {
+                            let table = ConfigValue::Object(Arc::new(table));
+                            if let Some(ops) = ops.as_deref_mut() {
+                                ops.push(add(path, key, &table));
+                            }
+                            set(map, key, table);
+                            changed = true;
+                        }
+                    }
+                    Some(_) => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    changed
+}
+
 /// The leaves one walk writes; the others are left for another step.
 #[derive(Clone, Copy)]
 enum Pass {
@@ -259,6 +350,76 @@ mod tests {
             ),
             json!({ "profile": { "store-selected": false }, "dns": null, "mode": "rule" }),
         );
+    }
+
+    fn kept(
+        filtered: serde_json::Value,
+        source: serde_json::Value,
+        entries: &OwnershipEntries,
+    ) -> serde_json::Value {
+        let source = value(source);
+        checked(filtered, |filtered| {
+            keep_inherited(filtered, &source, entries)
+        })
+    }
+
+    /// The field filter dropped `unified-delay` and `tun`; the inherited keys
+    /// come back, and only those.
+    #[test]
+    fn inherited_keys_come_back_from_before_the_filter() {
+        let source = json!({
+            "unified-delay": false,
+            "tun": { "auto-route": "global", "mtu": 1400 },
+            "tcp-concurrent": true,
+            "proxies": [],
+        });
+        let entries = vec![
+            ("unified-delay", Ownership::Inherited),
+            (
+                "tun",
+                table(
+                    vec![
+                        ("auto-route", Ownership::Inherited),
+                        ("enable", Ownership::Forced(value(json!(true)))),
+                    ],
+                    true,
+                ),
+            ),
+            ("tcp-concurrent", Ownership::Forced(value(json!(false)))),
+            ("log-level", Ownership::Inherited),
+        ];
+
+        assert_same(
+            kept(json!({ "proxies": [] }), source.clone(), &entries),
+            json!({ "proxies": [], "unified-delay": false, "tun": { "auto-route": "global" } }),
+        );
+        // A key the filter kept is already there and stays as it is.
+        assert_same(kept(source.clone(), source.clone(), &entries), source);
+    }
+
+    #[test]
+    fn a_whole_inherited_table_comes_back() {
+        assert_same(
+            kept(
+                json!({}),
+                json!({ "dns": { "enable": false, "nameserver": ["1.1.1.1"] } }),
+                &vec![("dns", Ownership::Inherited)],
+            ),
+            json!({ "dns": { "enable": false, "nameserver": ["1.1.1.1"] } }),
+        );
+    }
+
+    /// A parent that is not a mapping before the filter holds no inherited
+    /// key, so nothing is created for it.
+    #[test]
+    fn nothing_comes_back_from_under_a_value_that_is_not_a_mapping() {
+        let entries = vec![(
+            "tun",
+            table(vec![("auto-route", Ownership::Inherited)], true),
+        )];
+
+        assert_same(kept(json!({}), json!({ "tun": true }), &entries), json!({}));
+        assert_same(kept(json!({}), json!({ "tun": {} }), &entries), json!({}));
     }
 
     #[test]

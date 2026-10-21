@@ -32,7 +32,7 @@ use crate::{
         ProfileDefinition, ProfileId, Profiles, ScriptRuntime, TransformDefinition, TransformKind,
     },
     runtime::{
-        post_process::{apply_defaults, apply_settings},
+        post_process::{apply_defaults, apply_settings, keep_inherited},
         snapshot::{
             BuiltinStepKind, ConfigExecutionRole, ConfigSnapshotsBuilder, OperatorTag,
             SnapshotNodeKey,
@@ -267,9 +267,10 @@ pub fn execute(
         }
     };
 
-    // Shared tail (spec §7.1): global → sample → field filter → managed
-    // settings → defaults → builtin×N → include-all expansion. Nyanpasu's own
-    // steps record the patch they made instead of diffing the trees.
+    // Shared tail (spec §7.1): global → sample → field filter → keep
+    // unmanaged → managed settings → defaults → builtin×N → include-all
+    // expansion. Nyanpasu's own steps record the patch they made instead of
+    // diffing the trees.
     for (index, transform_id) in inputs.profiles.global_transforms.iter().enumerate() {
         let (next, kind, entries, failed) =
             apply_transform(inputs.profiles, content, runner, transform_id, &working);
@@ -296,14 +297,19 @@ pub fn execute(
         selected_profile_id: selected.clone(),
         step,
     };
+    let ownership = plan::ownership(&inputs.guard, &inputs.tun);
     if inputs.whitelist_enabled {
         let stage1 = builtin::stage1_fields(&inputs.profiles.valid);
-        let (next, patch) = builtin::filter_fields(&working, &stage1);
+        let (filtered, patch) = builtin::filter_fields(&working, &stage1);
+        let filtered = Arc::new(filtered);
+        builder.push_delta(step(BuiltinStepKind::FieldFilter), filtered.clone(), patch)?;
+        // A field left to the profiles keeps their value whatever the filter
+        // allows: choosing it is the user's say on that one key.
+        let (next, patch) = keep_inherited(&filtered, &working, &ownership);
         working = Arc::new(next);
-        builder.push_delta(step(BuiltinStepKind::FieldFilter), working.clone(), patch)?;
+        builder.push_delta(step(BuiltinStepKind::KeepUnmanaged), working.clone(), patch)?;
     }
 
-    let ownership = plan::ownership(&inputs.guard, &inputs.tun);
     let (next, patch) = apply_settings(&working, &ownership);
     working = Arc::new(next);
     builder.push_delta(

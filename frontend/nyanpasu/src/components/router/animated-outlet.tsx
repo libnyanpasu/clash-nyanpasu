@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useIsPresent, Variants } from 'motion/react'
-import { ComponentProps, useRef } from 'react'
+import { ComponentProps, useRef, type ReactNode } from 'react'
 import {
   ClashConnectionDetailsFreezeBoundary,
   ClashWSFreezeBoundary,
@@ -60,10 +60,20 @@ function getDirectionalVariant(direction: TransitionDirection) {
     : directionalSlideVariants.backward
 }
 
+export type AnimatedOutletProps = ComponentProps<typeof motion.div> & {
+  /**
+   * Wraps the routed page, for example in a provider of the parent layout's
+   * context. A leaving page keeps the wrapper it had when it started leaving,
+   * so a value given here does not change, nor re-render it, during the slide.
+   */
+  renderOutlet?: (outlet: ReactNode) => ReactNode
+}
+
 export function AnimatedOutlet({
   ref,
+  renderOutlet,
   ...props
-}: ComponentProps<typeof motion.div>) {
+}: AnimatedOutletProps) {
   const isPresent = useIsPresent()
 
   const matches = useMatches()
@@ -138,7 +148,7 @@ export function AnimatedOutlet({
             leaving, so live updates do not re-render it during the slide. */}
         <ClashWSFreezeBoundary frozen={!isPresent}>
           <ClashConnectionDetailsFreezeBoundary frozen={!isPresent}>
-            <Outlet />
+            {renderOutlet ? renderOutlet(<Outlet />) : <Outlet />}
           </ClashConnectionDetailsFreezeBoundary>
         </ClashWSFreezeBoundary>
       </RouterContextProvider>
@@ -164,7 +174,7 @@ export function AnimatedOutlet({
  * </div>
  * ```
  */
-export function AnimatedOutletPreset(props: ComponentProps<typeof motion.div>) {
+export function AnimatedOutletPreset(props: AnimatedOutletProps) {
   const matches = useMatches()
   const match = useMatch({ strict: false })
   const pathname = useRouterState({

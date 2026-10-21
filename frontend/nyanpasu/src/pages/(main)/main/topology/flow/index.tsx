@@ -12,6 +12,7 @@ import {
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { m } from '@/paraglide/messages'
 import { dimensionName } from '@/utils/traffic-usage'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   DEFAULT_TEMPLATE,
@@ -50,8 +51,11 @@ function Loading() {
 }
 
 function TrafficFlowPage() {
-  const { search, report, onSearchChange } = useTrafficPage()
-  const { flowGraph } = useTrafficViewSettings().settings
+  const { search, report, empty, onSearchChange } = useTrafficPage()
+  const { flowGraph, rankings } = useTrafficViewSettings().settings
+  // Rankings under the card leave it a height of its own, so it does not
+  // follow theirs; without them it fills the page.
+  const rankingsShown = !!report && !empty && rankings.length > 0
   const topology = report?.topology
   const { layers: layerTemplate, limit } = search
   const template = layerTemplate ?? DEFAULT_TEMPLATE
@@ -63,7 +67,10 @@ function TrafficFlowPage() {
       aria-label={m.topology_title()}
     >
       <Card
-        className="flex min-h-80 flex-1 flex-col p-3 md:p-4"
+        className={cn(
+          'flex min-h-80 flex-col p-3 md:p-4',
+          rankingsShown ? 'h-[min(40rem,70dvh)] flex-none' : 'flex-1',
+        )}
         data-slot="flow-card"
       >
         <div className="mb-4 flex min-w-0 flex-wrap items-end gap-3">

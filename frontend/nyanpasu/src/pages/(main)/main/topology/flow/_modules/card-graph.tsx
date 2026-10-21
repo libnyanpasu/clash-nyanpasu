@@ -29,8 +29,6 @@ const LARGE_GRAPH = 200
 // A taller column than this packs every column from the top; centering the
 // short ones against it would push them far down the page.
 const CENTERED_ROWS = 16
-// The drawing scrolls inside this height instead of stretching the page.
-const MAX_GRAPH_HEIGHT = '40rem'
 
 /** Exit animations only matter while the drawing is animated at all. */
 function Presence({
@@ -109,8 +107,8 @@ export default function CardGraph({
     <div
       // The padding leaves room for the focus ring (2px + 2px offset) of the
       // nodes at the edges, which the scroll container would clip.
-      className="overflow-auto p-2"
-      style={{ maxHeight: MAX_GRAPH_HEIGHT }}
+      // The drawing scrolls inside the card instead of stretching it.
+      className="min-h-0 flex-1 overflow-auto p-2"
       tabIndex={0}
       role="region"
       aria-label={m.topology_title()}

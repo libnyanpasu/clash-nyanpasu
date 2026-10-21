@@ -583,51 +583,45 @@ test('the full listing of a ranking mounts only the rows in view', async ({
     .toBe(true)
 })
 
-test('the flow card and its rankings fill the page down to its bottom inset', async ({
-  onTestFinished,
-}) => {
-  mockBackend()
-  const view = await open(onTestFinished)
-  await sidebarItem(view, m.topology_flow()).click()
-  await expect
-    .element(view.getByRole('heading', { name: m.topology_flow(), level: 1 }))
-    .toBeInTheDocument()
-
-  const content = document.querySelector<HTMLElement>(
-    '[data-slot="traffic-content"]',
-  )!
-  const inset = parseFloat(getComputedStyle(content).paddingBottom)
-
-  // The card grows down to the rankings under it, set apart by their margin,
-  // and they reach the content's bottom padding, nothing else is left below.
-  await expect
-    .poll(() => {
-      const card = document.querySelector<HTMLElement>(
-        '[data-slot="flow-card"]',
-      )
-      const rankings = document.querySelector<HTMLElement>(
-        '[data-slot="traffic-view-rankings"]',
-      )
-
-      return card && rankings
-        ? Math.max(
-            content.getBoundingClientRect().bottom -
-              inset -
-              rankings.getBoundingClientRect().bottom,
-            rankings.getBoundingClientRect().top -
-              card.getBoundingClientRect().bottom -
-              parseFloat(getComputedStyle(card.parentElement!).rowGap) -
-              parseFloat(getComputedStyle(rankings).marginTop),
-          )
-        : Infinity
-    })
-    .toBeLessThanOrEqual(1)
-})
-
 // The menu sits in a portal over the page, where a pointer click waits on
 // actionability checks that never settle in the test frame.
 const pick = async (locator: { element: () => Element }) =>
   (locator.element() as HTMLElement).click()
+
+test('the flow card keeps its height whichever rankings show under it', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  // Tall enough to leave room under the rankings for the card to take.
+  await page.viewport(1280, 1600)
+  const view = await open(onTestFinished, { view: 'flow' })
+  const cardHeight = () =>
+    document.querySelector<HTMLElement>('[data-slot="flow-card"]')!.offsetHeight
+  const rankingCards = () =>
+    document.querySelectorAll(
+      '[data-slot="traffic-view-rankings"] [data-slot="traffic-ranking"]',
+    ).length
+
+  await expect.poll(rankingCards).toBe(3)
+  const height = cardHeight()
+  expect(height).toBeGreaterThan(0)
+
+  // All five take a second row of cards.
+  await view.getByRole('button', { name: m.traffic_view_settings() }).click()
+  for (const title of [m.traffic_rank_source(), m.traffic_rank_inbound()]) {
+    await pick(view.getByRole('menuitemcheckbox', { name: title }))
+  }
+  await expect.poll(rankingCards).toBe(5)
+  expect(cardHeight()).toBe(height)
+  // The test ends once the settings are stored, not while they are on the way.
+  await expect
+    .poll(() => JSON.parse(rpc.storage.get(TRAFFIC_VIEW_KV_KEY) ?? 'null'))
+    .toEqual(
+      expect.objectContaining({
+        rankings: ['process', 'target', 'exit', 'source', 'inbound'],
+      }),
+    )
+})
 
 test('with no rankings chosen, the flow card fills the page above a way back to them', async ({
   onTestFinished,

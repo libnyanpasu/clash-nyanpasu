@@ -1,9 +1,8 @@
-import AllInboxRounded from '~icons/material-symbols/all-inbox-outline-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { filesize } from 'filesize'
 import { ComponentProps, PropsWithChildren } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent } from '@nyanpasu/ui/card'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { useBlockTask } from '@/components/providers/block-task-provider'
@@ -83,18 +82,6 @@ const GroupContent = ({ children }: PropsWithChildren) => {
     >
       {children}
     </div>
-  )
-}
-
-const Empty = ({ children }: PropsWithChildren) => {
-  return (
-    <Card variant="outline">
-      <CardContent className="min-h-40 items-center justify-center text-sm">
-        <AllInboxRounded className="size-10" />
-
-        {children}
-      </CardContent>
-    </Card>
   )
 }
 
@@ -299,9 +286,10 @@ function RouteComponent() {
             ))}
           </GroupContent>
         ) : (
-          <Empty>
-            <p>{m.providers_no_proxies_message()}</p>
-          </Empty>
+          <EmptyState
+            className="min-h-40"
+            message={m.providers_no_proxies_message()}
+          />
         )}
       </Group>
 
@@ -325,9 +313,10 @@ function RouteComponent() {
             ))}
           </GroupContent>
         ) : (
-          <Empty>
-            <p>{m.providers_no_rules_message()}</p>
-          </Empty>
+          <EmptyState
+            className="min-h-40"
+            message={m.providers_no_rules_message()}
+          />
         )}
       </Group>
     </div>

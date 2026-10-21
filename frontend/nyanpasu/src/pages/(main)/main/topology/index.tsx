@@ -1,6 +1,6 @@
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import Notice from './_modules/notice'
 import RankingCard from './_modules/ranking-card'
 import StatCards from './_modules/stat-cards'
 import { RANKINGS, useTrafficPage } from './_modules/traffic-context'
@@ -18,7 +18,7 @@ function TrafficOverviewPage() {
 
       {report &&
         (empty ? (
-          <Notice>{m.traffic_empty()}</Notice>
+          <EmptyState className="min-h-40 flex-1" message={m.traffic_empty()} />
         ) : (
           <div
             className="-mb-3 columns-1 gap-x-3 @2xl:columns-2 @5xl:columns-3"

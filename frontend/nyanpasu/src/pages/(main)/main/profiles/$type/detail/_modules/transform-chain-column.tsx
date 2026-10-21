@@ -4,6 +4,7 @@ import LayersOutlineRounded from '~icons/material-symbols/layers-outline-rounded
 import RemoveRounded from '~icons/material-symbols/remove-rounded'
 import { memo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { m } from '@/paraglide/messages'
 import { pointerIntersection, type CollisionDetector } from '@dnd-kit/collision'
 import { useDroppable } from '@dnd-kit/react'
@@ -226,28 +227,23 @@ export const TransformChainColumn = memo(function TransformChainColumn({
         )}
       >
         {profiles.length === 0 ? (
-          <div
+          <EmptyState
+            size="compact"
+            tone="normal"
             data-slot="profile-chain-editor-empty"
-            className="text-on-surface-variant col-span-full flex min-h-28 flex-col items-center justify-center gap-2 px-3 py-5 text-center"
-          >
-            <span className="bg-surface-variant text-primary mb-1 grid size-12 place-items-center rounded-2xl">
-              {active ? (
-                <AddRounded className="size-6" aria-hidden />
-              ) : (
-                <LayersOutlineRounded className="size-6" aria-hidden />
-              )}
-            </span>
-            <p className="text-on-surface text-sm font-medium">
-              {active
+            className="col-span-full min-h-28 py-5"
+            icon={active ? AddRounded : LayersOutlineRounded}
+            message={
+              active
                 ? m.profile_chain_editor_active_empty()
-                : m.profile_chain_editor_inactive_empty()}
-            </p>
-            <p className="text-xs">
-              {active
+                : m.profile_chain_editor_inactive_empty()
+            }
+            description={
+              active
                 ? m.profile_chain_editor_active_empty_hint()
-                : m.profile_chain_editor_inactive_empty_hint()}
-            </p>
-          </div>
+                : m.profile_chain_editor_inactive_empty_hint()
+            }
+          />
         ) : (
           profiles.map((profile, index) => (
             <div

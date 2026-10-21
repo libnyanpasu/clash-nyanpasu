@@ -8,6 +8,7 @@ import { ComponentType, type ReactNode } from 'react'
 import { ActionSwap, ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { m } from '@/paraglide/messages'
@@ -311,31 +312,23 @@ function RankingRows({
   if (ranking.totalBytes === 0) {
     const Icon = reportIcons[dimension]
     return (
-      <div
-        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden text-center"
+      <EmptyState
+        size="compact"
+        tone="normal"
+        icon={Icon}
+        className="flex-1 overflow-hidden"
         data-slot={
           dimension === 'exit'
             ? 'widget-exit-traffic-empty'
             : 'widget-traffic-report-empty'
         }
-      >
-        <span
-          className="bg-secondary-container text-on-secondary-container flex size-14 shrink-0 items-center justify-center rounded-2xl"
-          aria-hidden="true"
-        >
-          <Icon className="size-7" />
-        </span>
-        <div>
-          <p className="text-base font-medium">
-            {m.dashboard_widget_traffic_report_no_traffic()}
-          </p>
-          <p className="text-on-surface-variant mt-1 text-xs">
-            {dimension === 'exit'
-              ? m.dashboard_widget_exit_traffic_empty_hint()
-              : m.dashboard_widget_traffic_report_preview_ranking()}
-          </p>
-        </div>
-      </div>
+        message={m.dashboard_widget_traffic_report_no_traffic()}
+        description={
+          dimension === 'exit'
+            ? m.dashboard_widget_exit_traffic_empty_hint()
+            : m.dashboard_widget_traffic_report_preview_ranking()
+        }
+      />
     )
   }
   if (ranking.groups.length === 0) {

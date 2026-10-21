@@ -2,6 +2,7 @@ import BoxOutlineRounded from '~icons/material-symbols/box-outline-rounded'
 import DirectionsRunRounded from '~icons/material-symbols/directions-run-rounded'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { AppContentScrollArea } from '@nyanpasu/ui/scroll-area'
 import { Sidebar, SidebarContent } from '@nyanpasu/ui/sidebar'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
@@ -33,21 +34,18 @@ const Empty = () => {
   })
 
   return (
-    <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-4"
+    <EmptyState
+      className="absolute inset-0"
       data-slot="proxies-no-proxies"
+      icon={Icon}
+      message={
+        <span data-slot="proxies-no-proxies-message">
+          {proxyMode.value.direct
+            ? m.proxies_group_direct_message()
+            : m.proxies_group_empty_message()}
+        </span>
+      }
     >
-      <Icon className="text-surface-variant size-16" />
-
-      <p
-        className="text-surface-variant text-sm"
-        data-slot="proxies-no-proxies-message"
-      >
-        {proxyMode.value.direct
-          ? m.proxies_group_direct_message()
-          : m.proxies_group_empty_message()}
-      </p>
-
       {proxyMode.value.direct ? (
         <div className="flex items-center gap-2">
           <Button
@@ -79,7 +77,7 @@ const Empty = () => {
           </Link>
         </Button>
       )}
-    </div>
+    </EmptyState>
   )
 }
 

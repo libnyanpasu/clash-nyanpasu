@@ -1,5 +1,4 @@
 import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
-import BoxOutlineRounded from '~icons/material-symbols/box-outline-rounded'
 import {
   memo,
   useEffect,
@@ -8,6 +7,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from 'react'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import {
   useScrollAreaViewport,
   useScrollAreaViewportElement,
@@ -305,19 +305,15 @@ function ConnectionsTable<TRow extends RowData>({
   if (rows.length === 0) {
     return (
       <>
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-4"
+        <EmptyState
+          className="absolute inset-0"
           data-slot="connections-no-connections"
-        >
-          <BoxOutlineRounded className="text-surface-variant size-16" />
-
-          <p
-            className="text-surface-variant text-sm"
-            data-slot="connections-no-connections-message"
-          >
-            {emptyMessage}
-          </p>
-        </div>
+          message={
+            <span data-slot="connections-no-connections-message">
+              {emptyMessage}
+            </span>
+          }
+        />
 
         {settingsModal}
       </>

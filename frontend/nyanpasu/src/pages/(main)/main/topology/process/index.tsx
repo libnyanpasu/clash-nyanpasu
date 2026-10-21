@@ -1,3 +1,4 @@
+import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import Notice from '../_modules/notice'
@@ -13,7 +14,10 @@ function ProcessPage() {
   const configuration = RANKINGS.find((item) => item.dimension === 'process')!
   const ranking = report?.rankings.find((item) => item.dimension === 'process')
 
-  if (empty) return <Notice>{m.traffic_empty()}</Notice>
+  if (empty)
+    return (
+      <EmptyState className="min-h-40 flex-1" message={m.traffic_empty()} />
+    )
   if (!ranking) return <Notice>{m.traffic_loading_more()}</Notice>
 
   return (

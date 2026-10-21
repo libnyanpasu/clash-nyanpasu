@@ -320,6 +320,24 @@ Settings `tune-rounded`, Ports & Network `lan-rounded`, Control Channel
 `bug-report-rounded`, Clash Nyanpasu the Nyanpasu logo, Licenses
 `license-rounded`.
 
+The Nyanpasu logo needs two adjustments that the Material Symbols glyphs do
+not:
+
+- **Fill the face.** The logo is a solid silhouette with the face (`#bg`)
+  drawn over it and the eyes and mouth (`#element`) drawn on the face. Fill
+  `#bg` with the icon's own background (`surface-variant` at rest, `primary`
+  when selected); a transparent face lets the silhouette show through, and
+  the eyes and mouth disappear into it.
+- **Center it optically, not geometrically.** The cat's visual mass sits left
+  of and below the center of its box: the tail on the right and the ears on
+  top are thin, and the centroid of its silhouette is at (44%, 58%) of the
+  box. Centered by its box, the logo looks shifted left and down inside the
+  circle, so it gets an offset toward the opposite side: `translate-x-[6%]`
+  and `-translate-y-[6%]` of its own size. The vertical offset is smaller than
+  the centroid suggests because the outlined face reads lighter than a filled
+  shape. Any other place that puts the logo in a small round container needs
+  the same kind of offset, checked by eye at the rendered size.
+
 The [mockup](https://claude.ai/artifact/Kn7UEVAA2gKCcvixufFYk3) (a private
 Design canvas) shows the sidebar in the app window in light and dark, the
 full sidebar, the mobile list, and the item states, in the app's default

@@ -4,10 +4,6 @@ import { isMacOS } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
-import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
-import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
-import BreakWhenProxyChangeSelector from './_modules/break-when-proxy-change-selector'
-import EnableBuiltinEnhancedSwitch from './_modules/enable-builtin-enhanced-switch'
 import HotkeyManager from './_modules/hotket-manager'
 import LocalIpProbeSwitch from './_modules/local-ip-probe-switch'
 import LogFileConfig from './_modules/log-file-config'
@@ -82,24 +78,6 @@ const SystemWidgetSettings = () => {
   )
 }
 
-const EnhanceSettings = () => {
-  return (
-    <div data-slot="app-settings-container">
-      <SettingsLabel>{m.settings_nyanpasu_enhance_label()}</SettingsLabel>
-
-      <SettingsGroup>
-        <BreakWhenProxyChangeSelector />
-
-        <BreakWhenProfileChangeSwitch />
-
-        <BreakWhenModeChangeSwitch />
-
-        <EnableBuiltinEnhancedSwitch />
-      </SettingsGroup>
-    </div>
-  )
-}
-
 const TraySettings = () => {
   const { value: trayMenuMode } = useSetting('tray_menu_mode')
 
@@ -157,8 +135,6 @@ function RouteComponent() {
         <TrafficSettings />
 
         <SystemWidgetSettings />
-
-        <EnhanceSettings />
 
         <TraySettings />
 

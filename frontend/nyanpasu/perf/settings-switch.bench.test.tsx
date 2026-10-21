@@ -5,7 +5,9 @@ import { commands, server } from 'vitest/browser'
 import '@/assets/styles/tailwind.css'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
-import { Route as ClashRoute } from '@/pages/(main)/main/settings/clash/route'
+import { Route as ClashControlRoute } from '@/pages/(main)/main/settings/clash/control/index'
+import { Route as ClashCoreRoute } from '@/pages/(main)/main/settings/clash/core/index'
+import { Route as ClashNetworkRoute } from '@/pages/(main)/main/settings/clash/network/index'
 import { Route as SettingsRoute } from '@/pages/(main)/main/settings/route'
 import { Route as SystemProxyRoute } from '@/pages/(main)/main/settings/system/proxy/index'
 import { Route as SystemServiceRoute } from '@/pages/(main)/main/settings/system/service/index'
@@ -163,7 +165,9 @@ function createSettingsRouter() {
     routeTree: rootRoute.addChildren([
       mainRoute.addChildren([
         (settingsRoute as unknown as typeof mainRoute).addChildren([
-          child(ClashRoute, '/clash') as never,
+          child(ClashCoreRoute, '/clash/core') as never,
+          child(ClashNetworkRoute, '/clash/network') as never,
+          child(ClashControlRoute, '/clash/control') as never,
           child(SystemProxyRoute, '/system/proxy') as never,
           child(SystemServiceRoute, '/system/service') as never,
           createRoute({
@@ -181,7 +185,8 @@ function createSettingsRouter() {
 }
 
 const PAGES = (
-  env.VITE_PERF_PAGES ?? 'clash,system/proxy,system/service'
+  env.VITE_PERF_PAGES ??
+  'clash/core,clash/network,clash/control,system/proxy,system/service'
 ).split(',')
 
 test(`switch settings pages ${PAGES.join(',')}`, async ({ onTestFinished }) => {

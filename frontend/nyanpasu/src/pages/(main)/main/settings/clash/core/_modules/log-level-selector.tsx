@@ -1,4 +1,5 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
+import { useCallback, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
@@ -7,8 +8,8 @@ import {
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
-import { useClashSetting } from '@nyanpasu/query'
-import { type PortStrategyKind } from '@nyanpasu/rpc/types'
+import { useClashConfig } from '@nyanpasu/query'
+import { type LogLevel } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,
@@ -16,40 +17,47 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function PortStrategySelector() {
-  const { value, upsert } = useClashSetting('external_controller')
+const LOG_LEVEL_OPTIONS = {
+  debug: 'Debug',
+  info: 'Info',
+  warning: 'Warn',
+  error: 'Error',
+  silent: 'Silent',
+} as const
 
-  const messages = {
-    allow_fallback: m.settings_clash_settings_allow_fallback_label(),
-    fixed: m.settings_clash_settings_fixed_label(),
-    random: m.settings_clash_settings_random_label(),
-  } as Record<PortStrategyKind, string>
+export default function LogLevelSelector() {
+  const { query, upsert } = useClashConfig()
 
-  const current = value?.port.kind || 'allow_fallback'
+  const value = useMemo(
+    () => query.data?.['log-level'] as keyof typeof LOG_LEVEL_OPTIONS,
+    [query.data],
+  )
 
-  const handlePortStrategyChange = async (kind: PortStrategyKind) => {
-    await upsert({ port: { kind } })
-  }
+  const handleLogLevelChange = useCallback(
+    async (value: string) => {
+      await upsert.mutateAsync({
+        'log-level': value as LogLevel,
+      })
+    },
+    [upsert],
+  )
 
   return (
-    <SettingsCard data-slot="port-strategy-selector-card">
+    <SettingsCard data-slot="log-level-selector-card">
       <DropdownMenu align="end">
         <DropdownMenuTrigger asChild>
-          <SettingsCardContent
-            data-slot="port-strategy-selector-trigger"
-            asChild
-          >
+          <SettingsCardContent data-slot="log-level-selector-trigger" asChild>
             <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
               <ItemContainer>
                 <ItemLabel>
                   <ItemLabelText>
-                    {m.settings_clash_settings_port_strategy_label()}
+                    {m.settings_clash_settings_log_level_label()}
                   </ItemLabelText>
 
                   <ItemLabelDescription>
-                    {messages[current]}
+                    {value ? LOG_LEVEL_OPTIONS[value] : null}
                   </ItemLabelDescription>
                 </ItemLabel>
 
@@ -60,11 +68,11 @@ export default function PortStrategySelector() {
         </DropdownMenuTrigger>
 
         <DropdownMenuContent sideOffset={-16} alignOffset={16}>
-          {Object.entries(messages).map(([key, message]) => (
+          {Object.entries(LOG_LEVEL_OPTIONS).map(([key, message]) => (
             <DropdownMenuCheckboxItem
-              checked={current === key}
+              checked={value === key}
               key={key}
-              onSelect={() => handlePortStrategyChange(key as PortStrategyKind)}
+              onSelect={() => handleLogLevelChange(key)}
             >
               {message}
             </DropdownMenuCheckboxItem>

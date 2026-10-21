@@ -37,11 +37,9 @@ import { Route as mainMainProxiesIndexRouteImport } from './pages/(main)/main/pr
 import { Route as mainMainRulesIndexRouteImport } from './pages/(main)/main/rules/index'
 import { Route as mainMainSettingsIndexRouteImport } from './pages/(main)/main/settings/index'
 import { Route as mainMainSettingsAboutRouteRouteImport } from './pages/(main)/main/settings/about/route'
-import { Route as mainMainSettingsClashRouteRouteImport } from './pages/(main)/main/settings/clash/route'
 import { Route as mainMainSettingsDebugRouteRouteImport } from './pages/(main)/main/settings/debug/route'
 import { Route as mainMainSettingsNyanpasuRouteRouteImport } from './pages/(main)/main/settings/nyanpasu/route'
 import { Route as mainMainSettingsUserInterfaceRouteRouteImport } from './pages/(main)/main/settings/user-interface/route'
-import { Route as mainMainSettingsWebUiRouteRouteImport } from './pages/(main)/main/settings/web-ui/route'
 import { Route as mainMainTopologyIndexRouteImport } from './pages/(main)/main/topology/index'
 import { Route as trayMenuTrayMenuProxiesIndexRouteImport } from './pages/(tray-menu)/tray-menu/proxies/index'
 import { Route as trayMenuTrayMenuProxiesGroupRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/route'
@@ -61,6 +59,11 @@ import { Route as mainMainTopologyTargetIndexRouteImport } from './pages/(main)/
 import { Route as trayMenuTrayMenuProxiesGroupNameRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/$name'
 import { Route as mainMainProfilesTypeDetailUidRouteImport } from './pages/(main)/main/profiles/$type/detail/$uid'
 import { Route as mainMainSettingsAboutCreditsIndexRouteImport } from './pages/(main)/main/settings/about/credits/index'
+import { Route as mainMainSettingsClashControlIndexRouteImport } from './pages/(main)/main/settings/clash/control/index'
+import { Route as mainMainSettingsClashCoreManagerIndexRouteImport } from './pages/(main)/main/settings/clash/core-manager/index'
+import { Route as mainMainSettingsClashCoreIndexRouteImport } from './pages/(main)/main/settings/clash/core/index'
+import { Route as mainMainSettingsClashNetworkIndexRouteImport } from './pages/(main)/main/settings/clash/network/index'
+import { Route as mainMainSettingsClashRuntimeIndexRouteImport } from './pages/(main)/main/settings/clash/runtime/index'
 import { Route as mainMainSettingsSystemProxyIndexRouteImport } from './pages/(main)/main/settings/system/proxy/index'
 import { Route as mainMainSettingsSystemServiceIndexRouteImport } from './pages/(main)/main/settings/system/service/index'
 
@@ -210,12 +213,6 @@ const mainMainSettingsAboutRouteRoute =
     path: '/about',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
-const mainMainSettingsClashRouteRoute =
-  mainMainSettingsClashRouteRouteImport.update({
-    id: '/clash',
-    path: '/clash',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
 const mainMainSettingsDebugRouteRoute =
   mainMainSettingsDebugRouteRouteImport.update({
     id: '/debug',
@@ -232,12 +229,6 @@ const mainMainSettingsUserInterfaceRouteRoute =
   mainMainSettingsUserInterfaceRouteRouteImport.update({
     id: '/user-interface',
     path: '/user-interface',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
-const mainMainSettingsWebUiRouteRoute =
-  mainMainSettingsWebUiRouteRouteImport.update({
-    id: '/web-ui',
-    path: '/web-ui',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
 const mainMainTopologyIndexRoute = mainMainTopologyIndexRouteImport.update({
@@ -353,6 +344,36 @@ const mainMainSettingsAboutCreditsIndexRoute =
     path: '/credits/',
     getParentRoute: () => mainMainSettingsAboutRouteRoute,
   } as any)
+const mainMainSettingsClashControlIndexRoute =
+  mainMainSettingsClashControlIndexRouteImport.update({
+    id: '/clash/control/',
+    path: '/clash/control/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsClashCoreManagerIndexRoute =
+  mainMainSettingsClashCoreManagerIndexRouteImport.update({
+    id: '/clash/core-manager/',
+    path: '/clash/core-manager/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsClashCoreIndexRoute =
+  mainMainSettingsClashCoreIndexRouteImport.update({
+    id: '/clash/core/',
+    path: '/clash/core/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsClashNetworkIndexRoute =
+  mainMainSettingsClashNetworkIndexRouteImport.update({
+    id: '/clash/network/',
+    path: '/clash/network/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsClashRuntimeIndexRoute =
+  mainMainSettingsClashRuntimeIndexRouteImport.update({
+    id: '/clash/runtime/',
+    path: '/clash/runtime/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainSettingsSystemProxyIndexRoute =
   mainMainSettingsSystemProxyIndexRouteImport.update({
     id: '/system/proxy/',
@@ -384,11 +405,9 @@ export interface FileRoutesByFullPath {
   '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRouteWithChildren
-  '/main/settings/clash': typeof mainMainSettingsClashRouteRoute
   '/main/settings/debug': typeof mainMainSettingsDebugRouteRouteWithChildren
   '/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
-  '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/editor/css/': typeof editorEditorCssIndexRoute
   '/editor/profile/': typeof editorEditorProfileIndexRoute
@@ -418,6 +437,11 @@ export interface FileRoutesByFullPath {
   '/main/topology/target/': typeof mainMainTopologyTargetIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
+  '/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
+  '/main/settings/clash/core-manager/': typeof mainMainSettingsClashCoreManagerIndexRoute
+  '/main/settings/clash/core/': typeof mainMainSettingsClashCoreIndexRoute
+  '/main/settings/clash/network/': typeof mainMainSettingsClashNetworkIndexRoute
+  '/main/settings/clash/runtime/': typeof mainMainSettingsClashRuntimeIndexRoute
   '/main/settings/system/proxy/': typeof mainMainSettingsSystemProxyIndexRoute
   '/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
 }
@@ -427,10 +451,8 @@ export interface FileRoutesByTo {
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
-  '/main/settings/clash': typeof mainMainSettingsClashRouteRoute
   '/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
-  '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/editor/css': typeof editorEditorCssIndexRoute
   '/editor/profile': typeof editorEditorProfileIndexRoute
@@ -460,6 +482,11 @@ export interface FileRoutesByTo {
   '/main/topology/target': typeof mainMainTopologyTargetIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/main/settings/about/credits': typeof mainMainSettingsAboutCreditsIndexRoute
+  '/main/settings/clash/control': typeof mainMainSettingsClashControlIndexRoute
+  '/main/settings/clash/core-manager': typeof mainMainSettingsClashCoreManagerIndexRoute
+  '/main/settings/clash/core': typeof mainMainSettingsClashCoreIndexRoute
+  '/main/settings/clash/network': typeof mainMainSettingsClashNetworkIndexRoute
+  '/main/settings/clash/runtime': typeof mainMainSettingsClashRuntimeIndexRoute
   '/main/settings/system/proxy': typeof mainMainSettingsSystemProxyIndexRoute
   '/main/settings/system/service': typeof mainMainSettingsSystemServiceIndexRoute
 }
@@ -483,11 +510,9 @@ export interface FileRoutesById {
   '/(main)/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/(main)/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/(main)/main/settings/about': typeof mainMainSettingsAboutRouteRouteWithChildren
-  '/(main)/main/settings/clash': typeof mainMainSettingsClashRouteRoute
   '/(main)/main/settings/debug': typeof mainMainSettingsDebugRouteRouteWithChildren
   '/(main)/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
   '/(main)/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
-  '/(main)/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/(tray-menu)/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/(editor)/editor/css/': typeof editorEditorCssIndexRoute
   '/(editor)/editor/profile/': typeof editorEditorProfileIndexRoute
@@ -517,6 +542,11 @@ export interface FileRoutesById {
   '/(main)/main/topology/target/': typeof mainMainTopologyTargetIndexRoute
   '/(main)/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/(main)/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
+  '/(main)/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
+  '/(main)/main/settings/clash/core-manager/': typeof mainMainSettingsClashCoreManagerIndexRoute
+  '/(main)/main/settings/clash/core/': typeof mainMainSettingsClashCoreIndexRoute
+  '/(main)/main/settings/clash/network/': typeof mainMainSettingsClashNetworkIndexRoute
+  '/(main)/main/settings/clash/runtime/': typeof mainMainSettingsClashRuntimeIndexRoute
   '/(main)/main/settings/system/proxy/': typeof mainMainSettingsSystemProxyIndexRoute
   '/(main)/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
 }
@@ -540,11 +570,9 @@ export interface FileRouteTypes {
     | '/main/profiles/global'
     | '/main/profiles/inspect'
     | '/main/settings/about'
-    | '/main/settings/clash'
     | '/main/settings/debug'
     | '/main/settings/nyanpasu'
     | '/main/settings/user-interface'
-    | '/main/settings/web-ui'
     | '/tray-menu/proxies/group'
     | '/editor/css/'
     | '/editor/profile/'
@@ -574,6 +602,11 @@ export interface FileRouteTypes {
     | '/main/topology/target/'
     | '/main/profiles/$type/detail/$uid'
     | '/main/settings/about/credits/'
+    | '/main/settings/clash/control/'
+    | '/main/settings/clash/core-manager/'
+    | '/main/settings/clash/core/'
+    | '/main/settings/clash/network/'
+    | '/main/settings/clash/runtime/'
     | '/main/settings/system/proxy/'
     | '/main/settings/system/service/'
   fileRoutesByTo: FileRoutesByTo
@@ -583,10 +616,8 @@ export interface FileRouteTypes {
     | '/tray-menu'
     | '/main/profiles/global'
     | '/main/profiles/inspect'
-    | '/main/settings/clash'
     | '/main/settings/nyanpasu'
     | '/main/settings/user-interface'
-    | '/main/settings/web-ui'
     | '/tray-menu/proxies/group'
     | '/editor/css'
     | '/editor/profile'
@@ -616,6 +647,11 @@ export interface FileRouteTypes {
     | '/main/topology/target'
     | '/main/profiles/$type/detail/$uid'
     | '/main/settings/about/credits'
+    | '/main/settings/clash/control'
+    | '/main/settings/clash/core-manager'
+    | '/main/settings/clash/core'
+    | '/main/settings/clash/network'
+    | '/main/settings/clash/runtime'
     | '/main/settings/system/proxy'
     | '/main/settings/system/service'
   id:
@@ -638,11 +674,9 @@ export interface FileRouteTypes {
     | '/(main)/main/profiles/global'
     | '/(main)/main/profiles/inspect'
     | '/(main)/main/settings/about'
-    | '/(main)/main/settings/clash'
     | '/(main)/main/settings/debug'
     | '/(main)/main/settings/nyanpasu'
     | '/(main)/main/settings/user-interface'
-    | '/(main)/main/settings/web-ui'
     | '/(tray-menu)/tray-menu/proxies/group'
     | '/(editor)/editor/css/'
     | '/(editor)/editor/profile/'
@@ -672,6 +706,11 @@ export interface FileRouteTypes {
     | '/(main)/main/topology/target/'
     | '/(main)/main/profiles/$type/detail/$uid'
     | '/(main)/main/settings/about/credits/'
+    | '/(main)/main/settings/clash/control/'
+    | '/(main)/main/settings/clash/core-manager/'
+    | '/(main)/main/settings/clash/core/'
+    | '/(main)/main/settings/clash/network/'
+    | '/(main)/main/settings/clash/runtime/'
     | '/(main)/main/settings/system/proxy/'
     | '/(main)/main/settings/system/service/'
   fileRoutesById: FileRoutesById
@@ -880,13 +919,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsAboutRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
-    '/(main)/main/settings/clash': {
-      id: '/(main)/main/settings/clash'
-      path: '/clash'
-      fullPath: '/main/settings/clash'
-      preLoaderRoute: typeof mainMainSettingsClashRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
     '/(main)/main/settings/debug': {
       id: '/(main)/main/settings/debug'
       path: '/debug'
@@ -906,13 +938,6 @@ declare module '@tanstack/react-router' {
       path: '/user-interface'
       fullPath: '/main/settings/user-interface'
       preLoaderRoute: typeof mainMainSettingsUserInterfaceRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
-    '/(main)/main/settings/web-ui': {
-      id: '/(main)/main/settings/web-ui'
-      path: '/web-ui'
-      fullPath: '/main/settings/web-ui'
-      preLoaderRoute: typeof mainMainSettingsWebUiRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
     '/(main)/main/topology/': {
@@ -1047,6 +1072,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/main/settings/about/credits/'
       preLoaderRoute: typeof mainMainSettingsAboutCreditsIndexRouteImport
       parentRoute: typeof mainMainSettingsAboutRouteRoute
+    }
+    '/(main)/main/settings/clash/control/': {
+      id: '/(main)/main/settings/clash/control/'
+      path: '/clash/control'
+      fullPath: '/main/settings/clash/control/'
+      preLoaderRoute: typeof mainMainSettingsClashControlIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/clash/core-manager/': {
+      id: '/(main)/main/settings/clash/core-manager/'
+      path: '/clash/core-manager'
+      fullPath: '/main/settings/clash/core-manager/'
+      preLoaderRoute: typeof mainMainSettingsClashCoreManagerIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/clash/core/': {
+      id: '/(main)/main/settings/clash/core/'
+      path: '/clash/core'
+      fullPath: '/main/settings/clash/core/'
+      preLoaderRoute: typeof mainMainSettingsClashCoreIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/clash/network/': {
+      id: '/(main)/main/settings/clash/network/'
+      path: '/clash/network'
+      fullPath: '/main/settings/clash/network/'
+      preLoaderRoute: typeof mainMainSettingsClashNetworkIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/clash/runtime/': {
+      id: '/(main)/main/settings/clash/runtime/'
+      path: '/clash/runtime'
+      fullPath: '/main/settings/clash/runtime/'
+      preLoaderRoute: typeof mainMainSettingsClashRuntimeIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
     }
     '/(main)/main/settings/system/proxy/': {
       id: '/(main)/main/settings/system/proxy/'
@@ -1200,25 +1260,35 @@ const mainMainSettingsDebugRouteRouteWithChildren =
 
 interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRouteWithChildren
-  mainMainSettingsClashRouteRoute: typeof mainMainSettingsClashRouteRoute
   mainMainSettingsDebugRouteRoute: typeof mainMainSettingsDebugRouteRouteWithChildren
   mainMainSettingsNyanpasuRouteRoute: typeof mainMainSettingsNyanpasuRouteRoute
   mainMainSettingsUserInterfaceRouteRoute: typeof mainMainSettingsUserInterfaceRouteRoute
-  mainMainSettingsWebUiRouteRoute: typeof mainMainSettingsWebUiRouteRoute
   mainMainSettingsIndexRoute: typeof mainMainSettingsIndexRoute
+  mainMainSettingsClashControlIndexRoute: typeof mainMainSettingsClashControlIndexRoute
+  mainMainSettingsClashCoreManagerIndexRoute: typeof mainMainSettingsClashCoreManagerIndexRoute
+  mainMainSettingsClashCoreIndexRoute: typeof mainMainSettingsClashCoreIndexRoute
+  mainMainSettingsClashNetworkIndexRoute: typeof mainMainSettingsClashNetworkIndexRoute
+  mainMainSettingsClashRuntimeIndexRoute: typeof mainMainSettingsClashRuntimeIndexRoute
   mainMainSettingsSystemProxyIndexRoute: typeof mainMainSettingsSystemProxyIndexRoute
   mainMainSettingsSystemServiceIndexRoute: typeof mainMainSettingsSystemServiceIndexRoute
 }
 
 const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
   mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRouteWithChildren,
-  mainMainSettingsClashRouteRoute: mainMainSettingsClashRouteRoute,
   mainMainSettingsDebugRouteRoute: mainMainSettingsDebugRouteRouteWithChildren,
   mainMainSettingsNyanpasuRouteRoute: mainMainSettingsNyanpasuRouteRoute,
   mainMainSettingsUserInterfaceRouteRoute:
     mainMainSettingsUserInterfaceRouteRoute,
-  mainMainSettingsWebUiRouteRoute: mainMainSettingsWebUiRouteRoute,
   mainMainSettingsIndexRoute: mainMainSettingsIndexRoute,
+  mainMainSettingsClashControlIndexRoute:
+    mainMainSettingsClashControlIndexRoute,
+  mainMainSettingsClashCoreManagerIndexRoute:
+    mainMainSettingsClashCoreManagerIndexRoute,
+  mainMainSettingsClashCoreIndexRoute: mainMainSettingsClashCoreIndexRoute,
+  mainMainSettingsClashNetworkIndexRoute:
+    mainMainSettingsClashNetworkIndexRoute,
+  mainMainSettingsClashRuntimeIndexRoute:
+    mainMainSettingsClashRuntimeIndexRoute,
   mainMainSettingsSystemProxyIndexRoute: mainMainSettingsSystemProxyIndexRoute,
   mainMainSettingsSystemServiceIndexRoute:
     mainMainSettingsSystemServiceIndexRoute,

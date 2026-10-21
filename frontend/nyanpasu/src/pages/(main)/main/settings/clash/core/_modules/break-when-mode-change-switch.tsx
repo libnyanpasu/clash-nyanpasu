@@ -11,19 +11,19 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function BreakWhenProfileChangeSwitch() {
+export default function BreakWhenModeChangeSwitch() {
   const breakConnection = useClashSetting('break_connection')
 
-  const checked = Boolean(breakConnection.value?.on_profile_change)
+  const checked = Boolean(breakConnection.value?.on_mode_change)
 
   const handleChange = useLockFn(async () => {
     try {
-      await breakConnection.upsert({ on_profile_change: !checked })
+      await breakConnection.upsert({ on_mode_change: !checked })
     } catch (error) {
       message(
-        `Update break when profile change failed!\n Error: ${formatError(error)}`,
+        `Update break when mode change failed!\n Error: ${formatError(error)}`,
         {
           title: 'Error',
           kind: 'error',
@@ -34,16 +34,16 @@ export default function BreakWhenProfileChangeSwitch() {
   })
 
   return (
-    <SettingsCard data-slot="break-when-profile-change-switch">
+    <SettingsCard data-slot="break-when-mode-change-switch">
       <SettingsCardContent>
-        <ItemContainer data-slot="break-when-profile-change-switch-container">
+        <ItemContainer data-slot="break-when-mode-change-switch-container">
           <ItemLabel>
             <ItemLabelText>
-              {m.settings_nyanpasu_enhance_break_when_profile_change_label()}
+              {m.settings_nyanpasu_enhance_break_when_mode_change_label()}
             </ItemLabelText>
 
             <ItemLabelDescription>
-              {m.settings_nyanpasu_enhance_break_when_profile_change_description()}
+              {m.settings_nyanpasu_enhance_break_when_mode_change_description()}
             </ItemLabelDescription>
           </ItemLabel>
 

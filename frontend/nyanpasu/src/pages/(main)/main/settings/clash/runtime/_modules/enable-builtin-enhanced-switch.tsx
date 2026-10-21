@@ -3,7 +3,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashSetting } from '@nyanpasu/query'
+import { useSetting } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -11,19 +11,17 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function BreakWhenModeChangeSwitch() {
-  const breakConnection = useClashSetting('break_connection')
-
-  const checked = Boolean(breakConnection.value?.on_mode_change)
+export default function EnableBuiltinEnhancedSwitch() {
+  const enableBuiltinEnhanced = useSetting('enable_builtin_enhanced')
 
   const handleChange = useLockFn(async () => {
     try {
-      await breakConnection.upsert({ on_mode_change: !checked })
+      await enableBuiltinEnhanced.upsert(!enableBuiltinEnhanced.value)
     } catch (error) {
       message(
-        `Update break when mode change failed!\n Error: ${formatError(error)}`,
+        `Update built-in enhanced failed!\n Error: ${formatError(error)}`,
         {
           title: 'Error',
           kind: 'error',
@@ -34,23 +32,23 @@ export default function BreakWhenModeChangeSwitch() {
   })
 
   return (
-    <SettingsCard data-slot="break-when-mode-change-switch">
+    <SettingsCard data-slot="enable-builtin-enhanced-switch">
       <SettingsCardContent>
-        <ItemContainer data-slot="break-when-mode-change-switch-container">
+        <ItemContainer data-slot="enable-builtin-enhanced-switch-container">
           <ItemLabel>
             <ItemLabelText>
-              {m.settings_nyanpasu_enhance_break_when_mode_change_label()}
+              {m.settings_nyanpasu_enhance_enable_builtin_enhanced_label()}
             </ItemLabelText>
 
             <ItemLabelDescription>
-              {m.settings_nyanpasu_enhance_break_when_mode_change_description()}
+              {m.settings_nyanpasu_enhance_enable_builtin_enhanced_description()}
             </ItemLabelDescription>
           </ItemLabel>
 
           <Switch
-            checked={checked}
+            checked={Boolean(enableBuiltinEnhanced.value)}
             onCheckedChange={handleChange}
-            loading={breakConnection.isPending}
+            loading={enableBuiltinEnhanced.isPending}
           />
         </ItemContainer>
       </SettingsCardContent>

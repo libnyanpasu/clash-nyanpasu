@@ -20,8 +20,8 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
-import { SettingsSliderRow } from '../../_modules/settings-slider-row'
+} from '../../../_modules/settings-card'
+import { SettingsSliderRow } from '../../../_modules/settings-slider-row'
 
 // MiB, the bounds `CoreLogSettings::validate` accepts: a shard of at least
 // 4 MiB, and a budget that holds at least two shards.

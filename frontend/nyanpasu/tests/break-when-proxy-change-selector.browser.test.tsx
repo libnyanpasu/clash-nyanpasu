@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
-import BreakWhenProxyChangeSelector from '../src/pages/(main)/main/settings/nyanpasu/_modules/break-when-proxy-change-selector'
+import BreakWhenProxyChangeSelector from '../src/pages/(main)/main/settings/clash/core/_modules/break-when-proxy-change-selector'
 
 const backend = vi.hoisted(() => ({
   upsert: vi.fn(),

@@ -1,4 +1,7 @@
 import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
+import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
+import DeployedCodeRounded from '~icons/material-symbols/deployed-code-rounded'
+import LanRounded from '~icons/material-symbols/lan-rounded'
 import LicenseRounded from '~icons/material-symbols/license-rounded'
 import PaletteRounded from '~icons/material-symbols/palette-rounded'
 import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
@@ -186,19 +189,43 @@ export default function SettingsNavigate() {
 
       <SettingsNavigationGroup label={m.settings_group_clash()}>
         <SettingsNavigationItem
-          to="/main/settings/clash"
-          color="orange"
-          icon={<TuneRounded />}
-          label={m.settings_label_clash_settings()}
-          description={m.settings_label_clash_settings_description()}
+          to="/main/settings/clash/core-manager"
+          color="purple"
+          icon={<DeployedCodeRounded />}
+          label={m.settings_label_core_manager()}
+          description={m.settings_label_core_manager_description()}
         />
 
         <SettingsNavigationItem
-          to="/main/settings/web-ui"
+          to="/main/settings/clash/core"
+          color="orange"
+          icon={<TuneRounded />}
+          label={m.settings_label_core_settings()}
+          description={m.settings_label_core_settings_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/clash/network"
+          color="cyan"
+          icon={<LanRounded />}
+          label={m.settings_label_network()}
+          description={m.settings_label_network_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/clash/control"
           color="blue"
           icon={<SwapHorizRounded />}
-          label={m.settings_label_external_controll()}
-          description={m.settings_label_external_controll_description()}
+          label={m.settings_label_control()}
+          description={m.settings_label_control_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/clash/runtime"
+          color="yellow"
+          icon={<DataObjectRounded />}
+          label={m.settings_label_runtime()}
+          description={m.settings_label_runtime_description()}
         />
       </SettingsNavigationGroup>
 

@@ -3,7 +3,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useSetting } from '@nyanpasu/query'
+import { useClashSetting } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -11,17 +11,19 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-export default function EnableBuiltinEnhancedSwitch() {
-  const enableBuiltinEnhanced = useSetting('enable_builtin_enhanced')
+export default function BreakWhenProfileChangeSwitch() {
+  const breakConnection = useClashSetting('break_connection')
+
+  const checked = Boolean(breakConnection.value?.on_profile_change)
 
   const handleChange = useLockFn(async () => {
     try {
-      await enableBuiltinEnhanced.upsert(!enableBuiltinEnhanced.value)
+      await breakConnection.upsert({ on_profile_change: !checked })
     } catch (error) {
       message(
-        `Update built-in enhanced failed!\n Error: ${formatError(error)}`,
+        `Update break when profile change failed!\n Error: ${formatError(error)}`,
         {
           title: 'Error',
           kind: 'error',
@@ -32,23 +34,23 @@ export default function EnableBuiltinEnhancedSwitch() {
   })
 
   return (
-    <SettingsCard data-slot="enable-builtin-enhanced-switch">
+    <SettingsCard data-slot="break-when-profile-change-switch">
       <SettingsCardContent>
-        <ItemContainer data-slot="enable-builtin-enhanced-switch-container">
+        <ItemContainer data-slot="break-when-profile-change-switch-container">
           <ItemLabel>
             <ItemLabelText>
-              {m.settings_nyanpasu_enhance_enable_builtin_enhanced_label()}
+              {m.settings_nyanpasu_enhance_break_when_profile_change_label()}
             </ItemLabelText>
 
             <ItemLabelDescription>
-              {m.settings_nyanpasu_enhance_enable_builtin_enhanced_description()}
+              {m.settings_nyanpasu_enhance_break_when_profile_change_description()}
             </ItemLabelDescription>
           </ItemLabel>
 
           <Switch
-            checked={Boolean(enableBuiltinEnhanced.value)}
+            checked={checked}
             onCheckedChange={handleChange}
-            loading={enableBuiltinEnhanced.isPending}
+            loading={breakConnection.isPending}
           />
         </ItemContainer>
       </SettingsCardContent>

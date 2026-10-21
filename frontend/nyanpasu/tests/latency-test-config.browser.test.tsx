@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
-import LatencyTestConfig from '../src/pages/(main)/main/settings/clash/_modules/latency-test-config'
+import LatencyTestConfig from '../src/pages/(main)/main/settings/clash/core/_modules/latency-test-config'
 
 const backend = vi.hoisted(() => ({
   values: {} as Record<string, unknown>,

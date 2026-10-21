@@ -783,10 +783,17 @@ export type BuildInfo = {
 
 /**  Built-in post-processing steps applied to the selected config. */
 export type BuiltinStepKind =
-  | 'guard_overrides'
-  | 'whitelist_field_filter'
+  /**  Drops the top-level keys the field filter does not allow. */
+  | 'field_filter'
+  /**
+   *  Writes the keys Nyanpasu forces and removes the ones it owns but has
+   *  turned off.
+   */
+  | 'managed_settings'
+  /**  Fills in the keys Nyanpasu defaults where the config lacks them. */
+  | 'defaults'
   | 'include_all_expansion'
-  | 'finalizing'
+  /**  The config the core reports running; inspection appends it. */
   | 'core_controller'
 
 export type Bytes = {

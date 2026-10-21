@@ -74,10 +74,15 @@ pub enum ConfigExecutionRole {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum BuiltinStepKind {
-    GuardOverrides,
-    WhitelistFieldFilter,
+    /// Drops the top-level keys the field filter does not allow.
+    FieldFilter,
+    /// Writes the keys Nyanpasu forces and removes the ones it owns but has
+    /// turned off.
+    ManagedSettings,
+    /// Fills in the keys Nyanpasu defaults where the config lacks them.
+    Defaults,
     IncludeAllExpansion,
-    Finalizing,
+    /// The config the core reports running; inspection appends it.
     CoreController,
 }
 
@@ -574,6 +579,14 @@ impl ConfigSnapshotsBuilder {
     }
 
     pub fn build_stored(self) -> Result<StoredConfigSnapshotsGraph, SnapshotBuildError> {
+        Ok(self.build_stored_with_current()?.0)
+    }
+
+    /// Builds the stored graph together with the id the current node has in
+    /// it, which is the last main-line node pushed.
+    pub fn build_stored_with_current(
+        self,
+    ) -> Result<(StoredConfigSnapshotsGraph, Idx), SnapshotBuildError> {
         self.validate_tree()?;
         self.into_compact_u32_graph()
     }
@@ -748,7 +761,9 @@ impl ConfigSnapshotsBuilder {
         Ok(())
     }
 
-    fn into_compact_u32_graph(self) -> Result<StoredConfigSnapshotsGraph, SnapshotBuildError> {
+    fn into_compact_u32_graph(
+        self,
+    ) -> Result<(StoredConfigSnapshotsGraph, Idx), SnapshotBuildError> {
         let ordered_ids = self.slab.iter().map(|(idx, _)| idx).collect::<Vec<_>>();
         let mut id_map = HashMap::with_capacity(ordered_ids.len());
         for (compact, old_id) in ordered_ids.iter().copied().enumerate() {
@@ -793,7 +808,8 @@ impl ConfigSnapshotsBuilder {
             });
         }
 
-        Ok(StoredConfigSnapshotsGraph { nodes, root_id })
+        let current = id_map[&self.current_id];
+        Ok((StoredConfigSnapshotsGraph { nodes, root_id }, current))
     }
 }
 
@@ -1027,7 +1043,10 @@ pub fn changed_fields_from_patch(patch: &Patch) -> Option<IndexSet<ConfigField>>
 /// the keys after it instead of swapping the last key into its place, as
 /// `json_patch` does, so a replay keeps the recorded key order. Not atomic:
 /// on error `doc` holds a partial replay, which every caller discards.
-fn apply_patch(doc: &mut serde_json::Value, patch: &Patch) -> Result<(), json_patch::PatchError> {
+pub(crate) fn apply_patch(
+    doc: &mut serde_json::Value,
+    patch: &Patch,
+) -> Result<(), json_patch::PatchError> {
     for (index, operation) in patch.0.iter().enumerate() {
         if let PatchOperation::Remove(remove) = operation
             && let Some((parent, key)) = remove.path.split_back()
@@ -1483,7 +1502,7 @@ mod tests {
             );
             builder
                 .push(
-                    builtin_step("primary", BuiltinStepKind::Finalizing),
+                    builtin_step("primary", BuiltinStepKind::Defaults),
                     current.clone(),
                 )
                 .unwrap();
@@ -1511,7 +1530,7 @@ mod tests {
         );
         builder
             .push(
-                builtin_step("primary", BuiltinStepKind::Finalizing),
+                builtin_step("primary", BuiltinStepKind::Defaults),
                 current.clone(),
             )
             .unwrap();
@@ -1547,7 +1566,7 @@ mod tests {
         let mut builder = ConfigSnapshotsBuilder::new_root(parent, OperatorTag::BareRoot);
         builder
             .push(
-                builtin_step("primary", BuiltinStepKind::WhitelistFieldFilter),
+                builtin_step("primary", BuiltinStepKind::FieldFilter),
                 current.clone(),
             )
             .unwrap();
@@ -1587,7 +1606,7 @@ mod tests {
             { "op": "add", "path": "/dns", "value": { "enable": true } },
         ]))
         .unwrap();
-        let tag = || builtin_step("primary", BuiltinStepKind::GuardOverrides);
+        let tag = || builtin_step("primary", BuiltinStepKind::ManagedSettings);
 
         let mut diffed = ConfigSnapshotsBuilder::new_root(parent.clone(), OperatorTag::BareRoot);
         diffed.push(tag(), current.clone()).unwrap();
@@ -1653,7 +1672,7 @@ mod tests {
         let mut builder =
             ConfigSnapshotsBuilder::new_root(config.clone(), selected_file_root("primary"));
         builder
-            .push(builtin_step("primary", BuiltinStepKind::Finalizing), config)
+            .push(builtin_step("primary", BuiltinStepKind::Defaults), config)
             .unwrap();
         let graph = builder.build_stored().unwrap();
         assert_eq!(graph.comparison_parent(graph.root_id), None);
@@ -1669,7 +1688,7 @@ mod tests {
         let mut builder = ConfigSnapshotsBuilder::new_root(root, selected_file_root("primary"));
 
         builder
-            .push(builtin_step("primary", BuiltinStepKind::Finalizing), child)
+            .push(builtin_step("primary", BuiltinStepKind::Defaults), child)
             .unwrap();
         let graph = builder.build().unwrap();
 
@@ -1679,7 +1698,7 @@ mod tests {
             graph.nodes[1].key,
             SnapshotNodeKey::Builtin {
                 selected_profile_id: Some(pid("primary")),
-                step: BuiltinStepKind::Finalizing,
+                step: BuiltinStepKind::Defaults,
             }
         );
         assert_eq!(
@@ -1735,12 +1754,12 @@ mod tests {
                     Some(vec![1, 2]),
                 ),
                 full_node(
-                    builtin_step("primary", BuiltinStepKind::GuardOverrides),
+                    builtin_step("primary", BuiltinStepKind::ManagedSettings),
                     SnapshotBaseline::Parent,
                     Some(vec![2]),
                 ),
                 full_node(
-                    builtin_step("primary", BuiltinStepKind::Finalizing),
+                    builtin_step("primary", BuiltinStepKind::Defaults),
                     SnapshotBaseline::Parent,
                     None,
                 ),
@@ -1892,12 +1911,9 @@ mod tests {
 
     #[test]
     fn operator_tag_builtin_step_round_trips_all_steps() {
-        round_trip_tag(builtin_step("selected", BuiltinStepKind::GuardOverrides));
-        round_trip_tag(builtin_step(
-            "selected",
-            BuiltinStepKind::WhitelistFieldFilter,
-        ));
-        round_trip_tag(builtin_step("selected", BuiltinStepKind::Finalizing));
+        round_trip_tag(builtin_step("selected", BuiltinStepKind::ManagedSettings));
+        round_trip_tag(builtin_step("selected", BuiltinStepKind::FieldFilter));
+        round_trip_tag(builtin_step("selected", BuiltinStepKind::Defaults));
     }
 
     #[test]
@@ -1926,13 +1942,13 @@ mod tests {
             .unwrap();
         builder
             .push(
-                builtin_step("selected", BuiltinStepKind::WhitelistFieldFilter),
+                builtin_step("selected", BuiltinStepKind::FieldFilter),
                 value(json!({ "step": "whitelist" })),
             )
             .unwrap();
         builder
             .push(
-                builtin_step("selected", BuiltinStepKind::GuardOverrides),
+                builtin_step("selected", BuiltinStepKind::ManagedSettings),
                 value(json!({ "step": "guard" })),
             )
             .unwrap();
@@ -1948,7 +1964,7 @@ mod tests {
             .unwrap();
         builder
             .push(
-                builtin_step("selected", BuiltinStepKind::Finalizing),
+                builtin_step("selected", BuiltinStepKind::Defaults),
                 value(json!({ "step": "final" })),
             )
             .unwrap();
@@ -1972,14 +1988,14 @@ mod tests {
         assert!(matches!(
             &graph.nodes[3].tag,
             OperatorTag::BuiltinStep {
-                step: BuiltinStepKind::WhitelistFieldFilter,
+                step: BuiltinStepKind::FieldFilter,
                 ..
             }
         ));
         assert!(matches!(
             &graph.nodes[4].tag,
             OperatorTag::BuiltinStep {
-                step: BuiltinStepKind::GuardOverrides,
+                step: BuiltinStepKind::ManagedSettings,
                 ..
             }
         ));
@@ -1990,7 +2006,7 @@ mod tests {
         assert!(matches!(
             &graph.nodes[6].tag,
             OperatorTag::BuiltinStep {
-                step: BuiltinStepKind::Finalizing,
+                step: BuiltinStepKind::Defaults,
                 ..
             }
         ));
@@ -2100,7 +2116,7 @@ mod tests {
             .unwrap();
         builder
             .push(
-                builtin_step("composition", BuiltinStepKind::Finalizing),
+                builtin_step("composition", BuiltinStepKind::Defaults),
                 value(json!({ "source": "final" })),
             )
             .unwrap();
@@ -2200,7 +2216,7 @@ mod tests {
             .unwrap();
         builder
             .push(
-                builtin_step("composition", BuiltinStepKind::Finalizing),
+                builtin_step("composition", BuiltinStepKind::Defaults),
                 value(json!({ "step": "final" })),
             )
             .unwrap();
@@ -2394,14 +2410,14 @@ mod tests {
         // 旧 v2 wire 中 selected_profile_id 是裸字符串；Option 化后必须解码为 Some。
         let tag: OperatorTag = serde_json::from_value(json!({
             "kind": "builtin_step",
-            "data": { "selected_profile_id": "sel", "step": "finalizing" }
+            "data": { "selected_profile_id": "sel", "step": "defaults" }
         }))
         .unwrap();
         assert_eq!(
             tag,
             OperatorTag::BuiltinStep {
                 selected_profile_id: Some(pid("sel")),
-                step: BuiltinStepKind::Finalizing,
+                step: BuiltinStepKind::Defaults,
             }
         );
 
@@ -2428,11 +2444,11 @@ mod tests {
     fn restore_matches_materialize_for_delta_chains_and_keyframes() {
         let steps = [
             (
-                builtin_step("primary", BuiltinStepKind::WhitelistFieldFilter),
+                builtin_step("primary", BuiltinStepKind::FieldFilter),
                 json!({ "mode": "rule", "rules": ["a"], "dns": { "enable": false } }),
             ),
             (
-                builtin_step("primary", BuiltinStepKind::GuardOverrides),
+                builtin_step("primary", BuiltinStepKind::ManagedSettings),
                 json!({ "mode": "global", "rules": ["a"], "dns": { "enable": false } }),
             ),
             (
@@ -2444,7 +2460,7 @@ mod tests {
                 json!({ "mode": "global", "rules": ["a", "b"], "dns": { "enable": false } }),
             ),
             (
-                builtin_step("primary", BuiltinStepKind::Finalizing),
+                builtin_step("primary", BuiltinStepKind::Defaults),
                 json!({ "mode": "global", "rules": ["a", "b"], "dns": { "enable": true } }),
             ),
         ];

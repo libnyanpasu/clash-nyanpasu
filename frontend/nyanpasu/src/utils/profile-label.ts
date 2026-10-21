@@ -75,16 +75,16 @@ export function stepKind(tag: OperatorTag): string {
       return m.inspect_builtin()
     case 'builtin_step':
       switch (tag.data.step) {
-        case 'guard_overrides':
-          return m.inspect_overrides()
-        case 'whitelist_field_filter':
+        case 'field_filter':
           return m.inspect_filter()
+        case 'managed_settings':
+          return m.inspect_forced_settings()
+        case 'defaults':
+          return m.inspect_defaults()
         case 'include_all_expansion':
           return m.inspect_include_all()
         case 'core_controller':
           return m.inspect_core_controller()
-        case 'finalizing':
-          return m.inspect_finalizing()
       }
   }
 }

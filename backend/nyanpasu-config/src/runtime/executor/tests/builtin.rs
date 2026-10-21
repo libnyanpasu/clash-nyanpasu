@@ -5,14 +5,30 @@ use crate::{
     runtime::{
         executor::{
             GuardInputs, ResolvedPortBindings, TunFlavor, TunParams,
-            builtin::{apply_guard, finalize, known_fields, stage1_fields, whitelist_filter},
+            builtin::{filter_fields, known_fields, stage1_fields},
+            plan::{cache_ownership, guard_ownership, tun_ownership},
         },
+        post_process::{apply_defaults, apply_settings},
         value::ConfigValue,
     },
 };
 
 fn value(json: serde_json::Value) -> ConfigValue {
     ConfigValue::try_from(json).unwrap()
+}
+
+/// The guard's keys, written as the managed settings step does.
+fn apply_guard(config: &ConfigValue, guard: &GuardInputs<'_>) -> ConfigValue {
+    apply_settings(config, &guard_ownership(guard)).0
+}
+
+/// `tun`, its DNS takeover and the `profile` cache, written as the managed
+/// settings and defaults steps do.
+fn apply_tun_and_cache(config: &ConfigValue, tun: &TunParams) -> ConfigValue {
+    let mut ownership = tun_ownership(tun);
+    ownership.push(cache_ownership());
+    let config = apply_settings(config, &ownership).0;
+    apply_defaults(&config, &ownership).0
 }
 
 /// Fixed-secret guard input; the default constructor generates a fresh uuid.
@@ -94,23 +110,26 @@ fn stage1_fields_take_valid_intersect_others_plus_default_and_never_handle() {
 }
 
 #[test]
-fn whitelist_filter_keeps_only_allowed_and_is_noop_when_disabled() {
+fn filter_fields_keeps_only_allowed_and_records_the_removals() {
     let config = value(json!({ "proxies": [], "mode": "rule", "custom": 1 }));
     let allow = vec!["proxies".to_string()];
+
+    let (filtered, patch) = filter_fields(&config, &allow);
+
+    assert_eq!(filtered.to_json(), json!({ "proxies": [] }));
     assert_eq!(
-        whitelist_filter(&config, &allow, true).to_json(),
-        json!({ "proxies": [] })
+        serde_json::to_value(&patch).unwrap(),
+        json!([{ "op": "remove", "path": "/mode" }, { "op": "remove", "path": "/custom" }])
     );
-    assert_eq!(whitelist_filter(&config, &allow, false), config);
 }
 
 #[test]
-fn whitelist_preserves_retained_field_and_nested_order() {
+fn filter_preserves_retained_field_and_nested_order() {
     let config = value(json!({
         "mode": "rule", "proxies": [{"name": "a", "type": "direct"}],
         "custom": true, "rules": ["MATCH,DIRECT"]
     }));
-    let filtered = whitelist_filter(&config, &stage1_fields(&[]), true);
+    let (filtered, _) = filter_fields(&config, &stage1_fields(&[]));
     assert_eq!(
         serde_json::to_string(&filtered.to_json()).unwrap(),
         r#"{"proxies":[{"name":"a","type":"direct"}],"rules":["MATCH,DIRECT"]}"#,
@@ -216,14 +235,14 @@ fn guard_leaves_unmanaged_fields_to_the_profile() {
 #[test]
 fn tun_disabled_without_tun_key_is_untouched() {
     let config = value(json!({ "proxies": [] }));
-    let result = finalize(&config, &tun_off(), false).to_json();
+    let result = apply_tun_and_cache(&config, &tun_off()).to_json();
     assert!(result.get("tun").is_none());
 }
 
 #[test]
 fn tun_disabled_with_existing_tun_key_forces_enable_false() {
     let config = value(json!({ "tun": { "enable": true, "stack": "system" } }));
-    let result = finalize(&config, &tun_off(), false).to_json();
+    let result = apply_tun_and_cache(&config, &tun_off()).to_json();
     assert_eq!(result["tun"]["enable"], json!(false));
     assert_eq!(result["tun"]["stack"], json!("system"));
     assert!(result.get("dns").is_none());
@@ -240,7 +259,7 @@ fn tun_enabled_standard_appends_defaults_and_dns() {
     };
     let config =
         value(json!({ "tun": { "stack": "system" }, "dns": { "nameserver": ["1.1.1.1"] } }));
-    let result = finalize(&config, &params, false).to_json();
+    let result = apply_tun_and_cache(&config, &params).to_json();
 
     assert_eq!(result["tun"]["enable"], json!(true));
     assert_eq!(result["tun"]["stack"], json!("system"));
@@ -269,7 +288,7 @@ fn tun_enabled_clash_rs_uses_device_branch_and_no_windows_filter() {
         flavor: TunFlavor::ClashRs,
         windows_fake_ip_filter: false,
     };
-    let result = finalize(&value(json!({})), &params, false).to_json();
+    let result = apply_tun_and_cache(&value(json!({})), &params).to_json();
     assert_eq!(result["tun"]["enable"], json!(true));
     assert_eq!(result["tun"]["device-id"], json!("dev://utun1989"));
     assert_eq!(result["tun"]["auto-route"], json!(true));
@@ -279,7 +298,7 @@ fn tun_enabled_clash_rs_uses_device_branch_and_no_windows_filter() {
 }
 
 #[test]
-fn finalize_applies_cache_and_stage2_filter_without_reordering() {
+fn cache_is_appended_without_reordering() {
     let config = value(json!({
         "custom-unknown": 1,
         "proxies": [ { "name": "Proxy1" } ],
@@ -289,9 +308,8 @@ fn finalize_applies_cache_and_stage2_filter_without_reordering() {
         "mode": "rule"
     }));
 
-    let result = finalize(&config, &tun_off(), true).to_json();
-    assert!(result.get("custom-unknown").is_none());
-    // include-all expansion is its own step now; finalize leaves groups alone.
+    let result = apply_tun_and_cache(&config, &tun_off()).to_json();
+    // include-all expansion is its own step; these steps leave groups alone.
     assert_eq!(result["proxy-groups"], config.to_json()["proxy-groups"]);
     assert_eq!(
         result["profile"],
@@ -303,23 +321,22 @@ fn finalize_applies_cache_and_stage2_filter_without_reordering() {
         .keys()
         .map(String::as_str)
         .collect();
-    assert_eq!(keys, vec!["proxies", "proxy-groups", "mode", "profile"]);
-
-    let kept = finalize(&config, &tun_off(), false).to_json();
-    assert_eq!(kept["custom-unknown"], json!(1));
-    let keys: Vec<&str> = kept
-        .as_object()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect();
-    assert_eq!(*keys.first().unwrap(), "custom-unknown");
+    assert_eq!(
+        keys,
+        vec![
+            "custom-unknown",
+            "proxies",
+            "proxy-groups",
+            "mode",
+            "profile"
+        ]
+    );
 }
 
 #[test]
 fn cache_does_not_merge_into_existing_profile_key() {
     let config = value(json!({ "profile": { "do-not-override": true } }));
-    let result = finalize(&config, &tun_off(), false).to_json();
+    let result = apply_tun_and_cache(&config, &tun_off()).to_json();
     assert_eq!(result["profile"], json!({ "do-not-override": true }));
 }
 
@@ -338,13 +355,13 @@ fn filtering_large_config_does_not_create_spurious_block_moves() {
         }))
         .unwrap(),
     );
-    let filtered = Arc::new(whitelist_filter(&config, &stage1_fields(&[]), true));
+    let filtered = Arc::new(filter_fields(&config, &stage1_fields(&[])).0);
     let mut builder = ConfigSnapshotsBuilder::new_root(config, OperatorTag::BareRoot);
     builder
         .push(
             OperatorTag::BuiltinStep {
                 selected_profile_id: None,
-                step: BuiltinStepKind::WhitelistFieldFilter,
+                step: BuiltinStepKind::FieldFilter,
             },
             filtered,
         )

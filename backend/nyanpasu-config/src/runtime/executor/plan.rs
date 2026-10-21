@@ -13,6 +13,15 @@ use crate::runtime::{
 
 use super::{GuardInputs, TunFlavor, TunParams};
 
+/// Every key post-processing decides: the guard's, then `tun` with its DNS
+/// takeover, then the `profile` cache.
+pub(super) fn ownership(guard: &GuardInputs<'_>, tun: &TunParams) -> OwnershipEntries {
+    let mut entries = guard_ownership(guard);
+    entries.extend(tun_ownership(tun));
+    entries.push(cache_ownership());
+    entries
+}
+
 /// The top-level keys the guard owns: the typed overrides, then the resolved
 /// ports. Nyanpasu owns `port` and `socks-port` like `mixed-port`: an unset
 /// one is removed, so a profile cannot open a listener the user turned off or
@@ -38,11 +47,10 @@ pub(super) fn guard_ownership(guard: &GuardInputs<'_>) -> OwnershipEntries {
     entries
 }
 
-/// The keys finalizing owns: `tun` and the DNS takeover it needs, then the
-/// `profile` cache. While TUN is off, a `tun` the profiles wrote is turned off
-/// and none is created.
-pub(super) fn finalize_ownership(tun: &TunParams) -> OwnershipEntries {
-    let mut entries = Vec::with_capacity(3);
+/// `tun` and the DNS takeover it needs. While TUN is off, a `tun` the
+/// profiles wrote is turned off and none is created.
+pub(super) fn tun_ownership(tun: &TunParams) -> OwnershipEntries {
+    let mut entries = Vec::with_capacity(2);
     if tun.enable {
         entries.push((
             "tun",
@@ -67,15 +75,19 @@ pub(super) fn finalize_ownership(tun: &TunParams) -> OwnershipEntries {
             },
         ));
     }
-    // An existing `profile` is kept whole; its keys are not filled in.
-    entries.push((
+    entries
+}
+
+/// The `profile` cache. An existing `profile` is kept whole; its keys are not
+/// filled in.
+pub(super) fn cache_ownership() -> (&'static str, Ownership) {
+    (
         "profile",
         Ownership::Default(object([
             ("store-selected", ConfigValue::Bool(true)),
             ("store-fake-ip", ConfigValue::Bool(false)),
         ])),
-    ));
-    entries
+    )
 }
 
 fn tun_entries(flavor: TunFlavor) -> OwnershipEntries {

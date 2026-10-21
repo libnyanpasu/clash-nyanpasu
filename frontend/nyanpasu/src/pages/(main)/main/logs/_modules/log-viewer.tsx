@@ -18,10 +18,7 @@ import { SearchField } from '@nyanpasu/ui/search-field'
 import { m } from '@/paraglide/messages'
 import { writeClipboardText } from '@/utils/clipboard'
 import { cn } from '@nyanpasu/utils'
-import {
-  dataPageSearchVariants,
-  useDataPageBottomInset,
-} from '../../_modules/data-page'
+import { useDataPageBottomInset } from '../../_modules/data-page'
 import LogJson from './log-json'
 import LogLevelBadge from './log-level-badge'
 
@@ -44,7 +41,8 @@ export function LogSearch({
 }) {
   return (
     <SearchField
-      className={cn(dataPageSearchVariants(), 'min-w-32 flex-1')}
+      variant="glass"
+      className="min-w-32 flex-1"
       data-slot="logs-search"
       aria-label={placeholder}
       placeholder={placeholder}
@@ -67,13 +65,14 @@ export function LogClearButton({
 }) {
   return (
     <Button
+      variant="glass"
       icon
       disabled={disabled}
       aria-disabled={disabled}
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="focus-visible:ring-primary shrink-0 rounded-full focus-visible:ring-2"
+      className="focus-visible:ring-primary shrink-0 focus-visible:ring-2"
     >
       <DeleteSweepRounded aria-hidden className="size-5" />
     </Button>

@@ -12,6 +12,10 @@ import {
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
 import {
+  GlassControlGroup,
+  glassControlGroupVariants,
+} from '@nyanpasu/ui/glass-control-group'
+import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@nyanpasu/ui/segmented-button'
@@ -21,11 +25,7 @@ import { beyondRetention } from '@/utils/traffic-retention'
 import { dimensionName } from '@/utils/traffic-usage'
 import type { Metric, TrafficRange, TrafficScope } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import {
-  dataPageFloatingGroupVariants,
-  dataPageTabsVariants,
-  DataPageToolbar,
-} from '../../_modules/data-page'
+import { DataPageToolbar } from '../../_modules/data-page'
 import FilterChips from '../../_modules/filter-chips'
 import {
   rangeName,
@@ -33,10 +33,6 @@ import {
   type SearchFilter,
 } from '../../_modules/traffic-filters'
 import { useTrafficPage } from './traffic-context'
-
-// The menu triggers keep the shape of the toolbar's Select pills.
-const triggerClassName =
-  'flex h-9 min-w-0 shrink-0 items-center gap-1 rounded-full px-3'
 
 const SCOPES = {
   all: m.traffic_scope_all,
@@ -68,14 +64,10 @@ export default function TrafficToolbar({ children }: PropsWithChildren) {
     <DataPageToolbar className="@container" data-slot="traffic-toolbar">
       {children}
 
-      <div
-        className={dataPageFloatingGroupVariants()}
-        data-slot="traffic-scope"
-      >
+      <GlassControlGroup data-slot="traffic-scope">
         <SegmentedButton
           size="sm"
-          variant="tabs"
-          className={dataPageTabsVariants()}
+          variant="glass"
           aria-label={m.traffic_scope_label()}
           value={scope}
           onValueChange={(next) => {
@@ -86,32 +78,26 @@ export default function TrafficToolbar({ children }: PropsWithChildren) {
           }}
         >
           {(Object.keys(SCOPES) as TrafficScope[]).map((value) => (
-            <SegmentedButtonItem
-              key={value}
-              value={value}
-              className="flex-none rounded-full whitespace-nowrap"
-            >
+            <SegmentedButtonItem key={value} value={value}>
               {SCOPES[value]()}
             </SegmentedButtonItem>
           ))}
         </SegmentedButton>
-      </div>
+      </GlassControlGroup>
 
       <div
         className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2"
         data-slot="traffic-controls"
       >
-        <div
-          className={cn(
-            dataPageFloatingGroupVariants(),
-            'max-w-full flex-wrap justify-end',
-          )}
+        <GlassControlGroup
+          className="max-w-full flex-wrap justify-end"
           data-slot="traffic-metric-range"
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                className={cn(triggerClassName, 'w-28')}
+                variant="glass"
+                className="w-28"
                 aria-label={m.traffic_metric_label()}
                 title={METRICS[metric]()}
               >
@@ -147,7 +133,8 @@ export default function TrafficToolbar({ children }: PropsWithChildren) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                className={cn(triggerClassName, 'w-32')}
+                variant="glass"
+                className="w-32"
                 aria-label={m.traffic_range_label()}
                 title={rangeName(range)}
               >
@@ -192,18 +179,15 @@ export default function TrafficToolbar({ children }: PropsWithChildren) {
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
+        </GlassControlGroup>
 
-        <div
-          className={dataPageFloatingGroupVariants()}
-          data-slot="traffic-actions"
-        >
+        <GlassControlGroup data-slot="traffic-actions">
           {onViewConnections && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  variant="glass"
                   icon
-                  className="rounded-full"
                   aria-label={m.traffic_view_connections()}
                   data-slot="traffic-view-connections"
                   onClick={onViewConnections}
@@ -219,8 +203,8 @@ export default function TrafficToolbar({ children }: PropsWithChildren) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
+                variant="glass"
                 icon
-                className="rounded-full"
                 aria-label={paused ? m.topology_resume() : m.topology_pause()}
                 aria-pressed={paused}
                 onClick={() => onPausedChange(!paused)}
@@ -233,13 +217,13 @@ export default function TrafficToolbar({ children }: PropsWithChildren) {
               {paused ? m.topology_resume() : m.topology_pause()}
             </TooltipContent>
           </Tooltip>
-        </div>
+        </GlassControlGroup>
       </div>
 
       {filters.length > 0 && (
         <FilterChips
           className={cn(
-            dataPageFloatingGroupVariants(),
+            glassControlGroupVariants(),
             'order-last min-h-11 basis-full',
           )}
           data-slot="traffic-filters"

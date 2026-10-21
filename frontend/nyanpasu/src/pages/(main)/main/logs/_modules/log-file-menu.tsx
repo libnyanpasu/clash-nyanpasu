@@ -12,7 +12,7 @@ import {
 import { m } from '@/paraglide/messages'
 
 const logFileMenuTriggerVariants = cva(
-  'text-on-surface-variant flex h-10 w-40 min-w-28 shrink items-center gap-1 rounded-full px-3 text-sm lg:w-56',
+  'text-on-surface-variant h-10 w-40 min-w-28 shrink text-sm lg:w-56',
 )
 
 const logFileMenuItemVariants = cva(
@@ -36,6 +36,7 @@ export function LogFileMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          variant="glass"
           aria-label={m.logs_file_label()}
           title={fileName}
           className={logFileMenuTriggerVariants()}

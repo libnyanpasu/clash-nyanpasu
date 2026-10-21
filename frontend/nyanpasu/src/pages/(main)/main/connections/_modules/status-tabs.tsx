@@ -12,7 +12,6 @@ import {
 } from '@nyanpasu/query'
 import type { TrafficScope } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { dataPageTabsVariants } from '../../_modules/data-page'
 import { toTrafficFilters } from '../../_modules/traffic-filters'
 import {
   isFiltered,
@@ -56,8 +55,7 @@ export function StatusTabs({
   return (
     <SegmentedButton
       size="sm"
-      variant="tabs"
-      className={dataPageTabsVariants()}
+      variant="glass"
       value={value}
       onValueChange={(next) => {
         // Selecting the selected segment again clears a toggle group.
@@ -66,25 +64,16 @@ export function StatusTabs({
         }
       }}
     >
-      <SegmentedButtonItem
-        value="all"
-        className="flex-none rounded-full whitespace-nowrap"
-      >
+      <SegmentedButtonItem value="all">
         {m.connections_tab_all()}
       </SegmentedButtonItem>
 
-      <SegmentedButtonItem
-        value="active"
-        className="flex-none rounded-full whitespace-nowrap"
-      >
+      <SegmentedButtonItem value="active">
         {m.connections_tab_active()}
         <CountBadge count={activeCount} />
       </SegmentedButtonItem>
 
-      <SegmentedButtonItem
-        value="closed"
-        className="flex-none rounded-full whitespace-nowrap"
-      >
+      <SegmentedButtonItem value="closed">
         {m.connections_tab_closed()}
         <CountBadge count={closedCount} />
       </SegmentedButtonItem>

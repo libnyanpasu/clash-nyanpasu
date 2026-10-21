@@ -1,5 +1,6 @@
 import CloseRounded from '~icons/material-symbols/close-rounded'
 import SearchRounded from '~icons/material-symbols/search-rounded'
+import { cva, type VariantProps } from 'class-variance-authority'
 import {
   ComponentProps,
   KeyboardEvent,
@@ -7,21 +8,43 @@ import {
   useRef,
 } from 'react'
 import { cn } from '@nyanpasu/utils'
+import { glassSurfaceVariants } from './glass-surface'
+
+export const searchFieldVariants = cva(
+  [
+    'relative flex h-10 min-w-0 items-center rounded-full',
+    'bg-surface-variant dark:bg-surface-variant/30 text-on-surface',
+    'focus-within:outline-primary focus-within:outline-2',
+  ],
+  {
+    variants: {
+      variant: {
+        basic: null,
+        glass: [glassSurfaceVariants(), 'dark:bg-surface-variant h-11'],
+      },
+    },
+    defaultVariants: {
+      variant: 'basic',
+    },
+  },
+)
 
 export type SearchFieldProps = Omit<
   ComponentProps<'input'>,
   'value' | 'onChange' | 'type'
-> & {
-  value: string
-  onValueChange: (value: string) => void
-  /** Accessible name of the clear button. */
-  clearLabel: string
-}
+> &
+  VariantProps<typeof searchFieldVariants> & {
+    value: string
+    onValueChange: (value: string) => void
+    /** Accessible name of the clear button. */
+    clearLabel: string
+  }
 
 export const SearchField = ({
   value,
   onValueChange,
   clearLabel,
+  variant,
   className,
   onKeyDown,
   ref,
@@ -52,12 +75,7 @@ export const SearchField = ({
   return (
     <div
       data-slot="search-field"
-      className={cn(
-        'relative flex h-10 min-w-0 items-center rounded-full',
-        'bg-surface-variant dark:bg-surface-variant/30 text-on-surface',
-        'focus-within:outline-primary focus-within:outline-2',
-        className,
-      )}
+      className={cn(searchFieldVariants({ variant }), className)}
     >
       <SearchRounded
         aria-hidden

@@ -1,7 +1,10 @@
 use serde_json::json;
 
 use crate::{
-    clash::config::{overrides::ClashGuardOverrides, tun_stack::TunStack},
+    clash::config::{
+        overrides::{ClashGuardOverrides, ManageableField, TunOverrides},
+        tun_stack::TunStack,
+    },
     runtime::{
         executor::{
             GuardInputs, ResolvedPortBindings, TunFlavor, TunParams,
@@ -48,9 +51,14 @@ pub fn unmanaged_overrides() -> ClashGuardOverrides {
     .unwrap()
 }
 
+fn auto_route(auto_route: ManageableField<bool>) -> TunOverrides {
+    TunOverrides { auto_route }
+}
+
 fn tun_off() -> TunParams {
     TunParams {
         enable: false,
+        overrides: TunOverrides::default(),
         flavor: TunFlavor::Standard {
             stack: TunStack::Gvisor,
         },
@@ -252,6 +260,7 @@ fn tun_disabled_with_existing_tun_key_forces_enable_false() {
 fn tun_enabled_standard_appends_defaults_and_dns() {
     let params = TunParams {
         enable: true,
+        overrides: TunOverrides::default(),
         flavor: TunFlavor::Standard {
             stack: TunStack::Gvisor,
         },
@@ -285,6 +294,7 @@ fn tun_enabled_standard_appends_defaults_and_dns() {
 fn tun_enabled_clash_rs_uses_device_branch_and_no_windows_filter() {
     let params = TunParams {
         enable: true,
+        overrides: TunOverrides::default(),
         flavor: TunFlavor::ClashRs,
         windows_fake_ip_filter: false,
     };
@@ -295,6 +305,126 @@ fn tun_enabled_clash_rs_uses_device_branch_and_no_windows_filter() {
     assert!(result["tun"].get("stack").is_none());
     assert!(result["tun"].get("dns-hijack").is_none());
     assert!(result["dns"].get("fake-ip-filter").is_none());
+}
+
+#[test]
+fn managed_auto_route_overwrites_profile_values_for_both_tun_flavors() {
+    for flavor in [
+        TunFlavor::ClashRs,
+        TunFlavor::Standard {
+            stack: TunStack::Gvisor,
+        },
+    ] {
+        for enabled in [false, true] {
+            let params = TunParams {
+                enable: true,
+                overrides: auto_route(ManageableField::Managed(enabled)),
+                flavor,
+                ..tun_off()
+            };
+            let config = value(json!({ "tun": { "auto-route": "global" } }));
+            let result = apply_tun_and_cache(&config, &params).to_json();
+            assert_eq!(result["tun"]["auto-route"], json!(enabled));
+            assert_eq!(result["tun"]["enable"], json!(true));
+        }
+    }
+}
+
+#[test]
+fn unmanaged_auto_route_preserves_profile_values_and_other_tun_defaults() {
+    for flavor in [
+        TunFlavor::ClashRs,
+        TunFlavor::Standard {
+            stack: TunStack::Gvisor,
+        },
+    ] {
+        for route in [json!("global"), json!(false), json!(true)] {
+            let params = TunParams {
+                enable: true,
+                overrides: auto_route(ManageableField::Unmanaged),
+                flavor,
+                ..tun_off()
+            };
+            let config = value(json!({ "tun": {
+                "enable": false,
+                "auto-route": route,
+                "mtu": 1400,
+            } }));
+            let result = apply_tun_and_cache(&config, &params).to_json();
+            assert_eq!(result["tun"]["auto-route"], route);
+            assert_eq!(result["tun"]["enable"], json!(true));
+            assert_eq!(result["tun"]["mtu"], json!(1400));
+            assert_eq!(result["dns"]["enable"], json!(true));
+            match flavor {
+                TunFlavor::ClashRs => {
+                    assert_eq!(result["tun"]["device-id"], json!("dev://utun1989"))
+                }
+                TunFlavor::Standard { .. } => {
+                    assert_eq!(result["tun"]["stack"], json!("gvisor"));
+                    assert_eq!(result["tun"]["dns-hijack"], json!(["any:53"]));
+                    assert_eq!(result["tun"]["auto-detect-interface"], json!(true));
+                }
+            }
+        }
+    }
+}
+
+/// Left unmanaged, a missing `auto-route` stays missing, as for an unmanaged
+/// guard field.
+#[test]
+fn unmanaged_auto_route_does_not_supply_a_default() {
+    for flavor in [
+        TunFlavor::ClashRs,
+        TunFlavor::Standard {
+            stack: TunStack::Gvisor,
+        },
+    ] {
+        let params = TunParams {
+            enable: true,
+            overrides: auto_route(ManageableField::Unmanaged),
+            flavor,
+            ..tun_off()
+        };
+        let result = apply_tun_and_cache(&value(json!({})), &params).to_json();
+        assert!(result["tun"].get("auto-route").is_none());
+        assert_eq!(result["tun"]["enable"], json!(true));
+        assert_eq!(result["dns"]["enable"], json!(true));
+    }
+}
+
+/// With TUN off the forced `tun` keys are not written either.
+#[test]
+fn managed_auto_route_is_not_forced_while_tun_is_off() {
+    let params = TunParams {
+        overrides: auto_route(ManageableField::Managed(false)),
+        ..tun_off()
+    };
+    let config = value(json!({ "tun": { "enable": true, "auto-route": "global" } }));
+    let result = apply_tun_and_cache(&config, &params).to_json();
+    assert_eq!(
+        result["tun"],
+        json!({ "enable": false, "auto-route": "global" })
+    );
+
+    let absent = apply_tun_and_cache(&value(json!({})), &params).to_json();
+    assert!(absent.get("tun").is_none());
+}
+
+#[test]
+fn unmanaged_auto_route_does_not_let_the_profile_enable_tun() {
+    let params = TunParams {
+        overrides: auto_route(ManageableField::Unmanaged),
+        ..tun_off()
+    };
+    let config = value(json!({ "tun": { "enable": true, "auto-route": "global" } }));
+    let result = apply_tun_and_cache(&config, &params).to_json();
+    assert_eq!(result["tun"]["enable"], json!(false));
+    assert_eq!(result["tun"]["auto-route"], json!("global"));
+    assert!(result.get("dns").is_none());
+
+    let absent = apply_tun_and_cache(&value(json!({})), &params).to_json();
+    assert!(absent.get("tun").is_none());
+    assert!(absent.get("dns").is_none());
 }
 
 #[test]

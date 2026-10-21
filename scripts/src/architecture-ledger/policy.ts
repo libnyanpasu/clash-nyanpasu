@@ -179,7 +179,10 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     "LANGUAGE_CASE",
   ]),
   ...migrationModuleStatics("application", ["WINDOW_CLOSE"]),
-  ...migrationModuleStatics("clash_config", ["MANAGEABLE_GUARD_FIELDS"]),
+  ...migrationModuleStatics("clash_config", [
+    "MANAGEABLE_GUARD_FIELDS",
+    "TUN_OVERRIDES",
+  ]),
   ...migrationModuleStatics("profiles", [
     "NULL_VALUE",
     "SCRIPT_NEWTYPE",

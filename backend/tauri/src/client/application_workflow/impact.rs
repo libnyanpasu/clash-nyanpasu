@@ -17,7 +17,7 @@ use nyanpasu_config::{
     clash::config::{
         ClashConfig, ClashConfigPatch, ClashControlChannel,
         clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
-        overrides::{ClashGuardOverrides, ClashGuardOverridesPatch},
+        overrides::{ClashGuardOverrides, ClashGuardOverridesPatch, TunOverrides},
         tun_stack::TunStack,
     },
     profile::{ManagedProfilePath, ProfileDefinition, ProfileId, Profiles},
@@ -175,6 +175,7 @@ impl RequestedRuntimeFields {
                 || patch.enable_clash_fields.is_some()
                 || patch.expand_include_all.is_some()
                 || patch.enable_tun_mode.is_some()
+                || !patch.tun.is_empty()
                 || patch.tun_stack.is_some()
                 || !patch.mixed_port.is_empty()
                 || patch.socks_port.is_some()
@@ -326,8 +327,8 @@ pub(crate) fn leaves_service_mode(
 ///
 /// Enumerated from the real consumers rather than from a field whitelist:
 /// `RuntimeBuilder::build` reads `overrides`, `enable_clash_fields`,
-/// `expand_include_all`, `enable_tun_mode` and `tun_stack`; `SessionPortResolver::resolve` turns the
-/// four port strategies into the bindings written into the generated config;
+/// `expand_include_all`, `enable_tun_mode`, `tun` and `tun_stack`;
+/// `SessionPortResolver::resolve` turns the four port strategies into the runtime bindings;
 /// and `RuntimePreparation::prepare` turns the two channel fields into the
 /// core's local-IPC settings.
 ///
@@ -341,6 +342,7 @@ struct ClashRuntimeInputs<'a> {
     enable_clash_fields: bool,
     expand_include_all: bool,
     enable_tun_mode: bool,
+    tun: TunOverrides,
     tun_stack: TunStack,
     mixed_port: &'a PortStrategy,
     socks_port: Option<&'a PortStrategy>,
@@ -357,6 +359,7 @@ fn clash_runtime_inputs(clash: &ClashConfig) -> ClashRuntimeInputs<'_> {
         enable_clash_fields: clash.enable_clash_fields,
         expand_include_all: clash.expand_include_all,
         enable_tun_mode: clash.enable_tun_mode,
+        tun: clash.tun,
         tun_stack: clash.tun_stack,
         mixed_port: &clash.mixed_port,
         socks_port: clash.socks_port.as_ref(),
@@ -557,7 +560,9 @@ mod tests {
                     PortStrategyPatch,
                 },
             },
-            overrides::{ClashGuardOverridesPatch, LogLevel, ManageableField, Mode},
+            overrides::{
+                ClashGuardOverridesPatch, LogLevel, ManageableField, Mode, TunOverridesPatch,
+            },
         },
         profile::{
             ConfigDefinition, ProfileId, ProfileMetadata, ProfileSource, TransformDefinition,
@@ -1080,6 +1085,16 @@ mod tests {
             impact: RuntimeImpact::Reconcile,
         },
         ClashCase {
+            field: "tun",
+            candidate: || ClashConfig {
+                tun: TunOverrides {
+                    auto_route: ManageableField::Managed(false),
+                },
+                ..base_clash()
+            },
+            impact: RuntimeImpact::Reconcile,
+        },
+        ClashCase {
             field: "tun_stack",
             candidate: || ClashConfig {
                 tun_stack: TunStack::System,
@@ -1229,6 +1244,30 @@ mod tests {
             .collect();
 
         assert_eq!(fields, covered);
+    }
+
+    #[test]
+    fn each_auto_route_policy_changes_the_runtime_target() {
+        let mut previous = base_clash();
+        for auto_route in [
+            ManageableField::Managed(false),
+            ManageableField::Unmanaged,
+            ManageableField::Managed(true),
+        ] {
+            let candidate = ClashConfig {
+                tun: TunOverrides { auto_route },
+                ..previous.clone()
+            };
+            assert_eq!(
+                classify_clash(&previous, &candidate),
+                RuntimeImpact::Reconcile
+            );
+            assert_ne!(
+                clash_target(&previous).unwrap(),
+                clash_target(&candidate).unwrap()
+            );
+            previous = candidate;
+        }
     }
 
     #[test]
@@ -1652,6 +1691,21 @@ mod tests {
 
     #[test]
     fn a_clash_patch_names_its_runtime_fields_including_the_overrides() {
+        for auto_route in [
+            ManageableField::Managed(true),
+            ManageableField::Managed(false),
+            ManageableField::Unmanaged,
+        ] {
+            assert_eq!(
+                RequestedRuntimeFields::of_clash(&ClashConfigPatch {
+                    tun: TunOverridesPatch {
+                        auto_route: Some(auto_route),
+                    },
+                    ..ClashConfigPatch::default()
+                }),
+                RequestedRuntimeFields::runtime()
+            );
+        }
         assert_eq!(
             RequestedRuntimeFields::of_clash(&ClashConfigPatch {
                 enable_tun_mode: Some(true),

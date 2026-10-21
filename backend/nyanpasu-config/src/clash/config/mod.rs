@@ -39,6 +39,10 @@ pub struct ClashConfig {
     /// clash tun mode
     pub enable_tun_mode: bool,
 
+    /// The `tun` keys Nyanpasu forces while TUN mode is on.
+    #[patch(nesting)]
+    pub tun: TunOverrides,
+
     /// web ui list
     pub web_ui_list: Vec<String>,
 
@@ -91,6 +95,7 @@ impl Default for ClashConfig {
         Self {
             overrides: ClashGuardOverrides::default(),
             enable_tun_mode: false,
+            tun: TunOverrides::default(),
             web_ui_list: Vec::new(),
             enable_clash_fields: false,
             expand_include_all: default_expand_include_all(),
@@ -127,6 +132,41 @@ mod patch_tests {
         assert_eq!(config.socks_port, None);
         assert_eq!(config.http_port, None);
         assert!(!config.enable_clash_fields);
+    }
+
+    #[test]
+    fn tun_auto_route_is_managed_true_by_default() {
+        assert_eq!(
+            ClashConfig::default().tun.auto_route,
+            ManageableField::Managed(true)
+        );
+    }
+
+    /// A nested `tun` patch sets `auto-route` alone, and the setting survives a
+    /// save and load without touching the TUN switch or stack.
+    #[test]
+    fn tun_auto_route_patches_round_trip_without_changing_the_tun_switch() {
+        let mut config = ClashConfig {
+            enable_tun_mode: true,
+            tun_stack: TunStack::System,
+            ..ClashConfig::default()
+        };
+        for field in [
+            ManageableField::Managed(false),
+            ManageableField::Managed(true),
+            ManageableField::Unmanaged,
+        ] {
+            let patch: ClashConfigPatch = serde_json::from_value(serde_json::json!({
+                "tun": { "auto-route": field },
+            }))
+            .unwrap();
+            config.apply(patch);
+            let saved = serde_yaml_ng::to_string(&config).unwrap();
+            let loaded: ClashConfig = serde_yaml_ng::from_str(&saved).unwrap();
+            assert_eq!(loaded.tun.auto_route, field);
+            assert!(loaded.enable_tun_mode);
+            assert_eq!(loaded.tun_stack, TunStack::System);
+        }
     }
 
     #[test]

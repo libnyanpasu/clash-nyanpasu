@@ -189,6 +189,7 @@ impl RuntimeBuilder {
             whitelist_enabled: input.clash.enable_clash_fields,
             tun: TunParams {
                 enable: input.clash.enable_tun_mode,
+                overrides: input.clash.tun,
                 flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
                 windows_fake_ip_filter: cfg!(windows),
             },
@@ -203,6 +204,7 @@ impl RuntimeBuilder {
 mod tests {
     use super::*;
     use nyanpasu_config::{
+        clash::config::overrides::ManageableField,
         profile::{ManagedProfilePath, ProfileId, ScriptRuntime},
         runtime::{
             executor::{PortError, StepLogEntry},
@@ -317,6 +319,40 @@ mod tests {
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner).expect("bare build");
         let yaml = serde_yaml_ng::to_value(&*artifact.final_config).expect("artifact to yaml");
         assert_eq!(yaml["mixed-port"], serde_yaml_ng::Value::from(7890));
+    }
+
+    #[test]
+    fn tun_auto_route_policy_reaches_the_runtime_without_releasing_tun_enable() {
+        for auto_route in [
+            ManageableField::Managed(true),
+            ManageableField::Managed(false),
+            ManageableField::Unmanaged,
+        ] {
+            for enabled in [false, true] {
+                let mut input = base_input();
+                input.app.enable_builtin_enhanced = false;
+                input.app.core = ClashCore::Meow;
+                input.clash.enable_tun_mode = enabled;
+                input.clash.tun.auto_route = auto_route;
+                let config = RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner)
+                    .unwrap()
+                    .final_config
+                    .to_json();
+                if enabled {
+                    assert_eq!(config["tun"]["enable"], serde_json::json!(true));
+                    match auto_route {
+                        ManageableField::Managed(value) => {
+                            assert_eq!(config["tun"]["auto-route"], serde_json::json!(value))
+                        }
+                        ManageableField::Unmanaged => {
+                            assert!(config["tun"].get("auto-route").is_none())
+                        }
+                    }
+                } else {
+                    assert!(config.get("tun").is_none());
+                }
+            }
+        }
     }
 
     #[test]

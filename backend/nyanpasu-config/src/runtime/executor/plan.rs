@@ -55,7 +55,7 @@ pub(super) fn tun_ownership(tun: &TunParams) -> OwnershipEntries {
         entries.push((
             "tun",
             Ownership::Table {
-                entries: tun_entries(tun.flavor),
+                entries: tun_entries(tun),
                 create: true,
             },
         ));
@@ -90,17 +90,16 @@ pub(super) fn cache_ownership() -> (&'static str, Ownership) {
     )
 }
 
-fn tun_entries(flavor: TunFlavor) -> OwnershipEntries {
+fn tun_entries(tun: &TunParams) -> OwnershipEntries {
     let mut entries = vec![("enable", Ownership::Forced(ConfigValue::Bool(true)))];
-    match flavor {
-        TunFlavor::ClashRs => entries.extend([
-            ("device-id", Ownership::Default(string("dev://utun1989"))),
-            ("auto-route", Ownership::Default(ConfigValue::Bool(true))),
-        ]),
+    entries.extend(tun.overrides.ownership_entries());
+    match tun.flavor {
+        TunFlavor::ClashRs => {
+            entries.push(("device-id", Ownership::Default(string("dev://utun1989"))));
+        }
         TunFlavor::Standard { stack } => entries.extend([
             ("stack", Ownership::Default(string(stack.as_ref()))),
             ("dns-hijack", Ownership::Default(strings(&["any:53"]))),
-            ("auto-route", Ownership::Default(ConfigValue::Bool(true))),
             (
                 "auto-detect-interface",
                 Ownership::Default(ConfigValue::Bool(true)),

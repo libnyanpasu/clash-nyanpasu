@@ -876,12 +876,12 @@ fn raw_frame(
 ) -> Arc<ClashConnectionsFrame> {
     Arc::new(ClashConnectionsFrame {
         instance_id: CORE.into(),
-        snapshot: clash_api::ConnectionsSnapshot {
+        snapshot: Arc::new(clash_api::ConnectionsSnapshot {
             upload_total,
             download_total,
             connections: Some(connections),
             memory: None,
-        },
+        }),
     })
 }
 

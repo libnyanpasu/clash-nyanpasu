@@ -151,7 +151,7 @@ impl<S: Storage> Actor for TrafficActor<S> {
                 if !state.db.needs_recovery() {
                     state
                         .session
-                        .observe(&frame, state.profiles.current().as_deref(), &mut || {
+                        .observe(frame, state.profiles.current().as_deref(), &mut || {
                             state.db.next_event_seq()
                         });
                     if state.session.pending_bytes() >= state.db.batch_bytes() / 2 {

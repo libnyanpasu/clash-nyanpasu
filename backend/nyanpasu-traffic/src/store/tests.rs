@@ -84,7 +84,7 @@ fn active_records_span_exactly_bounded_transactions_and_all_restore() {
             dimensions: dimensions(i, 3),
         })
         .collect();
-    session.observe(&observed, None, &mut || db.next_event_seq());
+    session.observe(observed.clone(), None, &mut || db.next_event_seq());
     let mut batch = session.take_batch(NOW);
     batch.active.sort_by(|a, b| a.id.cmp(&b.id));
     let mut expected_transactions = 1;
@@ -134,7 +134,7 @@ fn oversized_close_groups_preserve_usage_events_deletes_and_reused_ids() {
             dimensions: dimensions(i, 3),
         })
         .collect();
-    session.observe(&observed, None, &mut || db.next_event_seq());
+    session.observe(observed.clone(), None, &mut || db.next_event_seq());
     db.flush(&session.take_batch(NOW), NOW, None).unwrap();
     // Restart the source and reuse every id: all old deletes must precede new active puts.
     observed.instance_id = "new-core".into();
@@ -145,7 +145,7 @@ fn oversized_close_groups_preserve_usage_events_deletes_and_reused_ids() {
             download: 11,
         };
     }
-    session.observe(&observed, None, &mut || db.next_event_seq());
+    session.observe(observed.clone(), None, &mut || db.next_event_seq());
     let batch = session.take_batch(NOW + 1000);
     let before = db.last_batch;
     db.flush(&batch, NOW + 1000, None).unwrap();
@@ -203,7 +203,7 @@ fn oversized_active_record_does_not_discard_later_records() {
         })
         .collect();
     observed.connections[1].dimensions.process = "p".repeat(8192);
-    session.observe(&observed, None, &mut || db.next_event_seq());
+    session.observe(observed.clone(), None, &mut || db.next_event_seq());
     let mut batch = session.take_batch(NOW);
     batch.active.sort_by(|a, b| a.id.cmp(&b.id));
     db.flush(&batch, NOW, None).unwrap();
@@ -242,9 +242,9 @@ fn oversized_close_record_does_not_discard_later_records() {
         if i == 1 {
             observed.connections[0].dimensions.process = "p".repeat(8192);
         }
-        session.observe(&observed, None, &mut || db.next_event_seq());
+        session.observe(observed.clone(), None, &mut || db.next_event_seq());
         observed.connections.clear();
-        session.observe(&observed, None, &mut || db.next_event_seq());
+        session.observe(observed.clone(), None, &mut || db.next_event_seq());
     }
     let batch = session.take_batch(NOW);
     assert_eq!(
@@ -310,14 +310,14 @@ fn an_unrepresentable_close_still_deletes_its_stored_record() {
         .collect();
     // Its active record fits; its close repeats the labels in each series point and the event.
     observed.connections[1].dimensions.process = "p".repeat(1500);
-    session.observe(&observed, None, &mut || db.next_event_seq());
+    session.observe(observed.clone(), None, &mut || db.next_event_seq());
     db.flush(&session.take_batch(NOW), NOW, None).unwrap();
     drop(db);
     let (mut db, state) = TrafficDb::open(disk.open().unwrap(), profile.clone()).unwrap();
     assert_eq!(state.unwrap().1.len(), 3);
     observed.wall_ms += 1000;
     observed.connections.clear();
-    session.observe(&observed, None, &mut || db.next_event_seq());
+    session.observe(observed.clone(), None, &mut || db.next_event_seq());
     let batch = session.take_batch(NOW + 1000);
     db.flush(&batch, NOW + 1000, None).unwrap();
     drop(db);
@@ -385,8 +385,8 @@ fn stored_and_session_queries_equal_the_session_only_path() {
                 1 => Some(""),
                 _ => Some("profile"),
             };
-            session.observe(&frame, profile, &mut || db.next_event_seq());
-            reference.observe(&frame, profile, &mut || {
+            session.observe(frame.clone(), profile, &mut || db.next_event_seq());
+            reference.observe(frame.clone(), profile, &mut || {
                 let seq = EventSeq {
                     incarnation: initial.incarnation,
                     seq: sequence,
@@ -525,9 +525,7 @@ fn auxiliary_state_and_batch_id_survive_reopen() {
     let disk = MemoryDisk::new();
     let mut db = open(&disk, Profile::desktop());
     let mut session = Session::new();
-    session.observe(&frame(0, 4, 2), Some("profile"), &mut || {
-        db.next_event_seq()
-    });
+    session.observe(frame(0, 4, 2), Some("profile"), &mut || db.next_event_seq());
     db.flush(&session.take_batch(NOW), NOW, None).unwrap();
     let last = db.last_batch;
     drop(db);
@@ -536,7 +534,7 @@ fn auxiliary_state_and_batch_id_survive_reopen() {
     let (meta, active) = state.unwrap();
     assert_eq!(active.len(), 3);
     let mut restored = Session::restore(meta, active);
-    restored.observe(&frame(1, 4, 2), None, &mut || db.next_event_seq());
+    restored.observe(frame(1, 4, 2), None, &mut || db.next_event_seq());
     db.flush(&restored.take_batch(NOW + 30_000), NOW + 30_000, None)
         .unwrap();
     assert_eq!(db.last_batch, last + 1);
@@ -622,10 +620,10 @@ fn a_filter_missing_from_the_catalog_still_selects_live_rows() {
     let mut db = open(&MemoryDisk::new(), Profile::desktop());
     let mut session = Session::new();
     let f = frame(0, 2, 1);
-    session.observe(&f, None, &mut || db.next_event_seq());
+    session.observe(f, None, &mut || db.next_event_seq());
     let mut next = frame(1, 2, 1);
     next.connections[0].dimensions.target = "live-only-target".into();
-    session.observe(&next, None, &mut || db.next_event_seq());
+    session.observe(next.clone(), None, &mut || db.next_event_seq());
     db.flush(&session.take_batch(next.wall_ms), next.wall_ms, None)
         .unwrap();
     let asked = request(
@@ -651,7 +649,7 @@ fn recovery_waits_for_readers_then_restores_auxiliary_state() {
     let disk = MemoryDisk::new();
     let mut db = open(&disk, Profile::desktop());
     let mut session = Session::new();
-    session.observe(&frame(0, 2, 2), None, &mut || db.next_event_seq());
+    session.observe(frame(0, 2, 2), None, &mut || db.next_event_seq());
     db.flush(&session.take_batch(NOW), NOW, None).unwrap();
     let snapshot = db.reader.capture().unwrap();
     assert!(matches!(

@@ -267,7 +267,7 @@ mod tests {
         let mut session = Session::new();
         for (step, counters) in [(1, Some(100)), (2, None), (3, Some(200))] {
             session.observe(
-                &Frame {
+                Frame {
                     instance_id: "core".into(),
                     wall_ms: step * 1000,
                     mono: Duration::from_secs(step as u64),

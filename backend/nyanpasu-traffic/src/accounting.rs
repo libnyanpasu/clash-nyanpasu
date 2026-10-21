@@ -143,9 +143,10 @@ impl Session {
     /// `profile` is the current profile; connections first seen in this frame keep it for good.
     /// While the store refuses writes the frame is ignored: the counters are cumulative, so the
     /// first frame after the outage carries what the ignored ones would have added.
+    /// Takes ownership so new or changed observations can move into the session.
     pub fn observe(
         &mut self,
-        frame: &Frame,
+        frame: Frame,
         profile: Option<&str>,
         sequence: &mut impl FnMut() -> EventSeq,
     ) {
@@ -160,7 +161,7 @@ impl Session {
             }
             self.meta.global_counters = None;
             self.last_mono = None;
-            self.meta.instance_id = Some(frame.instance_id.clone());
+            self.meta.instance_id = Some(frame.instance_id);
         }
 
         let elapsed = self
@@ -174,17 +175,25 @@ impl Session {
 
         let (minute, hour) = (minute_of(frame.wall_ms), hour_of(frame.wall_ms));
         self.rates.clear();
-        for sample in &frame.connections {
+        let mut seen = HashSet::with_capacity(frame.connections.len());
+        for mut sample in frame.connections {
             let (increment, existed) = match self.active.get_mut(&sample.id) {
                 Some(conn) => {
                     let increment = delta(sample.counters, Some(conn.counters));
-                    let mut dimensions = sample.dimensions.clone();
-                    dimensions.profile.clone_from(&conn.dimensions.profile);
-                    if conn.counters != sample.counters || conn.dimensions != dimensions {
+                    // Compare observations without relabelling the first-seen profile.
+                    let profile = conn.dimensions.profile.take();
+                    sample.dimensions.profile = None;
+                    let dimensions_changed = conn.dimensions != sample.dimensions;
+                    if conn.counters != sample.counters || dimensions_changed {
                         self.dirty.insert(sample.id.clone());
                     }
                     conn.counters = sample.counters;
-                    conn.dimensions = dimensions;
+                    if dimensions_changed {
+                        sample.dimensions.profile = profile;
+                        conn.dimensions = sample.dimensions;
+                    } else {
+                        conn.dimensions.profile = profile;
+                    }
                     record(conn, minute, hour, increment);
                     (increment, true)
                 }
@@ -194,7 +203,7 @@ impl Session {
                         started_at: sample.started_at,
                         first_seen_at: frame.wall_ms,
                         counters: sample.counters,
-                        dimensions: sample.dimensions.clone(),
+                        dimensions: sample.dimensions,
                         minutes: BTreeMap::new(),
                         hours: BTreeMap::new(),
                     };
@@ -211,9 +220,9 @@ impl Session {
                 self.rates
                     .insert(sample.id.clone(), rate(increment, elapsed));
             }
+            seen.insert(sample.id);
         }
 
-        let seen: HashSet<&str> = frame.connections.iter().map(|s| s.id.as_str()).collect();
         let gone: Vec<_> = self
             .active
             .extract_if(|id, _| !seen.contains(id.as_str()))
@@ -649,7 +658,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 0,
@@ -679,7 +688,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -691,7 +700,7 @@ mod tests {
         );
         take(&mut session, 1_000);
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -713,13 +722,13 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(INSTANCE, 1_000, 0, bytes(10, 10), vec![sample("a", 10, 10)]),
+            frame(INSTANCE, 1_000, 0, bytes(10, 10), vec![sample("a", 10, 10)]),
             None,
             &mut sequence,
         );
         assert_eq!(take(&mut session, 1_000).active.len(), 1);
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -743,7 +752,7 @@ mod tests {
             ..sample("a", 10, 10)
         };
         session.observe(
-            &frame(INSTANCE, 3_000, 2_000, bytes(10, 10), vec![moved]),
+            frame(INSTANCE, 3_000, 2_000, bytes(10, 10), vec![moved]),
             None,
             &mut sequence,
         );
@@ -757,7 +766,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -770,7 +779,7 @@ mod tests {
         take(&mut session, 1_000);
         // Connection download restarted, upload kept growing.
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -791,7 +800,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -803,7 +812,7 @@ mod tests {
         );
         take(&mut session, 1_000);
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -836,7 +845,7 @@ mod tests {
             ..sample("b", 1, 1)
         };
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -860,7 +869,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -871,7 +880,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -895,7 +904,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -909,7 +918,7 @@ mod tests {
 
         // The new core reuses the connection id with small counters.
         session.observe(
-            &frame("core-2", 5_000, 9_000, bytes(7, 7), vec![sample("a", 5, 5)]),
+            frame("core-2", 5_000, 9_000, bytes(7, 7), vec![sample("a", 5, 5)]),
             None,
             &mut sequence,
         );
@@ -942,7 +951,7 @@ mod tests {
         };
         // Hour 0, then hour 1 under other dimensions, closed during hour 2.
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 10 * MINUTE,
                 0,
@@ -953,7 +962,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 HOUR + 5 * MINUTE,
                 1,
@@ -964,7 +973,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(INSTANCE, 2 * HOUR + MINUTE, 2, bytes(0, 0), vec![]),
+            frame(INSTANCE, 2 * HOUR + MINUTE, 2, bytes(0, 0), vec![]),
             None,
             &mut sequence,
         );
@@ -1008,7 +1017,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 10 * MINUTE,
                 0,
@@ -1019,7 +1028,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 HOUR + 5 * MINUTE,
                 1,
@@ -1030,7 +1039,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(INSTANCE, HOUR + 6 * MINUTE, 2, bytes(0, 0), vec![]),
+            frame(INSTANCE, HOUR + 6 * MINUTE, 2, bytes(0, 0), vec![]),
             None,
             &mut sequence,
         );
@@ -1056,7 +1065,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 HOUR - 1_000,
                 0,
@@ -1067,7 +1076,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 HOUR + 1_000,
                 2_000,
@@ -1105,7 +1114,7 @@ mod tests {
         let at = |minutes_ago: i64| now - minutes_ago * MINUTE;
         for (i, minutes_ago) in [400, 360, 300, 0].into_iter().enumerate() {
             session.observe(
-                &frame(
+                frame(
                     INSTANCE,
                     at(minutes_ago),
                     i as u64,
@@ -1144,11 +1153,42 @@ mod tests {
     }
 
     #[test]
+    fn unchanged_observations_keep_the_first_profile_without_an_upsert() {
+        let mut sequence = sequence_source();
+        let mut session = Session::new();
+        session.observe(
+            frame(INSTANCE, 1_000, 0, bytes(10, 10), vec![sample("a", 10, 10)]),
+            Some("first"),
+            &mut sequence,
+        );
+        take(&mut session, 1_000);
+        let mut unchanged = sample("a", 10, 10);
+        unchanged.dimensions.profile = Some("reported".into());
+        session.observe(
+            frame(INSTANCE, 2_000, 1_000, bytes(10, 10), vec![unchanged]),
+            Some("current"),
+            &mut sequence,
+        );
+        assert!(take(&mut session, 2_000).active.is_empty());
+        let mut changed = sample("a", 10, 10);
+        changed.dimensions.target = "late-sniff.example".into();
+        session.observe(
+            frame(INSTANCE, 3_000, 2_000, bytes(10, 10), vec![changed]),
+            Some("current"),
+            &mut sequence,
+        );
+        let updated = take(&mut session, 3_000).active;
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated[0].dimensions.target, "late-sniff.example");
+        assert_eq!(updated[0].dimensions.profile.as_deref(), Some("first"));
+    }
+
+    #[test]
     fn profile_is_set_on_first_sight_and_never_rewritten() {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(INSTANCE, 1_000, 0, bytes(0, 0), vec![sample("a", 1, 1)]),
+            frame(INSTANCE, 1_000, 0, bytes(0, 0), vec![sample("a", 1, 1)]),
             Some("p1"),
             &mut sequence,
         );
@@ -1156,7 +1196,7 @@ mod tests {
 
         // The profile switches: "a" keeps its own, "b" gets the new one, nothing is cleared.
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -1178,7 +1218,7 @@ mod tests {
         let mut reported = sample("a", 5, 5);
         reported.dimensions.profile = Some("p3".into());
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 3_000,
                 2_000,
@@ -1189,7 +1229,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(INSTANCE, 4_000, 3_000, bytes(0, 0), vec![]),
+            frame(INSTANCE, 4_000, 3_000, bytes(0, 0), vec![]),
             Some("p9"),
             &mut sequence,
         );
@@ -1213,7 +1253,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -1227,7 +1267,7 @@ mod tests {
         assert!(rates_by(&session, Dimension::Process).is_empty());
 
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 3_000,
                 2_000,
@@ -1255,7 +1295,7 @@ mod tests {
 
         // No monotonic progress: rates are unknown again, not stale.
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 4_000,
                 2_000,
@@ -1278,7 +1318,7 @@ mod tests {
             ..sample(id, up, down)
         };
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -1289,7 +1329,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -1311,13 +1351,13 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(INSTANCE, 1_000, 0, bytes(0, 0), vec![sample("a", 0, 0)]),
+            frame(INSTANCE, 1_000, 0, bytes(0, 0), vec![sample("a", 0, 0)]),
             None,
             &mut sequence,
         );
         // 10 bytes over 3s is 3.33 B/s; 2 bytes over 3s is 0.67 B/s.
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 4_000,
                 3_000,
@@ -1344,7 +1384,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -1357,7 +1397,7 @@ mod tests {
         // u64::MAX bytes within a millisecond overflows a u64 rate; two such connections
         // overflow their sum.
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_001,
                 1,
@@ -1383,7 +1423,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -1394,7 +1434,7 @@ mod tests {
             &mut sequence,
         );
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -1413,7 +1453,7 @@ mod tests {
 
         take(&mut session, 2_000);
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 9_000,
                 8_000,
@@ -1433,7 +1473,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 1_000,
                 0,
@@ -1447,7 +1487,7 @@ mod tests {
 
         let mut restored = Session::restore(batch.meta, batch.active);
         restored.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 7_000,
                 0,
@@ -1471,12 +1511,12 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(INSTANCE, 1_000, 0, bytes(10, 10), vec![sample("a", 10, 10)]),
+            frame(INSTANCE, 1_000, 0, bytes(10, 10), vec![sample("a", 10, 10)]),
             None,
             &mut sequence,
         );
         session.observe(
-            &frame(INSTANCE, 2_000, 1_000, bytes(10, 10), vec![]),
+            frame(INSTANCE, 2_000, 1_000, bytes(10, 10), vec![]),
             None,
             &mut sequence,
         );
@@ -1636,7 +1676,7 @@ mod tests {
         let mut now = 0;
         for (i, (frame, profile)) in scenario.frames.iter().enumerate() {
             now = frame.wall_ms;
-            session.observe(frame, Some(*profile), &mut sequence);
+            session.observe(frame.clone(), Some(*profile), &mut sequence);
             if flush_every.is_some_and(|n| (i + 1) % n == 0) {
                 store.apply(&session.take_batch(now));
             }
@@ -1799,7 +1839,7 @@ mod tests {
             if refused {
                 ignored.insert(i);
             }
-            session.observe(frame, Some(*profile), &mut sequence);
+            session.observe(frame.clone(), Some(*profile), &mut sequence);
             if (i + 1) % 3 == 0 {
                 attempts += 1;
                 // Two failures in a row, then one that works.
@@ -1815,7 +1855,7 @@ mod tests {
         let mut reference = MemStore::default();
         for (i, (frame, profile)) in scenario.frames.iter().enumerate() {
             if !ignored.contains(&i) {
-                reference_session.observe(frame, Some(*profile), &mut sequence);
+                reference_session.observe(frame.clone(), Some(*profile), &mut sequence);
             }
         }
         reference.apply(&reference_session.take_batch(now));
@@ -1869,7 +1909,7 @@ mod tests {
             if ignored.contains(&i) {
                 continue;
             }
-            reference.observe(frame, Some(*profile), &mut sequence);
+            reference.observe(frame.clone(), Some(*profile), &mut sequence);
             if flushes.contains(&i) {
                 reference_store.apply(&reference.take_batch(frame.wall_ms));
             }
@@ -1891,7 +1931,7 @@ mod tests {
         };
         let mut held = None;
         for (i, (frame, profile)) in scenario.frames.iter().enumerate() {
-            session.observe(frame, Some(*profile), &mut sequence);
+            session.observe(frame.clone(), Some(*profile), &mut sequence);
             if i == 9 {
                 commit(&mut store, &session.take_batch(frame.wall_ms));
             }
@@ -1958,7 +1998,7 @@ mod tests {
         let mut sequence = sequence_source();
         let mut session = Session::new();
         session.observe(
-            &frame(INSTANCE, 1_000, 0, bytes(100, 0), vec![sample("a", 100, 0)]),
+            frame(INSTANCE, 1_000, 0, bytes(100, 0), vec![sample("a", 100, 0)]),
             None,
             &mut sequence,
         );
@@ -1967,7 +2007,7 @@ mod tests {
 
         // Ignored, whatever it carries.
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 2_000,
                 1_000,
@@ -1986,7 +2026,7 @@ mod tests {
 
         // Accepted again: the whole growth since the frame before the outage, counted once.
         session.observe(
-            &frame(
+            frame(
                 INSTANCE,
                 4_000,
                 3_000,

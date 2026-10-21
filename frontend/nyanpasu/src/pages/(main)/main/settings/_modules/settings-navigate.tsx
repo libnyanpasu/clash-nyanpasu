@@ -77,7 +77,19 @@ type SettingsNavigationItemColor = NonNullable<
 
 const NyanpasuLogo = () => {
   return (
-    <LogoSvg className="h-5 w-4 [&_#bg]:fill-transparent [&_#element]:fill-current" />
+    <LogoSvg
+      className={cn(
+        'h-5 w-4 [&_#element]:fill-current',
+        // The face must cover the silhouette, or the eyes and mouth disappear
+        // into it; it takes the icon's own fill.
+        '[&_#bg]:fill-surface-variant group-data-[active=true]/settings-navigation-item:[&_#bg]:fill-primary',
+        // The cat's mass sits left of and below its box center (thin ears and
+        // tail; its silhouette's centroid is at 44%, 58%), so a geometric
+        // center looks off. Shift it toward the centroid's mirror, a little
+        // less vertically because the outlined face reads lighter than a fill.
+        'translate-x-[6%] -translate-y-[6%]',
+      )}
+    />
   )
 }
 

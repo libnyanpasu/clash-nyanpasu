@@ -493,6 +493,40 @@ test('a ranking card keeps its height while its rows fill in', async ({
   }
 })
 
+test('the map keeps the height of its regions while they fill in', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  // Narrow, where the list sits under the map and would move what follows.
+  await page.viewport(480, 720)
+  let before: number | undefined
+  const observer = new MutationObserver(() => {
+    const list = document.querySelector<HTMLElement>(
+      '[data-slot="traffic-geography-regions"]',
+    )
+    if (
+      list?.querySelector('[data-slot="traffic-geography-regions-placeholder"]')
+    )
+      before = list.offsetHeight
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+  onTestFinished(() => observer.disconnect())
+
+  await open(onTestFinished, { view: 'map' })
+  await expect
+    .poll(() =>
+      document.querySelector('[data-slot="traffic-geography-regions"] button'),
+    )
+    .toBeTruthy()
+
+  expect(before).toBeGreaterThan(0)
+  expect(
+    document.querySelector<HTMLElement>(
+      '[data-slot="traffic-geography-regions"]',
+    )!.offsetHeight,
+  ).toBe(before)
+})
+
 test('the full listing of a ranking mounts only the rows in view', async ({
   onTestFinished,
 }) => {

@@ -1,6 +1,13 @@
 import CheckRounded from '~icons/material-symbols/check-rounded'
 import { AnimatePresence, motion, useInView } from 'motion/react'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import worldMap from '@/assets/maps/world-map.json'
 import { m } from '@/paraglide/messages'
@@ -20,6 +27,12 @@ import { toggleFilter } from '../../../_modules/traffic-filters'
 const centers: Readonly<Record<string, number[]>> = worldMap.centers
 const shapes: Readonly<Record<string, string>> = worldMap.countries
 const geographicRegions: ReadonlySet<string> = new Set(Object.keys(centers))
+
+/**
+ * The height of a region in the list: its padding, a line of text-sm and the
+ * share bar under it, a gap apart. The name is truncated, so it never wraps.
+ */
+const REGION_ROW_HEIGHT = '2.75rem'
 
 /** Shares from which a region takes the next, darker shade. */
 const SHARE_STEPS = [0.02, 0.05, 0.1, 0.25]
@@ -164,25 +177,33 @@ function TravellingDot({
   )
 }
 
-/** The world without traffic, rendered once: nothing in it follows the data. */
-const BaseMap = memo(function BaseMap() {
+/**
+ * The world without traffic, rendered once: nothing in it follows the data.
+ * Its land, a path per country, can come after the ocean.
+ */
+const BaseMap = memo(function BaseMap({ land }: { land: boolean }) {
   return (
     <>
       <path d={worldMap.sphere} style={{ fill: OCEAN }} />
-      <path
-        d={worldMap.graticule}
-        fill="none"
-        className="stroke-outline-variant"
-        strokeWidth="0.5"
-      />
 
-      {/* Borders take the surface colour: a gap that reads in both themes. */}
-      <g className="fill-surface-variant stroke-surface" strokeWidth="0.6">
-        <path d={worldMap.unassigned} />
-        {Object.entries(shapes).map(([code, d]) => (
-          <path key={code} d={d} />
-        ))}
-      </g>
+      {land && (
+        <>
+          <path
+            d={worldMap.graticule}
+            fill="none"
+            className="stroke-outline-variant"
+            strokeWidth="0.5"
+          />
+
+          {/* Borders take the surface colour: a gap that reads in both themes. */}
+          <g className="fill-surface-variant stroke-surface" strokeWidth="0.6">
+            <path d={worldMap.unassigned} />
+            {Object.entries(shapes).map(([code, d]) => (
+              <path key={code} d={d} />
+            ))}
+          </g>
+        </>
+      )}
     </>
   )
 })
@@ -256,6 +277,12 @@ export default function GeographyView({
     })
 
   const map = useRef<HTMLDivElement>(null)
+
+  // The map's frame and ocean show with the page, and the land, what it
+  // draws on it and the regions' list in the pass after, so opening the page
+  // is not one long task. Neither the drawing nor the list, whose place is
+  // kept at the height it takes, moves anything when it fills in.
+  const drawn = useDeferredValue(true, false)
 
   // Off screen, the travelling dots need not keep the compositor busy.
   const onScreen = useInView(map)
@@ -474,233 +501,239 @@ export default function GeographyView({
               </marker>
             </defs>
 
-            <BaseMap />
+            <BaseMap land={drawn} />
 
-            <AnimatePresence initial={false}>
-              {located
-                .filter((region) => shapes[region.code])
-                .map((region) => (
-                  <motion.g
-                    key={region.code}
-                    {...pointer(region.code)}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={transition}
-                  >
-                    <title>{label(region)}</title>
-                    <motion.path
-                      d={shapes[region.code]}
-                      className="fill-primary stroke-surface"
-                      strokeWidth="0.6"
-                      initial={false}
-                      animate={{
-                        fillOpacity: STEP_OPACITY[stepOf(region.share)],
-                      }}
-                      transition={transition}
-                    />
-                    <AnimatePresence initial={false}>
-                      {!region.measured && (
+            {drawn && (
+              <>
+                <AnimatePresence initial={false}>
+                  {located
+                    .filter((region) => shapes[region.code])
+                    .map((region) => (
+                      <motion.g
+                        key={region.code}
+                        {...pointer(region.code)}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={transition}
+                      >
+                        <title>{label(region)}</title>
                         <motion.path
                           d={shapes[region.code]}
-                          fill="url(#traffic-geography-hatch)"
+                          className="fill-primary stroke-surface"
+                          strokeWidth="0.6"
+                          initial={false}
+                          animate={{
+                            fillOpacity: STEP_OPACITY[stepOf(region.share)],
+                          }}
+                          transition={transition}
+                        />
+                        <AnimatePresence initial={false}>
+                          {!region.measured && (
+                            <motion.path
+                              d={shapes[region.code]}
+                              fill="url(#traffic-geography-hatch)"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={transition}
+                            />
+                          )}
+                        </AnimatePresence>
+                      </motion.g>
+                    ))}
+                </AnimatePresence>
+
+                <AnimatePresence initial={false}>
+                  {arcs.map((route) => {
+                    const { x1, y1, cx, cy, x2, y2 } = routeBetween(
+                      route.source,
+                      route.destination,
+                    )
+                    const gradient = `traffic-geography-route-${route.source}-${route.destination}`
+                    return (
+                      <motion.g
+                        key={`${route.source}:${route.destination}`}
+                        className="pointer-events-none"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: touches(route) ? 1 : 0.2 }}
+                        exit={{ opacity: 0 }}
+                        transition={transition}
+                      >
+                        {/* Faint where traffic leaves, full where it arrives. */}
+                        <defs>
+                          <linearGradient
+                            id={gradient}
+                            gradientUnits="userSpaceOnUse"
+                            x1={x1}
+                            y1={y1}
+                            x2={x2}
+                            y2={y2}
+                          >
+                            <stop
+                              offset="0"
+                              stopOpacity="0.15"
+                              style={{ stopColor: 'var(--color-tertiary)' }}
+                            />
+                            <stop
+                              offset="1"
+                              stopOpacity="0.9"
+                              style={{ stopColor: 'var(--color-tertiary)' }}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <motion.path
+                          d={`M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`}
+                          fill="none"
+                          stroke={`url(#${gradient})`}
+                          strokeLinecap="round"
+                          markerEnd="url(#traffic-geography-arrow)"
+                          initial={false}
+                          animate={{
+                            strokeWidth: stepped(
+                              1 + (value(route.usage) / maximum) * 3,
+                            ),
+                          }}
+                          transition={transition}
+                        />
+                      </motion.g>
+                    )
+                  })}
+                </AnimatePresence>
+
+                {/* Regions too small for the outline take a shaded marker. */}
+                <AnimatePresence initial={false}>
+                  {located
+                    .filter((region) => !shapes[region.code])
+                    .map((region) => {
+                      const [x, y] = centers[region.code]
+                      const r = stepped(4 + Math.sqrt(region.share) * 6)
+                      return (
+                        <motion.g
+                          key={region.code}
+                          {...pointer(region.code)}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           transition={transition}
-                        />
-                      )}
-                    </AnimatePresence>
-                  </motion.g>
-                ))}
-            </AnimatePresence>
+                        >
+                          <title>{label(region)}</title>
+                          <motion.circle
+                            cx={x}
+                            cy={y}
+                            className="fill-surface-variant"
+                            initial={false}
+                            animate={{ r }}
+                            transition={transition}
+                          />
+                          <motion.circle
+                            cx={x}
+                            cy={y}
+                            className="fill-primary stroke-surface"
+                            strokeWidth="1.5"
+                            initial={false}
+                            animate={{
+                              r,
+                              fillOpacity: STEP_OPACITY[stepOf(region.share)],
+                            }}
+                            transition={transition}
+                          />
+                          {!region.measured && (
+                            <circle
+                              cx={x}
+                              cy={y}
+                              r={r}
+                              fill="url(#traffic-geography-hatch)"
+                            />
+                          )}
+                        </motion.g>
+                      )
+                    })}
+                </AnimatePresence>
 
-            <AnimatePresence initial={false}>
-              {arcs.map((route) => {
-                const { x1, y1, cx, cy, x2, y2 } = routeBetween(
-                  route.source,
-                  route.destination,
-                )
-                const gradient = `traffic-geography-route-${route.source}-${route.destination}`
-                return (
-                  <motion.g
-                    key={`${route.source}:${route.destination}`}
-                    className="pointer-events-none"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: touches(route) ? 1 : 0.2 }}
-                    exit={{ opacity: 0 }}
-                    transition={transition}
-                  >
-                    {/* Faint where traffic leaves, full where it arrives. */}
-                    <defs>
-                      <linearGradient
-                        id={gradient}
-                        gradientUnits="userSpaceOnUse"
-                        x1={x1}
-                        y1={y1}
-                        x2={x2}
-                        y2={y2}
-                      >
-                        <stop
-                          offset="0"
-                          stopOpacity="0.15"
-                          style={{ stopColor: 'var(--color-tertiary)' }}
-                        />
-                        <stop
-                          offset="1"
-                          stopOpacity="0.9"
-                          style={{ stopColor: 'var(--color-tertiary)' }}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <motion.path
-                      d={`M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`}
-                      fill="none"
-                      stroke={`url(#${gradient})`}
-                      strokeLinecap="round"
-                      markerEnd="url(#traffic-geography-arrow)"
-                      initial={false}
-                      animate={{
-                        strokeWidth: stepped(
-                          1 + (value(route.usage) / maximum) * 3,
-                        ),
-                      }}
-                      transition={transition}
-                    />
-                  </motion.g>
-                )
-              })}
-            </AnimatePresence>
-
-            {/* Regions too small for the outline take a shaded marker. */}
-            <AnimatePresence initial={false}>
-              {located
-                .filter((region) => !shapes[region.code])
-                .map((region) => {
-                  const [x, y] = centers[region.code]
-                  const r = stepped(4 + Math.sqrt(region.share) * 6)
-                  return (
-                    <motion.g
-                      key={region.code}
-                      {...pointer(region.code)}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={transition}
-                    >
-                      <title>{label(region)}</title>
+                {/* The routes' ends: a ring where traffic leaves, a dot where it arrives. */}
+                <AnimatePresence initial={false}>
+                  {[...new Set([...departures, ...arrivals])].map((code) => {
+                    const [x, y] = centers[code]
+                    const arriving = arrivals.has(code)
+                    return (
                       <motion.circle
+                        key={`end:${code}`}
                         cx={x}
                         cy={y}
-                        className="fill-surface-variant"
-                        initial={false}
-                        animate={{ r }}
-                        transition={transition}
-                      />
-                      <motion.circle
-                        cx={x}
-                        cy={y}
-                        className="fill-primary stroke-surface"
-                        strokeWidth="1.5"
-                        initial={false}
-                        animate={{
-                          r,
-                          fillOpacity: STEP_OPACITY[stepOf(region.share)],
-                        }}
-                        transition={transition}
-                      />
-                      {!region.measured && (
-                        <circle
-                          cx={x}
-                          cy={y}
-                          r={r}
-                          fill="url(#traffic-geography-hatch)"
-                        />
-                      )}
-                    </motion.g>
-                  )
-                })}
-            </AnimatePresence>
-
-            {/* The routes' ends: a ring where traffic leaves, a dot where it arrives. */}
-            <AnimatePresence initial={false}>
-              {[...new Set([...departures, ...arrivals])].map((code) => {
-                const [x, y] = centers[code]
-                const arriving = arrivals.has(code)
-                return (
-                  <motion.circle
-                    key={`end:${code}`}
-                    cx={x}
-                    cy={y}
-                    r={arriving ? 3.5 : 4}
-                    className={cn(
-                      'pointer-events-none',
-                      arriving
-                        ? 'fill-tertiary stroke-surface'
-                        : 'fill-surface stroke-tertiary',
-                    )}
-                    strokeWidth={arriving ? 1.5 : 2}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={transition}
-                  />
-                )
-              })}
-            </AnimatePresence>
-
-            <AnimatePresence initial={false}>
-              {highlights.map(({ code, source }) => {
-                const [x, y] = centers[code]
-                const stroke = source ? 'stroke-tertiary' : 'stroke-on-surface'
-                return (
-                  <motion.g
-                    key={`mark:${code}`}
-                    className="pointer-events-none"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={transition}
-                  >
-                    {shapes[code] ? (
-                      <path
-                        d={shapes[code]}
-                        fill="none"
-                        className={stroke}
-                        strokeWidth="1.2"
-                      />
-                    ) : (
-                      <circle
-                        cx={x}
-                        cy={y}
-                        r="11"
-                        fill="none"
-                        className={stroke}
-                        strokeWidth="1.2"
-                      />
-                    )}
-                    {(source || code === selection) && (
-                      <text
-                        x={x > 800 ? x - 14 : x + 14}
-                        y={y - 10}
-                        textAnchor={x > 800 ? 'end' : 'start'}
+                        r={arriving ? 3.5 : 4}
                         className={cn(
-                          'stroke-surface text-xs font-medium',
-                          source ? 'fill-tertiary' : 'fill-on-surface',
+                          'pointer-events-none',
+                          arriving
+                            ? 'fill-tertiary stroke-surface'
+                            : 'fill-surface stroke-tertiary',
                         )}
-                        strokeWidth="3"
-                        paintOrder="stroke"
+                        strokeWidth={arriving ? 1.5 : 2}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={transition}
+                      />
+                    )
+                  })}
+                </AnimatePresence>
+
+                <AnimatePresence initial={false}>
+                  {highlights.map(({ code, source }) => {
+                    const [x, y] = centers[code]
+                    const stroke = source
+                      ? 'stroke-tertiary'
+                      : 'stroke-on-surface'
+                    return (
+                      <motion.g
+                        key={`mark:${code}`}
+                        className="pointer-events-none"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={transition}
                       >
-                        {regionName(code)}
-                      </text>
-                    )}
-                  </motion.g>
-                )
-              })}
-            </AnimatePresence>
+                        {shapes[code] ? (
+                          <path
+                            d={shapes[code]}
+                            fill="none"
+                            className={stroke}
+                            strokeWidth="1.2"
+                          />
+                        ) : (
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r="11"
+                            fill="none"
+                            className={stroke}
+                            strokeWidth="1.2"
+                          />
+                        )}
+                        {(source || code === selection) && (
+                          <text
+                            x={x > 800 ? x - 14 : x + 14}
+                            y={y - 10}
+                            textAnchor={x > 800 ? 'end' : 'start'}
+                            className={cn(
+                              'stroke-surface text-xs font-medium',
+                              source ? 'fill-tertiary' : 'fill-on-surface',
+                            )}
+                            strokeWidth="3"
+                            paintOrder="stroke"
+                          >
+                            {regionName(code)}
+                          </text>
+                        )}
+                      </motion.g>
+                    )
+                  })}
+                </AnimatePresence>
+              </>
+            )}
           </svg>
 
-          {!reducedMotion && onScreen && (
+          {drawn && !reducedMotion && onScreen && (
             <div aria-hidden className="pointer-events-none absolute inset-0">
               {arcs.map((route) => {
                 const key = `${route.source}:${route.destination}`
@@ -736,90 +769,102 @@ export default function GeographyView({
                 aria-label={m.topology_geo_regions()}
                 data-slot="traffic-geography-regions"
               >
-                <AnimatePresence initial={false}>
-                  {regions.map((region, index) => {
-                    const geographic = geographicRegions.has(region.code)
-                    const active = selection === region.code
-                    return (
-                      <motion.button
-                        key={region.code}
-                        // Measured only when its place changes, not on every refresh.
-                        layout="position"
-                        layoutDependency={index}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={transition}
-                        type="button"
-                        aria-pressed={active}
-                        aria-label={label(region)}
-                        onClick={() => onSelect(region.code)}
-                        onPointerEnter={() => setHovered(region.code)}
-                        onPointerLeave={() => setHovered(null)}
-                        className={cn(
-                          'flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-xl px-4 py-2 text-left outline-none',
-                          'focus-visible:ring-primary transition-colors focus-visible:ring-2',
-                          'hover:bg-on-surface/8',
-                          active && 'bg-secondary-container',
-                          !active &&
-                            hovered === region.code &&
-                            'bg-on-surface/8',
-                        )}
-                      >
-                        <span className="flex min-w-0 items-center gap-2 text-sm">
-                          <span
-                            aria-hidden
-                            className={cn(
-                              'size-2.5 shrink-0 rounded-full',
-                              !geographic && 'bg-outline-variant',
-                            )}
-                            style={
-                              geographic
-                                ? {
-                                    backgroundColor: swatch(
-                                      stepOf(region.share),
-                                    ),
-                                  }
-                                : undefined
-                            }
-                          />
+                {!drawn && regions.length > 0 && (
+                  <div
+                    aria-hidden
+                    data-slot="traffic-geography-regions-placeholder"
+                    style={{
+                      height: `calc(${regions.length} * ${REGION_ROW_HEIGHT} + ${regions.length - 1} * 0.125rem)`,
+                    }}
+                  />
+                )}
 
-                          <span
-                            className="min-w-0 flex-1 truncate font-medium"
-                            title={regionName(region.code)}
-                          >
-                            {regionName(region.code)}
-                          </span>
-
-                          {geographic && !region.measured && (
-                            <span className="bg-surface-variant text-on-surface-variant shrink-0 rounded-md px-1.5 text-[10px] leading-4">
-                              {m.topology_geo_basis_resolved()}
-                            </span>
+                {drawn && (
+                  <AnimatePresence initial={false}>
+                    {regions.map((region, index) => {
+                      const geographic = geographicRegions.has(region.code)
+                      const active = selection === region.code
+                      return (
+                        <motion.button
+                          key={region.code}
+                          // Measured only when its place changes, not on every refresh.
+                          layout="position"
+                          layoutDependency={index}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={transition}
+                          type="button"
+                          aria-pressed={active}
+                          aria-label={label(region)}
+                          onClick={() => onSelect(region.code)}
+                          onPointerEnter={() => setHovered(region.code)}
+                          onPointerLeave={() => setHovered(null)}
+                          className={cn(
+                            'flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-xl px-4 py-2 text-left outline-none',
+                            'focus-visible:ring-primary transition-colors focus-visible:ring-2',
+                            'hover:bg-on-surface/8',
+                            active && 'bg-secondary-container',
+                            !active &&
+                              hovered === region.code &&
+                              'bg-on-surface/8',
                           )}
+                        >
+                          <span className="flex min-w-0 items-center gap-2 text-sm">
+                            <span
+                              aria-hidden
+                              className={cn(
+                                'size-2.5 shrink-0 rounded-full',
+                                !geographic && 'bg-outline-variant',
+                              )}
+                              style={
+                                geographic
+                                  ? {
+                                      backgroundColor: swatch(
+                                        stepOf(region.share),
+                                      ),
+                                    }
+                                  : undefined
+                              }
+                            />
 
-                          <span className="text-on-surface-variant shrink-0 text-xs tabular-nums">
-                            {amount(region.usage)}
-                          </span>
+                            <span
+                              className="min-w-0 flex-1 truncate font-medium"
+                              title={regionName(region.code)}
+                            >
+                              {regionName(region.code)}
+                            </span>
 
-                          <span className="w-12 shrink-0 text-right font-medium tabular-nums">
-                            {percent(region.share)}
-                          </span>
-                        </span>
-
-                        <span className="bg-surface-variant block h-1 overflow-hidden rounded-full">
-                          <motion.span
-                            className={cn(
-                              'block h-full rounded-full',
-                              geographic ? 'bg-primary' : 'bg-outline',
+                            {geographic && !region.measured && (
+                              <span className="bg-surface-variant text-on-surface-variant shrink-0 rounded-md px-1.5 text-[10px] leading-4">
+                                {m.topology_geo_basis_resolved()}
+                              </span>
                             )}
-                            initial={false}
-                            animate={{ width: `${region.share * 100}%` }}
-                            transition={transition}
-                          />
-                        </span>
-                      </motion.button>
-                    )
-                  })}
-                </AnimatePresence>
+
+                            <span className="text-on-surface-variant shrink-0 text-xs tabular-nums">
+                              {amount(region.usage)}
+                            </span>
+
+                            <span className="w-12 shrink-0 text-right font-medium tabular-nums">
+                              {percent(region.share)}
+                            </span>
+                          </span>
+
+                          <span className="bg-surface-variant block h-1 overflow-hidden rounded-full">
+                            <motion.span
+                              className={cn(
+                                'block h-full rounded-full',
+                                geographic ? 'bg-primary' : 'bg-outline',
+                              )}
+                              initial={false}
+                              animate={{ width: `${region.share * 100}%` }}
+                              transition={transition}
+                            />
+                          </span>
+                        </motion.button>
+                      )
+                    })}
+                  </AnimatePresence>
+                )}
               </div>
             </ScrollArea>
           </div>

@@ -87,7 +87,49 @@ const throttleCpu: BrowserCommand<[rate: number]> = async (ctx, rate) => {
   await session.send('Emulation.setCPUThrottlingRate', { rate })
 }
 
+// With `PERF_TRACE=1` the profile commands record a Chromium trace instead,
+// which splits what a CPU profile shows as "(program)" into style, layout,
+// paint and compositing, task by task.
+const tracing = process.env.PERF_TRACE === '1'
+
+type TracingBrowser = {
+  startTracing: (
+    page: unknown,
+    options: { categories: string[] },
+  ) => Promise<void>
+  stopTracing: () => Promise<Uint8Array>
+}
+
+const tracerOf = (ctx: Parameters<BrowserCommand<[]>>[0]) => {
+  if (ctx.provider.name !== 'playwright' || browser !== 'chromium') {
+    throw new Error('tracing needs the playwright provider on chromium')
+  }
+
+  const { page } = ctx as unknown as {
+    page: { context: () => { browser: () => TracingBrowser } }
+  }
+
+  return { page, browser: page.context().browser() }
+}
+
+let tracer: TracingBrowser | undefined
+// Traces recorded before a pause, each written to a file of its own.
+let tracePieces: Uint8Array[] = []
+
 const startCpuProfile: BrowserCommand<[]> = async (ctx) => {
+  if (tracing) {
+    const { page, browser } = tracerOf(ctx)
+    tracer = browser
+    await browser.startTracing(page, {
+      categories: [
+        'devtools.timeline',
+        'disabled-by-default-devtools.timeline',
+        'blink.user_timing',
+      ],
+    })
+    return
+  }
+
   profilerSession ??= await newCdpSession(ctx)
   await profilerSession.send('Profiler.enable')
   await profilerSession.send('Profiler.setSamplingInterval', { interval: 100 })
@@ -106,14 +148,49 @@ const takeCpuProfile = async () => {
   return profile
 }
 
-/** Stops recording until the next `startCpuProfile`, into the same profile. */
-const pauseCpuProfile: BrowserCommand<[]> = async () => {
-  profilePieces.push(await takeCpuProfile())
+const takeTrace = async () => {
+  if (!tracer) {
+    throw new Error('startCpuProfile was not called')
+  }
+
+  return tracer.stopTracing()
 }
 
+/** Stops recording until the next `startCpuProfile`, into the same profile. */
+const pauseCpuProfile: BrowserCommand<[]> = async () => {
+  if (tracing) {
+    tracePieces.push(await takeTrace())
+  } else {
+    profilePieces.push(await takeCpuProfile())
+  }
+}
+
+/**
+ * Writes the profile to `file`. A trace paused in between is written as one
+ * file per piece, numbered before the extension: `switch-1.json`, ...
+ */
 const stopCpuProfile: BrowserCommand<[file: string]> = async (_ctx, file) => {
-  const profile = joinProfiles([...profilePieces, await takeCpuProfile()])
   const fs = await import('node:fs/promises')
+
+  if (tracing) {
+    const pieces = [...tracePieces, await takeTrace()]
+    const { dir, name, ext } = path.parse(file)
+    await Promise.all(
+      pieces.map((piece, index) =>
+        fs.writeFile(
+          pieces.length === 1
+            ? file
+            : path.join(dir, `${name}-${index + 1}${ext || '.json'}`),
+          piece,
+        ),
+      ),
+    )
+    tracer = undefined
+    tracePieces = []
+    return
+  }
+
+  const profile = joinProfiles([...profilePieces, await takeCpuProfile()])
   await fs.writeFile(file, JSON.stringify(profile))
   profilerSession = undefined
   profilePieces = []
@@ -162,7 +239,11 @@ export default defineConfig({
   },
   test: {
     include: ['perf/**/*.bench.test.tsx'],
-    setupFiles: ['perf/fixtures/app-setup.ts'],
+    // The render census hooks React before it loads.
+    setupFiles: [
+      'perf/fixtures/render-census.ts',
+      'perf/fixtures/app-setup.ts',
+    ],
     testTimeout: 300_000,
     browser: {
       enabled: true,

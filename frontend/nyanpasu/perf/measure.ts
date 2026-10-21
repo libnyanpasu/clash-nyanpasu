@@ -1,4 +1,10 @@
 import type { ProfilerOnRenderCallback } from 'react'
+import {
+  startCountingRenders,
+  stopCountingRenders,
+  summarizeRenders,
+  type Renders,
+} from './fixtures/render-census'
 
 export type FrameSample = {
   // Longest gap between two animation frames; 16.7 ms at 60 Hz is smooth.
@@ -17,6 +23,8 @@ export type FrameSample = {
   reactRender: number
   // Every frame gap, for eyeballing where the drops are.
   gaps: number[]
+  // The components the action rendered, with `VITE_PERF_RENDERS`.
+  renders?: Renders
 }
 
 let reactRender = 0
@@ -95,10 +103,12 @@ export async function measureFrames(
     if (probing) {
       probe.port2.postMessage(null)
     }
+    startCountingRenders()
     action()
   })
 
   await new Promise((resolve) => setTimeout(resolve, ms))
+  const renders = stopCountingRenders()
   running = false
   probing = false
   probe.port1.close()
@@ -113,11 +123,12 @@ export async function measureFrames(
     syncTime: mutatedAt ? mutatedAt - actionAt : 0,
     reactRender,
     gaps,
+    renders,
   }
 }
 
 export function summarize(samples: FrameSample[]) {
-  const average = (key: Exclude<keyof FrameSample, 'gaps'>) =>
+  const average = (key: Exclude<keyof FrameSample, 'gaps' | 'renders'>) =>
     Number(
       (samples.reduce((sum, s) => sum + s[key], 0) / samples.length).toFixed(1),
     )
@@ -129,6 +140,11 @@ export function summarize(samples: FrameSample[]) {
     avgMaxBusy: average('maxBusy'),
     avgSyncTime: average('syncTime'),
     avgReactRender: average('reactRender'),
+    ...(samples[0]?.renders && {
+      renders: summarizeRenders(
+        samples.flatMap(({ renders }) => renders ?? []),
+      ),
+    }),
   }
 }
 

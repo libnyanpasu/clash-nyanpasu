@@ -56,6 +56,7 @@ working tree ends with the changes applied.
 | -------------------------- | ------------- | --------------------------------------------------------------------------------- |
 | `PERF_BROWSER`             | `chromium`    | `webkit` runs the engine macOS and Linux webviews use                             |
 | `PERF_DEV`                 | unset         | `1` uses development React instead of the production build                        |
+| `PERF_TRACE`               | unset         | `1` records Chromium traces where `VITE_PERF_PROFILE` records a CPU profile       |
 | `VITE_PERF_THROTTLE`       | `1`           | CPU slowdown factor (Chromium only), e.g. `4` for a slow machine                  |
 | `VITE_PERF_GROUPS`         | `30`          | Proxy groups in the fixture                                                       |
 | `VITE_PERF_NODES`          | `1500`        | Nodes in the fixture; every group lists all of them                               |
@@ -76,10 +77,31 @@ working tree ends with the changes applied.
 | `VITE_PERF_PROFILE`        | unset         | A path to write a `.cpuprofile` of 6 more actions (Chromium only)                 |
 | `VITE_PERF_PROFILE_ACTION` | `open`        | Traffic: `poll` profiles six polls of the first page, `switch` six switches to it |
 | `VITE_PERF_TRACE_REFLOW`   | unset         | `1` logs every layout read of 2 ms or more with its call site                     |
+| `VITE_PERF_RENDERS`        | unset         | `1` adds the components each action rendered to its report                        |
 
-A `.cpuprofile` opens in Chrome DevTools' Performance panel. WebKit has no
-profiler here; use `VITE_PERF_TRACE_REFLOW` and `avgSyncTime` to split its time
-between JavaScript and style/layout.
+## Finding where the time goes
+
+- `VITE_PERF_RENDERS=1` adds `renders` to each report, per action: its
+  commits, the components every commit rendered as `[mounts, updates]`
+  (`all`), those of the commit that rendered the most (`largest`), and the
+  components that rendered while their parent did not, with their nearest
+  parents (`unprompted`): a state, store or context update starts there.
+  Counting walks the fiber tree after each commit, so compare the timings of
+  such runs only with each other.
+- `VITE_PERF_PROFILE` records a CPU profile, which opens in Chrome DevTools'
+  Performance panel. From the repository root,
+  `deno task bench:profile --actions 6 <file>` prints its time per action by
+  category, source and function, and `--callers <function>` the stacks under
+  one function's own time, such as `getBoundingClientRect` for a forced
+  layout.
+- With `PERF_TRACE=1` as well, the same actions record a Chromium trace,
+  which splits what a profile shows as `(program)` into style, layout, paint
+  and compositing. A recording paused in between, such as the traffic
+  switches', is written one trace per piece: `<name>-1.json`, ...
+  `deno task bench:trace <files>` prints each trace's longest main-thread
+  tasks and the time of each step in them.
+- WebKit has neither; use `VITE_PERF_TRACE_REFLOW` and `avgSyncTime` to split
+  its time between JavaScript and style/layout.
 
 ## Adding a benchmark
 

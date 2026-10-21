@@ -73,6 +73,14 @@
       "description": "Run a frontend page benchmark alternately without and with the working tree's frontend changes and compare the rounds",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/benchmark/bench-ab.ts"
     },
+    "bench:profile": {
+      "description": "Summarize a frontend page benchmark's CPU profile by category, source and function, or one function's callers",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/benchmark/profile-report.ts"
+    },
+    "bench:trace": {
+      "description": "Break the longest main-thread tasks of frontend page benchmark traces into their steps",
+      "command": "deno run --config scripts/deno.jsonc -A scripts/src/benchmark/trace-report.ts"
+    },
     "upload-macos-updater": {
       "description": "Upload the macOS updater to GitHub Releases",
       "command": "deno run --config scripts/deno.jsonc -A scripts/src/artifacts/upload-macos-updater.ts"

@@ -50,6 +50,7 @@ import { Route as mainMainProfilesTypeIndexRouteImport } from './pages/(main)/ma
 import { Route as mainMainProvidersProxiesKeyRouteImport } from './pages/(main)/main/providers/proxies/$key'
 import { Route as mainMainProvidersRulesKeyRouteImport } from './pages/(main)/main/providers/rules/$key'
 import { Route as mainMainProxiesGroupNameRouteImport } from './pages/(main)/main/proxies/group/$name'
+import { Route as mainMainSettingsAboutIndexRouteImport } from './pages/(main)/main/settings/about/index'
 import { Route as mainMainSettingsDebugIndexRouteImport } from './pages/(main)/main/settings/debug/index'
 import { Route as mainMainTopologyExitIndexRouteImport } from './pages/(main)/main/topology/exit/index'
 import { Route as mainMainTopologyFlowIndexRouteImport } from './pages/(main)/main/topology/flow/index'
@@ -60,6 +61,7 @@ import { Route as mainMainTopologySourceIndexRouteImport } from './pages/(main)/
 import { Route as mainMainTopologyTargetIndexRouteImport } from './pages/(main)/main/topology/target/index'
 import { Route as trayMenuTrayMenuProxiesGroupNameRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/$name'
 import { Route as mainMainProfilesTypeDetailUidRouteImport } from './pages/(main)/main/profiles/$type/detail/$uid'
+import { Route as mainMainSettingsAboutCreditsIndexRouteImport } from './pages/(main)/main/settings/about/credits/index'
 
 const mainRouteRoute = mainRouteRouteImport.update({
   id: '/(main)',
@@ -284,6 +286,12 @@ const mainMainProxiesGroupNameRoute =
     path: '/group/$name',
     getParentRoute: () => mainMainProxiesRouteRoute,
   } as any)
+const mainMainSettingsAboutIndexRoute =
+  mainMainSettingsAboutIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => mainMainSettingsAboutRouteRoute,
+  } as any)
 const mainMainSettingsDebugIndexRoute =
   mainMainSettingsDebugIndexRouteImport.update({
     id: '/',
@@ -344,6 +352,12 @@ const mainMainProfilesTypeDetailUidRoute =
     path: '/$type/detail/$uid',
     getParentRoute: () => mainMainProfilesRouteRoute,
   } as any)
+const mainMainSettingsAboutCreditsIndexRoute =
+  mainMainSettingsAboutCreditsIndexRouteImport.update({
+    id: '/credits/',
+    path: '/credits/',
+    getParentRoute: () => mainMainSettingsAboutRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/editor': typeof editorEditorRouteRouteWithChildren
@@ -362,7 +376,7 @@ export interface FileRoutesByFullPath {
   '/tray-menu/': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
-  '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
+  '/main/settings/about': typeof mainMainSettingsAboutRouteRouteWithChildren
   '/main/settings/clash': typeof mainMainSettingsClashRouteRoute
   '/main/settings/debug': typeof mainMainSettingsDebugRouteRouteWithChildren
   '/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
@@ -387,6 +401,7 @@ export interface FileRoutesByFullPath {
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
+  '/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
   '/main/topology/exit/': typeof mainMainTopologyExitIndexRoute
   '/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
@@ -396,6 +411,7 @@ export interface FileRoutesByFullPath {
   '/main/topology/source/': typeof mainMainTopologySourceIndexRoute
   '/main/topology/target/': typeof mainMainTopologyTargetIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
 }
 export interface FileRoutesByTo {
   '/editor': typeof editorEditorRouteRouteWithChildren
@@ -403,7 +419,6 @@ export interface FileRoutesByTo {
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
-  '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/main/settings/clash': typeof mainMainSettingsClashRouteRoute
   '/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
   '/main/settings/system': typeof mainMainSettingsSystemRouteRoute
@@ -427,6 +442,7 @@ export interface FileRoutesByTo {
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/main/profiles/$type': typeof mainMainProfilesTypeIndexRoute
+  '/main/settings/about': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug': typeof mainMainSettingsDebugIndexRoute
   '/main/topology/exit': typeof mainMainTopologyExitIndexRoute
   '/main/topology/flow': typeof mainMainTopologyFlowIndexRoute
@@ -436,6 +452,7 @@ export interface FileRoutesByTo {
   '/main/topology/source': typeof mainMainTopologySourceIndexRoute
   '/main/topology/target': typeof mainMainTopologyTargetIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/main/settings/about/credits': typeof mainMainSettingsAboutCreditsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -456,7 +473,7 @@ export interface FileRoutesById {
   '/(tray-menu)/tray-menu/': typeof trayMenuTrayMenuIndexRoute
   '/(main)/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
   '/(main)/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
-  '/(main)/main/settings/about': typeof mainMainSettingsAboutRouteRoute
+  '/(main)/main/settings/about': typeof mainMainSettingsAboutRouteRouteWithChildren
   '/(main)/main/settings/clash': typeof mainMainSettingsClashRouteRoute
   '/(main)/main/settings/debug': typeof mainMainSettingsDebugRouteRouteWithChildren
   '/(main)/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
@@ -481,6 +498,7 @@ export interface FileRoutesById {
   '/(main)/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/(tray-menu)/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/(main)/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
+  '/(main)/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/(main)/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
   '/(main)/main/topology/exit/': typeof mainMainTopologyExitIndexRoute
   '/(main)/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
@@ -490,6 +508,7 @@ export interface FileRoutesById {
   '/(main)/main/topology/source/': typeof mainMainTopologySourceIndexRoute
   '/(main)/main/topology/target/': typeof mainMainTopologyTargetIndexRoute
   '/(main)/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/(main)/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -535,6 +554,7 @@ export interface FileRouteTypes {
     | '/main/proxies/group/$name'
     | '/tray-menu/proxies/group/$name'
     | '/main/profiles/$type/'
+    | '/main/settings/about/'
     | '/main/settings/debug/'
     | '/main/topology/exit/'
     | '/main/topology/flow/'
@@ -544,6 +564,7 @@ export interface FileRouteTypes {
     | '/main/topology/source/'
     | '/main/topology/target/'
     | '/main/profiles/$type/detail/$uid'
+    | '/main/settings/about/credits/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/editor'
@@ -551,7 +572,6 @@ export interface FileRouteTypes {
     | '/tray-menu'
     | '/main/profiles/global'
     | '/main/profiles/inspect'
-    | '/main/settings/about'
     | '/main/settings/clash'
     | '/main/settings/nyanpasu'
     | '/main/settings/system'
@@ -575,6 +595,7 @@ export interface FileRouteTypes {
     | '/main/proxies/group/$name'
     | '/tray-menu/proxies/group/$name'
     | '/main/profiles/$type'
+    | '/main/settings/about'
     | '/main/settings/debug'
     | '/main/topology/exit'
     | '/main/topology/flow'
@@ -584,6 +605,7 @@ export interface FileRouteTypes {
     | '/main/topology/source'
     | '/main/topology/target'
     | '/main/profiles/$type/detail/$uid'
+    | '/main/settings/about/credits'
   id:
     | '__root__'
     | '/(main)'
@@ -628,6 +650,7 @@ export interface FileRouteTypes {
     | '/(main)/main/proxies/group/$name'
     | '/(tray-menu)/tray-menu/proxies/group/$name'
     | '/(main)/main/profiles/$type/'
+    | '/(main)/main/settings/about/'
     | '/(main)/main/settings/debug/'
     | '/(main)/main/topology/exit/'
     | '/(main)/main/topology/flow/'
@@ -637,6 +660,7 @@ export interface FileRouteTypes {
     | '/(main)/main/topology/source/'
     | '/(main)/main/topology/target/'
     | '/(main)/main/profiles/$type/detail/$uid'
+    | '/(main)/main/settings/about/credits/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -934,6 +958,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainProxiesGroupNameRouteImport
       parentRoute: typeof mainMainProxiesRouteRoute
     }
+    '/(main)/main/settings/about/': {
+      id: '/(main)/main/settings/about/'
+      path: '/'
+      fullPath: '/main/settings/about/'
+      preLoaderRoute: typeof mainMainSettingsAboutIndexRouteImport
+      parentRoute: typeof mainMainSettingsAboutRouteRoute
+    }
     '/(main)/main/settings/debug/': {
       id: '/(main)/main/settings/debug/'
       path: '/'
@@ -1003,6 +1034,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/main/profiles/$type/detail/$uid'
       preLoaderRoute: typeof mainMainProfilesTypeDetailUidRouteImport
       parentRoute: typeof mainMainProfilesRouteRoute
+    }
+    '/(main)/main/settings/about/credits/': {
+      id: '/(main)/main/settings/about/credits/'
+      path: '/credits'
+      fullPath: '/main/settings/about/credits/'
+      preLoaderRoute: typeof mainMainSettingsAboutCreditsIndexRouteImport
+      parentRoute: typeof mainMainSettingsAboutRouteRoute
     }
   }
 }
@@ -1109,6 +1147,23 @@ const mainMainRulesRouteRouteChildren: mainMainRulesRouteRouteChildren = {
 const mainMainRulesRouteRouteWithChildren =
   mainMainRulesRouteRoute._addFileChildren(mainMainRulesRouteRouteChildren)
 
+interface mainMainSettingsAboutRouteRouteChildren {
+  mainMainSettingsAboutIndexRoute: typeof mainMainSettingsAboutIndexRoute
+  mainMainSettingsAboutCreditsIndexRoute: typeof mainMainSettingsAboutCreditsIndexRoute
+}
+
+const mainMainSettingsAboutRouteRouteChildren: mainMainSettingsAboutRouteRouteChildren =
+  {
+    mainMainSettingsAboutIndexRoute: mainMainSettingsAboutIndexRoute,
+    mainMainSettingsAboutCreditsIndexRoute:
+      mainMainSettingsAboutCreditsIndexRoute,
+  }
+
+const mainMainSettingsAboutRouteRouteWithChildren =
+  mainMainSettingsAboutRouteRoute._addFileChildren(
+    mainMainSettingsAboutRouteRouteChildren,
+  )
+
 interface mainMainSettingsDebugRouteRouteChildren {
   mainMainSettingsDebugIndexRoute: typeof mainMainSettingsDebugIndexRoute
 }
@@ -1124,7 +1179,7 @@ const mainMainSettingsDebugRouteRouteWithChildren =
   )
 
 interface mainMainSettingsRouteRouteChildren {
-  mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRoute
+  mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRouteWithChildren
   mainMainSettingsClashRouteRoute: typeof mainMainSettingsClashRouteRoute
   mainMainSettingsDebugRouteRoute: typeof mainMainSettingsDebugRouteRouteWithChildren
   mainMainSettingsNyanpasuRouteRoute: typeof mainMainSettingsNyanpasuRouteRoute
@@ -1135,7 +1190,7 @@ interface mainMainSettingsRouteRouteChildren {
 }
 
 const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
-  mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRoute,
+  mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRouteWithChildren,
   mainMainSettingsClashRouteRoute: mainMainSettingsClashRouteRoute,
   mainMainSettingsDebugRouteRoute: mainMainSettingsDebugRouteRouteWithChildren,
   mainMainSettingsNyanpasuRouteRoute: mainMainSettingsNyanpasuRouteRoute,

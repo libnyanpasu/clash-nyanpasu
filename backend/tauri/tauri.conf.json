@@ -85,7 +85,7 @@
     "createUpdaterArtifacts": "v1Compatible"
   },
   "build": {
-    "beforeBuildCommand": "pnpm run-p web:build generate:git-info && echo $(pwd)",
+    "beforeBuildCommand": "pnpm generate:credits && pnpm run-p web:build generate:git-info && echo $(pwd)",
     "frontendDist": "./tmp/dist",
     "beforeDevCommand": "pnpm run web:dev",
     "devUrl": "http://localhost:3000/"

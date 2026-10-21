@@ -76,7 +76,7 @@ export const CHANGE_RULES: readonly ChangeRule[] = [
     parts: ["backend"],
   },
   {
-    patterns: ["scripts/**", "deno.jsonc", "manifest/**"],
+    patterns: ["scripts/**", "deno.jsonc", "manifest/**", "credits/**"],
     parts: ["scripts"],
   },
 ];

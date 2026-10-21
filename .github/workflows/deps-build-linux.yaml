@@ -56,6 +56,12 @@ jobs:
           rustup install nightly --profile minimal --no-self-update
           rustup default nightly
 
+      # `pnpm tauri build` generates the open source credits before the frontend.
+      - name: Install cargo-about
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+
       - name: Setup Cargo binstall
         if: ${{ inputs.arch != 'x86_64' }}
         uses: cargo-bins/cargo-binstall@main

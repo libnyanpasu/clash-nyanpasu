@@ -21,6 +21,7 @@ Deno.test("files map to the parts that check them", () => {
     ["scripts/src/ci/changed-parts.ts", ["scripts"]],
     ["deno.jsonc", ["scripts"]],
     ["manifest/version.json", ["scripts"]],
+    ["credits/components.toml", ["scripts"]],
   ];
   for (const [file, parts] of cases) {
     assertEquals(sorted(partsOf(file)), sorted(parts), file);

@@ -11,7 +11,7 @@ import LogoSvg from '@/assets/image/logo.svg?react'
 import useCurrentCoreIcon from '@/hooks/use-current-core-icon'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
-import { Link, useLocation } from '@tanstack/react-router'
+import { Link, useMatchRoute } from '@tanstack/react-router'
 
 const NyanpasuLogo = () => {
   return (
@@ -45,9 +45,11 @@ const NavigateButton = ({
   label: string
   description: string
 }) => {
-  const location = useLocation()
+  const matchRoute = useMatchRoute()
 
-  const isActive = location.pathname === props.to
+  // A section stays selected on its child pages, such as the credits under
+  // About.
+  const isActive = !!matchRoute({ to: props.to, fuzzy: true })
 
   return (
     <Button

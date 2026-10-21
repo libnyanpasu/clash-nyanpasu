@@ -180,6 +180,17 @@ jobs:
         if: startsWith(matrix.targets.os, 'ubuntu-') && (env.BACKEND == 'true' || env.SCRIPTS == 'true')
         run: pnpm run-s lint:architecture-ledger lint:backend-boundaries
 
+      - name: Install cargo-about
+        if: startsWith(matrix.targets.os, 'ubuntu-') && (env.FRONTEND == 'true' || env.BACKEND == 'true' || env.SCRIPTS == 'true')
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+
+      # Any dependency change can bring in a license the credits do not accept.
+      - name: Lint open source credits
+        if: startsWith(matrix.targets.os, 'ubuntu-') && (env.FRONTEND == 'true' || env.BACKEND == 'true' || env.SCRIPTS == 'true')
+        run: deno task lint:credits
+
       - name: Lint backend
         if: env.BACKEND == 'true'
         run: pnpm run-p lint:clippy lint:rustfmt # Lint

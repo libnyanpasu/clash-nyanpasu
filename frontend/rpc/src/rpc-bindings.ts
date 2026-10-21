@@ -813,8 +813,8 @@ export type ClashApiConfig = {
 export type ClashConfig = {
   /**  Clash Overrides config, used to patch clash config directly */
   overrides: ClashGuardOverrides
-  /**  clash tun mode */
-  enable_tun_mode: boolean
+  /**  Whether Nyanpasu overrides TUN configuration or leaves it to the profiles. */
+  enable_tun_mode: ManageableField<boolean>
   /**  web ui list */
   web_ui_list: string[]
   /**  支持关闭字段过滤，避免meta的新字段都被过滤掉，默认关闭 */
@@ -845,7 +845,7 @@ export type ClashConfigPatch =
 
 export type ClashConfigPatch_Deserialize = {
   overrides?: ClashGuardOverrides | null
-  enable_tun_mode?: boolean | null
+  enable_tun_mode?: ManageableField<boolean> | null
   web_ui_list?: string[] | null
   enable_clash_fields?: boolean | null
   expand_include_all?: boolean | null
@@ -861,7 +861,7 @@ export type ClashConfigPatch_Deserialize = {
 
 export type ClashConfigPatch_Serialize = {
   overrides?: ClashGuardOverrides | null
-  enable_tun_mode?: boolean | null
+  enable_tun_mode?: ManageableField<boolean> | null
   web_ui_list?: string[] | null
   enable_clash_fields?: boolean | null
   expand_include_all?: boolean | null

@@ -52,7 +52,7 @@ const ProxyTitleRow = () => {
   } = useClashConfig()
 
   const status = useMemo<ProxyStatus>(() => {
-    if (enableTunMode) {
+    if (enableTunMode?.kind === 'managed' && enableTunMode.value) {
       return ProxyStatus.TUN
     }
 

@@ -116,7 +116,7 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
   const settings: Record<string, ReturnType<typeof setting>> = {
     core: setting('mihomo'),
     enable_system_proxy: setting(true),
-    enable_tun_mode: setting(false),
+    enable_tun_mode: setting({ kind: 'managed', value: false }),
   }
   const query = <T,>(data: T) => ({ data, isPending: false, isSuccess: true })
   // Stable objects, as React Query hands out between refetches.

@@ -20,7 +20,12 @@ export function useLocalIpProbe(enabled = true) {
   const probed = useRef(false)
 
   useEffect(() => {
-    if (!enabled || allowed !== true || tunEnabled !== false) {
+    if (
+      !enabled ||
+      allowed !== true ||
+      tunEnabled?.kind !== 'managed' ||
+      tunEnabled.value !== false
+    ) {
       probed.current = false
       return
     }

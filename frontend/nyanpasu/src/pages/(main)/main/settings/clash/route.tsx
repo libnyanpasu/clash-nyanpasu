@@ -51,6 +51,8 @@ const PatchSettings = () => {
 
         <ManagedGuardFieldSelector field="tcp-concurrent" />
 
+        <ManagedGuardFieldSelector field="enable_tun_mode" />
+
         <TunStackSelector />
 
         <LogLevelSelector />

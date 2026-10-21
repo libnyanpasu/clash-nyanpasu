@@ -1,7 +1,10 @@
 use serde_json::json;
 
 use crate::{
-    clash::config::{overrides::ClashGuardOverrides, tun_stack::TunStack},
+    clash::config::{
+        overrides::{ClashGuardOverrides, ManageableField},
+        tun_stack::TunStack,
+    },
     runtime::{
         executor::{
             GuardInputs, ResolvedPortBindings, TunFlavor, TunParams,
@@ -32,14 +35,14 @@ pub fn unmanaged_overrides() -> ClashGuardOverrides {
     .unwrap()
 }
 
-fn tun_off() -> TunParams {
-    TunParams {
+fn tun_off() -> ManageableField<TunParams> {
+    ManageableField::Managed(TunParams {
         enable: false,
         flavor: TunFlavor::Standard {
             stack: TunStack::Gvisor,
         },
         windows_fake_ip_filter: false,
-    }
+    })
 }
 
 #[test]
@@ -219,6 +222,27 @@ fn guard_leaves_unmanaged_fields_to_the_profile() {
 }
 
 #[test]
+fn unmanaged_tun_keeps_profile_settings_and_does_not_supply_dns_defaults() {
+    let config = value(json!({
+        "tun": {
+            "enable": true, "auto-route": "global", "mtu": 1400,
+            "outbound-interface": "Ethernet", "inet6-address": "fdfe:dcba:9876::1/126"
+        },
+        "dns": { "enable": false, "enhanced-mode": "redir-host" }
+    }));
+    let result = finalize(&config, &ManageableField::Unmanaged, true).to_json();
+    assert_eq!(result["tun"], config.to_json()["tun"]);
+    assert_eq!(result["dns"], config.to_json()["dns"]);
+}
+
+#[test]
+fn unmanaged_tun_does_not_create_tun_or_dns() {
+    let result = finalize(&value(json!({})), &ManageableField::Unmanaged, false).to_json();
+    assert!(result.get("tun").is_none());
+    assert!(result.get("dns").is_none());
+}
+
+#[test]
 fn tun_disabled_without_tun_key_is_untouched() {
     let config = value(json!({ "proxies": [] }));
     let result = finalize(&config, &tun_off(), false).to_json();
@@ -236,13 +260,13 @@ fn tun_disabled_with_existing_tun_key_forces_enable_false() {
 
 #[test]
 fn tun_enabled_standard_appends_defaults_and_dns() {
-    let params = TunParams {
+    let params = ManageableField::Managed(TunParams {
         enable: true,
         flavor: TunFlavor::Standard {
             stack: TunStack::Gvisor,
         },
         windows_fake_ip_filter: true,
-    };
+    });
     let config =
         value(json!({ "tun": { "stack": "system" }, "dns": { "nameserver": ["1.1.1.1"] } }));
     let result = finalize(&config, &params, false).to_json();
@@ -269,11 +293,11 @@ fn tun_enabled_standard_appends_defaults_and_dns() {
 
 #[test]
 fn tun_enabled_clash_rs_uses_device_branch_and_no_windows_filter() {
-    let params = TunParams {
+    let params = ManageableField::Managed(TunParams {
         enable: true,
         flavor: TunFlavor::ClashRs,
         windows_fake_ip_filter: false,
-    };
+    });
     let result = finalize(&value(json!({})), &params, false).to_json();
     assert_eq!(result["tun"]["enable"], json!(true));
     assert_eq!(result["tun"]["device-id"], json!("dev://utun1989"));

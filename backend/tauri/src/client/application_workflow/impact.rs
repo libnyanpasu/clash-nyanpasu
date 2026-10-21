@@ -17,7 +17,7 @@ use nyanpasu_config::{
     clash::config::{
         ClashConfig, ClashConfigPatch, ClashControlChannel,
         clash_strategy::port::{ExternalControllerStrategy, PortStrategy},
-        overrides::{ClashGuardOverrides, ClashGuardOverridesPatch},
+        overrides::{ClashGuardOverrides, ClashGuardOverridesPatch, ManageableField},
         tun_stack::TunStack,
     },
     profile::{ManagedProfilePath, ProfileDefinition, ProfileId, Profiles},
@@ -340,7 +340,7 @@ struct ClashRuntimeInputs<'a> {
     overrides: &'a ClashGuardOverrides,
     enable_clash_fields: bool,
     expand_include_all: bool,
-    enable_tun_mode: bool,
+    enable_tun_mode: ManageableField<bool>,
     tun_stack: TunStack,
     mixed_port: &'a PortStrategy,
     socks_port: Option<&'a PortStrategy>,
@@ -1074,7 +1074,7 @@ mod tests {
         ClashCase {
             field: "enable_tun_mode",
             candidate: || ClashConfig {
-                enable_tun_mode: true,
+                enable_tun_mode: ManageableField::Managed(true),
                 ..base_clash()
             },
             impact: RuntimeImpact::Reconcile,
@@ -1265,7 +1265,7 @@ mod tests {
     fn a_tun_mode_change_is_both_a_rebuild_and_a_tray_input() {
         let previous = base_clash();
         let candidate = ClashConfig {
-            enable_tun_mode: true,
+            enable_tun_mode: ManageableField::Managed(true),
             ..base_clash()
         };
         let app = base_app();
@@ -1654,7 +1654,7 @@ mod tests {
     fn a_clash_patch_names_its_runtime_fields_including_the_overrides() {
         assert_eq!(
             RequestedRuntimeFields::of_clash(&ClashConfigPatch {
-                enable_tun_mode: Some(true),
+                enable_tun_mode: Some(ManageableField::Managed(true)),
                 mixed_port: PortStrategy::default().into_patch(),
                 web_ui_list: Some(Vec::new()),
                 ..ClashConfigPatch::default()

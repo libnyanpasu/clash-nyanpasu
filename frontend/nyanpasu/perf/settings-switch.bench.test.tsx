@@ -82,7 +82,7 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
     log_level: 'info',
   }
   const clash: Record<string, unknown> = {
-    enable_tun_mode: false,
+    enable_tun_mode: { kind: 'managed', value: false },
     allow_lan: false,
     ipv6: false,
     mixed_port: { kind: 'fixed', start_port: 7890 },

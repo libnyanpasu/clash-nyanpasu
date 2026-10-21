@@ -36,8 +36,8 @@ pub struct ClashConfig {
     /// Clash Overrides config, used to patch clash config directly
     pub overrides: ClashGuardOverrides,
 
-    /// clash tun mode
-    pub enable_tun_mode: bool,
+    /// Whether Nyanpasu overrides TUN configuration or leaves it to the profiles.
+    pub enable_tun_mode: ManageableField<bool>,
 
     /// web ui list
     pub web_ui_list: Vec<String>,
@@ -90,7 +90,7 @@ impl Default for ClashConfig {
     fn default() -> Self {
         Self {
             overrides: ClashGuardOverrides::default(),
-            enable_tun_mode: false,
+            enable_tun_mode: ManageableField::Managed(false),
             web_ui_list: Vec::new(),
             enable_clash_fields: false,
             expand_include_all: default_expand_include_all(),
@@ -127,6 +127,7 @@ mod patch_tests {
         assert_eq!(config.socks_port, None);
         assert_eq!(config.http_port, None);
         assert!(!config.enable_clash_fields);
+        assert_eq!(config.enable_tun_mode, ManageableField::Managed(false));
     }
 
     #[test]
@@ -202,9 +203,10 @@ mod patch_tests {
         );
 
         let before = cfg.clone();
-        let unrelated: ClashConfigPatch =
-            serde_json::from_value(serde_json::json!({ "enable_tun_mode": true }))
-                .expect("patch must deserialize");
+        let unrelated: ClashConfigPatch = serde_json::from_value(
+            serde_json::json!({ "enable_tun_mode": { "kind": "managed", "value": true } }),
+        )
+        .expect("patch must deserialize");
         cfg.apply(unrelated);
         assert_eq!(cfg.mixed_port, before.mixed_port);
         assert_eq!(cfg.external_controller, before.external_controller);
@@ -223,7 +225,8 @@ mod patch_tests {
 
         // Absent → keep.
         let keep: ClashConfigPatch =
-            serde_yaml_ng::from_str("enable_tun_mode: true\n").expect("patch must deserialize");
+            serde_yaml_ng::from_str("enable_tun_mode: {kind: managed, value: true}\n")
+                .expect("patch must deserialize");
         assert_eq!(keep.socks_port, None, "absent decodes to outer None (keep)");
         let mut cfg = seeded();
         cfg.apply(keep);

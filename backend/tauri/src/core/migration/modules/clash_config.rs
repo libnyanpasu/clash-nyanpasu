@@ -14,7 +14,7 @@ pub static MIGRATOR: ClashConfigMigrator = ClashConfigMigrator;
 
 static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwrap());
 static MANAGEABLE_GUARD_FIELDS: MigrateManageableGuardFields = MigrateManageableGuardFields;
-static STEPS: [&dyn MigrationStep; 1] = [&MANAGEABLE_GUARD_FIELDS];
+static STEPS: [&dyn MigrationStep; 2] = [&MANAGEABLE_GUARD_FIELDS, &MigrateManageableTunMode];
 
 /// Revisions up to here were written without a stamp. Frozen: nothing before
 /// this module changed the file's schema, so there is no shape to probe.
@@ -25,7 +25,7 @@ pub struct ClashConfigDocument;
 
 impl StampedDocument for ClashConfigDocument {
     const DOCUMENT: &'static str = "clash_config";
-    const SCHEMA_REVISION: u64 = 1;
+    const SCHEMA_REVISION: u64 = 2;
 }
 
 /// How the running app reads and writes `clash-config.yaml`.
@@ -79,6 +79,11 @@ pub(in crate::core::migration) fn read_typed(
         };
     if revision < MANAGEABLE_GUARD_FIELDS.revision() {
         manage_guard_fields(&mut payload).map_err(|error| {
+            MigrationCheckError::Unrecognized(format!("{}: {error:#}", path.display()))
+        })?;
+    }
+    if revision < MigrateManageableTunMode.revision() {
+        manage_tun_mode(&mut payload).map_err(|error| {
             MigrationCheckError::Unrecognized(format!("{}: {error:#}", path.display()))
         })?;
     }
@@ -169,12 +174,92 @@ pub(in crate::core::migration) fn manage_override_fields(
     Ok(())
 }
 
+/// Wraps the existing switch without changing its value or the separate TUN stack.
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateManageableTunMode;
+
+impl MigrationStep for MigrateManageableTunMode {
+    fn id(&self) -> &'static str {
+        "clash_config/manageable_tun_mode"
+    }
+    fn module(&self) -> &'static str {
+        "clash_config"
+    }
+    fn revision(&self) -> u64 {
+        2
+    }
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+    fn name(&self) -> &'static str {
+        "MigrateManageableTunMode"
+    }
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+        let path = ctx.clash_config_path();
+        let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
+            .context("clash-config.yaml is gone")?;
+        let mut payload = file.payload;
+        manage_tun_mode(&mut payload)?;
+        write_document(
+            &path,
+            ClashConfigDocument::DOCUMENT,
+            self.revision(),
+            payload,
+            None,
+        )
+    }
+}
+
+fn manage_tun_mode(payload: &mut Mapping) -> anyhow::Result<()> {
+    let Some(value) = payload.get_mut("enable_tun_mode") else {
+        return Ok(());
+    };
+    match value {
+        Value::Bool(enabled) => {
+            *value = serde_yaml::to_value(
+                nyanpasu_config::clash::config::overrides::ManageableField::Managed(*enabled),
+            )?
+        }
+        Value::Mapping(_) => {}
+        other => bail!("`enable_tun_mode` is {other:?}, not a boolean"),
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn payload(src: &str) -> Mapping {
         serde_yaml::from_str(src).unwrap()
+    }
+
+    #[test]
+    fn tun_mode_migration_preserves_the_switch_stack_and_other_settings() {
+        for enabled in [true, false] {
+            let mut config = payload(&format!(
+                "enable_tun_mode: {enabled}\ntun_stack: system\nweb_ui_list: []\n"
+            ));
+            manage_tun_mode(&mut config).unwrap();
+            assert_eq!(
+                config,
+                payload(&format!(
+                    "enable_tun_mode: {{kind: managed, value: {enabled}}}\ntun_stack: system\nweb_ui_list: []\n"
+                ))
+            );
+            let once = config.clone();
+            manage_tun_mode(&mut config).unwrap();
+            assert_eq!(config, once);
+        }
+        let mut config = payload("enable_tun_mode: {kind: unmanaged}\n");
+        let before = config.clone();
+        manage_tun_mode(&mut config).unwrap();
+        assert_eq!(config, before);
+    }
+
+    #[test]
+    fn tun_mode_migration_rejects_invalid_values() {
+        assert!(manage_tun_mode(&mut payload("enable_tun_mode: bad\n")).is_err());
     }
 
     #[test]

@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::runtime::value::{ConfigObject, ConfigValue};
+use crate::{
+    clash::config::overrides::ManageableField,
+    runtime::value::{ConfigObject, ConfigValue},
+};
 
 use super::{
     GuardInputs, TunFlavor, TunParams,
@@ -162,12 +165,14 @@ pub(super) fn apply_guard(
 /// One recorded node; changed_fields shows the net effect.
 pub(super) fn finalize(
     config: &ConfigValue,
-    tun: &TunParams,
+    tun: &ManageableField<TunParams>,
     whitelist_enabled: bool,
 ) -> ConfigValue {
     let full: Vec<String> = known_fields().map(str::to_string).collect();
     let mut next = whitelist_filter(config, &full, whitelist_enabled);
-    next = apply_tun(&next, tun);
+    if let Some(params) = tun.managed() {
+        next = apply_tun(&next, params);
+    }
     next = apply_cache(&next);
     // TODO: 可选排序算法
     // next = apply_sort(&next);

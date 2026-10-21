@@ -77,7 +77,7 @@ test('the proxy status header settles instead of flickering in a narrow widget',
       case 'get_app_config':
         return { enable_system_proxy: false }
       case 'get_clash_config':
-        return { enable_tun_mode: false }
+        return { enable_tun_mode: { kind: 'managed', value: false } }
       case 'get_sys_proxy':
         return { enable: false, server: ':0', bypass: '' }
       case 'clash_api_get_configs':

@@ -20,7 +20,7 @@ use nyanpasu_config::{
     application::NyanpasuAppConfigPatch,
     clash::config::{
         ClashConfigPatch,
-        overrides::{ClashGuardOverridesPatch, Mode},
+        overrides::{ClashGuardOverridesPatch, ManageableField, Mode},
     },
 };
 use ractor::{Actor, ActorRef, rpc::CallResult};
@@ -161,8 +161,9 @@ impl NyanpasuClient {
             HotkeyAction::EnableSystemProxy => self.set_system_proxy(true).await,
             HotkeyAction::DisableSystemProxy => self.set_system_proxy(false).await,
             HotkeyAction::ToggleTunMode => {
-                let enabled = self.get_clash_config().await?.enable_tun_mode;
-                self.set_tun_mode(!enabled).await
+                let tun_mode = self.get_clash_config().await?.enable_tun_mode;
+                self.set_tun_mode(!matches!(tun_mode, ManageableField::Managed(true)))
+                    .await
             }
             HotkeyAction::EnableTunMode => self.set_tun_mode(true).await,
             HotkeyAction::DisableTunMode => self.set_tun_mode(false).await,
@@ -194,7 +195,7 @@ impl NyanpasuClient {
     async fn set_tun_mode(&self, enabled: bool) -> Result<()> {
         let outcome = self
             .patch_clash_config(ClashConfigPatch {
-                enable_tun_mode: Some(enabled),
+                enable_tun_mode: Some(ManageableField::Managed(enabled)),
                 ..Default::default()
             })
             .await?;

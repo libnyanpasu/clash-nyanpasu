@@ -11,7 +11,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashConfig, useClashSetting } from '@nyanpasu/query'
+import { useClashConfig, useClashSettings } from '@nyanpasu/query'
 import type { ManageableField } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
@@ -22,13 +22,14 @@ import {
   SettingsCardContent,
 } from '../../_modules/settings-card'
 
-type ManagedGuardField = 'unified-delay' | 'tcp-concurrent'
+type ManagedGuardField = 'unified-delay' | 'tcp-concurrent' | 'enable_tun_mode'
 
 type ManagedGuardOption = 'unmanaged' | 'enabled' | 'disabled'
 
 const FIELD_LABELS = {
   'unified-delay': m.settings_clash_settings_unified_delay_label,
   'tcp-concurrent': m.settings_clash_settings_tcp_concurrent_label,
+  enable_tun_mode: m.settings_system_proxy_tun_mode_label,
 } satisfies Record<ManagedGuardField, () => string>
 
 const OPTION_LABELS = {
@@ -59,18 +60,25 @@ export default function ManagedGuardFieldSelector({
 }: {
   field: ManagedGuardField
 }) {
-  const overrides = useClashSetting('overrides')
+  const settings = useClashSettings()
 
   const { upsert } = useClashConfig()
 
   const current = useMemo(() => {
-    const value = overrides.value?.[field]
+    const value =
+      field === 'enable_tun_mode'
+        ? settings.query.data?.enable_tun_mode
+        : settings.query.data?.overrides[field]
     return value ? toOption(value) : undefined
-  }, [overrides.value, field])
+  }, [settings.query.data, field])
 
   const handleChange = useLockFn(async (option: ManagedGuardOption) => {
     try {
-      await upsert.mutateAsync({ [field]: toField(option) })
+      if (field === 'enable_tun_mode') {
+        await settings.upsert.mutateAsync({ enable_tun_mode: toField(option) })
+      } else {
+        await upsert.mutateAsync({ [field]: toField(option) })
+      }
     } catch (error) {
       message(`Update ${field} failed!\n Error: ${formatError(error)}`, {
         title: 'Error',

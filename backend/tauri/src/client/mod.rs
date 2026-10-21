@@ -1383,7 +1383,7 @@ pub(crate) mod tests {
     };
     use camino::Utf8PathBuf;
     use nyanpasu_config::{
-        clash::config::{ClashConfig, clash_strategy::PortStrategy},
+        clash::config::{ClashConfig, clash_strategy::PortStrategy, overrides::ManageableField},
         profile::{
             ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
             ProfileDefinition, ProfileMetadata, ProfileSource, RemoteSyncInterval,
@@ -2827,7 +2827,7 @@ pub(crate) mod tests {
         probe.expect_ipv6().never();
         let client = test_client_with_direct_egress(&dir, Arc::new(probe)).await;
         let mut patch = ClashConfig::new_empty_patch();
-        patch.enable_tun_mode = Some(true);
+        patch.enable_tun_mode = Some(ManageableField::Managed(true));
         client
             .patch_clash_config(patch)
             .await
@@ -2943,7 +2943,7 @@ pub(crate) mod tests {
         });
         probe.started.notified().await;
         let mut patch = ClashConfig::new_empty_patch();
-        patch.enable_tun_mode = Some(true);
+        patch.enable_tun_mode = Some(ManageableField::Managed(true));
         client.patch_clash_config(patch).await.unwrap();
         probe.release.notify_one();
         assert_eq!(request.await.unwrap().unwrap(), DirectEgress::TunEnabled);
@@ -3464,12 +3464,15 @@ pub(crate) mod tests {
             assert_eq!(client.main_window_geometry(), Some(window_state));
 
             let mut clash_patch = ClashConfig::new_empty_patch();
-            clash_patch.enable_tun_mode = Some(true);
+            clash_patch.enable_tun_mode = Some(ManageableField::Managed(true));
             client
                 .patch_clash_config(clash_patch)
                 .await
                 .expect("clash patch should succeed");
-            assert!(client.get_clash_config().await.unwrap().enable_tun_mode);
+            assert_eq!(
+                client.get_clash_config().await.unwrap().enable_tun_mode,
+                ManageableField::Managed(true)
+            );
         });
     }
 

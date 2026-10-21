@@ -625,7 +625,9 @@ mod facade {
 
     use std::sync::Arc;
 
-    use nyanpasu_config::application::NyanpasuAppConfig;
+    use nyanpasu_config::{
+        application::NyanpasuAppConfig, clash::config::overrides::ManageableField,
+    };
     use tempfile::{TempDir, tempdir};
 
     use super::super::ports::{HotkeyAction, HotkeyParseError, MockWindowControl};
@@ -707,20 +709,26 @@ mod facade {
                 .expect("the toggle should commit");
             assert_eq!(
                 client.get_clash_config().await.unwrap().enable_tun_mode,
-                !before
+                ManageableField::Managed(!matches!(before, ManageableField::Managed(true)))
             );
 
             client
                 .dispatch_hotkey_action(HotkeyAction::DisableTunMode)
                 .await
                 .expect("the explicit disable should commit");
-            assert!(!client.get_clash_config().await.unwrap().enable_tun_mode);
+            assert_eq!(
+                client.get_clash_config().await.unwrap().enable_tun_mode,
+                ManageableField::Managed(false)
+            );
 
             client
                 .dispatch_hotkey_action(HotkeyAction::EnableTunMode)
                 .await
                 .expect("the explicit enable should commit");
-            assert!(client.get_clash_config().await.unwrap().enable_tun_mode);
+            assert_eq!(
+                client.get_clash_config().await.unwrap().enable_tun_mode,
+                ManageableField::Managed(true)
+            );
         });
     }
 

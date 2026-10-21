@@ -11,7 +11,7 @@ use nyanpasu_config::{
     },
     clash::config::{
         ClashConfig,
-        overrides::{LogLevel, Mode},
+        overrides::{LogLevel, ManageableField, Mode},
     },
     runtime::executor::ResolvedPortBindings,
 };
@@ -96,7 +96,7 @@ impl From<&ClashConfig> for ClashEffectFields {
     fn from(clash: &ClashConfig) -> Self {
         Self {
             mode: clash.overrides.mode(),
-            enable_tun_mode: clash.enable_tun_mode,
+            enable_tun_mode: matches!(clash.enable_tun_mode, ManageableField::Managed(true)),
             log_level: clash.overrides.log_level(),
         }
     }
@@ -460,7 +460,7 @@ mod tests {
         },
         clash::config::{
             ClashConfig,
-            overrides::{ClashGuardOverridesPatch, Mode},
+            overrides::{ClashGuardOverridesPatch, ManageableField, Mode},
         },
         runtime::executor::ResolvedPortBindings,
     };
@@ -1050,7 +1050,7 @@ mod tests {
             ..NyanpasuAppConfig::default()
         };
         let mut clash = ClashConfig {
-            enable_tun_mode: true,
+            enable_tun_mode: ManageableField::Managed(true),
             ..ClashConfig::default()
         };
         clash.overrides.apply(ClashGuardOverridesPatch {

@@ -20,7 +20,7 @@ const appConfig = {
 } satisfies Partial<NyanpasuAppConfig_Serialize>
 
 const clashConfig = {
-  enable_tun_mode: false,
+  enable_tun_mode: { kind: 'managed', value: false },
   mixed_port: { kind: 'fixed', start_port: 7890 },
   socks_port: { kind: 'fixed', start_port: 7891 },
 } satisfies Partial<ClashConfig>
@@ -175,17 +175,17 @@ test('useClashSettings passes the mutation outcome through', async ({
   const { hook, invoke } = await setup(() => useClashSettings(), onTestFinished)
   await expect
     .poll(() => hook.result.current.query.data?.enable_tun_mode)
-    .toBe(false)
+    .toEqual(clashConfig.enable_tun_mode)
 
   let outcome: unknown
   await hook.act(async () => {
     outcome = await hook.result.current.upsert.mutateAsync({
-      enable_tun_mode: true,
+      enable_tun_mode: { kind: 'unmanaged' },
     })
   })
 
   expect(outcome).toEqual(degraded)
   expect(invoke).toHaveBeenCalledWith('patch_clash_config', {
-    patch: { enable_tun_mode: true },
+    patch: { enable_tun_mode: { kind: 'unmanaged' } },
   })
 })

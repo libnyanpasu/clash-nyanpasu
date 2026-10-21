@@ -17,12 +17,14 @@ export const useSystemProxy = () => {
 export const useTunMode = () => {
   const tunMode = useClashSetting('enable_tun_mode')
 
+  const isActive = tunMode.value?.kind === 'managed' && tunMode.value.value
+
   const blockTask = useBlockTask('tun-mode', async () => {
-    await tunMode.upsert(!tunMode.value)
+    await tunMode.upsert({ kind: 'managed', value: !isActive })
   })
 
   return {
     ...blockTask,
-    isActive: Boolean(tunMode.value),
+    isActive: Boolean(isActive),
   }
 }

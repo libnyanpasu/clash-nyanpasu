@@ -472,7 +472,10 @@ fn current_revision() -> u64 {
 mod tests {
     use super::*;
     use crate::core::migration::legacy_schema::WindowState as LegacyWindowState;
-    use nyanpasu_config::state::window::{WindowLabel, WindowState};
+    use nyanpasu_config::{
+        clash::config::overrides::ManageableField,
+        state::window::{WindowLabel, WindowState},
+    };
 
     fn test_ctx() -> (Ctx, tempfile::TempDir) {
         let temp = tempfile::tempdir().unwrap();
@@ -627,7 +630,7 @@ mod tests {
         write_yaml(&ctx.session_state_path(), &PersistentState::default());
         write_legacy_clash(&ctx.clash_config_path());
         let previous = ClashConfig {
-            enable_tun_mode: true,
+            enable_tun_mode: ManageableField::Managed(true),
             enable_clash_fields: false,
             ..ClashConfig::default()
         };
@@ -642,7 +645,7 @@ mod tests {
         REPAIR_CLASH_CONFIG_PATH.run(&mut ctx).unwrap();
 
         let repaired: ClashConfig = read_typed(&ctx.clash_config_path());
-        assert!(repaired.enable_tun_mode);
+        assert_eq!(repaired.enable_tun_mode, ManageableField::Managed(true));
         assert!(!repaired.enable_clash_fields);
     }
 
@@ -731,7 +734,7 @@ mod tests {
         assert!(application.enable_system_proxy);
 
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
-        assert!(clash.enable_tun_mode);
+        assert_eq!(clash.enable_tun_mode, ManageableField::Managed(true));
         assert_eq!(clash.mixed_port.start_port, 7899);
         assert_eq!(clash.external_controller.port.start_port, 19090);
 

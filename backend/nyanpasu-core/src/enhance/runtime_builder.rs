@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use nyanpasu_config::{
     application::{ClashCore, NyanpasuAppConfig},
-    clash::config::{ClashConfig, tun_stack::TunStack},
+    clash::config::{ClashConfig, overrides::ManageableField, tun_stack::TunStack},
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
         BuiltinTransform, ExecutionTarget, GuardInputs, ProfileContentSource, ResolvedPortBindings,
@@ -187,10 +187,13 @@ impl RuntimeBuilder {
                 ports: input.resolved_ports.clone(),
             },
             whitelist_enabled: input.clash.enable_clash_fields,
-            tun: TunParams {
-                enable: input.clash.enable_tun_mode,
-                flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
-                windows_fake_ip_filter: cfg!(windows),
+            tun: match input.clash.enable_tun_mode {
+                ManageableField::Managed(enable) => ManageableField::Managed(TunParams {
+                    enable,
+                    flavor: derive_tun_flavor(input.app.core, input.clash.tun_stack),
+                    windows_fake_ip_filter: cfg!(windows),
+                }),
+                ManageableField::Unmanaged => ManageableField::Unmanaged,
             },
             expand_include_all: input.clash.expand_include_all,
             builtin_transforms: &builtin_transforms,

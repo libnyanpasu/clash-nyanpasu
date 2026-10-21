@@ -2,7 +2,7 @@ use serde_json::json;
 
 use super::support::*;
 use crate::{
-    clash::config::tun_stack::TunStack,
+    clash::config::{overrides::ManageableField, tun_stack::TunStack},
     profile::{Profiles, ScriptRuntime},
     runtime::{
         executor::{
@@ -33,13 +33,13 @@ pub fn base_inputs<'a>(
             },
         },
         whitelist_enabled: true,
-        tun: TunParams {
+        tun: ManageableField::Managed(TunParams {
             enable: false,
             flavor: TunFlavor::Standard {
                 stack: TunStack::Gvisor,
             },
             windows_fake_ip_filter: false,
-        },
+        }),
         expand_include_all: true,
         builtin_transforms,
     }
@@ -47,6 +47,42 @@ pub fn base_inputs<'a>(
 
 fn overrides() -> crate::clash::config::overrides::ClashGuardOverrides {
     super::builtin::fixed_overrides()
+}
+
+/// #5791: unmanaged TUN survives only when the field filter retains it.
+#[test]
+fn unmanaged_tun_respects_the_field_filter_without_recreating_defaults() {
+    for (filter, allow_tun, retained) in [
+        (true, false, false),
+        (true, true, true),
+        (false, false, true),
+    ] {
+        let profiles = profiles_with(
+            Some("sub"),
+            &[],
+            if allow_tun { &["tun"] } else { &[] },
+            vec![config_file_item("sub", "sub.yaml", &[])],
+        );
+        let content = MapContentSource::from_pairs(&[(
+            "sub.yaml",
+            "tun:\n  enable: true\n  auto-route: global\n  mtu: 1400\n",
+        )]);
+        let ov = overrides();
+        let mut inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub")), &ov, &[]);
+        inputs.whitelist_enabled = filter;
+        inputs.tun = ManageableField::Unmanaged;
+        let artifact = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap();
+        let result = artifact.final_config.to_json();
+        if retained {
+            assert_eq!(
+                result["tun"],
+                json!({ "enable": true, "auto-route": "global", "mtu": 1400 })
+            );
+        } else {
+            assert!(result.get("tun").is_none());
+        }
+        assert!(result.get("dns").is_none());
+    }
 }
 
 #[test]

@@ -85,10 +85,12 @@ impl LocalSourceCache {
     pub(super) fn blocked(&self) -> Option<super::DirectEgress> {
         if !self.application.load().state.enable_local_ip_probe {
             Some(super::DirectEgress::Disabled)
-        } else if self.clash.load().state.enable_tun_mode {
-            Some(super::DirectEgress::TunEnabled)
         } else {
-            None
+            match self.clash.load().state.enable_tun_mode.managed() {
+                Some(false) => None,
+                Some(true) => Some(super::DirectEgress::TunEnabled),
+                None => Some(super::DirectEgress::Disabled),
+            }
         }
     }
 }

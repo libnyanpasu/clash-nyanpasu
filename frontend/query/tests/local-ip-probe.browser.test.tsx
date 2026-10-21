@@ -8,12 +8,14 @@ import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 async function setup(
   onTestFinished: TestContext['onTestFinished'],
   allowed: boolean,
-  tun: boolean,
+  tun: boolean | null,
   enabled = true,
 ) {
+  const tunMode =
+    tun === null ? { kind: 'unmanaged' } : { kind: 'managed', value: tun }
   const testRpc = createTestRpc({
     get_app_config: () => ({ enable_local_ip_probe: allowed }),
-    get_clash_config: () => ({ enable_tun_mode: tun }),
+    get_clash_config: () => ({ enable_tun_mode: tunMode }),
     probe_direct_egress: () => ({
       kind: 'probed',
       ipv4: '203.0.113.7',
@@ -25,7 +27,7 @@ async function setup(
   })
   // Exercise StrictMode with settings already cached, as on a return visit.
   client.setQueryData(['getAppConfig'], { enable_local_ip_probe: allowed })
-  client.setQueryData(['getClashConfig'], { enable_tun_mode: tun })
+  client.setQueryData(['getClashConfig'], { enable_tun_mode: tunMode })
   const Wrapper = rpcWrapper(testRpc.rpc, client)
   const hook = await renderHook((props) => useLocalIpProbe(props?.enabled), {
     initialProps: { enabled },
@@ -69,6 +71,7 @@ test('probes once per eligible visit without polling or focus/reconnect probes',
 test.for([
   { allowed: false, tun: false, enabled: true },
   { allowed: true, tun: true, enabled: true },
+  { allowed: true, tun: null, enabled: true },
   { allowed: true, tun: false, enabled: false },
 ])(
   'does not probe when ineligible: %j',

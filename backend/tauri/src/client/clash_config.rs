@@ -151,6 +151,7 @@ impl Drop for ClashConfigClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nyanpasu_config::clash::config::overrides::ManageableField;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
 
@@ -177,18 +178,27 @@ mod tests {
         let (client, _dir) = test_client().await;
 
         let initial = client.snapshot();
-        assert!(!initial.state.enable_tun_mode);
+        assert_eq!(
+            initial.state.enable_tun_mode,
+            ManageableField::Managed(false)
+        );
 
         let mut patch = ClashConfig::new_empty_patch();
-        patch.enable_tun_mode = Some(true);
+        patch.enable_tun_mode = Some(ManageableField::Managed(true));
         let patched = client.patch(patch).await.expect("patch should succeed");
-        assert!(patched.state.enable_tun_mode);
+        assert_eq!(
+            patched.state.enable_tun_mode,
+            ManageableField::Managed(true)
+        );
 
         let replaced = client
             .replace(ClashConfig::default())
             .await
             .expect("replace should succeed");
-        assert!(!replaced.state.enable_tun_mode);
+        assert_eq!(
+            replaced.state.enable_tun_mode,
+            ManageableField::Managed(false)
+        );
     }
 
     #[tokio::test]

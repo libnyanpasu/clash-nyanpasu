@@ -68,7 +68,8 @@ mod tests {
         inputs.app.enable_builtin_enhanced = !inputs.app.enable_builtin_enhanced;
         let application_changed = inputs.target_key().unwrap();
         assert_ne!(application_changed, first);
-        inputs.clash.enable_tun_mode = !inputs.clash.enable_tun_mode;
+        inputs.clash.enable_tun_mode =
+            nyanpasu_config::clash::config::overrides::ManageableField::Unmanaged;
         let clash_changed = inputs.target_key().unwrap();
         assert_ne!(clash_changed, application_changed);
         inputs

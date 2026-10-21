@@ -56,9 +56,12 @@ export default function TunStackSelector() {
       try {
         await tunStack.upsert(value as TunStack)
 
-        if (enableTunMode.value) {
+        if (
+          enableTunMode.value?.kind === 'managed' &&
+          enableTunMode.value.value
+        ) {
           // just to reload clash config
-          await enableTunMode.upsert(true)
+          await enableTunMode.upsert({ kind: 'managed', value: true })
         }
 
         // need manual mutate to refetch runtime profile

@@ -25,7 +25,10 @@ pub use ports::{PortError, ProfileContentSource, ScriptRunner};
 use error::{SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu};
 
 use crate::{
-    clash::config::{overrides::ClashGuardOverrides, tun_stack::TunStack},
+    clash::config::{
+        overrides::{ClashGuardOverrides, ManageableField},
+        tun_stack::TunStack,
+    },
     profile::{
         ProfileDefinition, ProfileId, Profiles, ScriptRuntime, TransformDefinition, TransformKind,
     },
@@ -45,7 +48,7 @@ pub struct RuntimePipelineInputs<'a> {
     pub guard: GuardInputs<'a>,
     /// `ClashConfig.enable_clash_fields`: gates both whitelist passes.
     pub whitelist_enabled: bool,
-    pub tun: TunParams,
+    pub tun: ManageableField<TunParams>,
     /// `ClashConfig.expand_include_all`: expand `include-all*` groups here
     /// instead of leaving them to the core.
     pub expand_include_all: bool,

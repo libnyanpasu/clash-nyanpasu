@@ -7,6 +7,7 @@ use nyanpasu_config::clash::config::{
     clash_strategy::{
         BreakConnectionStrategy, PortStrategy, PortStrategyKind, ProxyChangeBreakMode,
     },
+    overrides::ManageableField,
 };
 use serde_yaml::{Mapping, Value};
 use std::net::SocketAddr;
@@ -29,7 +30,7 @@ pub(super) fn clash_config_from_legacy(
         next.clash_ipc_disable_http_controller = value;
     }
     if let Some(value) = legacy_verge.enable_tun_mode {
-        next.enable_tun_mode = value;
+        next.enable_tun_mode = ManageableField::Managed(value);
     }
     if let Some(value) = &legacy_verge.web_ui_list {
         next.web_ui_list = value.clone();

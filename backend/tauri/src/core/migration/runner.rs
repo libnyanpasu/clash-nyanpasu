@@ -1619,6 +1619,7 @@ schema_revision: {revision}
             .unwrap();
         overrides.insert("unified-delay".into(), true.into());
         overrides.insert("tcp-concurrent".into(), false.into());
+        config.insert("enable_tun_mode".into(), false.into());
         config
     }
 
@@ -1831,11 +1832,11 @@ tray_menu_close_behavior: hide
         // that `typed_config` is about to create at head.
         assert_eq!(
             runner.store.module_state("clash_config"),
-            at_revision(1, false)
+            at_revision(2, false)
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(1));
+        assert_eq!(clash_config_stamp(&case), Some(2));
         assert_eq!(
             runner
                 .store
@@ -1844,7 +1845,7 @@ tray_menu_close_behavior: hide
             "nothing to convert in a file created at head"
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config"), at_revision(1, true));
+        assert_eq!(state.module_state("clash_config"), at_revision(2, true));
         assert_clash_config_loads(&case);
     }
 
@@ -1854,10 +1855,10 @@ tray_menu_close_behavior: hide
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(1));
+        assert_eq!(clash_config_stamp(&case), Some(2));
         assert_eq!(clash_guard_field(&case, "tcp-concurrent"), managed(true));
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config").applied_revision, 1);
+        assert_eq!(state.module_state("clash_config").applied_revision, 2);
         assert!(state.module_state("clash_config").stamped);
         assert_clash_config_loads(&case);
     }
@@ -1875,6 +1876,7 @@ tray_menu_close_behavior: hide
             .unwrap();
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));
+        expected.insert("enable_tun_mode".into(), managed(false));
 
         let mut runner = case.runner();
         assert_eq!(
@@ -1883,7 +1885,7 @@ tray_menu_close_behavior: hide
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(1));
+        assert_eq!(clash_config_stamp(&case), Some(2));
         assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
@@ -1894,11 +1896,43 @@ tray_menu_close_behavior: hide
         assert_eq!(
             state.module_state("clash_config"),
             ModuleState {
-                applied_revision: 1,
+                applied_revision: 2,
                 baseline_revision: 0,
                 stamped: true,
             }
         );
+    }
+
+    #[test]
+    fn a_revision_one_clash_config_keeps_its_tun_switch_and_stack() {
+        let case = LegacyCase::empty();
+        seed_typed_files(&case, Some(1), "");
+        let mut payload = clash_config_2_0();
+        let overrides = payload
+            .get_mut("overrides")
+            .unwrap()
+            .as_mapping_mut()
+            .unwrap();
+        overrides.insert("unified-delay".into(), managed(true));
+        overrides.insert("tcp-concurrent".into(), managed(false));
+        payload.insert("enable_tun_mode".into(), true.into());
+        payload.insert("tun_stack".into(), "system".into());
+        super::fs::write_document(
+            &case.ctx.clash_config_path(),
+            "clash_config",
+            1,
+            payload,
+            None,
+        )
+        .unwrap();
+
+        case.runner().run_pending().unwrap();
+
+        assert_eq!(clash_config_stamp(&case), Some(2));
+        let payload = clash_config_file(&case).into_payload();
+        assert_eq!(payload["enable_tun_mode"], managed(true));
+        assert_eq!(payload["tun_stack"], serde_yaml::Value::from("system"));
+        assert_clash_config_loads(&case);
     }
 
     #[test]

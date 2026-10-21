@@ -52,6 +52,7 @@ afterEach(() => vi.unstubAllGlobals())
 const backend = vi.hoisted(() => ({
   intervals: [] as unknown[],
   retention: '7d',
+  usage: [] as UsageGroup[],
 }))
 
 vi.mock('@nyanpasu/query', async (importOriginal) => {
@@ -165,7 +166,7 @@ function mockBackend() {
     if (method === 'query_traffic_usage') {
       return {
         total: usage(0, 0, 0),
-        groups: [],
+        groups: backend.usage,
         other: usage(0, 0, 0),
         next: null,
       }
@@ -257,6 +258,7 @@ async function open(
     rpc.reports = []
     backend.intervals = []
     backend.retention = '7d'
+    backend.usage = []
     await page.viewport(1280, 720)
   })
 
@@ -432,6 +434,37 @@ test('traffic views fit at narrow, tablet and desktop widths', async ({
       )
     }
   }
+})
+
+test('the full listing of a ranking mounts only the rows in view', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  backend.usage = Array.from({ length: 300 }, (_, index) =>
+    group(`host-${index}.example.com`, 300 - index),
+  )
+  const view = await open(onTestFinished)
+  await view
+    .getByRole('button', { name: m.traffic_rank_view_all() })
+    .first()
+    .click()
+  await expect
+    .element(view.getByRole('button', { name: /host-0\.example\.com/ }))
+    .toBeInTheDocument()
+
+  const rows = document.querySelector<HTMLElement>(
+    '[data-slot="traffic-usage-rows"]',
+  )!
+  expect(rows.querySelectorAll('button').length).toBeLessThan(40)
+
+  const viewport = rows.closest<HTMLElement>(
+    '[data-slot="scroll-area-viewport"]',
+  )!
+  viewport.scrollTop = viewport.scrollHeight
+  await expect
+    .element(view.getByRole('button', { name: /host-299\.example\.com/ }))
+    .toBeInTheDocument()
+  expect(rows.querySelectorAll('button').length).toBeLessThan(40)
 })
 
 test('the flow card fills the page down to its bottom inset', async ({

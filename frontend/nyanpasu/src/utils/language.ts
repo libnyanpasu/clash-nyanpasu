@@ -1,4 +1,10 @@
-import { defineCustomClientStrategy, locales } from '@/paraglide/runtime'
+import {
+  defineCustomClientStrategy,
+  getLocale,
+  locales,
+  overwriteGetLocale,
+  type Locale,
+} from '@/paraglide/runtime'
 
 export type Language = (typeof locales)[number]
 
@@ -51,18 +57,33 @@ export const setCachedLanguage = (locale: Language) => {
 export const getCachedLanguage = (): Language | null =>
   normalizeLanguage(localStorage.getItem(CACHED_LANGUAGE_STORAGE_KEY))
 
+const applyDocumentLanguage = (locale: string) => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = locale.toLowerCase()
+  }
+}
+
+let resolved: Locale | undefined
+
 defineCustomClientStrategy('custom-extension', {
   getLocale: () => {
     const locale = getCachedLanguage() ?? undefined
-    if (locale && typeof document !== 'undefined') {
-      document.documentElement.lang = locale
-    }
+    if (locale) applyDocumentLanguage(locale)
     return locale
   },
   setLocale: (locale) => {
-    setCachedLanguage(locale as Language)
-    if (typeof document !== 'undefined') {
-      document.documentElement.lang = String(locale).toLowerCase()
-    }
+    resolved = locale as Language
+    setCachedLanguage(resolved)
+    applyDocumentLanguage(resolved)
   },
 })
+
+// Every message resolves the locale, and a list renders several messages per
+// row. Paraglide's resolution reads the URL, walks the strategies, reads the
+// storage and writes the document language each time, so it runs once here.
+// Every later change goes through `setLocale`, which keeps `resolved`; a
+// change made in another window reaches this one through the settings, as
+// `LanguageProvider` describes.
+const resolveLocale = getLocale
+
+overwriteGetLocale(() => (resolved ??= resolveLocale()))

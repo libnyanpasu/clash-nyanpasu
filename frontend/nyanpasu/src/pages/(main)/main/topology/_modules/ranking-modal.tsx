@@ -1,24 +1,34 @@
-import { AnimatePresence } from 'motion/react'
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { Modal, ModalClose, ModalContent, ModalTitle } from '@nyanpasu/ui/modal'
-import { ScrollArea, useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
+import {
+  ScrollArea,
+  useScrollAreaViewport,
+  useScrollAreaViewportElement,
+} from '@nyanpasu/ui/scroll-area'
 import {
   useMockTrafficNow,
   useMockTrafficSetting,
 } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
+import type { UsageLabel } from '@/utils/traffic-usage'
 import { useTrafficUsagePages } from '@nyanpasu/query'
 import {
   type Dimension,
+  type Metric,
   type TrafficQuery,
   type UsageGroup,
 } from '@nyanpasu/rpc/types'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { setFilter } from '../../_modules/traffic-filters'
 import { mockTrafficGroups } from './mock-traffic'
 import Notice from './notice'
 import RankingRow from './ranking-row'
 import { useTrafficPage } from './traffic-context'
+
+// A row's height before it is measured, and the space between rows.
+const ROW_ESTIMATE = 54
+const ROW_GAP = 4
 
 // The next page loads when the end of the list scrolls into view.
 function LoadMore({ onVisible }: { onVisible: () => void }) {
@@ -53,38 +63,118 @@ type UsageListProps = {
   onSelect: (key: string) => void
 }
 
+type LabelOf = (dimension: Dimension, key: string) => UsageLabel
+
+/**
+ * A row reads nothing from the page context and keeps its props across
+ * renders, so neither a polled report nor another loaded page re-renders the
+ * rows already shown. The listing is not polled, so its rows do not animate.
+ */
+const UsageRow = memo(function UsageRow({
+  group,
+  rank,
+  active,
+  dimension,
+  metric,
+  labelOf,
+  onSelect,
+}: {
+  group: UsageGroup
+  rank: number
+  active: boolean
+  dimension: Dimension
+  metric: Metric
+  labelOf: LabelOf
+  onSelect: (key: string) => void
+}) {
+  return (
+    <RankingRow
+      label={labelOf(dimension, group.key)}
+      usage={group.usage}
+      metric={metric}
+      rank={rank}
+      active={active}
+      animated={false}
+      onSelect={() => onSelect(group.key)}
+    />
+  )
+})
+
 function UsageRows({
   groups,
   dimension,
   selected,
   onSelect,
-}: Omit<UsageListProps, 'query'> & { groups: UsageGroup[] }) {
-  const { search, labelOf } = useTrafficPage()
+  metric,
+  labelOf,
+}: Omit<UsageListProps, 'query'> & {
+  groups: UsageGroup[]
+  metric: Metric
+  labelOf: LabelOf
+}) {
+  const viewport = useScrollAreaViewportElement()
+
+  // Only the rows in view are mounted, so opening the listing and loading
+  // more of it cost the same however many values it holds.
+  const virtualizer = useVirtualizer({
+    count: groups.length,
+    getScrollElement: () => viewport,
+    estimateSize: () => ROW_ESTIMATE,
+    gap: ROW_GAP,
+    overscan: 6,
+    // Before the viewport is measured, enough rows to fill the window.
+    initialRect: { width: 0, height: window.innerHeight },
+  })
+
+  const items = virtualizer.getVirtualItems()
 
   return (
-    <AnimatePresence initial={false}>
-      {groups.map((group, index) => (
-        <RankingRow
-          key={group.key}
-          label={labelOf(dimension, group.key)}
-          usage={group.usage}
-          metric={search.metric}
-          rank={index}
-          active={group.key === selected}
-          onSelect={() => onSelect(group.key)}
-        />
-      ))}
-    </AnimatePresence>
+    <div
+      className="flex flex-col gap-1"
+      style={{
+        paddingTop: items[0]?.start ?? 0,
+        paddingBottom: Math.max(
+          0,
+          virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0),
+        ),
+      }}
+      data-slot="traffic-usage-rows"
+    >
+      {items.map(({ index }) => {
+        const group = groups[index]
+
+        return (
+          <div
+            key={group.key}
+            ref={virtualizer.measureElement}
+            data-index={index}
+          >
+            <UsageRow
+              group={group}
+              rank={index}
+              active={group.key === selected}
+              dimension={dimension}
+              metric={metric}
+              labelOf={labelOf}
+              onSelect={onSelect}
+            />
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
 function UsageList({ query, dimension, selected, onSelect }: UsageListProps) {
-  const { search } = useTrafficPage()
+  const { search, labelOf } = useTrafficPage()
   const { metric } = search
   const { data, isError, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useTrafficUsagePages(query, dimension, metric)
 
-  const groups = data?.pages.flatMap((page) => page.groups) ?? []
+  const groups = useMemo(
+    () => data?.pages.flatMap((page) => page.groups) ?? [],
+    [data],
+  )
 
   return (
     <ScrollArea className="min-h-0 flex-1">
@@ -94,6 +184,8 @@ function UsageList({ query, dimension, selected, onSelect }: UsageListProps) {
           dimension={dimension}
           selected={selected}
           onSelect={onSelect}
+          metric={metric}
+          labelOf={labelOf}
         />
 
         {hasNextPage && !isFetchingNextPage && (
@@ -127,7 +219,7 @@ function MockUsageList({
   selected,
   onSelect,
 }: UsageListProps) {
-  const { search } = useTrafficPage()
+  const { search, labelOf } = useTrafficPage()
   const { metric } = search
   const now = useMockTrafficNow(true)
 
@@ -145,6 +237,8 @@ function MockUsageList({
           dimension={dimension}
           selected={selected}
           onSelect={onSelect}
+          metric={metric}
+          labelOf={labelOf}
         />
 
         {groups.length === 0 && (
@@ -175,10 +269,14 @@ export default function RankingModal({
     ...query,
     filters: query.filters.filter((filter) => filter.dimension !== dimension),
   }
-  const handleSelect = (key: string) => {
-    onSearchChange({ filters: setFilter(filters, dimension, key) })
-    onOpenChange(false)
-  }
+  // Stable across polls, so the listing does not re-render with each report.
+  const handleSelect = useCallback(
+    (key: string) => {
+      onSearchChange({ filters: setFilter(filters, dimension, key) })
+      onOpenChange(false)
+    },
+    [onSearchChange, filters, dimension, onOpenChange],
+  )
 
   const List = mocked ? MockUsageList : UsageList
 

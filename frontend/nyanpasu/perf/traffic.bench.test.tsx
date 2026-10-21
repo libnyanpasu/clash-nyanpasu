@@ -123,9 +123,15 @@ const listing = vi.hoisted(() => ({ more: () => {} }))
 
 vi.mock('@nyanpasu/query', async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>()
+  // Stable, as the store's own are.
+  const kvState = { isLoading: false, readError: null, refresh: async () => {} }
+  const setKv = async () => true
 
   return {
     ...original,
+    // The view settings keep their defaults; there is no backend to store in.
+    useKvStorage: (_key: string, defaultValue: unknown) =>
+      [defaultValue, setKv, kvState] as const,
     // Traffic reports use RPC, not live connection-detail frames.
     ClashConnectionDetailsFreezeBoundary: ({
       children,

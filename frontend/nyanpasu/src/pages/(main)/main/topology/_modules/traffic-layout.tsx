@@ -44,6 +44,7 @@ import {
   type TrafficView,
 } from './traffic-context'
 import TrafficToolbar from './traffic-toolbar'
+import { TrafficViewSettingsProvider } from './view-settings'
 
 const RANKING_LIMIT = 5
 
@@ -210,41 +211,43 @@ export default function TrafficLayout({
 
   return (
     <TrafficPageContext value={pageContext}>
-      <SidebarProvider defaultOpen={false}>
-        <div className={dataPageLayoutVariants()} data-slot="traffic-page">
-          <TrafficSidebar view={view} />
-          <DataPage
-            title={m.topology_title()}
-            toolbar={<TrafficToolbar>{toolbarStart}</TrafficToolbar>}
-          >
-            <TrafficSurface>
-              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-                <h1 className="m-0! text-lg! font-medium">{title}</h1>
-                {view !== 'overview' && report && !isError && (
-                  <p className="text-on-surface-variant text-xs tabular-nums">
-                    {usageAmount(report.total, 'bytes')} ·{' '}
-                    {usageAmount(report.total, 'connections')}
-                  </p>
-                )}
-              </div>
-              {isError ? (
-                <Notice error>{m.traffic_unavailable()}</Notice>
-              ) : (
-                <AnimatedOutletPreset
-                  className="relative flex min-w-0 flex-1 flex-col gap-3"
-                  // A page sliding out keeps the report it showed, rather than
-                  // re-rendering with the next page's.
-                  renderOutlet={(outlet) => (
-                    <TrafficPageContext value={pageContext}>
-                      {outlet}
-                    </TrafficPageContext>
+      <TrafficViewSettingsProvider>
+        <SidebarProvider defaultOpen={false}>
+          <div className={dataPageLayoutVariants()} data-slot="traffic-page">
+            <TrafficSidebar view={view} />
+            <DataPage
+              title={m.topology_title()}
+              toolbar={<TrafficToolbar>{toolbarStart}</TrafficToolbar>}
+            >
+              <TrafficSurface>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                  <h1 className="m-0! text-lg! font-medium">{title}</h1>
+                  {view !== 'overview' && report && !isError && (
+                    <p className="text-on-surface-variant text-xs tabular-nums">
+                      {usageAmount(report.total, 'bytes')} ·{' '}
+                      {usageAmount(report.total, 'connections')}
+                    </p>
                   )}
-                />
-              )}
-            </TrafficSurface>
-          </DataPage>
-        </div>
-      </SidebarProvider>
+                </div>
+                {isError ? (
+                  <Notice error>{m.traffic_unavailable()}</Notice>
+                ) : (
+                  <AnimatedOutletPreset
+                    className="relative flex min-w-0 flex-1 flex-col gap-3"
+                    // A page sliding out keeps the report it showed, rather than
+                    // re-rendering with the next page's.
+                    renderOutlet={(outlet) => (
+                      <TrafficPageContext value={pageContext}>
+                        {outlet}
+                      </TrafficPageContext>
+                    )}
+                  />
+                )}
+              </TrafficSurface>
+            </DataPage>
+          </div>
+        </SidebarProvider>
+      </TrafficViewSettingsProvider>
     </TrafficPageContext>
   )
 }

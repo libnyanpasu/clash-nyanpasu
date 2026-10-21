@@ -48,6 +48,7 @@ import {
   type TrafficView,
 } from '../src/pages/(main)/main/topology/_modules/traffic-context'
 import TrafficLayout from '../src/pages/(main)/main/topology/_modules/traffic-layout'
+import { TRAFFIC_VIEW_KV_KEY } from '../src/pages/(main)/main/topology/_modules/view-settings'
 import { Route as rankingsRoute } from '../src/pages/(main)/main/topology/$dimension'
 import { Route as flowRoute } from '../src/pages/(main)/main/topology/flow'
 import { Route as mapRoute } from '../src/pages/(main)/main/topology/map'
@@ -187,6 +188,8 @@ const rpc = vi.hoisted(() => ({
   extraExitNodes: undefined as number | undefined,
   // How the map's destination regions were located.
   basisKeys: ['dialed', 'resolved'],
+  // The KV store, by key.
+  storage: new Map<string, string>(),
 }))
 
 function mockBackend(pages: Record<string, UsagePage> = {}) {
@@ -233,6 +236,15 @@ function mockBackend(pages: Record<string, UsagePage> = {}) {
           next: null,
         }
       )
+    }
+
+    if (method === 'get_storage_item') {
+      return rpc.storage.get(params.key as string) ?? null
+    }
+
+    if (method === 'set_storage_item') {
+      rpc.storage.set(params.key as string, params.value as string)
+      return null
     }
 
     throw new Error(`unexpected rpc ${method}`)
@@ -369,6 +381,9 @@ async function openRoute(
     await view.unmount()
     queries.clear()
     clearMocks()
+    // The KV store caches what it reads.
+    localStorage.removeItem(`nyanpasu-kv-:${btoa(TRAFFIC_VIEW_KV_KEY)}`)
+    rpc.storage.clear()
     rpc.reports = []
     rpc.pages = []
     rpc.unavailable = false
@@ -1230,6 +1245,66 @@ test('the flow and the map show the top rankings their picks filter', async ({
         .getByRole('button', { name: /^example\.com/ }),
     )
     .toHaveAttribute('aria-pressed', 'true')
+})
+
+// The view rankings' card titles, in their order.
+const viewRankingTitles = () =>
+  [
+    ...document.querySelectorAll(
+      '[data-slot="traffic-view-rankings"] [data-slot="traffic-ranking"] h2',
+    ),
+  ].map((title) => title.textContent)
+
+test('the view settings choose the rankings of the flow and the map alike', async ({
+  onTestFinished,
+}) => {
+  mockBackend()
+  const view = await open(onTestFinished, { view: 'flow' })
+  const settings = view.getByRole('button', { name: m.traffic_view_settings() })
+
+  await expect
+    .poll(viewRankingTitles)
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_exit(),
+    ])
+
+  await settings.click()
+  // The menu stays open to pick several.
+  await view
+    .getByRole('menuitemcheckbox', { name: m.traffic_rank_exit() })
+    .click()
+  await view
+    .getByRole('menuitemcheckbox', { name: m.traffic_rank_source() })
+    .click()
+  await expect
+    .poll(viewRankingTitles)
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_source(),
+    ])
+  await expect
+    .poll(() => JSON.parse(rpc.storage.get(TRAFFIC_VIEW_KV_KEY) ?? 'null'))
+    .toEqual({ rankings: ['process', 'target', 'source'] })
+  await userEvent.keyboard('{Escape}')
+  await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull()
+
+  await sidebarItem(view, m.topology_geo_map()).click()
+  await expect
+    .poll(viewRankingTitles)
+    .toEqual([
+      m.traffic_rank_process(),
+      m.traffic_rank_target(),
+      m.traffic_rank_source(),
+    ])
+  await settings.click()
+  await expect
+    .element(
+      view.getByRole('menuitemcheckbox', { name: m.traffic_rank_source() }),
+    )
+    .toHaveAttribute('aria-checked', 'true')
 })
 
 test('hovering a node leaves only its adjacent edges lit', async ({

@@ -107,6 +107,7 @@ export default defineConfig({
       '@tanstack/react-table',
       '@uidotdev/usehooks',
       'change-case',
+      '@nyanpasu/ui > radix-ui/internal',
     ],
   },
   test: {

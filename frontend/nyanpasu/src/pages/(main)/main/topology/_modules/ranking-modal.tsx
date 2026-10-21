@@ -23,7 +23,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { setFilter } from '../../_modules/traffic-filters'
 import { mockTrafficGroups } from './mock-traffic'
 import Notice from './notice'
-import RankingRow from './ranking-row'
+import RankingRow, { RankingRowTooltip } from './ranking-row'
 import { useTrafficPage } from './traffic-context'
 
 // A row's height before it is measured, and the space between rows.
@@ -286,12 +286,14 @@ export default function RankingModal({
         <div className="bg-surface text-on-surface flex max-h-[85dvh] w-[min(32rem,calc(100vw-2rem))] flex-col gap-2 rounded-3xl p-4">
           <ModalTitle className="px-4 pt-2 text-xl">{title}</ModalTitle>
 
-          <List
-            query={rankingQuery}
-            dimension={dimension}
-            selected={selected}
-            onSelect={handleSelect}
-          />
+          <RankingRowTooltip>
+            <List
+              query={rankingQuery}
+              dimension={dimension}
+              selected={selected}
+              onSelect={handleSelect}
+            />
+          </RankingRowTooltip>
 
           <div className="flex justify-end">
             <ModalClose>{m.common_close()}</ModalClose>

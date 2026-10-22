@@ -14,6 +14,7 @@ import ProfilesLayoutProvider from '@/pages/(main)/main/profiles/_modules/profil
 import ProfilesNavigate from '@/pages/(main)/main/profiles/_modules/profiles-navigate'
 import ProfilesList from '@/pages/(main)/main/profiles/$type/_modules/profiles-list'
 import { m } from '@/paraglide/messages'
+import { ask } from '@/utils/notification'
 import type {
   ProfileFolder,
   ProfileItem_Serialize,
@@ -97,6 +98,7 @@ const renderPage = async ({
     folders: initialFolders,
   }
   const layouts: ProfileLayout[] = []
+  const creations: unknown[] = []
   const writes: { key: string; value: unknown }[] = []
 
   mockIPC(
@@ -134,6 +136,11 @@ const renderPage = async ({
         }
 
         return committed()
+      }
+      if (method === 'create_profile_folder') {
+        creations.push([wire.params.name, wire.params.members])
+
+        return committed('f9')
       }
       if (method === 'read_profile_file') return 'proxies: []'
       if (method === 'query_traffic_report')
@@ -235,6 +242,7 @@ const renderPage = async ({
     view,
     router,
     layouts,
+    creations,
     writes,
     card,
     body,
@@ -476,4 +484,103 @@ test('Escape cancels a keyboard move without a commit', async () => {
     .poll(announcement)
     .toContain(m.profile_folder_announce_cancel({ name: 'd' }))
   expect(layouts).toEqual([])
+})
+
+test('a card moves into a folder from its context menu', async () => {
+  const { layouts, card, uidsIn } = await renderPage()
+
+  await userEvent.click(card('d'), { button: 'right', force: true })
+  await page.getByRole('menuitem', { name: m.profile_move_to_folder() }).click()
+  await page.getByRole('menuitem', { name: 'Home' }).click()
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders.map((folder) => folder.members)).toEqual([
+    ['a', 'b'],
+    ['c', 'd'],
+    [],
+  ])
+  expect(layouts[0].ungrouped).toEqual(['e'])
+  await expect.poll(() => uidsIn('f2')).toEqual(['c', 'd'])
+})
+
+test('a card leaves its folder from its context menu', async () => {
+  const { layouts, card, uidsIn } = await renderPage()
+
+  await userEvent.click(card('c'), { button: 'right', force: true })
+  await page.getByRole('menuitem', { name: m.profile_move_to_folder() }).click()
+  // Its own folder is shown but cannot be picked again.
+  await expect
+    .element(page.getByRole('menuitem', { name: 'Home' }))
+    .toHaveAttribute('data-disabled')
+  await page
+    .getByRole('menuitem', { name: m.profile_move_remove_from_folder() })
+    .click()
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders.map((folder) => folder.members)).toEqual([
+    ['a', 'b'],
+    [],
+    [],
+  ])
+  expect(layouts[0].ungrouped).toEqual(expect.arrayContaining(['c', 'd', 'e']))
+  await expect.poll(() => uidsIn(null)).toContain('c')
+})
+
+test('a card moves into a new folder from its context menu', async () => {
+  const { creations, card } = await renderPage()
+
+  await userEvent.click(card('e'), { button: 'right', force: true })
+  await page.getByRole('menuitem', { name: m.profile_move_to_folder() }).click()
+  await page
+    .getByRole('menuitem', { name: m.profile_move_new_folder() })
+    .click()
+
+  const input = page.getByRole('textbox', {
+    name: m.profile_folder_name_label(),
+  })
+  await input.fill('Games')
+  await page.getByRole('button', { name: m.common_save() }).click()
+
+  await expect.poll(() => creations).toEqual([['Games', ['e']]])
+})
+
+test('a section heading renames and deletes its folder', async () => {
+  vi.mocked(ask).mockResolvedValue(true)
+
+  const { layouts, section } = await renderPage()
+  const actions = (folder: string) =>
+    section(folder).querySelector<HTMLElement>(
+      '[data-slot="profiles-folder-actions"]',
+    )!
+
+  // The group of profiles in no folder has no menu.
+  expect(
+    section(null).querySelector('[data-slot="profiles-folder-actions"]'),
+  ).toBeNull()
+
+  await userEvent.click(actions('f2'))
+  await page
+    .getByRole('menuitem', { name: m.profile_folder_rename_title() })
+    .click()
+  const input = page.getByRole('textbox', {
+    name: m.profile_folder_name_label(),
+  })
+  await input.fill('House')
+  await page.getByRole('button', { name: m.common_save() }).click()
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders.map((folder) => folder.name)).toEqual([
+    'Work',
+    'House',
+    'Travel',
+  ])
+
+  await expect.poll(() => actions('f3')).not.toBeNull()
+  await userEvent.click(actions('f3'))
+  await page
+    .getByRole('menuitem', { name: m.profile_folder_delete_title() })
+    .click()
+
+  await expect.poll(() => layouts).toHaveLength(2)
+  expect(layouts[1].folders.map((folder) => folder.id)).toEqual(['f1', 'f2'])
 })

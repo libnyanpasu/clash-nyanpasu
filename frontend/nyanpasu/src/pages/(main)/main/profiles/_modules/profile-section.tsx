@@ -5,6 +5,7 @@ import { pointerIntersection } from '@dnd-kit/collision'
 import { useDroppable } from '@dnd-kit/react'
 import type { FolderId } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import FolderActionsMenu from './folder-actions-menu'
 import {
   collapsedSectionId,
   PROFILE_DRAG_TYPE,
@@ -95,6 +96,12 @@ export default function ProfileSection({
           >
             {heading.count}
           </span>
+
+          {folder && (
+            <div className="ml-auto">
+              <FolderActionsMenu folder={folder} />
+            </div>
+          )}
         </div>
       )}
 

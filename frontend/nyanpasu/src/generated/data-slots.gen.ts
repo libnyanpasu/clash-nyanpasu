@@ -320,6 +320,7 @@ export const DATA_SLOTS = [
   'profile-detail-used-by',
   'profile-detail-used-by-empty',
   'profile-field-dialog',
+  'profile-folder-chip',
   'profile-global-transforms',
   'profile-processing-settings-container',
   'profile-sync-chip',

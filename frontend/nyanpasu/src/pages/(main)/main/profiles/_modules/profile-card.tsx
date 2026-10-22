@@ -30,6 +30,7 @@ import ProfileCardSubscription, {
   ProfileCardTraffic,
   ProfileCardUpdate,
 } from './profile-card-subscription'
+import { ProfileMoveContextMenu, useProfileMove } from './profile-move-menu'
 import { PROFILE_DRAG_TYPE } from './resolve-profile-drop'
 import { useActiveProfile } from './use-active-profile'
 import { useDeleteProfile } from './use-delete-profile'
@@ -52,6 +53,7 @@ export const GridViewProfile = memo(function GridViewProfile({
 }) {
   const activeProfile = useActiveProfile(profile)
   const deleteProfile = useDeleteProfile(profile)
+  const move = useProfileMove(profile.uid)
 
   const remote = getRemoteSource(profile)
   const featured = activeProfile.isActive && isProxyProfile(profile)
@@ -230,6 +232,10 @@ export const GridViewProfile = memo(function GridViewProfile({
             <DragClickRounded className="size-4" />
             <span>{m.profile_active_title()}</span>
           </ContextMenuItem>
+        )}
+
+        {isConfigItem(profile) && (
+          <ProfileMoveContextMenu move={move} disabled={isPending} />
         )}
 
         <ContextMenuItem

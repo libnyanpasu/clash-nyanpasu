@@ -12,8 +12,14 @@ import type {
   RemoteProfileOptionsPatch_Deserialize,
   TransformKind,
 } from '@nyanpasu/rpc/types'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryKey,
+} from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
+import { applyProfileLayout } from './profile-folders'
 import { invokeMutation, invokeQuery } from './query-options'
 
 // ---- discriminant helpers (successors of the retired NormalizedProfile collapse) ----
@@ -59,6 +65,13 @@ export type ProfileQueryResult = NonNullable<
   ReturnType<typeof useProfile>['query']['data']
 >
 
+type ProfileQueryData = Awaited<
+  ReturnType<ReturnType<typeof profilesQuery>['queryFn']>
+>
+
+/** Layout commits are queued under this scope so they run one at a time. */
+const PROFILE_LAYOUT_SCOPE = 'profile-layout'
+
 export type CreateParams =
   | {
       type: 'url'
@@ -91,7 +104,11 @@ const profilesQuery = (queries: ReturnType<typeof useQueryApi>['queries']) => {
     queryFn: async () => {
       const result = unwrapResult(await invokeQuery(profilesOptions))
       if (!result) return undefined
-      return { ...result, items: result.items ?? [] }
+      return {
+        ...result,
+        items: result.items ?? [],
+        folders: result.folders ?? [],
+      }
     },
     staleTime: PROFILES_STALE_TIME,
   }
@@ -283,11 +300,38 @@ export const useProfileMutations = () => {
     onSuccess: invalidate,
   })
 
+  // A drop shows its result at once: the cache takes the layout before the
+  // commit returns, rolls back if the commit fails, and refetches when the
+  // last queued layout settles. The scope runs layouts one after another so
+  // a later drop is never committed from an earlier, unsettled one.
   const setLayout = useMutation({
     mutationKey: setProfileLayout.mutationKey,
+    scope: { id: PROFILE_LAYOUT_SCOPE },
     mutationFn: async (layout: ProfileLayout) =>
       unwrapResult(await invokeMutation(setProfileLayout, [layout])),
-    onSuccess: invalidate,
+    onMutate: async (layout) => {
+      const queryKey: QueryKey = api.queries.getProfiles().queryKey
+      await queryClient.cancelQueries({ queryKey })
+
+      const previous = queryClient.getQueryData<ProfileQueryData>(queryKey)
+      if (previous) {
+        queryClient.setQueryData(queryKey, applyProfileLayout(previous, layout))
+      }
+
+      return { previous }
+    },
+    onError: (_error, _layout, context) => {
+      if (context?.previous) {
+        const queryKey: QueryKey = api.queries.getProfiles().queryKey
+        queryClient.setQueryData<ProfileQueryData>(queryKey, context.previous)
+      }
+    },
+    onSettled: () => {
+      const queued = queryClient.isMutating({
+        mutationKey: setProfileLayout.mutationKey,
+      })
+      return queued > 1 ? undefined : invalidate()
+    },
   })
 
   const createFolder = useMutation({

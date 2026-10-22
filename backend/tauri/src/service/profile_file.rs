@@ -2123,6 +2123,8 @@ impl SubscriptionFetcher for ProfileFileService {
         let subscription = parse_subscription_userinfo(resp.headers());
         let filename = parse_profile_title(resp.headers());
         let suggested_update_interval_minutes = parse_suggested_update_interval(resp.headers());
+        let content_type = parse_media_type(resp.headers());
+        let file_name = parse_filename_from_content_disposition(resp.headers());
         let content = resp
             .text_with_charset("utf-8")
             .await
@@ -2137,8 +2139,18 @@ impl SubscriptionFetcher for ProfileFileService {
             filename,
             subscription,
             suggested_update_interval_minutes,
+            content_type,
+            file_name,
         })
     }
+}
+
+fn parse_media_type(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    let value = headers
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())?;
+    let media_type = value.split(';').next()?.trim().to_ascii_lowercase();
+    (!media_type.is_empty()).then_some(media_type)
 }
 
 fn parse_suggested_update_interval(headers: &reqwest::header::HeaderMap) -> Option<u64> {
@@ -3555,6 +3567,27 @@ mod tests {
     }
 
     #[test]
+    fn media_type_parsing_drops_parameters_and_case() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        assert_eq!(parse_media_type(&headers), None);
+
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            reqwest::header::HeaderValue::from_static("Text/JavaScript; charset=utf-8"),
+        );
+        assert_eq!(
+            parse_media_type(&headers).as_deref(),
+            Some("text/javascript")
+        );
+
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            reqwest::header::HeaderValue::from_static(" ; charset=utf-8"),
+        );
+        assert_eq!(parse_media_type(&headers), None);
+    }
+
+    #[test]
     fn content_disposition_filename_parsing_matches_legacy_variants() {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -3637,6 +3670,14 @@ mod tests {
                 );
                 headers.insert("profile-title", "My Sub".parse().unwrap());
                 headers.insert("profile-update-interval", "6".parse().unwrap());
+                headers.insert(
+                    header::CONTENT_TYPE,
+                    "text/yaml; charset=utf-8".parse().unwrap(),
+                );
+                headers.insert(
+                    header::CONTENT_DISPOSITION,
+                    "attachment; filename=sub.yaml".parse().unwrap(),
+                );
                 (headers, "proxies: []\n")
             }),
         );
@@ -3653,6 +3694,8 @@ mod tests {
         assert_eq!(fetched.subscription.total, Some(3));
         assert!(fetched.subscription.expire.is_none());
         assert_eq!(fetched.suggested_update_interval_minutes, Some(360));
+        assert_eq!(fetched.content_type.as_deref(), Some("text/yaml"));
+        assert_eq!(fetched.file_name.as_deref(), Some("sub.yaml"));
     }
 
     #[tokio::test]

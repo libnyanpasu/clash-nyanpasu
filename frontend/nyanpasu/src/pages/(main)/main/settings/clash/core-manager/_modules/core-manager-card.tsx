@@ -35,7 +35,7 @@ import {
   SettingsCard,
   SettingsCardContent,
   SettingsCardFooter,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 function useCoreUpdateTask(
   core?: ClashCore | null,

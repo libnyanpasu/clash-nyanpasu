@@ -5,7 +5,7 @@ import {
   SettingsCardAnimatedItem,
   SettingsCardContent,
   SettingsCardHeader,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
 const TEST_PREFIX = 'error reporting test'
 

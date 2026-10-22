@@ -12,7 +12,7 @@ import {
   SettingsCard,
   SettingsCardContent,
   SettingsCardFooter,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function CoreAgentSkillCard({
   skill,

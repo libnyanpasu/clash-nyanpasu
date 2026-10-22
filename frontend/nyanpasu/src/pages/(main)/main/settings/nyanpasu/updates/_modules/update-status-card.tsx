@@ -1,7 +1,7 @@
 import SystemUpdateAltRounded from '~icons/material-symbols/system-update-alt-rounded'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
 import { m } from '@/paraglide/messages'
-import { SettingsCard } from '../../../_modules/settings-card'
+import { SettingsCard } from '../../../../_modules/settings-card'
 import AboutCardHeader from './about-card-header'
 import UpdateControls from './update-controls'
 

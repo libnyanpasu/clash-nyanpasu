@@ -17,7 +17,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function NetworkStatisticWidgetLogoSourceSelector() {
   const { value, upsert } = useSetting('network_statistic_widget_logo')

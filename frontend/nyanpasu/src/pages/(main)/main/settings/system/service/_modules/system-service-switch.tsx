@@ -11,7 +11,7 @@ import {
   ItemLabel,
   ItemLabelDescription,
   ItemLabelText,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function SystemServiceSwitch() {
   const serviceMode = useSetting('enable_service_mode')

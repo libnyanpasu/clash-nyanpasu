@@ -8,7 +8,7 @@ import {
   ItemContainer,
   ItemLabel,
   ItemLabelText,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function SilentLaunchSwitch() {
   const silentStart = useSetting('enable_silent_start')

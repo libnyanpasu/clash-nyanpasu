@@ -6,7 +6,10 @@ import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  SettingsCard,
+  SettingsCardContent,
+} from '../../../_modules/settings-card'
 import CreditCountBadge from './_modules/credit-count-badge'
 import { CREDIT_SOURCES, creditSourceLabel } from './_modules/credit-labels'
 import CreditLicenseModal from './_modules/credit-license-modal'

@@ -45,7 +45,7 @@ import { openExternal } from '../../../_modules/open-external'
 import {
   SettingsCardContent,
   SettingsCardFooter,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 const GITHUB_RELEASES_URL =
   'https://github.com/libnyanpasu/clash-nyanpasu/releases'

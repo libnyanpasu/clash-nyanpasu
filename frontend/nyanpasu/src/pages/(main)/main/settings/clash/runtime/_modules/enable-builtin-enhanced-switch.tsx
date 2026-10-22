@@ -11,7 +11,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function EnableBuiltinEnhancedSwitch() {
   const enableBuiltinEnhanced = useSetting('enable_builtin_enhanced')

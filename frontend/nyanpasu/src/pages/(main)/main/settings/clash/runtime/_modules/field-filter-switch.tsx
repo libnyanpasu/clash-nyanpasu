@@ -8,7 +8,7 @@ import {
   ItemContainer,
   ItemLabel,
   ItemLabelText,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function FieldFilterButton() {
   const { value, upsert } = useClashSetting('enable_clash_fields')

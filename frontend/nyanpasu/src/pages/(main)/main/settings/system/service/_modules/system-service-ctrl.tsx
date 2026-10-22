@@ -31,7 +31,7 @@ import {
   SettingsCardAnimatedItem,
   SettingsCardContent,
   SettingsCardFooter,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 const SystemServiceCtrlItem = ({
   name,

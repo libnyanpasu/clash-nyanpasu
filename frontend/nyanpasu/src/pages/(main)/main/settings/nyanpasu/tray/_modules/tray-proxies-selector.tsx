@@ -17,7 +17,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function TrayProxiesSelector() {
   const { value, upsert } = useSetting('tray_selector_mode')

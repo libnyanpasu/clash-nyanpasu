@@ -3,7 +3,7 @@ import {
   ItemContainer,
   ItemLabel,
   ItemLabelText,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 import { useDebugContext } from './debug-provider'
 
 export default function AdvanceToolsSwitch() {

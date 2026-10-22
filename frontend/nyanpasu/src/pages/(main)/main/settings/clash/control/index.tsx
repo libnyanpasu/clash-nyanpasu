@@ -1,7 +1,7 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsGroup, SettingsLabel } from '../../_modules/settings-card'
+import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
 import ControlChannelSettings from './_modules/control-channel-settings'
 import CoreSecretConfig from './_modules/core-secret-config'
 import ExternalControllerConfig from './_modules/external-controller-config'

@@ -17,7 +17,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function AppLogLevelSelector() {
   const { value, upsert } = useSetting('app_log_level')

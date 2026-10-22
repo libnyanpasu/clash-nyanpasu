@@ -9,7 +9,7 @@ import {
   ItemLabel,
   ItemLabelDescription,
   ItemLabelText,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function ProxyGuardSwitch() {
   const proxyGuard = useSetting('enable_proxy_guard')

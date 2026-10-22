@@ -17,7 +17,7 @@ import { type UpdateSource } from '@nyanpasu/rpc/types'
 import {
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 import AboutCardHeader from './about-card-header'
 
 const SOURCES: UpdateSource[] = ['nyanpasu', 'github', 'ghfast', 'sourceforge']

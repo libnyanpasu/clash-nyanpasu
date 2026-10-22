@@ -7,7 +7,7 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../_modules/settings-card'
+} from '../../_modules/settings-card'
 import AdvanceToolsSwitch from './_modules/advance-tools-switch'
 import BlockTaskViewer from './_modules/block-task-viewer'
 import ChangelogPreview from './_modules/changelog-preview'

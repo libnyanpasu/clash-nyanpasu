@@ -24,7 +24,7 @@ import {
   SettingsCard,
   SettingsCardContent,
   SettingsLabel,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 import { useIconSetStore, type IconSetStore } from './icon-set-store'
 import {
   TrayIconEditor,

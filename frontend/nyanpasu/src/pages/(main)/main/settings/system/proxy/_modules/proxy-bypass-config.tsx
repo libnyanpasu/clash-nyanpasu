@@ -9,7 +9,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useSetting } from '@nyanpasu/query'
-import { SettingsCardAnimatedItem } from '../../../_modules/settings-card'
+import { SettingsCardAnimatedItem } from '../../../../_modules/settings-card'
 
 const DEFAULT_BYPASS =
   'localhost;127.;192.168.;10.;' +

@@ -1,7 +1,7 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsGroup } from '../../_modules/settings-card'
+import { SettingsGroup } from '../../../_modules/settings-card'
 import CoreManagerCard from './_modules/core-manager-card'
 
 export const Route = createFileRoute(

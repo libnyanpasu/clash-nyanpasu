@@ -10,7 +10,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useSetting } from '@nyanpasu/query'
-import { SettingsCardAnimatedItem } from '../../../_modules/settings-card'
+import { SettingsCardAnimatedItem } from '../../../../_modules/settings-card'
 
 const formSchema = z.object({
   proxyGuardInterval: z.number().min(1),

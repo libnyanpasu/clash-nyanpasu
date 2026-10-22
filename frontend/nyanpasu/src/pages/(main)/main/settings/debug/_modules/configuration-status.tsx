@@ -32,7 +32,7 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
 function healthLabel(health: ConvergenceHealth) {
   const labels = {

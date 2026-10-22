@@ -20,7 +20,7 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function ControlChannelSettings() {
   const channel = useClashSetting('clash_control_channel')

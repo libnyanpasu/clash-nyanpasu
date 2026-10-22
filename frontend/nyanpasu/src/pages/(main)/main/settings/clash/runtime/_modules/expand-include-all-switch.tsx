@@ -11,7 +11,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function ExpandIncludeAllSwitch() {
   const { value, upsert } = useClashSetting('expand_include_all')

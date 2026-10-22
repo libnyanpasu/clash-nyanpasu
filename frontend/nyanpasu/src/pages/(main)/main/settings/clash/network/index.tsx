@@ -6,7 +6,7 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 import AllowLanSwitch from './_modules/allow-lan-switch'
 import IPv6Switch from './_modules/ipv6-switch'
 import {

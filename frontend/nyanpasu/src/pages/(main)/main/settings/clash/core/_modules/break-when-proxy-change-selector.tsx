@@ -19,7 +19,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 const MODE_LABELS: Record<ProxyChangeBreakMode, () => string> = {
   off: m.settings_nyanpasu_enhance_break_when_proxy_change_off,

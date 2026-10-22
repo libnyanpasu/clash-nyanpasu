@@ -8,7 +8,7 @@ import {
   SettingsCardAnimatedItem,
   SettingsCardContent,
   SettingsCardHeader,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
 const currentWindow = isTauri() ? getCurrentWebviewWindow() : null
 

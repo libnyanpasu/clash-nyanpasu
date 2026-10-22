@@ -8,7 +8,7 @@ import {
   ItemContainer,
   ItemLabel,
   ItemLabelText,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function AutoLaunchSwitch() {
   const autoLaunch = useSetting('enable_auto_launch')

@@ -5,9 +5,9 @@ import { isRemoteItem, useProfile } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import { isProxyProfile } from '../_modules/utils'
 import ActionCard from './_modules/action-card'
-import ChianEditorCard from './_modules/chian-editor-card'
 import DetialHeader from './_modules/detial-header'
 import ProfileNameEditor from './_modules/profile-name-editor'
+import ScopedTransformChainCard from './_modules/scoped-transform-chain-card'
 import { SubscriptionCard } from './_modules/subscription-card'
 import { SyncHistoryCard } from './_modules/sync-history-card'
 
@@ -51,7 +51,7 @@ function RouteComponent() {
         <ActionCard profile={currentProfile} />
 
         {isProxyProfile(currentProfile) && (
-          <ChianEditorCard profile={currentProfile} />
+          <ScopedTransformChainCard profile={currentProfile} />
         )}
         {isRemoteItem(currentProfile) && (
           <SyncHistoryCard uid={currentProfile.uid} />

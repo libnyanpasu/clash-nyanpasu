@@ -1,4 +1,5 @@
 use nyanpasu_paths::PathResolver;
+pub mod agent_skills;
 mod app_lifecycle;
 pub mod app_update;
 mod application;
@@ -514,7 +515,7 @@ impl NyanpasuClient {
                     .parent()
                     .context("executable has no parent directory")?
                     .to_path_buf(),
-                paths.meow_cli_dir().into_std_path_buf(),
+                paths.clone(),
                 ports.clone(),
             )),
             Arc::new(application_workflow.clone()),
@@ -787,6 +788,15 @@ impl NyanpasuClient {
         let dir = self.inner.paths.backups_dir().into_std_path_buf();
         std::fs::create_dir_all(&dir)?;
         Ok(dir)
+    }
+
+    /// The agent skills `core`'s release archive ships, which the core updater keeps
+    /// in the core's data directory for agents to link.
+    pub async fn core_agent_skills(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> Vec<agent_skills::CoreAgentSkill> {
+        agent_skills::core_agent_skills(&self.inner.paths, core).await
     }
 
     pub fn is_portable(&self) -> bool {

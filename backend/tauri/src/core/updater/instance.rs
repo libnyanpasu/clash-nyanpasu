@@ -20,11 +20,12 @@ use super::{
     shared::{self, CoreTypeMeta},
 };
 use crate::{
-    client::core_lifecycle::ports::PreparedCoreBinary,
+    client::core_lifecycle::ports::{PreparedCoreBinary, PreparedCoreCompanion},
     core::download::{DownloadSession, DownloadStatus},
     utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
 use nyanpasu_config::application::ClashCore;
+use nyanpasu_paths::PathResolver;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -49,20 +50,20 @@ pub struct UpdaterSummary {
 pub(crate) struct HttpUpdaterBackend {
     proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
     destination_dir: PathBuf,
-    /// Where a Meow archive's meow-cli and agent skill go.
-    meow_cli_dir: PathBuf,
+    /// Resolves where the agent skills a core archive ships go.
+    paths: PathResolver,
 }
 
 impl HttpUpdaterBackend {
     pub fn new(
         destination_dir: PathBuf,
-        meow_cli_dir: PathBuf,
+        paths: PathResolver,
         proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
     ) -> Self {
         Self {
             proxy_port,
             destination_dir,
-            meow_cli_dir,
+            paths,
         }
     }
 
@@ -209,30 +210,35 @@ impl UpdaterBackend for HttpUpdaterBackend {
             anyhow::ensure!(output.status.success(), "Meow version probe failed");
             let banner = String::from_utf8_lossy(&output.stdout);
             verify_meow_version(core, &expected_version, &banner)?;
-            // Nothing Nyanpasu runs uses meow-cli or its skill, so the verified
-            // archive installs them now rather than with the core. They are
-            // extras: failing to install them fails no core update.
-            let meow_cli_staging = staging.clone();
-            let destination = self.meow_cli_dir.clone();
-            let installed = tokio::task::spawn_blocking(move || {
-                install_meow_cli(
-                    &meow_cli_staging.path().join(&artifact),
-                    &artifact,
-                    &destination,
-                )
+        }
+        // Staged now and published by the installer once the core binary is in place.
+        // Nothing Nyanpasu runs uses them, so failing to stage them fails no core update.
+        let skills = core_type.agent_skills();
+        let companion = if skills.is_empty() {
+            None
+        } else {
+            let archive = staging.path().join(&artifact);
+            let destination = self
+                .paths
+                .core_data_dir(core_type.binary_name())
+                .into_std_path_buf();
+            let staged = tokio::task::spawn_blocking(move || {
+                stage_companion(&archive, &artifact, skills, destination)
             })
             .await
             .map_err(|error| match error.try_into_panic() {
                 Ok(panic) => std::panic::resume_unwind(panic),
                 Err(error) => error,
             })?;
-            if let Err(error) = installed {
+            staged.unwrap_or_else(|error| {
                 tracing::warn!(
                     error = format!("{error:#}"),
-                    "could not install meow-cli and its agent skill"
+                    core = %core_type,
+                    "could not stage the agent skills the core archive ships"
                 );
-            }
-        }
+                None
+            })
+        };
         progress.report(UpdaterState::Replacing, None);
         Ok(PreparedCoreBinary {
             target: core_type,
@@ -240,6 +246,7 @@ impl UpdaterBackend for HttpUpdaterBackend {
             destination: self.destination_dir.join(filename),
             staging,
             progress: Arc::new(progress),
+            companion,
         })
     }
 }
@@ -309,11 +316,11 @@ fn extract_core(
     Ok(())
 }
 
-/// Where `path`, a file in a Meow release archive, belongs in the meow-cli
-/// directory: the meow-cli executable, or a file of its agent skill under
-/// `skills/meow-cli/`. The archive's top-level directory is dropped, and so is
-/// every other file.
-fn meow_cli_member(path: &Path) -> Option<PathBuf> {
+/// Where `path`, a file in a core release archive, belongs among the core's
+/// agent skills: one of the `skills` executables, or a file of one of their
+/// folders under `skills/`. The archive's top-level directory is dropped, and
+/// so is every other file.
+fn companion_member(path: &Path, skills: &[&str]) -> Option<PathBuf> {
     let names = path
         .components()
         .map(|component| match component {
@@ -321,25 +328,31 @@ fn meow_cli_member(path: &Path) -> Option<PathBuf> {
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
-    let skill = [OsStr::new("skills"), OsStr::new("meow-cli")];
-    if let Some(start) = names.windows(2).position(|pair| pair == skill) {
-        return (names.len() > start + 2).then(|| names[start..].iter().collect());
+    for skill in skills {
+        let folder = [OsStr::new("skills"), OsStr::new(skill)];
+        if let Some(start) = names.windows(2).position(|pair| pair == folder) {
+            return (names.len() > start + 2).then(|| names[start..].iter().collect());
+        }
     }
-    let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
-    (*names.last()? == OsStr::new(&executable)).then(|| PathBuf::from(executable))
+    let file = names.last()?.to_str()?;
+    skills
+        .iter()
+        .any(|skill| file == format!("{skill}{}", std::env::consts::EXE_SUFFIX))
+        .then(|| PathBuf::from(file))
 }
 
-/// Extracts meow-cli and its agent skill from a Meow release archive into
-/// `destination`. Returns whether the archive has both: releases before
-/// meow-cli ship `meow` alone.
-fn extract_meow_cli(
+/// Extracts the agent `skills` and their executables from a core release archive
+/// into `destination`. Returns whether the archive has all of them: releases
+/// before the skills ship the core alone.
+fn extract_companion(
     archive_path: &Path,
     artifact: &str,
+    skills: &[&str],
     destination: &Path,
 ) -> anyhow::Result<bool> {
-    let (mut executable, mut skill) = (false, false);
+    let mut found = Vec::new();
     let mut extract = |path: &Path, contents: &mut dyn Read| -> anyhow::Result<()> {
-        let Some(member) = meow_cli_member(path) else {
+        let Some(member) = companion_member(path, skills) else {
             return Ok(());
         };
         let target = destination.join(&member);
@@ -347,13 +360,11 @@ fn extract_meow_cli(
             std::fs::create_dir_all(parent)?;
         }
         std::io::copy(contents, &mut std::fs::File::create(&target)?)?;
-        if member.starts_with("skills") {
-            skill |= member == Path::new("skills/meow-cli/SKILL.md");
-        } else {
-            executable = true;
-            #[cfg(target_family = "unix")]
+        #[cfg(target_family = "unix")]
+        if !member.starts_with("skills") {
             std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))?;
         }
+        found.push(member);
         Ok(())
     };
     let source = std::fs::File::open(archive_path)?;
@@ -375,38 +386,38 @@ fn extract_meow_cli(
             }
         }
     }
-    Ok(executable && skill)
+    Ok(skills.iter().all(|skill| {
+        found.contains(&PathBuf::from(format!(
+            "{skill}{}",
+            std::env::consts::EXE_SUFFIX
+        ))) && found.contains(&Path::new("skills").join(skill).join("SKILL.md"))
+    }))
 }
 
-/// Replaces `destination` with the meow-cli and agent skill of a Meow release
-/// archive. An archive without them leaves `destination` as it is. Agents link
-/// the skill inside `destination`, so it is swapped as a whole, never removed
-/// first.
-fn install_meow_cli(archive_path: &Path, artifact: &str, destination: &Path) -> anyhow::Result<()> {
-    let parent = destination
+/// Stages the agent `skills` of a core release archive beside `destination`, for
+/// the installer to publish there. An archive without them stages nothing, which
+/// leaves the installed ones in place.
+fn stage_companion(
+    archive_path: &Path,
+    artifact: &str,
+    skills: &[&str],
+    destination: PathBuf,
+) -> anyhow::Result<Option<PreparedCoreCompanion>> {
+    let (parent, name) = destination
         .parent()
-        .ok_or_else(|| anyhow::anyhow!("the meow-cli directory has no parent"))?;
+        .zip(destination.file_name())
+        .ok_or_else(|| anyhow::anyhow!("the core data directory has no parent"))?;
     std::fs::create_dir_all(parent)?;
-    // Staged beside the destination, so that both renames stay on one file system.
-    let staging = tempfile::Builder::new()
-        .prefix(".meow-cli-")
-        .tempdir_in(parent)?;
-    let staged = staging.path().join("new");
-    if !extract_meow_cli(archive_path, artifact, &staged)? {
-        return Ok(());
-    }
-    // The previous files stay in staging, which removes them when dropped.
-    let previous = staging.path().join("previous");
-    if destination.exists() {
-        std::fs::rename(destination, &previous)?;
-    }
-    if let Err(error) = std::fs::rename(&staged, destination) {
-        if previous.exists() {
-            std::fs::rename(&previous, destination)?;
-        }
-        return Err(error.into());
-    }
-    Ok(())
+    let mut prefix = name.to_os_string();
+    prefix.push(".staging-");
+    let companion = PreparedCoreCompanion {
+        staging: tempfile::Builder::new()
+            .prefix(&prefix)
+            .tempdir_in(parent)?,
+        destination,
+    };
+    let complete = extract_companion(archive_path, artifact, skills, &companion.staged())?;
+    Ok(complete.then_some(companion))
 }
 
 fn verify_meow_version(core: ClashCore, expected: &str, banner: &str) -> anyhow::Result<()> {
@@ -440,6 +451,11 @@ mod tests {
     use std::io::Write;
 
     struct ProxyPort(std::sync::atomic::AtomicU16);
+
+    fn test_paths(dir: &TempDir) -> PathResolver {
+        let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        PathResolver::with_base_dirs(root.join("config"), root.join("data"))
+    }
 
     impl crate::service::profile_file::SelfProxyPortSource for ProxyPort {
         fn mixed_port(&self) -> Option<u16> {
@@ -486,11 +502,8 @@ mod tests {
             first.local_addr().unwrap().port(),
         )));
         let dir = TempDir::new().unwrap();
-        let backend = HttpUpdaterBackend::new(
-            dir.path().to_path_buf(),
-            dir.path().join("meow-cli"),
-            port.clone(),
-        );
+        let backend =
+            HttpUpdaterBackend::new(dir.path().to_path_buf(), test_paths(&dir), port.clone());
         for (listener, expected) in [(&first, "first core"), (&second, "restarted core")] {
             port.0.store(
                 listener.local_addr().unwrap().port(),
@@ -568,8 +581,7 @@ mod tests {
         let (stalled, mut stall) = tokio::sync::mpsc::unbounded_channel();
         let mirror = tokio::spawn(stalling_mirror(listener, stall_probe, stalled));
         let dir = TempDir::new().unwrap();
-        let backend =
-            HttpUpdaterBackend::new(dir.path().to_path_buf(), dir.path().join("meow-cli"), port);
+        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), test_paths(&dir), port);
         let token = CancellationToken::new();
         let prepare = tokio::spawn({
             let token = token.clone();
@@ -736,10 +748,12 @@ mod tests {
         archive.into_inner().unwrap().finish().unwrap();
     }
 
+    const MEOW_SKILLS: &[&str] = &["meow-cli"];
+
     #[test]
-    fn meow_cli_members_keep_the_archive_layout_without_its_top_directory() {
+    fn companion_members_keep_the_archive_layout_without_its_top_directory() {
         let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
-        let member = |path: &str| meow_cli_member(Path::new(path));
+        let member = |path: &str| companion_member(Path::new(path), MEOW_SKILLS);
 
         assert_eq!(
             member(&format!("meow-alpha-8793af9/{executable}")),
@@ -765,7 +779,7 @@ mod tests {
     }
 
     #[test]
-    fn meow_cli_and_its_skill_replace_the_previous_ones_as_a_whole() {
+    fn staging_leaves_the_installed_companion_untouched() {
         let dir = TempDir::new().unwrap();
         let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
         let archive = dir.path().join("meow.tar.gz");
@@ -777,61 +791,82 @@ mod tests {
                 ("meow-alpha/skills/meow-cli/SKILL.md", b"new skill"),
             ],
         );
-        let destination = dir.path().join("data/meow-cli");
+        let destination = dir.path().join("data/cores/meow-alpha");
         std::fs::create_dir_all(destination.join("skills/meow-cli")).unwrap();
-        std::fs::write(destination.join("skills/meow-cli/stale.md"), "stale").unwrap();
+        std::fs::write(destination.join("skills/meow-cli/SKILL.md"), "old skill").unwrap();
 
-        install_meow_cli(&archive, "meow-alpha-x.tar.gz", &destination).unwrap();
+        let companion = stage_companion(
+            &archive,
+            "meow-alpha-x.tar.gz",
+            MEOW_SKILLS,
+            destination.clone(),
+        )
+        .unwrap()
+        .expect("the archive ships meow-cli");
 
+        // The installer publishes it; until then the installed one stays.
         assert_eq!(
-            std::fs::read(destination.join(&executable)).unwrap(),
+            std::fs::read(destination.join("skills/meow-cli/SKILL.md")).unwrap(),
+            b"old skill"
+        );
+        assert_eq!(companion.destination, destination);
+        let staged = companion.staged();
+        assert_eq!(
+            std::fs::read(staged.join(&executable)).unwrap(),
             b"new meow-cli"
         );
         assert_eq!(
-            std::fs::read(destination.join("skills/meow-cli/SKILL.md")).unwrap(),
+            std::fs::read(staged.join("skills/meow-cli/SKILL.md")).unwrap(),
             b"new skill"
         );
-        assert!(!destination.join("skills/meow-cli/stale.md").exists());
-        assert!(!destination.join("meow").exists());
-        // Only the meow-cli directory remains: staging is removed.
-        assert_eq!(
-            std::fs::read_dir(dir.path().join("data")).unwrap().count(),
-            1
-        );
+        assert!(!staged.join("meow").exists());
+        // Beside the destination, so that publishing it is a rename on one file system.
+        assert_eq!(companion.staging.path().parent(), destination.parent());
         #[cfg(target_family = "unix")]
         assert_eq!(
-            std::fs::metadata(destination.join(&executable))
+            std::fs::metadata(staged.join(&executable))
                 .unwrap()
                 .permissions()
                 .mode()
                 & 0o777,
             0o755
         );
-    }
-
-    #[test]
-    fn an_archive_without_meow_cli_keeps_the_installed_one() {
-        let dir = TempDir::new().unwrap();
-        let archive = dir.path().join("meow.tar.gz");
-        write_tar_gz(&archive, &[("meow-v0.26.1/meow", b"meow executable")]);
-        let destination = dir.path().join("data/meow-cli");
-        std::fs::create_dir_all(destination.join("skills/meow-cli")).unwrap();
-        std::fs::write(destination.join("skills/meow-cli/SKILL.md"), "skill").unwrap();
-
-        install_meow_cli(&archive, "meow-v0.26.1.tar.gz", &destination).unwrap();
-
+        // Dropping it, as a failed core installation does, removes the staged files.
+        drop(companion);
         assert_eq!(
-            std::fs::read(destination.join("skills/meow-cli/SKILL.md")).unwrap(),
-            b"skill"
-        );
-        assert_eq!(
-            std::fs::read_dir(dir.path().join("data")).unwrap().count(),
+            std::fs::read_dir(dir.path().join("data/cores"))
+                .unwrap()
+                .count(),
             1
         );
     }
 
     #[test]
-    fn meow_cli_installs_from_a_zip_archive() {
+    fn an_archive_without_the_skills_stages_nothing() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("meow.tar.gz");
+        write_tar_gz(&archive, &[("meow-v0.26.1/meow", b"meow executable")]);
+        let destination = dir.path().join("data/cores/meow");
+
+        let companion = stage_companion(
+            &archive,
+            "meow-v0.26.1.tar.gz",
+            MEOW_SKILLS,
+            destination.clone(),
+        )
+        .unwrap();
+
+        assert!(companion.is_none());
+        assert_eq!(
+            std::fs::read_dir(dir.path().join("data/cores"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn a_companion_stages_from_a_zip_archive() {
         let dir = TempDir::new().unwrap();
         let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
         let archive_path = dir.path().join("meow.zip");
@@ -852,16 +887,23 @@ mod tests {
             archive.write_all(contents.as_bytes()).unwrap();
         }
         archive.finish().unwrap();
-        let destination = dir.path().join("meow-cli");
 
-        install_meow_cli(&archive_path, "meow-alpha-x.zip", &destination).unwrap();
+        let companion = stage_companion(
+            &archive_path,
+            "meow-alpha-x.zip",
+            MEOW_SKILLS,
+            dir.path().join("cores/meow-alpha"),
+        )
+        .unwrap()
+        .expect("the archive ships meow-cli");
 
+        let staged = companion.staged();
         assert_eq!(
-            std::fs::read(destination.join(&executable)).unwrap(),
+            std::fs::read(staged.join(&executable)).unwrap(),
             b"meow-cli"
         );
         assert_eq!(
-            std::fs::read(destination.join("skills/meow-cli/SKILL.md")).unwrap(),
+            std::fs::read(staged.join("skills/meow-cli/SKILL.md")).unwrap(),
             b"skill"
         );
     }

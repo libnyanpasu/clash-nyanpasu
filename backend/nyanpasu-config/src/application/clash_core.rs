@@ -52,6 +52,19 @@ impl ClashCore {
             ClashCore::MeowAlpha => "meow-alpha",
         }
     }
+
+    /// The agent skills the core's release archive ships under `skills/`. Each skill
+    /// drives the executable of the same name, two directories above its folder.
+    pub fn agent_skills(&self) -> &'static [&'static str] {
+        match self {
+            ClashCore::Meow | ClashCore::MeowAlpha => &["meow-cli"],
+            ClashCore::ClashPremium
+            | ClashCore::ClashRs
+            | ClashCore::Mihomo
+            | ClashCore::MihomoAlpha
+            | ClashCore::ClashRsAlpha => &[],
+        }
+    }
 }
 
 impl Default for ClashCore {

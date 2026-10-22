@@ -7,19 +7,17 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import MeowCliSkillCard from '../src/pages/(main)/main/settings/clash/ai/_modules/meow-cli-skill-card'
+import CoreAgentSkillCard from '../src/pages/(main)/main/settings/clash/ai/_modules/core-agent-skill-card'
 
 const state = vi.hoisted(() => ({
   skill: {
-    dir: '/home/alice/.local/share/clash-nyanpasu/meow-cli/skills/meow-cli',
+    name: 'meow-cli',
+    dir: '/home/alice/.local/share/clash-nyanpasu/cores/meow-alpha/skills/meow-cli',
     installed: true,
   },
   copied: [] as string[],
 }))
 
-vi.mock('@nyanpasu/query', () => ({
-  useMeowCliSkill: () => ({ data: state.skill }),
-}))
 vi.mock('@/utils/clipboard', () => ({
   writeClipboardText: async (text: string) => {
     state.copied.push(text)
@@ -30,7 +28,9 @@ vi.mock('@/utils/notification', () => ({ message: vi.fn() }))
 // The card links to Core Manager, which needs a router.
 const renderCard = () => {
   const router = createRouter({
-    routeTree: createRootRoute({ component: MeowCliSkillCard }),
+    routeTree: createRootRoute({
+      component: () => <CoreAgentSkillCard skill={state.skill} />,
+    }),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
 
@@ -52,7 +52,7 @@ test('the copied prompt names the installed skill folder', async () => {
   await view.unmount()
 })
 
-test('without meow-cli the card points to Core Manager', async () => {
+test('an uninstalled skill points to Core Manager', async () => {
   state.skill.installed = false
   const view = await renderCard()
 

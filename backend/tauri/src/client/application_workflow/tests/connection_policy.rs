@@ -846,6 +846,7 @@ fn profile_interruption_serializes_mode_host_and_binary_operations() {
             destination: f._dir.path().join("installed-core"),
             staging,
             progress: progress.clone(),
+            companion: None,
         };
         let mut install = Box::pin(f.client.inner.application_workflow.replace_binary(artifact));
         assert!(install.as_mut().now_or_never().is_none());

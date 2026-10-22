@@ -1,7 +1,8 @@
 use crate::{
     client::{
         ClientError, DirectEgress, NyanpasuClient, RuntimeError, SystemDnsError,
-        effects::error::EffectsError, system_proxy::ports::OsProxyError,
+        agent_skills::CoreAgentSkill, effects::error::EffectsError,
+        system_proxy::ports::OsProxyError,
     },
     core::{storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
@@ -970,26 +971,16 @@ pub fn get_core_dir() -> Result<String> {
     Ok(core_dir.to_string_lossy().to_string())
 }
 
-#[derive(Serialize, specta::Type)]
-pub struct MeowCliSkill {
-    /// The skill's folder, which the updater keeps beside meow-cli. Agents link it.
-    pub dir: String,
-    /// Whether a Meow core that ships meow-cli has been installed.
-    pub installed: bool,
-}
-
+/// The agent skills a core ships. Their folders are on the host that runs
+/// Nyanpasu, which is also where an agent driving the core has to run.
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]
-pub async fn get_meow_cli_skill(paths: State<'_, PathResolver>) -> Result<MeowCliSkill> {
-    let dir = paths.meow_cli_dir().join("skills").join("meow-cli");
-    let installed = tokio::fs::try_exists(dir.join("SKILL.md"))
-        .await
-        .unwrap_or(false);
-    Ok(MeowCliSkill {
-        dir: dir.into_string(),
-        installed,
-    })
+pub async fn get_core_agent_skills(
+    client: State<'_, NyanpasuClient>,
+    core_type: ClashCore,
+) -> Result<Vec<CoreAgentSkill>> {
+    Ok(client.core_agent_skills(core_type).await)
 }
 
 #[nyanpasu_macro::rpc]

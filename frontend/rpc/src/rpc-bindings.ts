@@ -235,8 +235,14 @@ export function createRpcClient(
       typedError<string[], IpcError>(__RPC_INVOKE('get_hotkeys')),
     getCoreDir: () =>
       typedError<string, IpcError>(__RPC_INVOKE('get_core_dir')),
-    getMeowCliSkill: () =>
-      typedError<MeowCliSkill, IpcError>(__RPC_INVOKE('get_meow_cli_skill')),
+    /**
+     *  The agent skills a core ships. Their folders are on the host that runs
+     *  Nyanpasu, which is also where an agent driving the core has to run.
+     */
+    getCoreAgentSkills: (coreType: ClashCore_Deserialize) =>
+      typedError<CoreAgentSkill[], IpcError>(
+        __RPC_INVOKE('get_core_agent_skills', { coreType }),
+      ),
     getClashWsSnapshot: () =>
       typedError<ClashWsSnapshot, IpcError>(
         __RPC_INVOKE('get_clash_ws_snapshot'),
@@ -1537,6 +1543,19 @@ export type ConvergenceHealth =
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 
 /**
+ *  An agent skill a core's release archive ships. The core updater keeps it in the
+ *  core's data directory, beside the executable it drives.
+ */
+export type CoreAgentSkill = {
+  /**  The skill's name, which is also the name of its folder and of its executable. */
+  name: string
+  /**  The skill's folder, which agents link so that core updates refresh it in place. */
+  dir: string
+  /**  Whether a core update has installed the skill. */
+  installed: boolean
+}
+
+/**
  *  The core's control endpoint, as the manager resolved it.
  *
  *  A deliberately separate type from `clash_api::Host`: clash-api is an
@@ -2674,13 +2693,6 @@ export type MaterializedFile_Serialize = {
   file: ManagedProfilePath
   /**  Last successful materialization time. */
   updated_at?: number | null
-}
-
-export type MeowCliSkill = {
-  /**  The skill's folder, which the updater keeps beside meow-cli. Agents link it. */
-  dir: string
-  /**  Whether a Meow core that ships meow-cli has been installed. */
-  installed: boolean
 }
 
 /**  What a topology orders and merges its nodes by. */

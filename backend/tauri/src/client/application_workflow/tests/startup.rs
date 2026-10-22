@@ -1747,6 +1747,7 @@ async fn a_binary_replaced_without_a_proven_owner_brings_the_target_forward() {
             destination: destination.clone(),
             staging,
             progress: progress.clone(),
+            companion: None,
         })
         .await
         .unwrap();

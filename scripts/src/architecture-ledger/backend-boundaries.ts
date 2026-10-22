@@ -18,7 +18,8 @@ export function dependencyViolations(
   );
   return [...names].filter((name) =>
     name === "clash-nyanpasu" || name === "nyanpasu-egui" ||
-    name === "nyanpasu-widget" || name === "slint" ||
+    name === "nyanpasu-widget" || name === "nyanpasu-crash-reporter" ||
+    name === "slint" ||
     name.startsWith("slint-") || name.startsWith("i-slint-") ||
     name === "winit" ||
     name === "eframe" || name === "egui" || name === "gtk" ||

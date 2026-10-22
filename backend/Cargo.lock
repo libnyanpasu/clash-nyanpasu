@@ -6838,6 +6838,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-crash-reporter"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "fontique",
+ "i-slint-backend-winit",
+ "open",
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "snafu 0.9.2",
+ "url",
+]
+
+[[package]]
 name = "nyanpasu-geodata"
 version = "0.1.0"
 dependencies = [

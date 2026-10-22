@@ -38,6 +38,17 @@ Deno.test("core consumes ports while platform implements them", () => {
   ]);
 });
 
+Deno.test("neutral packages cannot depend on the crash reporter frontend", () => {
+  for (
+    const owner of ["nyanpasu-core", "nyanpasu-platform", "nyanpasu-config"]
+  ) {
+    assertEquals(
+      dependencyViolations(owner, "nyanpasu-crash-reporter v0.1.0\n"),
+      [`${owner} must not depend on nyanpasu-crash-reporter`],
+    );
+  }
+});
+
 Deno.test("domain, actor, script and storage dependencies remain available", () => {
   assertEquals(
     dependencyViolations(

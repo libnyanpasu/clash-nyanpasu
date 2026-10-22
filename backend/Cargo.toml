@@ -81,9 +81,7 @@ reqwest = { version = '0.13', default-features = false, features = [
   'stream',
   'rustls',
 ] }
-# 1.54.0 fails a timer debug assertion (atomic_waker.rs:324) on a worker
-# thread, which aborts the process; stay on 1.53 until upstream fixes it.
-tokio = { version = '~1.53', features = ['full'] }
+tokio = { version = '1.54.1', features = ['full'] }
 test-log = { version = '0.2.16', features = ['trace'] }
 fs4 = { version = '1.0.0', features = ['fs-err3-tokio', 'fs-err3'] }
 fs-err = { version = '3.1.2', features = ['tokio'] }

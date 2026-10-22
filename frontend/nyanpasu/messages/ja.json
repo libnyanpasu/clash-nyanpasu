@@ -813,7 +813,6 @@
   "connections_column_closed_time": "終了時刻",
   "connections_column_status": "状態",
   "connections_column_settings": "列",
-  "connections_column_settings_reorder": "ドラッグして順序を変更",
   "connections_closed_unavailable": "トラフィックの記録を利用できないため、終了した接続を一覧表示できません",
   "connections_active_unavailable": "トラフィックの記録を利用できないため、接続を絞り込めません",
   "connections_closed_loading": "より古い接続を読み込み中…",

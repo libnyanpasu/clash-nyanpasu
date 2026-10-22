@@ -6948,8 +6948,10 @@ dependencies = [
 name = "nyanpasu-panics"
 version = "0.1.0"
 dependencies = [
+ "backtrace",
  "scopeguard",
  "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -6,5 +6,9 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+backtrace = '0.3.76'
 scopeguard = '1.2'
 tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = '0.61', features = ['Win32_System_LibraryLoader'] }

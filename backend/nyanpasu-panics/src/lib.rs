@@ -5,13 +5,16 @@
 //! through [`catch_recoverable`], whose panics are only logged and then
 //! returned to that call as an error.
 
+mod frames;
+
 use std::{
     any::Any,
-    backtrace::{Backtrace, BacktraceStatus},
     cell::Cell,
     fmt,
     panic::{self, UnwindSafe},
 };
+
+pub use frames::Frames;
 
 thread_local! {
     /// Whether a panic on this thread is caught by an enclosing
@@ -24,7 +27,7 @@ thread_local! {
 pub struct PanicReport<'a> {
     pub payload: Option<&'a str>,
     pub location: Option<String>,
-    pub backtrace: Backtrace,
+    pub backtrace: Frames,
 }
 
 /// Installs the process panic hook.
@@ -40,17 +43,14 @@ where
         let report = PanicReport {
             payload: payload_str(info.payload()),
             location: info.location().map(ToString::to_string),
-            backtrace: Backtrace::force_capture(),
+            backtrace: Frames::capture(),
         };
         let recoverable = RECOVERABLE.get();
-        let note = (report.backtrace.status() == BacktraceStatus::Disabled)
-            .then_some("run with RUST_BACKTRACE=1 environment variable to display a backtrace");
 
         tracing::error!(
             panic.payload = report.payload,
             panic.location = report.location,
             panic.backtrace = %report.backtrace,
-            panic.note = note,
             panic.recoverable = recoverable,
             "A panic occurred",
         );

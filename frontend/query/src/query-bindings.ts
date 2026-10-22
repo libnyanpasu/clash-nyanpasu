@@ -307,10 +307,12 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getCoreDir', ...args],
         queryFn: () => commands.getCoreDir(...args),
       }),
-    getMeowCliSkill: (...args: Parameters<typeof commands.getMeowCliSkill>) =>
+    getCoreAgentSkills: (
+      ...args: Parameters<typeof commands.getCoreAgentSkills>
+    ) =>
       queryOptions({
-        queryKey: ['getMeowCliSkill', ...args],
-        queryFn: () => commands.getMeowCliSkill(...args),
+        queryKey: ['getCoreAgentSkills', ...args],
+        queryFn: () => commands.getCoreAgentSkills(...args),
       }),
     getClashWsSnapshot: (
       ...args: Parameters<typeof commands.getClashWsSnapshot>

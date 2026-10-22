@@ -21,7 +21,7 @@ import { MaterialShape } from '@nyanpasu/ui/material-shape'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import LogoSvg from '@/assets/image/logo.svg?react'
 import { m } from '@/paraglide/messages'
-import { useSetting } from '@nyanpasu/query'
+import { useCoreAgentSkills, useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import packageJson from '@root/package.json'
 import { Link, useMatchRoute } from '@tanstack/react-router'
@@ -182,9 +182,10 @@ function SettingsNavigationItem({
 
 export default function SettingsNavigate() {
   const { value: currentCore } = useSetting('core')
+  const { data: agentSkills } = useCoreAgentSkills(currentCore)
 
-  // Only Meow ships meow-cli, the skill the AI page hands to agents.
-  const isMeow = currentCore === 'meow' || currentCore === 'meow-alpha'
+  // The AI page hands agents the skills the current core ships.
+  const hasAgentSkills = !!agentSkills?.length
 
   return (
     <nav
@@ -251,7 +252,7 @@ export default function SettingsNavigate() {
           description={m.settings_label_runtime_description()}
         />
 
-        {isMeow && (
+        {hasAgentSkills && (
           <SettingsNavigationItem
             to="/main/settings/clash/ai"
             color="green"

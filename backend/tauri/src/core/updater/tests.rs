@@ -409,6 +409,7 @@ impl UpdaterBackend for ReadyBackend {
             destination: staging.path().join("installed"),
             staging,
             progress: Arc::new(progress),
+            companion: None,
         })
     }
 }

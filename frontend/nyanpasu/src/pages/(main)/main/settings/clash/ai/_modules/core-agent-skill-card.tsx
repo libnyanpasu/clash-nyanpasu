@@ -5,7 +5,7 @@ import { formatError } from '@/utils'
 import { writeClipboardText } from '@/utils/clipboard'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useMeowCliSkill } from '@nyanpasu/query'
+import type { CoreAgentSkill } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
 import {
   ItemLabelDescription,
@@ -14,10 +14,12 @@ import {
   SettingsCardFooter,
 } from '../../../_modules/settings-card'
 
-export default function MeowCliSkillCard() {
-  const { data } = useMeowCliSkill()
-
-  const prompt = data ? m.settings_ai_skill_prompt({ path: data.dir }) : ''
+export default function CoreAgentSkillCard({
+  skill,
+}: {
+  skill: CoreAgentSkill
+}) {
+  const prompt = m.settings_ai_skill_prompt({ path: skill.dir })
 
   const handleCopyClick = useLockFn(async () => {
     try {
@@ -36,14 +38,10 @@ export default function MeowCliSkillCard() {
     }
   })
 
-  if (!data) {
-    return null
-  }
-
-  // Only a Meow core update installs meow-cli and its skill.
-  if (!data.installed) {
+  // Only a core update installs the skill.
+  if (!skill.installed) {
     return (
-      <SettingsCard data-slot="meow-cli-skill-card">
+      <SettingsCard data-slot="core-agent-skill-card">
         <SettingsCardContent>
           <ItemLabelDescription>
             {m.settings_ai_skill_not_installed()}
@@ -65,7 +63,7 @@ export default function MeowCliSkillCard() {
   }
 
   return (
-    <SettingsCard data-slot="meow-cli-skill-card">
+    <SettingsCard data-slot="core-agent-skill-card">
       <SettingsCardContent className="gap-4">
         <ItemLabelDescription>
           {m.settings_ai_skill_description()}
@@ -73,7 +71,7 @@ export default function MeowCliSkillCard() {
 
         <p
           className="bg-surface-variant/30 rounded-xl p-3 text-sm leading-6 wrap-anywhere select-text"
-          data-slot="meow-cli-skill-prompt"
+          data-slot="core-agent-skill-prompt"
         >
           {prompt}
         </p>

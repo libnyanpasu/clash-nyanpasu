@@ -814,6 +814,7 @@ impl Fixture {
                 destination: self.dir.path().join("installed-core"),
                 staging,
                 progress: progress.clone(),
+                companion: None,
             },
             progress,
         )

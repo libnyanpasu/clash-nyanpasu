@@ -2,6 +2,7 @@ import { expect, test, type TestContext } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
 import { focusManager, QueryClient } from '@tanstack/react-query'
 import { useClashCores, useClashCoreVersion } from '../src/ipc/use-clash-cores'
+import { useCoreAgentSkills } from '../src/ipc/use-core-agent-skills'
 import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 
 const versionCalls = () =>
@@ -71,6 +72,38 @@ test('one core version is read alone and refetched with the others', async ({
   await expect
     .poll(() => hook.result.current.cores.query.data?.mihomo.currentVersion)
     .toBe('v2.0.0')
+})
+
+test('a finished update refetches the agent skills its archive ships', async ({
+  onTestFinished,
+}) => {
+  const { mount } = setup(onTestFinished)
+  const skill = (installed: boolean) => [
+    {
+      name: 'meow-cli',
+      dir: '/data/cores/meow-alpha/skills/meow-cli',
+      installed,
+    },
+  ]
+  testRpc.invoke.mockImplementation(async () => skill(false))
+
+  const hook = await mount(() => ({
+    skills: useCoreAgentSkills('meow-alpha'),
+    cores: useClashCores(),
+  }))
+  onTestFinished(() => hook.unmount())
+  await expect
+    .poll(() => hook.result.current.skills.data?.[0]?.installed)
+    .toBe(false)
+
+  testRpc.invoke.mockImplementation(async (command: string) =>
+    command === 'get_core_agent_skills' ? skill(true) : 'v2.0.0',
+  )
+  await hook.result.current.cores.refetchVersions()
+
+  await expect
+    .poll(() => hook.result.current.skills.data?.[0]?.installed)
+    .toBe(true)
 })
 
 test('a failed core version read stays unavailable without looking up to date', async ({

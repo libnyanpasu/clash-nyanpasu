@@ -35,6 +35,9 @@ export const useClashCores = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const coreQueryKey = api.queries.getCoreVersion('clash').queryKey.slice(0, 1)
+  const agentSkillsQueryKey = api.queries
+    .getCoreAgentSkills('clash')
+    .queryKey.slice(0, 1)
   const fetchLatestCoreVersions = api.queries.fetchLatestCoreVersions()
   const updateCoreCommand = api.mutations.updateCore
   const changeClashCoreCommand = api.mutations.changeClashCore
@@ -145,10 +148,13 @@ export const useClashCores = () => {
     )
   }
 
-  // An update replaces the binary after `updateCore` resolves, so its caller
-  // refetches once the updater is done.
+  // An update replaces the binary and the agent skills its archive ships after
+  // `updateCore` resolves, so its caller refetches once the updater is done.
   const refetchVersions = () =>
-    queryClient.invalidateQueries({ queryKey: coreQueryKey })
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: coreQueryKey }),
+      queryClient.invalidateQueries({ queryKey: agentSkillsQueryKey }),
+    ])
 
   return {
     query,

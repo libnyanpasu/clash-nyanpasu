@@ -84,7 +84,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_all_storage_items,
             ipc::get_hotkeys,
             ipc::get_core_dir,
-            ipc::get_meow_cli_skill,
+            ipc::get_core_agent_skills,
             ipc::get_clash_ws_snapshot,
             ipc::get_traffic_summary,
             ipc::query_traffic_report,

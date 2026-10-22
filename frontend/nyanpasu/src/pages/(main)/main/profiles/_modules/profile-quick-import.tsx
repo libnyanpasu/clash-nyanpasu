@@ -5,10 +5,10 @@ import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
+import { useImportUrl } from '@/components/profile-import/import-url-provider'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useProfileMutations } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { subscriptionUrlSchema } from './subscription-url-schema'
 
@@ -17,7 +17,7 @@ const formSchema = z.object({
 })
 
 export default function ProfileQuickImport() {
-  const { create } = useProfileMutations()
+  const importUrl = useImportUrl()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -39,14 +39,10 @@ export default function ProfileQuickImport() {
       try {
         setLoading(true)
 
-        await create.mutateAsync({
-          type: 'url',
-          data: {
-            url: data.url,
-            name: null,
-            option: null,
-          },
-        })
+        const uid = await importUrl({ url: data.url, name: null, option: null })
+        if (uid === null) {
+          return
+        }
 
         handleClear()
 

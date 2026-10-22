@@ -1,11 +1,12 @@
 import z from 'zod'
+import { definitionOf as importDefinitionOf } from '@/components/profile-import/import-kind'
 import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
 import { ProfileTemplate } from '@nyanpasu/query'
 import {
   type ProfileDefinition_Deserialize,
+  type ProfileImportKind,
   type ProfileSource_Deserialize,
-  type TransformKind,
 } from '@nyanpasu/rpc/types'
 import { ProfileType } from '../../_modules/consts'
 import { subscriptionUrlSchema } from '../../_modules/subscription-url-schema'
@@ -129,36 +130,18 @@ const TEMPLATES = {
 
 export const templateOf = (kind: CreateKind) => TEMPLATES[kind]
 
-/** `null` for a config kind, the matching transform kind otherwise. */
-export const transformKindOf = (kind: CreateKind): TransformKind | null => {
-  switch (kind) {
-    case ProfileType.Merge:
-      return { type: 'overlay' }
-    case ProfileType.JavaScript:
-      return { type: 'script', runtime: 'javascript' }
-    case ProfileType.Lua:
-      return { type: 'script', runtime: 'lua' }
-    default:
-      return null
-  }
-}
+const IMPORT_KINDS = {
+  file: 'config',
+  [ProfileType.JavaScript]: 'javascript',
+  [ProfileType.Lua]: 'lua',
+  [ProfileType.Merge]: 'overlay',
+} satisfies Record<Exclude<CreateKind, 'composition'>, ProfileImportKind>
 
 export const definitionOf = (
   kind: Exclude<CreateKind, 'composition'>,
   source: ProfileSource_Deserialize,
-): ProfileDefinition_Deserialize => {
-  const transform = transformKindOf(kind)
-  if (!transform) {
-    return { type: 'config', config: { type: 'file', source, transforms: [] } }
-  }
-  if (transform.type === 'overlay') {
-    return { type: 'transform', transform: { type: 'overlay', source } }
-  }
-  return {
-    type: 'transform',
-    transform: { type: 'script', source, runtime: transform.runtime },
-  }
-}
+): ProfileDefinition_Deserialize =>
+  importDefinitionOf(IMPORT_KINDS[kind], source)
 
 const baseName = (path: string) =>
   path

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ProfileQuickImport from '@/pages/(main)/main/profiles/_modules/profile-quick-import'
 import CreateProfileModal from '@/pages/(main)/main/profiles/$type/_modules/create-profile-modal'
@@ -61,6 +62,15 @@ function installRpcMock(calls: RpcCall[]) {
     calls.push(call)
 
     switch (call.method) {
+      case 'probe_profile_url':
+        return {
+          classification: { suggested: 'config', evidence: [] },
+          accepted: ['config', 'overlay', 'javascript', 'lua'],
+          suggested_name: 'profile',
+          subscription: {},
+          suggested_update_interval_minutes: null,
+          content: 'proxies: []\n',
+        }
       case 'import_profile':
         return outcome('profile-1')
       case 'replace_profile_definition':
@@ -81,7 +91,9 @@ async function mount(
   })
   const view = await render(
     <QueryClientProvider client={queryClient}>
-      <BlockTaskProvider>{element}</BlockTaskProvider>
+      <BlockTaskProvider>
+        <ImportUrlProvider>{element}</ImportUrlProvider>
+      </BlockTaskProvider>
     </QueryClientProvider>,
   )
 
@@ -95,6 +107,13 @@ async function mount(
   return view
 }
 
+/** Imports what the dialog suggests, as a remote subscription. */
+async function confirmImport(view: Awaited<ReturnType<typeof render>>) {
+  await view
+    .getByRole('button', { name: m.profile_import_url_confirm() })
+    .click()
+}
+
 test('quick import submits legal loopback URLs unchanged and rejects invalid schemes', async ({
   onTestFinished,
 }) => {
@@ -106,18 +125,24 @@ test('quick import submits legal loopback URLs unchanged and rejects invalid sch
   for (const url of loopbackUrls) {
     await input.fill(url)
     await view.getByRole('button').nth(1).click()
-    await expect.poll(() => calls.length).toBe(loopbackUrls.indexOf(url) + 1)
-    expect(calls.at(-1)).toEqual({
-      method: 'import_profile',
-      params: { url, name: null, option: null, transform: null },
-    })
+    await confirmImport(view)
+    await expect
+      .poll(() => calls.length)
+      .toBe(2 * (loopbackUrls.indexOf(url) + 1))
+    expect(calls.slice(-2)).toEqual([
+      { method: 'probe_profile_url', params: { url, option: null } },
+      {
+        method: 'import_profile',
+        params: { url, name: null, option: null, transform: null },
+      },
+    ])
   }
 
   notifications.message.mockClear()
   await input.fill('ftp://127.0.0.1:9090/profile')
   await view.getByRole('button').nth(1).click()
   await expect.poll(() => notifications.message.mock.calls.length).toBe(1)
-  expect(calls).toHaveLength(loopbackUrls.length)
+  expect(calls).toHaveLength(2 * loopbackUrls.length)
 })
 
 test('remote profile creation submits legal loopback URLs unchanged', async ({
@@ -135,31 +160,33 @@ test('remote profile creation submits legal loopback URLs unchanged', async ({
     onTestFinished,
   )
   const input = view.getByRole('textbox').nth(2)
+  const option = {
+    user_agent: null,
+    with_proxy: false,
+    self_proxy: false,
+    update_interval_minutes: null,
+  }
 
   for (const url of loopbackUrls) {
     await input.fill(url)
     await view.getByRole('button', { name: m.common_submit() }).click()
-    await expect.poll(() => calls.length).toBe(loopbackUrls.indexOf(url) + 1)
-    expect(calls.at(-1)).toEqual({
-      method: 'import_profile',
-      params: {
-        url,
-        name: null,
-        option: {
-          user_agent: null,
-          with_proxy: false,
-          self_proxy: false,
-          update_interval_minutes: null,
-        },
-        transform: null,
+    await confirmImport(view)
+    await expect
+      .poll(() => calls.length)
+      .toBe(2 * (loopbackUrls.indexOf(url) + 1))
+    expect(calls.slice(-2)).toEqual([
+      { method: 'probe_profile_url', params: { url, option } },
+      {
+        method: 'import_profile',
+        params: { url, name: null, option, transform: null },
       },
-    })
+    ])
   }
 
   await input.fill('127.0.0.1:9090/profile')
   await view.getByRole('button', { name: m.common_submit() }).click()
   await expect.element(view.getByText('Invalid URL')).toBeVisible()
-  expect(calls).toHaveLength(loopbackUrls.length)
+  expect(calls).toHaveLength(2 * loopbackUrls.length)
 })
 
 test('subscription URL editor preserves the URL through replace and refresh RPCs', async ({

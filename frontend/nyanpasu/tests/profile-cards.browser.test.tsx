@@ -5,6 +5,7 @@ import '@nyanpasu/theme/styles/theme.css'
 import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import ProfilesHeader from '@/pages/(main)/main/profiles/$type/_modules/profiles-header'
@@ -145,12 +146,14 @@ test.for(['en', 'zh-cn'] as const)(
         <TestQueryProvider client={queries}>
           <BlockTaskProvider>
             <TooltipProvider>
-              <ContextMenuProvider>
-                <ScrollArea>
-                  <ProfilesHeader />
-                  <ProfilesList className="p-4 pt-0" />
-                </ScrollArea>
-              </ContextMenuProvider>
+              <ImportUrlProvider>
+                <ContextMenuProvider>
+                  <ScrollArea>
+                    <ProfilesHeader />
+                    <ProfilesList className="p-4 pt-0" />
+                  </ScrollArea>
+                </ContextMenuProvider>
+              </ImportUrlProvider>
             </TooltipProvider>
           </BlockTaskProvider>
         </TestQueryProvider>

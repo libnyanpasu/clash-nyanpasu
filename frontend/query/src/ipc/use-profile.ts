@@ -102,6 +102,37 @@ export const useProfile = (
   return { query, ...useProfileMutations() }
 }
 
+/**
+ * Downloads a profile URL once and suggests how to import it. Each `attempt`
+ * downloads anew, even for a URL probed before; within one it is neither
+ * refetched nor kept once nothing reads it, and a caller retries through
+ * `refetch`.
+ */
+export const useProfileUrlProbe = (
+  probe: {
+    url: string
+    option: RemoteProfileOptionsPatch_Deserialize | null
+    attempt: number
+  } | null,
+) => {
+  const api = useQueryApi()
+  const options = api.queries.probeProfileUrl(
+    probe?.url ?? '',
+    probe?.option ?? null,
+  )
+
+  return useQuery({
+    queryKey: [...options.queryKey, probe?.attempt],
+    queryFn: async () => unwrapResult(await invokeQuery(options)),
+    enabled: probe != null,
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+}
+
 /** The active config's uid; re-renders only when the active profile changes. */
 export const useCurrentProfileUid = () => {
   const api = useQueryApi()

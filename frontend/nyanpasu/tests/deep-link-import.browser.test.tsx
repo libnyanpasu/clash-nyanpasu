@@ -5,24 +5,25 @@ import { useDeepLinkImport } from '../src/hooks/use-deep-link-import'
 const backend = vi.hoisted(() => ({
   listen: vi.fn<(onPoke: () => void) => Promise<() => void>>(),
   take: vi.fn<() => Promise<unknown>>(),
-  create: vi.fn<(input: unknown) => Promise<void>>(),
+  importUrl: vi.fn<(input: unknown) => Promise<string | null>>(),
+  message: vi.fn(async () => {}),
 }))
-vi.mock('@nyanpasu/query', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@nyanpasu/query')>()),
-  useProfile: () => ({ create: { mutateAsync: backend.create } }),
+vi.mock('@/components/profile-import/import-url-provider', () => ({
+  useImportUrl: () => backend.importUrl,
 }))
 vi.mock('@/services/rpc', () => ({
   commands: { takePendingDeepLinks: backend.take },
   events: { schemeRequestReceivedEvent: { listen: backend.listen } },
 }))
-vi.mock('@/utils/notification', () => ({ message: async () => {} }))
+vi.mock('@/utils/notification', () => ({ message: backend.message }))
 
 const link = (name: string) =>
   `clash://install-config?url=${encodeURIComponent(`https://example.com/${name}`)}`
 
 const imported = (name: string) => ({
-  type: 'url',
-  data: { url: `https://example.com/${name}`, name: null, option: null },
+  url: `https://example.com/${name}`,
+  name: null,
+  option: null,
 })
 
 function Importer() {
@@ -44,10 +45,12 @@ test('a listener that fails to register frees the registration and still imports
 }) => {
   backend.listen.mockRejectedValue(new Error('no event bridge'))
   backend.take.mockResolvedValue({ status: 'ok', data: [link('a')] })
-  backend.create.mockResolvedValue()
+  backend.importUrl.mockResolvedValue('a')
 
   mount(onTestFinished)
-  await expect.poll(() => backend.create.mock.calls).toEqual([[imported('a')]])
+  await expect
+    .poll(() => backend.importUrl.mock.calls)
+    .toEqual([[imported('a')]])
   expect(backend.take).toHaveBeenCalledOnce()
 
   // With the registration freed, the next mount registers again.
@@ -63,11 +66,26 @@ test('a link queued twice in one batch is imported once', async ({
     status: 'ok',
     data: [link('a'), link('a'), link('b')],
   })
-  backend.create.mockResolvedValue()
+  backend.importUrl.mockResolvedValue('a')
 
   mount(onTestFinished)
   // One link at a time, so `b` comes only after every earlier one.
   await expect
-    .poll(() => backend.create.mock.calls)
+    .poll(() => backend.importUrl.mock.calls)
     .toEqual([[imported('a')], [imported('b')]])
+})
+
+test('a cancelled import reports nothing and lets the next link through', async ({
+  onTestFinished,
+}) => {
+  backend.listen.mockResolvedValue(() => {})
+  backend.take.mockResolvedValue({ status: 'ok', data: [link('a'), link('b')] })
+  backend.importUrl.mockResolvedValueOnce(null).mockResolvedValueOnce('b')
+
+  mount(onTestFinished)
+  await expect
+    .poll(() => backend.importUrl.mock.calls)
+    .toEqual([[imported('a')], [imported('b')]])
+  // Only `b`, which was imported, is reported.
+  await expect.poll(() => backend.message.mock.calls.length).toBe(1)
 })

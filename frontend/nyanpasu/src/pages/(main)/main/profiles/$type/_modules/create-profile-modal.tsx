@@ -8,6 +8,7 @@ import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@nyanpasu/ui/segmented-button'
+import { useImportUrl } from '@/components/profile-import/import-url-provider'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -35,7 +36,6 @@ import {
   KIND_LABELS,
   templateOf,
   TRANSFORM_KINDS,
-  transformKindOf,
   type CreateKind,
   type CreateSource,
   type FormValues,
@@ -63,6 +63,7 @@ export default function CreateProfileModal({
   source: CreateSource
 }) {
   const { create, patchMetadata } = useProfileMutations()
+  const importUrl = useImportUrl()
 
   const isConfig = (CONFIG_KINDS as readonly CreateKind[]).includes(kind)
 
@@ -80,30 +81,30 @@ export default function CreateProfileModal({
   const currentKind = useWatch({ control: form.control, name: 'kind' })
   const currentSource = useWatch({ control: form.control, name: 'source' })
 
+  /** The import dialog decides the kind; resolves false when it is cancelled. */
   const createRemote = async (values: FormValues) => {
-    const outcome = await create.mutateAsync({
-      type: 'url',
-      data: {
-        url: values.url,
-        // Empty keeps the name derived server-side and synced from the
-        // subscription.
-        name: values.name.trim() || null,
-        option: {
-          user_agent: values.option.user_agent || null,
-          with_proxy: values.option.with_proxy,
-          self_proxy: values.option.self_proxy,
-          update_interval_minutes: values.option.update_interval,
-        },
-        transform: transformKindOf(values.kind),
+    const uid = await importUrl({
+      url: values.url,
+      // Empty keeps the name derived server-side and synced from the
+      // subscription.
+      name: values.name.trim() || null,
+      option: {
+        user_agent: values.option.user_agent || null,
+        with_proxy: values.option.with_proxy,
+        self_proxy: values.option.self_proxy,
+        update_interval_minutes: values.option.update_interval,
       },
     })
+    if (uid === null) {
+      return false
+    }
 
     // The profile exists once import returns, so a failed desc patch must not
     // be reported as a create failure (retrying would import a duplicate).
     if (values.desc) {
       try {
         await patchMetadata.mutateAsync({
-          uid: outcome.value,
+          uid,
           patch: { name: null, desc: values.desc },
         })
       } catch (error) {
@@ -115,6 +116,7 @@ export default function CreateProfileModal({
         )
       }
     }
+    return true
   }
 
   const createManual = async (values: FormValues) => {
@@ -171,7 +173,9 @@ export default function CreateProfileModal({
     form.handleSubmit(async (values) => {
       try {
         if (values.kind !== 'composition' && values.source === 'remote') {
-          await createRemote(values)
+          if (!(await createRemote(values))) {
+            return
+          }
         } else {
           await createManual(values)
         }
@@ -214,25 +218,29 @@ export default function CreateProfileModal({
             <ScrollArea className="max-h-[80dvh]">
               <FormProvider {...form}>
                 <div className="space-y-4 pt-2">
-                  <SegmentedButton
-                    size="sm"
-                    value={currentKind}
-                    onValueChange={(value) => {
-                      if (value) {
-                        form.setValue('kind', value as CreateKind)
-                        // accepted file types follow the kind
-                        form.setValue('fileName', null)
-                        form.setValue('fileContent', null)
-                        form.setValue('externalPath', '')
-                      }
-                    }}
-                  >
-                    {kinds.map((item) => (
-                      <SegmentedButtonItem key={item} value={item}>
-                        {KIND_LABELS[item]()}
-                      </SegmentedButtonItem>
-                    ))}
-                  </SegmentedButton>
+                  {/* A remote kind is confirmed after the download. */}
+                  {(currentSource !== 'remote' ||
+                    currentKind === 'composition') && (
+                    <SegmentedButton
+                      size="sm"
+                      value={currentKind}
+                      onValueChange={(value) => {
+                        if (value) {
+                          form.setValue('kind', value as CreateKind)
+                          // accepted file types follow the kind
+                          form.setValue('fileName', null)
+                          form.setValue('fileContent', null)
+                          form.setValue('externalPath', '')
+                        }
+                      }}
+                    >
+                      {kinds.map((item) => (
+                        <SegmentedButtonItem key={item} value={item}>
+                          {KIND_LABELS[item]()}
+                        </SegmentedButtonItem>
+                      ))}
+                    </SegmentedButton>
+                  )}
 
                   {currentKind !== 'composition' && (
                     <SegmentedButton

@@ -24,7 +24,9 @@ export function RankingRowTooltip({ children }: { children: ReactNode }) {
 
 /**
  * The height of a card row: its padding and its two lines, one of text-sm and
- * one of text-xs, a gap apart. Each line is truncated, so it never wraps.
+ * one of text-xs, a gap apart. Each line is truncated, so it never wraps, and
+ * keeps its line height when a glyph comes from a fallback font with taller
+ * metrics.
  */
 export const CARD_ROW_HEIGHT = '3.375rem'
 
@@ -176,7 +178,7 @@ export default function RankingRow({
       </>
     ) : (
       <>
-        <span className="flex min-w-0 items-baseline justify-between gap-3">
+        <span className="flex h-5 min-w-0 items-baseline justify-between gap-3">
           <span
             className={cn(
               'truncate text-sm font-medium',
@@ -196,7 +198,7 @@ export default function RankingRow({
           </span>
         </span>
 
-        <span className="text-on-surface-variant flex gap-3 text-xs tabular-nums">
+        <span className="text-on-surface-variant flex h-4 gap-3 text-xs tabular-nums">
           <span className="whitespace-nowrap">
             <span className="text-outline mr-1">↑</span>
             {traffic(upload)}

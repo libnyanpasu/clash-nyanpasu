@@ -670,9 +670,9 @@ fn a_filtered_dimension_lists_its_stored_alternatives() {
     let mut session = Session::new();
     // Connections 0-2 (process-0..2, target-0..2) open, then all close and are stored.
     let opened = frame(0, 6, 3);
-    session.observe(&opened, None, &mut || db.next_event_seq());
+    session.observe(opened, None, &mut || db.next_event_seq());
     let closed = frame(1, 1, 3);
-    session.observe(&closed, None, &mut || db.next_event_seq());
+    session.observe(closed.clone(), None, &mut || db.next_event_seq());
     db.flush(&session.take_batch(closed.wall_ms), closed.wall_ms, None)
         .unwrap();
     let filter = |dimension, value: &str| TrafficFilter {

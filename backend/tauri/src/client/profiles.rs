@@ -2807,6 +2807,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_activation_that_does_not_commit_names_the_activated_profile() {
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
+        let paths = crate::client::tests::test_paths(config_dir.path(), data_dir.path());
+        let fs = Arc::new(ProfileFileService::new(paths, Arc::new(NoProxyPort)));
+        let profiles_path =
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            profiles_path.clone(),
+            fs.clone() as Arc<dyn ProfileFsPort>,
+            Arc::new(ok_fetch(
+                "proxies: []
+",
+            )),
+            fs as Arc<dyn ProfileMaterializationPort>,
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
+
+        std::fs::remove_file(&profiles_path).unwrap();
+        std::fs::create_dir(&profiles_path).unwrap();
+        let error = client
+            .set_current(Some(ProfileId("r1".into())))
+            .await
+            .expect_err("the state write fails");
+        assert!(
+            matches!(
+                &error,
+                ProfilesError::Commit {
+                    uid: Some(uid),
+                    path: Some(path),
+                    source: CommitAborted::WriteConfig { .. },
+                    ..
+                } if uid.0 == "r1" && path.as_str() == "r1.yaml"
+            ),
+            "{error:?}"
+        );
+        assert!(
+            error.to_string().ends_with("(profile r1, file r1.yaml)"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
     async fn add_script_transform_uses_runtime_extension() {
         let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
         let mut item = overlay_item("placeholder");
@@ -4740,9 +4790,11 @@ mod tests {
         assert!(matches!(
             client.refresh(ProfileId("r1".into()), None).await,
             Err(ProfilesError::Commit {
+                uid: Some(uid),
+                path: Some(path),
                 source: CommitAborted::WriteConfig { .. },
                 ..
-            })
+            }) if uid.0 == "r1" && path.as_str() == "r1.yaml"
         ));
         let status = client.sources().entries[0].clone();
         assert!(matches!(

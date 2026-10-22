@@ -348,6 +348,9 @@ impl ProfilesActorMessage {
 
 pub struct ProfilesActor;
 
+/// The profile a change is about and its file, as a failed commit names them.
+type CommitSubject = (Option<ProfileId>, Option<ManagedProfilePath>);
+
 pub(super) enum AffectsRule {
     Never,
     CurrentChanged,
@@ -414,6 +417,7 @@ impl ProfilesActor {
         next: Profiles,
         hints: MutationHints,
         class: CommandClass,
+        subject: CommitSubject,
     ) -> Result<
         (
             Arc<Profiles>,
@@ -472,7 +476,12 @@ impl ProfilesActor {
                 cleanup_failures: Vec::new(),
             }
             .fail(),
-            Err(error) => Err(Self::commit_failure(error, settlement.as_ref(), Vec::new())),
+            Err(error) => Err(Self::commit_failure(
+                error,
+                settlement.as_ref(),
+                subject,
+                Vec::new(),
+            )),
         }
     }
 
@@ -482,6 +491,7 @@ impl ProfilesActor {
     fn commit_failure(
         error: ReplaceIfVersionError,
         settlement: Option<&crate::client::application_workflow::mutation::MutationReceipt>,
+        (uid, path): CommitSubject,
         cleanup_failures: Vec<ProfilesError>,
     ) -> ProfilesError {
         match error {
@@ -494,9 +504,32 @@ impl ProfilesActor {
                 cleanup_failures,
             }
             .build(),
-            error => CommitSnafu { cleanup_failures }
-                .into_error(CommitAborted::classify(error, settlement)),
+            error => CommitSnafu {
+                uid,
+                path,
+                cleanup_failures,
+            }
+            .into_error(CommitAborted::classify(error, settlement)),
         }
+    }
+
+    /// The profile a change is about, and its file in `candidate`, so a
+    /// change that does not commit can name them.
+    fn commit_subject(
+        affects: &AffectsRule,
+        created: Option<&ProfileId>,
+        candidate: &Profiles,
+    ) -> CommitSubject {
+        let uid = match affects {
+            AffectsRule::Touched(uid) => Some(uid),
+            AffectsRule::CurrentChanged => candidate.current.as_ref(),
+            AffectsRule::Never | AffectsRule::GlobalChanged | AffectsRule::Always => created,
+        };
+        let path = uid
+            .and_then(|uid| candidate.items.get(uid))
+            .and_then(|item| item.definition.source())
+            .map(|source| source.materialized().file.clone());
+        (uid.cloned(), path)
     }
 
     async fn reconcile_committed(
@@ -796,10 +829,18 @@ impl ProfilesActor {
         let mut next = before.clone();
         let affects = mutate(&mut next)?;
         let candidate = Self::prepare_candidate(next)?;
+        let subject = Self::commit_subject(&affects, None, &candidate);
         let (hints, class) = Self::mutation_hints(&affects, &candidate);
-        let (snapshot, (receipt, runtime_degradations)) =
-            Self::persist_candidate(state, expected_version, &before, candidate, hints, class)
-                .await?;
+        let (snapshot, (receipt, runtime_degradations)) = Self::persist_candidate(
+            state,
+            expected_version,
+            &before,
+            candidate,
+            hints,
+            class,
+            subject,
+        )
+        .await?;
         Self::reconcile_committed(myself, state, &snapshot).await;
         Ok(CommitReport {
             snapshot,
@@ -1058,6 +1099,7 @@ impl ProfilesActor {
         created: Option<ProfileId>,
     ) -> Result<CommitReport, ProfilesError> {
         let candidate = Self::prepare_candidate(next)?;
+        let subject = Self::commit_subject(&affects, created.as_ref(), &candidate);
         let expected_revision = candidate.revision();
         state.mutations.ensure_ready()?;
         let (mut hints, class) = Self::mutation_hints(&affects, &candidate);
@@ -1246,7 +1288,9 @@ impl ProfilesActor {
                     }
                 }
                 return Err(match result {
-                    Err(error) => Self::commit_failure(error, settlement.as_ref(), failures),
+                    Err(error) => {
+                        Self::commit_failure(error, settlement.as_ref(), subject, failures)
+                    }
                     Ok(ReplaceIfVersionResult::Conflict { actual_version }) => {
                         VersionConflictSnafu {
                             expected: *expected_version.as_ref(),

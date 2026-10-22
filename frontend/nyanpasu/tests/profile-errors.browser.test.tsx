@@ -59,6 +59,8 @@ const error: IpcError = {
     domain: 'profiles',
     error: {
       kind: 'commit',
+      uid: 'p1',
+      path: 'p1.yaml',
       source: {
         kind: 'runtime_refused',
         runtime: { kind: 'untouched' },

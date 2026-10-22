@@ -3775,7 +3775,14 @@ export type ProfilesError =
       source: ProfileFileError
     }
   | { kind: 'version_conflict'; expected: number; actual: number }
-  | { kind: 'commit'; source: CommitAborted }
+  | {
+      kind: 'commit'
+      /**  The profile the change was about, when it was about one. */
+      uid: ProfileId | null
+      /**  That profile's file. */
+      path: ManagedProfilePath | null
+      source: CommitAborted
+    }
   | { kind: 'workflow_not_ready' }
   | { kind: 'profiles_actor_stopped' }
   | { kind: 'profiles_reply_dropped' }

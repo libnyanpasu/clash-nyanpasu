@@ -174,7 +174,8 @@ test('a storage failure tells an unsafe path from an unreadable file', () => {
 test('an aborted commit says what became of the core', () => {
   const commit = (
     source: Extract<ProfilesError, { kind: 'commit' }>['source'],
-  ) => ipcErrorMessage(profiles({ kind: 'commit', source }))
+  ) =>
+    ipcErrorMessage(profiles({ kind: 'commit', uid: null, path: null, source }))
 
   expect(commit({ kind: 'write_config', runtime: { kind: 'untouched' } })).toBe(
     m.error_commit_write_config(),

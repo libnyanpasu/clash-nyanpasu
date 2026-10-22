@@ -843,6 +843,26 @@ mod tests {
         assert_eq!(short.get(1), Some(&b"abc"[..]));
     }
 
+    /// The spans of a loaded dictionary end in a short page past the first; inserting
+    /// fills it before starting another.
+    #[test]
+    fn inserting_after_loading_more_than_a_page_of_spans() {
+        let hasher = ValueHasher::random();
+        let loaded = Paged::<Span>::PER_PAGE as u32 + 269;
+        let values: Vec<Vec<u8>> = (1..=loaded).map(|n| format!("v{n}").into_bytes()).collect();
+        let pairs: Vec<(u32, &[u8])> = (1..=loaded).zip(values.iter().map(Vec::as_slice)).collect();
+        let mut dictionary = load(&hasher, &pairs, &mut Ledger::default());
+        for n in loaded + 1..=2 * loaded {
+            assert_eq!(
+                insert(&mut dictionary, &hasher, format!("v{n}").as_bytes()),
+                n
+            );
+        }
+        for n in 1..=2 * loaded {
+            assert_eq!(dictionary.get(n), Some(format!("v{n}").as_bytes()));
+        }
+    }
+
     /// A load plan is three numbers whatever the values: planning a load holds nothing per
     /// value. It refuses values that together pass what a dictionary holds.
     #[test]

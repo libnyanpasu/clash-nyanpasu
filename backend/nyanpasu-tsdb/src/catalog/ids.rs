@@ -288,6 +288,22 @@ mod tests {
         assert_eq!(take(&mut ids, &mut ledger), 4);
     }
 
+    /// Loaded bits end in a short page past the first; fresh slots fill it before another
+    /// starts.
+    #[test]
+    fn taking_fresh_slots_after_loading_more_than_a_page_of_bits() {
+        let mut ledger = Ledger::default();
+        let slots = (Paged::<u64>::PER_PAGE as u32 + 1) * 64;
+        let mut ids = Ids::free(slots, &mut ledger);
+        for slot in 0..slots {
+            ids.load(slot, &mut ledger);
+        }
+        for expected in slots..slots + 2 * 64 {
+            assert_eq!(take(&mut ids, &mut ledger), expected);
+        }
+        assert!((0..slots + 2 * 64).all(|slot| ids.is_live(slot)));
+    }
+
     #[test]
     fn ids_run_out_at_the_largest_id() {
         let mut ids = Ids::new();

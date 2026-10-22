@@ -43,6 +43,10 @@ pub struct FetchedSubscription {
     pub subscription: SubscriptionInfo,
     /// Server-advertised `profile-update-interval`, normalized from hours to minutes.
     pub suggested_update_interval_minutes: Option<u64>,
+    /// The media type of `Content-Type`, lowercased and without parameters.
+    pub content_type: Option<String>,
+    /// The file name in `Content-Disposition`.
+    pub file_name: Option<String>,
 }
 
 /// Subscription download. Network timeouts are managed inside the

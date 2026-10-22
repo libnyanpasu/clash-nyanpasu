@@ -4143,6 +4143,8 @@ pub(crate) mod tests {
                 // No server name: exercises the url last-segment fallback below.
                 filename: None,
                 suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
             })
         });
         tauri::async_runtime::block_on(async {
@@ -4192,6 +4194,8 @@ pub(crate) mod tests {
                     subscription: SubscriptionInfo::default(),
                     filename: None,
                     suggested_update_interval_minutes: None,
+                    content_type: None,
+                    file_name: None,
                 })
             } else {
                 Err(SubscriptionFetchError::mock())
@@ -4257,6 +4261,8 @@ pub(crate) mod tests {
                 subscription: SubscriptionInfo::default(),
                 filename: None,
                 suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
             })
         });
         tauri::async_runtime::block_on(async {
@@ -4292,6 +4298,8 @@ pub(crate) mod tests {
                 subscription: SubscriptionInfo::default(),
                 filename: None,
                 suggested_update_interval_minutes: Some(360),
+                content_type: None,
+                file_name: None,
             })
         });
         tauri::async_runtime::block_on(async {
@@ -4614,6 +4622,8 @@ pub(crate) mod tests {
                 subscription: SubscriptionInfo::default(),
                 filename: None,
                 suggested_update_interval_minutes: None,
+                content_type: None,
+                file_name: None,
             })
         });
         tauri::async_runtime::block_on(async {
@@ -4767,6 +4777,8 @@ pub(crate) mod tests {
                 subscription: SubscriptionInfo::default(),
                 filename: None,
                 suggested_update_interval_minutes: None,
+                content_type: None,
+                file_name: None,
             })
         });
         fetcher

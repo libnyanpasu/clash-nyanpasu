@@ -732,7 +732,6 @@
   "profile_javascript_label": "JavaScript scripts",
   "profile_lua_label": "Lua scripts",
   "profile_merge_label": "Merge (YAML)",
-  "profile_profile_label_count": "{count} profiles",
   "profile_form_name_label": "Name",
   "profile_form_desc_label": "Description",
   "profile_form_url_label": "Remote URL",
@@ -1242,6 +1241,44 @@
   "configuration_sources": "Profile sources",
   "profile_group_config": "Configs",
   "profile_group_transform": "Transforms",
+  "profile_nav_label": "Profiles navigation",
+  "profile_group_pipeline": "Pipeline",
+  "profile_nav_all_profiles": "All profiles",
+  "profile_nav_javascript": "JavaScript",
+  "profile_nav_lua": "Lua",
+  "profile_nav_merge": "YAML merge",
+  "profile_nav_count_profiles": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} profile",
+        "countPlural=other": "{count} profiles"
+      }
+    }
+  ],
+  "profile_nav_count_scripts": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} script",
+        "countPlural=other": "{count} scripts"
+      }
+    }
+  ],
+  "profile_nav_count_overlays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} overlay",
+        "countPlural=other": "{count} overlays"
+      }
+    }
+  ],
+  "profile_nav_count_enabled": "{count} enabled",
+  "profile_nav_inspect_description": "Trace how the runtime config is built",
   "profile_create_config_title": "New config",
   "profile_create_transform_title": "New transform",
   "profile_kind_file": "Single",

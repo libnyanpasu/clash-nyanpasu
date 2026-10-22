@@ -1,192 +1,125 @@
-import DescriptionOutlineRounded from '~icons/material-symbols/description-outline-rounded'
-import DocumentSearchOutlineRounded from '~icons/material-symbols/document-search-outline-rounded'
+import DescriptionRounded from '~icons/material-symbols/description-rounded'
+import DocumentSearchRounded from '~icons/material-symbols/document-search-rounded'
 import JavascriptRounded from '~icons/material-symbols/javascript-rounded'
-import LanguageRounded from '~icons/material-symbols/language-rounded'
+import MergeRounded from '~icons/material-symbols/merge-rounded'
+import PublicIcon from '~icons/material-symbols/public'
 import LuaIcon from '~icons/mdi/language-lua'
-import ChipLine from '~icons/mingcute/chip-line'
-import YamlIcon from '~icons/nonicons/yaml-16'
-import ScriptIcon from '~icons/streamline-plump/script-2-remix'
-import { ComponentProps, PropsWithChildren, ReactNode, useMemo } from 'react'
-import { Button } from '@nyanpasu/ui/button'
-import { Separator } from '@nyanpasu/ui/separator'
+import { ComponentProps, ReactNode } from 'react'
+import {
+  NavigationList,
+  NavigationListGroup,
+  NavigationListItem,
+  NavigationListItemIcon,
+  NavigationListItemText,
+  type NavigationListItemColor,
+} from '@nyanpasu/ui/navigation-list'
 import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/query'
-import { cn } from '@nyanpasu/utils'
 import { Link, useMatchRoute } from '@tanstack/react-router'
 import { categoryProfiles } from '../$type/_modules/utils'
 import { ProfileType } from './consts'
 
-const LinkButton = ({
-  href,
-  exact = false,
-  children,
-}: PropsWithChildren<{ href: string; exact?: boolean }>) => {
+function ProfilesNavigationItem({
+  icon,
+  color,
+  label,
+  description,
+  ...props
+}: ComponentProps<typeof Link> & {
+  icon: ReactNode
+  color: NavigationListItemColor
+  label: string
+  description: string
+}) {
   const matchRoute = useMatchRoute()
 
-  const isActive = !!matchRoute({
-    to: href,
-    fuzzy: !exact,
-  })
+  // An item stays selected on its child pages, such as a profile's detail page.
+  const isActive = !!matchRoute({ to: props.to, fuzzy: true })
 
   return (
-    <Button variant="fab" data-active={String(isActive)} asChild>
-      <Link
-        className={cn(
-          'h-14',
-          'flex items-center gap-2',
-          'data-[active=true]:bg-surface-variant/80',
-          'data-[active=false]:bg-transparent',
-          'data-[active=false]:shadow-none',
-          'data-[active=false]:hover:shadow-none',
-          'data-[active=false]:hover:bg-surface-variant/30',
-        )}
-        to={href}
-      >
-        {children}
+    <NavigationListItem active={isActive} asChild>
+      <Link aria-current={isActive ? 'page' : undefined} {...props}>
+        <NavigationListItemIcon color={color}>{icon}</NavigationListItemIcon>
+
+        <NavigationListItemText headline={label} supporting={description} />
       </Link>
-    </Button>
+    </NavigationListItem>
   )
 }
 
-const ROUTES = {
-  [ProfileType.Profile]: {
-    label: m.profile_profile_label(),
-    href: '/main/profiles/profile',
-    icon: () => (
-      <div className="relative">
-        <DescriptionOutlineRounded className="size-8" />
-
-        <ChipLine className="absolute -right-0.5 bottom-0 size-4 rotate-12 rounded bg-gray-300 p-0.5 dark:bg-gray-500" />
-      </div>
-    ),
-  },
-  [ProfileType.JavaScript]: {
-    label: m.profile_javascript_label(),
-    href: '/main/profiles/javascript',
-    icon: () => (
-      <div className="relative">
-        <ScriptIcon className="size-8" />
-
-        <JavascriptRounded className="absolute -right-0.5 bottom-0 size-4 rotate-12 rounded bg-amber-400 dark:bg-amber-700" />
-      </div>
-    ),
-  },
-  [ProfileType.Lua]: {
-    label: m.profile_lua_label(),
-    href: '/main/profiles/lua',
-    icon: () => (
-      <div className="relative">
-        <ScriptIcon className="size-8" />
-
-        <LuaIcon className="absolute -right-0.5 bottom-0 size-4 rotate-12 rounded bg-blue-300 p-0.5 dark:bg-blue-700" />
-      </div>
-    ),
-  },
-  [ProfileType.Merge]: {
-    label: m.profile_merge_label(),
-    href: '/main/profiles/merge',
-    icon: () => (
-      <div className="relative">
-        <ScriptIcon className="size-8" />
-
-        <YamlIcon className="absolute -right-0.5 bottom-0 size-4 rotate-12 rounded bg-orange-400 p-0.75 dark:bg-orange-700" />
-      </div>
-    ),
-  },
-} satisfies Record<
-  ProfileType,
-  {
-    label: string
-    href: string
-    icon: () => ReactNode
-  }
->
-
-const GROUPS = [
-  {
-    label: () => m.profile_group_config(),
-    types: [ProfileType.Profile],
-  },
-  {
-    label: () => m.profile_group_transform(),
-    types: [ProfileType.JavaScript, ProfileType.Lua, ProfileType.Merge],
-  },
-]
-
-export default function ProfilesNavigate({
-  className,
-  ...props
-}: Omit<ComponentProps<'div'>, 'children'>) {
+export default function ProfilesNavigate() {
   const {
     query: { data: profiles },
   } = useProfile()
 
-  const counts = useMemo<Record<ProfileType, number>>(() => {
-    const categorized = categoryProfiles(profiles?.items)
-    return {
-      [ProfileType.Profile]: categorized[ProfileType.Profile].length,
-      [ProfileType.JavaScript]: categorized[ProfileType.JavaScript].length,
-      [ProfileType.Lua]: categorized[ProfileType.Lua].length,
-      [ProfileType.Merge]: categorized[ProfileType.Merge].length,
-    }
-  }, [profiles?.items])
+  const categorized = categoryProfiles(profiles?.items)
 
   return (
-    <div className={cn('flex flex-col gap-2', className)} {...props}>
-      {GROUPS.map((group) => (
-        <div key={group.types[0]} className="flex flex-col gap-1">
-          <p className="text-on-surface-variant px-4 pt-2 pb-1 text-xs font-medium">
-            {group.label()}
-          </p>
-
-          {group.types.map((profileType) => {
-            const route = ROUTES[profileType]
-
-            return (
-              <LinkButton key={route.href} href={route.href}>
-                <div className="size-8">{route.icon()}</div>
-
-                <div className="text-sm font-medium">
-                  <p>{route.label}</p>
-
-                  <p className="text-xs text-zinc-500">
-                    {m.profile_profile_label_count({
-                      count: counts[profileType],
-                    })}
-                  </p>
-                </div>
-              </LinkButton>
-            )
+    <NavigationList aria-label={m.profile_nav_label()}>
+      <NavigationListGroup label={m.profile_group_config()}>
+        <ProfilesNavigationItem
+          to="/main/profiles/profile"
+          color="blue"
+          icon={<DescriptionRounded />}
+          label={m.profile_nav_all_profiles()}
+          description={m.profile_nav_count_profiles({
+            count: categorized[ProfileType.Profile].length,
           })}
-        </div>
-      ))}
+        />
+      </NavigationListGroup>
 
-      <Separator />
+      <NavigationListGroup label={m.profile_group_transform()}>
+        <ProfilesNavigationItem
+          to="/main/profiles/javascript"
+          color="yellow"
+          icon={<JavascriptRounded />}
+          label={m.profile_nav_javascript()}
+          description={m.profile_nav_count_scripts({
+            count: categorized[ProfileType.JavaScript].length,
+          })}
+        />
+
+        <ProfilesNavigationItem
+          to="/main/profiles/lua"
+          color="cyan"
+          icon={<LuaIcon />}
+          label={m.profile_nav_lua()}
+          description={m.profile_nav_count_scripts({
+            count: categorized[ProfileType.Lua].length,
+          })}
+        />
+
+        <ProfilesNavigationItem
+          to="/main/profiles/merge"
+          color="orange"
+          icon={<MergeRounded />}
+          label={m.profile_nav_merge()}
+          description={m.profile_nav_count_overlays({
+            count: categorized[ProfileType.Merge].length,
+          })}
+        />
+      </NavigationListGroup>
 
       {/* Both act on the active config's pipeline rather than on one profile. */}
-      <LinkButton href="/main/profiles/global">
-        <div className="flex size-8 items-center justify-center">
-          <LanguageRounded className="size-6" />
-        </div>
+      <NavigationListGroup label={m.profile_group_pipeline()}>
+        <ProfilesNavigationItem
+          to="/main/profiles/global"
+          color="purple"
+          icon={<PublicIcon />}
+          label={m.profile_global_transform_title()}
+          description={m.profile_nav_count_enabled({
+            count: profiles?.global_transforms?.length ?? 0,
+          })}
+        />
 
-        <div className="text-sm font-medium">
-          <p>{m.profile_global_transform_title()}</p>
-
-          <p className="text-xs text-zinc-500">
-            {m.profile_profile_label_count({
-              count: profiles?.global_transforms?.length ?? 0,
-            })}
-          </p>
-        </div>
-      </LinkButton>
-
-      <LinkButton href="/main/profiles/inspect">
-        <div className="flex size-8 items-center justify-center">
-          <DocumentSearchOutlineRounded className="size-6" />
-        </div>
-
-        <p className="text-sm font-medium">{m.inspect_title()}</p>
-      </LinkButton>
-    </div>
+        <ProfilesNavigationItem
+          to="/main/profiles/inspect"
+          color="green"
+          icon={<DocumentSearchRounded />}
+          label={m.inspect_title()}
+          description={m.profile_nav_inspect_description()}
+        />
+      </NavigationListGroup>
+    </NavigationList>
   )
 }

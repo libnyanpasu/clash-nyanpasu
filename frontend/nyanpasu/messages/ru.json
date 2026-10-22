@@ -702,7 +702,6 @@
   "profile_javascript_label": "JavaScript скрипты",
   "profile_lua_label": "Lua скрипты",
   "profile_merge_label": "Слияние скриптов (YAML)",
-  "profile_profile_label_count": "{count} профилей",
   "profile_form_name_label": "Название",
   "profile_form_desc_label": "Описание",
   "profile_form_url_label": "URL подписки",
@@ -1155,6 +1154,50 @@
   "configuration_sources": "Источники профилей",
   "profile_group_config": "Конфигурации",
   "profile_group_transform": "Преобразования",
+  "profile_nav_label": "Навигация по профилям",
+  "profile_group_pipeline": "Конвейер",
+  "profile_nav_all_profiles": "Все профили",
+  "profile_nav_javascript": "JavaScript",
+  "profile_nav_lua": "Lua",
+  "profile_nav_merge": "Слияние YAML",
+  "profile_nav_count_profiles": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} профиль",
+        "countPlural=few": "{count} профиля",
+        "countPlural=many": "{count} профилей",
+        "countPlural=other": "{count} профиля"
+      }
+    }
+  ],
+  "profile_nav_count_scripts": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} скрипт",
+        "countPlural=few": "{count} скрипта",
+        "countPlural=many": "{count} скриптов",
+        "countPlural=other": "{count} скрипта"
+      }
+    }
+  ],
+  "profile_nav_count_overlays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} оверлей",
+        "countPlural=few": "{count} оверлея",
+        "countPlural=many": "{count} оверлеев",
+        "countPlural=other": "{count} оверлея"
+      }
+    }
+  ],
+  "profile_nav_count_enabled": "Включено: {count}",
+  "profile_nav_inspect_description": "Проследите, как собирается итоговая конфигурация",
   "profile_create_config_title": "Новая конфигурация",
   "profile_create_transform_title": "Новое преобразование",
   "profile_kind_file": "Одиночная",

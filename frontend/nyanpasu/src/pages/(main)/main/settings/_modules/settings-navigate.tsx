@@ -1,3 +1,4 @@
+import AutoAwesomeRounded from '~icons/material-symbols/auto-awesome-rounded'
 import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeployedCodeRounded from '~icons/material-symbols/deployed-code-rounded'
@@ -20,6 +21,7 @@ import { MaterialShape } from '@nyanpasu/ui/material-shape'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import LogoSvg from '@/assets/image/logo.svg?react'
 import { m } from '@/paraglide/messages'
+import { useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import packageJson from '@root/package.json'
 import { Link, useMatchRoute } from '@tanstack/react-router'
@@ -179,6 +181,11 @@ function SettingsNavigationItem({
 }
 
 export default function SettingsNavigate() {
+  const { value: currentCore } = useSetting('core')
+
+  // Only Meow ships meow-cli, the skill the AI page hands to agents.
+  const isMeow = currentCore === 'meow' || currentCore === 'meow-alpha'
+
   return (
     <nav
       aria-label={m.settings_navigation()}
@@ -243,6 +250,16 @@ export default function SettingsNavigate() {
           label={m.settings_label_runtime()}
           description={m.settings_label_runtime_description()}
         />
+
+        {isMeow && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/ai"
+            color="green"
+            icon={<AutoAwesomeRounded />}
+            label={m.settings_label_ai()}
+            description={m.settings_label_ai_description()}
+          />
+        )}
       </SettingsNavigationGroup>
 
       <SettingsNavigationGroup label={m.settings_group_nyanpasu()}>

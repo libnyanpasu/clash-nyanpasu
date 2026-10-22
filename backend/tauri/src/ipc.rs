@@ -953,6 +953,28 @@ pub fn get_core_dir() -> Result<String> {
     Ok(core_dir.to_string_lossy().to_string())
 }
 
+#[derive(Serialize, specta::Type)]
+pub struct MeowCliSkill {
+    /// The skill's folder, which the updater keeps beside meow-cli. Agents link it.
+    pub dir: String,
+    /// Whether a Meow core that ships meow-cli has been installed.
+    pub installed: bool,
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_meow_cli_skill(paths: State<'_, PathResolver>) -> Result<MeowCliSkill> {
+    let dir = paths.meow_cli_dir().join("skills").join("meow-cli");
+    let installed = tokio::fs::try_exists(dir.join("SKILL.md"))
+        .await
+        .unwrap_or(false);
+    Ok(MeowCliSkill {
+        dir: dir.into_string(),
+        installed,
+    })
+}
+
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]

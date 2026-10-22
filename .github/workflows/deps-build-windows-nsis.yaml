@@ -81,6 +81,10 @@ jobs:
       __CARGO_TEMPORARY_BUILD_DIR_NEW_LAYOUT_OPT_OUT: '1'
       NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
       BUILD_DIR: ${{ inputs.arch == 'aarch64' && 'backend/target/aarch64-pc-windows-msvc/release' || 'backend/target/release' }}
+      # The PDB keeps line tables, without which it names none of the app's own
+      # frames. Debug information goes to the PDB alone, so the executable keeps
+      # its size.
+      CARGO_PROFILE_RELEASE_DEBUG: line-tables-only
 
     steps:
       - name: Checkout repository
@@ -169,6 +173,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pnpm tauri build --no-bundle ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }} ${{ inputs.arch == 'aarch64' && '--target aarch64-pc-windows-msvc' || '' }}
+
+      # A panic report prints its frames as offsets into their modules, which only
+      # this build's PDB, beside the executable it belongs to, resolves:
+      # `llvm-symbolizer --obj=<exe> --relative-address <offset>`. Every bundle
+      # below packages this one executable.
+      - name: Archive debug symbols
+        shell: bash
+        run: |
+          exe="$BUILD_DIR/Clash Nyanpasu.exe"
+          [ -f "$exe" ] || exe="$BUILD_DIR/clash-nyanpasu.exe"
+          # LZMA2 stores the PDB in 17% of its size, against 29% for zip.
+          archive="Clash.Nyanpasu_$(git rev-parse --short=9 HEAD)_windows-${{ inputs.arch }}_symbols.7z"
+          7z a -t7z -mx9 "$archive" "$exe" "$BUILD_DIR/clash_nyanpasu.pdb"
+          echo "SYMBOLS_ARCHIVE=$archive" >> "$GITHUB_ENV"
+
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: Clash.Nyanpasu-windows-${{ inputs.arch }}-symbols
+          path: ${{ env.SYMBOLS_ARCHIVE }}
+          if-no-files-found: error
 
       - name: Bundle standard NSIS installer
         if: ${{ inputs.bundle-type != 'fixed-webview' }}

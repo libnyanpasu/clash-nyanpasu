@@ -82,7 +82,7 @@ impl RunnerManager {
         logs: &mut Vec<StepLogEntry>,
     ) -> anyhow::Result<Mapping> {
         let runner = self.get_or_init_runner(&script.0)?;
-        tracing::trace!(script_kind = ?script.0, script_code = script.1.as_str(), "process config with script");
+        tracing::trace!(script_kind = ?script.0, script_code = %nyanpasu_log_preview::text(&script.1), "process config with script");
         runner.process_honey(config, script.1.as_str(), logs).await
     }
 }

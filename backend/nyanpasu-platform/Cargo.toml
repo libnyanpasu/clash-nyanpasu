@@ -13,6 +13,7 @@ name = 'nyanpasu_platform'
 nyanpasu-core = { path = '../nyanpasu-core' }
 nyanpasu-config = { path = '../nyanpasu-config' }
 boa_utils = { path = '../boa_utils' }
+nyanpasu-log-preview = { workspace = true }
 
 anyhow = '1'
 async-trait = '0.1'

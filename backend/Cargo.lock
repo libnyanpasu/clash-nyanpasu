@@ -1162,6 +1162,7 @@ dependencies = [
  "include_url_macro",
  "log",
  "mime",
+ "nyanpasu-log-preview",
  "nyanpasu-utils",
  "phf 0.14.0",
  "postcard",
@@ -6919,6 +6920,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-log-preview"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+]
+
+[[package]]
 name = "nyanpasu-logging"
 version = "0.1.2"
 dependencies = [
@@ -6982,6 +6990,7 @@ dependencies = [
  "mlua",
  "nyanpasu-config",
  "nyanpasu-core",
+ "nyanpasu-log-preview",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
@@ -7065,6 +7074,7 @@ dependencies = [
  "log",
  "memchr",
  "nix 0.31.3",
+ "nyanpasu-log-preview",
  "os_pipe",
  "parking_lot 0.13.0",
  "processkit",
@@ -7106,6 +7116,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "nyanpasu-local-channel",
+ "nyanpasu-log-preview",
  "postcard",
  "serde",
  "serde_json",

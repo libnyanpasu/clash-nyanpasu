@@ -14,6 +14,7 @@ boa_engine = { workspace = true, features = ['annex-b'] }
 boa_parser = { version = '0.22', features = ['annex-b'] }
 tokio = { workspace = true }
 nyanpasu-utils = { workspace = true }
+nyanpasu-log-preview = { workspace = true }
 reqwest = { workspace = true }
 futures-util = '0.3'
 futures-concurrency = '7'

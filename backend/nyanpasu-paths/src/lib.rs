@@ -155,6 +155,13 @@ impl PathResolver {
         self.0.data_dir.join("scripts")
     }
 
+    /// meow-cli and its agent skill, laid out as in the Meow release archive. They live in
+    /// the data dir, not beside the core: agents link the skill, and this path stays the same
+    /// across application updates.
+    pub fn meow_cli_dir(&self) -> Utf8PathBuf {
+        self.0.data_dir.join("meow-cli")
+    }
+
     /// Create the config dir, then the data dir, failing on either. The profiles, logs and
     /// cache dirs are created best-effort: they are recreated by whoever uses them.
     pub fn create_base_dirs(&self) -> Result<(), CreateDirError> {

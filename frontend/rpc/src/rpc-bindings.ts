@@ -235,6 +235,8 @@ export function createRpcClient(
       typedError<string[], IpcError>(__RPC_INVOKE('get_hotkeys')),
     getCoreDir: () =>
       typedError<string, IpcError>(__RPC_INVOKE('get_core_dir')),
+    getMeowCliSkill: () =>
+      typedError<MeowCliSkill, IpcError>(__RPC_INVOKE('get_meow_cli_skill')),
     getClashWsSnapshot: () =>
       typedError<ClashWsSnapshot, IpcError>(
         __RPC_INVOKE('get_clash_ws_snapshot'),
@@ -2672,6 +2674,13 @@ export type MaterializedFile_Serialize = {
   file: ManagedProfilePath
   /**  Last successful materialization time. */
   updated_at?: number | null
+}
+
+export type MeowCliSkill = {
+  /**  The skill's folder, which the updater keeps beside meow-cli. Agents link it. */
+  dir: string
+  /**  Whether a Meow core that ships meow-cli has been installed. */
+  installed: boolean
 }
 
 /**  What a topology orders and merges its nodes by. */

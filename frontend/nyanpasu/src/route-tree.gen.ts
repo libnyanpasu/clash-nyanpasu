@@ -53,6 +53,7 @@ import { Route as mainMainTopologyMapIndexRouteImport } from './pages/(main)/mai
 import { Route as trayMenuTrayMenuProxiesGroupNameRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/$name'
 import { Route as mainMainProfilesTypeDetailUidRouteImport } from './pages/(main)/main/profiles/$type/detail/$uid'
 import { Route as mainMainSettingsAboutCreditsIndexRouteImport } from './pages/(main)/main/settings/about/credits/index'
+import { Route as mainMainSettingsClashAiIndexRouteImport } from './pages/(main)/main/settings/clash/ai/index'
 import { Route as mainMainSettingsClashControlIndexRouteImport } from './pages/(main)/main/settings/clash/control/index'
 import { Route as mainMainSettingsClashCoreManagerIndexRouteImport } from './pages/(main)/main/settings/clash/core-manager/index'
 import { Route as mainMainSettingsClashCoreIndexRouteImport } from './pages/(main)/main/settings/clash/core/index'
@@ -308,6 +309,12 @@ const mainMainSettingsAboutCreditsIndexRoute =
     path: '/credits/',
     getParentRoute: () => mainMainSettingsAboutRouteRoute,
   } as any)
+const mainMainSettingsClashAiIndexRoute =
+  mainMainSettingsClashAiIndexRouteImport.update({
+    id: '/clash/ai/',
+    path: '/clash/ai/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainSettingsClashControlIndexRoute =
   mainMainSettingsClashControlIndexRouteImport.update({
     id: '/clash/control/',
@@ -431,6 +438,7 @@ export interface FileRoutesByFullPath {
   '/main/topology/map/': typeof mainMainTopologyMapIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
+  '/main/settings/clash/ai/': typeof mainMainSettingsClashAiIndexRoute
   '/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
   '/main/settings/clash/core-manager/': typeof mainMainSettingsClashCoreManagerIndexRoute
   '/main/settings/clash/core/': typeof mainMainSettingsClashCoreIndexRoute
@@ -476,6 +484,7 @@ export interface FileRoutesByTo {
   '/main/topology/map': typeof mainMainTopologyMapIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/main/settings/about/credits': typeof mainMainSettingsAboutCreditsIndexRoute
+  '/main/settings/clash/ai': typeof mainMainSettingsClashAiIndexRoute
   '/main/settings/clash/control': typeof mainMainSettingsClashControlIndexRoute
   '/main/settings/clash/core-manager': typeof mainMainSettingsClashCoreManagerIndexRoute
   '/main/settings/clash/core': typeof mainMainSettingsClashCoreIndexRoute
@@ -536,6 +545,7 @@ export interface FileRoutesById {
   '/(main)/main/topology/map/': typeof mainMainTopologyMapIndexRoute
   '/(main)/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/(main)/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
+  '/(main)/main/settings/clash/ai/': typeof mainMainSettingsClashAiIndexRoute
   '/(main)/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
   '/(main)/main/settings/clash/core-manager/': typeof mainMainSettingsClashCoreManagerIndexRoute
   '/(main)/main/settings/clash/core/': typeof mainMainSettingsClashCoreIndexRoute
@@ -596,6 +606,7 @@ export interface FileRouteTypes {
     | '/main/topology/map/'
     | '/main/profiles/$type/detail/$uid'
     | '/main/settings/about/credits/'
+    | '/main/settings/clash/ai/'
     | '/main/settings/clash/control/'
     | '/main/settings/clash/core-manager/'
     | '/main/settings/clash/core/'
@@ -641,6 +652,7 @@ export interface FileRouteTypes {
     | '/main/topology/map'
     | '/main/profiles/$type/detail/$uid'
     | '/main/settings/about/credits'
+    | '/main/settings/clash/ai'
     | '/main/settings/clash/control'
     | '/main/settings/clash/core-manager'
     | '/main/settings/clash/core'
@@ -700,6 +712,7 @@ export interface FileRouteTypes {
     | '/(main)/main/topology/map/'
     | '/(main)/main/profiles/$type/detail/$uid'
     | '/(main)/main/settings/about/credits/'
+    | '/(main)/main/settings/clash/ai/'
     | '/(main)/main/settings/clash/control/'
     | '/(main)/main/settings/clash/core-manager/'
     | '/(main)/main/settings/clash/core/'
@@ -1031,6 +1044,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsAboutCreditsIndexRouteImport
       parentRoute: typeof mainMainSettingsAboutRouteRoute
     }
+    '/(main)/main/settings/clash/ai/': {
+      id: '/(main)/main/settings/clash/ai/'
+      path: '/clash/ai'
+      fullPath: '/main/settings/clash/ai/'
+      preLoaderRoute: typeof mainMainSettingsClashAiIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
     '/(main)/main/settings/clash/control/': {
       id: '/(main)/main/settings/clash/control/'
       path: '/clash/control'
@@ -1262,6 +1282,7 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRouteWithChildren
   mainMainSettingsDebugRouteRoute: typeof mainMainSettingsDebugRouteRouteWithChildren
   mainMainSettingsIndexRoute: typeof mainMainSettingsIndexRoute
+  mainMainSettingsClashAiIndexRoute: typeof mainMainSettingsClashAiIndexRoute
   mainMainSettingsClashControlIndexRoute: typeof mainMainSettingsClashControlIndexRoute
   mainMainSettingsClashCoreManagerIndexRoute: typeof mainMainSettingsClashCoreManagerIndexRoute
   mainMainSettingsClashCoreIndexRoute: typeof mainMainSettingsClashCoreIndexRoute
@@ -1281,6 +1302,7 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
   mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRouteWithChildren,
   mainMainSettingsDebugRouteRoute: mainMainSettingsDebugRouteRouteWithChildren,
   mainMainSettingsIndexRoute: mainMainSettingsIndexRoute,
+  mainMainSettingsClashAiIndexRoute: mainMainSettingsClashAiIndexRoute,
   mainMainSettingsClashControlIndexRoute:
     mainMainSettingsClashControlIndexRoute,
   mainMainSettingsClashCoreManagerIndexRoute:

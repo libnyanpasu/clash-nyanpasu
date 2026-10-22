@@ -1,5 +1,7 @@
 use std::{
-    path::PathBuf,
+    ffi::OsStr,
+    io::Read,
+    path::{Component, Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -47,16 +49,20 @@ pub struct UpdaterSummary {
 pub(crate) struct HttpUpdaterBackend {
     proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
     destination_dir: PathBuf,
+    /// Where a Meow archive's meow-cli and agent skill go.
+    meow_cli_dir: PathBuf,
 }
 
 impl HttpUpdaterBackend {
     pub fn new(
         destination_dir: PathBuf,
+        meow_cli_dir: PathBuf,
         proxy_port: Arc<dyn crate::service::profile_file::SelfProxyPortSource>,
     ) -> Self {
         Self {
             proxy_port,
             destination_dir,
+            meow_cli_dir,
         }
     }
 
@@ -179,12 +185,13 @@ impl UpdaterBackend for HttpUpdaterBackend {
             }
             _ => None,
         };
+        let extraction_artifact = artifact.clone();
         // A blocking extraction cannot be aborted midway. It owns staging until
         // completion, and the shutdown waits for it.
         tokio::task::spawn_blocking(move || {
             extract_core(
-                extraction_staging.path().join(&artifact),
-                &artifact,
+                extraction_staging.path().join(&extraction_artifact),
+                &extraction_artifact,
                 expected_archive_binary.as_deref(),
                 extraction_source,
             )
@@ -202,6 +209,29 @@ impl UpdaterBackend for HttpUpdaterBackend {
             anyhow::ensure!(output.status.success(), "Meow version probe failed");
             let banner = String::from_utf8_lossy(&output.stdout);
             verify_meow_version(core, &expected_version, &banner)?;
+            // Nothing Nyanpasu runs uses meow-cli or its skill, so the verified
+            // archive installs them now rather than with the core. They are
+            // extras: failing to install them fails no core update.
+            let meow_cli_staging = staging.clone();
+            let destination = self.meow_cli_dir.clone();
+            let installed = tokio::task::spawn_blocking(move || {
+                install_meow_cli(
+                    &meow_cli_staging.path().join(&artifact),
+                    &artifact,
+                    &destination,
+                )
+            })
+            .await
+            .map_err(|error| match error.try_into_panic() {
+                Ok(panic) => std::panic::resume_unwind(panic),
+                Err(error) => error,
+            })?;
+            if let Err(error) = installed {
+                tracing::warn!(
+                    error = format!("{error:#}"),
+                    "could not install meow-cli and its agent skill"
+                );
+            }
         }
         progress.report(UpdaterState::Replacing, None);
         Ok(PreparedCoreBinary {
@@ -276,6 +306,106 @@ fn extract_core(
     }
     #[cfg(target_family = "unix")]
     std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o755))?;
+    Ok(())
+}
+
+/// Where `path`, a file in a Meow release archive, belongs in the meow-cli
+/// directory: the meow-cli executable, or a file of its agent skill under
+/// `skills/meow-cli/`. The archive's top-level directory is dropped, and so is
+/// every other file.
+fn meow_cli_member(path: &Path) -> Option<PathBuf> {
+    let names = path
+        .components()
+        .map(|component| match component {
+            Component::Normal(name) => Some(name),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let skill = [OsStr::new("skills"), OsStr::new("meow-cli")];
+    if let Some(start) = names.windows(2).position(|pair| pair == skill) {
+        return (names.len() > start + 2).then(|| names[start..].iter().collect());
+    }
+    let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
+    (*names.last()? == OsStr::new(&executable)).then(|| PathBuf::from(executable))
+}
+
+/// Extracts meow-cli and its agent skill from a Meow release archive into
+/// `destination`. Returns whether the archive has both: releases before
+/// meow-cli ship `meow` alone.
+fn extract_meow_cli(
+    archive_path: &Path,
+    artifact: &str,
+    destination: &Path,
+) -> anyhow::Result<bool> {
+    let (mut executable, mut skill) = (false, false);
+    let mut extract = |path: &Path, contents: &mut dyn Read| -> anyhow::Result<()> {
+        let Some(member) = meow_cli_member(path) else {
+            return Ok(());
+        };
+        let target = destination.join(&member);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::io::copy(contents, &mut std::fs::File::create(&target)?)?;
+        if member.starts_with("skills") {
+            skill |= member == Path::new("skills/meow-cli/SKILL.md");
+        } else {
+            executable = true;
+            #[cfg(target_family = "unix")]
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))?;
+        }
+        Ok(())
+    };
+    let source = std::fs::File::open(archive_path)?;
+    if artifact.ends_with(".tar.gz") {
+        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(source));
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            if entry.header().entry_type().is_file() {
+                let path = entry.path()?.into_owned();
+                extract(&path, &mut entry)?;
+            }
+        }
+    } else if artifact.ends_with(".zip") {
+        let mut archive = zip::ZipArchive::new(source)?;
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index)?;
+            if let Some(path) = file.enclosed_name().filter(|_| file.is_file()) {
+                extract(&path, &mut file)?;
+            }
+        }
+    }
+    Ok(executable && skill)
+}
+
+/// Replaces `destination` with the meow-cli and agent skill of a Meow release
+/// archive. An archive without them leaves `destination` as it is. Agents link
+/// the skill inside `destination`, so it is swapped as a whole, never removed
+/// first.
+fn install_meow_cli(archive_path: &Path, artifact: &str, destination: &Path) -> anyhow::Result<()> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("the meow-cli directory has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+    // Staged beside the destination, so that both renames stay on one file system.
+    let staging = tempfile::Builder::new()
+        .prefix(".meow-cli-")
+        .tempdir_in(parent)?;
+    let staged = staging.path().join("new");
+    if !extract_meow_cli(archive_path, artifact, &staged)? {
+        return Ok(());
+    }
+    // The previous files stay in staging, which removes them when dropped.
+    let previous = staging.path().join("previous");
+    if destination.exists() {
+        std::fs::rename(destination, &previous)?;
+    }
+    if let Err(error) = std::fs::rename(&staged, destination) {
+        if previous.exists() {
+            std::fs::rename(&previous, destination)?;
+        }
+        return Err(error.into());
+    }
     Ok(())
 }
 
@@ -356,7 +486,11 @@ mod tests {
             first.local_addr().unwrap().port(),
         )));
         let dir = TempDir::new().unwrap();
-        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), port.clone());
+        let backend = HttpUpdaterBackend::new(
+            dir.path().to_path_buf(),
+            dir.path().join("meow-cli"),
+            port.clone(),
+        );
         for (listener, expected) in [(&first, "first core"), (&second, "restarted core")] {
             port.0.store(
                 listener.local_addr().unwrap().port(),
@@ -434,7 +568,8 @@ mod tests {
         let (stalled, mut stall) = tokio::sync::mpsc::unbounded_channel();
         let mirror = tokio::spawn(stalling_mirror(listener, stall_probe, stalled));
         let dir = TempDir::new().unwrap();
-        let backend = HttpUpdaterBackend::new(dir.path().to_path_buf(), port);
+        let backend =
+            HttpUpdaterBackend::new(dir.path().to_path_buf(), dir.path().join("meow-cli"), port);
         let token = CancellationToken::new();
         let prepare = tokio::spawn({
             let token = token.clone();
@@ -583,6 +718,152 @@ mod tests {
         )
         .unwrap();
         assert_eq!(std::fs::read(destination).unwrap(), b"meow executable");
+    }
+
+    fn write_tar_gz(path: &Path, files: &[(&str, &[u8])]) {
+        let encoder = flate2::write::GzEncoder::new(
+            std::fs::File::create(path).unwrap(),
+            flate2::Compression::default(),
+        );
+        let mut archive = tar::Builder::new(encoder);
+        for (name, contents) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive.append_data(&mut header, name, *contents).unwrap();
+        }
+        archive.into_inner().unwrap().finish().unwrap();
+    }
+
+    #[test]
+    fn meow_cli_members_keep_the_archive_layout_without_its_top_directory() {
+        let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
+        let member = |path: &str| meow_cli_member(Path::new(path));
+
+        assert_eq!(
+            member(&format!("meow-alpha-8793af9/{executable}")),
+            Some(PathBuf::from(&executable))
+        );
+        assert_eq!(
+            member("meow-alpha-8793af9/skills/meow-cli/SKILL.md"),
+            Some(PathBuf::from("skills/meow-cli/SKILL.md"))
+        );
+        assert_eq!(
+            member("meow-alpha-8793af9/skills/meow-cli/references/api.md"),
+            Some(PathBuf::from("skills/meow-cli/references/api.md"))
+        );
+        for other in [
+            "meow-alpha-8793af9/meow",
+            "meow-alpha-8793af9/README.md",
+            "meow-alpha-8793af9/skills/other/SKILL.md",
+            "meow-alpha-8793af9/skills/meow-cli",
+            "../skills/meow-cli/SKILL.md",
+        ] {
+            assert_eq!(member(other), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn meow_cli_and_its_skill_replace_the_previous_ones_as_a_whole() {
+        let dir = TempDir::new().unwrap();
+        let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
+        let archive = dir.path().join("meow.tar.gz");
+        write_tar_gz(
+            &archive,
+            &[
+                ("meow-alpha/meow", b"meow executable"),
+                (&format!("meow-alpha/{executable}"), b"new meow-cli"),
+                ("meow-alpha/skills/meow-cli/SKILL.md", b"new skill"),
+            ],
+        );
+        let destination = dir.path().join("data/meow-cli");
+        std::fs::create_dir_all(destination.join("skills/meow-cli")).unwrap();
+        std::fs::write(destination.join("skills/meow-cli/stale.md"), "stale").unwrap();
+
+        install_meow_cli(&archive, "meow-alpha-x.tar.gz", &destination).unwrap();
+
+        assert_eq!(
+            std::fs::read(destination.join(&executable)).unwrap(),
+            b"new meow-cli"
+        );
+        assert_eq!(
+            std::fs::read(destination.join("skills/meow-cli/SKILL.md")).unwrap(),
+            b"new skill"
+        );
+        assert!(!destination.join("skills/meow-cli/stale.md").exists());
+        assert!(!destination.join("meow").exists());
+        // Only the meow-cli directory remains: staging is removed.
+        assert_eq!(
+            std::fs::read_dir(dir.path().join("data")).unwrap().count(),
+            1
+        );
+        #[cfg(target_family = "unix")]
+        assert_eq!(
+            std::fs::metadata(destination.join(&executable))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+    }
+
+    #[test]
+    fn an_archive_without_meow_cli_keeps_the_installed_one() {
+        let dir = TempDir::new().unwrap();
+        let archive = dir.path().join("meow.tar.gz");
+        write_tar_gz(&archive, &[("meow-v0.26.1/meow", b"meow executable")]);
+        let destination = dir.path().join("data/meow-cli");
+        std::fs::create_dir_all(destination.join("skills/meow-cli")).unwrap();
+        std::fs::write(destination.join("skills/meow-cli/SKILL.md"), "skill").unwrap();
+
+        install_meow_cli(&archive, "meow-v0.26.1.tar.gz", &destination).unwrap();
+
+        assert_eq!(
+            std::fs::read(destination.join("skills/meow-cli/SKILL.md")).unwrap(),
+            b"skill"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path().join("data")).unwrap().count(),
+            1
+        );
+    }
+
+    #[test]
+    fn meow_cli_installs_from_a_zip_archive() {
+        let dir = TempDir::new().unwrap();
+        let executable = format!("meow-cli{}", std::env::consts::EXE_SUFFIX);
+        let archive_path = dir.path().join("meow.zip");
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&archive_path).unwrap());
+        archive
+            .add_directory(
+                "meow-alpha/skills/",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        for (name, contents) in [
+            (format!("meow-alpha/{executable}"), "meow-cli"),
+            ("meow-alpha/skills/meow-cli/SKILL.md".to_owned(), "skill"),
+        ] {
+            archive
+                .start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(contents.as_bytes()).unwrap();
+        }
+        archive.finish().unwrap();
+        let destination = dir.path().join("meow-cli");
+
+        install_meow_cli(&archive_path, "meow-alpha-x.zip", &destination).unwrap();
+
+        assert_eq!(
+            std::fs::read(destination.join(&executable)).unwrap(),
+            b"meow-cli"
+        );
+        assert_eq!(
+            std::fs::read(destination.join("skills/meow-cli/SKILL.md")).unwrap(),
+            b"skill"
+        );
     }
 
     #[test]

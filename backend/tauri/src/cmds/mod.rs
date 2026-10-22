@@ -9,6 +9,7 @@ use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tauri::utils::platform::current_exe;
 
 mod migrate;
+mod panic_dialog;
 
 #[derive(Parser, Debug)]
 #[command(name = "clash-nyanpasu", version, about, long_about = None, disable_version_flag = true)]
@@ -38,7 +39,7 @@ enum Commands {
         args: Vec<String>,
     },
     /// Show a panic dialog while the application is enter panic handler.
-    PanicDialog { message: String },
+    PanicDialog,
     /// Launch the Widget with the specified name.
     StatisticWidget { variant: StatisticWidgetVariant },
 }
@@ -81,8 +82,8 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
                 let envs = crate::utils::collect::collect_envs(paths).unwrap();
                 println!("{envs:#?}");
             }
-            Commands::PanicDialog { message } => {
-                crate::utils::dialog::panic_dialog(message);
+            Commands::PanicDialog => {
+                panic_dialog::show()?;
             }
             Commands::StatisticWidget { variant } => {
                 nyanpasu_widget::start_statistic_widget(*variant)

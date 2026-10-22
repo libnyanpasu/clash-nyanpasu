@@ -1838,6 +1838,7 @@ dependencies = [
  "nyanpasu-config",
  "nyanpasu-core",
  "nyanpasu-core-manager",
+ "nyanpasu-crash-reporter",
  "nyanpasu-geodata",
  "nyanpasu-ipc",
  "nyanpasu-jobs",

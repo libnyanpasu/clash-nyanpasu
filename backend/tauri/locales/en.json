@@ -35,6 +35,22 @@
     "tun_mode": "TUN Mode"
   },
   "dialog": {
+    "crash_reporter": {
+      "heading": "Clash Nyanpasu ran into a problem and closed",
+      "description": "Send this report on GitHub to help us fix it.",
+      "version": "Version",
+      "system": "System",
+      "error": "Error",
+      "location": "Location",
+      "report": "Crash report",
+      "copy": "Copy report",
+      "copied": "Report copied",
+      "copy_failed": "Could not copy the report; select it and copy it by hand",
+      "close": "Close",
+      "report_issue": "Report issue",
+      "issue_opened": "Opened GitHub; the full report is on your clipboard",
+      "open_failed": "Could not open the issue page"
+    },
     "panic": "Please report this issue to Github issue tracker.",
     "migration_failed": {
       "open_backups": "Open backups folder",

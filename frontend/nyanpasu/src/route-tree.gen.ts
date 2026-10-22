@@ -42,6 +42,7 @@ import { Route as mainMainTopologyIndexRouteImport } from './pages/(main)/main/t
 import { Route as trayMenuTrayMenuProxiesIndexRouteImport } from './pages/(tray-menu)/tray-menu/proxies/index'
 import { Route as trayMenuTrayMenuProxiesGroupRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/route'
 import { Route as mainMainProfilesTypeIndexRouteImport } from './pages/(main)/main/profiles/$type/index'
+import { Route as mainMainProfilesFolderIndexRouteImport } from './pages/(main)/main/profiles/folder/index'
 import { Route as mainMainProvidersProxiesKeyRouteImport } from './pages/(main)/main/providers/proxies/$key'
 import { Route as mainMainProvidersRulesKeyRouteImport } from './pages/(main)/main/providers/rules/$key'
 import { Route as mainMainProxiesGroupNameRouteImport } from './pages/(main)/main/proxies/group/$name'
@@ -244,6 +245,12 @@ const mainMainProfilesTypeIndexRoute =
     path: '/$type/',
     getParentRoute: () => mainMainProfilesRouteRoute,
   } as any)
+const mainMainProfilesFolderIndexRoute =
+  mainMainProfilesFolderIndexRouteImport.update({
+    id: '/folder/',
+    path: '/folder/',
+    getParentRoute: () => mainMainProfilesRouteRoute,
+  } as any)
 const mainMainProvidersProxiesKeyRoute =
   mainMainProvidersProxiesKeyRouteImport.update({
     id: '/proxies/$key',
@@ -438,6 +445,7 @@ export interface FileRoutesByFullPath {
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
+  '/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
   '/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
@@ -485,6 +493,7 @@ export interface FileRoutesByTo {
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/main/profiles/$type': typeof mainMainProfilesTypeIndexRoute
+  '/main/profiles/folder': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug': typeof mainMainSettingsDebugIndexRoute
   '/main/topology/$dimension': typeof mainMainTopologyDimensionIndexRoute
@@ -547,6 +556,7 @@ export interface FileRoutesById {
   '/(main)/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
   '/(tray-menu)/tray-menu/proxies/group/$name': typeof trayMenuTrayMenuProxiesGroupNameRoute
   '/(main)/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
+  '/(main)/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/(main)/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/(main)/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
   '/(main)/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
@@ -609,6 +619,7 @@ export interface FileRouteTypes {
     | '/main/proxies/group/$name'
     | '/tray-menu/proxies/group/$name'
     | '/main/profiles/$type/'
+    | '/main/profiles/folder/'
     | '/main/settings/about/'
     | '/main/settings/debug/'
     | '/main/topology/$dimension/'
@@ -656,6 +667,7 @@ export interface FileRouteTypes {
     | '/main/proxies/group/$name'
     | '/tray-menu/proxies/group/$name'
     | '/main/profiles/$type'
+    | '/main/profiles/folder'
     | '/main/settings/about'
     | '/main/settings/debug'
     | '/main/topology/$dimension'
@@ -717,6 +729,7 @@ export interface FileRouteTypes {
     | '/(main)/main/proxies/group/$name'
     | '/(tray-menu)/tray-menu/proxies/group/$name'
     | '/(main)/main/profiles/$type/'
+    | '/(main)/main/profiles/folder/'
     | '/(main)/main/settings/about/'
     | '/(main)/main/settings/debug/'
     | '/(main)/main/topology/$dimension/'
@@ -980,6 +993,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainProfilesTypeIndexRouteImport
       parentRoute: typeof mainMainProfilesRouteRoute
     }
+    '/(main)/main/profiles/folder/': {
+      id: '/(main)/main/profiles/folder/'
+      path: '/folder'
+      fullPath: '/main/profiles/folder/'
+      preLoaderRoute: typeof mainMainProfilesFolderIndexRouteImport
+      parentRoute: typeof mainMainProfilesRouteRoute
+    }
     '/(main)/main/providers/proxies/$key': {
       id: '/(main)/main/providers/proxies/$key'
       path: '/proxies/$key'
@@ -1209,6 +1229,7 @@ interface mainMainProfilesRouteRouteChildren {
   mainMainProfilesInspectRouteRoute: typeof mainMainProfilesInspectRouteRoute
   mainMainProfilesIndexRoute: typeof mainMainProfilesIndexRoute
   mainMainProfilesTypeIndexRoute: typeof mainMainProfilesTypeIndexRoute
+  mainMainProfilesFolderIndexRoute: typeof mainMainProfilesFolderIndexRoute
   mainMainProfilesTypeDetailUidRoute: typeof mainMainProfilesTypeDetailUidRoute
   mainMainProfilesFolderFolderIdIndexRoute: typeof mainMainProfilesFolderFolderIdIndexRoute
 }
@@ -1218,6 +1239,7 @@ const mainMainProfilesRouteRouteChildren: mainMainProfilesRouteRouteChildren = {
   mainMainProfilesInspectRouteRoute: mainMainProfilesInspectRouteRoute,
   mainMainProfilesIndexRoute: mainMainProfilesIndexRoute,
   mainMainProfilesTypeIndexRoute: mainMainProfilesTypeIndexRoute,
+  mainMainProfilesFolderIndexRoute: mainMainProfilesFolderIndexRoute,
   mainMainProfilesTypeDetailUidRoute: mainMainProfilesTypeDetailUidRoute,
   mainMainProfilesFolderFolderIdIndexRoute:
     mainMainProfilesFolderFolderIdIndexRoute,

@@ -6,8 +6,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::Context as _;
 use async_trait::async_trait;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use specta::Type;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
@@ -146,6 +148,11 @@ impl UpdaterBackend for HttpUpdaterBackend {
             _ => None,
         };
         url.set_path(&shared::get_download_path(tag, &artifact));
+        // Meow publishes `<artifact>.sha256` beside each archive.
+        let checksum_url = meow_version
+            .is_some()
+            .then(|| parse_gh_url(&mirror, &format!("{url}.sha256")))
+            .transpose()?;
         let url = parse_gh_url(&mirror, url.as_str())?;
         let session =
             DownloadSession::new(self.http_client()?, url, staging.path().join(&artifact));
@@ -169,6 +176,15 @@ impl UpdaterBackend for HttpUpdaterBackend {
                 () = shutdown.cancelled() => anyhow::bail!("updater shut down"),
             }
         }
+        let checksum = match checksum_url {
+            Some(url) => Some(tokio::select! {
+                checksum = fetch_text(self.http_client()?, url) => {
+                    checksum.context("could not fetch the archive's published SHA-256")?
+                }
+                () = shutdown.cancelled() => anyhow::bail!("updater shut down"),
+            }),
+            None => None,
+        };
         progress.report(UpdaterState::Decompressing, None);
         let filename = format!(
             "{}{}",
@@ -190,8 +206,12 @@ impl UpdaterBackend for HttpUpdaterBackend {
         // A blocking extraction cannot be aborted midway. It owns staging until
         // completion, and the shutdown waits for it.
         tokio::task::spawn_blocking(move || {
+            let archive = extraction_staging.path().join(&extraction_artifact);
+            if let Some(checksum) = checksum {
+                verify_sha256(&archive, &extraction_artifact, &checksum)?;
+            }
             extract_core(
-                extraction_staging.path().join(&extraction_artifact),
+                archive,
                 &extraction_artifact,
                 expected_archive_binary.as_deref(),
                 extraction_source,
@@ -249,6 +269,47 @@ impl UpdaterBackend for HttpUpdaterBackend {
             companion,
         })
     }
+}
+
+async fn fetch_text(client: reqwest::Client, url: url::Url) -> anyhow::Result<String> {
+    Ok(client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?)
+}
+
+/// Checks `archive` against `checksum`, the contents of a release's
+/// `<artifact>.sha256`: a hex digest, optionally followed by the file name.
+fn verify_sha256(archive: &Path, artifact: &str, checksum: &str) -> anyhow::Result<()> {
+    let mut fields = checksum.split_whitespace();
+    let expected = fields
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("the published SHA-256 of {artifact} is empty"))?;
+    if let Some(name) = fields.next() {
+        // `sha256sum` marks a file it read in binary mode with `*`.
+        let name = name.strip_prefix('*').unwrap_or(name);
+        anyhow::ensure!(
+            name == artifact,
+            "the published SHA-256 is for {name}, not {artifact}"
+        );
+    }
+    let mut hasher = Sha256::new();
+    let mut file = std::fs::File::open(archive)?;
+    let mut buffer = vec![0; 64 * 1024];
+    loop {
+        match file.read(&mut buffer)? {
+            0 => break,
+            read => hasher.update(&buffer[..read]),
+        }
+    }
+    anyhow::ensure!(
+        hex::encode(hasher.finalize()).eq_ignore_ascii_case(expected),
+        "{artifact} does not match its published SHA-256"
+    );
+    Ok(())
 }
 
 fn extract_core(
@@ -906,6 +967,31 @@ mod tests {
             std::fs::read(staged.join("skills/meow-cli/SKILL.md")).unwrap(),
             b"skill"
         );
+    }
+
+    #[test]
+    fn archives_are_checked_against_their_published_sha256() {
+        let dir = TempDir::new().unwrap();
+        let artifact = "meow-alpha-33ec533-x86_64-pc-windows-msvc.zip";
+        let archive = dir.path().join(artifact);
+        std::fs::write(&archive, b"meow archive").unwrap();
+        let digest = hex::encode(Sha256::digest(b"meow archive"));
+
+        // As Meow publishes it, and as `sha256sum` writes it in text mode.
+        verify_sha256(&archive, artifact, &format!("{digest} *{artifact}\n")).unwrap();
+        verify_sha256(&archive, artifact, &format!("{digest}  {artifact}")).unwrap();
+        verify_sha256(&archive, artifact, &digest.to_uppercase()).unwrap();
+
+        let tampered = hex::encode(Sha256::digest(b"another archive"));
+        let error = verify_sha256(&archive, artifact, &tampered).unwrap_err();
+        assert!(error.to_string().contains("does not match"), "{error}");
+        let error =
+            verify_sha256(&archive, artifact, &format!("{digest} *meow-v0.26.1.zip")).unwrap_err();
+        assert!(
+            error.to_string().contains("is for meow-v0.26.1.zip"),
+            "{error}"
+        );
+        verify_sha256(&archive, artifact, " \n").unwrap_err();
     }
 
     #[test]

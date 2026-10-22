@@ -42,12 +42,25 @@ pub enum LogoPreset {
 }
 
 /// The logo a widget shows.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub enum Logo {
     /// The bundled cat, drawn from its vector source.
     Builtin(LogoPreset),
     /// A PNG image, rasterized by the widget at the size it is drawn at.
     Image(Vec<u8>),
+}
+
+/// An image is shown as a preview: the whole PNG would be every byte of it.
+impl std::fmt::Debug for Logo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Builtin(preset) => f.debug_tuple("Builtin").field(preset).finish(),
+            Self::Image(bytes) => f
+                .debug_tuple("Image")
+                .field(&nyanpasu_log_preview::bytes(bytes))
+                .finish(),
+        }
+    }
 }
 
 impl Default for Logo {
@@ -133,5 +146,20 @@ mod tests {
             let decoded: Message = postcard::from_bytes(&bytes).unwrap();
             assert_eq!(format!("{decoded:?}"), format!("{message:?}"));
         }
+    }
+
+    #[test]
+    fn image_logos_debug_as_a_preview() {
+        let png = vec![0x42; 256 * 1024];
+        let debug = format!("{:?}", Message::UpdateLogo(Logo::Image(png.clone())));
+        assert_eq!(
+            debug,
+            format!("UpdateLogo(Image({:?}))", nyanpasu_log_preview::bytes(&png))
+        );
+        assert!(debug.len() < 100, "{debug}");
+        assert_eq!(
+            format!("{:?}", Logo::Builtin(LogoPreset::Tun)),
+            "Builtin(Tun)"
+        );
     }
 }

@@ -53,6 +53,7 @@ nyanpasu-ipc = { path = 'nyanpasu-runtime/nyanpasu_ipc', features = [
 ] }  # IPC bridge between the UI process and service process
 clash-api = { path = 'nyanpasu-runtime/crates/clash-api' }
 nyanpasu-core-manager = { path = 'nyanpasu-runtime/crates/nyanpasu-core-manager' }  # Local-host CoreControl (v2 control plane)
+nyanpasu-log-preview = { path = 'nyanpasu-runtime/crates/nyanpasu-utils/log-preview' }  # Bounded payload previews for logs
 
 # --- forks ---
 # `rev` values are the commits Cargo.lock already resolved.

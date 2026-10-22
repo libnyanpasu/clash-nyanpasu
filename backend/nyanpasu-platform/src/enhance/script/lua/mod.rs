@@ -28,7 +28,7 @@ fn run_script(mapping: Mapping, script: &str, console: &ConsoleSink) -> anyhow::
     // errors and tracebacks would point at Rust source instead of the script.
     let output = lua.load(script).set_name("=script").eval::<mlua::Value>()?;
     if !output.is_table() {
-        anyhow::bail!("Script must return a table, data: {:?}", output);
+        anyhow::bail!("Script must return a table, not {}", output.type_name());
     }
     match ordered_map::from_lua(&lua, output).context("Failed to convert output to config")? {
         Value::Mapping(config) => Ok(config),

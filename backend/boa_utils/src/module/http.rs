@@ -55,7 +55,7 @@ impl HttpModuleLoader {
         buf
     }
 
-    #[tracing::instrument(skip(context))]
+    #[tracing::instrument(skip(item, context), fields(mime = %item.mime, content = %nyanpasu_log_preview::text(&item.content)))]
     fn handle_cached_item(item: CachedItem, context: &mut Context) -> JsResult<Module> {
         let mime = Mime::from_str(item.mime.as_str()).map_err(|_| {
             log::error!("failed to parse mime type `{}`", item.mime);

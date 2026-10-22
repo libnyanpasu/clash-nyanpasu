@@ -18,6 +18,7 @@ ipc-host = ['ipc', 'nyanpasu-local-channel/tokio']
 clap = { version = '4', features = ['derive'] }
 serde = { version = '1', features = ['derive'] }
 specta = { version = '^2.0.0-rc.25', features = ['derive'] }
+nyanpasu-log-preview = { workspace = true }
 nyanpasu-local-channel = { path = '../nyanpasu-local-channel', optional = true }
 snafu = { workspace = true, optional = true }
 

@@ -1,5 +1,7 @@
 on:
   pull_request:
+  pull_request_target:
+    types: [closed]
   push:
     branches:
       - main
@@ -14,12 +16,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Decides which parts the other jobs check. Those jobs keep their matrix and
-  # always report, because the ruleset requires each matrix check by name; a
-  # part a pull request does not touch skips its steps instead of its job.
+  # Entering the same concurrency group cancels the PR's running or pending CI.
+  # This base-branch event also handles conflicted PRs; never run PR code here.
+  cancel:
+    name: Cancel Closed Pull Request CI
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - run: echo 'Pull request closed; previous CI cancelled by concurrency.'
+
+  # Decides which parts dependent jobs check. On normal CI events, they keep
+  # their matrix and always report, because the ruleset requires each matrix
+  # check by name; an untouched part skips its steps instead of its job.
   # See "CI checks by changed part" in docs/development/workflow.md.
   changes:
     name: Changes
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.classify.outputs.frontend }}

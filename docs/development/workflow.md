@@ -69,6 +69,14 @@ these YAML files.
 
 ### CI checks by changed part
 
+`ci.yml` uses `pull_request_target: closed` to cancel a closed or merged pull
+request's running or pending CI through the existing concurrency group. This
+base-branch event runs only the `Cancel Closed Pull Request CI` job, with no token
+permissions or checkout; `Changes` and its dependent jobs are skipped. The group
+uses the pull request number rather than the merged branch ref, so closing a pull
+request does not cancel the target branch's push CI. Normal pull request checks
+continue to use `pull_request`.
+
 `ci.yml` checks a pull request only in the parts it changes. Its `Changes` job
 runs `deno task check:changed-parts HEAD^1` on the merge commit and outputs
 `frontend`, `backend` and `scripts`. The rules are the ordered `CHANGE_RULES`

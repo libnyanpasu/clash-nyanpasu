@@ -79,15 +79,20 @@ fn install_panic_hook(app_handle: Option<tauri::AppHandle>) {
             return;
         }
 
+        // The version and commit name the build whose archived symbols resolve
+        // the backtrace's module offsets.
         // FIXME: maybe move this logic to a util function?
         let msg = format!(
             "Oops, we encountered some issues and program will exit immediately.
 
+version: {} ({})
 payload: {payload:#?}
 location: {location:?}
-backtrace: {backtrace:#?}
-
+backtrace:
+{backtrace}
 ",
+            consts::BUILD_INFO.pkg_version,
+            consts::BUILD_INFO.commit_hash,
         );
         let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
             .arg("panic-dialog")

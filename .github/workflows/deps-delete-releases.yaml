@@ -32,6 +32,7 @@ jobs:
           fail-if-no-release: false
           assets: |
             *.zip
+            *.7z
             *.gz
             *.AppImage
             *.deb

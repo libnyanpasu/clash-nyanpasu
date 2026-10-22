@@ -56,6 +56,8 @@ type CoreLogs = ReturnType<typeof useClashLogs>
 const coreLogRowKey = (row: CoreLogRow) =>
   `${row.id.generation}:${row.id.sequence}`
 
+const neverAdjust = () => false
+
 const CoreRecord = memo(function CoreRecord({
   row,
   detail,
@@ -140,6 +142,12 @@ function Viewer({
     useFlushSync: false,
     useAnimationFrameWithResizeObserver: true,
   })
+  // Following, the list scrolls to the newest row once its rows are measured.
+  // Keeping the scroll position for each row measured above it would write
+  // it between their measurements, so every row would lay out the page.
+  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = following
+    ? neverAdjust
+    : undefined
   const totalSize = rowVirtualizer.getTotalSize()
   const showRows = useDeferredValue(true, false)
   const isEntering = useEnteringRows(rows, coreLogRowKey)

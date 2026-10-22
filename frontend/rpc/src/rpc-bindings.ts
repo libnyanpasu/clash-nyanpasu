@@ -147,6 +147,22 @@ export function createRpcClient(
       typedError<ProfileDocument_Serialize, IpcError>(
         __RPC_INVOKE('get_profiles'),
       ),
+    /**
+     *  Downloads a profile URL and suggests how to import it, for the user to
+     *  confirm. Desktop-only: it sends a request to any URL the caller names.
+     */
+    probeProfileUrl: (
+      url: string,
+      option: {
+        user_agent?: string | null
+        with_proxy: boolean | null
+        self_proxy: boolean | null
+        update_interval_minutes: RemoteSyncInterval | null
+      } | null,
+    ) =>
+      typedError<ProfileUrlProbe, IpcError>(
+        __RPC_INVOKE('probe_profile_url', { url, option }),
+      ),
     getProfileSyncStatus: (uid: ProfileId) =>
       typedError<ProfileSyncStatus, IpcError>(
         __RPC_INVOKE('get_profile_sync_status', { uid }),
@@ -2328,6 +2344,37 @@ export type IconData = {
   data_url: string
 }
 
+export type ImportClassification = {
+  /**  None when the signals do not settle on a kind. */
+  suggested: ProfileImportKind | null
+  /**  Every signal found, whether or not it decided the suggestion. */
+  evidence: ImportEvidence[]
+}
+
+export type ImportEvidence = {
+  kind: ProfileImportKind
+  signal: ImportSignal
+}
+
+/**  A signal that a downloaded profile is of some kind. */
+export type ImportSignal =
+  /**  `subscription-userinfo` carries the traffic quota of a subscription. */
+  | 'subscription_quota'
+  /**  `profile-title` names a subscription. */
+  | 'profile_title'
+  /**  `profile-update-interval` asks a subscription to be refreshed. */
+  | 'update_interval'
+  /**  The extension of the file name in `Content-Disposition` or the URL path. */
+  | 'file_extension'
+  /**  The media type in `Content-Type`. */
+  | 'content_type'
+  /**  A YAML mapping with `proxies` or `proxy-providers`. */
+  | 'proxies_key'
+  /**  A YAML mapping with `prepend-`, `append-`, `override__` or `filter__` keys. */
+  | 'overlay_directives'
+  /**  Lines that read as the script language. */
+  | 'script_syntax'
+
 /**  A failure of installing a downloaded core binary over the installed one. */
 export type InstallCoreBinaryError =
   | { kind: 'start_elevated_copy'; core: string; destination: ErrorPath }
@@ -3269,6 +3316,15 @@ export type ProfileFileError =
 /**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
 export type ProfileId = string
 
+/**  What a downloaded profile can be imported as. */
+export type ProfileImportKind =
+  /**  A Clash config file. */
+  | 'config'
+  /**  A merge: a YAML overlay applied to a config. */
+  | 'overlay'
+  | 'javascript'
+  | 'lua'
+
 /**  One named profile item. */
 export type ProfileItem = ProfileItem_Serialize | ProfileItem_Deserialize
 
@@ -3414,6 +3470,22 @@ export type ProfileSyncStatus = {
   journal_degraded: boolean
   registration_error: string | null
   history_limit: number
+}
+
+/**  A profile URL downloaded once so the user can confirm how to import it. */
+export type ProfileUrlProbe = {
+  classification: ImportClassification
+  /**  The kinds whose import validation accepts the content. */
+  accepted: ProfileImportKind[]
+  /**  `profile-title`, else the name the import would derive from the URL. */
+  suggested_name: string
+  subscription: ProfileSubscriptionInfo
+  suggested_update_interval_minutes: number | null
+  /**
+   *  Imported as is when the user picks a local import, so it is not
+   *  downloaded twice.
+   */
+  content: string
 }
 
 export type ProfileValidationError =

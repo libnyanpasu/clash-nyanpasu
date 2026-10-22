@@ -2,11 +2,23 @@
 //! and its content. The suggestion only preselects a choice the user confirms;
 //! the import still validates the content against the kind they pick.
 
+use nyanpasu_config::profile::{ScriptRuntime, TransformKind};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Mapping;
 
 /// What a downloaded profile can be imported as.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    specta::Type,
+    strum::VariantArray,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileImportKind {
     /// A Clash config file.
@@ -16,6 +28,22 @@ pub enum ProfileImportKind {
     #[serde(rename = "javascript")]
     JavaScript,
     Lua,
+}
+
+impl ProfileImportKind {
+    /// The transform the kind imports as; a config is no transform.
+    pub fn transform(self) -> Option<TransformKind> {
+        match self {
+            Self::Config => None,
+            Self::Overlay => Some(TransformKind::Overlay),
+            Self::JavaScript => Some(TransformKind::Script {
+                runtime: ScriptRuntime::JavaScript,
+            }),
+            Self::Lua => Some(TransformKind::Script {
+                runtime: ScriptRuntime::Lua,
+            }),
+        }
+    }
 }
 
 /// A signal that a downloaded profile is of some kind.

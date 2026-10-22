@@ -907,7 +907,7 @@ impl ProfilesActor {
         }
     }
 
-    fn remote_import_definition(
+    pub(crate) fn remote_import_definition(
         url: url::Url,
         transform: Option<TransformKind>,
         option: RemoteProfileOptions,
@@ -1386,7 +1386,7 @@ impl ProfilesActor {
         }
     }
 
-    fn validate_fetched_content(
+    pub(crate) fn validate_fetched_content(
         definition: &ProfileDefinition,
         content: &str,
     ) -> Result<(), ProfileContentError> {

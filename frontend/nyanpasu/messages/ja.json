@@ -1267,6 +1267,8 @@
   "profile_folder_delete_title": "フォルダーを削除",
   "profile_folder_delete_description": "{count} 件のファイルが「フォルダーなし」に移動します。",
   "profile_folder_layout_failed": "フォルダーを更新できませんでした: {error}",
+  "profile_folder_move_up": "上へ移動",
+  "profile_folder_move_down": "下へ移動",
   "profile_create_config_title": "新しい設定",
   "profile_create_transform_title": "新しい変換",
   "profile_kind_file": "単一",

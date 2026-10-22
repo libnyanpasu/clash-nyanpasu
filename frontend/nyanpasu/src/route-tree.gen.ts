@@ -52,6 +52,7 @@ import { Route as mainMainTopologyFlowIndexRouteImport } from './pages/(main)/ma
 import { Route as mainMainTopologyMapIndexRouteImport } from './pages/(main)/main/topology/map/index'
 import { Route as trayMenuTrayMenuProxiesGroupNameRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/$name'
 import { Route as mainMainProfilesTypeDetailUidRouteImport } from './pages/(main)/main/profiles/$type/detail/$uid'
+import { Route as mainMainProfilesFolderFolderIdIndexRouteImport } from './pages/(main)/main/profiles/folder/$folderId/index'
 import { Route as mainMainSettingsAboutCreditsIndexRouteImport } from './pages/(main)/main/settings/about/credits/index'
 import { Route as mainMainSettingsClashAiIndexRouteImport } from './pages/(main)/main/settings/clash/ai/index'
 import { Route as mainMainSettingsClashControlIndexRouteImport } from './pages/(main)/main/settings/clash/control/index'
@@ -303,6 +304,12 @@ const mainMainProfilesTypeDetailUidRoute =
     path: '/$type/detail/$uid',
     getParentRoute: () => mainMainProfilesRouteRoute,
   } as any)
+const mainMainProfilesFolderFolderIdIndexRoute =
+  mainMainProfilesFolderFolderIdIndexRouteImport.update({
+    id: '/folder/$folderId/',
+    path: '/folder/$folderId/',
+    getParentRoute: () => mainMainProfilesRouteRoute,
+  } as any)
 const mainMainSettingsAboutCreditsIndexRoute =
   mainMainSettingsAboutCreditsIndexRouteImport.update({
     id: '/credits/',
@@ -437,6 +444,7 @@ export interface FileRoutesByFullPath {
   '/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map/': typeof mainMainTopologyMapIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/main/profiles/folder/$folderId/': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
   '/main/settings/clash/ai/': typeof mainMainSettingsClashAiIndexRoute
   '/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
@@ -483,6 +491,7 @@ export interface FileRoutesByTo {
   '/main/topology/flow': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map': typeof mainMainTopologyMapIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/main/profiles/folder/$folderId': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/main/settings/about/credits': typeof mainMainSettingsAboutCreditsIndexRoute
   '/main/settings/clash/ai': typeof mainMainSettingsClashAiIndexRoute
   '/main/settings/clash/control': typeof mainMainSettingsClashControlIndexRoute
@@ -544,6 +553,7 @@ export interface FileRoutesById {
   '/(main)/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/(main)/main/topology/map/': typeof mainMainTopologyMapIndexRoute
   '/(main)/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
+  '/(main)/main/profiles/folder/$folderId/': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/(main)/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
   '/(main)/main/settings/clash/ai/': typeof mainMainSettingsClashAiIndexRoute
   '/(main)/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
@@ -605,6 +615,7 @@ export interface FileRouteTypes {
     | '/main/topology/flow/'
     | '/main/topology/map/'
     | '/main/profiles/$type/detail/$uid'
+    | '/main/profiles/folder/$folderId/'
     | '/main/settings/about/credits/'
     | '/main/settings/clash/ai/'
     | '/main/settings/clash/control/'
@@ -651,6 +662,7 @@ export interface FileRouteTypes {
     | '/main/topology/flow'
     | '/main/topology/map'
     | '/main/profiles/$type/detail/$uid'
+    | '/main/profiles/folder/$folderId'
     | '/main/settings/about/credits'
     | '/main/settings/clash/ai'
     | '/main/settings/clash/control'
@@ -711,6 +723,7 @@ export interface FileRouteTypes {
     | '/(main)/main/topology/flow/'
     | '/(main)/main/topology/map/'
     | '/(main)/main/profiles/$type/detail/$uid'
+    | '/(main)/main/profiles/folder/$folderId/'
     | '/(main)/main/settings/about/credits/'
     | '/(main)/main/settings/clash/ai/'
     | '/(main)/main/settings/clash/control/'
@@ -1037,6 +1050,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainProfilesTypeDetailUidRouteImport
       parentRoute: typeof mainMainProfilesRouteRoute
     }
+    '/(main)/main/profiles/folder/$folderId/': {
+      id: '/(main)/main/profiles/folder/$folderId/'
+      path: '/folder/$folderId'
+      fullPath: '/main/profiles/folder/$folderId/'
+      preLoaderRoute: typeof mainMainProfilesFolderFolderIdIndexRouteImport
+      parentRoute: typeof mainMainProfilesRouteRoute
+    }
     '/(main)/main/settings/about/credits/': {
       id: '/(main)/main/settings/about/credits/'
       path: '/credits'
@@ -1190,6 +1210,7 @@ interface mainMainProfilesRouteRouteChildren {
   mainMainProfilesIndexRoute: typeof mainMainProfilesIndexRoute
   mainMainProfilesTypeIndexRoute: typeof mainMainProfilesTypeIndexRoute
   mainMainProfilesTypeDetailUidRoute: typeof mainMainProfilesTypeDetailUidRoute
+  mainMainProfilesFolderFolderIdIndexRoute: typeof mainMainProfilesFolderFolderIdIndexRoute
 }
 
 const mainMainProfilesRouteRouteChildren: mainMainProfilesRouteRouteChildren = {
@@ -1198,6 +1219,8 @@ const mainMainProfilesRouteRouteChildren: mainMainProfilesRouteRouteChildren = {
   mainMainProfilesIndexRoute: mainMainProfilesIndexRoute,
   mainMainProfilesTypeIndexRoute: mainMainProfilesTypeIndexRoute,
   mainMainProfilesTypeDetailUidRoute: mainMainProfilesTypeDetailUidRoute,
+  mainMainProfilesFolderFolderIdIndexRoute:
+    mainMainProfilesFolderFolderIdIndexRoute,
 }
 
 const mainMainProfilesRouteRouteWithChildren =

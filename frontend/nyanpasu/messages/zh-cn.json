@@ -1278,6 +1278,8 @@
   "profile_folder_delete_title": "删除文件夹",
   "profile_folder_delete_description": "{count} 个配置将移至“未分组”。",
   "profile_folder_layout_failed": "无法更新文件夹：{error}",
+  "profile_folder_move_up": "上移",
+  "profile_folder_move_down": "下移",
   "profile_create_config_title": "新建配置",
   "profile_create_transform_title": "新建转换",
   "profile_kind_file": "单个配置",

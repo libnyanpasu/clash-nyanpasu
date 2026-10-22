@@ -1314,6 +1314,8 @@
     }
   ],
   "profile_folder_layout_failed": "Couldn't update the folders: {error}",
+  "profile_folder_move_up": "Move up",
+  "profile_folder_move_down": "Move down",
   "profile_create_config_title": "New config",
   "profile_create_transform_title": "New transform",
   "profile_kind_file": "Single",

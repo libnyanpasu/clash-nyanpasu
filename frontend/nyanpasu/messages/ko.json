@@ -1187,6 +1187,8 @@
   "profile_folder_delete_title": "폴더 삭제",
   "profile_folder_delete_description": "프로필 {count}개가 '폴더 없음'으로 이동합니다.",
   "profile_folder_layout_failed": "폴더를 업데이트하지 못했습니다: {error}",
+  "profile_folder_move_up": "위로 이동",
+  "profile_folder_move_down": "아래로 이동",
   "profile_create_config_title": "새 설정",
   "profile_create_transform_title": "새 변환",
   "profile_kind_file": "단일 설정",

@@ -1235,6 +1235,8 @@
     }
   ],
   "profile_folder_layout_failed": "Не удалось обновить папки: {error}",
+  "profile_folder_move_up": "Переместить вверх",
+  "profile_folder_move_down": "Переместить вниз",
   "profile_create_config_title": "Новая конфигурация",
   "profile_create_transform_title": "Новое преобразование",
   "profile_kind_file": "Одиночная",

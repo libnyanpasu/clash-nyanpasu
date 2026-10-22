@@ -1278,6 +1278,8 @@
   "profile_folder_delete_title": "刪除資料夾",
   "profile_folder_delete_description": "{count} 個設定檔將移至「未分組」。",
   "profile_folder_layout_failed": "無法更新資料夾：{error}",
+  "profile_folder_move_up": "上移",
+  "profile_folder_move_down": "下移",
   "profile_create_config_title": "新增設定檔",
   "profile_create_transform_title": "新增轉換",
   "profile_kind_file": "單一設定檔",

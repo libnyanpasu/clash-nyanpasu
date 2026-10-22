@@ -26,7 +26,7 @@ export const useActiveProfile = (profile: ProfileItem_Serialize) => {
           name: profile.name,
         })} \n ${formatError(err)}`,
         {
-          title: 'Error',
+          title: m.profile_error_title(),
           kind: 'error',
           error: err,
         },

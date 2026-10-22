@@ -5,7 +5,7 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { TransformChainList } from '@/pages/(main)/main/profiles/_modules/transform-chain-list'
-import ScopedTransformChainCard from '@/pages/(main)/main/profiles/$type/detail/_modules/scoped-transform-chain-card'
+import TransformChainSection from '@/pages/(main)/main/profiles/$type/detail/_modules/transform-chain-section'
 import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/query'
 import type {
@@ -120,7 +120,7 @@ async function setup(
     const current = query.data?.items.find((item) => item.uid === 'profile')
     if (!current || current.type !== 'config') return null
     return layout === 'scoped' ? (
-      <ScopedTransformChainCard profile={current} />
+      <TransformChainSection profile={current} />
     ) : (
       <TransformChainList
         taskKey="test-global"

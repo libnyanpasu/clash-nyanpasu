@@ -2,15 +2,8 @@ import { AnimatePresence } from 'motion/react'
 import { ComponentProps, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
 import { Input } from '@nyanpasu/ui/input'
-import {
-  Modal,
-  ModalContent,
-  ModalTitle,
-  ModalTrigger,
-} from '@nyanpasu/ui/modal'
+import { ModalTrigger } from '@nyanpasu/ui/modal'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -24,6 +17,7 @@ import {
 } from '@nyanpasu/rpc/types'
 import AnimatedErrorItem from '../../../_modules/error-item'
 import { subscriptionUrlSchema } from '../../../_modules/subscription-url-schema'
+import ProfileFieldDialog from './profile-field-dialog'
 
 const formSchema = z.object({
   url: subscriptionUrlSchema,
@@ -90,8 +84,8 @@ export default function SubscriptionUrlEditor({
 
           handleClose()
         } catch (error) {
-          message(`Update failed: \n ${formatError(error)}`, {
-            title: 'Error',
+          message(m.profile_update_failed({ error: formatError(error) }), {
+            title: m.profile_error_title(),
             kind: 'error',
             error,
           })
@@ -100,7 +94,7 @@ export default function SubscriptionUrlEditor({
       (error) => {
         console.error(error)
         message(formatError(error.url?.message ?? ''), {
-          title: 'Error',
+          title: m.profile_error_title(),
           kind: 'error',
         })
       },
@@ -110,48 +104,37 @@ export default function SubscriptionUrlEditor({
   const handleSubmit = useLockFn(blockTask.execute)
 
   return (
-    <Modal open={open} onOpenChange={setOpen}>
-      <ModalTrigger {...props} />
+    <ProfileFieldDialog
+      {...props}
+      title={m.profile_subscription_url_editor_label()}
+      open={open}
+      onOpenChange={setOpen}
+      onSave={handleSubmit}
+      onCancel={handleClose}
+      saving={blockTask.isPending}
+      field={
+        <Controller
+          control={form.control}
+          name="url"
+          render={({ field }) => (
+            <div className="space-y-2">
+              <Input
+                label={m.profile_subscription_url_label()}
+                variant="outlined"
+                {...field}
+              />
 
-      <ModalContent>
-        <Card className="w-96">
-          <CardHeader>
-            <ModalTitle>{m.profile_subscription_url_editor_label()}</ModalTitle>
-          </CardHeader>
-
-          <CardContent>
-            <Controller
-              control={form.control}
-              name="url"
-              render={({ field }) => (
-                <div className="space-y-2">
-                  <Input
-                    label={m.profile_subscription_url_label()}
-                    variant="outlined"
-                    {...field}
-                  />
-
-                  <AnimatePresence>
-                    {form.formState.errors.url && (
-                      <AnimatedErrorItem className="text-error">
-                        {form.formState.errors.url?.message}
-                      </AnimatedErrorItem>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-            />
-          </CardContent>
-
-          <CardFooter className="gap-1">
-            <Button onClick={handleSubmit} loading={blockTask.isPending}>
-              {m.common_save()}
-            </Button>
-
-            <Button onClick={handleClose}>{m.common_cancel()}</Button>
-          </CardFooter>
-        </Card>
-      </ModalContent>
-    </Modal>
+              <AnimatePresence>
+                {form.formState.errors.url && (
+                  <AnimatedErrorItem className="text-error">
+                    {form.formState.errors.url?.message}
+                  </AnimatedErrorItem>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        />
+      }
+    />
   )
 }

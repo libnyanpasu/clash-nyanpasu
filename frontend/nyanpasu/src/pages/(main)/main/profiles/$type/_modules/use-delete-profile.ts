@@ -9,6 +9,8 @@ import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 export const useDeleteProfile = (
   profile: ProfileItem_Serialize,
   options?: {
+    /** Replaces the generic confirmation text. */
+    description?: string
     onSuccess?: () => void | Promise<void>
   },
 ) => {
@@ -19,8 +21,8 @@ export const useDeleteProfile = (
       await drop.mutateAsync(profile.uid)
       await options?.onSuccess?.()
     } catch (error) {
-      message(`Delete failed: \n ${formatError(error)}`, {
-        title: 'Error',
+      message(m.profile_delete_failed({ error: formatError(error) }), {
+        title: m.profile_error_title(),
         kind: 'error',
         error,
       })
@@ -28,10 +30,13 @@ export const useDeleteProfile = (
   })
 
   const handleClick = useLockFn(async () => {
-    const answer = await ask(m.profile_delete_description(), {
-      title: m.profile_delete_title(),
-      kind: 'warning',
-    })
+    const answer = await ask(
+      options?.description ?? m.profile_delete_description(),
+      {
+        title: m.profile_delete_title(),
+        kind: 'warning',
+      },
+    )
 
     // user cancelled the deletion
     if (!answer) {

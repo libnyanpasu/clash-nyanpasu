@@ -177,6 +177,11 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getProfiles', ...args],
         queryFn: () => commands.getProfiles(...args),
       }),
+    probeProfileUrl: (...args: Parameters<typeof commands.probeProfileUrl>) =>
+      queryOptions({
+        queryKey: ['probeProfileUrl', ...args],
+        queryFn: () => commands.probeProfileUrl(...args),
+      }),
     getProfileSyncStatus: (
       ...args: Parameters<typeof commands.getProfileSyncStatus>
     ) =>

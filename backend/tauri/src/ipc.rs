@@ -404,6 +404,23 @@ pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
     Ok(())
 }
 
+/// Downloads a profile URL and suggests how to import it, for the user to
+/// confirm. Desktop-only: it sends a request to any URL the caller names.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn probe_profile_url(
+    client: State<'_, NyanpasuClient>,
+    url: String,
+    option: Option<RemoteProfileOptionsPatch>,
+) -> Result<crate::client::profiles::ProfileUrlProbe> {
+    let url = snafu::ResultExt::context(
+        url::Url::parse(&url),
+        InvalidSubscriptionUrlSnafu { url: &url },
+    )?;
+    Ok(client.probe_profile_url(url, option).await?)
+}
+
 #[nyanpasu_macro::rpc(http)]
 #[tauri::command]
 #[specta::specta]

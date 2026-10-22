@@ -60,6 +60,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_clash_config,
             ipc::get_hotkey_functions,
             ipc::get_profiles,
+            ipc::probe_profile_url,
             ipc::get_profile_sync_status,
             ipc::get_profile_sync_runs,
             ipc::get_profile_sync_logs,
@@ -538,6 +539,8 @@ mod tests {
         assert!(!queries.contains("setDebugHttpEnabled:"));
         assert!(mutations.contains("setDebugHttpEnabled:"));
         assert!(queries.contains("getAppUpdateState:"));
+        // A probe downloads but writes nothing.
+        assert!(queries.contains("probeProfileUrl:"));
         for name in [
             "checkAppUpdate:",
             "downloadAppUpdate:",

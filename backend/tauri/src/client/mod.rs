@@ -1141,6 +1141,21 @@ impl NyanpasuClient {
         Ok(outcome)
     }
 
+    /// Downloads a profile URL with the import's options and suggests how to
+    /// import it. The user confirms the kind and whether to keep the URL;
+    /// nothing is written here.
+    pub async fn probe_profile_url(
+        &self,
+        url: url::Url,
+        options: Option<RemoteProfileOptionsPatch>,
+    ) -> Result<profiles::ProfileUrlProbe> {
+        let mut option = RemoteProfileOptions::default();
+        if let Some(patch) = options {
+            option.apply(patch);
+        }
+        Ok(self.inner.profiles.probe(url, option).await?)
+    }
+
     /// Import a remote subscription via actor-owned fetch-before-commit. A
     /// `None` `transform` imports a Config File and auto-activates it when
     /// nothing is current; `Some` imports a Transform of that kind, which is

@@ -8,18 +8,23 @@ use std::{sync::Arc, time::Duration};
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::profile::{
-    ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, Profiles,
-    RemoteProfileOptions, RemoteProfileOptionsPatch, TransformKind,
+    ManagedProfilePath, ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch,
+    Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch, SubscriptionInfo, TransformKind,
 };
-use nyanpasu_core::state::{PersistentStateManagerSetup, StateSnapshot};
+use nyanpasu_core::{
+    profile_import::{self, ImportClassification, ImportFacts, ProfileImportKind},
+    state::{PersistentStateManagerSetup, StateSnapshot},
+};
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
+use strum::VariantArray as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     core::migration::modules::profiles::ProfilesFormat,
     state::profiles::{
-        CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-        ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu, ReorderOp,
+        CommitReport, FetchSubscriptionSnafu, NewProfileRequest, ProfilesActor, ProfilesActorArgs,
+        ProfilesActorMessage, ProfilesActorStoppedSnafu, ProfilesError, ProfilesReplyDroppedSnafu,
+        ReorderOp,
         ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
         sources::SourcesSnapshot,
     },
@@ -37,6 +42,23 @@ struct ProfilesClientInner {
     snapshot: StateSnapshot<Profiles>,
     sources: tokio::sync::watch::Receiver<SourcesSnapshot>,
     jobs: crate::state::profiles::jobs::ProfileJobs,
+    /// Shared with the actor; a probe downloads without touching its state.
+    fetcher: Arc<dyn SubscriptionFetcher>,
+}
+
+/// A profile URL downloaded once so the user can confirm how to import it.
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub struct ProfileUrlProbe {
+    pub classification: ImportClassification,
+    /// The kinds whose import validation accepts the content.
+    pub accepted: Vec<ProfileImportKind>,
+    /// `profile-title`, else the name the import would derive from the URL.
+    pub suggested_name: String,
+    pub subscription: SubscriptionInfo,
+    pub suggested_update_interval_minutes: Option<u64>,
+    /// Imported as is when the user picks a local import, so it is not
+    /// downloaded twice.
+    pub content: String,
 }
 
 impl ProfilesClient {
@@ -83,7 +105,7 @@ impl ProfilesClient {
                 mutations,
                 manager,
                 fs,
-                fetcher,
+                fetcher: Arc::clone(&fetcher),
                 materialization,
                 sources,
                 jobs: jobs.clone(),
@@ -101,6 +123,7 @@ impl ProfilesClient {
                 snapshot,
                 sources: sources_rx,
                 jobs,
+                fetcher,
             }),
         })
     }
@@ -318,6 +341,53 @@ impl ProfilesClient {
             None,
         )
         .await
+    }
+
+    /// Downloads a profile URL and suggests how to import it. Nothing is
+    /// written, so this does not go through the actor.
+    pub async fn probe(
+        &self,
+        url: url::Url,
+        option: RemoteProfileOptions,
+    ) -> Result<ProfileUrlProbe, ProfilesError> {
+        let fetched = snafu::ResultExt::context(
+            self.inner.fetcher.fetch(&url, &option).await,
+            FetchSubscriptionSnafu { url: url.clone() },
+        )?;
+        let classification = profile_import::classify(&ImportFacts {
+            content: &fetched.content,
+            url_path: url.path(),
+            content_type: fetched.content_type.as_deref(),
+            file_name: fetched.file_name.as_deref(),
+            has_quota: !fetched.subscription.is_empty(),
+            has_title: fetched.filename.is_some(),
+            has_update_interval: fetched.suggested_update_interval_minutes.is_some(),
+        });
+        let accepted = ProfileImportKind::VARIANTS
+            .iter()
+            .copied()
+            .filter(|kind| {
+                let definition = ProfilesActor::remote_import_definition(
+                    url.clone(),
+                    kind.transform(),
+                    option.clone(),
+                    ManagedProfilePath::new("probe.yaml").expect("static managed path is valid"),
+                    SubscriptionInfo::default(),
+                    None,
+                );
+                ProfilesActor::validate_fetched_content(&definition, &fetched.content).is_ok()
+            })
+            .collect();
+        Ok(ProfileUrlProbe {
+            classification,
+            accepted,
+            suggested_name: fetched
+                .filename
+                .unwrap_or_else(|| super::url_derived_name(&url)),
+            subscription: fetched.subscription,
+            suggested_update_interval_minutes: fetched.suggested_update_interval_minutes,
+            content: fetched.content,
+        })
     }
 
     /// Fetch-before-commit remote import. No durable placeholder is written until
@@ -3385,6 +3455,150 @@ mod tests {
             .expect_err("fetch failure");
         assert!(matches!(err, ProfilesError::FetchSubscription { .. }));
         assert!(client.snapshot().items.is_empty());
+    }
+
+    /// A client whose only port that may act is the fetcher, so a probe that
+    /// wrote anything would fail on an unexpected mock call.
+    async fn probe_client(dir: &TempDir, fetched: FetchedSubscription) -> ProfilesClient {
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher
+            .expect_fetch()
+            .times(1)
+            .returning(move |_, _| Ok(fetched.clone()));
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            Arc::new(materialization),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .unwrap()
+    }
+
+    fn fetched(content: &str) -> FetchedSubscription {
+        FetchedSubscription {
+            content: content.into(),
+            filename: None,
+            subscription: SubscriptionInfo::default(),
+            suggested_update_interval_minutes: None,
+            content_type: None,
+            file_name: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_suggests_a_subscription_and_keeps_its_details_without_writing() {
+        let dir = tempdir().unwrap();
+        let subscription = SubscriptionInfo {
+            upload: Some(1),
+            download: Some(2),
+            total: Some(10),
+            expire: None,
+        };
+        let client = probe_client(
+            &dir,
+            FetchedSubscription {
+                filename: Some("Airport".into()),
+                subscription: subscription.clone(),
+                suggested_update_interval_minutes: Some(360),
+                ..fetched("proxies: []\n")
+            },
+        )
+        .await;
+
+        let probe = client
+            .probe(
+                url::Url::parse("https://example.com/sub?token=1").unwrap(),
+                RemoteProfileOptions::default(),
+            )
+            .await
+            .expect("probe");
+
+        assert_eq!(
+            probe.classification.suggested,
+            Some(ProfileImportKind::Config)
+        );
+        assert_eq!(
+            probe.accepted,
+            [
+                ProfileImportKind::Config,
+                ProfileImportKind::Overlay,
+                ProfileImportKind::JavaScript,
+                ProfileImportKind::Lua
+            ]
+        );
+        assert_eq!(probe.suggested_name, "Airport");
+        assert_eq!(probe.subscription, subscription);
+        assert_eq!(probe.suggested_update_interval_minutes, Some(360));
+        assert_eq!(probe.content, "proxies: []\n");
+        assert!(client.snapshot().items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn probe_accepts_only_the_kinds_whose_validation_passes() {
+        let dir = tempdir().unwrap();
+        let client = probe_client(
+            &dir,
+            fetched("function main(config)\n  local n = 1\n  return config\nend\n"),
+        )
+        .await;
+
+        let probe = client
+            .probe(
+                url::Url::parse("https://example.com/scripts/rename").unwrap(),
+                RemoteProfileOptions::default(),
+            )
+            .await
+            .expect("probe");
+
+        assert_eq!(probe.classification.suggested, Some(ProfileImportKind::Lua));
+        assert_eq!(
+            probe.accepted,
+            [ProfileImportKind::JavaScript, ProfileImportKind::Lua]
+        );
+        // Without a server title the name is the one the import would derive.
+        assert_eq!(probe.suggested_name, "rename");
+    }
+
+    #[tokio::test]
+    async fn probe_reports_a_failed_download() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher
+            .expect_fetch()
+            .times(1)
+            .returning(|_, _| Err(SubscriptionFetchError::mock()));
+        let mut materialization = MockProfileMaterializationPort::new();
+        materialization
+            .expect_reconcile()
+            .returning(|_| Ok(MaterializationReconcileReport::default()));
+        let client = ProfilesClient::new(
+            crate::state::mutation::MutationCoordinator::isolated(),
+            temp_profiles_path(&dir),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(fetcher),
+            Arc::new(materialization),
+            tokio_util::sync::CancellationToken::new(),
+            &tokio_util::task::TaskTracker::new(),
+        )
+        .await
+        .unwrap();
+
+        let err = client
+            .probe(
+                url::Url::parse("https://example.com/sub").unwrap(),
+                RemoteProfileOptions::default(),
+            )
+            .await
+            .expect_err("fetch failure");
+        assert!(matches!(err, ProfilesError::FetchSubscription { .. }));
     }
 
     #[tokio::test]

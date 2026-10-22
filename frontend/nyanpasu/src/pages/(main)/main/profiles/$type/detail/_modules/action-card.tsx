@@ -8,12 +8,13 @@ import { m } from '@/paraglide/messages'
 import { isRemoteItem, isTransformItem } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { hasMaterializedFile } from '../../_modules/utils'
+import ViewContent from '../../_modules/view-content'
 import ActiveButton from './active-button'
 import DeleteProfile from './delete-profile'
 import OpenLocally from './open-locally'
 import ProfileNameEditor from './profile-name-editor'
 import SubscriptionUrlEditor from './subscription-url-editor'
-import ViewContent from './view-content'
 
 const ActionCardButton = ({
   className,
@@ -38,11 +39,7 @@ export default function ActionCard({
   profile: ProfileItem_Serialize
 }) {
   const isScript = isTransformItem(profile)
-  // Composition configs have no materialized file; view/open would hit
-  // ProfileHasNoFile. File configs and transforms both own a file.
-  const hasMaterializedFile =
-    isTransformItem(profile) ||
-    (profile.type === 'config' && profile.config.type === 'file')
+  const hasFile = hasMaterializedFile(profile)
 
   return (
     <div className="col-span-2 grid grid-cols-2 gap-4">
@@ -92,7 +89,7 @@ export default function ActionCard({
         </DeleteProfile>
       </ActionCardButton>
 
-      {hasMaterializedFile && (
+      {hasFile && (
         <ActionCardButton asChild>
           <ViewContent profile={profile}>
             <span className="size-4">
@@ -104,7 +101,7 @@ export default function ActionCard({
         </ActionCardButton>
       )}
 
-      {hasMaterializedFile && (
+      {hasFile && (
         <ActionCardButton asChild>
           <OpenLocally profile={profile}>
             <span className="size-4">

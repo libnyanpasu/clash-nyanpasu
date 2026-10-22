@@ -2,7 +2,7 @@ import CloudDownloadRounded from '~icons/material-symbols/cloud-download-rounded
 import FolderCodeRounded from '~icons/material-symbols/folder-code-rounded'
 import LayersOutlineRounded from '~icons/material-symbols/layers-outline-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import type { ComponentProps } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -53,11 +53,14 @@ export default function ProfileCardFeatures({
   profiles,
   isGlobal,
   compact = false,
+  leading,
 }: {
   profile: ProfileItem_Serialize
   profiles: ProfileItem_Serialize[]
   isGlobal: boolean
   compact?: boolean
+  /** Chips that come before the source chip, such as the Active chip. */
+  leading?: ReactNode
 }) {
   const remote = getRemoteSource(profile)
   const source = getProfileSource(profile)
@@ -76,6 +79,8 @@ export default function ProfileCardFeatures({
       className="z-10 flex flex-wrap items-center gap-1"
       data-slot="profile-card-type"
     >
+      {leading}
+
       <ProfileCardChip className="bg-primary-container/60 text-primary dark:text-primary">
         {source &&
           (source.type === 'remote' ? (

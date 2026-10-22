@@ -313,6 +313,9 @@ importers:
       '@dnd-kit/core':
         specifier: 6.3.1
         version: 6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@dnd-kit/dom':
+        specifier: 0.5.1
+        version: 0.5.1
       '@dnd-kit/helpers':
         specifier: 0.5.1
         version: 0.5.1

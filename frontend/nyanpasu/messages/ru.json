@@ -1217,6 +1217,24 @@
   ],
   "profile_nav_count_enabled": "Включено: {count}",
   "profile_nav_inspect_description": "Проследите, как собирается итоговая конфигурация",
+  "profile_folder_new_title": "Новая папка",
+  "profile_folder_rename_title": "Переименовать папку",
+  "profile_folder_name_label": "Название папки",
+  "profile_folder_name_required": "Введите название папки",
+  "profile_folder_delete_title": "Удалить папку",
+  "profile_folder_delete_description": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} профиль будет перемещён в «Без папки».",
+        "countPlural=few": "{count} профиля будут перемещены в «Без папки».",
+        "countPlural=many": "{count} профилей будут перемещены в «Без папки».",
+        "countPlural=other": "{count} профиля будут перемещены в «Без папки»."
+      }
+    }
+  ],
+  "profile_folder_layout_failed": "Не удалось обновить папки: {error}",
   "profile_create_config_title": "Новая конфигурация",
   "profile_create_transform_title": "Новое преобразование",
   "profile_kind_file": "Одиночная",

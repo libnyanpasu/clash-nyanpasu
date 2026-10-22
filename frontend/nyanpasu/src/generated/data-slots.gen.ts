@@ -334,6 +334,7 @@ export const DATA_SLOTS = [
   'profiles-container',
   'profiles-content',
   'profiles-content-scroll-area',
+  'profiles-folder-dialog',
   'profiles-grid',
   'profiles-list',
   'profiles-sidebar-scroll-area',

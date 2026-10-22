@@ -514,6 +514,7 @@ impl NyanpasuClient {
                     .parent()
                     .context("executable has no parent directory")?
                     .to_path_buf(),
+                paths.meow_cli_dir().into_std_path_buf(),
                 ports.clone(),
             )),
             Arc::new(application_workflow.clone()),

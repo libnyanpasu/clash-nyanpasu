@@ -31,8 +31,11 @@ component DetailValue inherits Text {
 
 export component ReporterWindow inherits Window {
     title: "Clash Nyanpasu";
-    preferred-width: 720px;
-    preferred-height: 540px;
+    // The host reads the opening size to centre the window before it exists.
+    out property <length> opening-width: 720px;
+    out property <length> opening-height: 540px;
+    preferred-width: opening-width;
+    preferred-height: opening-height;
     min-width: 520px;
     min-height: 400px;
     background: Palette.background;

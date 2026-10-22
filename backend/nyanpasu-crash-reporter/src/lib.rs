@@ -11,7 +11,11 @@ mod ui {
     slint::include_modules!();
 }
 
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
 pub use report::{CrashReport, PanicDetails};
 use slint::ComponentHandle as _;
@@ -49,8 +53,23 @@ pub enum ReporterError {
 
 /// Shows the window and returns once the user closes it. Call once per process, on the main thread.
 pub fn show_crash_report(report: &CrashReport, text: &ReporterText) -> Result<(), ReporterError> {
-    platform::select_backend().context(SelectBackendSnafu)?;
+    // The window to centre once the event loop starts.
+    let opening = Rc::new(Cell::new(None::<slint::Weak<ui::ReporterWindow>>));
+    platform::select_backend({
+        let opening = opening.clone();
+        move |event_loop| {
+            if let Some(window) = opening.take().and_then(|weak| weak.upgrade()) {
+                let size = slint::LogicalSize::new(
+                    window.get_opening_width(),
+                    window.get_opening_height(),
+                );
+                platform::centre(window.window(), size, event_loop);
+            }
+        }
+    })
+    .context(SelectBackendSnafu)?;
     let window = ui::ReporterWindow::new().context(CreateWindowSnafu)?;
+    opening.set(Some(window.as_weak()));
     fill_window(&window, report, text);
 
     // One clipboard for the window's lifetime: on X11 this process serves the

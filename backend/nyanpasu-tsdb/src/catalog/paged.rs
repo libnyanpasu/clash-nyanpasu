@@ -374,7 +374,7 @@ impl<T> Clone for Paged<T> {
 enum Push {
     /// The last page has room.
     InPlace,
-    /// The only page grows to this many elements.
+    /// The last page grows to this many elements.
     Grow(usize),
     /// A new page of this many elements.
     NewPage(usize),
@@ -486,13 +486,14 @@ impl<T: Copy + Default> Paged<T> {
             Push::InPlace => {}
             Push::Grow(len) => {
                 ledger.alloc(page_bytes::<T>(len))?;
-                let old = self.pages.page(0);
+                let last = self.pages.count() - 1;
+                let old = self.pages.page(last);
                 let page = old
                     .iter()
                     .copied()
                     .chain(iter::repeat_n(T::default(), len - old.len()))
                     .collect();
-                self.pages.replace(0, page, ledger)?;
+                self.pages.replace(last, page, ledger)?;
             }
             Push::NewPage(len) => {
                 ledger.alloc(page_bytes::<T>(len))?;
@@ -526,12 +527,14 @@ impl<T: Copy + Default> Paged<T> {
         if self.len < self.capacity() {
             return Push::InPlace;
         }
-        match (self.pages.count(), self.pages.last()) {
-            (0, _) => Push::NewPage(Self::FIRST_PAGE.min(Self::PER_PAGE)),
-            (1, Some(only)) if only.len() < Self::PER_PAGE => {
-                Push::Grow((2 * only.len()).min(Self::PER_PAGE))
+        // A filled array's last page holds only its elements, so the last page, not just
+        // a growing first one, may be short.
+        match self.pages.last() {
+            None => Push::NewPage(Self::FIRST_PAGE.min(Self::PER_PAGE)),
+            Some(last) if last.len() < Self::PER_PAGE => {
+                Push::Grow((2 * last.len()).min(Self::PER_PAGE))
             }
-            _ => Push::NewPage(Self::PER_PAGE),
+            Some(_) => Push::NewPage(Self::PER_PAGE),
         }
     }
 }
@@ -639,6 +642,29 @@ mod tests {
         // it holds is exactly the final array.
         assert_eq!(ledger.owned(), array.bytes());
         assert_eq!(array.bytes(), spine_bytes::<u32>(3) + 3 * PAGE_ALLOC as u64);
+    }
+
+    /// A filled array's last page is as short as its elements; a push grows it before
+    /// starting another page, so every page but the last stays full.
+    #[test]
+    fn a_push_fills_a_short_last_page_of_a_filled_array() {
+        type Span = [u32; 3];
+        let per_page = Paged::<Span>::PER_PAGE;
+        let mut ledger = Ledger::default();
+        let mut array = Paged::filled(per_page + 269, Span::default(), &mut ledger).unwrap();
+        for value in 0..per_page as u32 {
+            exact(&mut ledger, array.push_cost(), |ledger| {
+                array.push([value; 3], ledger).unwrap()
+            });
+        }
+        let lens: Vec<usize> = (0..array.pages.count())
+            .map(|page| array.pages.page(page).len())
+            .collect();
+        assert_eq!(lens, [per_page, per_page, per_page]);
+        for index in 0..per_page {
+            assert_eq!(array.get(per_page + 269 + index), [index as u32; 3]);
+        }
+        assert_eq!(ledger.owned(), array.bytes());
     }
 
     #[test]

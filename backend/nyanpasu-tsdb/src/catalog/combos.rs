@@ -219,3 +219,29 @@ impl Iterator for ComboLabels<'_> {
 }
 
 impl ExactSizeIterator for ComboLabels<'_> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Loaded columns end in a short page past the first; fresh combinations fill it before
+    /// another starts.
+    #[test]
+    fn inserting_after_loading_more_than_a_page_of_combinations() {
+        let mut ledger = Ledger::default();
+        let loaded = Paged::<u32>::PER_PAGE as u32 + 269;
+        let mut combos = Combos::free(2, loaded, &mut ledger);
+        for id in 1..=loaded {
+            combos.load(id, &[id, id + 1], &mut ledger);
+        }
+        for id in loaded + 1..=2 * loaded {
+            let cost = combos.insert_cost().unwrap();
+            let before = ledger.allocated();
+            assert_eq!(combos.insert(&[id, id + 1], &mut ledger).unwrap(), id);
+            assert_eq!(ledger.allocated() - before, cost);
+        }
+        for id in 1..=2 * loaded {
+            assert!(combos.matches(id, &[id, id + 1]));
+        }
+    }
+}

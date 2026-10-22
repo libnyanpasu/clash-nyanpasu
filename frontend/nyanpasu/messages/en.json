@@ -400,7 +400,7 @@
   "settings_label_ai": "AI",
   "settings_label_ai_description": "meow-cli skill for AI agents",
   "settings_ai_skill_label": "Agent Skill",
-  "settings_ai_skill_description": "Send this to your AI agent, such as Claude Code or Codex. With the skill, it can read the state of Meow through meow-cli and, once you agree, switch nodes or the mode.",
+  "settings_ai_skill_description": "Meow works with AI agent skills. We've included built-in instructions for operating Meow through meow-cli. Copy the following into your skill-enabled agent, like Claude Code or DeepSeek Harness, and you're good to go.",
   "settings_ai_skill_prompt": "Install the skill from the `{path}` directory using a symbolic link to ensure the skill is updated along with the Meow core.",
   "settings_ai_skill_prompt_copied": "Copied, paste it to your agent",
   "settings_ai_skill_not_installed": "meow-cli comes with Meow core updates. Update Meow or Meow Alpha in Core Manager to get it.",

@@ -400,7 +400,7 @@
   "settings_label_ai": "AI",
   "settings_label_ai_description": "供 AI 智能体使用的 meow-cli 技能",
   "settings_ai_skill_label": "智能体技能",
-  "settings_ai_skill_description": "把下面这段话发给你的 AI 智能体，例如 Claude Code 或 Codex。装上技能后，它能通过 meow-cli 查看 Meow 的运行状态，并在你同意后切换节点或模式。",
+  "settings_ai_skill_description": "Meow 支持 AI 智能体技能，内置了通过 meow-cli 操作 Meow 的说明。把下面这段话复制给支持技能的智能体，例如 Claude Code 或 DeepSeek Harness，即可使用。",
   "settings_ai_skill_prompt": "使用符号链接从 `{path}` 目录安装该技能，以确保技能随 Meow 内核一起更新。",
   "settings_ai_skill_prompt_copied": "已复制，粘贴给你的智能体即可",
   "settings_ai_skill_not_installed": "meow-cli 随 Meow 内核更新提供。请在内核管理中更新 Meow 或 Meow Alpha 以获取。",

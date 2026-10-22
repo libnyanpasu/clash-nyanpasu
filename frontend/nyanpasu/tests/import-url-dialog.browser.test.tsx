@@ -134,13 +134,25 @@ test('the suggested kind is preselected, with its reasons, and only accepted kin
     )
     .toBeDisabled()
   await expect
-    .element(
-      view.getByText(
-        m.profile_import_url_evidence({
-          reasons: m.profile_import_url_signal_file_extension(),
-        }),
-      ),
-    )
+    .element(view.getByText(m.profile_import_url_detected({ kind: 'Lua' })))
+    .toBeVisible()
+  // Only the reasons for the suggested kind are listed.
+  await expect
+    .element(view.getByText(m.profile_import_url_signal_file_extension()))
+    .toBeVisible()
+  await expect
+    .element(view.getByText(m.profile_import_url_signal_subscription_quota()))
+    .not.toBeInTheDocument()
+  await expect
+    .element(view.getByRole('textbox').first())
+    .toHaveValue(request.url)
+  await expect
+    .element(view.getByRole('textbox').first())
+    .toHaveAttribute('readonly')
+  // Without a server title, the prefilled name comes from the link.
+  await expect.element(view.getByRole('textbox').nth(1)).toHaveValue('rename')
+  await expect
+    .element(view.getByText(m.profile_import_url_name_from_link()))
     .toBeVisible()
   await expect
     .element(
@@ -204,6 +216,22 @@ test('a local import creates the downloaded content without downloading again', 
     },
     fileData: LUA,
   })
+})
+
+test('a name the user changes is pinned on a remote import', async ({
+  onTestFinished,
+}) => {
+  const calls: RpcCall[] = []
+  installRpcMock(calls, [luaProbe])
+  const view = await mount(onTestFinished)
+
+  await view.getByRole('textbox').nth(1).fill('My rename')
+  await view.getByRole('button', confirm()).click()
+
+  await expect
+    .element(view.getByRole('button', { name: 'open profile-1' }))
+    .toBeVisible()
+  expect(calls.at(-1)?.params.name).toBe('My rename')
 })
 
 test('without a suggestion the user picks a kind before importing', async ({

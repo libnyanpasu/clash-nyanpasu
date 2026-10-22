@@ -1,3 +1,5 @@
+import AutoAwesomeRounded from '~icons/material-symbols/auto-awesome-rounded'
+import InfoOutlineRounded from '~icons/material-symbols/info-outline-rounded'
 import { filesize } from 'filesize'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
@@ -29,6 +31,7 @@ import type {
   ProfileUrlProbe,
   RemoteProfileOptionsPatch_Deserialize,
 } from '@nyanpasu/rpc/types'
+import { cn } from '@nyanpasu/utils'
 import {
   definitionOf,
   IMPORT_KIND_LABELS,
@@ -80,7 +83,10 @@ export default function ImportUrlDialog({
       onOpenChange={(value) => !value && !importing && onClose(null)}
     >
       <ModalContent>
-        <Card className="w-96" data-slot="import-url-dialog">
+        <Card
+          className="w-[min(28rem,calc(100vw-2rem))]"
+          data-slot="import-url-dialog"
+        >
           <CardHeader>
             <ModalTitle>{m.profile_import_url_title()}</ModalTitle>
           </CardHeader>
@@ -155,11 +161,16 @@ function ImportUrlConfirm({
       : null
   const [kind, setKind] = useState<ProfileImportKind | null>(suggested)
   const [mode, setMode] = useState<ImportMode>('remote')
-  const [name, setName] = useState(request.name ?? '')
+  const [name, setName] = useState(request.name ?? probe.suggested_name)
 
   const reasons = probe.classification.evidence
-    .filter((evidence) => evidence.kind === kind)
-    .map((evidence) => IMPORT_SIGNAL_LABELS[evidence.signal]())
+    .filter((evidence) => evidence.kind === suggested)
+    .map((evidence) => evidence.signal)
+  // The server named it only when it sent a title; otherwise the name is the
+  // one the import derives from the URL.
+  const serverNamed = probe.classification.evidence.some(
+    (evidence) => evidence.signal === 'profile_title',
+  )
 
   const commit = async (kind: ProfileImportKind) => {
     if (mode === 'remote') {
@@ -167,9 +178,12 @@ function ImportUrlConfirm({
         type: 'url',
         data: {
           url: request.url,
-          // Empty keeps the name derived server-side and synced from the
-          // subscription.
-          name: name.trim() || null,
+          // The prefilled name stays unpinned, so it keeps following the
+          // subscription; only a name the user gave is pinned.
+          name:
+            request.name == null && name.trim() === probe.suggested_name
+              ? null
+              : name.trim() || null,
           option: request.option,
           transform: transformOf(kind),
         },
@@ -214,9 +228,13 @@ function ImportUrlConfirm({
   return (
     <>
       <CardContent className="space-y-4 pt-2">
-        <p className="text-on-surface-variant text-xs break-all">
-          {request.url}
-        </p>
+        <Input
+          variant="outlined"
+          label={m.profile_import_url_link_label()}
+          value={request.url}
+          title={request.url}
+          readOnly
+        />
 
         <ImportUrlSubscription probe={probe} />
 
@@ -243,19 +261,47 @@ function ImportUrlConfirm({
             ))}
           </SegmentedButton>
 
-          <p className="text-on-surface-variant px-1 text-xs">
-            {probe.accepted.length === 0
-              ? m.profile_import_url_unsupported()
-              : suggested
-                ? m.profile_import_url_suggested({
-                    kind: IMPORT_KIND_LABELS[suggested](),
-                  })
-                : m.profile_import_url_no_suggestion()}
-          </p>
+          {suggested ? (
+            <div
+              data-slot="import-url-dialog-detection"
+              className="flex flex-wrap items-center gap-1.5 px-1 text-xs"
+            >
+              <AutoAwesomeRounded
+                className="text-primary size-4 shrink-0"
+                aria-hidden
+              />
 
-          {reasons.length > 0 && (
-            <p className="text-on-surface-variant px-1 text-xs">
-              {m.profile_import_url_evidence({ reasons: reasons.join(' · ') })}
+              <span className="text-on-surface font-medium">
+                {m.profile_import_url_detected({
+                  kind: IMPORT_KIND_LABELS[suggested](),
+                })}
+              </span>
+
+              {reasons.map((signal) => (
+                <span
+                  key={signal}
+                  data-slot="import-url-dialog-reason"
+                  className="bg-secondary-container text-on-secondary-container rounded-full px-2 py-0.5"
+                >
+                  {IMPORT_SIGNAL_LABELS[signal]()}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p
+              data-slot="import-url-dialog-detection"
+              className={cn(
+                'flex items-center gap-1.5 px-1 text-xs',
+                probe.accepted.length === 0
+                  ? 'text-error'
+                  : 'text-on-surface-variant',
+              )}
+            >
+              <InfoOutlineRounded className="size-4 shrink-0" aria-hidden />
+
+              {probe.accepted.length === 0
+                ? m.profile_import_url_unsupported()
+                : m.profile_import_url_no_suggestion()}
             </p>
           )}
         </div>
@@ -294,13 +340,13 @@ function ImportUrlConfirm({
             onChange={(event) => setName(event.target.value)}
           />
 
-          <p className="text-on-surface-variant px-1 text-xs">
-            {mode === 'remote' && request.name == null
-              ? m.profile_remote_name_hint()
-              : m.profile_import_url_name_default({
-                  name: probe.suggested_name,
-                })}
-          </p>
+          {request.name == null && (
+            <p className="text-on-surface-variant px-1 text-xs">
+              {serverNamed
+                ? m.profile_import_url_name_from_server()
+                : m.profile_import_url_name_from_link()}
+            </p>
+          )}
         </div>
       </CardContent>
 

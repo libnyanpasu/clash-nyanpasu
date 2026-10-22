@@ -15,19 +15,19 @@ import { m } from '@/paraglide/messages'
 import { getRemoteSource, isConfigItem } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { ActiveGradient } from '../../_modules/active-gradient'
-import ProfileCardAction from '../../_modules/profile-card-action'
-import ProfileCardContentSummary from '../../_modules/profile-card-content-summary'
+import { ActiveGradient } from '../../../_modules/active-gradient'
+import ProfileCardAction from '../../../_modules/profile-card-action'
+import ProfileCardContentSummary from '../../../_modules/profile-card-content-summary'
 import ProfileCardFeatures, {
   ProfileCardChip,
-} from '../../_modules/profile-card-features'
+} from '../../../_modules/profile-card-features'
 import ProfileCardSubscription, {
   ProfileCardTraffic,
   ProfileCardUpdate,
-} from '../../_modules/profile-card-subscription'
-import { useActiveProfile } from '../../_modules/use-active-profile'
-import { hasMaterializedFile, isProxyProfile } from '../../_modules/utils'
-import ViewContent from '../../_modules/view-content'
+} from '../../../_modules/profile-card-subscription'
+import { useActiveProfile } from '../../../_modules/use-active-profile'
+import { hasMaterializedFile, isProxyProfile } from '../../../_modules/utils'
+import ViewContent from '../../../_modules/view-content'
 import { useShowInFileManager } from './use-show-in-file-manager'
 
 /** The profile card of the list, as the top of the detail page. */

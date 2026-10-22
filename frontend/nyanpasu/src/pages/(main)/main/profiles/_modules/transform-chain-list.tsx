@@ -29,10 +29,10 @@ import { useSortable } from '@dnd-kit/react/sortable'
 import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { SettingsGroup } from '../../_modules/settings-card'
-import { profileTypeOf, type TransformProfile } from '../$type/_modules/utils'
 import { PROFILE_TYPE_NAMES } from './consts'
 import { TransformAddMenu } from './transform-add-menu'
 import { useTransformChainDraft } from './use-transform-chain-draft'
+import { profileTypeOf, type TransformProfile } from './utils'
 
 type ItemProps = {
   profile: TransformProfile

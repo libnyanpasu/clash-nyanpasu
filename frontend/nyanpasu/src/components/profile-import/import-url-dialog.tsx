@@ -26,6 +26,7 @@ import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useProfileMutations, useProfileUrlProbe } from '@nyanpasu/query'
 import type {
+  FolderId,
   ProfileId,
   ProfileImportKind,
   ProfileUrlProbe,
@@ -45,6 +46,8 @@ export type ImportUrlRequest = {
   /** A name the user gave; `null` keeps the name the import derives. */
   name: string | null
   option: RemoteProfileOptionsPatch_Deserialize | null
+  /** Folder a Config joins; transforms are never foldered. */
+  folder?: FolderId | null
 }
 
 type ImportMode = 'remote' | 'local'
@@ -172,6 +175,9 @@ function ImportUrlConfirm({
     (evidence) => evidence.signal === 'profile_title',
   )
 
+  const folderOf = (kind: ProfileImportKind) =>
+    kind === 'config' ? (request.folder ?? null) : null
+
   const commit = async (kind: ProfileImportKind) => {
     if (mode === 'remote') {
       const outcome = await create.mutateAsync({
@@ -186,6 +192,7 @@ function ImportUrlConfirm({
               : name.trim() || null,
           option: request.option,
           transform: transformOf(kind),
+          folder: folderOf(kind),
         },
       })
       return outcome.value
@@ -200,6 +207,7 @@ function ImportUrlConfirm({
             type: 'local',
             binding: { type: 'managed', file: PENDING_FILE },
           }),
+          folder: folderOf(kind),
         },
         fileData: probe.content,
       },

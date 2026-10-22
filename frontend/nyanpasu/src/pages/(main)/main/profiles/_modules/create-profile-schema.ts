@@ -8,8 +8,8 @@ import {
   type ProfileImportKind,
   type ProfileSource_Deserialize,
 } from '@nyanpasu/rpc/types'
-import { ProfileType } from '../../_modules/consts'
-import { subscriptionUrlSchema } from '../../_modules/subscription-url-schema'
+import { ProfileType } from './consts'
+import { subscriptionUrlSchema } from './subscription-url-schema'
 
 export const CONFIG_KINDS = ['file', 'composition'] as const
 

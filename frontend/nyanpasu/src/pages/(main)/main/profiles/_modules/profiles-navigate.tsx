@@ -16,8 +16,8 @@ import {
 import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/query'
 import { Link, useMatchRoute } from '@tanstack/react-router'
-import { categoryProfiles } from '../$type/_modules/utils'
 import { ProfileType } from './consts'
+import { categoryProfiles } from './utils'
 
 function ProfilesNavigationItem({
   icon,

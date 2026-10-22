@@ -10,9 +10,8 @@ import {
   FabMenuTrigger,
 } from '@nyanpasu/ui/fab-menu'
 import { m } from '@/paraglide/messages'
+import { type FolderId } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { ProfileType } from '../../_modules/consts'
-import { Action, Route as IndexRoute } from '../index'
 import CreateProfileModal from './create-profile-modal'
 import type { CreateKind, CreateSource } from './create-profile-schema'
 
@@ -38,21 +37,27 @@ const SOURCE_ITEMS = [
   label: () => string
 }[]
 
-export default function ImportButton() {
-  const { type } = IndexRoute.useParams()
-
-  const { action } = IndexRoute.useSearch()
-
-  const navigate = IndexRoute.useNavigate()
-
-  const isProxy = type === ProfileType.Profile
-
+export default function ImportButton({
+  kind,
+  folder,
+  localImportRequested = false,
+  onLocalImportHandled,
+}: {
+  /** Initial kind of the create modal. */
+  kind: CreateKind
+  /** Folder a created Config joins; omitted creates it ungrouped. */
+  folder?: FolderId | null
+  /** Opens the modal on the local-file source, e.g. from the tray action. */
+  localImportRequested?: boolean
+  /** Called once the modal opened for `localImportRequested` closes. */
+  onLocalImportHandled?: () => void
+}) {
   const [open, setOpen] = useState(false)
 
   const [source, setSource] = useState<CreateSource>('remote')
 
   useEffect(() => {
-    if (action !== Action.ImportLocalProfile) {
+    if (!localImportRequested) {
       return
     }
 
@@ -65,13 +70,13 @@ export default function ImportButton() {
     return () => {
       clearTimeout(timeout)
     }
-  }, [action])
+  }, [localImportRequested])
 
   const handleOpenChange = (value: boolean) => {
     setOpen(value)
 
-    if (!value && action !== null && action !== undefined) {
-      navigate({ search: { action: null } })
+    if (!value && localImportRequested) {
+      onLocalImportHandled?.()
     }
   }
 
@@ -112,7 +117,8 @@ export default function ImportButton() {
       <CreateProfileModal
         open={open}
         onOpenChange={handleOpenChange}
-        kind={isProxy ? 'file' : (type as CreateKind)}
+        kind={kind}
+        folder={folder}
         source={source}
       />
     </div>

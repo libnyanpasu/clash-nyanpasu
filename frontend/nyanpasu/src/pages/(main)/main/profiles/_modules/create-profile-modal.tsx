@@ -17,6 +17,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useProfileMutations } from '@nyanpasu/query'
 import {
+  type FolderId,
   type NewProfileRequest_Deserialize,
   type ProfileSource_Deserialize,
 } from '@nyanpasu/rpc/types'
@@ -54,12 +55,15 @@ export default function CreateProfileModal({
   open,
   onOpenChange,
   kind,
+  folder,
   source,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Initial kind; also decides whether config or transform kinds are offered. */
   kind: CreateKind
+  /** Folder a created Config joins; transforms are never foldered. */
+  folder?: FolderId | null
   source: CreateSource
 }) {
   const { create, patchMetadata } = useProfileMutations()
@@ -81,6 +85,11 @@ export default function CreateProfileModal({
   const currentKind = useWatch({ control: form.control, name: 'kind' })
   const currentSource = useWatch({ control: form.control, name: 'source' })
 
+  const folderOf = (valueKind: CreateKind) =>
+    (CONFIG_KINDS as readonly CreateKind[]).includes(valueKind)
+      ? (folder ?? null)
+      : null
+
   /** The import dialog decides the kind; resolves false when it is cancelled. */
   const createRemote = async (values: FormValues) => {
     const uid = await importUrl({
@@ -94,6 +103,7 @@ export default function CreateProfileModal({
         self_proxy: values.option.self_proxy,
         update_interval_minutes: values.option.update_interval,
       },
+      folder: folder ?? null,
     })
     if (uid === null) {
       return false
@@ -137,6 +147,7 @@ export default function CreateProfileModal({
             transforms: [],
           },
         },
+        folder: folderOf(values.kind),
       }
     } else {
       const profileSource: ProfileSource_Deserialize =
@@ -158,6 +169,7 @@ export default function CreateProfileModal({
       request = {
         metadata,
         definition: definitionOf(values.kind, profileSource),
+        folder: folderOf(values.kind),
       }
 
       if (values.source === 'local') {

@@ -214,6 +214,7 @@ test('a local import creates the downloaded content without downloading again', 
           },
         },
       },
+      folder: null,
     },
     fileData: LUA,
   })

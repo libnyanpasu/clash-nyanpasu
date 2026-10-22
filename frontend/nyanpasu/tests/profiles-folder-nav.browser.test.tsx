@@ -7,6 +7,7 @@ import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
+import ProfilesDndProvider from '@/pages/(main)/main/profiles/_modules/profiles-dnd-provider'
 import ProfilesLayoutProvider from '@/pages/(main)/main/profiles/_modules/profiles-layout-provider'
 import ProfilesNavigate from '@/pages/(main)/main/profiles/_modules/profiles-navigate'
 import { m } from '@/paraglide/messages'
@@ -21,6 +22,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { mockIPC } from '@tauri-apps/api/mocks'
+import { drag } from './pointer-drag'
 import { TestQueryProvider } from './query-provider'
 
 vi.hoisted(() => {
@@ -94,7 +96,9 @@ const renderAt = async (path: string) => {
               <ContextMenuProvider>
                 <div>
                   <ProfilesLayoutProvider>
-                    <ProfilesNavigate />
+                    <ProfilesDndProvider>
+                      <ProfilesNavigate />
+                    </ProfilesDndProvider>
                   </ProfilesLayoutProvider>
                 </div>
               </ContextMenuProvider>
@@ -286,4 +290,49 @@ test('the first folder cannot move up and the last cannot move down', async () =
   await expect
     .element(page.getByRole('menuitem', { name: m.profile_folder_move_down() }))
     .toHaveAttribute('aria-disabled', 'true')
+})
+
+test('dragging a folder over another reorders the folders in one commit', async () => {
+  const { layouts } = await renderAt('/main/profiles/profile')
+
+  await drag(folderLink('Home').element(), folderLink('Work').element())
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders.map((folder) => folder.id)).toEqual([
+    'f2',
+    'f1',
+    'f3',
+  ])
+  expect(layouts[0].folders.map((folder) => folder.members)).toEqual([
+    ['c'],
+    ['a', 'b'],
+    [],
+  ])
+})
+
+test('a folder moves with the keyboard', async () => {
+  const { layouts } = await renderAt('/main/profiles/profile')
+
+  folderLink('Work').element().focus()
+  await userEvent.keyboard(' ')
+  await userEvent.keyboard('{ArrowDown}')
+  await userEvent.keyboard(' ')
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders.map((folder) => folder.id)).toEqual([
+    'f2',
+    'f1',
+    'f3',
+  ])
+})
+
+test('a click on a folder still opens it', async () => {
+  const { layouts } = await renderAt('/main/profiles/profile')
+
+  await folderLink('Home').click()
+
+  await expect
+    .element(folderLink('Home'))
+    .toHaveAttribute('aria-current', 'page')
+  expect(layouts).toEqual([])
 })

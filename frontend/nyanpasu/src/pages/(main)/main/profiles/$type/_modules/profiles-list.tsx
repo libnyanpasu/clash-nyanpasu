@@ -1,7 +1,6 @@
 import { isEqual } from 'es-toolkit'
-import { ComponentProps, RefObject, useEffect, useRef, useState } from 'react'
+import { ComponentProps, useRef } from 'react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
-import { useScrollAreaViewport } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { WHOLE_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
 import { move } from '@dnd-kit/helpers'
@@ -10,63 +9,28 @@ import { useProfile } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { ProfileType } from '../../_modules/consts'
 import { GridViewProfile } from '../../_modules/profile-card'
+import ProfileSections from '../../_modules/profile-sections'
+import {
+  NoMoreProfiles,
+  useListOverflows,
+} from '../../_modules/profiles-list-footer'
 import { categoryProfiles } from '../../_modules/utils'
 import { Route as IndexRoute } from '../index'
 
-const NoMoreProfiles = () => {
-  return (
-    <div className="mb-4 flex h-16 items-center justify-center text-center text-sm text-gray-500">
-      {m.profile_no_more_profiles()}
-    </div>
+export default function ProfilesList(
+  props: Omit<ComponentProps<'div'>, 'children'>,
+) {
+  const { type } = IndexRoute.useParams()
+
+  return type === ProfileType.Profile ? (
+    <ProfileSections {...props} />
+  ) : (
+    <TransformList {...props} />
   )
 }
 
-/**
- * Whether the last item of `listRef` reaches past the scroll viewport. The
- * footer is measured out on purpose: it would otherwise make its own room.
- */
-const useListOverflows = (
-  listRef: RefObject<HTMLElement | null>,
-  itemCount: number,
-) => {
-  const { viewportRef } = useScrollAreaViewport()
-
-  const [overflows, setOverflows] = useState(false)
-
-  useEffect(() => {
-    const viewport = viewportRef.current
-    const list = listRef.current
-
-    if (!viewport || !list) {
-      setOverflows(false)
-      return
-    }
-
-    const update = () => {
-      // CSS places the current profile first without changing sortable indices.
-      const bottom =
-        Array.from(list.children).reduce(
-          (bottom, item) =>
-            Math.max(bottom, item.getBoundingClientRect().bottom),
-          list.getBoundingClientRect().top,
-        ) -
-        viewport.getBoundingClientRect().top +
-        viewport.scrollTop
-
-      setOverflows(bottom > viewport.clientHeight)
-    }
-
-    const observer = new ResizeObserver(update)
-    observer.observe(viewport)
-    observer.observe(list)
-
-    return () => observer.disconnect()
-  }, [viewportRef, listRef, itemCount])
-
-  return overflows
-}
-
-export default function ProfilesList({
+/** The transforms of one kind, in a plain list that has no folders. */
+function TransformList({
   className,
   ...props
 }: Omit<ComponentProps<'div'>, 'children'>) {

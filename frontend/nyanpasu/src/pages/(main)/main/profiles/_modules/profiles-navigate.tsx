@@ -11,10 +11,12 @@ import {
   NavigationListGroup,
 } from '@nyanpasu/ui/navigation-list'
 import { m } from '@/paraglide/messages'
+import { useDroppable } from '@dnd-kit/react'
 import { useProfile } from '@nyanpasu/query'
 import { ProfileType } from './consts'
 import FolderNavItem from './folder-nav-item'
 import ProfilesNavigationItem from './profiles-navigation-item'
+import { NAV_ALL_ID, PROFILE_DRAG_TYPE } from './resolve-profile-drop'
 import { useProfileLayout } from './use-profile-layout'
 import { categoryProfiles } from './utils'
 
@@ -28,6 +30,10 @@ export default function ProfilesNavigate() {
   const categorized = categoryProfiles(profiles?.items)
 
   const folders = layout?.folders ?? []
+
+  // A card dropped on All profiles leaves its folder.
+  const { ref: allProfilesRef, isDropTarget: isAllProfilesDropTarget } =
+    useDroppable({ id: NAV_ALL_ID, accept: PROFILE_DRAG_TYPE })
 
   return (
     <NavigationList aria-label={m.profile_nav_label()}>
@@ -46,6 +52,7 @@ export default function ProfilesNavigate() {
         }
       >
         <ProfilesNavigationItem
+          ref={allProfilesRef}
           to="/main/profiles/$type"
           params={{ type: ProfileType.Profile }}
           color="blue"
@@ -54,6 +61,8 @@ export default function ProfilesNavigate() {
           description={m.profile_nav_count_profiles({
             count: categorized[ProfileType.Profile].length,
           })}
+          data-slot="profiles-all-nav-item"
+          data-drop-target={isAllProfilesDropTarget || undefined}
         />
 
         {folders.map((folder, index) => (

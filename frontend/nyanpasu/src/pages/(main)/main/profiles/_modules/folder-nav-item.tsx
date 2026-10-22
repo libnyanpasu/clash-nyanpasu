@@ -10,11 +10,23 @@ import {
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
+import { FOLDER_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
+import { useSortable } from '@dnd-kit/react/sortable'
 import type { ProfileFolder } from '@nyanpasu/rpc/types'
 import ProfilesNavigationItem from './profiles-navigation-item'
+import {
+  FOLDER_DRAG_TYPE,
+  PROFILE_DRAG_TYPE,
+  sidebarFolderId,
+} from './resolve-profile-drop'
 import { useProfileLayout } from './use-profile-layout'
 
-/** A folder in the sidebar: a link to its page, with a menu to manage it. */
+const FOLDERS_GROUP = 'folders'
+
+/**
+ * A folder in the sidebar: a link to its page, with a menu to manage it. It
+ * can be dragged to reorder the folders and takes a profile card dropped on it.
+ */
 export default function FolderNavItem({
   folder,
   index,
@@ -29,6 +41,15 @@ export default function FolderNavItem({
   const { layout, openRenameFolder, deleteFolder, reorderFolders } =
     useProfileLayout()
 
+  const { ref, isDragging, isDropTarget } = useSortable({
+    id: sidebarFolderId(folder.id),
+    index,
+    group: FOLDERS_GROUP,
+    type: FOLDER_DRAG_TYPE,
+    accept: [FOLDER_DRAG_TYPE, PROFILE_DRAG_TYPE],
+    sensors: FOLDER_ITEM_DRAG_SENSORS,
+  })
+
   const moveBy = (offset: -1 | 1) => {
     const ids = (layout?.folders ?? []).map((item) => item.id)
 
@@ -41,6 +62,9 @@ export default function FolderNavItem({
     <RegisterContextMenu>
       <RegisterContextMenuTrigger asChild>
         <ProfilesNavigationItem
+          ref={ref}
+          // dnd-kit gives its drag source the button role unless one is set.
+          role="link"
           to="/main/profiles/folder/$folderId"
           params={{ folderId: folder.id }}
           color="neutral"
@@ -50,6 +74,8 @@ export default function FolderNavItem({
             count: folder.members.length,
           })}
           data-slot="profiles-folder-nav-item"
+          data-dragging={isDragging || undefined}
+          data-drop-target={isDropTarget || undefined}
         />
       </RegisterContextMenuTrigger>
 

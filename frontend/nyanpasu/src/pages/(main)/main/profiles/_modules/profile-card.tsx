@@ -16,6 +16,8 @@ import {
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
+import { WHOLE_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
+import { pointerIntersection } from '@dnd-kit/collision'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { getRemoteSource, isConfigItem } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
@@ -28,6 +30,7 @@ import ProfileCardSubscription, {
   ProfileCardTraffic,
   ProfileCardUpdate,
 } from './profile-card-subscription'
+import { PROFILE_DRAG_TYPE } from './resolve-profile-drop'
 import { useActiveProfile } from './use-active-profile'
 import { useDeleteProfile } from './use-delete-profile'
 import { hasMaterializedFile, isProxyProfile, profileTypeOf } from './utils'
@@ -36,11 +39,14 @@ import ViewContent from './view-content'
 export const GridViewProfile = memo(function GridViewProfile({
   profile,
   profiles,
+  group,
   index,
   isGlobal,
 }: {
   profile: ProfileItem_Serialize
   profiles: ProfileItem_Serialize[]
+  /** The sortable group the card moves in: its section, when it has one. */
+  group?: string
   index: number
   isGlobal: boolean
 }) {
@@ -55,10 +61,16 @@ export const GridViewProfile = memo(function GridViewProfile({
   const cardRef = useRef<HTMLDivElement>(null)
 
   // The whole card is the drag source; the pointer sensor ignores its buttons.
+  // The active card is listed apart from the sections and stays put.
   const { isDragging } = useSortable({
     id: profile.uid,
     index,
+    group,
+    type: PROFILE_DRAG_TYPE,
+    accept: [PROFILE_DRAG_TYPE],
+    collisionDetector: pointerIntersection,
     element: cardRef,
+    sensors: WHOLE_ITEM_DRAG_SENSORS,
     disabled: activeProfile.isActive,
   })
 

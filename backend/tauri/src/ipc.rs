@@ -2109,7 +2109,7 @@ pub fn retry_configuration_effect(
 #[cfg(test)]
 mod tests {
     use super::{ClientError, IpcError, PendingDeepLinks, ProfilesError, SystemDnsError};
-    use nyanpasu_config::profile::ProfileId;
+    use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
     use nyanpasu_core::state::ReplaceIfVersionError;
     use serde_json::json;
     use snafu::IntoError;
@@ -2290,6 +2290,8 @@ mod tests {
         assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
 
         let wire = wire(ProfilesError::Commit {
+            uid: Some(ProfileId("r1".into())),
+            path: Some(ManagedProfilePath::new("r1.yaml").unwrap()),
             source: aborted,
             cleanup_failures: Vec::new(),
         });
@@ -2297,6 +2299,8 @@ mod tests {
             wire["kind"]["error"],
             json!({
                 "kind": "commit",
+                "uid": "r1",
+                "path": "r1.yaml",
                 "source": {
                     "kind": "write_config",
                     "runtime": {

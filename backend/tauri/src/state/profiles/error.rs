@@ -436,8 +436,12 @@ pub enum ProfilesError {
         #[serde(skip)]
         cleanup_failures: Vec<ProfilesError>,
     },
-    #[snafu(display("the profiles change was not committed"))]
+    #[snafu(display("the profiles change was not committed{}", commit_subject(uid, path)))]
     Commit {
+        /// The profile the change was about, when it was about one.
+        uid: Option<ProfileId>,
+        /// That profile's file.
+        path: Option<ManagedProfilePath>,
         source: CommitAborted,
         /// Staging that could not be discarded after the abort.
         #[serde(skip)]
@@ -460,6 +464,16 @@ pub enum ProfilesError {
     },
     #[snafu(display("the application is shutting down"))]
     ShuttingDown,
+}
+
+/// Reads as the tail of a sentence: nothing when the change was about no
+/// single profile.
+fn commit_subject(uid: &Option<ProfileId>, path: &Option<ManagedProfilePath>) -> String {
+    match (uid, path) {
+        (Some(uid), Some(path)) => format!(" (profile {uid}, file {path})"),
+        (Some(uid), None) => format!(" (profile {uid})"),
+        (None, _) => String::new(),
+    }
 }
 
 impl ProfilesError {

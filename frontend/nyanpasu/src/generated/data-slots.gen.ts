@@ -317,6 +317,8 @@ export const DATA_SLOTS = [
   'profile-detail-skeleton',
   'profile-detail-switch-row',
   'profile-detail-update-interval',
+  'profile-detail-used-by',
+  'profile-detail-used-by-empty',
   'profile-field-dialog',
   'profile-global-transforms',
   'profile-processing-settings-container',

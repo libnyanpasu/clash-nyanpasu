@@ -1,5 +1,12 @@
 import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
-import { ComponentProps, ReactNode, useId } from 'react'
+import {
+  cloneElement,
+  ComponentProps,
+  isValidElement,
+  PropsWithChildren,
+  ReactNode,
+  useId,
+} from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { Switch } from '@nyanpasu/ui/switch'
 import { cn } from '@nyanpasu/utils'
@@ -71,6 +78,7 @@ export function DetailRow({
     />
   ),
   destructive,
+  asChild,
   className,
   children,
   ...props
@@ -82,14 +90,43 @@ export function DetailRow({
   leading?: ReactNode
   trailing?: ReactNode
   destructive?: boolean
-  // Triggers hand their own layers over as children.
+  // Triggers hand their own layers over as children. With `asChild` the
+  // child is the element that carries the row, such as a link.
   children?: ReactNode
 }) {
+  const row = (
+    <ItemContainer>
+      {leading}
+
+      <ItemLabel className="min-w-0 flex-1">
+        <ItemLabelText>{label}</ItemLabelText>
+
+        {description && (
+          <ItemLabelDescription className={cn(destructive && 'text-error/80')}>
+            {description}
+          </ItemLabelDescription>
+        )}
+      </ItemLabel>
+
+      {value && (
+        <span
+          data-slot="profile-detail-row-value"
+          className="text-on-surface-variant max-w-[55%] min-w-0 truncate text-sm font-normal"
+        >
+          {value}
+        </span>
+      )}
+
+      {trailing}
+    </ItemContainer>
+  )
+
   return (
     <SettingsCard>
       <SettingsCardContent asChild>
         <Button
           data-slot="profile-detail-row"
+          asChild={asChild}
           className={cn(
             'h-auto w-full rounded-none px-5 text-left text-base',
             destructive ? 'text-error!' : 'text-on-surface!',
@@ -97,34 +134,15 @@ export function DetailRow({
           )}
           {...props}
         >
-          <ItemContainer>
-            {leading}
+          {asChild && isValidElement<PropsWithChildren>(children) ? (
+            cloneElement(children, {}, row)
+          ) : (
+            <>
+              {row}
 
-            <ItemLabel className="min-w-0 flex-1">
-              <ItemLabelText>{label}</ItemLabelText>
-
-              {description && (
-                <ItemLabelDescription
-                  className={cn(destructive && 'text-error/80')}
-                >
-                  {description}
-                </ItemLabelDescription>
-              )}
-            </ItemLabel>
-
-            {value && (
-              <span
-                data-slot="profile-detail-row-value"
-                className="text-on-surface-variant max-w-[55%] min-w-0 truncate text-sm font-normal"
-              >
-                {value}
-              </span>
-            )}
-
-            {trailing}
-          </ItemContainer>
-
-          {children}
+              {children}
+            </>
+          )}
         </Button>
       </SettingsCardContent>
     </SettingsCard>

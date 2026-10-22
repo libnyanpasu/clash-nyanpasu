@@ -60,6 +60,28 @@ const remote: ProfileItem_Serialize = {
   },
 }
 
+const transform: ProfileItem_Serialize = {
+  uid: 'fix',
+  name: 'Fix rules',
+  type: 'transform',
+  transform: {
+    type: 'script',
+    runtime: 'javascript',
+    source: { type: 'local', binding: { type: 'managed', file: 'fix.js' } },
+  },
+}
+
+const host: ProfileItem_Serialize = {
+  uid: 'host',
+  name: 'Host profile',
+  type: 'config',
+  config: {
+    type: 'file',
+    transforms: ['fix'],
+    source: { type: 'local', binding: { type: 'managed', file: 'host.yaml' } },
+  },
+}
+
 const deferred = () => {
   const gate: { open?: (value: unknown) => void } = {}
   const promise = new Promise((resolve) => (gate.open = resolve))
@@ -70,11 +92,13 @@ const mountDetail = async ({
   items,
   initialEntries,
   initialIndex,
+  globalTransforms = [],
   runs = [],
   rpc,
   onTestFinished,
 }: {
   items: ProfileItem_Serialize[]
+  globalTransforms?: string[]
   runs?: RunDto[]
   initialEntries: string[]
   initialIndex?: number
@@ -89,7 +113,12 @@ const mountDetail = async ({
     const method = command === 'call_rpc' ? wire.method : command
     calls.push(method)
     if (method === 'get_profiles')
-      return { current: 'other', items, global_transforms: [], valid: [] }
+      return {
+        current: 'other',
+        items,
+        global_transforms: globalTransforms,
+        valid: [],
+      }
     if (method === 'get_profile_sync_status')
       return {
         scheduled: false,
@@ -335,4 +364,57 @@ test('refreshing the subscription does not block saving its options', async ({
     .poll(() => sent)
     .toEqual(['update_profile', 'patch_remote_profile_options'])
   refresh.resolve({ status: 'committed', value: null })
+})
+
+test('a transform lists where it runs and offers no preview or activation', async ({
+  onTestFinished,
+}) => {
+  const { container } = await mountDetail({
+    items: [host, transform],
+    globalTransforms: ['fix'],
+    initialEntries: ['/main/profiles/javascript/detail/fix'],
+    onTestFinished,
+  })
+
+  await expect
+    .poll(() => container.querySelector('[data-slot="profile-detail-used-by"]'))
+    .not.toBeNull()
+  const usedBy = container.querySelector(
+    '[data-slot="profile-detail-used-by"]',
+  )!
+  expect(usedBy.textContent).toContain(m.profile_detail_used_by_description())
+  const links = Array.from(usedBy.querySelectorAll('a'))
+  expect(links.map((link) => link.textContent)).toEqual([
+    expect.stringContaining(host.name),
+    expect.stringContaining(m.profile_global_transform_title()),
+  ])
+  expect(links.map((link) => link.getAttribute('href'))).toEqual([
+    '/main/profiles/profile/detail/host',
+    '/main/profiles/global',
+  ])
+
+  const card = container.querySelector('[data-slot="profile-detail-overview"]')!
+  expect(card.textContent).not.toContain(transform.name)
+  expect(
+    container.querySelector('[data-slot="profile-detail-header"]')?.textContent,
+  ).toContain(transform.name)
+  expect(container.textContent).not.toContain(m.profile_active_title())
+  expect(container.textContent).not.toContain(m.profile_chain_editor_title())
+  expect(container.querySelector('.monaco-editor, pre, textarea')).toBeNull()
+})
+
+test('a transform that no profile uses says so', async ({ onTestFinished }) => {
+  const { container } = await mountDetail({
+    items: [transform],
+    initialEntries: ['/main/profiles/javascript/detail/fix'],
+    onTestFinished,
+  })
+
+  await expect
+    .poll(
+      () =>
+        container.querySelector('[data-slot="profile-detail-used-by-empty"]')
+          ?.textContent,
+    )
+    .toBe(m.profile_detail_used_by_empty())
 })

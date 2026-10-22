@@ -3,7 +3,7 @@ import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { m } from '@/paraglide/messages'
 import { isRemoteItem, useProfile } from '@nyanpasu/query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { isProxyProfile } from '../_modules/utils'
+import { isChainProfile, isProxyProfile } from '../_modules/utils'
 import { PROFILE_TYPE_NAMES, ProfileType } from '../../_modules/consts'
 import DeleteSection from './_modules/delete-section'
 import FileSection from './_modules/file-section'
@@ -13,6 +13,7 @@ import ProfileOverviewCard from './_modules/profile-overview-card'
 import SubscriptionSection from './_modules/subscription-section'
 import SyncHistorySection from './_modules/sync-history-section'
 import TransformChainSection from './_modules/transform-chain-section'
+import UsedBySection from './_modules/used-by-section'
 
 export const Route = createFileRoute('/(main)/main/profiles/$type/detail/$uid')(
   {
@@ -63,6 +64,14 @@ function RouteComponent() {
             profiles={profiles}
             isGlobal={!!query.data?.global_transforms?.includes(uid)}
           />
+
+          {isChainProfile(currentProfile) && (
+            <UsedBySection
+              uid={currentProfile.uid}
+              profiles={profiles}
+              globalTransforms={query.data?.global_transforms ?? []}
+            />
+          )}
 
           {isRemoteItem(currentProfile) && (
             <SubscriptionSection profile={currentProfile} />

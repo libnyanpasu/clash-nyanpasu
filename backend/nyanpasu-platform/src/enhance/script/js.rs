@@ -326,7 +326,9 @@ mod utils {
                     self.exported_name.push(Cow::Borrowed(id.name.as_str()))
                 }
                 oxc_ast::ast::ModuleExportName::StringLiteral(s) => {
-                    self.exported_name.push(Cow::Borrowed(s.value.as_str()))
+                    if let Some(name) = s.value.as_str() {
+                        self.exported_name.push(Cow::Borrowed(name));
+                    }
                 }
             }
             walk_module_export_name(self, it);
@@ -649,6 +651,16 @@ mod test {
         assert_eq!(
             script,
             "export default function main(config) {\n            return config\n        };"
+        );
+    }
+
+    #[test]
+    fn wrap_preserves_quoted_export_names() {
+        let script = "const value = 1; export { value as \"配置\" }; function main(config) { return config; }";
+        let wrapped = super::utils::wrap_script_if_not_esm(script).unwrap();
+        assert_eq!(
+            wrapped,
+            "const value = 1; export { value as \"配置\" }; export default function main(config) { return config; }"
         );
     }
 

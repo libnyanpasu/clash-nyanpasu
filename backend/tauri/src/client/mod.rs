@@ -3671,6 +3671,7 @@ pub(crate) mod tests {
                 )
             })
             .unwrap();
+        assert_eq!(first.final_id, final_node.id);
         let content = client
             .inspect_runtime_node(&first.snapshot_id, final_node.id)
             .await

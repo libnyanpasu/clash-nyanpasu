@@ -543,7 +543,7 @@ test('the changed-only filter keeps the source, the result and the chosen step',
   await expect.poll(() => ui.detailKey()).toBe('builtin:field_filter')
 
   await userEvent.click(
-    page.getByRole('checkbox', { name: m.inspect_only_changed() }),
+    page.getByRole('switch', { name: m.inspect_only_changed() }),
   )
   // The unchanged step stays while it is chosen.
   expect(ui.row('builtin:field_filter')).not.toBeNull()

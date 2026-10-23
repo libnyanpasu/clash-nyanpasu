@@ -1,4 +1,3 @@
-import CheckSmallRounded from '~icons/material-symbols/check-small-rounded'
 import CircleRounded from '~icons/material-symbols/circle-rounded'
 import ErrorRounded from '~icons/material-symbols/error-rounded'
 import InputRounded from '~icons/material-symbols/input-rounded'
@@ -8,6 +7,7 @@ import StarRounded from '~icons/material-symbols/star-rounded'
 import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { useEffect, useRef, type ComponentType, type SVGProps } from 'react'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { Switch } from '@nyanpasu/ui/switch'
 import type { ProfileLookup } from '@/components/profile-label'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
@@ -168,32 +168,14 @@ export default function StepRail({
         </div>
       </ScrollArea>
 
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={onlyChanged}
+      <label
         data-slot="inspect-only-changed"
-        className={cn(
-          'text-on-surface-variant mx-3 mt-1 mb-4 flex shrink-0 cursor-pointer items-center gap-2.5',
-          'rounded-lg px-2 py-1 text-left text-[13px]',
-          'focus-visible:outline-primary outline-none focus-visible:outline-2',
-        )}
-        onClick={() => onOnlyChangedChange(!onlyChanged)}
+        className="text-on-surface-variant mx-3 mt-1 mb-4 flex shrink-0 cursor-pointer items-center justify-between gap-3 px-2 text-[13px]"
       >
-        <span
-          aria-hidden
-          className={cn(
-            'grid size-[18px] shrink-0 place-items-center rounded-sm',
-            onlyChanged
-              ? 'bg-primary text-on-primary'
-              : 'shadow-[inset_0_0_0_2px_var(--color-outline)]',
-          )}
-        >
-          {onlyChanged && <CheckSmallRounded className="size-3.5" />}
-        </span>
-
         {m.inspect_only_changed()}
-      </button>
+
+        <Switch checked={onlyChanged} onCheckedChange={onOnlyChangedChange} />
+      </label>
     </aside>
   )
 }

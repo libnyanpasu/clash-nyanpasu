@@ -6,7 +6,7 @@ import {
   SettingsCardAnimatedItem,
   SettingsCardContent,
   SettingsCardHeader,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
 export default function CrashSimulation() {
   const handleMainThread = useLockFn(async () => {

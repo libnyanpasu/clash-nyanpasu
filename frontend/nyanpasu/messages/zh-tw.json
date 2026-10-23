@@ -790,7 +790,7 @@
   "proxies_nav_groups": "代理群組",
   "proxies_nav_folders": "資料夾",
   "proxies_nav_group_count": "{count} 個代理群組",
-  "proxies_nav_folder_empty": "可從代理群組選單移至此處",
+  "proxies_nav_folder_empty": "將代理群組拖曳到此處",
   "proxies_nav_list_actions": "清單操作",
   "proxies_nav_reset_order": "重設順序",
   "proxies_nav_reset_order_description": "代理群組將恢復為設定檔中的順序，所有資料夾都會被刪除。",

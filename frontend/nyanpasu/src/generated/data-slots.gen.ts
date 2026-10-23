@@ -427,6 +427,7 @@ export const DATA_SLOTS = [
   'proxies-folder',
   'proxies-folder-add',
   'proxies-folder-empty',
+  'proxies-folder-list',
   'proxies-group-back-button',
   'proxies-group-clear-fixed-button',
   'proxies-group-fixed',

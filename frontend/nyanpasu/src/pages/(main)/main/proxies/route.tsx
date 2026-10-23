@@ -13,6 +13,7 @@ import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { zodSearchValidator } from '@tanstack/router-zod-adapter'
 import { ProfileType } from '../profiles/_modules/consts'
+import ProxiesDndProvider from './_modules/proxies-dnd-provider'
 import ProxiesLayoutProvider from './_modules/proxies-layout-provider'
 import ProxiesNavigate from './_modules/proxies-navigate'
 
@@ -93,42 +94,44 @@ function RouteComponent() {
 
   return (
     <ProxiesLayoutProvider>
-      <Sidebar data-slot="proxies-container">
-        {!isNoProxies && (proxyMode.rule || proxyMode.script) && (
-          <SidebarContent
-            className="bg-surface-variant/10"
-            data-slot="proxies-sidebar-scroll-area"
-          >
-            <ProxiesNavigate />
-          </SidebarContent>
-        )}
-
-        <AppContentScrollArea
-          className={cn(
-            // A zero basis splits the width 3:1 with the sidebar regardless of
-            // the routed content, so the sidebar keeps its width across routes.
-            'group/proxies-content flex-[3_1_0%]',
-            // for AnimatedOutletPreset transition to work properly,
-            // the scroll area must have overflow: clip
-            'overflow-clip',
-          )}
-          data-slot="proxies-content-scroll-area"
-        >
-          {isNoProxies || proxyMode.direct ? (
-            <Empty />
-          ) : (
-            <div
-              className={cn(
-                'container mx-auto w-full min-w-full',
-                'flex min-h-full flex-col',
-              )}
-              data-slot="proxies-content"
+      <ProxiesDndProvider>
+        <Sidebar data-slot="proxies-container">
+          {!isNoProxies && (proxyMode.rule || proxyMode.script) && (
+            <SidebarContent
+              className="bg-surface-variant/10"
+              data-slot="proxies-sidebar-scroll-area"
             >
-              <AnimatedOutletPreset className="flex flex-1 flex-col" />
-            </div>
+              <ProxiesNavigate />
+            </SidebarContent>
           )}
-        </AppContentScrollArea>
-      </Sidebar>
+
+          <AppContentScrollArea
+            className={cn(
+              // A zero basis splits the width 3:1 with the sidebar regardless of
+              // the routed content, so the sidebar keeps its width across routes.
+              'group/proxies-content flex-[3_1_0%]',
+              // for AnimatedOutletPreset transition to work properly,
+              // the scroll area must have overflow: clip
+              'overflow-clip',
+            )}
+            data-slot="proxies-content-scroll-area"
+          >
+            {isNoProxies || proxyMode.direct ? (
+              <Empty />
+            ) : (
+              <div
+                className={cn(
+                  'container mx-auto w-full min-w-full',
+                  'flex min-h-full flex-col',
+                )}
+                data-slot="proxies-content"
+              >
+                <AnimatedOutletPreset className="flex flex-1 flex-col" />
+              </div>
+            )}
+          </AppContentScrollArea>
+        </Sidebar>
+      </ProxiesDndProvider>
     </ProxiesLayoutProvider>
   )
 }

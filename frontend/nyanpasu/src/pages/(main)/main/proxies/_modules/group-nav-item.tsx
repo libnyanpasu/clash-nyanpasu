@@ -24,15 +24,20 @@ import {
 import DelayChip from '@/components/proxies/delay-chip'
 import { CacheImage } from '@/components/ui/image'
 import { m } from '@/paraglide/messages'
+import { FOLDER_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
+import { pointerIntersection } from '@dnd-kit/collision'
+import { useSortable } from '@dnd-kit/react/sortable'
 import {
   memberDelay,
   useSetting,
   type ClashProxiesQuery,
   type ClashProxiesQueryGroupItem,
 } from '@nyanpasu/query'
+import type { FolderId } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
 import { locateGroup } from './group-layout'
 import { GroupMoveContextMenu, useGroupMove } from './group-move-menu'
+import { GROUP_DRAG_TYPE, groupDragId, sectionId } from './resolve-group-drop'
 import { useGroupLayout } from './use-group-layout'
 
 type GroupGlyph = {
@@ -90,10 +95,16 @@ const GroupNavItem = memo(function GroupNavItem({
   group,
   proxies,
   active,
+  index,
+  section,
 }: {
   group: ClashProxiesQueryGroupItem
   proxies: ClashProxiesQuery
   active: boolean
+  /** Where the group sits in its list, as the list shows it now. */
+  index: number
+  /** The folder the group is in; `null` for the ungrouped groups. */
+  section: FolderId | null
 }) {
   const { layout, moveGroupBy } = useGroupLayout()
   const move = useGroupMove(group.name)
@@ -102,11 +113,30 @@ const GroupNavItem = memo(function GroupNavItem({
 
   const glyph = GLYPHS[group.type] ?? FALLBACK_GLYPH
 
+  // The whole item is the drag source; a click still opens the group, so a
+  // mouse drag starts only after the pointer moved.
+  const { ref, isDragging } = useSortable({
+    id: groupDragId(group.name),
+    index,
+    group: sectionId(section),
+    type: GROUP_DRAG_TYPE,
+    accept: [GROUP_DRAG_TYPE],
+    collisionDetector: pointerIntersection,
+    sensors: FOLDER_ITEM_DRAG_SENSORS,
+  })
+
   return (
     <RegisterContextMenu>
       <RegisterContextMenuTrigger asChild>
-        <NavigationListItem active={active} asChild>
+        <NavigationListItem
+          ref={ref}
+          active={active}
+          asChild
+          data-dragging={isDragging || undefined}
+        >
           <Link
+            // dnd-kit gives its drag source the button role unless one is set.
+            role="link"
             aria-current={active ? 'page' : undefined}
             to="/main/proxies/group/$name"
             params={{ name: group.name }}

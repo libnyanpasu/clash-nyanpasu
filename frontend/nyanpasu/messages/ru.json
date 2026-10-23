@@ -772,7 +772,7 @@
       }
     }
   ],
-  "proxies_nav_folder_empty": "Переместите группы сюда из их меню",
+  "proxies_nav_folder_empty": "Перетащите группы сюда",
   "proxies_nav_list_actions": "Действия со списком",
   "proxies_nav_reset_order": "Сбросить порядок",
   "proxies_nav_reset_order_description": "Группы вернутся к порядку из профиля, а все папки будут удалены.",

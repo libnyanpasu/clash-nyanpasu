@@ -800,7 +800,7 @@
       }
     }
   ],
-  "proxies_nav_folder_empty": "Move groups here from their menu",
+  "proxies_nav_folder_empty": "Drag groups here",
   "proxies_nav_list_actions": "List actions",
   "proxies_nav_reset_order": "Reset order",
   "proxies_nav_reset_order_description": "The groups return to the order of the profile, and all folders are deleted.",

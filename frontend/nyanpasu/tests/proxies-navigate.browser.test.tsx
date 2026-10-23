@@ -7,6 +7,7 @@ import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
+import ProxiesDndProvider from '@/pages/(main)/main/proxies/_modules/proxies-dnd-provider'
 import ProxiesLayoutProvider from '@/pages/(main)/main/proxies/_modules/proxies-layout-provider'
 import ProxiesNavigate from '@/pages/(main)/main/proxies/_modules/proxies-navigate'
 import { m } from '@/paraglide/messages'
@@ -26,6 +27,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { mockIPC } from '@tauri-apps/api/mocks'
+import { drag } from './pointer-drag'
 import { TestQueryProvider } from './query-provider'
 
 vi.hoisted(() => {
@@ -175,7 +177,9 @@ const renderAt = async (
               <ContextMenuProvider>
                 <div className="w-80">
                   <ProxiesLayoutProvider>
-                    <ProxiesNavigate />
+                    <ProxiesDndProvider>
+                      <ProxiesNavigate />
+                    </ProxiesDndProvider>
                   </ProxiesLayoutProvider>
                 </div>
               </ContextMenuProvider>
@@ -587,4 +591,181 @@ test('a failed commit shows an error dialog and keeps the order', async () => {
   await expect
     .poll(() => names(view))
     .toEqual(['Charlie', 'Alpha', 'Bravo', 'Delta'])
+})
+
+// Dragging.
+
+const emptyFolderLayout: ProxyGroupLayout = {
+  folders: [
+    { id: 'f1', name: 'Work', members: ['Delta'] },
+    { id: 'f2', name: 'Home', members: [] },
+  ],
+  ungrouped: ['Charlie', 'Alpha', 'Bravo'],
+}
+
+test('dragging a group over another reorders the groups in one commit', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  await drag(groupLink('Bravo').element(), groupLink('Charlie').element())
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].ungrouped).toEqual(['Bravo', 'Charlie', 'Alpha'])
+  expect(layouts[0].folders.map((folder) => folder.members)).toEqual([
+    ['Delta'],
+    [],
+  ])
+})
+
+test('dropping a group on a folder heading appends it to the folder', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  await drag(groupLink('Alpha').element(), folderHeading('Work').element())
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders[0].members).toEqual(['Delta', 'Alpha'])
+  expect(layouts[0].ungrouped).toEqual(['Charlie', 'Bravo'])
+})
+
+test('a closed folder takes a group dropped on its heading', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+    collapsed: { f1: true },
+  })
+
+  await drag(groupLink('Bravo').element(), folderHeading('Work').element())
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders[0].members).toEqual(['Delta', 'Bravo'])
+  await expect
+    .element(folderHeading('Work'))
+    .toHaveAttribute('aria-expanded', 'false')
+})
+
+test("dropping a group among a folder's groups puts it in that place", async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  await drag(groupLink('Bravo').element(), groupLink('Delta').element())
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders[0].members).toHaveLength(2)
+  expect(layouts[0].folders[0].members).toContain('Bravo')
+  expect(layouts[0].ungrouped).toEqual(['Charlie', 'Alpha'])
+})
+
+test('a group dragged out of a folder leaves it', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  await drag(groupLink('Delta').element(), groupLink('Alpha').element())
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders[0].members).toEqual([])
+  expect(layouts[0].ungrouped).toHaveLength(4)
+  expect(layouts[0].ungrouped).toContain('Delta')
+})
+
+test('an empty folder takes a group dropped on it', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  await drag(
+    groupLink('Charlie').element(),
+    page.getByText(m.proxies_nav_folder_empty()).element(),
+  )
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders[1].members).toEqual(['Charlie'])
+  expect(layouts[0].ungrouped).toEqual(['Alpha', 'Bravo'])
+})
+
+test('dragging a folder over another reorders the folders in one commit', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  await drag(folderHeading('Home').element(), folderHeading('Work').element())
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].folders.map((folder) => folder.id)).toEqual(['f2', 'f1'])
+  expect(layouts[0].folders.map((folder) => folder.members)).toEqual([
+    [],
+    ['Delta'],
+  ])
+})
+
+test('a drop in the same place commits nothing', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  await drag(groupLink('Alpha').element(), groupLink('Alpha').element())
+
+  expect(layouts).toEqual([])
+})
+
+test('a click on a group still opens it and a click on a folder toggles it', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  await groupLink('Bravo').click()
+  await expect
+    .element(groupLink('Bravo'))
+    .toHaveAttribute('aria-current', 'page')
+
+  await folderHeading('Work').click()
+  await expect
+    .element(folderHeading('Work'))
+    .toHaveAttribute('aria-expanded', 'false')
+  expect(layouts).toEqual([])
+})
+
+test('a group moves with the keyboard', async () => {
+  const { layouts } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  groupLink('Charlie').element().focus()
+  await userEvent.keyboard(' ')
+  await userEvent.keyboard('{ArrowDown}')
+  await userEvent.keyboard(' ')
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].ungrouped).toEqual(['Alpha', 'Charlie', 'Bravo'])
+})
+
+test('escape cancels a drag without a commit and the item can be picked up again', async () => {
+  const { layouts, view } = await renderAt('/main/proxies/group/Alpha', {
+    stored: emptyFolderLayout,
+  })
+
+  groupLink('Charlie').element().focus()
+  await userEvent.keyboard(' ')
+  await userEvent.keyboard('{ArrowDown}')
+  await userEvent.keyboard('{Escape}')
+
+  await expect
+    .poll(() => names(view))
+    .toEqual(['Charlie', 'Alpha', 'Bravo', 'Delta'])
+  expect(layouts).toEqual([])
+
+  // The same item can be picked up again after the cancel.
+  await expect
+    .poll(() => document.querySelector('[data-dnd-dragging]'))
+    .toBeNull()
+  groupLink('Charlie').element().focus()
+  await userEvent.keyboard(' ')
+  await userEvent.keyboard('{ArrowDown}')
+  await userEvent.keyboard(' ')
+
+  await expect.poll(() => layouts).toHaveLength(1)
+  expect(layouts[0].ungrouped).toEqual(['Alpha', 'Charlie', 'Bravo'])
 })

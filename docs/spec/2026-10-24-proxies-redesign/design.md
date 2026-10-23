@@ -151,14 +151,22 @@ sensors (`@/utils/dnd-sensors`).
 | a group  | a folder heading         | appends to the folder (expanded or collapsed) |
 | a folder | a position among folders | reorders folders                              |
 
-- **Feedback.** The dragged item is raised (`data-dragging`) and its slot shows
-  as a dashed placeholder. An insertion bar (3px, primary) marks where it will
-  land. The folder under the pointer gets the primary ring
-  (`data-drop-target`). All three states already exist in `NavigationList`.
+- **Drag sources.** A group item is dragged by the whole item, and a folder by
+  its heading. A click still opens the group or toggles the folder, so a mouse
+  drag starts only after the pointer moved 8px (`FOLDER_ITEM_DRAG_SENSORS`).
+- **Drop targets.** The "Groups" list and each open folder's list are sortable
+  sections, so a group takes the place under the pointer. A folder heading is a
+  drop target of its own, and an empty folder's list takes the group.
+- **Feedback.** The lists render the drag preview themselves: the other items
+  make room, so the slot of the dragged item shows where it will land. The
+  dragged item is raised (`data-dragging`), and the folder heading under the
+  pointer gets the primary ring (`data-drop-target`). Both states exist in
+  `NavigationListItem`. There is no separate insertion bar.
 - **One commit per drop.** The drag previews the move locally and commits the
-  whole arrangement once on drop. Escape cancels without a commit.
+  whole arrangement once on drop. A drop that changes nothing commits nothing.
+  Escape cancels without a commit.
 - **Pointer and keyboard.** Keyboard dragging uses dnd-kit's keyboard sensor, with
-  announcements in Paraglide messages like the Profiles page.
+  announcements in the Paraglide messages the Profiles page uses.
 - **Right-to-left and touch.** Not specially handled; the Profiles page does not
   either. Touch users use the menu.
 

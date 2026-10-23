@@ -1,6 +1,8 @@
 /** Architecture ledger command entry point. */
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import * as path from "jsr:@std/path";
+import { readFile, writeFile } from "node:fs/promises";
+import { parseArgs } from "node:util";
+import { isNotFound } from "../shared/errors.ts";
+import * as path from "node:path";
 import { consola } from "../shared/logger.ts";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 import {
@@ -35,7 +37,7 @@ async function loadSnapshotFile(
     ? snapshotPath
     : path.join(WORKSPACE_ROOT, snapshotPath);
   try {
-    const text = await Deno.readTextFile(abs);
+    const text = await readFile(abs, "utf8");
     let raw: unknown;
     try {
       raw = JSON.parse(text);
@@ -56,7 +58,7 @@ async function loadSnapshotFile(
       };
     }
   } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
+    if (isNotFound(err)) {
       return { error: `missing snapshot file: ${snapshotPath}` };
     }
     return {
@@ -68,22 +70,17 @@ async function loadSnapshotFile(
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(Deno.args, {
-    string: ["mode", "root", "format", "snapshot"],
-    collect: ["root"],
-    default: {
-      mode: "report",
-      format: "text",
-      snapshot: DEFAULT_SNAPSHOT_PATH,
+  const { values: args } = parseArgs({
+    options: {
+      mode: { type: "string", short: "m", default: "report" },
+      root: { type: "string", short: "r", multiple: true },
+      format: { type: "string", short: "f", default: "text" },
+      snapshot: { type: "string", short: "s", default: DEFAULT_SNAPSHOT_PATH },
+      help: { type: "boolean", short: "h" },
+      json: { type: "boolean" },
+      "write-snapshot": { type: "boolean" },
     },
-    alias: {
-      m: "mode",
-      r: "root",
-      f: "format",
-      s: "snapshot",
-      h: "help",
-    },
-    boolean: ["help", "json", "write-snapshot"],
+    strict: false,
   });
 
   if (args.help) {
@@ -131,7 +128,7 @@ Options:
   for (const file of files) {
     const relPath = rel(file, WORKSPACE_ROOT);
     if (isBridgePath(relPath)) bridgeFiles.add(relPath);
-    const source = await Deno.readTextFile(file);
+    const source = await readFile(file, "utf8");
     scanFile(relPath, source, buckets);
   }
 
@@ -175,7 +172,7 @@ Options:
     const abs = path.isAbsolute(snapshotPath)
       ? snapshotPath
       : path.join(WORKSPACE_ROOT, snapshotPath);
-    await Deno.writeTextFile(abs, `${JSON.stringify(stable, null, 2)}\n`);
+    await writeFile(abs, `${JSON.stringify(stable, null, 2)}\n`);
     consola.success(`wrote stable snapshot: ${snapshotPath}`);
   }
 
@@ -186,7 +183,7 @@ Options:
   }
 
   if (mode === "report") {
-    Deno.exit(0);
+    process.exit(0);
   }
 
   // Gate mode
@@ -196,18 +193,18 @@ Options:
     console.log(
       "Regenerate with: deno task architecture-ledger --write-snapshot",
     );
-    Deno.exit(1);
+    process.exit(1);
   }
 
   const current = reportToStableSnapshot(report);
   const result = evaluateGate(current, loaded.snapshot, allowlistIssues);
   printGateResult(result, report, snapshotPath);
-  Deno.exit(result.ok ? 0 : 1);
+  process.exit(result.ok ? 0 : 1);
 }
 
 if (import.meta.main) {
   main().catch((err) => {
     consola.error(err);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

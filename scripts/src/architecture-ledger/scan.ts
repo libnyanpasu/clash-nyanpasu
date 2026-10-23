@@ -1,6 +1,6 @@
 /** Rust source discovery and architecture metric scanning. */
-import { walk } from "jsr:@std/fs";
-import * as path from "jsr:@std/path";
+import { readdir, stat } from "node:fs/promises";
+import * as path from "node:path";
 import { consola } from "../shared/logger.ts";
 import {
   CONFIG_CALL_RE,
@@ -102,6 +102,21 @@ function matchAll(
   return out;
 }
 
+/** Rust files under a directory, without descending into build or dependency directories. */
+async function walkRustFiles(directory: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "target" || entry.name === "node_modules") continue;
+      files.push(...await walkRustFiles(entryPath));
+    } else if (entry.isFile() && entry.name.endsWith(".rs")) {
+      files.push(entryPath);
+    }
+  }
+  return files;
+}
+
 export async function collectRustFiles(
   roots: string[],
   repoRoot: string,
@@ -110,25 +125,18 @@ export async function collectRustFiles(
   for (const root of roots) {
     const abs = path.isAbsolute(root) ? root : path.join(repoRoot, root);
     try {
-      const st = await Deno.stat(abs);
-      if (!st.isDirectory) continue;
+      const st = await stat(abs);
+      if (!st.isDirectory()) continue;
     } catch {
       consola.warn(`skip missing root: ${root}`);
       continue;
     }
 
-    for await (
-      const entry of walk(abs, {
-        includeDirs: false,
-        includeFiles: true,
-        exts: ["rs"],
-        skip: [/[/\\]target[/\\]/, /[/\\]node_modules[/\\]/],
-      })
-    ) {
-      const parts = path.relative(repoRoot, entry.path).split(path.SEPARATOR);
+    for (const file of await walkRustFiles(abs)) {
+      const parts = path.relative(repoRoot, file).split(path.sep);
       if (parts.some((p) => SKIP_DIR_NAMES.has(p))) continue;
-      if (!isRustSource(entry.path)) continue;
-      files.push(entry.path);
+      if (!isRustSource(file)) continue;
+      files.push(file);
     }
   }
   files.sort();

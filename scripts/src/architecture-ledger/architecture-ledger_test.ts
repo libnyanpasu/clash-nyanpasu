@@ -35,6 +35,9 @@ import {
   reportToStableSnapshot,
   toStableSnapshot,
 } from "./snapshot.ts";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function emptyStable(overrides: Partial<StableSnapshot> = {}): StableSnapshot {
   const baseMetrics: StableSnapshot["metrics"] = {
@@ -739,7 +742,7 @@ fn braces_in_string() {
 });
 
 Deno.test("collectRustFiles: a tmp ancestor does not exclude the worktree", async () => {
-  const fixture = await Deno.makeTempDir();
+  const fixture = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   const repo = `${fixture}/tmp/worktree`;
   try {
     for (
@@ -751,20 +754,17 @@ Deno.test("collectRustFiles: a tmp ancestor does not exclude the worktree", asyn
         "enable-loopback",
       ]
     ) {
-      await Deno.mkdir(`${repo}/backend/${dir}`, { recursive: true });
-      await Deno.writeTextFile(
-        `${repo}/backend/${dir}/sample.rs`,
-        "fn sample() {}",
-      );
+      await mkdir(`${repo}/backend/${dir}`, { recursive: true });
+      await writeFile(`${repo}/backend/${dir}/sample.rs`, "fn sample() {}");
     }
     const files = await collectRustFiles(["backend"], repo);
     assertEquals(files.length, 1);
     assertEquals(
-      await Deno.realPath(files[0]),
-      await Deno.realPath(`${repo}/backend/src/sample.rs`),
+      await realpath(files[0]),
+      await realpath(`${repo}/backend/src/sample.rs`),
     );
   } finally {
-    await Deno.remove(fixture, { recursive: true });
+    await rm(fixture, { recursive: true });
   }
 });
 

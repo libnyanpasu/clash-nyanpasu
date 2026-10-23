@@ -1,5 +1,5 @@
 /** Architecture ledger policy, classifications, and shared report types. */
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 
 export const DEFAULT_ROOTS = ["backend"];
 export const DEFAULT_SNAPSHOT_PATH =
@@ -375,7 +375,7 @@ export type GateResult = {
 };
 
 export function rel(filePath: string, root: string): string {
-  return path.relative(root, filePath).split(path.SEPARATOR).join("/");
+  return path.relative(root, filePath).split(path.sep).join("/");
 }
 
 export function isRustSource(filePath: string): boolean {

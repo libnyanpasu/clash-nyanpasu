@@ -1,3 +1,4 @@
+import { runCommand } from "../shared/command.ts";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 
 const NEUTRAL_PACKAGES = [
@@ -31,7 +32,7 @@ export function dependencyViolations(
 export async function main(): Promise<number> {
   const problems: string[] = [];
   for (const owner of NEUTRAL_PACKAGES) {
-    const result = await new Deno.Command("cargo", {
+    const result = await runCommand("cargo", {
       cwd: WORKSPACE_ROOT,
       args: [
         "tree",
@@ -50,15 +51,13 @@ export async function main(): Promise<number> {
         "--format",
         "{p}",
       ],
-      stdout: "piped",
-      stderr: "piped",
-    }).output();
+    });
     if (!result.success) {
-      console.error(new TextDecoder().decode(result.stderr));
+      console.error(result.stderr.toString("utf8"));
       return result.code || 1;
     }
     problems.push(
-      ...dependencyViolations(owner, new TextDecoder().decode(result.stdout)),
+      ...dependencyViolations(owner, result.stdout.toString("utf8")),
     );
   }
   if (problems.length > 0) {
@@ -70,8 +69,8 @@ export async function main(): Promise<number> {
 }
 
 if (import.meta.main) {
-  main().then((code) => Deno.exit(code)).catch((error) => {
+  main().then((code) => process.exit(code)).catch((error) => {
     console.error(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

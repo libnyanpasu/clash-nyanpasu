@@ -423,11 +423,10 @@ export default function ProfilesList({
             className={cn(
               'grid content-start gap-3',
               'md:grid-cols-2',
-              'dxl:grid-cols-3',
+              'xl:grid-cols-3',
               className,
             )}
-            data-slot="profiles-navigate"
-            {...props}
+            data-slot="profiles-grid"
           >
             {filteredProfiles.map((profile, index) => (
               <GridViewProfile

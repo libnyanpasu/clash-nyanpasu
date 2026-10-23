@@ -1,5 +1,6 @@
 import { AppContentScrollArea } from '@nyanpasu/ui/scroll-area'
 import { useIsMobile } from '@nyanpasu/hooks'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import ProfilesNavigate from './_modules/profiles-navigate'
 
@@ -16,10 +17,14 @@ function RouteComponent() {
 
   return (
     <AppContentScrollArea
-      className="bg-surface-variant/10"
+      className={cn(
+        // Opaque, unlike the desktop sidebar: route transitions overlap pages.
+        'dark:bg-mixed-background bg-[color-mix(in_srgb,var(--color-surface-variant)_50%,var(--color-surface))]',
+        'z-50 w-full flex-1 [&>div>div]:block!',
+      )}
       data-slot="profiles-sidebar-scroll-area"
     >
-      <ProfilesNavigate className="p-4" />
+      <ProfilesNavigate />
     </AppContentScrollArea>
   )
 }

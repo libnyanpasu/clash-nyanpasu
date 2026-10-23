@@ -1,3 +1,255 @@
+## [2.0.0-rc.3] - 2026-10-23
+
+### 💥 Breaking Changes
+
+- **proxies:** Retain provider summaries in the cache (#5831) by @greenhat616 in [#5831](https://github.com/libnyanpasu/clash-nyanpasu/pull/5831)
+
+### ⚡ Performance Improvements
+
+- **clash:** Share connection frames and recycle rate storage (#5840) by @greenhat616 in [#5840](https://github.com/libnyanpasu/clash-nyanpasu/pull/5840)
+
+- **config:** Share committed runtime effective snapshots (#5835) by @greenhat616 in [#5835](https://github.com/libnyanpasu/clash-nyanpasu/pull/5835)
+
+- **logs:** Skip the scroll corrections while following the newest log (#5902) by @greenhat616 in [#5902](https://github.com/libnyanpasu/clash-nyanpasu/pull/5902)
+
+- **router:** Stop a leaving page from rendering again during its slide (#5900) by @greenhat616 in [#5900](https://github.com/libnyanpasu/clash-nyanpasu/pull/5900)
+
+- **runtime:** Enable native websocket text decoding (#5839) by @greenhat616 in [#5839](https://github.com/libnyanpasu/clash-nyanpasu/pull/5839)
+
+- **runtime:** Use derived connection and scalar decoding (#5837) by @greenhat616 in [#5837](https://github.com/libnyanpasu/clash-nyanpasu/pull/5837)
+
+- **snapshot:** Record known deltas and replay removals in order (#5904) by @greenhat616 in [#5904](https://github.com/libnyanpasu/clash-nyanpasu/pull/5904)
+
+- **traffic:** Render a page's rows and map in the pass after it (#5901) by @greenhat616 in [#5901](https://github.com/libnyanpasu/clash-nyanpasu/pull/5901)
+
+- **traffic:** Re-render only what a page switch changes (#5895) by @greenhat616 in [#5895](https://github.com/libnyanpasu/clash-nyanpasu/pull/5895)
+
+- **traffic:** Share one tooltip among the ranking rows (#5893) by @greenhat616 in [#5893](https://github.com/libnyanpasu/clash-nyanpasu/pull/5893)
+
+- **traffic:** Make the ranking listing cheap to open, poll and page (#5808) by @greenhat616 in [#5808](https://github.com/libnyanpasu/clash-nyanpasu/pull/5808)
+
+- **tsdb:** Reuse decode buffers and sum series rows per combination (#5876) by @greenhat616 in [#5876](https://github.com/libnyanpasu/clash-nyanpasu/pull/5876)
+
+- **ui:** Keep the sidebar and segmented button contexts across renders (#5899) by @greenhat616 in [#5899](https://github.com/libnyanpasu/clash-nyanpasu/pull/5899)
+
+- **widget:** Render the macOS widget in software (#5824) by @greenhat616 in [#5824](https://github.com/libnyanpasu/clash-nyanpasu/pull/5824)
+
+- **windows:** Opt the GUI process into the segment heap (#5821) by @greenhat616 in [#5821](https://github.com/libnyanpasu/clash-nyanpasu/pull/5821)
+
+- Cap the shared tokio runtime at four worker threads (#5822) by @greenhat616 in [#5822](https://github.com/libnyanpasu/clash-nyanpasu/pull/5822)
+
+### ✅ Testing
+
+- **perf:** Count renders and report profiles and traces of the page benchmarks (#5915) by @greenhat616 in [#5915](https://github.com/libnyanpasu/clash-nyanpasu/pull/5915)
+
+- **tsdb:** Bound sorted runs only in windows the cursor has passed (#5964) by @greenhat616 in [#5964](https://github.com/libnyanpasu/clash-nyanpasu/pull/5964)
+
+- **tsdb:** Measure the store and record the profile evidence (#5853) by @greenhat616 in [#5853](https://github.com/libnyanpasu/clash-nyanpasu/pull/5853)
+
+- **tsdb:** Fault every step and model every feature together (#5852) by @greenhat616 in [#5852](https://github.com/libnyanpasu/clash-nyanpasu/pull/5852)
+
+### ✨ Features
+
+- **backend:** Add typed local-socket channels for child processes (#5790) by @greenhat616 in [#5790](https://github.com/libnyanpasu/clash-nyanpasu/pull/5790)
+
+- **debug:** Simulate a crash to test the reporter (#5962) by @greenhat616 in [#5962](https://github.com/libnyanpasu/clash-nyanpasu/pull/5962)
+
+- **diagnose:** Collect the environment and redacted logs with progress (#5960) by @greenhat616 in [#5960](https://github.com/libnyanpasu/clash-nyanpasu/pull/5960)
+
+- **dmg:** Add DMG finalization and background icon handling by @keiko233
+
+- **inspect:** Rebuild Inspect as a full-height step browser (#5956) by @keiko233 in [#5956](https://github.com/libnyanpasu/clash-nyanpasu/pull/5956)
+
+- **inspect:** Report the final node and each step's highest log level (#5955) by @keiko233 in [#5955](https://github.com/libnyanpasu/clash-nyanpasu/pull/5955)
+
+- **nsis:** Add sidebar image for installer by @keiko233
+
+- **panics:** Report frames as module offsets and archive Windows symbols (#5943) by @greenhat616 in [#5943](https://github.com/libnyanpasu/clash-nyanpasu/pull/5943)
+
+- **profiles:** Rebuild Global Transform as a full-height tool (#5954) by @keiko233 in [#5954](https://github.com/libnyanpasu/clash-nyanpasu/pull/5954)
+
+- **profiles:** Add profile folders to the Profiles UI (#5953) by @keiko233 in [#5953](https://github.com/libnyanpasu/clash-nyanpasu/pull/5953)
+
+- **profiles:** Add profile folders to the backend (#5951) by @keiko233 in [#5951](https://github.com/libnyanpasu/clash-nyanpasu/pull/5951)
+
+- **profiles:** Group the profiles sidebar in the M3E navigation list (#5950) by @keiko233 in [#5950](https://github.com/libnyanpasu/clash-nyanpasu/pull/5950)
+
+- **profiles:** Confirm the kind and the source of an imported URL (#5932) by @greenhat616 in [#5932](https://github.com/libnyanpasu/clash-nyanpasu/pull/5932)
+
+- **profiles:** Preview a profile URL before importing it (#5931) by @greenhat616 in [#5931](https://github.com/libnyanpasu/clash-nyanpasu/pull/5931)
+
+- **profiles:** Classify a downloaded profile by its headers and content (#5930) by @greenhat616 in [#5930](https://github.com/libnyanpasu/clash-nyanpasu/pull/5930)
+
+- **proxies:** Reorder and group proxy groups by drag and drop (#5975) by @keiko233 in [#5975](https://github.com/libnyanpasu/clash-nyanpasu/pull/5975)
+
+- **proxies:** Show proxy groups in an M3E sidebar with folders (#5974) by @keiko233 in [#5974](https://github.com/libnyanpasu/clash-nyanpasu/pull/5974)
+
+- **proxies:** Store proxy group layouts per profile (#5973) by @keiko233 in [#5973](https://github.com/libnyanpasu/clash-nyanpasu/pull/5973)
+
+- **settings:** Group the settings sidebar and split crowded pages (#5917) by @keiko233 in [#5917](https://github.com/libnyanpasu/clash-nyanpasu/pull/5917)
+
+- **traffic:** Choose the rankings and drawing under the flow and the map (#5918) by @greenhat616 in [#5918](https://github.com/libnyanpasu/clash-nyanpasu/pull/5918)
+
+- **traffic:** Order the traffic pages by how often each view is used (#5807) by @greenhat616 in [#5807](https://github.com/libnyanpasu/clash-nyanpasu/pull/5807)
+
+- **traffic:** Keep a filtered dimension's alternatives in its ranking (#5886) by @greenhat616 in [#5886](https://github.com/libnyanpasu/clash-nyanpasu/pull/5886)
+
+- **traffic:** Import the schema-v3 traffic.redb into the tsdb store (#5875) by @greenhat616 in [#5875](https://github.com/libnyanpasu/clash-nyanpasu/pull/5875)
+
+- **traffic:** Store traffic statistics in nyanpasu-tsdb (#5873) by @greenhat616 in [#5873](https://github.com/libnyanpasu/clash-nyanpasu/pull/5873)
+
+- **tsdb:** Let a host restore its state on open and size its batches (#5874) by @greenhat616 in [#5874](https://github.com/libnyanpasu/clash-nyanpasu/pull/5874)
+
+- **tsdb:** Persist loss accounting and report the store's status (#5851) by @greenhat616 in [#5851](https://github.com/libnyanpasu/clash-nyanpasu/pull/5851)
+
+- **tsdb:** Retire, recover, suspend, close and compact the store (#5850) by @greenhat616 in [#5850](https://github.com/libnyanpasu/clash-nyanpasu/pull/5850)
+
+- **tsdb:** Expire, consolidate and recycle in maintenance rounds (#5848) by @greenhat616 in [#5848](https://github.com/libnyanpasu/clash-nyanpasu/pull/5848)
+
+- **tsdb:** Query series groups and event pages over a snapshot (#5847) by @greenhat616 in [#5847](https://github.com/libnyanpasu/clash-nyanpasu/pull/5847)
+
+- **tsdb:** Write through a bounded catalog, a journal and L0 chunks (#5846) by @greenhat616 in [#5846](https://github.com/libnyanpasu/clash-nyanpasu/pull/5846)
+
+- **tsdb:** Add the crate, chunk format, and memory and redb backends (#5845) by @greenhat616 in [#5845](https://github.com/libnyanpasu/clash-nyanpasu/pull/5845)
+
+- **updater:** Show GitHub-flavored release notes for every skipped version (#5832) by @greenhat616 in [#5832](https://github.com/libnyanpasu/clash-nyanpasu/pull/5832)
+
+- **widget:** Switch the statistic widget logo (#5828) by @greenhat616 in [#5828](https://github.com/libnyanpasu/clash-nyanpasu/pull/5828)
+
+- **widget:** Launch the Slint statistic widget from the app (#5797) by @greenhat616 in [#5797](https://github.com/libnyanpasu/clash-nyanpasu/pull/5797)
+
+- **widget:** Add Slint statistic widget crate (#5795) by @greenhat616 in [#5795](https://github.com/libnyanpasu/clash-nyanpasu/pull/5795)
+
+- Diagnose for issue reports and crashes (#5961) by @greenhat616 in [#5961](https://github.com/libnyanpasu/clash-nyanpasu/pull/5961)
+
+- Show fatal panics in a Slint crash reporter (#5945) by @greenhat616 in [#5945](https://github.com/libnyanpasu/clash-nyanpasu/pull/5945)
+
+- Keep meow-cli from Meow archives and hand its skill to agents (#5934) by @gengjiawen in [#5934](https://github.com/libnyanpasu/clash-nyanpasu/pull/5934)
+
+- Replace the UWP loopback tool with libnyanpasu/enable-loopback (#5867) by @greenhat616 in [#5867](https://github.com/libnyanpasu/clash-nyanpasu/pull/5867)
+
+- Mark Clash Premium as deprecated in the GUI (#5881) by @greenhat616 in [#5881](https://github.com/libnyanpasu/clash-nyanpasu/pull/5881)
+
+- Show open source credits in about settings (#5878) by @greenhat616 in [#5878](https://github.com/libnyanpasu/clash-nyanpasu/pull/5878)
+
+- 2.0 release UI tweaks (#5810) by @keiko233 in [#5810](https://github.com/libnyanpasu/clash-nyanpasu/pull/5810)
+
+### 🐛 Bug Fixes
+
+- **app:** Start the async runtime only for the GUI (#5796) by @greenhat616 in [#5796](https://github.com/libnyanpasu/clash-nyanpasu/pull/5796)
+
+- **artifacts:** Skip symbols in central publication inventory (#5957) by @keiko233 in [#5957](https://github.com/libnyanpasu/clash-nyanpasu/pull/5957)
+
+- **ci:** Remove failing macOS dmg layout finalization by @keiko233
+
+- **ci:** Generate Finder layout metadata for macOS dmg by @keiko233
+
+- **deps:** Unpin tokio now that 1.54.1 fixes the timer abort (#5926) by @greenhat616 in [#5926](https://github.com/libnyanpasu/clash-nyanpasu/pull/5926)
+
+- **deps:** Pin tokio to 1.53 to avoid a timer abort (#5885) by @greenhat616 in [#5885](https://github.com/libnyanpasu/clash-nyanpasu/pull/5885)
+
+- **l10n:** Correct some words in simpchinese translations (#5826) by @3gf8jv4dv in [#5826](https://github.com/libnyanpasu/clash-nyanpasu/pull/5826)
+
+- **linux:** Remove native window titlebars by default by @keiko233
+
+- **local-channel:** Build without warnings when the tokio feature is off (#5803) by @greenhat616 in [#5803](https://github.com/libnyanpasu/clash-nyanpasu/pull/5803)
+
+- **profiles:** Name the profile in a change that does not commit (#5936) by @greenhat616 in [#5936](https://github.com/libnyanpasu/clash-nyanpasu/pull/5936)
+
+- **router:** Keep a leaving page on its own route during the slide (#5894) by @greenhat616 in [#5894](https://github.com/libnyanpasu/clash-nyanpasu/pull/5894)
+
+- **runtime:** Keep unmanaged fields the field filter drops (#5907) by @greenhat616 in [#5907](https://github.com/libnyanpasu/clash-nyanpasu/pull/5907)
+
+- **service:** Require service 2.0.1 (#5971) by @greenhat616 in [#5971](https://github.com/libnyanpasu/clash-nyanpasu/pull/5971)
+
+- **settings:** Close the latency test dialog after applying (#5811) by @greenhat616 in [#5811](https://github.com/libnyanpasu/clash-nyanpasu/pull/5811)
+
+- **styles:** Scope Tailwind scanning to the app directory by @keiko233
+
+- **traffic:** Keep a card ranking row at its declared height (#5925) by @greenhat616 in [#5925](https://github.com/libnyanpasu/clash-nyanpasu/pull/5925)
+
+- **traffic:** Pass owned frames in store test by @keiko233
+
+- **tsdb:** Grow a short last page before starting another (#5942) by @greenhat616 in [#5942](https://github.com/libnyanpasu/clash-nyanpasu/pull/5942)
+
+- **tun:** Keep the adapter DNS when Meow TUN is turned off on Windows (#5916) by @greenhat616 in [#5916](https://github.com/libnyanpasu/clash-nyanpasu/pull/5916)
+
+- **tun:** Make auto-route independently manageable (#5909) by @greenhat616 in [#5909](https://github.com/libnyanpasu/clash-nyanpasu/pull/5909)
+
+- **ui:** Stop narrow widget headers from flickering (#5780) by @keiko233 in [#5780](https://github.com/libnyanpasu/clash-nyanpasu/pull/5780)
+
+- **update:** Follow installed channel after Nightly; redesign About update UI (#5779) by @keiko233 in [#5779](https://github.com/libnyanpasu/clash-nyanpasu/pull/5779)
+
+- **window:** Hide the webview while its window is out of sight (#5817) by @greenhat616 in [#5817](https://github.com/libnyanpasu/clash-nyanpasu/pull/5817)
+
+- Update import path for settings card in crash simulation module by @keiko233
+
+- Log logos, scripts and modules as previews, not in full (#5941) by @greenhat616 in [#5941](https://github.com/libnyanpasu/clash-nyanpasu/pull/5941)
+
+- Publish core agent skills after install and verify Meow archives (#5939) by @greenhat616 in [#5939](https://github.com/libnyanpasu/clash-nyanpasu/pull/5939)
+
+- Verify sidebar ripple positioning instead of DOM nesting by @keiko233
+
+- Keep scrolling text copies separated by @keiko233
+
+- Prevent native link dragging out of the app by @keiko233
+
+- Scroll overflowing widget library titles by @keiko233
+
+- Hide button content until loading animation exits by @keiko233
+
+- Move release notes to a trailing icon button by @keiko233
+
+- Align profile details with remaining subscription quota (#5865) by @keiko233 in [#5865](https://github.com/libnyanpasu/clash-nyanpasu/pull/5865)
+
+- Polish 2.0 UI interactions and update installation (#5830) by @keiko233 in [#5830](https://github.com/libnyanpasu/clash-nyanpasu/pull/5830)
+
+### 📚 Documentation
+
+- **widget:** Document the widget design and Linux/macOS gaps (#5799) by @greenhat616 in [#5799](https://github.com/libnyanpasu/clash-nyanpasu/pull/5799)
+
+- Refresh README presentation and project overview [skip ci] by @keiko233
+
+- Design the nyanpasu-tsdb storage layer (#5816) by @greenhat616 in [#5816](https://github.com/libnyanpasu/clash-nyanpasu/pull/5816)
+
+### 🔨 Refactor
+
+- **config:** Share config redaction and redact log text (#5959) by @greenhat616 in [#5959](https://github.com/libnyanpasu/clash-nyanpasu/pull/5959)
+
+- **profiles:** Redesign the profile detail page (#5952) by @keiko233 in [#5952](https://github.com/libnyanpasu/clash-nyanpasu/pull/5952)
+
+- **runtime:** Split post-processing into observable steps (#5906) by @greenhat616 in [#5906](https://github.com/libnyanpasu/clash-nyanpasu/pull/5906)
+
+- **runtime:** Describe post-processing writes as ownership trees (#5905) by @greenhat616 in [#5905](https://github.com/libnyanpasu/clash-nyanpasu/pull/5905)
+
+- **tsdb:** Charge every data-sized allocation to a memory account (#5849) by @greenhat616 in [#5849](https://github.com/libnyanpasu/clash-nyanpasu/pull/5849)
+
+- **ui:** Move the M3E navigation list into @nyanpasu/ui (#5949) by @keiko233 in [#5949](https://github.com/libnyanpasu/clash-nyanpasu/pull/5949)
+
+- **widget:** Carry the widget IPC over nyanpasu-local-channel (#5804) by @greenhat616 in [#5804](https://github.com/libnyanpasu/clash-nyanpasu/pull/5804)
+
+- **widget:** Remove the egui statistic widget (#5798) by @greenhat616 in [#5798](https://github.com/libnyanpasu/clash-nyanpasu/pull/5798)
+
+- **widget:** Extract render-free widget protocol crate (#5794) by @greenhat616 in [#5794](https://github.com/libnyanpasu/clash-nyanpasu/pull/5794)
+
+- Extract glass variants for toolbar controls (#5872) by @keiko233 in [#5872](https://github.com/libnyanpasu/clash-nyanpasu/pull/5872)
+
+- Unify empty states with contextual contrast (#5871) by @keiko233 in [#5871](https://github.com/libnyanpasu/clash-nyanpasu/pull/5871)
+
+### 🧹 Miscellaneous Tasks
+
+- **deps:** Bump enable-loopback to v0.1.4 (#5947) by @greenhat616 in [#5947](https://github.com/libnyanpasu/clash-nyanpasu/pull/5947)
+
+- **deps:** Update nyanpasu-runtime submodule to v2.0.0 by @keiko233
+
+---
+
+## New Contributors
+
+- @gengjiawen made their first contribution in [#5934](https://github.com/libnyanpasu/clash-nyanpasu/pull/5934)
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v2.0.0-rc.2...v2.0.0-rc.3
+
 ## [2.0.0-rc.2] - 2026-10-14
 
 ### 💥 Breaking Changes

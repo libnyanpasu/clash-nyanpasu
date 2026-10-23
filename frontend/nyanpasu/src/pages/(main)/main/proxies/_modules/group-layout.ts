@@ -133,3 +133,15 @@ export const locateGroup = (layout: ProxyGroupLayout, name: string) => {
     ? undefined
     : { folder: folder ?? null, index, count: names.length }
 }
+
+/** Puts the folders in the order of `ids`; unknown ids are ignored. */
+export const reorderGroupFoldersInLayout = (
+  layout: ProxyGroupLayout,
+  ids: readonly FolderId[],
+): ProxyGroupLayout => {
+  const byId = new Map(layout.folders.map((folder) => [folder.id, folder]))
+  const ordered = ids.flatMap((id) => byId.get(id) ?? [])
+  const rest = layout.folders.filter((folder) => !ids.includes(folder.id))
+
+  return { ...layout, folders: [...ordered, ...rest] }
+}

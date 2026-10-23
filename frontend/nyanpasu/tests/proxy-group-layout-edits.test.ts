@@ -6,6 +6,7 @@ import {
   moveGroupInLayout,
   removeGroupFolderFromLayout,
   renameGroupFolderInLayout,
+  reorderGroupFoldersInLayout,
 } from '@/pages/(main)/main/proxies/_modules/group-layout'
 import type { ProxyGroupLayout } from '@nyanpasu/rpc/types'
 
@@ -102,4 +103,20 @@ test('a group is located in its list or folder', () => {
     count: 2,
   })
   expect(locateGroup(layout, 'Missing')).toBeUndefined()
+})
+
+test('folders take the order of the ids and keep any the ids leave out', () => {
+  expect(
+    reorderGroupFoldersInLayout(layout, ['f2', 'f1']).folders.map(
+      (folder) => folder.id,
+    ),
+  ).toEqual(['f2', 'f1'])
+  expect(
+    reorderGroupFoldersInLayout(layout, ['f2', 'gone']).folders.map(
+      (folder) => folder.id,
+    ),
+  ).toEqual(['f2', 'f1'])
+  expect(reorderGroupFoldersInLayout(layout, ['f2', 'f1']).ungrouped).toEqual(
+    layout.ungrouped,
+  )
 })

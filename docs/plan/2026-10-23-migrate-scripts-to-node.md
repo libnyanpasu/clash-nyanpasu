@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-23
 
-**Status:** Planned. Branch `refactor/migrate-scripts-to-node`.
+**Status:** Implemented on branch `refactor/migrate-scripts-to-node` (not yet merged). See [Implementation notes](#implementation-notes).
 
 **Baseline:** `main@cf9269a3c`.
 
@@ -239,3 +239,52 @@ and the outputs listed below), then confirm after step 3:
 - **CI-only paths.** Release and nightly workflows only run on tags and
   schedules. Review their diff line by line, since pull request CI does not
   exercise them.
+
+## Implementation notes
+
+### Commits
+
+- 14 category commits port `scripts/src` to `node:` APIs, one per script group.
+- `refactor(scripts): run repository scripts on Node.js` flips the runtime: the `scripts`
+  workspace package, the root task catalog, CI workflows, hooks, lint configuration and docs.
+- `style(scripts): format repository scripts with Prettier` is formatting only.
+
+### Deviations
+
+- The `scripts/` line was removed from `.prettierignore` in the formatting commit, not the
+  runtime commit, so the runtime commit stays free of mass reformatting.
+- `changed-parts` classifies the first matching rule per file. A new rule placed before the
+  frontend rule maps the shared root files (`package.json`, `pnpm-lock.yaml`,
+  `pnpm-workspace.yaml`, `tsconfig*.json`, `.oxlintrc.json`, `.prettierrc.cjs`,
+  `.prettierignore`) to both `frontend` and `scripts`, replacing the old `deno.jsonc` trigger.
+- Workflow steps call tasks as `pnpm run <task>` throughout.
+- Spawners (`recover-storage.ts`, the Rust HTTP UI test) use `node --run <task>` instead of
+  `pnpm`, because `pnpm` is a `.cmd` shim on Windows. Everything else uses `pnpm run`.
+- `pnpm-workspace.yaml` `allowBuilds`: `bufferutil` and `utf-8-validate` are allowed; `koffi`
+  and `es5-ext` are not.
+- New CI Node setup steps use `node-version: latest`; the repository pins Node 24 through
+  `engines.node`.
+- The architecture-ledger `ARCH` alias constant in `platform.ts` was renamed `ARCH_ALIASES`.
+- `@types/semver` and `@types/spdx-expression-parse` were added for type checking.
+
+### Results
+
+- `pnpm run test:scripts`: 238 tests, 237 pass, 1 skipped, 0 fail (Deno baseline: 217).
+- `lint:ts` (all tsconfig projects), `lint:prettier` and `lint:oxlint` pass.
+- `lint:architecture-ledger`, `lint:backend-boundaries` and `lint:frontend-boundaries` exit 0
+  with output identical to the baseline apart from the task header line.
+- `generate:data-slots` is identical to the committed file after Prettier; `generate:git-info`
+  and `generate:topology-map` run cleanly and leave the tree unchanged.
+- `pnpm run prepare:check --force` succeeds on macOS.
+- `git grep -i deno` returns only the allowed exceptions (historical docs, changelogs,
+  submodules, `LICENSE`, `.serena/project.yml`) and unrelated substrings such as "denotes".
+
+### Not verified
+
+- Windows behavior, `koffi` on Windows and `cargo-about` credits generation (`lint:credits`
+  was already not runnable locally in the baseline).
+- Abort semantics of the `curl` spawn in `internet-archive-upload.ts`.
+- The YAML workflows were reviewed but not run; release and nightly paths only run on tags
+  and schedules.
+- The cargo HTTP UI test (`unified_rpc.rs`) was only compiled and linted by clippy, not run.
+- No publish, upload, notification or cache task was run.

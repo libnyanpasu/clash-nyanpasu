@@ -512,6 +512,7 @@
   "profile_error_title": "오류",
   "profile_update_failed": "업데이트 실패:\n{error}",
   "profile_delete_failed": "삭제 실패:\n{error}",
+  "profile_back": "뒤로",
   "profile_detail_back": "{destination}(으)로 돌아가기",
   "profile_detail_not_found": "이 프로필은 더 이상 존재하지 않습니다",
   "profile_detail_loading": "프로필 불러오는 중",

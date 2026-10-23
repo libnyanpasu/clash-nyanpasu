@@ -6,7 +6,14 @@ import { useScrollArea } from '@nyanpasu/ui/scroll-area'
 import { cn } from '@nyanpasu/utils'
 import { Link, LinkProps } from '@tanstack/react-router'
 
-const BackButton = ({ to }: { to: LinkProps['to'] }) => {
+export const BackButton = ({
+  to,
+  label,
+}: {
+  to: LinkProps['to']
+  /** The accessible name of the link, since it shows only an arrow. */
+  label?: string
+}) => {
   return (
     <Button
       icon
@@ -14,7 +21,7 @@ const BackButton = ({ to }: { to: LinkProps['to'] }) => {
       className="flex items-center justify-center md:hidden"
       asChild
     >
-      <Link to={to}>
+      <Link to={to} aria-label={label}>
         <ArrowBackIosNewRounded className="size-4" />
       </Link>
     </Button>

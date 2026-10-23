@@ -512,6 +512,7 @@
   "profile_error_title": "Ошибка",
   "profile_update_failed": "Не удалось обновить:\n{error}",
   "profile_delete_failed": "Не удалось удалить:\n{error}",
+  "profile_back": "Назад",
   "profile_detail_back": "Назад: {destination}",
   "profile_detail_not_found": "Этот профиль больше не существует",
   "profile_detail_loading": "Загрузка профиля",

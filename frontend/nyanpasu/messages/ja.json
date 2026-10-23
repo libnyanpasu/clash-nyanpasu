@@ -531,6 +531,7 @@
   "profile_error_title": "エラー",
   "profile_update_failed": "更新に失敗しました:\n{error}",
   "profile_delete_failed": "削除に失敗しました:\n{error}",
+  "profile_back": "戻る",
   "profile_detail_back": "{destination}に戻る",
   "profile_detail_not_found": "このファイルは存在しません",
   "profile_detail_loading": "ファイルを読み込み中",

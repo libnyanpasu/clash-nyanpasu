@@ -542,6 +542,7 @@
   "profile_error_title": "错误",
   "profile_update_failed": "更新失败：\n{error}",
   "profile_delete_failed": "删除失败：\n{error}",
+  "profile_back": "返回",
   "profile_detail_back": "返回{destination}",
   "profile_detail_not_found": "该配置已不存在",
   "profile_detail_loading": "正在加载配置",

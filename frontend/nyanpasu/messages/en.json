@@ -542,6 +542,7 @@
   "profile_error_title": "Error",
   "profile_update_failed": "Update failed:\n{error}",
   "profile_delete_failed": "Delete failed:\n{error}",
+  "profile_back": "Back",
   "profile_detail_back": "Back to {destination}",
   "profile_detail_not_found": "This profile no longer exists",
   "profile_detail_loading": "Loading profile",

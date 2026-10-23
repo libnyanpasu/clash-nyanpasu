@@ -36,7 +36,7 @@ export default function ChangedFields({
   return (
     <div
       data-slot="inspect-changed-fields"
-      className="flex flex-wrap items-center gap-2.5"
+      className="flex max-h-32 flex-wrap items-center gap-2.5 overflow-y-auto"
     >
       {visible.map((field) =>
         onSelect ? (

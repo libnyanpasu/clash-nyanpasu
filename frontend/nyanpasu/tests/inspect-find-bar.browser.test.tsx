@@ -144,3 +144,15 @@ test('changed fields are plain without onSelect, buttons with it', async () => {
   // The part that matches the field search is marked.
   expect(document.querySelector('mark')?.textContent).toBe('ru')
 })
+
+test('expanded changed fields scroll instead of growing without bound', async () => {
+  const fields = Array.from({ length: 300 }, (_, i) => `proxy-groups.${i}.name`)
+  await render(<ChangedFields fields={fields} />)
+  await page.getByRole('button', { name: '+292' }).click()
+
+  const box = document.querySelector<HTMLElement>(
+    '[data-slot="inspect-changed-fields"]',
+  )!
+  expect(box.scrollHeight).toBeGreaterThan(box.clientHeight)
+  expect(box.clientHeight).toBeLessThanOrEqual(128)
+})

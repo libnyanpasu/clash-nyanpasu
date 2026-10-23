@@ -10,7 +10,7 @@ import {
   SettingsCardAnimatedItem,
   SettingsCardContent,
   SettingsCardHeader,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
 type VersionRange = { from: string; to: string }
 

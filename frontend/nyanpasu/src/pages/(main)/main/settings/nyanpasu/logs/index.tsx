@@ -1,7 +1,7 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsGroup, SettingsLabel } from '../../_modules/settings-card'
+import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
 import AppLogLevelSelector from './_modules/app-log-level-selector'
 import CoreLogLevelSelector from './_modules/core-log-level-selector'
 import CoreLogStorageConfig from './_modules/core-log-storage-config'

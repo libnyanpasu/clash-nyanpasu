@@ -31,6 +31,12 @@ pub struct Profiles {
     #[serde(default = "default_valid")]
     pub valid: Vec<String>,
 
+    /// User-named groups of Config profiles. A profile is in at most one
+    /// folder; `items` order already follows the folders (see
+    /// [`Profiles::apply_layout`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folders: Vec<ProfileFolder>,
+
     /// Serialized as a sequence, kept as an ordered map in memory.
     #[serde(default, with = "items_serde")]
     pub items: IndexMap<ProfileId, ProfileItem>,
@@ -45,6 +51,8 @@ struct ProfileDocument {
     #[specta(optional)]
     global_transforms: Vec<ProfileId>,
     valid: Vec<String>,
+    #[specta(optional)]
+    folders: Vec<ProfileFolder>,
     #[specta(type = Vec<ProfileItem>)]
     items: IndexMap<ProfileId, ProfileItem>,
 }
@@ -62,6 +70,7 @@ impl Default for Profiles {
             current: None,
             global_transforms: Vec::new(),
             valid: default_valid(),
+            folders: Vec::new(),
             items: IndexMap::new(),
         }
     }
@@ -232,6 +241,8 @@ impl Profiles {
             }
         }
 
+        validate_folders(&self.items, &self.folders, &mut errors);
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -329,6 +340,36 @@ pub enum ProfileValidationError {
 
     #[error("remote URL scheme is not supported for {profile}: {scheme}")]
     UnsupportedRemoteUrlScheme { profile: ProfileId, scheme: String },
+
+    #[error("folder id is used more than once: {id}")]
+    FolderDuplicateId { id: FolderId },
+
+    #[error("folder name is empty: {id}")]
+    FolderNameEmpty { id: FolderId },
+
+    #[error("folder {folder} lists a profile that does not exist: {profile}")]
+    FolderMemberNotFound {
+        folder: FolderId,
+        profile: ProfileId,
+    },
+
+    #[error("folder {folder} lists a profile that is not a Config: {profile}")]
+    FolderMemberNotConfig {
+        folder: FolderId,
+        profile: ProfileId,
+    },
+
+    #[error("profile is placed more than once in the layout: {profile}")]
+    FolderMemberDuplicate { profile: ProfileId },
+
+    #[error("folder does not exist: {id}")]
+    FolderNotFound { id: FolderId },
+
+    #[error("layout does not place the Config profile: {profile}")]
+    LayoutMissingProfile { profile: ProfileId },
+
+    #[error("layout places a profile that is not an existing Config: {profile}")]
+    LayoutUnknownProfile { profile: ProfileId },
 }
 
 fn validate_transforms(

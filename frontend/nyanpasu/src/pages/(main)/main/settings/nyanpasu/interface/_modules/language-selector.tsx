@@ -16,7 +16,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function LanguageSelector() {
   const { language, setLanguage } = useLanguage()

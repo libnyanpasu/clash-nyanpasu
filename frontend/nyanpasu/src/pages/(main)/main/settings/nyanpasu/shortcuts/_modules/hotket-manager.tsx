@@ -17,7 +17,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 type HotkeyMap = Record<string, string[]>
 

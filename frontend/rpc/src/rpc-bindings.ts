@@ -502,9 +502,16 @@ export function createRpcClient(
       } | null,
       transform:
         { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
+      folder: string | null,
     ) =>
       typedError<MutationOutcome<ProfileId>, IpcError>(
-        __RPC_INVOKE('import_profile', { url, name, option, transform }),
+        __RPC_INVOKE('import_profile', {
+          url,
+          name,
+          option,
+          transform,
+          folder,
+        }),
       ),
     /**
      *  Take and clear the queued deep links, oldest first. The frontend calls it
@@ -528,6 +535,14 @@ export function createRpcClient(
     reorderProfilesByList: (list: ProfileId[]) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('reorder_profiles_by_list', { list }),
+      ),
+    setProfileLayout: (layout: ProfileLayout) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_profile_layout', { layout }),
+      ),
+    createProfileFolder: (name: string, members: ProfileId[]) =>
+      typedError<MutationOutcome<FolderId>, IpcError>(
+        __RPC_INVOKE('create_profile_folder', { name, members }),
       ),
     updateProfile: (
       uid: ProfileId,
@@ -2234,6 +2249,12 @@ export type Filter = {
   text: string | null
 }
 
+/**
+ *  Stable identifier of a profile folder. It is minted by the profiles actor and
+ *  never reused, so a folder keeps its identity across renames and reorders.
+ */
+export type FolderId = string
+
 export type FrontendErrorCause = {
   name: string | null
   message: string
@@ -2763,12 +2784,16 @@ export type NewProfileRequest_Deserialize = {
   metadata: ProfileMetadata_Deserialize
   /**  Add rewrites the materialized path to `{uid}.{ext}`. */
   definition: ProfileDefinition_Deserialize
+  /**  Folder the new Config profile joins in the same commit. */
+  folder?: FolderId | null
 }
 
 export type NewProfileRequest_Serialize = {
   metadata: ProfileMetadata_Serialize
   /**  Add rewrites the materialized path to `{uid}.{ext}`. */
   definition: ProfileDefinition_Serialize
+  /**  Folder the new Config profile joins in the same commit. */
+  folder: FolderId | null
 }
 
 /**  ### `verge.yaml` schema */
@@ -3281,6 +3306,7 @@ export type ProfileDocument_Deserialize = {
   current?: ProfileId | null
   global_transforms?: ProfileId[]
   valid: string[]
+  folders?: ProfileFolder[]
   items: ProfileItem_Deserialize[]
 }
 
@@ -3288,6 +3314,7 @@ export type ProfileDocument_Serialize = {
   current?: ProfileId | null
   global_transforms?: ProfileId[]
   valid: string[]
+  folders?: ProfileFolder[]
   items: ProfileItem_Serialize[]
 }
 
@@ -3344,6 +3371,17 @@ export type ProfileFileError =
   | { kind: 'cleanup_already_activated' }
   | { kind: 'diverged_before_recovery' }
 
+/**
+ *  A user-named group of Config profiles. A Config profile belongs to at most
+ *  one folder; transforms are never members.
+ */
+export type ProfileFolder = {
+  id: FolderId
+  name: string
+  /**  Display order inside the folder. */
+  members: ProfileId[]
+}
+
 /**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
 export type ProfileId = string
 
@@ -3370,6 +3408,15 @@ export type ProfileItem_Serialize = {
   uid: ProfileId
 } & ProfileMetadata_Serialize &
   ProfileDefinition_Serialize
+
+/**
+ *  The complete arrangement of Config profiles: every Config profile appears
+ *  exactly once, either inside a folder or in `ungrouped`.
+ */
+export type ProfileLayout = {
+  folders: ProfileFolder[]
+  ungrouped: ProfileId[]
+}
 
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata =
@@ -3535,6 +3582,14 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3548,7 +3603,15 @@ export type ProfileValidationError =
       CurrentNotConfig?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3562,7 +3625,15 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3582,7 +3653,15 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
     })
@@ -3601,7 +3680,15 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       UnsupportedRemoteUrlScheme?: never
     })
@@ -3618,7 +3705,15 @@ export type ProfileValidationError =
       CurrentNotConfig?: never
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3637,7 +3732,15 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3657,7 +3760,15 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3677,7 +3788,15 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3696,7 +3815,15 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3715,7 +3842,15 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3735,7 +3870,15 @@ export type ProfileValidationError =
       CurrentNotConfig?: never
       CurrentNotFound?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
       UnsupportedRemoteUrlScheme?: never
@@ -3755,9 +3898,227 @@ export type ProfileValidationError =
       CurrentNotFound?: never
       DuplicateMaterializedFile?: never
       EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
       ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
       TransformTargetNotFound?: never
       TransformTargetNotTransform?: never
+    })
+  | ({
+      FolderDuplicateId: {
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderNameEmpty: {
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderMemberNotFound: {
+        folder: FolderId
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderMemberNotConfig: {
+        folder: FolderId
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderMemberDuplicate: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      FolderNotFound: {
+        id: FolderId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      LayoutUnknownProfile?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      LayoutMissingProfile: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutUnknownProfile?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      LayoutUnknownProfile: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      FolderDuplicateId?: never
+      FolderMemberDuplicate?: never
+      FolderMemberNotConfig?: never
+      FolderMemberNotFound?: never
+      FolderNameEmpty?: never
+      FolderNotFound?: never
+      ItemKeyMismatch?: never
+      LayoutMissingProfile?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
     })
 
 /**  What a profile command failed with. */

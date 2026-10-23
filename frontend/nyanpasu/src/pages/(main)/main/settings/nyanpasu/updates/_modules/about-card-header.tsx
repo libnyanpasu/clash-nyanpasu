@@ -1,5 +1,5 @@
 import { type ComponentType, type ReactNode } from 'react'
-import { SettingsCardHeader } from '../../../_modules/settings-card'
+import { SettingsCardHeader } from '../../../../_modules/settings-card'
 
 export default function AboutCardHeader({
   icon: Icon,

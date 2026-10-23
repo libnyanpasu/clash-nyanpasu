@@ -133,7 +133,13 @@ test('quick import submits legal loopback URLs unchanged and rejects invalid sch
       { method: 'probe_profile_url', params: { url, option: null } },
       {
         method: 'import_profile',
-        params: { url, name: null, option: null, transform: null },
+        params: {
+          url,
+          name: null,
+          option: null,
+          transform: null,
+          folder: null,
+        },
       },
     ])
   }
@@ -178,7 +184,7 @@ test('remote profile creation submits legal loopback URLs unchanged', async ({
       { method: 'probe_profile_url', params: { url, option } },
       {
         method: 'import_profile',
-        params: { url, name: null, option, transform: null },
+        params: { url, name: null, option, transform: null, folder: null },
       },
     ])
   }

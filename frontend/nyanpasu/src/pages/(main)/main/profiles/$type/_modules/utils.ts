@@ -83,3 +83,12 @@ export const profileTypeOf = (profile: ProfileItem_Serialize): ProfileType => {
   if (isMergeProfile(profile)) return ProfileType.Merge
   return ProfileType.Profile
 }
+
+/**
+ * Whether the profile owns a file on disk. Composition configs have none, so
+ * viewing or opening them would hit `ProfileHasNoFile`; file configs and
+ * transforms both own one.
+ */
+export const hasMaterializedFile = (profile: ProfileItem_Serialize) =>
+  isTransformItem(profile) ||
+  (profile.type === 'config' && profile.config.type === 'file')

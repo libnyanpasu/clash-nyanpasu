@@ -62,8 +62,8 @@ export default function ProfileNameEditor({
 
           handleClose()
         } catch (error) {
-          message(`Update failed: \n ${formatError(error)}`, {
-            title: 'Error',
+          message(m.profile_update_failed({ error: formatError(error) }), {
+            title: m.profile_error_title(),
             kind: 'error',
             error,
           })
@@ -72,7 +72,7 @@ export default function ProfileNameEditor({
       (error) => {
         console.error(error)
         message(formatError(error.name?.message ?? ''), {
-          title: 'Error',
+          title: m.profile_error_title(),
           kind: 'error',
         })
       },

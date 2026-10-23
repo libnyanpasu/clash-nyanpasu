@@ -647,6 +647,16 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.reorderProfilesByList>) =>
         commands.reorderProfilesByList(...input),
     }),
+    setProfileLayout: mutationOptions({
+      mutationKey: ['setProfileLayout'],
+      mutationFn: (input: Parameters<typeof commands.setProfileLayout>) =>
+        commands.setProfileLayout(...input),
+    }),
+    createProfileFolder: mutationOptions({
+      mutationKey: ['createProfileFolder'],
+      mutationFn: (input: Parameters<typeof commands.createProfileFolder>) =>
+        commands.createProfileFolder(...input),
+    }),
     updateProfile: mutationOptions({
       mutationKey: ['updateProfile'],
       mutationFn: (input: Parameters<typeof commands.updateProfile>) =>

@@ -21,7 +21,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function NetworkStatisticWidgetSelector() {
   const { value, upsert } = useSetting('network_statistic_widget')

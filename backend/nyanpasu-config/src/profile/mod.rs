@@ -1,5 +1,6 @@
 mod definition;
 mod dependency;
+mod folder;
 mod id;
 mod item;
 mod metadata;
@@ -10,6 +11,7 @@ mod source;
 
 pub use definition::*;
 pub use dependency::*;
+pub use folder::*;
 pub use id::*;
 pub use item::*;
 pub use metadata::*;

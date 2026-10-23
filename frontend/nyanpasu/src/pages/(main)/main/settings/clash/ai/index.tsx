@@ -8,7 +8,7 @@ import {
   SettingsCard,
   SettingsCardContent,
   SettingsLabel,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 import CoreAgentSkillCard from './_modules/core-agent-skill-card'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/ai/')({

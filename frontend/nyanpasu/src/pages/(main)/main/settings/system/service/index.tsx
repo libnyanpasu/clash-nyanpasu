@@ -7,7 +7,7 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 import AutoLaunchSwitch from './_modules/auto-launch-switch'
 import DnsCacheButton from './_modules/dns-cache-button'
 import SilentLaunchSwitch from './_modules/slient-launch-switch'

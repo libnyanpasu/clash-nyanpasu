@@ -16,7 +16,7 @@ import {
 import { unwrapQueryOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { useQuery } from '@tanstack/react-query'
-import { SettingsLabel } from '../../_modules/settings-card'
+import { SettingsLabel } from '../../../_modules/settings-card'
 import { useIconSetStore } from './icon-set-store'
 
 export type TrayIconStateMode = 'normal' | 'tun' | 'system_proxy'

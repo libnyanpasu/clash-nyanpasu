@@ -19,7 +19,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 export default function TunStackSelector() {
   const coreType = useSetting('core')

@@ -1,5 +1,6 @@
 import ArticleRounded from '~icons/material-symbols/article-rounded'
 import { useEffect, useState } from 'react'
+import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import {
@@ -32,6 +33,7 @@ import YamlViewer from './_modules/yaml-viewer'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
   component: RouteComponent,
+  validateSearch: z.object({ step: z.string().optional() }),
 })
 
 function RouteComponent() {

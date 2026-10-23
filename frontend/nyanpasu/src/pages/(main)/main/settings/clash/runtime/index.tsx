@@ -6,7 +6,7 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 import EnableBuiltinEnhancedSwitch from './_modules/enable-builtin-enhanced-switch'
 import ExpandIncludeAllSwitch from './_modules/expand-include-all-switch'
 import FieldFilterCard from './_modules/field-filter-card'

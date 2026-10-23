@@ -10,7 +10,6 @@ import {
   memo,
   RefObject,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -26,86 +25,28 @@ import {
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
 import { WHOLE_ITEM_DRAG_SENSORS } from '@/utils/dnd-sensors'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
-import { hexFromArgb } from '@material/material-color-utilities'
 import { getRemoteSource, isConfigItem, useProfile } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { MeshGradient, meshGradientMeta } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../../_modules/consts'
-import { useActiveProfile } from '../detail/_modules/active-button'
-import { useDeleteProfile } from '../detail/_modules/delete-profile'
-import ViewContent from '../detail/_modules/view-content'
 import { Route as IndexRoute } from '../index'
+import { ActiveGradient } from './active-gradient'
 import ProfileCardAction from './profile-card-action'
 import ProfileCardFeatures, { ProfileCardChip } from './profile-card-features'
 import ProfileCardSubscription, {
   ProfileCardTraffic,
   ProfileCardUpdate,
 } from './profile-card-subscription'
-import { categoryProfiles, isProxyProfile } from './utils'
-
-/**
- * The active card's backdrop. It stays still and animates only while the card
- * is hovered or focused: an animated shader redraws the whole card every frame.
- */
-const ActiveGradient = ({
-  cardRef,
-}: {
-  cardRef: RefObject<HTMLDivElement | null>
-}) => {
-  const { themePalette } = useExperimentalThemeContext()
-
-  const colors = useMemo(
-    () =>
-      Object.values(themePalette.schemes.light)
-        .slice(0, meshGradientMeta.maxColorCount)
-        .map((color) => hexFromArgb(color)),
-    [themePalette],
-  )
-
-  const [animated, setAnimated] = useState(false)
-
-  useEffect(() => {
-    const card = cardRef.current
-
-    if (!card) {
-      return
-    }
-
-    const update = () =>
-      setAnimated(card.matches(':hover') || card.matches(':focus-within'))
-    const events = ['pointerenter', 'pointerleave', 'focusin', 'focusout']
-
-    for (const event of events) {
-      card.addEventListener(event, update)
-    }
-
-    return () => {
-      for (const event of events) {
-        card.removeEventListener(event, update)
-      }
-    }
-  }, [cardRef])
-
-  return (
-    <MeshGradient
-      className="pointer-events-none absolute inset-0 size-full opacity-30"
-      colors={colors}
-      distortion={0.5}
-      swirl={0.1}
-      grainMixer={0}
-      grainOverlay={0}
-      speed={animated ? 1 / 3 : 0}
-    />
-  )
-}
+import { useActiveProfile } from './use-active-profile'
+import { useDeleteProfile } from './use-delete-profile'
+import { categoryProfiles, hasMaterializedFile, isProxyProfile } from './utils'
+import ViewContent from './view-content'
 
 const GridViewProfile = memo(function GridViewProfile({
   profile,
@@ -124,9 +65,6 @@ const GridViewProfile = memo(function GridViewProfile({
   const deleteProfile = useDeleteProfile(profile)
 
   const remote = getRemoteSource(profile)
-  const hasFile =
-    profile.type === 'transform' ||
-    (profile.type === 'config' && profile.config.type === 'file')
   const featured = activeProfile.isActive && isProxyProfile(profile)
 
   const isPending = activeProfile.isPending || deleteProfile.isPending
@@ -251,7 +189,7 @@ const GridViewProfile = memo(function GridViewProfile({
                   <ProfileCardUpdate profile={profile} disabled={isPending} />
                 )}
 
-                {hasFile && (
+                {hasMaterializedFile(profile) && (
                   <ProfileCardAction label={m.profile_view_content_title()}>
                     <ViewContent
                       profile={profile}

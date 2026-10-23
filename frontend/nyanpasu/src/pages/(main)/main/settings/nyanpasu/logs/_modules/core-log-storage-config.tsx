@@ -13,6 +13,7 @@ import {
   type CoreLogCompression,
   type CoreLogSettings,
 } from '@nyanpasu/rpc/types'
+import { SettingsSliderRow } from '../../../_modules/settings-slider-row'
 import {
   ItemContainer,
   ItemLabel,
@@ -20,8 +21,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
-import { SettingsSliderRow } from '../../../_modules/settings-slider-row'
+} from '../../../../_modules/settings-card'
 
 // MiB, the bounds `CoreLogSettings::validate` accepts: a shard of at least
 // 4 MiB, and a budget that holds at least two shards.

@@ -1,5 +1,3 @@
-import { ComponentProps } from 'react'
-import { Button } from '@nyanpasu/ui/button'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -11,7 +9,6 @@ import {
   useProfileMutations,
 } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
-import { cn } from '@nyanpasu/utils'
 
 export const useActiveProfile = (profile: ProfileItem_Serialize) => {
   const { activate } = useProfileMutations()
@@ -29,7 +26,7 @@ export const useActiveProfile = (profile: ProfileItem_Serialize) => {
           name: profile.name,
         })} \n ${formatError(err)}`,
         {
-          title: 'Error',
+          title: m.profile_error_title(),
           kind: 'error',
           error: err,
         },
@@ -73,30 +70,4 @@ export const useActiveProfile = (profile: ProfileItem_Serialize) => {
     handleClick,
     isPending: blockTask.isPending,
   }
-}
-
-export default function ActiveButton({
-  profile,
-  className,
-  ...props
-}: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
-  profile: ProfileItem_Serialize
-}) {
-  const { isActive, handleClick, isPending } = useActiveProfile(profile)
-
-  return (
-    <Button
-      {...props}
-      className={cn(
-        'transition-colors',
-        className,
-        isActive && [
-          'bg-green-500/30 text-green-900 hover:bg-green-500/50',
-          'dark:bg-green-900/50 dark:text-green-600 dark:hover:bg-green-900/60',
-        ],
-      )}
-      onClick={handleClick}
-      loading={isPending}
-    />
-  )
 }

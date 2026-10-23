@@ -1581,6 +1581,36 @@ mod tests {
         );
     }
 
+    /// Folders and the display order only arrange the list: moving the running
+    /// profile into a folder, or reordering the items, builds the same config.
+    #[test]
+    fn folders_and_display_order_have_no_runtime_impact() {
+        use nyanpasu_config::profile::{FolderId, ProfileFolder, ProfileLayout};
+
+        let previous = profiles();
+        let mut candidate = profiles();
+        candidate
+            .apply_layout(ProfileLayout {
+                folders: vec![ProfileFolder {
+                    id: FolderId("f1".into()),
+                    name: "Work".to_owned(),
+                    members: vec![ProfileId("spare".into()), ProfileId("sel".into())],
+                }],
+                ungrouped: vec![],
+            })
+            .expect("the layout places every config");
+        assert_ne!(
+            previous.items.keys().collect::<Vec<_>>(),
+            candidate.items.keys().collect::<Vec<_>>(),
+            "the layout reordered the items"
+        );
+
+        assert_eq!(
+            classify_profiles(&previous, &candidate, &MutationHints::default()),
+            RuntimeImpact::None
+        );
+    }
+
     #[test]
     fn an_unchanged_profiles_document_has_no_runtime_impact() {
         let profiles = profiles();

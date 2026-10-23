@@ -21,7 +21,7 @@ import {
   SettingsCardContent,
   SettingsCardFooter,
   SettingsCardHeader,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
 export default function KVStorage() {
   const storageQuery = queries.getAllStorageItems()

@@ -177,6 +177,7 @@ test('the suggested kind is preselected, with its reasons, and only accepted kin
         name: null,
         option: null,
         transform: { type: 'script', runtime: 'lua' },
+        folder: null,
       },
     },
   ])

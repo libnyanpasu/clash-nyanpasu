@@ -8,7 +8,7 @@ import {
   SettingsCard,
   SettingsCardAnimatedItem,
   SettingsCardContent,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
 export default function MockTrafficSwitch() {
   const [enabled, setEnabled] = useMockTrafficSetting()

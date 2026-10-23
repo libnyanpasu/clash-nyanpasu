@@ -11,7 +11,7 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 import {
   openIssueReport,
   openRepository,

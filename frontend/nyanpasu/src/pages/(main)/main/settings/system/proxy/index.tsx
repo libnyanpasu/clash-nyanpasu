@@ -13,7 +13,7 @@ import {
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
-} from '../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 import CurrentSystemProxy from './_modules/current-system-proxy'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'

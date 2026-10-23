@@ -3,7 +3,7 @@ import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
-import { TransformChainEditor } from '../$type/detail/_modules/chian-editor-card'
+import { TransformChainList } from '../_modules/transform-chain-list'
 
 export const Route = createFileRoute('/(main)/main/profiles/global')({
   component: RouteComponent,
@@ -31,9 +31,9 @@ function RouteComponent() {
           {m.profile_global_transform_hint()}
         </p>
 
-        <TransformChainEditor
-          layout="grouped"
+        <TransformChainList
           taskKey="update-global-transforms"
+          traceStepOf={(uid, index) => `global:${uid}:${index}`}
           transforms={transforms}
           onApply={(next) => setGlobalTransforms.mutateAsync(next)}
         />

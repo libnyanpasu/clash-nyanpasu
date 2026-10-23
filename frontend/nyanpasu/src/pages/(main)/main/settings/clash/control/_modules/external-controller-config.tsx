@@ -29,7 +29,7 @@ import {
   SettingsCard,
   SettingsCardAnimatedItem,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 import { useExternalControllerForm } from './use-external-controller-form'
 
 export default function ExternalControllerConfig() {

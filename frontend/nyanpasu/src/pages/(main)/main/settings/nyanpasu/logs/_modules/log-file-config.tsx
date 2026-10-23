@@ -1,10 +1,10 @@
 import { m } from '@/paraglide/messages'
 import { useSetting } from '@nyanpasu/query'
+import { SettingsSliderRow } from '../../../_modules/settings-slider-row'
 import {
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
-import { SettingsSliderRow } from '../../../_modules/settings-slider-row'
+} from '../../../../_modules/settings-card'
 
 const MAX_LOG_FILES = 7
 

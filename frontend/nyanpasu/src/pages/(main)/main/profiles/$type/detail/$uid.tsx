@@ -1,15 +1,19 @@
-import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
 import { Button } from '@nyanpasu/ui/button'
-import TextMarquee from '@nyanpasu/ui/text-marquee'
+import { EmptyState } from '@nyanpasu/ui/empty-state'
+import { m } from '@/paraglide/messages'
 import { isRemoteItem, useProfile } from '@nyanpasu/query'
-import { createFileRoute } from '@tanstack/react-router'
-import { isProxyProfile } from '../_modules/utils'
-import ActionCard from './_modules/action-card'
-import ChianEditorCard from './_modules/chian-editor-card'
-import DetialHeader from './_modules/detial-header'
-import ProfileNameEditor from './_modules/profile-name-editor'
-import { SubscriptionCard } from './_modules/subscription-card'
-import { SyncHistoryCard } from './_modules/sync-history-card'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { isChainProfile, isProxyProfile } from '../_modules/utils'
+import { PROFILE_TYPE_NAMES, ProfileType } from '../../_modules/consts'
+import DeleteSection from './_modules/delete-section'
+import FileSection from './_modules/file-section'
+import ProfileDetailHeader from './_modules/profile-detail-header'
+import ProfileDetailSkeleton from './_modules/profile-detail-skeleton'
+import ProfileOverviewCard from './_modules/profile-overview-card'
+import SubscriptionSection from './_modules/subscription-section'
+import SyncHistorySection from './_modules/sync-history-section'
+import TransformChainSection from './_modules/transform-chain-section'
+import UsedBySection from './_modules/used-by-section'
 
 export const Route = createFileRoute('/(main)/main/profiles/$type/detail/$uid')(
   {
@@ -18,45 +22,74 @@ export const Route = createFileRoute('/(main)/main/profiles/$type/detail/$uid')(
 )
 
 function RouteComponent() {
-  const { uid } = Route.useParams()
+  const { uid, type } = Route.useParams()
+
+  const navigate = useNavigate()
 
   const { query } = useProfile()
 
-  const currentProfile = query.data?.items?.find((item) => item.uid === uid)
+  const profiles = query.data?.items ?? []
 
-  // TODO: better error handling
-  if (!currentProfile) {
-    return null
-  }
+  const currentProfile = profiles.find((item) => item.uid === uid)
+
+  const backToList = () =>
+    navigate({ to: '/main/profiles/$type', params: { type } })
 
   return (
-    <>
-      <DetialHeader>
-        <TextMarquee className="w-0 min-w-0 flex-1 text-lg font-bold">
-          {currentProfile.name}
-        </TextMarquee>
-
-        <ProfileNameEditor profile={currentProfile} asChild>
-          <Button icon className="shrink-0">
-            <EditSquareOutlineRounded className="size-4" />
+    <div
+      data-slot="profile-detail"
+      className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 pb-8"
+    >
+      {query.isPending ? (
+        <ProfileDetailSkeleton />
+      ) : !currentProfile ? (
+        <EmptyState className="flex-1" message={m.profile_detail_not_found()}>
+          <Button variant="stroked" asChild>
+            <Link to="/main/profiles/$type" params={{ type }}>
+              {m.profile_detail_back({
+                destination: PROFILE_TYPE_NAMES[type as ProfileType],
+              })}
+            </Link>
           </Button>
-        </ProfileNameEditor>
-      </DetialHeader>
+        </EmptyState>
+      ) : (
+        <>
+          <ProfileDetailHeader
+            type={type as ProfileType}
+            profile={currentProfile}
+          />
 
-      <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-4">
-        {isRemoteItem(currentProfile) && (
-          <SubscriptionCard profile={currentProfile} />
-        )}
+          <ProfileOverviewCard
+            profile={currentProfile}
+            profiles={profiles}
+            isGlobal={!!query.data?.global_transforms?.includes(uid)}
+          />
 
-        <ActionCard profile={currentProfile} />
+          {isChainProfile(currentProfile) && (
+            <UsedBySection
+              uid={currentProfile.uid}
+              profiles={profiles}
+              globalTransforms={query.data?.global_transforms ?? []}
+            />
+          )}
 
-        {isProxyProfile(currentProfile) && (
-          <ChianEditorCard profile={currentProfile} />
-        )}
-        {isRemoteItem(currentProfile) && (
-          <SyncHistoryCard uid={currentProfile.uid} />
-        )}
-      </div>
-    </>
+          {isRemoteItem(currentProfile) && (
+            <SubscriptionSection profile={currentProfile} />
+          )}
+
+          {isProxyProfile(currentProfile) && (
+            <TransformChainSection profile={currentProfile} />
+          )}
+
+          {isRemoteItem(currentProfile) && (
+            <SyncHistorySection uid={currentProfile.uid} />
+          )}
+
+          <FileSection profile={currentProfile} />
+
+          <DeleteSection profile={currentProfile} onDeleted={backToList} />
+        </>
+      )}
+    </div>
   )
 }

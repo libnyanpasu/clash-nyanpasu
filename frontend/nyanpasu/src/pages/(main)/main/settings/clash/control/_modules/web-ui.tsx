@@ -35,7 +35,7 @@ import {
   SettingsCard,
   SettingsCardAnimatedItem,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 const useUrlLabels = () => {
   const { data } = useClashInfo()

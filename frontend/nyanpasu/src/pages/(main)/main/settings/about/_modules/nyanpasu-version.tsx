@@ -1,7 +1,10 @@
 import AnimatedLogo from '@/components/logo/animated-logo'
 import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provider'
 import { m } from '@/paraglide/messages'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  SettingsCard,
+  SettingsCardContent,
+} from '../../../_modules/settings-card'
 
 export default function NyanpasuVersion() {
   const { currentVersion } = useNyanpasuUpdate()

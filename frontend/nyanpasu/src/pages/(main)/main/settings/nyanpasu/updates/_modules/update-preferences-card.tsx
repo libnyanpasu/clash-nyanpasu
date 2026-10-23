@@ -8,7 +8,7 @@ import { useSetting } from '@nyanpasu/query'
 import {
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 import AboutCardHeader from './about-card-header'
 import ReleaseChannelPreference from './release-channel-preference'
 

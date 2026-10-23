@@ -21,7 +21,7 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../_modules/settings-card'
+} from '../../../../_modules/settings-card'
 
 const DEFAULT_SETTINGS = {
   global: 'destroy',

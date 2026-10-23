@@ -371,8 +371,8 @@ pub struct GetSysProxyResponse {
 
 use crate::state::profiles::actor::NewProfileRequest;
 use nyanpasu_config::profile::{
-    ProfileDefinition, ProfileId, ProfileMetadataPatch, Profiles as DomainProfiles,
-    RemoteProfileOptionsPatch, TransformKind,
+    FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
+    Profiles as DomainProfiles, RemoteProfileOptionsPatch, TransformKind,
 };
 
 #[nyanpasu_macro::rpc(http)]
@@ -431,6 +431,7 @@ pub async fn import_profile(
     name: Option<String>,
     option: Option<RemoteProfileOptionsPatch>,
     transform: Option<TransformKind>,
+    folder: Option<FolderId>,
 ) -> Result<crate::client::runtime::MutationOutcome<ProfileId>> {
     let url = snafu::ResultExt::context(
         url::Url::parse(&url),
@@ -439,7 +440,9 @@ pub async fn import_profile(
     // `name` carries deep-link intent (e.g. an install-config `name=` param);
     // when absent the facade derives the name from the url server-side. Return
     // MutationOutcome so a degraded post-import rebuild still carries the uid.
-    Ok(client.import_profile(url, name, option, transform).await?)
+    Ok(client
+        .import_profile(url, name, option, transform, folder)
+        .await?)
 }
 
 /// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
@@ -511,6 +514,27 @@ pub async fn reorder_profiles_by_list(
     list: Vec<ProfileId>,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.reorder_profiles_by_list(list).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn set_profile_layout(
+    client: State<'_, NyanpasuClient>,
+    layout: ProfileLayout,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.set_profile_layout(layout).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn create_profile_folder(
+    client: State<'_, NyanpasuClient>,
+    name: String,
+    members: Vec<ProfileId>,
+) -> Result<crate::client::runtime::MutationOutcome<FolderId>> {
+    Ok(client.create_profile_folder(name, members).await?)
 }
 
 #[nyanpasu_macro::rpc(http)]

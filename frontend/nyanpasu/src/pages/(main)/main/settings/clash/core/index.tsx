@@ -1,7 +1,7 @@
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsGroup, SettingsLabel } from '../../_modules/settings-card'
+import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
 import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
 import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
 import BreakWhenProxyChangeSelector from './_modules/break-when-proxy-change-selector'

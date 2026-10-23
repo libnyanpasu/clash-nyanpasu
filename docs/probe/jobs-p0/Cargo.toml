@@ -16,7 +16,7 @@ serde = { version = '=1.0.229', features = ['derive'] }
 serde_json = '=1.0.154'
 specta = { version = '=2.0.0-rc.25', features = ['derive', 'serde_json'] }
 specta-serde = '=0.0.12'
-specta-typescript = '=0.0.12'
+specta-typescript = '=0.0.14'
 tempfile = '=3.27.0'
 tokio = { version = '=1.54.0', features = [
   'macros',

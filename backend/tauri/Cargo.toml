@@ -219,7 +219,7 @@ window-vibrancy = { version = '0.8.0' }
 # tauri-specta-query's current release line targets Specta rc26; this revision
 # is the compatible rc25 line used by the project today.
 specta-util = '0.0.12'
-specta-typescript = { version = '0.0.12', features = ['serde'] }
+specta-typescript = { version = '0.0.14', features = ['serde'] }
 tauri-specta = { git = 'https://github.com/specta-rs/tauri-specta.git', rev = '373c25d080aa0ba909bd23b2b559947079e8dc75', version = '2.0.0-rc.25', features = [
   'derive',
   'typescript',

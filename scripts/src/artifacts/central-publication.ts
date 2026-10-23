@@ -28,6 +28,8 @@ export interface CentralPublicationOptions {
 export function classifyPublicationArtifactDirectory(
   name: string,
 ): string | null {
+  // Symbol archives are build diagnostics, not mirrored packages.
+  if (name.endsWith("-symbols")) return null;
   const windows = /^Clash\.Nyanpasu-windows-(x86_64|aarch64)-/.exec(name);
   if (windows) return `windows-${windows[1]}`;
   const linux = /^Clash\.Nyanpasu-linux-(x86_64|aarch64)-/.exec(name);

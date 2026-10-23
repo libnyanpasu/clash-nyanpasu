@@ -62,14 +62,14 @@ export default function FolderNameDialog({
   return (
     <Modal open={open} onOpenChange={handleOpenChange}>
       <ModalContent>
-        <Card className="w-96" data-slot="profiles-folder-dialog">
+        <Card className="w-96" data-slot="folder-name-dialog">
           <CardHeader>
             <ModalTitle>{title}</ModalTitle>
           </CardHeader>
 
           <CardContent>
             <form
-              id="profiles-folder-dialog-form"
+              id="folder-name-dialog-form"
               onSubmit={(event) => {
                 event.preventDefault()
                 handleSubmit()
@@ -104,7 +104,7 @@ export default function FolderNameDialog({
           <CardFooter className="gap-1">
             <Button
               type="submit"
-              form="profiles-folder-dialog-form"
+              form="folder-name-dialog-form"
               loading={form.formState.isSubmitting}
             >
               {m.common_save()}

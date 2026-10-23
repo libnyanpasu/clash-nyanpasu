@@ -4,13 +4,15 @@ import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/query'
 import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
+import { useFolderCollapsed } from '../../_modules/use-folder-collapsed'
 import { GridViewProfile } from './profile-card'
 import ProfileSection from './profile-section'
 import { NoMoreProfiles, useListOverflows } from './profiles-list-footer'
 import { sectionId } from './resolve-profile-drop'
-import { useFolderCollapsed } from './use-folder-collapsed'
 import { useProfileLayout } from './use-profile-layout'
 import { useProfilesDnd } from './use-profiles-dnd'
+
+const COLLAPSED_KV_KEY = 'profiles-folder-collapsed'
 
 /**
  * The Config profiles in their folders, then the ones in none. Without
@@ -26,7 +28,7 @@ export default function ProfileSections({
 
   const { layout } = useProfileLayout()
   const { items } = useProfilesDnd()
-  const { isCollapsed, toggle } = useFolderCollapsed()
+  const { isCollapsed, toggle } = useFolderCollapsed(COLLAPSED_KV_KEY)
 
   const configs = new Map<string, ProfileItem_Serialize>(
     (profiles?.items ?? [])

@@ -10,7 +10,7 @@ import { formatError } from '@/utils'
 import { ask, message } from '@/utils/notification'
 import { profileLayoutOf, useProfile } from '@nyanpasu/query'
 import type { FolderId, ProfileId, ProfileLayout } from '@nyanpasu/rpc/types'
-import FolderNameDialog from './folder-name-dialog'
+import FolderNameDialog from '../../_modules/folder-name-dialog'
 import {
   isSameLayout,
   moveProfileInLayout,

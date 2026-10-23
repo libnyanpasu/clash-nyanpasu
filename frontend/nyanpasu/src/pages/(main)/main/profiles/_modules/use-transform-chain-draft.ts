@@ -249,3 +249,5 @@ export function useTransformChainDraft({
     endDrag,
   }
 }
+
+export type TransformChainDraft = ReturnType<typeof useTransformChainDraft>

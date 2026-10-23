@@ -7,7 +7,7 @@ import ManageSearchRounded from '~icons/material-symbols/manage-search-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
 import WarningRounded from '~icons/material-symbols/warning-rounded'
 import { AnimatePresence } from 'motion/react'
-import { memo } from 'react'
+import { memo, type ReactNode } from 'react'
 import { AnimatedItem } from '@nyanpasu/ui/animated-item'
 import { Button } from '@nyanpasu/ui/button'
 import { cardVariants } from '@nyanpasu/ui/card'
@@ -31,7 +31,10 @@ import { Link } from '@tanstack/react-router'
 import { SettingsGroup } from '../../_modules/settings-card'
 import { PROFILE_TYPE_NAMES } from './consts'
 import { TransformAddMenu } from './transform-add-menu'
-import { useTransformChainDraft } from './use-transform-chain-draft'
+import {
+  useTransformChainDraft,
+  type TransformChainDraft,
+} from './use-transform-chain-draft'
 import { profileTypeOf, type TransformProfile } from './utils'
 
 type ItemProps = {
@@ -196,24 +199,79 @@ const Item = memo(function Item(props: ItemProps) {
   )
 })
 
-/** Ordered, sortable chain of enabled transforms with an explicit Apply. */
-export function TransformChainList({
-  transforms,
-  taskKey,
+/** Count of enabled transforms and the menu that adds one. */
+function TransformChainHeader({ chain }: { chain: TransformChainDraft }) {
+  return (
+    <div
+      data-slot="profile-chain-editor-header"
+      className="flex items-center justify-between gap-3"
+    >
+      <p className="text-on-surface-variant flex items-center gap-2 px-3 text-sm">
+        <FormatListNumberedRounded className="size-5" aria-hidden />
+        {m.profile_chain_editor_enabled_count({
+          count: chain.enabled.length,
+        })}
+      </p>
+
+      <TransformAddMenu
+        available={chain.available}
+        disabled={chain.actionsDisabled}
+        onAdd={chain.handleAdd}
+      />
+    </div>
+  )
+}
+
+/** Appears once the draft differs from the persisted chain. */
+function TransformChainBar({ chain }: { chain: TransformChainDraft }) {
+  return (
+    <AnimatePresence>
+      {chain.dataReady && chain.isChanged && (
+        <AnimatedItem
+          data-slot="profile-chain-editor-bar"
+          className="bg-surface sticky bottom-0 z-10 rounded-full"
+        >
+          <div className="flex items-center justify-end gap-1 p-2">
+            <Button
+              onClick={chain.handleReset}
+              disabled={chain.actionsDisabled}
+            >
+              {m.common_reset()}
+            </Button>
+
+            <Button
+              variant="flat"
+              onClick={chain.handleApply}
+              disabled={chain.actionsDisabled}
+            >
+              {m.common_apply()}
+            </Button>
+          </div>
+        </AnimatedItem>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/**
+ * The sortable list of a transform chain draft owned by the caller. `header`
+ * and `footer` are the caller's controls for the draft, such as the add menu
+ * and the Apply bar.
+ */
+export function TransformChain({
+  chain,
   traceStepOf,
-  onApply,
+  header,
+  footer,
   className,
 }: {
-  /** The persisted chain, in order. */
-  transforms: string[]
-  taskKey: string
+  chain: TransformChainDraft
   /** Builds the Inspect step key of a chain entry from its uid and position. */
   traceStepOf: (uid: string, index: number) => string
-  onApply: (transforms: string[]) => Promise<unknown>
+  header?: ReactNode
+  footer?: ReactNode
   className?: string
 }) {
-  const chain = useTransformChainDraft({ transforms, taskKey, onApply })
-
   // Duplicated ids must never register multiple sortables.
   const readOnly = !chain.editable && !chain.dragging
 
@@ -223,23 +281,7 @@ export function TransformChainList({
       aria-busy={chain.saving}
       className={cn('relative flex min-w-0 flex-col gap-3', className)}
     >
-      <div
-        data-slot="profile-chain-editor-header"
-        className="flex items-center justify-between gap-3"
-      >
-        <p className="text-on-surface-variant flex items-center gap-2 px-3 text-sm">
-          <FormatListNumberedRounded className="size-5" aria-hidden />
-          {m.profile_chain_editor_enabled_count({
-            count: chain.enabled.length,
-          })}
-        </p>
-
-        <TransformAddMenu
-          available={chain.available}
-          disabled={chain.actionsDisabled}
-          onAdd={chain.handleAdd}
-        />
-      </div>
+      {header}
 
       {chain.saving && (
         <LinearProgress
@@ -325,31 +367,36 @@ export function TransformChainList({
         )}
       </DragDropProvider>
 
-      <AnimatePresence>
-        {chain.dataReady && chain.isChanged && (
-          <AnimatedItem
-            data-slot="profile-chain-editor-bar"
-            className="bg-surface sticky bottom-0 z-10 rounded-full"
-          >
-            <div className="flex items-center justify-end gap-1 p-2">
-              <Button
-                onClick={chain.handleReset}
-                disabled={chain.actionsDisabled}
-              >
-                {m.common_reset()}
-              </Button>
-
-              <Button
-                variant="flat"
-                onClick={chain.handleApply}
-                disabled={chain.actionsDisabled}
-              >
-                {m.common_apply()}
-              </Button>
-            </div>
-          </AnimatedItem>
-        )}
-      </AnimatePresence>
+      {footer}
     </section>
+  )
+}
+
+/** Ordered, sortable chain of enabled transforms with an explicit Apply. */
+export function TransformChainList({
+  transforms,
+  taskKey,
+  traceStepOf,
+  onApply,
+  className,
+}: {
+  /** The persisted chain, in order. */
+  transforms: string[]
+  taskKey: string
+  /** Builds the Inspect step key of a chain entry from its uid and position. */
+  traceStepOf: (uid: string, index: number) => string
+  onApply: (transforms: string[]) => Promise<unknown>
+  className?: string
+}) {
+  const chain = useTransformChainDraft({ transforms, taskKey, onApply })
+
+  return (
+    <TransformChain
+      chain={chain}
+      traceStepOf={traceStepOf}
+      header={<TransformChainHeader chain={chain} />}
+      footer={<TransformChainBar chain={chain} />}
+      className={className}
+    />
   )
 }

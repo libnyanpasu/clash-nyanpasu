@@ -780,7 +780,7 @@
   "proxies_nav_groups": "グループ",
   "proxies_nav_folders": "フォルダー",
   "proxies_nav_group_count": "{count} 件のグループ",
-  "proxies_nav_folder_empty": "グループのメニューからここへ移動できます",
+  "proxies_nav_folder_empty": "グループをここへドラッグ",
   "proxies_nav_list_actions": "リストの操作",
   "proxies_nav_reset_order": "並び順をリセット",
   "proxies_nav_reset_order_description": "グループはファイルの順序に戻り、すべてのフォルダーが削除されます。",

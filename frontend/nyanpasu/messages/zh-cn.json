@@ -791,7 +791,7 @@
   "proxies_nav_groups": "代理组",
   "proxies_nav_folders": "文件夹",
   "proxies_nav_group_count": "{count} 个代理组",
-  "proxies_nav_folder_empty": "可从代理组菜单移动到此处",
+  "proxies_nav_folder_empty": "将代理组拖到此处",
   "proxies_nav_list_actions": "列表操作",
   "proxies_nav_reset_order": "重置顺序",
   "proxies_nav_reset_order_description": "代理组将恢复为配置中的顺序，所有文件夹都会被删除。",

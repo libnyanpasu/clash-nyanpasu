@@ -761,7 +761,7 @@
   "proxies_nav_groups": "그룹",
   "proxies_nav_folders": "폴더",
   "proxies_nav_group_count": "그룹 {count}개",
-  "proxies_nav_folder_empty": "그룹 메뉴에서 여기로 옮길 수 있습니다",
+  "proxies_nav_folder_empty": "그룹을 여기로 끌어다 놓으세요",
   "proxies_nav_list_actions": "목록 작업",
   "proxies_nav_reset_order": "순서 초기화",
   "proxies_nav_reset_order_description": "그룹이 프로필의 순서로 돌아가고 모든 폴더가 삭제됩니다.",

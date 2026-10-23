@@ -48,7 +48,7 @@ export const folderOfDragId = (id: string): FolderId | undefined =>
 export const folderHeadingId = (folder: FolderId) =>
   `${HEADING_PREFIX}${folder}`
 
-const folderOfHeadingId = (id: string): FolderId | undefined =>
+export const folderOfHeadingId = (id: string): FolderId | undefined =>
   id.startsWith(HEADING_PREFIX) ? id.slice(HEADING_PREFIX.length) : undefined
 
 /** The id of a section's list, which is also its key in `SectionItems`. */
@@ -115,3 +115,7 @@ export const resolveGroupDrop = ({
 
   return null
 }
+
+/** The group names behind a list of group drag ids. */
+export const groupNamesOf = (ids: readonly string[]) =>
+  ids.flatMap((id) => groupOfDragId(id) ?? [])

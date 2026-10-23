@@ -1,3 +1,4 @@
+import { act } from 'react'
 import { expect } from 'vitest'
 
 const nextFrame = () =>
@@ -47,28 +48,38 @@ export const drag = async (source: Element, target: Element) => {
     expect(point.y).toBeLessThan(window.innerHeight)
   }
 
-  send('pointerdown', source, from)
+  await act(async () => {
+    send('pointerdown', source, from)
+  })
 
   const steps = 12
 
   for (let step = 1; step <= steps; step += 1) {
-    send('pointermove', document.body, {
-      x: from.x + ((to.x - from.x) * step) / steps,
-      y: from.y + ((to.y - from.y) * step) / steps,
+    await act(async () => {
+      send('pointermove', document.body, {
+        x: from.x + ((to.x - from.x) * step) / steps,
+        y: from.y + ((to.y - from.y) * step) / steps,
+      })
+      await nextFrame()
+      await nextFrame()
     })
-    await nextFrame()
-    await nextFrame()
   }
 
-  send('pointerup', target, to)
+  // Previewing a cross-section move can unmount the original target. Release
+  // on the document's live tree so the sensor always receives pointerup.
+  await act(async () => {
+    send('pointerup', document.body, to)
+  })
 
   // Pointer release starts the drop animation. Its feedback and placeholder
   // still occupy the DOM until cleanup, and a new drag must not start yet.
   await expect
-    .poll(() =>
-      document.querySelector(
-        '[data-dnd-dragging], [data-dnd-dropping], [data-dnd-placeholder]',
-      ),
+    .poll(
+      () =>
+        document.querySelector(
+          '[data-dnd-dragging], [data-dnd-dropping], [data-dnd-placeholder]',
+        ),
+      { timeout: 5000 },
     )
     .toBeNull()
 }

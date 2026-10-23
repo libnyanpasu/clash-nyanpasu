@@ -351,14 +351,15 @@ fn extract_core(
         let mut found = false;
         for index in 0..archive.len() {
             let mut file = archive.by_index(index)?;
+            let name = file.name()?;
             let matches = expected_archive_binary.map_or_else(
                 || {
-                    file.name().ends_with(".exe")
+                    name.ends_with(".exe")
                         && ["mihomo", "clash", "meow"]
                             .iter()
-                            .any(|name| file.name().contains(name))
+                            .any(|core| name.contains(core))
                 },
-                |expected| file.name().rsplit('/').next() == Some(expected),
+                |expected| name.rsplit('/').next() == Some(expected),
             );
             if !file.is_dir() && matches {
                 let mut output = std::fs::File::create(&destination)?;

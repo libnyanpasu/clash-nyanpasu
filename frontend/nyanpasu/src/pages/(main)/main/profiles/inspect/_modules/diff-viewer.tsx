@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { ThemedToken } from 'shiki'
 import { Button } from '@nyanpasu/ui/button'
 import { m } from '@/paraglide/messages'
 import type { SnapshotDiffHunk } from '@nyanpasu/rpc/types'
+import { cn } from '@nyanpasu/utils'
+import { revealWithin, type FindRequest } from './find-bar'
+import { diffLines, findLines, type FieldJump } from './text-find'
 
 /** Highlighted tokens for each shown line of a hunk; undefined for markers. */
 type HunkTokens = (ThemedToken[] | undefined)[]
@@ -74,9 +77,70 @@ function tokenStyle(style: Record<string, string> | undefined) {
   ) as CSSProperties
 }
 
-export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
+/**
+ * The position, among all the lines of the hunks, of the first line of a
+ * field. A removed line has no place in the new text, so it only counts when
+ * no kept line is in the field.
+ */
+function jumpIndex(hunks: SnapshotDiffHunk[], jump: FieldJump) {
+  let flat = 0
+  let removed: number | undefined
+  for (const hunk of hunks) {
+    let newLine = hunk.new_start
+    for (const line of hunk.lines) {
+      const position = newLine - 1
+      if (position >= jump.start && position <= jump.end) {
+        if (line[0] !== '-') return flat
+        removed ??= flat
+      }
+      if (line[0] !== '-' && line[0] !== '\\') newLine++
+      flat++
+    }
+  }
+  return removed
+}
+
+export default function DiffViewer({
+  hunks,
+  find,
+  jump,
+}: {
+  hunks: SnapshotDiffHunk[]
+  /** Marks the lines that contain the text and scrolls to the current one. */
+  find?: FindRequest
+  /** Scrolls to the first line of a field and marks it. */
+  jump?: FieldJump
+}) {
+  const regionRef = useRef<HTMLDivElement>(null)
   const [budget, setBudget] = useState({ hunks, lines: PAGE_LINES })
-  const lineBudget = budget.hunks === hunks ? budget.lines : PAGE_LINES
+  const pagedBudget = budget.hunks === hunks ? budget.lines : PAGE_LINES
+
+  const texts = useMemo(() => diffLines(hunks), [hunks])
+  const offsets = useMemo(() => {
+    let total = 0
+    return hunks.map((hunk) => {
+      const start = total
+      total += hunk.lines.length
+      return start
+    })
+  }, [hunks])
+  const matches = useMemo(
+    () => (find?.query ? findLines(texts, find.query) : []),
+    [texts, find?.query],
+  )
+  const matched = useMemo(() => new Set(matches), [matches])
+  const activeLine = find ? matches[find.active] : undefined
+  const jumpLine = useMemo(
+    () => (jump ? jumpIndex(hunks, jump) : undefined),
+    [hunks, jump],
+  )
+
+  // The line that was asked for is shown, however many pages that takes.
+  const reach = Math.max(activeLine ?? -1, jumpLine ?? -1)
+  const lineBudget = Math.max(
+    pagedBudget,
+    Math.ceil((reach + 1) / PAGE_LINES) * PAGE_LINES,
+  )
   const shown = useMemo(
     () => shownLines(hunks, lineBudget),
     [hunks, lineBudget],
@@ -119,18 +183,35 @@ export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
     }
   }, [hunks, shown, tokens])
 
+  useEffect(() => {
+    const row = regionRef.current?.querySelector<HTMLElement>(
+      'tr[data-find-active]',
+    )
+    if (row) revealWithin(regionRef.current!, row)
+  }, [activeLine, find?.query])
+
+  useEffect(() => {
+    const row = regionRef.current?.querySelector<HTMLElement>('tr[data-jump]')
+    if (row) revealWithin(regionRef.current!, row)
+  }, [jump?.nonce])
+
   if (hunks.length === 0) {
-    return <p role="status">{m.inspect_unchanged()}</p>
+    return (
+      <p role="status" className="text-on-surface-variant p-6 text-[13px]">
+        {m.inspect_unchanged()}
+      </p>
+    )
   }
 
   return (
     <div
+      ref={regionRef}
       role="region"
       aria-label={m.inspect_diff()}
       tabIndex={0}
-      className="bg-surface text-on-surface focus-visible:outline-primary h-[55vh] min-h-64 overflow-auto rounded-lg text-xs focus-visible:outline-2 @[40rem]:h-auto @[40rem]:min-h-48 @[40rem]:flex-1"
+      className="bg-code text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto font-mono text-[12.5px] leading-5 focus-visible:outline-2 focus-visible:-outline-offset-2"
     >
-      <table className="min-w-full border-collapse font-mono">
+      <table className="min-w-full border-collapse">
         <thead className="sr-only">
           <tr>
             <th>{m.inspect_old_line()}</th>
@@ -146,10 +227,10 @@ export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
           let newLine = hunk.new_start
           return (
             <tbody key={`${hunk.old_start}-${hunk.new_start}`}>
-              <tr className="bg-blue-50 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200">
+              <tr className="bg-on-surface/8 text-primary text-[11.5px]">
                 <td
                   colSpan={4}
-                  className="px-3 py-2 whitespace-pre"
+                  className="px-4 py-0.5 whitespace-pre"
                 >{`@@ -${hunk.old_start},${hunk.old_lines} +${hunk.new_start},${hunk.new_lines} @@`}</td>
               </tr>
               {hunk.lines.slice(0, lines).map((line, index) => {
@@ -158,27 +239,45 @@ export default function DiffViewer({ hunks }: { hunks: SnapshotDiffHunk[] }) {
                   sign === '+' || sign === '\\' ? undefined : oldLine++
                 const newNumber =
                   sign === '-' || sign === '\\' ? undefined : newLine++
+                const flat = offsets[hunkIndex] + index
                 const color =
+                  sign === '+' ? 'bg-ok/12' : sign === '-' ? 'bg-error/12' : ''
+                const markerColor =
                   sign === '+'
-                    ? 'bg-green-100 text-green-950 dark:bg-green-950/60 dark:text-green-100'
+                    ? 'text-ok'
                     : sign === '-'
-                      ? 'bg-red-100 text-red-950 dark:bg-red-950/60 dark:text-red-100'
-                      : ''
+                      ? 'text-error'
+                      : 'text-on-surface-variant'
                 return (
                   <tr
                     key={index}
-                    className={color}
+                    className={cn(
+                      color,
+                      'data-find:outline-1 data-find:-outline-offset-1 data-find:outline-yellow-500/50',
+                      'data-find-active:outline-2 data-find-active:outline-yellow-500',
+                      'data-jump:outline-primary data-jump:outline-2 data-jump:-outline-offset-2',
+                    )}
+                    data-find={matched.has(flat) ? '' : undefined}
+                    data-find-active={flat === activeLine ? '' : undefined}
+                    data-jump={flat === jumpLine ? '' : undefined}
                     data-change={
                       sign === '+' ? 'add' : sign === '-' ? 'remove' : 'context'
                     }
                   >
-                    <td className="w-1 min-w-10 px-2 text-right opacity-60 select-none">
+                    <td className="text-tc w-11 min-w-11 pr-2.5 text-right select-none">
                       {oldNumber}
                     </td>
-                    <td className="w-1 min-w-10 px-2 text-right opacity-60 select-none">
+                    <td className="text-tc w-11 min-w-11 pr-2.5 text-right select-none">
                       {newNumber}
                     </td>
-                    <td className="w-1 px-2 select-none">{sign}</td>
+                    <td
+                      className={cn(
+                        'w-[22px] min-w-[22px] text-center select-none',
+                        markerColor,
+                      )}
+                    >
+                      {sign}
+                    </td>
                     <td className="pr-4 whitespace-pre dark:[&>span]:text-(--shiki-dark)!">
                       {hunkTokens?.[index]?.map((token, tokenIndex) => (
                         <span

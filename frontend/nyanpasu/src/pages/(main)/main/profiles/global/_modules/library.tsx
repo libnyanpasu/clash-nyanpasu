@@ -2,27 +2,33 @@ import AddRounded from '~icons/material-symbols/add-rounded'
 import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
 import PlaylistAddRounded from '~icons/material-symbols/playlist-add-rounded'
 import SearchOffRounded from '~icons/material-symbols/search-off-rounded'
-import { useMemo, useState } from 'react'
-import { Button } from '@nyanpasu/ui/button'
+import { useId, useMemo, useState } from 'react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { SearchField } from '@nyanpasu/ui/search-field'
-import {
-  SegmentedButton,
-  SegmentedButtonItem,
-} from '@nyanpasu/ui/segmented-button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
+import { cn } from '@nyanpasu/utils'
+import {
+  CompactButton,
+  RowAction,
+  searchPillClassName,
+} from '../../_modules/compact-controls'
 import { ProfileType } from '../../_modules/consts'
 import CreateProfileModal from '../../_modules/create-profile-modal'
+import {
+  StepGroup,
+  StepRowIcon,
+  StepRowText,
+  stepRowVariants,
+} from '../../_modules/step-list'
+import TransformTypeIcon from '../../_modules/transform-type-icon'
 import type { TransformChainDraft } from '../../_modules/use-transform-chain-draft'
 import {
   profileTypeOf,
   transformLabelOf,
   type TransformProfile,
 } from '../../_modules/utils'
-import Panel from './panel'
-import { RowTitle, rowVariants } from './row'
+import Column, { ColumnHead } from './column'
 
 const ALL = 'all'
 
@@ -37,61 +43,63 @@ const TYPE_FILTERS = [
 
 function LibraryRow({
   profile,
+  usedBy,
   disabled,
   onAdd,
 }: {
   profile: TransformProfile
+  /** Names of the configs that run this transform. */
+  usedBy: string[]
   disabled: boolean
   onAdd: (uid: string) => void
 }) {
   return (
-    <li data-slot="profile-global-library-row" className={rowVariants()}>
-      <RowTitle name={profile.name} type={transformLabelOf(profile)} />
+    <div data-slot="profile-global-library-row" className={stepRowVariants()}>
+      <StepRowIcon>
+        <TransformTypeIcon type={profileTypeOf(profile)} />
+      </StepRowIcon>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            icon
-            className="text-on-surface-variant size-9 shrink-0"
-            data-slot="profile-global-library-open-editor"
-            aria-label={m.profile_global_library_open_editor({
-              name: profile.name,
-            })}
-            onClick={async () => {
-              await rpc.createEditorWindow('profile', profile.uid)
-            }}
-          >
-            <EditSquareOutlineRounded className="size-5" aria-hidden />
-          </Button>
-        </TooltipTrigger>
+      <StepRowText
+        title={profile.name}
+        sub={`${transformLabelOf(profile)} · ${
+          usedBy.length > 0
+            ? m.profile_global_library_used_by({ names: usedBy.join(', ') })
+            : m.profile_global_library_unused()
+        }`}
+      />
 
-        <TooltipContent>{m.profile_chain_editor_open_editor()}</TooltipContent>
-      </Tooltip>
+      <RowAction
+        label={m.profile_global_library_open_editor({ name: profile.name })}
+        data-slot="profile-global-library-open-editor"
+        onClick={async () => {
+          await rpc.createEditorWindow('profile', profile.uid)
+        }}
+      >
+        <EditSquareOutlineRounded className="size-5" aria-hidden />
+      </RowAction>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            icon
-            disabled={disabled}
-            className="text-primary size-9 shrink-0"
-            data-slot="profile-global-library-add"
-            aria-label={m.profile_global_library_add({ name: profile.name })}
-            onClick={() => onAdd(profile.uid)}
-          >
-            <AddRounded className="size-5" aria-hidden />
-          </Button>
-        </TooltipTrigger>
-
-        <TooltipContent>{m.profile_chain_editor_add()}</TooltipContent>
-      </Tooltip>
-    </li>
+      <RowAction
+        label={m.profile_global_library_add({ name: profile.name })}
+        disabled={disabled}
+        data-slot="profile-global-library-add"
+        onClick={() => onAdd(profile.uid)}
+      >
+        <AddRounded className="size-5" aria-hidden />
+      </RowAction>
+    </div>
   )
 }
 
 /** Every transform that is not in the global chain yet, ready to be added. */
-export default function Library({ chain }: { chain: TransformChainDraft }) {
+export default function Library({
+  chain,
+  usedByOf,
+}: {
+  chain: TransformChainDraft
+  /** Names of the configs that run the transform with this uid. */
+  usedByOf: (uid: string) => string[]
+}) {
+  const headingId = useId()
   const [search, setSearch] = useState('')
   const [type, setType] = useState<TypeFilter>(ALL)
   const [createOpen, setCreateOpen] = useState(false)
@@ -109,53 +117,58 @@ export default function Library({ chain }: { chain: TransformChainDraft }) {
   const nothingExists = chain.available.length + chain.enabled.length === 0
 
   return (
-    <Panel
+    <Column
       data-slot="profile-global-library"
-      title={m.profile_global_library_title()}
-      action={
-        <Button
-          type="button"
+      aria-labelledby={headingId}
+      className={cn(
+        'bg-pane @[56rem]:flex-[0.85]',
+        'shadow-[inset_0_1px_0_var(--color-outline-variant)]',
+        '@[56rem]:shadow-[inset_1px_0_0_var(--color-outline-variant)]',
+      )}
+    >
+      <ColumnHead id={headingId} title={m.profile_global_library_title()}>
+        <CompactButton
           data-slot="profile-global-library-create"
           onClick={() => setCreateOpen(true)}
         >
-          <AddRounded className="size-5" aria-hidden />
+          <AddRounded aria-hidden />
           {m.profile_create_transform_title()}
-        </Button>
-      }
-      toolbar={
-        <div
-          data-slot="profile-global-library-filters"
-          className="flex shrink-0 flex-wrap items-center gap-2 px-1"
-        >
-          <SearchField
-            className="min-w-[min(12rem,100%)] flex-1 basis-48"
-            value={search}
-            onValueChange={setSearch}
-            placeholder={m.profile_global_library_search()}
-            aria-label={m.profile_global_library_search()}
-            clearLabel={m.common_clear()}
-          />
+        </CompactButton>
+      </ColumnHead>
 
-          <SegmentedButton
-            size="sm"
-            variant="glass"
-            value={type}
-            aria-label={m.profile_global_library_filter()}
-            onValueChange={(next) => {
-              // Selecting the selected segment again clears a toggle group.
-              const filter = TYPE_FILTERS.find((item) => item.value === next)
-              if (filter) setType(filter.value)
-            }}
+      <SearchField
+        className={searchPillClassName}
+        value={search}
+        onValueChange={setSearch}
+        placeholder={m.profile_global_library_search()}
+        aria-label={m.profile_global_library_search()}
+        clearLabel={m.common_clear()}
+      />
+
+      <div
+        role="group"
+        data-slot="profile-global-library-filters"
+        aria-label={m.profile_global_library_filter()}
+        className="flex flex-wrap gap-1.5 px-4"
+      >
+        {TYPE_FILTERS.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            aria-pressed={type === item.value}
+            onClick={() => setType(item.value)}
+            className={cn(
+              'h-[30px] cursor-pointer rounded-lg px-3 text-xs font-medium outline-none',
+              'text-on-surface-variant shadow-[inset_0_0_0_1px_var(--color-outline-variant)]',
+              'hover:bg-on-surface/8 focus-visible:outline-primary focus-visible:outline-2',
+              'aria-pressed:bg-secondary-container aria-pressed:text-on-secondary-container aria-pressed:shadow-none',
+            )}
           >
-            {TYPE_FILTERS.map((item) => (
-              <SegmentedButtonItem key={item.value} value={item.value}>
-                {item.label()}
-              </SegmentedButtonItem>
-            ))}
-          </SegmentedButton>
-        </div>
-      }
-    >
+            {item.label()}
+          </button>
+        ))}
+      </div>
+
       {nothingExists ? (
         <EmptyState
           size="compact"
@@ -166,9 +179,9 @@ export default function Library({ chain }: { chain: TransformChainDraft }) {
           message={m.profile_global_library_empty()}
           description={m.profile_global_library_empty_hint()}
         >
-          <Button type="button" onClick={() => setCreateOpen(true)}>
+          <CompactButton onClick={() => setCreateOpen(true)}>
             {m.profile_create_transform_title()}
-          </Button>
+          </CompactButton>
         </EmptyState>
       ) : chain.available.length === 0 ? (
         <EmptyState
@@ -189,20 +202,25 @@ export default function Library({ chain }: { chain: TransformChainDraft }) {
           message={m.profile_global_library_no_match()}
         />
       ) : (
-        <ul
-          data-slot="profile-global-library-list"
-          className="flex min-w-0 flex-col gap-2 px-1 pb-2"
-        >
+        <StepGroup data-slot="profile-global-library-list">
           {matches.map((profile) => (
             <LibraryRow
               key={profile.uid}
               profile={profile}
+              usedBy={usedByOf(profile.uid)}
               disabled={chain.actionsDisabled}
               onAdd={chain.handleAdd}
             />
           ))}
-        </ul>
+        </StepGroup>
       )}
+
+      <p
+        data-slot="profile-global-library-note"
+        className="text-on-surface-variant px-4 text-xs leading-4"
+      >
+        {m.profile_global_library_note()}
+      </p>
 
       <CreateProfileModal
         open={createOpen}
@@ -210,6 +228,6 @@ export default function Library({ chain }: { chain: TransformChainDraft }) {
         kind={ProfileType.JavaScript}
         source="local"
       />
-    </Panel>
+    </Column>
   )
 }

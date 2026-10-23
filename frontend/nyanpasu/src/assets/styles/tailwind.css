@@ -151,13 +151,40 @@
   );
 }
 
-/* Custom Mixed Colors (dark) */
+/* Custom Mixed Colors and tool page surfaces (dark) */
 .dark {
   --color-mixed-background: color-mix(
     in srgb,
     var(--color-background) 50%,
     black 50%
   );
+  --color-pane: color-mix(in srgb, var(--color-surface) 70%, black 30%);
+  --color-code: color-mix(in srgb, var(--color-surface) 66%, black 34%);
+  --color-tc: #8e9099;
+  --color-ok: #7bdc95;
+  --color-warn: #ffb870;
+}
+
+/* Surfaces and status colours of the tool pages (Global transforms, Inspect). */
+@theme {
+  /* A pane beside the page: a step rail or a library. */
+  --color-pane: color-mix(
+    in srgb,
+    var(--color-surface) 65%,
+    var(--color-surface-variant) 35%
+  );
+
+  /* The ground of code and diff viewers. */
+  --color-code: color-mix(
+    in srgb,
+    var(--color-surface) 92%,
+    var(--color-surface-variant) 8%
+  );
+
+  /* Line numbers and comments inside a viewer. */
+  --color-tc: #74777f;
+  --color-ok: #1b6d3b;
+  --color-warn: #8a5100;
 }
 
 @utility text-shadow-* {

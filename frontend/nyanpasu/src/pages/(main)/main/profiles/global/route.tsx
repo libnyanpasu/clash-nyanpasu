@@ -1,4 +1,8 @@
-import { useMemo } from 'react'
+import CheckRounded from '~icons/material-symbols/check-rounded'
+import DescriptionOutlineRounded from '~icons/material-symbols/description-outline-rounded'
+import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
+import { AnimatePresence, motion } from 'motion/react'
+import { useCallback, useMemo } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
@@ -9,7 +13,6 @@ import { useTransformChainDraft } from '../_modules/use-transform-chain-draft'
 import { isChainProfile } from '../_modules/utils'
 import LeaveDialog from './_modules/leave-dialog'
 import Library from './_modules/library'
-import Panel from './_modules/panel'
 import Pipeline from './_modules/pipeline'
 
 export const Route = createFileRoute('/(main)/main/profiles/global')({
@@ -52,6 +55,23 @@ function RouteComponent() {
     return scopedTransformsOf(active).flatMap((uid) => byUid.get(uid) ?? [])
   }, [active, items])
 
+  // Which configs run each transform, for the library rows.
+  const usedBy = useMemo(() => {
+    const names = new Map<string, string[]>()
+
+    for (const item of items ?? []) {
+      if (!isConfigItem(item)) continue
+
+      for (const uid of new Set(scopedTransformsOf(item))) {
+        names.set(uid, [...(names.get(uid) ?? []), item.name])
+      }
+    }
+
+    return names
+  }, [items])
+
+  const usedByOf = useCallback((uid: string) => usedBy.get(uid) ?? [], [usedBy])
+
   const blocker = useBlocker({
     shouldBlockFn: () => true,
     disabled: !chain.isChanged,
@@ -62,7 +82,7 @@ function RouteComponent() {
   return (
     <section
       data-slot="profile-global-transforms"
-      className="@container flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      className="@container relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
       <PageToolbar
         title={m.profile_global_transform_title()}
@@ -70,11 +90,25 @@ function RouteComponent() {
         context={
           <p
             data-slot="profile-global-context"
-            className="text-on-surface-variant truncate text-sm"
+            className="text-on-surface-variant flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-3 text-[13px] shadow-[inset_0_0_0_1px_var(--color-outline-variant)] max-md:hidden"
           >
-            {active
-              ? m.profile_global_context_active({ name: active.name })
-              : m.profile_global_context_none()}
+            <DescriptionOutlineRounded
+              className="size-4 shrink-0"
+              aria-hidden
+            />
+
+            {active ? (
+              <span className="truncate">
+                {m.profile_global_applies_to()}{' '}
+                <strong className="text-on-surface font-semibold">
+                  {active.name}
+                </strong>
+              </span>
+            ) : (
+              <span className="truncate">
+                {m.profile_global_context_none()}
+              </span>
+            )}
           </p>
         }
         actions={
@@ -83,52 +117,66 @@ function RouteComponent() {
               <span
                 role="status"
                 data-slot="profile-global-unapplied"
-                className="bg-tertiary-container text-on-tertiary-container rounded-full px-3 py-1 text-xs font-medium"
+                className="bg-tertiary-container text-on-tertiary-container flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold whitespace-nowrap before:size-1.5 before:rounded-full before:bg-current"
               >
                 {m.profile_global_unapplied()}
               </span>
             )}
-
-            <Button
-              onClick={chain.handleReset}
-              disabled={!chain.isChanged || chain.actionsDisabled}
-            >
-              {m.common_reset()}
-            </Button>
-
-            <Button
-              variant="flat"
-              onClick={chain.handleApply}
-              disabled={!chain.isChanged || chain.actionsDisabled}
-            >
-              {m.common_apply()}
-            </Button>
           </>
         }
       />
 
-      {/* One scroll region while the panels are stacked; from the wide layout
-          on, each panel scrolls on its own and this area only clips. */}
+      {/* One scroll region while the columns are stacked; from the wide layout
+          on, each column scrolls on its own and this area only clips. */}
       <ScrollArea
         data-slot="profile-global-body"
         className="min-h-0 flex-1 @[56rem]:[&>[data-slot=scroll-area-viewport]]:overflow-clip!"
       >
-        <div className="grid gap-6 px-4 pb-4 md:px-6 @[56rem]:h-full @[56rem]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @[56rem]:grid-rows-[minmax(0,1fr)]">
-          <Panel
-            data-slot="profile-global-pipeline-panel"
-            title={m.profile_global_pipeline_title()}
-          >
-            <Pipeline
-              active={active}
-              scoped={scoped}
-              chain={chain}
-              traceStepOf={traceStepOf}
-            />
-          </Panel>
+        <div className="flex flex-col @[56rem]:h-full @[56rem]:flex-row">
+          <Pipeline
+            active={active}
+            scoped={scoped}
+            chain={chain}
+            traceStepOf={traceStepOf}
+          />
 
-          <Library chain={chain} />
+          <Library chain={chain} usedByOf={usedByOf} />
         </div>
       </ScrollArea>
+
+      <AnimatePresence>
+        {chain.dataReady && chain.isChanged && (
+          <motion.div
+            data-slot="profile-global-actions"
+            className="absolute right-4 bottom-4 z-10 flex items-center gap-2"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+          >
+            <Button
+              variant="fab"
+              className="flex items-center gap-2"
+              onClick={chain.handleReset}
+              disabled={chain.actionsDisabled}
+            >
+              <RestartAltRounded className="size-6" />
+
+              {m.common_reset()}
+            </Button>
+
+            <Button
+              variant="fab"
+              className="bg-primary text-on-primary dark:bg-primary dark:text-on-primary flex items-center gap-2"
+              onClick={chain.handleApply}
+              disabled={chain.actionsDisabled}
+            >
+              <CheckRounded className="size-6" />
+
+              {m.common_apply()}
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <LeaveDialog
         open={blocker.status === 'blocked'}

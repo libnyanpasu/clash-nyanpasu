@@ -214,8 +214,8 @@ test('a folder is renamed from its menu', async () => {
     name: m.profile_folder_name_label(),
   })
   await expect.element(input).toHaveValue('Home')
-  await userEvent.clear(input.element())
-  await userEvent.type(input.element(), 'House')
+  await input.fill('House')
+  await expect.element(input).toHaveValue('House')
   await page.getByRole('button', { name: m.common_save() }).click()
 
   await expect.poll(() => layouts).toHaveLength(1)

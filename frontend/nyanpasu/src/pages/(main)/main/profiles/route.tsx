@@ -1,6 +1,8 @@
+import { cva } from 'class-variance-authority'
 import { AppContentScrollArea } from '@nyanpasu/ui/scroll-area'
 import { Sidebar, SidebarContent } from '@nyanpasu/ui/sidebar'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
+import { useLeafRouteLayout } from '@/components/router/route-layout'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import ProfilesDndProvider from './_modules/profiles-dnd-provider'
@@ -11,7 +13,30 @@ export const Route = createFileRoute('/(main)/main/profiles')({
   component: RouteComponent,
 })
 
+// A scroll page grows with its content and the viewport scrolls. A fill page
+// is exactly as tall as the viewport and uses its full width; its regions
+// scroll internally.
+const profilesContentVariants = cva('mx-auto flex w-full flex-col', {
+  variants: {
+    layout: {
+      scroll: 'container max-w-7xl min-h-full',
+      fill: 'h-full',
+    },
+  },
+})
+
+const profilesOutletVariants = cva('flex flex-1 flex-col', {
+  variants: {
+    layout: {
+      scroll: '',
+      fill: 'min-h-0',
+    },
+  },
+})
+
 function RouteComponent() {
+  const layout = useLeafRouteLayout() ?? 'scroll'
+
   return (
     <ProfilesLayoutProvider>
       <ProfilesDndProvider>
@@ -31,17 +56,20 @@ function RouteComponent() {
               // for AnimatedOutletPreset transition to work properly,
               // the scroll area must have overflow: clip
               'overflow-clip',
+              // A fill page scrolls in its own regions. Radix sets the viewport's
+              // overflow inline, so only an important class overrides it.
+              'data-[layout=fill]:[&>[data-slot=scroll-area-viewport]]:overflow-clip!',
             )}
+            data-layout={layout}
             data-slot="profiles-content-scroll-area"
           >
             <div
-              className={cn(
-                'container mx-auto w-full max-w-7xl',
-                'flex min-h-full flex-col',
-              )}
+              className={profilesContentVariants({ layout })}
               data-slot="profiles-content"
             >
-              <AnimatedOutletPreset className="flex flex-1 flex-col" />
+              <AnimatedOutletPreset
+                className={profilesOutletVariants({ layout })}
+              />
             </div>
           </AppContentScrollArea>
         </Sidebar>

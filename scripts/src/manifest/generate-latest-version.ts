@@ -1,6 +1,5 @@
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
-import { ensureDir } from "jsr:@std/fs";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import {
   type ArchMapping,
   resolveClashPremium,
@@ -12,6 +11,7 @@ import {
   resolveMihomoAlpha,
 } from "./manifest.ts";
 import { colorize, consola } from "../shared/logger.ts";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 // === Constants ===
 
@@ -67,12 +67,12 @@ for (const result of results) {
   manifest.arch_template[result.name as SupportedCore] = result.archMapping;
 }
 
-await ensureDir(MANIFEST_DIR);
+await mkdir(MANIFEST_DIR, { recursive: true });
 
 // If no changes, skip writing manifest
 let previousManifest: Partial<ManifestVersion> = {};
 try {
-  previousManifest = JSON.parse(await Deno.readTextFile(MANIFEST_VERSION_PATH));
+  previousManifest = JSON.parse(await readFile(MANIFEST_VERSION_PATH, "utf8"));
   delete previousManifest.updated_at;
 } catch {
   // file may not exist yet
@@ -80,14 +80,14 @@ try {
 
 if (JSON.stringify(previousManifest) === JSON.stringify(manifest)) {
   consola.success("No changes, skip writing manifest");
-  Deno.exit(0);
+  process.exit(0);
 }
 
 manifest.updated_at = new Date().toISOString();
 
 consola.success("Generated manifest");
 
-await Deno.writeTextFile(
+await writeFile(
   MANIFEST_VERSION_PATH,
   JSON.stringify(manifest, null, 2) + "\n",
 );

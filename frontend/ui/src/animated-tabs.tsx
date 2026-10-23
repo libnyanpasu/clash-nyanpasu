@@ -160,7 +160,7 @@ export function AnimatedTabsItem({
 
   const renderLabel = (content: ReactNode) => (
     <span
-      className="relative z-3 flex items-center gap-2"
+      className="relative z-3 flex items-center gap-2 whitespace-nowrap"
       data-slot="animated-tabs-item-label"
     >
       {content}

@@ -50,7 +50,7 @@ export default function PageToolbar({
       <BackButton to={backTo} label={m.profile_back()} />
 
       <h1
-        className="text-on-surface max-w-full min-w-0 truncate text-base leading-6 font-semibold"
+        className="text-on-surface max-w-full min-w-0 truncate py-1 text-base leading-6 font-semibold"
         data-slot="page-toolbar-title"
       >
         {title}

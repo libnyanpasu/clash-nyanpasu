@@ -6,7 +6,7 @@ import { cn } from '@nyanpasu/utils'
 
 const compactButtonVariants = cva(
   [
-    'inline-flex h-8 min-w-0 items-center justify-center gap-2 px-3.5 text-[13px]',
+    'inline-flex h-8 min-w-0 items-center justify-center gap-2 px-3.5 text-[13px] whitespace-nowrap',
     // The design dims a disabled button as a whole, whatever its tone.
     'disabled:opacity-40',
     '[&_svg]:size-[18px]',

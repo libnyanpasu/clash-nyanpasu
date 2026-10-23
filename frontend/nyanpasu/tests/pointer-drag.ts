@@ -1,3 +1,5 @@
+import { expect } from 'vitest'
+
 const nextFrame = () =>
   new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 
@@ -50,4 +52,14 @@ export const drag = async (source: Element, target: Element) => {
   }
 
   send('pointerup', target, to)
+
+  // Pointer release starts the drop animation. Its feedback and placeholder
+  // still occupy the DOM until cleanup, and a new drag must not start yet.
+  await expect
+    .poll(() =>
+      document.querySelector(
+        '[data-dnd-dragging], [data-dnd-dropping], [data-dnd-placeholder]',
+      ),
+    )
+    .toBeNull()
 }

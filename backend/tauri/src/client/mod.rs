@@ -1281,7 +1281,19 @@ impl NyanpasuClient {
             .profiles
             .set_proxy_group_layout(profile, layout)
             .await?;
+        self.inner.proxies.notify_rearranged();
         Ok(self.after_commit(&report).await)
+    }
+
+    /// How the proxy groups of the running profile are arranged, if the user
+    /// arranged them.
+    pub fn current_proxy_group_layout(&self) -> Option<ProxyGroupLayout> {
+        let profiles = self.inner.profiles.snapshot();
+        profiles
+            .current
+            .as_ref()
+            .and_then(|current| profiles.proxy_group_layouts.get(current))
+            .cloned()
     }
 
     /// Create a proxy group folder around `members`, which leave the places
@@ -1297,6 +1309,7 @@ impl NyanpasuClient {
             .profiles
             .create_proxy_group_folder(profile, name, members)
             .await?;
+        self.inner.proxies.notify_rearranged();
         Ok(runtime::MutationOutcome::from_parts(
             folder,
             self.collect_post_commit_degradations(&report).await,

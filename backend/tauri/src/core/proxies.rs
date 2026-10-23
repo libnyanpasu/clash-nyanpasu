@@ -47,6 +47,8 @@ enum Message {
         reply: RpcReplyPort<Result<()>>,
     },
     Refresh,
+    /// The sidebar arrangement of the groups changed; the snapshot did not.
+    Rearranged,
     Invalidated(u64),
 }
 
@@ -324,7 +326,7 @@ impl Actor for ProxiesActor {
                 Message::Provider { reply, .. } => {
                     let _ = reply.send(Err(anyhow::anyhow!("proxy owner is shutting down")));
                 }
-                Message::Refresh | Message::Invalidated(_) => {}
+                Message::Refresh | Message::Rearranged | Message::Invalidated(_) => {}
             }
             return Ok(());
         }
@@ -406,6 +408,9 @@ impl Actor for ProxiesActor {
                 if let Err(error) = state.read(&actor, true).await {
                     tracing::debug!(%error, "proxy cache refresh failed");
                 }
+            }
+            Message::Rearranged => {
+                state.changes.send_replace(());
             }
             Message::Invalidated(generation) if generation == state.generation => state.clear(),
             Message::Invalidated(_) => {}
@@ -542,6 +547,10 @@ impl ProxiesClient {
     }
     pub fn request_refresh(&self) {
         let _ = self.0.actor.cast(Message::Refresh);
+    }
+    /// Wakes the subscribers because the order they show the groups in changed.
+    pub fn notify_rearranged(&self) {
+        let _ = self.0.actor.cast(Message::Rearranged);
     }
     pub fn snapshot(&self) -> Proxies {
         self.0
@@ -950,6 +959,25 @@ mod tests {
 
         client.get(true).await.unwrap();
         assert!(!changes.has_changed().unwrap());
+
+        client.stop_for_test().await.unwrap();
+        core.shutdown().await.unwrap();
+        server.abort();
+    }
+    /// The arrangement is not part of the snapshot, so the subscribers (the
+    /// tray) are woken by the owner on request.
+    #[tokio::test]
+    async fn a_rearrangement_wakes_subscribers_although_the_snapshot_is_unchanged() {
+        let (client, core, _, _, server) = setup().await;
+        let mut changes = client.subscribe();
+        client.get(true).await.unwrap();
+        changes.borrow_and_update();
+
+        client.notify_rearranged();
+        tokio::time::timeout(Duration::from_secs(5), changes.changed())
+            .await
+            .expect("the subscribers are woken")
+            .unwrap();
 
         client.stop_for_test().await.unwrap();
         core.shutdown().await.unwrap();

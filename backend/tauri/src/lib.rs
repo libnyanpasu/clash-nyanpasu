@@ -94,10 +94,26 @@ backtrace:
             consts::BUILD_INFO.pkg_version,
             consts::BUILD_INFO.commit_hash,
         );
-        let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
-            .arg("panic-dialog")
-            .arg(msg.as_str())
-            .spawn();
+        let details = nyanpasu_crash_reporter::PanicDetails {
+            parent_pid: std::process::id(),
+            payload: payload.map(str::to_owned),
+            location: location.clone(),
+            backtrace: backtrace.to_string(),
+        };
+        let child = (|| -> anyhow::Result<()> {
+            use std::io::Write as _;
+
+            // The reporter outlives the panicking parent. Closing stdin after
+            // the synchronous write lets it read the entire JSON before UI setup.
+            #[allow(clippy::zombie_processes)]
+            let mut child = std::process::Command::new(tauri::utils::platform::current_exe()?)
+                .arg("panic-dialog")
+                .stdin(std::process::Stdio::piped())
+                .spawn()?;
+            let mut stdin = child.stdin.take().expect("the child's stdin is piped");
+            stdin.write_all(&serde_json::to_vec(&details)?)?;
+            Ok(())
+        })();
         // fallback to show a dialog directly
         if child.is_err() {
             utils::dialog::panic_dialog(msg.as_str());

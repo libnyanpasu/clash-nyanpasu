@@ -293,14 +293,11 @@ async fn http_logs_archive(
     State(rpc): State<UnifiedRpc>,
 ) -> Result<Response, (StatusCode, Json<RpcError>)> {
     let paths = rpc.dependencies.paths.clone();
-    let archive =
-        tokio::task::spawn_blocking(move || crate::utils::candy::collect_logs_tempfile(&paths))
-            .await
-            .map_err(RpcError::application)
-            .map_err(http_rpc_error)?
-            .map_err(|error| RpcError::new("application_error", error.to_string()))
-            .map_err(http_rpc_error)?;
-    let file = tokio::fs::File::open(archive.path())
+    let archive = crate::utils::collect::logs_archive(paths, rpc.dependencies.client.clone())
+        .await
+        .map_err(|error| RpcError::new("application_error", error.to_string()))
+        .map_err(http_rpc_error)?;
+    let file = tokio::fs::File::open(&archive)
         .await
         .map_err(RpcError::application)
         .map_err(http_rpc_error)?;
@@ -489,6 +486,7 @@ mod tests {
         )
         .unwrap();
         let paths = args.paths.clone();
+        let logs_dir = paths.app_logs_dir();
         let client = NyanpasuClient::try_new_with_args(args).unwrap();
         let events = EventBus::new();
         let rpc = UnifiedRpc::new(RpcDependencies {
@@ -512,6 +510,7 @@ mod tests {
         let app = rpc.router();
         tauri::async_runtime::block_on(async move {
             for method in [
+                "report_issue",
                 "read_clipboard_text",
                 "write_clipboard_text",
                 "show_native_notification",
@@ -714,6 +713,37 @@ mod tests {
                     .as_ref(),
                 br#""dark""#
             );
+
+            // The HTTP download shares the redacted archive pipeline with the save dialog.
+            std::fs::write(
+                logs_dir.join("clash-nyanpasu_http.log"),
+                "password=never-export\n",
+            )
+            .unwrap();
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::get("/bridge/logs/archive")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers()["content-type"], "application/zip");
+            let bytes = to_bytes(response.into_body(), 16 * 1024 * 1024)
+                .await
+                .unwrap();
+            let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+            let mut log = String::new();
+            std::io::Read::read_to_string(
+                &mut zip.by_name("logs/app/clash-nyanpasu_http.log").unwrap(),
+                &mut log,
+            )
+            .unwrap();
+            assert_eq!(log, "password=<redacted>\n");
+            assert!(zip.by_name("report.txt").is_ok());
+            assert!(zip.by_name("logs/core/core.log").is_ok());
 
             let response = app
                 .clone()

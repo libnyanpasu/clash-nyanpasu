@@ -9,6 +9,7 @@ use nyanpasu_widget_protocol::StatisticWidgetVariant;
 use tauri::utils::platform::current_exe;
 
 mod migrate;
+mod panic_dialog;
 
 #[derive(Parser, Debug)]
 #[command(name = "clash-nyanpasu", version, about, long_about = None, disable_version_flag = true)]
@@ -38,7 +39,9 @@ enum Commands {
         args: Vec<String>,
     },
     /// Show a panic dialog while the application is enter panic handler.
-    PanicDialog { message: String },
+    PanicDialog,
+    /// Open the manual diagnostics reporter; progress arrives as JSON lines on stdin.
+    ReportIssue,
     /// Launch the Widget with the specified name.
     StatisticWidget { variant: StatisticWidgetVariant },
 }
@@ -76,13 +79,29 @@ pub fn parse(paths: &PathResolver) -> anyhow::Result<()> {
                 std::process::Command::new(path).args(args).spawn().unwrap();
             }
             Commands::Collect => {
-                // The core binaries are looked up in the data dir, which the command creates.
-                nyanpasu_paths::create_dir_all(paths.app_data_dir()).unwrap();
-                let envs = crate::utils::collect::collect_envs(paths).unwrap();
-                println!("{envs:#?}");
+                let runtime = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()?;
+                let _guard = runtime.enter();
+                utils::collect::diagnose(
+                    paths,
+                    None,
+                    Default::default(),
+                    Default::default(),
+                    0,
+                    false,
+                    |event| {
+                        if let nyanpasu_diagnose::Event::Finished { report, .. } = event {
+                            println!("{report}");
+                        }
+                    },
+                );
             }
-            Commands::PanicDialog { message } => {
-                crate::utils::dialog::panic_dialog(message);
+            Commands::PanicDialog => {
+                panic_dialog::show(paths, false)?;
+            }
+            Commands::ReportIssue => {
+                panic_dialog::show(paths, true)?;
             }
             Commands::StatisticWidget { variant } => {
                 nyanpasu_widget::start_statistic_widget(*variant)

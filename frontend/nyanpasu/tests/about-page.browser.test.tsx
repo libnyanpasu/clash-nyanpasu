@@ -7,7 +7,7 @@ import { Route } from '../src/pages/(main)/main/settings/about/index'
 
 const rpc = vi.hoisted(() => ({
   openThat: vi.fn(),
-  collectEnvs: vi.fn(),
+  reportIssue: vi.fn(),
 }))
 
 vi.mock('@/services/rpc', () => ({ rpc }))
@@ -55,22 +55,13 @@ test('About shows the version and opens the help links', async () => {
     .poll(() => rpc.openThat)
     .toHaveBeenCalledWith('https://github.com/libnyanpasu/clash-nyanpasu')
 
-  rpc.collectEnvs.mockResolvedValue({
-    status: 'ok',
-    data: {
-      os: 'macOS',
-      arch: 'aarch64',
-      device: { cpu: ['Apple M1'], memory: '16 GB' },
-      core: {},
-      build_info: {},
-    },
-  })
+  rpc.reportIssue.mockResolvedValue({ status: 'ok', data: null })
   await view
     .getByRole('button', { name: m.header_help_action_issues(), exact: false })
     .click()
   await expect
-    .poll(() => rpc.openThat.mock.lastCall?.[0])
-    .toMatch(
-      /^https:\/\/github\.com\/libnyanpasu\/clash-nyanpasu\/issues\/new\?/,
+    .poll(() => rpc.reportIssue)
+    .toHaveBeenCalledWith(
+      expect.objectContaining({ userAgent: expect.any(String) }),
     )
 })

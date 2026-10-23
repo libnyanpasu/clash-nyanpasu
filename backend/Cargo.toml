@@ -16,6 +16,8 @@ members = [
   'nyanpasu-local-channel',
   'nyanpasu-widget-protocol',
   'nyanpasu-widget',
+  'nyanpasu-crash-reporter',
+  'nyanpasu-diagnose',
   # Test-only deterministic fake clash core. Never packaged as a production
   # sidecar/resource (see tauri.conf.json externalBin / resources).
   'fake-core',

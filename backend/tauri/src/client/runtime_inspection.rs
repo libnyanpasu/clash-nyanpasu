@@ -1,4 +1,5 @@
 //! Read-only projections of one immutable, promoted pipeline build.
+use nyanpasu_config::redact::redact_config;
 use std::sync::Arc;
 
 use nyanpasu_config::{
@@ -392,39 +393,6 @@ impl NyanpasuClient {
             .context(NoRuntimeConfigSnafu)?;
         Ok(state.config_text.to_string())
     }
-}
-
-fn redact_config(mut value: serde_json::Value) -> serde_json::Value {
-    match &mut value {
-        serde_json::Value::Object(fields) => {
-            for (key, value) in fields {
-                if matches!(
-                    key.as_str(),
-                    "secret" | "password" | "token" | "private-key" | "auth-str" | "authentication"
-                ) {
-                    *value = serde_json::Value::String("<redacted>".into());
-                } else if matches!(
-                    key.as_str(),
-                    "external-controller" | "external-controller-tls"
-                ) {
-                    if let Some(address) = value.as_str()
-                        && let Some((_, authority)) = address.rsplit_once('@')
-                    {
-                        *value = serde_json::Value::String(format!("<redacted>@{authority}"));
-                    }
-                } else {
-                    *value = redact_config(std::mem::take(value));
-                }
-            }
-        }
-        serde_json::Value::Array(values) => {
-            for value in values {
-                *value = redact_config(std::mem::take(value));
-            }
-        }
-        _ => {}
-    }
-    value
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ const NEUTRAL_PACKAGES = [
   "nyanpasu-core",
   "nyanpasu-platform",
   "nyanpasu-config",
+  "nyanpasu-diagnose",
 ];
 
 /** Inspect resolved production dependencies, including transitive GUI leaks. */
@@ -18,13 +19,16 @@ export function dependencyViolations(
   );
   return [...names].filter((name) =>
     name === "clash-nyanpasu" || name === "nyanpasu-egui" ||
-    name === "nyanpasu-widget" || name === "slint" ||
+    name === "nyanpasu-widget" || name === "nyanpasu-crash-reporter" ||
+    name === "slint" ||
     name.startsWith("slint-") || name.startsWith("i-slint-") ||
     name === "winit" ||
     name === "eframe" || name === "egui" || name === "gtk" ||
     name === "webkit2gtk" || name === "tauri" ||
     name.startsWith("tauri-") ||
-    (owner === "nyanpasu-core" && name === "nyanpasu-platform")
+    (owner === "nyanpasu-core" && name === "nyanpasu-platform") ||
+    (owner === "nyanpasu-diagnose" &&
+      (name === "nyanpasu-core" || name === "nyanpasu-platform"))
   ).map((name) => `${owner} must not depend on ${name}`);
 }
 

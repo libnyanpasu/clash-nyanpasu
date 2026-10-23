@@ -14,6 +14,7 @@ enum Message {
     Discard(String, RpcReplyPort<()>),
     Flush,
     Query(CoreLogQuery, RpcReplyPort<CoreLogResult<CoreLogPage>>),
+    Export(Option<String>, RpcReplyPort<CoreLogResult<CoreLogExport>>),
     Detail(CoreLogCursor, RpcReplyPort<CoreLogResult<CoreLogRecord>>),
     Clear(RpcReplyPort<CoreLogResult<()>>),
     Configure(CoreLogSettings, RpcReplyPort<CoreLogResult<()>>),
@@ -282,6 +283,13 @@ impl Actor for CoreLogsActor {
                         });
                 let _ = reply.send(result);
             }
+            Message::Export(home, reply) => {
+                let result = match state.flush().await {
+                    Ok(()) => state.blocking(move |store| store.export(home)).await,
+                    Err(error) => Err(error),
+                };
+                let _ = reply.send(result);
+            }
             Message::Detail(cursor, reply) => {
                 let _ = reply.send(state.blocking(move |store| store.detail(cursor)).await);
             }
@@ -319,8 +327,8 @@ impl Actor for CoreLogsActor {
         if let Some(timer) = state.timer.take() {
             timer.abort();
         }
-        if let Err(error) = state.clear().await {
-            tracing::warn!(%error, "Core log shutdown cleanup failed");
+        if let Err(error) = state.flush().await {
+            tracing::warn!(%error, "Core log shutdown flush failed");
         }
         let store = state.store.take();
         joined(tokio::task::spawn_blocking(move || drop(store))).await;
@@ -381,6 +389,9 @@ impl CoreLogsClient {
     }
     pub async fn query(&self, query: CoreLogQuery) -> CoreLogResult<CoreLogPage> {
         self.call(|reply| Message::Query(query, reply)).await?
+    }
+    pub async fn export(&self, home: Option<String>) -> CoreLogResult<CoreLogExport> {
+        self.call(|reply| Message::Export(home, reply)).await?
     }
     pub async fn detail(&self, cursor: CoreLogCursor) -> CoreLogResult<CoreLogRecord> {
         self.call(|reply| Message::Detail(cursor, reply)).await?

@@ -16,6 +16,7 @@ nesting = ['struct-patch/nesting']
 snapshot-persistence = ['dep:rmp-serde', 'dep:zstd']
 
 [dependencies]
+regex = '1'
 nyanpasu-helper = { path = '../nyanpasu-helper' }
 nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-widget-protocol = { path = '../nyanpasu-widget-protocol' }

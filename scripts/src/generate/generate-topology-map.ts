@@ -6,8 +6,9 @@ import {
   type GeoPermissibleObjects,
 } from "npm:d3@7.9.0";
 import { format } from "npm:prettier@3.9.9";
-import { dirname, join } from "jsr:@std/path";
+import { dirname, join } from "node:path";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
+import { mkdir, writeFile } from "node:fs/promises";
 
 type CountryCollection = {
   features: Array<
@@ -65,8 +66,8 @@ const output = join(
   WORKSPACE_ROOT,
   "frontend/nyanpasu/src/assets/maps/world-map.json",
 );
-await Deno.mkdir(dirname(output), { recursive: true });
-await Deno.writeTextFile(
+await mkdir(dirname(output), { recursive: true });
+await writeFile(
   output,
   await format(
     JSON.stringify({

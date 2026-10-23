@@ -1,9 +1,9 @@
 // Extract all data-slot attribute values from frontend TSX files.
 // Run: deno task generate:data-slots
-import { ensureDir } from "jsr:@std/fs@^1.0.19";
-import { dirname, join } from "jsr:@std/path@^1.1.2";
+import { dirname, join } from "node:path";
 import { globby } from "npm:globby";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 const outputPath = join(
   WORKSPACE_ROOT,
@@ -17,15 +17,15 @@ const files: string[] = await globby(["frontend/*/src/**/*.tsx"], {
 const slots = new Set<string>();
 
 for (const file of files) {
-  const content = await Deno.readTextFile(file);
+  const content = await readFile(file, "utf8");
   for (const match of content.matchAll(/data-slot="([^"]+)"/g)) {
     slots.add(match[1]);
   }
 }
 
 const sorted = [...slots].sort();
-await ensureDir(dirname(outputPath));
-await Deno.writeTextFile(
+await mkdir(dirname(outputPath), { recursive: true });
+await writeFile(
   outputPath,
   `// AUTO-GENERATED — do not edit manually. Run: deno task generate:data-slots\n` +
     `export const DATA_SLOTS = ${

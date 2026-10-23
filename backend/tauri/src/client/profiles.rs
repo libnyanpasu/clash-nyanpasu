@@ -3783,6 +3783,8 @@ mod tests {
                 filename: None,
                 subscription: SubscriptionInfo::default(),
                 suggested_update_interval_minutes: None,
+                content_type: None,
+                file_name: None,
             })
         });
         let client = ProfilesClient::new(

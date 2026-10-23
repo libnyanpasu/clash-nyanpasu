@@ -2,7 +2,7 @@ import { createColorize } from "npm:colorize-template";
 import { createConsola } from "npm:consola";
 import pc from "npm:picocolors";
 
-const logLevelStr = Deno.env.get("LOG_LEVEL");
+const logLevelStr = process.env.LOG_LEVEL;
 
 export const consola = createConsola({
   level: logLevelStr ? Number.parseInt(logLevelStr) : 5,

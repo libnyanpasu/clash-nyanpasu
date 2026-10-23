@@ -1,10 +1,13 @@
+import CheckRounded from '~icons/material-symbols/check-rounded'
 import DescriptionOutlineRounded from '~icons/material-symbols/description-outline-rounded'
+import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
+import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useMemo } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { m } from '@/paraglide/messages'
 import { isConfigItem, scopedTransformsOf, useProfile } from '@nyanpasu/query'
 import { createFileRoute, useBlocker } from '@tanstack/react-router'
-import { CompactButton } from '../_modules/compact-controls'
 import PageToolbar from '../_modules/page-toolbar'
 import { useTransformChainDraft } from '../_modules/use-transform-chain-draft'
 import { isChainProfile } from '../_modules/utils'
@@ -79,7 +82,7 @@ function RouteComponent() {
   return (
     <section
       data-slot="profile-global-transforms"
-      className="@container flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      className="@container relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
       <PageToolbar
         title={m.profile_global_transform_title()}
@@ -119,21 +122,6 @@ function RouteComponent() {
                 {m.profile_global_unapplied()}
               </span>
             )}
-
-            <CompactButton
-              onClick={chain.handleReset}
-              disabled={!chain.isChanged || chain.actionsDisabled}
-            >
-              {m.common_reset()}
-            </CompactButton>
-
-            <CompactButton
-              tone="filled"
-              onClick={chain.handleApply}
-              disabled={!chain.isChanged || chain.actionsDisabled}
-            >
-              {m.common_apply()}
-            </CompactButton>
           </>
         }
       />
@@ -155,6 +143,40 @@ function RouteComponent() {
           <Library chain={chain} usedByOf={usedByOf} />
         </div>
       </ScrollArea>
+
+      <AnimatePresence>
+        {chain.dataReady && chain.isChanged && (
+          <motion.div
+            data-slot="profile-global-actions"
+            className="absolute right-4 bottom-4 z-10 flex items-center gap-2"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+          >
+            <Button
+              variant="fab"
+              className="flex items-center gap-2"
+              onClick={chain.handleReset}
+              disabled={chain.actionsDisabled}
+            >
+              <RestartAltRounded className="size-6" />
+
+              {m.common_reset()}
+            </Button>
+
+            <Button
+              variant="fab"
+              className="bg-primary text-on-primary dark:bg-primary dark:text-on-primary flex items-center gap-2"
+              onClick={chain.handleApply}
+              disabled={chain.actionsDisabled}
+            >
+              <CheckRounded className="size-6" />
+
+              {m.common_apply()}
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <LeaveDialog
         open={blocker.status === 'blocked'}

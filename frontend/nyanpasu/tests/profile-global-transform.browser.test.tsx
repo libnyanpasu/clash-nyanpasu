@@ -378,23 +378,24 @@ test('a phone-width container stacks the library under the pipeline in one scrol
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(375)
 })
 
-test('Apply and Reset are always shown and enabled only for a changed chain', async ({
+test('Apply and Reset float in only for a changed chain', async ({
   onTestFinished,
 }) => {
   const ui = await open()
   onTestFinished(finish(ui))
 
-  await expect.element(ui.apply()).toBeVisible()
-  await expect.element(ui.reset()).toBeVisible()
-  await expect.element(ui.apply()).toBeDisabled()
-  await expect.element(ui.reset()).toBeDisabled()
+  // The draft trails the loaded chain by a commit, so the actions may still be
+  // animating out of that first frame.
+  await expect
+    .poll(() => ui.query('[data-slot="profile-global-actions"]'))
+    .toBeNull()
   expect(ui.query('[data-slot="profile-global-unapplied"]')).toBeNull()
 
   await ui.add('warp').click()
 
   await expect.poll(() => ui.chainIds()).toEqual(['self', 'warp'])
-  await expect.element(ui.apply()).toBeEnabled()
-  await expect.element(ui.reset()).toBeEnabled()
+  await expect.element(ui.apply()).toBeVisible()
+  await expect.element(ui.reset()).toBeVisible()
   await expect
     .element(page.getByText(m.profile_global_unapplied(), { exact: true }))
     .toBeVisible()
@@ -402,7 +403,9 @@ test('Apply and Reset are always shown and enabled only for a changed chain', as
   await ui.reset().click()
 
   await expect.poll(() => ui.chainIds()).toEqual(['self'])
-  await expect.element(ui.apply()).toBeDisabled()
+  await expect
+    .poll(() => ui.query('[data-slot="profile-global-actions"]'))
+    .toBeNull()
   expect(ui.query('[data-slot="profile-global-unapplied"]')).toBeNull()
   expect(ui.writes).toHaveLength(0)
 })

@@ -370,7 +370,7 @@ pub struct GetSysProxyResponse {
 use crate::state::profiles::actor::NewProfileRequest;
 use nyanpasu_config::profile::{
     FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
-    Profiles as DomainProfiles, RemoteProfileOptionsPatch, TransformKind,
+    Profiles as DomainProfiles, ProxyGroupLayout, RemoteProfileOptionsPatch, TransformKind,
 };
 
 #[nyanpasu_macro::rpc(http)]
@@ -522,6 +522,31 @@ pub async fn set_profile_layout(
     layout: ProfileLayout,
 ) -> Result<crate::client::runtime::MutationOutcome<()>> {
     Ok(client.set_profile_layout(layout).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn set_proxy_group_layout(
+    client: State<'_, NyanpasuClient>,
+    profile: ProfileId,
+    layout: ProxyGroupLayout,
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
+    Ok(client.set_proxy_group_layout(profile, layout).await?)
+}
+
+#[nyanpasu_macro::rpc(http)]
+#[tauri::command]
+#[specta::specta]
+pub async fn create_proxy_group_folder(
+    client: State<'_, NyanpasuClient>,
+    profile: ProfileId,
+    name: String,
+    members: Vec<String>,
+) -> Result<crate::client::runtime::MutationOutcome<FolderId>> {
+    Ok(client
+        .create_proxy_group_folder(profile, name, members)
+        .await?)
 }
 
 #[nyanpasu_macro::rpc(http)]

@@ -7,9 +7,9 @@ use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, FolderId, LocalBinding,
     ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition,
     ProfileDependencyIndex, ProfileFolder, ProfileId, ProfileItem, ProfileLayout, ProfileMetadata,
-    ProfileMetadataPatch, ProfileSource, ProfileValidationError, Profiles, RemoteProfileOptions,
-    RemoteProfileOptionsPatch, RemoteSyncInterval, ScriptRuntime, ScriptTransform,
-    SubscriptionInfo, TransformDefinition, TransformKind,
+    ProfileMetadataPatch, ProfileSource, ProfileValidationError, Profiles, ProxyGroupFolder,
+    ProxyGroupLayout, RemoteProfileOptions, RemoteProfileOptionsPatch, RemoteSyncInterval,
+    ScriptRuntime, ScriptTransform, SubscriptionInfo, TransformDefinition, TransformKind,
 };
 use nyanpasu_core::state::{
     PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
@@ -260,6 +260,21 @@ pub enum ProfilesActorMessage {
         members: Vec<ProfileId>,
         reply: RpcReplyPort<Result<(CommitReport, FolderId), ProfilesError>>,
     },
+    /// Replace how `profile`'s proxy groups are arranged. An empty layout removes
+    /// the arrangement.
+    SetProxyGroupLayout {
+        profile: ProfileId,
+        layout: ProxyGroupLayout,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    /// Create a proxy group folder in `profile`'s layout around `members`, which
+    /// leave the places they were in. The reply carries the minted folder id.
+    CreateProxyGroupFolder {
+        profile: ProfileId,
+        name: String,
+        members: Vec<String>,
+        reply: RpcReplyPort<Result<(CommitReport, FolderId), ProfilesError>>,
+    },
     PatchMetadata {
         uid: ProfileId,
         patch: ProfileMetadataPatch,
@@ -340,6 +355,7 @@ impl ProfilesActorMessage {
             | Self::Delete { reply, .. }
             | Self::Reorder { reply, .. }
             | Self::SetLayout { reply, .. }
+            | Self::SetProxyGroupLayout { reply, .. }
             | Self::PatchMetadata { reply, .. }
             | Self::PatchRemoteOptions { reply, .. }
             | Self::ImportRemote { reply, .. }
@@ -349,7 +365,7 @@ impl ProfilesActorMessage {
             Self::SetCurrentIfNone { reply, .. } => {
                 let _ = reply.send(Err(ProfilesError::ShuttingDown));
             }
-            Self::CreateFolder { reply, .. } => {
+            Self::CreateFolder { reply, .. } | Self::CreateProxyGroupFolder { reply, .. } => {
                 let _ = reply.send(Err(ProfilesError::ShuttingDown));
             }
             Self::SyncRemote { reply, .. } => {
@@ -1451,6 +1467,15 @@ impl ProfilesActor {
         }
     }
 
+    fn generate_proxy_group_folder_id(layout: &ProxyGroupLayout) -> FolderId {
+        loop {
+            let candidate = FolderId(format!("f{}", nanoid::nanoid!(11)));
+            if layout.folders.iter().all(|folder| folder.id != candidate) {
+                return candidate;
+            }
+        }
+    }
+
     /// Appends a freshly added profile to `folder`. A Transform in a folder is
     /// rejected by the document validation that every commit runs.
     fn join_folder(
@@ -1771,6 +1796,7 @@ impl Actor for ProfilesActor {
                     profiles.global_transforms = next.global_transforms;
                     profiles.valid = next.valid;
                     profiles.folders = next.folders;
+                    profiles.proxy_group_layouts = next.proxy_group_layouts;
                     profiles.items = next.items;
                     Ok(AffectsRule::Always)
                 })
@@ -1861,6 +1887,7 @@ impl Actor for ProfilesActor {
                     for folder in &mut next.folders {
                         folder.members.retain(|member| member != &uid);
                     }
+                    next.proxy_group_layouts.shift_remove(&uid);
                     Self::commit_with_resources(
                         &myself,
                         state,
@@ -1959,6 +1986,55 @@ impl Actor for ProfilesActor {
                     profiles
                         .apply_layout(ProfileLayout { folders, ungrouped })
                         .map_err(|errors| ValidationFailedSnafu { errors }.build())?;
+                    Ok(AffectsRule::Never)
+                })
+                .await
+                .map(|report| (report, folder_id));
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::SetProxyGroupLayout {
+                profile,
+                layout,
+                reply,
+            } => {
+                let result = Self::run_state_write(&myself, state, move |profiles| {
+                    if layout.is_empty() {
+                        profiles.proxy_group_layouts.shift_remove(&profile);
+                    } else {
+                        profiles.proxy_group_layouts.insert(profile, layout);
+                    }
+                    Ok(AffectsRule::Never)
+                })
+                .await;
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::CreateProxyGroupFolder {
+                profile,
+                name,
+                members,
+                reply,
+            } => {
+                // The actor is the only writer, so an id unused now stays
+                // unused until the commit below.
+                let id = Self::generate_proxy_group_folder_id(
+                    Self::current_state(state)
+                        .proxy_group_layouts
+                        .get(&profile)
+                        .unwrap_or(&ProxyGroupLayout::default()),
+                );
+                let folder_id = id.clone();
+                let result = Self::run_state_write(&myself, state, move |profiles| {
+                    let mut layout = profiles
+                        .proxy_group_layouts
+                        .get(&profile)
+                        .cloned()
+                        .unwrap_or_default();
+                    layout.ungrouped.retain(|group| !members.contains(group));
+                    for folder in &mut layout.folders {
+                        folder.members.retain(|group| !members.contains(group));
+                    }
+                    layout.folders.push(ProxyGroupFolder { id, name, members });
+                    profiles.proxy_group_layouts.insert(profile, layout);
                     Ok(AffectsRule::Never)
                 })
                 .await

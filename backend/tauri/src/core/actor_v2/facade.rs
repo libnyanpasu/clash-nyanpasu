@@ -1069,7 +1069,7 @@ mod tests {
                 status: ServiceStatus::Running,
                 server: Some(StatusResBody {
                     log_query_version: None,
-                    version: Cow::Borrowed("2.0.0"),
+                    version: Cow::Borrowed("2.0.1"),
                     core_infos: CoreInfos {
                         instance_id: None,
                         r#type: None,

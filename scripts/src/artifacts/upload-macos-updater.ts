@@ -1,11 +1,13 @@
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { globby } from "npm:globby";
 import { consola } from "../shared/logger.ts";
+import { rename } from "node:fs/promises";
 
 consola.info(`WORKSPACE_ROOT: ${WORKSPACE_ROOT}`);
 
-const TARGET_ARCH = Deno.env.get("TARGET_ARCH") || Deno.build.arch;
+const TARGET_ARCH = process.env["TARGET_ARCH"] ||
+  (process.arch === "arm64" ? "aarch64" : "x86_64");
 
 const BACKEND_BUILD_DIR = path.join(WORKSPACE_ROOT, "backend/target");
 
@@ -23,7 +25,7 @@ for (let file of files) {
       `.${TARGET_ARCH}.${components.slice(1).join(".")}`;
     const newPath = path.join(p.dir, newName);
     consola.info(`Renaming ${file} to ${newPath}`);
-    await Deno.rename(file, newPath);
+    await rename(file, newPath);
   }
 }
 

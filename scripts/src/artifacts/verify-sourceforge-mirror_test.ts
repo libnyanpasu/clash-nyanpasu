@@ -6,6 +6,9 @@ import {
   validateSourceforgeReports,
   verifySourceforgeMirror,
 } from "./verify-sourceforge-mirror.ts";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const bytes = new TextEncoder().encode("signed installer bytes");
 function report(
@@ -221,16 +224,16 @@ Deno.test("transient mirror delay retries but HTML and wrong bytes never publish
 });
 
 Deno.test("collect reports nested under separate platform artifact directories", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   try {
-    await Deno.mkdir(`${root}/a/nested`, { recursive: true });
-    await Deno.writeTextFile(
+    await mkdir(`${root}/a/nested`, { recursive: true });
+    await writeFile(
       `${root}/a/nested/sourceforge-report.json`,
       JSON.stringify(report("linux")),
     );
-    await Deno.writeTextFile(`${root}/irrelevant.json`, "{}");
+    await writeFile(`${root}/irrelevant.json`, "{}");
     assertEquals(await collectSourceforgeReports(root), [report("linux")]);
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });

@@ -1,20 +1,33 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
+import { parseArgs } from "node:util";
 import { prepareCentralPublication } from "./central-publication.ts";
+import { appendFile } from "node:fs/promises";
 
 async function main(): Promise<void> {
-  const args = parseArgs(Deno.args, {
-    string: [
-      "channel",
-      "artifacts-dir",
-      "output-dir",
-      "commit",
-      "run-id",
-      "attempt",
-      "tag",
-      "item-prefix",
-      "published-at",
-    ],
-  });
+  const args = parseArgs({
+    options: {
+      channel: { type: "string" },
+      "artifacts-dir": { type: "string" },
+      "output-dir": { type: "string" },
+      commit: { type: "string" },
+      "run-id": { type: "string" },
+      attempt: { type: "string" },
+      tag: { type: "string" },
+      "item-prefix": { type: "string" },
+      "published-at": { type: "string" },
+    },
+    allowPositionals: true,
+    strict: false,
+  }).values as {
+    channel?: string;
+    "artifacts-dir"?: string;
+    "output-dir"?: string;
+    commit?: string;
+    "run-id"?: string;
+    attempt?: string;
+    tag?: string;
+    "item-prefix"?: string;
+    "published-at"?: string;
+  };
   const required = (value: string | undefined, name: string): string => {
     if (!value) throw new Error(`--${name} is required`);
     return value;
@@ -36,11 +49,10 @@ async function main(): Promise<void> {
       publishedAt: args["published-at"],
     },
   );
-  if (Deno.env.get("GITHUB_OUTPUT")) {
-    await Deno.writeTextFile(
-      Deno.env.get("GITHUB_OUTPUT")!,
+  if (process.env["GITHUB_OUTPUT"]) {
+    await appendFile(
+      process.env["GITHUB_OUTPUT"]!,
       `published_at=${context.publishedAt}\n`,
-      { append: true },
     );
   }
   console.log(

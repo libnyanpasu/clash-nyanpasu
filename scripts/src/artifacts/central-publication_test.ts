@@ -1,16 +1,25 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import {
   classifyPublicationArtifactDirectory,
   prepareCentralPublication,
 } from "./central-publication.ts";
 import { recoverCentralPublication } from "./recover-central-publication.ts";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 const commit = "a".repeat(40);
 const publishedAt = "2026-10-04T12:34:56.789Z";
 
 Deno.test("recovery preserves identities and timestamp across runners and refuses altered bytes", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const repository = "libnyanpasu/clash-nyanpasu";
   const sourceRun = {
     id: 123,
@@ -49,12 +58,12 @@ Deno.test("recovery preserves identities and timestamp across runners and refuse
     assertEquals(recovered.publishedAt, publishedAt);
     assertEquals(recovered.inventories, original.inventories);
     const manifest = JSON.parse(
-      await Deno.readTextFile(recovered.manifests["windows-x86_64"] as string),
+      await readFile(recovered.manifests["windows-x86_64"] as string, "utf8"),
     );
     assertEquals(
       manifest.artifacts.every((artifact: { path: string }) =>
         path.normalize(artifact.path).startsWith(
-          path.join(root, "restored", path.SEPARATOR),
+          path.join(root, "restored", path.sep),
         )
       ),
       true,
@@ -105,7 +114,7 @@ Deno.test("recovery preserves identities and timestamp across runners and refuse
       "does not match the source run",
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });
 
@@ -152,8 +161,8 @@ async function writeArtifact(
   value = "artifact",
 ) {
   const file = `${root}/${directory}/${relative}`;
-  await Deno.mkdir(file.slice(0, file.lastIndexOf("/")), { recursive: true });
-  await Deno.writeTextFile(file, value);
+  await mkdir(file.slice(0, file.lastIndexOf("/")), { recursive: true });
+  await writeFile(file, value);
 }
 
 async function fixture(
@@ -266,7 +275,7 @@ Deno.test("classify package artifact directories to exactly the updater targets"
 });
 
 Deno.test("central preparation validates all targets, normalizes Windows names and shares one timestamp", async () => {
-  const temp = await Deno.makeTempDir();
+  const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
     const output = `${temp}/central`;
@@ -294,7 +303,7 @@ Deno.test("central preparation validates all targets, normalizes Windows names a
       false,
     );
     const windows = JSON.parse(
-      await Deno.readTextFile(`${output}/manifests/windows-x86_64.json`),
+      await readFile(`${output}/manifests/windows-x86_64.json`, "utf8"),
     );
     assertEquals(windows.publishedAt, publishedAt);
     assertEquals(
@@ -315,12 +324,12 @@ Deno.test("central preparation validates all targets, normalizes Windows names a
     );
     assertEquals(windows.folderPath, `nightly/77-2-${commit}`);
   } finally {
-    await Deno.remove(temp, { recursive: true });
+    await rm(temp, { recursive: true });
   }
 });
 
 Deno.test("central preparation accepts NSIS setup installers without an updater executable", async () => {
-  const temp = await Deno.makeTempDir();
+  const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
     const output = `${temp}/central`;
@@ -336,7 +345,7 @@ Deno.test("central preparation accepts NSIS setup installers without an updater 
     });
     for (const target of ["windows-x86_64", "windows-aarch64"]) {
       const manifest = JSON.parse(
-        await Deno.readTextFile(`${output}/manifests/${target}.json`),
+        await readFile(`${output}/manifests/${target}.json`, "utf8"),
       );
       const names = manifest.artifacts.map((artifact: { fileName: string }) =>
         artifact.fileName
@@ -351,12 +360,12 @@ Deno.test("central preparation accepts NSIS setup installers without an updater 
       );
     }
   } finally {
-    await Deno.remove(temp, { recursive: true });
+    await rm(temp, { recursive: true });
   }
 });
 
 Deno.test("central preparation rejects duplicate basenames before output", async () => {
-  const temp = await Deno.makeTempDir();
+  const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
     const output = `${temp}/central`;
@@ -380,19 +389,19 @@ Deno.test("central preparation rejects duplicate basenames before output", async
       Error,
       "Duplicate publication basename",
     );
-    assertEquals(await Deno.stat(output).then(() => true, () => false), false);
+    assertEquals(await stat(output).then(() => true, () => false), false);
   } finally {
-    await Deno.remove(temp, { recursive: true });
+    await rm(temp, { recursive: true });
   }
 });
 
 Deno.test("central preparation rejects a missing artifact category before output", async () => {
-  const temp = await Deno.makeTempDir();
+  const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
     const output = `${temp}/central`;
     await fixture(downloaded);
-    await Deno.remove(
+    await rm(
       `${downloaded}/Clash.Nyanpasu-windows-aarch64-fixed-webview-portable`,
       { recursive: true },
     );
@@ -410,14 +419,14 @@ Deno.test("central preparation rejects a missing artifact category before output
       Error,
       "Clash.Nyanpasu-windows-aarch64-fixed-webview-portable",
     );
-    assertEquals(await Deno.stat(output).then(() => true, () => false), false);
+    assertEquals(await stat(output).then(() => true, () => false), false);
   } finally {
-    await Deno.remove(temp, { recursive: true });
+    await rm(temp, { recursive: true });
   }
 });
 
 Deno.test("central output cannot contain or replace the input directory", async () => {
-  const temp = await Deno.makeTempDir();
+  const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const downloaded = `${temp}/downloaded`;
     await fixture(downloaded);
@@ -436,23 +445,23 @@ Deno.test("central output cannot contain or replace the input directory", async 
       "must not contain or be contained",
     );
     assertEquals(
-      await Deno.stat(downloaded).then(() => true, () => false),
+      await stat(downloaded).then(() => true, () => false),
       true,
     );
   } finally {
-    await Deno.remove(temp, { recursive: true });
+    await rm(temp, { recursive: true });
   }
 });
 
 Deno.test("central preparation rejects missing updater archives and signature pairs", async () => {
   for (const missingArchive of [false, true]) {
-    const temp = await Deno.makeTempDir();
+    const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
     try {
       const downloaded = `${temp}/downloaded`;
       await fixture(downloaded);
       const archive =
         `${downloaded}/Clash.Nyanpasu-windows-x86_64-fixed-webview-nsis-installer/bundle/nsis-updater/Clash.Nyanpasu_fixed-webview_x64.nsis.zip`;
-      await Deno.remove(missingArchive ? archive : `${archive}.sig`);
+      await rm(missingArchive ? archive : `${archive}.sig`);
       await assertRejects(
         () =>
           prepareCentralPublication(downloaded, `${temp}/output`, {
@@ -470,11 +479,11 @@ Deno.test("central preparation rejects missing updater archives and signature pa
           : "Missing signature files",
       );
       assertEquals(
-        await Deno.stat(`${temp}/output`).then(() => true, () => false),
+        await stat(`${temp}/output`).then(() => true, () => false),
         false,
       );
     } finally {
-      await Deno.remove(temp, { recursive: true });
+      await rm(temp, { recursive: true });
     }
   }
 });
@@ -499,11 +508,11 @@ Deno.test("central preparation requires the package file from every artifact cat
   ];
 
   for (const [directory, packageFile] of missingPackages) {
-    const temp = await Deno.makeTempDir();
+    const temp = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
     try {
       const downloaded = `${temp}/downloaded`;
       await fixture(downloaded, "bundle/nsis");
-      await Deno.remove(`${downloaded}/${directory}/${packageFile}`);
+      await rm(`${downloaded}/${directory}/${packageFile}`);
       await assertRejects(
         () =>
           prepareCentralPublication(downloaded, `${temp}/output`, {
@@ -519,11 +528,11 @@ Deno.test("central preparation requires the package file from every artifact cat
         `Missing required package artifact in ${directory}`,
       );
       assertEquals(
-        await Deno.stat(`${temp}/output`).then(() => true, () => false),
+        await stat(`${temp}/output`).then(() => true, () => false),
         false,
       );
     } finally {
-      await Deno.remove(temp, { recursive: true });
+      await rm(temp, { recursive: true });
     }
   }
 });

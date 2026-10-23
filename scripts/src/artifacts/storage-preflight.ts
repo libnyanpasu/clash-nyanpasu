@@ -3,6 +3,10 @@ import {
   validateSourceforgeProject,
   validateSourceforgeUsername,
 } from "./sourceforge.ts";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runCommand } from "../shared/command.ts";
 
 export function storageConfiguration(
   get: (name: string) => string | undefined,
@@ -89,15 +93,15 @@ export async function probeArchiveApi(token: string, fetcher = fetch) {
 }
 
 async function probeSourceforge(project: string) {
-  const temp = await Deno.makeTempDir({ prefix: "storage-preflight-" });
+  const temp = await mkdtemp(join(tmpdir(), "storage-preflight-"));
   try {
     const key = `${temp}/key`;
     const hosts = `${temp}/known_hosts`;
-    await Deno.writeTextFile(key, Deno.env.get("SOURCEFORGE_SSH_KEY")!, {
+    await writeFile(key, process.env["SOURCEFORGE_SSH_KEY"]!, {
       mode: 0o600,
     });
-    await Deno.writeTextFile(hosts, Deno.env.get("SOURCEFORGE_KNOWN_HOSTS")!);
-    const child = new Deno.Command("sftp", {
+    await writeFile(hosts, process.env["SOURCEFORGE_KNOWN_HOSTS"]!);
+    const result = await runCommand("sftp", {
       args: [
         "-i",
         key,
@@ -117,32 +121,22 @@ async function probeSourceforge(project: string) {
         "ServerAliveCountMax=2",
         "-b",
         "-",
-        `${Deno.env.get("SOURCEFORGE_USERNAME")!.trim()}@frs.sourceforge.net`,
+        `${process.env["SOURCEFORGE_USERNAME"]!.trim()}@frs.sourceforge.net`,
       ],
-      stdin: "piped",
-      stdout: "piped",
-      stderr: "piped",
-    }).spawn();
-    const writer = child.stdin.getWriter();
-    await writer.write(
-      new TextEncoder().encode(
-        `ls ${sftpQuote(`/home/frs/project/${project}`)}\n`,
-      ),
-    );
-    await writer.close();
-    const result = await child.output();
+      input: `ls ${sftpQuote(`/home/frs/project/${project}`)}\n`,
+    });
     if (!result.success) {
       throw new Error(
-        `SourceForge preflight: ${new TextDecoder().decode(result.stderr)}`,
+        `SourceForge preflight: ${result.stderr.toString("utf8")}`,
       );
     }
   } finally {
-    await Deno.remove(temp, { recursive: true });
+    await rm(temp, { recursive: true });
   }
 }
 
 if (import.meta.main) {
-  const configuration = storageConfiguration((name) => Deno.env.get(name));
+  const configuration = storageConfiguration((name) => process.env[name]);
   if (configuration.archive || configuration.telegram) {
     await probeArchiveApi(configuration.token!);
   }

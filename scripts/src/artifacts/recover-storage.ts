@@ -1,15 +1,32 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import * as path from "jsr:@std/path";
+import { parseArgs } from "node:util";
+import * as path from "node:path";
 import { CENTRAL_PUBLICATION_TARGETS } from "./central-publication.ts";
 import { runPublicationTasks } from "./publication-concurrency.ts";
 import { sourceforgeDownloadUrl } from "./sourceforge.ts";
 import { verifySourceforgeMirror } from "./verify-sourceforge-mirror.ts";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { runCommand } from "../shared/command.ts";
 
 if (import.meta.main) {
-  const args = parseArgs(Deno.args, {
-    string: ["mode", "backend", "target", "publication-dir", "reports-dir"],
-    boolean: ["defer-sourceforge-verification"],
-  });
+  const args = parseArgs({
+    options: {
+      mode: { type: "string" },
+      backend: { type: "string" },
+      target: { type: "string" },
+      "publication-dir": { type: "string" },
+      "reports-dir": { type: "string" },
+      "defer-sourceforge-verification": { type: "boolean" },
+    },
+    allowPositionals: true,
+    strict: false,
+  }).values as {
+    mode?: string;
+    backend?: string;
+    target?: string;
+    "publication-dir"?: string;
+    "reports-dir"?: string;
+    "defer-sourceforge-verification"?: boolean;
+  };
   if (
     !["register", "upload", "verify"].includes(args.mode ?? "") ||
     !["both", "telegram", "sourceforge"].includes(args.backend ?? "") ||
@@ -35,8 +52,9 @@ if (import.meta.main) {
   const publicationDir = args["publication-dir"];
   const reportsDir = args["reports-dir"];
   const context = JSON.parse(
-    await Deno.readTextFile(
+    await readFile(
       path.join(publicationDir, "publication-context.json"),
+      "utf8",
     ),
   );
   const targets = args.target === "all"
@@ -61,13 +79,13 @@ if (import.meta.main) {
         "manifests",
         `${target}.json`,
       );
-      const manifest = JSON.parse(await Deno.readTextFile(manifestPath));
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
       const reports = path.resolve(reportsDir, target);
-      await Deno.mkdir(reports, { recursive: true });
+      await mkdir(reports, { recursive: true });
       if (args.backend !== "telegram" && args.mode !== "register") {
         try {
           if (args.mode === "upload") {
-            const result = await new Deno.Command("deno", {
+            const result = await runCommand("deno", {
               args: [
                 "task",
                 "sourceforge:upload",
@@ -81,13 +99,13 @@ if (import.meta.main) {
               },
               stdout: "inherit",
               stderr: "inherit",
-            }).output();
+            });
             if (!result.success) {
               throw new Error(`SourceForge upload failed for ${target}`);
             }
           }
           if (args["defer-sourceforge-verification"]) return;
-          const project = Deno.env.get("SOURCEFORGE_PROJECT") ?? "";
+          const project = process.env["SOURCEFORGE_PROJECT"] ?? "";
           const remotePath = `${
             context.channel === "nightly" ? "nightly" : "releases"
           }/${context.buildId}`;
@@ -123,18 +141,18 @@ if (import.meta.main) {
             ...verified,
             assets: { ...sourceforgeMirror?.assets, ...verified.assets },
           };
-          await Deno.writeTextFile(
+          await writeFile(
             path.join(reports, "sourceforge-verified.json"),
             JSON.stringify(verified, null, 2),
           );
           // Only preserve success after every public byte has passed verification.
-          await Deno.writeTextFile(
+          await writeFile(
             path.join(reports, "sourceforge-report.json"),
             JSON.stringify(candidate, null, 2),
           );
         } catch (error) {
           console.error(error);
-          await Deno.writeTextFile(
+          await writeFile(
             path.join(reports, "sourceforge-verification-error.json"),
             JSON.stringify(
               {
@@ -157,13 +175,13 @@ if (import.meta.main) {
     }
   }
   if (sourceforgeMirror && sourceforgeSuccesses === targets.length) {
-    await Deno.writeTextFile(
+    await writeFile(
       path.join(reportsDir, "sourceforge-mirrors.json"),
       JSON.stringify(sourceforgeMirror, null, 2),
     );
   }
   if (args.backend !== "sourceforge") {
-    const result = await new Deno.Command("deno", {
+    const result = await runCommand("deno", {
       args: [
         "task",
         "telegram:publish",
@@ -178,7 +196,7 @@ if (import.meta.main) {
       ],
       stdout: "inherit",
       stderr: "inherit",
-    }).output();
+    });
     if (!result.success) failures++;
   }
   if (failures) {

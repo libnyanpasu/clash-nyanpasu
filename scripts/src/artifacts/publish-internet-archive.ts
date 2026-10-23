@@ -1,19 +1,21 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { runArchivePublish } from "./internet-archive-upload.ts";
+import { mkdir, rm } from "node:fs/promises";
+import { isNotFound } from "../shared/errors.ts";
 
 async function main(): Promise<void> {
-  const [manifest, server, report] = Deno.args;
+  const [manifest, server, report] = process.argv.slice(2);
   if (!manifest || !server || !report) {
     throw new Error(
       "Usage: archive:publish <manifest.json> <server-url> <report.json>",
     );
   }
   const reportPath = path.resolve(report);
-  await Deno.mkdir(path.dirname(reportPath), { recursive: true });
-  await Deno.remove(reportPath).catch((error) => {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+  await mkdir(path.dirname(reportPath), { recursive: true });
+  await rm(reportPath).catch((error) => {
+    if (!(isNotFound(error))) throw error;
   });
-  Deno.exitCode = await runArchivePublish([
+  process.exitCode = await runArchivePublish([
     "--manifest",
     path.resolve(manifest),
     "--server",

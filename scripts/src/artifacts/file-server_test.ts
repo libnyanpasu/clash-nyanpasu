@@ -6,6 +6,16 @@ import {
   uploadAllFilesWithResults,
   uploadChunk,
 } from "./file-server.ts";
+import { rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+async function makeTempFile(): Promise<string> {
+  const path = join(tmpdir(), `nyanpasu-test-${randomUUID()}`);
+  await writeFile(path, "");
+  return path;
+}
 
 Deno.test("upload batch continues after a file exhausts retries", async () => {
   const files = ["first.dmg", "unavailable.deb", "last.rpm", "next.AppImage"];
@@ -95,7 +105,7 @@ Deno.test("archive init failure preserves the server status and error detail", a
 for (const stage of ["init", "chunk"] as const) {
   Deno.test(`archive ${stage} quota failure bypasses all retry layers`, async () => {
     const originalFetch = globalThis.fetch;
-    const filePath = await Deno.makeTempFile();
+    const filePath = await makeTempFile();
     let attempts = 0;
     globalThis.fetch = () => {
       attempts++;
@@ -107,7 +117,7 @@ for (const stage of ["init", "chunk"] as const) {
       }, { status: 500 }));
     };
     try {
-      await Deno.writeFile(filePath, new Uint8Array([1]));
+      await writeFile(filePath, new Uint8Array([1]));
       const outcome = await uploadAllFilesWithResults(
         [filePath],
         "test-token",
@@ -149,7 +159,7 @@ for (const stage of ["init", "chunk"] as const) {
       );
     } finally {
       globalThis.fetch = originalFetch;
-      await Deno.remove(filePath);
+      await rm(filePath);
     }
   });
 }

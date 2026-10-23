@@ -1,9 +1,13 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import {
   sourceforgeWebUploadBatch,
   validateSourceforgeProject,
   validateSourceforgeUsername,
 } from "./sourceforge.ts";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { runCommand } from "../shared/command.ts";
+import { isNotFound } from "../shared/errors.ts";
 
 const CHANNEL_FILES = {
   release: ["update.json", "update-beta.json"],
@@ -11,7 +15,7 @@ const CHANNEL_FILES = {
 } as const;
 
 function env(name: string): string {
-  const value = Deno.env.get(name);
+  const value = process.env[name];
   if (!value) {
     throw new Error(
       `${name} is required when SourceForge web manifests are enabled`,
@@ -27,7 +31,7 @@ async function sftp(
 ): Promise<void> {
   const user = env("SOURCEFORGE_USERNAME");
   validateSourceforgeUsername(user);
-  const command = new Deno.Command("sftp", {
+  const command = await runCommand("sftp", {
     args: [
       "-i",
       keyPath,
@@ -47,18 +51,11 @@ async function sftp(
       "-",
       `${user}@web.sourceforge.net`,
     ],
-    stdin: "piped",
-    stdout: "piped",
-    stderr: "piped",
-  }).spawn();
-  const writer = command.stdin.getWriter();
-  await writer.write(new TextEncoder().encode(batch));
-  await writer.close();
-  const [status, stdout, stderr] = await Promise.all([
-    command.status,
-    new Response(command.stdout).text(),
-    new Response(command.stderr).text(),
-  ]);
+    input: batch,
+  });
+  const status = command;
+  const stdout = command.stdout.toString("utf8");
+  const stderr = command.stderr.toString("utf8");
   if (!status.success) {
     throw new Error(
       `SourceForge web SFTP failed (${status.code}): ${stderr || stdout}`,
@@ -107,9 +104,9 @@ async function fetchAndVerify(url: string, expected: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const inputDir = Deno.args[0];
-  const channel = Deno.args[1];
-  const reportPath = Deno.args[2] ?? "sourceforge-web-report.json";
+  const inputDir = process.argv.slice(2)[0];
+  const channel = process.argv.slice(2)[1];
+  const reportPath = process.argv.slice(2)[2] ?? "sourceforge-web-report.json";
   if (!inputDir || (channel !== "release" && channel !== "nightly")) {
     throw new Error(
       "Usage: sourceforge:web-publish <manifest-dir> <release|nightly> [report.json]",
@@ -129,7 +126,7 @@ async function main(): Promise<void> {
   for (const fileName of expectedFiles) {
     const filePath = path.join(root, fileName);
     try {
-      const content = await Deno.readTextFile(filePath);
+      const content = await readFile(filePath, "utf8");
       JSON.parse(content);
       files.push({
         path: filePath,
@@ -138,7 +135,7 @@ async function main(): Promise<void> {
         content,
       });
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) {
+      if (isNotFound(error)) {
         throw new Error(`Missing updater manifest ${fileName}`);
       }
       throw new Error(`Invalid updater manifest ${fileName}: ${error}`);
@@ -174,36 +171,36 @@ async function main(): Promise<void> {
     })),
     error: null as string | null,
   };
-  const tempDir = await Deno.makeTempDir({ prefix: "sourceforge-web-" });
+  const tempDir = await mkdtemp(path.join(tmpdir(), "sourceforge-web-"));
   try {
     const keyPath = path.join(tempDir, "id_sourceforge");
     const knownHostsPath = path.join(tempDir, "known_hosts");
-    await Deno.writeTextFile(keyPath, env("SOURCEFORGE_SSH_KEY"), {
+    await writeFile(keyPath, env("SOURCEFORGE_SSH_KEY"), {
       mode: 0o600,
     });
-    await Deno.writeTextFile(knownHostsPath, env("SOURCEFORGE_KNOWN_HOSTS"));
-    if (Deno.build.os === "windows") {
+    await writeFile(knownHostsPath, env("SOURCEFORGE_KNOWN_HOSTS"));
+    if (process.platform === "win32") {
       const username = env("USERNAME");
       if (!/^[A-Za-z0-9._-]+$/.test(username)) {
         throw new Error("Invalid Windows runner username");
       }
-      const acl = await new Deno.Command("icacls", {
+      const acl = await runCommand("icacls", {
         args: [keyPath, "/inheritance:r", "/grant:r", `${username}:(R)`],
         stdout: "piped",
         stderr: "piped",
-      }).output();
+      });
       if (!acl.success) {
         throw new Error(
           `Could not secure Windows SSH key ACL: ${
-            new TextDecoder().decode(acl.stderr)
+            acl.stderr.toString("utf8")
           }`,
         );
       }
-    } else await Deno.chmod(keyPath, 0o600);
+    } else await chmod(keyPath, 0o600);
 
     if (addIndex) {
       const indexPath = path.join(tempDir, "index.html");
-      await Deno.writeTextFile(
+      await writeFile(
         indexPath,
         "<!doctype html><meta charset=utf-8><title>Clash Nyanpasu updater feeds</title><ul><li><a href=update.json>Stable</a></li><li><a href=update-beta.json>Beta</a></li><li><a href=update-nightly.json>Nightly</a></li></ul>\n",
       );
@@ -248,15 +245,12 @@ async function main(): Promise<void> {
     report.status = "success";
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
-    await Deno.writeTextFile(
-      reportPath,
-      `${JSON.stringify(report, null, 2)}\n`,
-    );
+    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
     throw error;
   } finally {
-    await Deno.remove(tempDir, { recursive: true });
+    await rm(tempDir, { recursive: true });
   }
-  await Deno.writeTextFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(
     `Published and verified ${files.length} SourceForge updater manifests`,
   );

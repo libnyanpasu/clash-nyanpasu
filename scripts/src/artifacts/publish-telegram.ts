@@ -1,22 +1,37 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import * as path from "jsr:@std/path";
+import { parseArgs } from "node:util";
+import * as path from "node:path";
 import {
   publishTelegramInventory,
   readTelegramInventory,
   registerTelegramInventory,
   type TelegramPublicationRecord,
 } from "./telegram-publication.ts";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { isNotFound } from "../shared/errors.ts";
 
 async function main() {
-  const args = parseArgs(Deno.args, {
-    string: ["publication-dir", "report", "target"],
-    boolean: ["register-only", "verify-only"],
-  });
+  const args = parseArgs({
+    options: {
+      "publication-dir": { type: "string" },
+      report: { type: "string" },
+      target: { type: "string" },
+      "register-only": { type: "boolean" },
+      "verify-only": { type: "boolean" },
+    },
+    allowPositionals: true,
+    strict: false,
+  }).values as {
+    "publication-dir"?: string;
+    report?: string;
+    target?: string;
+    "register-only"?: boolean;
+    "verify-only"?: boolean;
+  };
   if (!args["publication-dir"] || !args.report) {
     throw new Error("Expected --publication-dir <dir> --report <json>");
   }
   const required = (name: string) => {
-    const value = Deno.env.get(name)?.trim();
+    const value = process.env[name]?.trim();
     if (!value) throw new Error(`${name} is required`);
     return value;
   };
@@ -26,8 +41,8 @@ async function main() {
   }
   const apiHash = required("TELEGRAM_API_HASH");
   const token = required("TELEGRAM_TOKEN");
-  const archiveToken = Deno.env.get("ARCHIVE_UPLOAD_TOKEN")?.trim() ||
-    Deno.env.get("FILE_SERVER_TOKEN")?.trim() || required("UPLOAD_TOKEN");
+  const archiveToken = process.env["ARCHIVE_UPLOAD_TOKEN"]?.trim() ||
+    process.env["FILE_SERVER_TOKEN"]?.trim() || required("UPLOAD_TOKEN");
   const chat = required("TELEGRAM_ARCHIVE_CHANNEL");
   const inventory = await readTelegramInventory(args["publication-dir"]);
   const targets = args.target && args.target !== "all"
@@ -36,7 +51,7 @@ async function main() {
   if (!targets.length) throw new Error("Unknown Telegram target");
   let previous: TelegramPublicationRecord[] = [];
   try {
-    const report = JSON.parse(await Deno.readTextFile(args.report));
+    const report = JSON.parse(await readFile(args.report, "utf8"));
     if (report.chat !== chat || report.schemaVersion !== 1) {
       throw new Error("Incompatible Telegram report");
     }
@@ -50,7 +65,7 @@ async function main() {
       throw new Error("Saved Telegram receipts belong to another publication");
     }
   } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+    if (!(isNotFound(error))) throw error;
   }
   // Load the network adapter only after local validation; imports never authenticate.
   const { TelegramClient, Api } = await import("npm:telegram@2.26.22");
@@ -63,7 +78,7 @@ async function main() {
     requestRetries: 3,
     floodSleepThreshold: 60,
   });
-  await Deno.mkdir(path.dirname(path.resolve(args.report)), {
+  await mkdir(path.dirname(path.resolve(args.report)), {
     recursive: true,
   });
   try {
@@ -146,7 +161,7 @@ async function main() {
         };
       },
       async (artifacts) => {
-        await Deno.writeTextFile(
+        await writeFile(
           args.report!,
           JSON.stringify(
             {
@@ -181,6 +196,6 @@ async function main() {
 if (import.meta.main) {
   main().catch((error) => {
     console.error(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

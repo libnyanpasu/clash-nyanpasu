@@ -1,10 +1,12 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import {
   createIaItemIdentifier,
   preparePublicationManifest,
   type PublishChannel,
 } from "./publication-manifest.ts";
 import { validateSourceforgeFilename } from "./sourceforge.ts";
+import { copyFile, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { isNotFound } from "../shared/errors.ts";
 
 export const CENTRAL_PUBLICATION_TARGETS = [
   "windows-x86_64",
@@ -44,13 +46,13 @@ export function classifyPublicationArtifactDirectory(
 
 async function filesUnder(root: string): Promise<string[]> {
   const files: string[] = [];
-  for await (const entry of Deno.readDir(root)) {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
     const fullPath = path.join(root, entry.name);
-    if (entry.isSymlink) {
+    if (entry.isSymbolicLink()) {
       throw new Error(`Symlink in downloaded build artifacts: ${fullPath}`);
     }
-    if (entry.isDirectory) files.push(...await filesUnder(fullPath));
-    else if (entry.isFile) files.push(fullPath);
+    if (entry.isDirectory()) files.push(...await filesUnder(fullPath));
+    else if (entry.isFile()) files.push(fullPath);
   }
   return files;
 }
@@ -87,11 +89,11 @@ export async function prepareCentralPublication(
   );
   const artifactDirectories = new Set<string>();
   const names = new Map<string, string>();
-  for await (const entry of Deno.readDir(inputRoot)) {
-    if (entry.isSymlink) {
+  for (const entry of await readdir(inputRoot, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) {
       throw new Error(`Symlink in downloaded artifact root: ${entry.name}`);
     }
-    if (!entry.isDirectory) continue;
+    if (!entry.isDirectory()) continue;
     const target = classifyPublicationArtifactDirectory(entry.name);
     if (!target) continue;
     artifactDirectories.add(entry.name);
@@ -99,7 +101,7 @@ export async function prepareCentralPublication(
     const directoryFiles: string[] = [];
     for (const sourcePath of await filesUnder(artifactDir)) {
       const relative = path.relative(artifactDir, sourcePath);
-      const segments = relative.split(path.SEPARATOR);
+      const segments = relative.split(path.sep);
       const originalName = path.basename(sourcePath);
       const fileName =
         segments.includes("nsis-updater") && originalName.endsWith("-setup.exe")
@@ -230,24 +232,24 @@ export async function prepareCentralPublication(
     const relative = path.relative(parent, candidate);
     return relative === "" ||
       (!path.isAbsolute(relative) && relative !== ".." &&
-        !relative.startsWith(`..${path.SEPARATOR}`));
+        !relative.startsWith(`..${path.sep}`));
   };
   if (isWithin(inputRoot, output) || isWithin(output, inputRoot)) {
     throw new Error(
       "Publication output must not contain or be contained by the downloaded artifact root",
     );
   }
-  await Deno.remove(output, { recursive: true }).catch((error) => {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+  await rm(output, { recursive: true }).catch((error) => {
+    if (!(isNotFound(error))) throw error;
   });
-  await Deno.mkdir(path.join(output, "payloads"), { recursive: true });
-  await Deno.mkdir(path.join(output, "manifests"), { recursive: true });
+  await mkdir(path.join(output, "payloads"), { recursive: true });
+  await mkdir(path.join(output, "manifests"), { recursive: true });
 
   const manifests: Record<string, unknown> = {};
   const inventories: Record<string, string[]> = {};
   for (const target of CENTRAL_PUBLICATION_TARGETS) {
     const targetDir = path.join(output, "payloads", target);
-    await Deno.mkdir(targetDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
     const files: string[] = [];
     for (
       const artifact of byTarget.get(target)!.sort((a, b) =>
@@ -255,7 +257,7 @@ export async function prepareCentralPublication(
       )
     ) {
       const destination = path.join(targetDir, artifact.fileName);
-      await Deno.copyFile(artifact.path, destination);
+      await copyFile(artifact.path, destination);
       files.push(destination);
     }
     const buildId =
@@ -282,10 +284,7 @@ export async function prepareCentralPublication(
       paths: files.map((file) => path.basename(file)),
     }, targetDir);
     const manifestPath = path.join(output, "manifests", `${target}.json`);
-    await Deno.writeTextFile(
-      manifestPath,
-      `${JSON.stringify(manifest, null, 2)}\n`,
-    );
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     manifests[target] = manifestPath;
     inventories[target] = manifest.artifacts.map((artifact) =>
       artifact.fileName
@@ -303,7 +302,7 @@ export async function prepareCentralPublication(
     manifests,
     inventories,
   };
-  await Deno.writeTextFile(
+  await writeFile(
     path.join(output, "publication-context.json"),
     `${JSON.stringify(context, null, 2)}\n`,
   );

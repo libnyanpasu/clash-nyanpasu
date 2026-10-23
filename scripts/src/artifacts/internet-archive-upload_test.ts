@@ -9,6 +9,50 @@ import {
   uploadFileRequest,
   uploadOne,
 } from "./internet-archive-upload.ts";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runCommand } from "../shared/command.ts";
+import { randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
+
+async function makeTempFile(): Promise<string> {
+  const path = join(tmpdir(), `nyanpasu-test-${randomUUID()}`);
+  await writeFile(path, "");
+  return path;
+}
+
+async function serve(
+  handler: (request: Request) => Response | Promise<Response>,
+): Promise<{ port: number; close: () => Promise<void> }> {
+  const server = createServer(async (incoming, outgoing) => {
+    const request = new Request(`http://127.0.0.1${incoming.url}`, {
+      method: incoming.method,
+      headers: incoming.headers as Record<string, string>,
+      body: incoming.method === "GET" || incoming.method === "HEAD"
+        ? undefined
+        : Readable.toWeb(incoming) as ReadableStream,
+      duplex: "half",
+    } as RequestInit);
+    const response = await handler(request);
+    outgoing.writeHead(
+      response.status,
+      Object.fromEntries(response.headers),
+    );
+    outgoing.end(Buffer.from(await response.arrayBuffer()));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as { port: number };
+  return {
+    port,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.closeAllConnections();
+        server.close((error) => error ? reject(error) : resolve());
+      }),
+  };
+}
 
 for (
   const [status, detail] of [
@@ -98,15 +142,15 @@ Deno.test("register-only validates and registers original bytes without IA crede
     "IA_SECRET_KEY",
     "IA_ITEM_PREFIX",
   ];
-  const previous = keys.map((key) => Deno.env.get(key));
-  const directory = await Deno.makeTempDir();
+  const previous = keys.map((key) => process.env[key]);
+  const directory = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   let calls = 0;
   try {
-    for (const key of keys) Deno.env.delete(key);
-    Deno.env.set("UPLOAD_TOKEN", "test-token");
-    Deno.env.set("IA_ITEM_PREFIX", "test");
+    for (const key of keys) delete process.env[key];
+    process.env["UPLOAD_TOKEN"] = "test-token";
+    process.env["IA_ITEM_PREFIX"] = "test";
     const filePath = `${directory}/package.zip`;
-    await Deno.writeTextFile(filePath, "package");
+    await writeFile(filePath, "package");
     const manifest = {
       schemaVersion: 1,
       buildId: "test-build",
@@ -123,10 +167,7 @@ Deno.test("register-only validates and registers original bytes without IA crede
         ...await digestFile(filePath),
       }],
     };
-    await Deno.writeTextFile(
-      `${directory}/manifest.json`,
-      JSON.stringify(manifest),
-    );
+    await writeFile(`${directory}/manifest.json`, JSON.stringify(manifest));
     globalThis.fetch = (input) => {
       calls++;
       assertEquals(
@@ -157,7 +198,7 @@ Deno.test("register-only validates and registers original bytes without IA crede
       0,
     );
     const report = JSON.parse(
-      await Deno.readTextFile(`${directory}/report.json`),
+      await readFile(`${directory}/report.json`, "utf8"),
     );
     assertEquals(report.registrationOnly, true);
     assertEquals(report.uploads, []);
@@ -166,17 +207,17 @@ Deno.test("register-only validates and registers original bytes without IA crede
     globalThis.fetch = originalFetch;
     keys.forEach((key, index) =>
       previous[index] === undefined
-        ? Deno.env.delete(key)
-        : Deno.env.set(key, previous[index]!)
+        ? delete process.env[key]
+        : process.env[key] = previous[index]!
     );
-    await Deno.remove(directory, { recursive: true });
+    await rm(directory, { recursive: true });
   }
 });
 
 Deno.test("digestFile streams bytes and returns stable SHA-256 and MD5", async () => {
-  const path = await Deno.makeTempFile();
+  const path = await makeTempFile();
   try {
-    await Deno.writeTextFile(path, "hello");
+    await writeFile(path, "hello");
     assertEquals(await digestFile(path), {
       fileSize: 5,
       sha256:
@@ -184,7 +225,7 @@ Deno.test("digestFile streams bytes and returns stable SHA-256 and MD5", async (
       md5: "5d41402abc4b2a76b9719d911017c592",
     });
   } finally {
-    await Deno.remove(path);
+    await rm(path);
   }
 });
 
@@ -206,17 +247,20 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
     false,
   );
 
-  const path = await Deno.makeTempFile();
+  const path = await makeTempFile();
   let fetchCount = 0;
   try {
-    await Deno.writeTextFile(path, "stream payload");
+    await writeFile(path, "stream payload");
     const upload = async (
       filePath: string,
       _url: URL,
       headers: Record<string, string>,
     ) => {
       fetchCount++;
-      const init = { headers, body: (await Deno.open(filePath)).readable };
+      const init = {
+        headers,
+        body: Readable.toWeb(createReadStream(filePath)) as ReadableStream,
+      };
       assertEquals(
         new Headers(init?.headers).get("authorization"),
         "LOW test-access:test-secret",
@@ -274,7 +318,7 @@ Deno.test("IA upload host allowlist and redirect guard prevent credential forwar
       "redirect destination must be rejected before a second credentialed request",
     );
   } finally {
-    await Deno.remove(path);
+    await rm(path);
   }
 });
 
@@ -325,14 +369,14 @@ Deno.test("registration rejects a shared publication timestamp mismatch before a
 });
 
 Deno.test("runner reports missing credentials with exit status 1 without external requests", async () => {
-  const tempDir = await Deno.makeTempDir();
+  const tempDir = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const manifestPath = `${tempDir}/manifest.json`;
     const reportPath = `${tempDir}/report.json`;
     const childPath = `${tempDir}/runner.ts`;
     const moduleUrl =
       new URL("./internet-archive-upload.ts", import.meta.url).href;
-    await Deno.writeTextFile(
+    await writeFile(
       manifestPath,
       JSON.stringify({
         schemaVersion: 1,
@@ -345,11 +389,11 @@ Deno.test("runner reports missing credentials with exit status 1 without externa
         artifacts: [],
       }),
     );
-    await Deno.writeTextFile(
+    await writeFile(
       childPath,
       `
       import { runArchivePublish } from ${JSON.stringify(moduleUrl)};
-      Deno.exitCode = await runArchivePublish([
+      process.exitCode = await runArchivePublish([
         "--manifest", ${JSON.stringify(manifestPath)},
         "--server", "https://archive.nyanpasu.org",
         "--report", ${JSON.stringify(reportPath)},
@@ -357,43 +401,38 @@ Deno.test("runner reports missing credentials with exit status 1 without externa
     `,
     );
 
-    const result = await new Deno.Command(Deno.execPath(), {
-      args: ["run", "--allow-all", childPath],
+    const result = await runCommand(process.execPath, {
+      args: [childPath],
       clearEnv: true,
       env: {},
       stdout: "piped",
       stderr: "piped",
-    }).output();
+    });
     assertEquals(result.code, 1);
-    const report = JSON.parse(await Deno.readTextFile(reportPath));
+    const report = JSON.parse(await readFile(reportPath, "utf8"));
     assertEquals(report.status, "failed");
     assertEquals(report.error, "UPLOAD_TOKEN is required");
     assertEquals(report.buildId, "missing-token-fixture");
   } finally {
-    await Deno.remove(tempDir, { recursive: true });
+    await rm(tempDir, { recursive: true });
   }
 });
 
 Deno.test("IA streaming PUT sends Content-Length on the wire", async () => {
-  const path = await Deno.makeTempFile();
+  const path = await makeTempFile();
   const payload = new Uint8Array(2 * 1024 * 1024 + 17).fill(97);
   const controller = new AbortController();
   let length: string | null = null;
   let transferEncoding: string | null = null;
   let received = new Uint8Array();
-  const server = Deno.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    signal: controller.signal,
-    onListen() {},
-  }, async (request) => {
+  const server = await serve(async (request) => {
     length = request.headers.get("content-length");
     transferEncoding = request.headers.get("transfer-encoding");
     received = new Uint8Array(await request.arrayBuffer());
     return new Response(null, { status: length ? 201 : 411 });
   });
   try {
-    await Deno.writeFile(path, payload);
+    await writeFile(path, payload);
     await streamUpload(
       path,
       new URL("https://s3.us.archive.org/test-item/file.zip"),
@@ -414,7 +453,7 @@ Deno.test("IA streaming PUT sends Content-Length on the wire", async () => {
       (filePath, _url, headers, signal) =>
         uploadFileRequest(
           filePath,
-          new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
+          new URL(`http://127.0.0.1:${server.port}/item/file`),
           headers,
           signal,
         ),
@@ -424,25 +463,20 @@ Deno.test("IA streaming PUT sends Content-Length on the wire", async () => {
     assertEquals(received, payload);
   } finally {
     controller.abort();
-    await server.finished;
-    await Deno.remove(path);
+    await server.close();
+    await rm(path);
   }
 });
 
 Deno.test("IA redirected PUT reopens the file and retains length and metadata", async () => {
-  const path = await Deno.makeTempFile();
+  const path = await makeTempFile();
   const controller = new AbortController();
   const requests: {
     length: string | null;
     payload: string;
     bucket: string | null;
   }[] = [];
-  const server = Deno.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    signal: controller.signal,
-    onListen() {},
-  }, async (request) => {
+  const server = await serve(async (request) => {
     requests.push({
       length: request.headers.get("content-length"),
       payload: await request.text(),
@@ -458,7 +492,7 @@ Deno.test("IA redirected PUT reopens the file and retains length and metadata", 
       : new Response(null, { status: 204 });
   });
   try {
-    await Deno.writeTextFile(path, "redirect payload");
+    await writeFile(path, "redirect payload");
     await streamUpload(
       path,
       new URL("https://s3.us.archive.org/test-item/file.zip"),
@@ -479,7 +513,7 @@ Deno.test("IA redirected PUT reopens the file and retains length and metadata", 
       (filePath, _url, headers, signal) =>
         uploadFileRequest(
           filePath,
-          new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
+          new URL(`http://127.0.0.1:${server.port}/item/file`),
           headers,
           signal,
         ),
@@ -490,21 +524,16 @@ Deno.test("IA redirected PUT reopens the file and retains length and metadata", 
     );
   } finally {
     controller.abort();
-    await server.finished;
-    await Deno.remove(path);
+    await server.close();
+    await rm(path);
   }
 });
 
 Deno.test("IA HTTP transport retains error bodies and sends empty files with length zero", async () => {
-  const path = await Deno.makeTempFile();
+  const path = await makeTempFile();
   const controller = new AbortController();
   let length: string | null = null;
-  const server = Deno.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    signal: controller.signal,
-    onListen() {},
-  }, async (request) => {
+  const server = await serve(async (request) => {
     length = request.headers.get("content-length");
     await request.arrayBuffer();
     return new Response("permission denied", { status: 403 });
@@ -512,7 +541,7 @@ Deno.test("IA HTTP transport retains error bodies and sends empty files with len
   try {
     const response = await uploadFileRequest(
       path,
-      new URL(`http://127.0.0.1:${server.addr.port}/item/file`),
+      new URL(`http://127.0.0.1:${server.port}/item/file`),
       { "content-length": "0" },
       controller.signal,
     );
@@ -521,14 +550,14 @@ Deno.test("IA HTTP transport retains error bodies and sends empty files with len
     assertEquals(await response.text(), "permission denied");
   } finally {
     controller.abort();
-    await server.finished;
-    await Deno.remove(path);
+    await server.close();
+    await rm(path);
   }
 });
 
 Deno.test("IA early redirect stops sending a large request body", async () => {
-  const path = await Deno.makeTempFile();
-  await Deno.writeFile(path, new Uint8Array(32 * 1024 * 1024));
+  const path = await makeTempFile();
+  await writeFile(path, new Uint8Array(32 * 1024 * 1024));
   const server = createServer((_request, response) => {
     response.writeHead(307, {
       location: "https://test-item.s3.us.archive.org/file",
@@ -551,12 +580,12 @@ Deno.test("IA early redirect stops sending a large request body", async () => {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve())
     );
-    await Deno.remove(path);
+    await rm(path);
   }
 });
 
 Deno.test("IA upload abort terminates curl while waiting for a response", async () => {
-  const path = await Deno.makeTempFile();
+  const path = await makeTempFile();
   const controller = new AbortController();
   const server = createServer((request, _response) => {
     request.resume();
@@ -578,12 +607,12 @@ Deno.test("IA upload abort terminates curl while waiting for a response", async 
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve())
     );
-    await Deno.remove(path);
+    await rm(path);
   }
 });
 
 Deno.test("IA low-speed timeout stops a stalled response without the overall deadline", async () => {
-  const path = await Deno.makeTempFile();
+  const path = await makeTempFile();
   const server = createServer((request, _response) => request.resume());
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
@@ -605,17 +634,17 @@ Deno.test("IA low-speed timeout stops a stalled response without the overall dea
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve())
     );
-    await Deno.remove(path);
+    await rm(path);
   }
 });
 
 Deno.test("IA retry skips bytes stored before an upload response timed out", async () => {
   const originalFetch = globalThis.fetch;
-  const uploader = Deno.env.get("IA_UPLOADER");
+  const uploader = process.env["IA_UPLOADER"];
   let metadataCalls = 0;
   let uploads = 0;
   try {
-    Deno.env.set("IA_UPLOADER", "test-uploader");
+    process.env["IA_UPLOADER"] = "test-uploader";
     globalThis.fetch = () => {
       metadataCalls++;
       return Promise.resolve(Response.json(
@@ -656,7 +685,7 @@ Deno.test("IA retry skips bytes stored before an upload response timed out", asy
     assertEquals(metadataCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
-    if (uploader === undefined) Deno.env.delete("IA_UPLOADER");
-    else Deno.env.set("IA_UPLOADER", uploader);
+    if (uploader === undefined) delete process.env["IA_UPLOADER"];
+    else process.env["IA_UPLOADER"] = uploader;
   }
 });

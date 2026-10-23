@@ -1,8 +1,9 @@
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { globby } from "npm:globby";
 import { uploadAllFilesWithResults, type UploadResult } from "./file-server.ts";
 import { consola } from "../shared/logger.ts";
+import { appendFile, writeFile } from "node:fs/promises";
 
 interface UploadReport {
   status: "success" | "failure";
@@ -23,8 +24,8 @@ function errorDetails(error: unknown): { message: string; stack?: string } {
   return { message: String(error) };
 }
 
-const patterns = Deno.args;
-const folderPath = Deno.env.get("FOLDER_PATH") ?? null;
+const patterns = process.argv.slice(2);
+const folderPath = process.env["FOLDER_PATH"] ?? null;
 const report: UploadReport = {
   status: "failure",
   folderPath,
@@ -39,7 +40,7 @@ try {
     throw new Error("No file patterns provided as arguments");
   }
 
-  const token = Deno.env.get("FILE_SERVER_TOKEN");
+  const token = process.env["FILE_SERVER_TOKEN"];
   if (!token) {
     throw new Error("FILE_SERVER_TOKEN is required");
   }
@@ -87,9 +88,9 @@ try {
 }
 
 const reportPath = path.join(WORKSPACE_ROOT, "upload-report.json");
-await Deno.writeTextFile(reportPath, JSON.stringify(report, null, 2));
+await writeFile(reportPath, JSON.stringify(report, null, 2));
 
-const summaryPath = Deno.env.get("GITHUB_STEP_SUMMARY");
+const summaryPath = process.env["GITHUB_STEP_SUMMARY"];
 if (summaryPath) {
   const lines = [
     `## Archive upload: ${report.status}`,
@@ -104,13 +105,11 @@ if (summaryPath) {
       lines.push(`- \`${failure.fileName}\`: ${failure.message}`);
     }
   }
-  await Deno.writeTextFile(summaryPath, `${lines.join("\n")}\n\n`, {
-    append: true,
-  });
+  await appendFile(summaryPath, `${lines.join("\n")}\n\n`);
 }
 
 if (report.status === "failure") {
-  Deno.exit(1);
+  process.exit(1);
 }
 
 consola.success(

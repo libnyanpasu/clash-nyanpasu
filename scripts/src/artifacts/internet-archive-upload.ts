@@ -1,6 +1,16 @@
-import { createHash } from "node:crypto";
-import { basename, dirname, resolve } from "node:path";
+import type { ChildProcess } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { runPublicationTasks } from "./publication-concurrency.ts";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import {
+  type ExitStatus,
+  exitStatus,
+  spawnCommand,
+} from "../shared/command.ts";
+import { text } from "node:stream/consumers";
 
 interface PublishArtifact {
   path: string;
@@ -103,7 +113,7 @@ const parseOptions = (args: string[]) => {
 };
 
 const requiredEnv = (name: string) => {
-  const value = Deno.env.get(name)?.trim();
+  const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
 };
@@ -152,24 +162,15 @@ const retry = async <T>(
 };
 
 export const digestFile = async (filePath: string) => {
-  const stat = await Deno.stat(filePath);
+  const info = await stat(filePath);
   const sha256 = createHash("sha256");
   const md5 = createHash("md5");
-  const file = await Deno.open(filePath, { read: true });
-  try {
-    const buffer = new Uint8Array(1024 * 1024);
-    while (true) {
-      const read = await file.read(buffer);
-      if (read === null) break;
-      const chunk = buffer.subarray(0, read);
-      sha256.update(chunk);
-      md5.update(chunk);
-    }
-  } finally {
-    file.close();
+  for await (const chunk of createReadStream(filePath)) {
+    sha256.update(chunk);
+    md5.update(chunk);
   }
   return {
-    fileSize: stat.size,
+    fileSize: info.size,
     sha256: sha256.digest("hex"),
     md5: md5.digest("hex"),
   };
@@ -340,13 +341,13 @@ const verifyRemoteBuild = async (
 ) => {
   const verifyAttempts = Math.max(
     1,
-    Math.min(24, Number(Deno.env.get("ARCHIVE_VERIFY_ATTEMPTS") ?? "4") || 4),
+    Math.min(24, Number(process.env["ARCHIVE_VERIFY_ATTEMPTS"] ?? "4") || 4),
   );
   const verifyDelay = Math.max(
     0,
     Math.min(
       60_000,
-      Number(Deno.env.get("ARCHIVE_VERIFY_DELAY_MS") ?? "15000") || 0,
+      Number(process.env["ARCHIVE_VERIFY_DELAY_MS"] ?? "15000") || 0,
     ),
   );
   let verification: BuildResponse | undefined;
@@ -371,8 +372,8 @@ const verifyRemoteBuild = async (
 };
 
 const reconcile = async (serverUrl: string, buildId: string) => {
-  const token = Deno.env.get("ARCHIVE_UPLOAD_TOKEN")?.trim() ||
-    Deno.env.get("FILE_SERVER_TOKEN")?.trim() ||
+  const token = process.env["ARCHIVE_UPLOAD_TOKEN"]?.trim() ||
+    process.env["FILE_SERVER_TOKEN"]?.trim() ||
     requiredEnv("UPLOAD_TOKEN");
   console.log(`[archive] Verifying ${buildId}`);
   const verification = await verifyRemoteBuild(serverUrl, token, buildId);
@@ -489,7 +490,7 @@ export const uploadFileRequest = async (
   signal: AbortSignal,
   idleTimeoutMs = 90_000,
 ): Promise<Response> => {
-  const directory = await Deno.makeTempDir({ prefix: "ia-upload-" });
+  const directory = await mkdtemp(join(tmpdir(), "ia-upload-"));
   const headerPath = `${directory}/headers`;
   const bodyPath = `${directory}/body`;
   // Keep credentials out of command arguments and temporary files.
@@ -498,12 +499,13 @@ export const uploadFileRequest = async (
     return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
   };
   let progress: ReturnType<typeof setInterval> | undefined;
-  let child: Deno.ChildProcess | undefined;
+  let child: ChildProcess | undefined;
+  let exited: Promise<ExitStatus> | undefined;
   try {
     const configuration = Object.entries(headers).map(([name, value]) =>
       `header = ${quote(`${name}: ${value}`)}`
     ).join("\n");
-    child = new Deno.Command("curl", {
+    child = spawnCommand("curl", {
       args: [
         "--disable",
         "--config",
@@ -533,14 +535,14 @@ export const uploadFileRequest = async (
       stdin: "piped",
       stdout: "piped",
       stderr: "piped",
-    }).spawn();
+    });
+    exited = exitStatus(child);
     const started = Date.now();
     let lastProgress = "connecting";
     let stderr = "";
     const readStderr = (async () => {
-      for await (
-        const chunk of child!.stderr.pipeThrough(new TextDecoderStream())
-      ) {
+      child!.stderr!.setEncoding("utf8");
+      for await (const chunk of child!.stderr! as AsyncIterable<string>) {
         stderr = (stderr + chunk).slice(-16_384);
         const lines = chunk.split(/[\r\n]/).map((line) => line.trim()).filter(
           Boolean,
@@ -560,19 +562,13 @@ export const uploadFileRequest = async (
         headers["content-length"]
       } bytes`,
     );
-    const writeConfiguration = (async () => {
-      const writer = child!.stdin.getWriter();
-      try {
-        await writer.write(new TextEncoder().encode(configuration + "\n"));
-      } finally {
-        await writer.close();
-      }
-    })();
+    // curl may exit without reading its configuration; its status reports that.
+    child.stdin!.on("error", () => {});
+    child.stdin!.end(configuration + "\n");
     const [status, statusText] = await Promise.all([
-      child.status,
-      new Response(child.stdout).text(),
+      exited,
+      text(child.stdout!),
       readStderr,
-      writeConfiguration,
     ]);
     if (!status.success) {
       throw new Error(
@@ -581,7 +577,7 @@ export const uploadFileRequest = async (
     }
     // curl does not follow redirects; streamUpload validates each destination.
     const responseHeaders = new Headers();
-    const blocks = (await Deno.readTextFile(headerPath)).trim().split(
+    const blocks = (await readFile(headerPath, "utf8")).trim().split(
       /\r?\n\r?\n/,
     );
     for (const line of blocks.at(-1)!.split(/\r?\n/).slice(1)) {
@@ -600,7 +596,7 @@ export const uploadFileRequest = async (
       }s elapsed`,
     );
     return new Response(
-      responseStatus === 204 ? null : await Deno.readFile(bodyPath),
+      responseStatus === 204 ? null : new Uint8Array(await readFile(bodyPath)),
       {
         status: responseStatus,
         headers: responseHeaders,
@@ -612,9 +608,9 @@ export const uploadFileRequest = async (
       try {
         child.kill("SIGTERM");
       } catch { /* The process may already have exited. */ }
-      await child.status;
+      await exited?.catch(() => {});
     }
-    await Deno.remove(directory, { recursive: true });
+    await rm(directory, { recursive: true });
   }
 };
 
@@ -741,11 +737,8 @@ const createSanitizedManifestFile = async (manifest: PublishManifest) => {
     null,
     2,
   );
-  const path = await Deno.makeTempFile({
-    prefix: "nyanpasu-archive-manifest-",
-    suffix: ".json",
-  });
-  await Deno.writeTextFile(path, contents);
+  const path = join(tmpdir(), `nyanpasu-archive-manifest-${randomUUID()}.json`);
+  await writeFile(path, contents, { flag: "wx", mode: 0o600 });
   const digest = await digestFile(path);
   return { path, fileName: "artifact-manifest.json", ...digest };
 };
@@ -755,15 +748,15 @@ const publish = async (
   serverUrl: string,
   registerOnly = false,
 ) => {
-  const token = Deno.env.get("ARCHIVE_UPLOAD_TOKEN")?.trim() ||
-    Deno.env.get("FILE_SERVER_TOKEN")?.trim() ||
+  const token = process.env["ARCHIVE_UPLOAD_TOKEN"]?.trim() ||
+    process.env["FILE_SERVER_TOKEN"]?.trim() ||
     requiredEnv("UPLOAD_TOKEN");
   const accessKey = registerOnly ? "" : requiredEnv("IA_ACCESS_KEY");
   const secret = registerOnly ? "" : requiredEnv("IA_SECRET_KEY");
   const itemPrefix = requiredEnv("IA_ITEM_PREFIX");
   const manifest = await validateManifest(
     manifestPath,
-    JSON.parse(await Deno.readTextFile(manifestPath)) as PublishManifest,
+    JSON.parse(await readFile(manifestPath, "utf8")) as PublishManifest,
   );
   if (!manifest.itemIdentifier.startsWith(`${itemPrefix}-`)) {
     throw new Error("itemIdentifier is outside IA_ITEM_PREFIX");
@@ -838,7 +831,7 @@ const publish = async (
     }
     if (errors.length) throw new Error(errors.join("; "));
   } finally {
-    await Deno.remove(sanitized.path).catch(() => undefined);
+    await rm(sanitized.path).catch(() => undefined);
   }
 
   console.log(`[archive] Verifying ${registeredManifest.buildId}`);
@@ -879,7 +872,7 @@ export const runArchivePublish = async (args: string[]): Promise<number> => {
     if (options.manifestPath) {
       try {
         const manifest = JSON.parse(
-          await Deno.readTextFile(options.manifestPath),
+          await readFile(options.manifestPath, "utf8"),
         ) as PublishManifest;
         reportIdentity = {
           schemaVersion: 1,
@@ -905,7 +898,7 @@ export const runArchivePublish = async (args: string[]): Promise<number> => {
         options.registerOnly,
       );
     if (reportPath) {
-      await Deno.writeTextFile(reportPath, JSON.stringify(report, null, 2));
+      await writeFile(reportPath, JSON.stringify(report, null, 2));
     }
     console.log(JSON.stringify(report, null, 2));
     if (report.status === "failed") return 1;
@@ -918,11 +911,13 @@ export const runArchivePublish = async (args: string[]): Promise<number> => {
       error: error instanceof Error ? error.message : String(error),
     };
     if (reportPath) {
-      await Deno.writeTextFile(reportPath, JSON.stringify(failure, null, 2));
+      await writeFile(reportPath, JSON.stringify(failure, null, 2));
     }
     console.error(JSON.stringify(failure, null, 2));
     return 1;
   }
 };
 
-if (import.meta.main) Deno.exitCode = await runArchivePublish(Deno.args);
+if (import.meta.main) {
+  process.exitCode = await runArchivePublish(process.argv.slice(2));
+}

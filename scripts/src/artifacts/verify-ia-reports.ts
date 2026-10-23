@@ -1,4 +1,5 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
+import { appendFile, readdir, readFile } from "node:fs/promises";
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -141,18 +142,18 @@ export function validateIaReports(
 
 export async function collectIaReports(root: string): Promise<unknown[]> {
   const reports: unknown[] = [];
-  for await (const entry of Deno.readDir(root)) {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
     const file = path.join(root, entry.name);
-    if (entry.isDirectory) reports.push(...await collectIaReports(file));
-    else if (entry.isFile && entry.name === "ia-report.json") {
-      reports.push(JSON.parse(await Deno.readTextFile(file)));
+    if (entry.isDirectory()) reports.push(...await collectIaReports(file));
+    else if (entry.isFile() && entry.name === "ia-report.json") {
+      reports.push(JSON.parse(await readFile(file, "utf8")));
     }
   }
   return reports;
 }
 
 if (import.meta.main) {
-  const [root, targetList] = Deno.args;
+  const [root, targetList] = process.argv.slice(2);
   if (!root || !targetList) {
     throw new Error(
       "Usage: archive:verify-reports <reports-dir> <comma-separated-targets>",
@@ -170,9 +171,9 @@ if (import.meta.main) {
     }`
     : "All target IA archives are ready";
   console.log(summary);
-  const summaryPath = Deno.env.get("GITHUB_STEP_SUMMARY");
+  const summaryPath = process.env["GITHUB_STEP_SUMMARY"];
   if (summaryPath) {
-    await Deno.writeTextFile(summaryPath, `\n${summary}\n`, { append: true });
+    await appendFile(summaryPath, `\n${summary}\n`);
   }
   if (result.issues.length) {
     throw new Error("Incomplete or failed IA archive uploads");

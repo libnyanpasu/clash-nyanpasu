@@ -1,4 +1,6 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
+import { appendFile, readFile } from "node:fs/promises";
+import { isNotFound } from "../shared/errors.ts";
 
 interface UploadReport {
   status?: unknown;
@@ -55,22 +57,24 @@ export function inspectUploadReports(
 }
 
 if (import.meta.main) {
-  const reportsDir = path.resolve(Deno.args[0] ?? "upload-diagnostics");
+  const reportsDir = path.resolve(
+    process.argv.slice(2)[0] ?? "upload-diagnostics",
+  );
   const reports: Record<string, unknown> = {};
 
   for (const name of EXPECTED_REPORTS) {
     const reportPath = path.join(reportsDir, name, "upload-report.json");
     try {
-      reports[name] = JSON.parse(await Deno.readTextFile(reportPath));
+      reports[name] = JSON.parse(await readFile(reportPath, "utf8"));
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) {
+      if (!(isNotFound(error))) {
         reports[name] = { status: "invalid", failures: [String(error)] };
       }
     }
   }
 
   const issues = inspectUploadReports(reports);
-  const summaryPath = Deno.env.get("GITHUB_STEP_SUMMARY");
+  const summaryPath = process.env["GITHUB_STEP_SUMMARY"];
   if (summaryPath) {
     const lines = issues.length === 0
       ? [
@@ -81,14 +85,12 @@ if (import.meta.main) {
         "## Archive upload verification: failed",
         ...issues.map((issue) => `- ${issue}`),
       ];
-    await Deno.writeTextFile(summaryPath, `${lines.join("\n")}\n\n`, {
-      append: true,
-    });
+    await appendFile(summaryPath, `${lines.join("\n")}\n\n`);
   }
 
   if (issues.length > 0) {
     for (const issue of issues) console.error(issue);
-    Deno.exit(1);
+    process.exit(1);
   }
 
   console.log("All expected archive uploads succeeded.");

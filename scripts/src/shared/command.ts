@@ -12,6 +12,8 @@ export interface CommandOptions {
   clearEnv?: boolean;
   signal?: AbortSignal;
   stdin?: StdioMode;
+  /** Written to the child's stdin by `runCommand`, which then closes it. */
+  input?: string | Uint8Array;
   stdout?: StdioMode;
   stderr?: StdioMode;
 }
@@ -68,11 +70,18 @@ export async function runCommand(
   command: string,
   options: CommandOptions = {},
 ): Promise<CommandOutput> {
+  const { input, ...spawnOptions } = options;
   const child = spawnCommand(command, {
     stdout: "piped",
     stderr: "piped",
-    ...options,
+    ...spawnOptions,
+    stdin: input === undefined ? options.stdin : "piped",
   });
+  if (input !== undefined) {
+    // The child may exit without reading its stdin; its exit status reports that.
+    child.stdin!.on("error", () => {});
+    child.stdin!.end(input);
+  }
   const collect = async (stream: ChildProcess["stdout"]) => {
     const chunks: Buffer[] = [];
     for await (const chunk of stream ?? []) chunks.push(chunk as Buffer);

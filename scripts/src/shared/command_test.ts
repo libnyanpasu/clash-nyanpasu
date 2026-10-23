@@ -47,6 +47,12 @@ Deno.test("spawnCommand feeds piped stdin and reports the exit status", async ()
   assertEquals((await exitStatus(child)).success, true);
 });
 
+Deno.test("runCommand writes input to stdin and captures the output", async () => {
+  const result = await runCommand("cat", { input: "ping\n" });
+  assertEquals(result.success, true);
+  assertEquals(result.stdout.toString("utf8"), "ping\n");
+});
+
 Deno.test("exitStatus maps a signal exit to 128 plus the signal number", async () => {
   const child = spawnCommand("sh", { args: ["-c", "kill -TERM $$"] });
   assertEquals(await exitStatus(child), { success: false, code: 143 });

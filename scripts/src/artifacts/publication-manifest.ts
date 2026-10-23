@@ -1,6 +1,7 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { globby } from "npm:globby";
 import { hashFile } from "./sourceforge.ts";
+import { stat } from "node:fs/promises";
 
 export type PublishChannel = "release" | "nightly";
 
@@ -19,7 +20,7 @@ export interface PublicationManifestInput {
 
 export async function preparePublicationManifest(
   input: PublicationManifestInput,
-  cwd = Deno.cwd(),
+  cwd = process.cwd(),
 ) {
   if (input.channel !== "release" && input.channel !== "nightly") {
     throw new Error("Invalid publication channel");
@@ -78,17 +79,17 @@ export async function preparePublicationManifest(
       throw new Error(`Duplicate artifact filename: ${fileName}`);
     }
     names.add(fileName);
-    const stat = await Deno.stat(filePath);
-    if (!stat.isFile || stat.size <= 0) {
+    const info = await stat(filePath);
+    if (!info.isFile() || info.size <= 0) {
       throw new Error(`Artifact is empty or not a file: ${fileName}`);
     }
     const digest = await hashFile(filePath);
-    if (digest.fileSize !== stat.size) {
+    if (digest.fileSize !== info.size) {
       throw new Error(`Artifact changed while hashing: ${fileName}`);
     }
     artifacts.push({
       fileName,
-      fileSize: stat.size,
+      fileSize: info.size,
       sha256: digest.sha256,
       md5: digest.md5,
       path: filePath,

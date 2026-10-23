@@ -1,6 +1,7 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { CENTRAL_PUBLICATION_TARGETS } from "./central-publication.ts";
 import { hashFile } from "./sourceforge.ts";
+import { readFile } from "node:fs/promises";
 
 export interface TelegramArtifact {
   fileName: string;
@@ -43,7 +44,7 @@ export async function readTelegramInventory(
   const names = new Set<string>();
   for (const target of CENTRAL_PUBLICATION_TARGETS) {
     const manifest = JSON.parse(
-      await Deno.readTextFile(path.join(root, "manifests", `${target}.json`)),
+      await readFile(path.join(root, "manifests", `${target}.json`), "utf8"),
     ) as TelegramTarget;
     if (manifest.target !== target || !manifest.artifacts.length) {
       throw new Error(`Incomplete Telegram inventory: ${target}`);

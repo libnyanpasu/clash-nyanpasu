@@ -1,9 +1,13 @@
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import { exists } from "jsr:@std/fs";
-import * as path from "jsr:@std/path";
+import { parseArgs } from "node:util";
+import { pathExists } from "../shared/path-exists.ts";
+import * as path from "node:path";
 import { downloadCache, listCacheKeys, uploadCache } from "./cache-client.ts";
 import { consola } from "../shared/logger.ts";
+import { readFile, rm, stat } from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { runCommand } from "../shared/command.ts";
 
 // --- config ---
 
@@ -24,17 +28,20 @@ const TAR_EXCLUDE_PATTERNS = [
 // --- helpers ---
 
 function requireEnv(name: string): string {
-  const value = Deno.env.get(name);
+  const value = process.env[name];
   if (!value) {
     consola.fatal(`${name} is required`);
-    Deno.exit(1);
+    process.exit(1);
   }
   return value;
 }
 
 async function computeCargoLockHash(): Promise<string> {
-  const content = await Deno.readFile(CARGO_LOCK_PATH);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", content);
+  const content = await readFile(CARGO_LOCK_PATH);
+  const hashBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    new Uint8Array(content),
+  );
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join(
     "",
@@ -55,7 +62,7 @@ async function createTarball(tarballPath: string): Promise<void> {
 
   const excludeArgs = TAR_EXCLUDE_PATTERNS.flatMap((p) => ["--exclude", p]);
 
-  const cmd = new Deno.Command("tar", {
+  const cmd = await runCommand("tar", {
     args: [
       "--zstd",
       "-cf",
@@ -69,25 +76,25 @@ async function createTarball(tarballPath: string): Promise<void> {
     stderr: "inherit",
   });
 
-  const { code } = await cmd.output();
+  const { code } = cmd;
   if (code !== 0) {
     throw new Error(`tar creation failed with exit code ${code}`);
   }
 
-  const stat = await Deno.stat(tarballPath);
-  consola.success(`tarball created: ${tarballPath} (${stat.size} bytes)`);
+  const info = await stat(tarballPath);
+  consola.success(`tarball created: ${tarballPath} (${info.size} bytes)`);
 }
 
 async function extractTarball(tarballPath: string): Promise<void> {
   consola.info(`extracting tarball to ${path.dirname(TARGET_DIR)}...`);
 
-  const cmd = new Deno.Command("tar", {
+  const cmd = await runCommand("tar", {
     args: ["--zstd", "-xf", tarballPath, "-C", path.dirname(TARGET_DIR)],
     stdout: "inherit",
     stderr: "inherit",
   });
 
-  const { code } = await cmd.output();
+  const { code } = cmd;
   if (code !== 0) {
     throw new Error(`tar extraction failed with exit code ${code}`);
   }
@@ -100,14 +107,17 @@ async function extractTarball(tarballPath: string): Promise<void> {
 async function save(os: string, arch: string): Promise<void> {
   const token = requireEnv("FILE_SERVER_TOKEN");
 
-  if (!(await exists(TARGET_DIR))) {
+  if (!(await pathExists(TARGET_DIR))) {
     consola.warn(`target directory does not exist: ${TARGET_DIR}`);
     return;
   }
 
   const hash = await computeCargoLockHash();
   const key = getCacheKey(os, arch, hash);
-  const tarballPath = path.join(Deno.makeTempDirSync(), `${key}.tar.zst`);
+  const tarballPath = path.join(
+    mkdtempSync(path.join(tmpdir(), "nyanpasu-scripts-")),
+    `${key}.tar.zst`,
+  );
 
   try {
     await createTarball(tarballPath);
@@ -115,7 +125,7 @@ async function save(os: string, arch: string): Promise<void> {
     consola.success(`cache saved with key: ${key}`);
   } finally {
     try {
-      await Deno.remove(tarballPath);
+      await rm(tarballPath);
     } catch {
       // ignore cleanup errors
     }
@@ -127,7 +137,10 @@ async function restore(os: string, arch: string): Promise<void> {
 
   const hash = await computeCargoLockHash();
   const key = getCacheKey(os, arch, hash);
-  const tarballPath = path.join(Deno.makeTempDirSync(), `${key}.tar.zst`);
+  const tarballPath = path.join(
+    mkdtempSync(path.join(tmpdir(), "nyanpasu-scripts-")),
+    `${key}.tar.zst`,
+  );
 
   try {
     // try exact match first
@@ -154,7 +167,7 @@ async function restore(os: string, arch: string): Promise<void> {
     consola.success("build cache restored successfully");
   } finally {
     try {
-      await Deno.remove(tarballPath);
+      await rm(tarballPath);
     } catch {
       // ignore cleanup errors
     }
@@ -164,24 +177,29 @@ async function restore(os: string, arch: string): Promise<void> {
 // --- main ---
 
 function main(): Promise<void> {
-  const args = parseArgs(Deno.args, {
-    string: ["os", "arch"],
+  const { values: args, positionals } = parseArgs({
+    options: {
+      os: { type: "string" },
+      arch: { type: "string" },
+    },
+    allowPositionals: true,
+    strict: false,
   });
 
-  const subcommand = args._[0] as string | undefined;
-  const os = args.os;
-  const arch = args.arch;
+  const subcommand = positionals[0] as string | undefined;
+  const os = args.os as string | undefined;
+  const arch = args.arch as string | undefined;
 
   if (!subcommand || !["save", "restore"].includes(subcommand)) {
     consola.error(
       "usage: deno task build-cache <save|restore> --os <os> --arch <arch>",
     );
-    Deno.exit(1);
+    process.exit(1);
   }
 
   if (!os || !arch) {
     consola.error("--os and --arch are required");
-    Deno.exit(1);
+    process.exit(1);
   }
 
   if (subcommand === "save") {
@@ -193,5 +211,5 @@ function main(): Promise<void> {
 
 main().catch((error) => {
   consola.fatal(error);
-  Deno.exit(1);
+  process.exit(1);
 });

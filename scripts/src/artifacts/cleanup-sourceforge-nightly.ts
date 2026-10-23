@@ -1,9 +1,12 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import {
   sftpQuote,
   validateSourceforgeProject,
   validateSourceforgeUsername,
 } from "./sourceforge.ts";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { runCommand } from "../shared/command.ts";
 
 const MANAGED_BUILD = /^([0-9]+)-([0-9]+)-([a-f0-9]{40})$/;
 const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9 _.,=+#@()-]*$/;
@@ -99,7 +102,7 @@ export async function archiveReadyTargets(
 }
 
 function requiredEnv(name: string): string {
-  const value = Deno.env.get(name);
+  const value = process.env[name];
   if (!value) {
     throw new Error(
       `${name} is required when SourceForge nightly cleanup is enabled`,
@@ -114,7 +117,7 @@ async function runSftp(
   username: string,
   batch: string,
 ): Promise<{ success: boolean; stdout: string; stderr: string }> {
-  const command = new Deno.Command("sftp", {
+  const command = await runCommand("sftp", {
     args: [
       "-i",
       key,
@@ -132,24 +135,17 @@ async function runSftp(
       "-",
       `${username}@frs.sourceforge.net`,
     ],
-    stdin: "piped",
-    stdout: "piped",
-    stderr: "piped",
-  }).spawn();
-  const writer = command.stdin.getWriter();
-  await writer.write(new TextEncoder().encode(batch));
-  await writer.close();
-  const [status, stdout, stderr] = await Promise.all([
-    command.status,
-    new Response(command.stdout).text(),
-    new Response(command.stderr).text(),
-  ]);
+    input: batch,
+  });
+  const status = command;
+  const stdout = command.stdout.toString("utf8");
+  const stderr = command.stderr.toString("utf8");
   return { success: status.success, stdout, stderr };
 }
 
 async function main(): Promise<void> {
   const reportPath = path.resolve(
-    Deno.args[0] ?? "sourceforge-cleanup-report.json",
+    process.argv.slice(2)[0] ?? "sourceforge-cleanup-report.json",
   );
   const project = requiredEnv("SOURCEFORGE_PROJECT");
   const username = requiredEnv("SOURCEFORGE_USERNAME");
@@ -179,35 +175,32 @@ async function main(): Promise<void> {
     retained: [],
     error: null,
   };
-  const temp = await Deno.makeTempDir({ prefix: "sourceforge-cleanup-" });
+  const temp = await mkdtemp(path.join(tmpdir(), "sourceforge-cleanup-"));
   try {
     const key = path.join(temp, "id_sourceforge");
     const knownHosts = path.join(temp, "known_hosts");
-    await Deno.writeTextFile(key, requiredEnv("SOURCEFORGE_SSH_KEY"), {
+    await writeFile(key, requiredEnv("SOURCEFORGE_SSH_KEY"), {
       mode: 0o600,
     });
-    await Deno.writeTextFile(
-      knownHosts,
-      requiredEnv("SOURCEFORGE_KNOWN_HOSTS"),
-    );
-    if (Deno.build.os === "windows") {
+    await writeFile(knownHosts, requiredEnv("SOURCEFORGE_KNOWN_HOSTS"));
+    if (process.platform === "win32") {
       const user = requiredEnv("USERNAME");
       if (!/^[A-Za-z0-9._-]+$/.test(user)) {
         throw new Error("Invalid Windows runner username");
       }
-      const acl = await new Deno.Command("icacls", {
+      const acl = await runCommand("icacls", {
         args: [key, "/inheritance:r", "/grant:r", `${user}:(R)`],
         stdout: "piped",
         stderr: "piped",
-      }).output();
+      });
       if (!acl.success) {
         throw new Error(
           `Could not secure Windows SSH key ACL: ${
-            new TextDecoder().decode(acl.stderr)
+            acl.stderr.toString("utf8")
           }`,
         );
       }
-    } else await Deno.chmod(key, 0o600);
+    } else await chmod(key, 0o600);
 
     const listing = await runSftp(
       key,
@@ -229,8 +222,8 @@ async function main(): Promise<void> {
     } else {
       for (const directory of cleanupTargets) {
         {
-          const token = Deno.env.get("ARCHIVE_UPLOAD_TOKEN") ||
-            Deno.env.get("FILE_SERVER_TOKEN") || Deno.env.get("UPLOAD_TOKEN");
+          const token = process.env["ARCHIVE_UPLOAD_TOKEN"] ||
+            process.env["FILE_SERVER_TOKEN"] || process.env["UPLOAD_TOKEN"];
           if (!token) {
             report.retained.push({
               buildId: directory,
@@ -301,12 +294,9 @@ async function main(): Promise<void> {
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
   } finally {
-    await Deno.remove(temp, { recursive: true });
-    await Deno.mkdir(path.dirname(reportPath), { recursive: true });
-    await Deno.writeTextFile(
-      reportPath,
-      `${JSON.stringify(report, null, 2)}\n`,
-    );
+    await rm(temp, { recursive: true });
+    await mkdir(path.dirname(reportPath), { recursive: true });
+    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   }
   if (report.status === "failure") {
     throw new Error(report.error ?? "SourceForge cleanup failed");

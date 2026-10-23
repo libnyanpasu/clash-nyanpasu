@@ -1,6 +1,7 @@
-import { retry } from "jsr:@std/async@1/retry";
-import { format as formatBytes } from "jsr:@std/fmt@1/bytes";
-import * as path from "jsr:@std/path";
+import { open, stat } from "node:fs/promises";
+import { retry } from "../shared/retry.ts";
+import { formatBytes } from "../shared/format-bytes.ts";
+import * as path from "node:path";
 import { consola } from "../shared/logger.ts";
 
 // --- constants ---
@@ -205,7 +206,7 @@ export async function performChunkedUpload<T>(
     }`,
   );
 
-  const file = await Deno.open(filePath, { read: true });
+  const file = await open(filePath, "r");
   try {
     let start = 0;
     let chunkIndex = 0;
@@ -217,11 +218,15 @@ export async function performChunkedUpload<T>(
       const endExclusive = Math.min(start + chunkSize, fileSize);
       const size = endExclusive - start;
       const buf = new Uint8Array(size);
-      await file.seek(start, Deno.SeekMode.Start);
       let bytesRead = 0;
       while (bytesRead < size) {
-        const n = await file.read(buf.subarray(bytesRead));
-        if (n === null) break;
+        const { bytesRead: n } = await file.read(
+          buf,
+          bytesRead,
+          size - bytesRead,
+          start + bytesRead,
+        );
+        if (n === 0) break;
         bytesRead += n;
       }
       if (bytesRead !== size) {
@@ -262,7 +267,7 @@ export async function performChunkedUpload<T>(
       start = endExclusive;
     }
   } finally {
-    file.close();
+    await file.close();
   }
 
   throw new Error(`Upload of ${label} ended unexpectedly without done=true`);
@@ -274,8 +279,8 @@ export async function uploadToFileServer(
   folderPath?: string,
 ): Promise<UploadResult> {
   const fileName = path.basename(filePath);
-  const stat = await Deno.stat(filePath);
-  const fileSize = stat.size;
+  const info = await stat(filePath);
+  const fileSize = info.size;
 
   consola.info(
     `uploading ${fileName} (${formatBytes(fileSize)}) to file server${

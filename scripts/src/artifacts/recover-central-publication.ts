@@ -1,9 +1,10 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import * as path from "jsr:@std/path";
+import { parseArgs } from "node:util";
+import * as path from "node:path";
 import {
   CENTRAL_PUBLICATION_TARGETS,
   prepareCentralPublication,
 } from "./central-publication.ts";
+import { appendFile, readFile } from "node:fs/promises";
 
 interface SourceRun {
   id: number;
@@ -38,9 +39,7 @@ export async function recoverCentralPublication(
     );
   }
   const previous = JSON.parse(
-    await Deno.readTextFile(
-      path.join(previousRoot, "publication-context.json"),
-    ),
+    await readFile(path.join(previousRoot, "publication-context.json"), "utf8"),
   );
   const nightly = run.path.endsWith("target-dev-build.yaml");
   if (
@@ -52,8 +51,9 @@ export async function recoverCentralPublication(
   const saved = await Promise.all(
     CENTRAL_PUBLICATION_TARGETS.map(async (target) =>
       JSON.parse(
-        await Deno.readTextFile(
+        await readFile(
           path.join(previousRoot, "manifests", `${target}.json`),
+          "utf8",
         ),
       )
     ),
@@ -78,7 +78,7 @@ export async function recoverCentralPublication(
   // Paths move between runners; all published metadata and bytes must stay identical.
   for (const [index, target] of CENTRAL_PUBLICATION_TARGETS.entries()) {
     const current = JSON.parse(
-      await Deno.readTextFile(context.manifests[target] as string),
+      await readFile(context.manifests[target] as string, "utf8"),
     );
     const immutable = (manifest: typeof current) => ({
       schemaVersion: manifest.schemaVersion,
@@ -127,15 +127,23 @@ export async function recoverCentralPublication(
 }
 
 if (import.meta.main) {
-  const args = parseArgs(Deno.args, {
-    string: [
-      "source-run",
-      "artifacts-dir",
-      "previous-dir",
-      "output-dir",
-      "item-prefix",
-    ],
-  });
+  const args = parseArgs({
+    options: {
+      "source-run": { type: "string" },
+      "artifacts-dir": { type: "string" },
+      "previous-dir": { type: "string" },
+      "output-dir": { type: "string" },
+      "item-prefix": { type: "string" },
+    },
+    allowPositionals: true,
+    strict: false,
+  }).values as {
+    "source-run"?: string;
+    "artifacts-dir"?: string;
+    "previous-dir"?: string;
+    "output-dir"?: string;
+    "item-prefix"?: string;
+  };
   for (
     const name of [
       "source-run",
@@ -145,11 +153,13 @@ if (import.meta.main) {
       "item-prefix",
     ]
   ) {
-    if (!args[name]) throw new Error(`--${name} is required`);
+    if (!args[name as keyof typeof args]) {
+      throw new Error(`--${name} is required`);
+    }
   }
   const context = await recoverCentralPublication(
-    JSON.parse(await Deno.readTextFile(args["source-run"]!)),
-    Deno.env.get("GITHUB_REPOSITORY")!,
+    JSON.parse(await readFile(args["source-run"]!, "utf8")),
+    process.env["GITHUB_REPOSITORY"]!,
     args["artifacts-dir"]!,
     args["previous-dir"]!,
     args["output-dir"]!,
@@ -159,10 +169,8 @@ if (import.meta.main) {
     `channel=${context.channel}\nbuild_id=${context.buildId}\ntag=${
       context.tag ?? ""
     }\n`;
-  if (Deno.env.get("GITHUB_OUTPUT")) {
-    await Deno.writeTextFile(Deno.env.get("GITHUB_OUTPUT")!, outputs, {
-      append: true,
-    });
+  if (process.env["GITHUB_OUTPUT"]) {
+    await appendFile(process.env["GITHUB_OUTPUT"]!, outputs);
   }
   console.log(
     `Recovered ${context.buildId} at original timestamp ${context.publishedAt}`,

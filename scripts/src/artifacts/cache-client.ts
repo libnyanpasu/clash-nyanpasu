@@ -1,5 +1,5 @@
-import { format as formatBytes } from "jsr:@std/fmt@1/bytes";
-import { writeAll } from "jsr:@std/io@0.225/write-all";
+import { open, stat } from "node:fs/promises";
+import { formatBytes } from "../shared/format-bytes.ts";
 import { CHUNK_MULTIPLIER, performChunkedUpload } from "./file-server.ts";
 import { consola } from "../shared/logger.ts";
 
@@ -86,8 +86,8 @@ export async function uploadCache(
   filePath: string,
   token: string,
 ): Promise<void> {
-  const stat = await Deno.stat(filePath);
-  const fileSize = stat.size;
+  const info = await stat(filePath);
+  const fileSize = info.size;
 
   consola.info(
     `uploading cache "${key}" (${formatBytes(fileSize)}) via chunked upload...`,
@@ -140,11 +140,7 @@ export async function downloadCache(
 
   const totalSize = Number(resp.headers.get("Content-Length")) || 0;
   const reader = resp.body!.getReader();
-  const dest = await Deno.open(destPath, {
-    write: true,
-    create: true,
-    truncate: true,
-  });
+  const dest = await open(destPath, "w");
 
   try {
     let received = 0;
@@ -154,7 +150,7 @@ export async function downloadCache(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      await writeAll(dest, value);
+      await dest.write(value);
       received += value.byteLength;
 
       const now = Date.now();
@@ -180,15 +176,13 @@ export async function downloadCache(
       }
     }
   } catch {
-    try {
-      dest.close();
-    } catch {
+    await dest.close().catch(() => {
       // already closed
-    }
+    });
     throw new Error(`failed to write cache to "${destPath}"`);
   }
 
-  dest.close();
+  await dest.close();
   consola.success(`cache "${key}" downloaded to "${destPath}"`);
   return true;
 }

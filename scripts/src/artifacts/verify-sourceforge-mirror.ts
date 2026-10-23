@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import { runPublicationTasks } from "./publication-concurrency.ts";
 import {
   validateSourceforgeFilename,
   validateSourceforgeRemotePath,
 } from "./sourceforge.ts";
+import { appendFile, readdir, readFile, writeFile } from "node:fs/promises";
 
 export interface SourceforgeArtifact {
   fileName: string;
@@ -185,12 +186,12 @@ export async function collectSourceforgeReports(
   root: string,
 ): Promise<unknown[]> {
   const reports: unknown[] = [];
-  for await (const entry of Deno.readDir(root)) {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
     const file = path.join(root, entry.name);
-    if (entry.isDirectory) {
+    if (entry.isDirectory()) {
       reports.push(...await collectSourceforgeReports(file));
-    } else if (entry.isFile && entry.name === "sourceforge-report.json") {
-      reports.push(JSON.parse(await Deno.readTextFile(file)));
+    } else if (entry.isFile() && entry.name === "sourceforge-report.json") {
+      reports.push(JSON.parse(await readFile(file, "utf8")));
     }
   }
   return reports;
@@ -327,7 +328,8 @@ export async function verifySourceforgeMirror(
 }
 
 if (import.meta.main) {
-  const [reportsPath, outputPath, channel, expectedTargetsArg] = Deno.args;
+  const [reportsPath, outputPath, channel, expectedTargetsArg] = process.argv
+    .slice(2);
   if (
     !reportsPath || !outputPath || !["release", "nightly"].includes(channel) ||
     !expectedTargetsArg
@@ -341,15 +343,14 @@ if (import.meta.main) {
     expectedTargetsArg.split(",").filter(Boolean),
     channel as "release" | "nightly",
   );
-  await Deno.writeTextFile(outputPath, `${JSON.stringify(result, null, 2)}\n`);
-  const output = Deno.env.get("GITHUB_OUTPUT");
+  await writeFile(outputPath, `${JSON.stringify(result, null, 2)}\n`);
+  const output = process.env["GITHUB_OUTPUT"];
   if (output) {
-    await Deno.writeTextFile(
+    await appendFile(
       output,
       `sourceforge_mirrors_json=${
         JSON.stringify(result)
       }\nsourceforge_build_id=${result.buildId}\nsourceforge_project=${result.project}\n`,
-      { append: true },
     );
   }
   console.log(

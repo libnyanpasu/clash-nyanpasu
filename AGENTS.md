@@ -4,7 +4,7 @@ The application backend uses explicit dependency injection, actor-owned state, a
 
 ## Mandatory Reading: Development Standards
 
-Before starting any repository work, agents MUST read [docs/development/README.md](docs/development/README.md) and all standards guides: [architecture](docs/development/architecture.md), [unified RPC](docs/development/rpc.md), [testing and review](docs/development/testing.md), [workflow](docs/development/workflow.md), [Rust code style](docs/development/rust.md), [TypeScript and React code style](docs/development/typescript.md), [frontend packages](docs/development/frontend-packages.md), and [repository scripts](docs/development/scripts.md).
+Before starting any repository work, agents MUST read [docs/development/README.md](docs/development/README.md) and all standards guides: [architecture](docs/development/architecture.md), [unified RPC](docs/development/rpc.md), [testing and review](docs/development/testing.md), [workflow](docs/development/workflow.md), [Rust code guide](docs/development/rust.md), [TypeScript and React code style](docs/development/typescript.md), [frontend packages](docs/development/frontend-packages.md), and [repository scripts](docs/development/scripts.md).
 
 Agents MUST strictly follow these development standards together with the instructions below. Reading this file alone is insufficient. The guides are mandatory project requirements, not optional background or suggestions. If a guide is unavailable or the current requirements conflict, report the issue and resolve it before proceeding with affected work.
 
@@ -55,7 +55,7 @@ When editing existing code:
 
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
+- Match existing formatting and layout, even if you'd do it differently. New code still follows the code guides (section 9), not older patterns next to it.
 - If you notice unrelated dead code, mention it - don't delete it.
 
 When your changes create orphans:
@@ -127,12 +127,14 @@ Read [Testing and review](docs/development/testing.md) for test design and the c
 
 | Area                                                                      | Guide                                                                                              |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Rust formatting, lints, types, and errors                                 | [Rust code style](docs/development/rust.md)                                                        |
+| Rust formatting, lints, API design, errors, panics, and migration debt    | [Rust code guide](docs/development/rust.md)                                                        |
 | TS/TSX, React grouping, constants, composition, context, data slots, i18n | [TypeScript and React code style](docs/development/typescript.md)                                  |
 | Frontend package ownership and dependency direction                       | [Frontend packages](docs/development/frontend-packages.md)                                         |
 | Routed pages, page composition, and module scope                          | [Routed pages and modules](docs/development/typescript.md#organize-routed-pages-and-their-modules) |
 | Repository scripts and Deno tasks                                         | [Repository scripts](docs/development/scripts.md)                                                  |
 | GitHub workflow display names                                             | [Development workflow](docs/development/workflow.md#github-workflows)                              |
+
+Apply these guides when planning and when implementing, not only at review: a plan names the guide rules its tasks touch, and new code follows them. Existing violations are migration debt; do not copy them, and do not fix them outside the task (section 3). See [Scope and verification](docs/development/workflow.md#scope-and-verification).
 
 Formatting and lint passing does not finish the review: semantic naming, reuse, logical grouping, and visual consistency are mandatory review requirements in those guides.
 

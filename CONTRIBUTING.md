@@ -152,7 +152,7 @@ git checkout -b feature/my-feature
 
 ### 3. Pre-Commit Checks
 
-- Ensure code style is correct
+- Ensure code follows the [Rust code guide](docs/development/rust.md) and the [TypeScript and React code style](docs/development/typescript.md)
 - All unit tests pass
 - No useless files
 

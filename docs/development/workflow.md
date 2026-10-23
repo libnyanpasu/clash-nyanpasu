@@ -3,9 +3,16 @@
 ## Scope and verification
 
 State assumptions and discuss ambiguous requirements before implementation. Keep
-changes focused on the requested behavior, match existing style, and remove only
-dead code created by your change. Prefer the smallest complete solution; this does
-not justify hidden global dependencies.
+changes focused on the requested behavior, match the surrounding formatting and
+layout, and remove only dead code created by your change. Prefer the smallest
+complete solution; this does not justify hidden global dependencies.
+
+Plan and implement to the language guides, [Rust](rust.md) and
+[TypeScript and React](typescript.md). A plan names the guide rules its tasks touch,
+such as error types, constructor names, or module layout, so that review can check
+them. New code follows the guides even where nearby code does not; that older code
+is migration debt (see the Rust guide's migration list), so do not copy it and do
+not rewrite it outside a focused migration change.
 
 Define observable success criteria before editing. For bugs, reproduce the failure
 and verify the fix. For refactors, verify behavior before and after. For multi-step

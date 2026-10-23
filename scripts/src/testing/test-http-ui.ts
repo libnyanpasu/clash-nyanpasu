@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "npm:playwright@1.63.0";
 
-const entry = Deno.args[0];
+const entry = process.argv[2];
 assert.ok(
   entry,
   "Usage: deno task test:http-ui <running debug HTTP server URL>",
@@ -77,7 +77,7 @@ try {
   assert.equal(result.error.data.domain_error, "unsupported");
   assert.equal(result.domainError.data.domain_error.kind.domain, "profiles");
   assert.equal(typeof result.domainError.data.domain_error.detail, "string");
-  if (Deno.env.get("NYANPASU_HTTP_FRONTEND_EVENT_FIXTURE") === "1") {
+  if (process.env.NYANPASU_HTTP_FRONTEND_EVENT_FIXTURE === "1") {
     // The debug page's test buttons; the page batches them into
     // report_frontend_events.
     const expected = [
@@ -115,7 +115,7 @@ try {
     }
     await reported;
   }
-  if (Deno.env.get("NYANPASU_HTTP_CORE_LOG_FIXTURE") === "1") {
+  if (process.env.NYANPASU_HTTP_CORE_LOG_FIXTURE === "1") {
     const call = async (
       method: string,
       params: Record<string, unknown> = {},

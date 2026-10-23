@@ -1,3 +1,4 @@
+import { runCommand } from "../shared/command.ts";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
 
 /** Build neutral-crate test binaries with musl, then run them in a router rootfs. */
@@ -17,7 +18,7 @@ export async function main(args: string[]): Promise<void> {
   // Some rootfs tags publish amd64 image metadata even when their files are ARM.
   // Check the rootfs loader instead of asking Docker to enforce that metadata.
   const loader = architecture === "arm64" ? "aarch64" : "x86_64";
-  const rootfs = await new Deno.Command("docker", {
+  const rootfs = await runCommand("docker", {
     args: [
       "run",
       "--rm",
@@ -29,13 +30,13 @@ export async function main(args: string[]): Promise<void> {
     ],
     stdout: "inherit",
     stderr: "inherit",
-  }).output();
+  });
   if (!rootfs.success) {
     throw new Error(`rootfs lacks the ${loader} musl loader`);
   }
   // Separate container-owned caches from the current checkout's macOS target.
   // The source mount is read-only; there are no host credentials or network bridges.
-  const build = await new Deno.Command("docker", {
+  const build = await runCommand("docker", {
     args: [
       "run",
       "--rm",
@@ -68,7 +69,7 @@ export async function main(args: string[]): Promise<void> {
     ],
     stdout: "piped",
     stderr: "inherit",
-  }).output();
+  });
   if (!build.success) throw new Error(`musl build failed (${build.code})`);
   const executables: string[] = [];
   const expectedTargets = new Set([
@@ -76,7 +77,7 @@ export async function main(args: string[]): Promise<void> {
     "lib:nyanpasu_platform",
     "test:runtime_builder",
   ]);
-  for (const line of new TextDecoder().decode(build.stdout).split("\n")) {
+  for (const line of build.stdout.toString("utf8").split("\n")) {
     if (!line.startsWith("{")) continue;
     const artifact: {
       reason?: string;
@@ -102,7 +103,7 @@ export async function main(args: string[]): Promise<void> {
     );
   }
   for (const executable of executables) {
-    const result = await new Deno.Command("docker", {
+    const result = await runCommand("docker", {
       args: [
         "run",
         "--rm",
@@ -115,7 +116,7 @@ export async function main(args: string[]): Promise<void> {
       ],
       stdout: "inherit",
       stderr: "inherit",
-    }).output();
+    });
     if (!result.success) {
       throw new Error(`router tests failed (${result.code}): ${executable}`);
     }
@@ -126,8 +127,8 @@ export async function main(args: string[]): Promise<void> {
 }
 
 if (import.meta.main) {
-  main(Deno.args).catch((error) => {
+  main(process.argv.slice(2)).catch((error) => {
     console.error(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

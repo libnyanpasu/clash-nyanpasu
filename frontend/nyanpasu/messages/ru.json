@@ -757,6 +757,41 @@
   "proxies_group_empty_button_text": "Перейти к профилям",
   "proxies_group_direct_switch_rule_button_text": "Переключиться в режим правил",
   "proxies_group_direct_switch_global_button_text": "Переключиться в глобальный режим",
+  "proxies_nav_label": "Навигация по группам прокси",
+  "proxies_nav_groups": "Группы",
+  "proxies_nav_folders": "Папки",
+  "proxies_nav_group_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} группа",
+        "countPlural=few": "{count} группы",
+        "countPlural=many": "{count} групп",
+        "countPlural=other": "{count} группы"
+      }
+    }
+  ],
+  "proxies_nav_folder_empty": "Переместите группы сюда из их меню",
+  "proxies_nav_list_actions": "Действия со списком",
+  "proxies_nav_reset_order": "Сбросить порядок",
+  "proxies_nav_reset_order_description": "Группы вернутся к порядку из профиля, а все папки будут удалены.",
+  "proxies_nav_expand_all": "Развернуть все папки",
+  "proxies_nav_collapse_all": "Свернуть все папки",
+  "proxies_folder_delete_description": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} группа будет перемещена в «Группы».",
+        "countPlural=few": "{count} группы будут перемещены в «Группы».",
+        "countPlural=many": "{count} групп будут перемещены в «Группы».",
+        "countPlural=other": "{count} группы будут перемещены в «Группы»."
+      }
+    }
+  ],
+  "proxies_layout_error_title": "Не удалось упорядочить группы прокси",
+  "proxies_layout_failed": "Не удалось обновить порядок: {error}",
   "profile_is_active_label": "Текущий профиль",
   "logs_search_placeholder": "Поиск журналов (время, тип или сообщение)...",
   "logs_empty_message": "Нет записей в журналах",

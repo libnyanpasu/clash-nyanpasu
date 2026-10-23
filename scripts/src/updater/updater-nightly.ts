@@ -1,5 +1,6 @@
-import * as path from "jsr:@std/path";
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
+import * as path from "node:path";
+import { parseArgs } from "node:util";
+import { runCommand } from "../shared/command.ts";
 import { Octokit } from "npm:octokit";
 import semver from "npm:semver";
 import { z } from "npm:zod";
@@ -13,14 +14,16 @@ import {
   mapUpdaterPlatformUrls,
   parseSourceforgeMirrorManifest,
 } from "./sourceforge-mirrors.ts";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 const GITHUB_PROXY = "https://nyanpasu-script.majokeiko.com/";
 const UPDATE_TAG_NAME = "updater";
 const UPDATE_JSON_FILE = "update-nightly.json";
 const UPDATE_JSON_PROXY = "update-nightly-proxy.json";
 
-const argv = parseArgs(Deno.args, {
-  string: ["cache-path"],
+const { values: argv } = parseArgs({
+  options: { "cache-path": { type: "string" } },
+  strict: false,
 });
 
 function getGithubUrl(url: string): string {
@@ -33,9 +36,9 @@ function getGithubUrl(url: string): string {
 }
 
 function getRepoContext() {
-  const token = Deno.env.get("GITHUB_TOKEN");
+  const token = process.env["GITHUB_TOKEN"];
   if (!token) throw new Error("GITHUB_TOKEN is required");
-  const repoStr = Deno.env.get("GITHUB_REPOSITORY") ?? "";
+  const repoStr = process.env["GITHUB_REPOSITORY"] ?? "";
   const [owner, repo] = repoStr.split("/");
   if (!owner || !repo) throw new Error("GITHUB_REPOSITORY must be owner/repo");
   return { token, owner, repo };
@@ -54,11 +57,11 @@ async function getSignature(url: string) {
 
 async function saveToCache(fileName: string, content: string) {
   const cachePath = argv["cache-path"];
-  if (!cachePath) return;
+  if (typeof cachePath !== "string" || !cachePath) return;
   try {
-    await Deno.mkdir(cachePath, { recursive: true });
+    await mkdir(cachePath, { recursive: true });
     const filePath = path.join(cachePath, fileName);
-    await Deno.writeTextFile(filePath, content);
+    await writeFile(filePath, content);
     consola.success(colorize`cached file saved to: {gray.bold ${filePath}}`);
   } catch (err) {
     throw new Error(`Failed to save cache file: ${err}`);
@@ -74,7 +77,7 @@ function camelCase(s: string) {
 }
 
 async function resolveUpdater() {
-  if (!Deno.env.get("GITHUB_TOKEN")) {
+  if (!process.env["GITHUB_TOKEN"]) {
     throw new Error("GITHUB_TOKEN is required");
   }
   consola.start("start to generate updater files");
@@ -84,10 +87,10 @@ async function resolveUpdater() {
   const options = { owner, repo };
 
   const tauriNightlyPath = path.join(
-    Deno.cwd(),
+    process.cwd(),
     "backend/tauri/overrides/nightly.conf.json",
   );
-  const tauriNightly = JSON.parse(await Deno.readTextFile(tauriNightlyPath));
+  const tauriNightly = JSON.parse(await readFile(tauriNightlyPath, "utf8"));
 
   consola.debug("resolve latest pre-release files...");
   const { data: latestPreRelease } = await github.rest.repos.getReleaseByTag({
@@ -116,12 +119,11 @@ async function resolveUpdater() {
   }
 
   if (!shortHash) {
-    const gitResult = await new Deno.Command("git", {
+    const gitResult = await runCommand("git", {
       args: ["rev-parse", "pre-release"],
-      stdout: "piped",
-    }).output();
+    });
     // Must match the fixed-length hash prepare-nightly.ts signs into the build.
-    shortHash = new TextDecoder().decode(gitResult.stdout).trim().slice(0, 7);
+    shortHash = gitResult.stdout.toString("utf8").trim().slice(0, 7);
   }
 
   consola.info(`latest pre-release short hash: ${shortHash}`);
@@ -131,7 +133,7 @@ async function resolveUpdater() {
     getSignature,
     `${tauriNightly.version}-alpha+${shortHash}`,
   );
-  const sourceforgeJson = Deno.env.get("SOURCEFORGE_MIRRORS_JSON")?.trim();
+  const sourceforgeJson = process.env["SOURCEFORGE_MIRRORS_JSON"]?.trim();
   const sourceforgeManifest = sourceforgeJson
     ? parseSourceforgeMirrorManifest(sourceforgeJson)
     : undefined;
@@ -140,10 +142,10 @@ async function resolveUpdater() {
       collectedPlatforms,
       latestPreRelease.assets,
       sourceforgeManifest,
-      Deno.env.get("GITHUB_SHA") ?? "",
+      process.env["GITHUB_SHA"] ?? "",
       shortHash,
-      Deno.env.get("GITHUB_RUN_ID") ?? "",
-      Deno.env.get("GITHUB_RUN_ATTEMPT") ?? "",
+      process.env["GITHUB_RUN_ID"] ?? "",
+      process.env["GITHUB_RUN_ATTEMPT"] ?? "",
     )
     : collectedPlatforms;
   const updateData = {
@@ -229,5 +231,5 @@ async function resolveUpdater() {
 
 resolveUpdater().catch((err) => {
   consola.fatal(err);
-  Deno.exit(1);
+  process.exit(1);
 });

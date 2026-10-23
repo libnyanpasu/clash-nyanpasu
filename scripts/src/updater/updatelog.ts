@@ -1,17 +1,18 @@
-import * as path from "jsr:@std/path";
-import { exists } from "jsr:@std/fs";
+import * as path from "node:path";
+import { pathExists } from "../shared/path-exists.ts";
+import { readFile } from "node:fs/promises";
 
 export async function resolveUpdateLog(tag: string) {
   const reTitle = /^## v[\d.]+/;
   const reEnd = /^---/;
 
-  const file = path.join(Deno.cwd(), "UPDATELOG.md");
+  const file = path.join(process.cwd(), "UPDATELOG.md");
 
-  if (!(await exists(file))) {
+  if (!(await pathExists(file))) {
     throw new Error("could not found UPDATELOG.md");
   }
 
-  const data = await Deno.readTextFile(file);
+  const data = await readFile(file, "utf8");
 
   const map: Record<string, string[]> = {};
   let p = "";

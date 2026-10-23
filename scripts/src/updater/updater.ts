@@ -1,5 +1,5 @@
-import * as path from "jsr:@std/path";
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
+import * as path from "node:path";
+import { parseArgs } from "node:util";
 import { Octokit } from "npm:octokit";
 import { colorize, consola } from "../shared/logger.ts";
 import {
@@ -20,13 +20,15 @@ import {
   sourceforgeMirrorAssetsEqual,
   type SourceforgeMirrorManifest,
 } from "./sourceforge-mirrors.ts";
+import { mkdir, writeFile } from "node:fs/promises";
 
 const GITHUB_PROXY = "https://nyanpasu-script.majokeiko.com/";
 const UPDATE_TAG_NAME = "updater";
-const UPDATE_RELEASE_BODY = Deno.env.get("RELEASE_BODY") ?? "";
+const UPDATE_RELEASE_BODY = process.env["RELEASE_BODY"] ?? "";
 
-const argv = parseArgs(Deno.args, {
-  string: ["cache-path"],
+const { values: argv } = parseArgs({
+  options: { "cache-path": { type: "string" } },
+  strict: false,
 });
 
 function getGithubUrl(url: string): string {
@@ -39,9 +41,9 @@ function getGithubUrl(url: string): string {
 }
 
 function getRepoContext() {
-  const token = Deno.env.get("GITHUB_TOKEN");
+  const token = process.env["GITHUB_TOKEN"];
   if (!token) throw new Error("GITHUB_TOKEN is required");
-  const repoStr = Deno.env.get("GITHUB_REPOSITORY") ?? "";
+  const repoStr = process.env["GITHUB_REPOSITORY"] ?? "";
   const [owner, repo] = repoStr.split("/");
   if (!owner || !repo) throw new Error("GITHUB_REPOSITORY must be owner/repo");
   return { token, owner, repo };
@@ -149,11 +151,11 @@ async function persistSourceforgeMirrors(
 
 async function saveToCache(fileName: string, content: string) {
   const cachePath = argv["cache-path"];
-  if (!cachePath) return;
+  if (typeof cachePath !== "string" || !cachePath) return;
   try {
-    await Deno.mkdir(cachePath, { recursive: true });
+    await mkdir(cachePath, { recursive: true });
     const filePath = path.join(cachePath, fileName);
-    await Deno.writeTextFile(filePath, content);
+    await writeFile(filePath, content);
     consola.success(colorize`cached file saved to: {gray.bold ${filePath}}`);
   } catch (err) {
     consola.error(`Failed to save cache file: ${err}`);
@@ -167,7 +169,7 @@ async function resolveUpdater(channel: ReleaseChannel) {
   const { token, owner, repo } = getRepoContext();
   const github = new Octokit({ auth: token });
   const options = { owner, repo };
-  const incomingMirrorJson = Deno.env.get("SOURCEFORGE_MIRRORS_JSON")?.trim();
+  const incomingMirrorJson = process.env["SOURCEFORGE_MIRRORS_JSON"]?.trim();
   const incomingMirrors = incomingMirrorJson
     ? parseSourceforgeMirrorManifest(incomingMirrorJson)
     : undefined;
@@ -201,7 +203,7 @@ async function resolveUpdater(channel: ReleaseChannel) {
     : await loadSourceforgeMirrors(latestRelease.assets);
   const updateData = {
     name: tag,
-    notes: (Deno.env.get("RELEASE_TAG") === tag && UPDATE_RELEASE_BODY) ||
+    notes: (process.env["RELEASE_TAG"] === tag && UPDATE_RELEASE_BODY) ||
       updateLog || latestRelease.body,
     pub_date: releaseMirrors?.publishedAt ?? new Date().toISOString(),
     platforms: attachSourceforgeMirrors(
@@ -277,5 +279,5 @@ async function main() {
 
 main().catch((err) => {
   consola.error(err);
-  Deno.exit(1);
+  process.exit(1);
 });

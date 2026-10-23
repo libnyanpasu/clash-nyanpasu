@@ -1,4 +1,4 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 
 export type FrontendPackageRole = "shared" | "app";
 
@@ -67,7 +67,7 @@ const appPathForSpecifier = (
     cleanSpecifier,
   );
   const appRoot = path.resolve(workspaceRoot, "frontend/nyanpasu");
-  return target === appRoot || target.startsWith(`${appRoot}${path.SEPARATOR}`);
+  return target === appRoot || target.startsWith(`${appRoot}${path.sep}`);
 };
 
 const matchesPackage = (pkg: FrontendPackage, name: string) =>

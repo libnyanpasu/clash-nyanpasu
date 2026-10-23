@@ -21,8 +21,8 @@ export async function main(): Promise<number> {
 }
 
 if (import.meta.main) {
-  main().then((status) => Deno.exit(status)).catch((error) => {
+  main().then((status) => process.exit(status)).catch((error) => {
     console.error(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

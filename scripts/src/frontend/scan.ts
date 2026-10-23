@@ -1,4 +1,6 @@
-import * as path from "jsr:@std/path";
+import { readdir, readFile } from "node:fs/promises";
+import * as path from "node:path";
+import { isNotFound } from "../shared/errors.ts";
 import type { FrontendPackage, FrontendPackageRole } from "./policy.ts";
 
 const sourceExtensions = new Set([
@@ -29,18 +31,18 @@ function extractImports(source: string): string[] {
 async function sourceFiles(directory: string): Promise<string[]> {
   const files: string[] = [];
   try {
-    for await (const entry of Deno.readDir(directory)) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
       const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory) {
+      if (entry.isDirectory()) {
         files.push(...await sourceFiles(entryPath));
       } else if (
-        entry.isFile && sourceExtensions.has(path.extname(entry.name))
+        entry.isFile() && sourceExtensions.has(path.extname(entry.name))
       ) {
         files.push(entryPath);
       }
     }
   } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+    if (!isNotFound(error)) throw error;
   }
   return files.sort();
 }
@@ -59,15 +61,15 @@ export async function scanFrontendPackages(
   const frontendRoot = path.join(workspaceRoot, "frontend");
   const packages: FrontendPackage[] = [];
 
-  for await (const entry of Deno.readDir(frontendRoot)) {
-    if (!entry.isDirectory) continue;
+  for (const entry of await readdir(frontendRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
     const packagePath = path.join(frontendRoot, entry.name);
     const manifestPath = path.join(packagePath, "package.json");
     let manifest: Record<string, unknown>;
     try {
-      manifest = JSON.parse(await Deno.readTextFile(manifestPath));
+      manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) continue;
+      if (isNotFound(error)) continue;
       throw new Error(`failed to read ${manifestPath}: ${String(error)}`, {
         cause: error,
       });
@@ -85,7 +87,7 @@ export async function scanFrontendPackages(
         workspaceRoot,
         absoluteSourcePath,
       );
-      const source = await Deno.readTextFile(absoluteSourcePath);
+      const source = await readFile(absoluteSourcePath, "utf8");
       sources.push({
         path: relativeSourcePath,
         imports: extractImports(source),

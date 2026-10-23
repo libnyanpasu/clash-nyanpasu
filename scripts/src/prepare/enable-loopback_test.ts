@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import {
   enableLoopbackInfo,
   getEnableLoopbackInfo,
@@ -9,6 +9,15 @@ import {
 } from "./enable-loopback.ts";
 import { resolveEnableLoopback } from "./resources.ts";
 import type { downloadFile } from "./download.ts";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 const BYTES = new TextEncoder().encode("abc");
 const HASH = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
@@ -29,14 +38,14 @@ Deno.test("enable-loopback reads only the package version, including CRLF and pr
   ) {
     assertThrows(() => parseEnableLoopbackVersion(manifest));
   }
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   try {
     const dir = path.join(
       root,
       "backend/enable-loopback/crates/enable-loopback",
     );
-    await Deno.mkdir(dir, { recursive: true });
-    await Deno.writeTextFile(
+    await mkdir(dir, { recursive: true });
+    await writeFile(
       path.join(dir, "Cargo.toml"),
       "[package]\nversion = '2.3.4'\n",
     );
@@ -45,7 +54,7 @@ Deno.test("enable-loopback reads only the package version, including CRLF and pr
       enableLoopbackInfo("2.3.4", "arm64"),
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });
 
@@ -91,7 +100,7 @@ Deno.test("enable-loopback validates sha256sum format, filename and digest", asy
 });
 
 Deno.test("enable-loopback installs verified bytes, replaces legacy cache and preserves it on mismatch", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const context = {
     resourcesDir: path.join(root, "resources"),
     sidecarDir: path.join(root, "sidecar"),
@@ -104,23 +113,23 @@ Deno.test("enable-loopback installs verified bytes, replaces legacy cache and pr
   let executableDownloads = 0;
   const download: typeof downloadFile = async (url, destination) => {
     if (url === info.checksumURL) {
-      await Deno.writeTextFile(destination, `${HASH}  ${info.assetName}\n`);
+      await writeFile(destination, `${HASH}  ${info.assetName}\n`);
     } else {
       assertEquals(url, info.downloadURL);
       executableDownloads++;
-      await Deno.writeFile(destination, corrupt ? new Uint8Array([0]) : BYTES);
+      await writeFile(destination, corrupt ? new Uint8Array([0]) : BYTES);
     }
     return { size: 3, speed: 1 };
   };
   try {
-    await Deno.mkdir(context.resourcesDir);
+    await mkdir(context.resourcesDir);
     const target = path.join(context.resourcesDir, "enableLoopback.exe");
-    await Deno.writeTextFile(target, "legacy tool");
+    await writeFile(target, "legacy tool");
     assertEquals(
       (await resolveEnableLoopback(context, info, undefined, download)).cached,
       false,
     );
-    assertEquals(await Deno.readFile(target), BYTES);
+    assertEquals(new Uint8Array(await readFile(target)), BYTES);
     assertEquals(
       (await resolveEnableLoopback(context, info, undefined, download)).cached,
       true,
@@ -132,15 +141,15 @@ Deno.test("enable-loopback installs verified bytes, replaces legacy cache and pr
       Error,
       "SHA-256 mismatch",
     );
-    assertEquals(await Deno.readFile(target), BYTES);
-    await Deno.writeTextFile(target, "tampered");
+    assertEquals(new Uint8Array(await readFile(target)), BYTES);
+    await writeFile(target, "tampered");
     await assertRejects(
       () => resolveEnableLoopback(context, info, undefined, download),
       Error,
       "SHA-256 mismatch",
     );
-    assertEquals(Array.from(Deno.readDirSync(context.tempRoot)), []);
+    assertEquals(await readdir(context.tempRoot), []);
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });

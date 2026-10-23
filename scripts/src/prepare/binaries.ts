@@ -1,4 +1,4 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 import type { BinInfo, ClashManifest, VersionManifest } from "./types.ts";
 import { mapArch } from "./platform.ts";
 import {
@@ -8,6 +8,7 @@ import {
   normalizeVersion,
 } from "./versions.ts";
 import type { DebugLog } from "./download.ts";
+import { readFile } from "node:fs/promises";
 
 const MIHOMO_ALPHA_ASSETS_URL =
   "https://github.com/MetaCubeX/mihomo/releases/expanded_assets/Prerelease-Alpha";
@@ -233,7 +234,7 @@ export function createBinaryResolvers(options: BinaryResolverOptions) {
       workspaceRoot,
       "backend/nyanpasu-runtime/nyanpasu_service/Cargo.toml",
     );
-    const manifest = await Deno.readTextFile(manifestPath);
+    const manifest = await readFile(manifestPath, "utf8");
     const match = manifest.match(
       /^\[package\][^[]*?^version\s*=\s*"([^"]+)"/ms,
     );

@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
+import { runCommand } from "../shared/command.ts";
 import {
   assertMeowVersion,
   resolveSidecar,
@@ -7,6 +8,8 @@ import {
 } from "./resources.ts";
 import { normalizeArch, normalizePlatform } from "./platform.ts";
 import type { BinInfo } from "./types.ts";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 Deno.test("Meow version validation accepts matching stable and alpha output", () => {
   assertMeowVersion("Meow Meta 0.22.0", "v0.22.0");
@@ -25,39 +28,39 @@ async function createMeowTarball(
 ): Promise<string> {
   const stageDir = path.join(tempRoot, "fixture");
   const assetDir = path.join(stageDir, name.replace(/\.tar\.gz$/, ""));
-  await Deno.mkdir(assetDir, { recursive: true });
+  await mkdir(assetDir, { recursive: true });
   const magic = platform === "linux"
     ? new Uint8Array([0x7f, 0x45, 0x4c, 0x46])
     : platform === "win32"
     ? new Uint8Array([0x4d, 0x5a, 0x90, 0x00])
     : new Uint8Array([0xcf, 0xfa, 0xed, 0xfe]);
-  await Deno.writeFile(
+  await writeFile(
     path.join(assetDir, "meow"),
     new Uint8Array([...magic, ...new TextEncoder().encode("fixture")]),
     { mode: 0o755 },
   );
 
   const archive = path.join(tempRoot, name);
-  const result = await new Deno.Command("tar", {
+  const result = await runCommand("tar", {
     args: ["-czf", archive, "-C", stageDir, path.basename(assetDir)],
     stdout: "piped",
     stderr: "piped",
-  }).output();
+  });
   if (result.code !== 0) {
-    throw new Error(new TextDecoder().decode(result.stderr));
+    throw new Error(result.stderr.toString("utf8"));
   }
   return archive;
 }
 
 function foreignExecutableTarget(): { platform: string; arch: string } {
-  const platform = Deno.build.os === "linux" ? "darwin" : "linux";
+  const platform = process.platform === "linux" ? "darwin" : "linux";
   return { platform, arch: "x64" };
 }
 
 function nativeExecutableTarget(): { platform: string; arch: string } {
   return {
-    platform: normalizePlatform(Deno.build.os),
-    arch: normalizeArch(Deno.build.arch),
+    platform: normalizePlatform(process.platform),
+    arch: normalizeArch(process.arch),
   };
 }
 
@@ -85,19 +88,19 @@ function meowInfo(name: string, version: string, assetName: string): BinInfo {
 }
 
 Deno.test("Meow repairs an unstamped legacy sidecar from the archive executable", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const target = foreignExecutableTarget();
   const context = resolverContext(root, target);
   const assetName = "meow-v0.22.0-x86_64-unknown-linux-musl.tar.gz";
   const tempFile = path.join(context.tempRoot, "meow", assetName);
-  await Deno.mkdir(path.dirname(tempFile), { recursive: true });
+  await mkdir(path.dirname(tempFile), { recursive: true });
   await createMeowTarball(path.dirname(tempFile), assetName, target.platform);
-  await Deno.mkdir(context.sidecarDir, { recursive: true });
+  await mkdir(context.sidecarDir, { recursive: true });
   const sidecarPath = path.join(
     context.sidecarDir,
     "meow-x86_64-unknown-linux-musl",
   );
-  await Deno.writeFile(sidecarPath, new Uint8Array([0x1f, 0x8b, 0x08]));
+  await writeFile(sidecarPath, new Uint8Array([0x1f, 0x8b, 0x08]));
 
   try {
     const result = await resolveSidecar(
@@ -106,13 +109,13 @@ Deno.test("Meow repairs an unstamped legacy sidecar from the archive executable"
     );
     assertEquals(result.cached, false);
     assertEquals(
-      Array.from((await Deno.readFile(sidecarPath)).slice(0, 4)),
+      Array.from((await readFile(sidecarPath)).slice(0, 4)),
       target.platform === "linux"
         ? [0x7f, 0x45, 0x4c, 0x46]
         : [0xcf, 0xfa, 0xed, 0xfe],
     );
     assertEquals(
-      (await Deno.readTextFile(`${sidecarPath}.version`)).trim(),
+      (await readFile(`${sidecarPath}.version`, "utf8")).trim(),
       "v0.22.0",
     );
     assertEquals(
@@ -121,26 +124,26 @@ Deno.test("Meow repairs an unstamped legacy sidecar from the archive executable"
       true,
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });
 
 Deno.test("Meow Alpha version mismatch keeps the previous binary and stamp", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const target = nativeExecutableTarget();
   const context = resolverContext(root, target);
   const assetName = `meow-alpha-3c27aca-${target.platform}-native.tar.gz`;
   const tempDir = path.join(context.tempRoot, "meow-alpha");
-  await Deno.mkdir(tempDir, { recursive: true });
+  await mkdir(tempDir, { recursive: true });
   await createMeowTarball(
     tempDir,
     assetName,
     target.platform,
   );
-  await Deno.mkdir(context.sidecarDir, { recursive: true });
+  await mkdir(context.sidecarDir, { recursive: true });
   const sidecarPath = path.join(context.sidecarDir, "meow-alpha-native");
-  await Deno.writeTextFile(sidecarPath, "previous-good-binary");
-  await Deno.writeTextFile(`${sidecarPath}.version`, "alpha-3c27aca");
+  await writeFile(sidecarPath, "previous-good-binary");
+  await writeFile(`${sidecarPath}.version`, "alpha-3c27aca");
   const info = {
     ...meowInfo("meow-alpha", "alpha-3c27aca", assetName),
     targetFile: "meow-alpha-native",
@@ -153,18 +156,18 @@ Deno.test("Meow Alpha version mismatch keeps the previous binary and stamp", asy
       Error,
       "unexpected Meow alpha version",
     );
-    assertEquals(await Deno.readTextFile(sidecarPath), "previous-good-binary");
+    assertEquals(await readFile(sidecarPath, "utf8"), "previous-good-binary");
     assertEquals(
-      await Deno.readTextFile(`${sidecarPath}.version`),
+      await readFile(`${sidecarPath}.version`, "utf8"),
       "alpha-3c27aca",
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });
 
 Deno.test("Sidecar refreshes a gone alpha asset from the live release", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const context = resolverContext(root, foreignExecutableTarget());
   const originalFetch = globalThis.fetch;
   let refreshCalls = 0;
@@ -208,17 +211,17 @@ Deno.test("Sidecar refreshes a gone alpha asset from the live release", async ()
     assertEquals(result.version, "alpha-live");
     assertEquals(result.size, 3);
     assertEquals(
-      await Deno.readFile(path.join(context.sidecarDir, targetFile)),
+      new Uint8Array(await readFile(path.join(context.sidecarDir, targetFile))),
       new Uint8Array([0x01, 0x02, 0x03]),
     );
   } finally {
     globalThis.fetch = originalFetch;
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });
 
 Deno.test("Sidecar keeps the pinned asset while it is still available", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const context = resolverContext(root, foreignExecutableTarget());
   const originalFetch = globalThis.fetch;
   let refreshCalls = 0;
@@ -244,12 +247,12 @@ Deno.test("Sidecar keeps the pinned asset while it is still available", async ()
     assertEquals(result.version, "alpha-pinned");
   } finally {
     globalThis.fetch = originalFetch;
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });
 
 Deno.test("Sidecar reports the pinned download error when refresh fails", async () => {
-  const root = await Deno.makeTempDir();
+  const root = await mkdtemp(path.join(tmpdir(), "nyanpasu-scripts-"));
   const context = resolverContext(root, foreignExecutableTarget());
   const originalFetch = globalThis.fetch;
   let refreshCalls = 0;
@@ -278,6 +281,6 @@ Deno.test("Sidecar reports the pinned download error when refresh fails", async 
     assertEquals(refreshCalls, 1);
   } finally {
     globalThis.fetch = originalFetch;
-    await Deno.remove(root, { recursive: true });
+    await rm(root, { recursive: true });
   }
 });

@@ -1,4 +1,5 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
+import { readFile } from "node:fs/promises";
 
 export interface EnableLoopbackInfo {
   version: string;
@@ -44,10 +45,13 @@ export async function getEnableLoopbackInfo(
   workspaceRoot: string,
   arch: string,
 ): Promise<EnableLoopbackInfo> {
-  const manifest = await Deno.readTextFile(path.join(
-    workspaceRoot,
-    "backend/enable-loopback/crates/enable-loopback/Cargo.toml",
-  ));
+  const manifest = await readFile(
+    path.join(
+      workspaceRoot,
+      "backend/enable-loopback/crates/enable-loopback/Cargo.toml",
+    ),
+    "utf8",
+  );
   return enableLoopbackInfo(parseEnableLoopbackVersion(manifest), arch);
 }
 

@@ -1,6 +1,9 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import { createBinaryResolvers } from "./binaries.ts";
 import type { ArchMapping, SupportedArch, VersionManifest } from "./types.ts";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const platforms: Array<{
   platform: string;
@@ -176,13 +179,13 @@ Deno.test("stable binary resolvers map assets for all supported platforms", () =
 });
 
 Deno.test("nyanpasu-service version and asset derive from its Cargo manifest", async () => {
-  const workspaceRoot = await Deno.makeTempDir();
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "nyanpasu-scripts-"));
   const manifestPath =
     `${workspaceRoot}/backend/nyanpasu-runtime/nyanpasu_service/Cargo.toml`;
-  await Deno.mkdir(manifestPath.replace(/\/Cargo\.toml$/, ""), {
+  await mkdir(manifestPath.replace(/\/Cargo\.toml$/, ""), {
     recursive: true,
   });
-  await Deno.writeTextFile(
+  await writeFile(
     manifestPath,
     '[package]\nname = "nyanpasu-service"\nversion = "2.3.4-rc.1"\n',
   );
@@ -205,7 +208,7 @@ Deno.test("nyanpasu-service version and asset derive from its Cargo manifest", a
         "https://github.com/libnyanpasu/nyanpasu-runtime/releases/download/v2.3.4-rc.1/nyanpasu-service-x86_64-pc-windows-msvc.zip",
     });
   } finally {
-    await Deno.remove(workspaceRoot, { recursive: true });
+    await rm(workspaceRoot, { recursive: true });
   }
 });
 

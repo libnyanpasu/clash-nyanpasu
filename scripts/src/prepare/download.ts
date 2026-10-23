@@ -1,16 +1,14 @@
-import * as path from "jsr:@std/path";
+import { createReadStream, createWriteStream } from "node:fs";
+import { open } from "node:fs/promises";
+import * as path from "node:path";
+import { pipeline } from "node:stream/promises";
+import { createGunzip } from "node:zlib";
 // @ts-types="npm:@types/adm-zip"
 import AdmZip from "npm:adm-zip";
+import { runCommand } from "../shared/command.ts";
 import type { DownloadProgress, DownloadResult } from "./types.ts";
 
 export type DebugLog = (message: string) => void;
-
-async function writeAll(file: Deno.FsFile, bytes: Uint8Array): Promise<void> {
-  let written = 0;
-  while (written < bytes.byteLength) {
-    written += await file.write(bytes.subarray(written));
-  }
-}
 
 export async function downloadFile(
   url: string,
@@ -40,11 +38,7 @@ export async function downloadFile(
   const startedAt = performance.now();
   let downloaded = 0;
 
-  const file = await Deno.open(filePath, {
-    create: true,
-    truncate: true,
-    write: true,
-  });
+  const file = await open(filePath, "w");
 
   try {
     if (!response.body) throw new Error("download failed: empty response body");
@@ -54,7 +48,7 @@ export async function downloadFile(
       const { done, value } = await reader.read();
       if (done) break;
 
-      await writeAll(file, value);
+      await file.write(value);
       downloaded += value.byteLength;
       const elapsedSeconds = Math.max(
         (performance.now() - startedAt) / 1000,
@@ -67,7 +61,7 @@ export async function downloadFile(
       });
     }
   } finally {
-    file.close();
+    await file.close();
   }
 
   const elapsedSeconds = Math.max(
@@ -109,15 +103,14 @@ export async function extractTarGz(
   tarPath: string,
   destDir: string,
 ): Promise<void> {
-  const cmd = new Deno.Command("tar", {
+  const { code, stderr } = await runCommand("tar", {
     args: ["-xzf", tarPath, "-C", destDir],
     stdout: "piped",
     stderr: "piped",
   });
-  const { code, stderr } = await cmd.output();
   if (code !== 0) {
     throw new Error(
-      `tar extraction failed: ${new TextDecoder().decode(stderr)}`,
+      `tar extraction failed: ${stderr.toString("utf8")}`,
     );
   }
 }
@@ -126,9 +119,9 @@ export async function gunzipFile(
   inputPath: string,
   outputPath: string,
 ): Promise<void> {
-  const input = await Deno.open(inputPath, { read: true });
-  const output = await Deno.open(outputPath, { write: true, create: true });
-  await input.readable
-    .pipeThrough(new DecompressionStream("gzip"))
-    .pipeTo(output.writable);
+  await pipeline(
+    createReadStream(inputPath),
+    createGunzip(),
+    createWriteStream(outputPath),
+  );
 }

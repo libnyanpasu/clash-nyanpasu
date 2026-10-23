@@ -1,5 +1,4 @@
-import { ensureDir, exists } from "jsr:@std/fs";
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
 // @ts-types="npm:@types/adm-zip"
 import AdmZip from "npm:adm-zip";
 import type {
@@ -20,6 +19,20 @@ import {
   type EnableLoopbackInfo,
   verifyEnableLoopbackChecksum,
 } from "./enable-loopback.ts";
+import { readdirSync } from "node:fs";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { runCommand } from "../shared/command.ts";
+import { pathExists } from "../shared/path-exists.ts";
 
 export interface ResourceResolverOptions {
   resourcesDir: string;
@@ -40,16 +53,16 @@ export async function resolveResource(
   const targetPath = path.join(context.resourcesDir, file);
   const debugLog = context.debugLog ?? (() => {});
 
-  if (!options?.force && (await exists(targetPath))) {
+  if (!options?.force && (await pathExists(targetPath))) {
     return {
       file,
       version,
-      size: (await Deno.stat(targetPath)).size,
+      size: (await stat(targetPath)).size,
       cached: true,
     };
   }
 
-  await ensureDir(context.resourcesDir);
+  await mkdir(context.resourcesDir, { recursive: true });
   const { size, speed } = await downloadFile(
     downloadURL,
     targetPath,
@@ -62,7 +75,7 @@ export async function resolveResource(
 
 async function readVersionStamp(stampPath: string): Promise<string | null> {
   try {
-    return (await Deno.readTextFile(stampPath)).trim();
+    return (await readFile(stampPath, "utf8")).trim();
   } catch {
     return null;
   }
@@ -79,28 +92,27 @@ export async function resolveEnableLoopback(
   const targetPath = path.join(context.resourcesDir, file);
   const stampPath = `${targetPath}.version`;
   const stamp = `${version}/${assetName}`;
-  await ensureDir(context.tempRoot);
-  const tempDir = await Deno.makeTempDir({
-    dir: context.tempRoot,
-    prefix: "enable-loopback-",
-  });
+  await mkdir(context.tempRoot, { recursive: true });
+  const tempDir = await mkdtemp(
+    path.join(context.tempRoot, "enable-loopback-"),
+  );
   try {
     const checksumPath = path.join(tempDir, `${assetName}.sha256`);
     await download(checksumURL, checksumPath, undefined, context.debugLog);
-    const checksum = await Deno.readTextFile(checksumPath);
+    const checksum = await readFile(checksumPath, "utf8");
     if (
       !options?.force && await readVersionStamp(stampPath) === stamp &&
-      await exists(targetPath)
+      await pathExists(targetPath)
     ) {
       await verifyEnableLoopbackChecksum(
-        await Deno.readFile(targetPath),
+        new Uint8Array(await readFile(targetPath)),
         checksum,
         assetName,
       );
       return {
         file,
         version,
-        size: (await Deno.stat(targetPath)).size,
+        size: (await stat(targetPath)).size,
         cached: true,
       };
     }
@@ -112,16 +124,16 @@ export async function resolveEnableLoopback(
       context.debugLog,
     );
     await verifyEnableLoopbackChecksum(
-      await Deno.readFile(tempFile),
+      new Uint8Array(await readFile(tempFile)),
       checksum,
       assetName,
     );
-    await ensureDir(context.resourcesDir);
-    await Deno.copyFile(tempFile, targetPath);
-    await Deno.writeTextFile(stampPath, stamp);
+    await mkdir(context.resourcesDir, { recursive: true });
+    await copyFile(tempFile, targetPath);
+    await writeFile(stampPath, stamp);
     return { file, version, size, speed, cached: false };
   } finally {
-    await Deno.remove(tempDir, { recursive: true });
+    await rm(tempDir, { recursive: true });
   }
 }
 
@@ -167,14 +179,14 @@ async function verifyMeowExecutable(
   version: string,
   runVersion = runMeowVersion,
 ): Promise<void> {
-  const bytes = await Deno.readFile(executablePath);
+  const bytes = await readFile(executablePath);
   if (!hasExecutableFormat(bytes, platform)) {
     throw new Error(`invalid ${platform} executable format for Meow`);
   }
 
   if (
-    platform !== normalizePlatform(Deno.build.os) ||
-    arch !== normalizeArch(Deno.build.arch)
+    platform !== normalizePlatform(process.platform) ||
+    arch !== normalizeArch(process.arch)
   ) {
     return;
   }
@@ -185,14 +197,14 @@ async function verifyMeowExecutable(
 }
 
 async function runMeowVersion(executablePath: string): Promise<string> {
-  const result = await new Deno.Command(executablePath, {
+  const result = await runCommand(executablePath, {
     args: ["-v"],
     stdout: "piped",
     stderr: "piped",
-  }).output();
-  const output = new TextDecoder().decode(result.stdout).trim();
+  });
+  const output = result.stdout.toString("utf8").trim();
   if (result.code !== 0 || !output) {
-    const stderr = new TextDecoder().decode(result.stderr).trim();
+    const stderr = result.stderr.toString("utf8").trim();
     throw new Error(`meow -v failed (${result.code}): ${stderr}`);
   }
   return output;
@@ -233,22 +245,22 @@ async function materializeSidecar(
   const versionStampPath = `${sidecarPath}.version`;
   const debugLog = context.debugLog ?? (() => {});
 
-  await ensureDir(context.sidecarDir);
+  await mkdir(context.sidecarDir, { recursive: true });
 
   // These cached targets are only trusted alongside a matching version stamp
   // written after successful materialization.
   const needsVersionStamp = ["nyanpasu-service", "meow", "meow-alpha"]
     .includes(name);
   const cachedTargetIsValid = needsVersionStamp
-    ? (await exists(sidecarPath)) &&
+    ? (await pathExists(sidecarPath)) &&
       (await readVersionStamp(versionStampPath)) === version
-    : await exists(sidecarPath);
+    : await pathExists(sidecarPath);
 
   if (!options?.force && cachedTargetIsValid) {
     return {
       file: targetFile,
       version,
-      size: (await Deno.stat(sidecarPath)).size,
+      size: (await stat(sidecarPath)).size,
       cached: true,
     };
   }
@@ -256,12 +268,12 @@ async function materializeSidecar(
   const tempDir = path.join(context.tempRoot, name);
   const tempFile = path.join(tempDir, tmpFile);
   const tempExe = path.join(tempDir, exeFile);
-  await ensureDir(tempDir);
+  await mkdir(tempDir, { recursive: true });
 
   try {
     let size: number;
     let speed: number | undefined;
-    if (!(await exists(tempFile))) {
+    if (!(await pathExists(tempFile))) {
       const result = await downloadFile(
         downloadURL,
         tempFile,
@@ -271,28 +283,28 @@ async function materializeSidecar(
       size = result.size;
       speed = result.speed;
     } else {
-      size = (await Deno.stat(tempFile)).size;
+      size = (await stat(tempFile)).size;
     }
 
     const isMeow = name === "meow" || name === "meow-alpha";
     if (tmpFile.endsWith(".zip")) {
       const extractedExe = await extractZip(tempFile, tempDir, name, debugLog);
-      await Deno.rename(extractedExe, tempExe);
-      if (!isMeow) await Deno.rename(tempExe, sidecarPath);
+      await rename(extractedExe, tempExe);
+      if (!isMeow) await rename(tempExe, sidecarPath);
     } else if (tmpFile.endsWith(".tar.gz")) {
       await extractTarGz(tempFile, tempDir);
-      if (!isMeow) await Deno.rename(tempExe, sidecarPath);
+      if (!isMeow) await rename(tempExe, sidecarPath);
     } else if (tmpFile.endsWith(".gz")) {
       await gunzipFile(tempFile, sidecarPath);
-      await Deno.chmod(sidecarPath, 0o755);
+      await chmod(sidecarPath, 0o755);
     } else {
-      await Deno.rename(tempFile, sidecarPath);
-      if (context.platform !== "win32") await Deno.chmod(sidecarPath, 0o755);
+      await rename(tempFile, sidecarPath);
+      if (context.platform !== "win32") await chmod(sidecarPath, 0o755);
     }
 
     if (isMeow) {
       if (context.platform !== "win32") {
-        await Deno.chmod(tempExe, 0o755);
+        await chmod(tempExe, 0o755);
       }
       if (!version) throw new Error(`missing version for ${name}`);
       await verifyMeowExecutable(
@@ -302,11 +314,11 @@ async function materializeSidecar(
         version,
         context.runMeowVersion,
       );
-      await Deno.rename(tempExe, sidecarPath);
+      await rename(tempExe, sidecarPath);
     }
 
     if (needsVersionStamp && version) {
-      await Deno.writeTextFile(versionStampPath, version);
+      await writeFile(versionStampPath, version);
     }
 
     debugLog(`resolve ${name} finished`);
@@ -314,7 +326,7 @@ async function materializeSidecar(
   } catch (err) {
     if (!needsVersionStamp) {
       try {
-        await Deno.remove(sidecarPath);
+        await rm(sidecarPath);
       } catch {
         // ignore
       }
@@ -322,7 +334,7 @@ async function materializeSidecar(
     throw err;
   } finally {
     try {
-      await Deno.remove(tempDir, { recursive: true });
+      await rm(tempDir, { recursive: true });
     } catch {
       // ignore
     }
@@ -355,27 +367,30 @@ export async function resolveWintun(
   const targetPath = path.join(context.resourcesDir, "wintun.dll");
   const debugLog = context.debugLog ?? (() => {});
 
-  if (!force && (await exists(targetPath))) {
+  if (!force && (await pathExists(targetPath))) {
     return {
       file: "wintun.dll",
-      size: (await Deno.stat(targetPath)).size,
+      size: (await stat(targetPath)).size,
       cached: true,
     };
   }
 
-  await ensureDir(tempDir);
+  await mkdir(tempDir, { recursive: true });
   let size: number;
   let speed: number | undefined;
-  if (!(await exists(tempZip))) {
+  if (!(await pathExists(tempZip))) {
     const result = await downloadFile(url, tempZip, onProgress, debugLog);
     size = result.size;
     speed = result.speed;
   } else {
-    size = (await Deno.stat(tempZip)).size;
+    size = (await stat(tempZip)).size;
   }
 
-  const fileData = await Deno.readFile(tempZip);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", fileData);
+  const fileData = await readFile(tempZip);
+  const hashBuffer = await crypto.subtle.digest(
+    "SHA-256",
+    new Uint8Array(fileData),
+  );
   const hashHex = Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -388,9 +403,9 @@ export async function resolveWintun(
 
   function findDlls(dir: string): string[] {
     const results: string[] = [];
-    for (const entry of Deno.readDirSync(dir)) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory) {
+      if (entry.isDirectory()) {
         results.push(...findDlls(fullPath));
       } else if (entry.name === "wintun.dll" && fullPath.includes(wintunArch)) {
         results.push(fullPath);
@@ -402,9 +417,9 @@ export async function resolveWintun(
   const dll = findDlls(tempDir)[0];
   if (!dll) throw new Error(`wintun not found for arch ${wintunArch}`);
 
-  await ensureDir(path.dirname(targetPath));
-  await Deno.copyFile(dll, targetPath);
-  await Deno.remove(tempDir, { recursive: true });
+  await mkdir(path.dirname(targetPath), { recursive: true });
+  await copyFile(dll, targetPath);
+  await rm(tempDir, { recursive: true });
   debugLog("resolve wintun.dll finished");
   return { file: "wintun.dll", size, speed, cached: false };
 }

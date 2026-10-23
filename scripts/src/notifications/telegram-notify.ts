@@ -1,7 +1,9 @@
-import * as path from "jsr:@std/path";
+import * as path from "node:path";
+import { runCommand } from "../shared/command.ts";
 import { Bot } from "npm:grammy";
 import { consola } from "../shared/logger.ts";
 import { WORKSPACE_ROOT } from "../shared/repo-paths.ts";
+import { readFile } from "node:fs/promises";
 
 interface ReleaseNotification {
   nightly: boolean;
@@ -46,32 +48,32 @@ export function buildReleaseMessage(notification: ReleaseNotification): string {
 }
 
 function requireEnv(name: string): string {
-  const value = Deno.env.get(name);
+  const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
 
   return value;
 }
 
 async function main(): Promise<void> {
-  const nightly = Deno.args.includes("--nightly");
+  const nightly = process.argv.slice(2).includes("--nightly");
   const bot = new Bot(requireEnv("TELEGRAM_TOKEN"));
   const chatId = requireEnv(
     nightly ? "TELEGRAM_ARCHIVE_CHANNEL" : "TELEGRAM_RELEASE_CHANNEL",
   );
   const pkg = JSON.parse(
-    await Deno.readTextFile(path.join(WORKSPACE_ROOT, "package.json")),
+    await readFile(path.join(WORKSPACE_ROOT, "package.json"), "utf8"),
   );
-  const tag = Deno.env.get("RELEASE_TAG") ||
+  const tag = process.env.RELEASE_TAG ||
     (nightly ? "pre-release" : `v${pkg.version}`);
   let gitShortHash = "";
   if (nightly) {
-    const result = await new Deno.Command("git", {
+    const result = await runCommand("git", {
       args: ["rev-parse", "--short", "HEAD"],
       cwd: WORKSPACE_ROOT,
       stdout: "piped",
-    }).output();
+    });
     if (!result.success) throw new Error("Failed to read build commit");
-    gitShortHash = new TextDecoder().decode(result.stdout).trim();
+    gitShortHash = result.stdout.toString("utf8").trim();
   }
 
   await bot.api.sendMessage(
@@ -80,7 +82,7 @@ async function main(): Promise<void> {
       nightly,
       tag,
       gitShortHash,
-      workflowRunId: Deno.env.get("WORKFLOW_RUN_ID"),
+      workflowRunId: process.env.WORKFLOW_RUN_ID,
     }),
   );
   consola.success("Sent telegram notification");
@@ -89,6 +91,6 @@ async function main(): Promise<void> {
 if (import.meta.main) {
   main().catch((error) => {
     consola.fatal(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

@@ -257,8 +257,8 @@ importers:
         specifier: 2.0.0
         version: 2.0.0(postcss-html@2.0.0(postcss@8.5.31))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
       stylelint-config-recess-order:
-        specifier: 7.8.2
-        version: 7.8.2(stylelint-order@8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
+        specifier: 7.9.0
+        version: 7.9.0(stylelint-order@8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
       stylelint-config-standard:
         specifier: 40.0.0
         version: 40.0.0(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))
@@ -6201,8 +6201,8 @@ packages:
       postcss-html: ^2.0.0
       stylelint: '>=16.0.0'
 
-  stylelint-config-recess-order@7.8.2:
-    resolution: {integrity: sha512-IIRCTkrGiynshEapnjdc53Nq/EaoqdWr/5U0Kk42b9O026+CmgBu4BHQPraWdV98E/U/XsotAhWZXs5gS7/7Zw==}
+  stylelint-config-recess-order@7.9.0:
+    resolution: {integrity: sha512-Pu3zhefjou7PYNkEtx4uLnsCSmXpiNIx8ALd20r+PGO1LApcf2Gowh2pKEaY9h8gdR8Wp6rUGqhqEIAhdyoHxg==}
     peerDependencies:
       stylelint: ^16.18.0 || ^17.0.0
       stylelint-order: ^7.0.0 || ^8.0.0
@@ -12402,7 +12402,7 @@ snapshots:
       postcss-html: 2.0.0(postcss@8.5.31)
       stylelint: 17.16.0(supports-color@10.2.2)(typescript@7.0.2)
 
-  stylelint-config-recess-order@7.8.2(stylelint-order@8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)):
+  stylelint-config-recess-order@7.9.0(stylelint-order@8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)))(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2)):
     dependencies:
       stylelint: 17.16.0(supports-color@10.2.2)(typescript@7.0.2)
       stylelint-order: 8.1.2(stylelint@17.16.0(supports-color@10.2.2)(typescript@7.0.2))

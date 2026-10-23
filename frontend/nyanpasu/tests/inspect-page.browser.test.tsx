@@ -282,10 +282,18 @@ async function open({
   width = 1280,
   height = 700,
   mode = 'ready',
-}: { path?: string; width?: number; height?: number; mode?: Mode } = {}) {
+  nodes,
+}: {
+  path?: string
+  width?: number
+  height?: number
+  mode?: Mode
+  nodes?: RuntimeInspectionNode[]
+} = {}) {
   const state = {
-    latest: snapshot(),
+    latest: snapshot(nodes && { nodes }),
     applied: snapshot({
+      ...(nodes && { nodes }),
       snapshot_id: 'snap-applied',
       applied: true,
       revision: 'rev-0',
@@ -719,6 +727,62 @@ test('on a narrow screen the steps open in a drawer', async ({
 
   await expect.poll(() => ui.detailKey()).toBe('scoped:cfg:dns:0')
   await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+})
+
+// The source feeds two transforms that join again before the final step.
+const BRANCHED = NODES.map((entry) => {
+  if (entry.id === 0) return { ...entry, next: [1, 2] }
+  if (entry.id === 1 || entry.id === 2) return { ...entry, next: [3] }
+  return entry
+})
+
+test('the list draws a lane for every branch of the build', async ({
+  onTestFinished,
+}) => {
+  const ui = await open({ nodes: BRANCHED })
+  onTestFinished(finish(ui))
+  await ready(ui)
+
+  const gutters = ui.view.container.querySelectorAll(
+    '[data-slot="inspect-step-rail"] [data-slot="inspect-lane-gutter"]',
+  )
+  expect(gutters.length).toBeGreaterThan(0)
+  // Two lanes are open at once, so the gutter is two lanes wide.
+  expect(
+    Math.max(...[...gutters].map((g) => g.getBoundingClientRect().width)),
+  ).toBe(28)
+})
+
+test('the graph shows a node per step and selects like the list', async ({
+  onTestFinished,
+}) => {
+  const ui = await open({ nodes: BRANCHED, width: 1440, height: 800 })
+  onTestFinished(finish(ui))
+  await ready(ui)
+
+  await userEvent.click(
+    page.getByRole('radio', { name: m.inspect_view_graph() }),
+  )
+  const graph = () => ui.query('[data-slot="inspect-step-graph"]')
+  await expect.poll(graph).not.toBeNull()
+  expect(ui.query('[data-slot="inspect-step-rail"]')).toBeNull()
+
+  const node = (key: string) =>
+    graph()!.querySelector<HTMLElement>(`[data-key="${key}"]`)
+  expect(graph()!.querySelectorAll('button[data-key]')).toHaveLength(6)
+  expect(node('final')?.getAttribute('aria-current')).toBe('step')
+
+  await userEvent.click(page.getByRole('button', { name: /DNS override/ }))
+  await expect.poll(() => ui.detailKey()).toBe('scoped:cfg:dns:0')
+  expect(node('scoped:cfg:dns:0')?.getAttribute('aria-current')).toBe('step')
+
+  await userEvent.click(
+    page.getByRole('radio', { name: m.inspect_view_list() }),
+  )
+  await expect
+    .poll(() => ui.query('[data-slot="inspect-step-rail"]'))
+    .not.toBeNull()
+  expect(ui.current()).toBe('scoped:cfg:dns:0')
 })
 
 test('the page says when it is loading', async ({ onTestFinished }) => {

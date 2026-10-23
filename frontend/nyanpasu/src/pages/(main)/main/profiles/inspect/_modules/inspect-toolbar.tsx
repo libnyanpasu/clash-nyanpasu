@@ -1,3 +1,4 @@
+import AccountTreeRounded from '~icons/material-symbols/account-tree-rounded'
 import CheckRounded from '~icons/material-symbols/check-rounded'
 import ListRounded from '~icons/material-symbols/list-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
@@ -16,12 +17,16 @@ import PageToolbar from '../../_modules/page-toolbar'
 /** Which snapshot the page shows. */
 export type SnapshotView = 'latest' | 'applied'
 
+/** How the page lays the steps out. */
+export type StepLayout = 'list' | 'graph'
+
 function statusText(snapshot: RuntimeInspection) {
   if (snapshot.effective_pending) return m.inspect_effective_pending()
   return snapshot.applied ? m.inspect_applied() : m.inspect_not_applied()
 }
 
 const snapshotItemClassName = 'flex-none px-3.5 text-[13px] whitespace-nowrap'
+const layoutItemClassName = 'flex-none px-3'
 
 /**
  * The control row of the page: which snapshot to show, what it is, a search
@@ -31,6 +36,8 @@ export default function InspectToolbar({
   snapshot,
   view,
   onViewChange,
+  layout,
+  onLayoutChange,
   fieldQuery,
   onFieldQueryChange,
   onCycleMatch,
@@ -41,6 +48,8 @@ export default function InspectToolbar({
   snapshot?: RuntimeInspection | null
   view: SnapshotView
   onViewChange: (view: SnapshotView) => void
+  layout: StepLayout
+  onLayoutChange: (layout: StepLayout) => void
   fieldQuery: string
   onFieldQueryChange: (query: string) => void
   /** Enter selects the next step with a matching field; Shift+Enter, the previous. */
@@ -86,6 +95,32 @@ export default function InspectToolbar({
             </SegmentedButtonItem>
           </SegmentedButton>
 
+          <SegmentedButton
+            className="order-5 h-8 w-auto shrink-0 text-[13px] @3xl:order-2"
+            aria-label={m.inspect_view_label()}
+            value={layout}
+            onValueChange={(value) => {
+              if (value) onLayoutChange(value as StepLayout)
+            }}
+          >
+            <SegmentedButtonItem
+              value="list"
+              hideIndicator
+              aria-label={m.inspect_view_list()}
+              className={layoutItemClassName}
+            >
+              <ListRounded className="size-4" aria-hidden />
+            </SegmentedButtonItem>
+            <SegmentedButtonItem
+              value="graph"
+              hideIndicator
+              aria-label={m.inspect_view_graph()}
+              className={layoutItemClassName}
+            >
+              <AccountTreeRounded className="size-4" aria-hidden />
+            </SegmentedButtonItem>
+          </SegmentedButton>
+
           {snapshot && (
             <p
               data-slot="inspect-status"
@@ -93,6 +128,8 @@ export default function InspectToolbar({
               className={cn(
                 'bg-surface-variant text-on-surface-variant hidden h-7 min-w-0 items-center gap-1.5',
                 'rounded-lg px-2.5 text-xs font-medium whitespace-nowrap @3xl:order-3 @3xl:inline-flex',
+                // Shrinks before the controls wrap onto a second row.
+                '@3xl:max-w-max @3xl:flex-1 @3xl:basis-0',
               )}
             >
               <StatusIcon

@@ -16,6 +16,7 @@ import { keepReturn } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { events, queries } from '@/services/rpc'
 import { unwrapQueryOptions } from '@nyanpasu/query'
+import { cn } from '@nyanpasu/utils'
 import {
   useQuery,
   useQueryClient,
@@ -28,8 +29,12 @@ import {
   matchField,
   resolveStep,
 } from './_modules/inspect-steps'
-import InspectToolbar, { type SnapshotView } from './_modules/inspect-toolbar'
+import InspectToolbar, {
+  type SnapshotView,
+  type StepLayout,
+} from './_modules/inspect-toolbar'
 import StepDetail, { defaultTab, type InspectTab } from './_modules/step-detail'
+import StepGraph from './_modules/step-graph'
 import StepRail from './_modules/step-rail'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
@@ -55,6 +60,7 @@ function RouteComponent() {
   const openProfile = useOpenProfile(profiles)
 
   const [view, setView] = useState<SnapshotView>('latest')
+  const [layout, setLayout] = useState<StepLayout>('list')
   const [onlyChanged, setOnlyChanged] = useState(false)
   const [fieldQuery, setFieldQuery] = useState('')
   const [stepsOpen, setStepsOpen] = useState(false)
@@ -135,6 +141,21 @@ function RouteComponent() {
       ? tabOverride.tab
       : selected && defaultTab(selected)
 
+  const graph = (className?: string) =>
+    snapshot && (
+      <StepGraph
+        className={className}
+        steps={visibleSteps}
+        allSteps={steps}
+        selectedKey={selected?.key}
+        onSelect={selectStep}
+        profiles={profiles}
+        onlyChanged={onlyChanged}
+        onOnlyChangedChange={setOnlyChanged}
+        matchedKeys={matchedKeys}
+      />
+    )
+
   const rail = (className?: string, onSelected?: () => void) =>
     snapshot && (
       <StepRail
@@ -163,6 +184,8 @@ function RouteComponent() {
         snapshot={snapshot}
         view={view}
         onViewChange={setView}
+        layout={layout}
+        onLayoutChange={setLayout}
         fieldQuery={fieldQuery}
         onFieldQueryChange={setFieldQuery}
         onCycleMatch={cycleMatch}
@@ -197,8 +220,15 @@ function RouteComponent() {
       )}
 
       {!inspection.isError && snapshot && selected && tab && (
-        <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] @3xl:grid-cols-[20rem_minmax(0,1fr)]">
-          {rail('hidden @3xl:flex')}
+        <div
+          className={cn(
+            'grid min-h-0 flex-1',
+            layout === 'graph'
+              ? 'grid-rows-[minmax(0,2fr)_minmax(0,3fr)] @3xl:grid-cols-[minmax(0,3fr)_minmax(24rem,2fr)] @3xl:grid-rows-[minmax(0,1fr)]'
+              : 'grid-rows-[minmax(0,1fr)] @3xl:grid-cols-[20rem_minmax(0,1fr)]',
+          )}
+        >
+          {layout === 'graph' ? graph() : rail('hidden @3xl:flex')}
 
           <StepDetail
             key={selected.key}

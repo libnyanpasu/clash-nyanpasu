@@ -254,6 +254,12 @@ Deno.test("classify package artifact directories to exactly the updater targets"
     "macos-x86_64",
   );
   assertEquals(
+    classifyPublicationArtifactDirectory(
+      "Clash.Nyanpasu-windows-aarch64-symbols",
+    ),
+    null,
+  );
+  assertEquals(
     classifyPublicationArtifactDirectory("unrelated-artifact"),
     null,
   );
@@ -265,6 +271,11 @@ Deno.test("central preparation validates all targets, normalizes Windows names a
     const downloaded = `${temp}/downloaded`;
     const output = `${temp}/central`;
     await fixture(downloaded);
+    await writeArtifact(
+      downloaded,
+      "Clash.Nyanpasu-windows-aarch64-symbols",
+      "Clash.Nyanpasu_123456789_windows-aarch64_symbols.7z",
+    );
     const context = await prepareCentralPublication(downloaded, output, {
       channel: "nightly",
       tag: null,
@@ -276,6 +287,12 @@ Deno.test("central preparation validates all targets, normalizes Windows names a
     });
     assertEquals(context.publishedAt, publishedAt);
     assertEquals(context.targets.length, 6);
+    assertEquals(
+      context.inventories["windows-aarch64"].some((fileName) =>
+        fileName.endsWith("_symbols.7z")
+      ),
+      false,
+    );
     const windows = JSON.parse(
       await Deno.readTextFile(`${output}/manifests/windows-x86_64.json`),
     );

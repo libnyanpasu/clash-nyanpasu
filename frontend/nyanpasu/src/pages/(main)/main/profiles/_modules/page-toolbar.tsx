@@ -15,6 +15,8 @@ export default function PageToolbar({
   backTo,
   context,
   actions,
+  contextClassName,
+  actionsClassName,
   className,
   ...props
 }: Omit<ComponentProps<'header'>, 'title'> & {
@@ -25,6 +27,13 @@ export default function PageToolbar({
   context?: ReactNode
   /** Controls at the end of the toolbar. */
   actions?: ReactNode
+  /**
+   * Layout of the two areas. A page whose controls need their own wrapping,
+   * such as a second row on a narrow toolbar, makes an area `contents` and
+   * orders its controls beside the title.
+   */
+  contextClassName?: string
+  actionsClassName?: string
 }) {
   return (
     <header
@@ -49,7 +58,7 @@ export default function PageToolbar({
 
       {context && (
         <div
-          className="flex min-w-0 items-center gap-2.5"
+          className={cn('flex min-w-0 items-center gap-2.5', contextClassName)}
           data-slot="page-toolbar-context"
         >
           {context}
@@ -58,7 +67,7 @@ export default function PageToolbar({
 
       {actions && (
         <div
-          className="ml-auto flex items-center gap-2.5"
+          className={cn('ml-auto flex items-center gap-2.5', actionsClassName)}
           data-slot="page-toolbar-actions"
         >
           {actions}

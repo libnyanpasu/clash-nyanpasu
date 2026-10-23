@@ -10,11 +10,7 @@ import {
 import { m } from '@/paraglide/messages'
 import type { RuntimeInspection } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import {
-  CompactButton,
-  RowAction,
-  searchPillClassName,
-} from '../../_modules/compact-controls'
+import { RowAction, searchPillClassName } from '../../_modules/compact-controls'
 import PageToolbar from '../../_modules/page-toolbar'
 
 /** Which snapshot the page shows. */
@@ -60,10 +56,14 @@ export default function InspectToolbar({
     <PageToolbar
       title={m.inspect_title()}
       backTo="/main/profiles"
+      // Narrow: the title row carries the steps and refresh, and the snapshot
+      // switch and the search share the row below. Wide: one row.
+      contextClassName="contents"
+      actionsClassName="contents"
       context={
         <>
           <SegmentedButton
-            className="h-8 w-auto shrink-0 text-[13px]"
+            className="order-5 h-8 w-auto shrink-0 text-[13px] @3xl:order-2"
             aria-label={m.inspect_snapshot_label()}
             value={view}
             onValueChange={(value) => {
@@ -92,7 +92,7 @@ export default function InspectToolbar({
               data-applied={snapshot.applied || undefined}
               className={cn(
                 'bg-surface-variant text-on-surface-variant hidden h-7 min-w-0 items-center gap-1.5',
-                'rounded-lg px-2.5 text-xs font-medium whitespace-nowrap @3xl:inline-flex',
+                'rounded-lg px-2.5 text-xs font-medium whitespace-nowrap @3xl:order-3 @3xl:inline-flex',
               )}
             >
               <StatusIcon
@@ -113,17 +113,22 @@ export default function InspectToolbar({
       }
       actions={
         <>
-          <CompactButton
-            className="@3xl:hidden"
+          <span aria-hidden className="order-4 h-0 basis-full @3xl:hidden" />
+
+          <RowAction
+            label={m.inspect_show_steps()}
+            className="order-2 ml-auto size-10 @3xl:hidden"
             onClick={onShowSteps}
             data-slot="inspect-show-steps"
           >
-            <ListRounded aria-hidden />
-            {m.inspect_show_steps()}
-          </CompactButton>
+            <ListRounded className="size-5" aria-hidden />
+          </RowAction>
 
           <SearchField
-            className={cn('w-40 @3xl:w-[250px]', searchPillClassName)}
+            className={cn(
+              'order-6 min-w-0 flex-1 @3xl:order-4 @3xl:ml-auto @3xl:w-[250px] @3xl:flex-none',
+              searchPillClassName,
+            )}
             value={fieldQuery}
             onValueChange={onFieldQueryChange}
             clearLabel={m.inspect_find_clear()}
@@ -139,7 +144,7 @@ export default function InspectToolbar({
 
           <RowAction
             label={m.inspect_refresh()}
-            className="size-10"
+            className="order-3 size-10 @3xl:order-5"
             onClick={onRefresh}
           >
             <RefreshRounded className="size-5" aria-hidden />

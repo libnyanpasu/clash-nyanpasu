@@ -1,4 +1,4 @@
-import { join } from "jsr:@std/path";
+import { join } from "node:path";
 import type { CreditEntry } from "./document.ts";
 import {
   chooseLicenses,

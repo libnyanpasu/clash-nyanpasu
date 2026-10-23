@@ -1,4 +1,4 @@
-import { parse as parseToml } from "jsr:@std/toml@1";
+import { parse as parseToml } from "npm:smol-toml@1.9.1";
 import parseSpdx from "npm:spdx-expression-parse@5.0.0";
 import spdxLicenses from "npm:spdx-license-list@6.12.0/full.js";
 

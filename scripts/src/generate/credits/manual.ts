@@ -1,4 +1,4 @@
-import { parse as parseToml } from "jsr:@std/toml@1";
+import { parse as parseToml } from "npm:smol-toml@1.9.1";
 import { z } from "npm:zod";
 import type { CreditEntry } from "./document.ts";
 import {

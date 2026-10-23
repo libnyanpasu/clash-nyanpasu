@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { join } from "jsr:@std/path";
+import { join } from "node:path";
 import { standardLicenseText } from "./license-policy.ts";
 import {
   npmEntries,

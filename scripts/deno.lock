@@ -34,6 +34,7 @@
     "npm:playwright@1.63.0": "1.63.0",
     "npm:prettier@3.9.9": "3.9.9",
     "npm:semver@*": "7.7.4",
+    "npm:smol-toml@1.9.1": "1.9.1",
     "npm:spdx-expression-parse@5.0.0": "5.0.0",
     "npm:spdx-license-list@6.12.0": "6.12.0",
     "npm:telegram@*": "2.26.22",
@@ -1097,6 +1098,9 @@
     },
     "smart-buffer@4.2.0": {
       "integrity": "sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg=="
+    },
+    "smol-toml@1.9.1": {
+      "integrity": "sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ=="
     },
     "socks@2.8.7": {
       "integrity": "sha512-HLpt+uLy/pxB+bum/9DzAgiKS8CX1EvbWxI4zlmgGCExImLdiad2iCwXT5Z4c9c3Eq8rP2318mPW2c+QbtjK8A==",

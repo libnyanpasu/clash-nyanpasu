@@ -1,6 +1,16 @@
-import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import { exists } from "jsr:@std/fs";
-import * as path from "jsr:@std/path";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
+import { parseArgs } from "node:util";
+import { runCommand } from "../../shared/command.ts";
 import { consola } from "../../shared/logger.ts";
 import { WORKSPACE_ROOT } from "../../shared/repo-paths.ts";
 import { type CargoAboutOutput, cargoEntries } from "./cargo.ts";
@@ -25,29 +35,25 @@ async function run(
   args: string[],
   what: string,
 ): Promise<string> {
-  let result: Deno.CommandOutput;
+  let result: Awaited<ReturnType<typeof runCommand>>;
   try {
-    result = await new Deno.Command(program, {
-      cwd: WORKSPACE_ROOT,
-      args,
-      stdout: "piped",
-      stderr: "piped",
-    }).output();
+    result = await runCommand(program, { cwd: WORKSPACE_ROOT, args });
   } catch (error) {
     throw new Error(`failed to start ${what}`, { cause: error });
   }
   if (!result.success) {
     throw new Error(
       `${what} failed:
-${new TextDecoder().decode(result.stderr)}`,
+${result.stderr.toString("utf8")}`,
     );
   }
-  return new TextDecoder().decode(result.stdout);
+  return result.stdout.toString("utf8");
 }
 
 async function cargoAbout(): Promise<string> {
   // cargo-about refuses to write to a redirected stdout on Windows.
-  const output = await Deno.makeTempFile({ suffix: ".json" });
+  const outputDir = await mkdtemp(path.join(tmpdir(), "nyanpasu-about-"));
+  const output = path.join(outputDir, "about.json");
   try {
     await run("cargo", [
       "about",
@@ -65,9 +71,9 @@ async function cargoAbout(): Promise<string> {
       "--output-file",
       output,
     ], "cargo-about (install it with `cargo binstall cargo-about@0.9.2`)");
-    return await Deno.readTextFile(output);
+    return await readFile(output, "utf8");
   } finally {
-    await Deno.remove(output);
+    await rm(outputDir, { recursive: true, force: true });
   }
 }
 
@@ -81,7 +87,7 @@ function pnpmLicenses(): Promise<string> {
     "--json",
   ];
   // pnpm is a .cmd shim on some Windows installs, which only a shell resolves.
-  return Deno.build.os === "windows"
+  return process.platform === "win32"
     ? run("cmd", ["/c", "pnpm", ...args], "pnpm licenses list")
     : run("pnpm", args, "pnpm licenses list");
 }
@@ -89,25 +95,29 @@ function pnpmLicenses(): Promise<string> {
 async function readNotices(dir: string): Promise<string[]> {
   const notices: string[] = [];
   const names: string[] = [];
-  for await (const entry of Deno.readDir(dir)) {
-    if (entry.isFile && /^notice/i.test(entry.name)) names.push(entry.name);
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.isFile() && /^notice/i.test(entry.name)) names.push(entry.name);
   }
   for (const name of names.sort()) {
-    notices.push(await Deno.readTextFile(path.join(dir, name)));
+    notices.push(await readFile(path.join(dir, name), "utf8"));
   }
   return notices;
 }
 
 async function main(): Promise<number> {
-  const { check } = parseArgs(Deno.args, { boolean: ["check"] });
+  const { values: { check } } = parseArgs({
+    options: { check: { type: "boolean" } },
+    strict: false,
+  });
 
-  const accepted = readAcceptedLicenses(await Deno.readTextFile(ABOUT_CONFIG));
+  const accepted = readAcceptedLicenses(await readFile(ABOUT_CONFIG, "utf8"));
   const manual = parseManualCredits(
-    await Deno.readTextFile(path.join(CREDITS_DIR, "components.toml")),
+    await readFile(path.join(CREDITS_DIR, "components.toml"), "utf8"),
   );
   const { externalBin } = JSON.parse(
-    await Deno.readTextFile(
+    await readFile(
       path.join(WORKSPACE_ROOT, "backend/tauri/tauri.conf.json"),
+      "utf8",
     ),
   ).bundle as { externalBin: string[] };
 
@@ -120,20 +130,19 @@ async function main(): Promise<number> {
     if (found.length > 0) notices.set(pkg.id, found);
   }
   const npmPackages = await readNpmPackages(JSON.parse(pnpm) as PnpmLicenses, {
-    readTextFile: (file) => Deno.readTextFile(file),
+    readTextFile: (file) => readFile(file, "utf8"),
     readDirNames: async (dir) => {
-      const names: string[] = [];
-      for await (const entry of Deno.readDir(dir)) {
-        if (entry.isFile) names.push(entry.name);
-      }
-      return names;
+      const entries = await readdir(dir, { withFileTypes: true });
+      return entries.filter((entry) => entry.isFile()).map((entry) =>
+        entry.name
+      );
     },
   });
 
   const results = [
     manualEntries(manual.component, (file) => {
       try {
-        return Deno.readTextFileSync(path.join(CREDITS_DIR, file));
+        return readFileSync(path.join(CREDITS_DIR, file), "utf8");
       } catch {
         return undefined;
       }
@@ -163,16 +172,15 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const outputDir = path.dirname(OUTPUT);
-  if (!(await exists(outputDir))) await Deno.mkdir(outputDir);
-  await Deno.writeTextFile(OUTPUT, JSON.stringify(document));
+  await mkdir(path.dirname(OUTPUT), { recursive: true });
+  await writeFile(OUTPUT, JSON.stringify(document));
   consola.success(`open source credits generated: ${summary}`);
   return 0;
 }
 
 if (import.meta.main) {
-  main().then((code) => Deno.exit(code)).catch((error) => {
+  main().then((code) => process.exit(code)).catch((error) => {
     consola.error(error);
-    Deno.exit(1);
+    process.exit(1);
   });
 }

@@ -4,6 +4,7 @@ const NEUTRAL_PACKAGES = [
   "nyanpasu-core",
   "nyanpasu-platform",
   "nyanpasu-config",
+  "nyanpasu-diagnose",
 ];
 
 /** Inspect resolved production dependencies, including transitive GUI leaks. */
@@ -25,7 +26,9 @@ export function dependencyViolations(
     name === "eframe" || name === "egui" || name === "gtk" ||
     name === "webkit2gtk" || name === "tauri" ||
     name.startsWith("tauri-") ||
-    (owner === "nyanpasu-core" && name === "nyanpasu-platform")
+    (owner === "nyanpasu-core" && name === "nyanpasu-platform") ||
+    (owner === "nyanpasu-diagnose" &&
+      (name === "nyanpasu-core" || name === "nyanpasu-platform"))
   ).map((name) => `${owner} must not depend on ${name}`);
 }
 

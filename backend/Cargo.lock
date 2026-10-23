@@ -6752,6 +6752,7 @@ dependencies = [
  "nyanpasu-utils",
  "nyanpasu-widget-protocol",
  "port_scanner",
+ "regex",
  "rmp-serde",
  "serde",
  "serde_json",

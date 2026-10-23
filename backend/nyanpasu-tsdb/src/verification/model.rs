@@ -1028,14 +1028,7 @@ impl<S: Storage> Model<S> {
             assert_eq!(stream.pending.cleanup_chunks, 0);
             assert_eq!(stream.pending.cleanup_bytes, 0);
         }
-        let extents = self
-            .current
-            .events
-            .keys()
-            .map(|(key, _, _)| key.div_euclid(10_000))
-            .collect::<BTreeSet<_>>()
-            .len();
-        assert!(data.streams()[1].pending.runs <= (extents * self.limits.max_sorted_runs) as u64);
+        self.assert_runs_bounded(data.streams()[1].stream);
         if let Some(age) = self.retention.max_age {
             let cutoff = self.now - age.as_millis() as i64;
             for bucket in self.current.series.keys() {
@@ -1052,6 +1045,46 @@ impl<S: Storage> Model<S> {
             assert_eq!(root.reserved(), 0);
         }
         self.probes.schedule.assert_drained();
+    }
+}
+
+impl<S: Storage> Model<S> {
+    /// After convergence, the windows the cursor has passed hold at most R runs each. A window
+    /// is consolidated, and its runs merged, only once a commit has chunked its journal records,
+    /// and neither maintenance nor closing chunks them. `finish` writes nothing, so the first
+    /// window after the cursor can only be one that still holds journal records.
+    fn assert_runs_bounded(&self, stream: StreamRef) {
+        use crate::layout::manifest;
+        let snapshot = self.db.storage().snapshot().unwrap();
+        let cursor = manifest::read_stream(&snapshot, stream)
+            .unwrap()
+            .consolidated;
+        let mut extents = Vec::new();
+        manifest::scan_extents(&snapshot, stream, i64::MIN..=i64::MAX, |extent, record| {
+            extents.push((extent, record.journal_bytes));
+            ControlFlow::<()>::Continue(())
+        })
+        .unwrap();
+        let passed = |extent: i64| cursor.is_some_and(|cursor| extent <= cursor);
+        for &(extent, _) in extents.iter().filter(|(extent, _)| passed(*extent)) {
+            let mut runs = 0;
+            manifest::scan_runs(&snapshot, stream, extent, |_| {
+                runs += 1;
+                ControlFlow::<()>::Continue(())
+            })
+            .unwrap();
+            assert!(
+                runs <= self.limits.max_sorted_runs,
+                "window {extent} holds {runs} runs after convergence"
+            );
+        }
+        if let Some(&(extent, journal_bytes)) = extents.iter().find(|(extent, _)| !passed(*extent))
+        {
+            assert!(
+                journal_bytes > 0,
+                "window {extent} is due but the cursor stopped before it"
+            );
+        }
     }
 }
 

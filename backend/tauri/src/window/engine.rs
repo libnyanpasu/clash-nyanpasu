@@ -3,14 +3,68 @@
 
 use tauri::{Manager, Runtime, WebviewWindowBuilder};
 
+#[cfg(windows)]
+const WEBVIEW2_BROWSER_ARGS: &str = "--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling";
+
 /// Gives a window builder the engine's browser arguments.
 pub fn configure_builder<'a, R: Runtime, M: Manager<R>>(
     builder: WebviewWindowBuilder<'a, R, M>,
 ) -> WebviewWindowBuilder<'a, R, M> {
     #[cfg(windows)]
-    let builder = builder.additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling");
+    let builder = builder.additional_browser_args(WEBVIEW2_BROWSER_ARGS);
 
     builder
+}
+
+use nyanpasu_diagnose::report::WebviewInfo;
+
+/// The engine, its runtime version and the overrides that change how it runs.
+/// Reading the version needs no webview.
+pub fn collect_webview_info() -> WebviewInfo {
+    #[cfg(windows)]
+    let (engine, browser_args, env_names) = (
+        "WebView2",
+        Some(WEBVIEW2_BROWSER_ARGS),
+        &[
+            "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "WEBVIEW2_RELEASE_CHANNEL_PREFERENCE",
+            "WEBVIEW2_USER_DATA_FOLDER",
+        ][..],
+    );
+    #[cfg(target_os = "linux")]
+    let (engine, browser_args, env_names) = (
+        "WebKitGTK",
+        None,
+        &[
+            "WEBKIT_DISABLE_DMABUF_RENDERER",
+            "WEBKIT_DISABLE_COMPOSITING_MODE",
+            "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS",
+        ][..],
+    );
+    #[cfg(target_os = "macos")]
+    let (engine, browser_args, env_names) = ("WKWebView", None, &[] as &[&str]);
+
+    let (version, version_error) = match tauri::webview_version() {
+        Ok(version) => (Some(version), None),
+        Err(error) => (None, Some(error.to_string())),
+    };
+
+    WebviewInfo {
+        engine: engine.into(),
+        version,
+        version_error,
+        browser_args: browser_args.map(str::to_owned),
+        env: env_names
+            .iter()
+            .filter_map(|name| {
+                std::env::var_os(name)
+                    .map(|value| ((*name).to_owned(), value.to_string_lossy().into_owned()))
+            })
+            .collect(),
+        tauri_version: tauri::VERSION.into(),
+        wry_version: env!("WRY_VERSION").into(),
+    }
 }
 
 /// Configures the webview of a window the first time its frontend reports

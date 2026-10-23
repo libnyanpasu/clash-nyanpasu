@@ -11,8 +11,6 @@ use crate::{
         profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu, ProfilesError},
     },
     utils::{
-        candy,
-        collect::EnvInfo,
         help,
         proxy_env::{self, CopyEnvOption},
     },
@@ -1045,8 +1043,12 @@ pub async fn get_core_version(
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub async fn collect_logs(app_handle: AppHandle, paths: State<'_, PathResolver>) -> Result {
-    let paths = paths.clone();
+pub async fn collect_logs(
+    app_handle: AppHandle,
+    paths: State<'_, PathResolver>,
+    client: State<'_, NyanpasuClient>,
+) -> Result {
+    let archive = crate::utils::collect::logs_archive((*paths).clone(), (*client).clone()).await?;
     let now = Local::now().format("%Y-%m-%d");
     let fname = format!("{now}-log");
     let builder = FileDialogBuilder::new(app_handle.dialog().clone());
@@ -1057,7 +1059,7 @@ pub async fn collect_logs(app_handle: AppHandle, paths: State<'_, PathResolver>)
         .save_file(move |file_path| match file_path {
             Some(path) if path.as_path().is_some() => {
                 debug!("{path:#?}");
-                match candy::collect_logs(path.as_path().unwrap(), &paths) {
+                match std::fs::copy(&archive, path.as_path().unwrap()) {
                     Ok(_) => (),
                     Err(err) => {
                         log::error!(target: "app", "{err:?}");
@@ -1232,11 +1234,16 @@ pub async fn clash_api_healthcheck_proxy_provider(
     Ok(client.healthcheck_proxy_provider(name).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]
-pub fn collect_envs(paths: State<'_, PathResolver>) -> Result<EnvInfo<'static>> {
-    Ok((crate::utils::collect::collect_envs(paths))?)
+pub fn report_issue(
+    paths: State<'_, PathResolver>,
+    client: State<'_, NyanpasuClient>,
+    page: nyanpasu_diagnose::report::PageCapabilities,
+) -> Result {
+    crate::utils::collect::report_issue((*paths).clone(), (*client).clone(), page)?;
+    Ok(())
 }
 
 #[nyanpasu_macro::rpc]

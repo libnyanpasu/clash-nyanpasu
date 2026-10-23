@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 slint = { version = '=1.18.1', default-features = false, features = [
   'std',
   'compat-1-2',
@@ -24,6 +25,9 @@ arboard = { version = '3.6', default-features = false }
 fontique = '0.11.1'
 serde = { version = '1', features = ['derive'] }
 open = '5'
+# Selects the archive in the file manager, the way Tauri's opener plugin does,
+# without depending on Tauri.
+opener = { version = '0.9', features = ['reveal'] }
 snafu = { workspace = true }
 url = '2'
 
@@ -35,6 +39,7 @@ i-slint-backend-winit = { version = '=1.18.1', default-features = false, feature
 ] }
 
 [dev-dependencies]
+png = '0.18'
 serde_json = '1'
 
 [build-dependencies]

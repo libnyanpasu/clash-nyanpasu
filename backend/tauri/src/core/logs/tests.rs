@@ -62,6 +62,9 @@ impl CoreLogStore for TestStore {
     fn detail(&mut self, cursor: CoreLogCursor) -> CoreLogResult<CoreLogRecord> {
         self.inner.detail(cursor)
     }
+    fn export(&mut self, home: Option<String>) -> CoreLogResult<CoreLogExport> {
+        self.inner.export(home)
+    }
     fn clear(&mut self) -> CoreLogResult<()> {
         self.inner.clear()
     }
@@ -480,7 +483,7 @@ fn startup_discards_both_committed_and_pending_records_after_abrupt_exit() {
 }
 
 #[tokio::test]
-async fn session_changes_delete_committed_and_pending_logs_but_reconnect_preserves_them() {
+async fn session_changes_clear_logs_reconnect_preserves_and_shutdown_retains_them() {
     let directory = TempDir::new().unwrap();
     let token = CancellationToken::new();
     let tasks = TaskTracker::new();
@@ -543,7 +546,8 @@ async fn session_changes_delete_committed_and_pending_logs_but_reconnect_preserv
     token.cancel();
     tasks.close();
     tasks.wait().await;
-    assert!(!directory.path().join("current.redb").exists());
+    // A crash child can read these after the owner exits; next startup cleans them.
+    assert!(directory.path().join("current.redb").exists());
 }
 
 #[test]
@@ -795,4 +799,139 @@ async fn a_locked_rotation_file_stops_writes_until_clear() {
     logs.clear().await.unwrap();
     logs.append(record(100, BATCH_BYTES)).await.unwrap();
     assert!(logs.status().await.unwrap().error.is_none());
+}
+
+#[tokio::test]
+async fn diagnostic_export_flushes_full_payloads_and_survives_shutdown() {
+    let directory = TempDir::new().unwrap();
+    let shutdown = CancellationToken::new();
+    let tasks = TaskTracker::new();
+    let logs = CoreLogsClient::spawn(
+        Box::new(RedbCoreLogStore::open(directory.path().into()).unwrap()),
+        Default::default(),
+        shutdown.clone(),
+        &tasks,
+    )
+    .await
+    .unwrap();
+    logs.set_instance(Some("instance".into())).await.unwrap();
+    for n in 0..3 {
+        let mut r = record(n, 8192);
+        r.received_at = chrono::Utc::now().timestamp_millis();
+        r.payload.push_str(" password=secret /home/test/path 你好");
+        logs.append(r).await.unwrap();
+    }
+    let exported = logs.export(Some("/home/test".into())).await.unwrap();
+    assert_eq!(exported.lines.concat().lines().count(), 3);
+    assert!(!exported.lines.concat().contains("password=secret"));
+    assert!(exported.lines.concat().contains("~/path 你好"));
+    assert!(exported.lines.concat().len() > 3 * 8192);
+    assert!(RedbCoreLogStore::open_for_export(directory.path().into()).is_err());
+    shutdown.cancel();
+    tasks.close();
+    tasks.wait().await;
+    let mut reopened = RedbCoreLogStore::open_for_export(directory.path().into()).unwrap();
+    assert_eq!(
+        reopened
+            .export(Some("/home/test".into()))
+            .unwrap()
+            .lines
+            .concat(),
+        exported.lines.concat()
+    );
+}
+
+#[test]
+fn diagnostic_export_stops_at_the_three_day_boundary() {
+    let directory = TempDir::new().unwrap();
+    let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    let mut old = record(0, 32);
+    old.received_at = chrono::Utc::now().timestamp_millis()
+        - nyanpasu_diagnose::archive::LOG_AGE.as_millis() as i64
+        - 1000;
+    let mut recent = record(1, 32);
+    recent.received_at = chrono::Utc::now().timestamp_millis();
+    store
+        .append(&[
+            PreparedCoreLog::new(&old).unwrap(),
+            PreparedCoreLog::new(&recent).unwrap(),
+        ])
+        .unwrap();
+    let exported = store.export(None).unwrap();
+    assert_eq!(exported.lines.concat().lines().count(), 1);
+    assert!(exported.lines.concat().contains("000000000001"));
+}
+
+#[test]
+#[ignore = "large-store diagnostic export measurement; run alone with --nocapture"]
+fn diagnostic_export_large_store_measurement() {
+    use std::time::Instant;
+    let directory = TempDir::new().unwrap();
+    let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
+    let now = chrono::Utc::now().timestamp_millis();
+    for first in (0..12288).step_by(128) {
+        let records: Vec<_> = (first..first + 128)
+            .map(|n| {
+                let mut r = record(n, 8192);
+                r.received_at = now;
+                r.payload.push_str(" token=secret");
+                PreparedCoreLog::new(&r).unwrap()
+            })
+            .collect();
+        store.append(&records).unwrap();
+    }
+    let started = Instant::now();
+    let export = store.export(None).unwrap();
+    let bulk = started.elapsed();
+    assert!(export.truncated);
+    assert!(export.lines.concat().len() as u64 <= nyanpasu_diagnose::archive::LOG_CAP);
+    assert!(!export.lines.concat().contains("token=secret"));
+    assert!(export.lines.concat().contains("000000012287"));
+    assert!(!export.lines.concat().contains("000000000000"));
+    let started = Instant::now();
+    let mut cursor = None;
+    let mut bytes = 0;
+    let mut rows = 0;
+    'pages: loop {
+        let page = store
+            .query(query(
+                if cursor.is_none() {
+                    CoreLogDirection::Latest
+                } else {
+                    CoreLogDirection::Before
+                },
+                cursor,
+            ))
+            .unwrap();
+        for row in page.rows.into_iter().rev() {
+            let record = if row.truncated {
+                store.detail(row.id).unwrap()
+            } else {
+                row.record
+            };
+            let line = format!(
+                "{} {} {}\n",
+                record.time.unwrap(),
+                record.log_type,
+                nyanpasu_config::redact::redact_text(&record.payload, None)
+            );
+            if bytes + line.len() as u64 > nyanpasu_diagnose::archive::LOG_CAP {
+                break 'pages;
+            }
+            bytes += line.len() as u64;
+            rows += 1;
+        }
+        if !page.more {
+            break;
+        }
+        cursor = page.cursor;
+    }
+    println!(
+        "diagnostic export: records=12288 payload_bytes=100663296 output_bytes={} output_rows={} bulk_ms={:.3} query_detail_ms={:.3} query_detail_rows={rows} store_bytes={}",
+        export.lines.concat().len(),
+        export.lines.concat().lines().count(),
+        bulk.as_secs_f64() * 1000.,
+        started.elapsed().as_secs_f64() * 1000.,
+        store.status().unwrap().bytes
+    );
 }

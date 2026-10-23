@@ -1,5 +1,5 @@
 import { rpc } from '@/services/rpc'
-import { formatEnvInfos } from '@/utils'
+import { probeWebviewCapabilities } from '@/utils/webview-capabilities'
 import { isTauri } from '@nyanpasu/platform'
 
 const REPOSITORY_URL = 'https://github.com/libnyanpasu/clash-nyanpasu'
@@ -19,31 +19,6 @@ export function openRepository() {
 
 /** Opens a new bug report prefilled with this environment's details. */
 export async function openIssueReport() {
-  const envs = await rpc.collectEnvs()
-
-  if (envs.status !== 'ok') {
-    return
-  }
-
-  const formattedEnv = encodeURIComponent(
-    formatEnvInfos(envs.data)
-      .split('\n')
-      .map((v) => `> ${v}`)
-      .join('\n'),
-  )
-
-  const params = new URLSearchParams({
-    assignees: '',
-    labels: 'T%3A+Bug%2CS%3A+Untriaged',
-    projects: '',
-    template: 'bug_report.yaml',
-  })
-
-  return openHelpLink(
-    `${REPOSITORY_URL}/issues/new?` +
-      params.toString() +
-      // envs can't be serialized
-      '&env_infos=' +
-      formattedEnv,
-  )
+  const page = await probeWebviewCapabilities()
+  await rpc.reportIssue(page)
 }

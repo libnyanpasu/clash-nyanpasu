@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { profileContentSummary } from '@/pages/(main)/main/profiles/$type/_modules/profile-content-summary'
+import { profileContentSummary } from '@/pages/(main)/main/profiles/_modules/profile-content-summary'
 
 test('counts static entries without expanding providers or group membership', () => {
   expect(

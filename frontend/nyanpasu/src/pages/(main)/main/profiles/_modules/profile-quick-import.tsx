@@ -9,6 +9,7 @@ import { useImportUrl } from '@/components/profile-import/import-url-provider'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { FolderId } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { subscriptionUrlSchema } from './subscription-url-schema'
 
@@ -16,7 +17,12 @@ const formSchema = z.object({
   url: subscriptionUrlSchema,
 })
 
-export default function ProfileQuickImport() {
+export default function ProfileQuickImport({
+  folder,
+}: {
+  /** Folder the imported Config joins; omitted imports it ungrouped. */
+  folder?: FolderId | null
+}) {
   const importUrl = useImportUrl()
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -39,7 +45,12 @@ export default function ProfileQuickImport() {
       try {
         setLoading(true)
 
-        const uid = await importUrl({ url: data.url, name: null, option: null })
+        const uid = await importUrl({
+          url: data.url,
+          name: null,
+          option: null,
+          folder,
+        })
         if (uid === null) {
           return
         }

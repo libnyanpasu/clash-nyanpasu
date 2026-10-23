@@ -2,8 +2,8 @@ import { useMemo } from 'react'
 import { m } from '@/paraglide/messages'
 import { scopedTransformsOf, useProfileMutations } from '@nyanpasu/query'
 import { type ProfileDefinition_Deserialize } from '@nyanpasu/rpc/types'
-import { type ConfigProfile } from '../../_modules/utils'
 import { TransformChainList } from '../../../_modules/transform-chain-list'
+import { type ConfigProfile } from '../../../_modules/utils'
 import { DetailSection } from './detail-section'
 
 /** The transform chain that applies only to one config item. */

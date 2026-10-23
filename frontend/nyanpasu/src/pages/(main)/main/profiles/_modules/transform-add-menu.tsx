@@ -11,11 +11,8 @@ import {
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
-import {
-  categoryProfiles,
-  type TransformProfile,
-} from '../$type/_modules/utils'
 import { PROFILE_TYPE_NAMES, ProfileType } from './consts'
+import { categoryProfiles, type TransformProfile } from './utils'
 
 const TRANSFORM_TYPES = [
   ProfileType.JavaScript,

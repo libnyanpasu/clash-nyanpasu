@@ -4,7 +4,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useProfile } from '@nyanpasu/query'
-import { isChainProfile, type TransformProfile } from '../$type/_modules/utils'
+import { isChainProfile, type TransformProfile } from './utils'
 
 type DragSession = {
   uids: string[]

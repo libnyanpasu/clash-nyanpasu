@@ -13,6 +13,7 @@ import type {
 import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import ClosedViewer from '../src/pages/(main)/main/connections/_modules/closed-viewer'
+import { drag } from './pointer-drag'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 // Generated commands take the desktop IPC path that `mockIPC` serves.
@@ -197,6 +198,44 @@ test('column settings hide a column and remember it', async ({
   expect(
     JSON.parse(localStorage.getItem('connections-columns-closed')!).visibility,
   ).toEqual({ Process: false })
+})
+
+test('column settings reorder a column by dragging its whole row', async ({
+  onTestFinished,
+}) => {
+  mockIPC(() => ({
+    connections: [closed('a', 'example.com', 1_000)],
+    next: null,
+  }))
+
+  const container = render(
+    <ClosedViewer
+      search=""
+      selection={UNFILTERED}
+      settingsOpen
+      onSettingsOpenChange={() => {}}
+    />,
+    onTestFinished,
+  )
+
+  await expect.poll(() => headers(container).length).toBeGreaterThan(2)
+
+  const items = () => [
+    ...document.querySelectorAll(
+      '[data-slot="connections-column-settings-item"]',
+    ),
+  ]
+  const before = items().map((node) => node.textContent)
+  expect(items()[0]!.querySelector('button:not([role="switch"])')).toBeNull()
+
+  await drag(items()[0]!, items()[2]!)
+
+  await expect
+    .poll(() => items().map((node) => node.textContent))
+    .toEqual([before[1], before[2], before[0], ...before.slice(3)])
+  expect(
+    JSON.parse(localStorage.getItem('connections-columns-closed')!).order,
+  ).toHaveLength(before.length)
 })
 
 test('an unavailable traffic history explains the empty table', async ({

@@ -1,5 +1,8 @@
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
+import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
@@ -11,6 +14,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { mockIPC } from '@tauri-apps/api/mocks'
+import ProfilesLayoutProvider from '../src/pages/(main)/main/profiles/_modules/profiles-layout-provider'
 import ProfilesNavigate from '../src/pages/(main)/main/profiles/_modules/profiles-navigate'
 import { TestQueryProvider } from './query-provider'
 
@@ -94,7 +98,15 @@ const renderAt = async (path: string) => {
   const rootRoute = createRootRoute({
     component: () => (
       <TestQueryProvider client={queries}>
-        <ProfilesNavigate />
+        <BlockTaskProvider>
+          <TooltipProvider>
+            <SnackbarProvider>
+              <ProfilesLayoutProvider>
+                <ProfilesNavigate />
+              </ProfilesLayoutProvider>
+            </SnackbarProvider>
+          </TooltipProvider>
+        </BlockTaskProvider>
       </TestQueryProvider>
     ),
   })

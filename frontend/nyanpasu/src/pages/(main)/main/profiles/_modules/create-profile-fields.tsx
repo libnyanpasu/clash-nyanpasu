@@ -21,8 +21,8 @@ import { m } from '@/paraglide/messages'
 import { pickFile } from '@/utils/file-picker'
 import { isConfigItem, useProfile } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
-import AnimatedErrorItem from '../../_modules/error-item'
 import { ACCEPT_EXTENSIONS, type FormValues } from './create-profile-schema'
+import AnimatedErrorItem from './error-item'
 
 const FieldError = ({ message }: { message?: string }) => (
   <AnimatePresence>

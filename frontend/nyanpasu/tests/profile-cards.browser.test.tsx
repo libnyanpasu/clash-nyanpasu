@@ -4,10 +4,13 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { page, userEvent } from 'vitest/browser'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
+import ProfilesDndProvider from '@/pages/(main)/main/profiles/_modules/profiles-dnd-provider'
+import ProfilesLayoutProvider from '@/pages/(main)/main/profiles/_modules/profiles-layout-provider'
 import ProfilesHeader from '@/pages/(main)/main/profiles/$type/_modules/profiles-header'
 import ProfilesList from '@/pages/(main)/main/profiles/$type/_modules/profiles-list'
 import { m } from '@/paraglide/messages'
@@ -84,52 +87,56 @@ test.for(['en', 'zh-cn'] as const)(
     let current = 'remote'
     const updates: unknown[] = []
     const edits: string[] = []
-    mockIPC((command, args) => {
-      const wire = args as {
-        method: string
-        params: { uid: string; option: unknown }
-      }
-      const method = command === 'call_rpc' ? wire.method : command
-      if (method === 'read_profile_file') {
-        expect(wire.params.uid).toBe('local')
-        return 'proxies: [{name: Node}]\nproxy-groups: [{name: Group}]\nrules: [MATCH,DIRECT]'
-      }
-      if (method === 'get_profiles')
-        return { current, items, global_transforms: [], valid: [] }
-      if (method === 'activate_profile') {
-        current = wire.params.uid
-        return { status: 'committed', value: null }
-      }
-      if (method === 'query_traffic_report') {
-        expect(
-          (
-            wire.params as unknown as {
-              request: { query: { filters: unknown[] } }
-            }
-          ).request.query.filters,
-        ).toEqual([{ dimension: 'profile', value: 'local' }])
-        return {
-          total: {
-            bytes: { upload: 1024 ** 3, download: 3 * 1024 ** 3 },
-            connections: 12,
-          },
-          current_rate: null,
-          rankings: [],
-          topology: null,
+    mockIPC(
+      (command, args) => {
+        const wire = args as {
+          method: string
+          params: { uid: string; option: unknown }
         }
-      }
-      if (method === 'create_editor_window') {
-        edits.push(wire.params.uid)
-        return null
-      }
-      if (method === 'delete_clash_connections')
-        return { status: 'committed', value: null }
-      if (method === 'update_profile') {
-        updates.push([wire.params.uid, wire.params.option])
-        return { status: 'committed', value: null }
-      }
-      throw new Error(`Unexpected RPC ${method}`)
-    })
+        const method = command === 'call_rpc' ? wire.method : command
+        if (method === 'read_profile_file') {
+          expect(wire.params.uid).toBe('local')
+          return 'proxies: [{name: Node}]\nproxy-groups: [{name: Group}]\nrules: [MATCH,DIRECT]'
+        }
+        if (method === 'get_storage_item') return null
+        if (method === 'get_profiles')
+          return { current, items, global_transforms: [], valid: [] }
+        if (method === 'activate_profile') {
+          current = wire.params.uid
+          return { status: 'committed', value: null }
+        }
+        if (method === 'query_traffic_report') {
+          expect(
+            (
+              wire.params as unknown as {
+                request: { query: { filters: unknown[] } }
+              }
+            ).request.query.filters,
+          ).toEqual([{ dimension: 'profile', value: 'local' }])
+          return {
+            total: {
+              bytes: { upload: 1024 ** 3, download: 3 * 1024 ** 3 },
+              connections: 12,
+            },
+            current_rate: null,
+            rankings: [],
+            topology: null,
+          }
+        }
+        if (method === 'create_editor_window') {
+          edits.push(wire.params.uid)
+          return null
+        }
+        if (method === 'delete_clash_connections')
+          return { status: 'committed', value: null }
+        if (method === 'update_profile') {
+          updates.push([wire.params.uid, wire.params.option])
+          return { status: 'committed', value: null }
+        }
+        throw new Error(`Unexpected RPC ${method}`)
+      },
+      { shouldMockEvents: true },
+    )
     const queries = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -147,12 +154,20 @@ test.for(['en', 'zh-cn'] as const)(
           <BlockTaskProvider>
             <TooltipProvider>
               <ImportUrlProvider>
-                <ContextMenuProvider>
-                  <ScrollArea>
-                    <ProfilesHeader />
-                    <ProfilesList className="p-4 pt-0" />
-                  </ScrollArea>
-                </ContextMenuProvider>
+                <SnackbarProvider>
+                  <ContextMenuProvider>
+                    <div>
+                      <ProfilesLayoutProvider>
+                        <ProfilesDndProvider>
+                          <ScrollArea>
+                            <ProfilesHeader />
+                            <ProfilesList className="p-4 pt-0" />
+                          </ScrollArea>
+                        </ProfilesDndProvider>
+                      </ProfilesLayoutProvider>
+                    </div>
+                  </ContextMenuProvider>
+                </SnackbarProvider>
               </ImportUrlProvider>
             </TooltipProvider>
           </BlockTaskProvider>
@@ -377,26 +392,36 @@ test('reorders profiles by dragging the whole card', async ({
     ...profile(uid, false),
     name: uid,
   }))
-  const reorders: unknown[] = []
-  mockIPC((command, args) => {
-    const wire = args as { method: string; params: { list: string[] } }
-    const method = command === 'call_rpc' ? wire.method : command
-    if (method === 'get_profiles')
-      return { current: 'second', items, global_transforms: [], valid: [] }
-    if (method === 'read_profile_file') return 'proxies: []'
-    if (method === 'query_traffic_report')
-      return {
-        total: { bytes: { upload: 0, download: 0 }, connections: 0 },
-        current_rate: null,
-        rankings: [],
-        topology: null,
+  const layouts: unknown[] = []
+  mockIPC(
+    (command, args) => {
+      const wire = args as { method: string; params: { layout: unknown } }
+      const method = command === 'call_rpc' ? wire.method : command
+      if (method === 'get_storage_item') return null
+      if (method === 'get_profiles')
+        return {
+          current: 'second',
+          items,
+          global_transforms: [],
+          valid: [],
+          folders: [],
+        }
+      if (method === 'read_profile_file') return 'proxies: []'
+      if (method === 'query_traffic_report')
+        return {
+          total: { bytes: { upload: 0, download: 0 }, connections: 0 },
+          current_rate: null,
+          rankings: [],
+          topology: null,
+        }
+      if (method === 'set_profile_layout') {
+        layouts.push(wire.params.layout)
+        return { status: 'committed', value: null, commits: [] }
       }
-    if (method === 'reorder_profiles_by_list') {
-      reorders.push(wire.params.list)
-      return { status: 'committed', value: null }
-    }
-    throw new Error(`Unexpected RPC ${method}`)
-  })
+      throw new Error(`Unexpected RPC ${method}`)
+    },
+    { shouldMockEvents: true },
+  )
   const queries = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -409,11 +434,19 @@ test('reorders profiles by dragging the whole card', async ({
       <TestQueryProvider client={queries}>
         <BlockTaskProvider>
           <TooltipProvider>
-            <ContextMenuProvider>
-              <ScrollArea>
-                <ProfilesList className="p-4 pt-0" />
-              </ScrollArea>
-            </ContextMenuProvider>
+            <SnackbarProvider>
+              <ContextMenuProvider>
+                <div>
+                  <ProfilesLayoutProvider>
+                    <ProfilesDndProvider>
+                      <ScrollArea>
+                        <ProfilesList className="p-4 pt-0" />
+                      </ScrollArea>
+                    </ProfilesDndProvider>
+                  </ProfilesLayoutProvider>
+                </div>
+              </ContextMenuProvider>
+            </SnackbarProvider>
           </TooltipProvider>
         </BlockTaskProvider>
       </TestQueryProvider>
@@ -439,7 +472,7 @@ test('reorders profiles by dragging the whole card', async ({
     '[data-slot="profile-card-title"]',
   )!
   await userEvent.dragAndDrop(activeBody, card('first')!)
-  expect(reorders).toEqual([])
+  expect(layouts).toEqual([])
 
   // Grab the card body rather than any dedicated handle.
   const body = card('third')!.querySelector<HTMLElement>(
@@ -447,5 +480,7 @@ test('reorders profiles by dragging the whole card', async ({
   )!
   await userEvent.dragAndDrop(body, card('first')!)
 
-  await expect.poll(() => reorders).toEqual([['third', 'first', 'second']])
+  await expect
+    .poll(() => layouts)
+    .toEqual([{ folders: [], ungrouped: ['third', 'first', 'second'] }])
 })

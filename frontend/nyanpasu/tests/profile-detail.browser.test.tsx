@@ -6,6 +6,7 @@ import { page } from 'vitest/browser'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
+import ProfilesLayoutProvider from '@/pages/(main)/main/profiles/_modules/profiles-layout-provider'
 import { Route } from '@/pages/(main)/main/profiles/$type/detail/$uid'
 import { m } from '@/paraglide/messages'
 import { ask } from '@/utils/notification'
@@ -143,7 +144,9 @@ const mountDetail = async ({
         <BlockTaskProvider>
           <TooltipProvider>
             <SnackbarProvider>
-              <RouterOutlet />
+              <ProfilesLayoutProvider>
+                <RouterOutlet />
+              </ProfilesLayoutProvider>
             </SnackbarProvider>
           </TooltipProvider>
         </BlockTaskProvider>

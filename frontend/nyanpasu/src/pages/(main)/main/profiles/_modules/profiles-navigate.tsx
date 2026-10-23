@@ -1,76 +1,84 @@
+import AddRounded from '~icons/material-symbols/add-rounded'
 import DescriptionRounded from '~icons/material-symbols/description-rounded'
 import DocumentSearchRounded from '~icons/material-symbols/document-search-rounded'
 import JavascriptRounded from '~icons/material-symbols/javascript-rounded'
 import MergeRounded from '~icons/material-symbols/merge-rounded'
 import PublicIcon from '~icons/material-symbols/public'
 import LuaIcon from '~icons/mdi/language-lua'
-import { ComponentProps, ReactNode } from 'react'
+import { Button } from '@nyanpasu/ui/button'
 import {
   NavigationList,
   NavigationListGroup,
-  NavigationListItem,
-  NavigationListItemIcon,
-  NavigationListItemText,
-  type NavigationListItemColor,
 } from '@nyanpasu/ui/navigation-list'
 import { m } from '@/paraglide/messages'
+import { useDroppable } from '@dnd-kit/react'
 import { useProfile } from '@nyanpasu/query'
-import { Link, useMatchRoute } from '@tanstack/react-router'
-import { categoryProfiles } from '../$type/_modules/utils'
 import { ProfileType } from './consts'
-
-function ProfilesNavigationItem({
-  icon,
-  color,
-  label,
-  description,
-  ...props
-}: ComponentProps<typeof Link> & {
-  icon: ReactNode
-  color: NavigationListItemColor
-  label: string
-  description: string
-}) {
-  const matchRoute = useMatchRoute()
-
-  // An item stays selected on its child pages, such as a profile's detail page.
-  const isActive = !!matchRoute({ to: props.to, fuzzy: true })
-
-  return (
-    <NavigationListItem active={isActive} asChild>
-      <Link aria-current={isActive ? 'page' : undefined} {...props}>
-        <NavigationListItemIcon color={color}>{icon}</NavigationListItemIcon>
-
-        <NavigationListItemText headline={label} supporting={description} />
-      </Link>
-    </NavigationListItem>
-  )
-}
+import FolderNavItem from './folder-nav-item'
+import ProfilesNavigationItem from './profiles-navigation-item'
+import { NAV_ALL_ID, PROFILE_DRAG_TYPE } from './resolve-profile-drop'
+import { useProfileLayout } from './use-profile-layout'
+import { categoryProfiles } from './utils'
 
 export default function ProfilesNavigate() {
   const {
     query: { data: profiles },
   } = useProfile()
 
+  const { layout, openCreateFolder } = useProfileLayout()
+
   const categorized = categoryProfiles(profiles?.items)
+
+  const folders = layout?.folders ?? []
+
+  // A card dropped on All profiles leaves its folder.
+  const { ref: allProfilesRef, isDropTarget: isAllProfilesDropTarget } =
+    useDroppable({ id: NAV_ALL_ID, accept: PROFILE_DRAG_TYPE })
 
   return (
     <NavigationList aria-label={m.profile_nav_label()}>
-      <NavigationListGroup label={m.profile_group_config()}>
+      <NavigationListGroup
+        label={m.profile_group_config()}
+        action={
+          <Button
+            icon
+            className="mr-2 size-8"
+            aria-label={m.profile_folder_new_title()}
+            data-slot="profiles-folder-add"
+            onClick={() => openCreateFolder()}
+          >
+            <AddRounded className="size-5" />
+          </Button>
+        }
+      >
         <ProfilesNavigationItem
-          to="/main/profiles/profile"
+          ref={allProfilesRef}
+          to="/main/profiles/$type"
+          params={{ type: ProfileType.Profile }}
           color="blue"
           icon={<DescriptionRounded />}
           label={m.profile_nav_all_profiles()}
           description={m.profile_nav_count_profiles({
             count: categorized[ProfileType.Profile].length,
           })}
+          data-slot="profiles-all-nav-item"
+          data-drop-target={isAllProfilesDropTarget || undefined}
         />
+
+        {folders.map((folder, index) => (
+          <FolderNavItem
+            key={folder.id}
+            folder={folder}
+            index={index}
+            count={folders.length}
+          />
+        ))}
       </NavigationListGroup>
 
       <NavigationListGroup label={m.profile_group_transform()}>
         <ProfilesNavigationItem
-          to="/main/profiles/javascript"
+          to="/main/profiles/$type"
+          params={{ type: ProfileType.JavaScript }}
           color="yellow"
           icon={<JavascriptRounded />}
           label={m.profile_nav_javascript()}
@@ -80,7 +88,8 @@ export default function ProfilesNavigate() {
         />
 
         <ProfilesNavigationItem
-          to="/main/profiles/lua"
+          to="/main/profiles/$type"
+          params={{ type: ProfileType.Lua }}
           color="cyan"
           icon={<LuaIcon />}
           label={m.profile_nav_lua()}
@@ -90,7 +99,8 @@ export default function ProfilesNavigate() {
         />
 
         <ProfilesNavigationItem
-          to="/main/profiles/merge"
+          to="/main/profiles/$type"
+          params={{ type: ProfileType.Merge }}
           color="orange"
           icon={<MergeRounded />}
           label={m.profile_nav_merge()}

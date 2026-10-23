@@ -223,9 +223,10 @@ function RouteComponent() {
         <div
           className={cn(
             'grid min-h-0 flex-1',
-            layout === 'graph'
-              ? 'grid-rows-[minmax(0,2fr)_minmax(0,3fr)] @3xl:grid-cols-[minmax(0,3fr)_minmax(24rem,2fr)] @3xl:grid-rows-[minmax(0,1fr)]'
-              : 'grid-rows-[minmax(0,1fr)] @3xl:grid-cols-[20rem_minmax(0,1fr)]',
+            'grid-rows-[minmax(0,1fr)] @3xl:grid-cols-[20rem_minmax(0,1fr)]',
+            // Stacked, the graph gets the smaller share.
+            layout === 'graph' &&
+              'grid-rows-[minmax(0,2fr)_minmax(0,3fr)] @3xl:grid-rows-[minmax(0,1fr)]',
           )}
         >
           {layout === 'graph' ? graph() : rail('hidden @3xl:flex')}

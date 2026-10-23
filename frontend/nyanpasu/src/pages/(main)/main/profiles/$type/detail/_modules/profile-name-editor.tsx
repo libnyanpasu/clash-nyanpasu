@@ -19,7 +19,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useProfileMutations } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
-import AnimatedErrorItem from '../../../_modules/error-item'
+import AnimatedErrorItem from '../../../../_modules/error-item'
 
 const formSchema = z.object({
   name: z.string().min(1),

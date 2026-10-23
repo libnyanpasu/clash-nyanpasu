@@ -296,7 +296,7 @@ export const DropdownMenuItem = ({
   return (
     <DropdownMenuPrimitive.Item
       className={cn(
-        'flex h-12 cursor-default items-center justify-between gap-2 p-4 outline-hidden',
+        'flex h-12 cursor-default items-center justify-start gap-2 p-4 outline-hidden',
         'cursor-pointer',
         'hover:bg-surface-variant',
         'dark:hover:bg-surface-variant',

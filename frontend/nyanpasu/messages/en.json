@@ -787,6 +787,37 @@
   "proxies_group_empty_button_text": "Switch to profiles",
   "proxies_group_direct_switch_rule_button_text": "Switch to rule mode",
   "proxies_group_direct_switch_global_button_text": "Switch to global mode",
+  "proxies_nav_label": "Proxy groups navigation",
+  "proxies_nav_groups": "Groups",
+  "proxies_nav_folders": "Folders",
+  "proxies_nav_group_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} group",
+        "countPlural=other": "{count} groups"
+      }
+    }
+  ],
+  "proxies_nav_folder_empty": "Move groups here from their menu",
+  "proxies_nav_list_actions": "List actions",
+  "proxies_nav_reset_order": "Reset order",
+  "proxies_nav_reset_order_description": "The groups return to the order of the profile, and all folders are deleted.",
+  "proxies_nav_expand_all": "Expand all folders",
+  "proxies_nav_collapse_all": "Collapse all folders",
+  "proxies_folder_delete_description": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} group will move to Groups.",
+        "countPlural=other": "{count} groups will move to Groups."
+      }
+    }
+  ],
+  "proxies_layout_error_title": "Couldn't arrange the proxy groups",
+  "proxies_layout_failed": "Couldn't update the arrangement: {error}",
   "profile_is_active_label": "Current Profile",
   "logs_search_placeholder": "Search logs by time, type, or message...",
   "logs_empty_message": "No logs recorded",

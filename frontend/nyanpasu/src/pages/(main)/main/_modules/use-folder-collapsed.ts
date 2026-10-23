@@ -1,8 +1,6 @@
 import { useCallback } from 'react'
 import { useKvStorage } from '@nyanpasu/query'
 
-const COLLAPSED_KV_KEY = 'profiles-folder-collapsed'
-
 /** Sections that are collapsed, by folder id (`ungrouped` for the rest). */
 type CollapsedSections = Record<string, true>
 
@@ -17,12 +15,12 @@ const toCollapsedSections = (value: unknown): CollapsedSections => {
 }
 
 /**
- * Which profile sections are collapsed. The state is stored per folder and
- * shared by every window.
+ * Which folder sections are collapsed, under `kvKey`. The state is stored per
+ * folder and shared by every window.
  */
-export function useFolderCollapsed() {
+export function useFolderCollapsed(kvKey: string) {
   const [collapsed, setCollapsed] = useKvStorage<CollapsedSections>(
-    COLLAPSED_KV_KEY,
+    kvKey,
     {},
     { migrate: toCollapsedSections },
   )
@@ -37,5 +35,28 @@ export function useFolderCollapsed() {
     [setCollapsed],
   )
 
-  return { isCollapsed: (key: string) => collapsed[key] === true, toggle }
+  /** Collapses (or expands) each of `keys`, whatever it was. */
+  const setAll = useCallback(
+    (keys: readonly string[], isCollapsed: boolean) =>
+      setCollapsed((previous) => {
+        const next = { ...previous }
+
+        for (const key of keys) {
+          if (isCollapsed) {
+            next[key] = true
+          } else {
+            delete next[key]
+          }
+        }
+
+        return next
+      }),
+    [setCollapsed],
+  )
+
+  return {
+    isCollapsed: (key: string) => collapsed[key] === true,
+    toggle,
+    setAll,
+  }
 }

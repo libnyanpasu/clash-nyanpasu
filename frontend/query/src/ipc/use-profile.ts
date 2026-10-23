@@ -9,6 +9,7 @@ import type {
   ProfileLayout,
   ProfileMetadataPatch_Deserialize,
   ProfileSource_Serialize,
+  ProxyGroupLayout,
   RemoteProfileOptionsPatch_Deserialize,
   TransformKind,
 } from '@nyanpasu/rpc/types'
@@ -20,6 +21,7 @@ import {
 } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 import { applyProfileLayout } from './profile-folders'
+import { applyProxyGroupLayout } from './proxy-group-layout'
 import { invokeMutation, invokeQuery } from './query-options'
 
 // ---- discriminant helpers (successors of the retired NormalizedProfile collapse) ----
@@ -71,6 +73,9 @@ type ProfileQueryData = Awaited<
 
 /** Layout commits are queued under this scope so they run one at a time. */
 const PROFILE_LAYOUT_SCOPE = 'profile-layout'
+
+/** The same, for the proxy group arrangement. */
+const PROXY_GROUP_LAYOUT_SCOPE = 'proxy-group-layout'
 
 export type CreateParams =
   | {
@@ -178,6 +183,8 @@ export const useProfileMutations = () => {
   const setGlobalTransformsOptions = api.mutations.setGlobalTransforms
   const reorderProfilesByList = api.mutations.reorderProfilesByList
   const setProfileLayout = api.mutations.setProfileLayout
+  const setProxyGroupLayoutCommand = api.mutations.setProxyGroupLayout
+  const createProxyGroupFolderCommand = api.mutations.createProxyGroupFolder
   const createProfileFolder = api.mutations.createProfileFolder
   const deleteProfile = api.mutations.deleteProfile
   const invalidate = () =>
@@ -347,6 +354,70 @@ export const useProfileMutations = () => {
     onSuccess: invalidate,
   })
 
+  // Like `setLayout`: the cache takes the arrangement before the commit
+  // returns, rolls back on failure and refetches when the last one settles.
+  const setProxyGroupLayout = useMutation({
+    mutationKey: setProxyGroupLayoutCommand.mutationKey,
+    scope: { id: PROXY_GROUP_LAYOUT_SCOPE },
+    mutationFn: async ({
+      profile,
+      layout,
+    }: {
+      profile: ProfileId
+      layout: ProxyGroupLayout
+    }) =>
+      unwrapResult(
+        await invokeMutation(setProxyGroupLayoutCommand, [profile, layout]),
+      ),
+    onMutate: async ({ profile, layout }) => {
+      const queryKey: QueryKey = api.queries.getProfiles().queryKey
+      await queryClient.cancelQueries({ queryKey })
+
+      const previous = queryClient.getQueryData<ProfileQueryData>(queryKey)
+      if (previous) {
+        queryClient.setQueryData(
+          queryKey,
+          applyProxyGroupLayout(previous, profile, layout),
+        )
+      }
+
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        const queryKey: QueryKey = api.queries.getProfiles().queryKey
+        queryClient.setQueryData<ProfileQueryData>(queryKey, context.previous)
+      }
+    },
+    onSettled: () => {
+      const queued = queryClient.isMutating({
+        mutationKey: setProxyGroupLayoutCommand.mutationKey,
+      })
+      return queued > 1 ? undefined : invalidate()
+    },
+  })
+
+  const createProxyGroupFolder = useMutation({
+    mutationKey: createProxyGroupFolderCommand.mutationKey,
+    mutationFn: async ({
+      profile,
+      name,
+      members,
+    }: {
+      profile: ProfileId
+      name: string
+      members: string[]
+    }) =>
+      unwrapResult(
+        await invokeMutation(createProxyGroupFolderCommand, [
+          profile,
+          name,
+          members,
+        ]),
+      ),
+    onSuccess: invalidate,
+  })
+
   const drop = useMutation({
     mutationKey: deleteProfile.mutationKey,
     mutationFn: async (uid: ProfileId) =>
@@ -366,6 +437,8 @@ export const useProfileMutations = () => {
     sort,
     setLayout,
     createFolder,
+    setProxyGroupLayout,
+    createProxyGroupFolder,
     drop,
   }
 }

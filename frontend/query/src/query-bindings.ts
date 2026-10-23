@@ -831,6 +831,11 @@ export function createQueryBindings(rpc: RpcClient) {
         input: Parameters<typeof commands.createDebugTrayMenuWindow>,
       ) => commands.createDebugTrayMenuWindow(...input),
     }),
+    simulateCrash: mutationOptions({
+      mutationKey: ['simulateCrash'],
+      mutationFn: (input: Parameters<typeof commands.simulateCrash>) =>
+        commands.simulateCrash(...input),
+    }),
     createEditorWindow: mutationOptions({
       mutationKey: ['createEditorWindow'],
       mutationFn: (input: Parameters<typeof commands.createEditorWindow>) =>

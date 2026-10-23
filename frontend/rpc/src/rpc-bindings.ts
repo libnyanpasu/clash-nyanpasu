@@ -674,6 +674,14 @@ export function createRpcClient(
       typedError<null, IpcError>(__RPC_INVOKE('create_main_window')),
     createDebugTrayMenuWindow: () =>
       typedError<null, IpcError>(__RPC_INVOKE('create_debug_tray_menu_window')),
+    /**
+     *  Panics on purpose, so the crash reporter can be tested. The panic hook
+     *  exits differently when the main thread panics, hence the choice.
+     */
+    simulateCrash: (mainThread: boolean) =>
+      typedError<null, IpcError>(
+        __RPC_INVOKE('simulate_crash', { mainThread }),
+      ),
     createEditorWindow: (windowType: EditorWindowType, uid: string | null) =>
       typedError<null, IpcError>(
         __RPC_INVOKE('create_editor_window', { windowType, uid }),

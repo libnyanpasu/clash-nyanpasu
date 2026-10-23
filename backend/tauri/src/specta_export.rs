@@ -185,6 +185,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::save_window_size_state,
             ipc::create_main_window,
             ipc::create_debug_tray_menu_window,
+            ipc::simulate_crash,
             ipc::create_editor_window,
             ipc::report_window_ready,
             ipc::copy_clash_env,

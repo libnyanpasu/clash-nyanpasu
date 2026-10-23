@@ -2089,6 +2089,20 @@ pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> 
     Ok(())
 }
 
+/// Panics on purpose, so the crash reporter can be tested. The panic hook
+/// exits differently when the main thread panics, hence the choice.
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn simulate_crash(app_handle: AppHandle, main_thread: bool) -> Result<()> {
+    if main_thread {
+        app_handle.run_on_main_thread(|| panic!("simulated crash on the main thread"))?;
+    } else {
+        std::thread::spawn(|| panic!("simulated crash on a background thread"));
+    }
+    Ok(())
+}
+
 #[nyanpasu_macro::rpc]
 #[tauri::command]
 #[specta::specta]

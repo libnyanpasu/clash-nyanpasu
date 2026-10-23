@@ -8,7 +8,9 @@ use crate::{
     log_err,
 };
 use indexmap::IndexMap;
-use nyanpasu_config::{application::ProxiesSelectorMode, clash::config::overrides::Mode};
+use nyanpasu_config::{
+    application::ProxiesSelectorMode, clash::config::overrides::Mode, profile::ProxyGroupLayout,
+};
 use std::ops::ControlFlow;
 use tauri::{AppHandle, Emitter, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
@@ -93,14 +95,38 @@ impl TrayGroup {
     }
 }
 
-/// The groups the tray lists, keyed by each group's real name.
-fn to_tray_proxies(mode: Mode, proxies: &Proxies) -> TrayProxies {
+/// The groups the tray lists, keyed by each group's real name. The groups
+/// follow the user's arrangement, as the sidebar shows them; GLOBAL stays
+/// first.
+fn to_tray_proxies(
+    mode: Mode,
+    proxies: &Proxies,
+    layout: Option<&ProxyGroupLayout>,
+) -> TrayProxies {
     if !matches!(mode, Mode::Global | Mode::Rule | Mode::Script) {
         return TrayProxies::new();
     }
     // GLOBAL stays in Global mode even when hidden, as on the page.
     let global = proxies.global.as_ref().filter(|_| mode == Mode::Global);
-    let groups = proxies.groups.iter().filter(|group| !group.hidden);
+    let mut groups: Vec<&ProxyGroup> = proxies
+        .groups
+        .iter()
+        .filter(|group| !group.hidden)
+        .collect();
+    if let Some(layout) = layout {
+        let live: Vec<String> = groups
+            .iter()
+            .map(|group| group.name.as_str().to_owned())
+            .collect();
+        let position: IndexMap<String, usize> = layout
+            .resolve(&live)
+            .flat_order()
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| (name, index))
+            .collect();
+        groups.sort_by_key(|group| position[group.name.as_str()]);
+    }
     global
         .into_iter()
         .chain(groups)
@@ -195,10 +221,13 @@ pub(super) fn repaint_proxies(
     if view.menu.selector_mode == ProxiesSelectorMode::Hidden {
         return Ok(ControlFlow::Continue(()));
     }
-    let snapshot = app_handle
-        .state::<crate::client::NyanpasuClient>()
-        .proxies_snapshot();
-    let current = to_tray_proxies(view.part.mode, &snapshot);
+    let client = app_handle.state::<crate::client::NyanpasuClient>();
+    let snapshot = client.proxies_snapshot();
+    let current = to_tray_proxies(
+        view.part.mode,
+        &snapshot,
+        client.current_proxy_group_layout().as_ref(),
+    );
     let update = state.display.lock().update_to(&current);
     match update {
         // The rebuild records what it publishes.
@@ -326,10 +355,13 @@ mod platform_impl {
             ProxiesSelectorMode::Normal => menu.separator(),
             ProxiesSelectorMode::Submenu => menu,
         };
-        let proxies = app_handle
-            .state::<crate::client::NyanpasuClient>()
-            .proxies_snapshot();
-        let tray_proxies = super::to_tray_proxies(view.part.mode, &proxies);
+        let client = app_handle.state::<crate::client::NyanpasuClient>();
+        let proxies = client.proxies_snapshot();
+        let tray_proxies = super::to_tray_proxies(
+            view.part.mode,
+            &proxies,
+            client.current_proxy_group_layout().as_ref(),
+        );
         let items = generate_selectors::<R>(app_handle, &tray_proxies)?;
         match selector_mode {
             ProxiesSelectorMode::Normal => {
@@ -582,14 +614,14 @@ mod tests {
     fn global_mode_adds_a_global_entry_rule_mode_does_not() {
         let proxies = sample_proxies();
 
-        let global_mode = to_tray_proxies(Mode::Global, &proxies);
+        let global_mode = to_tray_proxies(Mode::Global, &proxies, None);
         assert!(global_mode.contains_key("GLOBAL"));
         assert!(!global_mode.contains_key("global"));
         assert!(global_mode.contains_key("GroupA"));
         assert_eq!(global_mode["GLOBAL"].all, vec!["GroupA".to_owned()]);
 
         for mode in [Mode::Rule, Mode::Script] {
-            let tray = to_tray_proxies(mode, &proxies);
+            let tray = to_tray_proxies(mode, &proxies, None);
             assert!(!tray.contains_key("GLOBAL"), "{mode:?}");
             assert!(!tray.contains_key("global"), "{mode:?}");
             assert!(tray.contains_key("GroupA"), "{mode:?}");
@@ -603,14 +635,14 @@ mod tests {
     #[test]
     fn global_mode_selects_global_by_its_real_name() {
         let mut proxies = sample_proxies();
-        let tray = to_tray_proxies(Mode::Global, &proxies);
+        let tray = to_tray_proxies(Mode::Global, &proxies, None);
         assert_eq!(
             tray.keys().map(String::as_str).collect::<Vec<_>>(),
             ["GLOBAL", "GroupA"]
         );
 
         proxies.global = None;
-        let tray = to_tray_proxies(Mode::Global, &proxies);
+        let tray = to_tray_proxies(Mode::Global, &proxies, None);
         assert_eq!(
             tray.keys().map(String::as_str).collect::<Vec<_>>(),
             ["GroupA"]
@@ -627,9 +659,9 @@ mod tests {
         hidden.hidden = true;
         proxies.groups.push(hidden);
         for mode in [Mode::Global, Mode::Rule, Mode::Script] {
-            assert!(!to_tray_proxies(mode, &proxies).contains_key("Hidden"));
+            assert!(!to_tray_proxies(mode, &proxies, None).contains_key("Hidden"));
         }
-        assert!(to_tray_proxies(Mode::Global, &proxies).contains_key("GLOBAL"));
+        assert!(to_tray_proxies(Mode::Global, &proxies, None).contains_key("GLOBAL"));
     }
 
     /// Enabling or disabling items changes the menu's structure, which only
@@ -655,9 +687,59 @@ mod tests {
         automatic.capabilities.select = false;
         proxies.groups = vec![pinnable, automatic];
 
-        let tray = to_tray_proxies(Mode::Rule, &proxies);
+        let tray = to_tray_proxies(Mode::Rule, &proxies, None);
         assert!(tray["Auto"].selectable);
         assert!(!tray["Fallback"].selectable);
+    }
+
+    fn arranged() -> (Proxies, ProxyGroupLayout) {
+        use nyanpasu_config::profile::{FolderId, ProxyGroupFolder};
+        let proxies = Proxies {
+            global: Some(group("GLOBAL", &["A"], "A")),
+            groups: ["A", "B", "C", "D"]
+                .map(|name| group(name, &["node"], "node"))
+                .to_vec(),
+            ..Default::default()
+        };
+        let layout = ProxyGroupLayout {
+            folders: vec![ProxyGroupFolder {
+                id: FolderId("f1".into()),
+                name: "Folder".to_owned(),
+                members: vec!["D".to_owned(), "B".to_owned()],
+            }],
+            ungrouped: vec!["C".to_owned()],
+        };
+        (proxies, layout)
+    }
+
+    /// The tray lists the groups in the sidebar's order: the groups in no
+    /// folder, then each folder's members, and a group the layout does not
+    /// know comes after the ungrouped ones that it does.
+    #[test]
+    fn the_tray_lists_groups_in_the_sidebar_order() {
+        let (proxies, layout) = arranged();
+        let order = |mode, layout: Option<&ProxyGroupLayout>| {
+            to_tray_proxies(mode, &proxies, layout)
+                .into_keys()
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(order(Mode::Rule, None), ["A", "B", "C", "D"]);
+        assert_eq!(order(Mode::Rule, Some(&layout)), ["C", "A", "D", "B"]);
+        assert_eq!(
+            order(Mode::Global, Some(&layout)),
+            ["GLOBAL", "C", "A", "D", "B"]
+        );
+    }
+
+    /// A hidden group is not listed, and the arrangement keeps its place.
+    #[test]
+    fn hidden_groups_are_skipped_while_ordering() {
+        let (mut proxies, layout) = arranged();
+        proxies.groups[2].hidden = true;
+
+        let tray = to_tray_proxies(Mode::Rule, &proxies, Some(&layout));
+        assert_eq!(tray.into_keys().collect::<Vec<_>>(), ["A", "D", "B"]);
     }
 
     #[test]

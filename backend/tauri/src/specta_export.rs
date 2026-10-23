@@ -151,6 +151,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::reorder_profiles_by_list,
             ipc::set_profile_layout,
             ipc::create_profile_folder,
+            ipc::set_proxy_group_layout,
+            ipc::create_proxy_group_folder,
             ipc::update_profile,
             ipc::delete_profile,
             ipc::activate_profile,

@@ -64,8 +64,8 @@ use nyanpasu_config::{
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
         FolderId, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadata,
-        ProfileMetadataPatch, Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch,
-        TransformKind,
+        ProfileMetadataPatch, Profiles, ProxyGroupLayout, RemoteProfileOptions,
+        RemoteProfileOptionsPatch, TransformKind,
     },
     runtime::executor::ResolvedPortBindings,
 };
@@ -1267,6 +1267,54 @@ impl NyanpasuClient {
     ) -> Result<runtime::MutationOutcome<()>> {
         let report = self.inner.profiles.set_layout(layout).await?;
         Ok(self.after_commit(&report).await)
+    }
+
+    /// Replace how `profile`'s proxy groups are arranged in the Proxies sidebar.
+    /// An empty layout removes the arrangement.
+    pub async fn set_proxy_group_layout(
+        &self,
+        profile: ProfileId,
+        layout: ProxyGroupLayout,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let report = self
+            .inner
+            .profiles
+            .set_proxy_group_layout(profile, layout)
+            .await?;
+        self.inner.proxies.notify_rearranged();
+        Ok(self.after_commit(&report).await)
+    }
+
+    /// How the proxy groups of the running profile are arranged, if the user
+    /// arranged them.
+    pub fn current_proxy_group_layout(&self) -> Option<ProxyGroupLayout> {
+        let profiles = self.inner.profiles.snapshot();
+        profiles
+            .current
+            .as_ref()
+            .and_then(|current| profiles.proxy_group_layouts.get(current))
+            .cloned()
+    }
+
+    /// Create a proxy group folder around `members`, which leave the places
+    /// they were in.
+    pub async fn create_proxy_group_folder(
+        &self,
+        profile: ProfileId,
+        name: String,
+        members: Vec<String>,
+    ) -> Result<runtime::MutationOutcome<FolderId>> {
+        let (report, folder) = self
+            .inner
+            .profiles
+            .create_proxy_group_folder(profile, name, members)
+            .await?;
+        self.inner.proxies.notify_rearranged();
+        Ok(runtime::MutationOutcome::from_parts(
+            folder,
+            self.collect_post_commit_degradations(&report).await,
+        )
+        .with_commit(report.receipt.clone()))
     }
 
     /// Create a folder around `members`, which leave the folders they were in.
